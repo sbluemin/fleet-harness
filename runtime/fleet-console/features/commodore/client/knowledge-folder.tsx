@@ -7,7 +7,7 @@ import { getT } from "./i18n/index.js";
 import "./knowledge-folder.css";
 
 async function requestFolder(api: ClientApiCapability, commodoreId: string, action: KnowledgeFolderAction, signal?: AbortSignal): Promise<KnowledgeFolderResult> {
-  const response = await api.fetch("/api/v1/commodore/knowledge-folder", {
+  const response = await api.fetch("/commodore/knowledge-folder", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ commodoreId, action }), ...(signal ? { signal } : {}),
   });
@@ -68,7 +68,7 @@ function KnowledgeFolderPane({ ctx }: { readonly ctx: PaneContext }) {
     return () => controller.abort();
   }, [api, commodoreId, mobile]);
   const message = !commodoreId ? "commodore.knowledge.choose"
-    : !mobile ? ctx.params.status === "missing" ? "commodore.knowledge.missing" : "commodore.knowledge.unavailable"
+    : !mobile ? ctx.params.status === "missing" ? "commodore.knowledge.missing" : ctx.params.status === "unavailable" ? "commodore.knowledge.unavailable" : null
     : result === null ? "commodore.knowledge.loading"
     : result.status === "display" ? result.exists ? "commodore.knowledge.onComputer" : "commodore.knowledge.missing"
     : "commodore.knowledge.unavailable";
@@ -76,6 +76,6 @@ function KnowledgeFolderPane({ ctx }: { readonly ctx: PaneContext }) {
     <h2>{t("commodore.knowledge.retired")}</h2>
     <p>{t("commodore.knowledge.mobileReason")}</p>
     {result?.status === "display" ? <code className="commodore-knowledge-path">{result.displayPath}</code> : null}
-    <p role="status">{t(message)}</p>
+    {message ? <p role="status">{t(message)}</p> : null}
   </section>;
 }
