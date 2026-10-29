@@ -214,9 +214,13 @@ export const marketplaceNameRefSchema = z.object({ name: marketplaceNameSchema }
 export const marketplaceEnableSchema = z.object({ name: marketplaceNameSchema, enabled: z.boolean() }).strict();
 export const marketplaceUpdateSchema = z.object({ name: marketplaceNameSchema.optional() }).strict();
 export const pluginInspectSchema = z.object({ pluginId: pluginIdSchema }).strict();
-/** 확인 화면에서 사람이 본 실행 명령 — 서버는 실제로 받은 새 설치본의 명령과 같을 때만 신뢰한다. */
-const pluginRunSchema = z.object({ kind: z.enum(["hook", "mcp"]), label: z.string().max(200), command: z.string().max(4000) }).strict();
-export const pluginUpdateSchema = z.object({ pluginId: pluginIdSchema, trusted: z.boolean().optional(), version: z.string().min(1).max(128).optional(), runs: z.array(pluginRunSchema).max(MAX_PLUGIN_PARTS).optional() }).strict();
+/**
+ * 확인 화면에서 사람이 본 실행 명령 — 서버는 실제로 받은 새 설치본의 명령과 같을 때만 신뢰한다.
+ * 서버가 보여 주는 명령은 개수·길이를 자르지 않으므로(실행될 것을 숨기지 않는다) 여기에도 따로 상한을 두지 않는다.
+ * 요청 크기는 Console 의 본문 상한이 막는다.
+ */
+const pluginRunSchema = z.object({ kind: z.enum(["hook", "mcp"]), label: z.string(), command: z.string() }).strict();
+export const pluginUpdateSchema = z.object({ pluginId: pluginIdSchema, trusted: z.boolean().optional(), version: z.string().min(1).max(128).optional(), runs: z.array(pluginRunSchema).optional() }).strict();
 export const commodorePluginSetSchema = z.object({
   commodoreId: z.string().min(1).max(128),
   pluginId: pluginIdSchema,
