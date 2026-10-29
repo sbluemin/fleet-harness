@@ -476,8 +476,9 @@ function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescript
  * 패널 머리의 이름 — 고칠 수 있으면 쉴 때 hover 에 은은한 둥근 배경이 서고, 누르면 같은 자리·같은 글꼴로 캐럿 편집이 열린다.
  * Enter 확정·Esc 취소·blur 확정은 사이드바 칩과 같은 `useInlineRename` 관례다. 비었거나 그대로인 이름은 보내지 않는다.
  */
-function PanelIdentityName({ title, onRename }: { readonly title: string; readonly onRename?: ((title: string) => void) | undefined }) {
+function PanelIdentityName({ title, onRename, subject = "objective" }: { readonly title: string; readonly onRename?: ((title: string) => void) | undefined; readonly subject?: "objective" | "surface" }) {
   const t = useT();
+  const label = subject === "objective" ? t("sidebar.chip.renameAria", { title }) : t("conversation.panel.renameAria", { title });
   const rename = useInlineRename({
     currentTitle: title,
     onCommit: (next) => {
@@ -492,7 +493,7 @@ function PanelIdentityName({ title, onRename }: { readonly title: string; readon
         className="conversation-panel-identity-name conversation-panel-identity-input"
         ref={rename.inputRef}
         value={rename.draftTitle}
-        aria-label={t("sidebar.chip.renameAria", { title })}
+        aria-label={label}
         onChange={(e) => rename.setDraftTitle(e.target.value)}
         onKeyDown={rename.handleKeyDown}
         onBlur={rename.handleBlur}
@@ -501,7 +502,7 @@ function PanelIdentityName({ title, onRename }: { readonly title: string; readon
   }
   return (
     <strong className="conversation-panel-identity-name">
-      <button type="button" className="conversation-panel-identity-edit" title={t("sidebar.chip.renameAria", { title })} onClick={rename.begin}>{title}</button>
+      <button type="button" className="conversation-panel-identity-edit" title={label} onClick={rename.begin}>{title}</button>
     </strong>
   );
 }
@@ -540,7 +541,7 @@ function ConversationPanelIdentity() {
         {faceKey
           ? <AvatarEditor avatarKey={faceKey} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
           : <span className="conversation-panel-identity-mark" aria-hidden="true"><TheaterGlyph size={18} /></span>}
-        <PanelIdentityName title={owner?.title ?? theaterLabel} onRename={owner?.rename ?? undefined} />
+        <PanelIdentityName title={owner?.title ?? theaterLabel} onRename={owner?.rename ?? undefined} subject="surface" />
       </div>
     );
   }
@@ -561,7 +562,7 @@ function ConversationPanelIdentity() {
         {avatar
           ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
           : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
-        <PanelIdentityName title={descriptor.title(context)} onRename={descriptor.rename?.(context) ?? undefined} />
+        <PanelIdentityName title={descriptor.title(context)} onRename={descriptor.rename?.(context) ?? undefined} subject="surface" />
       </div>
     );
   }
