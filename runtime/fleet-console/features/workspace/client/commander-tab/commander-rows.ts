@@ -53,5 +53,8 @@ export function useCommanderRows(commodoreId: string, selectedId: string | null)
     ...(fresh.length > 0 ? [{ id: "fresh", title: t("sidebar.row.glyph.fresh"), rows: fresh, fold: "fresh" as const }] : []),
     ...(done.length > 0 ? [{ id: "done", title: t("sidebar.row.glyph.done"), rows: done, fold: "done" as const }] : []),
   ];
-  return { sorted, sections, preference };
+  // 이 사령관의 기록이 아직 오지 않았거나, 기록은 있는데 줄이 아직 서지 않았으면(묶음 원천 설치 전) 빈 상태가 아니다.
+  const settledEmpty = sorted.length === 0 && state.objectiveRecordsHydrated
+    && !state.objectiveRecords.some((objectiveRecord) => objectiveRecord.commodoreId === commodoreId);
+  return { sorted, sections, preference, settledEmpty };
 }

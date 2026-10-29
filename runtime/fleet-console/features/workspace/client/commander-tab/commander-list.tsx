@@ -33,7 +33,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   const desktop = useViewMode().effective !== "mobile";
   const foldDomId = useId();
   const folds = useCommanderFolds();
-  const { sorted, sections, preference } = useCommanderRows(commodoreId, selectedId);
+  const { sorted, sections, preference, settledEmpty } = useCommanderRows(commodoreId, selectedId);
 
   return (
     <section className="commander-tab" aria-label={t("commanderTab.aria")}>
@@ -44,7 +44,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         </button>
         <CommanderPlacementGlyphs />
       </div>
-      {sorted.length === 0 ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : (
+      {sorted.length === 0 ? (settledEmpty ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : null) : (
         <div className="commander-tab-groups">
           {sections.map((group) => {
             const collapsed = group.fold !== null && folds[group.fold];

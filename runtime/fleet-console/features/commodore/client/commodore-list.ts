@@ -210,11 +210,17 @@ export function recordsMissingSection(
   return records.filter((record) => !ids.has(record.commodoreId)).map((record) => record.id);
 }
 
+export function useCommodoreListLoaded(): boolean {
+  return useSyncExternalStore(subscribeCommodoreList, commodoreListLoaded, commodoreListLoaded);
+}
+
+/** 목록이 처음 닿기 전에는 섹션을 세우지 않는다 — 기록만으로 세운 섹션은 이름·대화가 없는 기본값으로 보인다. */
 export function useSidebarCommodores(
   records: readonly { readonly commodoreId: string }[],
   groups: readonly { readonly commodoreId: string }[],
   fallbackLabel: string,
 ): readonly SidebarCommodore[] {
   const listed = useCommodoreList();
-  return sidebarCommodores(listed, records, groups, fallbackLabel);
+  const loaded = useCommodoreListLoaded();
+  return loaded ? sidebarCommodores(listed, records, groups, fallbackLabel) : [];
 }
