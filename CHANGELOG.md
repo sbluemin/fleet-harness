@@ -5,6 +5,34 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.270.0] - 2026-10-29
+
+### fleet-console
+
+#### Added
+- Long-press a commander in the phone's list to rename or archive it, just like the conversation menu.
+
+#### Changed
+- Briefing images open in the movable results window instead of a modal, so they stay open while you chat.
+- Add project folders to the commodore you are viewing instead of a shared Theater list. The first run starts by creating a commodore, and each folder lives under the commodore that owns it.
+
+#### Fixed
+- On a phone, an objective's brief now shows the images attached on the desktop; tap one to view it full screen.
+- Keep the commodore you chose on your device, and open shared conversation links in the same conversation on desktop.
+- On smaller windows, opening the details panel or the commander list beside a chat no longer squeezes the conversation and its input box; the other side panel or the sidebar steps aside instead.
+- Members and model pickers still set to a removed provider's model now name that provider and mark it as removed, instead of looking like a model turned off in AI Gateway, so you know to choose another model.
+
+#### Removed
+- Cards from the Commodore and Commanders no longer offer a row of one-click answer choices. In earlier cards that had one, the rest of the card still appears and only the choices are gone.
+
+#### Breaking Changes
+- Retire the Console-wide Theater registration APIs. Integrations must use the owning Commodore's folder APIs; existing Objectives keep their working folders.
+
+### fleet-desktop
+
+#### Fixed
+- Clearing your Fleet Browser profile now also removes cached copies of the pages you visited, instead of leaving them on disk.
+
 ## [1.269.0] - 2026-10-28
 
 ### fleet-console
