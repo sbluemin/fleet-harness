@@ -8787,11 +8787,13 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   .fc-composer-send:hover:not(:disabled) { background: var(--conversation-accent-body, var(--brass-glow)); color: var(--conversation-action-ink, var(--brass-ink)); }
 }
 /* 보낼 것이 없으면 원이 흐려진다 — 잠긴 원(:disabled)과, 눌러도 입력칸으로 초점만 보내는 빈 원(is-idle)이 같은 모습이다. */
+.fc-composer-circle:disabled { color: var(--text-tertiary); cursor: default; }
 .fc-composer-send:disabled,
-.fc-composer-send.is-idle { background: var(--control-rest); }
-.fc-composer-circle:disabled,
-.fc-composer-send.is-idle { color: var(--text-tertiary); }
-.fc-composer-circle:disabled { cursor: default; }
+.fc-composer-send.is-idle {
+  background: var(--conversation-accent-body, var(--control-rest));
+  color: var(--conversation-action-ink, var(--text-tertiary));
+  opacity: var(--conversation-action-idle-opacity, 1);
+}
 
 /* 붙인 이미지 — 캡슐 안 맨 위 줄. */
 .fc-composer-attachments {

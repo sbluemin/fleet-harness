@@ -13,5 +13,6 @@ export function useAvatarAccent(key: string | null): CSSProperties | undefined {
     "--conversation-bubble-fill": `color-mix(in oklab, var(--mongle-${tone}) 50%, var(--mongle-face))`,
     "--conversation-human-ink": "var(--text-on-identity)",
     "--conversation-action-ink": "var(--mongle-face)",
+    "--conversation-action-idle-opacity": "var(--control-disabled-opacity)",
   } as CSSProperties), [tone]);
 }
