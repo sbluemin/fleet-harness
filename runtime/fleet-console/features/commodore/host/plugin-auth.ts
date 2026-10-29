@@ -186,9 +186,22 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
     settle(broker);
   };
 
+  /**
+   * 진행 중인 흐름을 지금의 계획과 맞춘다 — 그 흐름을 쥔 자식이 지금의 자식이든 물러난 자식이든. 흐름의 서버가 계획에 있는데
+   * 서명(설정·참조 키)이 달라졌거나, 이 사령관의 흐름인데 서버가 계획에서 빠졌으면 그 흐름은 옛 설정의 로그인이라 이유를 남기고
+   * 끝낸다. 다시 시작하면 새 설정으로 연다.
+   */
+  const revalidate = (commodoreId: string, signatures: ReadonlyMap<string, string>) => {
+    for (const [name, flow] of [...flows]) {
+      const next = signatures.get(name);
+      if (next === undefined ? flow.broker.commodoreId === commodoreId : flow.broker.servers.get(name) !== next) endFlow(name, flow, "changed");
+    }
+  };
+
   /** 그 사령관의 확인 자식을 빌린다. 쓴 뒤 `unlease`로 돌려준다. */
   const lease = async (commodoreId: string, pluginIds: readonly string[]): Promise<{ readonly broker: Broker; readonly servers: readonly PluginAuthServer[] }> => {
     const { servers, env, signatures, signature } = plan(pluginIds);
+    revalidate(commodoreId, signatures);
     if (!servers.length) throw new CommodoreStoreError("invalid_request");
     wanted.set(commodoreId, signature);
     const take = (broker: Broker) => { broker.uses += 1; if (broker.idle) clearTimeout(broker.idle); broker.idle = null; return { broker, servers }; };
@@ -231,7 +244,8 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
   };
 
   const probe = (commodoreId: string, pluginIds: readonly string[], refresh: boolean): Promise<States> => {
-    const { servers, signature } = plan(pluginIds);
+    const { servers, signatures, signature } = plan(pluginIds);
+    revalidate(commodoreId, signatures);
     if (!servers.length) return Promise.resolve(new Map());
     const hit = cache.get(commodoreId);
     const active = servers.some(({ name }) => flows.has(name));
@@ -355,6 +369,7 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
     async start(commodoreId: string, pluginIds: readonly string[], pluginId: string, server: string): Promise<{ readonly authUrl?: string; readonly view: CommodorePluginAuthView }> {
       const target = find(pluginIds, pluginId, server);
       if (target.mode !== "oauth") throw new CommodoreStoreError("invalid_request");
+      revalidate(commodoreId, plan(pluginIds).signatures);
       const existing = flows.get(target.name);
       if (existing) return { authUrl: existing.authUrl, view: view(pluginIds, cache.get(commodoreId)?.states ?? new Map(), true) };
       failures.delete(target.name);
