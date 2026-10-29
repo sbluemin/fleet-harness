@@ -20,7 +20,7 @@ import { z } from "zod";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 
 import { CommodoreStoreError } from "./errors.js";
-import { commodorePluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema } from "../shared/contracts/plugins.js";
+import { commodorePluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema, pluginUpdateSchema } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
@@ -109,7 +109,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   const fail = (res: http.ServerResponse, error: unknown) => {
     if (error instanceof CommodoreStoreError) {
       const status = error.code === "unknown_commodore" || error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_routine" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_folder_grant" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
-      ctx.host.http.writeJson(res, status, { error: error.code });
+      ctx.host.http.writeJson(res, status, error.details ? { error: error.code, details: error.details } : { error: error.code });
       return;
     }
     const code = error instanceof Error ? error.message : "commodore_failed";
@@ -215,6 +215,13 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       }
       return view(commodoreId, store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId)));
     }) },
+    { name: "commodore/plugins/update", method: "POST", summary: "Update one plugin with the Claude Code CLI; applies from its next session and reports the old and new versions with the refreshed catalog.", handler: json(pluginUpdateSchema, async ({ pluginId, trusted }) => {
+      const result = await plugins().updatePlugin(pluginId, trusted === true);
+      // 인증 캐시를 버리고, 그 플러그인을 고른 모든 사령관에 알린다. 적용은 다음 세션부터다.
+      hooks.pluginAuth?.invalidate();
+      hooks.pluginsChanged?.([pluginId]);
+      return result;
+    }, false) },
     { name: "commodore/plugins/auth/status", method: "POST", summary: "Read whether this Commodore's plugin MCP servers need a sign-in or a key; checks through a Claude Code child that sends no model turn.", handler: json(pluginAuthStatusSchema, ({ commodoreId, refresh }) => pluginAuth().status(commodoreId, read(commodoreId).plugins ?? [], refresh === true), false) },
     { name: "commodore/plugins/auth/action", method: "POST", summary: "Start, cancel or clear Claude Code's MCP OAuth sign-in for one plugin server; start returns the address to open in a browser.", handler: json(pluginAuthActionSchema, async ({ commodoreId, pluginId, server, action }) => {
       const selected = read(commodoreId).plugins ?? [];

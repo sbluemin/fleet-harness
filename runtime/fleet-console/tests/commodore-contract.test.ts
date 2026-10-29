@@ -712,6 +712,198 @@ describe("commodore theater state", () => {
     expect(rows().has("team")).toBe(true);
     await expect(plugins.inspect("tool@team")).rejects.toMatchObject({ code: "cli_unavailable" });
   });
+  it("computes the next plugin version from files only and updates one plugin through its trust boundary", async () => {
+    // 업데이트 호스트 픽스처 — 상대 출처(tool·nover)와 외부 출처(ext·ext2), 설치본 캐시, CLI 대역 스크립트.
+    const SHA_A = "a".repeat(40);
+    const SHA_B = "b".repeat(40);
+    const SHA_C = "c".repeat(40);
+    const h = harness();
+    const root = path.join(h.objectivesDir, "commodore-plugins");
+    const market = path.join(root, "markets", "team");
+    const cache = path.join(root, "claude", "plugins", "cache", "team");
+    const writePlugin = (dir: string, manifest: unknown, hooks?: unknown) => {
+      fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true });
+      fs.writeFileSync(path.join(dir, ".claude-plugin", "plugin.json"), JSON.stringify(manifest));
+      if (hooks !== undefined) {
+        fs.mkdirSync(path.join(dir, "hooks"), { recursive: true });
+        fs.writeFileSync(path.join(dir, "hooks", "hooks.json"), JSON.stringify(hooks));
+      }
+    };
+    const hooksOf = (command: string) => ({ hooks: { SessionStart: [{ hooks: [{ type: "command", command }] }] } });
+    writePlugin(path.join(market, "plugins", "tool"), { name: "tool", version: "1.0.0" }, hooksOf("echo hi"));
+    writePlugin(path.join(market, "plugins", "nover"), { name: "nover" });
+    writePlugin(path.join(cache, "tool", "1.0.0"), { name: "tool", version: "1.0.0" }, hooksOf("echo hi"));
+    writePlugin(path.join(cache, "tool", "1.1.0"), { name: "tool", version: "1.1.0" }, hooksOf("echo hi"));
+    writePlugin(path.join(cache, "nover", "b2271ea45eea"), { name: "nover" });
+    writePlugin(path.join(cache, "nover", "b8394fda9111"), { name: "nover" }, hooksOf("echo new"));
+    writePlugin(path.join(cache, "ext", "1.9.0"), { name: "ext", version: "1.9.0" });
+    writePlugin(path.join(cache, "ext2", "1.0.0"), { name: "ext2", version: "1.0.0" });
+    fs.mkdirSync(path.join(market, ".claude-plugin"), { recursive: true });
+    fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", plugins: [
+      { name: "tool", source: "./plugins/tool", version: "1.0.0" },
+      { name: "nover", source: "./plugins/nover" },
+      { name: "ext", source: { source: "github", repo: "org/ext", ref: "v2.0.0", sha: SHA_C }, version: "2.0.0" },
+      { name: "ext2", source: { source: "github", repo: "org/ext2", ref: "main", sha: SHA_C } },
+    ] }));
+    fs.mkdirSync(path.join(root, "claude", "plugins"), { recursive: true });
+    fs.writeFileSync(path.join(root, "claude", "plugins", "known_marketplaces.json"), JSON.stringify({ team: { installLocation: market } }));
+    const install = (id: string, version: string, sha: string) => ({ scope: "user", installPath: path.join(cache, id.slice(0, id.lastIndexOf("@")), version), version, installedAt: "2026-10-29T00:00:00Z", lastUpdated: "2026-10-29T00:00:00Z", gitCommitSha: sha });
+    const installedFile = () => JSON.parse(fs.readFileSync(path.join(root, "claude", "plugins", "installed_plugins.json"), "utf8")) as { plugins: Record<string, { installPath: string; version: string; gitCommitSha: string }[]> };
+    fs.writeFileSync(path.join(root, "claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: {
+      "tool@team": [install("tool@team", "1.0.0", SHA_A)],
+      "nover@team": [install("nover@team", "b2271ea45eea", SHA_A)],
+      "ext@team": [install("ext@team", "1.9.0", SHA_A)],
+      "ext2@team": [install("ext2@team", "1.0.0", SHA_A)],
+    } }));
+    fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: {} }));
+    // CLI 대역 — `claude plugin update` 가 남기는 설치 기록 변화를 그대로 흉내 낸다. 마켓플레이스 명령은 실패로 둔다.
+    const stub = path.join(root, "update-stub.mjs");
+    fs.writeFileSync(stub, `#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+const home = process.env.CLAUDE_CONFIG_DIR ?? "";
+const log = process.env.FLEET_UPDATE_STUB_LOG ?? "";
+const mode = process.env.FLEET_UPDATE_STUB_MODE ?? "";
+const [command, op, id] = process.argv.slice(2, 5);
+if (command !== "plugin" || op !== "update" || !id) {
+  console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected", message: "unexpected args" }));
+  process.exit(1);
+}
+if (log) fs.appendFileSync(log, "update " + id + " " + mode + "\\n");
+const file = path.join(home, "plugins", "installed_plugins.json");
+const at = id.lastIndexOf("@");
+const bump = (version, sha, oldVersion) => {
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  const rows = raw.plugins[id];
+  rows[0] = { ...rows[0], version, gitCommitSha: sha, installPath: path.join(home, "plugins", "cache", id.slice(at + 1), id.slice(0, at), version), lastUpdated: "2026-10-29T00:00:01Z" };
+  fs.writeFileSync(file, JSON.stringify(raw, null, 2));
+  console.log(JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "updated", pluginId: id, oldVersion, newVersion: version }));
+};
+if (mode === "updated-tool") bump("1.1.0", "${SHA_B}", "1.0.0");
+else if (mode === "updated-nover") bump("b8394fda9111", "${SHA_B}", "b2271ea45eea");
+else if (mode === "up_to_date") console.log(JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "up_to_date", pluginId: id, oldVersion: "1.1.0", newVersion: "1.1.0" }));
+else if (mode === "source_missing") { console.log(JSON.stringify({ command: "update", outcome: "failed", pluginId: id, message: "Plugin source not found at /gone/" + id, failureCode: "source_missing" })); process.exitCode = 1; }
+else if (mode === "confirm") { console.log(JSON.stringify({ command: "update", outcome: "failed", pluginId: id, message: "This update runs new commands. Re-run with --accept-command <sha256> to approve them.", failureCode: "confirmation_required" })); process.exitCode = 1; }
+else { console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected", message: "unknown mode " + mode })); process.exitCode = 1; }
+`);
+    fs.chmodSync(stub, 0o755);
+    const stubLog = path.join(root, "stub.log");
+    let mode = "updated-tool";
+    const plugins = createCommodorePlugins({ root, executable: async () => stub, env: () => ({ ...process.env, FLEET_UPDATE_STUB_MODE: mode, FLEET_UPDATE_STUB_LOG: stubLog }) });
+    const updateLog = () => (fs.existsSync(stubLog) ? fs.readFileSync(stubLog, "utf8") : "");
+    const trusted = () => (JSON.parse(fs.readFileSync(path.join(root, "registry.json"), "utf8")) as { trusted: Record<string, string> }).trusted;
+    const changed = vi.fn();
+    const invalidate = vi.fn();
+    const updateRoute = (body: Record<string, unknown>) => h.route("commodore/plugins/update", body, { plugins, pluginAuth: { invalidate } as never, pluginsChanged: changed });
+    const byId = () => new Map(plugins.catalog().plugins.map((plugin) => [plugin.id, plugin]));
+
+    // 최신 표시 — 아직 올리지 않은 설치본에는 없고, 외부 출처는 sha 로 판단한다. CLI·네트워크를 부르지 않는다.
+    expect(byId().get("tool@team")).toMatchObject({ version: "1.0.0" });
+    expect(byId().get("tool@team")).not.toHaveProperty("latestVersion");
+    expect(byId().get("ext@team")).toMatchObject({ version: "1.9.0", latestVersion: "2.0.0" });
+    expect(byId().get("ext@team")).not.toHaveProperty("latestRuns");
+    expect(byId().get("ext2@team")).toMatchObject({ version: "1.0.0", latestVersion: "cccccccccccc" });
+    expect(byId().get("nover@team")?.version).toBe("b2271ea45eea");
+    expect(byId().get("nover@team")).not.toHaveProperty("latestVersion");
+    // 번들 폴더를 1.1.0 으로 올리면 파일만 읽고 새 버전·실행 명령을 보여 준다.
+    fs.writeFileSync(path.join(market, "plugins", "tool", ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", version: "1.1.0" }));
+    expect(updateLog()).toBe("");
+    const candidate = byId().get("tool@team")!;
+    expect(candidate.latestVersion).toBe("1.1.0");
+    expect(candidate.latestRuns).toEqual([{ kind: "hook", label: "SessionStart", command: "echo hi" }]);
+    expect(updateLog()).toBe("");
+
+    // 신뢰 없는 업데이트는 CLI 를 부르기 전에 거절하고 설치본을 그대로 둔다.
+    expect(await updateRoute({ pluginId: "tool@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.1.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo hi" }] } } });
+    expect(updateLog()).toBe("");
+    expect(installedFile().plugins["tool@team"]![0]).toMatchObject({ version: "1.0.0", gitCommitSha: SHA_A });
+    // trusted 로 다시 오면 신뢰를 기록하고 진행한다.
+    const done = await updateRoute({ pluginId: "tool@team", trusted: true });
+    expect(done).toMatchObject({ status: 200, value: { outcome: "updated", oldVersion: "1.0.0", newVersion: "1.1.0" } });
+    expect(updateLog()).toBe("update tool@team updated-tool\n");
+    expect(installedFile().plugins["tool@team"]![0]).toMatchObject({ version: "1.1.0", gitCommitSha: SHA_B });
+    const after = (done.value as { view: { plugins: { id: string; version?: string; latestVersion?: string }[] } }).view.plugins;
+    expect(after.find((plugin) => plugin.id === "tool@team")).toMatchObject({ version: "1.1.0" });
+    expect(after.find((plugin) => plugin.id === "tool@team")).not.toHaveProperty("latestVersion");
+    expect(trusted()).toEqual({ "tool@team": "1.1.0" });
+    expect(changed).toHaveBeenCalledWith(["tool@team"]);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    // 이미 최신이면 그대로 돌려준다.
+    mode = "up_to_date";
+    expect(await updateRoute({ pluginId: "tool@team", trusted: true })).toMatchObject({ status: 200, value: { outcome: "up_to_date", oldVersion: "1.1.0", newVersion: "1.1.0" } });
+    // 출처가 사라지면 설치본을 그대로 두고 같은 코드를 돌려준다.
+    mode = "source_missing";
+    expect(await updateRoute({ pluginId: "tool@team" })).toMatchObject({ status: 409, value: { error: "source_missing" } });
+    expect(installedFile().plugins["tool@team"]![0]).toMatchObject({ version: "1.1.0" });
+    // CLI 가 명령 확인을 요구하면 신뢰 확인으로 돌려준다.
+    mode = "confirm";
+    expect(await updateRoute({ pluginId: "tool@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.1.0" } } });
+    // 모르는 플러그인은 CLI 를 부르기 전에 거절한다.
+    expect(await updateRoute({ pluginId: "ghost@team" })).toMatchObject({ status: 409, value: { error: "plugin_not_found" } });
+    expect(updateLog()).not.toContain("ghost@team");
+    // CLI 없이는 같은 이유로 거절한다.
+    const offline = createCommodorePlugins({ root, executable: async () => { throw new Error("agent_cli_unavailable"); } });
+    expect(await h.route("commodore/plugins/update", { pluginId: "tool@team" }, { plugins: offline })).toMatchObject({ status: 409, value: { error: "cli_unavailable" } });
+  });
+  it("rolls an untrusted plugin update back to the previously installed version", async () => {
+    // 버전 없는 상대 플러그인 — 미리 새 버전을 알 수 없어 업데이트 뒤 새 설치본으로 신뢰를 판단한다.
+    const SHA_A = "a".repeat(40);
+    const SHA_B = "b".repeat(40);
+    const h = harness();
+    const root = path.join(h.objectivesDir, "commodore-plugins");
+    const market = path.join(root, "markets", "team");
+    const cache = path.join(root, "claude", "plugins", "cache", "team");
+    const writePlugin = (dir: string, manifest: unknown, hooks?: unknown) => {
+      fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true });
+      fs.writeFileSync(path.join(dir, ".claude-plugin", "plugin.json"), JSON.stringify(manifest));
+      if (hooks !== undefined) {
+        fs.mkdirSync(path.join(dir, "hooks"), { recursive: true });
+        fs.writeFileSync(path.join(dir, "hooks", "hooks.json"), JSON.stringify(hooks));
+      }
+    };
+    const hooksOf = (command: string) => ({ hooks: { SessionStart: [{ hooks: [{ type: "command", command }] }] } });
+    writePlugin(path.join(market, "plugins", "nover"), { name: "nover" });
+    writePlugin(path.join(cache, "nover", "b2271ea45eea"), { name: "nover" });
+    writePlugin(path.join(cache, "nover", "b8394fda9111"), { name: "nover" }, hooksOf("echo new"));
+    fs.mkdirSync(path.join(market, ".claude-plugin"), { recursive: true });
+    fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", plugins: [{ name: "nover", source: "./plugins/nover" }] }));
+    fs.mkdirSync(path.join(root, "claude", "plugins"), { recursive: true });
+    fs.writeFileSync(path.join(root, "claude", "plugins", "known_marketplaces.json"), JSON.stringify({ team: { installLocation: market } }));
+    const record = (version: string, sha: string) => ({ scope: "user", installPath: path.join(cache, "nover", version), version, installedAt: "2026-10-29T00:00:00Z", lastUpdated: "2026-10-29T00:00:00Z", gitCommitSha: sha });
+    fs.writeFileSync(path.join(root, "claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "nover@team": [record("b2271ea45eea", SHA_A)] } }));
+    fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: {} }));
+    const stub = path.join(root, "update-stub.mjs");
+    fs.writeFileSync(stub, `#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+const home = process.env.CLAUDE_CONFIG_DIR ?? "";
+const [command, op, id] = process.argv.slice(2, 5);
+if (command !== "plugin" || op !== "update" || id !== "nover@team") {
+  console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected", message: "unexpected args" }));
+  process.exit(1);
+}
+const file = path.join(home, "plugins", "installed_plugins.json");
+const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+raw.plugins[id][0] = { ...raw.plugins[id][0], version: "b8394fda9111", gitCommitSha: "${SHA_B}", installPath: path.join(home, "plugins", "cache", "team", "nover", "b8394fda9111"), lastUpdated: "2026-10-29T00:00:01Z" };
+fs.writeFileSync(file, JSON.stringify(raw, null, 2));
+console.log(JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "updated", pluginId: id, oldVersion: "b2271ea45eea", newVersion: "b8394fda9111" }));
+`);
+    fs.chmodSync(stub, 0o755);
+    const plugins = createCommodorePlugins({ root, executable: async () => stub });
+    const changed = vi.fn();
+    const updateRoute = (body: Record<string, unknown>) => h.route("commodore/plugins/update", body, { plugins, pluginsChanged: changed });
+    const installedFile = () => JSON.parse(fs.readFileSync(path.join(root, "claude", "plugins", "installed_plugins.json"), "utf8")) as { plugins: Record<string, { version: string; installPath: string; gitCommitSha: string }[]> };
+
+    // 신뢰 없이는 새 설치본을 확인한 뒤 설치 기록을 이전 버전으로 되돌리고 거절한다. 새 캐시 폴더가 남아도 설치본은 옛 폴더를 가리킨다.
+    expect(await updateRoute({ pluginId: "nover@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "b8394fda9111", runs: [{ kind: "hook", label: "SessionStart", command: "echo new" }] } } });
+    expect(installedFile().plugins["nover@team"]![0]).toMatchObject({ version: "b2271ea45eea", gitCommitSha: SHA_A, installPath: path.join(cache, "nover", "b2271ea45eea") });
+    expect(changed).not.toHaveBeenCalled();
+    // trusted 로 다시 오면 새 버전을 신뢰한 것으로 기록하고 진행한다.
+    expect(await updateRoute({ pluginId: "nover@team", trusted: true })).toMatchObject({ status: 200, value: { outcome: "updated", oldVersion: "b2271ea45eea", newVersion: "b8394fda9111" } });
+    expect(installedFile().plugins["nover@team"]![0]).toMatchObject({ version: "b8394fda9111", gitCommitSha: SHA_B });
+    expect(JSON.parse(fs.readFileSync(path.join(root, "registry.json"), "utf8"))).toMatchObject({ trusted: { "nover@team": "b8394fda9111" } });
+    expect(changed).toHaveBeenCalledWith(["nover@team"]);
+  });
   it("enables only the official and community presets on an empty registry, and keeps a default-off preset when a commodore already chose its plugin", async () => {
     const h = harness();
     const unavailable = async () => { throw new Error("agent_cli_unavailable"); };
