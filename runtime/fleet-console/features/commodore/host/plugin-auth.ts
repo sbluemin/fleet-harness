@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ClaudeMcpControlUnsupportedError, type ClaudeGatewayExternalMcpServer, type ClaudeMcpControl, type ClaudeMcpServerState } from "@fleet-console/agent-runtime/claude";
 
 import { CommodoreStoreError } from "./errors.js";
@@ -100,7 +101,12 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
 
   /** 확인 자식에 붙일 서버 — OAuth 원격 서버와 값이 다 있는 키 원격 서버. stdio 는 띄우지 않는다(플러그인 명령이 돈다). */
   const targets = (servers: readonly PluginAuthServer[]) => servers.filter((server) => server.config.type !== "stdio" && server.missing.length === 0 && server.unsupported.length === 0);
-  const signatureOf = (servers: readonly PluginAuthServer[]) => JSON.stringify(servers.map(({ name, config }) => [name, config]).sort(([a], [b]) => String(a).localeCompare(String(b))));
+  // 키 값은 선언이 아니라 자식 환경으로 들어가므로, 환경도 서명에 넣어야 키를 바꾼 뒤 옛 키를 쥔 자식을 다시 쓰지 않는다.
+  // 값은 해시로만 남긴다.
+  const signatureOf = (servers: readonly PluginAuthServer[], pluginIds: readonly string[]) => {
+    const env = Object.entries(options.env(pluginIds)).sort(([a], [b]) => a.localeCompare(b));
+    return JSON.stringify([servers.map(({ name, config }) => [name, config]).sort(([a], [b]) => String(a).localeCompare(String(b))), createHash("sha256").update(JSON.stringify(env)).digest("hex")]);
+  };
 
   const releaseBroker = (commodoreId: string, broker: Broker) => {
     if (broker.idle) clearTimeout(broker.idle);
@@ -122,7 +128,7 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
   const brokerFor = async (commodoreId: string, pluginIds: readonly string[]): Promise<{ readonly broker: Broker; readonly servers: readonly PluginAuthServer[] }> => {
     const servers = targets(options.servers(pluginIds));
     if (!servers.length) throw new CommodoreStoreError("invalid_request");
-    const signature = signatureOf(servers);
+    const signature = signatureOf(servers, pluginIds);
     const current = brokers.get(commodoreId);
     if (current && current.control.alive && current.signature === signature) return { broker: current, servers };
     if (current) releaseBroker(commodoreId, current);
@@ -155,7 +161,7 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
   const probe = (commodoreId: string, pluginIds: readonly string[], refresh: boolean): Promise<ReadonlyMap<string, ClaudeMcpServerState["status"]>> => {
     const servers = targets(options.servers(pluginIds));
     if (!servers.length) return Promise.resolve(new Map());
-    const signature = signatureOf(servers);
+    const signature = signatureOf(servers, pluginIds);
     const hit = cache.get(commodoreId);
     const active = servers.some(({ name }) => flows.has(name));
     if (!refresh && !active && hit && hit.signature === signature && now() - hit.at < STATUS_FRESH_MS) return Promise.resolve(hit.states);
