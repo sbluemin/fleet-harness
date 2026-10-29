@@ -104,8 +104,9 @@ import {
  * 삭제가 복원 불가로 확정될 때(`forget`) 디렉터리를 통째로 지운다.
  *
  * 목록은 폴더를 한 번 읽어 캐시에 올리고, Console 이 이 저장소의 유일한 쓰는 쪽이라 파일 잠금도 감시도 두지 않는다.
- * 모든 변경은 한 곳(`commit`)을 지나 **그 목표의 파일 한 건**에 tmp→rename 으로 쓰이고, 쓰기가 성공한 뒤에야 캐시가
+ * 도메인 변경은 한 곳(`commit`)을 지나 **그 목표의 파일 한 건**에 tmp→rename 으로 쓰이고, 쓰기가 성공한 뒤에야 캐시가
  * 갈리고 마지막에 사건으로 방송된다 — 쓰기가 실패하면 캐시와 디스크가 함께 이전 상태로 남는다.
+ * PR 조회의 stale 전환과 같은 오류의 재확인 시각만 메모리에서 갱신한다. 오류 내용·성공 관측은 계속 영속한다.
  */
 
 export class ObjectiveStoreError extends Error {
@@ -122,7 +123,7 @@ export interface ObjectiveStoreOptions {
   readonly dirOf: (commodoreId: string) => string | null;
   readonly commodoreIds?: () => readonly string[];
   readonly objectiveRecords: { get(id: string): ObjectiveRecord | null; list(): readonly ObjectiveRecord[]; describe?(id: string): ObjectiveDescription | null; readonly groups?: { get(id: string): { readonly commodoreId: string } | null } };
-  readonly emit: (event: ObjectiveEvent) => void;
+  readonly emit: (event: ObjectiveEvent, source?: "pr-observation") => void;
   readonly now?: () => number;
   /** 떠 있는 채팅의 호스트 좌표 — 턴 뒤 예약이 적용됐는지 투영이 가른다. 떠 있는 채팅이 아니거나 모르면 null. */
   readonly coordinates?: (objectiveId: string) => HostCoordinates | null;
@@ -188,6 +189,8 @@ export interface ObjectiveStore {
   list(commodoreId: string): readonly Objective[];
   /** 알려진 모든 Theater 의 목표. */
   all(): readonly Objective[];
+  /** 같은 가시성 경계에서 PR 관찰에 필요한 값만 읽는다. 화면·임무·구성원 투영은 만들지 않는다. */
+  prTargets(): readonly { readonly objectiveId: string; readonly done: boolean; readonly result: Extract<ObjectiveResult, { kind: "pr" }> }[];
   forgetOwner(commodoreId: string): void;
   find(objectiveId: string): Objective | null;
   /** 증거 공유 디렉터리 — 지휘관과 구성원이 같이 쓰고, 봉인은 이 안의 파일만 받는다. */
@@ -975,7 +978,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   };
 
   /** 쓰기 한 곳 — 그 목표의 파일 한 건이 성공한 뒤에 캐시를 갈고, 마지막에 방송한다. */
-  const commit = (commodoreId: string, changed: StoredObjective, reordered = false, touch = true): Objective | null => {
+  const commit = (commodoreId: string, changed: StoredObjective, reordered = false, touch = true, source?: "pr-observation"): Objective | null => {
     const previousMembers = load(commodoreId).get(changed.id)?.members ?? [];
     const nextMembers = changed.members ?? [];
     const joined = nextMembers.flatMap((member, index) => previousMembers.some((old) => old.id === member.id) ? []
@@ -989,7 +992,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     load(commodoreId).set(changed.id, changed);
     if (reordered) return announce(commodoreId, changed);
     const objective = view(commodoreId, changed);
-    if (objective) options.emit({ op: "upsert", commodoreId, objectiveId: objective.id, objective });
+    if (objective) options.emit({ op: "upsert", commodoreId, objectiveId: objective.id, objective }, source);
     return objective;
   };
 
@@ -1058,7 +1061,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { ...stored, members: members.map((member, ix) => (ix === at ? changed : member)) };
     }, false);
   };
-  const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective, touch = true): Objective => {
+  const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective, touch = true, source?: "pr-observation"): Objective => {
     const { commodoreId, recorded, stored, node } = locate(objectiveId);
     // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
     const mutated = withLiveHolds(withLiveDecisionReferences(withValidHandoff(mutate(stored))));
@@ -1076,7 +1079,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     // 따로 만든 Objective 의 첫 편집 — 여기서 레코드가 된다. 지금 서 있는 가상 자리를 그대로 굳혀 자리가 흔들리지 않게
     // 하고, 그래도 화면이 서버와 어긋나지 않도록 보드 줄을 함께 방송한다.
     const next = recorded ? ordered : { ...ordered, rank: virtualRank(node!), enlisted: true };
-    return commit(commodoreId, next, !recorded, touch) ?? project(next, node);
+    return commit(commodoreId, next, !recorded, touch, source) ?? project(next, node);
   };
 
   const resultChecked = <T>(run: () => T): T => {
@@ -1223,6 +1226,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     list: (commodoreId) => visible(commodoreId).map(({ stored, node }) => project(stored, node)),
     // 보관된 목표도 관계·복구·purge 소유권은 가진다. 활성 공급은 list만 사용한다.
     all: () => commodoreIds().flatMap((commodoreId) => visible(commodoreId, true).map(({ stored, node }) => project(stored, node))),
+    prTargets: () => commodoreIds().flatMap((commodoreId) => visible(commodoreId, true).flatMap(({ stored }) => (stored.results ?? []).flatMap((result) => result.kind === "pr" ? [{ objectiveId: stored.id, done: !!stored.done, result }] : []))),
     find: (objectiveId) => { try { const { stored, node } = locate(objectiveId); return project(stored, node); } catch { return null; } },
     sharedDir(commodoreId, objectiveId) {
       const dir = containedFile(objectiveDir(commodoreId, objectiveId), "shared");
@@ -1926,11 +1930,19 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const parsed = prObservationSchema.safeParse(raw);
       if (!parsed.success) throw new ObjectiveStoreError("invalid_pr_observation");
       try {
-        update(objectiveId, (stored) => {
-          const previous = stored.results?.find((entry) => entry.id === resultId);
-          if (previous?.kind !== "pr" || previous.url !== url || JSON.stringify(previous.observation) === JSON.stringify(parsed.data)) return stored;
-          return { ...stored, results: stored.results!.map((entry) => entry.id === resultId ? { ...previous, observation: parsed.data } : entry) };
-        }, false);
+        const { commodoreId, stored, node } = locate(objectiveId);
+        const previous = stored.results?.find((entry) => entry.id === resultId);
+        if (previous?.kind !== "pr" || previous.url !== url || isDeepStrictEqual(previous.observation, parsed.data)) return;
+        const { checkedAt: beforeAt, stale: _beforeStale, ...before } = previous.observation;
+        const { checkedAt: afterAt, stale: _afterStale, ...after } = parsed.data;
+        const freshnessOnly = isDeepStrictEqual(before, after) && (beforeAt === afterAt || parsed.data.state === "error");
+        const changed = { ...stored, results: stored.results!.map((entry) => entry.id === resultId ? { ...previous, observation: parsed.data } : entry) };
+        if (freshnessOnly) {
+          // 조회 시작의 stale과 같은 실패의 시각은 이번 프로세스의 관측이다. 화면에는 최신 값을 보내되
+          // 재기동 때는 마지막 영속 관측에서 즉시 다시 조회한다. 성공·오류 내용 변경은 아래에서 저장한다.
+          load(commodoreId).set(objectiveId, changed);
+          options.emit({ op: "upsert", commodoreId, objectiveId, objective: project(changed, node) }, "pr-observation");
+        } else update(objectiveId, () => changed, false, "pr-observation");
       } catch (error) {
         // 조회 중 사라진 목표를 되살리거나 그 레코드를 새로 만들지 않는다.
         if (!(error instanceof ObjectiveStoreError && error.code === "unknown_objective")) throw error;

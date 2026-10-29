@@ -91,7 +91,7 @@ export function createPrStatusService(store: ObjectiveStore, options: { readonly
   let scanning = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const targets = () => store.all().flatMap((objective) => objective.results.flatMap((result) => result.kind === "pr" ? [{ objectiveId: objective.id, done: !!objective.done, result }] : []));
+  const targets = () => store.prTargets();
   const report = () => options.onError?.("pr_status_storage_failed");
   const pump = () => {
     if (stopped) return;
