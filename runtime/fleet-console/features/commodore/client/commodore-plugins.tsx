@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
-import { openInDefaultOsBrowser } from "@fleet-console/link/core";
+import { isFleetMobileShell, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
 import "@fleet-console/markdown/styles.css";
@@ -458,15 +458,27 @@ function MarketplaceAdd({ t }: { readonly t: T }) {
 const AUTH_POLL_MS = 2_000;
 type ServerAuth = PluginServerAuthView;
 
-/** 이 사령관이 고른 플러그인의 인증 상태. 브라우저에서 진행 중인 서버가 있는 동안 몇 초마다 다시 읽는다. */
+/**
+ * 이 사령관이 고른 플러그인의 인증 상태. 브라우저에서 진행 중인 서버가 있는 동안 몇 초마다 다시 읽는다. 상태 조회와 동작 응답은
+ * 보낸 순서대로 번호를 받고, 더 늦게 보낸 요청의 응답이 이미 왔으면 먼저 보낸 요청의 응답은 버린다 — 키를 저장하기 전에
+ * 떠난 조회가 저장 뒤에 도착해 옛 결과로 덮지 않게.
+ */
 function usePluginAuth(commodoreId: string, installedKey: string) {
   const [view, setView] = useState<CommodorePluginAuthView | null>(null);
   const [round, setRound] = useState(0);
+  const sent = useRef(0);
+  const applied = useRef(0);
+  /** 요청을 보내기 직전에 부른다. 돌려준 함수로 그 응답을 반영한다. */
+  const track = () => {
+    const seq = ++sent.current;
+    return (next: CommodorePluginAuthView) => { if (seq < applied.current) return; applied.current = seq; setView(next); };
+  };
   useEffect(() => {
     if (!commodoreId || !installedKey) { setView(null); return; }
     let live = true;
+    const apply = track();
     void postCommodorePlugins<CommodorePluginAuthView>("/commodore/plugins/auth/status", { commodoreId })
-      .then((next) => { if (live) setView(next); }, () => undefined);
+      .then((next) => { if (live) apply(next); }, () => undefined);
     return () => { live = false; };
   }, [commodoreId, installedKey, round]);
   const pending = view?.plugins.some((plugin) => plugin.servers.some((server) => server.state === "pending")) ?? false;
@@ -475,7 +487,7 @@ function usePluginAuth(commodoreId: string, installedKey: string) {
     const timer = window.setTimeout(() => setRound((n) => n + 1), AUTH_POLL_MS);
     return () => window.clearTimeout(timer);
   }, [pending, view]);
-  return { view, setView };
+  return { view, track };
 }
 
 /** 행 메타 줄의 상태 한 마디 — 진행 중 > 실패 > 인증 필요(서버 수) > 키 필요. 연결된 행은 아무것도 붙지 않는다. */
@@ -526,6 +538,8 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const [menu, setMenu] = useState<{ readonly pluginId: string; readonly x: number; readonly y: number; readonly trigger: HTMLElement } | null>(null);
   const [armed, setArmed] = useState(false);
   const [form, setForm] = useState<InlineForm | null>(null);
+  /** 모바일 셸에서 받은 인증 주소 — 셸은 누름 없이 연 창을 OS 브라우저로 넘기지 않아, 행에서 한 번 누르게 한다. */
+  const [ready, setReady] = useState<{ readonly pluginId: string; readonly server: string; readonly url: string } | null>(null);
   const addRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
@@ -568,26 +582,33 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   };
   const remove = (pluginId: string) => run(pluginId, () => setCommodorePlugin(commodoreId, pluginId, false));
   const authAction = (pluginId: string, server: string, action: "cancel" | "clear") => run(pluginId, async () => {
+    const apply = auth.track();
     const { view: next } = await postCommodorePlugins<{ readonly view: CommodorePluginAuthView }>("/commodore/plugins/auth/action", { commodoreId, pluginId, server, action });
-    auth.setView(next);
+    apply(next);
   });
   const startAuth = (pluginId: string, server: string) => {
     if (busy) return;
-    const open = prepareExternalWindow();
-    setBusy(pluginId); setFailure(null);
+    // 모바일 셸(Android WebView·WKWebView)은 사람의 누름이 이끈 열기만 OS 브라우저로 넘긴다. 응답을 기다린 뒤에는 누름이
+    // 남지 않으므로, 빈 탭을 미리 열지 않고 받은 주소를 행의 「브라우저에서 열기」로 건넨다.
+    const shell = isFleetMobileShell();
+    const open = shell ? null : prepareExternalWindow();
+    setBusy(pluginId); setFailure(null); setReady(null);
+    const apply = auth.track();
     void postCommodorePlugins<{ readonly authUrl?: string; readonly view: CommodorePluginAuthView }>("/commodore/plugins/auth/action", { commodoreId, pluginId, server, action: "start" })
-      .then(({ authUrl, view: next }) => { auth.setView(next); open(authUrl ?? null); }, (error) => { open(null); setFailure(errorWord(t, codeOf(error))); })
+      .then(({ authUrl, view: next }) => { apply(next); if (open) open(authUrl ?? null); else if (authUrl) setReady({ pluginId, server, url: authUrl }); }, (error) => { open?.(null); setFailure(errorWord(t, codeOf(error))); })
       .finally(() => setBusy(null));
   };
   const setKeys = (pluginId: string, values: readonly (readonly [string, string | null])[]) => run(pluginId, async () => {
-    let next: CommodorePluginAuthView | null = null;
-    for (const [name, value] of values) ({ view: next } = await postCommodorePlugins<{ readonly view: CommodorePluginAuthView }>("/commodore/plugins/key", { commodoreId, pluginId, name, value }));
-    if (next) auth.setView(next);
+    for (const [name, value] of values) {
+      const apply = auth.track();
+      apply((await postCommodorePlugins<{ readonly view: CommodorePluginAuthView }>("/commodore/plugins/key", { commodoreId, pluginId, name, value })).view);
+    }
     setForm(null);
   });
   const submitCallback = (pluginId: string, server: string, callbackUrl: string) => run(pluginId, async () => {
+    const apply = auth.track();
     const { view: next } = await postCommodorePlugins<{ readonly view: CommodorePluginAuthView }>("/commodore/plugins/auth/callback", { commodoreId, pluginId, server, callbackUrl });
-    auth.setView(next);
+    apply(next);
     setForm(null);
   });
   /** 상태별 항목. 서버가 여럿이면 서버 이름을 붙인다. 원격 기기에서 진행 중이면 돌아온 주소를 옮겨 붙일 수 있다. */
@@ -646,6 +667,19 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     onPointerUp: cancelPress, onPointerCancel: cancelPress, onPointerLeave: cancelPress,
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => { if (suppressClick.current) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); } },
   });
+  const readyFor = (pluginId: string) => ready?.pluginId === pluginId && authOf.get(pluginId)?.some((row) => row.server === ready.server && row.state === "pending") ? ready : null;
+  /**
+   * 모바일 셸에서 받은 인증 주소를 여는 글자 버튼 — 메타 줄의 상태 글자 바로 옆이다. 누름은 행의 길게 누르기·메뉴로 번지지 않는다.
+   */
+  const openNow = (pluginId: string) => {
+    const found = readyFor(pluginId);
+    if (!found) return null;
+    const stop = (event: { stopPropagation(): void }) => event.stopPropagation();
+    return <button type="button" className="commodore-plugins-text is-meta"
+      onPointerDown={(event) => { cancelPress(); suppressClick.current = false; event.stopPropagation(); }}
+      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }} onKeyDown={stop}
+      onClick={(event) => { event.stopPropagation(); openInDefaultOsBrowser(found.url); setReady(null); }}>{t("commodore.plugins.auth.openBrowser")}</button>;
+  };
   const inline = (pluginId: string, title: string) => form?.pluginId === pluginId
     ? form.kind === "key"
       ? <KeyForm key={`key:${pluginId}`} t={t} plugin={title} names={form.names} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(values) => setKeys(pluginId, values)} />
@@ -686,7 +720,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
             <Fragment key={pluginId}>
               <div className={`objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId ? " is-target" : ""}`} aria-label={title} {...rowHandlers(pluginId)}>
                 <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="phone" />
-                <span className="objectives-cm-gr-tx">{title}<small className="is-mono">@{marketplace}</small>{mark || entry?.components ? <small className="commodore-plugins-meta">{mark}<Components t={t} components={entry?.components} /></small> : null}</span>
+                <span className="objectives-cm-gr-tx">{title}<small className="is-mono">@{marketplace}</small>{mark || entry?.components ? <small className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></small> : null}</span>
               </div>
               {inline(pluginId, title)}
             </Fragment>
@@ -713,7 +747,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
             <li key={pluginId} className={`commodore-plugins-row${menu?.pluginId === pluginId ? " is-target" : ""}`} aria-label={title} {...rowHandlers(pluginId)}>
               <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="row" />
               <span className="commodore-plugins-name" title={pluginId}>{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
-              {mark || entry?.components ? <span className="commodore-plugins-meta">{mark}<Components t={t} components={entry?.components} /></span> : null}
+              {mark || entry?.components ? <span className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></span> : null}
               {inline(pluginId, title)}
             </li>
           ))}

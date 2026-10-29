@@ -213,7 +213,8 @@ export const commodorePluginSetSchema = z.object({
  */
 export type PluginServerAuthState = "needs-auth" | "pending" | "connected" | "failed" | "unknown" | "key-needed" | "key-set";
 /** 실패의 짧은 이유 — 화면이 로케일 한 마디로 옮긴다. */
-export type PluginAuthFailure = "registration" | "timeout" | "unreachable" | "unsupported" | "callback" | "key" | "error";
+/** `changed`: 진행 중이던 인증이 그 서버의 설정이나 키가 바뀌어 끝났다. */
+export type PluginAuthFailure = "registration" | "timeout" | "unreachable" | "unsupported" | "callback" | "key" | "changed" | "error";
 
 export interface PluginServerAuthView {
   /** 플러그인 선언의 서버 이름(`.mcp.json`의 키). */
