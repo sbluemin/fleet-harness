@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
-import { openInDefaultOsBrowser } from "@fleet-console/link/core";
+import { isFleetMobileShell, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
 import "@fleet-console/markdown/styles.css";
@@ -538,6 +538,8 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const [menu, setMenu] = useState<{ readonly pluginId: string; readonly x: number; readonly y: number; readonly trigger: HTMLElement } | null>(null);
   const [armed, setArmed] = useState(false);
   const [form, setForm] = useState<InlineForm | null>(null);
+  /** 모바일 셸에서 받은 인증 주소 — 셸은 누름 없이 연 창을 OS 브라우저로 넘기지 않아, 행에서 한 번 누르게 한다. */
+  const [ready, setReady] = useState<{ readonly pluginId: string; readonly server: string; readonly url: string } | null>(null);
   const addRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
@@ -586,11 +588,14 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   });
   const startAuth = (pluginId: string, server: string) => {
     if (busy) return;
-    const open = prepareExternalWindow();
-    setBusy(pluginId); setFailure(null);
+    // 모바일 셸(Android WebView·WKWebView)은 사람의 누름이 이끈 열기만 OS 브라우저로 넘긴다. 응답을 기다린 뒤에는 누름이
+    // 남지 않으므로, 빈 탭을 미리 열지 않고 받은 주소를 행의 「브라우저에서 열기」로 건넨다.
+    const shell = isFleetMobileShell();
+    const open = shell ? null : prepareExternalWindow();
+    setBusy(pluginId); setFailure(null); setReady(null);
     const apply = auth.track();
     void postCommodorePlugins<{ readonly authUrl?: string; readonly view: CommodorePluginAuthView }>("/commodore/plugins/auth/action", { commodoreId, pluginId, server, action: "start" })
-      .then(({ authUrl, view: next }) => { apply(next); open(authUrl ?? null); }, (error) => { open(null); setFailure(errorWord(t, codeOf(error))); })
+      .then(({ authUrl, view: next }) => { apply(next); if (open) open(authUrl ?? null); else if (authUrl) setReady({ pluginId, server, url: authUrl }); }, (error) => { open?.(null); setFailure(errorWord(t, codeOf(error))); })
       .finally(() => setBusy(null));
   };
   const setKeys = (pluginId: string, values: readonly (readonly [string, string | null])[]) => run(pluginId, async () => {
@@ -662,7 +667,12 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     onPointerUp: cancelPress, onPointerCancel: cancelPress, onPointerLeave: cancelPress,
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => { if (suppressClick.current) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); } },
   });
-  const inline = (pluginId: string, title: string) => form?.pluginId === pluginId
+  const readyFor = (pluginId: string) => ready?.pluginId === pluginId && authOf.get(pluginId)?.some((row) => row.server === ready.server && row.state === "pending") ? ready : null;
+  const inline = (pluginId: string, title: string) => readyFor(pluginId) && form?.pluginId !== pluginId
+    ? <span className={`commodore-plugins-inline is-open${phone ? " is-phone" : ""}`}>
+      <button type="button" className="commodore-plugins-text is-go" onClick={() => { openInDefaultOsBrowser(readyFor(pluginId)!.url); setReady(null); }}>{t("commodore.plugins.auth.openBrowser")}</button>
+    </span>
+    : form?.pluginId === pluginId
     ? form.kind === "key"
       ? <KeyForm key={`key:${pluginId}`} t={t} plugin={title} names={form.names} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(values) => setKeys(pluginId, values)} />
       : <CallbackForm key={`callback:${pluginId}:${form.server}`} t={t} server={form.server} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(url) => submitCallback(pluginId, form.server, url)} />

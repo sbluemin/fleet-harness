@@ -42,6 +42,8 @@ const SETTLE_POLL_MS = 300;
 /** 브라우저에서 돌아오기를 기다리는 상한. */
 const FLOW_MS = 5 * 60_000;
 const FLOW_POLL_MS = 2_000;
+/** 옮겨 붙인 콜백 뒤 저장이 끝나기를 한 번 기다리는 시간. */
+const CALLBACK_SETTLE_MS = 1_000;
 /** 할 일이 끝난 자식을 접기까지 — 상태를 본 사람이 곧 「인증…」을 누르면 같은 자식을 쓴다. */
 const IDLE_MS = 30_000;
 /** 실패 표시를 남겨 두는 시간. */
@@ -281,6 +283,13 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
   const staleEverywhere = (name: string, except?: Broker) => {
     for (const broker of [...live]) if (broker !== except && !broker.retired && broker.names.has(name)) retire(broker, () => true);
   };
+  /** 흐름이 성공했다 — 그 자식을 접고(쥔 다른 흐름이 없으면), 토큰 없을 때 붙은 다른 자식도 물려 다음 확인이 새로 읽게 한다. */
+  const completeFlow = (name: string, flow: Flow) => {
+    failures.delete(name);
+    endFlow(name, flow);
+    staleEverywhere(name);
+    options.changed([flow.pluginId]);
+  };
   /** 브라우저에서 돌아오기를 기다린다 — 붙으면 성공이고, 상한을 넘거나 자식이 끝나면 실패다. */
   const watch = (name: string, flow: Flow) => {
     flow.timer = setTimeout(async () => {
@@ -288,13 +297,7 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
       let status: ClaudeMcpServerState["status"] | undefined;
       try { status = (await flow.broker.control.status()).find((state) => state.name === name)?.status; } catch { status = undefined; }
       if (flows.get(name) !== flow) return;
-      if (status === "connected") {
-        failures.delete(name);
-        endFlow(name, flow);
-        staleEverywhere(name);
-        options.changed([flow.pluginId]);
-        return;
-      }
+      if (status === "connected") { completeFlow(name, flow); return; }
       if (!flow.broker.control.alive || now() >= flow.deadline) { endFlow(name, flow, flow.broker.control.alive ? "timeout" : "error"); return; }
       watch(name, flow);
     }, FLOW_POLL_MS);
@@ -409,8 +412,18 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
       try { parsed = new URL(callbackUrl); } catch { throw new CommodoreStoreError("invalid_request"); }
       if (parsed.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname) || !parsed.searchParams.has("state")) throw new CommodoreStoreError("invalid_request");
       try { await flow.broker.control.submitCallbackUrl(target.name, parsed.href); }
-      catch { endFlow(target.name, flow, "callback"); }
-      return await status(commodoreId, pluginIds, true);
+      catch { endFlow(target.name, flow, "callback"); return await status(commodoreId, pluginIds, true); }
+      // 건넨 주소로 자식이 토큰을 바꿔 저장했다. 그 자식은 이 경로에서 토큰 없이 다시 붙는 일이 있어(CLI 2.1.312 실측) 완료로
+      // 치고 접는다 — 새 자식이 저장된 토큰으로 읽는다. 그래도 붙지 않으면 그 주소가 받아들여지지 않은 것이다.
+      completeFlow(target.name, flow);
+      const connected = (next: CommodorePluginAuthView) => next.plugins.find((plugin) => plugin.pluginId === pluginId)?.servers.find((row) => row.server === server)?.state === "connected";
+      let next = await status(commodoreId, pluginIds, true);
+      if (!connected(next)) {
+        await new Promise((resolve) => setTimeout(resolve, CALLBACK_SETTLE_MS));
+        next = await status(commodoreId, pluginIds, true);
+      }
+      if (!connected(next) && next.checked) { fail(target.name, "callback"); next = await status(commodoreId, pluginIds); }
+      return next;
     },
     /** 키가 바뀌었다 — 확인한 상태를 버린다. */
     invalidate,
