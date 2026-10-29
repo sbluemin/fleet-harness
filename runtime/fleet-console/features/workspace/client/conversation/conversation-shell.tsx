@@ -526,13 +526,13 @@ function ConversationPanelIdentity() {
     const context = centerSurface !== null && surface !== null
       ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
       : null;
-    let owner: { readonly title: string; readonly label: string; readonly state: MongleState } | null = null;
+    let owner: { readonly title: string; readonly label: string; readonly state: MongleState; readonly rename: ((title: string) => void) | null } | null = null;
     let faceKey: string | null = null;
     try {
       if (centerSurface !== null && context !== null && centerSurface.theater?.(context)?.theaterId === inbox.theaterId) {
         const avatar = centerSurface.avatar?.(context) ?? null;
         if (avatar?.key) faceKey = avatar.key;
-        owner = { title: centerSurface.title(context), label: avatar?.label ?? centerSurface.title(context), state: avatar?.state ?? "idle" };
+        owner = { title: centerSurface.title(context), label: avatar?.label ?? centerSurface.title(context), state: avatar?.state ?? "idle", rename: centerSurface.rename?.(context) ?? null };
       }
     } catch { owner = null; }
     return (
@@ -540,7 +540,7 @@ function ConversationPanelIdentity() {
         {faceKey
           ? <AvatarEditor avatarKey={faceKey} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
           : <span className="conversation-panel-identity-mark" aria-hidden="true"><TheaterGlyph size={18} /></span>}
-        <strong className="conversation-panel-identity-name">{owner?.title ?? theaterLabel}</strong>
+        <PanelIdentityName title={owner?.title ?? theaterLabel} onRename={owner?.rename ?? undefined} />
       </div>
     );
   }
@@ -561,7 +561,7 @@ function ConversationPanelIdentity() {
         {avatar
           ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
           : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
-        <strong className="conversation-panel-identity-name">{descriptor.title(context)}</strong>
+        <PanelIdentityName title={descriptor.title(context)} onRename={descriptor.rename?.(context) ?? undefined} />
       </div>
     );
   }

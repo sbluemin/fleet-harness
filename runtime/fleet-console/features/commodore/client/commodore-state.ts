@@ -13,7 +13,8 @@ import type { CommodoreStateView } from "../shared/contracts/types.js";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { post } from "./request.js";
 import { publishCommodoreLifecycle, wasCommodoreRemoved } from "./commodore-delete-events.js";
-import { readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
+import { readCommodoreList, refreshCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
+import { clampCommodoreAlias } from "../shared/alias.js";
 export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 
 /**
@@ -518,6 +519,15 @@ async function write(commodoreId: string, path: string, body: Record<string, unk
   if (!client || !commodoreId) throw new Error("not_installed");
   const view = await post<CommodoreStateView>(client, path, withLanguage({ commodoreId, ...body }));
   if (view && typeof view === "object" && "state" in view) setTheater(commodoreId, { view });
+}
+
+/**
+ * 사령관 이름(UUID 소유 별칭)을 고친다 — 사이드바 별칭 편집과 같은 `/commodore/alias` 경로다. 응답 상태로 머리를 곧바로 고치고,
+ * 사령관 목록(사이드바 줄)도 다시 읽는다. 길이는 별칭 한도로 자르고, 서버가 거부하면 이름은 그대로 남는다.
+ */
+export async function renameCommodore(commodoreId: string, alias: string): Promise<void> {
+  await write(commodoreId, "/commodore/alias", { alias: clampCommodoreAlias(alias) });
+  await refreshCommodoreList().catch(() => undefined);
 }
 
 /**

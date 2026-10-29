@@ -2,7 +2,7 @@ import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-led
 import { CommodoreRoutines } from "./commodore-routines.js";
 import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
-import { messageCommodore } from "./commodore-state.js";
+import { messageCommodore, renameCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { commodoreAvatarKey } from "../../workspace/shared/avatars.js";
@@ -490,6 +490,11 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     return commodoreName(commodoreId, getT(ctx.language));
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("commodore.conversation.readOnly") : null),
+  // 오른쪽 패널 머리의 이름은 지휘관 이름처럼 그 자리에서 고친다 — 읽기 전용(목표 대화에서 행위 기록을 보러 온) 대화는 고치지 않는다.
+  rename: (ctx) => {
+    const params = readParams(ctx.params);
+    return params && !params.readOnly ? (title: string) => { void renameCommodore(params.commodoreId, title).catch(() => undefined); } : null;
+  },
   avatar: (ctx) => {
     const params = readParams(ctx.params);
     if (!params) return null;
