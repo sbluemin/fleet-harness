@@ -20,30 +20,27 @@ import type { RailPanelDescriptor, RailSearchResult } from "../../../../../featu
 import type { TheaterInboxSectionDescriptor } from "../../../../../features/workspace/shared/theater-inbox.js";
 
 import { ObjectiveNameMark } from "../../../../../features/execution/client/components/objective-name-mark.js";
-import { ObjectiveWorkspaceContext, describeWorkspace, visibleWorkspace } from "../../../../../features/execution/client/components/objective-workspace-context.js";
-import { useAgentState } from "../../../../../features/execution/client/agent/store.js";
+import { ObjectiveAvatar } from "../../../../../features/workspace/client/avatars.js";
+import { CommodoreAvatar } from "../../../../../features/commodore/client/commodore-avatar.js";
 import { setGlobalSettingsField } from "../../../../../features/settings/client/global-settings-store.js";
 import {
   buildTheaterSectionSearchEntries,
-  filterObjectiveSearchEntries,
-  filterTheaterSectionSearchEntries,
-  groupObjectiveSearchEntries,
-  orderObjectiveSearchEntries,
+  groupCommodorePaletteEntries,
   PALETTE_MODES,
   paletteModeForPrefix,
   parsePaletteSeed,
   RAIL_SEARCH_DEBOUNCE_MS,
   searchRailPanels,
   searchTokens,
+  type CommodorePaletteGroup,
   type ObjectiveSearchEntry,
   type PaletteMode,
   type PaletteSearchPanel,
   type RailSearchGroup,
-  type TheaterSectionSearchEntry,
 } from "../../integration/objective-search.js";
-import { noteCommandRun, readRecentCommandIds } from "../../integration/palette-recent.js";
+import { noteCommandRun, readRecentCommandIds, recentObjectiveRank } from "../../integration/palette-recent.js";
 import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon, PaletteSectionGlyph } from "./palette-glyphs.js";
-import { resolveObjectiveMarkVisual } from "../../../../../features/execution/client/objective-activity.js";
+import { objectiveRecordActivityLabel, resolveObjectiveActivity, resolveObjectiveDisplayActivity, resolveObjectiveMarkVisual } from "../../../../../features/execution/client/objective-activity.js";
 import { archiveObjectiveFromUi, resumeObjectiveInPlace, type ArchiveOutcome } from "../../integration/objective-actions.js";
 import { openArchiveSheet, openRestoredObjective, refreshObjectiveArchive, useObjectiveArchive } from "../../integration/objective-archive.js";
 import { restoreObjectiveCluster } from "../../../../../features/execution/client/objective-records.js";
@@ -78,7 +75,8 @@ import {
   setObjectiveSearchMode,
 } from "../../integration/store.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
-import type { ConsoleState } from "../../integration/types.js";
+import type { ConsoleState, ObjectiveRecord } from "../../integration/types.js";
+import type { MongleState } from "../../../../../features/workspace/shared/avatars.js";
 
 interface ObjectiveSearchProps {
   readonly state: ConsoleState;
@@ -97,7 +95,6 @@ interface ObjectiveSearchProps {
 
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 const LISTBOX_ID = "objective-search-listbox";
-const UNASSIGNED_GROUP_KEY = "__unassigned__";
 
 export function ObjectiveSearch({
   state,
@@ -113,7 +110,6 @@ export function ObjectiveSearch({
   const registry = useFeatureRegistry();
   const language = useConsoleLocale();
   const desktopView = useViewMode().effective !== "mobile";
-  const sessions = useAgentState().sessions;
   const railBindings = useDesktopRailEntries();
   const navigate = useNavigate();
   const location = useLocation();
@@ -172,18 +168,32 @@ export function ObjectiveSearch({
     const archived = objectiveRecordSearchEntries({ ...state, objectiveRecords: archivedNodes }).map((entry) => ({ ...entry, archived: true as const, activity: "ended" as const }));
     return [...active, ...archived];
   }, [state, archive.snapshot]);
-  const filteredEntries = useMemo(
-    () => mode === "objectiveRecords"
-      ? orderObjectiveSearchEntries(filterObjectiveSearchEntries(entries, text), getViewedTheaterId(), searchTokens(text).length > 0)
-      : [],
-    [entries, mode, getViewedTheaterId(), text],
-  );
   // 섹션 상태(실험 기능이 뒤늦게 알려지거나 scope가 바뀌는 일)를 팔레트가 열려 있는 동안 다시 읽는다.
   const [sectionVersion, setSectionVersion] = useState(0);
   const commodores = useCommodoreList();
   const viewedCommodoreId = useViewedCommodoreId();
   const zoneCommodoreId = useZoneCommodore();
   const commodore = commodores.find((row) => row.commodoreId === (viewedCommodoreId ?? zoneCommodoreId)) ?? null;
+  // 이동 모드의 묶음은 사령관이다 — Theater 묶음·섹션 행은 세우지 않는다. 소유는
+  // objectiveRecord.commodoreId로만 정한다(보관 항목의 theaterId는 사령관별 해시다).
+  const commodoreGroups = useMemo<readonly CommodorePaletteGroup[]>(
+    () => mode === "objectiveRecords"
+      ? groupCommodorePaletteEntries({
+        entries,
+        members: state.nestedObjectiveRecords,
+        query: text,
+        commodores: commodores.map((row) => ({
+          commodoreId: row.commodoreId,
+          ...(row.alias ? { alias: row.alias } : {}),
+          label: row.label,
+        })),
+        viewedCommodoreId: viewedCommodoreId ?? zoneCommodoreId,
+        recentRank: recentObjectiveRank,
+        unknownLabel: t("chrome.objectiveRecordSearch.sectionFormer"),
+      })
+      : [],
+    [entries, mode, state.nestedObjectiveRecords, text, commodores, viewedCommodoreId, zoneCommodoreId, t],
+  );
   const ownedTheaters = useMemo(() => (commodore?.theaters ?? []).filter((row) => row.status === "available").map((row) => ({ id: row.theaterId, label: row.label })), [commodore]);
   useEffect(() => {
     if (!state.objectiveRecordSearchOpen || !desktopView) return;
@@ -198,21 +208,14 @@ export function ObjectiveSearch({
     () => state.objectiveRecordSearchOpen && desktopView ? buildTheaterSectionSearchEntries(ownedTheaters, theaterSections, language) : [],
     [state.objectiveRecordSearchOpen, ownedTheaters, theaterSections, language, desktopView, sectionVersion], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const filteredSections = useMemo(
-    () => mode === "objectiveRecords" ? filterTheaterSectionSearchEntries(sectionEntries, text, getViewedTheaterId()) : [],
-    [sectionEntries, mode, text, getViewedTheaterId()],
-  );
-  const groups = useMemo(
-    () => groupObjectiveSearchEntries(filteredEntries, getViewedTheaterId(), filteredSections),
-    [filteredEntries, filteredSections, getViewedTheaterId()],
-  );
-  // 검색 모드 주 목록의 렌더 순서 — 선택·키보드·스크롤이 모두 이 배열의 index를 쓴다.
+  // 이동 모드 주 목록의 렌더 순서 — 선택·키보드·스크롤이 모두 이 배열의 index를 쓴다.
   const primaryRows = useMemo<readonly PrimaryRow[]>(
-    () => groups.flatMap((group) => [
-      ...group.sections.map((section): PrimaryRow => ({ kind: "section", section, key: sectionResultKey(section.key) })),
-      ...group.entries.map((entry): PrimaryRow => ({ kind: "objectiveRecord", entry, key: objectiveRecordResultKey(entry.objectiveId) })),
-    ]),
-    [groups],
+    () => commodoreGroups.flatMap((group) => group.rows.map((row): PrimaryRow => {
+      if (row.kind === "commodore") return { kind: "commodore", group, key: `commodore:${row.commodoreId}` };
+      if (row.kind === "member") return { kind: "member", record: row.record, key: `member:${row.record.id}` };
+      return { kind: "objective", entry: row.entry, context: row.context, key: objectiveRecordResultKey(row.entry.objectiveId) };
+    })),
+    [commodoreGroups],
   );
   const primaryIndexByKey = useMemo(() => new Map(primaryRows.map((row, index) => [row.key, index])), [primaryRows]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.objectiveRecordSearchOpen, canUndoLastClose]);
@@ -265,8 +268,8 @@ export function ObjectiveSearch({
   })();
   const activeOptionId = selectedResultKey === undefined ? undefined : resultOptionId(selectedResultKey);
   const selectedPrimaryRow = mode === "objectiveRecords" && primaryIndex >= 0 ? primaryRows[primaryIndex] ?? null : null;
-  // 동작 띠(→)는 Objective 행에만 선다 — 섹션 행은 여는 일 하나뿐이다.
-  const selectedObjective = selectedPrimaryRow?.kind === "objectiveRecord" ? selectedPrimaryRow.entry : null;
+  // 동작 띠(→)는 지휘관 행에만 선다 — 사령관·구성원 행은 여는 일 하나뿐이다.
+  const selectedObjective = selectedPrimaryRow?.kind === "objective" ? selectedPrimaryRow.entry : null;
   // 탭·범례·힌트의 조합 표기는 등록부의 현재 값이다 — 재배정이 바뀌면 함께 바뀐다.
   useShortcutOverrides();
   const searchShortcut = shortcutCommandLabel("console.search-objectiveRecords");
@@ -330,10 +333,22 @@ export function ObjectiveSearch({
     setObjectiveSearchMode(state.objectiveRecordSearchOpen ? mode : null);
   }, [mode, state.objectiveRecordSearchOpen]);
 
+  // 첫 선택은 가장 잘 맞은 행이다. 빈 질의에서는 보고 있는 사령관의 가장 최근 지휘관 —
+  // 사령관 행(묶음의 0번)이 아니라 그 아래 첫 지휘관 행이다.
+  const defaultPrimaryIndex = useMemo(() => {
+    if (mode !== "objectiveRecords") return 0;
+    const hasQuery = searchTokens(text).length > 0;
+    const first = primaryRows.findIndex((row) =>
+      row.kind === "member" || (row.kind === "objective" && !row.context) || (row.kind === "commodore" && hasQuery));
+    if (first !== -1) return first;
+    const fallback = primaryRows.findIndex((row) => row.kind === "objective" || row.kind === "member");
+    return fallback === -1 ? 0 : fallback;
+  }, [mode, text, primaryRows]);
+
   useEffect(() => {
-    setSelectedIndex(0);
+    setSelectedIndex(defaultPrimaryIndex);
     setActionsFor(null);
-  }, [mode, text]);
+  }, [mode, text, defaultPrimaryIndex]);
 
   useEffect(() => {
     if (!state.objectiveRecordSearchOpen || selectedResultKey === undefined) return;
@@ -408,6 +423,17 @@ export function ObjectiveSearch({
         const landing = resolveTheaterInboxLanding(registry.theaterContributions, action.theaterId);
         openTheaterInbox({ theaterId: action.theaterId, ...(landing ?? { sectionId: "console:settings", pageId: "theaters" }) });
         navigate("/objectives");
+        break;
+      }
+      case "switch-commodore": {
+        setZoneCommodore(action.commodoreId);
+        selectMobileCommodore(action.commodoreId);
+        // 사령관 전환도 대화 화면으로 포커스 문맥을 넘기므로 이전 포커스 복원을 억제한다.
+        previousFocusRef.current = null;
+        closeConversationSurface();
+        // 사령관 홈은 Theater가 아니라 사령관 UUID 주소의 Inbox다(사이드바 사령관 머리 표식과 같은 주소).
+        openTheaterInbox({ theaterId: action.commodoreId, sectionId: "commodore:commodore", pageId: "log", returnFocus: null });
+        if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
         break;
       }
       case "open-theater-section": {
@@ -515,8 +541,8 @@ export function ObjectiveSearch({
     closeObjectiveSearch();
   };
 
-  const selectTheaterSection = (section: TheaterSectionSearchEntry) => {
-    runAction({ kind: "open-theater-section", theaterId: section.theaterId, sectionId: section.sectionId, pageId: section.pageId }, false);
+  const selectCommodore = (commodoreId: string) => {
+    runAction({ kind: "switch-commodore", commodoreId }, false);
   };
 
   const runCommand = (command: PaletteCommandEntry) => {
@@ -549,8 +575,13 @@ export function ObjectiveSearch({
       if (mode === "objectiveRecords") {
         const row = primaryRows[primaryIndex];
         if (!row) return;
-        if (row.kind === "section") {
-          selectTheaterSection(row.section);
+        if (row.kind === "commodore") {
+          selectCommodore(row.group.commodoreId);
+          return;
+        }
+        // 구성원은 부모가 대표하는 Objective — focusObjective이 부모 패널로 가서 그 구성원 본문을 보인다.
+        if (row.kind === "member") {
+          selectEntry(row.record.id);
           return;
         }
         const selected = row.entry;
@@ -808,18 +839,13 @@ export function ObjectiveSearch({
           ) : (
             <>
               {renderRailGroups(true)}
-              {groups.map((group) => {
-                const headingId = objectiveRecordGroupHeadingId(group.theaterId) + (group.archived ? "-archived" : "");
-                const activeGroup = !group.archived && group.theaterId === getViewedTheaterId();
-                return (
-                  <section className="objective-search-section" key={`${group.archived ? "archive:" : "active:"}${group.theaterId ?? UNASSIGNED_GROUP_KEY}`} role="group" aria-labelledby={headingId}>
-                    {/* 묶음 머리는 Theater 다 — Theater 이름만 선다. */}
-                    <h2 id={headingId} className="objective-search-section-heading">
-                      {highlightText(group.theaterLabel, tokens)}
-                      {activeGroup ? <span className="objective-search-section-note">{t("chrome.objectiveRecordSearch.current")}</span> : null}
-                    </h2>
-                    {group.sections.map((section) => {
-                      const resultKey = sectionResultKey(section.key);
+              {commodoreGroups.map((group, groupIndex) => (
+                <div className="objective-search-commodore-group" key={group.commodoreId}>
+                  {/* 묶음 사이 가는 선 — Theater 머리(h2)는 없다. 구분은 아바타와 들여쓰기만 말한다. */}
+                  {groupIndex > 0 ? <div className="objective-search-group-sep" aria-hidden="true" /> : null}
+                  {group.rows.map((row) => {
+                    if (row.kind === "commodore") {
+                      const resultKey = `commodore:${row.commodoreId}`;
                       const index = exactCount + (primaryIndexByKey.get(resultKey) ?? 0);
                       const active = index === clampedSelectedIndex;
                       return (
@@ -831,87 +857,123 @@ export function ObjectiveSearch({
                             else resultRefs.current.delete(resultKey);
                           }}
                           type="button"
-                          className={`objective-search-result objective-search-panel-result ${active ? "is-active" : ""}`}
+                          className={`objective-search-result objective-search-commodore-row${active ? " is-active" : ""}${row.context ? " is-context" : ""}`}
                           role="option"
                           aria-selected={active}
                           onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
-                          onClick={() => selectTheaterSection(section)}
+                          onClick={() => selectCommodore(row.commodoreId)}
                         >
-                          <PaletteRailIcon icon={section.icon} />
-                          <span className="objective-search-result-text objective-search-result-text-inline">
-                            <strong>{highlightText(section.title, tokens)}</strong>
-                            {section.caption ? <small>{highlightText(section.caption, tokens)}</small> : null}
+                          <span className="objective-search-commander-mark">
+                            <CommodoreAvatar commodoreId={row.commodoreId} state={commodoreGroupMark(group, idleArrivalIds)} size={18} label={row.label} decorative />
                           </span>
-                          <span className="objective-search-panel-open">{t("chrome.objectiveRecordSearch.open")}</span>
+                          <span className="objective-search-result-text">
+                            <strong>{highlightText(row.label, tokens)}</strong>
+                            <span className="objective-search-sr-only">{t("chrome.objectiveRecordSearch.roleCommodore")}</span>
+                          </span>
                         </button>
                       );
-                    })}
-                    {group.entries.map((entry) => {
-                      const index = exactCount + (primaryIndexByKey.get(objectiveRecordResultKey(entry.objectiveId)) ?? 0);
+                    }
+                    if (row.kind === "member") {
+                      const record = row.record;
+                      const resultKey = `member:${record.id}`;
+                      const index = exactCount + (primaryIndexByKey.get(resultKey) ?? 0);
                       const active = index === clampedSelectedIndex;
-                      const resultKey = objectiveRecordResultKey(entry.objectiveId);
-                      const stripOpen = actionsFor === entry.objectiveId;
-                      const actions = stripOpen ? rowActions(entry) : [];
-                      const workspace = visibleWorkspace(sessions[entry.objectiveId]?.workspace);
+                      const display = resolveObjectiveDisplayActivity({ activity: resolveObjectiveActivity(record, state.objectiveRecordRuntime), objectiveId: record.id, idleArrivalIds });
                       return (
-                        <div key={entry.objectiveId} className={`objective-search-row${stripOpen ? " has-actions" : ""}`}>
-                          <button
-                            id={resultOptionId(resultKey)}
-                            ref={(node) => {
-                              if (node) resultRefs.current.set(resultKey, node);
-                              else resultRefs.current.delete(resultKey);
-                            }}
-                            type="button"
-                            className={`objective-search-result ${active ? "is-active" : ""}`}
-                            role="option"
-                            aria-selected={active}
-                            onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
-                            onClick={() => selectEntry(entry.objectiveId)}
-                          >
-                            {/* 이름 왼쪽 슬롯은 사이드바 칩과 같은 활동 상태 소유다(Shell만 종류 글리프).
-                                마크가 항상 서므로 제목 열이 어긋나지 않는다. 공급자·Theater는 행에 반복하지
-                                않는다 — Theater는 구역 머리글이, 공급자는 사이드바가 이미 말한다. */}
-                            <span className="objective-search-op-mark">
-                              <ObjectiveNameMark
-                                objectiveRecord={{ id: entry.objectiveId, parentObjectiveId: entry.parentObjectiveId }}
-                                archived={entry.archived}
-                                status={resolveObjectiveMarkVisual({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds })}
-                              />
-                            </span>
-                            {/* "지금 어디"는 실험 기능이 켜진 동안만 오는 서버 투영이다. 팔레트는
-                                한 줄 행을 지키려고 이름 옆 같은 줄에 붙이고, 접근성 이름에는 숨은 문장으로 덧붙인다 — aria-label로
-                                덮으면 활동 마크(실행 중·대기 등)의 이름까지 지워지므로 자손 텍스트로 남긴다. */}
-                            <span className={`objective-search-result-text${workspace ? " objective-search-result-text-inline" : ""}`}>
-                              <strong>{highlightText(entry.objectiveRecordName, tokens)}</strong>
-                              {workspace ? <ObjectiveWorkspaceContext workspace={workspace} /> : null}
-                              {workspace ? <span className="objective-search-sr-only">{describeWorkspace(t, workspace)}</span> : null}
-                            </span>
-                            {entry.archived ? <span className="objective-search-archived">{t("archive.searchArchived")}</span> : null}
-                            <span className="objective-search-row-arrow" aria-hidden="true">{stripOpen ? "◂" : "▸"}</span>
-                          </button>
-                          {stripOpen ? (
-                            <div className="objective-search-actions" role="group" aria-label={t("chrome.objectiveRecordSearch.actionsAria", { title: entry.objectiveRecordName })}>
-                              {actions.map((action, i) => (
-                                <button
-                                  key={action.id}
-                                  type="button"
-                                  tabIndex={-1}
-                                  className={`objective-search-action${i === actionIndex ? " is-active" : ""}${action.danger ? " is-danger" : ""}`}
-                                  onMouseEnter={() => { setNavigation("pointer"); setActionIndex(i); }}
-                                  onClick={action.run}
-                                >
-                                  <PaletteActionGlyph glyph={action.glyph} />
-                                  {action.label}
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
+                        <button
+                          id={resultOptionId(resultKey)}
+                          key={resultKey}
+                          ref={(node) => {
+                            if (node) resultRefs.current.set(resultKey, node);
+                            else resultRefs.current.delete(resultKey);
+                          }}
+                          type="button"
+                          className={`objective-search-result objective-search-member-row${active ? " is-active" : ""}`}
+                          role="option"
+                          aria-selected={active}
+                          onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
+                          onClick={() => selectEntry(record.id)}
+                        >
+                          <span className="objective-search-op-mark">
+                            <ObjectiveAvatar
+                              objectiveRecord={{ id: record.id, parentObjectiveId: record.parentObjectiveId }}
+                              state={display}
+                              size={16}
+                              label={record.title}
+                              decorative
+                            />
+                          </span>
+                          <span className="objective-search-result-text">
+                            <strong>{highlightText(record.title, tokens)}</strong>
+                            <span className="objective-search-sr-only">{t("chrome.objectiveRecordSearch.roleMember")}</span>
+                          </span>
+                          <span className={`objective-search-status${display === "running" ? " is-running" : display === "awaiting" ? " is-awaiting" : ""}`}>{objectiveRecordActivityLabel(display)}</span>
+                        </button>
                       );
-                    })}
-                  </section>
-                );
-              })}
+                    }
+                    const entry = row.entry;
+                    const index = exactCount + (primaryIndexByKey.get(objectiveRecordResultKey(entry.objectiveId)) ?? 0);
+                    const active = index === clampedSelectedIndex;
+                    const resultKey = objectiveRecordResultKey(entry.objectiveId);
+                    const stripOpen = actionsFor === entry.objectiveId;
+                    const actions = stripOpen ? rowActions(entry) : [];
+                    // 오른쪽 상태는 한 단어다(칩 아님) — 사이드바 상태 축과 같은 출처·같은 말.
+                    const display = resolveObjectiveDisplayActivity({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds });
+                    const status = entry.archived ? t("archive.searchArchived") : objectiveRecordActivityLabel(display);
+                    const statusTone = row.context || entry.archived ? "" : display === "running" ? " is-running" : display === "awaiting" ? " is-awaiting" : "";
+                    return (
+                      <div key={entry.objectiveId} className={`objective-search-row${stripOpen ? " has-actions" : ""}`}>
+                        <button
+                          id={resultOptionId(resultKey)}
+                          ref={(node) => {
+                            if (node) resultRefs.current.set(resultKey, node);
+                            else resultRefs.current.delete(resultKey);
+                          }}
+                          type="button"
+                          className={`objective-search-result objective-search-objective-row${active ? " is-active" : ""}${row.context || entry.archived ? " is-context" : ""}`}
+                          role="option"
+                          aria-selected={active}
+                          onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
+                          onClick={() => selectEntry(entry.objectiveId)}
+                        >
+                          {/* 이름 왼쪽 슬롯은 사이드바 칩과 같은 활동 상태 소유다.
+                              마크가 항상 서므로 제목 열이 어긋나지 않는다. */}
+                          <span className="objective-search-op-mark">
+                            <ObjectiveNameMark
+                              objectiveRecord={{ id: entry.objectiveId, parentObjectiveId: entry.parentObjectiveId }}
+                              archived={entry.archived}
+                              status={resolveObjectiveMarkVisual({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds })}
+                            />
+                          </span>
+                          <span className="objective-search-result-text">
+                            <strong>{highlightText(entry.objectiveRecordName, tokens)}</strong>
+                            <span className="objective-search-sr-only">{t("chrome.objectiveRecordSearch.roleCommander")}</span>
+                          </span>
+                          {row.context ? null : <span className={`objective-search-status${statusTone}`}>{status}</span>}
+                          <span className="objective-search-row-arrow" aria-hidden="true">{stripOpen ? "◂" : "▸"}</span>
+                        </button>
+                        {stripOpen ? (
+                          <div className="objective-search-actions" role="group" aria-label={t("chrome.objectiveRecordSearch.actionsAria", { title: entry.objectiveRecordName })}>
+                            {actions.map((action, i) => (
+                              <button
+                                key={action.id}
+                                type="button"
+                                tabIndex={-1}
+                                className={`objective-search-action${i === actionIndex ? " is-active" : ""}${action.danger ? " is-danger" : ""}`}
+                                onMouseEnter={() => { setNavigation("pointer"); setActionIndex(i); }}
+                                onClick={action.run}
+                              >
+                                <PaletteActionGlyph glyph={action.glyph} />
+                                {action.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
               {renderRailGroups(false)}
             </>
           )}
@@ -931,8 +993,9 @@ export function ObjectiveSearch({
 }
 
 type PrimaryRow =
-  | { readonly kind: "section"; readonly section: TheaterSectionSearchEntry; readonly key: string }
-  | { readonly kind: "objectiveRecord"; readonly entry: ObjectiveSearchEntry; readonly key: string };
+  | { readonly kind: "commodore"; readonly group: CommodorePaletteGroup; readonly key: string }
+  | { readonly kind: "objective"; readonly entry: ObjectiveSearchEntry; readonly context: boolean; readonly key: string }
+  | { readonly kind: "member"; readonly record: ObjectiveRecord; readonly key: string };
 
 interface RowAction {
   readonly id: string;
@@ -966,14 +1029,6 @@ function panelSubtitle(result: { readonly title: string; readonly subtitle?: str
   return subtitle && subtitle !== result.title.trim() ? subtitle : null;
 }
 
-function objectiveRecordGroupHeadingId(theaterId: string | null): string {
-  return `objective-search-heading-${domIdPart(theaterId ?? UNASSIGNED_GROUP_KEY)}`;
-}
-
-function commandOptionId(commandId: string): string {
-  return resultOptionId(commandResultKey(commandId));
-}
-
 function resultOptionId(resultKey: string): string {
   return `objective-search-option-${domIdPart(resultKey)}`;
 }
@@ -982,16 +1037,24 @@ function objectiveRecordResultKey(objectiveId: string): string {
   return `objectiveRecord:${objectiveId}`;
 }
 
-function sectionResultKey(sectionKey: string): string {
-  return `section:${sectionKey}`;
-}
-
 function commandResultKey(commandId: string): string {
   return `command:${commandId}`;
 }
 
 function railResultKey(panelId: string, resultId: string): string {
   return `panel:${panelId}:${resultId}`;
+}
+
+/** 사령관 행 아바타의 얼굴 — 묶음의 지휘관 중 가장 급한 활동 하나만 말한다(실행 중 > 대기, 그 밖 쉼). */
+function commodoreGroupMark(group: CommodorePaletteGroup, idleArrivalIds: ReadonlySet<string>): MongleState {
+  let awaiting = false;
+  for (const row of group.rows) {
+    if (row.kind !== "objective" || row.context || row.entry.archived === true) continue;
+    const display = resolveObjectiveDisplayActivity({ activity: row.entry.activity, objectiveId: row.entry.objectiveId, idleArrivalIds });
+    if (display === "running") return "running";
+    if (display === "awaiting") awaiting = true;
+  }
+  return awaiting ? "awaiting" : "idle";
 }
 
 function railGroupHeadingId(panelId: string): string {
