@@ -88,7 +88,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 은 아직 전달하지 않은 새 항목 수다. intel-edited·intel-removed 는 서로 다른 수정·삭제 항목 수다.
  */
-export type WakeCode = "settled" | "routine" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "mail" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed";
+export type WakeCode = "settled" | "routine" | "description" | "intel" | "intel-edited" | "intel-removed" | "message" | "mail" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed";
 
 const STATUS_DETAILS = 8;
 
@@ -118,7 +118,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
   switch (code) {
     case "settled": return `${plural("objective group")} went idle${tail}`;
     case "routine": return `routine${tail}`;
-    case "directive": return `directive changed${tail}`;
+    case "description": return `description changed${tail}`;
     case "intel": return `${plural("new intel item")}`;
     case "intel-edited": return `the person edited ${plural("intel item")}${tail}`;
     case "intel-removed": return `the person removed ${plural("intel item")}${tail}`;
@@ -699,14 +699,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     for (const commodoreId of wanted) start(commodoreId, reason);
   };
 
-  // 지시·정보·메시지·좌표 — 저장소 사건이 깨움 이유다.
+  // 설명·정보·메시지·좌표 — 저장소 사건이 깨움 이유다.
   cleanups.push(deps.store.subscribe((event) => {
     let runner = runners.get(event.commodoreId);
     if (event.op === "state") {
       if (event.change === "created") { sync(); return; }
       if (!runner) return;
       if (event.change === "routines") { scheduleRoutines(runner); return; }
-      if (event.change === "directive") wake(runner, "directive", { detail: `rev ${event.state.directive.rev}` });
+      if (event.change === "description") wake(runner, "description", { detail: `rev ${event.state.description.rev}` });
       else if (event.change === "intel") wake(runner, "intel", { bump: true, detail: event.intelId });
       else if (event.change === "intel-removed" && event.removedIntel) {
         const { id, text } = event.removedIntel;

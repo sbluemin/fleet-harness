@@ -2,7 +2,7 @@
 .theater-prompt-page[hidden] { display: none; }
 .theater-prompt-body { display: grid; gap: 13px; font-size: var(--t-md); }
 .theater-prompt-page button { cursor: pointer; }
-/* 안 B — 머리(제목·정한 값 표식·도움말), 결과 문장을 단 모드 목록, 맨 아래 되돌리기와 사령관 지시. 테두리는 목록 한 겹만 진다. */
+/* 안 B — 머리(제목·정한 값 표식·도움말), 결과 문장을 단 모드 목록, 맨 아래 되돌리기. 테두리는 목록 한 겹만 진다. */
 /* 좁은 패널(대화 중심 화면 오른쪽 칸, 스크롤바가 선 경우)에서는 제목이 글자 단위로 끊기지 않고 표식이 다음 줄로 내려간다. */
 .theater-prompt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
 .theater-prompt-heading { flex: none; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); white-space: nowrap; }
@@ -58,15 +58,12 @@
 .theater-prompt-kept summary { cursor: pointer; }
 .theater-prompt-kept p { margin: 4px 0 0; color: var(--text-tertiary); font-size: var(--t-xs); }
 .theater-prompt-kept pre { max-height: 180px; margin: 6px 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--t-sm) var(--font-code); }
-/* 맨 아래 — 왼쪽 되돌리기(또는 실행 취소), 오른쪽 사령관 지시. 둘 다 조용한 글자 동작이다. */
+/* 맨 아래 — 되돌리기(또는 실행 취소). 조용한 글자 동작이다. */
 .theater-prompt-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; color: var(--text-tertiary); font-size: var(--t-sm); }
 .theater-prompt-foot p { margin: 0; color: var(--text-secondary); }
 .theater-prompt-link { padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px; }
 .theater-prompt-link:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
-.theater-prompt-crosslink { display: inline-flex; align-items: center; gap: 4px; margin: -3px -6px -3px auto; padding: 3px 6px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; }
-.theater-prompt-crosslink svg { width: 12px; height: 12px; }
-.theater-prompt-crosslink:hover { background: var(--control-hover-fill); color: var(--text-primary); }
-.theater-prompt-link:focus-visible, .theater-prompt-crosslink:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+.theater-prompt-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 .theater-prompt-tooltip { position: fixed; z-index: 1193; width: min(290px, calc(100vw - 16px)); padding: 10px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel); box-shadow: var(--shadow-floating); color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; pointer-events: none; }
 .theater-prompt-tooltip[hidden] { display: none; }
 .theater-prompt-save i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--hairline-strong); }

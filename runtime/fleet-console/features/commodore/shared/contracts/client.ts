@@ -19,7 +19,7 @@ export interface CommodoreClientHost {
   /** 답을 기다리는 질문을 가진 사령관 UUID 목록. 화면 문맥 수와 독립적이다. */
   askOwners(): readonly string[];
   load(commodoreId: string): Promise<void>;
-  open(commodoreId: string, options?: { readonly tab?: "log" | "directive" | "memory" | "settings" | "goals"; readonly ask?: string; readonly revealAt?: number; readonly readOnly?: boolean; readonly objectiveId?: string; readonly mobile?: boolean }): boolean;
+  open(commodoreId: string, options?: { readonly tab?: "log" | "info" | "memory" | "settings" | "goals"; readonly ask?: string; readonly revealAt?: number; readonly readOnly?: boolean; readonly objectiveId?: string; readonly mobile?: boolean }): boolean;
   language(): "en" | "ko" | undefined;
   conversationActive(): boolean;
   subscribeConversation(listener: () => void): () => void;

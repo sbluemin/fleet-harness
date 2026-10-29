@@ -81,7 +81,7 @@ export const isCommodoreConversationActive = () => host?.conversationActive() ??
 export const subscribeCommodoreConversationActive = (listener: () => void) => { conversationListeners.add(listener); return () => { conversationListeners.delete(listener); }; };
 export const openCommodoreConversation = (commodoreId: string, options?: Parameters<CommodoreClientHost["open"]>[1]) => host?.open(commodoreId, options) ?? false;
 export const openCommodoreLog = (commodoreId: string) => { host?.open(commodoreId, { tab: "log" }); };
-export const openCommodoreMobile = (tab: "log" | "directive" | "memory" | "settings" | "goals", commodoreId: string | null) => { if (commodoreId) host?.open(commodoreId, { tab, mobile: true }); };
+export const openCommodoreMobile = (tab: "log" | "info" | "settings" | "goals", commodoreId: string | null) => { if (commodoreId) host?.open(commodoreId, { tab, mobile: true }); };
 export const renderCommodoreRowGlyph = () => host?.renderRowGlyph("", true) ?? null;
 export const renderCommodoreRowGlyphOff = () => host?.renderRowGlyph("", false) ?? null;
 const boards = new Map<string, { readonly key: string; readonly value: { readonly active: boolean; readonly stalled: readonly string[] } }>();

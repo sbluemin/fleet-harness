@@ -63,12 +63,11 @@ function TheaterSettingsInboxBody({ context }: { readonly context: TheaterInboxB
   return showTheaters ? <div className="theater-inbox-theaters"><CommodoreTheaters commodoreId={context.theater.id} /></div> : null;
 }
 
-function TheaterPromptPage({ context, controller, visible, focusRequest, operatorDirective }: {
+function TheaterPromptPage({ context, controller, visible, focusRequest }: {
   readonly context: TheaterInboxBodyContext;
   readonly controller: ReturnType<typeof useTheaterPromptController>;
   readonly visible: boolean;
   readonly focusRequest: TheaterInboxBodyContext["focusRequest"];
-  readonly operatorDirective: TheaterInboxBodyContext["links"]["operatorDirective"];
 }) {
   const t = useT();
   const { draft, stored, undo, status, loading, loadFailed, forgotten, unsaved, copied } = controller;
@@ -143,16 +142,12 @@ function TheaterPromptPage({ context, controller, visible, focusRequest, operato
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape" && tipVisible) { event.preventDefault(); setTipVisible(false); }
   };
-  const openDirective = () => {
-    if (!operatorDirective) return;
-    context.navigation.open({ ...operatorDirective, theaterId: context.theater.id, focus: "editor-end" });
-  };
   const statusLine = status !== "untouched"
     ? <p id={status === "over" ? "theater-prompt-length-error" : undefined} className={`theater-prompt-save is-${status}`} role={status === "over" ? "alert" : "status"} aria-live="polite"><i />{t(`sidebar.theater.prompt.save.${status}`)}</p>
     : null;
   const ready = !forgotten && !loading && !loadFailed;
 
-  // 안 B — 머리(제목·정한 값 표식·도움말), 결과 문장을 단 모드 목록(고른 줄 안에서 지침을 쓴다), 맨 아래 되돌리기와 사령관 지시.
+  // 안 B — 머리(제목·정한 값 표식·도움말), 결과 문장을 단 모드 목록(고른 줄 안에서 지침을 쓴다), 맨 아래 되돌리기.
   // 적용 범위는 Inbox 아래 「적용」 줄이 말하므로 본문 첫 줄로 되풀이하지 않고 도움말에 합친다.
   return (
     <div ref={rootRef} className="theater-prompt-body" onKeyDown={onKeyDown}>
@@ -203,10 +198,9 @@ function TheaterPromptPage({ context, controller, visible, focusRequest, operato
           {copied ? <span role="status">{t("sidebar.theater.prompt.copied")}</span> : null}
         </div>
       </div> : null}
-      {ready && (stored || undo || operatorDirective) ? <div className="theater-prompt-foot">
+      {ready && (stored || undo) ? <div className="theater-prompt-foot">
         {undo ? <p role="status">{t("sidebar.theater.prompt.resetDone")} <button ref={undoRef} type="button" className="theater-prompt-link" onClick={controller.restore}>{t("sidebar.theater.prompt.undo")}</button></p>
           : stored ? <button type="button" className="theater-prompt-link" onClick={controller.reset}>{t("sidebar.theater.prompt.reset")}</button> : null}
-        {operatorDirective ? <button type="button" className="theater-prompt-crosslink" title={t("theaterInbox.settings.directiveNote")} onClick={openDirective}>{t("theaterInbox.settings.directiveLink")}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg></button> : null}
       </div> : null}
       {visible ? createPortal(<span ref={tooltipRef} id="theater-prompt-tip-description" role="tooltip" className="theater-prompt-tooltip" hidden={!tipVisible} style={tipPosition}>{t("sidebar.theater.prompt.scope")} {t("sidebar.theater.prompt.tip")}</span>, document.body) : null}
     </div>

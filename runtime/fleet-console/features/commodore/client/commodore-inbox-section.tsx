@@ -53,11 +53,12 @@ import {
   INTEL_EDIT_ATTRIBUTE,
   useCommodoreIntelEdits,
   retryCommodore,
-  saveCommodoreDirective,
+  saveCommodoreDescription,
   setCommodoreCommander,
   setCommodoreCoordinates,
   subscribeCommodore,
   useCommodore,
+  commodoreTabOf,
   type CommodoreTab,
 } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
@@ -67,7 +68,6 @@ type T = Translate<CommodoreMessageKey>;
 
 /** 본문이 이보다 좁으면 기록 곁 칸(목표)을 기록 아래로 내린다 — 옛 시트의 좁은 모양과 같은 자리. */
 const COMPACT_BODY_WIDTH = 500;
-const COMMODORE_PAGES: readonly CommodoreTab[] = ["log", "routines", "directive", "memory", "settings"];
 
 /* ── Theater Inbox 섹션 ──────────────────────────────────────────────── */
 
@@ -106,7 +106,7 @@ function commodoreStatusLine(t: T, commodoreId: string): string {
 }
 
 /**
- * Theater Inbox 의 「사령관」 섹션 — 기록·지시(정보 포함)·기억·설정. 시트 틀과 칸 목록은 호스트가, 본문은 여기가 그린다.
+ * Theater Inbox 의 「사령관」 섹션 — 기록·루틴·정보(설명·정보·기억)·설정. 시트 틀과 칸 목록은 호스트가, 본문은 여기가 그린다.
  * 실험 기능 「자율 운영」이 꺼져 있으면 섹션은 제목과 안내 한 줄만 남고 본문을 마운트하지 않는다(읽기·쓰기 없음).
  */
 export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
@@ -117,12 +117,10 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
     // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.
     { id: "log", title: (language) => getT(language)("commodore.tabs.log"), layout: "fill" },
     { id: "routines", title: (language) => getT(language)("commodore.tabs.routines") },
-    // 지시 칸은 옛 정보 칸을 흡수했다(지시 아래 정보·정보 출처) — 정보 칸을 부르는 요청도 이 칸이 받는다.
-    { id: "directive", title: (language) => getT(language)("commodore.tabs.directive"), applies: (language) => getT(language)("commodore.inbox.applies.directive") },
-    { id: "memory", title: (language) => getT(language)("commodore.tabs.memory") },
+    // 정보 칸은 옛 지시·기억 칸을 합쳤다(설명 · 정보 · 기억) — 옛 `directive`·`memory` 주소도 이 칸이 받는다.
+    { id: "info", title: (language) => getT(language)("commodore.tabs.info") },
     { id: "settings", title: (language) => getT(language)("commodore.tabs.settings"), applies: (language) => getT(language)("commodore.inbox.applies.settings") },
   ],
-  operatorDirectivePageId: "directive",
   read: (theater, language) => {
     const t = getT(language);
     const experiment = readCommodoreExperiment();
@@ -137,7 +135,7 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   // 폰 배치로 바뀌면 같은 구역의 폰 사령관 화면으로 넘긴다.
   onLeaveDesktop: ({ theater, pageId }) => {
     const commodoreId = inboxCommodore(theater.id);
-    if (commodoreId) openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log", commodoreId, true);
+    if (commodoreId) openCommodoreMobile(commodoreTabOf(pageId) ?? "log", commodoreId, true);
   },
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
   // 사령관 머리 착지는 이 칸을 연다. 주소가 사령관 UUID 가 아니면(Theater 해시) 대화를 세우지 않는다.
@@ -154,7 +152,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const commodoreId = inboxCommodore(theaterId);
   const t = getT(language);
   noteCommodoreLanguage(language);
-  const tab: CommodoreTab = COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log";
+  const tab: CommodoreTab = commodoreTabOf(pageId) ?? "log";
   const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -194,12 +192,12 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   };
   const run = view?.run;
 
-  // 입구가 맡긴 포커스 — 기록은 입력란(바로 말할 수 있게), 지시는 지시 입력란. 링크로 온 「입력 끝」은 커서를 글 끝에 둔다.
-  // 입력란이 없는 칸은 호스트가 준 칸 제목 포커스를 그대로 둔다. 지시 입력란은 상태를 읽은 뒤에야 서므로 그때 한 번.
+  // 입구가 맡긴 포커스 — 기록은 입력란(바로 말할 수 있게), 정보는 설명 입력란. 링크로 온 「입력 끝」은 커서를 글 끝에 둔다.
+  // 입력란이 없는 칸은 호스트가 준 칸 제목 포커스를 그대로 둔다. 설명 입력란은 상태를 읽은 뒤에야 서므로 그때 한 번.
   const handledFocus = useRef(0);
   useEffect(() => {
     if (!visible || !focusRequest || handledFocus.current === focusRequest.nonce) return;
-    const selector = tab === "directive" ? "#objectives-commodore-directive" : tab === "log" ? ".objectives-commodore-composer-input" : null;
+    const selector = tab === "info" ? "#objectives-commodore-description" : tab === "log" ? ".objectives-commodore-composer-input" : null;
     if (!selector) { handledFocus.current = focusRequest.nonce; return; }
     const field = rootRef.current?.querySelector<HTMLTextAreaElement>(selector);
     if (!field) return;
@@ -218,7 +216,6 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
     if (ENDED_ASK_CODES.has(code)) { setFailure(errorWord(t, code)); return; }
     setFailure(code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code }));
   };
-  const openSystemPrompt = () => navigation.open({ theaterId, sectionId: "commodore:commodore", pageId: "settings", focus: "editor-end" });
   const totals = !view ? "" : [
     run && run.totals.session > 0 ? t("commodore.drawer.session", { n: run.totals.session }) : null,
     t("commodore.drawer.cost", { cost: (run?.totals.costUsd ?? 0).toFixed(2) }),
@@ -254,14 +251,8 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             <CommodoreTrail t={t} language={language} theaterId={commodoreId ?? ""} width={compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
           </>
         ) : null}
-        {tab === "directive" && view ? (
-          <>
-            <CommodoreDirective t={t} theaterId={commodoreId ?? ""} directive={view.state.directive} active={view.active} onOpenSystemPrompt={openSystemPrompt} onFail={fail} onClear={() => setFailure(null)} />
-            <CommodoreIntel t={t} theaterId={commodoreId ?? ""} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} />
-          </>
-        ) : null}
+        {tab === "info" && view ? <CommodoreInfo t={t} commodoreId={commodoreId ?? ""} view={view} onFail={fail} onClear={() => setFailure(null)} /> : null}
         {tab === "routines" && visible ? <CommodoreRoutines commodoreId={commodoreId ?? ""} language={language} /> : null}
-        {tab === "memory" ? <CommodoreMemory t={t} theaterId={commodoreId ?? ""} /> : null}
         {/* 설정 칸의 메뉴(모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
@@ -498,12 +489,12 @@ function turnDuration(t: T, durationMs: number | undefined): string | null {
 
 /** 시트를 닫아도 남기는 입력. Theater마다 하나고, 전송·저장으로 비운 값은 지운다. */
 interface SheetDraft {
-  readonly directive: string | null;
+  readonly description: string | null;
   readonly intel: string;
 }
 const sheetDrafts = new Map<string, SheetDraft>();
 function sheetDraft(theaterId: string): SheetDraft {
-  return sheetDrafts.get(theaterId) ?? { directive: null, intel: "" };
+  return sheetDrafts.get(theaterId) ?? { description: null, intel: "" };
 }
 function rememberSheetDraft(theaterId: string, patch: Partial<SheetDraft>): void {
   sheetDrafts.set(theaterId, { ...sheetDraft(theaterId), ...patch });
@@ -926,34 +917,55 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
   );
 }
 
-/* ── 지시 ─────────────────────────────────────────────────────────────── */
+/* ── 설명 ─────────────────────────────────────────────────────────────── */
 
-/** 지시 입력의 기본 높이(CSS min-height)와 같은 바닥. 이보다 작은 저장값은 깨진 값이다. */
-const DIRECTIVE_BOX_MIN_HEIGHT = 140;
+/** 설명 입력의 기본 높이(CSS min-height)와 같은 바닥. 이보다 작은 저장값은 깨진 값이다. */
+const DESCRIPTION_BOX_MIN_HEIGHT = 140;
 /** 뷰포트가 아니라 저장값의 상한. 화면이 더 좁아 보여도 이 선호를 그 실측으로 덮어쓰지 않는다. */
-const DIRECTIVE_BOX_MAX_HEIGHT = 1600;
-const DIRECTIVE_BOX_HEIGHT_KEY = "fleet-console.commodore.directiveBoxHeight";
+const DESCRIPTION_BOX_MAX_HEIGHT = 1600;
+// 옛 지시 입력칸에서 고른 높이를 설명 입력칸이 이어받는다 — 저장 키는 그대로 둔다.
+const DESCRIPTION_BOX_HEIGHT_KEY = "fleet-console.commodore.directiveBoxHeight";
 
-function readDirectiveBoxHeight(): number | null {
+function readDescriptionBoxHeight(): number | null {
   try {
-    const raw = localStorage.getItem(DIRECTIVE_BOX_HEIGHT_KEY);
+    const raw = localStorage.getItem(DESCRIPTION_BOX_HEIGHT_KEY);
     if (raw === null) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (typeof parsed !== "number" || !Number.isFinite(parsed)) return null;
     const rounded = Math.round(parsed);
-    if (rounded < DIRECTIVE_BOX_MIN_HEIGHT || rounded > DIRECTIVE_BOX_MAX_HEIGHT) return null;
+    if (rounded < DESCRIPTION_BOX_MIN_HEIGHT || rounded > DESCRIPTION_BOX_MAX_HEIGHT) return null;
     return rounded;
   } catch { return null; }
 }
 
-function saveDirectiveBoxHeight(height: number): void {
+function saveDescriptionBoxHeight(height: number): void {
   if (!Number.isFinite(height)) return;
-  const rounded = Math.min(DIRECTIVE_BOX_MAX_HEIGHT, Math.max(DIRECTIVE_BOX_MIN_HEIGHT, Math.round(height)));
-  try { localStorage.setItem(DIRECTIVE_BOX_HEIGHT_KEY, JSON.stringify(rounded)); } catch { /* ignore */ }
+  const rounded = Math.min(DESCRIPTION_BOX_MAX_HEIGHT, Math.max(DESCRIPTION_BOX_MIN_HEIGHT, Math.round(height)));
+  try { localStorage.setItem(DESCRIPTION_BOX_HEIGHT_KEY, JSON.stringify(rounded)); } catch { /* ignore */ }
 }
 
-export function CommodoreDirective({ t, theaterId, directive, active, onOpenSystemPrompt, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onOpenSystemPrompt: () => void; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
-  const [draft, setDraft] = useState(() => sheetDraft(theaterId).directive ?? directive.text);
+/**
+ * 「정보」 칸 — 설명 · 정보 · 기억이 한 칸에 위에서 아래로 선다(오른쪽 패널 탭과 Theater Inbox 칸이 함께 쓴다).
+ * 기억 항목을 여는 동안은 그 읽기 화면이 칸을 받는다 — 위 두 섹션은 내리고, 쓰던 설명 초안은 시트 초안에 남는다.
+ */
+export function CommodoreInfo({ t, commodoreId, view, onFail, onClear }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+  const [reading, setReading] = useState(false);
+  return (
+    <>
+      {reading ? null : (
+        <>
+          <CommodoreDescription t={t} commodoreId={commodoreId} description={view.state.description} onFail={onFail} onClear={onClear} />
+          <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={onFail} onClear={onClear} />
+        </>
+      )}
+      <CommodoreMemory t={t} theaterId={commodoreId} onReading={setReading} />
+    </>
+  );
+}
+
+/** 사람이 적는 이 사령관 소개 — 정보 칸 맨 위. 사령관은 읽기만 하고, 저장하면 개정이 오르며 사령관을 깨운다. */
+export function CommodoreDescription({ t, commodoreId, description, onFail, onClear }: { readonly t: T; readonly commodoreId: string; readonly description: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+  const [draft, setDraft] = useState(() => sheetDraft(commodoreId).description ?? description.text);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
@@ -962,52 +974,50 @@ export function CommodoreDirective({ t, theaterId, directive, active, onOpenSyst
   useLayoutEffect(() => {
     const node = fieldRef.current;
     if (!node) return;
-    const stored = readDirectiveBoxHeight();
+    const stored = readDescriptionBoxHeight();
     if (stored !== null) node.style.height = `${stored}px`;
     let lastInline = node.style.height;
     const observer = new ResizeObserver(() => {
       const inline = node.style.height;
       if (inline === "" || inline === lastInline) return;
       lastInline = inline;
-      saveDirectiveBoxHeight(Number.parseFloat(inline));
+      saveDescriptionBoxHeight(Number.parseFloat(inline));
     });
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  // 다른 곳(다른 창)에서 고친 지시는 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다. 시트를 닫아도 더러운 초안은 남는다.
-  const base = useRef(directive.text);
+  // 다른 곳(다른 창)에서 고친 설명은 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다. 시트를 닫아도 더러운 초안은 남는다.
+  const base = useRef(description.text);
   useEffect(() => {
-    if (draft === base.current) setDraft(directive.text);
-    base.current = directive.text;
-  }, [directive.text]); // eslint-disable-line react-hooks/exhaustive-deps -- 서버 값이 바뀔 때만.
-  useEffect(() => { rememberSheetDraft(theaterId, { directive: draft === directive.text ? null : draft }); }, [theaterId, draft, directive.text]);
-  const dirty = draft !== directive.text;
+    if (draft === base.current) setDraft(description.text);
+    base.current = description.text;
+  }, [description.text]); // eslint-disable-line react-hooks/exhaustive-deps -- 서버 값이 바뀔 때만.
+  useEffect(() => { rememberSheetDraft(commodoreId, { description: draft === description.text ? null : draft }); }, [commodoreId, draft, description.text]);
+  const dirty = draft !== description.text;
   const save = () => {
     if (saving || !dirty) return;
     onClear();
     setSaving(true);
     setSaved(false);
-    void saveCommodoreDirective(theaterId, draft).then(() => setSaved(true)).catch(onFail).finally(() => setSaving(false));
+    void saveCommodoreDescription(commodoreId, draft).then(() => setSaved(true)).catch(onFail).finally(() => setSaving(false));
   };
   return (
     <div className="objectives-commodore-section">
-      <label className="objectives-commodore-section-title" htmlFor="objectives-commodore-directive">{t("commodore.directive.label")}</label>
+      <label className="objectives-commodore-section-title" htmlFor="objectives-commodore-description">{t("commodore.description.label")}</label>
       <SyncedTextarea
         ref={fieldRef}
-        id="objectives-commodore-directive"
+        id="objectives-commodore-description"
         className="objectives-commodore-input is-tall"
         value={draft}
         maxLength={8_000}
-        placeholder={t("commodore.directive.placeholder")}
+        placeholder={t("commodore.description.placeholder")}
         onChange={(event) => { setDraft(event.target.value); setSaved(false); }}
       />
-      {/* 안내 끝의 「시스템 프롬프트」는 같은 Theater Inbox 의 그 칸으로 간다 — 받는 쪽과 적용 시점이 다른 두 지침을 오가는 길. */}
-      <p className="objectives-commodore-hint">{t("commodore.directive.hintBefore")}<button type="button" className="objectives-commodore-hint-link" onClick={onOpenSystemPrompt}>{t("commodore.directive.hintLink")}</button>{t("commodore.directive.hintAfter")}</p>
       <div className="objectives-commodore-section-foot">
-        {directive.rev > 0 ? <span className="objectives-commodore-hint">{t("commodore.directive.rev", { rev: directive.rev, time: clockTime(directive.updatedAt) })}</span> : <span />}
-        <button type="button" className="objectives-btn" disabled={saving || !dirty} onClick={save}>{t("commodore.directive.save")}</button>
+        {saved && !dirty ? <span className="objectives-commodore-hint is-done" role="status">{t("commodore.description.saved")}</span>
+          : description.rev > 0 ? <span className="objectives-commodore-hint">{t("commodore.description.rev", { rev: description.rev, time: clockTime(description.updatedAt) })}</span> : <span />}
+        <button type="button" className="objectives-btn" disabled={saving || !dirty} onClick={save}>{t("commodore.description.save")}</button>
       </div>
-      {saved && !dirty ? <p className="objectives-commodore-hint is-done" role="status">{t(active ? "commodore.directive.saved" : "commodore.directive.savedIdle")}</p> : null}
     </div>
   );
 }
@@ -1022,7 +1032,7 @@ export function focusAtEnd(element: HTMLTextAreaElement | null): void {
 }
 
 /**
- * 「+ 정보 추가」 한 줄의 입력 — 데스크톱 지시 칸과 폰 지시 탭이 함께 쓴다. 초안은 시트를 닫아도 남는다. Enter 는 추가, Shift+Enter 는
+ * 「+ 정보 추가」 한 줄의 입력 — 데스크톱 정보 칸과 폰 정보 화면이 함께 쓴다. 초안은 시트를 닫아도 남는다. Enter 는 추가, Shift+Enter 는
  * 줄바꿈이고 한글 조합 중의 Enter 는 넘긴다. 폰의 화면 키보드(굵은 포인터)에서는 Enter 가 줄바꿈이라 추가는 곁의 단추로 한다.
  * 추가하는 동안 고쳐 쓴 글은 지우지 않는다.
  */
@@ -1073,7 +1083,8 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
   const hintId = `objectives-commodore-intel-add-hint-${theaterId}`;
   const sourceLabel = (source: string) => source === "person" ? t("commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
   const day = (at: number) => { const date = new Date(at); return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
-  // 지시 칸 안에서 지시 섹션 아래 구분선(앞 섹션과의 경계) 하나 밑에 정보 목록과 「+ 정보 추가」, 그 아래 정보 출처가 한 덩어리로 선다.
+  // 정보 칸 안에서 설명 섹션 아래 구분선(앞 섹션과의 경계) 하나 밑에 정보 목록과 「+ 정보 추가」가 한 덩어리로 선다.
+  // 정보 출처 목록은 보이지 않는다(아직 없는 기능) — 출처가 단 항목의 이름표에만 `sources` 를 쓴다.
   return (
     <div className="objectives-commodore-section">
       <p className="objectives-commodore-section-title">{t("commodore.intel.label")}</p>
@@ -1141,15 +1152,6 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
           />
           {adder.draft.trim() ? <p id={hintId} className="objectives-commodore-hint">{t("commodore.intel.addHint")}</p> : null}
         </div>
-      </div>
-      <div className="objectives-commodore-intel-sources">
-        <p className="objectives-commodore-section-title">{t("commodore.intel.sources")} <span className="objectives-commodore-later">· {t("commodore.intel.sourcesLater")}</span></p>
-        {sources.length === 0 ? <p className="objectives-commodore-hint">{t("commodore.intel.sourcesEmpty")}</p> : (
-          <ul className="objectives-commodore-sources">
-            {sources.map((source) => <li key={source.id}><span>{source.label}</span><span className="objectives-commodore-source-locator">{source.locator}</span></li>)}
-          </ul>
-        )}
-        <p className="objectives-commodore-hint">{t("commodore.intel.sourcesHint")}</p>
       </div>
     </div>
   );

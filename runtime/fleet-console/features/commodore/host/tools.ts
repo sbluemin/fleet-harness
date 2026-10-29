@@ -15,7 +15,7 @@ import { MAX_ASK_REASON, routineInputSchema, type CommodoreAsk, type CommodoreSo
 /**
  * 사령관 전용 도구 `commodore` — createSession 의 tools.custom 으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
  *
- * 지시·정보는 여기서만 읽힌다(시스템 프롬프트·깨움 턴에 싣지 않는다). Theater 는 Agent SDK 내장 도구(Bash·Glob·Grep·Read)로
+ * 설명·정보는 여기서만 읽힌다(시스템 프롬프트·깨움 턴에 싣지 않는다). Theater 는 Agent SDK 내장 도구(Bash·Glob·Grep·Read)로
  * 직접 다루고, 정보 출처의 이슈만 여기서 읽는다.
  */
 
@@ -108,9 +108,9 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
   };
 
   return [
-    tool("directive", "The person's standing directive for this Theater: current text, revision number and when it last changed. It is the highest authority you receive and you cannot edit it. Read it at the start of a turn that says the directive changed, and whenever you need to weigh a decision against it.", z.object({}).strict(), () => {
-      const { directive } = state();
-      return { text: directive.text, rev: directive.rev, updatedAt: stamp(directive.updatedAt) };
+    tool("description", "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive and you cannot edit it. Read it at the start of a turn that says the description changed, and whenever you need to weigh a decision against it.", z.object({}).strict(), () => {
+      const { description } = state();
+      return { text: description.text, rev: description.rev, updatedAt: stamp(description.updatedAt) };
     }),
     // since 는 「이미 본 가장 최신 항목」이다 — 그 뒤에 들어온 항목과, 그 항목이 들어온 뒤 사람이 고친 항목(더 오래된 것·since 자신 포함)을 함께 돌려준다.
     // 고친 항목은 id·출처·자리가 그대로라 앞에서부터 자르면 놓친다. 이미 읽은 고침이 같은 editedAt 으로 다시 올 수 있다.

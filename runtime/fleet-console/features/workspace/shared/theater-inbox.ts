@@ -79,8 +79,6 @@ export interface TheaterInboxBodyContext {
   readonly links: {
     /** The host's Theater system prompt page. */
     readonly systemPrompt: TheaterInboxAddress;
-    /** The page a section declared with `operatorDirectivePageId`, when that section is available. */
-    readonly operatorDirective: TheaterInboxAddress | null;
   };
   readonly navigation: ClientTheaterInboxCapability;
 }
@@ -103,8 +101,6 @@ export interface TheaterInboxSectionDescriptor {
   title(language: ConsoleLocale, theaterId?: string): string;
   icon(context: { readonly theater: ConsoleTheaterSummary }): ReactNode;
   readonly pages: readonly TheaterInboxPageDescriptor[];
-  /** The page other sections may link to as "the directive for this Theater's operator". */
-  readonly operatorDirectivePageId?: string;
   /** No I/O. Returns the same reference while nothing changed. */
   read(theater: ConsoleTheaterSummary, language: ConsoleLocale): TheaterInboxSectionState;
   subscribe(listener: () => void): () => void;

@@ -87,7 +87,6 @@ export function CommodoreRoutines({ commodoreId, language, phone = false }: { re
   };
   const timeWord = (at: number | undefined) => at ? new Intl.DateTimeFormat(localeOf(language), { dateStyle: "medium", timeStyle: "short", timeZone: view?.run.routineTimeZone }).format(at) : "—";
   return <div className={`commodore-routines${phone ? " is-phone" : ""}`}>
-    <p className="commodore-routines-hint">{t("commodore.routines.hint")}</p>
     {!view ? <p>{t("commodore.board.launch.loading")}</p> : !routines.length ? <div className="commodore-routines-empty">
       <p>{t("commodore.routines.empty")}</p><p>{t("commodore.routines.example")}</p>
     </div> : <>

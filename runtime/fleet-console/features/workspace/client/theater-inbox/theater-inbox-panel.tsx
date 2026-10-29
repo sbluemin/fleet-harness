@@ -76,7 +76,7 @@ function useCenterSection(theaterId: string, language: ConsoleLocale): { readonl
  * 대화 중심 화면의 Theater Inbox — 시트 대신 오른쪽 패널. Inbox 의 섹션(Theater 설정·사령관 등)은 패널 앞 묶음의 탭으로 서고,
  * 패널 머리가 섹션 줄과 그 섹션의 칸 탭을 세운다. 가운데 칸에 그 섹션의 대화(사령관)가 선 동안에는 그 자리를 대화의 탭이 맡는다.
  *
- * 열림 상태는 시트와 같은 Inbox 스토어다 — 어느 입구(머리·우클릭 메뉴·지시 탭의 링크)든 같은 주소로 온다. 패널을 닫거나 가운데 칸에
+ * 열림 상태는 시트와 같은 Inbox 스토어다 — 어느 입구(머리·우클릭 메뉴·다른 칸의 링크)든 같은 주소로 온다. 패널을 닫거나 가운데 칸에
  * 다른 Objective 을 고르면 닫힌다.
  */
 export function TheaterInboxPanel({ open, theater, sections, language, navigation, select, fallback }: TheaterInboxPanelProps) {
@@ -103,7 +103,7 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
           icon: null,
           order: 100 + sectionIndex * 20 + pageIndex,
           section: sectionTag,
-          render: () => <TheaterInboxPanelPage theater={theater} language={language} section={section} pageId={page.id} navigation={navigation} fallback={fallback} sections={sections} />,
+          render: () => <TheaterInboxPanelPage theater={theater} language={language} section={section} pageId={page.id} navigation={navigation} fallback={fallback} />,
         }));
       });
     });
@@ -148,7 +148,7 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
     const kept = keptToolPanel(getRailStoreSnapshot().activePanelId, railRef.current, section.descriptor.omitsRailEntries);
     let inCenter = section.id === centerSectionId;
     // 대화의 기본 탭으로 가는 진입(사이드바 Theater 머리·팔레트 Theater 전환이 착지하는 사령관 기록)은 대화를 세우는 자동 열림이다 —
-    // 사람이 그 대화에서 사이드바를 닫아 두었으면 열지 않는다. 그 밖의 칸(지시·기억·Theater 설정 등)을 고른 진입은 사람이 그 칸을
+    // 사람이 그 대화에서 사이드바를 닫아 두었으면 열지 않는다. 그 밖의 칸(정보·Theater 설정 등)을 고른 진입은 사람이 그 칸을
     // 보려는 것이라 연다.
     if (!inCenter && section.descriptor.openConversation) {
       try { inCenter = section.descriptor.openConversation({ theater, pageId: page.id }); } catch { inCenter = false; }
@@ -221,27 +221,18 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
 }
 
 /** 오른쪽 패널의 Inbox 칸 하나 — 섹션 본문과 「적용」 한 줄. 본문은 시트와 같은 섹션 계약으로 그리고, 배치는 칸의 `layout` 을 따르는 공통 틀이 진다. */
-function TheaterInboxPanelPage({ theater, language, section, pageId, navigation, fallback, sections }: {
+function TheaterInboxPanelPage({ theater, language, section, pageId, navigation, fallback }: {
   readonly theater: ConsoleTheaterSummary;
   readonly language: ConsoleLocale;
   readonly section: ResolvedTheaterInboxSection;
   readonly pageId: string;
   readonly navigation: ClientTheaterInboxCapability;
   readonly fallback: TheaterInboxAddress;
-  readonly sections: readonly ResolvedTheaterInboxSection[];
 }) {
   const t = useT();
   const open = useTheaterInboxState();
-  const states = useSectionStates(sections, theater, language);
   const focusRequest = open && open.theaterId === theater.id && open.address.sectionId === section.id && open.address.pageId === pageId ? open.focusRequest : null;
-  const links = useMemo(() => {
-    const operatorIndex = sections.findIndex((candidate, index) => candidate.descriptor.operatorDirectivePageId && states[index]?.availability === "available");
-    const operator = operatorIndex >= 0 ? sections[operatorIndex] : undefined;
-    return {
-      systemPrompt: fallback,
-      operatorDirective: operator?.descriptor.operatorDirectivePageId ? { sectionId: operator.id, pageId: operator.descriptor.operatorDirectivePageId } : null,
-    };
-  }, [sections, states, fallback]);
+  const links = useMemo(() => ({ systemPrompt: fallback }), [fallback]);
   const page = section.descriptor.pages.find((candidate) => candidate.id === pageId);
   const applies = page?.applies?.(language);
   return (

@@ -23,13 +23,13 @@ import { CommodoreStoreError } from "./errors.js";
 import { commodorePluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema, pluginUpdateSchema } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
-import { COMMODORE_EFFORTS, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
+import { COMMODORE_EFFORTS, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DESCRIPTION, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
 
 /**
  * 「사령관 기록」 서랍이 부르는 라우트 — 이미지 사본 읽기만 GET이고 나머지는 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
  * `commodore` 사건으로 갱신되므로 응답은 확인용이다.
  *
- * 지시·정보는 실행 여부와 무관하게 읽고 쓸 수 있다. 사람 메시지는
+ * 설명·정보는 실행 여부와 무관하게 읽고 쓸 수 있다. 사람 메시지는
  * 감독자가 한 턴을 받을 수 있을 때만 기록한다 — 받을 실행기가 없는데 문장만 남겨 조용히 잃지 않는다.
  */
 
@@ -238,11 +238,11 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     }, false) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image declared in its plugin.json; only image files inside the plugin folder are served.", handler: pluginIcon },
-    { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: routines, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
-    { name: "commodore/directive", method: "POST", summary: "Set the person's standing directive for a Theater's Commodore; a changed text raises its revision.", handler: json(commodoreRef.extend({ text: z.string().max(MAX_DIRECTIVE) }).strict(), ({ commodoreId, text }) => { read(commodoreId); return view(commodoreId, store.setDirective(commodoreId, text)); }) },
-    { name: "commodore/intel/add", method: "POST", summary: "Add an intel item from the person to a Theater's Commodore.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ commodoreId, text }) => { read(commodoreId); const { state, item } = store.addIntel(commodoreId, { text, source: "person" }); return { ...view(commodoreId, state), item }; }) },
+    { name: "commodore/state", method: "POST", summary: "Read a Commodore's state: routines, description, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
+    { name: "commodore/description", method: "POST", summary: "Set the person's standing description of a Commodore; a changed text raises its revision.", handler: json(commodoreRef.extend({ text: z.string().max(MAX_DESCRIPTION) }).strict(), ({ commodoreId, text }) => { read(commodoreId); return view(commodoreId, store.setDescription(commodoreId, text)); }) },
+    { name: "commodore/intel/add", method: "POST", summary: "Add an intel item from the person to a Commodore.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ commodoreId, text }) => { read(commodoreId); const { state, item } = store.addIntel(commodoreId, { text, source: "person" }); return { ...view(commodoreId, state), item }; }) },
     { name: "commodore/intel/edit", method: "POST", summary: "Edit the text of an intel item in place; its id, source and position stay. Unchanged text is a no-op.", handler: json(commodoreRef.extend({ intelId: ids, text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ commodoreId, intelId, text }) => { read(commodoreId); const { state, item } = store.editIntel(commodoreId, intelId, text); return { ...view(commodoreId, state), item }; }) },
-    { name: "commodore/intel/remove", method: "POST", summary: "Remove an intel item from a Theater's Commodore.", handler: json(commodoreRef.extend({ intelId: ids }).strict(), ({ commodoreId, intelId }) => { read(commodoreId); return view(commodoreId, store.removeIntel(commodoreId, intelId)); }) },
+    { name: "commodore/intel/remove", method: "POST", summary: "Remove an intel item from a Commodore.", handler: json(commodoreRef.extend({ intelId: ids }).strict(), ({ commodoreId, intelId }) => { read(commodoreId); return view(commodoreId, store.removeIntel(commodoreId, intelId)); }) },
     { name: "commodore/sources", method: "POST", summary: "Replace the list of intel sources the Commodore reads in routines.", handler: json(commodoreRef.extend({ sources: z.array(commodoreSourceSchema.omit({ id: true })).max(MAX_SOURCES) }).strict(), ({ commodoreId, sources }) => { read(commodoreId); return view(commodoreId, store.setSources(commodoreId, sources)); }) },
     { name: "commodore/coordinates", method: "POST", summary: "Set or clear a Theater's Commodore model and effort; cleared falls back to the experiment defaults. Applies from the next turn.", handler: json(commodoreRef.extend({ model: z.string().refine(isExperimentModelId).nullable(), effort: z.enum(COMMODORE_EFFORTS).nullable() }).strict(), ({ commodoreId, model, effort }) => {
       read(commodoreId);
@@ -329,14 +329,14 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       await hooks.retry(commodoreId);
       return view(commodoreId, read(commodoreId));
     }) },
-    { name: "commodore/clear", method: "POST", summary: "Cancel the current turn, discard the session context and delete the transcript. Keep directives, intel, settings, the board and routines.", handler: json(commodoreRef.extend({ confirm: z.literal(true) }).strict(), async ({ commodoreId }) => {
+    { name: "commodore/clear", method: "POST", summary: "Cancel the current turn, discard the session context and delete the transcript. Keep the description, intel, settings, the board and routines.", handler: json(commodoreRef.extend({ confirm: z.literal(true) }).strict(), async ({ commodoreId }) => {
       read(commodoreId);
       if (!hooks.clear) throw new CommodoreStoreError("commodore_inactive");
       await hooks.clear(commodoreId);
       return view(commodoreId, read(commodoreId));
     }) },
     // fleet-memory 는 사령관만 쓴다 — 사람 화면은 이 읽기 하나로 목록 전체를 받는다(항목 상한이 작아 쪽 나눔이 없다).
-    { name: "commodore/memory", method: "POST", summary: "Read the Commodore's fleet-memory for a Theater: every entry with its branch, topic, text, sources, links and timestamps. Read-only; only the Commodore writes it.", handler: json(commodoreRef, ({ commodoreId }) => {
+    { name: "commodore/memory", method: "POST", summary: "Read a Commodore's fleet-memory: every entry with its branch, topic, text, sources, links and timestamps. Read-only; only the Commodore writes it.", handler: json(commodoreRef, ({ commodoreId }) => {
       read(commodoreId);
       return { commodoreId, entries: store.memory.list(commodoreId) };
     }) },
