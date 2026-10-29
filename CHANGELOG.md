@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.271.0] - 2026-10-29
+
+### fleet-console
+
+#### Removed
+- Retire the Codex wiki in favor of decisions, results, and retrospectives kept with each objective. Existing documents stay untouched: the Codex button opens their folder on desktop, while the mobile shortcut shows its location.
+
 ## [1.270.0] - 2026-10-29
 
 ### fleet-console
