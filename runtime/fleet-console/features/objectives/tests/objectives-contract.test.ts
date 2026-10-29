@@ -1877,7 +1877,7 @@ describe("Objectives contract", () => {
   });
 
   it("automatically observes shared PRs, shows failed lookups instead of stale success, and discards late or disposed requests", async () => {
-    const { store, add, events, objectiveRecords } = harness();
+    const { store, add, events, objectiveRecords, objectiveRecordsHost, objectivesDir, savedObjective } = harness();
     add("pr-owner", { cwd: "/isolated/repository" }); add("also-owner", { cwd: "/isolated/repository" });
     const url = "https://github.com/example/project/pull/7";
     const mission = store.missionAdd("pr-owner", { text: "Ready" }).missions[0]!;
@@ -1910,6 +1910,7 @@ describe("Objectives contract", () => {
       expect(execute).toHaveBeenCalledWith(expect.any(Array), expect.any(AbortSignal), { cwd: "/isolated/repository" });
       expect(observed().observation).toMatchObject({ state: "open", stale: false, title: "Review result" });
       expect(store.find("also-owner")!.results[0]).toHaveProperty("observation.state", "open");
+      await objectiveRecordsHost.archive("also-owner");
       mode = "auth";
       await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
       expect(observed().observation).toMatchObject({ state: "error", error: { code: "auth_required" }, lastSuccess: { state: "open" } });
@@ -1918,9 +1919,26 @@ describe("Objectives contract", () => {
       service.refresh(); service.refresh();
       await vi.advanceTimersByTimeAsync(0);
       expect(execute).toHaveBeenCalledTimes(count);
+      const durableFailure = savedObjective("pr-owner");
+      const previousCheck = observed().observation.checkedAt!;
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prBackoffMs[0]);
+      expect(execute).toHaveBeenCalledTimes(count + 1);
+      expect(observed().observation.checkedAt).toBeGreaterThan(previousCheck);
+      expect(observed().observation).toMatchObject({ state: "error", stale: false, error: { code: "auth_required" } });
+      expect(store.find("also-owner")!.results[0]).toHaveProperty("observation.checkedAt", observed().observation.checkedAt);
+      expect(savedObjective("pr-owner")).toEqual(durableFailure);
+      // 재기동은 마지막 영속 관측을 읽고 backoff를 이어받지 않은 채 즉시 재확인한다.
+      const reloaded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
+      expect(reloaded.find("pr-owner")!.results[0]).toMatchObject({ observation: { state: "error", checkedAt: previousCheck, error: { code: "auth_required" } } });
+      const restarted = createPrStatusService(reloaded, { lookup: createGhPrLookup({ cwd: consoleDataDir, execute }) });
+      try {
+        await vi.advanceTimersByTimeAsync(0);
+        expect(reloaded.find("pr-owner")!.results[0]).toHaveProperty("observation.checkedAt", observed().observation.checkedAt);
+        expect(savedObjective("pr-owner")).toEqual(durableFailure);
+      } finally { await restarted.dispose(); }
       mode = "closed";
       for (const objective of store.all()) unavailable.add(objective.id);
-      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prBackoffMs[1]);
       expect(execute).toHaveBeenLastCalledWith(["api", "--hostname", "github.com", "--include", "repos/example/project/pulls/7"], expect.any(AbortSignal), { cwd: consoleDataDir });
       expect(observed().observation.state).toBe("closed");
       expect(store.find("also-owner")!.results[0]).toHaveProperty("observation.state", "closed");
@@ -1931,8 +1949,10 @@ describe("Objectives contract", () => {
       expect(store.find("pr-owner")!.handoff).toEqual(handoff);
       expect(store.find("pr-owner")!.awaitingReview).toBe(true);
       mode = "pending";
+      const durableSuccess = savedObjective("pr-owner");
       await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prSettledRefreshMs);
       expect(observed().observation.stale).toBe(true);
+      expect(savedObjective("pr-owner")).toEqual(durableSuccess);
       store.resultUpdate("pr-owner", first.id, { url: "https://github.com/example/project/pull/8" });
       store.resultRemove("also-owner", store.find("also-owner")!.results[0]!.id);
       finish!();

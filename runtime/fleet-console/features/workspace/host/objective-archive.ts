@@ -47,9 +47,8 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
     serial = task.catch(() => undefined);
     return task;
   }
-  function all(): readonly ObjectiveRecord[] { return [...deps.objectiveRecords.list(), ...deps.storage.entries().map((entry) => entry.objectiveRecord)]; }
   function find(id: string): ObjectiveRecord | undefined {
-    return all().find((objectiveRecord) => objectiveRecord.id === id || objectiveRecord.sessions?.some((child) => child.id === id));
+    return describe(id)?.objectiveRecord;
   }
   function pendingFor(id: string): boolean {
     return [...pending.values()].some((batch) => batch.entries.some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)));
@@ -73,13 +72,14 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
     return objectiveRecord;
   }
   function describe(id: string): ObjectiveDescription | null {
-    // 조회마다 보관 목록을 두 번 만들지 않는다 — 목표 화면 투영이 이 함수를 목표 수만큼 부른다.
-    const entries = deps.storage.entries();
-    const objectiveRecord = [...deps.objectiveRecords.list(), ...entries.map((entry) => entry.objectiveRecord)]
-      .find((node) => node.id === id || node.sessions?.some((child) => child.id === id));
-    if (!objectiveRecord) return null;
-    const entry = entries.find((entry) => entry.objectiveRecord.id === objectiveRecord.id);
-    return { objectiveRecord, location: entry ? "archived" : "active", rootObjectiveId: objectiveRecord.id, archivedAt: entry?.archivedAt ?? null };
+    deps.storage.assertReady();
+    // 활성 루트는 직접 찾고, 보관 루트·자식은 저장소의 ID 색인으로 찾는다.
+    // 목표별 투영에서 보관 본문 전체를 매번 복사하지 않는다.
+    const active = deps.objectiveRecords.get(id);
+    const root = active?.parentObjectiveId ? deps.objectiveRecords.get(active.parentObjectiveId) : active;
+    if (root) return { objectiveRecord: root, location: "active", rootObjectiveId: root.id, archivedAt: null };
+    const entry = deps.storage.entry(id);
+    return entry ? { objectiveRecord: entry.objectiveRecord, location: "archived", rootObjectiveId: entry.objectiveRecord.id, archivedAt: entry.archivedAt } : null;
   }
   function listArchived(theaterId?: string) {
     const entries = deps.storage.entries().filter((entry) => !theaterId || entry.objectiveRecord.theaterId === theaterId)

@@ -66,7 +66,8 @@ export interface ObjectiveRecordsStore {
   deleteChild(id: string, requesterPluginId?: string): boolean;
   create(input: ObjectiveRecordCreateInput): ObjectiveRecord;
   upsert(input: ObjectiveRecordCreateInput): ObjectiveRecord;
-  patch(id: string, input: ObjectiveRecordPatchInput): ObjectiveRecord | null;
+  /** keepTimestamps는 사람·에이전트 활동이 아닌 기동 복원 정규화용이다 — 부모·자식의 ts를 그대로 둔다. */
+  patch(id: string, input: ObjectiveRecordPatchInput, options?: { readonly keepTimestamps?: boolean }): ObjectiveRecord | null;
   reorder(theaterId: string, orderedIds: readonly string[], commodoreId?: string): readonly ObjectiveRecord[];
   delete(id: string): boolean;
   replace(nodes: readonly ObjectiveRecord[]): void;
@@ -272,7 +273,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     return updated;
   }
 
-  function patch(id: string, input: ObjectiveRecordPatchInput): ObjectiveRecord | null {
+  function patch(id: string, input: ObjectiveRecordPatchInput, options?: { readonly keepTimestamps?: boolean }): ObjectiveRecord | null {
     const owner = get(id)?.commodoreId;
     if (owner) deps.assertOwnerMutable?.(owner);
     const existing = nodes.get(id);
@@ -281,11 +282,11 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
       if (!found) return null;
       if (input.groupId !== undefined || input.order !== undefined || input.accent !== undefined) throw new Error("invalid_child_patch");
       const at = now();
-      const child = { ...patchedFields(found.child, input), id, ts: { ...found.child.ts, updatedAt: at } };
-      nodes.set(found.parent.id, { ...found.parent, sessions: found.parent.sessions!.map((candidate) => candidate.id === id ? child : candidate), ts: { ...found.parent.ts, updatedAt: at } });
+      const child = { ...patchedFields(found.child, input), id, ts: options?.keepTimestamps ? found.child.ts : { ...found.child.ts, updatedAt: at } };
+      nodes.set(found.parent.id, { ...found.parent, sessions: found.parent.sessions!.map((candidate) => candidate.id === id ? child : candidate), ts: options?.keepTimestamps ? found.parent.ts : { ...found.parent.ts, updatedAt: at } });
       return projectChild(nodes.get(found.parent.id)!, child);
     }
-    const updated = normalizePatch(existing, input, now());
+    const updated = normalizePatch(existing, input, options?.keepTimestamps ? existing.ts.updatedAt : now());
     nodes.set(id, updated);
     grouped(existing, updated);
     return updated;

@@ -286,8 +286,8 @@ describe("console terminal observability", () => {
       expect(fs.existsSync(ownerDirectory)).toBe(false);
       expect(fs.existsSync(path.join(directory, "commodore", `.removing-${owner}`))).toBe(false);
       const restored = JSON.parse(fs.readFileSync(keptFile, "utf8")), kept = JSON.parse(keptBefore);
-      // 재기동의 휴면 복원은 updatedAt을 갱신하지만 다른 소유자의 본문은 유지한다.
-      expect({ ...restored, ts: { ...restored.ts, updatedAt: kept.ts.updatedAt } }).toEqual(kept);
+      // 재기동의 휴면 복원은 활동이 아니다 — 다른 소유자의 본문과 updatedAt을 그대로 둔다.
+      expect(restored).toEqual(kept);
       await restarted.stop();
     } finally {
       if (previousClaudeHome === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = previousClaudeHome;
