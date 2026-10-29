@@ -8628,23 +8628,18 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
    면 없는 인라인 멘션이다 — 16px 아바타 + 본문 크기 semibold 이름, `@`는 눈에만 숨는다(말풍선 툴팁은 `@이름` 그대로).
    이름은 대상의 기존 톤 잉크(`is-tone-*`, `--id-*` — 그룹 발화자 머리와 같은 색)를 본문색 쪽으로 45% 가라앉힌 색이고(강조를 줄인다),
    톤이 없으면 본문색이다.
-   아바타 슬롯은 16px(그룹 SpeakerMark sm). 라벨은 18em에서 말줄임되고, 전체는 title에 있다. */
+   아바타 슬롯은 16px(그룹 SpeakerMark sm). 이름은 본문의 기준선과 줄바꿈을 따르며 칩처럼 따로 잘리지 않는다. */
 .fc-mention-chip {
-  flex: none;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
+  display: inline;
   padding: 0;
-  border-radius: var(--radius-xs);
+  border-radius: 0;
   background: transparent;
   font-size: inherit;
   font-weight: var(--weight-medium);
-  line-height: 1.4;
-  color: var(--text-primary);
-  vertical-align: -2px;
-  white-space: nowrap;
+  line-height: inherit;
+  color: inherit;
+  vertical-align: baseline;
+  white-space: normal;
   user-select: all;
   cursor: default;
 }
@@ -8664,6 +8659,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   place-items: center;
   width: 16px;
   height: 16px;
+  margin-inline-end: 4px;
+  vertical-align: -3px;
 }
 /* 슬롯의 직계 자식만 16px. 호스트는 어떤 플러그인 클래스인지는 모른다. */
 .fc-mention-chip-mark > svg,
@@ -8672,11 +8669,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .fc-mention-chip.is-bare { padding-left: 0; }
 .fc-mention-chip:not(:has(> .fc-mention-chip-x)) { padding-right: 0; }
 .fc-mention-chip-label {
-  min-width: 0;
-  max-width: 18em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .fc-mention-chip-x {
   flex: none;
@@ -8694,28 +8687,29 @@ button.fc-mention-chip {
   font: inherit;
   font-size: inherit;
   font-weight: var(--weight-medium);
-  color: var(--text-primary);
+  color: inherit;
+  text-align: inherit;
   cursor: pointer;
 }
-/* 기록 말풍선의 멘션 단추 — hover도 금색 없이 중성 면 + 본문색이다. 초점 링(aurora)은 그대로 둔다. */
-button.fc-mention-chip:hover { background: var(--control-wash-hover); color: var(--text-primary); }
+/* 기록 멘션은 문장 속 링크다. hover는 밑줄로, 키보드 초점은 중성 초점 표시로 구분한다. */
+button.fc-mention-chip:hover { background: transparent; color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
 button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 
 /* 입력 속 멘션은 본문과 같은 줄 상자·글자 크기다. 이름은 semibold(시안) — 캡슐 본문은 레귤러 그대로다. */
 .fc-composer-capsule .fc-mention-chip {
   position: relative;
-  gap: 6px;
-  height: var(--fc-composer-line);
-  padding: 0 2px;
-  border-radius: var(--radius-xs);
+  padding: 0;
   background: transparent;
-  font-size: var(--font-body-size);
+  font-size: inherit;
   font-weight: var(--weight-medium);
-  line-height: var(--fc-composer-line);
-  vertical-align: top;
+  line-height: inherit;
+  vertical-align: baseline;
 }
 /* 그룹의 수신자는 textarea 밖에 있으므로 첫 줄에 붙이고, 좁은 폭에서는 입력 몫을 남긴다. */
 .fc-composer-capsule > .fc-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  line-height: var(--fc-composer-line);
   flex: 0 1 auto;
   min-width: 0;
   max-width: 45%;
@@ -8723,11 +8717,17 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   margin-top: var(--fc-composer-line-pad);
   margin-right: -4px;
 }
-.fc-composer-capsule .fc-mention-chip-label { display: block; }
+.fc-composer-capsule > .fc-mention-chip .fc-mention-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* 기본은 라벨 뒤의 삭제 표시다. 보이는 16px보다 누르는 영역을 넓히되 글자·줄 높이는 밀지 않는다. */
 .fc-composer-capsule .fc-mention-chip-x {
   position: relative;
-  display: grid;
+  display: inline-grid;
+  vertical-align: -3px;
   place-items: center;
   width: 16px;
   height: 16px;
@@ -8740,11 +8740,10 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-capsule .fc-mention-chip-x:focus-visible { box-shadow: var(--focus-face); }
 /* 마우스에서만 삭제를 아바타 자리에 겹친다. 터치·coarse 포인터는 항상 보이는 삭제를 유지한다. */
 @media (hover: hover) and (pointer: fine) {
-  .fc-composer-capsule .fc-mention-chip:hover { background: var(--control-wash-hover); color: var(--text-primary); }
   .fc-composer-capsule .fc-mention-chip:not(.is-bare) .fc-mention-chip-x {
     position: absolute;
-    left: 2px;
-    top: calc((var(--fc-composer-line) - 16px) / 2);
+    left: 0;
+    top: calc(0.5em - 5px);
     background: var(--control-rest);
     color: var(--text-primary);
     opacity: 0;
