@@ -89,6 +89,8 @@ export interface PluginAuthServer {
   readonly missing: readonly string[];
   /** Console 에 넣어 둔 키. */
   readonly saved: readonly string[];
+  /** 선언이 기본값 없이 가리키지만 키로 받지 않는 실행 환경 이름(예: `${FLEET_X}`) 중 Console 환경에도 없는 것 — 채울 길이 없다. */
+  readonly unsupported: readonly string[];
 }
 
 interface RegistryMarketplace {
@@ -940,10 +942,11 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
           const keys = keyNamesOf(config);
           const missing = keys.filter((key) => !stored[id]?.[key] && !base[key]);
           const saved = keys.filter((key) => Boolean(stored[id]?.[key]));
-          if (keys.length) { found.push({ pluginId: id, server, name, config, mode: "key", keys, missing, saved }); continue; }
+          const unsupported = placeholdersOf(config).filter((key) => RESERVED_KEY.test(key) && !base[key]);
+          if (keys.length || unsupported.length) { found.push({ pluginId: id, server, name, config, mode: "key", keys, missing, saved, unsupported }); continue; }
           // 헤더에 고정 자격이 있으면 Claude Code 는 OAuth 를 시도하지 않는다. stdio 는 로그인할 대상이 아니다.
           if (config.type === "stdio" || Object.keys(config.headers ?? {}).some((header) => header.toLowerCase() === "authorization")) continue;
-          found.push({ pluginId: id, server, name, config, mode: "oauth", keys: [], missing: [], saved: [] });
+          found.push({ pluginId: id, server, name, config, mode: "oauth", keys: [], missing: [], saved: [], unsupported: [] });
         }
       }
       return found;
@@ -976,16 +979,21 @@ export function mergePluginEnv(plugins: readonly Pick<ResolvedPlugin, "env">[]):
   return env;
 }
 
-/** 선언의 모든 문자열 값에서 기본값 없는 `${VAR}` 이름. 실행 환경 이름은 키가 아니다. */
-function keyNamesOf(config: ClaudeGatewayExternalMcpServer): string[] {
+/** 선언의 모든 문자열 값에서 기본값 없는 `${VAR}` 이름. */
+function placeholdersOf(config: ClaudeGatewayExternalMcpServer): string[] {
   const values = config.type === "stdio"
     ? [config.command, ...(config.args ?? []), ...Object.values(config.env ?? {})]
     : [config.url, ...Object.values(config.headers ?? {})];
   const names: string[] = [];
   for (const value of values) for (const match of value.matchAll(PLACEHOLDER)) {
     const name = match[1]!;
-    if (match[2] === undefined && !RESERVED_KEY.test(name) && !names.includes(name)) names.push(name);
+    if (match[2] === undefined && !names.includes(name)) names.push(name);
   }
   return names;
+}
+
+/** 사람이 Console 에 넣을 수 있는 키 — 실행 환경 이름은 키가 아니다. */
+function keyNamesOf(config: ClaudeGatewayExternalMcpServer): string[] {
+  return placeholdersOf(config).filter((name) => !RESERVED_KEY.test(name));
 }
 export type CommodorePlugins = ReturnType<typeof createCommodorePlugins>;

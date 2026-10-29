@@ -26,6 +26,8 @@ export interface CommodorePluginAuthOptions {
   readonly servers: (pluginIds: readonly string[]) => readonly PluginAuthServer[];
   readonly env: (pluginIds: readonly string[]) => Readonly<Record<string, string>>;
   readonly control: PluginAuthControlPort;
+  /** OAuth 서버의 MCP 표준 신호를 직접 읽는다. 생략하면 `readMcpAuthSignal`이다. */
+  readonly signal?: (config: ClaudeGatewayExternalMcpServer) => Promise<"needs-auth" | PluginAuthFailure>;
   /** 토큰이 생기거나 지워진 플러그인 — 그 플러그인을 고른 사령관의 다음 턴이 새 세션으로 이어지게 한다. */
   readonly changed: (pluginIds: readonly string[]) => void;
   readonly now?: () => number;
@@ -43,6 +45,27 @@ const FLOW_POLL_MS = 2_000;
 const IDLE_MS = 30_000;
 /** 실패 표시를 남겨 두는 시간. */
 const FAILURE_MS = 10 * 60_000;
+const SIGNAL_TIMEOUT_MS = 8_000;
+
+/**
+ * 토큰 없이 서버에 MCP `initialize`를 보내 표준 신호를 읽는다 — 401 과 `WWW-Authenticate: Bearer`면 로그인이 필요한 서버다.
+ * Claude Code 는 401 뒤에 보안 저장소를 엄격하게 한 번 더 읽는데, 그 읽기가 실패하는 Mac 에서는 로그인 전 서버를
+ * `needs-auth`가 아니라 `failed`로 보고한다(CLI 2.1.312 실측). 그때 이 신호로 다시 판정한다. 응답 본문은 읽지 않는다.
+ */
+export async function readMcpAuthSignal(config: ClaudeGatewayExternalMcpServer): Promise<"needs-auth" | PluginAuthFailure> {
+  if (config.type === "stdio") return "error";
+  // 펼치지 않은 자리표시가 남은 주소·헤더는 보내지 않는다.
+  if (config.url.includes("${") || Object.values(config.headers ?? {}).some((value) => value.includes("${"))) return "error";
+  let response: Response;
+  try {
+    response = await fetch(config.url, config.type === "sse"
+      ? { method: "GET", redirect: "manual", signal: AbortSignal.timeout(SIGNAL_TIMEOUT_MS), headers: { ...config.headers, accept: "text/event-stream" } }
+      : { method: "POST", redirect: "manual", signal: AbortSignal.timeout(SIGNAL_TIMEOUT_MS), headers: { ...config.headers, "content-type": "application/json", accept: "application/json, text/event-stream" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fleet-console", version: "1" } } }) });
+  } catch (error) { return error instanceof Error && error.name === "TimeoutError" ? "timeout" : "unreachable"; }
+  void response.body?.cancel().catch(() => undefined);
+  return response.status === 401 && /^\s*bearer\b/i.test(response.headers.get("www-authenticate") ?? "") ? "needs-auth" : "error";
+}
 
 interface Broker {
   readonly signature: string;
@@ -70,10 +93,13 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
   /** 서버 이름마다 — 토큰도 서버마다 하나라 어느 사령관에서 시작했든 같은 흐름이다. */
   const flows = new Map<string, Flow>();
   const failures = new Map<string, { readonly failure: PluginAuthFailure; readonly at: number }>();
+  /** Claude Code 가 `failed`로 보고했고 표준 신호로도 로그인 요구가 아니었던 OAuth 서버의 짧은 이유. */
+  const checks = new Map<string, PluginAuthFailure>();
+  const signal = options.signal ?? readMcpAuthSignal;
   let disposed = false;
 
   /** 확인 자식에 붙일 서버 — OAuth 원격 서버와 값이 다 있는 키 원격 서버. stdio 는 띄우지 않는다(플러그인 명령이 돈다). */
-  const targets = (servers: readonly PluginAuthServer[]) => servers.filter((server) => server.config.type !== "stdio" && server.missing.length === 0);
+  const targets = (servers: readonly PluginAuthServer[]) => servers.filter((server) => server.config.type !== "stdio" && server.missing.length === 0 && server.unsupported.length === 0);
   const signatureOf = (servers: readonly PluginAuthServer[]) => JSON.stringify(servers.map(({ name, config }) => [name, config]).sort(([a], [b]) => String(a).localeCompare(String(b))));
 
   const releaseBroker = (commodoreId: string, broker: Broker) => {
@@ -138,7 +164,14 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
     const work = (async () => {
       const { broker } = await brokerFor(commodoreId, pluginIds);
       try {
-        const states = await settled(broker);
+        const states = new Map(await settled(broker));
+        // 실패로 보고된 OAuth 서버는 표준 신호로 다시 판정한다 — 로그인 요구면 「인증 필요」, 아니면 그 이유로 실패다.
+        await Promise.all(servers.filter((server) => server.mode === "oauth" && states.get(server.name) === "failed").map(async (server) => {
+          const judged = await signal(server.config).catch((): PluginAuthFailure => "error");
+          if (judged === "needs-auth") { states.set(server.name, "needs-auth"); checks.delete(server.name); }
+          else checks.set(server.name, judged);
+        }));
+        for (const server of servers) if (states.get(server.name) !== "failed") checks.delete(server.name);
         cache.set(commodoreId, { at: now(), signature, states });
         return states;
       } finally { settleIdle(commodoreId, broker); }
@@ -204,6 +237,8 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
         const status = states.get(server.name);
         if (server.mode === "key") {
           const key = { server: server.server, mode: "key" as const, keys: server.keys, ...(server.saved.length ? { saved: true as const } : {}) };
+          // 선언이 키로 받지 않는 실행 환경 이름을 기다린다 — 채울 길이 없다.
+          if (server.unsupported.length) return { ...key, state: "failed", failure: "unsupported" };
           if (server.missing.length) return { ...key, state: "key-needed" };
           // 키를 넣었는데 서버가 받지 않는다 — 키를 바꾸게 한다.
           if (status === "needs-auth" || status === "failed") return { ...key, state: "failed", failure: "key" };
@@ -215,6 +250,7 @@ export function createCommodorePluginAuth(options: CommodorePluginAuthOptions) {
         if (failure) return { server: server.server, mode: "oauth", state: "failed", failure };
         if (status === "needs-auth") return { server: server.server, mode: "oauth", state: "needs-auth" };
         if (status === "connected") return { server: server.server, mode: "oauth", state: "connected" };
+        if (status === "failed") return { server: server.server, mode: "oauth", state: "failed", failure: checks.get(server.name) ?? "error" };
         return { server: server.server, mode: "oauth", state: "unknown" };
       }) }];
     });

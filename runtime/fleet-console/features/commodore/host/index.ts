@@ -102,11 +102,13 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     plugins: (ids) => plugins.resolve(ids),
     emit,
   });
-  /** 키·토큰이 바뀐 플러그인을 고른 사령관 — 다음 턴이 새 세션으로 이어지고(감독자의 plugins 변경), 화면이 다시 읽는다. */
+  /**
+   * 키·토큰이 바뀐 플러그인을 고른 사령관 — 고른 목록은 그대로라 저장소 사건이 없으므로 감독자에게 직접 알려 다음 턴을 새 세션
+   * (새 환경·새 MCP 연결)으로 연다. 목표 세션은 다음 실행부터 받는다.
+   */
   const pluginsChanged = (pluginIds: readonly string[]) => {
     for (const commodoreId of entities.ids()) {
-      const state = store.read(commodoreId);
-      if (state && (state.plugins ?? []).some((id) => pluginIds.includes(id))) emit({ op: "state", commodoreId, theaterIds: theaterIds(commodoreId), state, change: "plugins" });
+      if ((store.read(commodoreId)?.plugins ?? []).some((id) => pluginIds.includes(id))) supervisor.replaceSessionNext(commodoreId);
     }
   };
   const pluginAuth = createCommodorePluginAuth({

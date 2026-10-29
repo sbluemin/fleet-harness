@@ -598,7 +598,8 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     const items: MenuItem[] = [];
     for (const server of oauth) {
       const id = `${server.server}:${server.state}`;
-      if (server.state === "needs-auth") items.push({ id, label: named ? t("commodore.plugins.auth.startServer", { server: server.server }) : t("commodore.plugins.auth.start"), run: () => startAuth(pluginId, server.server) });
+      // 확인하지 못한 서버(unknown)도 로그인을 시작할 수는 있다 — 이미 연결돼 있으면 서버가 그렇게 답한다.
+      if (server.state === "needs-auth" || server.state === "unknown") items.push({ id, label: named ? t("commodore.plugins.auth.startServer", { server: server.server }) : t("commodore.plugins.auth.start"), run: () => startAuth(pluginId, server.server) });
       else if (server.state === "failed") items.push({ id, label: named ? t("commodore.plugins.auth.retryServer", { server: server.server }) : t("commodore.plugins.auth.retry"), run: () => startAuth(pluginId, server.server) });
       else if (server.state === "connected") items.push({ id, label: named ? t("commodore.plugins.auth.clearServer", { server: server.server }) : t("commodore.plugins.auth.clear"), run: () => authAction(pluginId, server.server, "clear") });
       else if (server.state === "pending") {
@@ -609,8 +610,8 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
       }
     }
     const keyed = servers.filter((server) => server.mode === "key");
-    if (keyed.length) {
-      const names = [...new Set(keyed.flatMap((server) => server.keys ?? []))];
+    const names = [...new Set(keyed.flatMap((server) => server.keys ?? []))];
+    if (names.length) {
       items.push({ id: "key", label: t(keyed.some((server) => server.state === "key-needed") ? "commodore.plugins.key.enter" : "commodore.plugins.key.change"), run: () => setForm({ pluginId, kind: "key", names }) });
       const saved = [...new Set(keyed.filter((server) => server.saved).flatMap((server) => server.keys ?? []))];
       if (saved.length) items.push({ id: "key-clear", label: t("commodore.plugins.key.clear"), run: () => setKeys(pluginId, saved.map((name) => [name, null] as const)) });
