@@ -126,6 +126,16 @@ export interface PluginCatalogEntry {
    * 한 줄씩 `훅 <이벤트> · <명령>` 이 아니라 구조로 준다: 화면이 문구를 고른다.
    */
   readonly runs?: readonly { readonly kind: "hook" | "mcp"; readonly label: string; readonly command: string }[];
+  /**
+   * 설치본과 다른 마켓 쪽 새 버전 — 설치된 플러그인에만 싣고, 설치본과 다를 때만 있다.
+   * 없으면 "업데이트 없음 또는 알 수 없음"이다.
+   */
+  readonly latestVersion?: string;
+  /**
+   * 새 버전이 실행할 명령 — 미리 읽을 수 있고(마켓 저장소 안 상대 경로 출처) 그 버전의 신뢰 기록이 없을 때만 싣는다.
+   * `runs` 와 같은 배열이다.
+   */
+  readonly latestRuns?: PluginCatalogEntry["runs"];
 }
 
 /**
@@ -162,6 +172,9 @@ export type MarketplaceErrorCode =
   | "disabled"
   | "plugin_not_found"
   | "install_failed"
+  | "update_failed"
+  /** 업데이트하려는 플러그인의 출처 폴더가 사라졌다 — 설치본은 그대로 둔다. */
+  | "source_missing"
   | "trust_required"
   | "unavailable"
   /** Console 이 Claude Code CLI 를 찾지 못했다 — 받기·설치·제거는 모두 그 CLI 로 한다. */
@@ -181,6 +194,10 @@ export type MarketplaceErrorCode =
  *   마켓 안 상대 경로 플러그인은 받지 않고 읽고, 그 외에는 inspect 와 같이 Fleet 전용 홈에 받은 뒤 읽는다. 플러그인 코드는 실행하지 않는다.
  * - `commodore/plugins/set` { commodoreId, pluginId, installed, trusted? } → CommodoreStateView
  *   실행 명령이 있는 플러그인을 처음 설치할 때 trusted 가 없으면 trust_required 로 거절한다.
+ * - `commodore/plugins/update` { pluginId, trusted?, version? } → { outcome: "updated" | "up_to_date", oldVersion, newVersion, view: PluginCatalogView }
+ *   `claude plugin update <id> --json` 으로 올린다. 새 버전에 실행 명령이 있고 그 버전을 신뢰한 적이 없으면
+ *   trust_required 로 거절한다(details: { version, runs }). 확인은 trusted 와 그때 본 version·runs 를 함께 보내야 하고,
+ *   받은 버전이나 명령이 다르면 다시 거절한다. -y·--accept-command 는 쓰지 않는다.
  * - GET `commodore/plugins/icon?pluginId=` → 그 플러그인 아이콘 그림(png·jpeg·gif·webp·svg). 카탈로그 항목에 `icon` 이 있을 때만 있다.
  */
 export const MAX_PLUGIN_ICON_BYTES = 512 * 1024;
@@ -197,6 +214,13 @@ export const marketplaceNameRefSchema = z.object({ name: marketplaceNameSchema }
 export const marketplaceEnableSchema = z.object({ name: marketplaceNameSchema, enabled: z.boolean() }).strict();
 export const marketplaceUpdateSchema = z.object({ name: marketplaceNameSchema.optional() }).strict();
 export const pluginInspectSchema = z.object({ pluginId: pluginIdSchema }).strict();
+/**
+ * 확인 화면에서 사람이 본 실행 명령 — 서버는 실제로 받은 새 설치본의 명령과 같을 때만 신뢰한다.
+ * 서버가 보여 주는 명령은 개수·길이를 자르지 않으므로(실행될 것을 숨기지 않는다) 여기에도 따로 상한을 두지 않는다.
+ * 요청 크기는 Console 의 본문 상한이 막는다.
+ */
+const pluginRunSchema = z.object({ kind: z.enum(["hook", "mcp"]), label: z.string(), command: z.string() }).strict();
+export const pluginUpdateSchema = z.object({ pluginId: pluginIdSchema, trusted: z.boolean().optional(), version: z.string().min(1).max(128).optional(), runs: z.array(pluginRunSchema).optional() }).strict();
 export const commodorePluginSetSchema = z.object({
   commodoreId: z.string().min(1).max(128),
   pluginId: pluginIdSchema,

@@ -57,6 +57,14 @@ export interface CommodorePluginsOptions {
   readonly selectedPlugins?: () => readonly string[];
 }
 
+/** 플러그인 단위 업데이트 결과 — 성공한 CLI 가 알린 이전·새 버전과 바뀐 카탈로그. */
+export interface PluginUpdateResult {
+  readonly outcome: "updated" | "up_to_date";
+  readonly oldVersion: string;
+  readonly newVersion: string;
+  readonly view: PluginCatalogView;
+}
+
 /** 세션이 싣는 플러그인 하나 — 로컬 경로와, 호스트가 대신 소유할 MCP 선언. */
 export interface ResolvedPlugin {
   readonly id: string;
@@ -116,6 +124,9 @@ interface Registry {
 
 interface CliResult {
   readonly outcome?: string;
+  readonly updateOutcome?: string;
+  readonly oldVersion?: string;
+  readonly newVersion?: string;
   readonly failureCode?: string;
   readonly message?: string;
   readonly marketplace?: string;
@@ -466,9 +477,45 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     const raw = readJson(path.join(home, "plugins", "known_marketplaces.json"));
     return isRecord(raw) ? raw as Record<string, { readonly installLocation?: string }> : {};
   };
-  const installed = (): Record<string, readonly { readonly installPath?: string; readonly version?: string }[]> => {
+  type InstallRecord = { readonly installPath?: string; readonly version?: string; readonly gitCommitSha?: string };
+  /** CLI 가 쓴 설치 기록 그대로. 업데이트가 새 설치본을 판단할 때만 직접 읽는다. */
+  const installedRaw = (): Record<string, readonly InstallRecord[]> => {
     const raw = readJson(path.join(home, "plugins", "installed_plugins.json"));
-    return isRecord(raw) && isRecord(raw.plugins) ? raw.plugins as Record<string, readonly { readonly installPath?: string; readonly version?: string }[]> : {};
+    return isRecord(raw) && isRecord(raw.plugins) ? raw.plugins as Record<string, readonly InstallRecord[]> : {};
+  };
+  /**
+   * 업데이트 중인 플러그인의 업데이트 전 기록. CLI 는 끝나기 전에 설치 기록을 바꾸므로, 신뢰 판단이 끝날 때까지
+   * 세션·카탈로그는 이 기록으로 읽는다 — 그 사이 열리는 세션이 확인 안 된 새 버전을 싣지 않는다.
+   */
+  const pinned = new Map<string, readonly InstallRecord[] | undefined>();
+  const installed = (): Record<string, readonly InstallRecord[]> => {
+    const rows = installedRaw();
+    if (!pinned.size) return rows;
+    const view: Record<string, readonly InstallRecord[]> = { ...rows };
+    for (const [id, record] of pinned) { if (record) view[id] = record; else delete view[id]; }
+    return view;
+  };
+  /** 업데이트 전 설치 기록 스냅샷 — 신뢰 없는 새 버전을 되돌릴 때 그대로 쓴다. */
+  const snapshotInstalled = (id: string): unknown[] | undefined => {
+    const raw = readJson(path.join(home, "plugins", "installed_plugins.json"));
+    if (!isRecord(raw) || !isRecord(raw.plugins) || !Array.isArray(raw.plugins[id])) return undefined;
+    return JSON.parse(JSON.stringify(raw.plugins[id])) as unknown[];
+  };
+  /** 설치 기록을 스냅샷으로 되돌린다 — 캐시에 남은 이전 버전 폴더가 다시 설치본이 된다. */
+  const restoreInstalled = (id: string, snapshot: unknown[] | undefined): void => {
+    const file = path.join(home, "plugins", "installed_plugins.json");
+    const raw = readJson(file);
+    if (!isRecord(raw) || !isRecord(raw.plugins)) return;
+    const plugins = { ...(raw.plugins as Record<string, unknown>) };
+    if (snapshot === undefined) delete plugins[id];
+    else plugins[id] = snapshot;
+    let mode: number | undefined;
+    try { mode = fs.statSync(file).mode; } catch { mode = undefined; }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    if (mode === undefined) fs.writeFileSync(tmp, `${JSON.stringify({ ...raw, plugins }, null, 2)}\n`);
+    else fs.writeFileSync(tmp, `${JSON.stringify({ ...raw, plugins }, null, 2)}\n`, { mode });
+    fs.renameSync(tmp, file);
   };
 
   /** marketplace.json 원문과, 받은 것이 디렉터리(git 출처)면 그 루트. url 출처는 파일 하나라 루트가 없다. */
@@ -508,8 +555,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
    * 세션이 실을 디렉터리. 설치본에 plugin.json 이 있거나 marketplace 항목이 strict 이면 설치본 그대로다.
    * strict:false 이면 설치본을 `loaded/` 로 복사하고 항목의 구성 요소 선언을 plugin.json 으로 쓴다.
    */
-  const loadDirOf = (id: string): string | null => {
-    const install = installed()[id]?.[0];
+  const loadDirOf = (id: string, install: InstallRecord | undefined = installed()[id]?.[0]): string | null => {
     if (!install?.installPath || !fs.existsSync(install.installPath)) return null;
     const entry = entryOf(id);
     const ownManifest = fs.existsSync(path.join(install.installPath, ".claude-plugin", "plugin.json"));
@@ -666,6 +712,43 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       ...(description ? { description } : {}), ...(owner ? { owner } : {}),
     };
   };
+  /** `v1.5.5` 같은 표기는 앞의 `v` 를 벗기고 버전으로 받는다. `main` 같은 ref 는 버전이 아니다. */
+  const versionShapedRef = (ref: unknown): string | undefined => {
+    if (typeof ref !== "string") return undefined;
+    const bare = /^[vV](?=\d)/.test(ref) ? ref.slice(1) : ref;
+    return /^\d+\.\d+/.test(bare) ? bare : undefined;
+  };
+  /**
+   * 설치본 대비 마켓 쪽 새 버전 후보 — 파일만 읽고 CLI·네트워크를 부르지 않는다.
+   * - 상대 경로 출처(마켓 저장소 안 폴더): 그 폴더 plugin.json version → 마켓 항목 version. 둘 다 없으면 비움.
+   * - 외부 출처(url·git-subdir·github): 항목 source.sha 가 설치본 gitCommitSha 와 다르면 항목 version → 버전 모양의
+   *   source.ref → sha 앞 12자. 새 버전의 실행 명령은 미리 읽을 수 없어 runs 는 싣지 않는다.
+   * - 설치본과 같은 표시값이어도 sha 가 다르면 싣는다(버전을 올리지 않은 채 내용만 바뀐 경우). 그 밖이나 읽을 수 없으면 비움.
+   */
+  const latestOf = (
+    id: string,
+    entry: MarketplaceEntry,
+    document: MarketplaceDocument,
+    installedVersion: string | undefined,
+    installs: ReturnType<typeof installed>,
+    trusted: Readonly<Record<string, string>>,
+  ): Pick<PluginCatalogEntry, "latestVersion" | "latestRuns"> => {
+    if (!installs[id] || !installedVersion) return {};
+    const bundled = bundledDirOf(document, entry);
+    if (bundled) {
+      const candidate = text(manifestOf(bundled).version, 128) ?? text(entry.version, 128);
+      if (!candidate || candidate === installedVersion) return {};
+      const runs = describe(id, bundled).runs;
+      return { latestVersion: candidate, ...(runs?.length && trusted[id] !== candidate ? { latestRuns: runs } : {}) };
+    }
+    const source = isRecord(entry.source) ? entry.source : null;
+    const sha = source && typeof source.sha === "string" && source.sha ? source.sha : undefined;
+    const installedSha = installs[id]?.[0]?.gitCommitSha;
+    if (!source || !sha || !installedSha || sha === installedSha) return {};
+    const display = text(entry.version, 128) ?? versionShapedRef(source.ref) ?? sha.slice(0, 12);
+    if (!display) return {};
+    return { latestVersion: display };
+  };
   const catalog = (): PluginCatalogView => {
     const registry = readRegistry();
     const installs = installed();
@@ -676,8 +759,10 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       for (const entry of entriesOf(row.name)) {
         const id = `${entry.name}@${row.name}`;
         const dir = displayDirOf(id, document, entry, installs);
+        const described = dir && installs[id] ? describe(id, dir) : null;
         plugins.push({ id, name: entry.name, marketplace: row.name, ...display(entry, dir),
-          ...(typeof entry.version === "string" ? { version: entry.version } : {}), ...(dir && installs[id] ? describe(id, dir) : {}) });
+          ...(typeof entry.version === "string" ? { version: entry.version } : {}),
+          ...(described ? { ...described, ...latestOf(id, entry, document, described.version, installs, registry.trusted) } : {}) });
       }
     }
     const order = new Map<string, number>(PRESET_MARKETPLACES.map((preset, index) => [preset.name, index]));
@@ -926,6 +1011,88 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       if (readRegistry().trusted[id] === version) return;
       if (!trusted) throw new CommodoreStoreError("trust_required");
       update((registry) => ({ ...registry, trusted: { ...registry.trusted, [id]: version } }));
+    },
+    /**
+     * 플러그인 단위 업데이트 — `claude plugin update <id> --json` 으로 올린다. `-y`·`--accept-command` 는 쓰지 않는다.
+     * 같은 플러그인의 동시 요청은 직렬로 줄 세운다. 실패하면 설치본은 그대로다(CLI 가 그렇게 남긴다).
+     *
+     * 신뢰(기준 6): 새 버전에 실행 명령이 있고 그 버전을 신뢰한 적이 없으면, 사람이 확인하기 전에 새 버전이 어떤 세션에도
+     * 실리지 않게 거절한다(`trust_required`, details `{ version, runs }`). 상대 경로 출처는 업데이트 전에 번들 폴더로
+     * 판단하므로 CLI 를 부르기 전에 거절한다. 미리 읽을 수 없으면(외부 출처·버전 없는 상대 플러그인) 업데이트 뒤 새
+     * 설치본으로 판단하고, 신뢰가 없으면 설치 기록을 이전 버전(캐시에 남아 있음)으로 되돌린 뒤 같은 거절을 낸다.
+     * `trusted` 로 다시 오면 `trusted[id] = 새 버전` 을 기록하고 진행한다.
+     */
+    async updatePlugin(id: string, trustedFlag: boolean, reviewedVersion?: string, reviewedRuns?: PluginCatalogEntry["runs"]): Promise<PluginUpdateResult> {
+      return await serial(async () => {
+        const { marketplace } = splitPluginId(id);
+        const row = requireRow(marketplace);
+        if (!row.enabled) throw new CommodoreStoreError("disabled");
+        const entry = entryOf(id);
+        if (!entry) throw new CommodoreStoreError("plugin_not_found");
+        // 신뢰는 사람이 본 그 버전과 그 명령에만 준다 — 확인한 뒤 출처가 바뀌었으면 받은 것으로 다시 묻는다.
+        const approves = (version: string, runs: PluginCatalogEntry["runs"]) =>
+          trustedFlag && reviewedVersion === version && JSON.stringify(reviewedRuns ?? null) === JSON.stringify(runs ?? []);
+        const installs = installed();
+        const before = installs[id]?.[0];
+        const beforeDir = loadDirOf(id);
+        const beforeDescribed = beforeDir ? describe(id, beforeDir) : undefined;
+        const beforeVersion = beforeDescribed?.version ?? before?.version;
+        const beforeRuns = JSON.stringify(beforeDescribed?.runs ?? []);
+        // 상대 출처는 업데이트 전에 번들 폴더로 새 버전·실행 명령을 안다 — 신뢰 없으면 CLI 를 부르기 전에 거절한다.
+        const bundled = bundledDirOf(documentOf(row.name), entry);
+        const candidate = bundled ? text(manifestOf(bundled).version, 128) ?? text(entry.version, 128) : undefined;
+        const preRuns = bundled ? describe(id, bundled).runs ?? [] : [];
+        if (bundled && candidate && beforeVersion && candidate !== beforeVersion && preRuns.length > 0 && readRegistry().trusted[id] !== candidate) {
+          if (!approves(candidate, preRuns)) throw new CommodoreStoreError("trust_required", undefined, { version: candidate, runs: preRuns });
+          update((registry) => ({ ...registry, trusted: { ...registry.trusted, [id]: candidate } }));
+        }
+        const snapshot = snapshotInstalled(id);
+        pinned.set(id, installedRaw()[id]);
+        try {
+          const result = await runCli(["update", id]);
+          if (result.outcome !== "ok") {
+            // CLI 가 명령 확인을 요구하면 신뢰 확인으로 돌려준다.
+            if (result.failureCode === "trust_required" || result.failureCode === "confirmation_required" || result.failureCode === "accept_command" || result.failureCode === "command_confirmation" || /--accept-command/i.test(result.message ?? "")) {
+              const version = candidate ?? (typeof result.newVersion === "string" && result.newVersion ? result.newVersion : undefined) ?? beforeVersion;
+              throw new CommodoreStoreError("trust_required", undefined, { ...(version ? { version } : {}), runs: preRuns });
+            }
+            if (result.failureCode === "source_missing") throw new CommodoreStoreError("source_missing");
+            if (result.failureCode === "not_found") throw new CommodoreStoreError("not_found");
+            if (result.failureCode === "cli_unavailable") throw new CommodoreStoreError("cli_unavailable");
+            throw new CommodoreStoreError("update_failed");
+          }
+          const oldVersion = typeof result.oldVersion === "string" && result.oldVersion ? result.oldVersion : undefined;
+          const newVersion = typeof result.newVersion === "string" && result.newVersion ? result.newVersion : undefined;
+          if (!oldVersion || !newVersion) throw new CommodoreStoreError("update_failed");
+          // 표시 버전이 같아도 설치본(경로·커밋)이 바뀌었으면 새 내용으로 본다.
+          const afterInstall = installedRaw()[id]?.[0];
+          const moved = afterInstall?.installPath !== before?.installPath || afterInstall?.gitCommitSha !== before?.gitCommitSha;
+          if (!moved && (result.updateOutcome === "up_to_date" || oldVersion === newVersion)) {
+            pinned.delete(id);
+            return { outcome: "up_to_date" as const, oldVersion, newVersion, view: catalog() };
+          }
+          // 새 설치본으로 신뢰를 판단한다(미리 읽은 상대 출처도 실제로 받은 것을 다시 본다).
+          const afterDir = loadDirOf(id, afterInstall);
+          if (!afterDir) throw new CommodoreStoreError("update_failed");
+          const after = describe(id, afterDir);
+          const key = text(manifestOf(afterDir).version, 128) ?? afterInstall?.version ?? newVersion;
+          const runs = after.runs ?? [];
+          // 신뢰는 실행 명령에 대한 것이다 — 표시 버전이 같아 기록이 맞아도, 바뀐 설치본의 명령이 달라졌으면 다시 묻는다.
+          const commandsChanged = moved && JSON.stringify(runs) !== beforeRuns;
+          if (runs.length > 0 && (readRegistry().trusted[id] !== key || commandsChanged)) {
+            if (!approves(key, runs)) {
+              restoreInstalled(id, snapshot);
+              throw new CommodoreStoreError("trust_required", undefined, { version: key, runs });
+            }
+            update((registry) => ({ ...registry, trusted: { ...registry.trusted, [id]: key } }));
+          }
+          // 카탈로그는 고정을 푼 뒤에 읽어야 새 버전이 보인다.
+          pinned.delete(id);
+          return { outcome: "updated" as const, oldVersion, newVersion, view: catalog() };
+        } finally {
+          pinned.delete(id);
+        }
+      });
     },
     /**
      * 세션을 여는 순간 고른 플러그인을 경로와 MCP 선언으로 푼다. 받지 않았거나 사라진 것은 건너뛴다 — 세션을 막지 않는다.

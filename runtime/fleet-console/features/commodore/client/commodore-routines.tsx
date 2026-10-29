@@ -28,8 +28,7 @@ export function CommodoreRoutines({ commodoreId, language, phone = false }: { re
   const { view } = useCommodore(commodoreId);
   const online = useCommodoreOnline();
   const routines = view?.state.routines ?? [];
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; x: number; y: number; trigger: HTMLElement } | null>(null);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number; trigger: HTMLElement; anchored: boolean } | null>(null);
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -40,11 +39,16 @@ export function CommodoreRoutines({ commodoreId, language, phone = false }: { re
   const selected = routines.find((routine) => routine.id === menu?.id);
   const cancelPress = () => { if (press.current) clearTimeout(press.current.timer); press.current = null; };
   const close = () => { menu?.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); };
-  const open = (routine: CommodoreRoutine, trigger: HTMLElement, x: number, y: number) => { cancelPress(); setArmed(false); setMenu({ id: routine.id, trigger, x, y }); };
+  const open = (routine: CommodoreRoutine, trigger: HTMLElement, x: number, y: number, anchored = false) => { cancelPress(); setArmed(false); setMenu({ id: routine.id, trigger, x, y, anchored }); };
+  const toggleMenu = (routine: CommodoreRoutine, trigger: HTMLElement) => {
+    if (menu?.id === routine.id) { close(); return; }
+    const rect = trigger.getBoundingClientRect();
+    open(routine, trigger, rect.left, rect.bottom + 4, true);
+  };
   useEffect(() => () => cancelPress(), []);
   useEffect(() => {
     if (!menu) return;
-    const dismiss = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) { menu.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); } };
+    const dismiss = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node) && !menu.trigger.contains(event.target as Node)) { menu.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); } };
     const escape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault(); event.stopPropagation(); menu.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false);
@@ -59,9 +63,10 @@ export function CommodoreRoutines({ commodoreId, language, phone = false }: { re
     if (!phone) {
       const rect = node.getBoundingClientRect();
       node.style.left = `${Math.max(16, Math.min(menu.x, window.innerWidth - rect.width - 16))}px`;
-      node.style.top = `${Math.max(16, Math.min(menu.y, window.innerHeight - rect.height - 16))}px`;
+      const top = menu.anchored && menu.y + rect.height > window.innerHeight - 16 ? menu.trigger.getBoundingClientRect().top - rect.height - 4 : menu.y;
+      node.style.top = `${Math.max(16, Math.min(top, window.innerHeight - rect.height - 16))}px`;
     }
-    node.querySelector<HTMLButtonElement>("button")?.focus();
+    node.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
   }, [menu, phone]);
   const act = async (work: () => Promise<void>, message: string) => {
     if (busy || !online) return;
@@ -80,15 +85,17 @@ export function CommodoreRoutines({ commodoreId, language, phone = false }: { re
       buttons[(next + buttons.length) % buttons.length]?.focus();
     }
   };
+  const timeWord = (at: number | undefined) => at ? new Intl.DateTimeFormat(localeOf(language), { dateStyle: "medium", timeStyle: "short", timeZone: view?.run.routineTimeZone }).format(at) : "—";
   return <div className={`commodore-routines${phone ? " is-phone" : ""}`}>
-    <p className="commodore-routines-hint">{t(phone ? "commodore.routines.phoneHint" : "commodore.routines.hint")}</p>
+    <p className="commodore-routines-hint">{t("commodore.routines.hint")}</p>
     {!view ? <p>{t("commodore.board.launch.loading")}</p> : !routines.length ? <div className="commodore-routines-empty">
       <p>{t("commodore.routines.empty")}</p><p>{t("commodore.routines.example")}</p>
     </div> : <>
       <p className="commodore-routines-hint">{t("commodore.routines.count", { n: routines.filter((r) => r.enabled).length, total: routines.length })}</p>
-      <div className="commodore-routines-list">{routines.map((routine) => <div key={routine.id} className={`commodore-routines-row${routine.enabled ? "" : " is-off"}`} tabIndex={-1}
+      <div className="commodore-routines-list">{routines.map((routine) => <div key={routine.id} className={`commodore-routines-row${routine.enabled ? "" : " is-off"}${menu?.id === routine.id ? " is-target" : ""}`} tabIndex={0} aria-label={routine.name} aria-haspopup={phone ? "dialog" : "menu"} aria-expanded={menu?.id === routine.id}
         onContextMenu={(event) => { event.preventDefault(); open(routine, event.currentTarget, event.clientX, event.clientY); }}
-        onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); open(routine, event.currentTarget, rect.left + 16, rect.bottom); } }}
+        onClick={(event) => toggleMenu(routine, event.currentTarget)}
+        onKeyDown={(event) => { if (event.target === event.currentTarget && (["Enter", " ", "ContextMenu"].includes(event.key) || (event.shiftKey && event.key === "F10"))) { event.preventDefault(); toggleMenu(routine, event.currentTarget); } }}
         onPointerDown={(event) => {
           if (!phone || event.button !== 0 || (event.target as HTMLElement).closest("[data-routine-toggle]")) return;
           cancelPress(); suppressClick.current = false;
@@ -101,20 +108,24 @@ export function CommodoreRoutines({ commodoreId, language, phone = false }: { re
           if ((event.target as HTMLElement).closest("[data-routine-toggle]")) { suppressClick.current = false; return; }
           if (suppressClick.current) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); }
         }}>
-        <button type="button" className="commodore-routines-main" aria-expanded={expanded === routine.id} aria-haspopup={phone ? "dialog" : "menu"} onClick={() => setExpanded(expanded === routine.id ? null : routine.id)}>
+        <div className="commodore-routines-main">
           <span className="commodore-routines-name">{routine.name}</span><span className="commodore-routines-when">{scheduleWord(routine, language, t, view?.run.routineTimeZone)}</span>
-        </button>
+        </div>
         <span data-routine-toggle onPointerDown={(event) => { cancelPress(); suppressClick.current = false; event.stopPropagation(); }} onClick={(event) => event.stopPropagation()} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }} onKeyDown={(event) => event.stopPropagation()}>
           <SettingsToggle checked={routine.enabled} ariaLabel={`${routine.name} · ${t(routine.enabled ? "commodore.routines.turnOff" : "commodore.routines.turnOn")}`} disabled={!online} busy={busy} onChange={(enabled) => toggle(routine, enabled)} />
         </span>
-        {expanded === routine.id ? <dl className="commodore-routines-detail"><dt>{t("commodore.routines.task")}</dt><dd>{routine.task}</dd><dt>{t("commodore.routines.next")}</dt><dd>{routine.enabled ? (view?.run.routineNextRuns?.[routine.id] ? new Intl.DateTimeFormat(localeOf(language), { dateStyle: "medium", timeStyle: "short", timeZone: view.run.routineTimeZone }).format(view.run.routineNextRuns[routine.id]!) : "—") : t("commodore.routines.off")}</dd><dt>{t("commodore.routines.last")}</dt><dd>{routine.lastRunAt ? new Intl.DateTimeFormat(localeOf(language), { dateStyle: "medium", timeStyle: "short", timeZone: view?.run.routineTimeZone }).format(routine.lastRunAt) : "—"}</dd></dl> : null}
       </div>)}</div>
     </>}
     {notice ? <p role="status" className="commodore-routines-hint">{notice}</p> : null}
     {failure ? <p role="alert" className="commodore-routines-error">{failure}</p> : null}
     {menu && selected ? createPortal(<div className={phone ? "commodore-routines-scrim" : "commodore-routines-menu-host"}>
       <div ref={menuRef} className={`commodore-routines-menu${phone ? " is-sheet" : ""}`} role={phone ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.name} onKeyDown={onMenuKey}>
-        <div className="commodore-routines-menu-title">{selected.name}</div>
+        <div className="commodore-routines-menu-head">
+          <div className="commodore-routines-menu-title">{selected.name}</div>
+          <div className="commodore-routines-menu-meta">{scheduleWord(selected, language, t, view?.run.routineTimeZone)} · {t("commodore.routines.next")} {selected.enabled ? timeWord(view?.run.routineNextRuns?.[selected.id]) : t("commodore.routines.off")}</div>
+          <p className="commodore-routines-menu-task">{selected.task}</p>
+          {selected.lastRunAt ? <div className="commodore-routines-menu-meta">{t("commodore.routines.last")} {timeWord(selected.lastRunAt)}</div> : null}
+        </div>
         <button type="button" role={phone ? undefined : "menuitem"} disabled={!online || busy} onClick={() => toggle(selected)}>{t(selected.enabled ? "commodore.routines.turnOff" : "commodore.routines.turnOn")}</button>
         <div className="commodore-routines-separator" role="separator" />
         <button type="button" role={phone ? undefined : "menuitem"} className={`is-danger${armed ? " is-armed" : ""}`} disabled={!online || busy} onClick={() => {
