@@ -104,14 +104,23 @@
 .conversation-dock :is(button, a):focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 /* 도움말 항목은 옆으로 펼치는 서브메뉴다. 판이 서 있는 동안 항목은 겨눔 워시를 입은 채 남아 어느 줄의 판인지 말한다. */
 .conversation-dock-menu > :is(.command-band-system-anchor) > button[aria-expanded="true"] { background: var(--wash-hover); }
-/* 업데이트 말풍선은 도움말 목록이 닫혀 있는 동안 그 항목에 붙는다. 독은 화면 아래라 아래로 열면 창 밖으로 나간다.
-   도움말 목록 자체는 옆 서브메뉴라 여기 넣지 않는다. 환경 진단 팝오버는 독 메뉴에 없다 — 브랜드는 사이드바 위다. */
-.conversation-dock-menu .command-band-update-bubble {
+/* 새 버전 말풍선은 앱 메뉴 버튼 위에 서서 꼬리로 그 버튼을 가리킨다. 독은 화면 아래라 위로 연다. */
+.conversation-dock-host > .command-band-update-bubble {
   top: auto;
   right: auto;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 10px);
   left: 0;
-  max-width: calc(100vw - 48px);
-  max-height: min(440px, 55vh);
-  overflow-y: auto;
+  width: 252px;
+  min-width: 0;
+  max-width: calc(100vw - 32px);
+}
+.conversation-dock-host > .command-band-update-bubble::before {
+  top: auto;
+  right: auto;
+  bottom: -6px;
+  left: 17px;
+  border-top: 0;
+  border-right: 1px solid var(--popover-rim);
+  border-bottom: 1px solid var(--popover-rim);
+  transform: rotate(45deg);
 }

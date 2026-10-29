@@ -8,6 +8,7 @@ import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { ConsoleHelpMenu, useSideSubmenuGroup, useStandingAway } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
+import { ConsoleUpdateNotice } from "../../../../core/client/src/chrome/components/update-notice-bubble.js";
 import { ViewModeToggle } from "../../../../core/client/src/chrome/components/view-mode-toggle.js";
 import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
@@ -95,6 +96,8 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
           <ConsoleHelpMenu menuItem sideSubmenuGroup={sideSubmenus} />
           <div className="conversation-dock-settings" onClick={() => setOpen(false)}><SettingsButton menuItem /></div>
         </div>
+        {/* 새 버전 말풍선은 메뉴 밖에서 이 버튼을 가리킨다. 메뉴 안에 두면 닫힌 메뉴와 함께 숨는다. */}
+        <ConsoleUpdateNotice suppressed={open} onEscape={() => triggerRef.current?.focus({ preventScroll: true })} />
       </div>
       <span className="conversation-dock-popover-anchor" ref={popoverAnchorRef} aria-hidden="true" />
       <span className="conversation-dock-brand" aria-label={state.channel === "local" ? "Fleet·DEV" : "Fleet"}>
