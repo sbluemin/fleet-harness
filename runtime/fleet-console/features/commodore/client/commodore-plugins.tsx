@@ -458,15 +458,27 @@ function MarketplaceAdd({ t }: { readonly t: T }) {
 const AUTH_POLL_MS = 2_000;
 type ServerAuth = PluginServerAuthView;
 
-/** 이 사령관이 고른 플러그인의 인증 상태. 브라우저에서 진행 중인 서버가 있는 동안 몇 초마다 다시 읽는다. */
+/**
+ * 이 사령관이 고른 플러그인의 인증 상태. 브라우저에서 진행 중인 서버가 있는 동안 몇 초마다 다시 읽는다. 상태 조회와 동작 응답은
+ * 보낸 순서대로 번호를 받고, 더 늦게 보낸 요청의 응답이 이미 왔으면 먼저 보낸 요청의 응답은 버린다 — 키를 저장하기 전에
+ * 떠난 조회가 저장 뒤에 도착해 옛 결과로 덮지 않게.
+ */
 function usePluginAuth(commodoreId: string, installedKey: string) {
   const [view, setView] = useState<CommodorePluginAuthView | null>(null);
   const [round, setRound] = useState(0);
+  const sent = useRef(0);
+  const applied = useRef(0);
+  /** 요청을 보내기 직전에 부른다. 돌려준 함수로 그 응답을 반영한다. */
+  const track = () => {
+    const seq = ++sent.current;
+    return (next: CommodorePluginAuthView) => { if (seq < applied.current) return; applied.current = seq; setView(next); };
+  };
   useEffect(() => {
     if (!commodoreId || !installedKey) { setView(null); return; }
     let live = true;
+    const apply = track();
     void postCommodorePlugins<CommodorePluginAuthView>("/commodore/plugins/auth/status", { commodoreId })
-      .then((next) => { if (live) setView(next); }, () => undefined);
+      .then((next) => { if (live) apply(next); }, () => undefined);
     return () => { live = false; };
   }, [commodoreId, installedKey, round]);
   const pending = view?.plugins.some((plugin) => plugin.servers.some((server) => server.state === "pending")) ?? false;
@@ -475,7 +487,7 @@ function usePluginAuth(commodoreId: string, installedKey: string) {
     const timer = window.setTimeout(() => setRound((n) => n + 1), AUTH_POLL_MS);
     return () => window.clearTimeout(timer);
   }, [pending, view]);
-  return { view, setView };
+  return { view, track };
 }
 
 /** 행 메타 줄의 상태 한 마디 — 진행 중 > 실패 > 인증 필요(서버 수) > 키 필요. 연결된 행은 아무것도 붙지 않는다. */
@@ -568,26 +580,30 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   };
   const remove = (pluginId: string) => run(pluginId, () => setCommodorePlugin(commodoreId, pluginId, false));
   const authAction = (pluginId: string, server: string, action: "cancel" | "clear") => run(pluginId, async () => {
+    const apply = auth.track();
     const { view: next } = await postCommodorePlugins<{ readonly view: CommodorePluginAuthView }>("/commodore/plugins/auth/action", { commodoreId, pluginId, server, action });
-    auth.setView(next);
+    apply(next);
   });
   const startAuth = (pluginId: string, server: string) => {
     if (busy) return;
     const open = prepareExternalWindow();
     setBusy(pluginId); setFailure(null);
+    const apply = auth.track();
     void postCommodorePlugins<{ readonly authUrl?: string; readonly view: CommodorePluginAuthView }>("/commodore/plugins/auth/action", { commodoreId, pluginId, server, action: "start" })
-      .then(({ authUrl, view: next }) => { auth.setView(next); open(authUrl ?? null); }, (error) => { open(null); setFailure(errorWord(t, codeOf(error))); })
+      .then(({ authUrl, view: next }) => { apply(next); open(authUrl ?? null); }, (error) => { open(null); setFailure(errorWord(t, codeOf(error))); })
       .finally(() => setBusy(null));
   };
   const setKeys = (pluginId: string, values: readonly (readonly [string, string | null])[]) => run(pluginId, async () => {
-    let next: CommodorePluginAuthView | null = null;
-    for (const [name, value] of values) ({ view: next } = await postCommodorePlugins<{ readonly view: CommodorePluginAuthView }>("/commodore/plugins/key", { commodoreId, pluginId, name, value }));
-    if (next) auth.setView(next);
+    for (const [name, value] of values) {
+      const apply = auth.track();
+      apply((await postCommodorePlugins<{ readonly view: CommodorePluginAuthView }>("/commodore/plugins/key", { commodoreId, pluginId, name, value })).view);
+    }
     setForm(null);
   });
   const submitCallback = (pluginId: string, server: string, callbackUrl: string) => run(pluginId, async () => {
+    const apply = auth.track();
     const { view: next } = await postCommodorePlugins<{ readonly view: CommodorePluginAuthView }>("/commodore/plugins/auth/callback", { commodoreId, pluginId, server, callbackUrl });
-    auth.setView(next);
+    apply(next);
     setForm(null);
   });
   /** 상태별 항목. 서버가 여럿이면 서버 이름을 붙인다. 원격 기기에서 진행 중이면 돌아온 주소를 옮겨 붙일 수 있다. */
