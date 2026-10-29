@@ -128,7 +128,7 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$
 - When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, which also clears that key on a reused slot, and install diagnostics before the first navigation so its appearance and race stay observable.
 - Confirm the first screenshot shows no unseeded onboarding layer before acting.
 
-The same run can lay down two common fixtures, each opt-in and read back before the script reports success:
+The same run can lay down a common fixture, opt-in and read back before the script reports success:
 
 - `--deputy <tori|bori|dori>` (repeatable) turns that scuttlebutt deputy on and marks its introduction as shown through `PUT /api/v1/settings/scuttlebutt`, so the deputy appears without the intro bubble. The script takes the deputy ids from the Scuttlebutt settings store. Deputy conversations are not seeded: Scuttlebutt keeps no conversation history, so a scenario that needs one needs a live gateway turn.
 

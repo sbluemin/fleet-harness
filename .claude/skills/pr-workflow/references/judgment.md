@@ -27,7 +27,7 @@ Before the first review-fix, freeze one Product Context Record for the entire PR
 - Explicit exclusions.
 - Intended trade-offs.
 - Supported behavior that must not regress or narrow.
-- Cited issue, PRD, Fleet Wiki, and decision evidence when available.
+- Cited issue, PRD, and decision evidence when available.
 - `REVIEW_BASE_HEAD`: the pushed PR head SHA before any review-fix.
 
 If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_BASE_HEAD` cannot be reconstructed from the PR history and cited evidence, stop and ask the user before applying more feedback or merging.
