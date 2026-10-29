@@ -12,6 +12,7 @@ import { composerAttachmentNoticeText, composerT } from "../../execution/client/
 import { createComposerAttachments } from "../../execution/client/composer-primitives/attachment-store.js";
 import { isComposerAttachmentCandidate } from "../../execution/client/composer-primitives/attachments.js";
 import { useComposerAttachmentSnapshot } from "../../execution/client/composer-primitives/attachment-input.js";
+import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
 import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow } from "../../settings/client/preferences-context.js";
@@ -349,7 +350,7 @@ export function CommodoreSessionSettings({ commodoreId, phone = false }: { reado
           ))}
         </div>
         {controller.draft.mode !== "on" ? (
-          <textarea className="commodore-prompt-body" value={controller.draft.body} aria-label={names[controller.draft.mode]} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} />
+          <SyncedTextarea className="commodore-prompt-body" value={controller.draft.body} aria-label={names[controller.draft.mode]} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} />
         ) : null}
       </div>
       <TheaterSubagentsSection theaterId={commodoreId} mobile={phone} />
@@ -996,7 +997,7 @@ export function CommodoreDirective({ t, theaterId, directive, active, onOpenSyst
   return (
     <div className="objectives-commodore-section">
       <label className="objectives-commodore-section-title" htmlFor="objectives-commodore-directive">{t("commodore.directive.label")}</label>
-      <textarea
+      <SyncedTextarea
         ref={fieldRef}
         id="objectives-commodore-directive"
         className="objectives-commodore-input is-tall"

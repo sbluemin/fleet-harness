@@ -49,6 +49,7 @@ import {
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
+import { SyncedTextarea } from "../../composer-primitives/input.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
 import { LiveSpeakerMark, SpeakerMark } from "./group/speaker-mark.js";
@@ -2456,7 +2457,7 @@ function AskQuestion({
           </button>
         </div>
         {own ? (
-          <textarea
+          <SyncedTextarea
             className="agent-chat-ask-input agent-chat-ask-own"
             value={free}
             disabled={disabled}
