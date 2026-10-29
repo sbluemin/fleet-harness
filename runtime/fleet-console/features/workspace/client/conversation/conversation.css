@@ -35,6 +35,13 @@
   --quiet-switch-knob: var(--mongle-face);
 }
 
+/* 추가 행의 +와 안내 문구는 잉크용 보정색 대신 아바타 몸색 그대로 선다. */
+.workspace-avatar-panel .objectives-row-ic.objectives-plus { color: var(--conversation-accent-body); }
+.workspace-avatar-panel :is(.objectives-mission-add, .objectives-commodore-intel-add, .group-members-add, .commodore-theaters-add) {
+  --brass-ink: var(--conversation-accent-body);
+}
+.workspace-avatar-panel :is(.objectives-mission-add, .objectives-commodore-intel-add) :is(input, textarea)::placeholder { opacity: 1; }
+
 .console-body.is-conversation {
   position: relative;
   overflow: hidden;

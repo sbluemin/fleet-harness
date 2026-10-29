@@ -94,7 +94,7 @@
   overflow-wrap: anywhere;
 }
 .group-chat-bubble.is-human {
-  /* Doctrine: 오른쪽 사람 말·답한 결정은 아바타 색조를 짙게 낮춘 면과 밝은 글자를 짝으로 쓴다. 상태 신호와 왼쪽 발화는 그대로 둔다. */
+  /* Doctrine: 오른쪽 사람 말·답한 결정은 아바타 몸색을 주로 남긴 면과 밝은 글자를 쓴다. 상태 신호와 왼쪽 발화는 그대로 둔다. */
   background: var(--conversation-bubble-fill, var(--ink-veil));
   color: var(--conversation-human-ink, var(--text-primary));
   border: 1px solid transparent;
