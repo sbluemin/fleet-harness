@@ -1,4 +1,3 @@
-import type { ConsoleUseMcpHost } from "../../console-use/shared/tools.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
@@ -25,12 +24,8 @@ import { handleRepositoryTree } from "./tree.js";
 import { handleRepositoryBlob } from "./blob.js";
 import { handleRepositoryWorkstate } from "./workstate.js";
 import { handleRepositoryWorktrees } from "./worktrees.js";
-import { createRepositoryConsoleTools } from "./console-tools.js";
 
-export interface RepositoryFeatureDeps { readonly paths: WorkspacePaths; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly processes?: OwnedProcessPort;
-
-  readonly consoleUse: ConsoleUseMcpHost;
-}
+export interface RepositoryFeatureDeps { readonly paths: WorkspacePaths; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly processes?: OwnedProcessPort }
 export interface RepositoryRouteContext { readonly host: RepositoryFeatureDeps }
 export function createRepositoryFeature(deps: RepositoryFeatureDeps) {
   const ctx = { host: deps };
@@ -39,8 +34,6 @@ export function createRepositoryFeature(deps: RepositoryFeatureDeps) {
     const path = `/api/v1/repository/${name}`;
     routes.push({ path, handler, catalog: [{ ...catalog, path: path + catalog.path }] });
   };
-  // Console Use 에 저장소 읽기 도구를 싣는다 — 에이전트가 다른 Theater·worktree 의 상태·diff·로그를 보고 판단하도록.
-  const releaseConsoleTools = ctx.host.consoleUse.contribute?.(createRepositoryConsoleTools(ctx));
   addRoute("repos", async ({ req, res }) => {
     await handleRepositoryRepos(req, res, ctx);
     return true;
@@ -130,5 +123,5 @@ export function createRepositoryFeature(deps: RepositoryFeatureDeps) {
     await handleRepositoryPull(req, res, ctx);
     return true;
   }, { method: "POST", path: "", summary: "Fast-forward the current branch from its upstream.", category: "Repository", gate: "origin-write", transport: "http" });
-  return { routes, dispose: () => releaseConsoleTools?.() };
+  return { routes, dispose: () => {} };
 }

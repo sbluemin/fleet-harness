@@ -55,17 +55,17 @@ ts: objectiveRecords[0]!.sessions![0]!.ts} : null), theaters: () => [{ id: "thea
     const hostWithCalls = createConsoleUseMcpHost({ ...deps, control, surface, language: () => "en", onCall: (event) => calls.push(event) });
     const repoSurface = { panelId: "repository", describe: (args: Record<string, unknown>) => ({ theaterId: String(args.theaterId), summary: "저장소 상태 봄", view: String(args.action) }) };
     const repository = (name: string) => defineConsoleTool({ name, description: "Repository panel.", actions: { status: { kind: "read", input: z.object({ theaterId: z.string() }) }, log: { kind: "read", input: z.object({ theaterId: z.string(), limit: z.number().int().max(100).optional() }) } } });
-    const releaseContribution = hostWithCalls.forPlugin("repository").contribute!([repository("console_repository").plugin({ surface: repoSurface, execute: async () => { contributedCalls += 1; return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] }; } })]);
+    const releaseContribution = hostWithCalls.forPlugin("repository").contribute!([repository("console_probe").plugin({ surface: repoSurface, execute: async () => { contributedCalls += 1; return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] }; } })]);
     // 자리(레일 패널)·action 선언이 없거나, 화면 이름 규칙을 어기거나, 기본 도구·이미 기여된 이름과 겹치는 기여는 등록 자체가 실패한다.
     const noop = async () => ({});
     expect(() => hostWithCalls.forPlugin("other").contribute!([{ name: "console_x", description: "x", inputSchema: { type: "object" }, execute: noop }])).toThrow(/declare its panel/);
     expect(() => hostWithCalls.forPlugin("other").contribute!([{ name: "console_x", description: "x", inputSchema: { type: "object", properties: { view: { type: "string" } } }, surface: repoSurface, execute: noop }])).toThrow(/declare its actions/);
-    expect(() => hostWithCalls.forPlugin("other").contribute!([{ ...repository("console_repository").plugin({ surface: repoSurface, execute: noop }), name: "console_repo_view_x" }])).toThrow(/Invalid Console Use tool name/);
+    expect(() => hostWithCalls.forPlugin("other").contribute!([{ ...repository("console_probe").plugin({ surface: repoSurface, execute: noop }), name: "console_repo_view_x" }])).toThrow(/Invalid Console Use tool name/);
     expect(() => hostWithCalls.forPlugin("other").contribute!([repository("console_launcher").plugin({ surface: repoSurface, execute: noop })])).toThrow(/already registered/);
     // 설명은 매 요청 모든 연결에 실린다 — 한도를 넘는 도구·필드 설명은 정의 단계에서 막는다.
     expect(() => defineConsoleTool({ name: "console_x", description: "x".repeat(201), kind: "read", input: z.object({}) })).toThrow(/description exceeds/);
     expect(() => defineConsoleTool({ name: "console_x", description: "x", kind: "read", input: z.object({ field: z.string().describe("x".repeat(121)) }) })).toThrow(/field description exceeds/);
-    expect(() => hostWithCalls.forPlugin("other").contribute!([repository("console_repository").plugin({ surface: repoSurface, execute: noop })])).toThrow(/already registered/);
+    expect(() => hostWithCalls.forPlugin("other").contribute!([repository("console_probe").plugin({ surface: repoSurface, execute: noop })])).toThrow(/already registered/);
     connection = hostWithCalls.connect({ allowControl: true, objectiveRecordCallers: true });
     const endpoint = (await connection.getEndpoint()).servers[0]!;
     const call = async (label: string, name: string, args: unknown) => {
@@ -91,20 +91,20 @@ ts: objectiveRecords[0]!.sessions![0]!.ts} : null), theaters: () => [{ id: "thea
     expect(await call("op-parent", "console_objective_session", { action: "sleep", objectiveId: "op-human" })).toMatchObject({ action: "sleep", lifecycle: "dormant" });
     expect(slept).toEqual(["op-human"]);
     // 플러그인이 실은 도구는 같은 게이트를 지난다: 허용된 호출자는 통과, 토글이 없는 호출자는 거부.
-    expect(await call("op-parent", "console_repository", { action: "status", theaterId: "theater-a" })).toMatchObject({ ok: true });
-    expect((await call("op-human", "console_repository", { action: "status", theaterId: "theater-a" })).error).toBe("console_use_not_authorized");
+    expect(await call("op-parent", "console_probe", { action: "status", theaterId: "theater-a" })).toMatchObject({ ok: true });
+    expect((await call("op-human", "console_probe", { action: "status", theaterId: "theater-a" })).error).toBe("console_use_not_authorized");
     // 기여 도구도 action 별 strict — 다른 action 의 필드는 플러그인에 닿기 전에 거절된다.
-    expect((await call("op-parent", "console_repository", { action: "status", theaterId: "theater-a", limit: 5 })).error).toBe("invalid_arguments");
+    expect((await call("op-parent", "console_probe", { action: "status", theaterId: "theater-a", limit: 5 })).error).toBe("invalid_arguments");
     expect(contributedCalls).toBe(1);
     // 호출은 제스처 사건을 남긴다 — 답한 것(press, 대상 Objective)과 기여 도구(gaze, 레일 패널). 내용은 싣지 않는다.
     expect(calls).toEqual(expect.arrayContaining([
       expect.objectContaining({ tool: "console_objective_session", gesture: "press", caller: me, target: { kind: "objectiveRecord", objectiveId: "op-child" } }),
-      expect.objectContaining({ tool: "console_repository", gesture: "gaze", caller: me, target: { kind: "panel", panelId: "repository", theaterId: "theater-a", view: "status" } }),
+      expect.objectContaining({ tool: "console_probe", gesture: "gaze", caller: me, target: { kind: "panel", panelId: "repository", theaterId: "theater-a", view: "status" } }),
     ]));
     expect(JSON.stringify(calls)).not.toContain("internal links only");
     // 등록 해제(플러그인 롤백)된 기여는 이미 실린 레지스트리에서도 답하지 않는다.
     releaseContribution();
-    expect((await call("op-parent", "console_repository", { action: "status", theaterId: "theater-a" })).error).toBe("plugin_tool_unavailable");
+    expect((await call("op-parent", "console_probe", { action: "status", theaterId: "theater-a" })).error).toBe("plugin_tool_unavailable");
     expect(contributedCalls).toBe(1);
     // 구성원은 스캔의 기본 목록에서 빠지고(부관·Admiral 이 평범한 행으로 보지 않는다) nested 로 물을 때만 부모와 함께 선다.
     expect((await call("op-parent", "console_sidebar", { action: "list" })).objectiveRecords.map((row: { id: string }) => row.id)).toEqual(["op-child", "op-human", "op-parent"]);
