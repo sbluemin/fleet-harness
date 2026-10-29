@@ -614,7 +614,7 @@ function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Work
   const t = useT();
   const { binding, toolContext, language } = props;
   const title = binding ? resolveLocalizedText(binding.entry.title, language) : props.tile.entryId;
-  const needsTheater = binding !== null && binding.entry.scope !== "fleet" && toolContext.theaterId === null;
+  const needsTheater = binding !== null && binding.entry.scope !== "fleet" && binding.entry.opensWithoutTheater !== true && toolContext.theaterId === null;
   const body = binding === null || binding.panes.length === 0
     ? <div className="workbench-tile-notice">{t("conversation.workbench.missingTool")}</div>
     : needsTheater
