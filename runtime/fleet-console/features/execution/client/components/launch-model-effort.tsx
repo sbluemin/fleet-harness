@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { useViewportFit, MenuCheckGlyph } from "@fleet-console/ui/react";
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 
@@ -51,7 +51,6 @@ export function LaunchModelEffort({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [open, setOpen] = useState(false);
-  useViewportFit(menuRef, open);
   const seenDismiss = useRef(dismissSignal);
 
   const rows = groups.flatMap((group) => group.rows);

@@ -297,7 +297,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-batch-menu-glyph { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; }
 .objectives-batch-menu-glyph.is-same { color: var(--brass-ink); }
 .objectives-batch-menu-glyph.is-route { color: var(--aurora); }
-.objectives-batch-menu-title { display: block; font-weight: var(--weight-medium); }
+.objectives-batch-menu-title { display: block; font-weight: var(--weight-regular); }
 .objectives-batch-menu-hint { display: block; font-size: var(--t-sm); color: var(--text-secondary); white-space: normal; line-height: 1.4; }
 /* 일괄 설정 결과 말풍선 — 글리프에 은은하게 붙어 잠시 나타났다 사라진다. */
 .objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 0; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in var(--duration-fast) var(--ease-spring); }

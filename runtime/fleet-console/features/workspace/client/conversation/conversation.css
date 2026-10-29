@@ -1491,6 +1491,8 @@
   font-weight: var(--weight-bold);
   outline: none;
 }
+/* 칸 자체가 포커스 면이므로 전역 포커스 면을 한 겹 더 얹지 않는다. */
+.side-bar-theater-alias-input:focus-visible { box-shadow: none; }
 
 /* 활성 Theater 구역의 2px brass 스파인(components.css)도 이 배치에서는 걷는다 — 사이드바가 창 가장자리에 붙으므로
    스파인이 창 왼쪽 끝의 세로 띠로 읽힌다. 활성은 헤더의 이름 명도와 이니셜 배지가 말한다. */

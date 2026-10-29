@@ -3385,7 +3385,8 @@
    fixed 포털에서 right:0을 상속하면 뷰포트 우측 끝까지 늘어난다(Codex P2).
    .theater-menu가 파일 후반에 선언되므로 복합 셀렉터로 특이도를 올려 이긴다. */
 .theater-menu.side-bar-theater-menu {
-  min-width: 180px;
+  /* 커서 자리에 서는 문맥 메뉴도 글자 폭으로 줄지 않고 팝오버 한 벌의 폭을 진다. */
+  min-width: var(--popover-width);
   max-width: min(300px, calc(100vw - 16px));
   right: auto;
 }
@@ -3509,6 +3510,9 @@
   font-weight: var(--weight-bold);
   outline: none;
 }
+
+/* 칸 자체가 포커스 면이므로 전역 포커스 면을 한 겹 더 얹지 않는다. */
+.side-bar-chip-rename-input:focus-visible { box-shadow: none; }
 
 
 /* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
@@ -9127,9 +9131,9 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   place-items: center;
   color: var(--text-secondary);
 }
-.fc-composer-menu__glyph svg { width: 16px; height: 16px; }
-.fc-composer-menu__glyph.is-text { font-size: var(--t-sm); font-weight: var(--weight-bold); }
-.fc-composer-menu__name { flex: none; font-weight: var(--weight-medium); }
+.fc-composer-menu__glyph svg { width: var(--popover-icon); height: var(--popover-icon); }
+.fc-composer-menu__glyph.is-text { font-size: var(--t-base); font-weight: var(--weight-regular); }
+.fc-composer-menu__name { flex: none; font-weight: var(--weight-regular); }
 .fc-composer-menu__sub { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); color: var(--text-tertiary); }
 .fc-composer-menu__key { margin-left: auto; padding: 0 5px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); line-height: 16px; }
 .fc-composer-menu__sep { height: 1px; margin: var(--popover-divider-space); background: var(--popover-divider); }
