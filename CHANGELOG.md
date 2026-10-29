@@ -5,6 +5,36 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.272.0] - 2026-10-29
+
+### fleet-console
+
+#### Added
+- Rename a Commodore right from the head of the conversation's right panel, the same way you rename an Objective.
+- Sign in to a Commodore plugin's MCP server, or enter the key it asks for, from the plugin list in the Commodore's settings; the Commodore and its objectives share the sign-in.
+- See installed plugin versions and update them from their row menu, reviewing any new commands before trusting them.
+
+#### Changed
+- Commodore Directive and Memory tabs are now one Info tab: the Commodore's description, intel, and memory in one place. The directive becomes the Commodore's description, and existing directive text carries over.
+- Memory groups start collapsed, and Memory search highlights the matching words.
+- '@' mention lists now show each avatar, name and kind on one line in a compact popup, and mentions inside messages and the composer appear as a quiet avatar and name instead of a highlighted chip.
+- Text actions in chat, including the working line, now highlight on hover the same way speaker names do instead of being underlined.
+- Turn a marketplace on or off by clicking its tile, which lights up while it is on, and plugin screens drop their extra explanatory text.
+- Plugin actions, including removal, now open from the plugin row's menu (right-click, or long-press on a phone).
+- Click or tap Commodore plugin and routine rows to open their details and actions in one menu.
+- Menus and popovers, including context menus and the composer's + menu, now share one quieter, more compact look, and menus that used to open past the window edge stay on screen.
+- The gold accent is gone: keyboard focus and inputs such as rename fields show a soft highlight instead of a gold outline.
+- The app menu button at the bottom of the sidebar is smaller, and the Fleet emblem beside it is removed.
+
+#### Fixed
+- Hovering a plugin card in Add plugins now highlights the whole card instead of only its upper part.
+- Start Console much faster when you have many objectives or PR results, and stop restarts from moving finished sessions to the top of recent activity.
+- A decision request waiting for your answer is no longer discarded when the Commander asks something else; the Commander is told to withdraw it first.
+- Show the update notice above the app menu button without opening the menu, instead of popping up over the open menu.
+
+#### Removed
+- Removed the Console Use tools that let agents read a Theater's Repository and File Explorer panels; agents read files and Git state with their own tools.
+
 ## [1.271.0] - 2026-10-29
 
 ### fleet-console
