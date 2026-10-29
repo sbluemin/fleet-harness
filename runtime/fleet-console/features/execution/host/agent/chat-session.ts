@@ -2530,6 +2530,8 @@ class AgentChatSession {
               ...chatChildEnv(process.env),
               ...(this.seed.additionalDirectories === undefined ? {} : { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" }),
               ...this.workspaceHook?.env,
+              // 사령관 플러그인 MCP 의 `${VAR}` 키 — 자식이 플러그인 MCP 를 읽으며 이 환경으로 펼친다.
+              ...claudeSession.pluginEnv,
               // 서브에이전트 호출 hook만 이 세션의 Objective을 안다. 턴·주의 hook의 식별자와 이름을 나눠
               // 그 hook들이 채팅 자식에서 남의 축이 아니라 아예 침묵하는 지금 동작을 그대로 둔다.
               FLEET_CONSOLE_AGENT_CALL_SESSION_ID: this.objectiveId,

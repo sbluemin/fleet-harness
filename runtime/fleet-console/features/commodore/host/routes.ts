@@ -20,7 +20,7 @@ import { z } from "zod";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 
 import { CommodoreStoreError } from "./errors.js";
-import { commodorePluginSetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema } from "../shared/contracts/plugins.js";
+import { commodorePluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
@@ -47,6 +47,10 @@ import type { CommodoreStateView } from "../shared/contracts/types.js";
 export interface CommodoreRouteHooks {
   /** 마켓플레이스 등록부와 카탈로그. 없으면 플러그인 라우트는 commodore_unavailable 로 거절한다. */
   readonly plugins?: import("./plugins.js").CommodorePlugins;
+  /** 플러그인 MCP 인증. 없으면 인증 라우트는 commodore_unavailable 로 거절한다. */
+  readonly pluginAuth?: import("./plugin-auth.js").CommodorePluginAuth;
+  /** 키·토큰이 바뀐 플러그인 — 그 플러그인을 고른 사령관의 다음 턴이 새 세션으로 이어진다. */
+  readonly pluginsChanged?: (pluginIds: readonly string[]) => void;
   readonly deletion?: ReturnType<typeof import("./deletion.js").createCommodoreDeletion>;
   readonly knowledgeFolder?: ReturnType<typeof import("./knowledge-folder.js").createKnowledgeFolderAction>;
   readonly assertWritable?: (commodoreId: string) => void;
@@ -112,6 +116,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "commodore_failed" });
   };
   const plugins = () => { if (!hooks.plugins) throw new CommodoreStoreError("commodore_unavailable"); return hooks.plugins; };
+  const pluginAuth = () => { if (!hooks.pluginAuth) throw new CommodoreStoreError("commodore_unavailable"); return hooks.pluginAuth; };
   const read = (commodoreId: string): CommodoreState => {
     const state = store.read(commodoreId);
     if (!state) throw new CommodoreStoreError("theater_unavailable");
@@ -210,6 +215,20 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       }
       return view(commodoreId, store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId)));
     }) },
+    { name: "commodore/plugins/auth/status", method: "POST", summary: "Read whether this Commodore's plugin MCP servers need a sign-in or a key; checks through a Claude Code child that sends no model turn.", handler: json(pluginAuthStatusSchema, ({ commodoreId, refresh }) => pluginAuth().status(commodoreId, read(commodoreId).plugins ?? [], refresh === true), false) },
+    { name: "commodore/plugins/auth/action", method: "POST", summary: "Start, cancel or clear Claude Code's MCP OAuth sign-in for one plugin server; start returns the address to open in a browser.", handler: json(pluginAuthActionSchema, async ({ commodoreId, pluginId, server, action }) => {
+      const selected = read(commodoreId).plugins ?? [];
+      if (action === "start") return await pluginAuth().start(commodoreId, selected, pluginId, server);
+      return { view: action === "cancel" ? await pluginAuth().cancel(commodoreId, selected, pluginId, server) : await pluginAuth().clear(commodoreId, selected, pluginId, server) };
+    }, false) },
+    { name: "commodore/plugins/auth/callback", method: "POST", summary: "Hand an OAuth callback address copied from another device's browser to the sign-in waiting on this computer.", handler: json(pluginAuthCallbackSchema, async ({ commodoreId, pluginId, server, callbackUrl }) => ({ view: await pluginAuth().callback(commodoreId, read(commodoreId).plugins ?? [], pluginId, server, callbackUrl) }), false) },
+    { name: "commodore/plugins/key", method: "POST", summary: "Store or clear a key a plugin's MCP declaration asks for with ${VAR}; the value is never returned.", handler: json(pluginKeySetSchema, async ({ commodoreId, pluginId, name, value }) => {
+      if (!(read(commodoreId).plugins ?? []).includes(pluginId)) throw new CommodoreStoreError("plugin_not_found");
+      plugins().setKey(pluginId, name, value);
+      pluginAuth().invalidate();
+      hooks.pluginsChanged?.([pluginId]);
+      return { view: await pluginAuth().status(commodoreId, read(commodoreId).plugins ?? [], true) };
+    }, false) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image declared in its plugin.json; only image files inside the plugin folder are served.", handler: pluginIcon },
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: routines, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },

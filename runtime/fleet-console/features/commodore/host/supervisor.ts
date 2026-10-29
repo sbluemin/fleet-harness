@@ -65,6 +65,11 @@ interface RunCoordinates extends CommodoreSessionCoordinates {
 export interface CommodoreSupervisor {
   /** 실험 기능과 보드가 준비되면 사람 메시지를 받는다. */
   acceptsMessage(commodoreId: string): boolean;
+  /**
+   * 다음 턴을 새 세션으로 연다 — 고른 플러그인 목록은 그대로지만 그 MCP 의 키나 토큰이 바뀌어, 살아 있는 자식의 환경·연결이
+   * 낡았다. 실행기가 없으면 다음 실행기가 어차피 새 세션으로 연다.
+   */
+  replaceSessionNext(commodoreId: string): void;
   /** 지금 상태 — 감독자가 모르는 Theater(돌지 않는)는 null. */
   status(commodoreId: string): Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying`. */
@@ -777,6 +782,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   if (deps.subscribeExperiments) cleanups.push(deps.subscribeExperiments(() => sync("started")));
 
   return {
+    replaceSessionNext(commodoreId) {
+      const runner = runners.get(commodoreId);
+      if (runner) runner.rotateNext ??= "replaced";
+    },
     acceptsMessage: (commodoreId) => !disposed && !clears.has(commodoreId) && !stops.has(commodoreId) && canRun(commodoreId),
     status(commodoreId) {
       const runner = runners.get(commodoreId);

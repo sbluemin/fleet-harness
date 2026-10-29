@@ -56,6 +56,9 @@ export type {
   ClaudeExecutionTurn,
 } from "./execution-loop.js";
 export { readClaudeSessionTitle } from "./session-info.js";
+export { openClaudeMcpControl, type OpenClaudeMcpControlOptions } from "./mcp-control.js";
+export { ClaudeMcpControlUnsupportedError } from "./contracts.js";
+export type { ClaudeMcpAuthStart, ClaudeMcpControl, ClaudeMcpServerState } from "./contracts.js";
 export { readVendorSupportedModels as readClaudeSupportedModels } from "./vendor-sdk.js";
 
 export type { ClaudeModelPolicy, ClaudeModelResolution, ClaudeSupportedModel, ReadClaudeSupportedModelsOptions } from "./contracts.js";

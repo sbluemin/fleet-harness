@@ -66,6 +66,8 @@ interface AgentRouteDeps {
   readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
   /** 사령관이 고른 플러그인의 로컬 디렉터리 — 그 사령관 목표의 세션이 새로 열릴 때 싣는다. */
   readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
+  /** 그 플러그인 MCP 선언의 `${VAR}`에 채울 키 — 같은 세션의 자식 환경에 얹는다. */
+  readonly commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>;
   readonly isClaudePathTrusted?: (cwd: string) => Promise<boolean>;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
@@ -275,6 +277,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     infraServices: deps,
     ...(deps.commodoreSystemPrompts ? { commodoreSystemPrompts: deps.commodoreSystemPrompts } : {}),
     ...(deps.commodorePluginDirs ? { commodorePluginDirs: deps.commodorePluginDirs } : {}),
+    ...(deps.commodorePluginEnv ? { commodorePluginEnv: deps.commodorePluginEnv } : {}),
     readAgentCliPaths,
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
@@ -2323,6 +2326,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
           ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
           ...(node.commodoreId && deps.commodorePluginDirs ? { pluginDirs: deps.commodorePluginDirs(node.commodoreId) } : {}),
+          ...(node.commodoreId && deps.commodorePluginEnv ? { pluginEnv: deps.commodorePluginEnv(node.commodoreId) } : {}),
           origin: sessionOrigin.kind === "resume"
             ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
             : { kind: "new", preferredSessionId: node.id },

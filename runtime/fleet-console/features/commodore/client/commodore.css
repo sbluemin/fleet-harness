@@ -747,8 +747,18 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-plugins-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .objectives-cm-gr-tx .commodore-plugins-meta { margin-top: 4px; }
 .commodore-plugins-list .commodore-plugins-meta { grid-column: 2 / -1; }
-.commodore-plugins-list > li > .commodore-marketplaces-confirm { grid-column: 1 / -1; margin-top: 0; }
-.commodore-plugins-phone-row { align-items: flex-start; }
+/* 행 자체가 메뉴의 손잡이다(우클릭·ContextMenu 키·Shift+F10·길게 누르기). 메뉴가 가리키는 행은 brass 빛으로 위치를 말한다. */
+.commodore-plugins-list > li { grid-template-columns: 20px minmax(0, 1fr); margin: 0 -6px; padding: 3px 6px; border-radius: var(--radius-xs); cursor: default; user-select: none; -webkit-touch-callout: none; }
+.commodore-plugins-list > li:focus-visible, .commodore-plugins-phone-row:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.commodore-plugins-list > li.is-target { background: var(--brass-glow); }
+.commodore-plugins-phone-row { align-items: flex-start; user-select: none; -webkit-touch-callout: none; }
+.commodore-plugins-phone-row.is-target { background: var(--brass-glow); }
+.commodore-plugins-inline { grid-column: 2 / -1; display: grid; gap: 6px; padding-top: 4px; user-select: text; }
+.commodore-plugins-inline.is-phone { padding: 10px 16px 12px; border-radius: 4px; background: var(--m-surface); }
+.commodore-plugins-inline > .commodore-plugins-field { width: 100%; }
+.commodore-plugins-inline-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.commodore-plugins-inline-hint { margin: 0; color: var(--text-tertiary); font-size: var(--t-2xs); }
+.commodore-plugins-text.is-go { color: var(--brass-ink); }
 .commodore-plugins-comp { padding: 0 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--text-secondary); font-size: var(--t-2xs); line-height: 1.6; white-space: nowrap; }
 .commodore-plugins-state { color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-plugins-state.is-syncing { color: var(--aurora-ink); }

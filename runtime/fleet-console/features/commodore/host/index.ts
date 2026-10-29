@@ -1,4 +1,8 @@
 import fs from "node:fs";
+import os from "node:os";
+import { openClaudeMcpControl } from "@fleet-console/agent-runtime/claude";
+import { createCommodorePluginAuth } from "./plugin-auth.js";
+import { stripConsoleInternalEnv } from "../../execution/host/terminal/launch-env.js";
 import { createKnowledgeFolderAction } from "./knowledge-folder.js";
 import type { FolderGrantStore } from "../../workspace/host/theaters/theater-domain.js";
 import { ClaudeTrustError, trustClaudeTheater } from "../../workspace/host/theaters/claude-trust.js";
@@ -98,6 +102,31 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     plugins: (ids) => plugins.resolve(ids),
     emit,
   });
+  /**
+   * 키·토큰이 바뀐 플러그인을 고른 사령관 — 고른 목록은 그대로라 저장소 사건이 없으므로 감독자에게 직접 알려 다음 턴을 새 세션
+   * (새 환경·새 MCP 연결)으로 연다. 목표 세션은 다음 실행부터 받는다.
+   */
+  const pluginsChanged = (pluginIds: readonly string[]) => {
+    for (const commodoreId of entities.ids()) {
+      if ((store.read(commodoreId)?.plugins ?? []).some((id) => pluginIds.includes(id))) supervisor.replaceSessionNext(commodoreId);
+    }
+  };
+  const pluginAuth = createCommodorePluginAuth({
+    servers: (ids) => plugins.authServers(ids),
+    env: (ids) => plugins.pluginEnv(ids),
+    changed: pluginsChanged,
+    control: {
+      // 모델 턴 없는 Claude 자식 — 세션들과 같은 기본 보안 저장소 항목에 토큰을 둔다. 홈은 그 자식만의 임시 폴더다.
+      async open(servers, env) {
+        const executablePath = await deps.agent.resolveExecutablePath();
+        const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), "fleet-plugin-auth-"));
+        try {
+          const control = openClaudeMcpControl({ executablePath, env: { ...stripConsoleInternalEnv(process.env), ...env }, configDir: path.join(home, "claude"), cwd: home, credentials: "shared", servers });
+          return { control, release: () => fs.promises.rm(home, { recursive: true, force: true }) };
+        } catch (error) { await fs.promises.rm(home, { recursive: true, force: true }); throw error; }
+      },
+    },
+  });
   const messageFromCommodore = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
   const host: CommodoreBoardHost = {
     registerBoard(adapter) {
@@ -133,7 +162,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     removed: (commodoreId, ids) => emit({ op: "removed", commodoreId, theaterIds: ids }),
   }) : undefined;
   const routes = createCommodoreRoutes(context, store, {
-    plugins, deletion, assertWritable: ownership.assertWritable,
+    plugins, pluginAuth, pluginsChanged, deletion, assertWritable: ownership.assertWritable,
     knowledgeFolder: createKnowledgeFolderAction({ root: knowledge.root, ...(deps.openKnowledgeDirectory ? { openDirectory: deps.openKnowledgeDirectory } : {}) }),
     theaterIds, summary, list: () => orderedIds().map(summary),
     setOrder: (requested) => {
@@ -194,10 +223,12 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     sync: () => { restored = true; supervisor.sync("restart"); },
     /** 이 사령관이 고른 플러그인의 로컬 경로 — 그 사령관 목표의 지휘관·구성원 세션이 연다(MCP 는 그 세션들이 플러그인에서 직접 읽는다). */
     pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(store.read(commodoreId)?.plugins ?? []).map((plugin) => plugin.path),
+    /** 그 플러그인 MCP 선언의 `${VAR}` 키 — 같은 목표 세션의 자식 환경에 얹는다(자식이 플러그인 MCP 를 읽으며 펼친다). */
+    pluginEnv: (commodoreId: string): Readonly<Record<string, string>> => plugins.pluginEnv(store.read(commodoreId)?.plugins ?? []),
     async dispose() {
       if (disposed) return;
       disposed = true;
-      try { await supervisor.dispose(); } finally { await agent.dispose(); releaseChannel(); }
+      try { await supervisor.dispose(); } finally { await pluginAuth.dispose().catch(() => undefined); await agent.dispose(); releaseChannel(); }
     },
   };
 }

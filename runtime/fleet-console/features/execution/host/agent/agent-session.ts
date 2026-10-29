@@ -46,6 +46,11 @@ export type WorkspaceBuiltin = (typeof WORKSPACE_BUILTINS)[number];
 export interface AgentWorkspace {
   readonly additionalDirectories: readonly string[];
   readonly mcpServers?: Readonly<Record<string, ClaudeGatewayExternalMcpServer>>;
+  /**
+   * `mcpServers` 값의 `${VAR}`에 채울 키 — 자식 환경에만 얹고 자식이 펼친다. 값이 argv(`--mcp-config`)에 실리지 않게
+   * 선언은 자리표시를 그대로 둔다. 실행 환경을 바꾸는 이름(PATH·CLAUDE_* 등)은 호출자가 걸러서 넘긴다.
+   */
+  readonly env?: Readonly<Record<string, string>>;
   /** 사람이 고른 로컬 플러그인 디렉터리. 세션을 여는 순간의 목록이고, 바뀌면 다음 세션부터 실린다. */
   readonly plugins?: readonly ClaudeGatewayLocalPlugin[];
 }
@@ -108,7 +113,8 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
     const servers: Record<string, ClaudeGatewayMcpServer> = {};
     const builtins: string[] = [...(options.tools?.builtins ?? [])];
     // 외부 서버는 이름 접두로 도구 전부를 허용한다 — 도구 목록은 서버가 정하고 dontAsk는 목록에 없는 도구를 거절한다.
-    const allowed: string[] = [...builtins, ...Object.keys(options.workspace?.mcpServers ?? {}).map((name) => `mcp__${name}`)];
+    // 도구 이름의 서버 몫은 자식이 정규화한 이름이다(`plugin:a:b` → `plugin_a_b`).
+    const allowed: string[] = [...builtins, ...Object.keys(options.workspace?.mcpServers ?? {}).map((name) => `mcp__${mcpToolPrefix(name)}`)];
     // 대화 자리 전체(홈·작업 디렉터리)를 가린다. 홈 경로가 먼저 가려지도록 긴 뿌리부터 지운다.
     const hidden = [scratch, cwd];
     const redactRoots = [...new Set(hidden.flatMap((root) => [root, root.replaceAll("\\", "/"), root.replaceAll("/", "\\")]))].sort((a, b) => b.length - a.length);
@@ -128,7 +134,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       options.onEvent?.(redact(framed) as typeof framed);
     };
     const createSdk = async () => {
-      const env = stripConsoleInternalEnv(process.env);
+      const env = { ...stripConsoleInternalEnv(process.env), ...options.workspace?.env };
       delete env.FLEET_CONSOLE_SESSION_ID;
       const executablePath = await deps.resolveExecutablePath?.();
       if (resources.resident && (typeof executablePath !== "string" || !executablePath.trim())) throw new Error("agent_cli_unavailable");
@@ -393,6 +399,11 @@ async function folderSkillPlugins(scratch: string, directories: readonly string[
   return plugins;
 }
 
+/** Claude Code 가 MCP 도구 이름에 쓰는 서버 몫 — 영숫자·`_`·`-` 밖의 글자는 `_`가 된다. */
+function mcpToolPrefix(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
 function validateOptions(options: InternalSessionOptions, policy: AgentSessionHostPolicy): void {
   if (!options || typeof options.model !== "string" || !options.model.trim() || typeof options.systemPrompt !== "string") throw new Error("agent_options_invalid");
   if (!["conversation", "oneshot"].includes(options.continuation) || !["result", "result-required"].includes(options.settlement)) throw new Error("agent_policy_invalid");
@@ -410,9 +421,11 @@ function validateOptions(options: InternalSessionOptions, policy: AgentSessionHo
   }
   if (options.tools?.browser && (typeof options.tools.browser.scopeId !== "string" || !options.tools.browser.scopeId.trim() || options.tools.browser.scopeId.length > 256)) throw new Error("agent_browser_scope_invalid");
   const groups = new Set<string>(AGENT_RESERVED_TOOL_GROUPS);
+  // 외부 서버 이름에는 `:`·`.`도 받는다 — 플러그인 MCP 는 Claude Code 가 쓰는 `plugin:<플러그인>:<서버>` 이름이어야 그
+  // 서버의 OAuth 토큰(이름과 설정이 열쇠)을 목표 세션과 함께 쓴다. 겹침은 자식이 도구 이름에 쓰는 정규화 이름으로 판정한다.
   for (const name of Object.keys(options.workspace?.mcpServers ?? {})) {
-    if (!/^[a-zA-Z0-9_-]+$/.test(name) || groups.has(name)) throw new Error("agent_tool_group_invalid");
-    groups.add(name);
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(name) || groups.has(mcpToolPrefix(name))) throw new Error("agent_tool_group_invalid");
+    groups.add(mcpToolPrefix(name));
   }
   for (const group of options.tools?.custom ?? []) {
     if (!/^[a-zA-Z0-9_-]+$/.test(group.name) || groups.has(group.name)) throw new Error("agent_tool_group_invalid");

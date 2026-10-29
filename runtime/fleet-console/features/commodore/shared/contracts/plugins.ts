@@ -203,3 +203,47 @@ export const commodorePluginSetSchema = z.object({
   installed: z.boolean(),
   trusted: z.boolean().optional(),
 }).strict();
+
+/* ── 플러그인 MCP 인증 ─────────────────────────────────────────────── */
+
+/**
+ * 플러그인 MCP 서버 하나의 인증 상태. 토큰·키 값·서버 설정은 싣지 않는다.
+ * - oauth: needs-auth(원격 서버가 로그인을 요구), pending(브라우저에서 진행 중), connected, failed, unknown(확인 못 함)
+ * - key: key-needed(`${VAR}` 값이 없다), key-set, failed(넣은 키를 서버가 받지 않는다)
+ */
+export type PluginServerAuthState = "needs-auth" | "pending" | "connected" | "failed" | "unknown" | "key-needed" | "key-set";
+/** 실패의 짧은 이유 — 화면이 로케일 한 마디로 옮긴다. */
+export type PluginAuthFailure = "registration" | "timeout" | "unreachable" | "unsupported" | "callback" | "key" | "error";
+
+export interface PluginServerAuthView {
+  /** 플러그인 선언의 서버 이름(`.mcp.json`의 키). */
+  readonly server: string;
+  readonly mode: "oauth" | "key";
+  readonly state: PluginServerAuthState;
+  readonly failure?: PluginAuthFailure;
+  /** key 서버가 받는 `${VAR}` 이름. 값은 싣지 않는다. */
+  readonly keys?: readonly string[];
+  /** key 서버이고 그중 하나라도 Console 에 넣은 값이 있다(지울 것이 있다). */
+  readonly saved?: true;
+  /** pending 일 때만 — 사람이 브라우저에서 다시 열 인증 주소. */
+  readonly authUrl?: string;
+  /** pending 이고 콜백을 Console 컴퓨터의 loopback 에서 기다린다 — 다른 기기의 브라우저로는 돌아오지 못한다. */
+  readonly local?: true;
+}
+
+export interface CommodorePluginAuthView {
+  /** 인증과 관련된 서버가 있는 플러그인만. */
+  readonly plugins: readonly { readonly pluginId: string; readonly servers: readonly PluginServerAuthView[] }[];
+  /** OAuth 상태를 실제로 확인했는가. false 면 Claude Code 를 띄우지 못해 모르는 채다. */
+  readonly checked: boolean;
+}
+
+const commodoreIdSchema = z.string().min(1).max(128);
+const pluginServerSchema = z.string().regex(segment);
+/** 플러그인 키 이름 — `${NAME}`의 NAME. */
+export const pluginKeyNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/);
+export const MAX_PLUGIN_KEY_LENGTH = 8_192;
+export const pluginAuthStatusSchema = z.object({ commodoreId: commodoreIdSchema, refresh: z.boolean().optional() }).strict();
+export const pluginAuthActionSchema = z.object({ commodoreId: commodoreIdSchema, pluginId: pluginIdSchema, server: pluginServerSchema, action: z.enum(["start", "cancel", "clear"]) }).strict();
+export const pluginAuthCallbackSchema = z.object({ commodoreId: commodoreIdSchema, pluginId: pluginIdSchema, server: pluginServerSchema, callbackUrl: z.string().min(1).max(4_096) }).strict();
+export const pluginKeySetSchema = z.object({ commodoreId: commodoreIdSchema, pluginId: pluginIdSchema, name: pluginKeyNameSchema, value: z.string().max(MAX_PLUGIN_KEY_LENGTH).nullable() }).strict();
