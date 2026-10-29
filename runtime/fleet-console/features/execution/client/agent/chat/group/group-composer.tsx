@@ -1,7 +1,7 @@
 import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, GroupBoardRunResult, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "../../../../shared/conversation/types.js";
 import { AttachImageIcon } from "../../../composer-primitives/icons.js";
 import { ComposerAttachmentTray, ComposerMenu, ComposerMenuHeading, ComposerMenuItem, ComposerMenuSeparator, ComposerNotice, ComposerPlusButton, ComposerSendButton } from "../../../composer-primitives/attachment-surface.js";
-import { ComposerDeck, ComposerDeckGroup, ComposerDeckRow, composerDeckKeyDown } from "../../../composer-primitives/deck.js";
+import { ComposerDeck, ComposerDeckGroup, ComposerMentionRow, composerDeckKeyDown } from "../../../composer-primitives/deck.js";
 import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "../../../composer-primitives/quote-tray.js";
 import { MentionChip } from "../../../composer-primitives/mention-chip.js";
 import { composerAttachmentNoticeText, composerT } from "../../../composer-primitives/messages.js";
@@ -506,15 +506,16 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
           ].filter((group) => group.rows.length > 0).map((group) => (
             <ComposerDeckGroup key={group.key} label={group.label}>
               {group.rows.map(({ candidate, at }) => (
-                <ComposerDeckRow
+                <ComposerMentionRow
                   key={candidate.kind === "member" ? speakerKey(candidate.speaker) : candidate.kind}
                   id={`${deckId}-${at}`}
                   active={at === index}
-                  lead={candidate.kind === "member" ? <SpeakerMark speaker={candidate.speaker} size="sm" />
-                    : candidate.kind === "all" ? <span className="cluster-member-glyph is-neutral group-chat-mark is-sm" aria-hidden="true">@</span>
-                      : <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="sm" />}
+                  lead={candidate.kind === "member" ? <SpeakerMark speaker={candidate.speaker} size="md" />
+                    : candidate.kind === "all" ? <span className="cluster-member-glyph is-neutral group-chat-mark" aria-hidden="true">@</span>
+                      : <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="md" />}
                   name={targetName(candidate)}
-                  value={candidate.kind === "member" ? t("group.mention.member") : candidate.kind === "all" ? t("group.mention.everyoneSub") : t("group.mention.commodoreSub")}
+                  aux={candidate.kind === "member" ? null : candidate.kind === "all" ? t("group.mention.everyoneSub") : t("group.mention.commodoreSub")}
+                  kind={candidate.kind === "member" ? t("group.mention.member") : candidate.kind === "all" ? t("group.mention.objective") : t("group.commodore")}
                   onPick={() => choose(candidate)}
                   onHover={() => setPopIndex(at)}
                 />

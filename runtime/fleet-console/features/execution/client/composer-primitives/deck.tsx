@@ -10,7 +10,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes
  * 문법: 묶음 머리는 글자 한 줄 + 오른쪽으로 이어지는 구분선이다(퀵 런치바의 「ObjectiveRecords ───」). 묶음 안의 띠(Theater·공급자)는
  * 구분선 없는 글자 한 줄이다. 행은 [머리 칸][이름][값][메타] 네 칸이고, 목록 전체가 한 격자를 subgrid 로 나눠 써서 값·메타 열이
  * 모든 행에서 같은 x 에 선다. 활성 행은 고른 행 워시 위에 2px 금색 링(행 안쪽)이다 — 입력 포커스는 컴포저에 남고 활성 행은
- * aria-activedescendant 로만 옮겨진다.
+ * aria-activedescendant 로만 옮겨진다. 멘션 행(`ComposerMentionRow`, `is-mention`)은 예외 — 활성 행이 금색 링 없이 중성 워시만으로 선다.
  */
 
 /** 덱이 쓸 수 있는 최대 높이와, 위가 이만큼은 남아야 아래로 뒤집지 않는다는 문턱. */
@@ -229,6 +229,52 @@ export function ComposerDeckRow({ id, active, disabled = false, lead, name, valu
         {checked ? <span className="fc-composer-deck-check" aria-hidden="true">✓</span> : null}
       </span>
     </button>
+  );
+}
+
+/**
+ * 멘션 행 문법 — Fleet 의 모든 '@' 목록이 이 한 모양으로 선다(행: [머리 ~20px][이름][흐린 보조] … [오른쪽 끝 흐린 종류]).
+ *
+ * 한 줄·말줄임. 보조(`aux`: 연결 상태·작업 중·설명)는 이름 옆 흐린 글자, 종류(`kind`: Bot·그룹·플러그인·사령관·지휘관 등 Fleet 종류)는
+ * 오른쪽 끝 흐린 글자로 짧게 선다. 활성 행은 은은한 중성 면(`--wash-selected`)만 — 금색 링(`--control-focus-ring`)을 쓰지 않는다.
+ * `ComposerMentionRow` 가 이 매핑을 강제하므로 표면마다 행이 어긋나지 않는다. 종류 문구는 각 표면의 i18n 이 짧은 낱말로 준다.
+ */
+export const MENTION_ROW_CLASS = "is-mention";
+
+export interface ComposerMentionRowProps {
+  readonly id: string;
+  readonly active: boolean;
+  /** 고를 수 없는 행 — 흐리게 서고 방향키가 건너뛴다(`composerDeckKeyDown`). */
+  readonly disabled?: boolean;
+  /** 머리 칸 — 20px 아바타·표식. */
+  readonly lead?: ReactNode;
+  readonly name: ReactNode;
+  /** 이름 옆 흐린 보조(연결됨·작업 중·설명) — 없으면 비운다. */
+  readonly aux?: ReactNode;
+  /** 오른쪽 끝 흐린 종류(Bot·그룹·플러그인·사령관·지휘관 …) — 짧게. */
+  readonly kind?: ReactNode;
+  /** 말줄임된 행의 전문 — 이름이 문자열이면 그 이름이 기본이다. */
+  readonly title?: string;
+  readonly onPick: () => void;
+  readonly onHover?: () => void;
+}
+
+/** 멘션 행 — `ComposerDeckRow` 에 멘션 문법을 입힌 한 줄. */
+export function ComposerMentionRow({ id, active, disabled = false, lead, name, aux, kind, title, onPick, onHover }: ComposerMentionRowProps) {
+  return (
+    <ComposerDeckRow
+      id={id}
+      active={active}
+      disabled={disabled}
+      lead={lead}
+      name={name}
+      value={aux ?? null}
+      meta={kind ?? null}
+      title={title ?? (typeof name === "string" ? name : undefined)}
+      className={MENTION_ROW_CLASS}
+      onPick={onPick}
+      onHover={onHover}
+    />
   );
 }
 

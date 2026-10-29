@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayo
 import { createPortal } from "react-dom";
 
 import type { AgentChatReferenceHost } from "../../execution/shared/chat-renderer.js";
-import { ComposerDeck, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow, composerDeckActiveIndex, composerDeckKeyDown } from "../../execution/client/composer-primitives/deck.js";
+import { ComposerDeck, ComposerDeckEmpty, ComposerDeckGroup, ComposerMentionRow, composerDeckActiveIndex, composerDeckKeyDown } from "../../execution/client/composer-primitives/deck.js";
 import { MENTION_CHIP_CLASS, MENTION_CHIP_MARK_CLASS, MENTION_CHIP_REMOVE_CLASS, mentionChipElement, mentionChipHtml, type MentionChipMarkup } from "../../execution/client/composer-primitives/mention-chip.js";
 import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation/references.js";
 import type { Translate } from "@fleet-console/i18n";
@@ -687,16 +687,16 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
                   const missions = candidate.missions?.length ?? 0;
                   const doneMissions = candidate.missions?.filter((mission) => mission.done).length ?? 0;
                   return (
-                    <ComposerDeckRow
+                    <ComposerMentionRow
                       key={objective.id}
                       id={`${listId}-${objective.id}`}
                       active={at === index}
                       disabled={isTaken || full}
-                      lead={<ReferenceMark theaterId={theaterId} objectiveId={referenceKey(objective)} size={phone ? 24 : 16} />}
+                      lead={<ReferenceMark theaterId={theaterId} objectiveId={referenceKey(objective)} size={phone ? 24 : 20} />}
                       name={objective.title}
                       title={objective.title}
                       // 시작 전 묶음의 행은 머리가 이미 「시작 전」이라 그 낱말을 다시 적지 않고 임무 수만 둔다.
-                      meta={(
+                      aux={(
                         <span className="objectives-commodore-ref-sub">
                           {isTaken ? <span>{`✓ ${t("commodore.reference.taken")}`}</span> : <>
                             {candidate.status === "commodore" ? <span>{candidate.description}</span> : group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`commodore.reference.status.${candidate.status}`)}</span>}
@@ -704,6 +704,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
                           </>}
                         </span>
                       )}
+                      kind={candidate.status === "commodore" ? t("commodore.name") : t("commodore.reference.kindObjective")}
                       onPick={() => choose(candidate)}
                       onHover={() => setList((current) => (current.index === at ? current : { ...current, index: at }))}
                     />

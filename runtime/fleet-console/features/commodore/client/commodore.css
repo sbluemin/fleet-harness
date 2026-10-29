@@ -475,8 +475,9 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /*
  * 지휘관 참조('@') — 본문 속 원자 토큰은 호스트 `.fc-mention-chip`이고, 여기에는 입력과 목록의 자리만 둔다. 입력은 contenteditable 이라
  * textarea 의 자리표·자동 높이를 직접 세운다: 자리표는 ::before(높이 0으로 띄워 커서를 밀지 않는다), 높이는 내용만큼 자라고 각 입력의
- * max-height 에서 스크롤한다. 목록은 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css — 묶음 머리 옆 구분선·금색
- * 활성 링)이다. 여기에는 덱이 뜨는 층과 이 목록에만 있는 행 오른쪽(상태·임무 수)·상한 안내만 둔다. 결정 요청·검토 대기만 신호 잉크다.
+ * max-height 에서 스크롤한다. 목록은 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css — 묶음 머리 옆 구분선)이다.
+ * 행은 멘션 문법(SDK `ComposerMentionRow`, `is-mention`: 이름 옆 흐린 보조(상태·임무 수)와 오른쪽 끝 흐린 종류, 활성 행은 금색 링 없이
+ * 중성 면만)이다. 여기에는 덱이 뜨는 층과 상한 안내만 둔다. 결정 요청·검토 대기만 신호 잉크다.
  */
 .objectives-commodore-composer { position: relative; }
 .objectives-commodore-ref-input { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; cursor: text; outline: none; }

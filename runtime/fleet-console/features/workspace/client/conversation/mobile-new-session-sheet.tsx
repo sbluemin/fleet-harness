@@ -256,18 +256,18 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
     );
   }
 
-  const objectiveRecordRow = (entry: ObjectiveSearchEntry) => {
+  const objectiveRecordRow = (entry: ObjectiveSearchEntry, kind: string) => {
     const selectable = isMentionSelectable(entry.activity);
     return (
       <button key={`op-${entry.objectiveId}`} type="button" className="mls-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "objectiveRecord", entry })}>
-        {/* 행의 주체는 Objective 하나다 — 그 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. 이 목록은 Theater 머리 없이
-            여러 Theater 를 섞으므로, 예전 이니셜이 하던 소속 구별은 이름 아래 Theater 이름이 잇는다(플러그인 행의 분류 줄과 같은 문법). */}
+        {/* 멘션 문법 한 줄 — [아바타][이름][이름 옆 흐린 Theater] … [오른쪽 끝 흐린 종류]. 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. */}
         <ObjectiveNameMark
           objectiveRecord={{ id: entry.objectiveId, parentObjectiveId: entry.parentObjectiveId }}
           status={resolveObjectiveMarkVisual({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds })}
           size={24}
         />
-        <span className="mls-mention-name">{entry.objectiveRecordName}<small>{entry.theaterLabel}</small></span>
+        <span className="mls-mention-name">{entry.objectiveRecordName}<span className="mls-mention-aux">{entry.theaterLabel}</span></span>
+        <span className="mls-mention-kind">{kind}</span>
       </button>
     );
   };
@@ -280,16 +280,20 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
     return sections;
   }, []);
   const mentionRows: ReactNode[] = props.mentionDeckOpen ? [
-    ...(props.mentionEntries.length > 0 ? [<ComposerDeckCategory key="h-objectiveRecords" label={t("conversation.newSession.deckObjectiveRecords")} />, ...props.mentionEntries.map(objectiveRecordRow)] : []),
-    ...(props.pendingMentionEntries.length > 0 ? [<ComposerDeckCategory key="h-pending" label={t("conversation.newSession.deckPending")} />, ...props.pendingMentionEntries.map(objectiveRecordRow)] : []),
+    ...(props.mentionEntries.length > 0 ? [<ComposerDeckCategory key="h-objectiveRecords" label={t("conversation.newSession.deckObjectiveRecords")} />, ...props.mentionEntries.map((entry) => objectiveRecordRow(entry, t("conversation.newSession.deckObjectiveRecords")))] : []),
+    ...(props.pendingMentionEntries.length > 0 ? [<ComposerDeckCategory key="h-pending" label={t("conversation.newSession.deckPending")} />, ...props.pendingMentionEntries.map((entry) => objectiveRecordRow(entry, t("conversation.newSession.deckPending")))] : []),
     ...pluginSections.flatMap((section, at) => [
       <ComposerDeckCategory key={`h-plugin-${at}`} label={section.label} />,
-      ...section.rows.map((row) => (
-        <button key={`plugin-${row.optionId}`} type="button" className="mls-mention-row" onClick={() => props.onPickMention({ kind: "plugin", row })}>
-          <span className="mls-mention-mark" aria-hidden="true">{row.renderMark?.() ?? "@"}</span>
-          <span className="mls-mention-name">{row.label}{row.capabilityLabel ? <small>{row.capabilityLabel}</small> : null}</span>
-        </button>
-      )),
+      ...section.rows.map((row) => {
+        const aux = row.capabilityLabel ?? row.description;
+        return (
+          <button key={`plugin-${row.optionId}`} type="button" className="mls-mention-row" onClick={() => props.onPickMention({ kind: "plugin", row })}>
+            <span className="mls-mention-mark" aria-hidden="true">{row.renderMark?.() ?? "@"}</span>
+            <span className="mls-mention-name">{row.label}{aux ? <span className="mls-mention-aux">{aux}</span> : null}</span>
+            <span className="mls-mention-kind">{row.categoryLabel}</span>
+          </button>
+        );
+      }),
     ]),
   ] : [];
 

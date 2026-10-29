@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ComposerDeck, ComposerDeckBand, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow } from "../../../execution/client/composer-primitives/deck.js";
+import { ComposerDeck, ComposerDeckBand, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow, MENTION_ROW_CLASS } from "../../../execution/client/composer-primitives/deck.js";
 
 /**
  * 새 세션 컴포저의 '/' 명령·값과 '@' 보낼 곳 목록 — SDK 컴포저 덱(`ComposerDeck`, 퀵 런치바 문법)에 싣는다. 덱은 캡슐 위에
@@ -29,6 +29,8 @@ export interface NewSessionDeckRow {
   readonly gate?: boolean;
   /** 고를 수 없는 행(입력 대기 중인 Objective). 방향키가 건너뛴다. */
   readonly disabled?: boolean;
+  /** '@' 멘션 행 — 멘션 문법(`is-mention`: 이름 옆 흐린 보조 … 오른쪽 끝 흐린 종류, 활성 행은 금색 링 없이 중성 면만). */
+  readonly mention?: boolean;
   readonly pick: () => void;
 }
 
@@ -72,12 +74,12 @@ export function NewSessionDeck({ id, label, items, activeKey, emptyText, onHover
         id={deckOptionId(id, item)}
         active={item.key === activeKey}
         disabled={item.disabled}
+        className={[item.gate ? "is-gate" : null, item.mention ? MENTION_ROW_CLASS : null].filter(Boolean).join(" ") || undefined}
         lead={item.icon}
         name={item.name}
         value={item.value}
         token={item.token}
         checked={item.checked}
-        className={item.gate ? "is-gate" : undefined}
         data-effort-level={item.level}
         data-apex={item.apex ? true : undefined}
         onPick={item.pick}

@@ -388,9 +388,11 @@ export function NewSessionColumn({ state, target, tools }: {
         ...group.entries.map((entry): NewSessionDeckItem => ({
           kind: "row",
           key: `op-${entry.objectiveId}`,
-          icon: <ObjectiveNameMark objectiveRecord={{ id: entry.objectiveId, parentObjectiveId: entry.parentObjectiveId }} status={resolveObjectiveMarkVisual({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds })} size={16} />,
+          mention: true,
+          icon: <ObjectiveNameMark objectiveRecord={{ id: entry.objectiveId, parentObjectiveId: entry.parentObjectiveId }} status={resolveObjectiveMarkVisual({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds })} size={20} />,
           name: markMatch(entry.objectiveRecordName, query),
           value: entry.activity === "running" ? t("conversation.newSession.mentionWorking") : null,
+          token: prefix === "" ? t("conversation.newSession.deckObjectiveRecords") : t("conversation.newSession.deckPending"),
           // 입력을 기다리는 Objective 은 임의 문장이 그 응답을 오염시키므로 고를 수 없다(흐리게 서고 방향키가 건너뛴다).
           disabled: !isMentionSelectable(entry.activity),
           pick: () => pickMention({ kind: "objectiveRecord", entry }),
@@ -401,9 +403,11 @@ export function NewSessionColumn({ state, target, tools }: {
         ...category.rows.map((row): NewSessionDeckItem => ({
           kind: "row",
           key: `plugin-${row.optionId}`,
+          mention: true,
           icon: row.renderMark?.() ?? null,
           name: markMatch(row.label, query),
-          token: row.capabilityLabel,
+          value: row.capabilityLabel ?? row.description,
+          token: row.categoryLabel,
           pick: () => pickMention({ kind: "plugin", row }),
         })),
       ]);
