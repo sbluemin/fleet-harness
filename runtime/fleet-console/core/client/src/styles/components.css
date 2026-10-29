@@ -9296,9 +9296,9 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 /* 멘션 행 문법 — 모든 '@' 목록이 이 한 모양으로 선다(SDK `ComposerMentionRow`: [머리 20][이름][흐린 보조] … [오른쪽 끝 흐린 종류]).
    한 줄·말줄임(행 공용 규칙). 활성 행은 은은한 중성 면만 — 멘션 목록에서는 금색 링을 쓰지 않는다(다른 덱의 링은 그대로 둔다). */
 /* 멘션 덱 크기 — 첨부 레퍼런스 비율(컴포저 폭의 약 58%)로, 좁으면 컴포저 폭에 맞춘다. 덱을 띄우는 각 컴포저가 이 폭을 쓴다.
-   모서리·안쪽 여백·높이는 멘션 덱에만 넉넉히 준다('/' 덱은 그대로). */
+   모서리·안쪽 여백은 멘션 덱에만 넉넉히 준다('/' 덱은 그대로). 높이는 덱 배치(deck.tsx)가 정한다. */
 .fc-composer-deck { --fc-mention-deck-width: min(100%, clamp(320px, 58%, 640px)); }
-.fc-composer-deck:has(.fc-composer-deck-row.is-mention) { max-height: min(420px, 50vh); padding: 8px; border-radius: 16px; }
+.fc-composer-deck:has(.fc-composer-deck-row.is-mention) { padding: 8px; border-radius: 16px; }
 .fc-composer-deck-row.is-mention { border-radius: 10px; }
 /* 멘션 덱은 보조가 이름 바로 옆에 붙는다 — 이름 열은 가장 긴 이름만큼(≤50%), 남는 폭은 보조가 진다. 머리 칸은 20px 머리를 품는다. */
 .fc-composer-deck-list:has(.fc-composer-deck-row.is-mention) {
