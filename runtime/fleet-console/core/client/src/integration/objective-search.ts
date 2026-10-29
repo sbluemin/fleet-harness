@@ -314,7 +314,7 @@ export function groupObjectiveSearchEntries(
 export type CommodorePaletteRow =
   | { readonly kind: "commodore"; readonly commodoreId: string; readonly label: string; readonly context: boolean }
   | { readonly kind: "objective"; readonly entry: ObjectiveSearchEntry; readonly context: boolean }
-  | { readonly kind: "member"; readonly record: ObjectiveRecord };
+  | { readonly kind: "member"; readonly record: ObjectiveRecord; readonly label: string };
 
 export interface CommodorePaletteGroup {
   readonly commodoreId: string;
@@ -331,22 +331,26 @@ export interface CommodorePaletteSource {
 }
 
 /**
- * 사령관 묶음을 세운다. 빈 질의에서는 구성원을 펼치지 않고, 질의가 있으면 맞은 행만 세운다:
- * 사령관 별칭이 맞으면 그 사령관 행 + 지휘관 전부, 지휘관 제목이 맞으면 맥락 사령관 행 + 맞은 지휘관,
- * 구성원 제목이 맞으면 맥락 행들 + 맞은 구성원. 맞지 않은 사령관 묶음은 세우지 않는다.
+ * 사령관 묶음을 세운다. 빈 질의에서는 모든 사령관 행을 세우고 구성원은 펼치지 않는다.
+ * 질의가 있으면 맞은 행만 세운다: 사령관 별칭이 맞으면 그 사령관 행 + 지휘관 전부,
+ * 지휘관 제목이 맞으면 맥락 사령관 행 + 맞은 지휘관, 구성원 역할이 맞으면 맥락 행들 + 맞은 구성원.
+ * 맞지 않은 사령관 묶음은 세우지 않는다. 구성원 이름·검색어는 보드 로스터의 역할(memberNames)이다 —
+ * 스토어의 nested 타이틀(잘린 id)이 아니다.
  * 순서는 보고 있는 사령관 먼저, 이후 사령관 목록 순서, 목록에 없는 사령관은 끝이다.
  * 묶음 안은 활성(최근 포커스 순, 질의가 있으면 점수 순) → 보관 순이다.
  */
 export function groupCommodorePaletteEntries(args: {
   readonly entries: readonly ObjectiveSearchEntry[];
   readonly members: readonly ObjectiveRecord[];
+  /** 구성원 id → 보드 로스터의 역할. */
+  readonly memberNames: ReadonlyMap<string, string>;
   readonly query: string;
   readonly commodores: readonly CommodorePaletteSource[];
   readonly viewedCommodoreId: string | null;
   readonly recentRank: (objectiveId: string) => number;
   readonly unknownLabel: string;
 }): readonly CommodorePaletteGroup[] {
-  const { entries, members, query, commodores, viewedCommodoreId, recentRank, unknownLabel } = args;
+  const { entries, members, memberNames, query, commodores, viewedCommodoreId, recentRank, unknownLabel } = args;
   const hasQuery = searchTokens(query).length > 0;
   const sources = new Map(commodores.map((row) => [row.commodoreId, row]));
   const entriesByCommodore = new Map<string, ObjectiveSearchEntry[]>();
@@ -364,9 +368,13 @@ export function groupCommodorePaletteEntries(args: {
       membersByParent.set(member.parentObjectiveId, list);
     }
   }
+  const memberLabel = (member: ObjectiveRecord): string => memberNames.get(member.id) ?? member.title;
+  const memberMatches = (list: readonly ObjectiveRecord[]): ObjectiveRecord[] =>
+    list.filter((member) => fuzzyMatchPaletteLabel(memberLabel(member), query));
+  // 지휘관이 0개인 사령관도 묶음이 선다 — 빈 질의에서 사령관 행이 빠지는 것은 "사령관이 안 나와"의 재발이다.
   const orderedIds = [
-    ...(viewedCommodoreId && entriesByCommodore.has(viewedCommodoreId) ? [viewedCommodoreId] : []),
-    ...commodores.map((row) => row.commodoreId).filter((id) => id !== viewedCommodoreId && entriesByCommodore.has(id)),
+    ...(viewedCommodoreId && sources.has(viewedCommodoreId) ? [viewedCommodoreId] : []),
+    ...commodores.map((row) => row.commodoreId).filter((id) => id !== viewedCommodoreId),
     ...[...entriesByCommodore.keys()].filter((id) => id !== viewedCommodoreId && !sources.has(id)),
   ];
   const groups: CommodorePaletteGroup[] = [];
@@ -374,11 +382,11 @@ export function groupCommodorePaletteEntries(args: {
     const source = sources.get(commodoreId);
     const label = source?.alias || source?.label || unknownLabel;
     const groupEntries = entriesByCommodore.get(commodoreId) ?? [];
-    const commanderMatch = hasQuery ? fuzzyMatchPaletteLabel([source?.alias, source?.label].filter(Boolean).join(" "), query) : null;
+    const commodoreMatch = hasQuery ? fuzzyMatchPaletteLabel([source?.alias, source?.label].filter(Boolean).join(" "), query) : null;
     const actives: { readonly entry: ObjectiveSearchEntry; readonly score: number; readonly exact: number }[] = [];
     const archived: { readonly entry: ObjectiveSearchEntry; readonly score: number; readonly exact: number }[] = [];
     for (const entry of groupEntries) {
-      if (!hasQuery || commanderMatch) {
+      if (!hasQuery || commodoreMatch) {
         (entry.archived === true ? archived : actives).push({ entry, score: 0, exact: 0 });
         continue;
       }
@@ -386,28 +394,30 @@ export function groupCommodorePaletteEntries(args: {
       if (match) (entry.archived === true ? archived : actives).push({ entry, score: match.score, exact: match.exactTokens });
     }
     const rank = (left: { readonly entry: ObjectiveSearchEntry; readonly score: number; readonly exact: number }, right: { readonly entry: ObjectiveSearchEntry; readonly score: number; readonly exact: number }) =>
-      hasQuery && !commanderMatch
+      hasQuery && !commodoreMatch
         ? right.exact - left.exact || right.score - left.score || recentRank(left.entry.objectiveId) - recentRank(right.entry.objectiveId)
         : recentRank(left.entry.objectiveId) - recentRank(right.entry.objectiveId);
     actives.sort(rank);
     const rows: CommodorePaletteRow[] = [];
+    const shownMembers = new Set<string>();
+    const pushMember = (member: ObjectiveRecord): void => {
+      if (shownMembers.has(member.id)) return;
+      shownMembers.add(member.id);
+      rows.push({ kind: "member", record: member, label: memberLabel(member) });
+    };
     const pushObjective = (entry: ObjectiveSearchEntry, context: boolean): void => {
       rows.push({ kind: "objective", entry, context });
       if (!hasQuery) return;
-      for (const member of membersByParent.get(entry.objectiveId) ?? []) {
-        if (fuzzyMatchPaletteLabel(member.title, query)) rows.push({ kind: "member", record: member });
-      }
+      for (const member of memberMatches(membersByParent.get(entry.objectiveId) ?? [])) pushMember(member);
     };
-    if (actives.length > 0 || archived.length > 0 || commanderMatch) {
-      rows.push({ kind: "commodore", commodoreId, label, context: hasQuery && !commanderMatch });
-      for (const { entry } of actives) pushObjective(entry, false);
-      for (const { entry } of archived) pushObjective(entry, false);
-    }
+    rows.push({ kind: "commodore", commodoreId, label, context: hasQuery && !commodoreMatch });
+    for (const { entry } of actives) pushObjective(entry, false);
+    for (const { entry } of archived) pushObjective(entry, false);
     // 구성원이 맞았는데 부모가 질의에 맞지 않으면 부모를 맥락 행으로 세운다.
-    if (hasQuery && !commanderMatch) {
+    if (hasQuery && !commodoreMatch) {
       const shown = new Set(rows.flatMap((row) => row.kind === "objective" ? [row.entry.objectiveId] : []));
       for (const [parentObjectiveId, list] of membersByParent) {
-        const matched = list.filter((member) => fuzzyMatchPaletteLabel(member.title, query));
+        const matched = memberMatches(list);
         if (matched.length === 0) continue;
         const parent = groupEntries.find((entry) => entry.objectiveId === parentObjectiveId);
         // 부모가 다른 사령관 묶음이면 그 묶음이 처리한다 — 여기서 세우면 주인이 바뀐다.
@@ -416,12 +426,11 @@ export function groupCommodorePaletteEntries(args: {
           rows.push({ kind: "objective", entry: parent, context: true });
           shown.add(parentObjectiveId);
         }
-        for (const member of matched) {
-          if (!rows.some((row) => row.kind === "member" && row.record.id === member.id)) rows.push({ kind: "member", record: member });
-        }
+        for (const member of matched) pushMember(member);
       }
     }
-    if (rows.length === 0) continue;
+    // 질의가 있는데 맞은 행이 하나도 없으면 묶음을 세우지 않는다(사령관 행만 남는 경우).
+    if (hasQuery && !rows.some((row) => row.kind !== "commodore" || !row.context)) continue;
     groups.push({ commodoreId, label, current: commodoreId === viewedCommodoreId, rows });
   }
   return groups;

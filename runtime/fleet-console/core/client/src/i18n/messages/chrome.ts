@@ -132,7 +132,9 @@ export const chromeEn = {
   "chrome.objectiveRecordSearch.roleCommodore": "Commodore",
   "chrome.objectiveRecordSearch.roleCommander": "Commander",
   "chrome.objectiveRecordSearch.roleMember": "Member",
-  "chrome.objectiveRecordSearch.sectionFormer": "Former commander",
+  "chrome.objectiveRecordSearch.sectionFormer": "Former commodore",
+  "chrome.objectiveRecordSearch.commodoreWorking": "Working",
+  "chrome.objectiveRecordSearch.commodoreWaiting": "Waiting",
 
   // keyboard-shortcuts
   "chrome.shortcuts.title": "Keyboard Shortcuts",
@@ -677,6 +679,8 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.objectiveRecordSearch.roleCommander": "지휘관",
   "chrome.objectiveRecordSearch.roleMember": "구성원",
   "chrome.objectiveRecordSearch.sectionFormer": "이전 사령관",
+  "chrome.objectiveRecordSearch.commodoreWorking": "작업 중",
+  "chrome.objectiveRecordSearch.commodoreWaiting": "대기 중",
 
   "chrome.shortcuts.title": "키보드 단축키",
   "chrome.shortcuts.closeAria": "키보드 단축키 닫기",
