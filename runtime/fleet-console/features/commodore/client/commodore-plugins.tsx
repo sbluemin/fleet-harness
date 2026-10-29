@@ -657,12 +657,12 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     apply(next);
     setForm(null);
   });
-  /** trustedVersion 은 사람이 확인 화면에서 본 버전이다 — 서버는 그 버전일 때만 신뢰한다. */
-  const update = (pluginId: string, trustedVersion?: string) => {
+  /** reviewed 는 사람이 확인 화면에서 본 버전과 명령이다 — 서버는 받은 것이 그와 같을 때만 신뢰한다. */
+  const update = (pluginId: string, reviewed?: { readonly version: string; readonly runs: UpdateTrust["runs"] }) => {
     if (busy) return;
     setBusy(pluginId); setTrust(null);
     setUpdates((current) => ({ ...current, [pluginId]: { kind: "updating" } }));
-    void postCommodorePlugins<{ readonly outcome: "updated" | "up_to_date"; readonly oldVersion: string; readonly newVersion: string; readonly view: PluginCatalogView }>("/commodore/plugins/update", { pluginId, ...(trustedVersion ? { trusted: true, version: trustedVersion } : {}) })
+    void postCommodorePlugins<{ readonly outcome: "updated" | "up_to_date"; readonly oldVersion: string; readonly newVersion: string; readonly view: PluginCatalogView }>("/commodore/plugins/update", { pluginId, ...(reviewed ? { trusted: true, version: reviewed.version, runs: reviewed.runs } : {}) })
       .then(({ view: next }) => {
         invalidatePluginDetails();
         setCatalog({ view: next, error: null });
@@ -795,7 +795,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
         <ul>{selectedTrust.runs.map((run, index) => <li key={index}><span>{t(run.kind === "hook" ? "commodore.plugins.trust.hook" : "commodore.plugins.trust.mcp", { label: run.label })}</span><code>{run.command}</code></li>)}</ul>
         <div className="commodore-plugins-update-actions">
           <button type="button" onClick={() => setTrust(null)}>{t("commodore.plugins.trust.cancel")}</button>
-          <button type="button" className="is-go" disabled={busy !== null} onClick={() => update(selected.pluginId, selectedTrust.version)}>{t("commodore.plugins.update.trust")}</button>
+          <button type="button" className="is-go" disabled={busy !== null} onClick={() => update(selected.pluginId, selectedTrust)}>{t("commodore.plugins.update.trust")}</button>
         </div>
       </div> : <>
         {menuItems.map((item) => <button key={item.id} type="button" role={itemRole} disabled={busy !== null} onClick={() => { if (item.id !== "update") closeMenu(); item.run(); }}>{item.label}{item.version ? <small className="commodore-plugins-menu-version">{item.version}</small> : null}</button>)}

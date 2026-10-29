@@ -734,6 +734,7 @@ describe("commodore theater state", () => {
     writePlugin(path.join(market, "plugins", "nover"), { name: "nover" });
     writePlugin(path.join(cache, "tool", "1.0.0"), { name: "tool", version: "1.0.0" }, hooksOf("echo hi"));
     writePlugin(path.join(cache, "tool", "1.1.0"), { name: "tool", version: "1.1.0" }, hooksOf("echo hi"));
+    writePlugin(path.join(cache, "tool", "1.1.0-x"), { name: "tool", version: "1.1.0" }, hooksOf("echo swapped"));
     writePlugin(path.join(cache, "nover", "b2271ea45eea"), { name: "nover" });
     writePlugin(path.join(cache, "nover", "b8394fda9111"), { name: "nover" }, hooksOf("echo new"));
     writePlugin(path.join(cache, "ext", "1.9.0"), { name: "ext", version: "1.9.0" });
@@ -782,6 +783,12 @@ const bump = (version, sha, oldVersion) => {
   console.log(JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "updated", pluginId: id, oldVersion, newVersion: version }));
 };
 if (mode === "updated-tool") bump("1.1.0", "${SHA_B}", "1.0.0");
+else if (mode === "swapped-tool") {
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  raw.plugins[id][0] = { ...raw.plugins[id][0], version: "1.1.0", gitCommitSha: "${SHA_C}", installPath: path.join(home, "plugins", "cache", "team", "tool", "1.1.0-x") };
+  fs.writeFileSync(file, JSON.stringify(raw, null, 2));
+  console.log(JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "updated", pluginId: id, oldVersion: "1.0.0", newVersion: "1.1.0" }));
+}
 else if (mode === "updated-nover") bump("b8394fda9111", "${SHA_B}", "b2271ea45eea");
 else if (mode === "relabel-ext2" || mode === "relabel-ext2-c") {
   const raw = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -829,8 +836,14 @@ else { console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected"
     // 확인은 사람이 본 버전과 함께 와야 한다 — 다른 버전이면 다시 거절한다.
     expect(await updateRoute({ pluginId: "tool@team", trusted: true, version: "1.0.9" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.1.0" } } });
     expect(updateLog()).toBe("");
-    // 본 버전으로 다시 오면 신뢰를 기록하고 진행한다.
-    const done = await updateRoute({ pluginId: "tool@team", trusted: true, version: "1.1.0" });
+    // 본 명령과 다른 명령이 설치되면 그 명령으로 다시 묻고 설치본을 되돌린다.
+    mode = "swapped-tool";
+    expect(await updateRoute({ pluginId: "tool@team", trusted: true, version: "1.1.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo hi" }] })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.1.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo swapped" }] } } });
+    expect(installedFile().plugins["tool@team"]![0]).toMatchObject({ version: "1.0.0", gitCommitSha: SHA_A });
+    // 본 버전·명령 그대로 받으면 신뢰를 기록하고 진행한다.
+    mode = "updated-tool";
+    fs.writeFileSync(stubLog, "");
+    const done = await updateRoute({ pluginId: "tool@team", trusted: true, version: "1.1.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo hi" }] });
     expect(done).toMatchObject({ status: 200, value: { outcome: "updated", oldVersion: "1.0.0", newVersion: "1.1.0" } });
     expect(updateLog()).toBe("update tool@team updated-tool\n");
     expect(installedFile().plugins["tool@team"]![0]).toMatchObject({ version: "1.1.0", gitCommitSha: SHA_B });
@@ -845,7 +858,7 @@ else { console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected"
     expect(await updateRoute({ pluginId: "ext2@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.0.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo added" }] } } });
     expect(installedFile().plugins["ext2@team"]![0]).toMatchObject({ installPath: path.join(cache, "ext2", "1.0.0"), gitCommitSha: SHA_A });
     // 그 명령을 신뢰한 뒤에도 같은 표시 버전 아래 명령이 다시 바뀌면 또 묻는다.
-    expect(await updateRoute({ pluginId: "ext2@team", trusted: true, version: "1.0.0" })).toMatchObject({ status: 200, value: { outcome: "updated" } });
+    expect(await updateRoute({ pluginId: "ext2@team", trusted: true, version: "1.0.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo added" }] })).toMatchObject({ status: 200, value: { outcome: "updated" } });
     mode = "relabel-ext2-c";
     expect(await updateRoute({ pluginId: "ext2@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.0.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo changed" }] } } });
     expect(installedFile().plugins["ext2@team"]![0]).toMatchObject({ installPath: path.join(cache, "ext2", "1.0.0-b") });
@@ -926,7 +939,7 @@ setTimeout(() => console.log(JSON.stringify({ command: "update", outcome: "ok", 
     expect(installedFile().plugins["nover@team"]![0]).toMatchObject({ version: "b2271ea45eea", gitCommitSha: SHA_A, installPath: path.join(cache, "nover", "b2271ea45eea") });
     expect(changed).not.toHaveBeenCalled();
     // trusted 로 다시 오면 새 버전을 신뢰한 것으로 기록하고 진행한다.
-    expect(await updateRoute({ pluginId: "nover@team", trusted: true, version: "b8394fda9111" })).toMatchObject({ status: 200, value: { outcome: "updated", oldVersion: "b2271ea45eea", newVersion: "b8394fda9111" } });
+    expect(await updateRoute({ pluginId: "nover@team", trusted: true, version: "b8394fda9111", runs: [{ kind: "hook", label: "SessionStart", command: "echo new" }] })).toMatchObject({ status: 200, value: { outcome: "updated", oldVersion: "b2271ea45eea", newVersion: "b8394fda9111" } });
     expect(installedFile().plugins["nover@team"]![0]).toMatchObject({ version: "b8394fda9111", gitCommitSha: SHA_B });
     expect(JSON.parse(fs.readFileSync(path.join(root, "registry.json"), "utf8"))).toMatchObject({ trusted: { "nover@team": "b8394fda9111" } });
     expect(changed).toHaveBeenCalledWith(["nover@team"]);

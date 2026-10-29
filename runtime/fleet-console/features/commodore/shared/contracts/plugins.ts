@@ -196,8 +196,8 @@ export type MarketplaceErrorCode =
  *   실행 명령이 있는 플러그인을 처음 설치할 때 trusted 가 없으면 trust_required 로 거절한다.
  * - `commodore/plugins/update` { pluginId, trusted?, version? } → { outcome: "updated" | "up_to_date", oldVersion, newVersion, view: PluginCatalogView }
  *   `claude plugin update <id> --json` 으로 올린다. 새 버전에 실행 명령이 있고 그 버전을 신뢰한 적이 없으면
- *   trust_required 로 거절한다(details: { version, runs }). 확인은 trusted 와 그때 본 version 을 함께 보내야 하고,
- *   받은 버전이 다르면 다시 거절한다. -y·--accept-command 는 쓰지 않는다.
+ *   trust_required 로 거절한다(details: { version, runs }). 확인은 trusted 와 그때 본 version·runs 를 함께 보내야 하고,
+ *   받은 버전이나 명령이 다르면 다시 거절한다. -y·--accept-command 는 쓰지 않는다.
  * - GET `commodore/plugins/icon?pluginId=` → 그 플러그인 아이콘 그림(png·jpeg·gif·webp·svg). 카탈로그 항목에 `icon` 이 있을 때만 있다.
  */
 export const MAX_PLUGIN_ICON_BYTES = 512 * 1024;
@@ -214,7 +214,9 @@ export const marketplaceNameRefSchema = z.object({ name: marketplaceNameSchema }
 export const marketplaceEnableSchema = z.object({ name: marketplaceNameSchema, enabled: z.boolean() }).strict();
 export const marketplaceUpdateSchema = z.object({ name: marketplaceNameSchema.optional() }).strict();
 export const pluginInspectSchema = z.object({ pluginId: pluginIdSchema }).strict();
-export const pluginUpdateSchema = z.object({ pluginId: pluginIdSchema, trusted: z.boolean().optional(), version: z.string().min(1).max(128).optional() }).strict();
+/** 확인 화면에서 사람이 본 실행 명령 — 서버는 실제로 받은 새 설치본의 명령과 같을 때만 신뢰한다. */
+const pluginRunSchema = z.object({ kind: z.enum(["hook", "mcp"]), label: z.string().max(200), command: z.string().max(4000) }).strict();
+export const pluginUpdateSchema = z.object({ pluginId: pluginIdSchema, trusted: z.boolean().optional(), version: z.string().min(1).max(128).optional(), runs: z.array(pluginRunSchema).max(MAX_PLUGIN_PARTS).optional() }).strict();
 export const commodorePluginSetSchema = z.object({
   commodoreId: z.string().min(1).max(128),
   pluginId: pluginIdSchema,

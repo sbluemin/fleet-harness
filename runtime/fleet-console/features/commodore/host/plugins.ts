@@ -1022,15 +1022,16 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
      * 설치본으로 판단하고, 신뢰가 없으면 설치 기록을 이전 버전(캐시에 남아 있음)으로 되돌린 뒤 같은 거절을 낸다.
      * `trusted` 로 다시 오면 `trusted[id] = 새 버전` 을 기록하고 진행한다.
      */
-    async updatePlugin(id: string, trustedFlag: boolean, reviewedVersion?: string): Promise<PluginUpdateResult> {
+    async updatePlugin(id: string, trustedFlag: boolean, reviewedVersion?: string, reviewedRuns?: PluginCatalogEntry["runs"]): Promise<PluginUpdateResult> {
       return await serial(async () => {
         const { marketplace } = splitPluginId(id);
         const row = requireRow(marketplace);
         if (!row.enabled) throw new CommodoreStoreError("disabled");
         const entry = entryOf(id);
         if (!entry) throw new CommodoreStoreError("plugin_not_found");
-        // 신뢰는 사람이 본 그 버전에만 준다 — 확인한 뒤 출처가 바뀌었으면 새 버전으로 다시 묻는다.
-        const approves = (version: string) => trustedFlag && reviewedVersion === version;
+        // 신뢰는 사람이 본 그 버전과 그 명령에만 준다 — 확인한 뒤 출처가 바뀌었으면 받은 것으로 다시 묻는다.
+        const approves = (version: string, runs: PluginCatalogEntry["runs"]) =>
+          trustedFlag && reviewedVersion === version && JSON.stringify(reviewedRuns ?? null) === JSON.stringify(runs ?? []);
         const installs = installed();
         const before = installs[id]?.[0];
         const beforeDir = loadDirOf(id);
@@ -1042,7 +1043,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
         const candidate = bundled ? text(manifestOf(bundled).version, 128) ?? text(entry.version, 128) : undefined;
         const preRuns = bundled ? describe(id, bundled).runs ?? [] : [];
         if (bundled && candidate && beforeVersion && candidate !== beforeVersion && preRuns.length > 0 && readRegistry().trusted[id] !== candidate) {
-          if (!approves(candidate)) throw new CommodoreStoreError("trust_required", undefined, { version: candidate, runs: preRuns });
+          if (!approves(candidate, preRuns)) throw new CommodoreStoreError("trust_required", undefined, { version: candidate, runs: preRuns });
           update((registry) => ({ ...registry, trusted: { ...registry.trusted, [id]: candidate } }));
         }
         const snapshot = snapshotInstalled(id);
@@ -1079,7 +1080,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
           // 신뢰는 실행 명령에 대한 것이다 — 표시 버전이 같아 기록이 맞아도, 바뀐 설치본의 명령이 달라졌으면 다시 묻는다.
           const commandsChanged = moved && JSON.stringify(runs) !== beforeRuns;
           if (runs.length > 0 && (readRegistry().trusted[id] !== key || commandsChanged)) {
-            if (!approves(key)) {
+            if (!approves(key, runs)) {
               restoreInstalled(id, snapshot);
               throw new CommodoreStoreError("trust_required", undefined, { version: key, runs });
             }
