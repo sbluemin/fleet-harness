@@ -1642,7 +1642,7 @@
 }
 
 .agent-chat-composer-frame:focus-within {
-  box-shadow: var(--focus-face);
+  border-color: var(--hairline-strong);
 }
 
 /* 파일을 끌어온 동안 — 어디에 놓이는지 프레임이 스스로 말한다(포커스와 같은 brass 채널). */

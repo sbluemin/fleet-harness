@@ -2177,9 +2177,9 @@ describe("Console core design contract", () => {
     const queueCancelHoverBlock = chat.match(/^\.agent-chat-composer-queue-cancel:hover,\n\.agent-chat-composer-queue-cancel:focus-visible \{[^}]*\}/m)?.[0] ?? "";
     expect(queueCancelHoverBlock).toContain("color: var(--coral);");
     const composerFrameFocusBlock = chat.match(/^\.agent-chat-composer-frame:focus-within \{[^}]*\}/m)?.[0] ?? "";
-    // 입력 중인 컴포저는 테두리 색이 아니라 포커스 면으로 말한다.
-    expect(composerFrameFocusBlock).toContain("box-shadow: var(--focus-face);");
-    expect(composerFrameFocusBlock).not.toContain("border-color");
+    // 입력 중에도 배경은 유지하고, 외피의 중립 외곽선만 은은하게 강조한다.
+    expect(composerFrameFocusBlock).toContain("border-color: var(--hairline-strong);");
+    expect(composerFrameFocusBlock).not.toContain("var(--focus-face)");
     const composerArmedBlock = chat.match(/^\.agent-chat-composer-send\.is-armed \{[^}]*\}/m)?.[0] ?? "";
     expect(composerArmedBlock).toContain("background: var(--brass);");
     expect(composerArmedBlock).toContain("color: var(--text-on-brass);");

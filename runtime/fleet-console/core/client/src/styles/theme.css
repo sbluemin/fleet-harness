@@ -474,6 +474,8 @@
      안쪽 그림자 한 겹으로 칠해 요소 자신의 바탕·반경을 그대로 따른다(전역 :focus-visible). */
   --focus-wash: color-mix(in oklch, var(--text-primary) 11%, transparent);
   --focus-face: inset 0 0 0 100vmax var(--focus-wash);
+  /* 입력 필드는 배경을 칠하지 않고 중립 외곽선 하나로 초점을 알린다. */
+  --field-focus-edge: 0 0 0 1px var(--hairline-strong);
   --control-disabled-opacity: 0.5;
 
   /* ── lights-out 슬롯(--quiet-*) ─────────────────────────────────────────
@@ -1345,9 +1347,13 @@ a {
   box-shadow: var(--focus-face);
 }
 
-/* 텍스트 편집기의 포커스 면은 필드 외피가 소유한다. 전역 그림자를 내부 입력에도 칠하면
-   캡슐·검색창 안에 사각형이 겹치고, 미러로 그린 글자·멘션까지 가린다.
-   독립 필드의 명시적 :focus 규칙은 유지하고, 전역 기본값만 걷는다. */
+/* 독립 입력의 명시적 포커스 규칙도 채움 대신 외곽선만 소비한다. 버튼·메뉴의 면 포커스는 유지한다. */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"]), textarea, [contenteditable="true"]) {
+  --focus-face: var(--field-focus-edge);
+}
+
+/* 복합 입력의 포커스는 외피가 소유한다. 내부 입력에 전역 그림자를 덧칠하면
+   캡슐·검색창 안에 사각형이 겹치므로, 독립 필드의 명시적 규칙만 남긴다. */
 :where(input, textarea, [contenteditable="true"]):focus-visible {
   box-shadow: none;
 }

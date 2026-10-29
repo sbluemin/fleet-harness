@@ -388,7 +388,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   display: flex; align-items: center; gap: 8px; box-sizing: border-box; height: 32px; padding: 0 10px;
   border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); background: var(--control-field); color: var(--text-tertiary);
 }
-.objectives-commodore-memory-search:focus-within { box-shadow: var(--focus-face); }
+.objectives-commodore-memory-search:focus-within { box-shadow: var(--field-focus-edge); }
 .objectives-commodore-memory-search svg { flex: none; width: 12px; height: 12px; }
 .objectives-commodore-memory-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); }
 .objectives-commodore-memory-search input::placeholder { color: var(--text-tertiary); }
@@ -846,7 +846,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette:focus { outline: none; }
 .commodore-palette-title { margin: 12px 16px 0; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .commodore-palette-search { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; margin: 8px; padding: 0 12px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
-.commodore-palette-search:focus-within { background: color-mix(in oklch, var(--text-primary) 9%, transparent); }
+.commodore-palette-search:focus-within { box-shadow: var(--field-focus-edge); }
 .commodore-palette-search-glyph { flex: none; color: var(--text-tertiary); }
 .commodore-palette-input { flex: 1 1 auto; min-width: 0; padding: 6px 0; border: 0; background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-md); outline: none; }
 .commodore-palette-input::placeholder { color: var(--text-tertiary); }

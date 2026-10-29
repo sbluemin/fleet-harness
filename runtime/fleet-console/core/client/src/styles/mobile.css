@@ -1362,7 +1362,7 @@ html[data-view-mode="mobile"] .app-toast-action {
   background: var(--surface-capsule);
   transition: border-color var(--duration-fast);
 }
-:root[data-view-mode="mobile"] .fc-composer-capsule:focus-within::before { box-shadow: var(--focus-face); }
+:root[data-view-mode="mobile"] .fc-composer-capsule:focus-within::before { border-color: var(--hairline-strong); }
 :root[data-view-mode="mobile"] .fc-composer-capsule.is-dragover::before { border-color: var(--brass); }
 /* 「+」를 감싼 칸은 줄에서 자리를 차지하지 않는다(간격 하나가 남지 않게). */
 :root[data-view-mode="mobile"] .fc-composer-capsule > :has(> .fc-composer-plus) { display: contents; }

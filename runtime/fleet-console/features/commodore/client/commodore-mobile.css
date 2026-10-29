@@ -178,7 +178,7 @@
 /* 기억 탭 — 폰 갈래 트리와 읽기 전용 항목 화면. */
 /* 검색 — 손가락 높이 44, 둥근 면. 항목이 하나라도 있을 때만 선다. */
 .objectives-cm-memory-search { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-radius: 22px; background: var(--m-surface); color: var(--m-text-muted); }
-.objectives-cm-memory-search:focus-within { box-shadow: var(--focus-face); }
+.objectives-cm-memory-search:focus-within { box-shadow: var(--field-focus-edge); }
 .objectives-cm-memory-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--m-text); font: inherit; font-size: var(--m-fs-list); }
 .objectives-cm-memory-search input::placeholder { color: var(--m-text-muted); }
 /* 갈래 머리 — glab 글자에 힌트(옅게, 한 줄 말줄임)·개수·접힘 꺾쇠. 행 전체가 접기 단추(높이 44). */

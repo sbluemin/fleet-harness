@@ -488,7 +488,7 @@
 }
 
 .ai-gateway-palette-search:focus-within {
-  background: color-mix(in oklch, var(--text-primary) 9%, transparent);
+  box-shadow: var(--field-focus-edge);
 }
 
 .ai-gateway-palette-search-glyph {

@@ -86,7 +86,7 @@
 }
 
 .settings-search:focus-within {
-  box-shadow: var(--focus-face);
+  box-shadow: var(--field-focus-edge);
 }
 
 .settings-search svg {
@@ -1881,7 +1881,7 @@
 }
 
 .font-field:focus-within {
-  box-shadow: var(--focus-face);
+  box-shadow: var(--field-focus-edge);
 }
 
 .font-field input {
@@ -6841,7 +6841,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .directory-browser-filter:focus-within {
-  box-shadow: var(--focus-face);
+  box-shadow: var(--field-focus-edge);
 }
 
 .directory-browser-filter-glyph {
@@ -8601,7 +8601,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   transition: border-color var(--duration-fast);
 }
 /* 캡슐 초점 테두리 — 금색 기운 없이 중성으로(라이트·다크 공통). */
-.fc-composer-capsule:focus-within { box-shadow: var(--focus-face); }
+.fc-composer-capsule:focus-within { border-color: var(--hairline-strong); }
 .fc-composer-capsule.is-disabled { opacity: var(--control-disabled-opacity); }
 .fc-composer-capsule.has-attachments { flex-wrap: wrap; }
 /* 인용 칩 줄도 첨부 줄처럼 캡슐 맨 위 한 줄을 차지한다 — 입력·원은 그 아래 줄에 남는다. */

@@ -153,8 +153,8 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
   background: var(--surface-capsule);
   transition: border-color var(--duration-fast);
 }
-/* 입력 내부를 따로 칠하지 않고 캡슐 전체에 중립 포커스 면을 둔다. */
-.new-session-composer:focus-within { box-shadow: var(--focus-face); }
+/* 입력 배경은 그대로 두고 캡슐 외곽선만 은은하게 강조한다. */
+.new-session-composer:focus-within { border-color: var(--hairline-strong); }
 
 /* '/'·'@' 덱 — 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이 캡슐 위에 뜬다. 여기는 자리만 둔다:
    놀이터·카드 위에 서는 층. 모델 행의 ★ 는 별표 모델 표식이다. */

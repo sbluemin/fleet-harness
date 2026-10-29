@@ -77,8 +77,8 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
 .settings-modal-search > input::placeholder { color: var(--text-tertiary); }
 .settings-modal-search > input::-webkit-search-cancel-button { display: none; }
 /* 검색은 은은하게 — 포커스는 면이 한 단 밝아지는 것으로 말하고, 키보드로 들어왔을 때만 위치 채널(brass) 고리가 선다. */
-.settings-modal-search:focus-within { background: color-mix(in oklch, var(--text-primary) 9%, transparent); }
-.settings-modal-search:has(> input:focus-visible) { box-shadow: var(--focus-face); }
+.settings-modal-search:focus-within { box-shadow: var(--field-focus-edge); }
+.settings-modal-search:has(> input:focus-visible) { box-shadow: var(--field-focus-edge); }
 
 .settings-modal-tabs {
   display: flex;
