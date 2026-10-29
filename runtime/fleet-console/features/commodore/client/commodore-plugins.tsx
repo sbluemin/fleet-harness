@@ -125,7 +125,7 @@ function useLiveCatalog(active: boolean): CatalogState {
   return state;
 }
 
-const ERROR_CODES: ReadonlySet<MarketplaceErrorCode> = new Set<MarketplaceErrorCode>(["invalid_source", "duplicate", "preset_name", "reserved_name", "name_taken", "not_found", "auth_failed", "no_manifest", "fetch_failed", "preset_locked", "limit", "disabled", "plugin_not_found", "install_failed", "trust_required", "unavailable", "cli_unavailable"]);
+const ERROR_CODES: ReadonlySet<MarketplaceErrorCode> = new Set<MarketplaceErrorCode>(["invalid_source", "duplicate", "preset_name", "reserved_name", "name_taken", "not_found", "auth_failed", "no_manifest", "fetch_failed", "preset_locked", "limit", "disabled", "plugin_not_found", "install_failed", "update_failed", "source_missing", "trust_required", "unavailable", "cli_unavailable"]);
 function errorWord(t: T, code: string): string {
   return ERROR_CODES.has(code as MarketplaceErrorCode) ? t(`commodore.plugins.error.${code as MarketplaceErrorCode}`) : t("commodore.plugins.error.unknown", { code });
 }
@@ -530,12 +530,27 @@ function prepareExternalWindow(): (url: string | null) => void {
 /** Console 을 이 컴퓨터의 loopback 으로 열었는가 — 아니면 인증 콜백이 브라우저 쪽 기기로 돌아오지 못한다. */
 const onConsoleComputer = (): boolean => ["localhost", "127.0.0.1", "[::1]", "::1"].includes(window.location.hostname);
 
-interface MenuItem { readonly id: string; readonly label: string; readonly run: () => void }
+interface MenuItem { readonly id: string; readonly label: string; readonly version?: string; readonly run: () => void }
+type PluginUpdateState = { readonly kind: "updating" | "done" } | { readonly kind: "failed"; readonly code: string };
+type UpdateTrust = { readonly pluginId: string; readonly version: string; readonly runs: NonNullable<PluginCatalogEntry["runs"]> };
+const isCommitVersion = (version: string): boolean => /^[0-9a-f]{12}$/.test(version);
+const rowVersion = (version: string | undefined): string => version && !isCommitVersion(version) ? `v${version.replace(/^v/, "")}` : "";
+const menuVersion = (t: T, version: string | undefined): string => version && isCommitVersion(version) ? t("commodore.plugins.commit", { sha: version.slice(0, 7) }) : rowVersion(version);
+
+/** 오류 응답도 신뢰 확인에 쓸 원문만 읽는다. 불완전한 상세로는 trusted 요청을 만들지 않는다. */
+function updateTrustOf(error: unknown, pluginId: string): UpdateTrust | null {
+  if (codeOf(error) !== "trust_required" || !(error instanceof Error) || !("details" in error)) return null;
+  const details = error.details as { version?: unknown; runs?: unknown } | null;
+  if (!details || typeof details.version !== "string" || !Array.isArray(details.runs) || !details.runs.length) return null;
+  const runs: NonNullable<PluginCatalogEntry["runs"]> = details.runs.filter((run): run is NonNullable<PluginCatalogEntry["runs"]>[number] =>
+    run !== null && typeof run === "object" && (run.kind === "hook" || run.kind === "mcp") && typeof run.label === "string" && typeof run.command === "string");
+  return runs.length === details.runs.length ? { pluginId, version: details.version, runs } : null;
+}
 type InlineForm = { readonly pluginId: string; readonly kind: "key"; readonly names: readonly string[] } | { readonly pluginId: string; readonly kind: "callback"; readonly server: string };
 
 /**
  * 사령관 설정 칸에서 Theater 목록 바로 아래 — 이 사령관이 고른 플러그인. 상태는 메타 줄의 한 마디로만 보이고, 인증·키·제거는
- * 행의 메뉴(우클릭, ContextMenu 키·Shift+F10, 폰은 길게 누르기 → 아래 시트)에서 한다 — 루틴 목록과 같은 메뉴다. 제거는 메뉴에서
+ * 행의 메뉴(클릭·키보드·우클릭, 폰은 탭·길게 누르기 → 아래 시트)에서 한다 — 루틴 목록과 같은 메뉴다. 제거는 메뉴에서
  * 한 번 더 눌러 확인하고, 적용은 다음 턴부터라 칸 아래 한 줄이 그 시점을 말한다.
  */
 export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t: T; readonly commodoreId: string; readonly phone?: boolean }) {
@@ -544,8 +559,11 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const [palette, setPalette] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ readonly pluginId: string; readonly x: number; readonly y: number; readonly trigger: HTMLElement } | null>(null);
+  const [menu, setMenu] = useState<{ readonly pluginId: string; readonly x: number; readonly y: number; readonly trigger: HTMLElement; readonly anchored: boolean } | null>(null);
   const [armed, setArmed] = useState(false);
+  const [updates, setUpdates] = useState<Readonly<Record<string, PluginUpdateState>>>({});
+  const [trust, setTrust] = useState<UpdateTrust | null>(null);
+  const [authRevision, setAuthRevision] = useState(0);
   const [form, setForm] = useState<InlineForm | null>(null);
   /** 모바일 셸에서 받은 인증 주소 — 셸은 누름 없이 연 창을 OS 브라우저로 넘기지 않아, 행에서 한 번 누르게 한다. */
   const [ready, setReady] = useState<{ readonly pluginId: string; readonly server: string; readonly url: string } | null>(null);
@@ -554,17 +572,22 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const suppressClick = useRef(false);
   const installed = view?.state.plugins ?? [];
-  const auth = usePluginAuth(commodoreId, installed.join("\n"));
+  const auth = usePluginAuth(commodoreId, installed.length ? `${installed.join("\n")}\n${authRevision}` : "");
   const cancelPress = () => { if (press.current) clearTimeout(press.current.timer); press.current = null; };
-  const closeMenu = (focus = true) => { if (focus) menu?.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); };
-  const openMenu = (pluginId: string, trigger: HTMLElement, x: number, y: number) => { cancelPress(); setArmed(false); setMenu({ pluginId, trigger, x, y }); };
+  const closeMenu = (focus = true) => { if (focus) menu?.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); setTrust(null); };
+  const openMenu = (pluginId: string, trigger: HTMLElement, x: number, y: number, anchored = false) => { cancelPress(); setArmed(false); setTrust(null); setMenu({ pluginId, trigger, x, y, anchored }); };
+  const toggleMenu = (pluginId: string, trigger: HTMLElement) => {
+    if (menu?.pluginId === pluginId) { closeMenu(); return; }
+    const rect = trigger.getBoundingClientRect();
+    openMenu(pluginId, trigger, rect.left, rect.bottom + 4, true);
+  };
   useEffect(() => () => cancelPress(), []);
   useEffect(() => {
     if (!menu) return;
-    const dismiss = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) { menu.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); } };
+    const dismiss = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node) && !menu.trigger.contains(event.target as Node)) { menu.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); setTrust(null); } };
     const escape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      event.preventDefault(); event.stopPropagation(); menu.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false);
+      event.preventDefault(); event.stopPropagation(); menu.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); setTrust(null);
     };
     document.addEventListener("pointerdown", dismiss, true);
     document.addEventListener("keydown", escape, true);
@@ -576,10 +599,11 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     if (!phone) {
       const rect = node.getBoundingClientRect();
       node.style.left = `${Math.max(16, Math.min(menu.x, window.innerWidth - rect.width - 16))}px`;
-      node.style.top = `${Math.max(16, Math.min(menu.y, window.innerHeight - rect.height - 16))}px`;
+      const top = menu.anchored && menu.y + rect.height > window.innerHeight - 16 ? menu.trigger.getBoundingClientRect().top - rect.height - 4 : menu.y;
+      node.style.top = `${Math.max(16, Math.min(top, window.innerHeight - rect.height - 16))}px`;
     }
-    node.querySelector<HTMLButtonElement>("button")?.focus();
-  }, [menu, phone]);
+    (node.querySelector<HTMLButtonElement>("button:not(:disabled)") ?? node).focus({ preventScroll: true });
+  }, [menu, phone, trust, busy]);
   if (!commodoreId || !view) return null;
   const entries = new Map(catalogView?.plugins.map((entry) => [entry.id, entry]) ?? []);
   const marketplaces = new Map(catalogView?.marketplaces.map((marketplace) => [marketplace.name, marketplace]) ?? []);
@@ -620,12 +644,45 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     apply(next);
     setForm(null);
   });
+  const update = (pluginId: string, trusted = false) => {
+    if (busy) return;
+    setBusy(pluginId); setTrust(null);
+    setUpdates((current) => ({ ...current, [pluginId]: { kind: "updating" } }));
+    void postCommodorePlugins<{ readonly outcome: "updated" | "up_to_date"; readonly oldVersion: string; readonly newVersion: string; readonly view: PluginCatalogView }>("/commodore/plugins/update", { pluginId, ...(trusted ? { trusted: true } : {}) })
+      .then(({ view: next }) => {
+        invalidatePluginDetails();
+        setCatalog({ view: next, error: null });
+        setAuthRevision((revision) => revision + 1);
+        setUpdates((current) => ({ ...current, [pluginId]: { kind: "done" } }));
+        if (menuRef.current?.dataset.pluginId === pluginId) closeMenu();
+      }, (error) => {
+        setUpdates((current) => ({ ...current, [pluginId]: { kind: "failed", code: codeOf(error) } }));
+        const required = updateTrustOf(error, pluginId);
+        if (required) setTrust(required);
+      }).finally(() => setBusy(null));
+  };
+  const updateMark = (entry: PluginCatalogEntry | undefined, pluginId: string) => {
+    const state = updates[pluginId];
+    if (state?.kind === "updating") return <span className="commodore-plugins-state is-syncing" role="status">{t("commodore.plugins.update.pending")}</span>;
+    if (state?.kind === "failed") return <span className="commodore-plugins-state is-failed" role="alert">{t("commodore.plugins.update.failed", { reason: errorWord(t, state.code) })}</span>;
+    if (state?.kind === "done") return <span className="commodore-plugins-state is-done" role="status">{t("commodore.plugins.update.done")}</span>;
+    return entry?.latestVersion ? <span className="commodore-plugins-state is-update">{isCommitVersion(entry.latestVersion) ? t("commodore.plugins.update.available") : t("commodore.plugins.update.version", { version: entry.latestVersion })}</span> : null;
+  };
   /** 상태별 항목. 서버가 여럿이면 서버 이름을 붙인다. 원격 기기에서 진행 중이면 돌아온 주소를 옮겨 붙일 수 있다. */
   const itemsOf = (pluginId: string): MenuItem[] => {
     const servers = authOf.get(pluginId) ?? [];
     const oauth = servers.filter((server) => server.mode === "oauth");
     const named = oauth.length > 1;
     const items: MenuItem[] = [];
+    const entry = entries.get(pluginId);
+    if (entry?.latestVersion || updates[pluginId]?.kind === "failed") {
+      const version = entry?.latestVersion;
+      const runs = entry?.latestRuns;
+      items.push({ id: "update", label: t(updates[pluginId]?.kind === "failed" ? "commodore.plugins.update.retry" : runs?.length ? "commodore.plugins.update.review" : "commodore.plugins.update.action"), ...(version ? { version: isCommitVersion(version) ? menuVersion(t, version) : version } : {}), run: () => {
+        if (version && runs?.length) setTrust({ pluginId, version, runs });
+        else update(pluginId);
+      } });
+    }
     for (const server of oauth) {
       const id = `${server.server}:${server.state}`;
       // 확인하지 못한 서버(unknown)도 로그인을 시작할 수는 있다 — 이미 연결돼 있으면 서버가 그렇게 답한다.
@@ -656,18 +713,20 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     const source = marketplaces.get(marketplace);
     const mark = catalogView && !source?.enabled ? <span className="commodore-plugins-state is-warn">{t("commodore.plugins.marketplaceOff")}</span>
       : catalogView && !entry ? <span className="commodore-plugins-state">{t("commodore.plugins.notListed")}</span> : authMark(t, authOf.get(pluginId));
-    return { pluginId, plugin, title: titleOf(entry, plugin), marketplace, entry, mark };
+    return { pluginId, plugin, title: titleOf(entry, plugin), marketplace, entry, mark: <>{updateMark(entry, pluginId)}{mark}</> };
   });
   const rowHandlers = (pluginId: string) => ({
     tabIndex: 0,
     "aria-haspopup": phone ? "dialog" as const : "menu" as const,
-    onContextMenu: (event: ReactMouseEvent<HTMLElement>) => { if ((event.target as HTMLElement).closest("form")) return; event.preventDefault(); openMenu(pluginId, event.currentTarget, event.clientX, event.clientY); },
+    "aria-expanded": menu?.pluginId === pluginId,
+    onContextMenu: (event: ReactMouseEvent<HTMLElement>) => { if ((event.target as HTMLElement).closest("form, button, a, input")) return; event.preventDefault(); openMenu(pluginId, event.currentTarget, event.clientX, event.clientY); },
+    onClick: (event: ReactMouseEvent<HTMLElement>) => { if (!(event.target as HTMLElement).closest("form, button, a, input")) toggleMenu(pluginId, event.currentTarget); },
     onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => {
       if (event.target !== event.currentTarget) return;
-      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); openMenu(pluginId, event.currentTarget, rect.left + 16, rect.bottom); }
+      if (["Enter", " ", "ContextMenu"].includes(event.key) || (event.shiftKey && event.key === "F10")) { event.preventDefault(); toggleMenu(pluginId, event.currentTarget); }
     },
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
-      if (event.pointerType === "mouse" || event.button !== 0 || (event.target as HTMLElement).closest("form")) return;
+      if (event.pointerType === "mouse" || event.button !== 0 || (event.target as HTMLElement).closest("form, button, a, input")) return;
       cancelPress(); suppressClick.current = false;
       const trigger = event.currentTarget; const { clientX: x, clientY: y } = event;
       press.current = { x, y, timer: setTimeout(() => { suppressClick.current = true; openMenu(pluginId, trigger, x, y); }, 500) };
@@ -696,6 +755,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     : null;
   const selected = menu ? rows.find((row) => row.pluginId === menu.pluginId) : undefined;
   const menuItems = selected ? itemsOf(selected.pluginId) : [];
+  const selectedTrust = selected?.pluginId === trust?.pluginId ? trust : null;
   const failureLine = failure ? <p className={phone ? "objectives-cm-note" : "objectives-commodore-hint is-error"} role="alert">{failure}</p> : null;
   const dialog = palette ? <PluginPalette t={t} commodoreId={commodoreId} installed={installed} phone={phone} onClose={close} /> : null;
   const itemRole = phone ? undefined : "menuitem";
@@ -709,14 +769,26 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     }
   };
   const menuNode = menu && selected ? createPortal(<div className={phone ? "commodore-routines-scrim" : "commodore-routines-menu-host"}>
-    <div ref={menuRef} className={`commodore-routines-menu${phone ? " is-sheet" : ""}`} role={phone ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.title} onKeyDown={onMenuKey}>
-      <div className="commodore-routines-menu-title">{selected.title}</div>
-      {menuItems.map((item) => <button key={item.id} type="button" role={itemRole} disabled={busy !== null} onClick={() => { closeMenu(); item.run(); }}>{item.label}</button>)}
-      {menuItems.length ? <div className="commodore-routines-separator" role="separator" /> : null}
-      <button type="button" role={itemRole} className={`is-danger${armed ? " is-armed" : ""}`} disabled={busy !== null} onClick={() => {
-        if (!armed) { setArmed(true); return; }
-        closeMenu(); remove(selected.pluginId);
-      }}>{t(armed ? "commodore.plugins.removeArmed" : "commodore.plugins.remove")}</button>
+    <div ref={menuRef} tabIndex={-1} data-plugin-id={selected.pluginId} className={`commodore-routines-menu${phone ? " is-sheet" : ""}`} role={phone || selectedTrust ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.title} onKeyDown={onMenuKey}>
+      <div className="commodore-routines-menu-head">
+        <div className="commodore-routines-menu-title">{selected.title}</div>
+        <div className="commodore-routines-menu-meta is-mono">{[menuVersion(t, selected.entry?.version), `@${selected.marketplace}`].filter(Boolean).join(" · ")}{selected.entry?.latestVersion ? ` → ${isCommitVersion(selected.entry.latestVersion) ? menuVersion(t, selected.entry.latestVersion) : selected.entry.latestVersion}` : ""}</div>
+      </div>
+      {selectedTrust ? <div className="commodore-plugins-update-trust">
+        <p>{t("commodore.plugins.update.commands", { version: isCommitVersion(selectedTrust.version) ? menuVersion(t, selectedTrust.version) : selectedTrust.version })}</p>
+        <ul>{selectedTrust.runs.map((run, index) => <li key={index}><span>{t(run.kind === "hook" ? "commodore.plugins.trust.hook" : "commodore.plugins.trust.mcp", { label: run.label })}</span><code>{run.command}</code></li>)}</ul>
+        <div className="commodore-plugins-update-actions">
+          <button type="button" onClick={() => setTrust(null)}>{t("commodore.plugins.trust.cancel")}</button>
+          <button type="button" className="is-go" disabled={busy !== null} onClick={() => update(selected.pluginId, true)}>{t("commodore.plugins.update.trust")}</button>
+        </div>
+      </div> : <>
+        {menuItems.map((item) => <button key={item.id} type="button" role={itemRole} disabled={busy !== null} onClick={() => { if (item.id !== "update") closeMenu(); item.run(); }}>{item.label}{item.version ? <small className="commodore-plugins-menu-version">{item.version}</small> : null}</button>)}
+        {menuItems.length ? <div className="commodore-routines-separator" role="separator" /> : null}
+        <button type="button" role={itemRole} className={`is-danger${armed ? " is-armed" : ""}`} disabled={busy !== null} onClick={() => {
+          if (!armed) { setArmed(true); return; }
+          closeMenu(); remove(selected.pluginId);
+        }}>{t(armed ? "commodore.plugins.removeArmed" : "commodore.plugins.remove")}</button>
+      </>}
     </div>
   </div>, document.body) : null;
 
@@ -729,7 +801,8 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
             <Fragment key={pluginId}>
               <div className={`objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId ? " is-target" : ""}`} aria-label={title} {...rowHandlers(pluginId)}>
                 <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="phone" />
-                <span className="objectives-cm-gr-tx">{title}<small className="is-mono">@{marketplace}</small>{mark || entry?.components ? <small className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></small> : null}</span>
+                <span className="objectives-cm-gr-tx"><span className="commodore-plugins-name">{title}</span><small className="is-mono">@{marketplace}</small><small className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></small></span>
+                <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
               </div>
               {inline(pluginId, title)}
             </Fragment>
@@ -756,7 +829,8 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
             <li key={pluginId} className={`commodore-plugins-row${menu?.pluginId === pluginId ? " is-target" : ""}`} aria-label={title} {...rowHandlers(pluginId)}>
               <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="row" />
               <span className="commodore-plugins-name" title={pluginId}>{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
-              {mark || entry?.components ? <span className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></span> : null}
+              <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
+              <span className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></span>
               {inline(pluginId, title)}
             </li>
           ))}

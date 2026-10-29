@@ -751,12 +751,29 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 폰 행의 small 은 block 이라(commodore-mobile.css) 메타 줄의 flex 간격이 사라진다 — 상태 글자·버튼·칩이 붙지 않게 되돌린다. */
 .objectives-cm-gr-tx small.commodore-plugins-meta { display: flex; margin-top: 4px; }
 .commodore-plugins-list .commodore-plugins-meta { grid-column: 2 / -1; }
-/* 행 자체가 메뉴의 손잡이다(우클릭·ContextMenu 키·Shift+F10·길게 누르기). 메뉴가 가리키는 행은 brass 빛으로 위치를 말한다. */
-.commodore-plugins-list > li { grid-template-columns: 20px minmax(0, 1fr); margin: 0 -6px; padding: 3px 6px; border-radius: var(--radius-xs); cursor: default; user-select: none; -webkit-touch-callout: none; }
+/* 행 자체가 메뉴의 손잡이다(클릭·키보드·우클릭·길게 누르기). 메뉴가 가리키는 행은 brass 빛으로 위치를 말한다. */
+.commodore-plugins-list > li { margin: 0 -6px; padding: 3px 6px; border-radius: var(--radius-xs); cursor: pointer; user-select: none; -webkit-touch-callout: none; }
+.commodore-plugins-list > li:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
 .commodore-plugins-list > li:focus-visible, .commodore-plugins-phone-row:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .commodore-plugins-list > li.is-target { background: var(--brass-glow); }
-.commodore-plugins-phone-row { align-items: flex-start; user-select: none; -webkit-touch-callout: none; }
+.commodore-plugins .commodore-plugins-phone-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: start; cursor: pointer; user-select: none; -webkit-touch-callout: none; }
+.commodore-plugins-phone-row:active { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
 .commodore-plugins-phone-row.is-target { background: var(--brass-glow); }
+.commodore-plugins-phone-row .commodore-plugins-name { display: block; }
+.commodore-plugins-phone-row small.is-mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-plugins-version { color: var(--text-tertiary); font-family: var(--font-code); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.commodore-plugins-phone-row .commodore-plugins-version { padding-top: 3px; }
+.commodore-plugins-list .commodore-plugins-meta { min-height: 18px; }
+@media (prefers-reduced-motion: no-preference) { .commodore-plugins-list > li, .commodore-plugins-phone-row { transition: background-color 120ms ease; } }
+.commodore-plugins-menu-version { color: var(--text-tertiary); font-family: var(--font-code); font-size: var(--t-2xs); overflow-wrap: anywhere; text-align: right; }
+.commodore-plugins-update-trust { display: grid; gap: 8px; padding: 6px 10px 8px; color: var(--text-secondary); font-size: var(--t-xs); }
+.commodore-plugins-update-trust p, .commodore-plugins-update-trust ul { margin: 0; }
+.commodore-plugins-update-trust ul { display: grid; gap: 8px; padding: 0; list-style: none; }
+.commodore-plugins-update-trust li { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.commodore-plugins-update-trust code { display: block; padding: 6px 8px; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); font-family: var(--font-code); font-size: var(--t-2xs); white-space: pre-wrap; }
+.commodore-plugins-update-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.commodore-plugins-update-actions button { width: auto; padding: 6px 10px; font-size: var(--t-sm); }
+.commodore-plugins-update-actions button.is-go { color: var(--brass-ink); }
 .commodore-plugins-inline { grid-column: 2 / -1; display: grid; gap: 6px; padding-top: 4px; user-select: text; }
 .commodore-plugins-inline.is-phone { padding: 10px 16px 12px; border-radius: 4px; background: var(--m-surface); }
 .commodore-plugins-inline > .commodore-plugins-field { width: 100%; }
@@ -770,6 +787,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-plugins-state.is-failed { color: var(--coral-ink); }
 .commodore-plugins-state.is-warn { color: var(--warn-ink); }
 .commodore-plugins-state.is-done { color: var(--positive-ink); }
+/* 업데이트 가능 표시는 실행 상태가 아니라 다음 행동의 위치를 가리킨다. 진행·완료·실패는 signal 잉크로 분리한다. */
+.commodore-plugins-state.is-update { color: var(--brass-ink); }
 .commodore-plugins-locator { color: var(--text-tertiary); font-family: var(--font-code); font-size: var(--t-2xs); overflow-wrap: anywhere; }
 .commodore-plugins-text { flex: none; padding: 2px 0; border: 0; background: none; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); white-space: nowrap; cursor: pointer; }
 .commodore-plugins-text:hover:not(:disabled) { color: var(--brass-ink); }
