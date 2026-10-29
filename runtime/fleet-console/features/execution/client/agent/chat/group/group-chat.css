@@ -1294,6 +1294,8 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   line-height: 24px;
 }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md *, .agent-chat-dispatch-text) { color: inherit; }
+/* 반전 면 위의 앞머리 멘션도 말풍선 글자색을 그대로 진다 — 본문색·톤 잉크는 일반 면 기준이라 반전 면에서는 대비가 무너진다. */
+:root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.fc-mention-chip, .fc-mention-chip-label) { color: inherit; }
 /* 말풍선 안 코드·표는 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body pre,
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body table,
