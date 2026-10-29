@@ -3,7 +3,7 @@ import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveL
 import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
-import { createFileExplorerFeature } from "../../../features/file-explorer/host/index.js";
+import { createFileExplorerFeature, revealPath } from "../../../features/file-explorer/host/index.js";
 import { createRepositoryFeature } from "../../../features/repository/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
@@ -2663,6 +2663,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
       commodore = createCommodoreFeature({
         ownership,
+        openKnowledgeDirectory: (directory) => revealPath(path.dirname(directory), path.basename(directory), "open"),
         folderGrants,
         deletion: {
           claudeProjectsDirectory: path.join(process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(os.homedir(), ".claude"), "projects"),

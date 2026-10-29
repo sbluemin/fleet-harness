@@ -387,6 +387,13 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .update-outcome {
     transform var(--duration-base) var(--ease-spring),
     visibility 0s linear var(--duration-fast);
 }
+.console-toolbar-tip-body {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-secondary);
+  font-weight: var(--weight-regular);
+  line-height: 1.6;
+}
 .console-toolbar-tip[data-placement="above"] { transform: translateY(4px); }
 .console-toolbar-tip.is-visible {
   opacity: 1;

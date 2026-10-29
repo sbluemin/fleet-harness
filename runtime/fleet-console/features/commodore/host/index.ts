@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createKnowledgeFolderAction } from "./knowledge-folder.js";
 import type { FolderGrantStore } from "../../workspace/host/theaters/theater-domain.js";
 import { ClaudeTrustError, trustClaudeTheater } from "../../workspace/host/theaters/claude-trust.js";
 import { createCommodoreDeletion, type CommodoreDeletionHost } from "./deletion.js";
@@ -21,7 +22,6 @@ import path from "node:path";
 import type { CommodoreBoardAdapter, CommodoreBoardHost } from "../../objectives/shared/commodore-board.js";
 import type { CommodoreEvent } from "../shared/contracts/types.js";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "../../settings/shared/experiments.js";
-import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import { createConsoleResidentAgentHost, type ConsoleResidentAgentDeps } from "../../execution/host/agent/console-resident.js";
 import { createCommodoreRoutes, commodoreActive } from "./routes.js";
 import { createCommodoreStore } from "./store.js";
@@ -49,7 +49,8 @@ export interface CommodoreFeatureDeps {
   readonly http: HttpPort;
   readonly security: HttpSecurityPort;
   readonly agent: ConsoleResidentAgentDeps;
-  /** 이 사령관에 묶은 지식 도구(`admiralMcp.bindCommodore`). */
+  /** 파일 탐색기 실행은 호스트가 주입한다. 클라이언트가 보낸 경로는 받지 않는다. */
+  readonly openKnowledgeDirectory?: (directory: string) => Promise<void>;
   /** 마켓플레이스 받기·설치에 쓰는 `claude` CLI 를 Console 수명에 묶어 띄운다. */
   readonly processes?: OwnedProcessPort;
 }
@@ -133,6 +134,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   }) : undefined;
   const routes = createCommodoreRoutes(context, store, {
     plugins, deletion, assertWritable: ownership.assertWritable,
+    knowledgeFolder: createKnowledgeFolderAction({ root: knowledge.root, ...(deps.openKnowledgeDirectory ? { openDirectory: deps.openKnowledgeDirectory } : {}) }),
     theaterIds, summary, list: () => orderedIds().map(summary),
     setOrder: (requested) => {
       if (!deps.order) throw new CommodoreStoreError("commodore_unavailable");

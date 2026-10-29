@@ -66,4 +66,3 @@ export async function messageCommodoreMention(targetId: string, text: string): P
   if (!commodoreId || !acceptsMessage(commodoreId)) throw new Error("mention_target_gone");
   await messageCommodore(commodoreId, text);
 }
-

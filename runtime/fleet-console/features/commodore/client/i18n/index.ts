@@ -2,6 +2,15 @@ import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { createTranslator } from "@fleet-console/i18n/translate";
 
 export const commodoreEn = {
+  "commodore.knowledge.retired": "Codex has been retired",
+  "commodore.knowledge.reason": "Knowledge now lives on the board — decisions, results and retrospectives stay with each objective, which overlapped the wiki. Click to open your existing documents folder.",
+  "commodore.knowledge.mobileReason": "Knowledge now lives on the board. Your existing documents stay on your computer.",
+  "commodore.knowledge.shortcut": "Wiki",
+  "commodore.knowledge.choose": "Open a Commodore conversation to see its existing documents folder.",
+  "commodore.knowledge.missing": "There is no existing documents folder. Nothing has been created or moved.",
+  "commodore.knowledge.unavailable": "Could not open the documents folder. Check that it is available on your computer.",
+  "commodore.knowledge.loading": "Finding your documents folder…",
+  "commodore.knowledge.onComputer": "This folder is on the computer running Console.",
   "commodore.delete.title": "Delete Commodore",
   "commodore.delete.open": "Delete Commodore…",
   "commodore.delete.question": "Delete the Commodore “{name}”?",
@@ -550,6 +559,15 @@ export const commodoreEn = {
 };
 
 export const commodoreKo: Record<keyof typeof commodoreEn, string> = {
+  "commodore.knowledge.retired": "Codex는 정리했어요",
+  "commodore.knowledge.reason": "지식은 이제 보드에 쌓여요. 결정·결과·회고가 목표에 그대로 남아 위키와 겹쳤어요. 누르면 기존 문서 폴더가 열려요.",
+  "commodore.knowledge.mobileReason": "지식은 이제 보드에 쌓여요. 기존 문서는 컴퓨터에 그대로 남아 있어요.",
+  "commodore.knowledge.shortcut": "위키",
+  "commodore.knowledge.choose": "사령관 대화를 열면 그 사령관의 기존 문서 폴더를 볼 수 있어요.",
+  "commodore.knowledge.missing": "기존 문서 폴더가 없어요. 새로 만들거나 옮기지 않았어요.",
+  "commodore.knowledge.unavailable": "문서 폴더를 열 수 없어요. 컴퓨터에서 폴더를 확인해 주세요.",
+  "commodore.knowledge.loading": "문서 폴더를 확인하고 있어요…",
+  "commodore.knowledge.onComputer": "Console이 실행 중인 컴퓨터의 폴더예요.",
   "commodore.delete.title": "사령관 삭제",
   "commodore.delete.open": "사령관 삭제…",
   "commodore.delete.question": "‘{name}’ 사령관을 삭제할까요?",
