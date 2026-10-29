@@ -47,17 +47,7 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, lea
   };
   const toggle = branchToggle.toggle;
 
-  if (!memory.entries.length && header) return (
-    <div ref={scrollRef} className="objectives-cm-content objectives-cm-memory">
-      <div className="objectives-cm-pad">
-        {header}
-        <p className="objectives-cm-glab">{t("commodore.memory.label")}</p>
-        <p className="objectives-cm-secnote" role="status">{t(memory.failed ? "commodore.memory.failed" : memory.loaded ? "commodore.memory.empty" : "commodore.memory.loading")}</p>
-        {memory.failed ? <button type="button" data-press="r3" className="objectives-cm-pill" onClick={() => { void loadCommodoreMemory(theaterId); }}>{t("commodore.memory.retry")}</button> : null}
-      </div>
-    </div>
-  );
-  if (!memory.entries.length) return (
+  if (!memory.entries.length && !header) return (
     <div className="objectives-cm-content objectives-cm-memory">
       <div className="objectives-cm-center" role="status">
         {memory.loaded || memory.failed ? <span className="objectives-cm-bigmono"><MemoryIcon /></span> : null}
@@ -71,6 +61,8 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, lea
   return (
     <div ref={scrollRef} className={`objectives-cm-content objectives-cm-memory${entry ? " is-entry" : ""}`}>
       <div className="objectives-cm-pad">
+        {/* 머리(설명·정보)는 항목을 읽는 동안에도 같은 자리에 마운트된 채 숨는다 — 쓰던 설명 초안이 사라지지 않는다. */}
+        {header ? <div hidden={entry !== undefined}>{header}</div> : null}
         {entry ? <>
           <nav className="objectives-cm-memory-crumbs" aria-label={t("commodore.memory.label")}>
             <span>{t("commodore.memory.label")}</span><span aria-hidden="true">/</span><span>{t(MEMORY_BRANCH_LABEL[entry.branch])}</span><span aria-hidden="true">/</span><span>{entry.topic}</span>
@@ -105,8 +97,11 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, lea
             </div>
           </> : null}
           <p className="objectives-cm-secnote objectives-cm-memory-path">{`commodore/memory/${entry.ref}.md`}</p>
+        </> : !memory.entries.length ? <>
+          <p className="objectives-cm-glab">{t("commodore.memory.label")}</p>
+          <p className="objectives-cm-secnote" role="status">{t(memory.failed ? "commodore.memory.failed" : memory.loaded ? "commodore.memory.empty" : "commodore.memory.loading")}</p>
+          {memory.failed ? <button type="button" data-press="r3" className="objectives-cm-pill" onClick={() => { void loadCommodoreMemory(theaterId); }}>{t("commodore.memory.retry")}</button> : null}
         </> : <>
-          {header}
           {header ? <p className="objectives-cm-glab">{t("commodore.memory.label")}</p> : null}
           <p className="objectives-cm-secnote">{t("commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</p>
           <label className="objectives-cm-memory-search">
