@@ -216,12 +216,18 @@ function FileExplorerTreePane(ctx: PaneContext) {
   useEffect(() => {
     hydrateStoredSession(contextScope || null);
     const restored = getFileExplorerSnapshot(contextScope);
-    // 외부 착지(openFile)가 이미 문서 창을 열었으면 저장된 세션으로 덮지 않는다 — 착지 params의 objectiveId가 사라진다.
-    if (panes.isOpen(DOCUMENT_PANE_ID)) return;
+    // 외부 착지로 열린 문서는 저장된 세션으로 덮지 않는다 — 착지가 심은 창 params(소유자)가
+    // 그 표시다. 표면 소유자로는 판단하지 않는다(일반 탐색에서도 표면 주인은 있다).
+    const seeded = typeof objectiveId === "string" && objectiveId
+      ? true
+      : ownerCommodoreId(ctx.params, theaterId, null) !== undefined;
+    if (panes.isOpen(DOCUMENT_PANE_ID) && seeded) return;
     if (restored.documentPaneOpen && restored.activePath) {
-      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope, ...fileRequestOwner(objectiveId, commodoreId) }, focus: false });
+      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope, ...fileRequestOwner(restored.scopeOwner?.objectiveId, restored.scopeOwner?.commodoreId) }, focus: false });
+    } else if (panes.isOpen(DOCUMENT_PANE_ID)) {
+      panes.close();
     }
-  }, [commodoreId, contextScope, panes, objectiveId]);
+  }, [commodoreId, contextScope, panes, objectiveId, theaterId, ctx.params.commodoreId, ctx.params.objectiveId, ctx.params.theaterId]);
 
   const openFilePath = useCallback((relativePath: string, displayName?: string, mode: "preview" | "pinned" = "preview") => {
     if (!theaterId) return;

@@ -23,7 +23,7 @@ import { getT } from "./i18n/index.js";
 import { CHIP_STRIP_GAP_PX, chipDirHints, overflowingChipIndices, tabLineGeometry } from "./layout.js";
 import { QuietMenu } from "./quiet-menu.js";
 import { DOCUMENT_PANE_ID, fileRequestOwner, ownerCommodoreId, positiveCoordinate, resolveFilePath, FileNavigationError } from "./file-navigation.js";
-import { claimFileExplorerView, getFileExplorerSnapshot, setFileRevealTarget, showFileNavigationError } from "./view-store.js";
+import { claimFileExplorerView, getFileExplorerSnapshot, noteScopeOwner, setFileRevealTarget, showFileNavigationError } from "./view-store.js";
 import { surfaceSelectorQuery } from "../../workspace/shared/surface-selector.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
 import {
@@ -206,13 +206,13 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     if (getFileExplorerSnapshot(contextScope).openDocs.length === 0 && ctx.visible && params.theaterId === contextScope) panes.close();
   }, [contextScope, ctx.visible, openDocs.length, panes, params.theaterId]);
 
-  // 주소가 지금 표면의 Theater를 가리키지 않으면 이 열을 닫는다 — 다른 Theater의 문서가
-  // 빈 열로 남지 않게 한다. 트리 복원이 맡던 닫기 자리를 문서가 직접 지며, 외부 착지가
-  // 연 문서는 트리 복원이 건드리지 않으므로(열려 있으면 손대지 않음) 착지 params가 살아남는다.
+  // 이 창 주소의 소유자를 Theater 범위에 기록한다 — Theater를 오갈 때 트리 복원이
+  // 저장된 문서와 함께 그 문맥으로 되살린다. 주소가 없는 첫 마운트에서는 쓰지 않는다
+  // (복원될 소유자를 지우지 않게). Theater 탐색은 소유자 없이 기록해 낡은 목표 문맥을 걷는다.
   useEffect(() => {
-    if (params.theaterId === undefined || params.theaterId === contextScope) return;
-    panes.close();
-  }, [contextScope, panes, params.theaterId]);
+    if (params.theaterId !== contextScope || typeof params.path !== "string") return;
+    noteScopeOwner(contextScope, objectiveId ?? null, commodoreId ?? null);
+  }, [commodoreId, contextScope, objectiveId, params.path, params.theaterId]);
 
   // 팝오버들은 문서가 바뀌면 함께 닫힌다 — 다른 문서의 목록이 남아 있으면 거짓말이 된다.
   useEffect(() => {
