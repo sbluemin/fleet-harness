@@ -178,7 +178,7 @@ it("delivers peer messages to a resting Commodore without person authority and r
     expect(prompts[0]).toContain("Messages from other Commodores (their words, not the person's)");
     expect(prompts[0]).not.toContain("The person's message to you");
     expect(personAuthority()).toBe(false);
-    expect(await recipientTool!.execute({ action: "create", alias: "Unauthorized", theaters: [], directive: "", intel: [] }, { cwd: dir })).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
+    expect(await recipientTool!.execute({ action: "create", alias: "Unauthorized", theaters: [], description: "", intel: [] }, { cwd: dir })).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
     expect(created).not.toHaveBeenCalled();
     // 턴 중의 연락은 사람 steer/turnMessages에 들어가지 않고 다음 턴을 기다린다.
     await call("Second message, for the next turn.");
@@ -218,7 +218,7 @@ it("creates a Commodore with owned Theaters and selected context atomically, rol
   const created = vi.fn();
   const create = createCommodoreCreator({ ownership, store, created });
   const tool = createCommodoreManagementTools({ hasPersonMessage: () => true, stopping: () => false, list: () => entities.ids().map((id) => ({ commodoreId: id, theaters: entities.theatersOf(id) })), create: (input) => create(sourceId, input) })[0]!;
-  const input = { action: "create", alias: "Browser", theaters: [theater], directive: "Own Browser work", intel: ["Keep work isolated"], memoryRefs: [memory.ref] };
+  const input = { action: "create", alias: "Browser", theaters: [theater], description: "Own Browser work", intel: ["Keep work isolated"], memoryRefs: [memory.ref] };
   const call = (args: unknown) => tool.execute(args, { cwd: dir }) as Promise<{ isError: boolean; structuredContent: Record<string, any> }>;
   events.length = 0;
   // 소유하지 않은 실제 폴더도 새 세션 경계로 넘기지 않는다.
@@ -245,7 +245,7 @@ it("creates a Commodore with owned Theaters and selected context atomically, rol
   const id = result.structuredContent.commodoreId as string;
   expect(result.structuredContent.target).toBe(`commodore:${id}`);
   expect(id).not.toBe(sourceId);
-  expect(store.read(id)).toMatchObject({ alias: "Browser", directive: { text: input.directive, rev: 1 }, intel: [{ text: input.intel[0], source: `commodore:${sourceId}` }] });
+  expect(store.read(id)).toMatchObject({ alias: "Browser", description: { text: input.description, rev: 1 }, intel: [{ text: input.intel[0], source: `commodore:${sourceId}` }] });
   expect(store.read(id)?.routines ?? []).toEqual([]);
   expect(entities.theatersOf(id)).toEqual([{ path: theater }]);
   expect(ownership.additionalDirectories(id)).toEqual([theater]);
@@ -336,7 +336,7 @@ function harness(now?: () => number, maxRetainedImageBytes?: number) {
 }
 
 describe("commodore theater state", () => {
-  it("persists UUID entities with canonical non-exclusive Theater scopes and isolated routines, directive and intel", async () => {
+  it("persists UUID entities with canonical non-exclusive Theater scopes and isolated routines, description and intel", async () => {
     const h = harness();
     // 엔티티 저장 무결성: id는 폴더에만, 연결은 path 하나만 남기고 색인은 재구성한다.
     const root = path.join(h.objectivesDir, "entities");
@@ -354,7 +354,7 @@ describe("commodore theater state", () => {
     expect(entities.resolve(workspaceHash(canonical))).toBe(id);
     const entityEvents: CommodoreEvent[] = [];
     const entityStore = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit: (event) => entityEvents.push(event) });
-    entityStore.setDirective(id, "Keep entity links intact.");
+    entityStore.setDescription(id, "Keep entity links intact.");
     // UUID 이름은 경로 연결·실행 설정과 독립적으로 보존된다.
     entityStore.setAlias(id, "Flagship");
     const reopenedEntity = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit: () => {} });
@@ -400,7 +400,7 @@ describe("commodore theater state", () => {
     const stateFile = path.join(h.objectivesDir, "state.json");
 
     h.setExperiments({ commodore: false }); // 옛 저장값은 사령관 표면을 숨기지 않는다.
-    expect((await h.route("commodore/state", { commodoreId: "t1" })).value).toMatchObject({ enabled: true, active: true, run: { phase: "idle", totals: { session: 0, costUsd: 0, actions: 0 } }, state: { directive: { text: "", rev: 0 }, intel: [] } });
+    expect((await h.route("commodore/state", { commodoreId: "t1" })).value).toMatchObject({ enabled: true, active: true, run: { phase: "idle", totals: { session: 0, costUsd: 0, actions: 0 } }, state: { description: { text: "", rev: 0 }, intel: [] } });
     expect((await h.route("commodore/state", { commodoreId: "unknown" })).status).toBe(404);
     expect(fs.existsSync(stateFile)).toBe(false);
     expect(createCommodoreRoutes(h.ctx, h.store).some((route) => route.name === "commodore/autonomy")).toBe(false);
@@ -419,9 +419,9 @@ describe("commodore theater state", () => {
     expect((await h.route("commodore/state", { commodoreId: "t1", language: "ko" })).value.state).toMatchObject({ language: "ko" });
 
     // 지시 — 본문이 바뀔 때만 개정이 오르고, 같은 본문은 사건도 내지 않는다(사령관을 헛되이 깨우지 않는다).
-    expect((await h.route("commodore/directive", { commodoreId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ directive: { text: "Fix remote first.", rev: 1 } });
+    expect((await h.route("commodore/description", { commodoreId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ description: { text: "Fix remote first.", rev: 1 } });
     const before = h.events.length;
-    expect((await h.route("commodore/directive", { commodoreId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ directive: { rev: 1 } });
+    expect((await h.route("commodore/description", { commodoreId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ description: { rev: 1 } });
     expect(h.events.length).toBe(before);
 
     // 정보 — 최신이 앞이고 출처는 사람이다.
@@ -444,16 +444,16 @@ describe("commodore theater state", () => {
 
     // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽는다. 옛 실험 설정은 자율 운영을 바꾸지 않는다.
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
-    expect(saved).toMatchObject({ directive: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
+    expect(saved).toMatchObject({ description: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).toEqual(h.store.read("t1"));
     // 재시작 복원은 등록된 Theater 를 훑는다 — 읽을 수 없는 Theater 는 빠지고 던지지 않는다.
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), commodoreIds: () => ["t1", "gone"], emit: () => undefined }).availableCommodores()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
-    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "language", "directive", "intel", "intel", "intel-edited", "coordinates"]);
+    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "language", "description", "intel", "intel", "intel-edited", "coordinates"]);
 
     // 저장된 스위치와 실행 가능 여부는 별개다. 보드 없는 view는 꺼짐이며 켜기 요청도 거절한다.
-    expect((await h.route("commodore/state", { commodoreId: "t1" }, { boardReady: () => false })).value).toMatchObject({ boardReady: false, active: false, state: { directive: { rev: 1 } }, run: { phase: "off" } });
+    expect((await h.route("commodore/state", { commodoreId: "t1" }, { boardReady: () => false })).value).toMatchObject({ boardReady: false, active: false, state: { description: { rev: 1 } }, run: { phase: "off" } });
     // 같은 origin 의 Console 만 지난다.
     h.setAuthorized(false);
     expect((await h.route("commodore/state", { commodoreId: "t1" })).status).toBe(401);
@@ -464,7 +464,7 @@ describe("commodore theater state", () => {
   it("refuses unavailable recipients but accepts messages without routines, appends the log in order and pages it from the newest end", async () => {
     const h = harness();
     h.store.transcriptAppend("t1", { kind: "session", event: "opened" });
-    h.store.transcriptAppend("t1", { kind: "wake", reasons: ["directive changed"] });
+    h.store.transcriptAppend("t1", { kind: "wake", reasons: ["description changed"] });
     h.store.transcriptAppend("t1", { kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o1", title: "Remote pairing" });
     // 그 Theater 의 자율 운영이 꺼져 있으면 메시지는 거절되고 기록에 남지 않는다.
     expect(await h.route("commodore/message", { commodoreId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
@@ -1091,7 +1091,7 @@ describe("commodore session", () => {
     // Theater 의 프로젝트 MCP 서버 — 사령관 세션에는 싣지 않는다.
     fs.writeFileSync(path.join(theaterRoot, ".mcp.json"), JSON.stringify({ mcpServers: { docs: { command: "node", args: ["./mcp.js"] } } }));
     const outside = path.join(h.objectivesDir, "..", "..", "..", "outside.txt");
-    h.store.setDirective("t1", "Fix remote first.");
+    h.store.setDescription("t1", "Fix remote first.");
     h.store.addIntel("t1", { text: "older" });
     const newest = h.store.addIntel("t1", { text: "newest" }).item;
     h.store.setSources("t1", [{ kind: "github-issues", label: "feedback", locator: "acme/fleet" }, { kind: "url", label: "forum", locator: "https://example.test/forum" }]);
@@ -1113,8 +1113,8 @@ describe("commodore session", () => {
       await stub.created[0]!.tools!.custom![1]!.tools[1]!.execute({ action: "complete", objectiveId: "o2" }, { cwd: theaterRoot, toolCallId: "u0" });
       stub.emit({ kind: "tool-start", id: "u0", name: "mcp__console__console_objectives_detail", input: { action: "complete", objectiveId: "o2" } });
       stub.emit({ kind: "tool-end", id: "u0", isError: true });
-      stub.emit({ kind: "thinking", text: "The directive " }); stub.emit({ kind: "thinking", text: "changed." });
-      stub.emit({ kind: "tool-start", id: "u1", name: "mcp__commodore__directive", input: {} });
+      stub.emit({ kind: "thinking", text: "The description " }); stub.emit({ kind: "thinking", text: "changed." });
+      stub.emit({ kind: "tool-start", id: "u1", name: "mcp__commodore__description", input: {} });
       stub.emit({ kind: "tool-end", id: "u1", isError: false });
       stub.emit({ kind: "text", text: "Completing " }); stub.emit({ kind: "text", text: "the pairing objective." });
       stub.emit({ kind: "tool-start", id: "u2", name: "mcp__console__console_objectives_detail", input: { action: "complete", batchId: "secret detail that must not be logged", objectiveId: "o1", title: "Remote pairing" } });
@@ -1127,7 +1127,7 @@ describe("commodore session", () => {
       stub.emit({ kind: "tool-end", id: "u5", isError: true });
       stub.emit({ kind: "result", isError: false, source: "message", usage: { inputTokens: 1200, outputTokens: 300, costUsd: 0.25 } });
     });
-    const outcome = await session.turn({ reasons: ["directive changed (rev 1)", "1 new intel item"] });
+    const outcome = await session.turn({ reasons: ["description changed (rev 1)", "1 new intel item"] });
     expect(outcome).toMatchObject({ outcome: "ok", actions: 1, usage: { costUsd: 0.25 } });
 
     // 세션 — 베이스 프롬프트뿐이고 지시·정보 본문은 프롬프트에도 깨움 턴에도 없다.
@@ -1141,9 +1141,9 @@ describe("commodore session", () => {
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();
     expect(options.tools!.consoleUse).toBeUndefined();
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
-    expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]\n\nCurrent alias: none\. You have no alias for this turn\.$/);
+    expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] description changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]\n\nCurrent alias: none\. You have no alias for this turn\.$/);
     expect(stub.sent[0]).not.toContain("newest");
 
     // 기록 — 사고·텍스트는 블록으로, 보드 행위는 action·objectiveId·title 만, 도구 입력의 나머지는 없다.
@@ -1151,8 +1151,8 @@ describe("commodore session", () => {
     expect(log.map((entry) => entry.kind)).toEqual(["wake", "tool", "thinking", "tool", "text", "tool", "tool", "tool", "tool", "result"]);
     // 거절된 보드 행위는 코드 한 낱말로 남고 행위로 세지 않는다 — 결과의 힌트는 싣지 않는다.
     expect(log[1]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o2", ok: false, error: "not_awaiting_review" });
-    expect(log[2]).toMatchObject({ kind: "thinking", text: "The directive changed." });
-    expect(log[3]).toMatchObject({ kind: "tool", name: "directive", ok: true });
+    expect(log[2]).toMatchObject({ kind: "thinking", text: "The description changed." });
+    expect(log[3]).toMatchObject({ kind: "tool", name: "description", ok: true });
     expect(log[5]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o1", title: "Remote pairing", ok: true });
     expect(JSON.stringify(log)).not.toContain("secret");
     // 내장 Read의 경로, Glob 에 넘긴 절대 경로는 기록 요약에도 싣지 않는다.
@@ -1167,7 +1167,7 @@ describe("commodore session", () => {
     // 사령관 전용 도구 — 지시·정보는 저장소에서.
     const tools = Object.fromEntries(options.tools!.custom![0]!.tools.map((tool) => [tool.name, tool]));
     const call = async (name: string, args: Record<string, unknown>) => await tools[name]!.execute(args, { cwd: theaterRoot }) as { isError: boolean; structuredContent: Record<string, unknown> };
-    expect((await call("directive", {})).structuredContent).toMatchObject({ text: "Fix remote first.", rev: 1 });
+    expect((await call("description", {})).structuredContent).toMatchObject({ text: "Fix remote first.", rev: 1 });
     const intel = (await call("intel", {})).structuredContent as { items: { text: string }[]; sources: { kind: string }[] };
     expect(intel.items.map((item) => item.text)).toEqual(["newest", "older"]);
     expect(intel.sources.map((source) => source.kind)).toEqual(["github-issues", "url"]);
@@ -1321,7 +1321,7 @@ describe("commodore supervisor", () => {
     const hooks = { acceptsMessage: (id: string) => supervisor.acceptsMessage(id), clear: (id: string) => supervisor.clear(id), run: (id: string) => supervisor.status(id) };
     try {
       h.setExperiments({ commodore: true });
-      h.store.setDirective("t1", "Keep the directive.");
+      h.store.setDescription("t1", "Keep the description.");
       h.store.addIntel("t1", { text: "Keep the intel." });
       h.store.setSources("t1", [{ kind: "url", label: "Reference", locator: "https://example.com" }]);
       h.store.setCoordinates("t1", { model: "sonnet", effort: "high" });
@@ -1375,7 +1375,7 @@ describe("commodore supervisor", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
     const h = harness(Date.now);
-    h.store.setDirective("t1", "Keep routines scoped.");
+    h.store.setDescription("t1", "Keep routines scoped.");
     const sent: string[] = [];
     let fail = false;
     let holdTurn = false;
@@ -1483,7 +1483,7 @@ describe("commodore supervisor", () => {
       const sessions: { sent: string[]; steered: { text: string; id: string }[]; emit: (event: AgentEvent) => void; finish: () => void }[] = [];
       let managementTool: ConsoleMcpTool | undefined;
       const createCommodore = vi.fn(() => ({ commodoreId: "new", target: "commodore:new" }));
-      const createInput = { action: "create", alias: "Browser", theaters: [theaterRoot], directive: "Private directive", intel: ["Private intel"] };
+      const createInput = { action: "create", alias: "Browser", theaters: [theaterRoot], description: "Private description", intel: ["Private intel"] };
       const callCreate = () => managementTool!.execute(createInput, { cwd: theaterRoot, toolCallId: "create-browser" });
       const agent: AgentHost = {
         createSession: async (options) => {
@@ -1659,7 +1659,7 @@ describe("commodore supervisor", () => {
   it("closes a late-opening session without sending a turn after the board becomes unavailable", async () => {
     vi.useFakeTimers();
     const h = harness(Date.now);
-    h.store.setDirective("t1", "Wait for the board.");
+    h.store.setDescription("t1", "Wait for the board.");
     let available = true;
     let release: (() => void) | undefined;
     const sent = vi.fn(), disposed = vi.fn();
@@ -1777,7 +1777,7 @@ describe("commodore supervisor", () => {
       expect(h.store.read("t1")!.run).toMatchObject({ session: 1, costUsd: 0.01 });
 
       // 지시·정보·메시지 — 몇 초 안의 이유는 한 턴으로, 정보는 누적 수로, 메시지는 본문째.
-      h.store.setDirective("t1", "Ship remote first.");
+      h.store.setDescription("t1", "Ship remote first.");
       const first = h.store.addIntel("t1", { text: "a" }).item; h.store.addIntel("t1", { text: "b" });
       // 수정은 새 정보가 아니라 수정으로 깨운다 — 같은 항목을 거듭 고쳐도 한 항목이다.
       h.store.editIntel("t1", first.id, "a2"); h.store.editIntel("t1", first.id, "a3");
@@ -1787,9 +1787,9 @@ describe("commodore supervisor", () => {
       h.store.removeIntel("t1", cancelled.id);
       h.store.transcriptAppend("t1", { kind: "message", text: "Keep objectives small." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["directive", "intel:2", "intel-edited:1", "message"]);
+      expect(tokens().at(-1)).toEqual(["description", "intel:2", "intel-edited:1", "message"]);
       const note = sessions[0]!.sent.at(-1)!;
-      expect(note).toContain(`directive changed: rev 1; 2 new intel items; the person edited 1 intel item: ${first.id}; the person sent you a message`);
+      expect(note).toContain(`description changed: rev 1; 2 new intel items; the person edited 1 intel item: ${first.id}; the person sent you a message`);
       expect(note).toContain("> Keep objectives small.");
       expect(note).not.toContain("Ship remote first.");
 

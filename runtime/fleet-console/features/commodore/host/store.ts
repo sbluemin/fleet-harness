@@ -12,13 +12,13 @@ import { CommodoreStoreError } from "./errors.js";
 import { migrateCommodoreState } from "./state-migration.js";
 import type { CommodoreLastMessage } from "../shared/contracts/theaters.js";
 import { commodoreLastMessage } from "../shared/last-message.js";
-import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodoreRoutine, type RoutineInput, type RoutineUpdate, routineInputSchema, MAX_ROUTINES, type CommodoreIntel, type CommodoreRunTotals, type CommodoreSource, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
+import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DESCRIPTION, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodoreRoutine, type RoutineInput, type RoutineUpdate, routineInputSchema, MAX_ROUTINES, type CommodoreIntel, type CommodoreRunTotals, type CommodoreSource, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /**
  * 사령관 상태 저장소 — Console 데이터의 `commodore/<UUID>/` 하나.
  *
  * ```
- * commodore/state.json         자율 운영·지시·정보·정보 출처·Theater 별 좌표
+ * commodore/state.json         자율 운영·설명·정보·정보 출처·Theater 별 좌표
  * commodore/transcript.jsonl   사령관 기록(한 줄 한 항목, seq 단조 증가)
  * commodore/images/<메시지>/<첨부>.<확장자>   기록을 따라 보존·정리하는 이미지 사본
  * commodore/memory/…           사령관만 쓰는 fleet-memory(`memory.ts`)
@@ -60,8 +60,8 @@ export interface CommodoreStore {
   routineRemove(commodoreId: string, routineId: string, actor: "person" | "commodore"): CommodoreState;
   routinesRun(commodoreId: string, routineIds: readonly string[]): CommodoreState;
   routineNoticesRead(commodoreId: string, noticeIds: readonly string[]): void;
-  /** 본문이 그대로면 rev 도 그대로다 — 같은 지시를 다시 저장해 사령관을 깨우지 않는다. */
-  setDirective(commodoreId: string, text: string): CommodoreState;
+  /** 본문이 그대로면 rev 도 그대로다 — 같은 설명을 다시 저장해 사령관을 깨우지 않는다. */
+  setDescription(commodoreId: string, text: string): CommodoreState;
   addIntel(commodoreId: string, input: { readonly text: string; readonly source?: string }): { readonly state: CommodoreState; readonly item: CommodoreIntel };
   /** 사람이 항목 본문을 고친다 — id·출처·자리는 그대로, `editedAt` 이 남는다. 본문이 그대로면 사건도 없다(사령관을 헛되이 깨우지 않는다). */
   editIntel(commodoreId: string, intelId: string, text: string): { readonly state: CommodoreState; readonly item: CommodoreIntel };
@@ -76,7 +76,7 @@ export interface CommodoreStore {
   setLanguage(commodoreId: string, language: "en" | "ko"): CommodoreState;
   /** 누적 셈을 더한다(세션 +1, 비용 +, 행위 +). 감독자가 턴 결과마다 부른다. */
   addRunTotals(commodoreId: string, delta: Partial<CommodoreRunTotals>): CommodoreState;
-  /** 감독자가 세션을 거둔 뒤 부른다. 기록 파일을 지우되 지시·인텔·설정은 보존한다. */
+  /** 감독자가 세션을 거둔 뒤 부른다. 기록 파일을 지우되 설명·인텔·설정은 보존한다. */
   transcriptClear(commodoreId: string): CommodoreState;
   readonly images: ReturnType<typeof createCommodoreImages>;
   /** fleet-memory — 쓰기는 사령관 도구만, 화면은 읽기만 한다. 바뀌면 `memory` 사건이 나간다. */
@@ -299,11 +299,11 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const ids = new Set(noticeIds);
       commit(commodoreId, { ...current, routineNotices: (current.routineNotices ?? []).filter((n) => !ids.has(n.id)) }, "routines");
     },
-    setDirective(commodoreId, text) {
-      if (text.length > MAX_DIRECTIVE) throw new CommodoreStoreError("invalid_request");
+    setDescription(commodoreId, text) {
+      if (text.length > MAX_DESCRIPTION) throw new CommodoreStoreError("invalid_request");
       const current = load(commodoreId);
-      if (current.directive.text === text) return current;
-      return commit(commodoreId, { ...current, directive: { text, rev: current.directive.rev + 1, updatedAt: now() } }, "directive");
+      if (current.description.text === text) return current;
+      return commit(commodoreId, { ...current, description: { text, rev: current.description.rev + 1, updatedAt: now() } }, "description");
     },
     addIntel(commodoreId, input) {
       const text = input.text.trim();

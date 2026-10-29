@@ -16,8 +16,8 @@ import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_
 
 export const COMMODORE_CHANNEL = "commodore";
 
-/** 지시 원문 상한. 사령관 도구가 통째로 돌려주므로 한 턴에 읽히는 크기여야 한다. */
-export const MAX_DIRECTIVE = 8_000;
+/** 설명 원문 상한. 사령관 도구가 통째로 돌려주므로 한 턴에 읽히는 크기여야 한다. */
+export const MAX_DESCRIPTION = 8_000;
 /** 정보 항목 하나의 본문 상한. */
 export const MAX_INTEL_TEXT = 4_000;
 /** 보관하는 정보 항목 수 — 넘치면 오래된 것부터 떨어진다(정보는 근거이지 명령이 아니라 유실이 상태를 깨지 않는다). */
@@ -76,8 +76,8 @@ export const commodoreIntelSchema = z.object({
   editedAt: z.number().int().nonnegative().optional(),
 }).strict();
 
-export const commodoreDirectiveSchema = z.object({
-  text: z.string().max(MAX_DIRECTIVE),
+export const commodoreDescriptionSchema = z.object({
+  text: z.string().max(MAX_DESCRIPTION),
   /** 본문이 바뀔 때마다 1 씩 오른다. 사령관은 rev 로 "지난번 이후 바뀌었는가" 를 안다. */
   rev: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
@@ -118,7 +118,7 @@ export const commodoreAskSchema = z.object({
 export const commodoreStateSchema = z.object({
   /** 사람이 지정한 사령관 이름. Theater 연결과는 독립된 UUID의 속성이다. */
   alias: z.string().refine((value) => normalizeCommodoreAlias(value) === value).optional(),
-  directive: commodoreDirectiveSchema,
+  description: commodoreDescriptionSchema,
   intel: z.array(commodoreIntelSchema).max(MAX_INTEL_ITEMS),
   sources: z.array(commodoreSourceSchema).max(MAX_SOURCES),
   /** Theater 별 모델·강도. 없으면 실험 기능 행의 기본 좌표. 다음 턴부터 적용된다. */
@@ -151,7 +151,7 @@ export const commodoreStateSchema = z.object({
 
 export type CommodoreSource = z.output<typeof commodoreSourceSchema>;
 export type CommodoreIntel = z.output<typeof commodoreIntelSchema>;
-export type CommodoreDirective = z.output<typeof commodoreDirectiveSchema>;
+export type CommodoreDescription = z.output<typeof commodoreDescriptionSchema>;
 export type CommodoreState = z.output<typeof commodoreStateSchema>;
 export type CommodoreRunTotals = NonNullable<CommodoreState["run"]>;
 export type CommodoreAsk = z.output<typeof commodoreAskSchema>;
@@ -194,7 +194,7 @@ export interface CommodoreRunStatus {
 }
 
 export const EMPTY_COMMODORE_STATE: CommodoreState = Object.freeze({
-  directive: Object.freeze({ text: "", rev: 0, updatedAt: 0 }),
+  description: Object.freeze({ text: "", rev: 0, updatedAt: 0 }),
   intel: Object.freeze([]) as unknown as CommodoreIntel[],
   sources: Object.freeze([]) as unknown as CommodoreSource[],
 }) as CommodoreState;
@@ -328,7 +328,7 @@ export type CommodoreEvent =
   /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
   | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
 
-export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "routines" | "language" | "run" | "clear" | "asks";
+export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "description" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "routines" | "language" | "run" | "clear" | "asks";
 
 export interface CommodoreStateView {
   /** 보드 어댑터의 실행 가능 여부. */

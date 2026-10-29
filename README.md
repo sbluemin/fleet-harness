@@ -79,7 +79,7 @@ An objective's brief, criteria, members, mission graph, and results sit in the d
 
 ## Let the Commodore run a Theater
 
-Each Theater has a **Commodore**: a coordinator that can run the Theater's objectives on its own. Turn on autonomous operation with the Commodore glyph on the Theater's header. The Commodore then creates objectives from a title and brief, leaves the plan to each Commander, commences and reviews them, and answers Commanders' questions. Decisions it should not make wait for you under **Your decisions**, and it can ask you directly. Click the Theater's header to open its **Theater Inbox**, with the Commodore's log, directive, and settings beside the Theater's system prompt. You can hand a single objective to the Commodore from its sidebar row, and while it runs the Theater you can message it from a new session with `@`.
+Each **Commodore** is a coordinator you create: it keeps its own list of Theaters and can run its objectives across them on its own. Turn on autonomous operation with the Commodore glyph on the Theater's header. The Commodore then creates objectives from a title and brief, leaves the plan to each Commander, commences and reviews them, and answers Commanders' questions. Decisions it should not make wait for you under **Your decisions**, and it can ask you directly. Choose **Theaters…** from a Commodore's menu in the sidebar to open its Log, Routines, Info, and Settings beside its own Theaters — Info holds the Commodore's description, intel, and memory. You can hand a single objective to the Commodore from its sidebar row, and while it runs you can message it from a new session with `@`.
 
 ## One conversation at a time
 

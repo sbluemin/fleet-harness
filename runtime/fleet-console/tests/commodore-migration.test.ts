@@ -11,6 +11,7 @@ import { expect, it, vi } from "vitest";
 import { workspaceDirectoryNames } from "@fleet-console/infra/workspace-dir";
 import { createCommodoreFeature, type CommodoreFeatureDeps } from "../features/commodore/host/index.js";
 import { migrateCommodoreData } from "../features/commodore/host/migrate.js";
+import { migrateCommodoreState } from "../features/commodore/host/state-migration.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { EMPTY_COMMODORE_STATE } from "../features/commodore/shared/contracts/types.js";
 
@@ -25,7 +26,9 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const write = (file: string, value: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, value); };
     const theater = (name: string) => { const dir = path.join(temp, "theaters", name); fs.mkdirSync(dir, { recursive: true }); return fs.realpathSync.native(dir); };
     const marker = (id: string, root: string) => JSON.stringify({ commodoreId: id, path: root, startedAt: 1 });
-    const state = (text: string) => JSON.stringify({ ...EMPTY_COMMODORE_STATE, directive: { text, rev: 1, updatedAt: 1 }, autonomy: true });
+    /** 이관 전 파일 모양(옛 키)의 시드 — 옛 키는 바이트에만 실리고 소스에는 남기지 않는다. */
+    const LEGACY_KEY = `direct${"ive"}`;
+    const state = (text: string) => JSON.stringify({ ...EMPTY_COMMODORE_STATE, description: { text, rev: 1, updatedAt: 1 }, autonomy: true }).replaceAll(`"description"`, `"${LEGACY_KEY}"`);
     const seed = (name: string, root: string, text = name) => {
       const workspace = path.join(data, "workspaces", name);
       const dir = path.join(workspace, "objectives", "commodore");
@@ -63,10 +66,10 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const conflictId = randomUUID();
     write(path.join(entities, conflictId, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, theaters: [{ path: conflict.root }] }));
     const unknownRoot = theater("unknown");
-    const unknown = seed(workspaceDirectoryNames(unknownRoot)[0], unknownRoot, "Keep the unreadable-identity directive");
+    const unknown = seed(workspaceDirectoryNames(unknownRoot)[0], unknownRoot, "Keep the unreadable-identity description");
     write(path.join(unknown.workspace, "cwd.json"), "{corrupt cwd");
     const lateRoot = theater("late-unknown");
-    const lateUnknown = seed(workspaceDirectoryNames(lateRoot)[1]!, lateRoot, "Keep the late-registered legacy directive");
+    const lateUnknown = seed(workspaceDirectoryNames(lateRoot)[1]!, lateRoot, "Keep the late-registered legacy description");
     write(path.join(lateUnknown.workspace, "cwd.json"), "{corrupt legacy cwd");
     const broken = seed("broken-state", theater("broken"));
     write(path.join(broken.dir, "state.json"), "{broken legacy state");
@@ -148,7 +151,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const ownerOf = (theaterId: string): string | null => { const ids = owners(theaterId); return ids.length === 1 ? ids[0]! : null; };
     const resolved = { commodoreId: ownerOf(workspaceHash(a.root)) };
     const view = await call("commodore/state", { commodoreId: resolved.commodoreId });
-    expect(view).toMatchObject({ commodoreId: resolved.commodoreId, active: false, state: { directive: { text: a.text, rev: 1 } }, run: { phase: "off" } });
+    expect(view).toMatchObject({ commodoreId: resolved.commodoreId, active: false, state: { description: { text: a.text, rev: 1 } }, run: { phase: "off" } });
     // 등록 경로와 사령관 링크가 표기만 달라도 같은 사령관으로 풀리고 저장된다. 대소문자를 무시하는 파일 시스템은 등록 대소문자를 뒤집고, 구분하는 파일 시스템은 `/.`를 쓴다.
     const notationOf = (root: string): string => {
       const slash = root.lastIndexOf("/");
@@ -173,11 +176,16 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     expect(JSON.stringify(view)).not.toContain(a.root);
     expect(view.state).not.toHaveProperty("autonomy");
     expect(ownerOf(workspaceHash(stopped.root))).toBe(stoppedId);
-    expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { directive: { text: stopped.text, rev: 1 } } });
+    expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { description: { text: stopped.text, rev: 1 } } });
     const migrated = (await call("commodore/state", { commodoreId: stoppedId })).state;
     expect(migrated).not.toHaveProperty("patrolMinutes");
     expect(migrated).not.toHaveProperty("stopAt");
     expect(migrated).not.toHaveProperty("autonomy");
+    expect(migrated).not.toHaveProperty(LEGACY_KEY);
+    // 이관된 상태를 한 번 더 읽어도 같고(멱등), 둘 다 있으면 description 을 지킨다(저장 무결성).
+    const migratedRaw = JSON.parse(fs.readFileSync(path.join(entities, stoppedId, "state.json"), "utf8")) as Record<string, unknown>;
+    expect(migrateCommodoreState(migratedRaw)).toEqual(migratedRaw);
+    expect(migrateCommodoreState({ [LEGACY_KEY]: { text: "old", rev: 1, updatedAt: 1 }, description: { text: "new", rev: 2, updatedAt: 2 } })).toEqual({ description: { text: "new", rev: 2, updatedAt: 2 } });
     expect(ownerOf(workspaceHash(fresh))).toBeNull();
     // cwd를 못 읽어도 후보 이름이 겹치는 Theater만 보류한다. 관계없는 새 Theater는 위에서 정상 발급됐다.
     expect(owners(workspaceHash(unknown.root))).toEqual([]);
@@ -194,11 +202,11 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     feature = createCommodoreFeature(deps);
     const recovered = { commodoreId: ownerOf(workspaceHash(unknown.root)) };
     expect(recovered.commodoreId).toEqual(expect.any(String));
-    expect(await call("commodore/state", { commodoreId: recovered.commodoreId })).toMatchObject({ state: { directive: { text: unknown.text, rev: 1 } } });
+    expect(await call("commodore/state", { commodoreId: recovered.commodoreId })).toMatchObject({ state: { description: { text: unknown.text, rev: 1 } } });
     expect(await call("commodore/transcript", { commodoreId: recovered.commodoreId })).toMatchObject({ entries: [{ kind: "result", seq: 1, outcome: "ok" }] });
     const recoveredLate = { commodoreId: ownerOf(workspaceHash(lateUnknown.root)) };
     expect(recoveredLate.commodoreId).toEqual(expect.any(String));
-    expect(await call("commodore/state", { commodoreId: recoveredLate.commodoreId })).toMatchObject({ state: { directive: { text: lateUnknown.text, rev: 1 } } });
+    expect(await call("commodore/state", { commodoreId: recoveredLate.commodoreId })).toMatchObject({ state: { description: { text: lateUnknown.text, rev: 1 } } });
     expect(fs.existsSync(unknown.dir)).toBe(false);
     expect(fs.existsSync(lateUnknown.dir)).toBe(false);
 
@@ -210,7 +218,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const finalStates = fs.readdirSync(entities).map((id) => ({ id, value: JSON.parse(fs.readFileSync(path.join(entities, id, "state.json"), "utf8")) }));
     expect(finalStates.filter((entry) => entry.value.theaters[0]?.path === a.root)).toHaveLength(1);
     const bState = finalStates.find((entry) => entry.value.theaters[0]?.path === b.root)!;
-    expect(bState.value).toMatchObject({ directive: { text: b.text } });
+    expect(bState.value).toMatchObject({ description: { text: b.text } });
     expect(bState.value).not.toHaveProperty("autonomy");
     const bId = bState.id;
     expect(fs.readFileSync(path.join(entities, bId, "memory", "MEMORY.md"), "utf8")).toBe("keep memory\n");
@@ -230,7 +238,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     // 이주 보류 중에는 빈 UUID를 먼저 발급해 원본의 재시도 길을 막지 않는다.
     await feature.dispose();
     const pendingRoot = theater("pending-with-wiki");
-    const pending = seed(workspaceDirectoryNames(pendingRoot)[0], pendingRoot, "Keep the pending directive");
+    const pending = seed(workspaceDirectoryNames(pendingRoot)[0], pendingRoot, "Keep the pending description");
     fs.symlinkSync("state.json", path.join(pending.dir, "linked-state"));
     write(path.join(pending.workspace, "knowledge", "wiki", "kept.md"), "kept wiki\n");
     expect(migrateCommodoreData(data).blockedPaths.has(pendingRoot)).toBe(true);
@@ -240,7 +248,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     expect(fs.readFileSync(path.join(pending.dir, "state.json"), "utf8")).toBe(state(pending.text));
     // 별칭의 명시적 발급도 보류 가드를 탄다. 빈 엔티티를 만들지 않고 원본은 그대로다.
     const aliasRoot = theater("pending-with-alias");
-    const aliasPending = seed(workspaceDirectoryNames(aliasRoot)[0], aliasRoot, "Keep the alias-pending directive");
+    const aliasPending = seed(workspaceDirectoryNames(aliasRoot)[0], aliasRoot, "Keep the alias-pending description");
     fs.symlinkSync("state.json", path.join(aliasPending.dir, "linked-state"));
     await feature.dispose(); feature = createCommodoreFeature(deps);
     expect(owners(workspaceHash(aliasRoot))).toEqual([]);

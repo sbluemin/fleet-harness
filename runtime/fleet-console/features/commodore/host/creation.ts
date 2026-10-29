@@ -7,7 +7,7 @@ import { CommodoreStoreError } from "./errors.js";
 export interface CommodoreCreateInput {
   readonly alias: string;
   readonly theaters: readonly string[];
-  readonly directive: string;
+  readonly description: string;
   readonly intel: readonly string[];
   readonly memoryRefs?: readonly string[];
 }
@@ -45,7 +45,7 @@ export function createCommodoreCreator(deps: {
       });
       staged.setAlias(newId, input.alias);
       staged.setTheaters(newId, theaters);
-      staged.setDirective(newId, input.directive);
+      staged.setDescription(newId, input.description);
       for (const text of input.intel) staged.addIntel(newId, { text, source: `commodore:${sourceId}` });
       for (const entry of memories) staged.memory.copy(newId, { ...entry, links: entry.links.filter((ref) => refs.has(ref)) });
     });
