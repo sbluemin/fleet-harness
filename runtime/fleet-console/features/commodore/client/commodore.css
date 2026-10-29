@@ -145,14 +145,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-commodore-toolbar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px 0 28px; }
 .objectives-commodore-inbox.is-compact .objectives-commodore-toolbar { padding-left: 20px; }
 .objectives-commodore-totals { min-width: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
-/* 링크는 낫표까지 한 덩어리 — 줄이 바뀌어도 「 와 」가 링크에서 떨어지지 않는다. */
-.objectives-commodore-hint-link {
-  margin: 0 calc(-1 * var(--space-1)); padding: 0 var(--space-1); border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-primary); font: inherit; cursor: pointer; white-space: nowrap;
-  transition: background var(--duration-fast) var(--ease-glide);
-}
-/* 밑줄 없이 발화자 이름과 같은 hover 면으로 선다. */
-.objectives-commodore-hint-link:hover { background: var(--control-wash-hover); }
-.objectives-commodore-hint-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 
 
 /* 설정 — Console 설정과 같은 줄(SettingsRow·SettingsToggle). 시트 안에서는 형제 사이 hairline 과 위아래 숨구멍을 같은 값으로.
@@ -333,7 +325,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-section { display: grid; gap: 8px; }
 .objectives-commodore-section + .objectives-commodore-section { border-top: 1px solid var(--surface-rim); padding-top: 14px; }
 .objectives-commodore-section-title { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
-.objectives-commodore-later { color: var(--text-tertiary); font-weight: var(--weight-regular); }
 .objectives-commodore-section-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .objectives-commodore-hint { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
 .objectives-commodore-hint.is-done { color: var(--positive); }
@@ -348,7 +339,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-input::placeholder { color: var(--text-tertiary); }
 .objectives-commodore-input:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 
-.objectives-commodore-intel-list, .objectives-commodore-sources { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.objectives-commodore-intel-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .objectives-commodore-intel-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
 .objectives-commodore-intel-when { color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .objectives-commodore-intel-text { overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -385,9 +376,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-intel-add textarea::placeholder { color: var(--brass-ink); opacity: 0.9; }
 .objectives-commodore-intel-add:focus-within textarea::placeholder { color: var(--text-tertiary); }
 .objectives-commodore-intel-add textarea[readonly] { opacity: 0.6; }
-.objectives-commodore-intel-sources { display: grid; gap: 8px; padding-top: 14px; }
-.objectives-commodore-sources li { display: flex; gap: 8px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); }
-.objectives-commodore-source-locator { color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
 
 /* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 지시 칸의 정보와 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
    색은 검증 경과(warn 점) 하나만 상태를 말하고, 나머지는 글자 층위로만 나눈다. */
@@ -418,17 +406,21 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-memory-entries { margin: 0; padding: 0 0 0 9px; border-left: 1px solid var(--surface-rim); list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; min-width: 0; }
 .objectives-commodore-memory-entries.is-flat { padding-left: 0; border-left: 0; margin-left: -8px; }
 .objectives-commodore-memory-entry {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 5px 8px; border: 0; border-radius: var(--radius-xs);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; width: 100%; min-width: 0; padding: 5px 8px; border: 0; border-radius: var(--radius-xs);
   background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); line-height: 1.5; text-align: left; cursor: pointer;
 }
 .objectives-commodore-memory-entry:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); }
 .objectives-commodore-memory-entry:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .objectives-commodore-memory-entry-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-commodore-memory-date { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+/* 제목 밖에서 맞은 자리 — 제목 줄 아래 한 줄로 접는다. */
+.objectives-commodore-memory-excerpt { flex: 1 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--t-xs); }
+.objectives-commodore-memory-excerpt-field { color: var(--text-tertiary); }
+/* 찾은 낱말 — 목표 검색 결과와 같은 중립 면이다. */
+.objectives-commodore-memory mark { padding: 0 0.16em; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--text-primary) 14%, transparent); color: var(--text-primary); }
 .objectives-commodore-memory-glyph { flex: none; width: 10px; height: 10px; color: var(--text-tertiary); }
 .objectives-commodore-memory-stale { flex: none; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--warn); }
-.objectives-commodore-memory-foot { gap: 6px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
-.objectives-commodore-memory-legend, .objectives-commodore-memory-due { display: inline-flex; align-items: center; gap: 6px; }
+.objectives-commodore-memory-due { display: inline-flex; align-items: center; gap: 6px; }
 .objectives-commodore-memory-due { color: var(--warn-ink); }
 .objectives-commodore-memory-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); }
 .objectives-commodore-memory-back { display: inline-flex; align-items: center; gap: 3px; padding-left: 0; }

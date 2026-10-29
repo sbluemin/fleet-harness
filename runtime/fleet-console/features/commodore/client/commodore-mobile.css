@@ -149,7 +149,7 @@
 .objectives-cm-gr.is-editing { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; }
 .objectives-cm-intel-field { min-height: 104px; max-height: 280px; field-sizing: content; }
 .objectives-cm-intel-field[readonly] { opacity: .6; }
-/* 지시 탭 — 지시 아래 구분선 하나 밑에 정보와 정보 출처가 선다(데스크톱 지시 칸과 같은 구성). */
+/* 정보 화면 — 설명 · 정보 · 기억을 구분선으로 나눈다(데스크톱 정보 칸과 같은 구성). */
 .objectives-cm-divider { margin: 0; border: 0; border-top: 1px solid var(--m-hairline); }
 /* 「+ 정보 추가」 — 정보 묶음 맨 아래 줄. 테두리 없는 입력의 자리표가 이름을 대신하고, 입력은 내용만큼 자란다. */
 .objectives-cm-gr.objectives-cm-intel-add { align-items: flex-start; min-height: 52px; padding-block: 14px; }
@@ -195,8 +195,9 @@
 .objectives-cm-memory-row .objectives-cm-gr-tx small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .objectives-cm-memory-end { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
 .objectives-cm-memory-dot { flex: none; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--m-running); }
-.objectives-cm-memory-foot { display: flex; flex-direction: column; gap: 4px; }
-.objectives-cm-memory-legend { display: inline-flex; align-items: center; gap: 6px; }
+.objectives-cm-memory-excerpt-field { color: var(--m-text-faint); }
+/* 찾은 낱말 — 데스크톱 기억·목표 검색과 같은 중립 면이다. */
+.objectives-cm-memory mark { padding: 0 0.16em; border-radius: 4px; background: color-mix(in oklch, var(--text-primary) 14%, transparent); color: var(--text-primary); }
 /* 항목 읽기 — 경로 한 줄 · 제목 · 설명 · 날짜 줄, 그 아래 왜/적용 카드, 출처·연결 행 묶음. 뒤로 가기는 호스트 막대 ‹(깊이 2+). */
 .objectives-cm-memory-crumbs { display: flex; gap: 6px; min-width: 0; padding: 4px 4px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); white-space: nowrap; }
 .objectives-cm-memory-crumbs span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

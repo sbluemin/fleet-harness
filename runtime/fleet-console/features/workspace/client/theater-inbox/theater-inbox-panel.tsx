@@ -103,7 +103,7 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
           icon: null,
           order: 100 + sectionIndex * 20 + pageIndex,
           section: sectionTag,
-          render: () => <TheaterInboxPanelPage theater={theater} language={language} section={section} pageId={page.id} navigation={navigation} fallback={fallback} sections={sections} />,
+          render: () => <TheaterInboxPanelPage theater={theater} language={language} section={section} pageId={page.id} navigation={navigation} fallback={fallback} />,
         }));
       });
     });
@@ -221,27 +221,18 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
 }
 
 /** 오른쪽 패널의 Inbox 칸 하나 — 섹션 본문과 「적용」 한 줄. 본문은 시트와 같은 섹션 계약으로 그리고, 배치는 칸의 `layout` 을 따르는 공통 틀이 진다. */
-function TheaterInboxPanelPage({ theater, language, section, pageId, navigation, fallback, sections }: {
+function TheaterInboxPanelPage({ theater, language, section, pageId, navigation, fallback }: {
   readonly theater: ConsoleTheaterSummary;
   readonly language: ConsoleLocale;
   readonly section: ResolvedTheaterInboxSection;
   readonly pageId: string;
   readonly navigation: ClientTheaterInboxCapability;
   readonly fallback: TheaterInboxAddress;
-  readonly sections: readonly ResolvedTheaterInboxSection[];
 }) {
   const t = useT();
   const open = useTheaterInboxState();
-  const states = useSectionStates(sections, theater, language);
   const focusRequest = open && open.theaterId === theater.id && open.address.sectionId === section.id && open.address.pageId === pageId ? open.focusRequest : null;
-  const links = useMemo(() => {
-    const operatorIndex = sections.findIndex((candidate, index) => candidate.descriptor.operatorDirectivePageId && states[index]?.availability === "available");
-    const operator = operatorIndex >= 0 ? sections[operatorIndex] : undefined;
-    return {
-      systemPrompt: fallback,
-      operatorDirective: operator?.descriptor.operatorDirectivePageId ? { sectionId: operator.id, pageId: operator.descriptor.operatorDirectivePageId } : null,
-    };
-  }, [sections, states, fallback]);
+  const links = useMemo(() => ({ systemPrompt: fallback }), [fallback]);
   const page = section.descriptor.pages.find((candidate) => candidate.id === pageId);
   const applies = page?.applies?.(language);
   return (

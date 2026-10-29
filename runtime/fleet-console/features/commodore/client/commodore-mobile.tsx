@@ -44,7 +44,7 @@ import {
   transcriptNeeded,
   removeCommodoreIntel,
   retryCommodore,
-  saveCommodoreDirective,
+  saveCommodoreDescription,
   setCommodoreCommander,
   setCommodoreCoordinates,
   subscribeCommodore,
@@ -87,8 +87,7 @@ const TargetIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><circle cx="12"
 const ChartIcon = () => <Icon><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></Icon>;
 /* 세부 구역 행 · ⋮ 메뉴 — 같은 문법. 연필·톱니·더하기·Theater 는 호스트 폰 아이콘과 같은 경로, 책갈피는 기억 탭의 빈 화면 아이콘이다. */
 const LogIcon = () => <Icon><path d="M5 6h14M5 10h14M5 14h10M5 18h7" /></Icon>;
-const DirectiveIcon = () => <Icon><path d="M4 20h4L19 9l-4-4L4 16z" /></Icon>;
-const BookmarkIcon = () => <Icon><path d="M6 3h12v18l-6-4-6 4Z" /></Icon>;
+const InfoIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5M12 7.8v.01" /></Icon>;
 const GearIcon = () => <Icon><circle cx="12" cy="12" r="3.2" /><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M5.5 18.5l1.8-1.8M16.7 7.3l1.8-1.8" /></Icon>;
 const TrashIcon = () => <Icon><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></Icon>;
 const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14" /></Icon>;
@@ -194,15 +193,14 @@ function sectionTitle(t: T, section: CommodoreMobileTab): string {
     case "log": return t("commodore.tabs.log");
     case "routines": return t("commodore.tabs.routines");
     case "goals": return t("commodore.trail.title");
-    case "directive": return t("commodore.tabs.directive");
-    case "memory": return t("commodore.tabs.memory");
+    case "info": return t("commodore.tabs.info");
     case "settings": return t("commodore.tabs.settings");
   }
 }
 
 /**
  * 화면은 세 단이다. 기본(깊이 0)은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 은 세부(깊이 1)를 열고, 오른쪽 글리프는 지휘관 시트를 연다.
- * 세부는 큰 아바타 · 이름 · 「편집」과 구역 행 카드(지휘관 세션·기록·목표 / 지시·기억·설정)다. 행을 누르면 그 구역 본문이 깊이 2의
+ * 세부는 큰 아바타 · 이름 · 「편집」과 구역 행 카드(지휘관 세션·기록·목표 / 정보·설정)다. 행을 누르면 그 구역 본문이 깊이 2의
  * 하위 화면으로 서고, 기억 항목은 그 위에 한 단씩 쌓인다. ‹·시스템 뒤로·`__fleetMobileBack`은 모두 막대의 `onBack` 하나로 한 단씩 돌아온다.
  * 깊은 링크(`openCommodoreMobile(tab, id, true)`)와 대화의 원장 열기는 세부와 그 구역을 한 번에 세운다(깊이 0 → 2) — 뒤로는 구역 → 세부 → 대화다.
  */
@@ -223,7 +221,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   const [memoryTrail, setMemoryTrail] = useState<readonly string[]>([]);
   const openMemory = useCallback((ref: string) => setMemoryTrail((trail) => [...trail, ref]), []);
   const trimMemory = useCallback((length: number) => setMemoryTrail((trail) => trail.slice(0, length)), []);
-  useEffect(() => { if (!panel || section !== "memory") setMemoryTrail([]); }, [panel, section]);
+  useEffect(() => { if (!panel || section !== "info") setMemoryTrail([]); }, [panel, section]);
   const [failure, setFailure] = useState<string | null>(null);
   const shownFailure = failure ?? (transcriptError ? failWord(t, new Error(transcriptError)) : null);
   const mongle = commodoreMongleState(view, board.objectives);
@@ -272,8 +270,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       title: sectionTitle(t, section),
       subtitle: title,
       round: true,
-      depth: 2 + (section === "memory" ? memoryTrail.length : 0),
-      onBack: () => { if (section === "memory" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
+      depth: 2 + (section === "info" ? memoryTrail.length : 0),
+      onBack: () => { if (section === "info" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
   }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, newSession, online, t, actions]);
 
@@ -313,8 +311,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           {section === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} leave={leave} /> : null}
           {section === "routines" ? <div className="objectives-cm-content"><CommodoreRoutines commodoreId={commodoreId ?? ""} language={commodoreLanguage() ?? "en"} phone /></div> : null}
           {section === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} /></div> : null}
-          {section === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
-          {section === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} leave={leave} /> : null}
+          {/* 정보 화면 — 설명 · 정보 아래 기억이 한 스크롤로 선다. 기억 항목을 열면 그 항목이 화면 전체를 받는다. */}
+          {section === "info" && view ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} leave={leave} header={<CommodoreMobileDescription t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} />} /> : null}
           {section === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
@@ -373,8 +371,6 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
     : run.phase === "retrying" && run.nextWakeAt ? { text: t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }) }
     : run.totals.actions > 0 ? { text: t("commodore.meta.handled", { n: run.totals.actions }) } : null;
   const goalsValue: ProfileValue = objectives.length > 0 ? { text: t("commodore.mobile.count", { n: objectives.length }) } : null;
-  const directive = view?.state.directive.text.trim() ?? "";
-  const directiveValue: ProfileValue = !view ? null : directive ? { text: t("commodore.mobile.intelCount", { n: view.state.intel.length }) } : { text: t("commodore.mobile.directiveEmpty") };
   const memoryValue: ProfileValue = memory.loaded && memory.entries.length > 0 ? { text: t("commodore.mobile.count", { n: memory.entries.length }) } : null;
   const settingsValue: ProfileValue = view ? { text: view.state.model ?? view.defaults.model } : null;
   const routinesValue: ProfileValue = view ? { text: t("commodore.routines.enabledCount", { n: (view.state.routines ?? []).filter((r) => r.enabled).length }) } : null;
@@ -395,8 +391,7 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
           <ProfileRow section="goals" icon={<PennantIcon />} label={t("commodore.trail.title")} value={goalsValue} onOpen={onOpen} />
         </div>
         <div className="objectives-cm-card">
-          <ProfileRow section="directive" icon={<DirectiveIcon />} label={t("commodore.tabs.directive")} value={directiveValue} onOpen={onOpen} />
-          <ProfileRow section="memory" icon={<BookmarkIcon />} label={t("commodore.tabs.memory")} value={memoryValue} onOpen={onOpen} />
+          <ProfileRow section="info" icon={<InfoIcon />} label={t("commodore.tabs.info")} value={memoryValue} onOpen={onOpen} />
           <ProfileRow section="settings" icon={<GearIcon />} label={t("commodore.tabs.settings")} value={settingsValue} onOpen={onOpen} />
         </div>
       </nav>
@@ -643,7 +638,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   );
 }
 
-/* ── 지시 탭(CM-2c) ───────────────────────────────────────────────────── */
+/* ── 정보 화면의 설명·정보(CM-2c) ─────────────────────────────────────── */
 
 interface TabProps {
   readonly t: T;
@@ -655,49 +650,46 @@ interface TabProps {
   readonly onClear: () => void;
 }
 
-function CommodoreMobileDirective({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
-  const directive = view.state.directive;
-  const [draft, setDraft] = useState(directive.text);
+/** 정보 화면 머리 — 설명 입력과 그 아래 정보 목록. 기억 트리가 이 아래에 이어 선다. */
+function CommodoreMobileDescription({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
+  const description = view.state.description;
+  const [draft, setDraft] = useState(description.text);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  // 실패 한 줄은 그 일을 한 자리(지시 저장 단추 곁, 정보 목록 곁)에 선다 — 한 탭에 두 일이 있다.
-  const [failedAt, setFailedAt] = useState<"directive" | "intel">("directive");
-  const failIn = (part: "directive" | "intel") => (error: unknown) => { setFailedAt(part); onFail(error); };
-  // 다른 곳에서 고친 지시는 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다(데스크톱과 같다).
-  const base = useRef(directive.text);
+  // 실패 한 줄은 그 일을 한 자리(설명 저장 단추 곁, 정보 목록 곁)에 선다 — 한 화면에 두 일이 있다.
+  const [failedAt, setFailedAt] = useState<"description" | "intel">("description");
+  const failIn = (part: "description" | "intel") => (error: unknown) => { setFailedAt(part); onFail(error); };
+  // 다른 곳에서 고친 설명은 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다(데스크톱과 같다).
+  const base = useRef(description.text);
   useEffect(() => {
-    if (draft === base.current) setDraft(directive.text);
-    base.current = directive.text;
-  }, [directive.text]); // eslint-disable-line react-hooks/exhaustive-deps -- 서버 값이 바뀔 때만.
-  const dirty = draft !== directive.text;
+    if (draft === base.current) setDraft(description.text);
+    base.current = description.text;
+  }, [description.text]); // eslint-disable-line react-hooks/exhaustive-deps -- 서버 값이 바뀔 때만.
+  const dirty = draft !== description.text;
   const save = () => {
     if (saving || !dirty || !online) return;
     onClear();
     setSaving(true);
     setSaved(false);
-    void saveCommodoreDirective(theaterId, draft).then(() => setSaved(true)).catch(failIn("directive")).finally(() => setSaving(false));
+    void saveCommodoreDescription(theaterId, draft).then(() => setSaved(true)).catch(failIn("description")).finally(() => setSaving(false));
   };
   return (
-    <div className="objectives-cm-content">
-      <div className="objectives-cm-pad">
-        <label className="objectives-cm-glab" htmlFor="objectives-cm-directive">{t("commodore.directive.label")}</label>
-        <textarea id="objectives-cm-directive" className="objectives-cm-field is-tall" value={draft} maxLength={8_000} placeholder={t("commodore.directive.placeholder")} onChange={(event) => { setDraft(event.target.value); setSaved(false); }} />
-        <p className="objectives-cm-secnote">{t("commodore.directive.hint")}</p>
-        {failure && failedAt === "directive" ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
-        <div className="objectives-cm-crow">
-          <span className="objectives-cm-secnote is-grow">{directive.rev > 0 ? t("commodore.directive.rev", { rev: directive.rev, time: clockTime(directive.updatedAt) }) : ""}</span>
-          <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={saving || !dirty || !online} onClick={save}>{t("commodore.directive.save")}</button>
-        </div>
-        {saved && !dirty ? <p className="objectives-cm-secnote is-done" role="status">{t(view.active ? "commodore.directive.saved" : "commodore.directive.savedIdle")}</p> : null}
-        {/* 지시 아래 구분선 하나 밑에 정보와 정보 출처 — 데스크톱 지시 칸과 같은 구성이다. */}
-        <hr className="objectives-cm-divider" />
-        <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failedAt === "intel" ? failure : null} onFail={failIn("intel")} onClear={onClear} />
+    <>
+      <label className="objectives-cm-glab" htmlFor="objectives-cm-description">{t("commodore.description.label")}</label>
+      <textarea id="objectives-cm-description" className="objectives-cm-field is-tall" value={draft} maxLength={8_000} placeholder={t("commodore.description.placeholder")} onChange={(event) => { setDraft(event.target.value); setSaved(false); }} />
+      {failure && failedAt === "description" ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
+      <div className="objectives-cm-crow">
+        <span className="objectives-cm-secnote is-grow" role={saved && !dirty ? "status" : undefined}>{saved && !dirty ? t("commodore.description.saved") : description.rev > 0 ? t("commodore.description.rev", { rev: description.rev, time: clockTime(description.updatedAt) }) : ""}</span>
+        <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={saving || !dirty || !online} onClick={save}>{t("commodore.description.save")}</button>
       </div>
-    </div>
+      <hr className="objectives-cm-divider" />
+      <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failedAt === "intel" ? failure : null} onFail={failIn("intel")} onClear={onClear} />
+      <hr className="objectives-cm-divider" />
+    </>
   );
 }
 
-/* ── 지시 탭의 정보(CM-2d) ─────────────────────────────────────────────── */
+/* ── 정보 화면의 정보 목록(CM-2d) ──────────────────────────────────────── */
 
 function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
   const { intel, sources } = view.state;
@@ -754,13 +746,6 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
           {adder.draft.trim() ? <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={adder.adding || !online} onClick={adder.add}>{t("commodore.intel.addShort")}</button> : null}
         </div>
       </div>
-      <p className="objectives-cm-glab">{t("commodore.intel.sources")} <span className="is-light">· {t("commodore.intel.sourcesLater")}</span></p>
-      {sources.length > 0 ? (
-        <div className="objectives-cm-grp">
-          {sources.map((source) => <div key={source.id} className="objectives-cm-gr"><span className="objectives-cm-gr-tx">{source.label}<small className="is-mono">{source.locator}</small></span></div>)}
-        </div>
-      ) : null}
-      <p className="objectives-cm-secnote">{sources.length === 0 ? `${t("commodore.intel.sourcesEmpty")} ` : ""}{t("commodore.intel.sourcesHint")}</p>
     </>
   );
 }

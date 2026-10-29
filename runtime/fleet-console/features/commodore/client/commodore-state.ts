@@ -27,7 +27,12 @@ export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 
 export const COMMODORE_CHANNEL = "commodore";
 
-export type CommodoreTab = "log" | "routines" | "directive" | "memory" | "settings";
+export type CommodoreTab = "log" | "routines" | "info" | "settings";
+/** 옛 「지시」·「기억」 칸 주소는 둘을 합친 「정보」 칸으로 연다 — 저장된 링크와 다른 표면의 요청이 그대로 닿는다. */
+export function commodoreTabOf(page: string | undefined): CommodoreTab | null {
+  if (page === "directive" || page === "memory" || page === "info") return "info";
+  return page === "log" || page === "routines" || page === "settings" ? page : null;
+}
 /** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. 「지휘관 세션」(`sessions`)은 폰에만 있는 맨 앞 구역이다. */
 export type CommodoreMobileTab = CommodoreTab | "goals" | "sessions";
 
@@ -548,7 +553,7 @@ export async function postCommodorePlugins<T>(path: string, body: Record<string,
   return post<T>(client, path, body);
 }
 
-export const saveCommodoreDirective = (theaterId: string, text: string) => write(theaterId, "/commodore/directive", { text });
+export const saveCommodoreDescription = (commodoreId: string, text: string) => write(commodoreId, "/commodore/description", { text });
 export const addCommodoreIntel = (theaterId: string, text: string) => write(theaterId, "/commodore/intel/add", { text });
 export const removeCommodoreIntel = (theaterId: string, intelId: string) => write(theaterId, "/commodore/intel/remove", { intelId });
 export const editCommodoreIntel = (theaterId: string, intelId: string, text: string) => write(theaterId, "/commodore/intel/edit", { intelId, text });

@@ -14,13 +14,11 @@ import type { ClientTheaterInboxCapability } from "../../workspace/shared/theate
 
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
-import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
+import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo, CommodoreSettings } from "./commodore-inbox-section.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
-import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
-import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { getConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
 import { getState } from "../../../core/client/src/integration/store.js";
@@ -39,7 +37,7 @@ type T = Translate<CommodoreMessageKey>;
  */
 
 export const COMMODORE_SURFACE_ID = "commodore";
-const TAB_IDS = { goals: "commodore-goals", routines: "commodore-routines", directive: "commodore-directive", memory: "commodore-memory", settings: "commodore-settings" } as const;
+const TAB_IDS = { goals: "commodore-goals", routines: "commodore-routines", info: "commodore-info", settings: "commodore-settings" } as const;
 type ConversationTab = keyof typeof TAB_IDS;
 
 let port: ClientConversationCapability | null = null;
@@ -457,28 +455,21 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   if (!view) return null;
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
-      {tab === "directive" ? (
-        <>
-          <CommodoreDirective t={t} theaterId={commodoreId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={() => presentRailPanel("commodore-settings")} onFail={fail} onClear={clear} />
-          <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />
-        </>
-      ) : null}
+      {tab === "info" ? <CommodoreInfo t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
       {tab === "routines" ? <CommodoreRoutines commodoreId={commodoreId} language={language} /> : null}
-      {tab === "memory" ? <CommodoreMemory t={t} theaterId={commodoreId} /> : null}
       {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
     </div>
   );
 }
 
-/** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. */
-const TAB_INBOX_PAGES = { goals: "log", routines: "routines", directive: "directive", memory: "memory", settings: "settings" } as const;
+/** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청이 대화 중심 화면에서 이 탭을 연다. */
+const TAB_INBOX_PAGES = { goals: "log", routines: "routines", info: "info", settings: "settings" } as const;
 
 const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
   goals: "commodore.tabs.log",
   routines: "commodore.tabs.routines",
-  directive: "commodore.tabs.directive",
-  memory: "commodore.tabs.memory",
+  info: "commodore.tabs.info",
   settings: "commodore.tabs.settings",
 };
 
@@ -544,8 +535,8 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
       return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} language={ctx.language} /> : null;
     },
   })),
-  // 사령관 대화의 기본 문맥은 지시다.
-  defaultTab: TAB_IDS.directive,
+  // 사령관 대화의 기본 문맥은 정보(설명·정보·기억)다.
+  defaultTab: TAB_IDS.info,
   onLeaveDesktop: ({ params, tabId }) => {
     const target = readParams(params);
     if (!target || target.readOnly) return;

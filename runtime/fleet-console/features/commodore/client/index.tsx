@@ -13,7 +13,7 @@ import { commodoreTheaterContribution } from "./commodore-header.js";
 import { knowledgeFolderEntry, knowledgeFolderPane } from "./knowledge-folder.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
-import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
+import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, commodoreTabOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { CommodoreZoneHost, commodoreConversationSurface, commodoreHomeTheater, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { installCommodoreBoard } from "./board.js";
@@ -68,7 +68,7 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     open(commodoreId, options) {
       const theaterId = commodoreHomeTheater(commodoreId) ?? null;
       // 폰 화면의 문맥은 기억된 Theater가 아니라 사령관 UUID다. 빠진 Theater 이름이 부제로 남지 않는다.
-      if (options?.mobile || options?.tab && options.tab !== "log") { openCommodoreMobile(options?.tab ?? "log", commodoreId); return true; }
+      if (options?.mobile || options?.tab && options.tab !== "log") { openCommodoreMobile(options?.tab === "goals" ? "goals" : commodoreTabOf(options?.tab) ?? "log", commodoreId); return true; }
       if (options?.revealAt !== undefined || options?.readOnly || options?.objectiveId) return openCommodoreConversation(commodoreId, options);
       openCommodoreLog(commodoreId, theaterId); return true;
     },
