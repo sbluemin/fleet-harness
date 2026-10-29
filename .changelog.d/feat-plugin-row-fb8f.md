@@ -1,5 +1,5 @@
 ---
-branch: feat/plugin-row-ui-fb8f
+branch: feat/plugin-row-fb8f
 ---
 
 ### fleet-console
