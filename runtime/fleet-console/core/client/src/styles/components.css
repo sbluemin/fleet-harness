@@ -532,7 +532,7 @@
   gap: var(--space-3);
 }
 
-/* 설정 행의 선택기는 ModelPicker와 같은 34px 한 높이로 선다 — 스위치(26px)·칩과 같은 무게이고,
+/* 설정 행의 선택기는 ModelPicker와 같은 34px 한 높이로 선다 — 스위치(22px)·칩과 같은 무게이고,
    fc-select 기본 42px는 본문 폼의 높이라 행마다 간격이 달라진다. 글자와 패딩은 그대로 둔다. */
 .global-settings-row .fc-select__trigger,
 .fc-settings-row .fc-select__trigger {
@@ -1329,12 +1329,14 @@
 /* 켬/끔은 콘솔 전체에서 이 한 모양이다. 그리는 컴포넌트도 하나 — SDK의 SettingsToggle이 코어의
    리퀴드 글래스·원격 리스너·실험 기능과 플러그인 카드를 모두 담당하고, 이 클래스는 그 트랙과 손잡이다.
    켜짐은 상시 서 있는 상태라 풀 세기 brass가 아니라 lights-out 슬롯(--quiet-switch-*)이 칠하고,
-   신호 토큰은 상태를 말하는 자리에만 남는다. */
+   신호 토큰은 상태를 말하는 자리에만 남는다.
+   크기는 행 글자 높이에 맞춘 36×22다 — 46×26일 때는 스위치가 행 제목보다 무겁게 읽혔다.
+   손잡이(16)와 켜짐 이동량(14 = 36 − 테두리 2 − 패딩 4 − 16)은 이 치수에서 나온다. */
 .settings-switch {
   flex: none;
-  width: 46px;
-  height: 26px;
-  padding: 3px;
+  width: 36px;
+  height: 22px;
+  padding: 2px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
@@ -1343,8 +1345,8 @@
 
 .settings-switch-knob {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--text-tertiary);
   transition: transform var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
@@ -7824,7 +7826,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .fc-settings-toggle__input:checked + .settings-switch .settings-switch-knob {
-  transform: translateX(20px);
+  transform: translateX(14px);
   background: var(--quiet-switch-knob);
 }
 
