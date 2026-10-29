@@ -112,9 +112,17 @@ function disposeShellHost(key: string): void {
   entry.parking.remove();
 }
 
+/** Shell 표면이 서 있는 사령관 — 표면 문맥이 소유권을 말하고, 없으면 착지 params를 본다. 둘 다 모르면 생략한다. */
+function surfaceCommodoreId(context: ExpandedSurfaceContext): string | undefined {
+  if (typeof context.commodoreId === "string" && context.commodoreId) return context.commodoreId;
+  if (typeof context.params.commodoreId === "string" && context.params.commodoreId) return context.params.commodoreId;
+  return undefined;
+}
+
 /** 이 칸이 처음 Shell 을 세울 자리 — 대화의 작업 위치, 대화가 없으면 표면 params·마지막으로 본 Theater 의 루트. */
 function launchHintOf(context: ExpandedSurfaceContext): ShellCwdHint | undefined {
-  const owner = typeof context.params.commodoreId === "string" && context.params.commodoreId ? { commodoreId: context.params.commodoreId } : {};
+  const ownerId = surfaceCommodoreId(context);
+  const owner = ownerId ? { commodoreId: ownerId } : {};
   const location = context.conversation?.location;
   if (location) return location.relative === "" ? { theaterId: location.theaterId, ...owner } : { theaterId: location.theaterId, path: location.relative, ...owner };
   const theaterId = context.params.cwdTheaterId ?? lastViewedTheaterId;
@@ -251,7 +259,8 @@ function ShellLocationNotice({ ctx }: { readonly ctx: ExpandedSurfaceContext }) 
   const location = ctx.conversation?.location ?? null;
   if (location === null || mount === null || mount.launchedAt === null || !session?.open) return null;
   if (mount.launchedAt === location.relative) return null;
-  const paramsOwner = typeof ctx.params.commodoreId === "string" && ctx.params.commodoreId ? { commodoreId: ctx.params.commodoreId } : {};
+  const ownerId = surfaceCommodoreId(ctx);
+  const paramsOwner = ownerId ? { commodoreId: ownerId } : {};
   const target = location.relative === "" ? { theaterId: location.theaterId, ...paramsOwner } : { theaterId: location.theaterId, path: location.relative, ...paramsOwner };
   const settle = () => {
     const current = shellMounts.get(key);
@@ -398,10 +407,7 @@ export const expandedSurfaces = [shellSurface] as const;
  * 않는 셸은 spawn 위치에서 이미 떠났을 수 있으므로 상대 경로 링크를 세우지 않고 절대 경로만 남긴다.
  */
 function shellFileLinks(context: ExpandedSurfaceContext, key: string): TerminalFileLinks {
-  // Shell 표면이 서 있는 사령관 — 표면 문맥이 소유권을 말하고, 없으면 착지 params를 본다. 둘 다 모르면 생략한다.
-  const commodoreId = typeof context.commodoreId === "string" && context.commodoreId
-    ? context.commodoreId
-    : typeof context.params.commodoreId === "string" && context.params.commodoreId ? context.params.commodoreId : undefined;
+  const commodoreId = surfaceCommodoreId(context);
   return {
     context: () => {
       const session = getShellSessionSnapshot(key);
