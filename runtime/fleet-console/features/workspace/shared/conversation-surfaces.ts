@@ -54,6 +54,12 @@ export interface ConversationSurfaceDescriptor {
    * `state` 는 그 주인의 지금 얼굴(`mongleStateOf` 로 고른 값)이다 — 생략하면 쉼(idle)이다. 값이 바뀌면 `subscribe` 로 알린다.
    */
   readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("./avatars.js").MongleRole; readonly label: string; readonly state?: import("./avatars.js").MongleState } | null;
+  /**
+   * 오른쪽 패널 머리의 이름(`title`)을 고치는 길. 함수를 돌려주면 호스트가 그 이름을 Objective 대화 머리와 같은 문법(같은 자리 캐럿 편집,
+   * Enter·blur 확정, Esc 취소)으로 고칠 수 있게 하고, 앞뒤 공백을 걷어 비지 않았고 지금 이름과 다른 새 이름만 넘긴다.
+   * 없거나 null 이면(예: 읽기 전용 대화) 이름은 글로만 선다.
+   */
+  readonly rename?: (ctx: ConversationSurfaceContext) => ((title: string) => void) | null;
   /** `avatar`(와 머리의 다른 값)가 읽는 플러그인 상태가 바뀌면 깨운다 — 호스트가 머리 pill·오른쪽 패널 머리를 다시 그린다. */
   readonly subscribe?: (listener: () => void) => () => void;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
