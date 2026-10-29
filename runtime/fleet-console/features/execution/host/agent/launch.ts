@@ -54,6 +54,8 @@ export interface TerminalLaunchResolverDeps {
   readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
   /** 사령관이 고른 플러그인의 로컬 디렉터리 — 그 사령관 목표의 세션이 새로 열릴 때 싣는다. */
   readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
+  /** 그 플러그인 MCP 선언의 `${VAR}`에 채울 키 — 같은 세션의 자식 환경에 얹는다. */
+  readonly commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>;
   readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
@@ -127,6 +129,7 @@ export async function prepareChatClaudeSession(
     readonly claudeCodeDisabledAgents?: readonly string[];
     readonly disableAutoMemory?: boolean;
     readonly pluginDirs?: readonly string[];
+    readonly pluginEnv?: Readonly<Record<string, string>>;
   },
 ): Promise<ClaudeSessionHandle> {
   const gatewaySelection = deps.readAiGatewaySettings
@@ -137,6 +140,7 @@ export async function prepareChatClaudeSession(
     cwd: deps.cwd,
     plugin: deps.plugin,
     ...(deps.pluginDirs?.length ? { pluginDirs: deps.pluginDirs } : {}),
+    ...(deps.pluginEnv ? { pluginEnv: deps.pluginEnv } : {}),
     origin: deps.origin,
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
     ...(deps.claudeCodeCustomSystemPrompt ? { claudeCodeCustomSystemPrompt: deps.claudeCodeCustomSystemPrompt } : {}),
@@ -215,6 +219,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       infraServices,
       ...(deps.commodoreSystemPrompts ? { commodoreSystemPrompts: deps.commodoreSystemPrompts } : {}),
       ...(deps.commodorePluginDirs ? { commodorePluginDirs: deps.commodorePluginDirs } : {}),
+      ...(deps.commodorePluginEnv ? { commodorePluginEnv: deps.commodorePluginEnv } : {}),
       theaterId: context?.theaterId,
       commodoreId: context?.commodoreId,
       additionalDirectories: context?.additionalDirectories,
@@ -262,6 +267,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
   /** 사령관이 고른 플러그인의 로컬 디렉터리 — 그 사령관 목표의 세션이 새로 열릴 때 싣는다. */
   readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
+  /** 그 플러그인 MCP 선언의 `${VAR}`에 채울 키 — 같은 세션의 자식 환경에 얹는다. */
+  readonly commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>;
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (objectiveId: string, providerSessionId: string) => WorkspaceHookBinding;
@@ -349,9 +356,11 @@ async function createAgentCliLaunchSpec(options: {
     });
     const theaterPrompt = options.commodoreSystemPrompts?.read(options.commodoreId);
     const pluginDirs = options.commodoreId ? options.commodorePluginDirs?.(options.commodoreId) ?? [] : [];
+    const pluginEnv = options.commodoreId && pluginDirs.length ? options.commodorePluginEnv?.(options.commodoreId) : undefined;
     const injectedProfile = await options.injectProfile(profile, {
       plugin: options.plugin,
       ...(pluginDirs.length ? { pluginDirs } : {}),
+      ...(pluginEnv && Object.keys(pluginEnv).length ? { pluginEnv } : {}),
       ...(options.additionalDirectories ? { additionalDirectories: options.additionalDirectories } : {}),
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       workspaceHookExec: buildConsoleWorkspaceHookCommand(options.hookEntry),

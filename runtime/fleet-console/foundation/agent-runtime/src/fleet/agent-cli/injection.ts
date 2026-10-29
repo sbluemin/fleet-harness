@@ -32,6 +32,8 @@ export interface InjectAgentCliProfileOptions {
   readonly additionalDirectories?: readonly string[];
   /** 사람이 사령관에 고른 로컬 플러그인 디렉터리. */
   readonly pluginDirs?: readonly string[];
+  /** 그 플러그인 MCP 선언의 `${VAR}` 값. 자식 환경에만 실린다(`session.ts`). */
+  readonly pluginEnv?: Readonly<Record<string, string>>;
   /** 호스트가 기동에 한 번 묶어 둔 플러그인. 런치는 그 주소만 싣는다. */
   readonly plugin: AgentCliPlugin;
   readonly dedicatedMcpSession: DedicatedMcpSession;
@@ -180,6 +182,7 @@ export async function injectAgentCliProfile(
       ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
       plugin: options.plugin,
       ...(options.pluginDirs?.length ? { pluginDirs: options.pluginDirs } : {}),
+      ...(options.pluginEnv ? { pluginEnv: options.pluginEnv } : {}),
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       // 게이트웨이 정체성은 Mod가 세션 시작에 올린다. argv에도 파일에도 정의가 실리지 않는다.
     });
@@ -250,7 +253,8 @@ export async function injectAgentCliProfile(
       ...profile,
       // 자식은 플러그인 zip을 루프백에서 받아 간다. 사용자 프록시가 그 요청을 삼키면 세션은
       // 오류 없이 플러그인만 빠진 채 뜬다.
-      env: withLoopbackProxyBypass(profile.env),
+      // 플러그인 키는 사람이 Console 에 넣은 값이라 상속 환경의 같은 이름보다 앞선다.
+      env: withLoopbackProxyBypass({ ...profile.env, ...session.pluginEnv }),
       args: mergeArgs(promptArgs),
       // 위치 인자는 이미 args 끝에 합쳐졌으므로 비운다. 남겨 두면 하류가 한 번 더 붙일 수 있다.
       promptArgs: [],

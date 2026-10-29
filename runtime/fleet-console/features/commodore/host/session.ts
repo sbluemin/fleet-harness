@@ -1,4 +1,4 @@
-import type { ResolvedPlugin } from "./plugins.js";
+import { mergePluginEnv, type ResolvedPlugin } from "./plugins.js";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { CommodoreToolTheater } from "./tools.js";
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
@@ -220,11 +220,21 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
       workspace: (() => {
         // 사람이 이 사령관에 고른 플러그인 — Theater 의 `.mcp.json` 과 달리 사령관 자신의 도구다. 플러그인 MCP 는 strictMcpConfig 가
-        // 막으므로 호스트가 선언을 옮겨 연다. 서버 이름은 `plugin_…_<해시>` 라 호스트의 예약 도구 묶음과 겹치지 않는다.
+        // 막으므로 호스트가 선언을 옮겨 연다. 서버 이름은 `plugin:…` 이라 호스트의 예약 도구 묶음과 겹치지 않는다.
         const selected = options.plugins?.() ?? [];
         const servers: Record<string, ClaudeGatewayExternalMcpServer> = {};
-        for (const plugin of selected) for (const [name, config] of Object.entries(plugin.mcpServers)) if (!(name in servers)) servers[name] = config;
-        return { additionalDirectories: roots, ...(Object.keys(servers).length ? { mcpServers: servers } : {}), ...(selected.length ? { plugins: selected.map((plugin) => ({ path: plugin.path, skipMcp: true })) } : {}) };
+        // 이름이 같은 플러그인(마켓플레이스만 다름)이나 도구 이름으로 정규화해 겹치는 서버는 먼저 고른 쪽만 싣는다 — 목표 세션의 자식도 같다.
+        const taken = new Set<string>();
+        for (const plugin of selected) for (const [name, config] of Object.entries(plugin.mcpServers)) {
+          const prefix = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+          if (taken.has(prefix)) continue;
+          taken.add(prefix);
+          servers[name] = config;
+        }
+        // 서버 이름은 목표 세션의 자식이 같은 플러그인에 붙이는 `plugin:<플러그인>:<서버>` 그대로라 OAuth 토큰을 함께 쓴다.
+        // 키는 선언에 펼치지 않고 자식 환경에 얹는다 — 자식이 `${VAR}`를 펼친다.
+        const env = mergePluginEnv(selected);
+        return { additionalDirectories: roots, ...(Object.keys(servers).length ? { mcpServers: servers } : {}), ...(Object.keys(env).length ? { env } : {}), ...(selected.length ? { plugins: selected.map((plugin) => ({ path: plugin.path, skipMcp: true })) } : {}) };
       })(),
       tools: {
         builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],

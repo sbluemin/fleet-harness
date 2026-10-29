@@ -71,6 +71,8 @@ export interface ClaudeSessionHandle {
   readonly disableAutoMemory?: true;
   /** 이 세션이 함께 실을 로컬 플러그인 디렉터리. 생략은 없다는 뜻이다. */
   readonly pluginDirs?: readonly string[];
+  /** 그 플러그인들의 MCP 선언이 `${VAR}`로 가리키는 키 — 두 표면 모두 자식 환경에 얹는다. 생략은 없다는 뜻이다. */
+  readonly pluginEnv?: Readonly<Record<string, string>>;
   /** Chat Mode처럼 SDK로 자식을 세우는 표면이 그대로 펼쳐 쓰는 투영. */
   readonly sdk: ClaudeSessionSdkProjection;
 }
@@ -122,6 +124,11 @@ export interface PrepareClaudeSessionOptions {
    * SDK는 `plugins`로. 이 세션들은 ambient MCP 를 열어 두므로 플러그인의 MCP 선언도 그대로 실린다.
    */
   readonly pluginDirs?: readonly string[];
+  /**
+   * 그 플러그인 MCP 선언의 `${VAR}`에 채울 값(사람이 Console 에 넣은 키). 자식이 플러그인 MCP 를 직접 읽으며 자기 환경으로
+   * 펼치므로 두 표면 모두 자식 환경에 얹는다. 값은 argv·파일·로그에 싣지 않는다.
+   */
+  readonly pluginEnv?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -153,6 +160,7 @@ export async function prepareClaudeSession(
     ...(claudeCodeDisabledTools.length > 0 ? { claudeCodeDisabledTools } : {}),
     ...(options.disableAutoMemory ? { disableAutoMemory: true as const } : {}),
     ...(pluginDirs.length > 0 ? { pluginDirs } : {}),
+    ...(pluginDirs.length > 0 && options.pluginEnv && Object.keys(options.pluginEnv).length > 0 ? { pluginEnv: { ...options.pluginEnv } } : {}),
     sdk: {
       options: {
         pluginUrl,

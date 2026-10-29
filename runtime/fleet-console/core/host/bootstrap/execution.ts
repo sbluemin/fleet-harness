@@ -21,7 +21,7 @@ import type { CommodoreSystemPromptService } from "../../../features/settings/ho
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
 
-export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost, commodoreSystemPrompts: CommodoreSystemPromptService, admission: { readonly canUseShellKey: (key: string) => boolean }, commodorePluginDirs?: (commodoreId: string) => readonly string[]) {
+export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost, commodoreSystemPrompts: CommodoreSystemPromptService, admission: { readonly canUseShellKey: (key: string) => boolean }, commodorePluginDirs?: (commodoreId: string) => readonly string[], commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir);
   // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
@@ -75,6 +75,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     agentOptionsService: ctx.agentOptions,
     commodoreSystemPrompts,
     ...(commodorePluginDirs ? { commodorePluginDirs } : {}),
+    ...(commodorePluginEnv ? { commodorePluginEnv } : {}),
     isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
     aiGateway: {

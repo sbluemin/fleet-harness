@@ -648,3 +648,44 @@ export interface ClaudeProcessSpawnRequest {
  * stderr를 끝까지 읽어 pipe가 차지 않게 하고, SDK가 기다리는 exit을 stderr가 닫힌 뒤에 전한다.
  */
 export type ClaudeProcessSpawner = (request: ClaudeProcessSpawnRequest) => import("node:child_process").ChildProcess;
+
+/** MCP 제어 자식이 보고하는 서버 하나의 연결 상태. 설정·도구·오류 원문은 싣지 않는다 — 헤더에 자격이 있을 수 있다. */
+export interface ClaudeMcpServerState {
+  readonly name: string;
+  readonly status: "connected" | "failed" | "needs-auth" | "pending" | "disabled";
+}
+
+/** `authenticate`가 돌려준 인증 시작점. `authUrl`은 사람이 브라우저에서 열 주소이고, 콜백은 자식이 직접 받는다. */
+export interface ClaudeMcpAuthStart {
+  readonly authUrl?: string;
+  /** false면 사람이 할 일이 없다 — 이미 인증되었거나 자식이 혼자 끝냈다. */
+  readonly requiresUserAction: boolean;
+  /** `localhost`면 자식이 이 컴퓨터의 loopback 포트에서 콜백을 기다린다. */
+  readonly redirectScheme?: "localhost" | "custom";
+}
+
+/**
+ * 모델 턴 없이 MCP 서버 연결과 인증만 다루는 Claude 자식. Claude Code의 내장 MCP OAuth(동적 등록·PKCE·토큰 저장)를
+ * 그대로 쓴다 — 호스트는 토큰을 보지도 저장하지도 않는다.
+ *
+ * `authenticate`·`clearAuth`·`submitCallbackUrl`은 vendor SDK 공개 타입에 없는 제어 요청이다(SDK 0.3.306, CLI 2.1.312
+ * 실측). 그 빌드에 메서드가 없으면 `ClaudeMcpControlUnsupportedError`로 거절한다.
+ */
+export interface ClaudeMcpControl {
+  status(): Promise<readonly ClaudeMcpServerState[]>;
+  authenticate(serverName: string): Promise<ClaudeMcpAuthStart>;
+  clearAuth(serverName: string): Promise<void>;
+  /** loopback 콜백이 닿지 못하는 곳(원격 기기)에서 사람이 옮겨 온 콜백 주소를 자식에게 건넨다. */
+  submitCallbackUrl(serverName: string, callbackUrl: string): Promise<void>;
+  reconnect(serverName: string): Promise<void>;
+  /** 자식이 아직 살아 있는가. 끝났으면 진행 중이던 인증도 끝난 것이다. */
+  readonly alive: boolean;
+  close(): void;
+}
+
+export class ClaudeMcpControlUnsupportedError extends Error {
+  constructor(method: string) {
+    super(`This Claude Agent SDK build has no ${method} control request.`);
+    this.name = "ClaudeMcpControlUnsupportedError";
+  }
+}

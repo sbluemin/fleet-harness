@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -62,7 +61,34 @@ export interface CommodorePluginsOptions {
 export interface ResolvedPlugin {
   readonly id: string;
   readonly path: string;
+  /**
+   * 서버 이름은 Claude Code 가 `--plugin-dir` 플러그인에 붙이는 `plugin:<플러그인>:<서버>` 그대로다. 값의 `${VAR}`는
+   * 자리표시 그대로 두고 키는 `pluginEnv`로 자식 환경에 얹는다 — 그래야 목표 세션(자식이 플러그인을 직접 읽는다)과
+   * 이름·`{type,url,headers}`가 글자 그대로 같아 CLI 보안 저장소의 OAuth 토큰을 함께 쓰고, 키가 argv 에 실리지 않는다.
+   */
   readonly mcpServers: Readonly<Record<string, ClaudeGatewayExternalMcpServer>>;
+  /** 그 선언의 `${VAR}`에 채울, 사람이 Console 에 넣은 키. 세션 자식의 환경에만 얹는다. */
+  readonly env: Readonly<Record<string, string>>;
+}
+
+/**
+ * 플러그인 MCP 서버 하나의 인증 방식. `oauth`는 원격 서버가 표준 401 로 요구하면 Claude Code 가 대신 로그인하는 서버,
+ * `key`는 선언이 `${VAR}`로 사람의 키를 받는 서버다. 헤더에 고정 자격이 있거나 키 없는 stdio 는 목록에 없다.
+ */
+export interface PluginAuthServer {
+  readonly pluginId: string;
+  /** 플러그인 선언의 서버 키(`.mcp.json`의 이름) — 화면이 쓰는 이름. */
+  readonly server: string;
+  /** 세션이 쓰는 서버 이름(`plugin:<플러그인>:<서버>`). */
+  readonly name: string;
+  readonly config: ClaudeGatewayExternalMcpServer;
+  readonly mode: "oauth" | "key";
+  /** 이 서버가 받는 키 이름(기본값 없는 `${VAR}`). */
+  readonly keys: readonly string[];
+  /** 아직 값이 없는 키 — Console 에 넣은 것도, Console 환경에 있는 것도 아니다. */
+  readonly missing: readonly string[];
+  /** Console 에 넣어 둔 키. */
+  readonly saved: readonly string[];
 }
 
 interface RegistryMarketplace {
@@ -101,6 +127,12 @@ interface MarketplaceEntry {
   readonly [key: string]: unknown;
 }
 
+/** `${NAME}`·`${NAME:-기본값}` — Claude Code 가 MCP 선언에서 펼치는 자리표시. `${user_config.*}`는 이름 문법이 달라 걸리지 않는다. */
+const PLACEHOLDER = /\$\{([A-Za-z_][A-Za-z0-9_]{0,127})(:-[^}]*)?\}/g;
+/** 플러그인이 아니라 실행 환경이 정하는 이름 — 키로 받지도 자식 환경에 얹지도 않는다. */
+const RESERVED_KEY = /^(?:PATH|HOME|SHELL|USER|LOGNAME|PWD|TMPDIR|TEMP|TMP|NODE_OPTIONS|NODE_PATH|(?:LD|DYLD|CLAUDE|ANTHROPIC|FLEET|FLEET_CONSOLE|NPM|npm)_[A-Za-z0-9_]*)$/;
+export const MAX_PLUGIN_KEY_BYTES = 8_192;
+const KEYS_FILE = "keys.json";
 const PRESET_REFRESH_MS = 24 * 60 * 60_000;
 /**
  * 기본 켜짐을 한 번 정했다는 표시. registry 의 version 이 아니다.
@@ -764,6 +796,66 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     return bytes.byteLength <= MAX_PLUGIN_ICON_BYTES && looksLike(found.mime, bytes) ? { bytes, mime: found.mime } : null;
   };
 
+  /**
+   * 플러그인 키 — `<root>/keys.json`(0600). 화면·로그·세션 기록에는 싣지 않고, 세션을 열 때 자식 환경에만 얹는다.
+   * 사령관마다가 아니라 플러그인마다 하나다 — OAuth 토큰도 Claude Code 보안 저장소에 서버마다 하나다.
+   */
+  const keysFile = path.join(options.root, KEYS_FILE);
+  const readKeys = (): Readonly<Record<string, Readonly<Record<string, string>>>> => {
+    const raw = readJson(keysFile);
+    if (!isRecord(raw) || raw.version !== 1 || !isRecord(raw.keys)) return {};
+    const keys: Record<string, Record<string, string>> = {};
+    for (const [id, table] of Object.entries(raw.keys)) {
+      if (!pluginIdSchema.safeParse(id).success || !isRecord(table)) continue;
+      const own = Object.fromEntries(Object.entries(table).filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(entry[0]) && !RESERVED_KEY.test(entry[0])));
+      if (Object.keys(own).length) keys[id] = own;
+    }
+    return keys;
+  };
+  const writeKeys = (keys: Readonly<Record<string, Readonly<Record<string, string>>>>): void => {
+    fs.mkdirSync(options.root, { recursive: true });
+    const tmp = `${keysFile}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify({ version: 1, keys }, null, 2)}\n`, { mode: 0o600 });
+    fs.chmodSync(tmp, 0o600);
+    fs.renameSync(tmp, keysFile);
+  };
+
+  /**
+   * 세션에 실을 수 있는 플러그인과 그 MCP 서버. 서버 이름은 Claude Code 가 `--plugin-dir` 플러그인 서버에 붙이는
+   * `plugin:<plugin.json name>:<서버>`(CLI 2.1.312 판독)다. 값은 `${CLAUDE_PLUGIN_ROOT}`만 펼친 선언 그대로다.
+   */
+  const loadable = (ids: readonly string[]) => {
+    const found: { readonly id: string; readonly dir: string; readonly servers: readonly { readonly server: string; readonly name: string; readonly config: ClaudeGatewayExternalMcpServer }[] }[] = [];
+    for (const id of ids) {
+      let dir: string | null = null;
+      try { dir = loadDirOf(id); } catch (error) { console.warn(`[commodore] plugin ${id} unavailable: ${error instanceof Error ? error.message : String(error)}`); }
+      if (!dir) continue;
+      const manifestName = manifestOf(dir).name;
+      const pluginName = typeof manifestName === "string" && segment.test(manifestName) ? manifestName : splitPluginId(id).plugin;
+      const servers: { server: string; name: string; config: ClaudeGatewayExternalMcpServer }[] = [];
+      for (const [server, config] of Object.entries(mcpDeclarations(dir))) {
+        const name = `plugin:${pluginName}:${server}`;
+        const type = config.type === "http" || config.type === "sse" ? config.type : typeof config.url === "string" && config.command === undefined ? "http" : "stdio";
+        if (type === "stdio" && typeof config.command === "string") {
+          servers.push({ server, name, config: { type: "stdio", command: config.command, ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}), ...(isRecord(config.env) ? { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, String(value)])) } : {}) } });
+        } else if (type !== "stdio" && typeof config.url === "string" && /^https?:\/\/\S+$/i.test(config.url)) {
+          servers.push({ server, name, config: { type, url: config.url, ...(isRecord(config.headers) ? { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, String(value)])) } : {}) } });
+        }
+      }
+      found.push({ id, dir, servers });
+    }
+    return found;
+  };
+
+  const resolve = (ids: readonly string[]): readonly ResolvedPlugin[] => {
+    const stored = readKeys();
+    return loadable(ids).map(({ id, dir, servers }) => {
+      const env: Record<string, string> = {};
+      for (const { config } of servers) for (const key of keyNamesOf(config)) { const value = stored[id]?.[key]; if (value) env[key] = value; }
+      return { id, path: dir, mcpServers: Object.fromEntries(servers.map(({ name, config }) => [name, config])), env };
+    });
+  };
+
   return {
     /**
      * 목록을 처음 읽을 때 없는 기본 제공 행을 세운다. 켜진 곳만 받는 중으로 두고 배경에서 등록·갱신한다.
@@ -837,28 +929,63 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
      * 세션을 여는 순간 고른 플러그인을 경로와 MCP 선언으로 푼다. 받지 않았거나 사라진 것은 건너뛴다 — 세션을 막지 않는다.
      * 마켓플레이스를 꺼도 이미 설치한 것은 실린다(끄기는 새 설치만 막는다).
      */
-    resolve(ids: readonly string[]): readonly ResolvedPlugin[] {
-      const resolved: ResolvedPlugin[] = [];
-      for (const id of ids) {
-        let dir: string | null = null;
-        try { dir = loadDirOf(id); } catch (error) { console.warn(`[commodore] plugin ${id} unavailable: ${error instanceof Error ? error.message : String(error)}`); }
-        if (!dir) continue;
-        const { plugin } = splitPluginId(id);
-        const mcpServers: Record<string, ClaudeGatewayExternalMcpServer> = {};
-        for (const [server, config] of Object.entries(mcpDeclarations(dir))) {
-          // 마켓플레이스가 달라도 플러그인 이름은 같을 수 있다 — 전체 식별자의 짧은 해시로 서버 이름을 가른다(잘라도 유일하게).
-          const name = `${`plugin_${plugin}_${server}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40)}_${createHash("sha256").update(`${id}\0${server}`).digest("hex").slice(0, 7)}`;
-          const type = config.type === "http" || config.type === "sse" ? config.type : typeof config.url === "string" && config.command === undefined ? "http" : "stdio";
-          if (type === "stdio" && typeof config.command === "string") {
-            mcpServers[name] = { type: "stdio", command: config.command, ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}), ...(isRecord(config.env) ? { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, String(value)])) } : {}) };
-          } else if (type !== "stdio" && typeof config.url === "string" && /^https?:\/\/\S+$/i.test(config.url)) {
-            mcpServers[name] = { type, url: config.url, ...(isRecord(config.headers) ? { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, String(value)])) } : {}) };
-          }
+    resolve,
+    /** 고른 플러그인의 서버 중 사람의 인증이 필요할 수 있는 것 — OAuth 원격 서버와 `${VAR}` 키를 받는 서버. */
+    authServers(ids: readonly string[]): readonly PluginAuthServer[] {
+      const stored = readKeys();
+      const base = options.env?.() ?? process.env;
+      const found: PluginAuthServer[] = [];
+      for (const { id, servers } of loadable(ids)) {
+        for (const { server, name, config } of servers) {
+          const keys = keyNamesOf(config);
+          const missing = keys.filter((key) => !stored[id]?.[key] && !base[key]);
+          const saved = keys.filter((key) => Boolean(stored[id]?.[key]));
+          if (keys.length) { found.push({ pluginId: id, server, name, config, mode: "key", keys, missing, saved }); continue; }
+          // 헤더에 고정 자격이 있으면 Claude Code 는 OAuth 를 시도하지 않는다. stdio 는 로그인할 대상이 아니다.
+          if (config.type === "stdio" || Object.keys(config.headers ?? {}).some((header) => header.toLowerCase() === "authorization")) continue;
+          found.push({ pluginId: id, server, name, config, mode: "oauth", keys: [], missing: [], saved: [] });
         }
-        resolved.push({ id, path: dir, mcpServers });
       }
-      return resolved;
+      return found;
+    },
+    /**
+     * 그 플러그인들의 MCP 선언이 가리키는 키 값 — 사령관·목표 세션과 인증 확인 자식의 환경에 얹는다. 선언이 가리키지 않는
+     * 이름과 실행 환경 이름은 싣지 않는다. 같은 이름을 두 플러그인이 쓰면 먼저 고른 쪽이다.
+     */
+    pluginEnv(ids: readonly string[]): Readonly<Record<string, string>> {
+      return mergePluginEnv(resolve(ids));
+    },
+    /** 플러그인 키를 넣거나(`value`) 지운다(`null`). 그 플러그인 MCP 선언이 가리키는 이름만 받는다. 값은 돌려주지 않는다. */
+    setKey(pluginId: string, key: string, value: string | null): void {
+      const plugin = loadable([pluginId])[0];
+      if (!plugin || !plugin.servers.some(({ config }) => keyNamesOf(config).includes(key))) throw new CommodoreStoreError("invalid_request");
+      if (value !== null && (!value.trim() || Buffer.byteLength(value, "utf8") > MAX_PLUGIN_KEY_BYTES || /[\0\r\n]/.test(value))) throw new CommodoreStoreError("invalid_request");
+      const keys = { ...readKeys() };
+      const own = { ...keys[pluginId] };
+      if (value === null) delete own[key]; else own[key] = value.trim();
+      if (Object.keys(own).length) keys[pluginId] = own; else delete keys[pluginId];
+      writeKeys(keys);
     },
   };
+}
+
+/** 여러 플러그인의 키를 한 환경으로. 같은 이름은 먼저 고른 플러그인 쪽이다. */
+export function mergePluginEnv(plugins: readonly Pick<ResolvedPlugin, "env">[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const plugin of plugins) for (const [key, value] of Object.entries(plugin.env)) if (!(key in env)) env[key] = value;
+  return env;
+}
+
+/** 선언의 모든 문자열 값에서 기본값 없는 `${VAR}` 이름. 실행 환경 이름은 키가 아니다. */
+function keyNamesOf(config: ClaudeGatewayExternalMcpServer): string[] {
+  const values = config.type === "stdio"
+    ? [config.command, ...(config.args ?? []), ...Object.values(config.env ?? {})]
+    : [config.url, ...Object.values(config.headers ?? {})];
+  const names: string[] = [];
+  for (const value of values) for (const match of value.matchAll(PLACEHOLDER)) {
+    const name = match[1]!;
+    if (match[2] === undefined && !RESERVED_KEY.test(name) && !names.includes(name)) names.push(name);
+  }
+  return names;
 }
 export type CommodorePlugins = ReturnType<typeof createCommodorePlugins>;

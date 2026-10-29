@@ -17,6 +17,12 @@ import {
   tool as vendorTool,
 } from "@anthropic-ai/claude-agent-sdk";
 
+import {
+  ClaudeMcpControlUnsupportedError,
+  type ClaudeMcpAuthStart,
+  type ClaudeMcpControl,
+  type ClaudeMcpServerState,
+} from "./contracts.js";
 import type {
   ClaudeGatewayInput,
   ClaudeGatewayAgent,
@@ -512,6 +518,86 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
       } catch {
         // cleanup 실패는 결과·프로세스 종점을 바꾸지 않는다.
       }
+    },
+  };
+}
+
+const MCP_STATUSES: ReadonlySet<string> = new Set(["connected", "failed", "needs-auth", "pending", "disabled"]);
+
+/** vendor 상태 목록에서 이름과 상태만 꺼낸다. 설정(헤더)·도구·오류 원문은 버린다. */
+function readVendorMcpStatus(response: unknown): readonly ClaudeMcpServerState[] {
+  if (!Array.isArray(response)) return [];
+  return response.flatMap((row: unknown) => {
+    const entry = row as { name?: unknown; status?: unknown };
+    return typeof entry?.name === "string" && typeof entry.status === "string" && MCP_STATUSES.has(entry.status)
+      ? [{ name: entry.name, status: entry.status as ClaudeMcpServerState["status"] }]
+      : [];
+  });
+}
+
+/** 인증 시작 응답. 열 주소는 http(s)만 받는다 — 다른 스킴은 화면이 열 수 없고 열어서도 안 된다. */
+function readVendorMcpAuthStart(response: unknown): ClaudeMcpAuthStart {
+  const value = (response ?? {}) as { authUrl?: unknown; requiresUserAction?: unknown; redirectScheme?: unknown };
+  let authUrl: string | undefined;
+  if (typeof value.authUrl === "string") {
+    try { const parsed = new URL(value.authUrl); if (parsed.protocol === "https:" || parsed.protocol === "http:") authUrl = parsed.href; } catch { authUrl = undefined; }
+  }
+  return {
+    ...(authUrl ? { authUrl } : {}),
+    requiresUserAction: value.requiresUserAction === true && authUrl !== undefined,
+    ...(value.redirectScheme === "localhost" || value.redirectScheme === "custom" ? { redirectScheme: value.redirectScheme } : {}),
+  };
+}
+
+/**
+ * 모델 턴 없이 MCP 서버만 붙여 두는 자식. 입력 스트림은 끝나지 않고 메시지도 보내지 않는다 — 자식은 control 요청에만 답한다.
+ *
+ * 인증 세 요청(`mcp_authenticate`·`mcp_clear_auth`·`mcp_oauth_callback_url`)은 vendor `Query`의 비공개 메서드다
+ * (`mcpAuthenticate`·`mcpClearAuth`·`mcpSubmitOAuthCallbackUrl`, SDK 0.3.306). 공개 d.ts 에 없으므로 메서드가 있는지
+ * 매번 확인하고, 없으면 지원하지 않는 빌드로 거절한다. 이 리포에서 그 이름을 부르는 곳은 여기뿐이다.
+ */
+export function runVendorMcpControl(input: VendorSessionInput): ClaudeMcpControl {
+  const queue = new VendorInputQueue();
+  const run = vendorQuery({
+    prompt: queue,
+    options: withResolvedExecutable(input.options),
+  } as never) as AsyncGenerator<unknown, void> & {
+    close?: () => void;
+    return?: (value?: unknown) => Promise<unknown>;
+    mcpServerStatus?: () => Promise<unknown>;
+    reconnectMcpServer?: (serverName: string) => Promise<void>;
+    mcpAuthenticate?: (serverName: string, redirectUri?: string) => Promise<unknown>;
+    mcpClearAuth?: (serverName: string) => Promise<unknown>;
+    mcpSubmitOAuthCallbackUrl?: (serverName: string, callbackUrl: string) => Promise<unknown>;
+  };
+  let closed = false;
+  let alive = true;
+  // 자식이 내는 메시지는 쓰지 않지만 끝까지 읽는다 — 끝나면 자식이 죽은 것이다.
+  void (async () => {
+    try { for await (const _message of run) { /* 버린다 */ } } catch { /* 자식 종료 */ }
+    finally { alive = false; }
+  })();
+  const control = <K extends "mcpServerStatus" | "reconnectMcpServer" | "mcpAuthenticate" | "mcpClearAuth" | "mcpSubmitOAuthCallbackUrl">(method: K): NonNullable<(typeof run)[K]> => {
+    if (closed || !alive) throw new Error("This Claude MCP control child is closed.");
+    const found = run[method];
+    if (typeof found !== "function") throw new ClaudeMcpControlUnsupportedError(method);
+    return found.bind(run) as NonNullable<(typeof run)[K]>;
+  };
+  return {
+    get alive() { return alive && !closed; },
+    async status() { return readVendorMcpStatus(await control("mcpServerStatus")()); },
+    async authenticate(serverName) { return readVendorMcpAuthStart(await control("mcpAuthenticate")(serverName)); },
+    async clearAuth(serverName) { await control("mcpClearAuth")(serverName); },
+    async submitCallbackUrl(serverName, callbackUrl) { await control("mcpSubmitOAuthCallbackUrl")(serverName, callbackUrl); },
+    async reconnect(serverName) { await control("reconnectMcpServer")(serverName); },
+    close() {
+      if (closed) return;
+      closed = true;
+      queue.close();
+      try {
+        if (typeof run.close === "function") run.close();
+        else { const closing = run.return?.(undefined); if (closing !== undefined) void closing.catch(() => undefined); }
+      } catch { /* cleanup 실패는 종점을 바꾸지 않는다 */ }
     },
   };
 }
