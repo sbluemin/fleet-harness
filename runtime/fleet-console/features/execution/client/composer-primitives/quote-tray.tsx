@@ -4,6 +4,7 @@ import type { Translate } from "@fleet-console/i18n";
 import type { ComposerMessageKey } from "./messages.js";
 import type { ComposerQuote, ComposerQuoteItem, ComposerQuoteKind, ComposerQuotes } from "./quotes.js";
 import { COMPOSER_QUOTE_MAX_NOTE } from "./quotes.js";
+import { SyncedTextarea } from "./input.js";
 
 /**
  * 인용 칩 — 입력창 캡슐 맨 위의 붙인 인용 줄과, 보낸 말풍선의 같은 칩.
@@ -129,7 +130,7 @@ function QuoteEditor({ item, t, onSave, onClose }: {
           <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)}>{t(value === "question" ? "composer.quote.question" : "composer.quote.comment")}</button>
         ))}
       </div>
-      <textarea
+      <SyncedTextarea
         ref={fieldRef}
         className="fc-composer-quote-editor__field"
         rows={2}

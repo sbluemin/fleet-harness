@@ -561,19 +561,21 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 .group-chat[data-reading] .group-chat-dock > .group-chat-working:not(:focus-within),
 .group-chat[data-reading] .group-chat-dock > .group-chat-working:not(:focus-within) * { pointer-events: none; }
 /* 폰 배치에서 입력창을 잡고 있으면(화면 키보드가 떠 쓰는 중) 위로 읽는 중이어도 줄이 선다 — 보내기 전에 진행·쿼터를 본다.
-   폰 독은 빈 자리의 포인터를 막지 않으므로 줄과 그 단추의 눌림도 기본값으로 되돌린다. */
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) .group-composer-top,
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) > .conversation-composer-top,
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) > .group-chat-working {
+   폰 독은 빈 자리의 포인터를 막지 않으므로 줄과 그 단추의 눌림도 기본값으로 되돌린다.
+   독 자신의 :focus-within으로 판정한다 — :has(… :focus-within) 뒤에 `*`를 두면 Blink가 대화 어디서든 요소가 들고 날 때마다
+   대화 전체(약 1.9만 요소)를 다시 계산했다(데스크톱에서도 그렇다). */
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within .group-composer-top,
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within > .conversation-composer-top,
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within > .group-chat-working {
   transform: none;
   opacity: 1;
 }
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) .group-composer-top,
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) .group-composer-top *,
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) > .conversation-composer-top,
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) > .conversation-composer-top *,
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) > .group-chat-working,
-:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:has(.fc-composer-capsule:focus-within) > .group-chat-working * { pointer-events: auto; }
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within .group-composer-top,
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within .group-composer-top *,
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within > .conversation-composer-top,
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within > .conversation-composer-top *,
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within > .group-chat-working,
+:root[data-view-mode="mobile"] .group-chat[data-reading] .group-chat-dock:focus-within > .group-chat-working * { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) {
   .group-chat-dock .group-composer-top,
   .group-chat-dock > .conversation-composer-top,
