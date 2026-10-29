@@ -9293,6 +9293,10 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 /* 멘션 행 문법 — 모든 '@' 목록이 이 한 모양으로 선다(SDK `ComposerMentionRow`: [머리 20][이름][흐린 보조] … [오른쪽 끝 흐린 종류]).
    한 줄·말줄임(행 공용 규칙). 활성 행은 은은한 중성 면만 — 멘션 목록에서는 금색 링을 쓰지 않는다(다른 덱의 링은 그대로 둔다). */
+/* 멘션 덱은 보조가 이름 바로 옆에 붙는다 — 이름 열은 가장 긴 이름만큼(≤50%), 남는 폭은 보조가 진다. 머리 칸은 20px 머리를 품는다. */
+.fc-composer-deck-list:has(.fc-composer-deck-row.is-mention) {
+  grid-template-columns: calc(12px + 20px) fit-content(50%) minmax(0, 1fr) fit-content(30%);
+}
 .fc-composer-deck-row.is-mention .fc-composer-deck-lead {
   width: 20px;
   height: 20px;
