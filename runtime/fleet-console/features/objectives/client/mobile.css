@@ -58,7 +58,7 @@
    :where()로 감싸 특이도(0,1,1)는 그대로 둔다 — 보드의 행·단추 규칙이 계속 이 초기화를 이긴다. */
 .objectives-m button:where(:not(.mobile-choice-scrim *)) { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; cursor: pointer; }
 /* 누름 문법(data-press)이 붙은 조작부의 포커스 고리는 코어 누름 층이 모양대로 그린다(S-52 PR-1). */
-.objectives-m :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+.objectives-m :focus-visible:not([data-press]) { border-radius: 8px; box-shadow: var(--focus-face); }
 
 /* 묶음 머리(임무·결과물·결정 요청). */
 .objectives-m-glab { margin: 0; padding: 6px 4px 0; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.4; color: var(--m-text-muted); }
@@ -175,7 +175,7 @@
 /* 선택지 줄 — 이름 단추와 단추 밖 설명을 한 누름 면(R1)으로 묶는다. 단추의 키보드 포커스 고리는 줄 면 모양으로 그리고,
    설명 속 링크를 누르는 동안에는 줄 면을 띄우지 않는다(링크만 연다). */
 .objectives-m .objectives-m-opt:focus-visible { outline: none; }
-:root[data-view-mode="mobile"] .objectives-m .objectives-m-opt-row[data-press]:has(> .objectives-m-opt:focus-visible)::before { background: transparent; box-shadow: inset 0 0 0 2px var(--m-text); opacity: 1; transition: none; }
+:root[data-view-mode="mobile"] .objectives-m .objectives-m-opt-row[data-press]:has(> .objectives-m-opt:focus-visible)::before { background: transparent; box-shadow: var(--focus-face); opacity: 1; transition: none; }
 :root[data-view-mode="mobile"] .objectives-m .objectives-m-opt-row[data-press]:has(a:active)::before { opacity: 0; }
 .objectives-m-opt-tx { min-width: 0; overflow-wrap: anywhere; }
 /* 선택지 설명 — 단추 밖, 표시(20)와 틈(12)만큼 들여 이름 아래에 선다. 링크가 설 수 있어 단추 안에 두지 않는다. */
@@ -192,7 +192,7 @@
 .objectives-m-field { display: block; width: 100%; box-sizing: border-box; height: 104px; padding: 12px 14px; border: 1px solid var(--m-hairline-strong); border-radius: 14px; background: var(--m-bg); color: var(--m-text); font: inherit; font-size: var(--m-fs-list); line-height: 22px; resize: none; }
 .objectives-m-field.is-unfold { height: 88px; margin-top: 4px; animation: objectives-m-unfold .2s ease-out; }
 .objectives-m-field::placeholder { color: var(--m-text-muted); }
-.objectives-m-field:focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; }
+.objectives-m-field:focus-visible { box-shadow: var(--focus-face); }
 .objectives-m-ucard-ft { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .objectives-m-sp { flex: 1; }
 .objectives-m-progress { font-size: var(--m-fs-caption); color: var(--m-text-muted); font-variant-numeric: tabular-nums; }
@@ -233,7 +233,7 @@
 .objectives-m-sheet-body::-webkit-scrollbar { display: none; }
 .objectives-m-sheet-layer .objectives-m-field { height: 104px; }
 .objectives-m-sheet-ft { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 16px 0; }
-.objectives-m-sheet-layer :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+.objectives-m-sheet-layer :focus-visible:not([data-press]) { border-radius: 8px; box-shadow: var(--focus-face); }
 /* 열릴 때 포커스를 받는 시트 판 자체는 고리를 그리지 않는다 — 판 전체가 대화상자다. */
 .objectives-m-sheet-layer .objectives-m-sheet:focus-visible { outline: none; border-radius: 28px 28px 0 0; }
 /* 라우팅 확인 시트 — 라우팅 구성원마다 역할 · 판단된 모델 · 강도, 그 아래 근거 또는 폴백 사유. */

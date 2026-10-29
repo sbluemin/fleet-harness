@@ -60,4 +60,4 @@
 }
 
 .global-shell-location-notice button:hover:not(:disabled) { background: var(--control-rest-hover); }
-.global-shell-location-notice button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.global-shell-location-notice button:focus-visible { box-shadow: var(--focus-face); }

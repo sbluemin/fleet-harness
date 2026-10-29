@@ -49,7 +49,7 @@
 .commander-place-button svg { width: 15px; height: 15px; }
 .commander-place-button:hover { background: var(--wash-hover); color: var(--text-primary); }
 .commander-place-button[aria-pressed="true"] { color: var(--text-primary); background: var(--wash-selected); border-color: var(--hairline); }
-.commander-place-button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.commander-place-button:focus-visible { box-shadow: var(--focus-face); }
 /* 사이드바만 상·하단을 조인다. 채팅 레일·폰 시트의 .commander-tab 여백(10px 10px 16px)은 그대로다.
    높이 상한과 안쪽 스크롤은 없다 — 줄은 사이드바 목록(objective-records-side-bar-chips)이 스크롤한다. */
 .side-bar-commander-list {
@@ -93,19 +93,19 @@
 }
 
 .commander-tab-sort-button:focus-visible,
-.commander-tab-direction:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.commander-tab-direction:focus-visible { box-shadow: var(--focus-face); }
 
 .commander-tab-menu {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
   z-index: 5;
-  min-width: 196px;
+  min-width: var(--popover-width);
   display: flex;
   flex-direction: column;
-  padding: 4px;
+  padding: var(--popover-pad);
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
 }
@@ -113,17 +113,18 @@
 .commander-tab-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--popover-row-gap);
   min-height: var(--popover-row);
-  padding: 0 10px;
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--popover-row-radius);
   background: transparent;
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-sm);
+  font-size: var(--t-base);
   text-align: left;
   cursor: pointer;
+  font-weight: var(--weight-regular);
 }
 
 .commander-tab-menu-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
@@ -144,11 +145,11 @@
 .commander-tab-menu-direction svg { width: 14px; height: 14px; }
 .commander-tab-menu-direction:hover { background: var(--wash-hover); color: var(--text-primary); }
 .commander-tab-menu-direction[aria-checked="true"] { color: var(--text-primary); background: var(--wash-selected); }
-.commander-tab-menu-direction:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commander-tab-menu-direction:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .commander-tab-menu-direction,
 :root[data-view-mode="mobile"] .commander-tab-direction { width: 44px; height: 44px; }
 .commander-tab-menu-item:hover { background: var(--wash-hover); }
-.commander-tab-menu-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commander-tab-menu-item:focus-visible { box-shadow: var(--focus-face); }
 
 .commander-tab-menu-check {
   width: 12px;
@@ -195,10 +196,10 @@
 .commander-tab-fold-count { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .commander-tab-fold[aria-expanded="true"] { color: var(--text-secondary); }
 .commander-tab-fold:hover { background: var(--wash-hover); color: var(--text-primary); }
-.commander-tab-fold:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commander-tab-fold:focus-visible { box-shadow: var(--focus-face); }
 .commander-list-owner { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 8px; border: 0; border-radius: var(--radius-lg); background: none; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
 .commander-list-owner:hover, .commander-list-owner[aria-current="true"] { background: var(--wash-hover); }
-.commander-list-owner:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commander-list-owner:focus-visible { box-shadow: var(--focus-face); }
 .commander-list-owner > span { min-width: 0; }
 .commander-list-owner strong, .commander-list-owner small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commander-list-owner strong { font-size: var(--t-sm); font-weight: var(--weight-medium); }

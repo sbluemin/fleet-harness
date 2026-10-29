@@ -127,8 +127,8 @@
 }
 
 .mobile-theater-row:focus-visible {
-  border-color: color-mix(in srgb, var(--brass) 55%, var(--hairline));
   outline: none;
+  box-shadow: var(--focus-face);
 }
 
 .mobile-theater-copy {
@@ -801,7 +801,7 @@
 .mobile-choice-tabs { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 22px 4px; }
 .mobile-choice-tab { min-height: 36px; padding: 0 0 4px; color: var(--m-text-nav); font-size: var(--m-fs-secondary); background: transparent; border: 0; border-bottom: 2px solid transparent; }
 .mobile-choice-tab.is-on { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-text); }
-.mobile-choice-tab:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
+.mobile-choice-tab:focus-visible { box-shadow: var(--focus-face); }
 @media (prefers-reduced-motion: reduce) {
   .mobile-choice { animation: none; }
   .mobile-choice-scrim.is-leaving .mobile-choice { transform: none; }
@@ -1274,7 +1274,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 :root .fc-settings-row.is-mobile:not(:has(.fc-settings-row__icon)):has(.fc-select--mobile) { grid-template-columns: 0 minmax(0, 1fr); column-gap: 0; }
 :root .fc-settings-row.is-mobile .fc-select--mobile { display: block; width: auto; min-width: 0; min-height: 0; margin: 0; padding: 0; color: var(--m-text-muted); font: inherit; font-size: var(--m-fs-secondary); line-height: 21px; text-align: left; background: transparent; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; }
 .fc-settings-row.is-mobile .fc-select--mobile .fc-select__caret { display: none; }
-.fc-settings-row.is-mobile .fc-select--mobile:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
+.fc-settings-row.is-mobile .fc-select--mobile:focus-visible { box-shadow: var(--focus-face); }
 
 .mobile-settings-group .mobile-secnote { padding: 8px 4px 0; }
 .mobile-group-row.is-info { cursor: default; }
@@ -1362,7 +1362,7 @@ html[data-view-mode="mobile"] .app-toast-action {
   background: var(--surface-capsule);
   transition: border-color var(--duration-fast);
 }
-:root[data-view-mode="mobile"] .fc-composer-capsule:focus-within::before { border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-capsule-rim)); }
+:root[data-view-mode="mobile"] .fc-composer-capsule:focus-within::before { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .fc-composer-capsule.is-dragover::before { border-color: var(--brass); }
 /* 「+」를 감싼 칸은 줄에서 자리를 차지하지 않는다(간격 하나가 남지 않게). */
 :root[data-view-mode="mobile"] .fc-composer-capsule > :has(> .fc-composer-plus) { display: contents; }
@@ -1403,7 +1403,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-group > .mobile-marked-row:last-child { border-bottom-right-radius: 22px; border-bottom-left-radius: 22px; }
 .mobile-marked-row > .mobile-group-row { border-radius: inherit; }
 .mobile-row-mark { position: relative; display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin: 0 8px; padding: 0; color: var(--m-text-muted); background: transparent; border: 0; border-radius: 12px; --pr-r: 12px; }
-.mobile-row-mark:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.mobile-row-mark:focus-visible { box-shadow: var(--focus-face); }
 .mobile-cluster-mark { box-sizing: border-box; width: 12px; height: 12px; background: var(--brass); border-radius: 3px; }
 .mobile-cluster-mark.is-hollow, .mobile-cluster-mark.is-off { background: transparent; border: 1.3px solid var(--m-text-muted); }
 .mobile-cluster-mark.has-glyph { display: grid; place-items: center; width: 20px; height: 20px; color: var(--brass-ink); background: transparent; border: 0; }
@@ -1468,7 +1468,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-commander-sort-option { gap: 4px; }
 .mobile-commander-sort-name { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .mobile-commander-sort-name > span:first-child { flex: 1; min-width: 0; }
-.mobile-commander-sort-name:focus-visible, .mobile-commander-sort-direction:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.mobile-commander-sort-name:focus-visible, .mobile-commander-sort-direction:focus-visible { box-shadow: var(--focus-face); }
 .mobile-commander-sort-direction { display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; background: transparent; color: var(--m-text); cursor: pointer; }
 .mobile-commander-sort-direction[aria-pressed="true"] { background: var(--m-chip); }
 .mobile-commander-sort-check { display: grid; place-items: center; flex: none; width: 24px; color: var(--m-text); }

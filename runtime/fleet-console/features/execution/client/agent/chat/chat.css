@@ -479,9 +479,8 @@
 .agent-chat-changes-more:hover { color: var(--text-secondary); }
 
 .agent-chat-changes-more:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--focus-face);
 }
 
 /* 라이브 원장 — 스텝과 문장이 도착한 순서대로 쌓인다. 진행 중에도 완료 후에도 같은 문법이다. */
@@ -771,9 +770,8 @@
 }
 
 .agent-chat-tally-fold > summary:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--focus-face);
 }
 
 /* 어포던스는 오직 이 꺾쇠가 진다. 이전에는 9px에 --hairline-strong이라, 쉬는 상태에서 눌리는
@@ -950,7 +948,7 @@
 }
 /* hover 는 발화자 이름과 같은 면 — 밑줄을 쓰지 않는다. */
 .agent-chat-step-ref:hover { background: var(--control-wash-hover); color: var(--text-primary); }
-.agent-chat-step-ref:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+.agent-chat-step-ref:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 
 /* Theater 밖 좌표 — 표시형으로 접히면 안쪽과 구별되지 않으므로 표식이 대신 말한다. */
 .agent-chat-step-outside {
@@ -1146,9 +1144,8 @@
 .agent-chat-ask-input::placeholder { color: var(--text-tertiary); }
 
 .agent-chat-ask-input:focus {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
   border-style: solid;
+  box-shadow: var(--focus-face);
 }
 
 .agent-chat-ask-foot {
@@ -1169,7 +1166,7 @@
   cursor: pointer;
 }
 
-.agent-chat-ask-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.agent-chat-ask-send:focus-visible { box-shadow: var(--focus-face); }
 .agent-chat-ask-send:disabled { opacity: 0.45; cursor: default; }
 
 /* 보조 동작 — 승인이 주 동작이므로 채움을 양보한다. */
@@ -1351,9 +1348,8 @@
 .agent-chat-fold > summary:hover { color: var(--text-secondary); }
 
 .agent-chat-fold > summary:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 3px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--focus-face);
 }
 
 .agent-chat-fold > summary::-webkit-details-marker { display: none; }
@@ -1646,8 +1642,7 @@
 }
 
 .agent-chat-composer-frame:focus-within {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 1px var(--brass-glow);
+  box-shadow: var(--focus-face);
 }
 
 /* 파일을 끌어온 동안 — 어디에 놓이는지 프레임이 스스로 말한다(포커스와 같은 brass 채널). */
@@ -1932,8 +1927,7 @@
 
 .agent-chat-composer-width:focus-visible,
 .agent-chat-composer-fold:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .agent-chat-composer-send {
@@ -2565,8 +2559,7 @@
 }
 
 .agent-chat-coord.is-control:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 /* 예약 — 다음 턴에 도는 것. 지금 도는 좌표와 섞이지 않게 화살표로 떨어져 서고, brass는 "지금
@@ -2648,7 +2641,7 @@
 }
 
 .agent-chat-coord-pop-item:hover { background: var(--wash-hover); }
-.agent-chat-coord-pop-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.agent-chat-coord-pop-item:focus-visible { box-shadow: var(--focus-face); }
 
 .agent-chat-coord-pop-item.is-active { background: var(--wash-selected); }
 
@@ -2720,7 +2713,7 @@
 
 .agent-chat-coord-pop-divider {
   height: 1px;
-  margin: 5px 4px;
+  margin: var(--popover-divider-space);
   background: var(--popover-divider);
 }
 
@@ -3026,8 +3019,7 @@
 }
 
 .agent-chat-job-anchor:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 
@@ -3073,8 +3065,7 @@
 .agent-chat-job-row:hover { background: var(--control-rest-hover); }
 
 .agent-chat-job-row:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 제목과 꼬리가 한 줄에 선다. 꼬리는 자기 크기만큼만 쓰고 제목이 남는 폭을 가진다 — 좁은
@@ -3167,8 +3158,7 @@
 .agent-chat-work-branch-head:hover { color: var(--text-primary); }
 
 .agent-chat-work-branch-head:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .agent-chat-work-branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3370,8 +3360,7 @@
 }
 
 .agent-chat-ledge-toggle:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .agent-chat-ledge-toggle:hover .agent-chat-strip-count,
@@ -3478,8 +3467,7 @@
 
 .agent-chat-sheet-grow:focus-visible,
 .agent-chat-sheet-close:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 시트가 덮은 동안 대화는 한 단 물러난다 — 숨는 것이 아니라 층이 갈렸다는 것을 말한다. */
@@ -3549,8 +3537,7 @@
 }
 
 .agent-chat-detail-back:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 중단은 되돌릴 수 없는 문이라 돌아가기와 같은 무게로 두지 않는다 — 평소에는 조용하고,
@@ -3575,8 +3562,7 @@
 }
 
 .agent-chat-detail-stop:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .agent-chat-detail-stop:disabled {
@@ -3817,7 +3803,7 @@
   outline: none;
 }
 
-.agent-chat-ctx-chip:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.agent-chat-ctx-chip:focus-visible { box-shadow: var(--focus-face); }
 
 /* 진행 중에는 옛 값이 새 사실인 척하지 않는다. 자리는 지키되 판독만 낮춘다 — 사라지면
    사용자가 방금 무엇을 눌렀는지 잃는다(전환 칩의 disabled와 같은 규율). */
@@ -3864,10 +3850,10 @@
   width: 320px;
   max-width: calc(100cqw - var(--space-6));
   padding: var(--space-3);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel-raised);
-  box-shadow: var(--shadow-floating);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
 }
@@ -4001,9 +3987,8 @@
 .agent-chat-ctx-detail > summary:hover .agent-chat-ctx-name { color: var(--text-secondary); }
 
 .agent-chat-ctx-detail > summary:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--focus-face);
 }
 
 /* 값이 언제 잰 것인지 말하지 않으면 이 표면은 조용한 거짓말이 된다 — 자식은 턴이 끝나기 전에
@@ -4183,7 +4168,7 @@
 .agent-chat-tool-fold > summary:hover { background: var(--control-rest); }
 .agent-chat-tool-fold > summary:focus-visible,
 .agent-chat-change.is-link:focus-visible,
-.agent-chat-tool-copy:focus-visible { outline: 2px solid var(--aurora); outline-offset: 2px; border-radius: var(--radius-xs); }
+.agent-chat-tool-copy:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 .agent-chat-tally-body > .agent-chat-tool-fold { position: relative; }
 .agent-chat-tally-body > .agent-chat-tool-fold > summary.agent-chat-step.is-leaf {
   min-height: 24px; padding: 2px 0; background: none; border: 0; border-radius: 0;
@@ -4235,7 +4220,7 @@
 .agent-chat-tool-agents td { overflow-wrap: anywhere; }
 .agent-chat-tool-agents td:first-child { font-family: var(--agent-chat-font); color: var(--text-primary); }
 .agent-chat-tool-raw > summary { padding: 5px var(--space-3); color: var(--text-tertiary); cursor: pointer; }
-.agent-chat-tool-raw > summary:focus-visible { outline: 2px solid var(--aurora); outline-offset: -2px; }
+.agent-chat-tool-raw > summary:focus-visible { box-shadow: var(--focus-face); }
 
 /* 산문·입력은 콘텐츠, CLI 행은 코드다. UI 크기와 독립적으로 조절한다. */
 .agent-chat-dispatch-md, .agent-chat-composer-input, .agent-chat-composer-highlight {
@@ -4585,8 +4570,7 @@
 }
 
 [data-mobile-surface] .agent-chat-composer-tools button:focus-visible {
-  outline: 2px solid var(--m-text);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 질문 카드(S-29) — 허용 요청 카드와 같은 틀을 기록 안에 둔다. */

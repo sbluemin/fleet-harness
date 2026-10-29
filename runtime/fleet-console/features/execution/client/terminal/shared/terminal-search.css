@@ -29,8 +29,7 @@
 }
 
 .terminal-search-input:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: -1px;
+  box-shadow: var(--focus-face);
 }
 
 .terminal-search-status {
@@ -63,8 +62,7 @@
 }
 
 .terminal-search-button:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: -1px;
+  box-shadow: var(--focus-face);
 }
 
 .terminal-search-button svg {

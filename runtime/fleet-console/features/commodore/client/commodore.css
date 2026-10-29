@@ -12,7 +12,7 @@
   white-space: nowrap;
 }
 .objectives-btn:hover { border-color: transparent; background: var(--control-rest-hover); color: var(--brass-ink); }
-.objectives-btn:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-btn:focus-visible { box-shadow: var(--focus-face); }
 .objectives-btn:disabled { opacity: 0.45; cursor: default; }
 .objectives-btn.is-primary { background: var(--brass); color: var(--text-on-brass); border-color: transparent; }
 .objectives-btn.is-small { padding: 1px 7px; font-size: var(--t-xs); display: inline-flex; align-items: center; gap: 4px; }
@@ -33,7 +33,7 @@
   flex: none;
 }
 .objectives-glyph:hover { color: var(--brass-ink); border-color: var(--hairline-strong); }
-.objectives-glyph:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-glyph:focus-visible { box-shadow: var(--focus-face); }
 .objectives-glyph svg { width: 14px; height: 14px; }
 .objectives-row.is-on .objectives-row-ic { color: var(--brass-ink); }
 .objectives-row-ic { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; color: var(--text-tertiary); }
@@ -42,18 +42,18 @@
 .objectives-menu {
   position: fixed;
   z-index: 60;
-  padding: 6px;
+  padding: var(--popover-pad);
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
   display: flex; flex-direction: column;
   max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
 }
 .objectives-menu::-webkit-scrollbar { display: none; }
-.objectives-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--popover-row); padding: 6px 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-base); font-weight: var(--weight-regular); text-align: left; cursor: pointer; transition: background var(--duration-fast); }
+.objectives-menu-item { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; min-height: var(--popover-row); padding: 6px var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-base); font-weight: var(--weight-regular); text-align: left; cursor: pointer; transition: background var(--duration-fast); }
 .objectives-menu-item:hover { background: var(--wash-hover); }
-.objectives-menu-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.objectives-menu-item:focus-visible { box-shadow: var(--focus-face); }
 .objectives-menu-item.is-active { background: var(--wash-selected); }
 .objectives-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-menu-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }
@@ -125,7 +125,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
   height: 18px;
   transition: opacity var(--duration-fast) var(--ease-spring), filter var(--duration-fast) var(--ease-spring);
 }
-.objectives-commodore-mark:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-mark:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-mark[aria-busy="true"] .objectives-commodore-mark-glyph { opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) {
   .objectives-commodore-mark-glyph { transition: none; }
@@ -168,7 +168,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
   text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px;
 }
 .objectives-commodore-default:hover { color: var(--text-primary); text-decoration-color: currentColor; }
-.objectives-commodore-default:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+.objectives-commodore-default:focus-visible { border-radius: 2px; box-shadow: var(--focus-face); }
 
 .objectives-commodore-retry { flex: none; display: flex; align-items: center; gap: 10px; margin: 10px 28px 0; color: var(--warn-ink); font-size: var(--t-xs); }
 
@@ -206,7 +206,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
   cursor: pointer;
 }
 .objectives-commodore-turn:hover { background: var(--control-hover-fill); }
-.objectives-commodore-turn:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-turn:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-turn-dot {
   width: 8px;
   height: 8px;
@@ -265,7 +265,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 }
 button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-trail-objective:hover, button.objectives-commodore-trail-entry:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
-.objectives-commodore-trail-objective:focus-visible, .objectives-commodore-trail-entry:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-trail-objective:focus-visible, .objectives-commodore-trail-entry:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-trail-glyph { flex: none; width: 12px; height: 12px; display: grid; place-items: center; }
 .objectives-commodore-trail-glyph svg { width: 10px; height: 10px; overflow: visible; }
 .objectives-commodore-trail-entry.is-progress { color: var(--aurora-ink); }
@@ -282,7 +282,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   position: absolute; right: 12px; bottom: 10px; z-index: 2; padding: 3px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill);
   background: var(--ink-mid); color: var(--text-primary); font: inherit; font-size: var(--t-2xs); cursor: pointer;
 }
-.objectives-commodore-trail-fresh:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-trail-fresh:focus-visible { box-shadow: var(--focus-face); }
 
 /* 목표 칸 이음매 — Repository 분할선과 같은 문법. 선은 1px, 손잡이가 끌 수 있음을 말하고, 잡는 영역은 양쪽 5px. */
 .objectives-commodore-trail-seam {
@@ -337,7 +337,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 .objectives-commodore-input.is-tall { min-height: 140px; max-height: none; }
 .objectives-commodore-input::placeholder { color: var(--text-tertiary); }
-.objectives-commodore-input:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-input:focus-visible { box-shadow: var(--focus-face); }
 
 .objectives-commodore-intel-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .objectives-commodore-intel-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
@@ -386,7 +386,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   display: flex; align-items: center; gap: 8px; box-sizing: border-box; height: 32px; padding: 0 10px;
   border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); background: var(--control-field); color: var(--text-tertiary);
 }
-.objectives-commodore-memory-search:focus-within { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-memory-search:focus-within { box-shadow: var(--focus-face); }
 .objectives-commodore-memory-search svg { flex: none; width: 12px; height: 12px; }
 .objectives-commodore-memory-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); }
 .objectives-commodore-memory-search input::placeholder { color: var(--text-tertiary); }
@@ -395,7 +395,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 2px 0; border: 0; border-radius: var(--radius-xs);
   background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.objectives-commodore-memory-branch-head:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.objectives-commodore-memory-branch-head:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-memory-branch-head .objectives-commodore-section-title { flex: none; }
 .objectives-commodore-memory-hint { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: var(--t-xs); }
 .objectives-commodore-memory-count { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
@@ -410,7 +410,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); line-height: 1.5; text-align: left; cursor: pointer;
 }
 .objectives-commodore-memory-entry:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); }
-.objectives-commodore-memory-entry:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-memory-entry:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-memory-entry-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-commodore-memory-date { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 /* 제목 밖에서 맞은 자리 — 제목 줄 아래 한 줄로 접는다. */
@@ -440,7 +440,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; white-space: nowrap;
 }
 .objectives-commodore-text-button:hover:not(:disabled) { color: var(--brass-ink); }
-.objectives-commodore-text-button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-text-button:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-text-button:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 3px; }
 
@@ -493,7 +493,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-composer .objectives-commodore-ctx-chip { padding: calc((var(--fc-composer-circle, 28px) - 16px) / 2); }
 .objectives-commodore-ctx-chip:hover,
 .objectives-commodore-ctx-chip:focus-visible { background: var(--brass-glow); outline: none; }
-.objectives-commodore-ctx-chip:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.objectives-commodore-ctx-chip:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-ctx-arc { width: 16px; height: 16px; transform: rotate(-90deg); }
 .objectives-commodore-ctx-arc circle { fill: none; stroke-width: 3; }
 .objectives-commodore-ctx-track { stroke: var(--ink-veil); }
@@ -501,8 +501,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-ctx-pop {
   position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 4;
   width: 320px; max-width: min(320px, 70vw); padding: 12px;
-  border: 1px solid var(--hairline-strong); border-radius: var(--radius-md);
-  background: var(--surface-panel-raised); box-shadow: var(--shadow-floating);
+  border: 1px solid var(--popover-rim); border-radius: var(--popover-radius);
+  background: var(--popover-face); box-shadow: var(--popover-shadow);
   font-variant-numeric: tabular-nums;
 }
 .objectives-commodore-ctx-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
@@ -590,7 +590,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-create-close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--text-secondary); background: none; border: 0; border-radius: var(--radius-pill); cursor: pointer; }
 .commodore-create-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 .commodore-create-close:hover { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 8%, transparent); }
-.commodore-create-close:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.commodore-create-close:focus-visible { box-shadow: var(--focus-face); }
 .commodore-create-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 24px 24px 28px; }
 .commodore-create-hero { display: grid; place-items: center; height: 120px; }
 .commodore-create-body .mongle-picker-preview { margin-top: -12px; }
@@ -669,7 +669,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-theaters-missing { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-theaters-add { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 0; color: var(--brass-ink); background: none; border: 0; font: inherit; font-size: var(--t-sm); text-align: start; cursor: pointer; }
 .commodore-theaters-add:hover:not(:disabled) > span:last-child { text-decoration: underline; text-underline-offset: 3px; }
-.commodore-theaters-add:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+.commodore-theaters-add:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 .commodore-theaters-add:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-hint.is-error { color: var(--coral-ink); }
 .commodore-prompt-body { min-height: 120px; margin-top: 8px; }
@@ -745,7 +745,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 행 자체가 메뉴의 손잡이다(클릭·키보드·우클릭·길게 누르기). 메뉴가 가리키는 행은 brass 빛으로 위치를 말한다. */
 .commodore-plugins-list > li { margin: 0 -6px; padding: 3px 6px; border-radius: var(--radius-xs); cursor: pointer; user-select: none; -webkit-touch-callout: none; }
 .commodore-plugins-list > li:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
-.commodore-plugins-list > li:focus-visible, .commodore-plugins-phone-row:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.commodore-plugins-list > li:focus-visible, .commodore-plugins-phone-row:focus-visible { box-shadow: var(--focus-face); }
 .commodore-plugins-list > li.is-target { background: var(--brass-glow); }
 .commodore-plugins .commodore-plugins-phone-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: start; cursor: pointer; user-select: none; -webkit-touch-callout: none; }
 .commodore-plugins-phone-row:active { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
@@ -783,7 +783,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-plugins-locator { color: var(--text-tertiary); font-family: var(--font-code); font-size: var(--t-2xs); overflow-wrap: anywhere; }
 .commodore-plugins-text { flex: none; padding: 2px 0; border: 0; background: none; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); white-space: nowrap; cursor: pointer; }
 .commodore-plugins-text:hover:not(:disabled) { color: var(--brass-ink); }
-.commodore-plugins-text:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+.commodore-plugins-text:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 .commodore-plugins-text:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .commodore-plugins-text.is-danger { color: var(--coral-ink); }
 .commodore-plugins-empty { margin: 0; padding: 20px 4px; color: var(--text-tertiary); font-size: var(--t-xs); text-align: center; }
@@ -823,7 +823,7 @@ button.commodore-market-glyph { padding: 0; border: 0; box-shadow: inset 0 0 0 1
 button.commodore-market-glyph[aria-pressed="true"] { background: var(--brass-glow); color: var(--brass-ink); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 45%, transparent); }
 button.commodore-market-glyph:hover { box-shadow: inset 0 0 0 1px var(--control-hover-rim); }
 button.commodore-market-glyph[aria-pressed="true"]:hover { box-shadow: inset 0 0 0 1px var(--brass); }
-button.commodore-market-glyph:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 @media (prefers-reduced-motion: no-preference) { button.commodore-market-glyph { transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease; } }
 .commodore-market-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--hairline); }
 .commodore-market-card-status { flex: 1 1 auto; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
@@ -833,7 +833,7 @@ button.commodore-market-glyph:focus-visible { outline: 2px solid var(--control-f
 .commodore-plugins-field { flex: 1 1 220px; min-width: 0; padding: 6px 10px; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: var(--control-field); color: var(--text-primary); font-family: var(--font-code); font-size: var(--t-xs); outline: none; }
 .commodore-plugins-field.is-ref { flex: 0 1 160px; }
 .commodore-plugins-field::placeholder { color: var(--text-tertiary); font-family: var(--font-ui); }
-.commodore-plugins-field:focus-visible { border-color: var(--brass); }
+.commodore-plugins-field:focus-visible { box-shadow: var(--focus-face); }
 .commodore-plugins-field:disabled { opacity: var(--control-disabled-opacity); }
 
 /* 팔레트 — 사령관 설정이 Inbox 시트(스크림 90)나 오른쪽 패널에서 열리므로 덮개 층 위에 선다.
@@ -854,7 +854,7 @@ button.commodore-market-glyph:focus-visible { outline: 2px solid var(--control-f
 .commodore-palette-chip span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .commodore-palette-chip:hover { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
 .commodore-palette-chip[aria-pressed="true"] { border-color: var(--brass); background: var(--control-tint-fill); color: var(--brass-ink); }
-.commodore-palette-chip:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.commodore-palette-chip:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 16px 8px; }
 .commodore-palette-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; padding: 12px 0 4px; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-palette-group-head > span:first-child { color: var(--text-secondary); font-weight: var(--weight-medium); }
@@ -867,7 +867,7 @@ button.commodore-market-glyph:focus-visible { outline: 2px solid var(--control-f
 .commodore-palette-open { display: flex; flex: 1 1 auto; flex-direction: column; gap: 10px; width: 100%; min-width: 0; padding: 12px 96px 12px 12px; border: 0; border-radius: inherit; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
 /* hover 빛은 카드 면이 진다 — 열기 단추는 행 높이로 늘어난 카드를 채우고, 「설치」에 올려도 같은 카드가 밝아진다. */
 .commodore-palette-card:has(> .commodore-palette-open:hover, .commodore-palette-install:hover) { background: color-mix(in oklch, var(--text-primary) 6.5%, transparent); }
-.commodore-palette-open:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commodore-palette-open:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-card.is-open .commodore-palette-open { padding-right: 12px; }
 .commodore-palette-card-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .commodore-palette-card-title { display: grid; flex: 1 1 auto; gap: 1px; min-width: 0; }
@@ -905,7 +905,7 @@ button.commodore-market-glyph:focus-visible { outline: 2px solid var(--control-f
 .commodore-plugin-detail-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 2px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
 .commodore-plugin-detail-back svg { width: 10px; height: 10px; }
 .commodore-plugin-detail-back:hover { color: var(--brass-ink); }
-.commodore-plugin-detail-back:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; border-radius: var(--radius-xs); }
+.commodore-plugin-detail-back:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 .commodore-plugin-detail-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 16px 16px; }
 .commodore-plugin-detail-hero { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
 .commodore-plugin-detail-heading { display: grid; flex: 1 1 auto; gap: 2px; min-width: 0; }
@@ -951,7 +951,7 @@ button.commodore-market-glyph:focus-visible { outline: 2px solid var(--control-f
 /* 폰 마켓플레이스 행 — 행 전체를 덮는 열기 단추 위에 토글만 올린다(모바일 설정 행의 <label> 대신). 꺼진 행은 옅어짐으로 말한다. */
 .commodore-market-row { position: relative; }
 .commodore-market-row-open { position: absolute; inset: 0; z-index: 0; padding: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
-.commodore-market-row-open:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commodore-market-row-open:focus-visible { box-shadow: var(--focus-face); }
 .commodore-market-row > :not(.commodore-market-row-open) { position: relative; z-index: 1; pointer-events: none; }
 .commodore-market-row > .commodore-market-row-glyph { pointer-events: auto; }
 .commodore-market-row.is-off .fc-settings-row__copy { opacity: 0.55; }

@@ -84,17 +84,17 @@
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   width: max-content;
-  min-width: 196px;
+  min-width: var(--popover-min-width);
   max-width: calc(100% - 8px);
   max-height: calc(100% - 8px);
   overflow-y: auto;
-  padding: 6px;
+  padding: var(--popover-pad);
   /* 공통 팝업 표면(theme.css --popover-*) — 우클릭·문서 ⋯·트리 옵션 메뉴가 이 판을 공유한다.
      행은 40px · 본문 글자 · 중립 워시, 금색은 포커스 링에만 남는다. */
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
 }
@@ -104,9 +104,9 @@
   align-items: center;
   width: 100%;
   min-height: var(--popover-row);
-  padding: 0 12px;
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--popover-row-radius);
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
@@ -115,6 +115,7 @@
   font-weight: var(--weight-regular);
   text-align: left;
   white-space: nowrap;
+  gap: var(--popover-row-gap);
 }
 
 .fexp-context-menu-item:hover {
@@ -122,13 +123,12 @@
 }
 
 .fexp-context-menu-item:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .fexp-context-menu-separator {
   height: 1px;
-  margin: 5px 4px;
+  margin: var(--popover-divider-space);
   background: var(--popover-divider);
 }
 
@@ -438,8 +438,7 @@
 }
 
 .fexp-search-result:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .fexp-search-result-main {
@@ -552,8 +551,7 @@
 }
 
 .fexp-tree-row:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .fexp-tree-row.is-cur {
@@ -941,8 +939,7 @@
 }
 
 .fexp-scope button:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .fexp-filter-clear {
@@ -1016,7 +1013,7 @@
   right: 0;
   top: calc(100% + 4px);
   z-index: 30;
-  min-width: 172px;
+  min-width: var(--popover-min-width);
   max-width: none;
   max-height: none;
 }
@@ -1262,8 +1259,7 @@
 }
 
 .fexp-row-action:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .fexp-row-note {
@@ -1842,7 +1838,7 @@
   position: absolute;
   right: 6px;
   top: calc(100% + 2px);
-  min-width: 200px;
+  min-width: var(--popover-min-width);
   max-width: calc(100% - 12px);
   max-height: 280px;
 }
@@ -1875,8 +1871,7 @@
 }
 
 .fexp-quiet-menu-head:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .fexp-quiet-menu-item {
@@ -1957,7 +1952,7 @@
 
 .fexp-crumb-menu {
   top: calc(100% + 2px);
-  min-width: 200px;
+  min-width: var(--popover-min-width);
   max-width: calc(100% - 8px);
   max-height: 280px;
 }
@@ -2180,8 +2175,7 @@
 .fexp-filter-clear:focus-visible,
 .fexp-refresh-btn:focus-visible,
 .fexp-tree-error-retry:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 /* SDK의 공개 actionId로 Files 선반만 키운다. 부모 캡션의 높이와 닫기는 호스트 소유다. */

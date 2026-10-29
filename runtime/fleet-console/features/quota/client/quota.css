@@ -534,8 +534,7 @@
 
 .quota-button:focus-visible,
 .quota-refresh:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .quota-strip {
@@ -655,7 +654,7 @@
 }
 
 .quota-toolbar-pick:focus-visible {
-  border-color: var(--brass);
+  box-shadow: var(--focus-face);
 }
 
 .quota-toolbar-pick[aria-pressed="true"] {
@@ -696,7 +695,7 @@
   background: var(--wash-hover);
 }
 
-.quota-toolbar-summary:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.quota-toolbar-summary:focus-visible { box-shadow: var(--focus-face); }
 
 .quota-toolbar-summary[aria-expanded="true"] { background: var(--control-wash); }
 

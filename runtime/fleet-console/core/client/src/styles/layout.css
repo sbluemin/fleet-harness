@@ -75,8 +75,6 @@
 .right-rail-stale-veil button:hover,
 .right-rail-stale-veil button:focus-visible {
   border-color: var(--brass);
-  outline: 1px solid var(--brass);
-  outline-offset: 1px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -257,8 +255,7 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .update-outcome {
 
 .update-outcome-dismiss:focus-visible {
   color: var(--text-primary);
-  outline: 1px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 /* 계약의 복귀 시한을 넘긴 침묵: 판정이 아니라 대기의 연장이므로 신호는 warn 한 색이다. 커튼은 그대로 두고,
@@ -319,13 +316,12 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .update-outcome {
 .update-recovery-command > button:focus-visible,
 .update-recovery-leave:focus-visible {
   color: var(--text-primary);
-  outline: 1px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .update-recovery-details { color: var(--text-tertiary); font-size: var(--t-2xs); }
 .update-recovery-details > summary { cursor: pointer; width: fit-content; }
-.update-recovery-details > summary:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.update-recovery-details > summary:focus-visible { box-shadow: var(--focus-face); }
 
 /* 계약의 공유 문구는 터미널이 출력하는 것과 같은 글이다 — 같은 글꼴로, 줄바꿈 그대로 보인다. */
 .update-recovery-details > pre {
@@ -454,9 +450,9 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .update-outcome {
 }
 
 .command-band-button:focus-visible {
-  border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
   color: var(--text-primary);
+  box-shadow: var(--focus-face);
 }
 
 /* 눌린 아이콘 버튼은 다른 토글과 같은 문법으로 말한다 — 불리언 ON = 워시 + 글리프.

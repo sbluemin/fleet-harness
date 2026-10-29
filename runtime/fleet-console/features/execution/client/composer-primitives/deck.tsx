@@ -236,7 +236,7 @@ export function ComposerDeckRow({ id, active, disabled = false, lead, name, valu
  * 멘션 행 문법 — Fleet 의 모든 '@' 목록이 이 한 모양으로 선다(행: [머리 ~20px][이름][흐린 보조] … [오른쪽 끝 흐린 종류]).
  *
  * 한 줄·말줄임. 보조(`aux`: 연결 상태·작업 중·설명)는 이름 옆 흐린 글자, 종류(`kind`: Bot·그룹·플러그인·사령관·지휘관 등 Fleet 종류)는
- * 오른쪽 끝 흐린 글자로 짧게 선다. 활성 행은 은은한 중성 면(`--wash-selected`)만 — 금색 링(`--control-focus-ring`)을 쓰지 않는다.
+ * 오른쪽 끝 흐린 글자로 짧게 선다. 활성 행은 은은한 중성 면(`--wash-selected`)만 — 외곽선 링을 쓰지 않는다.
  * `ComposerMentionRow` 가 이 매핑을 강제하므로 표면마다 행이 어긋나지 않는다. 종류 문구는 각 표면의 i18n 이 짧은 낱말로 준다.
  */
 export const MENTION_ROW_CLASS = "is-mention";

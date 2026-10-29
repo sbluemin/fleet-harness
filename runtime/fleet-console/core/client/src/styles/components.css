@@ -65,8 +65,7 @@
 .fc-btn:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); transform: none; }
 
 .fc-btn:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 /* ===== Global Settings — 전역 옵션(시스템 프롬프트 주입 + 메타포) 표면 ===== */
 /* 이름으로 바로 가는 길. 약 150개 컨트롤을 가로지르는 입력이 하나도 없어, 특정 항목을 찾으려면
@@ -87,7 +86,7 @@
 }
 
 .settings-search:focus-within {
-  border-color: var(--control-open-rim);
+  box-shadow: var(--focus-face);
 }
 
 .settings-search svg {
@@ -168,7 +167,7 @@
 
 .settings-chip:focus-visible {
   outline: none;
-  box-shadow: var(--control-focus-ring);
+  box-shadow: var(--focus-face);
 }
 
 /* 선 자리는 brass가 말한다 — 위치 채널. 신호 토큰은 여기 오지 않는다. */
@@ -206,7 +205,7 @@
 
 .settings-pane-result:focus-visible {
   outline: none;
-  box-shadow: var(--control-focus-ring);
+  box-shadow: var(--focus-face);
 }
 
 .settings-pane-result-group {
@@ -359,8 +358,7 @@
 }
 
 .global-settings-shortcut-chord:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .global-settings-shortcut-chord:disabled {
@@ -396,7 +394,7 @@
 
 /* 설정 설명의 단일 공개 문법 — 제목 옆 '?'가 hover 미리보기·클릭 고정 말풍선을 연다.
    글리프는 공유 컨트롤 문법을 소비한다(hover=control-hover, 열림=control-open/tint,
-   포커스=control-focus-ring). 이 버튼은 상태가 아니라 위치이므로 신호 토큰을 쓰지 않고,
+   포커스=포커스 면). 이 버튼은 상태가 아니라 위치이므로 신호 토큰을 쓰지 않고,
    말풍선은 fc-select 팝업과 같은 부유면 문법(ink-deep 유리·hairline·shadow-floating)을 쓴다. */
 .settings-help-tip {
   position: relative;
@@ -430,8 +428,7 @@
 }
 
 .settings-help-tip__glyph:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .settings-help-tip__glyph[aria-expanded="true"] {
@@ -650,8 +647,7 @@
 
 .console-port-input:focus {
   outline: none;
-  border-color: var(--brass);
-  box-shadow: 0 0 0 3px var(--brass-glow);
+  box-shadow: var(--focus-face);
 }
 
 .console-port-input.is-invalid {
@@ -857,7 +853,7 @@
 }
 
 .add-host-close:hover { background: var(--wash-hover); color: var(--text-primary); }
-.add-host-close:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.add-host-close:focus-visible { box-shadow: var(--focus-face); }
 
 .add-host-lede { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.55; }
 
@@ -881,9 +877,7 @@
 .add-host-field input::placeholder { color: var(--text-tertiary); }
 /* 필드 포커스는 열림 테두리 + 금색 링 하나다 — 번지는 후광은 두지 않는다. */
 .add-host-field input:focus-visible {
-  border-color: var(--control-open-rim);
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 .add-host-field input:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
@@ -910,7 +904,7 @@
 
 .add-host-cancel:hover, .add-host-submit:hover:not(:disabled) { background: var(--control-rest-hover); }
 .add-host-cancel:hover { color: var(--text-primary); }
-.add-host-cancel:focus-visible, .add-host-submit:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.add-host-cancel:focus-visible, .add-host-submit:focus-visible { box-shadow: var(--focus-face); }
 .add-host-submit:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .add-host-error { margin: 0; color: var(--coral-ink); font-size: var(--t-md); line-height: 1.55; }
@@ -986,7 +980,7 @@
 }
 
 .pair-close:hover { background: var(--wash-hover); color: var(--text-primary); }
-.pair-close:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.pair-close:focus-visible { box-shadow: var(--focus-face); }
 
 .pair-body { display: flex; gap: var(--space-5); align-items: flex-start; flex-wrap: wrap; }
 
@@ -1094,7 +1088,7 @@
 }
 
 .pair-reveal:hover { background: var(--control-rest-hover); color: var(--text-primary); }
-.pair-reveal:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.pair-reveal:focus-visible { box-shadow: var(--focus-face); }
 
 .pair-link-field { display: flex; gap: var(--space-2); align-items: stretch; }
 
@@ -1123,7 +1117,7 @@
 }
 
 .pair-link-field button:hover { background: var(--control-rest-hover); color: var(--text-primary); }
-.pair-link-field button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.pair-link-field button:focus-visible { box-shadow: var(--focus-face); }
 
 @media (prefers-reduced-motion: reduce) {
   .pair-card { animation: none; }
@@ -1298,8 +1292,7 @@
 .fc-settings-check:hover:not(:has(.fc-settings-check__input:disabled)) { background: var(--control-hover-fill); }
 .fc-settings-check:has(.fc-settings-check__input:disabled) { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .fc-settings-check:has(.fc-settings-check__input:focus-visible) {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 /* 상자가 첫 줄 글자의 중심에 서도록 한 단 내린다 — flex-start만으로는 글자 위에 뜬다. */
@@ -1389,7 +1382,7 @@
 .remote-link-field input:hover {
   border-color: var(--control-hover-rim);
 }
-.remote-field input:focus-visible, .remote-port-control input[type="number"]:focus-visible, .remote-link-field input:focus-visible { border-color: var(--control-hover-rim); }
+.remote-field input:focus-visible, .remote-port-control input[type="number"]:focus-visible, .remote-link-field input:focus-visible { box-shadow: var(--focus-face); }
 .remote-field input:disabled, .remote-port-control input[type="number"]:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .remote-field input[aria-invalid="true"], .remote-port-control input[aria-invalid="true"] { border-color: color-mix(in oklab, var(--coral) 55%, var(--surface-rim-strong)); }
 
@@ -1544,7 +1537,7 @@
 }
 
 .remote-host-name:hover:not(:disabled) { background: var(--control-hover-fill); }
-.remote-host-name:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 3px; }
+.remote-host-name:focus-visible { box-shadow: var(--focus-face); }
 .remote-host-name:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .remote-host-text small { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
 
@@ -1888,8 +1881,7 @@
 }
 
 .font-field:focus-within {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 1px var(--brass-glow);
+  box-shadow: var(--focus-face);
 }
 
 .font-field input {
@@ -2128,7 +2120,7 @@
 
 .backend-api-group-toggle:focus-visible {
   outline: none;
-  box-shadow: var(--control-focus-ring);
+  box-shadow: var(--focus-face);
 }
 
 .backend-api-group-label {
@@ -2274,7 +2266,7 @@
 
 .backend-api-copy:focus-visible {
   outline: none;
-  box-shadow: var(--control-focus-ring);
+  box-shadow: var(--focus-face);
 }
 
 .backend-api-legend {
@@ -2865,8 +2857,7 @@
 .mongle-picker-tone:focus-visible,
 .mongle-picker-state:focus-visible,
 .mongle-picker-link:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 /* 아레나 인셋(--arena-*)은 캔버스 인라인 스타일이 싣는 단일 채널이다. 사이드바 접기 동안 매 프레임
@@ -3054,8 +3045,7 @@
 }
 
 .side-bar-theater-activate:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .side-bar-theater-header--dragging .side-bar-theater-activate {
@@ -3091,7 +3081,7 @@
   -webkit-touch-callout: none;
 }
 
-/* 머무름과 현재 대화는 서로 다른 중성 워시다. 키보드 포커스만 브래스 테두리를 쓴다. */
+/* 머무름과 현재 대화는 서로 다른 중성 워시다. 키보드 포커스는 한 단 짙은 포커스 면이고, 테두리는 쓰지 않는다. */
 .side-bar-theater-header:hover,
 .side-bar-theater-header:focus-visible {
   background: var(--wash-hover);
@@ -3100,8 +3090,7 @@
 }
 
 .side-bar-theater-header:focus-visible {
-  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
-  background: var(--brass-glow);
+  box-shadow: var(--focus-face);
 }
 
 /* 활성 Theater 문맥과 실제로 열린 사령관 대화(is-current)는 별도다. */
@@ -3111,10 +3100,10 @@
 
 .side-bar-theater-header.is-current { background: var(--wash-selected); }
 
-/* 열린 Theater 메뉴의 대상 머리 — 어느 Theater 를 다루는지(위치)를 말하므로 focus-visible 과 같은 brass 테두리를 진다.
+/* 열린 메뉴의 대상 머리 — 어느 행을 다루는지(위치)를 hover와 같은 중성 워시로 말한다. 테두리는 쓰지 않는다.
    메뉴는 활성이 아닌 머리에서도 열리고 전환하지 않으므로, 활성 표식과 따로 선다. */
 .side-bar-theater-header.is-menu-target {
-  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
+  background: var(--wash-hover);
 }
 
 /* 이름만 최고 명도로 올린다 — 행 전체를 올리면 chevron·+ 컨트롤까지 함께 밝아져
@@ -3144,8 +3133,7 @@
 }
 
 .side-bar-theater-fold-btn:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .side-bar-theater-chevron {
@@ -3288,8 +3276,7 @@
 }
 
 .side-bar-starter-primary:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .side-bar-starter-primary:disabled {
@@ -3316,9 +3303,8 @@
 }
 
 .side-bar-starter-secondary:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--focus-face);
 }
 
 .side-bar-starter-hints {
@@ -3399,7 +3385,8 @@
    fixed 포털에서 right:0을 상속하면 뷰포트 우측 끝까지 늘어난다(Codex P2).
    .theater-menu가 파일 후반에 선언되므로 복합 셀렉터로 특이도를 올려 이긴다. */
 .theater-menu.side-bar-theater-menu {
-  min-width: 180px;
+  /* 커서 자리에 서는 문맥 메뉴도 글자 폭으로 줄지 않고 팝오버 한 벌의 폭을 진다. */
+  min-width: var(--popover-width);
   max-width: min(300px, calc(100vw - 16px));
   right: auto;
 }
@@ -3461,8 +3448,7 @@
 }
 
 .side-bar-cluster-row:has(.side-bar-cluster-row-main:focus-visible) {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 고름은 중성 면, 브래스는 키보드 포커스만 말한다. */
@@ -3515,23 +3501,19 @@
   flex: 1;
   min-width: 0;
   padding: 2px 6px;
-  border: 1px solid color-mix(in oklab, var(--brass) 44%, var(--surface-rim));
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 84%, var(--surface-glass));
+  background: var(--focus-wash);
   color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   outline: none;
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 12%, transparent);
 }
 
-.side-bar-chip-rename-input:focus {
-  border-color: color-mix(in oklab, var(--brass) 68%, var(--surface-rim));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklch, var(--brass) 20%, transparent),
-    0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
-}
+/* 칸 자체가 포커스 면이므로 전역 포커스 면을 한 겹 더 얹지 않는다. */
+.side-bar-chip-rename-input:focus-visible { box-shadow: none; }
+
 
 /* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
    기존 objectiveRecord spine과 독립된 mark/pill로만 표시하고 signal 색을 identity에 재사용하지 않는다. */
@@ -3636,8 +3618,7 @@ button.side-bar-cluster-row-glyph.is-actionable:hover {
   background: color-mix(in oklch, var(--aurora) 14%, transparent);
 }
 button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 지휘관 + 일하는 구성원 미니 — 미니는 오른쪽 아래에 겹쳐 선다. 미니의 바탕 고리는 사이드바 면과 같아 지휘관과 떨어져 읽힌다. */
@@ -3841,13 +3822,13 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .group-context-menu-card {
   position: fixed;
   z-index: 1;
-  min-width: 208px;
-  max-width: 240px;
+  min-width: var(--popover-width);
+  max-width: min(320px, calc(100vw - 16px));
   display: flex;
   flex-direction: column;
-  padding: 4px;
+  padding: var(--popover-pad);
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
   /* 그림자는 깊이만 진다 — brass 링(shadow-anchor)은 위치 채널이라 중립 메뉴에 두르지 않는다. */
   box-shadow: var(--popover-shadow);
@@ -3880,11 +3861,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .group-context-menu-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--popover-row-gap);
   min-height: var(--popover-row);
-  padding: 0 12px;
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--popover-row-radius);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -3897,7 +3878,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .group-context-menu-item:hover { background: var(--wash-hover); }
 
-.group-context-menu-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.group-context-menu-item:focus-visible { box-shadow: var(--focus-face); }
 
 .group-context-menu-item.is-selected {
   color: var(--text-primary);
@@ -4005,14 +3986,13 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .group-context-menu-new-input:focus {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 30%, transparent);
+  box-shadow: var(--focus-face);
 }
 
 /* 구분선은 카드 안쪽 여백을 넘어 변까지 닿는다 — 잘린 선은 항목처럼 읽힌다. */
 .group-context-menu-divider {
   height: 1px;
-  margin: 5px 4px;
+  margin: var(--popover-divider-space);
   background: var(--popover-divider);
 }
 
@@ -4062,7 +4042,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .accent-swatch:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 1.5px var(--brass), 0 0 0 4px var(--brass-glow);
+  box-shadow: var(--focus-face);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4081,8 +4061,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .fleet-caption-action:focus-visible:not([aria-pressed="true"]){
   color: var(--brass-bright);
-  border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
+  box-shadow: var(--focus-face);
 }
 
 /* 불리언 ON = 워시 + 글리프 — 면은 극저대비 워시이고 켬을 말하는 accent는 글리프 색뿐이다. */
@@ -4598,11 +4578,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   left: 0;
   right: 0;
   z-index: 40;
-  padding: 6px;
+  padding: var(--popover-pad);
   /* 공통 팝업 표면(theme.css --popover-*) — objective-launch·캔버스 컨텍스트 메뉴·새 세션 모델 팝업이
      이 규칙을 상속한다. */
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
 }
@@ -4620,11 +4600,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .theater-menu-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--popover-row-gap);
   width: 100%;
   min-height: var(--popover-row);
-  padding: 0 12px;
-  border-radius: var(--radius-md);
+  padding: 0 var(--popover-row-inline);
+  border-radius: var(--popover-row-radius);
   color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: var(--t-base);
@@ -4634,7 +4614,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .theater-menu-item:hover:not(:disabled) { background: var(--wash-hover); }
-.theater-menu-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.theater-menu-item:focus-visible { box-shadow: var(--focus-face); }
 
 .theater-menu-item.is-active { background: var(--wash-selected); }
 
@@ -4668,7 +4648,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .theater-menu-divider {
   height: 1px;
-  margin: 5px 4px;
+  margin: var(--popover-divider-space);
   background: var(--popover-divider);
 }
 
@@ -4849,8 +4829,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .effort-track:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다. 파선 테두리는 이 앱에서 "아직
@@ -5043,8 +5022,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .effort-track-apex-toggle:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .effort-track-apex-toggle[data-open="true"] {
@@ -5516,8 +5494,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .terminal-viewer-badge-action:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 줌 보정 레이어: position:relative 기준 박스를 제공해 .terminal-canvas의 역스케일(%-기반)이
@@ -5967,7 +5944,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .app-toast-action:hover { background: var(--control-rest-hover); }
-.app-toast-action:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.app-toast-action:focus-visible { box-shadow: var(--focus-face); }
 
 .app-toast-close {
   display: grid;
@@ -6011,8 +5988,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .objective-search-card:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 4px;
+  box-shadow: var(--focus-face);
 }
 
 .objective-search-field {
@@ -6134,11 +6110,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 포커스는 입력칸에 남고 aria-activedescendant가 활성 행을 가리킨다. 키보드로 옮긴 활성 행(동작 칩 포함)은
-   메뉴 행 :focus-visible과 같은 2px 금색 링(행 안쪽)을 더한다 — 마우스가 옮긴 행은 워시뿐이다(data-nav). */
+   메뉴 행 :focus-visible과 같은 포커스 면을 더한다 — 마우스가 옮긴 행은 워시뿐이다(data-nav). 외곽선은 없다. */
 .objective-search-results[data-nav="keyboard"] .objective-search-result.is-active,
 .objective-search-results[data-nav="keyboard"] .objective-search-action.is-active {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .objective-search-result.is-active::before {
@@ -6147,8 +6122,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .objective-search-result:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .objective-search-result-text {
@@ -6445,7 +6419,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-weight: var(--weight-medium);
 }
 
-.objective-search-switch-option:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.objective-search-switch-option:focus-visible { box-shadow: var(--focus-face); }
 
 .objective-search-switch-option kbd {
   padding: 0 3px;
@@ -6867,9 +6841,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .directory-browser-filter:focus-within {
-  border-color: var(--control-open-rim);
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .directory-browser-filter-glyph {
@@ -6958,9 +6930,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .directory-browser-jump-input:focus {
-  border-color: var(--control-open-rim);
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .directory-browser-jump-button {
@@ -7352,7 +7322,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 /* 닫기는 설정 모달의 닫기와 같다 — 테두리 없는 원, hover에 중립 면, 포커스는 금색 링. */
 .whatsnew-close:hover { background: var(--wash-hover); color: var(--text-primary); }
-.whatsnew-close:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.whatsnew-close:focus-visible { box-shadow: var(--focus-face); }
 
 .whatsnew-body {
   display: flex;
@@ -7435,7 +7405,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .whatsnew-refresh:hover { background: var(--control-rest-hover); color: var(--text-primary); }
-.whatsnew-refresh:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.whatsnew-refresh:focus-visible { box-shadow: var(--focus-face); }
 
 .whatsnew-refresh:disabled {
   cursor: wait;
@@ -7473,7 +7443,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .whatsnew-tab:hover { background: var(--wash-hover); color: var(--text-primary); }
-.whatsnew-tab:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.whatsnew-tab:focus-visible { box-shadow: var(--focus-face); }
 
 .whatsnew-overview {
   display: grid;
@@ -7495,7 +7465,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .whatsnew-overview-card:hover { background: var(--wash-hover); }
-.whatsnew-overview-card:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.whatsnew-overview-card:focus-visible { box-shadow: var(--focus-face); }
 
 .whatsnew-overview-label,
 .whatsnew-overview-count {
@@ -7537,7 +7507,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .whatsnew-page-button:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-primary); }
-.whatsnew-page-button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.whatsnew-page-button:focus-visible { box-shadow: var(--focus-face); }
 
 .whatsnew-page-button:disabled {
   cursor: not-allowed;
@@ -7666,7 +7636,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .whatsnew-done:hover { background: var(--control-rest-hover); }
-.whatsnew-done:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.whatsnew-done:focus-visible { box-shadow: var(--focus-face); }
 
 .fc-settings-card,
 .fc-objective-body,
@@ -7844,8 +7814,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .fc-settings-reset:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .fc-settings-reset:active:not(:disabled) {
@@ -7908,12 +7877,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .fc-settings-toggle:has(.fc-settings-toggle__input:focus-visible) .settings-switch,
 .fc-settings-field__control:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .fc-settings-field__control:hover:not(:disabled):not(:focus-visible) {
-  border-color: var(--control-hover-rim);
+  box-shadow: var(--focus-face);
 }
 
 .fc-settings-field__control:disabled {
@@ -8168,8 +8136,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .expanded-surface-pane-close:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: -1px;
+  box-shadow: var(--focus-face);
 }
 
 /* 본문을 독립 쌓임 맥락으로 가둔다 — 표면 내부의 z-index(xterm link layer z 2 등)가 같은 z의
@@ -8410,7 +8377,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .command-band-update-bubble-action:hover:not(:disabled) { background: var(--control-rest-hover); }
-.command-band-update-bubble-action:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.command-band-update-bubble-action:focus-visible { box-shadow: var(--focus-face); }
 
 .command-band-update-bubble-action:disabled {
   color: var(--text-secondary);
@@ -8424,12 +8391,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   z-index: 40;
   display: flex;
   flex-direction: column;
-  min-width: 240px;
+  min-width: var(--popover-width);
   max-width: min(300px, calc(100vw - 16px));
-  padding: 6px;
+  padding: var(--popover-pad);
   /* 공통 팝업 표면(theme.css --popover-*) — 옆 호스트 선택 판과 같은 물건이다. */
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
 }
@@ -8438,10 +8405,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .command-band-system-menu button {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--popover-row-gap);
   min-height: var(--popover-row);
-  padding: 0 12px;
-  border-radius: var(--radius-md);
+  padding: 0 var(--popover-row-inline);
+  border-radius: var(--popover-row-radius);
   color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: var(--t-base);
@@ -8450,10 +8417,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .command-band-system-menu button:hover { background: var(--wash-hover); }
-.command-band-system-menu button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.command-band-system-menu button:focus-visible { box-shadow: var(--focus-face); }
 
 .command-band-system-menu svg { width: 16px; height: 16px; flex: none; color: var(--text-secondary); }
-.command-band-system-menu-divider { height: 1px; margin: 5px 4px; background: var(--popover-divider); }
+.command-band-system-menu-divider { height: 1px; margin: var(--popover-divider-space); background: var(--popover-divider); }
 
 /* 실행 중인 버전 행 — 글리프 · 이름 · v버전 · (칩). 다른 메뉴 행과 같은 높이·글꼴이고, 칩이 곧 상태다:
    비어 있으면 최신, positive 번호면 새 버전. 칩이 있을 때만 행이 버튼(Console)이나 링크(Desktop)이며
@@ -8475,7 +8442,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   white-space: nowrap;
 }
 .command-band-system-menu a.command-band-version-row:hover { background: var(--wash-hover); }
-.command-band-system-menu a.command-band-version-row:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.command-band-system-menu a.command-band-version-row:focus-visible { box-shadow: var(--focus-face); }
 /* 두 몫으로 나뉜 버전 행. 왼쪽은 릴리스 페이지로 나가고 오른쪽 칩은 이 자리에서 수행한다. */
 .command-band-system-menu .command-band-version-row--split { padding: 0; gap: 0; }
 
@@ -8493,7 +8460,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .command-band-system-menu .command-band-version-row-main:hover { background: var(--wash-hover); }
-.command-band-system-menu .command-band-version-row-main:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.command-band-system-menu .command-band-version-row-main:focus-visible { box-shadow: var(--focus-face); }
 
 .command-band-system-menu .command-band-version-row-chip--action {
   min-height: 0;
@@ -8591,7 +8558,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .command-band-github-link:focus-visible,
-.command-band-github-stars:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.command-band-github-stars:focus-visible { box-shadow: var(--focus-face); }
 
 /* 대화상자 문법(설정 모달과 같다) — 덮개 48% 검정, 불투명 대화상자 면, --radius-xl. 구역 제목은 12px 보조색 문장형이고
    금색은 바꾸기 링크(1차 동작 글자)와 포커스 링에만 쓴다. 키 칩은 중립 컨트롤 면이다. */
@@ -8600,11 +8567,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .keyboard-shortcuts-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 0 0 6px; color: var(--text-primary); }
 .keyboard-shortcuts-dialog-head button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--text-secondary); }
 .keyboard-shortcuts-dialog-head button:hover { background: var(--wash-hover); color: var(--text-primary); }
-.keyboard-shortcuts-dialog-head button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.keyboard-shortcuts-dialog-head button:focus-visible { box-shadow: var(--focus-face); }
 .keyboard-shortcuts-dialog-foot { margin: 0; padding: 0 0 4px; }
 .keyboard-shortcuts-dialog-foot button { padding: 0; border: 0; background: none; color: var(--brass-ink); font-size: var(--t-md); text-decoration: none; cursor: pointer; }
 .keyboard-shortcuts-dialog-foot button:hover { text-decoration: underline; text-underline-offset: 2px; }
-.keyboard-shortcuts-dialog-foot button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.keyboard-shortcuts-dialog-foot button:focus-visible { box-shadow: var(--focus-face); }
 .keyboard-shortcuts-group { margin-top: 16px; }
 .keyboard-shortcuts-group h3 { margin: 0; padding: 4px 0 6px; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); font-weight: var(--weight-regular); }
 .keyboard-shortcuts-group dl { margin: 0; }
@@ -8732,7 +8699,7 @@ button.fc-mention-chip {
 }
 /* 기록 말풍선의 멘션 단추 — hover도 금색 없이 중성 면 + 본문색이다. 초점 링(aurora)은 그대로 둔다. */
 button.fc-mention-chip:hover { background: var(--control-wash-hover); color: var(--text-primary); }
-button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline-offset: 1px; }
+button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 
 /* 입력 속 멘션은 본문과 같은 줄 상자·글자 크기다. 이름은 semibold(시안) — 캡슐 본문은 레귤러 그대로다. */
 .fc-composer-capsule .fc-mention-chip {
@@ -8770,7 +8737,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 .fc-composer-capsule .fc-mention-chip-x::before { content: ""; position: absolute; inset: -4px; }
 /* 삭제의 초점 링도 금색 없이 중성으로. */
-.fc-composer-capsule .fc-mention-chip-x:focus-visible { outline: 1px solid var(--hairline-strong); outline-offset: 0; }
+.fc-composer-capsule .fc-mention-chip-x:focus-visible { box-shadow: var(--focus-face); }
 /* 마우스에서만 삭제를 아바타 자리에 겹친다. 터치·coarse 포인터는 항상 보이는 삭제를 유지한다. */
 @media (hover: hover) and (pointer: fine) {
   .fc-composer-capsule .fc-mention-chip:hover { background: var(--control-wash-hover); color: var(--text-primary); }
@@ -8845,7 +8812,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   border-radius: inherit;
 }
 .fc-composer-attachment__open:disabled { cursor: default; }
-.fc-composer-attachment__open:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.fc-composer-attachment__open:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-attachment img {
   width: 100%;
   height: 100%;
@@ -8875,7 +8842,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 @media (hover: hover) {
   .fc-composer-attachment__remove:hover:not(:disabled) { color: var(--coral); }
 }
-.fc-composer-attachment__remove:focus-visible { color: var(--text-primary); outline: 1px solid var(--brass); }
+.fc-composer-attachment__remove:focus-visible { color: var(--text-primary); box-shadow: var(--focus-face); }
 .fc-composer-attachment__remove:disabled { cursor: default; }
 /* 16px 모서리 × 는 손가락에 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 넓힌다. */
 @media (pointer: coarse) {
@@ -8926,7 +8893,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 .fc-composer-quote__open { cursor: pointer; border-radius: 4px; }
 .fc-composer-quote__open:disabled { cursor: default; }
-.fc-composer-quote__open:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.fc-composer-quote__open:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-quote__excerpt,
 .fc-composer-quote__note {
   max-width: 240px;
@@ -8956,7 +8923,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   .fc-composer-quote__remove:hover:not(:disabled) { color: var(--coral); }
   .fc-composer-quote__open:hover:not(:disabled) .fc-composer-quote__excerpt { color: var(--brass-ink); }
 }
-.fc-composer-quote__remove:focus-visible { color: var(--text-primary); outline: 1px solid var(--brass); }
+.fc-composer-quote__remove:focus-visible { color: var(--text-primary); box-shadow: var(--focus-face); }
 .fc-composer-quote__remove:disabled { cursor: default; }
 @media (pointer: coarse) {
   .fc-composer-quote__remove { position: relative; }
@@ -8992,7 +8959,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   cursor: pointer;
 }
 .fc-composer-quote-editor__kinds button[aria-pressed="true"] { color: var(--text-primary); border-bottom-color: var(--text-secondary); }
-.fc-composer-quote-editor__kinds button:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.fc-composer-quote-editor__kinds button:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-quote-editor__field {
   width: 100%;
   min-height: 52px;
@@ -9005,7 +8972,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   font: inherit;
   font-size: var(--t-sm);
 }
-.fc-composer-quote-editor__field:focus { outline: none; border-color: var(--brass); }
+.fc-composer-quote-editor__field:focus { outline: none; box-shadow: var(--focus-face); }
 .fc-composer-quote-editor__row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); font-size: var(--t-xs); color: var(--text-tertiary); }
 .fc-composer-quote-editor__save {
   padding: 4px 12px;
@@ -9018,7 +8985,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   font-weight: var(--weight-medium);
   cursor: pointer;
 }
-.fc-composer-quote-editor__save:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.fc-composer-quote-editor__save:focus-visible { box-shadow: var(--focus-face); }
 
 /* 안내 — 입력창 바로 위 한 줄과 끝의 「닫기」. 되돌릴 수 있는 거절은 warn, 보내기 실패는 coral 잉크, 그 밖은 중립. */
 .fc-composer-notice {
@@ -9046,7 +9013,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 /* 채팅 글자 동작의 hover 는 발화자 이름과 같은 면이다 — 밑줄을 쓰지 않는다. */
 .fc-composer-notice__dismiss:hover { background: var(--control-wash-hover); color: var(--text-primary); }
-.fc-composer-notice__dismiss:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+.fc-composer-notice__dismiss:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 
 /* 끌어다 놓는 동안 — brass는 위치 채널이라 "여기 놓으라"에 맞다. */
 .fc-composer-capsule.is-dragover,
@@ -9116,38 +9083,40 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-composer-viewer__close:hover,
 .fc-composer-viewer__nav:hover,
 .fc-composer-viewer__close:focus-visible,
-.fc-composer-viewer__nav:focus-visible { color: var(--text-primary); outline: 1px solid var(--brass); }
+.fc-composer-viewer__nav:focus-visible { color: var(--text-primary); }
 
 /* 「+」 메뉴 — 위로 뜨는 상자. 자리는 표면이 정한다. */
 .fc-composer-menu {
   z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  width: 240px;
+  gap: 0;
+  width: var(--popover-width);
   max-width: calc(100vw - 2 * var(--space-4));
   max-height: 320px;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: var(--space-1);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: 0 12px 28px oklch(5% 0.01 245 / 35%);
+  padding: var(--popover-pad);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
 }
 .fc-composer-menu__item {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 7px var(--space-2);
+  gap: var(--popover-row-gap);
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--popover-row-radius);
   background: none;
   font: inherit;
-  font-size: var(--t-sm);
+  font-size: var(--t-base);
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
+  min-height: var(--popover-row);
+  font-weight: var(--weight-regular);
 }
 .fc-composer-menu__item:hover,
 .fc-composer-menu__item:focus-visible { background: var(--control-wash-hover); outline: none; }
@@ -9162,12 +9131,12 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   place-items: center;
   color: var(--text-secondary);
 }
-.fc-composer-menu__glyph svg { width: 16px; height: 16px; }
-.fc-composer-menu__glyph.is-text { font-size: var(--t-sm); font-weight: var(--weight-bold); }
-.fc-composer-menu__name { flex: none; font-weight: var(--weight-medium); }
+.fc-composer-menu__glyph svg { width: var(--popover-icon); height: var(--popover-icon); }
+.fc-composer-menu__glyph.is-text { font-size: var(--t-base); font-weight: var(--weight-regular); }
+.fc-composer-menu__name { flex: none; font-weight: var(--weight-regular); }
 .fc-composer-menu__sub { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); color: var(--text-tertiary); }
 .fc-composer-menu__key { margin-left: auto; padding: 0 5px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); line-height: 16px; }
-.fc-composer-menu__sep { height: 1px; margin: 3px 6px; background: var(--hairline); }
+.fc-composer-menu__sep { height: 1px; margin: var(--popover-divider-space); background: var(--popover-divider); }
 .fc-composer-menu__heading {
   padding: var(--space-2) var(--space-2) 2px;
   font-size: var(--t-2xs);
@@ -9287,11 +9256,10 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   cursor: pointer;
 }
 .fc-composer-deck-row:hover:not(.is-dim) { background: var(--wash-hover); }
-/* 키보드 활성 행은 고른 행 워시 위에 메뉴 행 :focus-visible 과 같은 2px 금색 링(행 안쪽)을 더한다 — 입력 포커스는 컴포저에 남는다. */
+/* 키보드 활성 행은 고른 행 워시 위에 메뉴 행 :focus-visible 과 같은 포커스 면을 더한다 — 입력 포커스는 컴포저에 남는다. */
 .fc-composer-deck-row.is-active {
   background: var(--wash-selected);
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 /* 멘션 행 문법 — 모든 '@' 목록이 이 한 모양으로 선다(SDK `ComposerMentionRow`: [머리 20][이름][흐린 보조] … [오른쪽 끝 흐린 종류]).
    한 줄·말줄임(행 공용 규칙). 활성 행은 은은한 중성 면만 — 멘션 목록에서는 금색 링을 쓰지 않는다(다른 덱의 링은 그대로 둔다). */
@@ -9400,7 +9368,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   transition: border-color var(--duration-fast) var(--ease-glide);
 }
 .fc-select__trigger:hover:not(:disabled):not([aria-expanded="true"]) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
-.fc-select__trigger:focus-visible { border-color: var(--control-hover-rim); outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.fc-select__trigger:focus-visible { box-shadow: var(--focus-face); }
 .fc-select__trigger[aria-expanded="true"] { border-color: var(--control-open-rim); background: var(--control-tint-fill); }
 .fc-select__trigger:active:not(:disabled) { transform: translateY(1px); }
 .fc-select__trigger:disabled { opacity: var(--control-disabled-opacity); cursor: not-allowed; }
@@ -9408,10 +9376,10 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-select__trigger[aria-expanded="true"] .fc-select__caret { transform: rotate(180deg); }
 .fc-select__popup {
   position: absolute; z-index: var(--z-select-popover); inset-inline: 0; top: calc(100% + 6px);
-  margin: 0; padding: 6px; list-style: none;
+  margin: 0; padding: var(--popover-pad); list-style: none;
   /* 공통 팝업 표면(theme.css --popover-*). 행은 목록형 36px, 고른 행은 중립 워시 + 본문색 체크다. */
   background: var(--popover-face);
-  border: 1px solid var(--popover-rim); border-radius: var(--radius-lg);
+  border: 1px solid var(--popover-rim); border-radius: var(--popover-radius);
   box-shadow: var(--popover-shadow);
   max-height: 244px; overflow-y: auto;
   opacity: 0; transform: translateY(-4px); pointer-events: none;
@@ -9420,8 +9388,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-select__popup[data-placement="up"] { top: auto; bottom: calc(100% + 6px); transform: translateY(4px); }
 .fc-select__popup[data-open="true"] { opacity: 1; transform: translateY(0); pointer-events: auto; }
 .fc-select__option {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
-  min-height: var(--popover-row-dense); padding: 0 12px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--popover-row-gap);
+  min-height: var(--popover-row); padding: 0 var(--popover-row-inline); border-radius: var(--popover-row-radius);
   color: var(--text-primary); font-weight: var(--weight-regular); font-size: var(--t-base); line-height: 1.3; font-family: var(--font-ui); cursor: pointer;
   transition: background var(--duration-fast) var(--ease-glide);
 }
@@ -9435,7 +9403,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 /* 키보드로 옮긴 활성 행은 메뉴 행 :focus-visible과 같은 2px 금색 링(행 안쪽)이 말한다 — 실제 포커스는 트리거에 남고
    aria-activedescendant가 이 행을 가리킨다. 고른 행 위에서도 링이 서므로 「지금 짚은 행」과 「고른 행」이 갈린다.
    포인터가 옮긴 활성 행은 hover 워시뿐이다(data-nav, useSelect). */
-.fc-select__popup[data-nav="keyboard"] .fc-select__option[data-active="true"]:not([aria-disabled="true"]) { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.fc-select__popup[data-nav="keyboard"] .fc-select__option[data-active="true"]:not([aria-disabled="true"]) { box-shadow: var(--focus-face); }
 
 .fc-select--compact { min-width: 0; }
 /* compact 트리거는 칩 문법의 모노 티어를 쓴다 — 콘솔 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
@@ -9542,7 +9510,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
    트리거 변형: inline(글자 한 줄) · field(설정 행의 값 자리 — 아래 「행 값」) · glyph(아이콘 하나). */
 .fc-coord-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
 .fc-coord-trigger:hover, .fc-coord-trigger[aria-expanded="true"] { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 10%, transparent); }
-.fc-coord-trigger:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.fc-coord-trigger:focus-visible { box-shadow: var(--focus-face); }
 .fc-coord-trigger:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .fc-coord-trigger.is-locked { cursor: default; opacity: 0.75; }
 .fc-coord-trigger.is-glyph { padding: 0; margin: 0; width: 22px; height: 22px; display: inline-grid; place-items: center; color: var(--text-tertiary); border-color: transparent; }
@@ -9569,7 +9537,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-row-value:hover, .fc-row-value[aria-expanded="true"],
 .fc-coord-trigger.is-field:hover, .fc-coord-trigger.is-field[aria-expanded="true"] { color: var(--text-primary); background: var(--control-hover-fill); }
 .fc-row-value[aria-expanded="true"]::after, .fc-coord-trigger.is-field[aria-expanded="true"]::after { margin-top: -1px; transform: rotate(-135deg); }
-.fc-row-value:focus-visible, .fc-coord-trigger.is-field:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.fc-row-value:focus-visible, .fc-coord-trigger.is-field:focus-visible { box-shadow: var(--focus-face); }
 /* 잠김·비활성 — 누를 수 없다는 것을 캐럿과 hover 면이 없는 것으로 말한다. */
 .fc-row-value:disabled, .fc-coord-trigger.is-field:disabled, .fc-coord-trigger.is-field.is-locked { padding-right: 8px; background: transparent; }
 .fc-row-value:disabled::after, .fc-coord-trigger.is-field:disabled::after, .fc-coord-trigger.is-field.is-locked::after { display: none; }
@@ -9592,9 +9560,9 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-coord-menu {
   position: fixed;
   z-index: var(--z-overlay);
-  padding: 6px;
+  padding: var(--popover-pad);
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
   display: flex; flex-direction: column;
@@ -9609,9 +9577,9 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-coord-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) 12px 6px; font-family: var(--font-ui); font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
 .fc-coord-menu-caption.is-off { color: var(--warn-ink); }
 .fc-coord-menu-caption.fc-coord-menu-note { padding: 2px 12px 4px 14px; font-family: inherit; color: var(--text-tertiary); }
-.fc-coord-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--popover-row-dense); padding: 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-base); text-align: left; cursor: pointer; transition: background var(--duration-fast); }
+.fc-coord-menu-item { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; min-height: var(--popover-row); padding: 0 var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-base); text-align: left; cursor: pointer; transition: background var(--duration-fast); font-weight: var(--weight-regular); }
 .fc-coord-menu-item:hover { background: var(--wash-hover); }
-.fc-coord-menu-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.fc-coord-menu-item:focus-visible { box-shadow: var(--focus-face); }
 .fc-coord-menu-item.is-active { background: var(--wash-selected); }
 .fc-coord-menu-item:disabled { cursor: default; opacity: var(--control-disabled-opacity, 0.45); }
 .fc-coord-menu-item:disabled:hover { background: transparent; }
@@ -9629,7 +9597,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-coord-menu-track { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px var(--space-2) 10px; }
 .fc-coord-menu-track .effort-track-value { display: none; }
 .fc-coord-menu-effort-word { flex: none; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-secondary); }
-.fc-coord-menu-divider { height: 1px; margin: 5px 4px; background: var(--popover-divider); }
+.fc-coord-menu-divider { height: 1px; margin: var(--popover-divider-space); background: var(--popover-divider); }
 .fc-coord-menu-empty { padding: 8px 12px; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-tertiary); }
 .fc-coord-menu-provider.is-claude, .fc-coord-trigger-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
 .fc-coord-menu-provider.is-codex, .fc-coord-trigger-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
@@ -9642,7 +9610,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .roster-fallback-copy { flex: 1 1 12em; min-width: 0; }
 .roster-fallback-link { flex: none; padding: 0; border: 0; background: none; color: var(--brass-ink); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .roster-fallback-link:hover { color: var(--text-primary); }
-.roster-fallback-link:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+.roster-fallback-link:focus-visible { border-radius: 2px; box-shadow: var(--focus-face); }
 /* Muse Code에는 아직 공급자 토큰이 없다 — 톤 없이 비지 않도록 Etc와 같은 머리글 잉크를 빌린다. */
 .fc-coord-menu-provider.is-muse-code, .fc-coord-trigger-provider.is-muse-code,
 .objective-launch-variant-caption.is-muse-code { --launch-provider-tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary)); }
@@ -9794,12 +9762,12 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .launch-variant-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--popover-row-gap);
   width: 100%;
-  min-height: var(--popover-row-dense);
-  padding: 0 calc(12px - var(--space-1));
+  min-height: var(--popover-row);
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--popover-row-radius);
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
@@ -9813,7 +9781,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 /* 고른 행 — Theater·모델 팝업 모두 고른 행 워시 9% + 본문색 체크다. */
 
 .launch-variant-name[aria-checked="true"] { background: var(--wash-selected); }
-.launch-variant-name:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.launch-variant-name:focus-visible { box-shadow: var(--focus-face); }
 
 /* 모바일 셸과 같은 경계(view-mode-store의 narrow 질의)다. 이 폭에서 선택 줄은 전송 버튼과 한 줄을
    다투다 자기 폭 아래로 짜부라지고, 접힘용 overflow: hidden이 추론강도 트랙을 잘라 낸다.
@@ -9992,8 +9960,6 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .control-bar button:hover:not(:disabled),
 .control-bar button:focus-visible {
   border-color: var(--brass-bright);
-  outline: 1px solid var(--brass);
-  outline-offset: 2px;
 }
 
 .control-curtain-actions button:disabled,
@@ -10144,7 +10110,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   transition: border-color var(--duration-fast) var(--ease-glide);
 }
 .fc-failure__action:hover { border-color: var(--brass); }
-.fc-failure__action:focus-visible { outline: none; border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass-glow); }
+.fc-failure__action:focus-visible { outline: none; box-shadow: var(--focus-face); }
 .fc-failure__action--primary {
   background: var(--brass);
   border-color: var(--brass);
@@ -10172,7 +10138,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
      간격을 싣는다 — 썸 의사요소에는 outline이 그려지지 않고, box-shadow 간격은 바탕색을 칠해야 해서
      유리 면 위에서 색 띠로 드러난다. 그림자는 상자가 아니라 면의 모양을 따르도록 drop-shadow로 진다. */
   --slider-face: radial-gradient(circle, var(--gauge-face) 0 9.5px, transparent 10px);
-  --slider-face-focus: radial-gradient(circle, var(--gauge-face) 0 9.5px, transparent 10px 11.5px, var(--control-focus-ring) 12px 13.5px, transparent 14px);
+  --slider-face-focus: radial-gradient(circle, var(--gauge-face) 0 9.5px, transparent 10px 11.5px, var(--focus-wash) 12px 13.5px, transparent 14px);
   -webkit-appearance: none;
   appearance: none;
   height: 28px;
@@ -10402,9 +10368,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-live-line__stop:hover { background: var(--control-wash-hover); color: var(--text-primary); }
 
 .fc-live-line__stop:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--focus-face);
 }
 
 /* 끝난 턴의 접힘 한 줄 — 면도 테두리도 없다. 이 줄은 카드가 아니라 문장이다. */
@@ -10431,8 +10396,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-live-fold__summary:hover { color: var(--text-secondary); }
 
 .fc-live-fold__summary:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .fc-live-fold.is-error .fc-live-fold__summary { color: light-dark(color-mix(in oklch, var(--coral) 72%, var(--text-secondary)), color-mix(in oklab, var(--coral) 72%, var(--text-secondary))); }
@@ -10506,9 +10470,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-history-band:hover { color: var(--text-primary); }
 
 .fc-history-band:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--focus-face);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -10973,8 +10936,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .archive-retention-apply:focus-visible,
 .archive-retention-cancel:focus-visible,
 .app-toast-link:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 /* 보관함은 카드가 아닌 날짜별 줄 목록이다. 고르기는 중립 워시, brass는 초점만, coral은 삭제 무장만 말한다. */
@@ -11138,7 +11100,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .archive-sheet-deselect { margin-left: auto; min-height: 32px; padding: 0 8px; background: none; color: var(--text-tertiary); }
 .archive-sheet button[aria-disabled="true"] { cursor: progress; opacity: 0.6; }
 .archive-sheet .archive-sheet-tab[aria-disabled="true"] { cursor: default; opacity: 0.45; }
-.archive-sheet :is(button, .archive-sheet-item):focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.archive-sheet :is(button, .archive-sheet-item):focus-visible { box-shadow: var(--focus-face); }
 @container (max-width: 480px) {
   .archive-sheet-tab[aria-pressed="false"] .archive-sheet-tab-label { display: none; }
   .archive-sheet-tabs { gap: 12px; }

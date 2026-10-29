@@ -535,8 +535,7 @@
 .scuttlebutt-notice-open:focus-visible,
 .scuttlebutt-notice-dismiss:focus-visible,
 .scuttlebutt-intro-ok:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-intro-text {
@@ -603,8 +602,7 @@
 /* 포커스가 말풍선 안에 있는 동안 은은하게 밝아진다 — 답이 정착해 포커스가 여기로 왔음을 상자 링 없이
    알린다(brass = 지금 서 있는 자리). 벗어나면 평소의 테두리로 가라앉는다. */
 .scuttlebutt-answer-bubble:focus-within {
-  border-color: color-mix(in oklab, var(--control-focus-ring) 70%, var(--popover-rim));
-  box-shadow: var(--popover-shadow), 0 0 0 4px var(--brass-glow);
+  box-shadow: var(--popover-shadow), var(--focus-face);
 }
 
 /* 보조 기술 전용 알림 자리. 보이는 문단과 분리해 두어야 스트리밍 중 매 청크가 다시 읽히지 않는다. */
@@ -807,8 +805,7 @@
 }
 
 .scuttlebutt-head-action:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-head-action:disabled {
@@ -928,8 +925,7 @@
 }
 
 .scuttlebutt-composer:focus-within {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 3px var(--brass-glow);
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-composer.is-working {
@@ -1005,8 +1001,7 @@
 }
 
 .scuttlebutt-send:focus-visible {
-  outline: 2px solid var(--text-primary);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-send:disabled {
@@ -1030,8 +1025,7 @@
 }
 
 .scuttlebutt-stop:focus-visible {
-  outline: 2px solid var(--coral);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-status-row.is-notice {
@@ -1082,8 +1076,7 @@
 }
 
 .scuttlebutt-source:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-answer-toolbar {
@@ -1112,8 +1105,7 @@
 }
 
 .scuttlebutt-answer-action:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-usage {
@@ -1599,8 +1591,7 @@
 }
 
 .scuttlebutt-grant:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-grant-glyph {
@@ -1643,11 +1634,11 @@
   /* 문서 끝으로 포털된 잠깐의 메뉴 — 헤더 도움말 말풍선과 같은 overlay 단. 행은 한 줄이고,
      상태 문구는 행에 머무를 때 말풍선으로만 선다. */
   z-index: var(--z-overlay);
-  min-width: 200px;
+  min-width: var(--popover-min-width);
   max-width: min(320px, calc(100vw - var(--space-4)));
-  padding: 6px;
+  padding: var(--popover-pad);
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--popover-radius);
   /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
@@ -1667,10 +1658,10 @@
   width: 100%;
   min-height: var(--popover-row);
   align-items: center;
-  gap: 12px;
-  padding: 0 12px;
+  gap: var(--popover-row-gap);
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--popover-row-radius);
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
@@ -1686,8 +1677,7 @@
 }
 
 .scuttlebutt-menu-row:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .scuttlebutt-menu-glyph {

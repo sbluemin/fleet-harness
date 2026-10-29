@@ -847,7 +847,7 @@ function TheaterActionsMenu({ theater, anchor, atCursor = false, onDeleteCommodo
           <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
         </button>
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenZone}>
-          <span className="theater-menu-check" aria-hidden="true">✦</span>
+          <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
           <span className="theater-menu-label">{t("sidebar.commodore.zone")}</span>
         </button>
         <TheaterContributionMenuItems theater={theater} onClose={onClose} />
@@ -885,6 +885,14 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FolderIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 5a1 1 0 0 1 1-1h2.6l1.3 1.3h5.1a1 1 0 0 1 1 1V11.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
     </svg>
   );
 }

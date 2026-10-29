@@ -5,7 +5,7 @@
 .remote-console-button.is-compact { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .remote-console-button.is-compact > svg { width: 20px; height: 20px; }
 .remote-console-button.is-compact:is(:hover, :focus-visible, [aria-expanded="true"]) { background: transparent; color: var(--text-primary); }
-.remote-console-button.is-compact:focus-visible { outline: 2px solid var(--control-hover-rim); outline-offset: 2px; }
+.remote-console-button.is-compact:focus-visible { box-shadow: var(--focus-face); }
 .remote-console-button.is-compact.is-away { color: var(--brass-ink); background: transparent; }
 .remote-console-button.is-compact.is-away:is(:hover, [aria-expanded="true"]) { color: color-mix(in oklch, var(--brass-ink) 80%, var(--text-primary)); }
 .remote-console-button.is-away { color: var(--brass-ink); background: var(--quiet-choice-fill); border-color: color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); }
@@ -22,7 +22,7 @@
 @keyframes remote-console-side { from { opacity: 0; transform: translateX(-8px) scale(.98); clip-path: inset(0 60% 0 0 round 16px); } to { opacity: 1; transform: none; clip-path: inset(0 round 16px); } }
 .remote-console-panel button, .remote-console-panel input { font: inherit; }
 .remote-console-panel button { cursor: pointer; }
-.remote-console-panel button:focus-visible, .remote-console-panel input:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.remote-console-panel button:focus-visible, .remote-console-panel input:focus-visible { box-shadow: var(--focus-face); }
 .remote-console-panel svg { display: block; width: 16px; height: 16px; flex: none; }
 .remote-console-entry { display: flex; align-items: center; min-width: 0; border-radius: 10px; }
 .remote-console-entry:hover { background: var(--wash-hover); }
@@ -47,7 +47,7 @@
 .remote-console-form > div { display: flex; flex-wrap: wrap; gap: 6px; }
 .remote-console-form button { border: 0; border-radius: 8px; padding: 4px 10px; background: var(--wash-hover); color: var(--text-secondary); font-size: var(--t-xs); }
 .remote-console-form p { margin: 0; font-size: var(--t-xs); color: var(--text-secondary); }
-.remote-console-separator { height: 1px; margin: 4px 6px; background: var(--hairline); }
+.remote-console-separator { height: 1px; margin: var(--popover-divider-space); background: var(--popover-divider); }
 .remote-console-add { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); text-align: left; font-size: var(--t-sm) !important; }
 .remote-console-add:hover { color: var(--text-primary); background: var(--wash-hover); }
 @media (hover: none) { .remote-console-edit { opacity: 1; } }

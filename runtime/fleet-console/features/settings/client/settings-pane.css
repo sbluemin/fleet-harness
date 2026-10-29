@@ -22,7 +22,7 @@
 .settings-index-tab:hover { color: var(--text-primary); }
 .settings-index-tab[aria-selected="true"] { color: var(--text-primary); font-weight: var(--weight-medium); }
 .settings-index-tab[aria-selected="true"]::after { content: ""; position: absolute; inset: auto 0 0; height: 2px; border-radius: 2px; background: var(--brass); }
-.settings-index-tab:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; border-radius: 2px; }
+.settings-index-tab:focus-visible { border-radius: 2px; box-shadow: var(--focus-face); }
 .settings-pane .settings-pane-sections { gap: 22px; }
 .settings-pane :is(.global-settings-card, .fc-settings-card) { min-width: 0; padding: 0; gap: 8px; border: 0; background: none; box-shadow: none; }
 .settings-pane :is(.global-settings-card-title, .fc-settings-card__title) { padding: 0 4px; font-size: var(--t-md); font-weight: var(--weight-medium); letter-spacing: 0; text-transform: none; color: var(--text-secondary); flex-wrap: wrap; }
@@ -95,7 +95,7 @@
 .settings-font-preview p { margin: 6px 0 0; line-height: 1.6; overflow-wrap: anywhere; }
 .settings-font-advanced { border-top: 1px solid var(--hairline); }
 .settings-font-advanced > summary { padding: 10px 14px; color: var(--text-tertiary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
-.settings-font-popover { position: fixed; z-index: var(--z-overlay); padding: 6px; overflow: auto; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel); color: var(--text-primary); box-shadow: var(--shadow-soft); }
+.settings-font-popover { position: fixed; z-index: var(--z-overlay); padding: var(--popover-pad); overflow: auto; border: 1px solid var(--popover-rim); border-radius: var(--popover-radius); background: var(--popover-face); color: var(--text-primary); box-shadow: var(--popover-shadow); }
 .settings-font-popover .fc-font-browser { min-width: 0; }
 .settings-font-popover .fc-font-browser__panes { display: block; }
 .settings-font-popover .fc-font-browser__chooser { padding: 0; border: 0; min-width: 0; }

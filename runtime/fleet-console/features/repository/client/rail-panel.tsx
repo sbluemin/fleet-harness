@@ -1,4 +1,5 @@
 import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
+import { useViewportFit } from "@fleet-console/ui/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import { GlyphSlot, Icon, remoteHostIcon, type RepositoryIconName } from "./icons.js";
@@ -685,6 +686,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [stashPromptOpen, setStashPromptOpen] = useState(false);
   const verbClusterRef = useRef<HTMLSpanElement | null>(null);
   const [verbMenuOpen, setVerbMenuOpen] = useState(false);
+  const verbMenuRef = useRef<HTMLDivElement | null>(null);
+  useViewportFit(verbMenuRef, verbMenuOpen);
   // 기록 툴바는 HistoryPanel이 소유하되 작업 줄 안의 이 호스트로 포털된다 — 상태(필터·정렬)는 옮기지 않는다.
   const [historyToolbarHost, setHistoryToolbarHost] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -944,7 +947,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
                 <GlyphSlot name="more" />
                 {(syncFailed || verbFailed) && <span className="repository-sync-dot" title={t("repository.verb.lastFailed")} aria-hidden="true" />}
               </button>
-              {verbMenuOpen && <div className="repository-verb-menu" role="menu" aria-label={t("repository.verb.menu")}>
+              {verbMenuOpen && <div ref={verbMenuRef} className="repository-verb-menu" role="menu" aria-label={t("repository.verb.menu")}>
                 <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={syncing} onClick={() => { setVerbMenuOpen(false); refreshAndSync(); }}><Icon name="refresh" />{t("repository.history.refresh")}</button>
                 <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={verbDisabled} onClick={() => { setVerbMenuOpen(false); handlePull(); }}><Icon name="pull" />{t("repository.verb.pull")}{pullCount}</button>
                 <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={verbDisabled} onClick={() => { setVerbMenuOpen(false); handlePush(); }}><Icon name="push" />{t("repository.verb.push")}{pushCount}</button>

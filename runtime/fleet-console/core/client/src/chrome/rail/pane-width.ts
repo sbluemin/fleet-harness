@@ -14,7 +14,7 @@ import type { PaneDescriptor, PaneWidthClass } from "../../../../../features/wor
  * 아무도 잡지 못한다 — 설정 페인은 `defaultWidth: 360`을 선언했는데 자기 테마 격자가 2열이
  * 되는 문턱은 420이어서, 기본 상태에서 그 격자가 한 번도 2열로 서지 못했다. 그래서 새 페인은
  * 픽셀이 아니라 **등급**을 말하고, 픽셀은 여기서만 해석한다. 등급표가 브레이크포인트를
- * 넘는지는 `tests/instrument-design-contract.test.ts`가 지킨다.
+ * 넘는지는 `tests/design-contract.test.ts`가 지킨다.
  */
 
 /** 카드가 이보다 좁아지지 않는다. 아래 등급은 전부 이 바닥 위에 있어야 한다. */

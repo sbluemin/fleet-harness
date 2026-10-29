@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
-import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ConversationSurfaceContext, ConversationSurfaceDescriptor } from "../../shared/conversation-surfaces.js";
 import type { ObjectiveKindDescriptor } from "../../../execution/shared/client-contract.js";
@@ -332,6 +332,8 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [overflow, setOverflow] = useState<readonly OverflowTab[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  useViewportFit(moreMenuRef, menuOpen);
   // 탭은 한 줄이다 — 넘치는 탭은 줄에서 걷고 「더보기」 메뉴에 모은다. 탭 단추는 RailToolIcons 의 것 그대로이고(켜짐·순서·배지),
   // 이 머리는 어느 단추가 줄에 들어가는지만 잰다. 메뉴의 항목은 걷힌 단추를 대신 누른다.
   useLayoutEffect(() => {
@@ -440,7 +442,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
           </button>
           {menuOpen && overflow.length > 0 ? (
-            <div className="conversation-panel-more-menu" role="menu">
+            <div ref={moreMenuRef} className="conversation-panel-more-menu" role="menu">
               {overflow.map((tab) => (
                 <button
                   key={tab.label}
@@ -1025,6 +1027,8 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [hidden, setHidden] = useState<readonly HiddenTool[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const toolsMenuRef = useRef<HTMLDivElement | null>(null);
+  useViewportFit(toolsMenuRef, menuOpen);
   const bindings = useDesktopRailEntries();
   // 켜짐은 이 대화의 도구 칸이 말한다 — 배치가 바뀌면 다시 그린다.
   useWorkbenchLayout();
@@ -1204,7 +1208,7 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
         </button>
         {menuOpen && hidden.length > 0 ? (
-          <div className="conversation-pill-tools-menu" role="menu" aria-label={moreLabel}>
+          <div ref={toolsMenuRef} className="conversation-pill-tools-menu" role="menu" aria-label={moreLabel}>
             {hidden.map((tool) => {
               const entry = bindings.find((binding) => binding.entry.id === tool.entryId)?.entry ?? null;
               const icon = entry === null ? null : typeof entry.icon === "function" ? entry.icon() : entry.icon;

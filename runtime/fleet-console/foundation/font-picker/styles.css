@@ -52,7 +52,7 @@
 }
 
 .fc-font-browser__search:hover:not(:disabled):not(:focus-visible) {
-  border-color: var(--control-hover-rim);
+  box-shadow: var(--focus-face);
 }
 
 .fc-font-browser__search:focus-visible,
@@ -60,8 +60,7 @@
 .fc-font-browser__row:focus-visible,
 .fc-font-browser__stepper:focus-visible,
 .fc-font-browser__range:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .fc-font-browser__listbox { max-height: 18rem; overflow: auto; }
@@ -70,7 +69,7 @@
 .fc-font-browser__group-note { margin: 0 0 var(--space-1, 4px); color: var(--text-tertiary); font-size: 0.78em; }
 .fc-font-browser__missing-toggle { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, 8px); width: 100%; margin-top: var(--space-1, 4px); padding: var(--space-2, 8px); border: 1px solid transparent; border-radius: var(--radius-xs, 8px); background: transparent; color: var(--text-tertiary); font-size: 0.78em; text-align: left; cursor: pointer; }
 .fc-font-browser__missing-toggle:hover:not(:disabled) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); color: var(--text-secondary); }
-.fc-font-browser__missing-toggle:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.fc-font-browser__missing-toggle:focus-visible { box-shadow: var(--focus-face); }
 .fc-font-browser__missing-toggle:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .fc-font-browser__footer { display: grid; gap: var(--space-2, 8px); margin-top: var(--space-2, 8px); padding-top: var(--space-2, 8px); border-top: 1px solid var(--surface-rim); color: var(--text-tertiary); font-size: 0.78em; }
 .fc-font-browser__separator { height: 1px; background: var(--surface-rim); }
