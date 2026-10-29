@@ -582,3 +582,44 @@ export function useChromeHeightProperty(
   });
   React.useLayoutEffect(() => release, [release]);
 }
+
+
+/** 떠 있는 판과 창 가장자리 사이에 남기는 최소 여백(px). */
+const VIEWPORT_FIT_MARGIN = 8;
+
+/**
+ * 닻에 붙어 열린 팝오버(CSS `position: absolute`·`fixed` 어느 쪽이든)가 창 밖으로 나가면 안쪽으로 밀어 넣는다. 판의 제자리 계산은
+ * 그대로 두고, 측정한 넘침만큼 CSS `translate`를 얹는다 — `transform`을 쓰는 열림 동작과 겹치지 않고, 닫혀서 다시 열리면 새로 잰다.
+ * 판이 창보다 크면 왼쪽·위쪽 끝을 지킨다(글머리가 잘리지 않게). 열려 있는 동안 창 크기가 바뀌면 다시 잰다.
+ */
+export function useViewportFit(target: React.RefObject<HTMLElement | null>, open: boolean): void {
+  React.useLayoutEffect(() => {
+    const node = target.current;
+    if (!open || !node) return;
+    const fit = () => {
+      node.style.translate = "";
+      const rect = node.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return;
+      const shift = (start: number, end: number, limit: number) => {
+        if (end > limit - VIEWPORT_FIT_MARGIN) return Math.max(VIEWPORT_FIT_MARGIN - start, limit - VIEWPORT_FIT_MARGIN - end);
+        if (start < VIEWPORT_FIT_MARGIN) return VIEWPORT_FIT_MARGIN - start;
+        return 0;
+      };
+      const dx = shift(rect.left, rect.right, window.innerWidth);
+      const dy = shift(rect.top, rect.bottom, window.innerHeight);
+      if (dx !== 0 || dy !== 0) node.style.translate = `${Math.round(dx)}px ${Math.round(dy)}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => {
+      window.removeEventListener("resize", fit);
+      node.style.translate = "";
+    };
+  }, [target, open]);
+}
+
+
+/** 메뉴 행의 고른 표식 — 글자 「✓」 대신 팝오버 아이콘 칸(16px)에 서는 선 체크. 색은 행 잉크를 따른다. */
+export function MenuCheckGlyph(): React.ReactElement {
+  return <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>;
+}

@@ -2,7 +2,7 @@
 .console-section-header { display: flex; align-items: center; height: 28px; gap: 2px; }
 .console-section button { font: inherit; cursor: pointer; }
 .console-section button:disabled { cursor: default; opacity: .5; }
-.console-section button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.console-section button:focus-visible { box-shadow: var(--focus-face); }
 .console-section-toggle { display: inline-flex; flex: 1; align-items: center; gap: 4px; align-self: stretch; padding: 0 8px; border: 0; background: transparent; color: var(--text-tertiary); text-align: left; font-size: var(--t-xs) !important; font-weight: var(--weight-medium) !important; border-radius: 6px; }
 .console-section-toggle > span { display: inline-block; width: 10px; }
 .console-section-toggle > span.is-folded { transform: rotate(-90deg); }

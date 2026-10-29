@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useViewportFit } from "@fleet-console/ui/react";
 import { onboardingBoundary } from "../../onboarding/shared/anchors.js";
 import { createPortal } from "react-dom";
 
@@ -122,8 +123,8 @@ export const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="curre
 const BatchTunerGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3.8" cy="4.5" r="1.4" /><circle cx="3.8" cy="8" r="1.4" /><circle cx="3.8" cy="11.5" r="1.4" /><path d="M7.5 4.5h5M7.5 8h3.5M7.5 11.5h5" /><path d="M11 3l2 1.5-2 1.5M9.5 6.5l2 1.5-2 1.5M11 10l2 1.5-2 1.5" /></svg>;
 /** 지휘관과 같게 — 4각 스파크 별에서 우하단 수신 궤도로 꺾여 내려오는 동기화선. */
 const StarSparkGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 2.5L4.8 4.2L6.5 5L4.8 5.8L4 7.5L3.2 5.8L1.5 5L3.2 4.2Z" fill="currentColor" stroke="none" /><path d="M6.5 5h3.5a2 2 0 0 1 2 2v4.8M9.8 9.8l2 2 2-2" /><circle cx="4" cy="12.2" r="1.4" /></svg>;
-/** 라우팅 — 좌측 단일 요청 노드에서 3갈래 지능 게이트웨이로 모델이 배정되는 분기망. */
-const TridentRouteGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><path d="M4.4 8h2.6c1.6 0 2.2-3.8 4.2-3.8h2.2M4.4 8h7M7 8c0 3.8.6 3.8 2.2 3.8h2.2" /><circle cx="13.2" cy="4.2" r="1.1" fill="currentColor" /><circle cx="13.2" cy="8" r="1.1" fill="currentColor" /><circle cx="13.2" cy="11.8" r="1.1" fill="currentColor" /></svg>;
+/** 라우팅 — 한 요청이 갈래로 나뉘어 모델이 배정되는 분기선. */
+const RouteGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 8h4M6.5 8c2 0 2.5-3.5 4.5-3.5h2.5M6.5 8c2 0 2.5 3.5 4.5 3.5h2.5" /></svg>;
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const CrewGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M2 13c0-2.2 1.8-3.8 4-3.8s4 1.6 4 3.8M10.6 3.6a2.1 2.1 0 0 1 0 3.9M11.6 9.4c1.4.4 2.4 1.8 2.4 3.6" /></svg>;
@@ -441,6 +442,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
   const [balloon, setBalloon] = useState<{ kind: "done"; changed: number; preserved: number; mode: "same" | "route" } | { kind: "failed" } | null>(null);
   const batchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const batchMenuRef = useRef<HTMLDivElement | null>(null);
+  useViewportFit(batchMenuRef, batchOpen);
   const balloonTimer = useRef<number | null>(null);
   const cancelNext = (member: ObjectiveMember) => void call("/member/next-cancel", { objectiveId: objective.id, memberId: member.id });
   // 안내는 구성원마다 따로 사라진다 — 한 타이머를 공유하면 앞서 뜬 구성원의 안내가 남는다.
@@ -634,7 +636,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
             </span>
           </button>
           <button type="button" role="menuitem" className="objectives-menu-item" onClick={() => applyBatch("route")}>
-            <span className="objectives-batch-menu-glyph is-route"><TridentRouteGlyph /></span>
+            <span className="objectives-batch-menu-glyph is-route"><RouteGlyph /></span>
             <span className="objectives-menu-label">
               <span className="objectives-batch-menu-title">{t("objectives.members.batchRoute")}</span>
               <span className="objectives-batch-menu-hint">{t("objectives.members.batchRouteHint")}</span>

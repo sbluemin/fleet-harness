@@ -44,10 +44,11 @@
 
 ## Design invariants
 
-- Every color speaks on exactly one channel: signal tokens (`aurora`/`warn`/`coral`/`positive`) carry state only, `brass` carries location/focus/hover only, and user or agent identity uses the `--id-*` tones only as the caption and rail-chip title ink and the pastel body of a mongle avatar — borders stay state-owned and identity never repaints signal surfaces or the caption fill.
+- Every color speaks on exactly one channel: signal tokens (`aurora`/`warn`/`coral`/`positive`) carry state only, `brass` is a hueless accent ink for location and primary action only, and user or agent identity uses the `--id-*` tones only as the caption and rail-chip title ink and the pastel body of a mongle avatar — borders stay state-owned and identity never repaints signal surfaces or the caption fill.
+- Hover, keyboard focus, and an open menu's anchor speak through neutral washes (`--wash-*`, `--focus-face`), never an outline, ring, or recolored border; only `forced-colors` restores the system focus ring. Popovers and menus share the `--popover-*` size and surface tokens in `theme.css`.
 - Core and feature CSS consume colors only as theme tokens via `var()`/`color-mix`; chromatic raw literals live solely in `theme.css` token definitions so the dark and light themes retune together. Near-achromatic shadow, scrim, and sheen literals that carry depth rather than hue are the sanctioned exception.
 - Feature stylesheets load into the whole Console document with no automatic scoping. In File Explorer, Objectives, Quota, Repository, and Scuttlebutt, scope new or changed selectors under a class the feature owns, prefixed with its name (such as `.fexp-`), and restyle a shared core class such as `.markdown-body` only beneath such a class. Tell host placements apart through the public `data-host-surface` attribute (`mobile-sheet`, `mobile-screen`), not internal host classes.
-- `tests/instrument-design-contract.test.ts` pins the design grammar: a legitimate grammar change updates the contract together with the change, and intentional exceptions are recorded as doctrine comments beside the exempted CSS rule.
+- `tests/design-contract.test.ts` pins the design grammar: a legitimate grammar change updates the contract together with the change, and intentional exceptions are recorded as doctrine comments beside the exempted CSS rule.
 
 ## Distribution constraints
 

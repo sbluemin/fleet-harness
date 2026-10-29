@@ -619,9 +619,7 @@ code.hljs {
 }
 
 .diagram-block:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 4px;
-  box-shadow: var(--shadow-soft), 0 0 0 4px var(--brass-glow);
+  box-shadow: var(--shadow-soft), var(--focus-face);
 }
 
 .diagram-block svg {
@@ -1020,7 +1018,7 @@ code.hljs {
 /* 단추 — Console .fc-btn 문법(반경 xs). 답·폼 제출은 보낸다, 링크 단추는 연다 */
 .openui-button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 32px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: transparent; font: inherit; font-size: calc(var(--font-content-size) * 0.928571); font-weight: var(--weight-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: background var(--duration-fast), border-color var(--duration-fast); }
 .openui-button:hover:not(:disabled, [aria-disabled="true"]) { background: var(--control-rest-hover); }
-.openui-button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.openui-button:focus-visible { box-shadow: var(--focus-face); }
 .openui-button:disabled, .openui-button[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
 .openui-button.is-primary { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); }
 .openui-button[aria-pressed="true"] { opacity: 1; border-color: var(--brass); background: var(--quiet-choice-fill); color: var(--brass-ink); }
@@ -1037,7 +1035,7 @@ code.hljs {
 .openui-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .openui-field-label { font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-secondary); }
 .openui-input, .openui-select { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--control-field); font: inherit; font-size: calc(var(--font-content-size) * 0.928571); color: var(--text-primary); }
-.openui-input:focus-visible, .openui-select:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.openui-input:focus-visible, .openui-select:focus-visible { box-shadow: var(--focus-face); }
 .openui-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
 /* iOS 입력 확대를 막는 16px 하한이며, 사람이 본문 글자를 더 크게 정했으면 그 선호를 보존한다. */
 :root[data-view-mode="mobile"] .openui-input, :root[data-view-mode="mobile"] .openui-select, [data-mobile-surface] .openui-input, [data-mobile-surface] .openui-select { height: 40px; font-size: max(16px, var(--font-content-size)); }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
-import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ObjectiveKindDescriptor } from "../../../../execution/shared/client-contract.js";
 import { findAgentObjectiveKind } from "../../../../execution/shared/objective-kind.js";
@@ -448,6 +448,7 @@ function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen,
     onMenuOpenChange(typeof next === "function" ? next(menuOpen) : next);
   }, [menuOpen, onMenuOpenChange]);
   useMenuButtonKeyboard(rootRef, menuButtonRef, menuRef, menuOpen, setMenuOpen);
+  useViewportFit(menuRef, menuOpen);
 
   const place = findWorkbenchTile(layout, tile.id)?.place ?? null;
   const inBelow = place?.area === "below";

@@ -47,20 +47,19 @@
   --ink-spectral: oklch(70% 0.012 245);
   --ink-pearl: oklch(94% 0.008 90);
 
-  /* 개발 채널 워드마크 전용 잉크 — 신호가 아니며 다른 표면에서는 소비하지 않는다. */
-  --ink-brand-dev: oklch(84% 0.045 255);
 
-  --brass: oklch(80% 0.085 78);
-  /* 강조 외피(채도 봉투) — brass·신호는 sRGB 안에 서고, brass-bright는 brass와 같은 채도에서
-     명도만 3~4단 올린다. glow 알파는 12~13% 대역이다(목표 f90ef806 실측). */
-  --brass-bright: oklch(83% 0.085 80);
-  --brass-deep: var(--brass);
-  --brass-glow: oklch(80% 0.085 78 / 12%);
+  /* 강조 채널(옛 이름 brass)은 금색을 퇴역하고 중립 잉크로 선다 — 모바일 팔레트가 먼저 택한 무채색 반전과 같은 길이다.
+     위치·1차 행동은 가장 밝은(라이트는 가장 짙은) 글자 잉크, 채움 무게는 2티어, 번짐은 글자색 10% 워시다.
+     금색 리터럴은 어느 테마에도 남기지 않는다(팝오버·포커스 정돈 실측: 금색 링·테두리가 옛 함대 문법의 잔재). */
+  --brass: var(--text-primary);
+  --brass-bright: var(--text-primary);
+  --brass-deep: var(--ink-muted);
+  --brass-glow: color-mix(in oklch, var(--text-primary) 10%, transparent);
   /* lights-out 2단 — 풀 세기 brass는 위치·포커스·호버·1차 행동만 쓴다. 값·채움·켜짐처럼 상시
      서 있는 상태는 한 단 가라앉은 quiet가 진다(같은 hue, 채도 절반, 명도 −8). 100% 면에서도
      글자 4.5:1·채움 대 빈 트랙 3:1을 넘는다. 라이트는 지금 그 자리에 쓰던 값을 그대로
      잇는다 — 채움은 계기 무게(--brass-deep), 글자는 --brass-ink. 글자는 -ink 티어로만 쓴다. */
-  --brass-quiet: oklch(72% 0.045 78);
+  --brass-quiet: var(--ink-muted);
   --brass-quiet-ink: var(--brass-quiet);
 
   --aurora: oklch(77% 0.085 200);
@@ -97,7 +96,7 @@
      단락 값이 `none`이면 안 된다: halo는 단독(`box-shadow: var(--apex-halo)`)뿐 아니라 합성 목록
      (`0 0 0 2.5px var(--crest), var(--crest-halo), …`) 안에서도 쓰이고, 목록 가운데의 `none`은
      선언 전체를 무효로 만들어 라이트에서 게이트 티어 손잡이의 링이 통째로 사라진다(실측 확인). */
-  --brass-halo: 0 0 18px var(--brass-glow);
+  --brass-halo: 0 0 transparent;
 
   /* ── 계기 채널 ────────────────────────────────────────────────────────────
      채워진 계기(추론강도 트랙·쿼터 막대)가 바탕에 지는 **무게**. 다크는 밝을수록 무겁고
@@ -332,16 +331,27 @@
 
   /* ── 공통 팝업 표면 (대화 독 메뉴 문법) ─────────────────────────────────
      메뉴·팝오버·말풍선·토스트는 한 장의 불투명 면이다 — 광택·rim 하이라이트·반투명 틴트를 겹치지 않는다.
-     면은 앱 바탕 한 단(--ink-deep), 테두리는 글자색 14%, 그림자는 --shadow-floating 하나다.
-     행은 메뉴 40px · 목록 36px, 본문 크기·본문색이고, 행 상태는 중립 워시(hover 7% · 고른 행 9% + 체크)로만 말한다.
-     금색은 포커스 링과 1차 동작 글자에만 남는다. 워시는 팝업 밖 목록도 같은 이름으로 빌려 쓴다.
-     대화상자는 설정 모달 문법(대화 바탕 면 · 48% 검정 덮개 · --radius-xl)을 받는다. */
+     면은 앱 바탕 한 단(--ink-deep), 테두리는 글자색 14%, 그림자는 안쪽 광택 없이 짧고 옅은 한 겹이다.
+     크기는 한 벌이다(참고 앱 메뉴 실측): 폭 240(문맥 메뉴 최소 220) · 반경 16 · 여백 6 · 행 36 · 행 반경 10 ·
+     행 좌우 10 · 아이콘 16과 글자 사이 10 · 본문 14 · 구분선 위아래 6 좌우 10. 보조값과 ›는 행 끝의 3티어 잉크다.
+     행 상태는 중립 워시(hover·키보드 포커스·열린 하위 메뉴 7% · 고른 행 9% + 체크) 하나로만 말한다 — 외곽선은 없다.
+     워시는 팝업 밖 목록도 같은 이름으로 빌려 쓴다. 대화상자는 설정 모달 문법(대화 바탕 면 · 48% 검정 덮개 · --radius-xl)을 받는다. */
   --popover-face: var(--ink-deep);
   --popover-rim: color-mix(in oklch, var(--text-primary) 14%, transparent);
-  --popover-shadow: var(--shadow-floating);
-  --popover-row: 40px;
-  --popover-row-dense: 36px;
+  /* Doctrine: 무채색 그림자 리터럴(깊이 예외). */
+  --popover-shadow: 0 18px 44px -18px oklch(0% 0 0 / 70%);
+  --popover-width: 240px;
+  --popover-min-width: 220px;
+  --popover-pad: 6px;
+  --popover-radius: var(--radius-lg);
+  --popover-row: 36px;
+  --popover-row-dense: var(--popover-row);
+  --popover-row-radius: var(--radius-md);
+  --popover-row-inline: 10px;
+  --popover-row-gap: 10px;
+  --popover-icon: 16px;
   --popover-divider: color-mix(in oklch, var(--text-primary) 10%, transparent);
+  --popover-divider-space: 6px 10px;
   --wash-hover: color-mix(in oklch, var(--text-primary) 7%, transparent);
   --wash-selected: color-mix(in oklch, var(--text-primary) 9%, transparent);
   --dialog-face: var(--canvas-abyss);
@@ -457,7 +467,10 @@
   --control-tint-fill: color-mix(in oklab, var(--brass) 9%, transparent);
   --control-tint-ink: color-mix(in oklab, var(--brass-ink) 55%, var(--text-primary));
   --control-open-rim: color-mix(in oklab, var(--brass) 56%, var(--surface-rim));
-  --control-focus-ring: var(--brass);
+  /* 키보드 포커스는 외곽선이 아니라 은은한 면이다 — hover 워시보다 한 단 짙어 hover와 함께 서도 갈린다.
+     안쪽 그림자 한 겹으로 칠해 요소 자신의 바탕·반경을 그대로 따른다(전역 :focus-visible). */
+  --focus-wash: color-mix(in oklch, var(--text-primary) 11%, transparent);
+  --focus-face: inset 0 0 0 100vmax var(--focus-wash);
   --control-disabled-opacity: 0.5;
 
   /* ── lights-out 슬롯(--quiet-*) ─────────────────────────────────────────
@@ -550,12 +563,11 @@
      깬다 — 그 순서는 뒤집지 않는다. */
   --live-sweep-trough: oklch(52% 0.012 95);
 
-  --ink-brand-dev: oklch(42% 0.075 255);
 
-  --brass: oklch(56% 0.125 82);
-  --brass-bright: oklch(49% 0.14 80);
-  --brass-deep: oklch(64% 0.1 82);
-  --brass-glow: oklch(56% 0.125 82 / 16%);
+  --brass: var(--text-primary);
+  --brass-bright: var(--text-primary);
+  --brass-deep: var(--text-secondary);
+  --brass-glow: color-mix(in oklch, var(--text-primary) 8%, transparent);
   --brass-quiet: var(--brass-deep);
   --brass-quiet-ink: var(--brass-ink);
 
@@ -570,7 +582,7 @@
   --positive: oklch(50% 0.12 160);
   --positive-glow: oklch(50% 0.12 160 / 15%);
 
-  --brass-ink: oklch(45% 0.115 82);
+  --brass-ink: var(--text-primary);
   --aurora-ink: oklch(42% 0.09 210);
   --coral-ink: oklch(44% 0.15 25);
   --warn-ink: oklch(44% 0.1 82);
@@ -677,6 +689,7 @@
 
   --shadow-soft: 0 1px 0 0 oklch(99.5% 0.004 100 / 70%) inset, 0 18px 38px -22px oklch(30% 0.015 95 / 26%);
   --shadow-floating: 0 1px 0 0 oklch(99.5% 0.004 100 / 80%) inset, 0 32px 60px -28px oklch(28% 0.015 95 / 30%);
+  --popover-shadow: 0 18px 44px -18px oklch(28% 0.015 95 / 26%);
   --shadow-anchor: 0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent), 0 12px 32px -16px color-mix(in oklch, var(--brass) 26%, transparent);
 
   /* 다크 lights-out 보정은 라이트 범위 밖이다 — 파일 종류 매핑과 --quiet-* 슬롯은 지금의 점등 값을 그대로 잇는다. */
@@ -688,7 +701,9 @@
   --identity-small-tag: var(--aurora);
   --quiet-switch-track: var(--control-wash);
   --quiet-switch-rim: var(--surface-rim-strong);
-  --quiet-switch-knob: var(--brass-bright);
+  --quiet-switch-knob: var(--ink-abyss);
+  /* 사령관 별 배지의 원판(강조 채널)이 짙은 잉크라 별은 밝은 바탕색으로 뚫는다 — 모바일 라이트와 같은 이유다. */
+  --mongle-star-cut: var(--ink-abyss);
   --quiet-choice-rim: var(--brass);
   --quiet-choice-fill: var(--brass-glow);
   --quiet-halo-gain: 1;
@@ -729,13 +744,12 @@
   --ink-spectral: oklch(80% 0 0);
   --ink-pearl: oklch(97% 0 0);
 
-  --ink-brand-dev: oklch(84% 0.04 255);
 
-  --brass: oklch(77% 0.085 64);
-  --brass-bright: oklch(81% 0.085 66);
-  --brass-deep: oklch(54% 0.11 55);
-  --brass-glow: oklch(77% 0.085 64 / 12%);
-  --brass-quiet: oklch(71% 0.04 64);
+  --brass: var(--text-primary);
+  --brass-bright: var(--text-primary);
+  --brass-deep: var(--ink-muted);
+  --brass-glow: color-mix(in oklch, var(--text-primary) 10%, transparent);
+  --brass-quiet: var(--ink-muted);
 
   --aurora: oklch(79% 0.08 205);
   --aurora-deep: oklch(56% 0.11 208);
@@ -981,7 +995,6 @@
   --ink-muted: var(--m-text-muted);
   --ink-spectral: var(--m-text-nav);
   --ink-pearl: var(--m-text);
-  --ink-brand-dev: var(--m-id-cerulean);
 
   /* 위치·포커스·주 동작 채널 = 무채색 반전. 호버 워시·열림 테두리처럼 base에서 brass로 파생되는
      토큰(--control-hover-fill·--control-tint-fill·--control-open-rim)은 자동으로 무채색이 된다. */
@@ -1059,6 +1072,7 @@
 
   /* 팝업 면은 모바일 표면 한 장, 구분선은 모바일 헤어라인, 대화상자 덮개는 시트 덮개다. */
   --popover-face: var(--m-surface);
+  --popover-shadow: var(--m-shadow);
   --popover-divider: var(--m-hairline);
   --dialog-scrim: var(--m-scrim);
 
@@ -1091,7 +1105,6 @@
   --control-wash-hover: var(--m-chip);
   --control-hover-rim: var(--m-hairline-strong);
   --control-tint-ink: var(--m-text);
-  --control-focus-ring: var(--m-text);
 
   --quiet-switch-track: var(--m-inverse);
   --quiet-switch-rim: var(--m-inverse);
@@ -1323,17 +1336,25 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
-  border-radius: var(--radius-xs);
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+/* 고대비(forced-colors)는 그림자를 지워 면 포커스가 사라진다 — 그때만 시스템 링으로 되살린다. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 /* Map <main>은 키보드 정거장이 아니다. 채팅 로그처럼 포커스 불가한 본문을 누르면
    브라우저는 document(body)로 포커스를 올린다. 그 자리에 전역 링을 그리면 Enter가
-   뷰포트 전체를 금색으로 감싼다. 선택(복사)을 지키려면 mousedown을 막지 않고 링만 끈다. */
+   뷰포트 전체를 면으로 덮는다. 선택(복사)을 지키려면 mousedown을 막지 않고 면만 끈다. */
 body:focus-visible,
 html:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 ::-webkit-scrollbar {

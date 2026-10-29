@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useViewportFit } from "@fleet-console/ui/react";
 
 import type { Translate } from "@fleet-console/i18n";
 
@@ -169,6 +170,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  useViewportFit(menuRef, open);
   const side = useSideSubmenu({
     enabled: menuItem === true,
     open,

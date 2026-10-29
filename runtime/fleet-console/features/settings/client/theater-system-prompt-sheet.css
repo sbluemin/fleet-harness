@@ -12,7 +12,7 @@
 .theater-prompt-badge i.is-own { background: var(--brass); }
 .theater-prompt-tip-wrap { display: inline-flex; margin-left: auto; }
 .theater-prompt-tip { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: var(--ink-veil); color: var(--text-tertiary); font: var(--t-xs) var(--font-ui); }
-.theater-prompt-tip:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.theater-prompt-tip:focus-visible { box-shadow: var(--focus-face); }
 /* 모드 목록 — 줄 사이는 hairline, 고른 줄은 control wash 로 떠오르고 hover 는 한 단 약한 wash 다(세그먼트와 같은 층). */
 .theater-prompt-modes { display: grid; min-width: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); overflow: hidden; }
 .theater-prompt-mode { min-width: 0; transition: background var(--duration-fast) var(--ease-spring); }
@@ -33,14 +33,14 @@
 }
 .theater-prompt-mode-choice:hover input[type="radio"]:not(:checked) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
 .theater-prompt-mode-choice input[type="radio"]:checked { border-color: var(--brass); background: radial-gradient(circle, var(--brass) 0 42%, transparent 46%); box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ink-deep) 82%, transparent); }
-.theater-prompt-mode-choice input[type="radio"]:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.theater-prompt-mode-choice input[type="radio"]:focus-visible { box-shadow: var(--focus-face); }
 @media (forced-colors: active) {
   .theater-prompt-mode-choice input[type="radio"] { appearance: auto; }
 }
 /* 고른 줄 안의 편집 — 라디오 열을 비워 둔 채 이름과 같은 선에서 시작한다. */
 .theater-prompt-editor { display: grid; gap: 8px; margin: 0 14px 12px 42px; min-width: 0; }
 .theater-prompt-editor textarea { width: 100%; min-height: 128px; padding: 9px 11px; resize: vertical; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font-family: var(--font-code); font-size: var(--font-code-size); line-height: 1.6; }
-.theater-prompt-editor textarea:focus-visible { outline: none; border-color: var(--control-hover-rim); }
+.theater-prompt-editor textarea:focus-visible { outline: none; box-shadow: var(--focus-face); }
 .theater-prompt-editor textarea[aria-invalid="true"] { border-color: color-mix(in oklch, var(--coral) 55%, transparent); }
 /* 저장 상태와 글자 수가 한 줄에 들지 않으면 글자 수가 다음 줄 오른쪽으로 내려가고, 상태 문장은 단어 단위로만 접힌다. */
 .theater-prompt-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 10px; min-height: 18px; }
@@ -63,7 +63,7 @@
 .theater-prompt-foot p { margin: 0; color: var(--text-secondary); }
 .theater-prompt-link { padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px; }
 .theater-prompt-link:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
-.theater-prompt-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+.theater-prompt-link:focus-visible { border-radius: 2px; box-shadow: var(--focus-face); }
 .theater-prompt-tooltip { position: fixed; z-index: 1193; width: min(290px, calc(100vw - 16px)); padding: 10px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel); box-shadow: var(--shadow-floating); color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; pointer-events: none; }
 .theater-prompt-tooltip[hidden] { display: none; }
 .theater-prompt-save i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--hairline-strong); }

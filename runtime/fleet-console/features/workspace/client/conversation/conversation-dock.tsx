@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
 import type { SidebarFooterEntryContext } from "../../shared/surface-contracts.js";
 import { DEPUTY_COMMAND_BAND_ENTRY_ID, useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 
@@ -13,7 +13,7 @@ import { ViewModeToggle } from "../../../../core/client/src/chrome/components/vi
 import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { ArchiveMenuItem } from "../archive/archive-entry.js";
-import { BrandMarkIcon, BrandWordmark } from "./conversation-brand.js";
+import { DESKTOP_BRAND_MARK_ATTRIBUTE } from "@fleet-console/protocol/desktop/brand";
 import "./conversation-dock.css";
 
 /**
@@ -69,6 +69,7 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverAnchorRef = useRef<HTMLSpanElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  useViewportFit(menuRef, open);
   const name = state.consoleName || window.location.hostname;
   const label = t("chrome.system.menu");
   useMenuButtonKeyboard(rootRef, triggerRef, menuRef, open, setOpen, true);
@@ -81,7 +82,9 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
   return (
     <div className="conversation-dock" role="group" aria-label={t("conversation.side.systemAria")}>
       <div className="conversation-dock-host" ref={rootRef}>
-        <button ref={triggerRef} type="button" className="conversation-dock-avatar" aria-label={label} title={label}
+        {/* 앱 메뉴 문은 Desktop 진입 화면의 착지점(선택 계약)이기도 하다 — 엠블럼·워드마크를 걷은 뒤에도 진입 전환이 닻을 찾느라
+            상한(2초)까지 기다리지 않게 이 문이 표식 닻을 진다. 워드마크 닻은 없다(표식만 있는 착지). */}
+        <button ref={triggerRef} type="button" className="conversation-dock-avatar" aria-label={label} title={label} {...{ [DESKTOP_BRAND_MARK_ATTRIBUTE]: "" }}
           aria-haspopup="menu" aria-expanded={open} aria-controls="conversation-host-menu" onClick={() => setOpen((value) => !value)}>
           <span aria-hidden="true">{Array.from(name.trim())[0]?.toLocaleUpperCase() || "F"}</span>
           {showStatus ? <span className="conversation-dock-status" data-connection={connection} aria-hidden="true" /> : null}
@@ -100,9 +103,6 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
         <ConsoleUpdateNotice suppressed={open} onEscape={() => triggerRef.current?.focus({ preventScroll: true })} />
       </div>
       <span className="conversation-dock-popover-anchor" ref={popoverAnchorRef} aria-hidden="true" />
-      <span className="conversation-dock-brand" aria-label={state.channel === "local" ? "Fleet·DEV" : "Fleet"}>
-        <BrandMarkIcon local={state.channel === "local"} /><BrandWordmark local={state.channel === "local"} />
-      </span>
       <SidebarFooterEntries popoverAnchorRef={popoverAnchorRef} />
     </div>
   );

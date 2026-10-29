@@ -170,7 +170,7 @@
 .objectives-cm .commodore-prompt-body { min-width: 0; max-width: 100%; box-sizing: border-box; }
 
 /* 누름·키보드 포커스는 코어 누름 층(data-press, impl-spec S-52)이 그린다 — 여기서는 PR-2 표의 모양(--pr-inset·--pr-r)만 정한다. */
-.objectives-cm-field:focus-visible { border-color: var(--m-text-muted); }
+.objectives-cm-field:focus-visible { box-shadow: var(--focus-face); }
 
 /* 사령관의 질문 — 그룹 대화와 같은 본문 끝 자리다. 카드 안이 아니라 대화 전체가 함께 스크롤한다. */
 .objectives-cm-asks { flex: none; display: flex; flex-direction: column; gap: 8px; }
@@ -178,7 +178,7 @@
 /* 기억 탭 — 폰 갈래 트리와 읽기 전용 항목 화면. */
 /* 검색 — 손가락 높이 44, 둥근 면. 항목이 하나라도 있을 때만 선다. */
 .objectives-cm-memory-search { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-radius: 22px; background: var(--m-surface); color: var(--m-text-muted); }
-.objectives-cm-memory-search:focus-within { box-shadow: inset 0 0 0 1px var(--m-text-muted); }
+.objectives-cm-memory-search:focus-within { box-shadow: var(--focus-face); }
 .objectives-cm-memory-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--m-text); font: inherit; font-size: var(--m-fs-list); }
 .objectives-cm-memory-search input::placeholder { color: var(--m-text-muted); }
 /* 갈래 머리 — glab 글자에 힌트(옅게, 한 줄 말줄임)·개수·접힘 꺾쇠. 행 전체가 접기 단추(높이 44). */

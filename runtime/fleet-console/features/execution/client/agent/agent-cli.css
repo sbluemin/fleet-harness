@@ -176,9 +176,7 @@
   background: var(--wash-hover);
 }
 
-.ai-gateway-model-summary:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
+.ai-gateway-model-summary:focus-visible { box-shadow: var(--focus-face);
 }
 
 .ai-gateway-model-text {
@@ -285,9 +283,8 @@
 }
 
 .ai-gateway-effort-level:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
   border-radius: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .ai-gateway-effort-level.is-on {
@@ -334,9 +331,7 @@
 
 .ai-gateway-add-button:focus-visible,
 .ai-gateway-remove:focus-visible,
-.ai-gateway-model-open:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+.ai-gateway-model-open:focus-visible { box-shadow: var(--focus-face);
 }
 
 .ai-gateway-add-button:disabled,
@@ -618,9 +613,7 @@
   text-decoration-style: solid;
 }
 
-.ai-gateway-palette-signin:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+.ai-gateway-palette-signin:focus-visible { box-shadow: var(--focus-face);
 }
 
 .ai-gateway-palette-signin:disabled {
@@ -775,9 +768,8 @@
 }
 
 .ai-gateway-variant:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
   border-radius: 2px;
+  box-shadow: var(--focus-face);
 }
 
 .ai-gateway-variant.is-enabled {
@@ -847,10 +839,7 @@
   border-color: var(--control-hover-rim);
 }
 
-.ai-gateway-key-input:focus-visible {
-  border-color: var(--control-hover-rim);
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+.ai-gateway-key-input:focus-visible { box-shadow: var(--focus-face);
 }
 
 .ai-gateway-key-input:disabled {
@@ -904,9 +893,7 @@
   color: var(--text-primary);
 }
 
-.ai-gateway-key-signout:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+.ai-gateway-key-signout:focus-visible { box-shadow: var(--focus-face);
 }
 
 .ai-gateway-key-signout:disabled {
@@ -1176,9 +1163,8 @@
 }
 
 .ai-gateway-routing-test-toggle:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 4px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--focus-face);
 }
 
 .ai-gateway-routing-test {
@@ -1229,9 +1215,7 @@
   color: var(--text-primary);
 }
 
-.ai-gateway-chip-button:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+.ai-gateway-chip-button:focus-visible { box-shadow: var(--focus-face);
 }
 
 .ai-gateway-chip-button:disabled {
@@ -1259,8 +1243,8 @@
 .ai-gateway-routing-task::placeholder { color: var(--text-tertiary); }
 
 .ai-gateway-routing-task:focus-visible {
-  border-color: var(--control-focus-ring);
   outline: none;
+  box-shadow: var(--focus-face);
 }
 
 .ai-gateway-routing-foot {
@@ -1301,9 +1285,7 @@
   background: var(--control-rest-hover);
 }
 
-.ai-gateway-run-button:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
+.ai-gateway-run-button:focus-visible { box-shadow: var(--focus-face);
 }
 
 .ai-gateway-run-button:disabled {
@@ -1598,9 +1580,7 @@
 .use-request-pill:disabled { opacity: 0.45; }
 
 .use-request-pill:focus-visible,
-.use-request-scope:focus-visible {
-  outline: 2px solid var(--m-text);
-  outline-offset: 2px;
+.use-request-scope:focus-visible { box-shadow: var(--focus-face);
 }
 
 .use-request-scope {

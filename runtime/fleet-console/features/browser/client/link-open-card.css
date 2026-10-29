@@ -74,9 +74,7 @@
 }
 
 .link-open-choice:focus-visible {
-  border-color: var(--control-hover-rim);
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 /* 카드는 열리는 순간 기본 손잡이에 포커스를 둔다 — Enter 한 번이면 열리도록. 그 포커스를 처음부터

@@ -48,7 +48,7 @@
    포커스하면 원문이 왼쪽 정렬로 드러난다. 바탕은 abyss 가 아니라 veil — 어두운 테마에서 검은 구멍처럼 보이지 않게. */
 .op-browser__url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 28px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
 .op-browser__url:hover { background: var(--ink-rim); }
-.op-browser__url:focus-within { background: var(--ink-mid); border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass-glow); }
+.op-browser__url:focus-within { background: var(--ink-mid); box-shadow: var(--focus-face); }
 .op-browser__url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-code); font-size: var(--font-code-size); }
 .op-browser__url.is-display .op-browser__url-input { color: transparent; caret-color: transparent; }
 .op-browser__url-input:focus { outline: none; }
@@ -95,7 +95,7 @@
 .op-browser__button--primary { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); font-weight: var(--weight-medium); }
 .op-browser__button--primary:hover:not(:disabled) { background: var(--brass-bright); border-color: var(--brass-bright); }
 .op-browser__button--primary:active:not(:disabled) { filter: brightness(0.94); }
-.op-browser__button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.op-browser__button:focus-visible { box-shadow: var(--focus-face); }
 @media (prefers-reduced-motion: reduce) { .op-browser__button { transition: none; } }
 .op-browser__button:disabled { opacity: 0.5; cursor: default; }
 .op-browser__notice { margin: 0; font-size: var(--t-xs); color: var(--coral-ink); }
@@ -114,7 +114,7 @@
 .op-browser__sketchbar .op-browser__divider { width: 1px; height: 16px; background: var(--hairline); margin: 0 var(--space-1); flex: none; }
 .op-browser__swatch { width: 16px; height: 16px; flex: none; border-radius: var(--radius-pill); border: 2px solid transparent; cursor: pointer; padding: 0; }
 .op-browser__swatch[aria-pressed="true"] { border-color: var(--text-primary); }
-.op-browser__swatch:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.op-browser__swatch:focus-visible { box-shadow: var(--focus-face); }
 /* 주석 잉크는 페이지 위에 그리는 마크의 색이지 Console 신호가 아니다 — 신택스 채널과 같은 이유로
    정체성 8톤에서 톤만 빌리고, 스트로크는 스와치의 계산값을 읽어 캔버스에 그린다. */
 .op-browser__swatch--red { background: var(--id-crimson); }
@@ -175,7 +175,7 @@
 .op-browser__comment-input::placeholder { color: var(--text-tertiary); }
 .op-browser__comment-ok { flex: none; width: 26px; height: 26px; border: 0; border-radius: var(--radius-pill); background: var(--brass); color: var(--text-on-brass); font: inherit; cursor: pointer; }
 .op-browser__comment-ok:disabled { opacity: 0.4; cursor: default; }
-.op-browser__comment-ok:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.op-browser__comment-ok:focus-visible { box-shadow: var(--focus-face); }
 
 
 /* ---- 세션 표식 — 임시인가 내 프로필인가. 캡션에 상주하는 이 Objective 의 정체다 ---- */

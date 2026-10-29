@@ -118,7 +118,7 @@
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
 ):focus-visible::before {
   background: transparent;
-  box-shadow: inset 0 0 0 2px var(--m-text);
+  box-shadow: var(--focus-face);
   opacity: 1;
   transition: none;
 }
@@ -179,8 +179,7 @@
   .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
   .terminal-confirm-row .terminal-key
 ):focus-visible {
-  outline: 2px solid var(--m-text);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 /* ── 누를 자리 44 — 보이는 크기는 그대로 두고 손가락이 닿는 칸만 넓힌다 ──

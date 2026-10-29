@@ -184,8 +184,8 @@
 /* 누름 — hover 규칙과 같은 특이도로 그 뒤에 두어, 이름을 누르든 아바타를 누르든 이름 면이 한 단 짙어진다. */
 .group-chat-agent:has(.group-chat-speaker-hit:active) .group-chat-speaker-hit.is-name { background: var(--control-wash); }
 /* 이름 아래 말풍선과의 틈이 3px 이라 링(2px)과 offset 을 합쳐 그 안에 든다. */
-.group-chat-speaker-hit:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
-.group-ledger-back:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.group-chat-speaker-hit:focus-visible { box-shadow: var(--focus-face); }
+.group-ledger-back:focus-visible { box-shadow: var(--focus-face); }
 /* 22px 아바타는 손가락에 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 넓힌다. */
 @media (pointer: coarse) {
   .group-chat-speaker-hit.is-mark::before { content: ""; position: absolute; inset: -6px; }
@@ -224,7 +224,7 @@
 }
 .group-chat-line-summary::-webkit-details-marker { display: none; }
 .group-chat-line-summary:hover { color: var(--text-secondary); background: var(--control-wash-hover); }
-.group-chat-line-summary:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.group-chat-line-summary:focus-visible { box-shadow: var(--focus-face); }
 .group-chat-line-who { flex: none; color: var(--text-secondary); white-space: nowrap; }
 .group-chat-line-arrow,
 .group-chat-line-sep { flex: none; color: var(--hairline-strong); }
@@ -286,7 +286,7 @@ button.group-chat-board {
   transition: color var(--duration-fast), background var(--duration-fast);
 }
 button.group-chat-board:hover { color: var(--text-secondary); background: var(--control-wash-hover); }
-button.group-chat-board:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+button.group-chat-board:focus-visible { box-shadow: var(--focus-face); }
 .group-chat-line-go { flex: none; margin-left: var(--space-1); opacity: 0; transition: opacity var(--duration-fast); }
 button.group-chat-board:is(:hover, :focus-visible) .group-chat-line-go { opacity: 1; }
 @media (hover: none) {
@@ -311,7 +311,7 @@ button.group-chat-board:is(:hover, :focus-visible) .group-chat-line-go { opacity
   font: inherit;
 }
 button.group-relay-row { cursor: pointer; }
-button.group-relay-row:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+button.group-relay-row:focus-visible { box-shadow: var(--focus-face); }
 .group-relay-from { flex: none; padding-left: 6px; font-size: var(--t-md); color: var(--text-tertiary); white-space: nowrap; }
 .group-relay-chip {
   display: inline-flex;
@@ -412,7 +412,7 @@ button.group-relay-row:active .group-relay-chip { background-image: linear-gradi
   font-weight: var(--weight-medium);
 }
 button.group-relay-party { cursor: pointer; }
-button.group-relay-party:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 3px; }
+button.group-relay-party:focus-visible { box-shadow: var(--focus-face); }
 .group-relay-party .group-chat-mark.is-lg,
 .group-relay-mark .group-chat-mark.is-lg { width: 30px; height: 30px; }
 
@@ -443,7 +443,7 @@ button.group-relay-party:focus-visible { outline: 2px solid var(--control-focus-
   font: inherit;
 }
 button.group-relay-pill-party { cursor: pointer; }
-button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+button.group-relay-pill-party:focus-visible { box-shadow: var(--focus-face); }
 .group-relay-message { display: flex; flex-direction: column; }
 .group-relay-time { align-self: center; margin: 18px 0 14px; font-size: var(--t-sm); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .group-relay-message:first-child .group-relay-time { margin-top: 0; }
@@ -469,7 +469,7 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 }
 .group-relay-close:hover { background-image: linear-gradient(var(--control-wash-hover), var(--control-wash-hover)); }
 .group-relay-close:active { background-image: linear-gradient(var(--control-wash), var(--control-wash)); }
-.group-relay-close:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.group-relay-close:focus-visible { box-shadow: var(--focus-face); }
 @media (prefers-reduced-motion: reduce) {
   .group-relay,
   .group-relay-head,
@@ -516,7 +516,7 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
   transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
 .group-chat-link:hover { background: var(--control-wash-hover); color: var(--text-primary); }
-.group-chat-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+.group-chat-link:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 .group-chat-link.is-danger { color: var(--coral-ink); }
 
 /* 진행 줄과 입력창의 감싸개 — 기록 위에 떠 있는 독이다(기록은 그 뒤까지 흐른다, 위 .group-chat-log). 폰 배치의 바탕·페이드는 아래 「폰 배치」
@@ -626,7 +626,7 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 .group-chat-working-hit.is-text { margin: 0 calc(-1 * var(--space-1)); padding: 0 var(--space-1); text-align: start; }
 /* 면은 안쪽 그림자로 깐다 — 그림자는 배경 위·글자 아래에 칠해져 물결 글자를 지우지 않고 발화자 이름과 같은 면을 만든다. */
 .group-chat-working-hit.is-text:hover { box-shadow: inset 0 0 0 999px var(--control-wash-hover); }
-.group-chat-working-hit:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.group-chat-working-hit:focus-visible { box-shadow: var(--focus-face); }
 /* 32px 표식도 손가락에는 조금 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 44px 로 넓힌다. */
 @media (pointer: coarse) {
   .group-chat-working-hit.is-mark::before { content: ""; position: absolute; inset: -6px; }
@@ -687,7 +687,7 @@ button.group-members-main { cursor: pointer; }
 .group-members-row .avatar-editor-row { padding-left: var(--space-2); }
 .group-members-row .avatar-editor-row > .group-members-main { flex: 1; min-width: 0; padding-left: 0; }
 .group-members-row .avatar-editor.is-inline .avatar-editor-picker { margin: 0 var(--space-2) var(--space-2); width: auto; }
-button.group-members-main:focus-visible { outline: 2px solid var(--brass); outline-offset: -1px; }
+button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-members-text { display: flex; flex-direction: column; min-width: 0; }
 .group-members-name { font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 보드 사실(플러그인이 보낸 profile) — 이름 곁 제안 표식, 역할 아래 모델·강도 줄, 브리프, 사유 줄. 좁은 칸에서는 이름·모델 낱말·표식이
@@ -726,7 +726,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   cursor: pointer;
 }
 .group-members-add:hover { color: var(--text-primary); }
-.group-members-add:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+.group-members-add:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 
 /* 활동 점 — 노드 줄 상태 점과 같은 어휘(작업 warn 채움, 백그라운드 warn 고리, 대기 positive, 끝남 빈 고리, 답 기다림 aurora 마름모). */
 .group-members-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; }
@@ -1029,7 +1029,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-card-choice:hover:not(.is-disabled) { background: var(--control-wash-hover); }
 .group-card-choice.is-disabled { cursor: default; }
 .group-card-choice.is-on { border-color: var(--brass); background: var(--control-wash); }
-.group-card-choice:has(> .group-card-choice-pick:focus-visible) { outline: 2px solid var(--brass); outline-offset: 1px; }
+.group-card-choice:has(> .group-card-choice-pick:focus-visible) { box-shadow: var(--focus-face); }
 .group-card-choice-pick {
   display: flex;
   align-items: flex-start;
@@ -1066,7 +1066,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   font-size: var(--t-sm);
   color: var(--text-primary);
 }
-.group-card-own:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.group-card-own:focus-visible { box-shadow: var(--focus-face); }
 .group-card-lead,
 .group-card-tools,
 .group-card-fine { margin: 0; color: var(--text-secondary); }
@@ -1088,7 +1088,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   cursor: pointer;
 }
 .group-card-send.is-quiet { border-color: var(--hairline-strong); background: none; color: var(--text-primary); }
-.group-card-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.group-card-send:focus-visible { box-shadow: var(--focus-face); }
 .group-card-send:disabled { opacity: 0.45; cursor: default; }
 .group-card-error { margin: 0; color: var(--coral-ink); }
 /* 답한 결정 — 사람 말풍선(.group-chat-human · .group-chat-bubble.is-human)을 그대로 입는다. 질문마다 질문은 보조 글자, 답은 본문
@@ -1128,7 +1128,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
 .group-chat-notes-chip:hover { background: var(--control-wash-hover); color: var(--text-secondary); }
-.group-chat-notes-chip:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.group-chat-notes-chip:focus-visible { box-shadow: var(--focus-face); }
 .group-chat-notes-count { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .group-chat-notes-count .group-chat-name { font-weight: var(--weight-medium); }
 .group-chat-notes-count .group-chat-name:is(.is-commander, .is-commodore) { color: var(--text-secondary); }
@@ -1179,7 +1179,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 }
 /* 키보드 — 브라우저는 굴릴 수 있는 본문 칸을 탭 정거장으로 세운다. 본문 칸의 링은 틀의 둥근 면에 잘리므로 링은 틀이 진다. */
 .group-chat-bubble.is-capped > .group-chat-bubble-body:focus-visible { outline: none; }
-.group-chat-bubble.is-capped:has(> .group-chat-bubble-body:focus-visible) { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.group-chat-bubble.is-capped:has(> .group-chat-bubble-body:focus-visible) { box-shadow: var(--focus-face); }
 .group-chat-bubble.is-clipped::before,
 .group-chat-bubble.is-clipped::after {
   content: "";
@@ -1218,7 +1218,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 }
 .group-chat-report-tag:hover,
 .group-chat-report-tag[aria-expanded="true"] { background: var(--control-wash-hover); color: var(--text-secondary); }
-.group-chat-report-tag:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.group-chat-report-tag:focus-visible { box-shadow: var(--focus-face); }
 .group-chat-report-detail { max-width: min(680px, 100%); margin-top: 0; font-size: var(--t-sm); }
 
 @media (prefers-reduced-motion: reduce) {

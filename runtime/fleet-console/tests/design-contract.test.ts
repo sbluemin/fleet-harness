@@ -450,7 +450,7 @@ function findRawProductSelectsInSourceFile(
   return hits;
 }
 
-describe("Instrument core design contract", () => {
+describe("Console core design contract", () => {
   it("collapses backend API rows against their Settings card width", () => {
     const components = source("styles/components.css");
     const section = components.match(/\.backend-api-section \{[^}]*\}/)?.[0] ?? "";
@@ -481,7 +481,8 @@ describe("Instrument core design contract", () => {
       "--control-tint-fill",
       "--control-tint-ink",
       "--control-open-rim",
-      "--control-focus-ring",
+      "--focus-wash",
+      "--focus-face",
       "--control-disabled-opacity",
     ]) expect(root).toContain(`${token}:`);
     expect(root).toContain("--control-hover-fill: color-mix(in oklab, var(--brass) 8%, transparent);");
@@ -499,7 +500,12 @@ describe("Instrument core design contract", () => {
     expect(theme).not.toContain("--control-selected-fill");
     expect(theme).not.toContain("--control-selected-rim");
     expect(theme).not.toContain("--control-thumb");
-    expect(theme).toMatch(/:focus-visible \{[^}]*outline: 2px solid var\(--control-focus-ring\);/);
+    // 키보드 포커스는 외곽선이 아니라 은은한 면이다 — 옛 금색 링 토큰은 퇴역했다. 고대비에서만 시스템 링이 되살아난다.
+    expect(theme).toMatch(/\n:focus-visible \{\n  outline: none;\n  box-shadow: var\(--focus-face\);\n\}/);
+    expect(theme).toMatch(/@media \(forced-colors: active\) \{\n  :focus-visible \{\n    outline: 2px solid CanvasText;/);
+    expect(theme).not.toContain("--control-focus-ring");
+    // 강조 채널(brass)은 금색을 퇴역하고 중립 잉크로 선다 — 어느 테마 블록에도 금색 brass 리터럴이 없다.
+    for (const match of theme.matchAll(/--brass(?:-bright|-deep|-quiet|-ink)?: ([^;]+);/g)) expect(match[1], match[0]).not.toMatch(/^oklch\(/);
     // 고대비 환경에서는 워시가 걷히므로 선택을 시스템 선택색으로 직접 말한다(리뷰 확인 사항).
     const components = source("styles/components.css");
     const layout = source("styles/layout.css");
@@ -543,7 +549,7 @@ describe("Instrument core design contract", () => {
       "var(--control-hover-fill)",
       "var(--control-hover-rim)",
       "var(--control-wash)",
-      "var(--control-focus-ring)",
+      "var(--focus-face)",
       "var(--control-disabled-opacity)",
     ]) {
       expect(components).toContain(token);
@@ -579,8 +585,10 @@ describe("Instrument core design contract", () => {
     expect(hover).toContain("background: var(--control-hover-fill);");
     expect(hover).not.toContain("outline:");
     const focus = components.match(/\.fleet-caption-action:focus-visible:not\(\[aria-pressed="true"\]\)\s*\{[^}]*\}/)?.[0] ?? "";
-    expect(focus).toContain("border-color: var(--control-hover-rim);");
-    expect(focus).not.toContain("outline: none;");
+    // 포커스는 테두리가 아니라 포커스 면이다 — 마우스 hover의 rim과 갈린다.
+    expect(focus).toContain("box-shadow: var(--focus-face);");
+    expect(focus).not.toContain("border-color");
+    expect(focus).not.toContain("outline:");
 
     // 진행은 aurora(상태)로, 위치는 brass로 — 한 버튼 위에서도 두 채널이 겹치지 않는다.
     const live = components.match(/\.fleet-caption-action-live \{[^}]*\}/)?.[0] ?? "";
@@ -1234,11 +1242,11 @@ describe("Instrument core design contract", () => {
     // 호버는 배경 채움 하나만 쓴다. 테두리가 돌아오면 다시 활성보다 강해진다.
     expect(headerHover).toContain("background: var(--wash-hover);");
     expect(headerHover).not.toContain("border-color");
-    // focus-visible은 자기 brass 테두리를 따로 진다 — 호버에서 테두리를 뺀 것이 포커스 표식을
-    // 지우면 안 된다.
-    // brass×rim 혼합은 oklab이다 — oklch는 hue를 보간해 Carbon(rim hue 248)에서 보라, Maritime에서
-    // 청록으로 새는 테두리를 만든다(실측). --control-open-rim과 같은 공간이다.
-    expect(components).toMatch(/\.side-bar-theater-header:focus-visible \{[^}]*border-color: color-mix\(in oklab, var\(--brass\) 55%/);
+    // focus-visible은 테두리 없이 포커스 면을 따로 진다 — 호버에서 테두리를 뺀 것이 포커스 표식을
+    // 지우면 안 된다. 열린 메뉴의 대상 머리도 테두리가 아니라 hover와 같은 워시다.
+    expect(components).toMatch(/\.side-bar-theater-header:focus-visible \{[^}]*box-shadow: var\(--focus-face\);/);
+    expect(components).not.toMatch(/\.side-bar-theater-header:focus-visible \{[^}]*border-color/);
+    expect(components).toMatch(/\.side-bar-theater-header\.is-menu-target \{[^}]*background: var\(--wash-hover\);/);
 
     // 활성 헤더는 배경 채널을 호버에게 완전히 넘긴다 — 자기 채움을 갖지 않는다(누르면 Inbox 가 열리므로 호버 채움은 다른 행과 같이 받는다).
     expect(activeHeader).not.toContain("background");
@@ -1389,6 +1397,75 @@ describe("Instrument core design contract", () => {
     expect(scuttlebuttCss).toMatch(/\.scuttlebutt-notice-bubble \{[^}]*background: var\(--scuttlebutt-notice-wash, var\(--popover-face\)\);/);
   });
 
+  it("pins one popover size grammar and outline-free keyboard focus", () => {
+    // 참고 앱 메뉴 실측(폭 240 · 반경 16 · 여백 6 · 행 36 · 행 반경 10)을 theme.css 의 --popover-* 한 벌로 둔다.
+    // 메뉴가 자기 리터럴 크기로 돌아가면 팝오버마다 반경·여백·행이 다시 갈린다(실측: 반경 10/16, 여백 4~12, 행 33~40).
+    const theme = source("styles/theme.css");
+    for (const declaration of [
+      "--popover-width: 240px;",
+      "--popover-pad: 6px;",
+      "--popover-radius: var(--radius-lg);",
+      "--popover-row: 36px;",
+      "--popover-row-radius: var(--radius-md);",
+      "--popover-icon: 16px;",
+    ]) expect(theme).toContain(declaration);
+    const rule = (css: string, selector: string) => {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return css.match(new RegExp(`(?:^|\\n)${escaped} \\{[^}]*\\}`))?.[0] ?? "";
+    };
+    const surfaces: readonly (readonly [string, string])[] = [
+      [source("styles/components.css"), ".theater-menu"],
+      [source("styles/components.css"), ".command-band-system-menu"],
+      [source("styles/components.css"), ".fc-composer-menu"],
+      [source("styles/components.css"), ".fc-coord-menu"],
+      [source("../../../features/workspace/client/conversation/conversation-dock.css"), ".conversation-dock-menu"],
+      [source("../../../features/workspace/client/commander-tab/commander-list.css"), ".commander-tab-menu"],
+      [externalSource(FILE_EXPLORER_CSS_PATH), ".fexp-context-menu"],
+      [externalSource(REPOSITORY_CSS_PATH), ".repository-context-menu"],
+    ];
+    for (const [css, selector] of surfaces) {
+      const block = rule(css, selector);
+      expect(block, selector).toContain("padding: var(--popover-pad);");
+      expect(block, selector).toContain("border-radius: var(--popover-radius);");
+      expect(block, selector).toContain("background: var(--popover-face);");
+    }
+    for (const [css, selector] of [
+      [source("styles/components.css"), ".theater-menu-item"],
+      [source("styles/components.css"), ".fc-composer-menu__item"],
+      [externalSource(FILE_EXPLORER_CSS_PATH), ".fexp-context-menu-item"],
+    ] as const) {
+      const block = rule(css, selector);
+      expect(block, selector).toContain("min-height: var(--popover-row);");
+      expect(block, selector).toContain("border-radius: var(--popover-row-radius);");
+    }
+    // 포커스는 외곽선 없이 면으로만 말한다. 고대비(forced-colors) 블록만 시스템 링을 되살릴 수 있다.
+    const withoutForcedColors = (css: string) => {
+      let out = "";
+      let index = 0;
+      for (const match of css.matchAll(/@media \(forced-colors: active\) \{/g)) {
+        out += css.slice(index, match.index);
+        let depth = 0;
+        let cursor = match.index! + match[0].length - 1;
+        for (; cursor < css.length; cursor += 1) {
+          if (css[cursor] === "{") depth += 1;
+          else if (css[cursor] === "}" && --depth === 0) break;
+        }
+        index = cursor + 1;
+      }
+      return out + css.slice(index);
+    };
+    const offenders: string[] = [];
+    for (const file of listProductCssFiles()) {
+      const css = withoutForcedColors(stripComments(fs.readFileSync(file, "utf8")));
+      for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        if (!/:focus/.test(match[1]!)) continue;
+        if (/(?:^|;)\s*outline:(?!\s*(?:none|0)\s*(?:;|$))/.test(match[2]!)) offenders.push(`${consoleRelativePath(file)} ${match[1]!.trim().slice(0, 80)}`);
+      }
+      expect(css, consoleRelativePath(file)).not.toContain("--control-focus-ring");
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("pins the closed-chrome contracts", () => {
     const app = source("app/app.tsx");
     const theme = source("styles/theme.css");
@@ -1529,7 +1606,7 @@ describe("Instrument core design contract", () => {
     const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
     expect(theme).toContain(':root[data-theme="dark"]');
     expect(base).toContain("--ink-abyss: oklch(13% 0.014 245);");
-    expect(base).toContain("--brass: oklch(80% 0.085 78);");
+    expect(base).toContain("--brass: var(--text-primary);");
     expect(base).toContain("--ink-muted: oklch(64% 0.012 245);");
     expect(base).toContain("--aurora: oklch(77% 0.085 200);");
     expect(base).toContain("--coral: oklch(68% 0.12 25);");
@@ -1568,7 +1645,8 @@ describe("Instrument core design contract", () => {
       for (const declaration of declarations) {
         // [doctrine] identity-file·quiet·두 배지 면은 다크 3종 보정(채도 봉투·lights-out)이 라이트로
         // 내려오지 않게 지금의 값을 잇는 자리다 — 사용자 범위가 다크 테마였다(목표 f90ef806).
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge)[a-z-]*|--weight-regular|color-scheme):$/);
+        // [doctrine] 팝오버 그림자는 종이 위 무채색 깊이로, 사령관 별 배지의 뚫음 색은 짙어진 강조 원판 위 밝은 바탕으로 분화한다.
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge|popover-shadow|mongle-star-cut)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -2095,7 +2173,9 @@ describe("Instrument core design contract", () => {
     const queueCancelHoverBlock = chat.match(/^\.agent-chat-composer-queue-cancel:hover,\n\.agent-chat-composer-queue-cancel:focus-visible \{[^}]*\}/m)?.[0] ?? "";
     expect(queueCancelHoverBlock).toContain("color: var(--coral);");
     const composerFrameFocusBlock = chat.match(/^\.agent-chat-composer-frame:focus-within \{[^}]*\}/m)?.[0] ?? "";
-    expect(composerFrameFocusBlock).toContain("border-color: var(--brass);");
+    // 입력 중인 컴포저는 테두리 색이 아니라 포커스 면으로 말한다.
+    expect(composerFrameFocusBlock).toContain("box-shadow: var(--focus-face);");
+    expect(composerFrameFocusBlock).not.toContain("border-color");
     const composerArmedBlock = chat.match(/^\.agent-chat-composer-send\.is-armed \{[^}]*\}/m)?.[0] ?? "";
     expect(composerArmedBlock).toContain("background: var(--brass);");
     expect(composerArmedBlock).toContain("color: var(--text-on-brass);");

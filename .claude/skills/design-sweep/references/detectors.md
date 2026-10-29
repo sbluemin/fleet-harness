@@ -5,16 +5,16 @@
 Living sources — read these for the target scope. The figures below are detector leads, not acceptance thresholds; verify every token, count, dimension, and exception against these sources before classifying a defect:
 
 - `runtime/fleet-console/core/client/src/styles/theme.css` — token vocabulary and per-theme envelopes.
-- `runtime/fleet-console/tests/instrument-design-contract.test.ts` — the machine-readable charter: what is already pinned and enforced.
+- `runtime/fleet-console/tests/design-contract.test.ts` — the machine-readable charter: what is already pinned and enforced.
 - `runtime/fleet-console/CLAUDE.md` + doctrine comments inside `components.css` — approved exceptions and channel rules.
 
 **Three-channel color charter.** Every color speaks on exactly one channel:
 
 1. **Signal = state only** — `aurora` (awaiting), `warn` (turn/progress), `coral` (danger), `positive` (complete). Never used for identity, branding, or decoration (e.g. a LOCAL/NEW badge is not a state).
-2. **Location/Focus = brass only** — current location, keyboard focus, hover affordance. Brass never idles at full strength ("lights-out" rule: no permanently lit brass ornaments).
+2. **Location = brass only** — current location and primary action, painted in the hueless accent ink (brass carries no gold in any theme). Hover, keyboard focus, and an open menu's anchor are neutral washes (`--wash-*`, `--focus-face`); an outline, ring, or recolored border for focus is drift, except the `forced-colors` system ring. Brass never idles at full strength ("lights-out" rule: no permanently lit brass ornaments).
 3. **Identity = `--id-*` only** — the theme-tuned identity palette, painted only where the current Console design invariants allow it (at the time of writing: caption and rail-chip title ink plus the pastel body of a mongle avatar; never the caption fill, a chip spine, or a border). Read those placements from `runtime/fleet-console/CLAUDE.md` and the identity case in the contract test rather than from this summary. Borders stay state-owned — `border-color: var(--user-accent)` is a hard violation. Identity tones map onto `--id-*`; raw hex identity colors are defects.
 
-**Control grammar.** The dominant control pattern is mono 10px 700 uppercase · min-height 34px · `--radius-xs` · brass-mix hover. Heights snap to {24, 28, 34, 44}; radius vocabulary is {`--radius-xs`, `--radius-md`, `--radius-pill` for dots/pills only}. Raw px radii and off-snap heights are drift.
+**Control grammar.** The dominant control pattern is mono 10px 700 uppercase · min-height 34px · `--radius-xs` · neutral-wash hover. Popovers and menus use the `--popover-*` tokens (width, padding, row height, row radius, icon size, divider space) from `theme.css`; a menu with its own literal sizes is grammar drift. Heights snap to {24, 28, 34, 44}; radius vocabulary is {`--radius-xs`, `--radius-md`, `--radius-pill` for dots/pills only}. Raw px radii and off-snap heights are drift.
 
 **Envelopes.** The skeleton sits at very low chroma (C≈0.012–0.02); identity tones live in a per-theme chroma envelope (instrument≈0.06 / maritime≈0.085 / carbon≈0.05). Any chromatic raw literal outside `theme.css` breaks two rules at once: it jumps the envelope and it cannot retune per theme; near-achromatic shadow/scrim/sheen depth literals are the sanctioned exception (console CLAUDE.md Design invariants).
 
@@ -31,7 +31,8 @@ Run the detectors over `<scope>` — for `full` depth, sweep each surface family
 
 - **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console CLAUDE.md Design invariants) — classify them out instead of reporting them. Always include features (`runtime/fleet-console/features/*`); most raw literals live there.
 - **Signal misuse**: `warn|aurora|positive|coral` tokens on non-state surfaces (badges, chips, avatars, identity marks, version labels).
-- **Brass misuse**: brass on permanently-lit ornaments or identity roles (its only roles: location, focus, hover).
+- **Brass misuse**: brass on permanently-lit ornaments or identity roles (its only roles: location and primary action), or a chromatic brass literal in any theme block.
+- **Focus outlines**: `outline:` or ring `box-shadow` in `:focus`/`:focus-visible`/`:focus-within` rules outside `forced-colors` blocks.
 - **Identity leaks**: `--user-accent` placements outside the ones the contract test allows; any `border-color`, glow, caption fill, or spine usage is a violation.
 - **Grammar drift**: `border-radius: [0-9]` raw px values; `999px` outside `--radius-pill`; control heights off the snap; non-mono/non-uppercase text on control-class elements.
 

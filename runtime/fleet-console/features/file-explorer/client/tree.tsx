@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import {
   forwardRef,
   useCallback,
@@ -2583,7 +2584,7 @@ function TreeOptionsMenu({ sortMode, showHidden, t, triggerRef, onSelectSort, on
               onFocus={() => setActiveIndex(index)}
             >
               <span>{label}</span>
-              {checked !== undefined && <span className="fexp-sort-menu-check" aria-hidden="true">✓</span>}
+              {checked !== undefined && <span className="fexp-sort-menu-check" aria-hidden="true"><MenuCheckGlyph /></span>}
             </button>
           </div>
         );

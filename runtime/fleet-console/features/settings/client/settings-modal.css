@@ -78,7 +78,7 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
 .settings-modal-search > input::-webkit-search-cancel-button { display: none; }
 /* 검색은 은은하게 — 포커스는 면이 한 단 밝아지는 것으로 말하고, 키보드로 들어왔을 때만 위치 채널(brass) 고리가 선다. */
 .settings-modal-search:focus-within { background: color-mix(in oklch, var(--text-primary) 9%, transparent); }
-.settings-modal-search:has(> input:focus-visible) { box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 45%, transparent); }
+.settings-modal-search:has(> input:focus-visible) { box-shadow: var(--focus-face); }
 
 .settings-modal-tabs {
   display: flex;
@@ -109,7 +109,7 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
   background: color-mix(in oklch, var(--text-primary) 9%, transparent);
   color: var(--text-primary);
 }
-.settings-modal-tab:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.settings-modal-tab:focus-visible { box-shadow: var(--focus-face); }
 .settings-modal-tab-glyph { display: grid; place-items: center; flex: none; width: 18px; height: 18px; color: var(--text-secondary); }
 .settings-modal-tab[aria-selected="true"] .settings-modal-tab-glyph { color: var(--text-primary); }
 .settings-modal-tab-glyph > svg { width: 18px; height: 18px; }
@@ -137,7 +137,7 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
 }
 .settings-modal-close > svg { width: 16px; height: 16px; }
 .settings-modal-close:hover { background: color-mix(in oklch, var(--text-primary) 8%, transparent); color: var(--text-primary); }
-.settings-modal-close:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.settings-modal-close:focus-visible { box-shadow: var(--focus-face); }
 
 /* 본문 열은 컨테이너다 — 설정 페인의 좁은 폭 규칙(@container)이 모달 폭에서도 같은 판단을 한다. */
 .settings-modal-scroll {

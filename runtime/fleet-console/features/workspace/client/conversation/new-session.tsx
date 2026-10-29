@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useViewportFit, MenuCheckGlyph } from "@fleet-console/ui/react";
 import type { ObjectiveCatalogPlugin, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../objectives/shared/records/types.js";
 import { fetchObjectiveCatalog, OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../../execution/client/objective-records.js";
 
@@ -757,6 +758,7 @@ function TheaterMenu({ theaters, current, onPick, onAdd, onClose }: {
 }) {
   const t = useT();
   const ref = useRef<HTMLDivElement | null>(null);
+  useViewportFit(ref, true);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   // 열릴 때 한 번만 — 닫기 콜백은 렌더마다 새로 오므로 ref 로 읽는다(의존성에 두면 렌더마다 포커스를 첫 항목으로 되돌린다).
@@ -794,7 +796,7 @@ function TheaterMenu({ theaters, current, onPick, onAdd, onClose }: {
         <button key={theater.id} type="button" role="menuitemradio" aria-checked={theater.id === current} className="new-session-menu-item" onClick={() => onPick(theater.id)}>
           <TheaterGlyph size={16} />
           <span className="new-session-row-label">{theater.label}</span>
-          {theater.id === current ? <span className="new-session-menu-check" aria-hidden="true">✓</span> : null}
+          {theater.id === current ? <span className="new-session-menu-check" aria-hidden="true"><MenuCheckGlyph /></span> : null}
         </button>
       ))}
       <div className="new-session-menu-divider" role="separator" />

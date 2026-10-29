@@ -82,8 +82,7 @@
 }
 
 .terminal-key:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--focus-face);
 }
 
 /* ── 모바일 Objective 화면의 터미널 독(impl-spec S-30) ──────────────────────────────────
@@ -156,8 +155,7 @@
 .terminal-key-bar.is-mobile .terminal-key:focus-visible,
 .terminal-confirm-row .terminal-key:focus-visible,
 .terminal-key-keyboard:focus-visible {
-  outline: 2px solid var(--m-text);
-  outline-offset: -2px;
+  box-shadow: var(--focus-face);
 }
 
 .terminal-key-keyboard {

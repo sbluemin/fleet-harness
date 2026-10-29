@@ -274,9 +274,8 @@
 }
 
 .right-rail-resize-handle:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
   background: color-mix(in oklch, var(--brass) 50%, transparent);
+  box-shadow: var(--focus-face);
 }
 
 .right-rail.is-dragging .right-rail-resize-handle {
@@ -384,8 +383,7 @@
 }
 
 .rail-pane-divider:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: -1px;
+  box-shadow: var(--focus-face);
 }
 
 .rail-pane-divider[aria-disabled="true"] {
@@ -484,8 +482,7 @@
 }
 
 .pane-caption-control:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: -1px;
+  box-shadow: var(--focus-face);
 }
 
 .right-rail.has-detail-overlay,

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useViewportFit, MenuCheckGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 
@@ -50,6 +51,7 @@ export function LaunchModelEffort({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [open, setOpen] = useState(false);
+  useViewportFit(menuRef, open);
   const seenDismiss = useRef(dismissSignal);
 
   const rows = groups.flatMap((group) => group.rows);
@@ -264,7 +266,7 @@ function ModelRow({ row, selectedModel, onPick }: {
       >
         <span className="launch-variant-label">{row.label}</span>
         {row.starred ? <span className="launch-variant-star" aria-hidden="true">★</span> : null}
-        {rowModel === selectedModel ? <span className="launch-pop-check" aria-hidden="true">✓</span> : null}
+        {rowModel === selectedModel ? <span className="launch-pop-check" aria-hidden="true"><MenuCheckGlyph /></span> : null}
       </button>
     </div>
   );
