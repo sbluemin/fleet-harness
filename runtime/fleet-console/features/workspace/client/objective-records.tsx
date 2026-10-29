@@ -21,7 +21,7 @@ import { objectiveRecordAccentFromNode } from "./objective-accent.js";
 import { getTheaterGroupCollapse, pruneObjectiveAccents } from "./sidebar/group-collapse-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/feature-capabilities.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
-import { RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
+import { useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
 import { ObjectiveRecordsSideBar } from "./sidebar/objective-records-side-bar.js";
 import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
@@ -37,7 +37,7 @@ import { setMobileDestination, takeMobileConversationDestination } from "../../.
 import { ObjectiveBodyPool, type ObjectiveBodyConfig } from "../../../core/client/src/chrome/mobile/objective-body-pool.js";
 import { getViewModeSnapshot, useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
-import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarDeputies, ConversationStage } from "./conversation/conversation-shell.js";
+import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationRightRail, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarDeputies, ConversationStage } from "./conversation/conversation-shell.js";
 import { setArenaInsets, type ArenaInsets } from "./conversation/arena-insets.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
 import { setConversationObjectiveRename } from "./conversation/conversation-slots.js";
@@ -434,7 +434,7 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
         toolContext={toolsContext}
       />
       {toastRegion}
-      <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchObjective={handleRailLaunchObjective} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
+      <ConversationRightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchObjective={handleRailLaunchObjective} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
       {objectiveRecordMenuLayer}
       <CommanderRowMenuLayer
         onSetAccent={handleSetAccent}

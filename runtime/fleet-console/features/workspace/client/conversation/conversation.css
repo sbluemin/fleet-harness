@@ -16,6 +16,25 @@
   background: var(--conversation-surface);
 }
 
+/* Doctrine: 사령관·지휘관의 전용 패널은 아바타 색을 행동 강조로 쓴다.
+   신호·팝오버·포커스 워시는 바꾸지 않는다. 루트에서 이미 계산된 파생 토큰은 이 경계에서 다시 결합한다. */
+.workspace-avatar-panel {
+  --brass: var(--conversation-accent-body);
+  --brass-bright: var(--conversation-accent);
+  --brass-deep: var(--conversation-accent-body);
+  --brass-ink: var(--conversation-accent);
+  --brass-quiet: var(--conversation-accent-body);
+  --brass-quiet-ink: var(--conversation-accent);
+  --brass-glow: color-mix(in oklab, var(--conversation-accent) 12%, transparent);
+  --text-on-brass: var(--mongle-face);
+  --control-hover-fill: color-mix(in oklab, var(--conversation-accent) 8%, transparent);
+  --control-tint-fill: color-mix(in oklab, var(--conversation-accent) 9%, transparent);
+  --control-tint-ink: var(--conversation-accent);
+  --quiet-switch-track: var(--conversation-accent-body);
+  --quiet-switch-rim: var(--conversation-accent-body);
+  --quiet-switch-knob: var(--mongle-face);
+}
+
 .console-body.is-conversation {
   position: relative;
   overflow: hidden;

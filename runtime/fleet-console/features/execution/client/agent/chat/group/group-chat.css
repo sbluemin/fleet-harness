@@ -94,12 +94,14 @@
   overflow-wrap: anywhere;
 }
 .group-chat-bubble.is-human {
-  /* 사람의 말풍선은 한 단 밝은 회색 — 지휘관·구성원의 말풍선과 면으로 갈린다. */
-  background: var(--ink-veil);
+  /* Doctrine: 오른쪽 사람 말·답한 결정은 대화 주인의 아바타 몸색이다. 상태 신호와 왼쪽 발화는 그대로 둔다. */
+  background: var(--conversation-accent-body, var(--ink-veil));
+  color: var(--conversation-human-ink, var(--text-primary));
   border: 1px solid transparent;
   border-radius: 22px;
   white-space: pre-wrap;
 }
+.group-chat-bubble.is-human :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md :is(p, h1, h2, h3, h4, blockquote, th, a), .agent-chat-dispatch-text, .fc-mention-chip, .fc-mention-chip-label) { color: inherit; }
 .group-chat-bubble.is-markdown { white-space: normal; }
 .group-chat-bubble.is-agent {
   background: var(--surface-panel-raised);
@@ -1095,7 +1097,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
    글자로 쌓이고, 말풍선의 overflow-wrap:anywhere 가 공백 없는 답·URL 도 말풍선 폭 안에서 꺾는다. */
 .group-card-settled-body { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .group-card-settled-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.group-card-settled-q { font-size: var(--t-xs); color: var(--text-secondary); }
+.group-card-settled-q { font-size: var(--t-xs); color: var(--conversation-human-ink, var(--text-secondary)); opacity: 0.8; }
 .group-card-settled-mark { flex: none; color: var(--positive-ink); }
 
 /* 구성원 턴 접기 — 짧은 진행 말은 발화자 표식 줄의 칩 하나로, 긴 말풍선은 높이 상한으로, 구성원 보고 줄은
@@ -1283,7 +1285,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-capped { padding: 0; }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-capped > .group-chat-bubble-body { padding: 10px 15px; }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent { border-color: transparent; background: var(--m-chip); color: var(--m-text); --group-chat-bubble-face: var(--m-chip); }
-:root[data-view-mode="mobile"] .group-chat-bubble.is-human { max-width: calc(100% - 48px); border-color: transparent; background: var(--m-inverse); color: var(--m-on-inverse); }
+:root[data-view-mode="mobile"] .group-chat-bubble.is-human { max-width: calc(100% - 48px); border-color: transparent; background: var(--conversation-accent-body, var(--m-inverse)); color: var(--conversation-human-ink, var(--m-on-inverse)); }
 /* 말풍선 안 본문 — 읽기 서체 변수를 이 상자 안에서만 고딕으로 다시 잡는다(루트의 모바일 대입은 그대로). */
 :root[data-view-mode="mobile"] .group-chat-bubble :is(.markdown-body, .agent-chat-dispatch-md, .agent-chat-dispatch-text) {
   --font-content: var(--m-sans);
@@ -1293,7 +1295,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   font-size: var(--m-fs-list);
   line-height: 24px;
 }
-:root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md *, .agent-chat-dispatch-text) { color: inherit; }
+:root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md :is(p, h1, h2, h3, h4, blockquote, th, a), .agent-chat-dispatch-text) { color: inherit; }
 /* 반전 면 위의 앞머리 멘션도 말풍선 글자색을 그대로 진다 — 본문색·톤 잉크는 일반 면 기준이라 반전 면에서는 대비가 무너진다. */
 :root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.fc-mention-chip, .fc-mention-chip-label) { color: inherit; }
 /* 말풍선 안 코드·표는 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */

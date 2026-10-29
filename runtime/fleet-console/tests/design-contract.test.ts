@@ -139,6 +139,10 @@ const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   // Commander-row TSX injects each Objective's identity accent through an inline style.
   "--user-accent",
+  // 아바타 책의 같은 키가 대화 패널·말풍선에 주입하는 정체성 색이다(avatar-accent.ts).
+  "--conversation-accent",
+  "--conversation-accent-body",
+  "--conversation-human-ink",
   // Sidebar TSX injects its measured width for the shell layout.
   "--side-bar-width",
   // Sidebar TSX injects the transient drag offset of a commodore header.
@@ -1645,8 +1649,8 @@ describe("Console core design contract", () => {
       for (const declaration of declarations) {
         // [doctrine] identity-file·quiet·두 배지 면은 다크 3종 보정(채도 봉투·lights-out)이 라이트로
         // 내려오지 않게 지금의 값을 잇는 자리다 — 사용자 범위가 다크 테마였다(목표 f90ef806).
-        // [doctrine] 팝오버 그림자는 종이 위 무채색 깊이로, 사령관 별 배지의 뚫음 색은 짙어진 강조 원판 위 밝은 바탕으로 분화한다.
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge|popover-shadow|mongle-star-cut)[a-z-]*|--weight-regular|color-scheme):$/);
+        // [doctrine] 팝오버 그림자는 종이 위 무채색 깊이로, 역할 표식은 중립 행동 잉크와 독립된 기존 금색으로 분화한다.
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge|popover-shadow|role-commodore)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.

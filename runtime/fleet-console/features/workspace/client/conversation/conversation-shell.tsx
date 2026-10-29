@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 
 import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -18,7 +18,7 @@ import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, useFea
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { ObjectiveBodySlot, type ObjectiveBodyConfig } from "../../../../core/client/src/chrome/mobile/objective-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
-import { MIN_PANEL_WIDTH, openConversationTab, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
+import { MIN_PANEL_WIDTH, openConversationTab, RightRail, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { closeRailPanel, dismissRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { mayAutoOpenConversationRail, useConversationRailMemory } from "./conversation-rail-memory.js";
@@ -30,6 +30,7 @@ import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.
 import { objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { TheaterGlyph } from "../components/theater-glyph.js";
 import { AvatarEditor, KeyedAvatar, ObjectiveAvatar, objectiveRecordAvatarRole, objectiveRecordMongleState } from "../avatars.js";
+import { useAvatarAccent } from "../avatar-accent.js";
 import { pluginRuntimeState } from "../../../execution/client/objective-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
@@ -301,6 +302,26 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
  * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 기록·루틴·정보·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
  * 가운데 대화 머리 줄의 공통 도구모음(ConversationToolbar)에 선다.
  */
+export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
+  const subject = useConversationSubject();
+  const standIn = useConversationStandIn();
+  const surface = useConversationSurface();
+  const { conversationSurfaces } = useFeatureRegistry();
+  const state = useConsoleState();
+  const language = useConsoleLocale() === "ko" ? "ko" : "en";
+  const descriptor = surface === null ? null : conversationSurfaces.find((entry) => entry.id === surface.surfaceId) ?? null;
+  useConversationSurfaceHead(descriptor);
+  const context = surface && descriptor ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const : null;
+  const avatarKey = subject ? objectiveRecordAvatarKey(subject.id) : standIn ? objectiveRecordAvatarKey(standIn) : context ? descriptor?.avatar?.(context)?.key ?? null : null;
+  const accent = useAvatarAccent(avatarKey);
+  const activeId = useRailActivePanelId();
+  const entries = useDesktopRailEntries();
+  // 설정·파일 같은 전역/작전구역 도구는 중립으로 남고, 대화에 딸린 탭만 주인의 색을 받는다.
+  const tabs = useConversationObjectiveTabPanels();
+  const ownedPanel = tabs.some((tab) => tab.id === activeId) || entries.some(({ entry }) => entry.id === activeId && isConversationTab(entry));
+  return <RightRail {...props} {...(ownedPanel && accent ? { panelClassName: "workspace-avatar-panel", panelStyle: accent } : {})} />;
+}
+
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
   const t = useT();
   const sections = usePanelSections();

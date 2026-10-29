@@ -2400,9 +2400,9 @@
 .mongle-avatar-blush-line { fill: none; stroke: var(--mongle-blush-ink); stroke-width: 0.8; stroke-linecap: round; }
 .mongle-avatar-tooth { fill: var(--mongle-tooth); stroke: var(--mongle-face); stroke-width: 0.5; }
 
-/* 역할 특징 — 사령관은 brass 원판에 별을 뚫은 배지(사령관 글리프의 문법), 지휘관은 몸 윗선에 꽂힌 안테나. */
-.mongle-avatar-star-plate { fill: var(--brass); stroke: var(--surface-panel); stroke-width: 1.1; }
-.mongle-avatar-star-cut { fill: var(--mongle-star-cut, var(--mongle-face)); }
+/* 역할 특징 — 사령관은 고정 금색 별 배지, 지휘관은 기존 전구색 안테나. 행동·대화 강조색을 상속하지 않는다. */
+.mongle-avatar-star-plate { fill: var(--role-commodore); stroke: var(--surface-panel); stroke-width: 1.1; }
+.mongle-avatar-star-cut { fill: var(--mongle-face); }
 .mongle-avatar-antenna-stalk { fill: none; stroke: var(--mongle-face); stroke-width: 1.6; stroke-linecap: round; }
 .mongle-avatar-antenna-bulb { fill: var(--mongle-bulb); stroke: var(--mongle-face); stroke-width: 0.9; }
 
@@ -8601,7 +8601,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   transition: border-color var(--duration-fast);
 }
 /* 캡슐 초점 테두리 — 금색 기운 없이 중성으로(라이트·다크 공통). */
-.fc-composer-capsule:focus-within { border-color: var(--hairline-strong); }
+.fc-composer-capsule:focus-within { box-shadow: var(--focus-face); }
 .fc-composer-capsule.is-disabled { opacity: var(--control-disabled-opacity); }
 .fc-composer-capsule.has-attachments { flex-wrap: wrap; }
 /* 인용 칩 줄도 첨부 줄처럼 캡슐 맨 위 한 줄을 차지한다 — 입력·원은 그 아래 줄에 남는다. */

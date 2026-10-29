@@ -3,6 +3,8 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import * as React from "react";
 import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
+import { useAvatarAccent } from "../../../../../workspace/client/avatar-accent.js";
+import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
 
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
@@ -15,7 +17,7 @@ import type { AgentConversationEntry } from "../../../../shared/chat-renderer.js
 import { getGroupT } from "./group-chat-i18n.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
 import { MentionChip } from "../../../composer-primitives/mention-chip.js";
-import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey, speakerTone } from "./speaker-mark.js";
+import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey, speakerTone, useCommodoreSpeakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
 import "./group-chat.css";
@@ -105,6 +107,11 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
   const entries = snapshot.entries;
+  const commodoreKey = useCommodoreSpeakerKey();
+  const commanderId = snapshot.rootObjectiveId ?? snapshot.participants.find(({ speaker }) => speaker.kind === "commander" || speaker.kind === "objectiveRecord")?.speaker.objectiveId;
+  const commodore = snapshot.participants.find(({ speaker }) => speaker.kind === "commodore")?.speaker;
+  const avatarKey = commanderId ? objectiveRecordAvatarKey(commanderId) : commodore?.commodoreId ? commodoreAvatarKey(commodore.commodoreId) : commodore ? commodoreKey : null;
+  const accent = useAvatarAccent(avatarKey);
   const logRef = React.useRef<HTMLDivElement | null>(null);
   // 진행 줄과 입력창은 대화 위에 떠 있는 독 하나다(데스크톱·폰 배치 모두) — 기록이 독 뒤까지 내려가고 독 높이(`--m-dock-h`)만큼 아래를 비운다.
   const chatRef = React.useRef<HTMLDivElement | null>(null);
@@ -266,7 +273,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   const workingLine = <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} inline={inlineWorking} />;
 
   return (
-    <div ref={chatRef} className="group-chat" onClick={onCodeCopyClick}>
+    <div ref={chatRef} className="group-chat" style={accent} onClick={onCodeCopyClick}>
       <span className="agent-chat-sr-only" aria-live="polite" aria-atomic="true">{codeCopyAnnouncement}</span>
       <div
         ref={logRef}

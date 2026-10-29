@@ -16,8 +16,8 @@ export function CommodoreMentionGlyph({ className }: { readonly className: strin
   );
 }
 
-/** 사령관의 목표 줄 끝 표식 — 색(켬·끔)과 크기는 호스트 표식 칸이 정하므로 이 마크의 기본 색 규칙을 싣지 않는다. */
-export const renderCommodoreRowGlyph = () => <CommodoreMentionGlyph className="objectives-commodore-row-mark-glyph" />;
+/** 사령관의 목표 줄 끝 표식 — 크기는 호스트가 정하고, 위임 중인 마크는 사령관 역할색을 지킨다. */
+export const renderCommodoreRowGlyph = () => <CommodoreMentionGlyph className="objectives-commodore-row-mark-glyph is-delegated" />;
 
 /** 맡기지 않은 목표의 줄 끝 표식 — 같은 판과 별의 외곽선. 누르면 사령관에게 맡긴다(호스트가 줄에 올릴 때만 세운다). */
 export const renderCommodoreRowGlyphOff = () => (

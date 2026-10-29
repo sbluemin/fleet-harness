@@ -44,6 +44,9 @@ interface RightRailProps {
    * 열린 카드 맨 위에 서는 머리 — 대화 중심 화면이 도구 글자 탭을 싣는다. 없으면 카드는 지금처럼 본문뿐이다.
    */
   readonly header?: ReactNode;
+  /** 대화 소유자가 명시적으로 주는 패널 강조. 다른 도구·전역 테마에는 전파하지 않는다. */
+  readonly panelClassName?: string;
+  readonly panelStyle?: CSSProperties;
   /**
    * 레일이 남겨 둘 가운데 폭(px). 생략하면 148px이다. 대화 중심 화면은 대화 칸의
    * 최소 폭과 여백을 넘긴다. 카드 폭 상한만 바뀌고, 기억한 외곽 폭은 그대로 보존된다.
@@ -73,7 +76,7 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
  * 도구 탭(RailToolIcons)을 세우고, 카드는 켜진 도구가 있을 때만 선다.
  */
 // 부모(ObjectiveRecords)는 운영 상태가 바뀔 때마다 다시 그린다 — 받는 값이 그대로면 레일(과 열린 패널 본문)은 따라 그리지 않는다.
-export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjective, header, reservedArenaWidth = 148 }: RightRailProps) {
+export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjective, header, panelClassName, panelStyle, reservedArenaWidth = 148 }: RightRailProps) {
   const t = useT();
   const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
   const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
@@ -332,7 +335,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
         ...(overlayInRail ? { "--rail-overlay-reach": `${Math.max(0, slotWidth - cardWidth)}px` } : {}),
       } as CSSProperties}
     >
-      <div className={`right-rail-panel-slot${hasPanel && header ? " has-header" : ""}`}>
+      <div className={`right-rail-panel-slot${hasPanel && header ? " has-header" : ""}${panelClassName ? ` ${panelClassName}` : ""}`} style={panelStyle}>
         {hasPanel && header ? <div className="right-rail-panel-header">{header}</div> : null}
         {hasPanel && (
           <div
