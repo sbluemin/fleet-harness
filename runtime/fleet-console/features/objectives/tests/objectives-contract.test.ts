@@ -2467,7 +2467,13 @@ describe("Objectives contract", () => {
     const continueQuestion = [{ header: "Backlog", text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }];
     const asked = await command("request_decision", { expectedRevision: revision, questions: continueQuestion }, id);
     // 답이 오지 않아 같은 질문을 다시 묻는다 — 요청은 지워지지도 새 id 로 바뀌지도 않고(reused), 그 id 로 낸 사람의 답이 그대로 받아들여진다.
-    expect(await command("request_decision", { expectedRevision: asked.decisionRequestRevision, questions: continueQuestion }, id)).toMatchObject({ requestId: asked.requestId, reused: true, replacedRequestId: null, decisionRequestRevision: asked.decisionRequestRevision });
+    expect(await command("request_decision", { expectedRevision: asked.decisionRequestRevision, questions: continueQuestion }, id)).toMatchObject({ requestId: asked.requestId, reused: true, decisionRequestRevision: asked.decisionRequestRevision });
+    // 답이 없는 요청이 있는 동안 다른 질문은 거절된다 — 먼저 거두고 다시 묻는다.
+    const otherQuestion = [{ header: "Backlog", text: "Pause now?", options: [{ label: "Pause" }, { label: "Later" }] }];
+    const pending = await call("request_decision", { objectiveId: id, expectedRevision: asked.decisionRequestRevision, questions: otherQuestion }, id);
+    expect(pending.isError).toBe(true);
+    expect(pending.structuredContent).toMatchObject({ error: "decision_pending", requestId: asked.requestId, hint: expect.stringContaining("withdraw_decision_request") });
+    expect(store.find(id)!.decisionRequest?.id).toBe(asked.requestId);
     // 결정 요청이 사령관을 기다리면 지휘관이 일하는 중이어도 그 맥락을 읽는다.
     activity.set(id, "running");
     expect(await board({ action: "transcript", objectiveId: id })).toMatchObject({ session: { kind: "commander" } });
