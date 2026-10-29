@@ -6,7 +6,7 @@ import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/ui/reac
 
 import type { FolderEntry, FolderListResult } from "../shared/types.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
-import { DOCUMENT_PANE_ID } from "./file-navigation.js";
+import { DOCUMENT_PANE_ID, ownerCommodoreId } from "./file-navigation.js";
 import { LIST_TIMEOUT_MS, makeFilesClient } from "./files-client.js";
 import { getT, translateServerError } from "./i18n/index.js";
 import { readShowHidden, sortEntries } from "./tree.js";
@@ -50,7 +50,9 @@ export function MobileFileTree(ctx: PaneContext) {
   const t = getT(ctx.language);
   const { theaterId, mobileBar, panes, visible } = ctx;
   const label = useTheaterLabel(ctx);
-  const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
+  // 목록·복원에 실을 사령관 — 목적지 주소가 지금 Theater를 가리키면 그 사령관, 아니면 표면의 사령관. 추정하지 않는다.
+  const commodoreId = ownerCommodoreId(ctx.params, theaterId, ctx.commodoreId);
+  const files = useMemo(() => makeFilesClient(theaterId ? { theaterId, ...(commodoreId ? { commodoreId } : {}) } : null), [commodoreId, theaterId]);
   const [folders, setFolders] = useState<ReadonlyMap<string, Folder>>(new Map());
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const showHidden = useMemo(() => readShowHidden(), []);
@@ -90,6 +92,10 @@ export function MobileFileTree(ctx: PaneContext) {
   }, [theaterId, load]);
   const wasVisible = useRef(visible);
   const params = ctx.params;
+  // 목적지 주소의 Theater — 주소가 가리키는 Theater가 표면과 다를 수 있다(다른 곳에서 연 파일).
+  const addressScope = params.theaterId || theaterId;
+  // 그 Theater의 사령관 — 주소가 가리키는 Theater 기준이다.
+  const addressCommodore = ownerCommodoreId(params, addressScope ?? null, ctx.commodoreId);
   // 새로고침·주소 다시 열기는 트리만 세운다 — 주소에 문서 좌표가 남아 있고 문서 칸이 아직 없으면 그 문서를 다시 연다(데스크톱 트리의 세션 복원과 같은 길).
   // 다른 곳에서 연 파일은 호스트가 문서 칸을 먼저 열어 두므로 건드리지 않는다. 마운트마다 한 번만 — 닫고 돌아온 트리가 다시 열지 않게.
   // 새로고침에서는 트리가 주소의 params 보다 먼저 서므로, 좌표(path)가 실린 뒤에야 그 한 번을 쓴다.
@@ -99,10 +105,10 @@ export function MobileFileTree(ctx: PaneContext) {
     if (restoredRef.current || !theaterId || !path) return;
     restoredRef.current = true;
     if (params.directory !== undefined || panes.isOpen(DOCUMENT_PANE_ID)) return;
-    const scope = params.theaterId || theaterId;
+    const scope = addressScope ?? theaterId;
     activateStoredDocument(scope, { relativePath: path, name: nameOfPath(path), preview: params.preview !== "false" });
-    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path, theaterId: scope } });
-  }, [theaterId, params, panes]);
+    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path, theaterId: scope, ...(addressCommodore ? { commodoreId: addressCommodore } : {}) } });
+  }, [addressCommodore, addressScope, theaterId, params, panes]);
   useEffect(() => {
     if (visible && !wasVisible.current) {
       revalidate();
@@ -135,7 +141,7 @@ export function MobileFileTree(ctx: PaneContext) {
     activateStoredDocument(theaterId, { relativePath: entry.relativePath, name: entry.name, preview: true });
     // 트리에서 연 문서도 주소에 좌표를 싣는다 — 새로고침이 그 문서를 되살리고, 트리로 돌아오면 위 효과가 걷는다.
     panes.replaceParams({ ...Object.fromEntries(Object.entries(params).filter(([key]) => !DOCUMENT_ADDRESS_KEYS.has(key))), path: entry.relativePath });
-    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: entry.relativePath, theaterId, ...(ctx.commodoreId ? { commodoreId: ctx.commodoreId } : {}) } });
+    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: entry.relativePath, theaterId, ...(commodoreId ? { commodoreId } : {}) } });
   };
 
   const rows = (relativePath: string, depth: number): ReactNode[] => {
@@ -171,6 +177,8 @@ export function MobileFileDocument(ctx: PaneContext) {
   const t = getT(ctx.language);
   const { mobileBar, panes, visible, shell, language, signal, navigate } = ctx;
   const theaterId = ctx.params.theaterId || ctx.theaterId;
+  // 문서 주소가 가리키는 Theater의 사령관 — 주소 기준, 모르면 표면의 사령관. 추정하지 않는다.
+  const commodoreId = ownerCommodoreId(ctx.params, theaterId, ctx.commodoreId);
   const path = ctx.params.path ?? "";
   const { docStates } = useFileExplorerViewState(theaterId);
   const viewState = path ? docStates.get(path) ?? { kind: "loading" as const } : { kind: "none" as const };
@@ -182,20 +190,20 @@ export function MobileFileDocument(ctx: PaneContext) {
   useEffect(() => {
     if (!theaterId || !path) return;
     // 문서를 바꿀 때만 읽는다 — 캐시가 있으면 로딩 화면 없이 배경에서 다시 확인한다.
-    void loadDocument(theaterId, path, { silent: getFileExplorerSnapshot(theaterId).docStates.has(path), language, signal });
-  }, [theaterId, path, language, signal]);
+    void loadDocument(theaterId, path, { silent: getFileExplorerSnapshot(theaterId).docStates.has(path), language, signal, ...(commodoreId ? { commodoreId } : {}) });
+  }, [commodoreId, theaterId, path, language, signal]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), TOAST_MS);
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const latest = useRef({ theaterId, path, t });
-  latest.current = { theaterId, path, t };
+  const latest = useRef({ theaterId, commodoreId, path, t });
+  latest.current = { theaterId, commodoreId, path, t };
   const openShell = useCallback(() => {
-    const { theaterId: id, path: current, t: translate } = latest.current;
+    const { theaterId: id, commodoreId: owner, path: current, t: translate } = latest.current;
     if (!id || !current) return;
-    void shell.openAt({ theaterId: id, path: parentDirOf(current) })
+    void shell.openAt({ theaterId: id, ...(owner ? { commodoreId: owner } : {}), path: parentDirOf(current) })
       .then((result) => { if (!result.ok) setToast({ text: translate(`fileExplorer.shell.${result.reason}`), at: Date.now() }); })
       .catch(() => setToast({ text: translate("fileExplorer.shell.failed"), at: Date.now() }));
   }, [shell]);
@@ -240,7 +248,7 @@ export function MobileFileDocument(ctx: PaneContext) {
         {viewState.kind === "error" ? <p className="fexp-m-note is-error">{viewState.message}</p> : null}
         {isCode && isMarkdown && !source ? (
           <div className="fexp-m-reading">
-            <MarkdownViewer content={viewState.content} navigate={navigate}  relativePath={viewState.relativePath} theaterId={theaterId} truncated={viewState.truncated} language={language} />
+            <MarkdownViewer content={viewState.content} navigate={navigate}  relativePath={viewState.relativePath} theaterId={theaterId} commodoreId={commodoreId} truncated={viewState.truncated} language={language} />
           </div>
         ) : null}
         {isCode && (!isMarkdown || source) ? (

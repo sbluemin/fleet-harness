@@ -36,6 +36,8 @@ type PeekState =
 interface FilePeekProps {
   readonly theaterId: string;
   readonly objectiveId?: string;
+  /** 훑어보는 Theater를 소유한 사령관 — 목표 문맥이 아닐 때 부르는 쪽의 문맥에서만 싣는다. */
+  readonly commodoreId?: string;
   readonly relativePath: string;
   readonly name: string;
   /** 행의 위·아래 y — 뷰포트(boundary) 기준 px. 카드는 아래에 서고, 자리가 없으면 위로 뒤집힌다. */
@@ -62,7 +64,7 @@ export function resolvePeekTop(
   return Math.max(margin, Math.min(below, boundaryHeight - cardHeight - margin));
 }
 
-export function FilePeek({ theaterId, objectiveId, relativePath, name, anchorTop, anchorBottom, boundaryRef, language, t }: FilePeekProps) {
+export function FilePeek({ theaterId, objectiveId, commodoreId, relativePath, name, anchorTop, anchorBottom, boundaryRef, language, t }: FilePeekProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<PeekState>({ kind: "loading" });
   const [top, setTop] = useState<number | null>(null);
@@ -70,8 +72,9 @@ export function FilePeek({ theaterId, objectiveId, relativePath, name, anchorTop
   useEffect(() => {
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
     if (IMAGE_EXTS.has(ext)) {
+      const ownerQuery = !objectiveId && commodoreId ? `&commodoreId=${encodeURIComponent(commodoreId)}` : "";
       const src = cacheBustedImageSrc(
-        `/api/v1/file-explorer/files/image?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`}&path=${encodeURIComponent(relativePath)}`,
+        `/api/v1/file-explorer/files/image?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}${ownerQuery}`}&path=${encodeURIComponent(relativePath)}`,
         knownMtime(theaterId, relativePath),
       );
       setState({ kind: "image", src });
@@ -84,7 +87,7 @@ export function FilePeek({ theaterId, objectiveId, relativePath, name, anchorTop
         const res = await fetch("/api/v1/file-explorer/files/read", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) }), relativePath, maxLines: PEEK_LINES }),
+          body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(commodoreId) }), relativePath, maxLines: PEEK_LINES }),
           signal: controller.signal,
         });
         if (!res.ok) {
@@ -115,7 +118,7 @@ export function FilePeek({ theaterId, objectiveId, relativePath, name, anchorTop
       }
     })();
     return () => controller.abort();
-  }, [name, relativePath, t, theaterId]);
+  }, [commodoreId, name, objectiveId, relativePath, t, theaterId]);
 
   useLayoutEffect(() => {
     const card = cardRef.current;

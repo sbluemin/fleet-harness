@@ -1,6 +1,5 @@
 import type { FolderListResult } from "../shared/types.js";
-import { surfaceSelector, type SurfaceSelector } from "../../workspace/shared/surface-selector.js";
-import { resolveTheaterOwner } from "../../commodore/client/theater-owner.js";
+import type { SurfaceSelector } from "../../workspace/shared/surface-selector.js";
 import type { ListFolderOptions, PluginFilesClient } from "./tree.js";
 
 /**
@@ -15,11 +14,12 @@ export const LIST_TIMEOUT_MS = 10_000;
  *
  * 트리 페인과 문서 로더가 함께 부르므로 어느 컴포넌트에도 속하지 않는다 — 문서 창은 이미지의
  * 기준 mtime을 얻으려 부모 폴더를 한 번 나열하고, 트리는 목록 그 자체를 그린다.
+ *
+ * selector는 부르는 쪽의 문맥(목표·창 params·표면 문맥)이 정한다. Theater에서 주인을
+ * 추정하지 않는다 — 사령관을 모르면 selector를 null로 내어 요청을 세운다.
  */
-export function makeFilesClient(selector: string | SurfaceSelector | null): PluginFilesClient {
-  const resolved = typeof selector === "string"
-    ? surfaceSelector({ theaterId: selector, commodoreId: resolveTheaterOwner(selector) })
-    : selector;
+export function makeFilesClient(selector: SurfaceSelector | null): PluginFilesClient {
+  const resolved = selector;
   return {
     listFolder: async (relativePath?, options: ListFolderOptions = {}) => {
       if (!resolved) throw new Error("no_theater");

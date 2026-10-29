@@ -16,6 +16,7 @@ import {
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
+import { surfaceSelectorQuery } from "../../workspace/shared/surface-selector.js";
 
 import type { GitFileStatus, GitStatusResult } from "../host/tree-services.js";
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../shared/types.js";
@@ -46,6 +47,8 @@ interface FileTreeProps {
   readonly files: PluginFilesClient;
   readonly theaterId: string | null;
   readonly objectiveId?: string;
+  /** 트리가 든 Theater를 소유한 사령관 — 목표 문맥이 아닐 때 페인 문맥에서만 싣는다. */
+  readonly commodoreId?: string;
   readonly selectedPath: string | null;
   readonly revealTarget?: FileRevealTarget | null;
   readonly onSelect: (entry: FolderEntry, mode: "preview" | "pinned") => void;
@@ -874,7 +877,7 @@ function isPermanentFolderError(code: string): boolean {
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, rootPath = "", files, theaterId, objectiveId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
+  { contextKey, rootPath = "", files, theaterId, objectiveId, commodoreId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -966,7 +969,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       const response = await fetch("/api/v1/file-explorer/files/git-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) }),
+        body: JSON.stringify(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(commodoreId) }),
       });
       if (!response.ok) return;
       const nextResult = await response.json() as GitStatusResult;
@@ -978,7 +981,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     } catch {
       // Git 상태는 보조 신호다. 조회 실패는 파일 탐색을 방해하거나 오류 UI를 만들지 않는다.
     }
-  }, [contextKey, objectiveId, theaterId]);
+  }, [commodoreId, contextKey, objectiveId, theaterId]);
 
   useEffect(() => {
     if (!theaterId) return;
@@ -1139,7 +1142,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       void (async () => {
         try {
           if (searchScope === "files") {
-            const referenced = await findReferencedFile(theaterId ?? "", query, controller.signal, objectiveId);
+            const referenced = await findReferencedFile(theaterId ?? "", query, controller.signal, objectiveId, commodoreId);
             if (referenced) {
               if (requestId !== filterRequestRef.current || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
               setFilterOutcome({ files: [{ relativePath: referenced.resolved.path, kind: referenced.resolved.kind, source: "path", exact: true, location: { line: referenced.ref.line, column: referenced.ref.column, anchor: referenced.ref.anchor } }], totalMatches: 1, complete: true, ignoredSkipped: false });
@@ -1151,7 +1154,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           const response = await fetch("/api/v1/file-explorer/files/palette-search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...paletteSearchRequestBody(theaterId ?? "", query, showHiddenRef.current, searchScope), ...(objectiveId ? { objectiveId, theaterId: undefined } : {}) }),
+            body: JSON.stringify({ ...paletteSearchRequestBody(theaterId ?? "", query, showHiddenRef.current, searchScope), ...(objectiveId ? { objectiveId, theaterId: undefined } : { ...theaterOwnerParam(commodoreId) }) }),
             signal: controller.signal,
           });
           if (!response.ok) {
@@ -1182,7 +1185,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [contextKey, filterText, objectiveId, searchScope, showHidden, theaterId]);
+  }, [commodoreId, contextKey, filterText, objectiveId, searchScope, showHidden, theaterId]);
 
   const attachTreeRef = useCallback((node: HTMLDivElement | null) => {
     treeResizeObserverRef.current?.disconnect();
@@ -1208,7 +1211,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
     let isFirstOpen = true;
     let gitStatusTimer: ReturnType<typeof setTimeout> | null = null;
-    const url = `/api/v1/file-explorer/files/watch?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`}`;
+    const url = `/api/v1/file-explorer/files/watch?${surfaceSelectorQuery(objectiveId ? { objectiveId } : { theaterId, ...(commodoreId ? { commodoreId } : {}) })}`;
     const es = new EventSource(url);
 
     // 루트 재조회 성공 시 stale error를 함께 걷어 에러 화면에서 회복한다
@@ -1639,7 +1642,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       return;
     }
     setCursorPath(row.entry.relativePath);
-    void performFileContextAction(action, theaterId ?? "", row.entry.relativePath, {}, objectiveId)
+    void performFileContextAction(action, theaterId ?? "", row.entry.relativePath, {}, objectiveId, commodoreId)
       .then(() => {
         if (action !== "copyRelativePath") return;
         rowNoteIdRef.current += 1;
@@ -2128,6 +2131,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             <FilePeek
               theaterId={theaterId}
               objectiveId={objectiveId}
+              commodoreId={commodoreId}
               relativePath={peekRow.row.entry.relativePath}
               name={peekRow.row.entry.name}
               anchorTop={TREE_PADDING_Y + peekRow.index * rowHeight - scrollTop}

@@ -3,7 +3,7 @@ import { openTheaterInbox } from "../../../../../features/workspace/client/theat
 import { resolveTheaterInboxLanding } from "../../../../../features/workspace/client/theater-contributions.js";
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
-import { getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
+import { getViewedCommodoreId, getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { useCommodoreList, setZoneCommodore, selectMobileCommodore, useZoneCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
@@ -131,20 +131,22 @@ export function ObjectiveSearch({
     const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
     if (!matchesShell || !desktopView) return providerSearchGroups;
     const theaterId = getViewedTheaterId();
+    // 활성 Theater를 소유한 사령관 — Shell 기동이 Theater 루트를 찾는다. 모르면 생략한다.
+    const commodoreId = getViewedCommodoreId();
     return [...providerSearchGroups, {
       panelId: "global-shell",
       panelTitle: "Shell",
       results: [
         { id: "open-shell", title: t("chrome.objectiveRecordSearch.openShell"), activate: () => undefined },
         ...(theaterId ? [{ id: "open-shell-here", title: t("chrome.objectiveRecordSearch.openShellHere"), activate: async () => {
-          const result = await capabilities.shell.openAt({ theaterId }).catch(() => null);
+          const result = await capabilities.shell.openAt({ theaterId, ...(commodoreId ? { commodoreId } : {}) }).catch(() => null);
           if (result?.ok) return;
           setShellNotice(t(result ? `chrome.objectiveRecordSearch.shell.${result.reason}` : "chrome.objectiveRecordSearch.shell.failed"));
           throw new Error("shell_open_refused");
         } }] : []),
       ],
     }];
-  }, [providerSearchGroups, mode, text, getViewedTheaterId(), desktopView, capabilities, t]);
+  }, [providerSearchGroups, mode, text, getViewedTheaterId(), getViewedCommodoreId(), desktopView, capabilities, t]);
   // 동작 띠가 펼쳐진 Objective 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [actionIndex, setActionIndex] = useState(0);
