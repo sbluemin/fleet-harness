@@ -2,7 +2,6 @@ import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "../../..
 import type { ClientConsoleStateCapability } from "../../../../workspace/shared/console-state.js";
 import type { PersistentComponentContext } from "../../../../workspace/shared/surface-contracts.js";
 import type { ShellOpenAtRequest as ShellCwdHint } from "../../../../workspace/shared/navigation.js";
-import { theaterOwnerParam } from "../../../../commodore/client/theater-owner.js";
 import * as React from "react";
 import { createPortal } from "react-dom";
 
@@ -399,13 +398,17 @@ export const expandedSurfaces = [shellSurface] as const;
  * 않는 셸은 spawn 위치에서 이미 떠났을 수 있으므로 상대 경로 링크를 세우지 않고 절대 경로만 남긴다.
  */
 function shellFileLinks(context: ExpandedSurfaceContext, key: string): TerminalFileLinks {
+  // Shell 표면이 서 있는 사령관 — 표면 문맥이 소유권을 말하고, 없으면 착지 params를 본다. 둘 다 모르면 생략한다.
+  const commodoreId = typeof context.commodoreId === "string" && context.commodoreId
+    ? context.commodoreId
+    : typeof context.params.commodoreId === "string" && context.params.commodoreId ? context.params.commodoreId : undefined;
   return {
     context: () => {
       const session = getShellSessionSnapshot(key);
       const theaterId = session?.open && session.cwd?.theaterId ? session.cwd.theaterId : null;
       if (!theaterId) return null;
       const cwdRelative = session?.cwdTracked ? session.cwd?.relative ?? null : null;
-      return { theaterId, cwdRelative };
+      return { theaterId, ...(commodoreId ? { commodoreId } : {}), cwdRelative };
     },
     open: (target) => context.navigate.openFile({ ...target, source: "shell" }),
   };

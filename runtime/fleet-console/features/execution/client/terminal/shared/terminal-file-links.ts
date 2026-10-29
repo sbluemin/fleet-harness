@@ -13,12 +13,16 @@ import type { IBufferLine, ILink, ILinkProvider, Terminal } from "@xterm/xterm";
  */
 export interface TerminalFileLinkContext {
   readonly theaterId: string;
+  /** 링크가 가리키는 Theater를 소유한 사령관. 출처 표면·세션이 아는 경우에만 싣는다. */
+  readonly commodoreId?: string;
   /** 터미널 cwd의 Theater 상대 경로(POSIX, 루트는 ""). Theater 밖이면 null. */
   readonly cwdRelative: string | null;
 }
 
 export interface TerminalFileLinkTarget {
   readonly theaterId: string;
+  /** 링크가 가리키는 Theater를 소유한 사령관. 출처가 모르면 생략한다. */
+  readonly commodoreId?: string;
   readonly path: string;
   readonly pathKind: "theater-relative" | "absolute";
   readonly line?: number;
@@ -184,11 +188,12 @@ function toTarget(ref: FileRef, context: TerminalFileLinkContext): TerminalFileL
     ...(ref.line === undefined ? {} : { line: ref.line }),
     ...(ref.column === undefined ? {} : { column: ref.column }),
   };
-  if (isAbsolute(ref)) return { theaterId: context.theaterId, path: ref.path, pathKind: "absolute", ...coordinates };
+  const owner = context.commodoreId ? { commodoreId: context.commodoreId } : {};
+  if (isAbsolute(ref)) return { theaterId: context.theaterId, ...owner, path: ref.path, pathKind: "absolute", ...coordinates };
   if (context.cwdRelative === null) return null;
   const joined = normalizePosix(context.cwdRelative ? `${context.cwdRelative}/${ref.path}` : ref.path);
   if (joined === null) return null;
-  return { theaterId: context.theaterId, path: joined, pathKind: "theater-relative", ...coordinates };
+  return { theaterId: context.theaterId, ...owner, path: joined, pathKind: "theater-relative", ...coordinates };
 }
 
 /** `a/./b/../c` → `a/c`. Theater 루트 위로 올라가면 null — 그 경로는 상대 링크로 세우지 않는다. */

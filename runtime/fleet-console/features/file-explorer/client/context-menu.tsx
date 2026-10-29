@@ -145,6 +145,7 @@ export async function performFileContextAction(
   relativePath: string,
   dependencies: Partial<FileContextActionDependencies> = {},
   objectiveId?: string,
+  commodoreId?: string,
 ): Promise<"fileExplorer.menu.pathCopied" | "fileExplorer.menu.relativePathCopied" | null> {
   if (action === "copyRelativePath") {
     const clipboard = dependencies.clipboard
@@ -159,7 +160,7 @@ export async function performFileContextAction(
   const endpoint = action === "copyPath"
     ? "/api/v1/file-explorer/files/clipboard"
     : "/api/v1/file-explorer/files/reveal";
-  const selector = objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) };
+  const selector = objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(commodoreId) };
   const body = action === "copyPath"
     ? { ...selector, relativePath }
     : { ...selector, relativePath, mode: action === "reveal" ? "reveal" : "open" };

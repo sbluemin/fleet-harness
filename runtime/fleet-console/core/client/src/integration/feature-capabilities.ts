@@ -320,7 +320,7 @@ export function createHostCapabilities(
           return target;
         }
         return land({ ...target, theaterId: request.theaterId, params: {
-          theaterId: request.theaterId, ...(request.objectiveId ? { objectiveId: request.objectiveId } : {}), path: request.path, pathKind: request.pathKind,
+          theaterId: request.theaterId, ...(request.objectiveId ? { objectiveId: request.objectiveId } : {}), ...(request.objectiveId || !request.commodoreId ? {} : { commodoreId: request.commodoreId }), path: request.path, pathKind: request.pathKind,
           ...(request.line === undefined ? {} : { line: String(request.line) }),
           ...(request.column === undefined ? {} : { column: String(request.column) }),
           ...target.params,

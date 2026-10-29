@@ -24,8 +24,9 @@ export function isSupportedMarkdownImagePath(relativePath: string): boolean {
   return [...MARKDOWN_IMAGE_EXTENSIONS].some((extension) => lower.endsWith(extension));
 }
 
-export function buildFileExplorerImageSrc(theaterId: string, relativePath: string, objectiveId?: string): string {
-  const selector = objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`;
+export function buildFileExplorerImageSrc(theaterId: string, relativePath: string, objectiveId?: string, commodoreId?: string): string {
+  const owner = !objectiveId && commodoreId ? `&commodoreId=${encodeURIComponent(commodoreId)}` : "";
+  const selector = objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}${owner}`;
   return `/api/v1/file-explorer/files/image?${selector}&path=${encodeURIComponent(relativePath)}`;
 }
 

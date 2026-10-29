@@ -6,7 +6,7 @@ import type { FileExplorerMessageKey } from "./i18n/index.js";
 
 type ShellReason = Extract<ShellOpenAtResult, { readonly ok: false }>["reason"] | "failed";
 
-export function useShellAction(shell: ClientShellCapability, theaterId: string | null, contextKey?: string | null, objectiveId?: string | null) {
+export function useShellAction(shell: ClientShellCapability, theaterId: string | null, contextKey?: string | null, objectiveId?: string | null, commodoreId?: string | null) {
   const [notice, setNotice] = useState<{ readonly path: string; readonly reason: ShellReason } | null>(null);
   const [pending, setPending] = useState(false);
   const generation = useRef(0);
@@ -17,7 +17,7 @@ export function useShellAction(shell: ClientShellCapability, theaterId: string |
     return () => { generation.current += 1; };
   }, [contextKey, shell, theaterId]);
   const run = useCallback(async (path: string, restart = false) => {
-    const selector = surfaceSelector({ theaterId, objectiveId });
+    const selector = surfaceSelector(objectiveId ? { objectiveId } : { theaterId, commodoreId });
     if (!selector) return;
     const id = ++generation.current;
     setPending(true);
@@ -32,7 +32,7 @@ export function useShellAction(shell: ClientShellCapability, theaterId: string |
     } finally {
       if (id === generation.current) setPending(false);
     }
-  }, [contextKey, objectiveId, shell, theaterId]);
+  }, [commodoreId, contextKey, objectiveId, shell, theaterId]);
   return { notice, pending, open: (path: string) => { void run(path); }, restart: (path: string) => { void run(path, true); } };
 }
 
