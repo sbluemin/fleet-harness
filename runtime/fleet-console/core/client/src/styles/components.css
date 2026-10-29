@@ -8774,14 +8774,21 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-capsule .fc-composer-circle { width: var(--fc-composer-circle); height: var(--fc-composer-circle); }
 .fc-composer-capsule .fc-composer-circle svg { width: 14px; height: 14px; }
 .fc-composer-plus { color: var(--text-secondary); }
-.fc-composer-send { color: var(--text-primary); }
+.fc-composer-send { background: var(--conversation-accent-body, var(--control-rest)); color: var(--conversation-action-ink, var(--text-primary)); }
 .fc-composer-circle:focus-visible,
 .fc-composer-plus[aria-expanded="true"] { background: var(--brass-glow); color: var(--brass-ink); outline: none; }
 /* 터치에서는 누른 뒤 :hover 가 남는다 — 빈 보내기 원이 밝게 남지 않게 hover 는 마우스 같은 포인터에서만 칠한다. */
 @media (hover: hover) {
   .fc-composer-circle:hover:not(:disabled) { background: var(--brass-glow); color: var(--brass-ink); }
 }
+/* 전송·중단은 같은 버튼이다. hover·키보드 초점에서도 아바타 색을 유지한다. */
+.fc-composer-send:focus-visible { background: var(--conversation-accent-body, var(--brass-glow)); color: var(--conversation-action-ink, var(--brass-ink)); }
+@media (hover: hover) {
+  .fc-composer-send:hover:not(:disabled) { background: var(--conversation-accent-body, var(--brass-glow)); color: var(--conversation-action-ink, var(--brass-ink)); }
+}
 /* 보낼 것이 없으면 원이 흐려진다 — 잠긴 원(:disabled)과, 눌러도 입력칸으로 초점만 보내는 빈 원(is-idle)이 같은 모습이다. */
+.fc-composer-send:disabled,
+.fc-composer-send.is-idle { background: var(--control-rest); }
 .fc-composer-circle:disabled,
 .fc-composer-send.is-idle { color: var(--text-tertiary); }
 .fc-composer-circle:disabled { cursor: default; }

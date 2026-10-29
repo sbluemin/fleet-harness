@@ -94,8 +94,8 @@
   overflow-wrap: anywhere;
 }
 .group-chat-bubble.is-human {
-  /* Doctrine: 오른쪽 사람 말·답한 결정은 대화 주인의 아바타 몸색이다. 상태 신호와 왼쪽 발화는 그대로 둔다. */
-  background: var(--conversation-accent-body, var(--ink-veil));
+  /* Doctrine: 오른쪽 사람 말·답한 결정은 아바타 색조를 짙게 낮춘 면과 밝은 글자를 짝으로 쓴다. 상태 신호와 왼쪽 발화는 그대로 둔다. */
+  background: var(--conversation-bubble-fill, var(--ink-veil));
   color: var(--conversation-human-ink, var(--text-primary));
   border: 1px solid transparent;
   border-radius: 22px;
@@ -951,9 +951,9 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   cursor: pointer;
 }
 .group-composer-chip.is-action .group-composer-chip-x:hover { color: var(--text-primary); }
-.fc-composer-send.group-composer-send-action { background: var(--brass); color: var(--text-on-brass); }
+.fc-composer-send.group-composer-send-action { background: var(--conversation-accent-body, var(--brass)); color: var(--conversation-action-ink, var(--text-on-brass)); }
 .fc-composer-send.group-composer-send-action:hover:not(:disabled),
-.fc-composer-send.group-composer-send-action:focus-visible { background: var(--brass); color: var(--text-on-brass); filter: brightness(1.05); }
+.fc-composer-send.group-composer-send-action:focus-visible { background: var(--conversation-accent-body, var(--brass)); color: var(--conversation-action-ink, var(--text-on-brass)); filter: brightness(1.05); }
 /* 플러그인이 이어받는 칸(라우팅 확인·후속 후보) — 입력창 오른쪽 위로 뜬다. 안의 내용은 플러그인이 그린다. */
 .group-composer-panel {
   position: absolute;
@@ -1093,11 +1093,14 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-card-send:focus-visible { box-shadow: var(--focus-face); }
 .group-card-send:disabled { opacity: 0.45; cursor: default; }
 .group-card-error { margin: 0; color: var(--coral-ink); }
+/* 결정에 필요한 설명은 작은 글자여도 본문 대비를 지킨다. 위계는 크기·굵기로 나누고 오류·경고색은 유지한다. */
+.group-card.is-decision :is(.group-card-who, .group-card-handler, .group-card-handed, .group-card-header, .group-card-key, .group-card-choice-sub, .group-card-lead, .group-card-fine) { color: var(--text-primary); }
 /* 답한 결정 — 사람 말풍선(.group-chat-human · .group-chat-bubble.is-human)을 그대로 입는다. 질문마다 질문은 보조 글자, 답은 본문
    글자로 쌓이고, 말풍선의 overflow-wrap:anywhere 가 공백 없는 답·URL 도 말풍선 폭 안에서 꺾는다. */
 .group-card-settled-body { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .group-card-settled-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.group-card-settled-q { font-size: var(--t-xs); color: var(--conversation-human-ink, var(--text-secondary)); opacity: 0.8; }
+.group-card-settled-body .group-card-header { color: inherit; }
+.group-card-settled-q { font-size: var(--t-xs); color: var(--conversation-human-ink, var(--text-primary)); }
 .group-card-settled-mark { flex: none; color: var(--positive-ink); }
 
 /* 구성원 턴 접기 — 짧은 진행 말은 발화자 표식 줄의 칩 하나로, 긴 말풍선은 높이 상한으로, 구성원 보고 줄은
@@ -1285,7 +1288,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-capped { padding: 0; }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-capped > .group-chat-bubble-body { padding: 10px 15px; }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent { border-color: transparent; background: var(--m-chip); color: var(--m-text); --group-chat-bubble-face: var(--m-chip); }
-:root[data-view-mode="mobile"] .group-chat-bubble.is-human { max-width: calc(100% - 48px); border-color: transparent; background: var(--conversation-accent-body, var(--m-inverse)); color: var(--conversation-human-ink, var(--m-on-inverse)); }
+:root[data-view-mode="mobile"] .group-chat-bubble.is-human { max-width: calc(100% - 48px); border-color: transparent; background: var(--conversation-bubble-fill, var(--m-inverse)); color: var(--conversation-human-ink, var(--m-on-inverse)); }
 /* 말풍선 안 본문 — 읽기 서체 변수를 이 상자 안에서만 고딕으로 다시 잡는다(루트의 모바일 대입은 그대로). */
 :root[data-view-mode="mobile"] .group-chat-bubble :is(.markdown-body, .agent-chat-dispatch-md, .agent-chat-dispatch-text) {
   --font-content: var(--m-sans);

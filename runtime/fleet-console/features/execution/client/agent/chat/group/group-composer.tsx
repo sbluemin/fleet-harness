@@ -20,6 +20,8 @@ import { getComposerDraft } from "../../../objective-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, speakerKey, speakerTone } from "./speaker-mark.js";
+import { useAvatarAccent } from "../../../../../workspace/client/avatar-accent.js";
+import { objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
 
 /**
  * 그룹 대화 입력창 — 가운데 칸 바닥의 캡슐.
@@ -125,6 +127,7 @@ function groupDraft(rootObjectiveId: string) {
 
 export function GroupComposer({ rootObjectiveId, snapshot, actions, language, topEntries, workingLine, onStopOne }: GroupComposerProps) {
   const phone = useViewMode().effective === "mobile";
+  const accent = useAvatarAccent(objectiveRecordAvatarKey(rootObjectiveId));
   const t = getGroupT(language);
   // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
   const ct = composerT(language);
@@ -494,7 +497,7 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
   const more = board ? board.more ?? [] : [];
 
   return (
-    <div ref={wrapRef} className="group-composer-wrap">
+    <div ref={wrapRef} className="group-composer-wrap" style={accent}>
       {notice ? <ComposerNotice tone={notice.tone} text={phone ? notice.mobileText ?? notice.text : notice.text} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => setNotice(null)} />
         : composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <ComposerNotice tone="warn" text={composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
       {popOpen ? (

@@ -168,6 +168,8 @@
   --role-commodore: oklch(80% 0.085 78);
   --role-commodore-ink: var(--role-commodore);
   --mongle-tooth: oklch(98% 0 0);
+  /* 정체성 색 말풍선은 모든 테마에서 짙은 면과 밝은 글자를 짝으로 쓴다. */
+  --text-on-identity: oklch(98% 0 0);
 
   /* An access-link QR is read by a camera, not by a person, and the spec assumes dark modules on a
      light field. An inverted symbol is outside that spec — many scanners read it, none promise to.

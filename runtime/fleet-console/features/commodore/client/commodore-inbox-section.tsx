@@ -4,6 +4,8 @@ import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 
 import { CaptionTipHost } from "../../workspace/client/components/caption-actions.js";
+import { useAvatarAccent } from "../../workspace/client/avatar-accent.js";
+import { commodoreAvatarKey } from "../../workspace/shared/avatars.js";
 import { AttachImageIcon } from "../../execution/client/composer-primitives/icons.js";
 import { ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerNotice, ComposerPlusButton, ComposerSendButton } from "../../execution/client/composer-primitives/attachment-surface.js";
 import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "../../execution/client/composer-primitives/quote-tray.js";
@@ -744,6 +746,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * (「지휘관 참조」)이다.
  */
 function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear }: CommodoreComposerProps) {
+  const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId);
   const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
@@ -866,7 +869,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
     {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
       : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
     {topEntries}
-    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}`} style={accent} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
       <ComposerQuoteTray store={draft.quotes} t={ct} disabled={sending || clear.busy} onDone={() => inputRef.current?.focus()} />
       <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={sending || clear.busy} />
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">

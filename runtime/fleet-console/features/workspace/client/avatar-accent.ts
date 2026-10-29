@@ -10,6 +10,8 @@ export function useAvatarAccent(key: string | null): CSSProperties | undefined {
   return useMemo(() => tone === null ? undefined : ({
     "--conversation-accent": `var(--id-${tone})`,
     "--conversation-accent-body": `var(--mongle-${tone})`,
-    "--conversation-human-ink": "var(--mongle-face)",
+    "--conversation-bubble-fill": `color-mix(in oklab, var(--mongle-${tone}) 50%, var(--mongle-face))`,
+    "--conversation-human-ink": "var(--text-on-identity)",
+    "--conversation-action-ink": "var(--mongle-face)",
   } as CSSProperties), [tone]);
 }
