@@ -149,7 +149,7 @@ const ENTRY_RENDERER = String.raw`(() => {
   fill.setAttribute("style", typeof progress === "number" ? "width: " + progress + "%" : "");
   if (snapshot.handoff) root.classList.add("is-handoff");
   if (snapshot.farewell === "veiled") {
-    // 전환을 끈 채 상단 자리로 옮기고 스타일을 한 번 확정한 뒤에야 전환을 되살린다.
+    // 중앙 브랜드와 바탕을 숨긴 상태로 확정한 뒤 페이드 전환을 되살린다.
     root.classList.add("is-instant", "is-handoff", "is-veiled", "is-farewell");
     void root.offsetWidth;
     root.classList.remove("is-instant");
