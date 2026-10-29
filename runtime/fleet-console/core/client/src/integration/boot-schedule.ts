@@ -1,5 +1,6 @@
 import { DESKTOP_WINDOW_COMMAND_PATH } from "@fleet-console/protocol/desktop";
 
+import { COMMODORE_ROUTES } from "../../../../features/commodore/shared/contracts/theaters.js";
 import { fetchGroups, fetchObjectiveRecords } from "./api.js";
 
 /**
@@ -16,6 +17,9 @@ const BOOT_CRITICAL_PATHS = new Set([
   "/api/v1/settings/fonts/migration",
   "/api/v1/objectives/records",
   "/api/v1/objectives/records/groups",
+  // 사이드바 섹션과 온보딩 판정(bootstrapped)이 이 목록을 기다리고, ready는 bootstrapped를 기다린다.
+  // 이 조회를 차선 뒤에 두면 ready가 서지 못해 8초 상한까지 사령관이 기본 이름으로 남는다.
+  COMMODORE_ROUTES.list,
   DESKTOP_WINDOW_COMMAND_PATH,
 ]);
 

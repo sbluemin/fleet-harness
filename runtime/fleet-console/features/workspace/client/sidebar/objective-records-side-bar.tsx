@@ -21,7 +21,7 @@ import { openCommodoreNewSession, openDefaultNewSession } from "../conversation/
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { requestCommodoreDelete } from "../../../commodore/client/commodore-delete-modal.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
-import { refreshCommodoreList, replaceCommodoreList, setZoneCommodore, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
+import { refreshCommodoreList, replaceCommodoreList, setZoneCommodore, useCommodoreListLoaded, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
 import { saveCommodoreOrder } from "../../../commodore/client/theaters-api.js";
 import { setCommodoreAlias } from "../../../../core/client/src/integration/api.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
@@ -184,6 +184,7 @@ export function ObjectiveRecordsSideBar({
 
   // 사이드바 행은 사령관(UUID)이다 — 등록 Theater 목록이 아니라 사령관 목록에서 선다.
   const commodoreSections = useSidebarCommodores(objectiveRecords, groups, t("sidebar.commodore.fallback"));
+  const commodoresLoaded = useCommodoreListLoaded();
   const sectionFaces: SideBarHead[] = commodoreSections.map((section) => ({
     id: section.commodoreId,
     label: section.alias ?? section.label,
@@ -456,7 +457,7 @@ export function ObjectiveRecordsSideBar({
             </li>
           );
         })}
-        {orderedFaces.length === 0 ? (
+        {orderedFaces.length === 0 && commodoresLoaded ? (
           // 사령관이 없는 사이드바는 목록이 아니라 시작 화면이다 — 유령 행 하나로 빈 높이를 남기지 않고,
           // 첫 행동(사령관 만들기)을 이 자리에서 바로 연다. 취역 가이드는 한 번 닫히면 사라지므로
           // 되돌아가는 길도 여기 둔다.
