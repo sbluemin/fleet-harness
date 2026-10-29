@@ -70,7 +70,10 @@ export function showsMobileGroupConversation(objectiveId: string): boolean {
  */
 type Held = { root: string; generation: string | undefined; journal: ConversationJournal; staging: ConversationJournal; loading: boolean; available: boolean; socket?: ReturnType<typeof createChatSocketSession>; history: "idle" | "loading" | "done" | "failed"; historyAbort?: AbortController };
 const held = new Map<string, Held>();
-/** 지난 대화를 읽을 그룹 루트들. 그룹 화면이 실제로 그 루트를 볼 때만 들어온다 — 휴면 원장 전부를 미리 읽지 않는다. */
+/**
+ * 그룹 화면이 실제로 본 루트들. 휴면 참여자의 지난 대화도, 살아 있는 참여자의 소켓도 이 루트의 몫만 연다 —
+ * 기동 직후 채팅이 살아 있는 Objective 전부에 티켓·소켓·저널 재생을 한꺼번에 걸지 않는다.
+ */
 const demanded = new Set<string>();
 let resync: (() => void) | null = null;
 const HISTORY_PATH = (objectiveId: string) => `/api/v1/agent/sessions/${encodeURIComponent(objectiveId)}/chat-history`;
@@ -102,7 +105,7 @@ const getRevision = () => revision;
 
 /**
  * execution 설치 수명이 소유한다. UI 구독자 수·선택 그룹·패널 접힘은 연결 수명에 참여하지 않는다.
- * 소켓과 휴면 이력은 대화 중심 화면이 서 있을 때만 연다. 판정은 호스트가 주입한 `conversation.isActive()`이고,
+ * 소켓과 휴면 이력은 대화 중심 화면이 서 있고 그 화면이 루트를 본 뒤에만 연다(`demanded`). 판정은 호스트가 주입한 `conversation.isActive()`이고,
  * 그 subscribe가 레이아웃을 깨운다. 능력이 없는 호스트는 대화 중심 화면으로 본다.
  * 대화 중심 화면이 아닌 호스트(모바일)는 살아 있는 그룹 채팅 루트를 실제로 열었을 때만 그 루트의 참여자 몫을 연다 — 열린 대화의
  * 주인은 호스트가 실은 `conversation.subjectObjectiveId()` 이고, 목록 홈에서는 null 이라 아무것도 열지 않는다.
@@ -164,7 +167,7 @@ export function installGroupTimeline(ctx: {
           notify();
         });
       }
-      if (!enabled || session?.chatActive !== true || objectiveRecord.chatMode !== true || record.socket) continue;
+      if (!enabled || !demanded.has(root) || session?.chatActive !== true || objectiveRecord.chatMode !== true || record.socket) continue;
       stopHistory(record);
       const current = record;
       current.loading = true;

@@ -444,19 +444,20 @@ it("keeps independent group journals alive across view closure, merges only conf
   expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
 });
 
-it("keeps group timeline sockets and dormant history closed until the conversation layout is active or a live mobile group is open", async () => {
+it("keeps group timeline sockets and dormant history closed until the conversation layout is active and a view demands the root, or a live mobile group is open", async () => {
   const previous = getState();
   const previousAgent = getAgentState();
   let active = false;
   let subject: string | null = null;
   const listeners = new Set<() => void>();
   setState({ objectiveRecords: [{ id: "root", commodoreId: "c1", theaterId: "theater", title: "Commander",
-    ...({ chatMode: true }), ts: { createdAt: 1, updatedAt: 1 }, sessions: [{ id: "archived", chatMode: false, ts: { createdAt: 3, updatedAt: 3 } }] }],
-    objectiveRecordRuntime: { root: { lifecycle: "live", activity: "running" }, archived: { lifecycle: "dormant" } } });
+    ...({ chatMode: true }), ts: { createdAt: 1, updatedAt: 1 }, sessions: [{ id: "archived", chatMode: false, ts: { createdAt: 3, updatedAt: 3 } }] },
+  { id: "unviewed", commodoreId: "c1", theaterId: "theater", title: "Elsewhere", ...({ chatMode: true }), ts: { createdAt: 5, updatedAt: 5 } }],
+    objectiveRecordRuntime: { root: { lifecycle: "live", activity: "running" }, archived: { lifecycle: "dormant" }, unviewed: { lifecycle: "live", activity: "idle" } } });
   setObjectiveRuntime("root", { lifecycle: "live", activity: "running" });
   setObjectiveRuntime("archived", { lifecycle: "dormant" });
   const session = { sessionId: "root", terminalSessionId: "root", cwdLabel: "fixture", status: "live" as const, turnState: "running" as const, chatActive: true, createdAt: 1, resumeAvailable: true };
-  setAgentState({ sessions: { root: session, archived: { ...session, sessionId: "archived", terminalSessionId: "archived", status: "dormant" as const, chatActive: false } } });
+  setAgentState({ sessions: { root: session, archived: { ...session, sessionId: "archived", terminalSessionId: "archived", status: "dormant" as const, chatActive: false }, unviewed: { ...session, sessionId: "unviewed", terminalSessionId: "unviewed" } } });
   const dispose = installGroupTimeline({
     experiments: { read: () => DEFAULT_EXPERIMENT_SETTINGS, subscribe: () => () => {} },
     conversation: { isActive: () => active, subjectObjectiveId: () => subject, subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; } },
@@ -472,8 +473,10 @@ it("keeps group timeline sockets and dormant history closed until the conversati
     active = true;
     act(() => { for (const listener of listeners) listener(); });
     await act(async () => { await Promise.resolve(); });
+    // 화면이 본 루트의 몫만 연다 — 채팅이 살아 있어도 아무 화면도 보지 않은 루트는 티켓·소켓을 열지 않는다.
     expect(FakeWebSocket.instances.filter((socket) => !socket.closed)).toHaveLength(1);
     expect(FakeWebSocket.instances.some((socket) => socket.url.includes("ticket-for-root"))).toBe(true);
+    expect(FakeWebSocket.instances.some((socket) => socket.url.includes("ticket-for-unviewed"))).toBe(false);
     expect(ticketFetches.some((entry) => entry.url.includes("/sessions/archived/chat-history"))).toBe(true);
     active = false;
     act(() => { for (const listener of listeners) listener(); });
