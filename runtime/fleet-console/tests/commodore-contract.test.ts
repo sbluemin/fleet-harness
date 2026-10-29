@@ -739,6 +739,7 @@ describe("commodore theater state", () => {
     writePlugin(path.join(cache, "ext", "1.9.0"), { name: "ext", version: "1.9.0" });
     writePlugin(path.join(cache, "ext2", "1.0.0"), { name: "ext2", version: "1.0.0" });
     writePlugin(path.join(cache, "ext2", "1.0.0-b"), { name: "ext2", version: "1.0.0" }, hooksOf("echo added"));
+    writePlugin(path.join(cache, "ext2", "1.0.0-c"), { name: "ext2", version: "1.0.0" }, hooksOf("echo changed"));
     fs.mkdirSync(path.join(market, ".claude-plugin"), { recursive: true });
     fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", plugins: [
       { name: "tool", source: "./plugins/tool", version: "1.0.0" },
@@ -782,9 +783,10 @@ const bump = (version, sha, oldVersion) => {
 };
 if (mode === "updated-tool") bump("1.1.0", "${SHA_B}", "1.0.0");
 else if (mode === "updated-nover") bump("b8394fda9111", "${SHA_B}", "b2271ea45eea");
-else if (mode === "relabel-ext2") {
+else if (mode === "relabel-ext2" || mode === "relabel-ext2-c") {
   const raw = JSON.parse(fs.readFileSync(file, "utf8"));
-  raw.plugins[id][0] = { ...raw.plugins[id][0], gitCommitSha: "${SHA_B}", installPath: path.join(home, "plugins", "cache", "team", "ext2", "1.0.0-b") };
+  const [dir, sha] = mode === "relabel-ext2" ? ["1.0.0-b", "${SHA_B}"] : ["1.0.0-c", "${SHA_C}"];
+  raw.plugins[id][0] = { ...raw.plugins[id][0], gitCommitSha: sha, installPath: path.join(home, "plugins", "cache", "team", "ext2", dir) };
   fs.writeFileSync(file, JSON.stringify(raw, null, 2));
   console.log(JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "updated", pluginId: id, oldVersion: "1.0.0", newVersion: "1.0.0" }));
 }
@@ -842,6 +844,11 @@ else { console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected"
     mode = "relabel-ext2";
     expect(await updateRoute({ pluginId: "ext2@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.0.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo added" }] } } });
     expect(installedFile().plugins["ext2@team"]![0]).toMatchObject({ installPath: path.join(cache, "ext2", "1.0.0"), gitCommitSha: SHA_A });
+    // 그 명령을 신뢰한 뒤에도 같은 표시 버전 아래 명령이 다시 바뀌면 또 묻는다.
+    expect(await updateRoute({ pluginId: "ext2@team", trusted: true, version: "1.0.0" })).toMatchObject({ status: 200, value: { outcome: "updated" } });
+    mode = "relabel-ext2-c";
+    expect(await updateRoute({ pluginId: "ext2@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.0.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo changed" }] } } });
+    expect(installedFile().plugins["ext2@team"]![0]).toMatchObject({ installPath: path.join(cache, "ext2", "1.0.0-b") });
     // 이미 최신이면 그대로 돌려준다.
     mode = "up_to_date";
     expect(await updateRoute({ pluginId: "tool@team", trusted: true })).toMatchObject({ status: 200, value: { outcome: "up_to_date", oldVersion: "1.1.0", newVersion: "1.1.0" } });

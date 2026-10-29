@@ -1034,7 +1034,9 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
         const installs = installed();
         const before = installs[id]?.[0];
         const beforeDir = loadDirOf(id);
-        const beforeVersion = (beforeDir ? describe(id, beforeDir).version : undefined) ?? before?.version;
+        const beforeDescribed = beforeDir ? describe(id, beforeDir) : undefined;
+        const beforeVersion = beforeDescribed?.version ?? before?.version;
+        const beforeRuns = JSON.stringify(beforeDescribed?.runs ?? []);
         // 상대 출처는 업데이트 전에 번들 폴더로 새 버전·실행 명령을 안다 — 신뢰 없으면 CLI 를 부르기 전에 거절한다.
         const bundled = bundledDirOf(documentOf(row.name), entry);
         const candidate = bundled ? text(manifestOf(bundled).version, 128) ?? text(entry.version, 128) : undefined;
@@ -1074,7 +1076,9 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
           const after = describe(id, afterDir);
           const key = text(manifestOf(afterDir).version, 128) ?? afterInstall?.version ?? newVersion;
           const runs = after.runs ?? [];
-          if (runs.length > 0 && readRegistry().trusted[id] !== key) {
+          // 신뢰는 실행 명령에 대한 것이다 — 표시 버전이 같아 기록이 맞아도, 바뀐 설치본의 명령이 달라졌으면 다시 묻는다.
+          const commandsChanged = moved && JSON.stringify(runs) !== beforeRuns;
+          if (runs.length > 0 && (readRegistry().trusted[id] !== key || commandsChanged)) {
             if (!approves(key)) {
               restoreInstalled(id, snapshot);
               throw new CommodoreStoreError("trust_required", undefined, { version: key, runs });
