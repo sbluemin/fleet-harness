@@ -36,9 +36,6 @@
 /* 탭 칸 — 사이드바 폭을 그대로 채운다(폭 상한이 없다). 첫 묶음은 탭 바 밑선이 갈라 주므로 머리선을 겹쳐 긋지 않는다. */
 .objectives-tab-body { padding-top: 4px; }
 .objectives-tab-body > .objectives-extension-current { margin-top: 6px; }
-.objectives-tab-meta { min-height: 36px; }
-/* 한 구획짜리 탭의 메타 줄 — 탭이 이름을 말하므로 수만 흐리게 선다. */
-.objectives-tab-count { font: var(--t-2xs)/1 var(--font-ui); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-crew-group > .objectives-members { border-top: 0; padding-top: 0; }
 /* 지휘관 이름은 입력칸이 아니라 글자다 — 숨은 복제(::after)가 첫 칸을 차지하면 글자가 둘째 줄로 밀려 표식과 어긋난다. */
 .objectives-member.is-commander .objectives-member-role-fit { color: var(--text-primary); }
@@ -729,7 +726,6 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass-in
 /* 결과물 장부 — 임무별 마지막 기록과 현재 결과물. 묶음 안은 이미지·텍스트·Artifact·PR 순서이며 임무 밖 연결은 끝에 남긴다.
    행은 기준 행의 아이콘 열을 공유한다. PR 상태만 관측 신호이고 Artifact의 오른쪽 표시는 외부 열기다. */
 .objectives-results { display: flex; flex-direction: column; padding-bottom: var(--space-3); }
-.objectives-results-group + .objectives-group { border-top: 0; }
 .objectives-result-group { scroll-margin-block: 12px; transition: background-color var(--duration-slow) var(--ease-glide), box-shadow var(--duration-slow) var(--ease-glide); }
 .objectives-result-group-bar { display: flex; align-items: center; padding-right: 12px; }
 .objectives-result-group-body { padding-bottom: var(--space-3); }

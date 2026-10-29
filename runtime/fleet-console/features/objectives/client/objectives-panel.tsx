@@ -126,6 +126,7 @@ const StarSparkGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="curren
 const TridentRouteGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><path d="M4.4 8h2.6c1.6 0 2.2-3.8 4.2-3.8h2.2M4.4 8h7M7 8c0 3.8.6 3.8 2.2 3.8h2.2" /><circle cx="13.2" cy="4.2" r="1.1" fill="currentColor" /><circle cx="13.2" cy="8" r="1.1" fill="currentColor" /><circle cx="13.2" cy="11.8" r="1.1" fill="currentColor" /></svg>;
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
+const CrewGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M2 13c0-2.2 1.8-3.8 4-3.8s4 1.6 4 3.8M10.6 3.6a2.1 2.1 0 0 1 0 3.9M11.6 9.4c1.4.4 2.4 1.8 2.4 3.6" /></svg>;
 const GraphGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.6" /><circle cx="12.5" cy="4" r="1.6" /><circle cx="12.5" cy="12" r="1.6" /><path d="M5 7.3l6-2.6M5 8.7l6 2.6" /></svg>;
 const WORKING = new Set(["running"]);
 /** 호스트 요약의 원시 활동 → 이 패널이 그리는 활동. 백그라운드 작업만 남은 Objective 도 진행 중으로 선다. */
@@ -645,8 +646,8 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
   ) : null;
 
   return <div className="objectives-members">
-    {/* 탭이 이름을 말하므로 머리는 결과물 탭과 같은 메타 한 줄 — 왼쪽은 수, 오른쪽은 일괄 설정. */}
-    <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.members.title")} {objective.members.length}</span>{actions ? <span className="objectives-row-tools">{actions}</span> : null}</div>
+    {/* 머리는 임무 섹션과 같은 문법 — 글리프 · 「구성원」 · 수 | 일괄 설정. */}
+    <SectionHead glyph={<CrewGlyph />} label={t("objectives.members.title")} tools={<span className="objectives-criteria-count">{objective.members.length}</span>} {...(actions ? { actions } : {})} />
     <div id="objectives-sec-members">
     {lead}
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
@@ -1547,9 +1548,11 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       {/* 결과물 장부 — 임무 순서의 묶음과 마지막 기록 한 줄. 임무 밖 연결은 끝에 남기고, 그래프 팝업과 묶음 머리가 왕복한다.
           사람은 읽기만 한다. PR 관측은 SSE로 갱신하고 Artifact는 외부 링크만 연다. 결과물 0개도 유효하다. */}
       <div className="objectives-group objectives-results-group">
-        <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.results.title")} {objective.results.length > 0 ? objective.results.length : t("objectives.results.none")}</span></div>
+        <SectionHead glyph={<ResultsGlyph />} label={t("objectives.results.title")} {...(objective.results.length > 0 ? { tools: <span className="objectives-criteria-count">{objective.results.length}</span> } : {})} />
         {objective.results.length > 0 ? <div id="objectives-sec-results"><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
-        {/* 공유 폴더 — 증거 바로 아래. 증거가 0건이어도 보이고, 기본 접힘이며, 머리에 개수·배지를 두지 않는다. */}
+      </div>
+      {/* 공유 폴더 — 증거 아래 독립 섹션. 증거가 0건이어도 보이고, 기본 접힘이며, 머리에 개수·배지를 두지 않는다. */}
+      <div className="objectives-group">
         <SharedFolderSection objective={objective} t={t} language={language} open={sectionOpen("detail:shared")} onToggle={() => onToggleSection("detail:shared")} />
       </div>
   </>);
