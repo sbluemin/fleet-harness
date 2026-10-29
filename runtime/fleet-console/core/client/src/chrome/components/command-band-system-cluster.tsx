@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 
-import { useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
 import { refreshConsole, useConsoleUpdateAction, useVersionRefresh } from "./console-update-action.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin, type DesktopShellHome } from "../../integration/desktop-shell.js";
-import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
-import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
+import { requestDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
+import { useUpdateSignals } from "./update-notice-bubble.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
@@ -185,28 +184,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
   // 메뉴가 열릴 때마다 셸 스냅샷을 다시 읽는다 — 느린 핸드오프에서는 버전이 첫 읽기 뒤에 도착한다.
   const [opens, setOpens] = useState(0);
   useEffect(() => { if (open) setOpens((count) => count + 1); }, [open]);
-  const shell = useDesktopHomeOrigin(opens);
-  const shellUpdate = useDesktopShellUpdate(opens);
-  // 점의 뜻은 "이 메뉴 안에 올릴 것이 있다"이다 — Console이든 Desktop이든. 어느 행인지는
-  // 메뉴를 열면 칩이 말한다.
-  const consoleActionable = updateAvailable && !shellUpdateRequired;
-  const updateReady = consoleActionable || shellUpdate.stage === "available" || shellUpdate.stage === "ready";
-  /**
-   * 셸 재시작 한 번이 Console까지 최신으로 만든다 — 돌아온 셸의 진입 흐름이 새 Console을 조달하기
-   * 때문이다. 그래서 셸 갱신이 걸려 있으면 Console 행은 칩을 거두고 그 사실만 말한다.
-   *
-   * 창이 남의 기계의 콘솔을 보고 있으면 접지 않는다. 그때 두 행은 서로 다른 기계를 가리키고 있어,
-   * 접는 순간 남의 호스트 재시작이 내 앱 재시작에 숨는다.
-   */
-  const onHomeConsole = shell.origin !== null && shell.origin === window.location.origin;
-  const consoleFoldsIntoShell = updateAvailable
-    && onHomeConsole
-    && (shellUpdate.stage === "available" || shellUpdate.stage === "downloading" || shellUpdate.stage === "ready");
-  // 셸이 먼저 바뀌어야 하는 Console 갱신은 셸 갱신에 실려 올 때만 알린다 — 따로 알릴 버튼이 없다.
-  const notice = useUpdateNotice({ shellUpdate, updateAvailable: shellUpdateRequired ? consoleFoldsIntoShell : updateAvailable, latestVersion, onHomeConsole });
-  // 업데이트 결과 배너가 서 있는 동안 말풍선은 물러선다 — 같은 자리에 겹치면 배너가 전하는 사유가 가려진다.
-  // 닫기(dismiss)와 달리 기억하지 않으므로, 배너를 확인하면 말풍선이 돌아와 다시 시도할 수 있다.
-  const outcomeShowing = useUpdateProgress().outcome !== null;
+  const { shell, shellUpdate, consoleFoldsIntoShell, updateReady } = useUpdateSignals({ reloadToken: opens, updateAvailable, shellUpdateRequired });
   // "화면 안내 다시 보기"는 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다 —
   // 카탈로그의 모든 피처 투어 시청 기록과 최초 설정 가이드 기록을 함께 지워, 어느 화면에
   // 있든 온보딩을 처음부터 다시 보게 한다.
@@ -231,18 +209,6 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
       {menuItem ? <><span className="conversation-dock-label">{t("chrome.system.help")}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
       {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>
-    {!open && !outcomeShowing && notice.kind !== null && !notice.dismissed ? (
-      <UpdateNoticeBubble
-        kind={notice.kind}
-        shellUpdate={shellUpdate}
-        latestVersion={latestVersion}
-        consoleFolds={notice.consoleFolds}
-        hasShell={shell.desktopVersion !== null}
-        onHomeConsole={onHomeConsole}
-        onDismiss={notice.dismiss}
-        onEscape={() => { notice.dismiss(); triggerRef.current?.focus(); }}
-      />
-    ) : null}
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")} onPointerEnter={side.onPanelPointerEnter} onPointerLeave={side.onPanelPointerLeave}>
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
