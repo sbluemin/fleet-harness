@@ -141,6 +141,7 @@ describe("Objective archive persistence and deletion", () => {
       expect(readback.status).toBe(200);
       expect(JSON.stringify(readback.body)).not.toMatch(/provider-session|private-child-session|\/private\//);
       expect(JSON.stringify(readback.body)).toContain("표시용 구성원");
+      expect(h.archive.describe("11111111-1111-4111-8111-111111111111")?.objectiveRecord.note).toBe("archived note");
       const denied: { status?: number } = {};
       await router({ req: { method: "POST" } as never, res: denied as never, pathname: "/api/v1/objectives/records/child/restore" });
       expect(denied.status).toBe(401);
@@ -167,6 +168,8 @@ describe("Objective archive persistence and deletion", () => {
       restarted.clock.value = pending.purgeAt;
       await restarted.archive.sweepExpired();
       expect(restarted.events.filter((event) => event.channel === "objective:purged").map((event) => event.objectiveId).sort()).toEqual(["parent"]);
+      expect(restarted.archive.describe("parent")).toBeNull();
+      expect(restarted.archive.describe("11111111-1111-4111-8111-111111111111")).toBeNull();
       expect(createArchiveHarness(directory).archive.describe("parent")).toBeNull();
       expect(fs.existsSync(path.dirname(objectiveFile))).toBe(false);
       expect(() => restarted.storage.board.save("c1", { id: "parent", note: "late", missions: [], rank: 0 })).toThrow("archive_recovery_required");

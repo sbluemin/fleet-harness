@@ -29,6 +29,8 @@ export interface ObjectiveArchiveStorage {
   assertReady(): void;
   acknowledgeEvents(ids: readonly string[]): void;
   entries(): readonly ArchivedObjective[];
+  /** 부모·자식 ID로 보관된 루트를 찾는다. 본문은 조회 시점의 최신 문서다. */
+  entry(id: string): ArchivedObjective | null;
   events(): readonly ArchiveLifecycleEvent[];
   revision(): number;
   blocked(): boolean;

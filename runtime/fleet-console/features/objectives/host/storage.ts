@@ -188,6 +188,7 @@ export function createObjectiveStorage(deps: {
   const scopes = new Map<string, Scope>();
   // 저장한 문서는 바꾸지 않고 교체한다. 같은 문서의 깊은 정규화와 cwd 판정을 조회마다 반복하지 않는다.
   const decoded = new WeakMap<ObjectiveDocument, { readonly owner: ObjectiveOwner; readonly record: ObjectiveRecord }>();
+  const archiveLookups = new WeakMap<Scope, { readonly documents: Scope["documents"]; readonly entries: Archive["entries"]; readonly byId: ReadonlyMap<string, Archive["entries"][number]> }>();
   function recordOf(scope: Scope, doc: ObjectiveDocument): ObjectiveRecord {
     let hit = decoded.get(doc);
     if (hit?.owner !== scope.owner) { hit = { owner: scope.owner, record: objectiveRecordFromDocument(doc, scope.owner) }; decoded.set(doc, hit); }
@@ -798,6 +799,31 @@ export function createObjectiveStorage(deps: {
     assertReady();
     return [...scopes.values()].flatMap((scope) => scope.archive.entries.filter((row) => !unavailable(scope, row.objectiveId)).map(({ objectiveId, ...rest }) => ({ ...rest, objectiveRecord: recordOf(scope, document(scope, objectiveId)) })));
   }
+  function entry(id: string): ArchivedObjective | null {
+    assertReady();
+    for (const scope of scopes.values()) {
+      let lookup = archiveLookups.get(scope);
+      if (lookup?.documents !== scope.documents || lookup.entries !== scope.archive.entries) {
+        const byId = new Map<string, Archive["entries"][number]>();
+        for (const row of scope.archive.entries) {
+          if (!byId.has(row.objectiveId)) byId.set(row.objectiveId, row);
+          const doc = scope.documents.get(row.objectiveId);
+          if (Array.isArray(doc?.sessions)) for (const child of doc.sessions) {
+            if (object(child) && typeof child.id === "string" && !byId.has(child.id)) byId.set(child.id, row);
+          }
+        }
+        // apply는 문서 Map을 교체한다. board.save는 실행 표면(sessions 포함)을 보존하므로
+        // 색인을 다시 만들지 않아도 된다. 본문은 캐시하지 않고 아래에서 최신 문서를 읽는다.
+        lookup = { documents: scope.documents, entries: scope.archive.entries, byId };
+        archiveLookups.set(scope, lookup);
+      }
+      const row = lookup.byId.get(id);
+      if (row && !unavailable(scope, row.objectiveId)) {
+        return { archiveId: row.archiveId, archivedAt: row.archivedAt, objectiveRecord: recordOf(scope, document(scope, row.objectiveId)) };
+      }
+    }
+    return null;
+  }
   function events(): readonly ArchiveLifecycleEvent[] {
     assertReady();
     return [...scopes.values()].flatMap((scope) => scope.archive.events.filter((row) => !unavailable(scope, row.objectiveId)).map((row) => {
@@ -994,5 +1020,5 @@ export function createObjectiveStorage(deps: {
       if (retry !== undefined) retryNotBefore.set(id, retry);
     };
   }
-  return { dropOwner, load, save, assertReady, entries, events, acknowledgeEvents, board, isReserved, ownerRecoveryRequired, assertTheatersMutable, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
+  return { dropOwner, load, save, assertReady, entries, entry, events, acknowledgeEvents, board, isReserved, ownerRecoveryRequired, assertTheatersMutable, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
 }
