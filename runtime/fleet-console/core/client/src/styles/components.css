@@ -8295,8 +8295,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 /* 릴리스 노트와 권하는 한 가지 일을 한 줄에 둔다 — 카드가 짧을수록 화면을 덜 가린다. */
 .command-band-update-bubble-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
   margin-top: 2px;
 }
 
