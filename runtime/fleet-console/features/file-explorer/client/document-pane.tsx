@@ -23,7 +23,7 @@ import { getT } from "./i18n/index.js";
 import { CHIP_STRIP_GAP_PX, chipDirHints, overflowingChipIndices, tabLineGeometry } from "./layout.js";
 import { QuietMenu } from "./quiet-menu.js";
 import { DOCUMENT_PANE_ID, fileRequestOwner, ownerCommodoreId, positiveCoordinate, resolveFilePath, scopeObjectiveId, FileNavigationError } from "./file-navigation.js";
-import { claimFileExplorerView, getFileExplorerSnapshot, noteScopeOwner, setFileRevealTarget, showFileNavigationError } from "./view-store.js";
+import { claimFileExplorerView, getFileExplorerSnapshot, setFileRevealTarget, showFileNavigationError } from "./view-store.js";
 import { surfaceSelectorQuery } from "../../workspace/shared/surface-selector.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
 import {
@@ -77,7 +77,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const t = getT(language);
   const contextScope = theaterId ?? "";
   // 창 params의 목표가 지금 보고 있는 문맥에 속할 때만 쓴다 — 다른 Theater·목표의 착지 params는 버리고 표면 문맥으로 떨어진다.
-  const objectiveId = scopeObjectiveId(ctx.params.objectiveId, contextScope, ctx.consoleState);
+  const objectiveId = scopeObjectiveId(ctx.params.objectiveId, contextScope, ctx.consoleState, ctx.commodoreId);
   // 파일 요청에 실을 사령관 — 착지 params가 지금 Theater를 가리키면 그 사령관, 아니면 표면의 사령관. 추정하지 않는다.
   const commodoreId = ownerCommodoreId(ctx.params, contextScope, ctx.commodoreId);
   // 트리 칸과 같은 대화가 이 Theater 의 보기 상태를 갖는다(rail-panel 의 같은 규칙).
@@ -206,14 +206,6 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   useEffect(() => {
     if (getFileExplorerSnapshot(contextScope).openDocs.length === 0 && ctx.visible && params.theaterId === contextScope) panes.close();
   }, [contextScope, ctx.visible, openDocs.length, panes, params.theaterId]);
-
-  // 이 창 주소의 소유자를 Theater 범위에 기록한다 — Theater를 오갈 때 트리 복원이
-  // 저장된 문서와 함께 그 문맥으로 되살린다. 주소가 없는 첫 마운트에서는 쓰지 않는다
-  // (복원될 소유자를 지우지 않게). Theater 탐색은 소유자 없이 기록해 낡은 목표 문맥을 걷는다.
-  useEffect(() => {
-    if (params.theaterId !== contextScope || typeof params.path !== "string") return;
-    noteScopeOwner(contextScope, objectiveId ?? null, commodoreId ?? null);
-  }, [commodoreId, contextScope, objectiveId, params.path, params.theaterId]);
 
   // 팝오버들은 문서가 바뀌면 함께 닫힌다 — 다른 문서의 목록이 남아 있으면 거짓말이 된다.
   useEffect(() => {
@@ -861,7 +853,7 @@ export function FileExplorerDocumentCaptionActions(ctx: PaneContext) {
           busy
           onClick={() => {
             if (!activePath) return;
-            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...fileRequestOwner(scopeObjectiveId(ctx.params.objectiveId, ctx.theaterId, ctx.consoleState), ownerCommodoreId(ctx.params, ctx.theaterId, ctx.commodoreId)) });
+            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...fileRequestOwner(scopeObjectiveId(ctx.params.objectiveId, ctx.theaterId, ctx.consoleState, ctx.commodoreId), ownerCommodoreId(ctx.params, ctx.theaterId, ctx.commodoreId)) });
           }}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">

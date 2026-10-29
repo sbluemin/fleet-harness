@@ -36,17 +36,10 @@ export interface FileRevealTarget {
   readonly ranges?: readonly { readonly start: number; readonly end: number }[];
 }
 
-/** 문서 창 주소가 가리키는 Theater의 소유자 — 목표 문맥이면 objectiveId, 아니면 아는 경우에만 사령관. 복원이 같은 문맥으로 되살리게 Theater 범위에 둔다. */
-export interface ScopeOwner {
-  readonly objectiveId?: string;
-  readonly commodoreId?: string;
-}
-
 interface TheaterViewState extends DocSession {
   readonly selectedPath: string | null;
   readonly revealTarget: FileRevealTarget | null;
   readonly documentPaneOpen: boolean;
-  readonly scopeOwner: ScopeOwner | null;
   readonly discardedTabs: { readonly id: string; readonly count: number } | null;
   /** 경로별 뷰 내용 캐시 — 칩 전환을 즉시 그리기 위한 메모리 전용 상태. */
   readonly docStates: ReadonlyMap<string, ViewState>;
@@ -75,7 +68,6 @@ const DEFAULT_THEATER_STATE: TheaterViewState = {
   selectedPath: null,
   revealTarget: null,
   documentPaneOpen: false,
-  scopeOwner: null,
   discardedTabs: null,
   docStates: new Map(),
 };
@@ -157,22 +149,6 @@ export function setFileRevealTarget(theaterId: string, target: FileRevealTarget)
 export function setDocumentPaneOpen(theaterId: string, open: boolean): void {
   if (!theaterId) return;
   patchTheaterState(theaterId, { documentPaneOpen: open });
-  persistDocSession(theaterId, getOrDefault(theaterId));
-}
-
-/**
- * 문서 창 주소의 소유자를 Theater 범위에 기록한다. 주소를 읽는 문서 창이 부른다 —
- * Theater를 오갈 때 트리 복원이 저장된 문서와 함께 그 문맥으로 되살린다.
- * 값이 같으면 쓰지 않는다(스냅샷 참조를 유지해 불필요한 렌더를 막는다).
- */
-export function noteScopeOwner(theaterId: string | null, objectiveId: string | null, commodoreId: string | null): void {
-  if (!theaterId) return;
-  const next: ScopeOwner | null = !objectiveId && !commodoreId
-    ? null
-    : { ...(objectiveId ? { objectiveId } : {}), ...(commodoreId ? { commodoreId } : {}) };
-  const current = getOrDefault(theaterId).scopeOwner;
-  if ((current?.objectiveId ?? null) === (next?.objectiveId ?? null) && (current?.commodoreId ?? null) === (next?.commodoreId ?? null)) return;
-  patchTheaterState(theaterId, { scopeOwner: next });
   persistDocSession(theaterId, getOrDefault(theaterId));
 }
 
@@ -381,7 +357,6 @@ function getSnapshot(theaterId: string | null): FileExplorerViewState {
     && prev.wrapLines === wrapLines
     && prev.revealTarget === base.revealTarget
     && prev.documentPaneOpen === base.documentPaneOpen
-    && prev.scopeOwner === base.scopeOwner
     && prev.discardedTabs === base.discardedTabs
     && prev.navigationError === navigationError
   ) {
@@ -408,17 +383,14 @@ interface PersistedDocSession {
   readonly openDocs: readonly OpenDocument[];
   readonly activePath: string | null;
   readonly documentPaneOpen: boolean;
-  readonly scopeOwner?: ScopeOwner | null;
 }
 
 function persistDocSession(theaterId: string, session: DocSession): void {
   try {
-    const state = getOrDefault(theaterId);
     const payload: PersistedDocSession = {
       openDocs: session.openDocs,
       activePath: session.activePath,
-      documentPaneOpen: state.documentPaneOpen,
-      ...(state.scopeOwner ? { scopeOwner: state.scopeOwner } : {}),
+      documentPaneOpen: getOrDefault(theaterId).documentPaneOpen,
     };
     if (payload.openDocs.length === 0) {
       localStorage.removeItem(storageKey(theaterId));
@@ -430,21 +402,11 @@ function persistDocSession(theaterId: string, session: DocSession): void {
   }
 }
 
-function readDocSession(theaterId: string): (DocSession & { readonly documentPaneOpen: boolean; readonly scopeOwner: ScopeOwner | null }) | null {
+function readDocSession(theaterId: string): (DocSession & { readonly documentPaneOpen: boolean }) | null {
   try {
     const raw = localStorage.getItem(storageKey(theaterId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedDocSession>;
-    const rawOwner: unknown = parsed.scopeOwner;
-    const ownerRecord = rawOwner !== null && typeof rawOwner === "object" && !Array.isArray(rawOwner) ? rawOwner as Record<string, unknown> : null;
-    const ownerObjectiveId = ownerRecord?.objectiveId;
-    const ownerCommodoreId = ownerRecord?.commodoreId;
-    const scopeOwner: ScopeOwner | null = ownerObjectiveId === undefined && ownerCommodoreId === undefined
-      ? null
-      : {
-        ...(typeof ownerObjectiveId === "string" && ownerObjectiveId ? { objectiveId: ownerObjectiveId } : {}),
-        ...(typeof ownerCommodoreId === "string" && ownerCommodoreId ? { commodoreId: ownerCommodoreId } : {}),
-      };
     if (!Array.isArray(parsed.openDocs)) return null;
     const openDocs = parsed.openDocs
       .filter((d): d is OpenDocument =>
@@ -469,7 +431,6 @@ function readDocSession(theaterId: string): (DocSession & { readonly documentPan
       history: activePath ? [activePath] : [],
       historyIndex: activePath ? 0 : -1,
       documentPaneOpen: parsed.documentPaneOpen !== false,
-      scopeOwner,
     };
   } catch {
     return null;

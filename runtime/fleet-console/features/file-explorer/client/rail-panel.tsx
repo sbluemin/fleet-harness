@@ -190,7 +190,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const t = getT(ctx.language);
   const contextScope = theaterId ?? "";
   // 창 params의 목표가 지금 보고 있는 문맥에 속할 때만 쓴다 — 다른 Theater·목표의 착지 params는 버리고 표면 문맥으로 떨어진다.
-  const objectiveId = scopeObjectiveId(ctx.params.objectiveId, theaterId, ctx.consoleState);
+  const objectiveId = scopeObjectiveId(ctx.params.objectiveId, theaterId, ctx.consoleState, ctx.commodoreId);
   // 파일 요청에 실을 사령관 — 착지 params가 지금 Theater를 가리키면 그 사령관, 아니면 표면의 사령관. 추정하지 않는다.
   const commodoreId = ownerCommodoreId(ctx.params, theaterId, ctx.commodoreId);
   const { selectedPath, openDocs, docStates, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
@@ -231,21 +231,26 @@ function FileExplorerTreePane(ctx: PaneContext) {
     hydrateStoredSession(contextScope || null);
     const restored = getFileExplorerSnapshot(contextScope);
     // 외부 착지로 열린 문서는 저장된 세션으로 덮지 않는다. 표식은 두 가지다 —
-    // 갓 착지한 문맥(한 번만 소비하는 pendingFileLanding), 또는 창 params가 지금 문맥에
-    // 속하는 소유자를 싣고 있을 때(검증된 objectiveId). 표면 소유자로는 판단하지 않는다
+    // 갓 착지한 문맥(착지가 심은 params와 같은 묶음에서 한 번만 소비), 또는 창 params가
+    // 지금 문맥에 속할 때(검증된 objectiveId). 표면 소유자로는 판단하지 않는다
     // (일반 탐색에서도 표면 주인은 있다). 낡은 착지는 저장된 문맥으로 복원한다.
     const pending = pendingFileLanding;
     pendingFileLanding = null;
-    const pendingMatches = pending !== null
+    const justLanded = pending !== null
       && pending.theaterId === contextScope
-      && (pending.objectiveId ?? null) === (objectiveId ?? null)
-      && (pending.commodoreId ?? null) === (commodoreId ?? null);
-    if (panes.isOpen(DOCUMENT_PANE_ID) && (pendingMatches || objectiveId !== undefined)) return;
+      && (pending.objectiveId ?? null) === (ctx.params.objectiveId ?? null)
+      && (pending.commodoreId ?? null) === (ctx.params.commodoreId ?? null);
+    if (panes.isOpen(DOCUMENT_PANE_ID) && (justLanded || objectiveId !== undefined)) return;
+    // 복원에 쓰는 문맥은 지금 표면의 문맥이다 — 지금 대화가 이 Theater의 목표면 그 목표,
+    // 아니면 Theater와 표면 사령관. 저장된 소유자·낡은 params는 쓰지 않는다.
+    const surfaceObjectiveId = scopeObjectiveId(ctx.consoleState.getActiveObjectiveId(), contextScope, ctx.consoleState, ctx.commodoreId);
+    const surfaceOwner = fileRequestOwner(surfaceObjectiveId, commodoreId);
     if (restored.documentPaneOpen && restored.activePath) {
-      // 저장된 소유자는 지금 문맥과 일치할 때만 쓴다. 사령관은 살아 있는 표면 문맥을
-      // 우선하고 저장된 값을 보조로 둔다(표면 주인이 없는 채로 복원될 때).
-      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope, ...fileRequestOwner(scopeObjectiveId(restored.scopeOwner?.objectiveId, contextScope, ctx.consoleState), commodoreId ?? restored.scopeOwner?.commodoreId) }, focus: false });
+      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope, ...surfaceOwner }, focus: false });
     } else if (panes.isOpen(DOCUMENT_PANE_ID)) {
+      // 닫기 전에 주소를 지금 Theater로 갈아 끼운다 — 낡은 params로 다른 Theater의
+      // 저장 세션을 닫힘으로 적지 않게 한다.
+      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: "", theaterId: contextScope, ...surfaceOwner }, focus: false });
       panes.close(DOCUMENT_PANE_ID);
     }
   }, [commodoreId, contextScope, ctx.consoleState, panes, objectiveId, theaterId, ctx.params.commodoreId, ctx.params.objectiveId, ctx.params.theaterId]);
