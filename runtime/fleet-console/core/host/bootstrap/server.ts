@@ -1121,6 +1121,39 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         }
         return objectiveRecord;
       },
+      restoreMany: (changes) => {
+        archiveStorage.assertReady();
+        const snapshot = objectiveRecords.list();
+        const parentsBefore = new Map<string, ObjectiveRecord | null>();
+        const launchBefore = new Map<string, string | null>();
+        let changed: (readonly [ObjectiveRecord, ObjectiveRecord])[];
+        try {
+          for (const { id, input } of changes) {
+            const parentId = objectiveRecords.getChild(id)?.parent?.id ?? id;
+            if (!parentsBefore.has(parentId)) parentsBefore.set(parentId, objectiveRecords.get(parentId));
+            if (!launchBefore.has(id)) launchBefore.set(id, launchJson(id));
+            objectiveRecords.patch(id, input, { keepTimestamps: true });
+          }
+          // 같은 값의 복원은 저장하지 않는다 — 평상 재기동이 owner의 문서 전부를 다시 쓰지 않게.
+          // 도메인은 레코드를 바꾸지 않고 교체하므로 이전 객체를 그대로 비교에 쓴다.
+          changed = [...parentsBefore].flatMap(([parentId, before]) => before && JSON.stringify(before) !== JSON.stringify(objectiveRecords.get(parentId)) ? [[before, objectiveRecords.get(parentId)!] as const] : []);
+          if (!changed.length) return;
+          // 오류를 삼키는 persistDurableState와 달리 실패를 알린다. 메모리와 디스크가 갈라진 채로 알리지 않는다.
+          saveDurableState(deletionCoordinator.list());
+        } catch (error) {
+          objectiveRecords.replace(snapshot);
+          throw error;
+        }
+        // 알림은 저장이 끝난 뒤에만 낸다.
+        for (const [before, after] of changed) {
+          if (sanitizedObjectiveJson(before) !== sanitizedObjectiveJson(after)) broadcastObjectiveChanged(after);
+        }
+        for (const [id, before] of launchBefore) {
+          if (before !== launchJson(id)) {
+            publishPluginEvent(OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, { objectiveId: id, parentObjectiveId: objectiveRecords.getChild(id)?.parent?.id ?? null } satisfies ObjectiveLaunchChangedEvent, true);
+          }
+        }
+      },
       delete: deleteObjectiveForPlugin,
       deleteChild: deleteChildForPlugin,
       reorder: (input) => consoleActions.reorder!(input),

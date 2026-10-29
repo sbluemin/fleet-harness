@@ -12,6 +12,12 @@ export interface ObjectiveRecordsHost extends Partial<ObjectiveArchiveCapability
   /** 실행 호스트가 부모 안에 자식 세션을 저장한다. */
   createChild?(input: { readonly parentObjectiveId: string; readonly childSessionId: string; readonly [key: string]: unknown }): ObjectiveRecord;
   patch(id: string, input: ObjectiveRecordPatchInput): ObjectiveRecord | null;
+  /**
+   * 기동 복원 전용 일괄 적용. 사람·에이전트 활동이 아니라 휴면 표시·세션 투영 정규화라서 ts를 바꾸지 않는다.
+   * 순서대로(부모 → 자식) 메모리에 반영하고, 실제로 달라진 레코드가 있을 때만 한 번 저장한 뒤 알린다.
+   * 저장이 실패하면 메모리를 되돌리고 던진다. 구버전 호스트와 테스트 adapter에는 없을 수 있다.
+   */
+  restoreMany?(changes: readonly { readonly id: string; readonly input: ObjectiveRecordPatchInput }[]): void;
   delete(id: string): boolean;
   /** 구성원 전용 삭제. 호스트가 바인딩한 호출 플러그인이 부모의 launchedBy와 일치해야 한다. 요청 플러그인 없이 부르는 것은 코어 실행 호스트의 롤백·정리뿐이다. */
   deleteChild?(id: string, requesterPluginId?: string): boolean;

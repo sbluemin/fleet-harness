@@ -2764,7 +2764,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     );
   }
 
-  function injectObjective(objectiveRecord: ObjectiveRecord): AgentTerminalSessionInfo {
+  /** restore가 있으면 표시 정리 patch를 바로 저장하지 않고 기동 복원의 일괄 적용에 넘긴다. */
+  function injectObjective(objectiveRecord: ObjectiveRecord, restore?: (id: string, input: ObjectiveRecordPatchInput) => void): AgentTerminalSessionInfo {
     const cwd = confirmedObjectiveCwd(objectiveRecord.id, objectiveRecord) ?? "";
     const providerTitle = readProviderTitle(objectiveRecord);
     const injected = observability.injectDormantObjective({
@@ -2781,7 +2782,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     });
     if (objectiveRecord[CHAT_MODE_PAYLOAD_KEY] !== true) return injected;
     const { dormantBorn: _born, restoredDormant: _restored, ...payload } = objectiveRecord;
-    if (_born !== undefined || _restored !== undefined) ctx.host.objectiveRecords.patch(objectiveRecord.id, { ...payload });
+    if (_born !== undefined || _restored !== undefined) {
+      if (restore) restore(objectiveRecord.id, { ...payload });
+      else ctx.host.objectiveRecords.patch(objectiveRecord.id, { ...payload });
+    }
     const adopted = observability.setTerminalSessionChatActive(objectiveRecord.id, true) ?? injected;
     // 복원된 채팅은 살아 있는 대화다 — 예전 깨우기 경로가 하던 대로 "지금 어디" 축에 다시 올린다.
     // 첫 send의 SDK 자식은 seed cwd 그대로면 cwd 변경을 보고하지 않으므로 여기서 세우지 않으면 비어 남는다.
@@ -2790,6 +2794,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   function rehydrateDormantAgentObjectiveRecords(): void {
+    // 복원은 활동이 아니다 — 모아서 ts를 보존한 채 한 번에 적용한다. 같은 값이면 저장하지 않는다.
+    const changes: { readonly id: string; readonly input: ObjectiveRecordPatchInput }[] = [];
+    const restore = (id: string, input: ObjectiveRecordPatchInput) => { changes.push({ id, input }); };
     const parents = ctx.host.objectiveRecords.list();
     const sessions = parents.flatMap((parent) => [parent, ...(parent.sessions ?? []).flatMap((child) => {
       const objectiveRecord = ctx.host.objectiveRecords.get(child.id);
@@ -2805,19 +2812,29 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const onChatSurface = objectiveRecord[CHAT_MODE_PAYLOAD_KEY] === true;
       if (observability.getTerminalSessionInfo(objectiveRecord.id)) continue;
       if (!providerSession && !onChatSurface && objectiveRecord.dormantBorn !== true) {
-        ctx.host.objectiveRecords.patch(objectiveRecord.id, { ...({ ...objectiveRecord, restoredDormant: true }) });
+        if (objectiveRecord.restoredDormant !== true) restore(objectiveRecord.id, { ...objectiveRecord, restoredDormant: true });
         continue;
       }
-      const dormant = injectObjective(objectiveRecord);
+      const dormant = injectObjective(objectiveRecord, restore);
       // 채팅은 live/idle 어댑터만 복원한다. 자식과 transcript 재생은 첫 send/명시 준비로 늦춘다.
       if (objectiveRecord[CHAT_MODE_PAYLOAD_KEY] === true) continue;
       const cwd = confirmedObjectiveCwd(objectiveRecord.id, objectiveRecord) ?? "";
-      ctx.host.objectiveRecords.patch(objectiveRecord.id, {
-        ...({
-          ...toObjectivePayload(objectiveRecord, cwd, dormant, providerSession, observability.getDurableObjective(objectiveRecord.id)?.providerTitle),
-          restoredDormant: true,
-        }),
+      restore(objectiveRecord.id, {
+        ...toObjectivePayload(objectiveRecord, cwd, dormant, providerSession, observability.getDurableObjective(objectiveRecord.id)?.providerTitle),
+        restoredDormant: true,
       });
+    }
+    if (!changes.length) return;
+    const restoreMany = ctx.host.objectiveRecords.restoreMany;
+    if (!restoreMany) {
+      for (const { id, input } of changes) ctx.host.objectiveRecords.patch(id, input);
+      return;
+    }
+    try {
+      restoreMany(changes);
+    } catch (error) {
+      // 예전처럼 저장 실패가 기동을 멈추지 않는다. 일괄 적용은 메모리를 되돌렸으니 디스크와 갈라지지 않는다.
+      console.warn(`[fleet-console] Dormant restore save failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
