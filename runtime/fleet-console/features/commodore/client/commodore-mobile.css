@@ -118,7 +118,7 @@
 .objectives-cm-center-text { margin: 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); line-height: 22px; }
 .objectives-cm-bigmono { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--m-chip); color: var(--m-text-nav); }
 
-/* 지시 · 정보 · 설정 탭 — 카드 화면 문법(.card-pad · .glab · .field · .secnote · .pill2). */
+/* 정보 · 설정 화면 — 카드 화면 문법(.card-pad · .glab · .field · .secnote · .pill2). */
 .objectives-cm-content { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .objectives-cm-content::-webkit-scrollbar { display: none; }
 .objectives-cm-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }

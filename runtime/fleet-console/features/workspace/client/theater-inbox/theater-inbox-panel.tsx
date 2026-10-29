@@ -76,7 +76,7 @@ function useCenterSection(theaterId: string, language: ConsoleLocale): { readonl
  * 대화 중심 화면의 Theater Inbox — 시트 대신 오른쪽 패널. Inbox 의 섹션(Theater 설정·사령관 등)은 패널 앞 묶음의 탭으로 서고,
  * 패널 머리가 섹션 줄과 그 섹션의 칸 탭을 세운다. 가운데 칸에 그 섹션의 대화(사령관)가 선 동안에는 그 자리를 대화의 탭이 맡는다.
  *
- * 열림 상태는 시트와 같은 Inbox 스토어다 — 어느 입구(머리·우클릭 메뉴·지시 탭의 링크)든 같은 주소로 온다. 패널을 닫거나 가운데 칸에
+ * 열림 상태는 시트와 같은 Inbox 스토어다 — 어느 입구(머리·우클릭 메뉴·다른 칸의 링크)든 같은 주소로 온다. 패널을 닫거나 가운데 칸에
  * 다른 Objective 을 고르면 닫힌다.
  */
 export function TheaterInboxPanel({ open, theater, sections, language, navigation, select, fallback }: TheaterInboxPanelProps) {
@@ -148,7 +148,7 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
     const kept = keptToolPanel(getRailStoreSnapshot().activePanelId, railRef.current, section.descriptor.omitsRailEntries);
     let inCenter = section.id === centerSectionId;
     // 대화의 기본 탭으로 가는 진입(사이드바 Theater 머리·팔레트 Theater 전환이 착지하는 사령관 기록)은 대화를 세우는 자동 열림이다 —
-    // 사람이 그 대화에서 사이드바를 닫아 두었으면 열지 않는다. 그 밖의 칸(지시·기억·Theater 설정 등)을 고른 진입은 사람이 그 칸을
+    // 사람이 그 대화에서 사이드바를 닫아 두었으면 열지 않는다. 그 밖의 칸(정보·Theater 설정 등)을 고른 진입은 사람이 그 칸을
     // 보려는 것이라 연다.
     if (!inCenter && section.descriptor.openConversation) {
       try { inCenter = section.descriptor.openConversation({ theater, pageId: page.id }); } catch { inCenter = false; }

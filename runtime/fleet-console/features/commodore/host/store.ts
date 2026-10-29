@@ -103,7 +103,7 @@ export interface CommodoreStore {
   askRead(commodoreId: string, askIds: readonly string[]): CommodoreState;
   /** 저장된 상태를 읽을 수 있는 사령관 — 재시작 복원이 읽는다. 폴더를 읽을 수 없는 Theater 는 빠진다. */
   availableCommodores(): readonly string[];
-  /** 서버 안 구독 — 감독자가 지시·정보 변경을 깨움 이유로 받는다. 브라우저 방송(`emit`)과 별개다. */
+  /** 서버 안 구독 — 감독자가 설명·정보 변경을 깨움 이유로 받는다. 브라우저 방송(`emit`)과 별개다. */
   subscribe(listener: (event: CommodoreEvent) => void): () => void;
 }
 

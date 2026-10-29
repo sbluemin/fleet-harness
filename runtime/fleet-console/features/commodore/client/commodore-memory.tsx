@@ -34,7 +34,7 @@ export const MEMORY_BRANCH_HINT: Record<MemoryBranch, CommodoreMessageKey> = {
 };
 
 const pad = (value: number) => String(value).padStart(2, "0");
-/** 지시 칸의 정보 목록과 같은 날짜 표기(MM-DD). */
+/** 정보 칸의 정보 목록과 같은 날짜 표기(MM-DD). */
 export const memoryDay = (at: number) => { const date = new Date(at); return `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; };
 export const memoryDayTime = (at: number) => { const date = new Date(at); return `${memoryDay(at)} ${pad(date.getHours())}:${pad(date.getMinutes())}`; };
 

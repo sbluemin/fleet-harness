@@ -9,8 +9,8 @@ import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_
 /**
  * 사령관(Commodore) — UUID마다 하나, Console feature가 소유하는 자율 운영 상태의 브라우저 투영.
  *
- * Console 데이터의 `commodore/<UUID>/`에 산다: `state.json` 한 건(자율 운영·지시·정보·정보 출처·
- * Theater 별 모델 좌표)과 `transcript.jsonl`(사령관 기록). 사람의 「지시」와 「정보」는 사령관 전용 도구로만 읽히고 시스템
+ * Console 데이터의 `commodore/<UUID>/`에 산다: `state.json` 한 건(자율 운영·설명·정보·정보 출처·
+ * Theater 별 모델 좌표)과 `transcript.jsonl`(사령관 기록). 사람의 「설명」과 「정보」는 사령관 전용 도구로만 읽히고 시스템
  * 프롬프트나 깨움 턴에는 실리지 않는다 — 그래서 상태의 진실은 이 파일이고, 세션은 매번 여기서 다시 읽는다. 서버 전용 `theaters: [{ path }]` 연결은 이 DTO에 실리지 않는다.
  */
 

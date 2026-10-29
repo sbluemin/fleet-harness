@@ -29,7 +29,7 @@ import { COMMODORE_EFFORTS, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODO
  * 「사령관 기록」 서랍이 부르는 라우트 — 이미지 사본 읽기만 GET이고 나머지는 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
  * `commodore` 사건으로 갱신되므로 응답은 확인용이다.
  *
- * 지시·정보는 실행 여부와 무관하게 읽고 쓸 수 있다. 사람 메시지는
+ * 설명·정보는 실행 여부와 무관하게 읽고 쓸 수 있다. 사람 메시지는
  * 감독자가 한 턴을 받을 수 있을 때만 기록한다 — 받을 실행기가 없는데 문장만 남겨 조용히 잃지 않는다.
  */
 

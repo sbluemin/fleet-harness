@@ -699,7 +699,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     for (const commodoreId of wanted) start(commodoreId, reason);
   };
 
-  // 지시·정보·메시지·좌표 — 저장소 사건이 깨움 이유다.
+  // 설명·정보·메시지·좌표 — 저장소 사건이 깨움 이유다.
   cleanups.push(deps.store.subscribe((event) => {
     let runner = runners.get(event.commodoreId);
     if (event.op === "state") {

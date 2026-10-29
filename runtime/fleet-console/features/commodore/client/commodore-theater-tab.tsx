@@ -11,7 +11,7 @@ import { refreshCommodoreList, useCommodoreList } from "./commodore-list.js";
 /**
  * 설정 맨 위의 「Theater」 — 이 사령관이 가진 Theater 목록이다. 다른 사령관과 나누는 목록에서 골라 잇지 않는다:
  * 「+ Theater 추가」는 곧바로 폴더를 고르고 그 폴더를 이 사령관에 더하며, 행의 「제거」는 이 사령관에서만 뺀다.
- * 데스크톱은 지시 탭의 정보 목록, 폰은 폰 정보 묶음과 같은 줄 문법이다.
+ * 데스크톱은 정보 탭의 정보 목록, 폰은 폰 정보 묶음과 같은 줄 문법이다.
  */
 export function CommodoreTheaters({ commodoreId, phone = false }: { readonly commodoreId: string; readonly phone?: boolean }) {
   const t = useT(phone);

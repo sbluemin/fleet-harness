@@ -137,7 +137,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-commodore-clear.is-armed { color: var(--coral-ink); background: color-mix(in oklch, var(--coral) 10%, transparent); }
 .objectives-commodore-clear-confirm { margin: 0; color: var(--coral-ink); font-size: var(--t-xs); line-height: 1.5; }
 
-/* Theater Inbox 「사령관」 섹션 — 시트 틀·목록·머리는 호스트가 그린다. 여기는 섹션 본문(띠·기록·지시·정보·설정)만.
+/* Theater Inbox 「사령관」 섹션 — 시트 틀·목록·머리는 호스트가 그린다. 여기는 섹션 본문(띠·기록·루틴·정보·설정)만.
    시트에서 연 메뉴는 호스트 스크림(z-index 90) 위에 선다. */
 .objectives-commodore-inbox { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .objectives-commodore-inbox-glyph { width: 14px; height: 14px; color: var(--text-secondary); }
@@ -175,7 +175,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 /* 스크롤바는 Objective 패널과 같은 전역 문법을 그대로 입는다(자체 규칙 없음). 가로로는 흐르지 않는다 — 내용이 줄을 바꾼다. */
 .objectives-commodore-body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 28px 24px; display: grid; grid-template-columns: minmax(0, 880px); gap: 14px; align-content: start; overflow-wrap: anywhere; }
 .objectives-commodore-inbox.is-compact .objectives-commodore-body { padding-inline: 20px; }
-/* 기록 밖의 칸(지시·정보·설정)과 대화 중심 화면의 같은 탭은 호스트 오른쪽 패널 틀의 읽기 열에 선다 — 폭·여백·스크롤은 틀이 진다.
+/* 기록 밖의 칸(루틴·정보·설정)과 대화 중심 화면의 같은 탭은 호스트 오른쪽 패널 틀의 읽기 열에 선다 — 폭·여백·스크롤은 틀이 진다.
    여기서 다시 880 열·좌우 여백·자체 스크롤을 세우면 넓은 패널에서 본문만 머리 축을 벗어나 왼쪽에 붙는다. */
 .objectives-commodore-inbox > .objectives-commodore-body:not(.is-log),
 .objectives-commodore-conversation-tab.objectives-commodore-body { flex: none; overflow: visible; padding: 0; grid-template-columns: minmax(0, 1fr); }
@@ -377,7 +377,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-intel-add:focus-within textarea::placeholder { color: var(--text-tertiary); }
 .objectives-commodore-intel-add textarea[readonly] { opacity: 0.6; }
 
-/* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 지시 칸의 정보와 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
+/* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 정보 칸의 다른 섹션과 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
    색은 검증 경과(warn 점) 하나만 상태를 말하고, 나머지는 글자 층위로만 나눈다. */
 .objectives-commodore-memory { display: grid; gap: 14px; min-width: 0; }
 .objectives-commodore-memory-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
@@ -649,7 +649,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .is-sheet .commodore-create-button { flex: 1; height: 56px; font-size: var(--m-fs-body); font-weight: var(--weight-bold); }
 @media (prefers-reduced-motion: reduce) { .is-sheet .commodore-create { animation: none; } }
 .commodore-prompt-body { width: 100%; color: var(--text-primary); background: var(--control-field); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); }
-/* 설정 맨 위의 Theater·플러그인 — 지시 탭 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px, --commodore-settings-line)로만 나눈다.
+/* 설정 맨 위의 Theater·플러그인 — 정보 탭 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px, --commodore-settings-line)로만 나눈다.
    Theater 제목은 이 칸의 SettingsRow(.fc-settings-row__label + 위 font-size 재정의)와 같은 크기·색·굵기. 플러그인 제목은 그 클래스를 그대로 쓴다.
    폰·Theater Inbox 제목에는 닿지 않는다. */
 .objectives-commodore-settings > :is(.commodore-theaters, .commodore-plugins) { padding-bottom: 18px; }

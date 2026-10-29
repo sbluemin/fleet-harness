@@ -26,9 +26,9 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const write = (file: string, value: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, value); };
     const theater = (name: string) => { const dir = path.join(temp, "theaters", name); fs.mkdirSync(dir, { recursive: true }); return fs.realpathSync.native(dir); };
     const marker = (id: string, root: string) => JSON.stringify({ commodoreId: id, path: root, startedAt: 1 });
-    /** 이관 전 파일 모양(옛 키)의 시드 — 옛 키는 바이트에만 실리고 소스에는 남기지 않는다. */
-    const LEGACY_KEY = `direct${"ive"}`;
-    const state = (text: string) => JSON.stringify({ ...EMPTY_COMMODORE_STATE, description: { text, rev: 1, updatedAt: 1 }, autonomy: true }).replaceAll(`"description"`, `"${LEGACY_KEY}"`);
+    // 이관 전 파일 모양의 시드 — 옛 버전은 설명을 `directive` 키에 썼다.
+    const { description: _description, ...legacyBase } = EMPTY_COMMODORE_STATE;
+    const state = (text: string) => JSON.stringify({ ...legacyBase, directive: { text, rev: 1, updatedAt: 1 }, autonomy: true });
     const seed = (name: string, root: string, text = name) => {
       const workspace = path.join(data, "workspaces", name);
       const dir = path.join(workspace, "objectives", "commodore");
@@ -181,11 +181,11 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     expect(migrated).not.toHaveProperty("patrolMinutes");
     expect(migrated).not.toHaveProperty("stopAt");
     expect(migrated).not.toHaveProperty("autonomy");
-    expect(migrated).not.toHaveProperty(LEGACY_KEY);
+    expect(migrated).not.toHaveProperty("directive");
     // 이관된 상태를 한 번 더 읽어도 같고(멱등), 둘 다 있으면 description 을 지킨다(저장 무결성).
     const migratedRaw = JSON.parse(fs.readFileSync(path.join(entities, stoppedId, "state.json"), "utf8")) as Record<string, unknown>;
     expect(migrateCommodoreState(migratedRaw)).toEqual(migratedRaw);
-    expect(migrateCommodoreState({ [LEGACY_KEY]: { text: "old", rev: 1, updatedAt: 1 }, description: { text: "new", rev: 2, updatedAt: 2 } })).toEqual({ description: { text: "new", rev: 2, updatedAt: 2 } });
+    expect(migrateCommodoreState({ directive: { text: "old", rev: 1, updatedAt: 1 }, description: { text: "new", rev: 2, updatedAt: 2 } })).toEqual({ description: { text: "new", rev: 2, updatedAt: 2 } });
     expect(ownerOf(workspaceHash(fresh))).toBeNull();
     // cwd를 못 읽어도 후보 이름이 겹치는 Theater만 보류한다. 관계없는 새 Theater는 위에서 정상 발급됐다.
     expect(owners(workspaceHash(unknown.root))).toEqual([]);

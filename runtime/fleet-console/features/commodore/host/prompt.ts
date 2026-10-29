@@ -1,6 +1,6 @@
 /**
  * 사령관의 시스템 프롬프트 — Objectives 제품이 소유하는 구조화된 베이스(정체성) 하나. 모든 Theater 에서 같고, 버전은
- * 이 파일의 이력이다. 사람의 「지시」와 「정보」는 여기 실리지 않는다 — 사령관 전용 도구에만 있고, 사령관이 스스로 읽는다.
+ * 이 파일의 이력이다. 사람의 「설명」과 「정보」는 여기 실리지 않는다 — 사령관 전용 도구에만 있고, 사령관이 스스로 읽는다.
  *
  * `mode: "replace"` 로 넘기므로 Claude Code 기본 지침은 실리지 않는다. Theater 들은 추가 폴더로 주어져 그 프로젝트 스킬이
  * 발견되지만, 어느 폴더의 CLAUDE.md·규칙도 싣지 않는다(실행기의 AgentWorkspace). 사령관이 받는 시스템 지침은 이것뿐이다.
@@ -208,7 +208,7 @@ New objectives start in your objectives directory and receive the added Theaters
 ${OPENUI_GUIDE}`;
 }
 
-/** 깨움 턴 — 시각·실린 프롬프트 버전·이유만. 내용(지시·정보·보드)은 사령관이 도구로 읽는다. */
+/** 깨움 턴 — 시각·실린 프롬프트 버전·이유만. 내용(설명·정보·보드)은 사령관이 도구로 읽는다. */
 export function wakeNote(at: Date, reasons: readonly string[]): string {
   const hh = String(at.getHours()).padStart(2, "0");
   const mm = String(at.getMinutes()).padStart(2, "0");
@@ -240,7 +240,7 @@ export function replacementNote(summary: readonly string[]): string {
   return ["This is a replacement session. Summary of your recent actions (everything else you read again from the tools):", ...summary.map((line) => `- ${line}`)].join("\n");
 }
 
-/** 사람의 메시지 — 사령관 도구에 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. 지시가 아니라 말이다. */
+/** 사람의 메시지 — 사령관 도구에 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. 설명이 아니라 말이다. */
 export function messageNote(messages: readonly string[]): string {
   return ["The person's message to you (not your description; the description is in the tools):", ...messages.map((message) => `> ${message.replaceAll("\n", "\n> ")}`)].join("\n");
 }

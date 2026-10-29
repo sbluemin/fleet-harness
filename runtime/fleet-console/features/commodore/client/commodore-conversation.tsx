@@ -30,7 +30,7 @@ import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js
 type T = Translate<CommodoreMessageKey>;
 
 /**
- * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 패널 앞 묶음에 기록(행위 곁 칸)·지시(정보 포함)·
+ * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 패널 앞 묶음에 기록(행위 곁 칸)·루틴·정보(설명·정보·기억)·
  * 기억·설정이 선다(Theater 설정 곁의 「사령관」 섹션). 데이터·쓰기 경로는 Inbox 시트와 같은 사령관 상태이고, 여닫기는 SDK 능력
  * (`ctx.conversation`)만 쓴다. 대화 중심 화면에서 Theater 머리나 Inbox 요청이 사령관 기록을 열면 Inbox 섹션의 `openConversation` 이
  * 이 대화를 세운다. 대화 중심 화면이 꺼져 있으면 이 모듈은 아무것도 열지 않고, 머리는 Inbox 시트를 연다.
@@ -44,8 +44,8 @@ let port: ClientConversationCapability | null = null;
 let inbox: ClientTheaterInboxCapability | null = null;
 
 /**
- * 설치 때 받은 능력을 쥔다. 구버전 호스트(능력 없음)면 대화 중심 화면은 없는 것으로 다룬다. Theater Inbox 는 지시 탭의
- * 「시스템 프롬프트」 링크가 쓴다 — 대화 중심 화면에서는 호스트가 그 칸을 오른쪽 패널의 Theater 설정 탭으로 연다.
+ * 설치 때 받은 능력을 쥔다. 구버전 호스트(능력 없음)면 대화 중심 화면은 없는 것으로 다룬다. Theater Inbox 능력은
+ * 대화 배치가 아닐 때 사령관 기록 칸을 여는 데 쓴다.
  */
 export function connectCommodoreConversation(next: ClientConversationCapability | undefined, nextInbox?: ClientTheaterInboxCapability): () => void {
   port = next ?? null;
