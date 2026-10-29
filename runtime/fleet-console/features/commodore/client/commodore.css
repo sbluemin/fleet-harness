@@ -151,7 +151,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
   padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; white-space: nowrap;
   text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px;
 }
-.objectives-commodore-hint-link:hover { text-decoration-color: var(--brass); }
+.objectives-commodore-hint-link:hover { text-decoration-color: currentColor; }
 .objectives-commodore-hint-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 
 
@@ -450,7 +450,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-text-button:hover:not(:disabled) { color: var(--brass-ink); }
 .objectives-commodore-text-button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-commodore-text-button:disabled { opacity: 0.45; cursor: default; }
-.objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 2px; }
+.objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 3px; }
 
 .objectives-commodore-failure { margin: 0 28px 8px; color: var(--coral); font-size: var(--t-xs); }
 /* 입력 — 캡슐·원·첨부 줄·안내 줄·「+」 메뉴의 외양은 지휘관 대화 입력창과 한 벌이다(SDK `fc-composer-*`, 호스트 components.css).
@@ -674,7 +674,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-theaters-list li.is-missing .commodore-theaters-name { color: var(--text-tertiary); text-decoration: line-through; }
 .commodore-theaters-missing { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-theaters-add { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 0; color: var(--brass-ink); background: none; border: 0; font: inherit; font-size: var(--t-sm); text-align: start; cursor: pointer; }
-.commodore-theaters-add:hover:not(:disabled) > span:last-child { text-decoration: underline; text-underline-offset: 2px; }
+.commodore-theaters-add:hover:not(:disabled) > span:last-child { text-decoration: underline; text-underline-offset: 3px; }
 .commodore-theaters-add:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 .commodore-theaters-add:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-hint.is-error { color: var(--coral-ink); }

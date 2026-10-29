@@ -948,7 +948,7 @@
   text-underline-offset: 3px;
   cursor: pointer;
 }
-.agent-chat-step-ref:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
+.agent-chat-step-ref:hover { color: var(--text-primary); text-decoration-color: currentColor; }
 .agent-chat-step-ref:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 
 /* Theater 밖 좌표 — 표시형으로 접히면 안쪽과 구별되지 않으므로 표식이 대신 말한다. */
@@ -2751,9 +2751,11 @@
   font: inherit;
   color: inherit;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
   cursor: pointer;
 }
+.agent-chat-coord-pop-compact:hover { text-decoration-color: currentColor; }
 
 .agent-chat-coord-pop-note {
   margin: var(--space-1) var(--space-2) 2px;
@@ -3019,7 +3021,7 @@
 
 .agent-chat-job-anchor:hover {
   color: var(--text-secondary);
-  border-bottom-color: var(--brass);
+  border-bottom-color: currentColor;
 }
 
 .agent-chat-job-anchor:focus-visible {

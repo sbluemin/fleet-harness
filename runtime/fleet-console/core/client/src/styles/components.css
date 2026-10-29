@@ -8961,7 +8961,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   text-underline-offset: 3px;
   cursor: pointer;
 }
-.fc-composer-notice__dismiss:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
+.fc-composer-notice__dismiss:hover { color: var(--text-primary); text-decoration-color: currentColor; }
 .fc-composer-notice__dismiss:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 
 /* 끌어다 놓는 동안 — brass는 위치 채널이라 "여기 놓으라"에 맞다. */
@@ -10288,10 +10288,11 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   font: inherit;
   font-size: var(--t-xs);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
 }
 
-.fc-live-line__stop:hover { color: var(--text-primary); }
+.fc-live-line__stop:hover { color: var(--text-primary); text-decoration-color: currentColor; }
 
 .fc-live-line__stop:focus-visible {
   outline: 2px solid var(--brass);
