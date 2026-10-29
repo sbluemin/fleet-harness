@@ -35,7 +35,7 @@ import {
   seedDocMtime,
   useFileExplorerViewState,
 } from "./view-store.js";
-import { filePaneTarget, fileRequestOwner, findReferencedFile, FileNavigationError, ownerCommodoreId, parseFileLocation, resolveFilePath } from "./file-navigation.js";
+import { filePaneTarget, fileRequestOwner, findReferencedFile, FileNavigationError, ownerCommodoreId, parseFileLocation, resolveFilePath, scopeObjectiveId } from "./file-navigation.js";
 import { showFileNavigationError, setDocumentPaneOpen, setFileRevealTarget, setSelectedPath } from "./view-store.js";
 import { parentDirOf } from "./viewer/stale.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
@@ -59,6 +59,13 @@ interface InlineFeedback {
   readonly message: string;
 }
 
+/**
+ * 막 끝낸 착지의 문맥. 트리 복원이 "방금 열린 문서"와 "예전부터 열려 있던 낡은 문서"를
+ * 가르는 표식이다 — 착지와 같은 렌더 묶음에서 복원이 돌 때 한 번만 소비한다.
+ * params는 Theater를 오가며 창에 남으므로 신선도로는 쓸 수 없다.
+ */
+let pendingFileLanding: { readonly theaterId: string; readonly objectiveId?: string; readonly commodoreId?: string } | null = null;
+
 export const fileExplorerEntry: RailEntryDescriptor = {
   id: "file-explorer",
   title: (locale) => getT(locale)("fileExplorer.panel.title"),
@@ -76,6 +83,12 @@ export const fileExplorerEntry: RailEntryDescriptor = {
       try {
         const resolved = await resolveFilePath(request.theaterId, ref.path, request.pathKind, undefined, request.objectiveId, request.commodoreId);
         // 트리 창에도 같은 문맥을 심는다 — 트리 클릭·복원·검색으로 여는 다음 문서가 목표/사령관 문맥을 잇는다.
+        // 심은 값의 신선도는 아래 pendingFileLanding으로 가린다(params는 Theater를 오가며 남는다).
+        pendingFileLanding = {
+          theaterId: request.theaterId,
+          ...(request.objectiveId ? { objectiveId: request.objectiveId } : {}),
+          ...(request.objectiveId || !request.commodoreId ? {} : { commodoreId: request.commodoreId }),
+        };
         host.rail.open(fileExplorerEntry.id, {
           theaterId: request.theaterId,
           ...fileRequestOwner(request.objectiveId, request.commodoreId),
@@ -176,7 +189,8 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const { theaterId, panes } = ctx;
   const t = getT(ctx.language);
   const contextScope = theaterId ?? "";
-  const objectiveId = ctx.params.objectiveId;
+  // 창 params의 목표가 지금 보고 있는 문맥에 속할 때만 쓴다 — 다른 Theater·목표의 착지 params는 버리고 표면 문맥으로 떨어진다.
+  const objectiveId = scopeObjectiveId(ctx.params.objectiveId, theaterId, ctx.consoleState);
   // 파일 요청에 실을 사령관 — 착지 params가 지금 Theater를 가리키면 그 사령관, 아니면 표면의 사령관. 추정하지 않는다.
   const commodoreId = ownerCommodoreId(ctx.params, theaterId, ctx.commodoreId);
   const { selectedPath, openDocs, docStates, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
@@ -216,18 +230,25 @@ function FileExplorerTreePane(ctx: PaneContext) {
   useEffect(() => {
     hydrateStoredSession(contextScope || null);
     const restored = getFileExplorerSnapshot(contextScope);
-    // 외부 착지로 열린 문서는 저장된 세션으로 덮지 않는다 — 착지가 심은 창 params(소유자)가
-    // 그 표시다. 표면 소유자로는 판단하지 않는다(일반 탐색에서도 표면 주인은 있다).
-    const seeded = typeof objectiveId === "string" && objectiveId
-      ? true
-      : ownerCommodoreId(ctx.params, theaterId, null) !== undefined;
-    if (panes.isOpen(DOCUMENT_PANE_ID) && seeded) return;
+    // 외부 착지로 열린 문서는 저장된 세션으로 덮지 않는다. 표식은 두 가지다 —
+    // 갓 착지한 문맥(한 번만 소비하는 pendingFileLanding), 또는 창 params가 지금 문맥에
+    // 속하는 소유자를 싣고 있을 때(검증된 objectiveId). 표면 소유자로는 판단하지 않는다
+    // (일반 탐색에서도 표면 주인은 있다). 낡은 착지는 저장된 문맥으로 복원한다.
+    const pending = pendingFileLanding;
+    pendingFileLanding = null;
+    const pendingMatches = pending !== null
+      && pending.theaterId === contextScope
+      && (pending.objectiveId ?? null) === (objectiveId ?? null)
+      && (pending.commodoreId ?? null) === (commodoreId ?? null);
+    if (panes.isOpen(DOCUMENT_PANE_ID) && (pendingMatches || objectiveId !== undefined)) return;
     if (restored.documentPaneOpen && restored.activePath) {
-      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope, ...fileRequestOwner(restored.scopeOwner?.objectiveId, restored.scopeOwner?.commodoreId) }, focus: false });
+      // 저장된 소유자는 지금 문맥과 일치할 때만 쓴다. 사령관은 살아 있는 표면 문맥을
+      // 우선하고 저장된 값을 보조로 둔다(표면 주인이 없는 채로 복원될 때).
+      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope, ...fileRequestOwner(scopeObjectiveId(restored.scopeOwner?.objectiveId, contextScope, ctx.consoleState), commodoreId ?? restored.scopeOwner?.commodoreId) }, focus: false });
     } else if (panes.isOpen(DOCUMENT_PANE_ID)) {
-      panes.close();
+      panes.close(DOCUMENT_PANE_ID);
     }
-  }, [commodoreId, contextScope, panes, objectiveId, theaterId, ctx.params.commodoreId, ctx.params.objectiveId, ctx.params.theaterId]);
+  }, [commodoreId, contextScope, ctx.consoleState, panes, objectiveId, theaterId, ctx.params.commodoreId, ctx.params.objectiveId, ctx.params.theaterId]);
 
   const openFilePath = useCallback((relativePath: string, displayName?: string, mode: "preview" | "pinned" = "preview") => {
     if (!theaterId) return;

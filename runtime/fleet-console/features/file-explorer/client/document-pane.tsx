@@ -22,7 +22,7 @@ import { makeFilesClient } from "./files-client.js";
 import { getT } from "./i18n/index.js";
 import { CHIP_STRIP_GAP_PX, chipDirHints, overflowingChipIndices, tabLineGeometry } from "./layout.js";
 import { QuietMenu } from "./quiet-menu.js";
-import { DOCUMENT_PANE_ID, fileRequestOwner, ownerCommodoreId, positiveCoordinate, resolveFilePath, FileNavigationError } from "./file-navigation.js";
+import { DOCUMENT_PANE_ID, fileRequestOwner, ownerCommodoreId, positiveCoordinate, resolveFilePath, scopeObjectiveId, FileNavigationError } from "./file-navigation.js";
 import { claimFileExplorerView, getFileExplorerSnapshot, noteScopeOwner, setFileRevealTarget, showFileNavigationError } from "./view-store.js";
 import { surfaceSelectorQuery } from "../../workspace/shared/surface-selector.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
@@ -76,7 +76,8 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
   const contextScope = theaterId ?? "";
-  const objectiveId = ctx.params.objectiveId;
+  // 창 params의 목표가 지금 보고 있는 문맥에 속할 때만 쓴다 — 다른 Theater·목표의 착지 params는 버리고 표면 문맥으로 떨어진다.
+  const objectiveId = scopeObjectiveId(ctx.params.objectiveId, contextScope, ctx.consoleState);
   // 파일 요청에 실을 사령관 — 착지 params가 지금 Theater를 가리키면 그 사령관, 아니면 표면의 사령관. 추정하지 않는다.
   const commodoreId = ownerCommodoreId(ctx.params, contextScope, ctx.commodoreId);
   // 트리 칸과 같은 대화가 이 Theater 의 보기 상태를 갖는다(rail-panel 의 같은 규칙).
@@ -860,7 +861,7 @@ export function FileExplorerDocumentCaptionActions(ctx: PaneContext) {
           busy
           onClick={() => {
             if (!activePath) return;
-            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...fileRequestOwner(ctx.params.objectiveId, ownerCommodoreId(ctx.params, ctx.theaterId, ctx.commodoreId)) });
+            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...fileRequestOwner(scopeObjectiveId(ctx.params.objectiveId, ctx.theaterId, ctx.consoleState), ownerCommodoreId(ctx.params, ctx.theaterId, ctx.commodoreId)) });
           }}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">

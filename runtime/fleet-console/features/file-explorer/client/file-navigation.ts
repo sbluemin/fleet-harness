@@ -1,6 +1,7 @@
 import { isAbsolute, parseFileRef, type FileRef } from "@fleet-console/markdown/file-ref";
 import type { PaneTarget } from "../../workspace/shared/pane.js";
 import type { OpenFileRequest } from "../../workspace/shared/navigation.js";
+import type { ClientConsoleStateCapability } from "../../workspace/shared/console-state.js";
 import type { FileResolveResult } from "../host/file-resolver.js";
 import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 
@@ -69,6 +70,34 @@ export function fileRequestOwner(objectiveId?: string, commodoreId?: string): { 
   if (objectiveId) return { objectiveId };
   if (commodoreId) return { commodoreId };
   return {};
+}
+
+type ObjectiveScope = Pick<ClientConsoleStateCapability, "getActiveObjectiveId" | "getObjectiveRecords">;
+
+/**
+ * 창 params·저장된 소유자의 objectiveId가 지금 보고 있는 문맥에 속하는지 확인한다.
+ * 다른 Theater·목표의 착지 params가 Theater를 오가며 창에 남아도, 일치하지 않으면 쓰지
+ * 않는다(추정 금지 — 표면 문맥으로 떨어진다).
+ * - 기록에 없으면(목록 로딩 전·끝난 목표) 그대로 둔다. 끝난 목표는 서버가 거절한다.
+ * - 기록의 Theater가 지금 Theater와 다르면 버린다.
+ * - 같은 Theater의 다른 목표가 활성이면 버린다(한 Theater를 나누는 목표 사이의 누수).
+ */
+export function scopeObjectiveId(
+  candidate: unknown,
+  theaterId: string | null,
+  consoleState: ObjectiveScope,
+): string | undefined {
+  if (typeof candidate !== "string" || !candidate) return undefined;
+  const records = consoleState.getObjectiveRecords({ nested: true });
+  const record = records.find((row) => row.id === candidate);
+  if (!record) return candidate;
+  if (record.theaterId !== theaterId) return undefined;
+  const activeObjectiveId = consoleState.getActiveObjectiveId();
+  if (activeObjectiveId && activeObjectiveId !== candidate) {
+    const activeRecord = records.find((row) => row.id === activeObjectiveId);
+    if (activeRecord && activeRecord.theaterId === theaterId) return undefined;
+  }
+  return candidate;
 }
 
 export async function findReferencedFile(theaterId: string, query: string, signal?: AbortSignal, objectiveId?: string, commodoreId?: string): Promise<{ readonly resolved: FileResolveResult; readonly ref: FileLocation } | null> {
