@@ -126,6 +126,19 @@ function useLiveCatalog(active: boolean): CatalogState {
 }
 
 const ERROR_CODES: ReadonlySet<MarketplaceErrorCode> = new Set<MarketplaceErrorCode>(["invalid_source", "duplicate", "preset_name", "reserved_name", "name_taken", "not_found", "auth_failed", "no_manifest", "fetch_failed", "preset_locked", "limit", "disabled", "plugin_not_found", "install_failed", "update_failed", "source_missing", "trust_required", "unavailable", "cli_unavailable"]);
+/** 행 메타 줄에 붙이는 짧은 업데이트 실패 이유. 짧게 말할 수 없는 코드는 이유 없이 "업데이트 실패"만 둔다. */
+const UPDATE_REASONS: Readonly<Record<string, CommodoreMessageKey>> = {
+  source_missing: "commodore.plugins.update.reason.source_missing",
+  not_found: "commodore.plugins.update.reason.not_found",
+  plugin_not_found: "commodore.plugins.update.reason.not_found",
+  disabled: "commodore.plugins.update.reason.disabled",
+  cli_unavailable: "commodore.plugins.update.reason.cli_unavailable",
+};
+function updateReason(t: T, code: string): string | null {
+  const key = UPDATE_REASONS[code];
+  return key ? t(key) : null;
+}
+
 function errorWord(t: T, code: string): string {
   return ERROR_CODES.has(code as MarketplaceErrorCode) ? t(`commodore.plugins.error.${code as MarketplaceErrorCode}`) : t("commodore.plugins.error.unknown", { code });
 }
@@ -658,13 +671,15 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
       }, (error) => {
         setUpdates((current) => ({ ...current, [pluginId]: { kind: "failed", code: codeOf(error) } }));
         const required = updateTrustOf(error, pluginId);
+        // 신뢰 확인은 같은 메뉴에서 이어 가고, 그 밖의 실패는 메뉴를 닫아 행의 실패 글자가 보이게 한다.
         if (required) setTrust(required);
+        else if (menuRef.current?.dataset.pluginId === pluginId) closeMenu();
       }).finally(() => setBusy(null));
   };
   const updateMark = (entry: PluginCatalogEntry | undefined, pluginId: string) => {
     const state = updates[pluginId];
     if (state?.kind === "updating") return <span className="commodore-plugins-state is-syncing" role="status">{t("commodore.plugins.update.pending")}</span>;
-    if (state?.kind === "failed") return <span className="commodore-plugins-state is-failed" role="alert">{t("commodore.plugins.update.failed", { reason: errorWord(t, state.code) })}</span>;
+    if (state?.kind === "failed") { const reason = updateReason(t, state.code); return <span className="commodore-plugins-state is-failed" role="alert">{reason ? t("commodore.plugins.update.failed", { reason }) : t("commodore.plugins.update.failedPlain")}</span>; }
     if (state?.kind === "done") return <span className="commodore-plugins-state is-done" role="status">{t("commodore.plugins.update.done")}</span>;
     return entry?.latestVersion ? <span className="commodore-plugins-state is-update">{isCommitVersion(entry.latestVersion) ? t("commodore.plugins.update.available") : t("commodore.plugins.update.version", { version: entry.latestVersion })}</span> : null;
   };
