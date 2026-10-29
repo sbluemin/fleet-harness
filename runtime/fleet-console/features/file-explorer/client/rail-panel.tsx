@@ -70,11 +70,16 @@ export const fileExplorerEntry: RailEntryDescriptor = {
   // 모바일 바로가기·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
   mobile: { destination: { order: 20, label: (locale) => getT(locale)("fileExplorer.panel.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></svg> },
   handles: {
-    openFile: async (request) => {
+    openFile: async (request, host) => {
       const ref = parseFileLocation(request.path);
       if (!ref) { showFileNavigationError("unsupported"); return { ok: false, reason: "unsupported" }; }
       try {
         const resolved = await resolveFilePath(request.theaterId, ref.path, request.pathKind, undefined, request.objectiveId, request.commodoreId);
+        // 트리 창에도 같은 문맥을 심는다 — 트리 클릭·복원·검색으로 여는 다음 문서가 목표/사령관 문맥을 잇는다.
+        host.rail.open(fileExplorerEntry.id, {
+          theaterId: request.theaterId,
+          ...fileRequestOwner(request.objectiveId, request.commodoreId),
+        });
         return filePaneTarget(request.theaterId, resolved, { ...ref, line: request.line ?? ref.line, column: request.column ?? ref.column }, request.objectiveId, request.commodoreId);
       } catch (error) {
         const reason = error instanceof FileNavigationError ? error.reason : "not_found";
