@@ -6550,11 +6550,18 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .objective-search-row-arrow {
   flex: none;
+  /* 상태 열의 오른쪽 끝을 맞추는 기준 — 지휘관 행의 ▸/◂와 사령관·구성원 행의 빈자리가 같은 폭이다. */
+  width: var(--space-4);
+  text-align: center;
   color: var(--text-tertiary);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.objective-search-row-arrow.is-spacer {
+  visibility: hidden;
 }
 
 .objective-search-result.is-active .objective-search-row-arrow,

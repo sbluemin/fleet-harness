@@ -888,9 +888,13 @@ export function ObjectiveSearch({
                             <span className="objective-search-sr-only">{t("chrome.objectiveRecordSearch.roleCommodore")}</span>
                           </span>
                           {row.context ? null : (
-                            <span className={`objective-search-status${working ? " is-running" : ""}`}>
-                              {working ? t("chrome.objectiveRecordSearch.commodoreWorking") : t("chrome.objectiveRecordSearch.commodoreWaiting")}
-                            </span>
+                            <>
+                              <span className={`objective-search-status${working ? " is-running" : ""}`}>
+                                {working ? t("chrome.objectiveRecordSearch.commodoreWorking") : t("chrome.objectiveRecordSearch.commodoreWaiting")}
+                              </span>
+                              {/* 지휘관 행의 ▸와 같은 너비의 자리 — 상태 열의 오른쪽 끝을 맞춘다. */}
+                              <span className="objective-search-row-arrow is-spacer" aria-hidden="true">▸</span>
+                            </>
                           )}
                         </button>
                       );
@@ -931,6 +935,8 @@ export function ObjectiveSearch({
                             <span className="objective-search-sr-only">{t("chrome.objectiveRecordSearch.roleMember")}</span>
                           </span>
                           <span className={`objective-search-status${mark === "running" ? " is-running" : mark === "awaiting" ? " is-awaiting" : ""}`}>{t(CONVERSATION_ROW_PHRASE[mark])}</span>
+                          {/* 지휘관 행의 ▸와 같은 너비의 자리 — 상태 열의 오른쪽 끝을 맞춘다. */}
+                          <span className="objective-search-row-arrow is-spacer" aria-hidden="true">▸</span>
                         </button>
                       );
                     }
