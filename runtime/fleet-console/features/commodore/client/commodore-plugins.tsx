@@ -668,11 +668,19 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => { if (suppressClick.current) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); } },
   });
   const readyFor = (pluginId: string) => ready?.pluginId === pluginId && authOf.get(pluginId)?.some((row) => row.server === ready.server && row.state === "pending") ? ready : null;
-  const inline = (pluginId: string, title: string) => readyFor(pluginId) && form?.pluginId !== pluginId
-    ? <span className={`commodore-plugins-inline is-open${phone ? " is-phone" : ""}`}>
-      <button type="button" className="commodore-plugins-text is-go" onClick={() => { openInDefaultOsBrowser(readyFor(pluginId)!.url); setReady(null); }}>{t("commodore.plugins.auth.openBrowser")}</button>
-    </span>
-    : form?.pluginId === pluginId
+  /**
+   * 모바일 셸에서 받은 인증 주소를 여는 글자 버튼 — 메타 줄의 상태 글자 바로 옆이다. 누름은 행의 길게 누르기·메뉴로 번지지 않는다.
+   */
+  const openNow = (pluginId: string) => {
+    const found = readyFor(pluginId);
+    if (!found) return null;
+    const stop = (event: { stopPropagation(): void }) => event.stopPropagation();
+    return <button type="button" className="commodore-plugins-text is-meta"
+      onPointerDown={(event) => { cancelPress(); suppressClick.current = false; event.stopPropagation(); }}
+      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }} onKeyDown={stop}
+      onClick={(event) => { event.stopPropagation(); openInDefaultOsBrowser(found.url); setReady(null); }}>{t("commodore.plugins.auth.openBrowser")}</button>;
+  };
+  const inline = (pluginId: string, title: string) => form?.pluginId === pluginId
     ? form.kind === "key"
       ? <KeyForm key={`key:${pluginId}`} t={t} plugin={title} names={form.names} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(values) => setKeys(pluginId, values)} />
       : <CallbackForm key={`callback:${pluginId}:${form.server}`} t={t} server={form.server} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(url) => submitCallback(pluginId, form.server, url)} />
@@ -712,7 +720,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
             <Fragment key={pluginId}>
               <div className={`objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId ? " is-target" : ""}`} aria-label={title} {...rowHandlers(pluginId)}>
                 <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="phone" />
-                <span className="objectives-cm-gr-tx">{title}<small className="is-mono">@{marketplace}</small>{mark || entry?.components ? <small className="commodore-plugins-meta">{mark}<Components t={t} components={entry?.components} /></small> : null}</span>
+                <span className="objectives-cm-gr-tx">{title}<small className="is-mono">@{marketplace}</small>{mark || entry?.components ? <small className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></small> : null}</span>
               </div>
               {inline(pluginId, title)}
             </Fragment>
@@ -739,7 +747,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
             <li key={pluginId} className={`commodore-plugins-row${menu?.pluginId === pluginId ? " is-target" : ""}`} aria-label={title} {...rowHandlers(pluginId)}>
               <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="row" />
               <span className="commodore-plugins-name" title={pluginId}>{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
-              {mark || entry?.components ? <span className="commodore-plugins-meta">{mark}<Components t={t} components={entry?.components} /></span> : null}
+              {mark || entry?.components ? <span className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></span> : null}
               {inline(pluginId, title)}
             </li>
           ))}

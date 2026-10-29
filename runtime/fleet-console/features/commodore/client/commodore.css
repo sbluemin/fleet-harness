@@ -757,7 +757,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-plugins-inline.is-phone { padding: 10px 16px 12px; border-radius: 4px; background: var(--m-surface); }
 .commodore-plugins-inline > .commodore-plugins-field { width: 100%; }
 .commodore-plugins-inline-actions { display: flex; justify-content: flex-end; gap: 12px; }
-.commodore-plugins-inline.is-open { display: flex; padding-top: 2px; }
+.commodore-plugins-meta .commodore-plugins-text.is-meta { padding: 0; font-size: var(--t-2xs); }
 .commodore-plugins-inline-hint { margin: 0; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-plugins-text.is-go { color: var(--brass-ink); }
 .commodore-plugins-comp { padding: 0 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--text-secondary); font-size: var(--t-2xs); line-height: 1.6; white-space: nowrap; }
