@@ -1,6 +1,5 @@
 export { revealPath } from "./path-actions.js";
 
-import type { ConsoleUseMcpHost } from "../../console-use/shared/tools.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
@@ -19,12 +18,8 @@ import {
   handleFilesWatch,
 } from "./tree-services.js";
 import { handleFilesSearch } from "./tree-services.js";
-import { createFileExplorerConsoleTools } from "./console-tools.js";
 
-export interface FileExplorerFeatureDeps { readonly paths: WorkspacePaths; readonly http: HttpPort; readonly security: HttpSecurityPort;
-
-  readonly consoleUse: ConsoleUseMcpHost;
-}
+export interface FileExplorerFeatureDeps { readonly paths: WorkspacePaths; readonly http: HttpPort; readonly security: HttpSecurityPort }
 export interface FileExplorerRouteContext { readonly host: FileExplorerFeatureDeps }
 export function createFileExplorerFeature(deps: FileExplorerFeatureDeps) {
   const ctx = { host: deps };
@@ -33,8 +28,6 @@ export function createFileExplorerFeature(deps: FileExplorerFeatureDeps) {
     const path = `/api/v1/file-explorer/${name}`;
     routes.push({ path, handler, catalog: [{ ...catalog, path: path + catalog.path }] });
   };
-  // Console Use 에 파일 읽기 도구를 싣는다 — 탐색기와 같은 경로 봉쇄·숨김 규칙으로, 쓰기는 없이.
-  const releaseConsoleTools = ctx.host.consoleUse.contribute?.(createFileExplorerConsoleTools(ctx));
   addRoute("files/list", async ({ req, res }) => {
     await handleFilesList(req, res, ctx);
     return true;
@@ -75,5 +68,5 @@ export function createFileExplorerFeature(deps: FileExplorerFeatureDeps) {
     await handleFilesSearch(req, res, ctx);
     return true;
   }, { method: "POST", path: "", summary: "Search files in a Theater.", category: "File Explorer", gate: "origin-write", transport: "http" });
-  return { routes, dispose: () => releaseConsoleTools?.() };
+  return { routes, dispose: () => {} };
 }

@@ -2827,12 +2827,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       featureCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
       const fileExplorerFeature = createFileExplorerFeature({
         paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
-        security: consoleFeaturePorts.security, consoleUse: consoleUse.forPlugin("file-explorer"),
+        security: consoleFeaturePorts.security,
       });
       featureCleanupCallbacks.add(() => fileExplorerFeature.dispose());
       const repositoryFeature = createRepositoryFeature({
         paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
-        security: consoleFeaturePorts.security, consoleUse: consoleUse.forPlugin("repository"),
+        security: consoleFeaturePorts.security,
         processes: { spawnOwned: (request) => {
           const child = ownedProcesses.spawn({
             command: request.command, args: request.args,
