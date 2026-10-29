@@ -54,7 +54,7 @@ it("delivers an '@'-picked plugin destination without launching, keeping the dra
       if (reject) throw new Error("destination_busy");
     },
   } as unknown as ClientFeatureDescriptor];
-  const theater = { id: "th-a", label: "th-a", createdAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
+  const theater = { id: "th-a", label: "th-a", createdAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z", activeAdmiralCount: 0 };
   setState({ theaters: [theater], newSession: { theaterId: "th-a" }, newSessionSeed: null, newSessionRejection: null, pendingLaunch: null });
   const container = document.createElement("div");
   document.body.append(container);

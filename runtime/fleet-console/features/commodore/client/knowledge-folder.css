@@ -1,0 +1,23 @@
+.commodore-knowledge-folder {
+  padding: var(--space-5);
+  color: var(--text-secondary);
+  font: var(--t-sm) / 1.6 var(--font-ui);
+}
+
+.commodore-knowledge-folder h2 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+.commodore-knowledge-folder p { margin: 0 0 var(--space-4); }
+
+.commodore-knowledge-folder .commodore-knowledge-path {
+  display: block;
+  margin: var(--space-5) 0 var(--space-3);
+  color: var(--text-primary);
+  font: var(--t-xs) / 1.7 var(--font-code);
+  overflow-wrap: anywhere;
+  user-select: text;
+}

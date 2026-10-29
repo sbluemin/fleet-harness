@@ -1,3 +1,5 @@
+export { revealPath } from "./path-actions.js";
+
 import type { ConsoleUseMcpHost } from "../../console-use/shared/tools.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";

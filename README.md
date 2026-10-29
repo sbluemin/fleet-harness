@@ -85,7 +85,7 @@ Each Theater has a **Commodore**: a coordinator that can run the Theater's objec
 
 The desktop screen is a conversation. The sidebar lists each Theater's conversations, the middle holds the one you're in, and the details column on the right shows that conversation's objective or the tool you opened. <kbd>Alt</kbd><kbd>←</kbd> and <kbd>Alt</kbd><kbd>→</kbd> move between conversations in the active Theater. Every session has an avatar that acts out what it is doing, and you can pick another character or color for it.
 
-<kbd>⌘</kbd><kbd>K</kbd> jumps to any conversation, file, or wiki page. <kbd>⌘</kbd><kbd>P</kbd> opens the command palette, <kbd>⌘</kbd><kbd>J</kbd> opens a new session, <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd> toggles Objectives, and <kbd>Alt</kbd><kbd>S</kbd> sorts the sidebar by status. Every shortcut can be rebound. On Windows and Linux, <kbd>⌘</kbd> is <kbd>Ctrl</kbd>.
+<kbd>⌘</kbd><kbd>K</kbd> jumps to any conversation or file. <kbd>⌘</kbd><kbd>P</kbd> opens the command palette, <kbd>⌘</kbd><kbd>J</kbd> opens a new session, <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd> toggles Objectives, and <kbd>Alt</kbd><kbd>S</kbd> sorts the sidebar by status. Every shortcut can be rebound. On Windows and Linux, <kbd>⌘</kbd> is <kbd>Ctrl</kbd>.
 
 ## The project, beside the conversation
 
@@ -96,7 +96,6 @@ A tool bar above every conversation opens tools for that conversation's Theater:
 - **Repository**: history, changes, compare, worktrees, branches, tags, and stashes.
 - **Files**: a tree with quick peek, pinned folders, and git status tints.
 - **Shell**: one terminal for the whole Console, a keystroke away (<kbd>Ctrl</kbd><kbd>`</kbd>).
-- **Codex**: each Commodore's wiki. Select a passage to attach it as a comment or question to a commander's or the Commodore's chat; their edits arrive as proposals, and nothing changes until you approve them.
 
 Provider quotas stay in view as usage meters at the top right; click them for the details.
 

@@ -1,6 +1,5 @@
 /* @fleet-console/markdown — shared markdown/diagram styles.
-   Consumed by codex (via @import in main.ts) and file-explorer (via import
-   in markdown.tsx). Token references (--brass, --aurora, etc.) are declared
+   Consumed by Markdown surfaces such as file-explorer. Token references (--brass, --aurora, etc.) are declared
    in the consuming surface's theme.css and must be present at render time. */
 
 /* highlight.js 팔레트 — 다크 쪽은 테마별로 재조율되는 신택스 역할 채널(--syntax-*, theme.css)을 쓴다. 고정 GitHub-dark hex는 다크 테마에서 같은 채도(C≈.12~.18)로 튀었다. 라이트 쪽만 vendored GitHub(light) raw 리터럴이 sanctioned 예외로 남는다(다크 보정 범위 밖). 전환은 각 테마의 color-scheme을 따르는 light-dark()가 수행하며, color-scheme 미선언 표면은 다크 값을 쓴다. 역할 배정은 파일 탐색기 하이라이터(.syn-*)와 같다 — 같은 코드가 뷰어와 마크다운에서 다른 색으로 읽히지 않게. */
@@ -135,11 +134,8 @@ code.hljs {
   /* purposely ignored */
 }
 
-/* Reading 타이포·구조 토큰 — codex theme.css와 동기화한 테마-무관 상수.
-   console 메인 theme.css엔 이 reading 스케일이 없으므로(운영 UI는 미사용) 공유 패키지가
-   자족 공급해 file-explorer 등 non-codex surface에서도 codex와 동일 렌더한다. codex
-   컨텍스트에선 codex theme.css :root 정의와 값이 같아 렌더 불변. lightbox는 portal(body
-   직속)이라 .markdown-body 스코프 밖이므로 셀렉터에 함께 명시한다. */
+/* Reading 타이포·구조 토큰 — 문서 표면이 공유하는 테마-무관 상수.
+   lightbox는 portal(body 직속)이라 .markdown-body 스코프 밖이므로 셀렉터에 함께 명시한다. */
 .markdown-body,
 .diagram-lightbox {
   --font-size-2xs: 10px;
@@ -185,9 +181,7 @@ code.hljs {
   margin-top: var(--space-5);
 }
 
-/* h1 — codex 본문은 제목을 .document-header로 분리하고 omitDuplicateTitle로 본문 h1을
-   제거하므로 h1 룰이 없었으나, file-explorer는 `# Title`로 시작하는 임의 .md를 렌더하므로
-   최상위 헤딩 스타일이 필요하다. codex h2(display-md) 위 단계인 display-lg로 위계를 잡는다. */
+/* 임의 Markdown 문서의 최상위 제목. h2(display-md) 위 단계인 display-lg로 위계를 잡는다. */
 .markdown-body h1 {
   scroll-margin-top: var(--space-6);
   color: var(--text-primary);

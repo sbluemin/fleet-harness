@@ -48,6 +48,7 @@ export interface CommodoreRouteHooks {
   /** 마켓플레이스 등록부와 카탈로그. 없으면 플러그인 라우트는 commodore_unavailable 로 거절한다. */
   readonly plugins?: import("./plugins.js").CommodorePlugins;
   readonly deletion?: ReturnType<typeof import("./deletion.js").createCommodoreDeletion>;
+  readonly knowledgeFolder?: ReturnType<typeof import("./knowledge-folder.js").createKnowledgeFolderAction>;
   readonly assertWritable?: (commodoreId: string) => void;
   readonly create?: (alias: string) => string;
   readonly list?: () => readonly ConsoleCommodoreSummary[];
@@ -153,6 +154,10 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   };
 
   return [
+    { name: "commodore/knowledge-folder", method: "POST", summary: "Open existing Commodore documents on the host, or show their location in the mobile layout.", handler: json(commodoreRef.extend({ action: z.enum(["display", "open"]) }).strict(), ({ commodoreId, action }) => {
+      if (!hooks.knowledgeFolder) throw new CommodoreStoreError("commodore_unavailable");
+      return hooks.knowledgeFolder(commodoreId, action);
+    }, false) },
     { name: "commodore/delete-preview", method: "POST", summary: "Preview the impact of permanently deleting a Commodore; Theaters are preserved.", handler: json(commodoreRef.strict(), ({ commodoreId, language }) => {
       if (!hooks.deletion) throw new CommodoreStoreError("commodore_unavailable");
       return hooks.deletion.preview(commodoreId, language);

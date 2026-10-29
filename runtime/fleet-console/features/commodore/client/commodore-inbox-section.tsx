@@ -7,7 +7,7 @@ import { CaptionTipHost } from "../../workspace/client/components/caption-action
 import { AttachImageIcon } from "../../execution/client/composer-primitives/icons.js";
 import { ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerNotice, ComposerPlusButton, ComposerSendButton } from "../../execution/client/composer-primitives/attachment-surface.js";
 import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "../../execution/client/composer-primitives/quote-tray.js";
-import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes, type ComposerQuote, type ComposerQuoteAttachResult } from "../../execution/client/composer-primitives/quotes.js";
+import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes } from "../../execution/client/composer-primitives/quotes.js";
 import { composerAttachmentNoticeText, composerT } from "../../execution/client/composer-primitives/messages.js";
 import { createComposerAttachments } from "../../execution/client/composer-primitives/attachment-store.js";
 import { isComposerAttachmentCandidate } from "../../execution/client/composer-primitives/attachments.js";
@@ -684,11 +684,6 @@ function commodoreDraft(theaterId: string) {
   let draft = commodoreDrafts.get(theaterId);
   if (!draft) { draft = createCommodoreDraft(); commodoreDrafts.set(theaterId, draft); }
   return draft;
-}
-
-/** 호스트가 중개한 인용(Codex 문서에서 고른 문장)을 이 Theater 사령관 입력창의 초안에 칩으로 붙인다. 보내지 않는다. */
-export function attachQuoteToCommodoreComposer(theaterId: string, quote: ComposerQuote): ComposerQuoteAttachResult {
-  return commodoreDraft(theaterId).quotes.add(quote);
 }
 
 /**

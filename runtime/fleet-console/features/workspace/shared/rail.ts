@@ -1,5 +1,5 @@
 import type { ConsoleClientCapabilities } from "../../../core/client/src/integration/client-capabilities.js";
-import type { OpenFileRequest, OpenWikiEntryRequest, OpenResult } from "./navigation.js";
+import type { OpenFileRequest, OpenResult } from "./navigation.js";
 import type { ConversationToolScope, PaneTarget } from "./pane.js";
 import type { ReactNode } from "react";
 
@@ -120,9 +120,12 @@ export type RailPanelDescriptor = RailContributionBase & ({
  * `activate`가 직접 무언가를 연다(Shell처럼 확대 표면을 바로 여는 경우).
  */
 export interface RailEntryDescriptor {
+  /** 이름만으로 동작을 설명할 수 없을 때 도구 말풍선에 덧붙이는 안내. */
+  readonly tooltip?: { readonly title: LocalizedText; readonly body: LocalizedText };
+  /** Theater 없이도 쓸 수 있지만 사령관 소유 문맥은 필요한 동작. */
+  readonly requiresCommodore?: boolean;
   readonly handles?: {
     readonly openFile?: (request: OpenFileRequest, host: ConsoleClientCapabilities) => PaneTarget | OpenResult | Promise<PaneTarget | OpenResult>;
-    readonly openWikiEntry?: (request: OpenWikiEntryRequest, host: ConsoleClientCapabilities) => void | OpenResult | Promise<void | OpenResult>;
   };
   readonly id: string;
   readonly title: LocalizedText;

@@ -61,7 +61,6 @@ export interface ConsoleTheaterInfo {
   readonly createdAt: string;
   readonly lastOpenedAt: string;
   readonly order?: number;
-  readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
 }
 
@@ -70,7 +69,6 @@ export interface ConsoleAgentCliMetadata {
   readonly label: string;
 }
 
-export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unknown";
 
 export interface ConsoleObserverStatus {
   /** 이 콘솔이 스스로를 부르는 이름. 액세스 링크의 label과 같은 값이라 양쪽에서 같게 읽힌다. */
@@ -87,7 +85,6 @@ export interface ConsoleObserverStatus {
   readonly requestedPort: number | null;
   readonly effectivePort: number;
   readonly portHonored: boolean;
-  readonly wikiServerStatus: ConsoleObserverWikiServerStatus;
 }
 
 export interface ConsoleObserverTheatersResponse {

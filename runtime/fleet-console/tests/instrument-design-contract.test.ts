@@ -27,11 +27,8 @@ const STANDALONE_CSS_SOURCES = [
   new URL("foundation/markdown/styles.css", CONSOLE_ROOT),
   new URL("foundation/font-picker/styles.css", CONSOLE_ROOT),
 ] as const;
-const CODEX_COMPONENTS_CSS_PATH = new URL("features/codex/client/codex/styles/components.css", CONSOLE_ROOT);
-const CODEX_LAYOUT_CSS_PATH = new URL("features/codex/client/codex/styles/layout.css", CONSOLE_ROOT);
 const CSS_THEME_SOURCES = [
   new URL("core/client/src/styles/theme.css", CONSOLE_ROOT),
-  new URL("features/codex/client/codex/styles/theme.css", CONSOLE_ROOT),
 ] as const;
 const PRODUCT_SOURCE_SUFFIXES = [".ts", ".tsx"] as const;
 const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
@@ -454,14 +451,6 @@ function findRawProductSelectsInSourceFile(
 }
 
 describe("Instrument core design contract", () => {
-  it("keeps the Codex health popover below blocking modal layers", () => {
-    const codexComponents = externalSource(CODEX_COMPONENTS_CSS_PATH);
-    const popover = codexComponents.match(/\.codex-nav-health-popover \{[\s\S]*?\n\}/)?.[0] ?? "";
-    expect(popover).toContain("position: fixed;");
-    expect(popover).toContain("z-index: 70;");
-    expect(popover).not.toContain("var(--z-overlay)");
-  });
-
   it("collapses backend API rows against their Settings card width", () => {
     const components = source("styles/components.css");
     const section = components.match(/\.backend-api-section \{[^}]*\}/)?.[0] ?? "";
@@ -1487,35 +1476,6 @@ describe("Instrument core design contract", () => {
     expect(bodyBlock).toContain("min-height: 0;");
     expect(bodyBlock).toContain("overflow: auto;");
     expect(bodyChildrenBlock).toContain("flex: none;");
-  });
-
-  // 2단 격자와 분할선은 이제 표면이 진다 — 여기서 지키는 것은 그 격자가 아니라 **각 열이
-  // 자기 높이에 갇혀 있는가**다. 열 하나가 내용 높이로 자라면 그 안의 목록은 네이티브
-  // 스크롤을 잃고 레일 전체가 늘어난다.
-  it("bounds the Codex navigator and document columns so long Wiki entry lists keep native scrolling", () => {
-    const components = source("styles/components.css");
-    const navigatorLayout = externalSource(CODEX_LAYOUT_CSS_PATH);
-    const railHostBlock = components.match(/\.codex-rail-host \{[^}]*\}/)?.[0] ?? "";
-    const docPaneBlock = components.match(/\.codex-doc-pane \{[^}]*\}/)?.[0] ?? "";
-    const hostBlock = components.match(/\.codex-rail-host > \.codex-host \{[^}]*\}/)?.[0] ?? "";
-    const navigatorBlock = navigatorLayout.match(/\.codex-navigator \{[^}]*\}/)?.[0] ?? "";
-    const navigatorScrollBlock = navigatorLayout.match(/\.codex-navigator-scroll \{[^}]*\}/)?.[0] ?? "";
-
-    expect(railHostBlock).toContain("height: 100%;");
-    expect(railHostBlock).toContain("min-height: 0;");
-    expect(docPaneBlock).toContain("display: flex;");
-    expect(docPaneBlock).toContain("flex-direction: column;");
-    expect(docPaneBlock).toContain("min-height: 0;");
-    expect(docPaneBlock).toContain("height: 100%;");
-    expect(hostBlock).toContain("height: 100%;");
-    expect(hostBlock).toContain("min-height: 0;");
-    expect(navigatorBlock).toContain("display: flex;");
-    expect(navigatorBlock).toContain("flex-direction: column;");
-    expect(navigatorBlock).toContain("min-height: 0;");
-    expect(navigatorBlock).toContain("height: 100%;");
-    expect(navigatorScrollBlock).toContain("flex: 1;");
-    expect(navigatorScrollBlock).toContain("min-height: 0;");
-    expect(navigatorScrollBlock).toContain("overflow-y: auto;");
   });
 
   it("keeps the mobile palette a complete root overlay that no Console theme can leak into", () => {

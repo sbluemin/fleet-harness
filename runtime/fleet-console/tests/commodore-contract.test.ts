@@ -86,7 +86,7 @@ it("persists UUID section order through the public route without rewriting entit
     http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value }; } } as never,
     security: { isTerminalAuthorized: () => authorized } as never,
     agent: { baseUrl: () => "http://127.0.0.1", resolveExecutablePath: async () => { throw new Error("unexpected_agent_launch"); } } as never,
-    experiments: undefined, models: undefined, attachments: undefined, knowledgeTools: () => [],
+    experiments: undefined, models: undefined, attachments: undefined,
   });
   let feature = create();
   const route = async (name: string, input: unknown = {}) => {
@@ -274,7 +274,7 @@ it("holds deletion admission until writers stop and preserves the owner on stop 
   const deletion = createCommodoreDeletion({ ownership, store, consoleDataDir: dir,
     supervisor: { stopForDeletion: async () => {}, sync: () => {} } as never,
     summary: () => ({ commodoreId: id, alias: "Owned", label: "Owned", theaters: [], active: false, run: { phase: "off", totals: { session: 0, costUsd: 0, actions: 0 } } }) as never,
-    host: { preview: () => ({ objectives: { total: 1, active: 1, archived: 0 }, runningSessions: 1 }), stopObjectives: stop, detachObjectives: detach, cleanup: () => ["settings_cleanup_failed"], releaseKnowledge: () => {}, claudeProjectsDirectory: path.join(dir, "claude", "projects") }, removing, removed,
+    host: { preview: () => ({ objectives: { total: 1, active: 1, archived: 0 }, runningSessions: 1 }), stopObjectives: stop, detachObjectives: detach, cleanup: () => ["settings_cleanup_failed"], claudeProjectsDirectory: path.join(dir, "claude", "projects") }, removing, removed,
   });
   const deleting = deletion.remove(id, "Owned");
   const failed = expect(deleting).rejects.toThrow("archive_stop_failed");

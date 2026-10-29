@@ -29,7 +29,6 @@ Discard candidates that fail any condition. Incorrect commands or missing skill 
 | Repeatable procedure | Existing skill; new skill only if no suitable home exists |
 | Procedure-specific trap | That skill's conditional reference/gotcha |
 | Stable, expensive-to-violate rule needed before scoped work | Nearest `CLAUDE.md` |
-| Non-obvious rationale of an approved decision | `wiki-history` |
 | User preference or working feedback | Persistent memory |
 
 Check existing homes for duplicates first. Propose migration rather than copying when a better home exists. `CLAUDE.md` additions must pass root risk-weighted minimalism; do not accumulate handbooks or inventories. Prefer enforceable tests/scripts over prose when feasible.
@@ -38,7 +37,7 @@ Check existing homes for duplicates first. Propose migration rather than copying
 
 1. Encode each survivor concisely as `symptom → action → why (failure mode)`. Include evidence for all three conditions, the owning home, and duplicates/migration.
 2. Inspect the touched surface and propose keep/update/delete dispositions too. Pruning review is required; unnecessary deletion is not.
-3. Apply only approved items. Repository changes use a dedicated worktree; Wiki and memory follow their current write contracts. For approved repository changes, follow the root `CLAUDE.md` standing delivery authorization through `pr-workflow`, honoring local-only requests and narrower scopes; this does not approve an unapproved candidate or replace memory approval.
+3. Apply only approved items. Repository changes use a dedicated worktree; Memory follows its current write contract. For approved repository changes, follow the root `CLAUDE.md` standing delivery authorization through `pr-workflow`, honoring local-only requests and narrower scopes; this does not approve an unapproved candidate or replace memory approval.
 4. Skill edits use narrow descriptions, conditionally loaded references, and explicit completion/stop conditions. Keep stable boundaries rather than adding model-performance claims or ceremonial investigation/testing steps.
 5. Verify links, commands, and ownership. Check that the rule resolves its target case without blocking neighboring normal cases. Do not persist unverified generalizations.
 

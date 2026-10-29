@@ -62,8 +62,7 @@ interface ExtractedFrontmatter {
   content: string;
 }
 
-// 정본: runtime/fleet-console/features/codex/host/wiki/store.ts WIKI_LINK_PATTERN
-// 브라우저 번들에 Node 전용 저장 모듈을 포함하지 않도록 인라인한다. 두 정규식을 함께 유지한다.
+// 기존 문서의 [[wiki:id]] 표기를 읽는 호환 문법. 저장된 본문은 바꾸지 않는다.
 const WIKI_LINK_PATTERN = /\[\[wiki:([^\]]+)\]\]/g;
 
 // Leading YAML frontmatter fence: `---` on the first line through a closing
@@ -495,7 +494,7 @@ function isExternalLink(href: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith(window.location.origin);
 }
 
-/** 헤딩 ID 슬러그 — decorateHeadings와 diff 재배정(reading-controller)이 같은 규칙을 공유한다. */
+/** 헤딩 ID 슬러그 — 문서 렌더링과 앵커 참조가 같은 규칙을 공유한다. */
 export function slugifyHeading(value: string): string {
   return slugify(value);
 }

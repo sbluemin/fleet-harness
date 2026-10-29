@@ -27,7 +27,7 @@ mod of section 2.1 asks Console per dispatch and Console answers. Live state is
 consumed through public leaf package APIs and package-local policy modules.
 
 This document is for the Admiral. It is not a public spec and not a contributor
-guide. Post-verification documentation and Fleet Wiki mutation remain host-owned
+guide. Post-verification documentation remains host-owned
 operations; they are not delegated.
 
 ---

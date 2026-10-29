@@ -35,7 +35,6 @@ export interface CommodoreSessionOptions {
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 목록·목표 화면 도구. action 선언(actionSchema)으로 쓰기를 가른다. */
   readonly boardTools: readonly ConsoleMcpTool[];
   /** 호스트가 이 사령관에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindCommodore`) — 서버 이름 그대로 도구 그룹이 된다. */
-  readonly knowledgeTools?: readonly McpServerTools[];
   /** 세션을 여는 순간 이 사령관이 고른 플러그인 — 로컬 경로와 호스트가 대신 여는 MCP 선언. */
   readonly plugins?: () => readonly ResolvedPlugin[];
   /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */
@@ -208,7 +207,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 그 프로젝트 스킬을 싣는다. 뒤에 더한 Theater 는 다음 세션부터 실린다.
     // Theater 의 `.mcp.json` 서버는 싣지 않는다 — Theater 에서 하는 실무는 그 목표의 지휘관·구성원 몫이다.
     const roots = [...new Set((options.theaters?.() ?? []).flatMap(({ root }) => (root ? [root] : [])))];
-    const knowledge = (options.knowledgeTools ?? []).filter((group) => group.tools.length && group.name !== COMMODORE_TOOL_GROUP && group.name !== BOARD_TOOL_GROUP);
     const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
@@ -234,7 +232,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         custom: [
           { name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) },
           ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : []),
-          ...knowledge.map((group) => ({ name: group.name, tools: group.tools.map(observed) })),
         ],
       },
       onEvent,

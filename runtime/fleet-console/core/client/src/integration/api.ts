@@ -414,7 +414,6 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     || (payload.requestedPort !== null && typeof payload.requestedPort !== "number")
     || typeof payload.effectivePort !== "number"
     || typeof payload.portHonored !== "boolean"
-    || (payload.wikiServerStatus !== "available" && payload.wikiServerStatus !== "unavailable" && payload.wikiServerStatus !== "unknown")
   ) {
     throw new ApiError(status, "Invalid status response");
   }
@@ -431,7 +430,6 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     requestedPort: payload.requestedPort,
     effectivePort: payload.effectivePort,
     portHonored: payload.portHonored,
-    wikiServerStatus: payload.wikiServerStatus,
   };
 }
 

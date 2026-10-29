@@ -10,7 +10,8 @@ import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { commodoreMarketplaceSettingsSection } from "./commodore-plugins.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
-import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
+import { knowledgeFolderEntry, knowledgeFolderPane } from "./knowledge-folder.js";
+import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
 import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { CommodoreZoneHost, commodoreConversationSurface, commodoreHomeTheater, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
@@ -82,15 +83,14 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
       const offState = installCommodoreState(ctx);
       const offList = installCommodoreList(ctx.consoleEvents);
       const offConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
-      const offQuotes = ctx.composer.receiveQuotes?.("commodore", { targets: commodoreQuoteTargets, receive: receiveCommodoreQuote, subscribe: subscribeCommodoreQuoteTargets });
-      return () => { offRemoved(); offQuotes?.(); offConversation(); offList(); offState(); offBoard(); snapshots.clear(); };
+      return () => { offRemoved(); offConversation(); offList(); offState(); offBoard(); snapshots.clear(); };
 
   };
   const plugin: ClientFeatureDescriptor = {
     id: "commodore",
 
-    railEntries: [commodoreEntry],
-    panes: [commodoreMobilePane],
+    railEntries: [knowledgeFolderEntry, commodoreEntry],
+    panes: [commodoreMobilePane, knowledgeFolderPane],
     theaterContributions: [commodoreTheaterContribution],
     mentionTargets: commodoreMentionTargets,
     subscribeMentionTargets: subscribeCommodoreMentions,

@@ -47,8 +47,6 @@ export interface CommodoreSupervisorDeps {
   readonly board: () => CommodoreBoardAdapter | null;
   /** 사령관 자신의 생성 도구 — 목표 보드의 권한·귀속 감싸기와 별개로 같은 턴 바인딩을 쓴다. */
   readonly managementTools?: (commodoreId: string, turn: CommodoreTurnBindings) => readonly ConsoleMcpTool[];
-  /** 호스트가 이 사령관에 묶어 준 지식 도구(Codex Wiki) — 세션을 열 때 읽는다. 없으면 사령관은 그 도구 없이 선다. */
-  readonly knowledgeTools?: (commodoreId: string) => readonly McpServerTools[];
   /** 사령관이 고른 플러그인을 세션을 여는 순간 푼다. */
   readonly plugins?: (pluginIds: readonly string[]) => readonly import("./plugins.js").ResolvedPlugin[];
   readonly emit: (event: CommodoreEvent) => void;
@@ -360,7 +358,6 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = createCommodoreSession({
       commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: boardTools(runner), now,
-      ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.commodoreId) } : {}),
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },
       onLive: (live) => deps.emit({ op: "live", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), live }),

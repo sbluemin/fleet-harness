@@ -14,10 +14,9 @@ import { readCommodoreList } from "../../../../features/commodore/client/commodo
 import { theaterFolderName, theaterLabelOf } from "../../../../features/commodore/client/theater-owner.js";
 import { acknowledgeIdleArrival } from "../../../../features/execution/client/objective-marks.js";
 import { noteObjectiveFocused } from "./palette-recent.js";
-import { stowExpandedSurfaces, closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
+import { stowExpandedSurfaces } from "../chrome/expanded-surface/store.js";
 import { observeConsoleVersion } from "./console-version.js";
 import type {
-  CodexReaderRequest,
   ConnectionState,
   ConsoleState,
   ControlHolder,
@@ -128,8 +127,6 @@ let state: ConsoleState = {
   keyboardShortcutsOpen: false,
   objectiveRecordNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
-  codexReader: null,
-  codexReaderExpanded: false,
 };
 
 export function getState(): ConsoleState {
@@ -1033,37 +1030,6 @@ export function closeOnboarding(): void {
   }
   if (!state.onboardingOpen) return;
   setState({ onboardingOpen: false });
-}
-
-/** 코어가 소유한 Codex 정독 표면의 주소. built-in.tsx의 서술자 id와 한 벌이다. */
-const CODEX_SURFACE_ID = "codex";
-
-function closeExpandedSurfacesFor(surfaceId: string): void {
-  for (const instance of getExpandedSurfaceState().instances) {
-    if (instance.surfaceId === surfaceId) closeExpandedSurface(instance.instanceId);
-  }
-}
-
-export function openCodexReader(req: CodexReaderRequest): void {
-  setState({ codexReader: req, codexReaderExpanded: false });
-}
-
-export function expandCodexReader(): void {
-  if (state.codexReader === null) return;
-  setState({ codexReaderExpanded: true });
-  // 확대는 곧 슬롯을 하나 차지하는 일이다. 표면을 열지 않고 플래그만 세우면 리더가
-  // 대화 칸에 직접 겹쳐 그려져 다른 표면을 덮는다.
-  openExpandedSurface({ surfaceId: CODEX_SURFACE_ID });
-}
-
-export function collapseCodexReader(): void {
-  setState({ codexReaderExpanded: false });
-  closeExpandedSurfacesFor(CODEX_SURFACE_ID);
-}
-
-export function closeCodexReader(): void {
-  setState({ codexReader: null, codexReaderExpanded: false });
-  closeExpandedSurfacesFor(CODEX_SURFACE_ID);
 }
 
 export function resolveOnboardingOnBootstrap(): void {

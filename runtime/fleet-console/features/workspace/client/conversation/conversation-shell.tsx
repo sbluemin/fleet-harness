@@ -814,13 +814,14 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     [conversationKey, toolContext, scopeCommodoreId, workLocation, scopeTheaterId],
   );
   // 대화의 작업 위치를 모르면(예: 등록 Theater 가 둘 이상인데 고른 것이 없음) Theater 에 묶인 칸을 세우지 않는다. 브라우저 칸은
-  // 이 대화의 세션을 따르므로 작업 위치 없이도 선다 — 숨기면 지구본이 눌림만 남기고 아무것도 세우지 않는다. 판정은 여기 하나다 — 칸을
+  // 이 대화의 세션을 따르므로 작업 위치 없이도 선다. Theater 없이 연다고 선언한 엔트리도 남긴다. 판정은 여기 하나다 — 칸을
   // 숨기는 것과 대화 칸이 오른쪽·아래로 비키는 것이 같은 배치의 geometry 에서 함께 나온다. 저장된 배치는 건드리지 않으므로 작업
   // 위치가 다시 서면 그대로 돌아온다.
   const workbenchSuspended = (conversationKey !== null || standInId !== null) && workLocation === null;
   const shownLayout = useMemo(
-    () => (workbenchSuspended ? workbenchLayoutKeeping(layout, (tile) => tile.kind === "browser") : layout),
-    [layout, workbenchSuspended],
+    () => (workbenchSuspended ? workbenchLayoutKeeping(layout, (tile) => tile.kind === "browser"
+      || (tile.kind === "entry" && railBindings.some(({ entry }) => entry.id === tile.entryId && (entry.scope === "fleet" || entry.opensWithoutTheater === true)))) : layout),
+    [layout, railBindings, workbenchSuspended],
   );
   const geometry = useMemo(() => computeWorkbenchGeometry(shownLayout, regionWidth, regionHeight), [shownLayout, regionWidth, regionHeight]);
   // 칸들은 자기 대화의 범위만 받는다 — 대화가 바뀌는 렌더에서는 작업대가 아직 앞 대화의 칸을 들고 있으므로(배치는 layout effect

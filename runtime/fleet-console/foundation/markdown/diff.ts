@@ -1,6 +1,4 @@
-// 렌더 문서 관점의 순수 블록/라인 diff. DOM·Node 의존이 없어 브라우저(Codex
-// 리더)와 호스트(드라이독 diffstat)가 같은 구현을 공유한다 — 구현을 어느 한쪽에
-// 복제하지 말 것.
+// 렌더 문서 관점의 순수 블록/라인 diff. DOM·Node 의존 없이 브라우저와 호스트가 공유한다.
 export interface DraftLine {
   readonly text: string;
   readonly changed: boolean;

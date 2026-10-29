@@ -85,7 +85,6 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     },
     navigate: {
       openFile: async () => ({ ok: false, reason: "no_handler" }),
-      openWikiEntry: async () => ({ ok: false, reason: "no_handler" }),
     },
     shell: { openAt: requestShellOpenAt, restartAt: requestShellRestartAt },
     navigation: {

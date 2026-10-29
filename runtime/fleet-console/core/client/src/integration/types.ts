@@ -112,7 +112,6 @@ export interface TheaterInfo {
   readonly createdAt: string;
   readonly lastOpenedAt: string;
   readonly order?: number;
-  readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
 }
 
@@ -133,7 +132,6 @@ export interface ObserverStatus {
   readonly requestedPort: number | null;
   readonly effectivePort: number;
   readonly portHonored: boolean;
-  readonly wikiServerStatus: "available" | "unavailable" | "unknown";
 }
 
 export type ConsoleUpdateApplyError =
@@ -279,12 +277,6 @@ export interface NotificationPreferences {
   readonly mutedTheaterIds: Readonly<Record<string, true>>;
 }
 
-export type CodexReaderRequest =
-  | { readonly kind: "entry"; readonly entryId: string }
-  | { readonly kind: "drydock"; readonly patchId?: string }
-  | { readonly kind: "conflicts"; readonly id?: string }
-  | { readonly kind: "schema"; readonly templateId?: string };
-
 export interface ConsoleState {
   /** 이 콘솔이 스스로를 부르는 이름. 원격에서 보고 있어도 그 콘솔의 이름을 그대로 읽는다. */
   readonly consoleName: string;
@@ -368,6 +360,4 @@ export interface ConsoleState {
   readonly keyboardShortcutsOpen: boolean;
   readonly objectiveRecordNotifications: Readonly<Record<string, ObjectiveNotification>>;
   readonly notificationPreferences: NotificationPreferences;
-  readonly codexReader: CodexReaderRequest | null;
-  readonly codexReaderExpanded: boolean;
 }

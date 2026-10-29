@@ -40,7 +40,7 @@ import {
 import { BinaryViewer } from "./viewer/binary.js";
 import { canWrapLines, CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
-import { MarkdownViewer, resolveFileExplorerWikiLink } from "./viewer/markdown.js";
+import { MarkdownViewer } from "./viewer/markdown.js";
 import { parentDirOf } from "./viewer/stale.js";
 
 /**
@@ -632,7 +632,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
           <MarkdownViewer
             content={viewState.content}
             navigate={ctx.navigate}
-            resolveWikiLink={resolveFileExplorerWikiLink}
+
             target={revealTarget?.relativePath === activePath ? revealTarget : undefined}
             relativePath={viewState.relativePath}
             theaterId={theaterId}

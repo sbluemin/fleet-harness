@@ -244,11 +244,7 @@
 .mobile-tool-sheet .pane-caption-control { min-width: 44px; min-height: 44px; }
 .mobile-tool-sheet .rail-pane[hidden] { display: none; }
 
-[data-host-surface="mobile-sheet"] .codex-doc-scroll,
-[data-host-surface="mobile-sheet"] .codex-reading-sheet-read {
-  padding-bottom: var(--space-6);
-  scroll-padding-bottom: var(--space-4);
-}
+
 
 /* ===== Settings — 목록 화면과 상세 화면 ===== */
 

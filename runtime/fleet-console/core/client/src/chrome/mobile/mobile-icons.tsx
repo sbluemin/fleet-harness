@@ -17,7 +17,6 @@ const PATHS = {
   target: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></>,
   file: <><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></>,
   folder: <path d="M3 6h6l2 2h10v11H3z" />,
-  wiki: <><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" /><path d="M5 17a3 3 0 0 1 3-3h9" /></>,
   term: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 10l3 2-3 2M13 15h4" /></>,
   grid: <><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></>,
   archive: <><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></>,

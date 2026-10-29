@@ -5,7 +5,6 @@ import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import { createCommodoreEntities } from "./entities.js";
 import { migrateCommodoreData } from "./migrate.js";
 import { CommodoreStoreError } from "./errors.js";
-import { hasLegacyKnowledge, legacyKnowledgeSources } from "./knowledge-sources.js";
 import type { CommodoreTheaterSummary } from "../shared/contracts/theaters.js";
 
 /** 실행 복원보다 먼저 UUID 소유와 현재 작업 범위를 분리해 준비한다. */
@@ -48,16 +47,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     throw new CommodoreStoreError("theater_unavailable");
   };
   const knowledge = {
-    directory: (id: string) => deleting.has(id) ? null : entities.dirOf(id),
     root: (id: string) => { const dir = deleting.has(id) ? null : entities.dirOf(id); return dir ? path.join(dir, "knowledge") : null; },
-    ids: () => entities.ids().filter((id) => entities.dirOf(id) !== null),
-    /** 그 id 가 지금 있는 사령관인가. Theater 맥락에서 주인을 찾지 않는다 — 지식은 사령관 UUID 로만 가리킨다. */
-    exists: (commodoreId: string): boolean => !deleting.has(commodoreId) && entities.dirOf(commodoreId) !== null,
-    legacySources: (id: string, resuming = false) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).filter((row) => {
-      if (resuming || entities.locateAll(row.path).length === 1) return true;
-      if (hasLegacyKnowledge(paths.consoleDataDir, row.path)) console.warn(`[commodore] wiki migration ${id}: ambiguous_source; original preserved`);
-      return false;
-    }).map((row) => row.path)),
   };
   const objectiveDirectory = (id: string): string => {
     const dir = entities.dirOf(id);
