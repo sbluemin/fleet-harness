@@ -23,6 +23,8 @@ export interface ObjectiveSearchEntry {
   readonly objectiveId: string;
   readonly theaterId: string | null;
   readonly theaterLabel: string;
+  /** 그 Objective 을 소유한 사령관 id — 팔레트의 사령관 묶음과 @멘션은 이 값으로 주인을 정한다. */
+  readonly commodoreId: string;
   /** 그 Objective 를 소유한 사령관의 별칭 — 검색이 별칭으로도 맞는다. 묶음 머리(Theater)에는 서지 않는다. */
   readonly commodoreAlias?: string;
   /** Shell 판별용 Objective 종류 — 팔레트의 이름 왼쪽 마크가 사이드바와 같은 분기를 탄다. */
@@ -305,6 +307,136 @@ export function groupObjectiveSearchEntries(
 }
 
 /**
+ * CMD+K 이동 모드의 사령관 묶음 행. Theater 묶음(`ObjectiveSearchGroup`, @멘션이 그대로 쓴다)과
+ * 달리 소유는 `objectiveRecord.commodoreId`로만 정한다 — 보관 항목의 theaterId는 사령관마다 다른
+ * 해시라 Theater로 주인을 찾을 수 없다.
+ */
+export type CommodorePaletteRow =
+  | { readonly kind: "commodore"; readonly commodoreId: string; readonly label: string; readonly context: boolean }
+  | { readonly kind: "objective"; readonly entry: ObjectiveSearchEntry; readonly context: boolean }
+  | { readonly kind: "member"; readonly record: ObjectiveRecord; readonly label: string };
+
+export interface CommodorePaletteGroup {
+  readonly commodoreId: string;
+  readonly label: string;
+  readonly current: boolean;
+  readonly rows: readonly CommodorePaletteRow[];
+}
+
+export interface CommodorePaletteSource {
+  /** 표시 이름 — 별칭, 없으면 목록 라벨. 목록에 없는 사령관은 unknownLabel. */
+  readonly commodoreId: string;
+  readonly alias?: string;
+  readonly label: string;
+}
+
+/**
+ * 사령관 묶음을 세운다. 빈 질의에서는 모든 사령관 행을 세우고 구성원은 펼치지 않는다.
+ * 질의가 있으면 맞은 행만 세운다: 사령관 별칭이 맞으면 그 사령관 행 + 지휘관 전부,
+ * 지휘관 제목이 맞으면 맥락 사령관 행 + 맞은 지휘관, 구성원 역할이 맞으면 맥락 행들 + 맞은 구성원.
+ * 맞지 않은 사령관 묶음은 세우지 않는다. 구성원 이름·검색어는 보드 로스터의 역할(memberNames)이다 —
+ * 스토어의 nested 타이틀(잘린 id)이 아니다.
+ * 순서는 보고 있는 사령관 먼저, 이후 사령관 목록 순서, 목록에 없는 사령관은 끝이다.
+ * 묶음 안은 활성(최근 포커스 순, 질의가 있으면 점수 순) → 보관 순이다.
+ */
+export function groupCommodorePaletteEntries(args: {
+  readonly entries: readonly ObjectiveSearchEntry[];
+  readonly members: readonly ObjectiveRecord[];
+  /** 구성원 id → 보드 로스터의 역할. */
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly query: string;
+  readonly commodores: readonly CommodorePaletteSource[];
+  readonly viewedCommodoreId: string | null;
+  readonly recentRank: (objectiveId: string) => number;
+  readonly unknownLabel: string;
+}): readonly CommodorePaletteGroup[] {
+  const { entries, members, memberNames, query, commodores, viewedCommodoreId, recentRank, unknownLabel } = args;
+  const hasQuery = searchTokens(query).length > 0;
+  const sources = new Map(commodores.map((row) => [row.commodoreId, row]));
+  const entriesByCommodore = new Map<string, ObjectiveSearchEntry[]>();
+  for (const entry of entries) {
+    const list = entriesByCommodore.get(entry.commodoreId) ?? [];
+    list.push(entry);
+    entriesByCommodore.set(entry.commodoreId, list);
+  }
+  const membersByParent = new Map<string, ObjectiveRecord[]>();
+  if (hasQuery) {
+    for (const member of members) {
+      if (!member.parentObjectiveId) continue;
+      const list = membersByParent.get(member.parentObjectiveId) ?? [];
+      list.push(member);
+      membersByParent.set(member.parentObjectiveId, list);
+    }
+  }
+  const memberLabel = (member: ObjectiveRecord): string => memberNames.get(member.id) ?? member.title;
+  const memberMatches = (list: readonly ObjectiveRecord[]): ObjectiveRecord[] =>
+    list.filter((member) => fuzzyMatchPaletteLabel(memberLabel(member), query));
+  // 지휘관이 0개인 사령관도 묶음이 선다 — 빈 질의에서 사령관 행이 빠지는 것은 "사령관이 안 나와"의 재발이다.
+  const orderedIds = [
+    ...(viewedCommodoreId && sources.has(viewedCommodoreId) ? [viewedCommodoreId] : []),
+    ...commodores.map((row) => row.commodoreId).filter((id) => id !== viewedCommodoreId),
+    ...[...entriesByCommodore.keys()].filter((id) => id !== viewedCommodoreId && !sources.has(id)),
+  ];
+  const groups: CommodorePaletteGroup[] = [];
+  for (const commodoreId of orderedIds) {
+    const source = sources.get(commodoreId);
+    const label = source?.alias || source?.label || unknownLabel;
+    const groupEntries = entriesByCommodore.get(commodoreId) ?? [];
+    const commodoreMatch = hasQuery ? fuzzyMatchPaletteLabel([source?.alias, source?.label].filter(Boolean).join(" "), query) : null;
+    const actives: { readonly entry: ObjectiveSearchEntry; readonly score: number; readonly exact: number }[] = [];
+    const archived: { readonly entry: ObjectiveSearchEntry; readonly score: number; readonly exact: number }[] = [];
+    for (const entry of groupEntries) {
+      if (!hasQuery || commodoreMatch) {
+        (entry.archived === true ? archived : actives).push({ entry, score: 0, exact: 0 });
+        continue;
+      }
+      const match = fuzzyMatchPaletteLabel(entry.objectiveRecordName, query);
+      if (match) (entry.archived === true ? archived : actives).push({ entry, score: match.score, exact: match.exactTokens });
+    }
+    const rank = (left: { readonly entry: ObjectiveSearchEntry; readonly score: number; readonly exact: number }, right: { readonly entry: ObjectiveSearchEntry; readonly score: number; readonly exact: number }) =>
+      hasQuery && !commodoreMatch
+        ? right.exact - left.exact || right.score - left.score || recentRank(left.entry.objectiveId) - recentRank(right.entry.objectiveId)
+        : recentRank(left.entry.objectiveId) - recentRank(right.entry.objectiveId);
+    actives.sort(rank);
+    const rows: CommodorePaletteRow[] = [];
+    const shownMembers = new Set<string>();
+    const pushMember = (member: ObjectiveRecord): void => {
+      if (shownMembers.has(member.id)) return;
+      shownMembers.add(member.id);
+      rows.push({ kind: "member", record: member, label: memberLabel(member) });
+    };
+    const pushObjective = (entry: ObjectiveSearchEntry, context: boolean): void => {
+      rows.push({ kind: "objective", entry, context });
+      if (!hasQuery) return;
+      for (const member of memberMatches(membersByParent.get(entry.objectiveId) ?? [])) pushMember(member);
+    };
+    rows.push({ kind: "commodore", commodoreId, label, context: hasQuery && !commodoreMatch });
+    for (const { entry } of actives) pushObjective(entry, false);
+    for (const { entry } of archived) pushObjective(entry, false);
+    // 구성원이 맞았는데 부모가 질의에 맞지 않으면 부모를 맥락 행으로 세운다.
+    if (hasQuery && !commodoreMatch) {
+      const shown = new Set(rows.flatMap((row) => row.kind === "objective" ? [row.entry.objectiveId] : []));
+      for (const [parentObjectiveId, list] of membersByParent) {
+        const matched = memberMatches(list);
+        if (matched.length === 0) continue;
+        const parent = groupEntries.find((entry) => entry.objectiveId === parentObjectiveId);
+        // 부모가 다른 사령관 묶음이면 그 묶음이 처리한다 — 여기서 세우면 주인이 바뀐다.
+        if (!parent) continue;
+        if (!shown.has(parentObjectiveId)) {
+          rows.push({ kind: "objective", entry: parent, context: true });
+          shown.add(parentObjectiveId);
+        }
+        for (const member of matched) pushMember(member);
+      }
+    }
+    // 질의가 있는데 맞은 행이 하나도 없으면 묶음을 세우지 않는다(사령관 행만 남는 경우).
+    if (hasQuery && !rows.some((row) => row.kind !== "commodore" || !row.context)) continue;
+    groups.push({ commodoreId, label, current: commodoreId === viewedCommodoreId, rows });
+  }
+  return groups;
+}
+
+/**
  * Theater × Inbox 섹션마다 `available` 이고 칸이 있을 때만 행을 만든다. 한 섹션의 실패가 팔레트를 비우지 않도록
  * 호출마다 감싼다(Theater 머리 기여와 같은 규칙).
  */
@@ -377,6 +509,7 @@ function toObjectiveSearchEntry(
     objectiveId: objectiveRecord.id,
     theaterId: objectiveRecord.theaterId,
     theaterLabel: theater?.label ?? objectiveRecord.theaterId,
+    commodoreId: objectiveRecord.commodoreId,
     // 별칭은 그 Objective 를 소유한 사령관의 것이다 — Theater 에서 주인을 찾지 않는다.
     ...(commodoreAliasOf(objectiveRecord.commodoreId) ? { commodoreAlias: commodoreAliasOf(objectiveRecord.commodoreId)! } : {}),
     type: "agent",

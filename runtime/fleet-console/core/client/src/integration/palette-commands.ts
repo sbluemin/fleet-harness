@@ -57,6 +57,7 @@ export type PaletteGlyphId =
 export type PaletteCommandAction =
   | { readonly kind: "undo-close" }
   | { readonly kind: "switch-theater"; readonly theaterId: string; readonly commodoreId: string }
+  | { readonly kind: "switch-commodore"; readonly commodoreId: string }
   | { readonly kind: "open-theater-section"; readonly theaterId: string; readonly sectionId: string; readonly pageId: string }
   | { readonly kind: "new-theater" }
   | { readonly kind: "new-objectiveRecord" }

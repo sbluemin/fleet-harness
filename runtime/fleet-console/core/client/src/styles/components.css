@@ -6303,6 +6303,59 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   height: 16px;
 }
 
+/* CMD+K 이동 모드의 사령관 묶음 — 머리(h2) 없이 묶음 사이 가는 선만 둔다. 구분 수단은
+   아바타와 들여쓰기뿐이다: 사령관 16px / 지휘관 46px(= 사령관 이름 시작선) / 구성원 74px. */
+.objective-search-commodore-row {
+  padding-left: var(--space-4);
+}
+
+.objective-search-objective-row {
+  padding-left: 46px;
+}
+
+.objective-search-member-row {
+  padding-left: 74px;
+}
+
+.objective-search-commodore-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.objective-search-group-sep {
+  height: 1px;
+  margin: 6px var(--space-4);
+  background: var(--popover-divider);
+}
+
+/* 오른쪽 상태는 한 단어다(칩 아님). 맞은 행에만 선다. */
+.objective-search-status {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.objective-search-status.is-running {
+  color: var(--text-primary);
+}
+
+.objective-search-status.is-awaiting {
+  color: var(--brass-ink);
+}
+
+/* 맥락 행과 보관 행의 이름은 흐리게 — 상태는 맞은 행에만 선다. */
+.objective-search-result.is-context > .objective-search-result-text > strong {
+  color: var(--text-tertiary);
+}
+
 .objective-search-panel-open {
   flex: none;
   color: var(--text-tertiary);
@@ -6497,11 +6550,18 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .objective-search-row-arrow {
   flex: none;
+  /* 상태 열의 오른쪽 끝을 맞추는 기준 — 지휘관 행의 ▸/◂와 사령관·구성원 행의 빈자리가 같은 폭이다. */
+  width: var(--space-4);
+  text-align: center;
   color: var(--text-tertiary);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.objective-search-row-arrow.is-spacer {
+  visibility: hidden;
 }
 
 .objective-search-result.is-active .objective-search-row-arrow,
