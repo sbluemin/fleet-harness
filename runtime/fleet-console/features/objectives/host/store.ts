@@ -353,11 +353,11 @@ export interface ObjectiveStore {
    */
   releaseGroups(scope?: { readonly commodoreId: string; readonly groupId: string }): number;
   /**
-   * 지휘관의 결정 요청 — 현재 요청을 통째로 새 id 들로 대체한다. revision 이 다르거나 답을 보내는 중이면 거절한다. 아직 답이 없는
-   * 현재 요청과 질문이 저장될 모양 그대로 같으면(순서·문장·선택지 이름과 설명·여러 개 고르기·임무·구성원) 대체하지 않고 그 요청을
-   * 돌려준다(reused) — id·revision 이 그대로라 사람이 쓰던 답과 그 id 로 낸 답이 살아 있다.
+   * 지휘관의 결정 요청 — 답이 없는 현재 요청이 있으면 다른 질문은 decision_pending 으로 거절한다. revision 이 다르거나
+   * 답을 보내는 중이면 거절한다. 아직 답이 없는 현재 요청과 질문이 저장될 모양 그대로 같으면(순서·문장·선택지 이름과 설명·여러 개
+   * 고르기·임무·구성원) 그 요청을 돌려준다(reused) — id·revision 이 그대로라 사람이 쓰던 답과 그 id 로 낸 답이 살아 있다.
    */
-  decisionRequest(objectiveId: string, input: { readonly expectedRevision: number; readonly questions: readonly DecisionQuestionInput[] }): { readonly objective: Objective; readonly request: DecisionRequest; readonly replacedRequestId: string | null; readonly reused: boolean };
+  decisionRequest(objectiveId: string, input: { readonly expectedRevision: number; readonly questions: readonly DecisionQuestionInput[] }): { readonly objective: Objective; readonly request: DecisionRequest; readonly reused: boolean };
   /** 지휘관의 철회 — 그 요청이 지금 요청일 때만. 요청이 없으면 변화 없이 withdrawn false. */
   decisionWithdraw(objectiveId: string, requestId: string): { readonly objective: Objective; readonly withdrawn: boolean };
   /**
@@ -2129,7 +2129,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
     decisionRequest(objectiveId, input) {
       let request!: DecisionRequest;
-      let replacedRequestId: string | null = null;
       let reused = false;
       const objective = update(objectiveId, (stored) => {
         if (stored.done) throw new ObjectiveStoreError("objective_done");
@@ -2152,14 +2151,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const current = stored.decisionRequest;
         const asked = current?.questions.map(({ id: _question, options, ...question }) => ({ ...question, options: options.map(({ id: _option, ...option }) => option) }));
         if (current && isDeepStrictEqual(asked, questions)) { request = current; reused = true; return stored; }
-        replacedRequestId = current?.id ?? null;
+        if (current) throw new ObjectiveStoreError("decision_pending", undefined, { requestId: current.id, hint: "Withdraw the current request with withdraw_decision_request first." });
         request = {
           id: randomUUID(), createdAt: now(),
           questions: questions.map((question) => ({ id: randomUUID(), ...question, options: question.options.map((option) => ({ id: randomUUID(), ...option })) })),
         };
         return { ...stored, decisionRequest: request, decisionDelivery: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
       });
-      return { objective, request, replacedRequestId, reused };
+      return { objective, request, reused };
     },
 
     decisionWithdraw(objectiveId, requestId) {
