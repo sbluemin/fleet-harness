@@ -215,8 +215,8 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       }
       return view(commodoreId, store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId)));
     }) },
-    { name: "commodore/plugins/update", method: "POST", summary: "Update one plugin with the Claude Code CLI; applies from its next session and reports the old and new versions with the refreshed catalog.", handler: json(pluginUpdateSchema, async ({ pluginId, trusted }) => {
-      const result = await plugins().updatePlugin(pluginId, trusted === true);
+    { name: "commodore/plugins/update", method: "POST", summary: "Update one plugin with the Claude Code CLI; applies from its next session and reports the old and new versions with the refreshed catalog.", handler: json(pluginUpdateSchema, async ({ pluginId, trusted, version }) => {
+      const result = await plugins().updatePlugin(pluginId, trusted === true, version);
       // 인증 캐시를 버리고, 그 플러그인을 고른 모든 사령관에 알린다. 적용은 다음 세션부터다.
       hooks.pluginAuth?.invalidate();
       hooks.pluginsChanged?.([pluginId]);

@@ -477,9 +477,23 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     const raw = readJson(path.join(home, "plugins", "known_marketplaces.json"));
     return isRecord(raw) ? raw as Record<string, { readonly installLocation?: string }> : {};
   };
-  const installed = (): Record<string, readonly { readonly installPath?: string; readonly version?: string; readonly gitCommitSha?: string }[]> => {
+  type InstallRecord = { readonly installPath?: string; readonly version?: string; readonly gitCommitSha?: string };
+  /** CLI 가 쓴 설치 기록 그대로. 업데이트가 새 설치본을 판단할 때만 직접 읽는다. */
+  const installedRaw = (): Record<string, readonly InstallRecord[]> => {
     const raw = readJson(path.join(home, "plugins", "installed_plugins.json"));
-    return isRecord(raw) && isRecord(raw.plugins) ? raw.plugins as Record<string, readonly { readonly installPath?: string; readonly version?: string; readonly gitCommitSha?: string }[]> : {};
+    return isRecord(raw) && isRecord(raw.plugins) ? raw.plugins as Record<string, readonly InstallRecord[]> : {};
+  };
+  /**
+   * 업데이트 중인 플러그인의 업데이트 전 기록. CLI 는 끝나기 전에 설치 기록을 바꾸므로, 신뢰 판단이 끝날 때까지
+   * 세션·카탈로그는 이 기록으로 읽는다 — 그 사이 열리는 세션이 확인 안 된 새 버전을 싣지 않는다.
+   */
+  const pinned = new Map<string, readonly InstallRecord[] | undefined>();
+  const installed = (): Record<string, readonly InstallRecord[]> => {
+    const rows = installedRaw();
+    if (!pinned.size) return rows;
+    const view: Record<string, readonly InstallRecord[]> = { ...rows };
+    for (const [id, record] of pinned) { if (record) view[id] = record; else delete view[id]; }
+    return view;
   };
   /** 업데이트 전 설치 기록 스냅샷 — 신뢰 없는 새 버전을 되돌릴 때 그대로 쓴다. */
   const snapshotInstalled = (id: string): unknown[] | undefined => {
@@ -541,8 +555,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
    * 세션이 실을 디렉터리. 설치본에 plugin.json 이 있거나 marketplace 항목이 strict 이면 설치본 그대로다.
    * strict:false 이면 설치본을 `loaded/` 로 복사하고 항목의 구성 요소 선언을 plugin.json 으로 쓴다.
    */
-  const loadDirOf = (id: string): string | null => {
-    const install = installed()[id]?.[0];
+  const loadDirOf = (id: string, install: InstallRecord | undefined = installed()[id]?.[0]): string | null => {
     if (!install?.installPath || !fs.existsSync(install.installPath)) return null;
     const entry = entryOf(id);
     const ownManifest = fs.existsSync(path.join(install.installPath, ".claude-plugin", "plugin.json"));
@@ -1009,13 +1022,15 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
      * 설치본으로 판단하고, 신뢰가 없으면 설치 기록을 이전 버전(캐시에 남아 있음)으로 되돌린 뒤 같은 거절을 낸다.
      * `trusted` 로 다시 오면 `trusted[id] = 새 버전` 을 기록하고 진행한다.
      */
-    async updatePlugin(id: string, trustedFlag: boolean): Promise<PluginUpdateResult> {
+    async updatePlugin(id: string, trustedFlag: boolean, reviewedVersion?: string): Promise<PluginUpdateResult> {
       return await serial(async () => {
         const { marketplace } = splitPluginId(id);
         const row = requireRow(marketplace);
         if (!row.enabled) throw new CommodoreStoreError("disabled");
         const entry = entryOf(id);
         if (!entry) throw new CommodoreStoreError("plugin_not_found");
+        // 신뢰는 사람이 본 그 버전에만 준다 — 확인한 뒤 출처가 바뀌었으면 새 버전으로 다시 묻는다.
+        const approves = (version: string) => trustedFlag && reviewedVersion === version;
         const installs = installed();
         const before = installs[id]?.[0];
         const beforeDir = loadDirOf(id);
@@ -1025,42 +1040,53 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
         const candidate = bundled ? text(manifestOf(bundled).version, 128) ?? text(entry.version, 128) : undefined;
         const preRuns = bundled ? describe(id, bundled).runs ?? [] : [];
         if (bundled && candidate && beforeVersion && candidate !== beforeVersion && preRuns.length > 0 && readRegistry().trusted[id] !== candidate) {
-          if (!trustedFlag) throw new CommodoreStoreError("trust_required", undefined, { version: candidate, runs: preRuns });
+          if (!approves(candidate)) throw new CommodoreStoreError("trust_required", undefined, { version: candidate, runs: preRuns });
           update((registry) => ({ ...registry, trusted: { ...registry.trusted, [id]: candidate } }));
         }
         const snapshot = snapshotInstalled(id);
-        const result = await runCli(["update", id]);
-        if (result.outcome !== "ok") {
-          // CLI 가 명령 확인을 요구하면 신뢰 확인으로 돌려준다.
-          if (result.failureCode === "trust_required" || result.failureCode === "confirmation_required" || result.failureCode === "accept_command" || result.failureCode === "command_confirmation" || /--accept-command/i.test(result.message ?? "")) {
-            const version = candidate ?? (typeof result.newVersion === "string" && result.newVersion ? result.newVersion : undefined) ?? beforeVersion;
-            throw new CommodoreStoreError("trust_required", undefined, { ...(version ? { version } : {}), runs: preRuns });
+        pinned.set(id, installedRaw()[id]);
+        try {
+          const result = await runCli(["update", id]);
+          if (result.outcome !== "ok") {
+            // CLI 가 명령 확인을 요구하면 신뢰 확인으로 돌려준다.
+            if (result.failureCode === "trust_required" || result.failureCode === "confirmation_required" || result.failureCode === "accept_command" || result.failureCode === "command_confirmation" || /--accept-command/i.test(result.message ?? "")) {
+              const version = candidate ?? (typeof result.newVersion === "string" && result.newVersion ? result.newVersion : undefined) ?? beforeVersion;
+              throw new CommodoreStoreError("trust_required", undefined, { ...(version ? { version } : {}), runs: preRuns });
+            }
+            if (result.failureCode === "source_missing") throw new CommodoreStoreError("source_missing");
+            if (result.failureCode === "not_found") throw new CommodoreStoreError("not_found");
+            if (result.failureCode === "cli_unavailable") throw new CommodoreStoreError("cli_unavailable");
+            throw new CommodoreStoreError("update_failed");
           }
-          if (result.failureCode === "source_missing") throw new CommodoreStoreError("source_missing");
-          if (result.failureCode === "not_found") throw new CommodoreStoreError("not_found");
-          if (result.failureCode === "cli_unavailable") throw new CommodoreStoreError("cli_unavailable");
-          throw new CommodoreStoreError("update_failed");
-        }
-        const oldVersion = typeof result.oldVersion === "string" && result.oldVersion ? result.oldVersion : undefined;
-        const newVersion = typeof result.newVersion === "string" && result.newVersion ? result.newVersion : undefined;
-        if (!oldVersion || !newVersion) throw new CommodoreStoreError("update_failed");
-        if (result.updateOutcome === "up_to_date" || oldVersion === newVersion) {
-          return { outcome: "up_to_date" as const, oldVersion, newVersion, view: catalog() };
-        }
-        // 버전이 바뀌었다 — 미리 읽을 수 없었던 경우는 새 설치본으로 신뢰를 판단한다.
-        const afterDir = loadDirOf(id);
-        if (!afterDir) throw new CommodoreStoreError("update_failed");
-        const after = describe(id, afterDir);
-        const key = after.version ?? newVersion;
-        const runs = after.runs ?? [];
-        if (runs.length > 0 && readRegistry().trusted[id] !== key) {
-          if (!trustedFlag) {
-            restoreInstalled(id, snapshot);
-            throw new CommodoreStoreError("trust_required", undefined, { version: key, runs });
+          const oldVersion = typeof result.oldVersion === "string" && result.oldVersion ? result.oldVersion : undefined;
+          const newVersion = typeof result.newVersion === "string" && result.newVersion ? result.newVersion : undefined;
+          if (!oldVersion || !newVersion) throw new CommodoreStoreError("update_failed");
+          // 표시 버전이 같아도 설치본(경로·커밋)이 바뀌었으면 새 내용으로 본다.
+          const afterInstall = installedRaw()[id]?.[0];
+          const moved = afterInstall?.installPath !== before?.installPath || afterInstall?.gitCommitSha !== before?.gitCommitSha;
+          if (!moved && (result.updateOutcome === "up_to_date" || oldVersion === newVersion)) {
+            pinned.delete(id);
+            return { outcome: "up_to_date" as const, oldVersion, newVersion, view: catalog() };
           }
-          update((registry) => ({ ...registry, trusted: { ...registry.trusted, [id]: key } }));
+          // 새 설치본으로 신뢰를 판단한다(미리 읽은 상대 출처도 실제로 받은 것을 다시 본다).
+          const afterDir = loadDirOf(id, afterInstall);
+          if (!afterDir) throw new CommodoreStoreError("update_failed");
+          const after = describe(id, afterDir);
+          const key = text(manifestOf(afterDir).version, 128) ?? afterInstall?.version ?? newVersion;
+          const runs = after.runs ?? [];
+          if (runs.length > 0 && readRegistry().trusted[id] !== key) {
+            if (!approves(key)) {
+              restoreInstalled(id, snapshot);
+              throw new CommodoreStoreError("trust_required", undefined, { version: key, runs });
+            }
+            update((registry) => ({ ...registry, trusted: { ...registry.trusted, [id]: key } }));
+          }
+          // 카탈로그는 고정을 푼 뒤에 읽어야 새 버전이 보인다.
+          pinned.delete(id);
+          return { outcome: "updated" as const, oldVersion, newVersion, view: catalog() };
+        } finally {
+          pinned.delete(id);
         }
-        return { outcome: "updated" as const, oldVersion, newVersion, view: catalog() };
       });
     },
     /**
