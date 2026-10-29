@@ -60,6 +60,7 @@ import {
 import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../../integration/shortcuts.js";
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
+import { setMobileDestination, setMobileListTheater } from "../mobile/mobile-store.js";
 import { presentRailPanel } from "../rail/rail-store.js";
 import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
 import { requestSideBarObjectiveAction, type SideBarObjectiveAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
@@ -360,10 +361,12 @@ export function ObjectiveSearch({
     return first === -1 ? 0 : first;
   }, [mode, text, primaryRows]);
 
+  // 선택 인덱스는 정확히 맞은 레일 결과가 앞에 붙은 결합 목록 기준이다. 정확 결과가 있으면 그것이 먼저다(0),
+  // 없으면 기본 행의 인덱스를 그대로 쓴다.
   useEffect(() => {
-    setSelectedIndex(defaultPrimaryIndex);
+    setSelectedIndex(exactCount > 0 ? 0 : defaultPrimaryIndex);
     setActionsFor(null);
-  }, [state.objectiveRecordSearchOpen, mode, text, defaultPrimaryIndex]);
+  }, [state.objectiveRecordSearchOpen, mode, text, defaultPrimaryIndex, exactCount]);
 
   useEffect(() => {
     if (!state.objectiveRecordSearchOpen || selectedResultKey === undefined) return;
@@ -445,6 +448,13 @@ export function ObjectiveSearch({
         selectMobileCommodore(action.commodoreId);
         // 사령관 전환도 대화 화면으로 포커스 문맥을 넘기므로 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
+        // 폰에는 데스크톱 Inbox 호스트가 없다 — 폰 홈이 사령관 행을 여는 길(mobile-home)과 같이 목적지를 바꾼다.
+        if (getViewModeSnapshot().effective === "mobile") {
+          const home = commodores.find((row) => row.commodoreId === action.commodoreId)?.theaters.find((theater) => theater.status === "available")?.theaterId ?? null;
+          if (home) setMobileListTheater({ commodoreId: action.commodoreId, theaterId: home });
+          setMobileDestination({ kind: "plugin", entryId: "commodore", params: { commodoreId: action.commodoreId } });
+          break;
+        }
         closeConversationSurface();
         // 사령관 홈은 Theater가 아니라 사령관 UUID 주소의 Inbox다(사이드바 사령관 머리 표식과 같은 주소).
         openTheaterInbox({ theaterId: action.commodoreId, sectionId: "commodore:commodore", pageId: "log", returnFocus: null });
