@@ -19,7 +19,7 @@ import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
 import { getComposerDraft } from "../../../objective-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { SpeakerMark, speakerKey } from "./speaker-mark.js";
+import { SpeakerMark, speakerKey, speakerTone } from "./speaker-mark.js";
 
 /**
  * 그룹 대화 입력창 — 가운데 칸 바닥의 캡슐.
@@ -515,7 +515,7 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
                       : <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="md" />}
                   name={targetName(candidate)}
                   aux={candidate.kind === "member" ? null : candidate.kind === "all" ? t("group.mention.everyoneSub") : t("group.mention.commodoreSub")}
-                  kind={candidate.kind === "member" ? t("group.mention.member") : candidate.kind === "all" ? t("group.mention.objective") : t("group.commodore")}
+                  kind={candidate.kind === "member" ? t("group.mention.member") : candidate.kind === "all" ? t("group.mention.group") : t("group.commodore")}
                   onPick={() => choose(candidate)}
                   onHover={() => setPopIndex(at)}
                 />
@@ -650,6 +650,7 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
           <MentionChip
             label={targetName(target)}
             mark={target.kind === "member" ? <SpeakerMark speaker={target.speaker} size="sm" /> : undefined}
+            tone={target.kind === "member" ? speakerTone(target.speaker) : null}
             removeLabel={t("group.composer.removeTarget", { name: targetName(target) })}
             onRemove={() => { setTarget(null); inputRef.current?.focus(); }}
           />

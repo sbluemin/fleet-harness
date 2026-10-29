@@ -8633,7 +8633,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: var(--surface-capsule);
   transition: border-color var(--duration-fast);
 }
-.fc-composer-capsule:focus-within { border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-capsule-rim)); }
+/* 캡슐 초점 테두리 — 금색 기운 없이 중성으로(라이트·다크 공통). */
+.fc-composer-capsule:focus-within { border-color: var(--hairline-strong); }
 .fc-composer-capsule.is-disabled { opacity: var(--control-disabled-opacity); }
 .fc-composer-capsule.has-attachments { flex-wrap: wrap; }
 /* 인용 칩 줄도 첨부 줄처럼 캡슐 맨 위 한 줄을 차지한다 — 입력·원은 그 아래 줄에 남는다. */
@@ -8657,26 +8658,38 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .fc-composer-input::placeholder { color: var(--text-tertiary); }
 
 /* 멘션 칩 — SDK `MentionChip` / `mentionChipHtml`. 그룹 수신자·사령관 참조 토큰·기록 말풍선이 한 벌이다.
+   면 없는 인라인 멘션이다 — 16px 아바타 + 본문 크기 semibold 이름, `@`는 눈에만 숨는다(말풍선 툴팁은 `@이름` 그대로).
+   이름은 대상의 기존 톤 잉크(`is-tone-*`, `--id-*` — 그룹 발화자 머리와 같은 색)이고, 톤이 없으면 본문색이다.
    아바타 슬롯은 16px(그룹 SpeakerMark sm). 라벨은 18em에서 말줄임되고, 전체는 title에 있다. */
 .fc-mention-chip {
   flex: none;
   align-self: center;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 4px;
   max-width: 100%;
-  padding: 2px var(--space-1) 2px 3px;
-  border-radius: var(--radius-pill);
-  background: var(--control-rest);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
+  padding: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font-size: inherit;
+  font-weight: var(--weight-medium);
   line-height: 1.4;
-  color: var(--text-secondary);
-  vertical-align: baseline;
+  color: var(--text-primary);
+  vertical-align: -2px;
   white-space: nowrap;
   user-select: all;
   cursor: default;
 }
+.fc-mention-chip.is-tone-teal .fc-mention-chip-label { color: var(--id-teal); }
+.fc-mention-chip.is-tone-amber .fc-mention-chip-label { color: var(--id-amber); }
+.fc-mention-chip.is-tone-plum .fc-mention-chip-label { color: var(--id-plum); }
+.fc-mention-chip.is-tone-moss .fc-mention-chip-label { color: var(--id-moss); }
+.fc-mention-chip.is-tone-cerulean .fc-mention-chip-label { color: var(--id-cerulean); }
+.fc-mention-chip.is-tone-rose .fc-mention-chip-label { color: var(--id-rose); }
+.fc-mention-chip.is-tone-indigo .fc-mention-chip-label { color: var(--id-indigo); }
+.fc-mention-chip.is-tone-crimson .fc-mention-chip-label { color: var(--id-crimson); }
+/* `@`는 눈에만 숨는다 — 읽기는 라벨 글자가, 말풍선 툴팁은 `@이름`이 진다. */
+.fc-mention-chip-at { display: none; }
 .fc-mention-chip-mark {
   flex: none;
   display: inline-grid;
@@ -8687,9 +8700,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 /* 슬롯의 직계 자식만 16px. 호스트는 어떤 플러그인 클래스인지는 모른다. */
 .fc-mention-chip-mark > svg,
 .fc-mention-chip-mark > * { width: 16px; height: 16px; }
-/* 표식이 없으면 왼쪽을, ✕가 없으면 오른쪽을 space-2로 — canary 그룹 @지휘관 칩(좌우 space-2)과 같다. */
-.fc-mention-chip.is-bare { padding-left: var(--space-2); }
-.fc-mention-chip:not(:has(> .fc-mention-chip-x)) { padding-right: var(--space-2); }
+/* 면이 없으므로 표식·✕이 없어도 여백을 두지 않는다 — 이름 글자 그대로 선다. */
+.fc-mention-chip.is-bare { padding-left: 0; }
+.fc-mention-chip:not(:has(> .fc-mention-chip-x)) { padding-right: 0; }
 .fc-mention-chip-label {
   min-width: 0;
   max-width: 18em;
@@ -8711,15 +8724,16 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 button.fc-mention-chip {
   border: 0;
   font: inherit;
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-  color: var(--text-secondary);
+  font-size: inherit;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
   cursor: pointer;
 }
-button.fc-mention-chip:hover { color: var(--brass-ink); }
+/* 기록 말풍선의 멘션 단추 — hover도 금색 없이 중성 면 + 본문색이다. 초점 링(aurora)은 그대로 둔다. */
+button.fc-mention-chip:hover { background: var(--control-wash-hover); color: var(--text-primary); }
 button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline-offset: 1px; }
 
-/* 입력 속 멘션은 본문과 같은 줄 상자·글자 크기다. 기록 말풍선의 알약 외양은 그대로 둔다. */
+/* 입력 속 멘션은 본문과 같은 줄 상자·글자 크기다. 이름은 semibold(시안) — 캡슐 본문은 레귤러 그대로다. */
 .fc-composer-capsule .fc-mention-chip {
   position: relative;
   gap: 6px;
@@ -8742,7 +8756,6 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   margin-right: -4px;
 }
 .fc-composer-capsule .fc-mention-chip-label { display: block; }
-.fc-composer-capsule .fc-mention-chip:not(.is-bare) .fc-mention-chip-at { display: none; }
 /* 기본은 라벨 뒤의 삭제 표시다. 보이는 16px보다 누르는 영역을 넓히되 글자·줄 높이는 밀지 않는다. */
 .fc-composer-capsule .fc-mention-chip-x {
   position: relative;
@@ -8752,9 +8765,11 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   height: 16px;
   padding: 0;
   border-radius: 50%;
+  color: var(--text-tertiary);
 }
 .fc-composer-capsule .fc-mention-chip-x::before { content: ""; position: absolute; inset: -4px; }
-.fc-composer-capsule .fc-mention-chip-x:focus-visible { outline: 1px solid var(--brass); outline-offset: 0; }
+/* 삭제의 초점 링도 금색 없이 중성으로. */
+.fc-composer-capsule .fc-mention-chip-x:focus-visible { outline: 1px solid var(--hairline-strong); outline-offset: 0; }
 /* 마우스에서만 삭제를 아바타 자리에 겹친다. 터치·coarse 포인터는 항상 보이는 삭제를 유지한다. */
 @media (hover: hover) and (pointer: fine) {
   .fc-composer-capsule .fc-mention-chip:hover { background: var(--control-wash-hover); color: var(--text-primary); }

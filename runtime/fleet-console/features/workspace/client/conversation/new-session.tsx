@@ -638,6 +638,7 @@ export function NewSessionColumn({ state, target, tools }: {
               items={deckItems}
               activeKey={activeRow?.key ?? null}
               emptyText={t("conversation.newSession.deckNoMatch")}
+              mention={mentionToken !== null}
               onHover={setDeckActiveKey}
             />
           ) : null}

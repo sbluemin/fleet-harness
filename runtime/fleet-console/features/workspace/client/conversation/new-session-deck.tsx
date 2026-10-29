@@ -55,12 +55,14 @@ function groupItems(items: readonly NewSessionDeckItem[]): readonly { readonly h
   return groups.filter((group) => group.items.some((item) => item.kind === "row"));
 }
 
-export function NewSessionDeck({ id, label, items, activeKey, emptyText, onHover }: {
+export function NewSessionDeck({ id, label, items, activeKey, emptyText, mention = false, onHover }: {
   readonly id: string;
   readonly label: string;
   readonly items: readonly NewSessionDeckItem[];
   readonly activeKey: string | null;
   readonly emptyText: string;
+  /** '@' 멘션 덱 — 패널 폭에 상한을 둔다. '/' 덱은 그대로 둔다. */
+  readonly mention?: boolean;
   readonly onHover: (key: string) => void;
 }) {
   const groups = groupItems(items);
@@ -88,7 +90,7 @@ export function NewSessionDeck({ id, label, items, activeKey, emptyText, onHover
     );
   };
   return (
-    <ComposerDeck id={id} label={label} listbox={rowCount > 0} contentKey={`${rowCount}:${groups.map((group) => group.head?.key ?? "").join(",")}`} className="new-session-deck">
+    <ComposerDeck id={id} label={label} listbox={rowCount > 0} contentKey={`${rowCount}:${groups.map((group) => group.head?.key ?? "").join(",")}`} className={mention ? "new-session-deck is-mention-deck" : "new-session-deck"}>
       {rowCount === 0 ? <ComposerDeckEmpty>{emptyText}</ComposerDeckEmpty> : null}
       {groups.map((group, at) => group.head
         ? <ComposerDeckGroup key={group.head.key} label={group.head.label} note={group.head.note ?? undefined}>{group.items.map(renderItem)}</ComposerDeckGroup>

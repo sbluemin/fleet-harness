@@ -138,6 +138,11 @@
 .group-chat-pending { padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
 .group-chat-human { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .group-chat-human-to { display: inline-flex; align-items: center; gap: var(--space-1); padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
+/* 보낸 말풍선 안 앞머리 멘션 — 위 머리 대신 받는 이를 말풍선 안에 같은 멘션 문법으로 둔다. 받는 이가 여럿이면 차례로 서고,
+   문면과 한 줄로 흐른다(묶음 라벨이 받는 이를 읽어 스크린리더에도 남는다). */
+.group-chat-human-mentions { margin-right: var(--space-1); }
+.group-chat-human-mentions .fc-mention-chip { margin-right: 2px; }
+.group-chat-human-mentions .group-chat-via { margin-left: 2px; }
 
 .group-chat-agent {
   display: grid;
@@ -781,12 +786,13 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-plus-root { flex: none; display: inline-flex; }
 .group-composer-stop-mark { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 
-/* '@' 덱의 자리 — 덱 자체는 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이다. 캡슐 양끝(감싼 칸의 안쪽
-   여백)에 맞춰 캡슐 위로 뜬다. */
+/* '@' 멘션 덱의 자리 — 덱 자체는 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이다. 캡슐 왼쪽에
+   맞춰 내용 폭(상한 480px, 좁은 화면에서는 100%)으로 캡슐 위에 뜬다 — '/' 덱이 아니라 멘션 덱만 이 자리다. */
 /* 덱 기본 자리(`.fc-composer-deck`)와 특이도가 같으면 시트 적재 순서가 이긴다 — 두 클래스로 선언한다. */
 .fc-composer-deck.group-composer-deck {
   left: clamp(var(--space-4), 4cqi, 48px);
-  right: clamp(var(--space-4), 4cqi, 48px);
+  right: auto;
+  width: min(480px, 100%);
   z-index: 5;
 }
 .fc-composer-deck.group-composer-deck:not(.is-below) { bottom: calc(100% - var(--space-2)); }
@@ -919,7 +925,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-action.is-armed { border-color: var(--coral); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
 .group-composer-action[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
 .group-composer-action-detail { font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
-/* 입력창 안에 앉은 동작 칩 — 받는 이 멘션 자리에 brass 면으로 선다. 멘션 칩 자체는 fc-mention-chip. */
+/* 입력창 안에 앉은 동작 칩 — 받는 이 멘션 자리라 brass 면 없이 중성으로 선다. 멘션 칩 자체는 fc-mention-chip. */
 .group-composer-chip.is-action {
   flex: none;
   align-self: center;
@@ -928,10 +934,10 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   gap: var(--space-1);
   padding: 2px var(--space-1) 2px var(--space-2);
   border-radius: var(--radius-pill);
-  background: var(--brass-glow);
+  background: var(--control-rest);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
-  color: var(--brass-ink);
+  color: var(--text-primary);
 }
 .group-composer-chip.is-action svg { flex: none; width: 12px; height: 12px; }
 .group-composer-chip.is-action .group-composer-chip-x {
