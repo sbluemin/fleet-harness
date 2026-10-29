@@ -928,7 +928,7 @@
   color: var(--text-tertiary);
 }
 
-/* 도구 줄 속 참조(플러그인 기록의 목표 이름) — 표식 없는 밑줄 낱말. 글자는 줄의 것을 그대로 받고 brass 는 hover·초점에만 선다.
+/* 도구 줄 속 참조(플러그인 기록의 목표 이름) — 표식 없는 낱말. 글자는 줄의 것을 그대로 받고, hover 는 발화자 이름과 같은 면, 초점은 brass 링이다.
    단추는 통째로 넘치므로 줄을 가로로 세워 줄어드는 것을 이름 안의 말줄임으로 둔다(앞 글자 조각은 줄지 않는다). */
 .agent-chat-step-object.has-ref { display: flex; align-items: baseline; }
 .agent-chat-step-ref {
@@ -938,17 +938,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0;
+  margin-inline: calc(0.3em - var(--space-1)) calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
   border: 0;
+  border-radius: var(--radius-xs);
   background: none;
   font: inherit;
   color: var(--text-secondary);
-  text-decoration: underline;
-  text-decoration-color: var(--hairline-strong);
-  text-underline-offset: 3px;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-.agent-chat-step-ref:hover { color: var(--text-primary); text-decoration-color: currentColor; }
+/* hover 는 발화자 이름과 같은 면 — 밑줄을 쓰지 않는다. */
+.agent-chat-step-ref:hover { background: var(--control-wash-hover); color: var(--text-primary); }
 .agent-chat-step-ref:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 
 /* Theater 밖 좌표 — 표시형으로 접히면 안쪽과 구별되지 않으므로 표식이 대신 말한다. */
@@ -2745,17 +2746,17 @@
 }
 
 .agent-chat-coord-pop-compact {
-  padding: 0;
+  margin: 0 calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
   border: 0;
+  border-radius: var(--radius-xs);
   background: transparent;
   font: inherit;
   color: inherit;
-  text-decoration: underline;
-  text-decoration-color: var(--hairline-strong);
-  text-underline-offset: 3px;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-.agent-chat-coord-pop-compact:hover { text-decoration-color: currentColor; }
+.agent-chat-coord-pop-compact:hover { background: var(--control-wash-hover); }
 
 .agent-chat-coord-pop-note {
   margin: var(--space-1) var(--space-2) 2px;
@@ -3004,24 +3005,24 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  /* 글자만큼만 넓다. 블록으로 두면 파선이 패널을 가로질러 구분선으로 읽히고, 원장을 끊지 않으려
+  /* 글자만큼만 넓다. 블록으로 두면 hover 면이 패널을 가로질러 띠로 읽히고, 원장을 끊지 않으려
      상자를 걷어낸 뜻이 사라진다(실측 확인). */
   width: max-content;
   max-width: 100%;
   padding: 2px var(--space-1);
   background: none;
   border: none;
-  /* 눌린다는 사실은 파선 밑줄 하나가 진다 — 집계 줄의 꺾쇠와 같은 급의 조용한 어포던스다. */
-  border-bottom: 1px dashed var(--hairline-strong);
+  /* 밑줄 없이 선다 — 눌린다는 사실은 끝의 꺾쇠와 hover 면(발화자 이름과 같은 면)이 진다. */
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
-  transition: border-color var(--duration-fast), color var(--duration-fast);
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
 
 .agent-chat-job-anchor:hover {
   color: var(--text-secondary);
-  border-bottom-color: currentColor;
+  background: var(--control-wash-hover);
 }
 
 .agent-chat-job-anchor:focus-visible {
@@ -3029,9 +3030,6 @@
   outline-offset: 2px;
 }
 
-.agent-chat-job-anchor.is-open { border-bottom-color: color-mix(in oklch, var(--aurora) 40%, var(--hairline-strong)); }
-.agent-chat-job-anchor.is-fail { border-bottom-color: light-dark(color-mix(in oklch, var(--coral) 40%, var(--hairline-strong)), color-mix(in oklab, var(--coral) 40%, var(--hairline-strong))); }
-.agent-chat-job-anchor.is-stopped { border-bottom-color: color-mix(in oklab, var(--warn) 38%, var(--hairline-strong)); }
 
 .agent-chat-job-anchor.is-done .agent-chat-job-mark { color: var(--positive); }
 .agent-chat-job-anchor.is-fail .agent-chat-job-mark { color: var(--coral); }

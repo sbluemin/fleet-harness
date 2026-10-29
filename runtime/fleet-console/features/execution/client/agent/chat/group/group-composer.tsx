@@ -1,7 +1,7 @@
 import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, GroupBoardRunResult, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "../../../../shared/conversation/types.js";
 import { AttachImageIcon } from "../../../composer-primitives/icons.js";
 import { ComposerAttachmentTray, ComposerMenu, ComposerMenuHeading, ComposerMenuItem, ComposerMenuSeparator, ComposerNotice, ComposerPlusButton, ComposerSendButton } from "../../../composer-primitives/attachment-surface.js";
-import { ComposerDeck, ComposerDeckGroup, ComposerDeckRow, composerDeckKeyDown } from "../../../composer-primitives/deck.js";
+import { ComposerDeck, ComposerDeckGroup, ComposerMentionRow, composerDeckKeyDown } from "../../../composer-primitives/deck.js";
 import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "../../../composer-primitives/quote-tray.js";
 import { MentionChip } from "../../../composer-primitives/mention-chip.js";
 import { composerAttachmentNoticeText, composerT } from "../../../composer-primitives/messages.js";
@@ -19,7 +19,7 @@ import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
 import { getComposerDraft } from "../../../objective-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { SpeakerMark, speakerKey } from "./speaker-mark.js";
+import { SpeakerMark, speakerKey, speakerTone } from "./speaker-mark.js";
 
 /**
  * 그룹 대화 입력창 — 가운데 칸 바닥의 캡슐.
@@ -506,15 +506,16 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
           ].filter((group) => group.rows.length > 0).map((group) => (
             <ComposerDeckGroup key={group.key} label={group.label}>
               {group.rows.map(({ candidate, at }) => (
-                <ComposerDeckRow
+                <ComposerMentionRow
                   key={candidate.kind === "member" ? speakerKey(candidate.speaker) : candidate.kind}
                   id={`${deckId}-${at}`}
                   active={at === index}
-                  lead={candidate.kind === "member" ? <SpeakerMark speaker={candidate.speaker} size="sm" />
-                    : candidate.kind === "all" ? <span className="cluster-member-glyph is-neutral group-chat-mark is-sm" aria-hidden="true">@</span>
-                      : <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="sm" />}
+                  lead={candidate.kind === "member" ? <SpeakerMark speaker={candidate.speaker} size="md" />
+                    : candidate.kind === "all" ? <span className="cluster-member-glyph is-neutral group-chat-mark" aria-hidden="true">@</span>
+                      : <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="md" />}
                   name={targetName(candidate)}
-                  value={candidate.kind === "member" ? t("group.mention.member") : candidate.kind === "all" ? t("group.mention.everyoneSub") : t("group.mention.commodoreSub")}
+                  aux={candidate.kind === "member" ? null : candidate.kind === "all" ? t("group.mention.everyoneSub") : t("group.mention.commodoreSub")}
+                  kind={candidate.kind === "member" ? t("group.mention.member") : candidate.kind === "all" ? t("group.mention.group") : t("group.commodore")}
                   onPick={() => choose(candidate)}
                   onHover={() => setPopIndex(at)}
                 />
@@ -649,6 +650,7 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
           <MentionChip
             label={targetName(target)}
             mark={target.kind === "member" ? <SpeakerMark speaker={target.speaker} size="sm" /> : undefined}
+            tone={target.kind === "member" ? speakerTone(target.speaker) : null}
             removeLabel={t("group.composer.removeTarget", { name: targetName(target) })}
             onRemove={() => { setTarget(null); inputRef.current?.focus(); }}
           />

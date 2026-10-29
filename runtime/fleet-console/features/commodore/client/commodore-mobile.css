@@ -97,7 +97,8 @@
 .objectives-cm-msg-images { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .objectives-cm-msg-images img { display: block; width: 64px; height: 64px; border: 1px solid var(--m-hairline); border-radius: 12px; object-fit: cover; }
 .objectives-cm .fc-mention-chip { color: var(--m-text); }
-.objectives-cm .fc-mention-chip:not(.fc-composer-capsule .fc-mention-chip) { background: var(--m-chip); }
+/* 말풍선 속 참조는 면 없는 인라인 멘션이다 — 보낸 말풍선(밝은 면)과 받은 말풍선의 글자색을 그대로 물려받는다. */
+.objectives-cm .fc-mention-chip:not(.fc-composer-capsule .fc-mention-chip) { color: inherit; }
 .objectives-cm .objectives-commodore-ref-input.is-empty::before { color: var(--m-text-muted); }
 .objectives-cm .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--m-text-muted); }
 /* 지휘관 참조 덱(SDK `fc-composer-deck`) — 폰에서는 모바일 면 토큰으로 서고, 행은 엄지 높이(46px)·아바타 24px 다. */

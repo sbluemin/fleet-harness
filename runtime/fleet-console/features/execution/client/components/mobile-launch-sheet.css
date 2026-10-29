@@ -60,7 +60,8 @@ html[data-mobile-scheme="light"] .mls-input { background: var(--m-surface); }
 .mls-efft button.is-on { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-text); }
 
 /* '@' 멘션 — 입력칸 바로 위에 서는 목록(메뉴 문법: surface, 모서리 14, shadow, 행 52). 시트 본문은 스크롤 영역이라
-   절대 위치로 띄우면 잘린다 — 흐름 안에 두어 시트가 위로 늘어난다. */
+   절대 위치로 띄우면 잘린다 — 흐름 안에 두어 시트가 위로 늘어난다. 행은 멘션 문법 한 줄([표식 20][이름][이름 옆 흐린 보조] …
+   [오른쪽 끝 흐린 종류], 말줄임)이다. */
 .mls-mentions { display: flex; flex-direction: column; max-height: 260px; margin-bottom: 8px; overflow-y: auto; padding: 8px 0; background: var(--m-surface); border: 1px solid var(--m-hairline); border-radius: 14px; box-shadow: var(--m-shadow); }
 .mls-mention-row { display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 0 16px; color: var(--m-text); font: inherit; font-size: var(--m-fs-list); text-align: left; background: none; border: 0; cursor: pointer; }
 .mls-mention-row:active { background: var(--m-selected); }
@@ -68,7 +69,8 @@ html[data-mobile-scheme="light"] .mls-input { background: var(--m-surface); }
 /* 묶음 머리 — 데스크톱 덱과 같은 문법(SDK `fc-composer-deck-category`: 글자 + 오른쪽 구분선). 여백·글자만 시트 행에 맞춘다. */
 .mls-mentions .fc-composer-deck-category { padding: 8px 16px 4px; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .mls-mention-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mls-mention-name small { display: block; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
+.mls-mention-aux { color: var(--m-text-muted); font-size: var(--m-fs-caption); margin-left: 8px; }
+.mls-mention-kind { flex: none; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .mls-mention-mark { display: grid; place-items: center; flex: none; width: 20px; height: 20px; color: var(--m-text-muted); }
 .mls-mention-chip { margin-bottom: 8px; }
 

@@ -14,7 +14,8 @@ import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, 
 import type { AgentConversationEntry } from "../../../../shared/chat-renderer.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
-import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey } from "./speaker-mark.js";
+import { MentionChip } from "../../../composer-primitives/mention-chip.js";
+import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey, speakerTone } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
 import "./group-chat.css";
@@ -793,18 +794,26 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   // 보드 행위에 덧붙인 말이면 받는 이 뒤에 그 행위를 단다 — 그냥 대화가 아니라 개시·구상·방향 수정과 함께 간 말이다.
   const via = entry.via ? <><span className="group-chat-line-sep" aria-hidden="true">·</span><span className="group-chat-via">{t(`group.via.${entry.via}`)}</span></> : null;
   if (entry.speaker.kind === "human") {
+    // 받는 이는 말풍선 위 머리가 아니라 말풍선 안 앞머리 멘션으로 둔다 — 같은 멘션 문법(16px 아바타 + 톤 이름)이고,
+    // 받는 이가 여럿이면 차례로 선다. 묶음은 받는 이를 이름으로 읽어 스크린리더에도 그 자리가 남는다.
+    const recipients = entry.recipient ? [entry.recipient] : [];
     return (
       <div className="group-chat-human" data-entry-id={entry.id}>
-        {entry.recipient ? (
-          <span className="group-chat-human-to">
-            <span aria-hidden="true">→</span>
-            <SpeakerMark speaker={entry.recipient} size="sm" />
-            <SpeakerName speaker={entry.recipient} />
-            {via}
-          </span>
-        ) : null}
         <div className={`group-chat-bubble is-human${entry.pending ? " is-pending" : ""}${entry.format === "markdown" ? " is-markdown" : ""}`}>
           {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
+          {recipients.length > 0 ? (
+            <span className="group-chat-human-mentions" role="group" aria-label={t("group.bubble.to", { names: recipients.map((recipient) => recipient.name).join(", ") })}>
+              {recipients.map((recipient) => (
+                <MentionChip
+                  key={speakerKey(recipient)}
+                  label={recipient.name}
+                  mark={<SpeakerMark speaker={recipient} size="sm" />}
+                  tone={speakerTone(recipient)}
+                />
+              ))}
+              {via}
+            </span>
+          ) : null}
           {entry.format === "markdown"
             ? <StreamedMarkdown text={entry.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
             : <ChatReferenceText text={entry.text} references={entry.references} />}

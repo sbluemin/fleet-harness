@@ -138,6 +138,11 @@
 .group-chat-pending { padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
 .group-chat-human { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .group-chat-human-to { display: inline-flex; align-items: center; gap: var(--space-1); padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
+/* 보낸 말풍선 안 앞머리 멘션 — 위 머리 대신 받는 이를 말풍선 안에 같은 멘션 문법으로 둔다. 받는 이가 여럿이면 차례로 서고,
+   문면과 한 줄로 흐른다(묶음 라벨이 받는 이를 읽어 스크린리더에도 남는다). */
+.group-chat-human-mentions { margin-right: var(--space-1); }
+.group-chat-human-mentions .fc-mention-chip { margin-right: 2px; }
+.group-chat-human-mentions .group-chat-via { margin-left: 2px; }
 
 .group-chat-agent {
   display: grid;
@@ -496,20 +501,21 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 }
 .group-chat-line-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
 
-/* 글자형 동작 — 테두리·배경 없는 밑줄 낱말. */
+/* 글자형 동작 — 밑줄 없는 낱말. hover 는 발화자 이름(.group-chat-speaker-hit)과 같은 면이다: 좌우 space-1 면이 글자를 감싸고,
+   글자 자리는 음수 여백으로 그대로 둔다. */
 .group-chat-link {
-  padding: 0;
+  margin: 0 calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
   border: 0;
+  border-radius: var(--radius-xs);
   background: none;
   font: inherit;
   font-size: var(--t-sm);
   color: var(--text-secondary);
-  text-decoration: underline;
-  text-decoration-color: var(--hairline-strong);
-  text-underline-offset: 3px;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-.group-chat-link:hover { color: var(--text-primary); text-decoration-color: currentColor; }
+.group-chat-link:hover { background: var(--control-wash-hover); color: var(--text-primary); }
 .group-chat-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 .group-chat-link.is-danger { color: var(--coral-ink); }
 
@@ -602,8 +608,8 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 .group-chat-working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /*
  * 진행 줄 → 원장. 표식과 이름은 말풍선 머리의 발화자 → 원장(.group-chat-speaker-hit)과 같은 대상을 연다. 낱말은 물결
- * (배경을 글자 모양으로 클립)이라 이름 단추에 면(배경)을 깔면 그 면이 글자를 덮는다 — 낱말은 원장 링크(.group-chat-link)처럼
- * 밑줄로, 표식은 말풍선 표식과 같은 고리로 밝힌다. 한 명일 때는 단추가 곧 물결 낱말이라 배경 그림·잉크를 덮지 않게 바탕색만
+ * (배경을 글자 모양으로 클립)이라 이름 단추에 배경을 깔면 그 면이 글자를 덮는다 — 낱말은 안쪽 그림자로 발화자 이름과 같은 면을,
+ * 표식은 말풍선 표식과 같은 고리로 밝힌다. 한 명일 때는 단추가 곧 물결 낱말이라 배경 그림·잉크를 덮지 않게 바탕색만
  * 지우고, 잉크는 조각 단추만 물결 상자에서 물려받는다.
  */
 .group-chat-working-hit {
@@ -617,10 +623,9 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 }
 .group-chat-working-hit.is-mark { position: relative; display: inline-flex; border-radius: var(--radius-md); }
 .group-chat-working-hit.is-mark:hover { box-shadow: 0 0 0 2px var(--control-wash-hover); }
-.group-chat-working-hit.is-text { text-align: start; }
-/* 밑줄은 hover 에만 긋는다 — 물결 클립은 글자 장식도 마스크에 넣으므로 투명 밑줄을 늘 두면 물결 색으로 비친다.
-   물결 글자는 color 가 투명이라 currentColor 를 쓸 수 없다 — 채팅 밑줄 한 벌(1px·3px, 중성)의 hover 잉크를 직접 준다. */
-.group-chat-working-hit.is-text:hover { text-decoration: underline 1px var(--text-secondary); text-underline-offset: 3px; }
+.group-chat-working-hit.is-text { margin: 0 calc(-1 * var(--space-1)); padding: 0 var(--space-1); text-align: start; }
+/* 면은 안쪽 그림자로 깐다 — 그림자는 배경 위·글자 아래에 칠해져 물결 글자를 지우지 않고 발화자 이름과 같은 면을 만든다. */
+.group-chat-working-hit.is-text:hover { box-shadow: inset 0 0 0 999px var(--control-wash-hover); }
 .group-chat-working-hit:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
 /* 32px 표식도 손가락에는 조금 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 44px 로 넓힌다. */
 @media (pointer: coarse) {
@@ -781,12 +786,13 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-plus-root { flex: none; display: inline-flex; }
 .group-composer-stop-mark { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 
-/* '@' 덱의 자리 — 덱 자체는 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이다. 캡슐 양끝(감싼 칸의 안쪽
-   여백)에 맞춰 캡슐 위로 뜬다. */
+/* '@' 멘션 덱의 자리 — 덱 자체는 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이다. 캡슐 왼쪽에
+   맞춰 내용 폭(상한 480px, 좁은 화면에서는 100%)으로 캡슐 위에 뜬다 — '/' 덱이 아니라 멘션 덱만 이 자리다. */
 /* 덱 기본 자리(`.fc-composer-deck`)와 특이도가 같으면 시트 적재 순서가 이긴다 — 두 클래스로 선언한다. */
 .fc-composer-deck.group-composer-deck {
   left: clamp(var(--space-4), 4cqi, 48px);
-  right: clamp(var(--space-4), 4cqi, 48px);
+  right: auto;
+  width: var(--fc-mention-deck-width, 100%);
   z-index: 5;
 }
 .fc-composer-deck.group-composer-deck:not(.is-below) { bottom: calc(100% - var(--space-2)); }
@@ -879,18 +885,18 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-suggest-note.is-awaiting svg { color: currentColor; }
 .group-composer-suggest-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--positive); }
 .group-composer-suggest-link {
-  padding: 0;
+  margin: 0 calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
   border: 0;
+  border-radius: var(--radius-xs);
   background: none;
   font: inherit;
   color: var(--text-secondary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--hairline-strong);
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-.group-composer-suggest-link:hover { color: var(--text-primary); text-decoration-color: currentColor; }
-.group-composer-suggest-note.is-awaiting .group-composer-suggest-link { color: var(--aurora-ink); text-decoration-color: color-mix(in oklch, var(--aurora) 50%, transparent); }
+.group-composer-suggest-link:hover { background: var(--control-wash-hover); color: var(--text-primary); }
+.group-composer-suggest-note.is-awaiting .group-composer-suggest-link { color: var(--aurora-ink); }
 .group-composer-suggest-hint { font-size: var(--t-xs); color: var(--text-tertiary); }
 .group-composer-action {
   display: inline-flex;
@@ -919,7 +925,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-action.is-armed { border-color: var(--coral); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
 .group-composer-action[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
 .group-composer-action-detail { font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
-/* 입력창 안에 앉은 동작 칩 — 받는 이 멘션 자리에 brass 면으로 선다. 멘션 칩 자체는 fc-mention-chip. */
+/* 입력창 안에 앉은 동작 칩 — 받는 이 멘션 자리라 brass 면 없이 중성으로 선다. 멘션 칩 자체는 fc-mention-chip. */
 .group-composer-chip.is-action {
   flex: none;
   align-self: center;
@@ -928,10 +934,10 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   gap: var(--space-1);
   padding: 2px var(--space-1) 2px var(--space-2);
   border-radius: var(--radius-pill);
-  background: var(--brass-glow);
+  background: var(--control-rest);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
-  color: var(--brass-ink);
+  color: var(--text-primary);
 }
 .group-composer-chip.is-action svg { flex: none; width: 12px; height: 12px; }
 .group-composer-chip.is-action .group-composer-chip-x {
@@ -1288,6 +1294,8 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   line-height: 24px;
 }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md *, .agent-chat-dispatch-text) { color: inherit; }
+/* 반전 면 위의 앞머리 멘션도 말풍선 글자색을 그대로 진다 — 본문색·톤 잉크는 일반 면 기준이라 반전 면에서는 대비가 무너진다. */
+:root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.fc-mention-chip, .fc-mention-chip-label) { color: inherit; }
 /* 말풍선 안 코드·표는 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body pre,
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body table,

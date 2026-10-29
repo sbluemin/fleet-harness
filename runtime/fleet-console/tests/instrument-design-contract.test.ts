@@ -1920,8 +1920,10 @@ describe("Instrument core design contract", () => {
     const chatJobAnchorBlock = chat.match(/^\.agent-chat-job-anchor \{[^}]*\}/m)?.[0] ?? "";
     expect(chatJobAnchorBlock).toContain("background: none;");
     expect(chatJobAnchorBlock).toContain("border: none;");
-    expect(chatJobAnchorBlock).toContain("border-bottom: 1px dashed var(--hairline-strong);");
-    // 글자만큼만 넓다 — 블록으로 두면 파선이 패널을 가로질러 구분선으로 읽힌다(실측 적발).
+    // 채팅 글자 동작은 밑줄(파선 포함)을 쓰지 않는다 — hover 는 발화자 이름과 같은 면이다.
+    expect(chatJobAnchorBlock).not.toContain("border-bottom");
+    expect(chatJobAnchorBlock).toContain("border-radius: var(--radius-xs);");
+    // 글자만큼만 넓다 — 블록으로 두면 hover 면이 패널을 가로질러 띠로 읽힌다(실측 적발).
     expect(chatJobAnchorBlock).toContain("width: max-content;");
     expect(chatView0).toContain('className={`agent-chat-job-anchor ${jobStateClass(job)}`}');
     // 잡 절은 예외를 함께 말한다 — 도는 것과 실패한 것을 수 하나에 섞으면 접기가 감추기가 된다.

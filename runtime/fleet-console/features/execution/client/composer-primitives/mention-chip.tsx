@@ -7,6 +7,9 @@ import type { ReactNode } from "react";
  * `-mark` 슬롯을 호출부가 채운다. 이 모듈은 상태를 두지 않는다. contenteditable 삽입은
  * React가 아니라 `mentionChipHtml` 문자열이다 — 실행 취소 기록에 들어가는 편집 명령이
  * HTML을 받기 때문이다. React `MentionChip`과 그 문자열은 같은 클래스·같은 자식 순서다.
+ *
+ * 겉모습은 면 없는 인라인 멘션이다 — 16px 아바타 + 이름, `@`는 말풍선 툴팁에만 남고
+ * 눈에는 보이지 않는다. 이름은 대상의 기존 톤 잉크(`tone`)이고, 톤이 없으면 본문색이다.
  */
 
 export const MENTION_CHIP_CLASS = "fc-mention-chip";
@@ -62,10 +65,15 @@ export function mentionChipElement(doc: Document, spec: MentionChipMarkup): HTML
   return node;
 }
 
+/** 이름이 알아들을 톤 — 그룹 발화자 머리(`group-chat-name is-tone-*`)와 같은 여덟 가지. 모르면 본문색이다. */
+const MENTION_TONES = new Set(["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"]);
+
 export interface MentionChipProps {
   readonly label: string;
   readonly title?: string;
   readonly mark?: ReactNode;
+  /** 대상의 기존 톤 잉크. 없거나 모르는 값이면 본문색이다. */
+  readonly tone?: string | null;
   readonly removeLabel?: string;
   readonly onRemove?: () => void;
   /** 있으면 루트가 버튼이다 — 기록 말풍선이 목표를 열 때. ✕와 함께 쓰지 않는다. */
@@ -74,10 +82,11 @@ export interface MentionChipProps {
 }
 
 /** 그룹 수신자 칩·기록 토큰. 인라인 contenteditable 토큰은 `mentionChipHtml`을 쓴다. */
-export function MentionChip({ label, title, mark, removeLabel, onRemove, onActivate, ariaLabel }: MentionChipProps) {
+export function MentionChip({ label, title, mark, tone, removeLabel, onRemove, onActivate, ariaLabel }: MentionChipProps) {
   const shown = `@${label}`;
   const tip = title ?? shown;
-  const className = mark === undefined ? `${MENTION_CHIP_CLASS} is-bare` : MENTION_CHIP_CLASS;
+  const toneClass = tone !== null && tone !== undefined && MENTION_TONES.has(tone) ? ` is-tone-${tone}` : "";
+  const className = `${mark === undefined ? `${MENTION_CHIP_CLASS} is-bare` : MENTION_CHIP_CLASS}${toneClass}`;
   const body = (
     <>
       {mark !== undefined ? <span className={MENTION_CHIP_MARK_CLASS} aria-hidden="true">{mark}</span> : null}

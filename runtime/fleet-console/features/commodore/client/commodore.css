@@ -148,10 +148,11 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-commodore-totals { min-width: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 /* 링크는 낫표까지 한 덩어리 — 줄이 바뀌어도 「 와 」가 링크에서 떨어지지 않는다. */
 .objectives-commodore-hint-link {
-  padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; white-space: nowrap;
-  text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px;
+  margin: 0 calc(-1 * var(--space-1)); padding: 0 var(--space-1); border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-primary); font: inherit; cursor: pointer; white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-glide);
 }
-.objectives-commodore-hint-link:hover { text-decoration-color: currentColor; }
+/* 밑줄 없이 발화자 이름과 같은 hover 면으로 선다. */
+.objectives-commodore-hint-link:hover { background: var(--control-wash-hover); }
 .objectives-commodore-hint-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 
 
@@ -475,14 +476,16 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /*
  * 지휘관 참조('@') — 본문 속 원자 토큰은 호스트 `.fc-mention-chip`이고, 여기에는 입력과 목록의 자리만 둔다. 입력은 contenteditable 이라
  * textarea 의 자리표·자동 높이를 직접 세운다: 자리표는 ::before(높이 0으로 띄워 커서를 밀지 않는다), 높이는 내용만큼 자라고 각 입력의
- * max-height 에서 스크롤한다. 목록은 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css — 묶음 머리 옆 구분선·금색
- * 활성 링)이다. 여기에는 덱이 뜨는 층과 이 목록에만 있는 행 오른쪽(상태·임무 수)·상한 안내만 둔다. 결정 요청·검토 대기만 신호 잉크다.
+ * max-height 에서 스크롤한다. 목록은 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css — 묶음 머리 옆 구분선)이다.
+ * 행은 멘션 문법(SDK `ComposerMentionRow`, `is-mention`: 이름 옆 흐린 보조(상태·임무 수)와 오른쪽 끝 흐린 종류, 활성 행은 금색 링 없이
+ * 중성 면만)이다. 여기에는 덱이 뜨는 층과 상한 안내만 둔다. 결정 요청·검토 대기만 신호 잉크다.
  */
 .objectives-commodore-composer { position: relative; }
 .objectives-commodore-ref-input { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; cursor: text; outline: none; }
 .objectives-commodore-ref-input.is-empty::before { content: attr(data-placeholder); float: left; height: 0; color: var(--text-tertiary); pointer-events: none; }
 .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
-.fc-composer-deck.objectives-commodore-ref-list { z-index: 5; }
+/* '@' 멘션 덱만 패널 폭에 상한을 둔다 — 입력 왼쪽에 맞춰 내용 480px, 좁은 화면에서는 100%. */
+.fc-composer-deck.objectives-commodore-ref-list { left: 0; right: auto; width: var(--fc-mention-deck-width, 100%); z-index: 5; }
 .objectives-commodore-ref-sub { display: inline-flex; gap: 6px; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .objectives-commodore-ref-sub .is-decision { color: var(--warn-ink); }
 .objectives-commodore-ref-sub .is-review { color: var(--aurora-ink); }
