@@ -745,7 +745,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-plugins-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .commodore-plugins-at { margin-left: 6px; color: var(--text-tertiary); font-family: var(--font-code); font-size: var(--t-2xs); }
 .commodore-plugins-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-.objectives-cm-gr-tx .commodore-plugins-meta { margin-top: 4px; }
+/* 폰 행의 small 은 block 이라(commodore-mobile.css) 메타 줄의 flex 간격이 사라진다 — 상태 글자·버튼·칩이 붙지 않게 되돌린다. */
+.objectives-cm-gr-tx small.commodore-plugins-meta { display: flex; margin-top: 4px; }
 .commodore-plugins-list .commodore-plugins-meta { grid-column: 2 / -1; }
 /* 행 자체가 메뉴의 손잡이다(우클릭·ContextMenu 키·Shift+F10·길게 누르기). 메뉴가 가리키는 행은 brass 빛으로 위치를 말한다. */
 .commodore-plugins-list > li { grid-template-columns: 20px minmax(0, 1fr); margin: 0 -6px; padding: 3px 6px; border-radius: var(--radius-xs); cursor: default; user-select: none; -webkit-touch-callout: none; }
