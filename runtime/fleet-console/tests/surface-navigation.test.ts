@@ -73,7 +73,6 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     settingsHost.rail.open("settings", { section: "experiments" });
     expect(getSettingsModalSnapshot()).toEqual({ open: true, section: "experiments" });
     expect(await createHostCapabilities().navigate.openFile(request)).toEqual({ ok: false, reason: "no_handler" });
-    expect(await createHostCapabilities().navigate.openWikiEntry({ theaterId: "a", entryId: "entry" })).toEqual({ ok: false, reason: "no_handler" });
     host.consoleState.viewTheater!("a");
     expect(readTheaterInboxState()).toMatchObject({ theaterId: "a", address: { sectionId: "console:settings", pageId: "theaters" } });
     expect(readTheaterInboxState()?.focusRequest).not.toBeNull();

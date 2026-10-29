@@ -37,7 +37,6 @@ import { theaterInboxCapability } from "../../../../features/workspace/client/th
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
-import { attachComposerQuoteTo, composerQuoteTargets, receiveComposerQuotes, subscribeComposerQuoteTargets } from "./composer-quotes.js";
 import { clearObjectiveRuntime, dismissNotificationsForObjective, focusObjective, getState, ownObjectiveRuntime,
   raiseObjectiveNotification, setObjectiveRuntime, setObjectiveRuntimeHydration, subscribe } from "./store.js";
 
@@ -327,18 +326,6 @@ export function createHostCapabilities(
           ...target.params,
         } });
       },
-      openWikiEntry: async (request) => {
-        const binding = readBindings().find((item) => item.entry.handles?.openWikiEntry);
-        const handler = binding?.entry.handles?.openWikiEntry;
-        if (!handler) return { ok: false, reason: "no_handler" };
-        if (!isKnownTheater(request.theaterId)) return { ok: false, reason: "not_found" };
-        const result = await handler(request, capabilities);
-        if (result && !result.ok) return result;
-        viewTheaterInbox(request.theaterId);
-        capabilities.rail.open(binding!.entry.id);
-        navigateConsoleRoute("/objectives");
-        return { ok: true };
-      },
     },
     shell: {
       // 지금 대화가 속한 사령관의 Shell을 옮긴다 — 목표·구성원도 같은 도구 키를 싣는다.
@@ -405,10 +392,6 @@ export function createHostCapabilities(
     },
     composer: {
       open: (options) => openNewSessionComposer(options),
-      attachQuote: (target, quote) => attachComposerQuoteTo(target, quote),
-      quoteTargets: (theaterId) => composerQuoteTargets(theaterId),
-      subscribeQuoteTargets: (listener) => subscribeComposerQuoteTargets(listener),
-      receiveQuotes: (pluginId, receiver) => receiveComposerQuotes(pluginId, receiver),
     },
   };
   return capabilities;

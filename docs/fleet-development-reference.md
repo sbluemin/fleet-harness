@@ -7,10 +7,9 @@ Fleet Console is the sole published owner of the CLI launcher and web product. P
 - `runtime/fleet-console/cli/` owns `fleet` argv and process lifecycle for Console management and gateway configuration. It does not launch Claude Code.
 - `runtime/fleet-console/core/host/` owns bootstrap, transport, feature composition, and native-shell composition.
 - `runtime/fleet-console/core/client/src/` owns app composition, chrome, and integration.
-- `runtime/fleet-console/features/` owns Execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Onboarding, Commodore, Objectives, Codex, File Explorer, Repository, Quota, and Scuttlebutt. Console has no plugin runtime; a new product surface is a feature.
+- `runtime/fleet-console/features/` owns Execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Onboarding, Commodore, Objectives, File Explorer, Repository, Quota, and Scuttlebutt. Console has no plugin runtime; a new product surface is a feature.
 - `runtime/fleet-console/foundation/` owns Agent runtime, process/infra primitives, i18n, generic React UI helpers, Markdown, and Font Picker.
 - `runtime/fleet-console/protocol/` owns shell contracts. A contract shared between features lives with the feature that owns its domain, or in foundation when it is domain-free.
-- Wiki belongs to the Codex feature, not CLI injection.
 - Desktop and Mobile remain thin shells; Desktop does not duplicate Console runtime or UI.
 
 ## 2. Where New Work Goes

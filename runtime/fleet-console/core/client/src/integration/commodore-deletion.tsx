@@ -7,8 +7,6 @@ import { forgetWorkbenchConversation } from "../../../../features/workspace/clie
 import { closeTheaterInbox, readTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { forgetTheaterGroupCollapse } from "../../../../features/workspace/client/sidebar/group-collapse-store.js";
 import { refreshAvatarBook } from "../../../../features/workspace/client/avatar-events.js";
-import { closeCodexReader } from "../../../../features/codex/client/reader-store.js";
-import { forgetCodexWorkspace, lastResolvedCodexWorkspace } from "../../../../features/codex/client/workspace-store.js";
 import { getExpandedSurfaceState, closeExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { closePane, getPaneStoreSnapshot } from "../chrome/pane/pane-store.js";
 import { closeRailPanel } from "../chrome/rail/rail-store.js";
@@ -61,7 +59,6 @@ function removeCommodoreViews(id: string, done: () => void = () => {}) {
   const destinationOwned = destination.kind === "plugin" && destination.params?.commodoreId === id;
   const surface = getConversationSurface();
   const surfaceOwned = surface?.params.commodoreId === id || (typeof surface?.params.objectiveId === "string" && objectiveIds.has(surface.params.objectiveId));
-  const wikiOwned = lastResolvedCodexWorkspace()?.id === id;
   const inbox = readTheaterInbox();
   const inboxOwned = inbox?.theaterId === id;
   const stageOwned = surfaceOwned || (surface === null && getConversationSubject()?.commodoreId === id);
@@ -71,10 +68,8 @@ function removeCommodoreViews(id: string, done: () => void = () => {}) {
       clearConversationStage(); setActiveObjective(null); selectObjective(null);
     } else if (surfaceOwned) closeConversationSurface();
     if (inboxOwned) closeTheaterInbox();
-    if (wikiOwned) { closeCodexReader(); closeRailPanel("codex"); }
     for (const pane of getPaneStoreSnapshot().rail) if (pane.params.commodoreId === id || pane.params.workspaceId === id || pane.params.theaterId === id || objectiveIds.has(pane.params.objectiveId ?? "")) closePane(pane.paneId);
     for (const surface of getExpandedSurfaceState().instances) if (surface.params.commodoreId === id || surface.params.workspaceId === id || surface.params.theaterId === id || objectiveIds.has(surface.params.objectiveId ?? "")) closeExpandedSurface(surface.instanceId);
-    forgetCodexWorkspace(id);
     forgetWorkbenchConversation(`session:commodore:commodore:${id}`);
     for (const objectiveId of objectiveIds) forgetWorkbenchConversation(`operation:${objectiveId}`);
     forgetTheaterGroupCollapse(id);

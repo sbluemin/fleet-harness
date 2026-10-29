@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import type { ComposerQuote, ComposerQuoteAttachResult, ComposerQuoteTarget } from "../client/composer-primitives/quotes.js";
 /**
  * Objective이 아닌 새 세션 컴포저 '@' 행선지 하나.
  *
@@ -55,45 +54,4 @@ export interface ClientComposerCapability {
    */
   // 플러그인 행선지(`mentionTarget`)는 draft를 명시하지 않으면 쓰던 초안을 보존한다.
   open(options?: { readonly mentionObjectiveId?: string; readonly mentionTarget?: MentionTargetAddress; readonly draft?: string }): void;
-  /**
-   * 고른 문장을 받는 쪽 입력창의 초안에 인용 칩으로 붙인다 — 이미지 첨부와 같은 자리다. 보내지 않는다: 발사는 언제나 사람의 Enter 다.
-   * 받는 쪽은 채팅 모드 Objective 이거나 `receiveQuotes` 로 나선 플러그인의 대상이다. 입력창이 화면에 없어도 초안에 남아,
-   * 그 대화를 열면 칩이 서 있다. 받을 수 없는 곳이면 `unavailable`.
-   */
-  attachQuote?(target: ComposerQuoteTarget, quote: ComposerQuote): ComposerQuoteAttachResult;
-  /** 이 Theater 에서 지금 인용을 받을 수 있는 곳 — 채팅 모드 지휘관과, 나선 플러그인의 대상(사령관 등). */
-  quoteTargets?(theaterId: string): readonly ComposerQuoteTargetOption[];
-  /** `quoteTargets`·`attachQuote` 가 다른 답을 낼 수 있을 때 깨운다(Objective 목록·플러그인 대상이 바뀜). */
-  subscribeQuoteTargets?(listener: () => void): () => void;
-  /**
-   * 플러그인이 자기 비-Objective 대상(예: 사령관)의 인용을 받겠다고 나선다. `targets` 는 그 Theater 에서 지금 받을 수 있는 대상,
-   * `receive` 는 붙이기 — 플러그인이 자기 초안에 칩을 세우고 결과를 돌려준다. 돌려준 함수로 물러난다.
-   */
-  receiveQuotes?(pluginId: string, receiver: ComposerQuoteReceiver): () => void;
-}
-
-
-/** 인용을 받을 수 있는 곳 하나. */
-export interface ComposerQuoteTargetOption {
-  readonly target: ComposerQuoteTarget;
-  readonly label: string;
-  /** 「사령관」·「지휘관」처럼 줄을 묶는 이름. */
-  readonly group: "commodore" | "commander";
-  /**
-   * 지금 화면에 선 대화면 true — 붙일 곳의 기본값이다. 한 목록에 많아야 하나다: 플러그인 대상이 지금 열려 있다고 알리면
-   * 그 대상이 서고 Objective 은 서지 않는다.
-   */
-  readonly current?: boolean;
-}
-
-
-export interface ComposerQuoteReceiver {
-  /**
-   * `current` 는 그 대상의 대화가 지금 화면에 서 있을 때만 true 로 싣는다(예: 가운데 칸에 연 사령관 대화).
-   * `commodoreId` 는 지금 화면이 가리키는 사령관이다(없으면 null) — 호스트가 건넨다.
-   */
-  readonly targets: (commodoreId: string | null) => readonly { readonly targetId: string; readonly label: string; readonly current?: boolean }[];
-  readonly receive: (targetId: string, quote: ComposerQuote) => ComposerQuoteAttachResult;
-  /** 대상 목록이 바뀌면 깨운다. */
-  readonly subscribe?: (listener: () => void) => () => void;
 }

@@ -50,7 +50,6 @@ export interface CommodoreFeatureDeps {
   readonly security: HttpSecurityPort;
   readonly agent: ConsoleResidentAgentDeps;
   /** 이 사령관에 묶은 지식 도구(`admiralMcp.bindCommodore`). */
-  readonly knowledgeTools: (commodoreId: string) => readonly McpServerTools[];
   /** 마켓플레이스 받기·설치에 쓰는 `claude` CLI 를 Console 수명에 묶어 띄운다. */
   readonly processes?: OwnedProcessPort;
 }
@@ -89,7 +88,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       try { return root && fs.realpathSync.native(root) === root && fs.statSync(root).isDirectory() ? { label: path.basename(root) || root, root } : null; }
       catch { return null; }
     },
-    knowledgeTools: deps.knowledgeTools,
     managementTools: (commodoreId, turn) => createCommodoreManagementTools({
       hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping,
       list: () => orderedIds().map((id) => ({ commodoreId: id, alias: store.read(id)?.alias, theaters: entities.theatersOf(id) })),

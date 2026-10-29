@@ -1,4 +1,4 @@
-import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes, type ComposerQuote, type ComposerQuoteAttachResult, type ComposerQuoteItem } from "./composer-primitives/quotes.js";
+import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes, type ComposerQuoteItem } from "./composer-primitives/quotes.js";
 import { createComposerAttachments, type ComposerAttachmentNotice, type ComposerAttachmentRecord, type ComposerAttachments } from "./composer-primitives/attachment-store.js";
 import type { ClientConsoleStateCapability } from "../../workspace/shared/console-state.js";
 
@@ -112,15 +112,6 @@ export function getComposerDraft(objectiveId: string): ReturnType<typeof createC
   let draft = drafts.get(objectiveId);
   if (!draft) { draft = createComposerDraft(objectiveId); drafts.set(objectiveId, draft); }
   return draft;
-}
-
-/**
- * 다른 표면이 고른 문장을 이 Objective 입력창의 초안에 인용 칩으로 붙인다. 입력창이 화면에 없어도 초안에 남고(이미지 수신함과 달리
- * 꺼낼 사람이 필요 없다), 채팅 원장과 대화 중심 화면의 그룹 입력창이 같은 묶음을 읽는다. 보내지는 않는다.
- */
-export function attachComposerQuote(objectiveId: string, quote: ComposerQuote): ComposerQuoteAttachResult {
-  if (liveObjectiveIds !== null && !liveObjectiveIds.has(objectiveId)) return "unavailable";
-  return getComposerDraft(objectiveId).quotes.add(quote);
 }
 
 export function readTerminalViewPosition(objectiveId: string): TerminalViewPosition | undefined {

@@ -5,7 +5,6 @@ import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createFileExplorerFeature } from "../../../features/file-explorer/host/index.js";
 import { createRepositoryFeature } from "../../../features/repository/host/index.js";
-import { createCodexFeature } from "../../../features/codex/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
@@ -1063,11 +1062,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
       connect: () => pluginMcp.connect(),
-      // 사령관 id와 그 디렉터리는 호스트가 정한다 — 부르는 쪽이 경로를 건네지 않으므로 다른 사령관·임의 경로로 묶을 수 없다.
-      bindCommodore: (commodoreId) => {
-        const directory = commodore?.knowledge.directory(commodoreId);
-        return directory ? pluginMcp.bindCommodore(commodoreId, directory) : [];
-      },
     },
     objectiveRecords: {
       describe: objectiveRecordArchive.describe,
@@ -1193,12 +1187,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
     },
     paths: workspacePaths,
-    knowledge: {
-      root: (commodoreId) => commodore?.knowledge.root(commodoreId) ?? null,
-      ids: () => commodore?.knowledge.ids() ?? [],
-      commodoreExists: (commodoreId) => commodore?.knowledge.exists(commodoreId) ?? false,
-      legacyKnowledgeSources: (commodoreId, resuming) => commodore?.knowledge.legacySources(commodoreId, resuming) ?? [],
-    },
     // 플러그인의 모델 좌표 해석. Gateway 설정 파일을 플러그인이 직접 열지 않도록 같은 파일의 로스터 투영만 내준다.
     models: createModelRosterHost({ readSettings: gatewaySettings.read, ensureClaudeNativeModels: async () => { await ensureClaudeNativeModels?.(); } }),
     experiments: {
@@ -1655,10 +1643,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
     /**
-     * 원격 판정은 어떤 분기보다 먼저 끝난다. Codex 게이트웨이는 자기만의 Host 검사만 하므로,
-     * 그 조기 반환이 이 판정 위에 있으면 세션 없는 요청이 `Host: 127.0.0.1:<port>` 하나로
-     * 원격 리스너를 통과해 Wiki 내용을 받아 간다(실측). 분기가 하나 늘 때마다 문이 하나 열리는
-     * 구조를 두지 않으려면 판정이 라우팅 앞에 있어야 한다.
+     * 원격 판정은 어떤 분기보다 먼저 끝난다. 기능 라우트의 조기 반환이 이 판정 위에 있으면
+     * 세션 없는 요청이 개별 Host 검사만으로 통과할 수 있다. 분기가 늘어도 입장 경계는 하나다.
      */
     const listener = listenerForRequest(req);
     if (listener && listener.audience !== "local") {
@@ -1675,9 +1661,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (res.destroyed) return;
       }
     }
-    // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓰므로
-    // 자기 게이트를 그대로 유지한다. 대신 같은 리스너 판정을 주입받아, 원격 리스너의 Host·Origin도
-    // 그 게이트가 알고 있다.
     if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
       return;
@@ -2007,7 +1990,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       requestedPort: portState.requestedPort,
       effectivePort: portState.effectivePort,
       portHonored: portState.portHonored,
-      wikiServerStatus: resolveWikiServerStatus(commodoreId),
     };
     writeJson(res, 200, payload);
   }
@@ -2049,15 +2031,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return req.headers["sec-fetch-site"] === "same-origin";
   }
 
-
-  /**
-   * 지식 서버 상태는 그것을 소유한 플러그인이 말한다. 소유자가 없으면 "unknown"이다 —
-   * 코어가 대신 "unavailable"이라고 답하면, 아무도 모른다는 사실이 없다는 주장으로 바뀐다.
-   */
-  function resolveWikiServerStatus(commodoreId: string | null): ConsoleObserverStatus["wikiServerStatus"] {
-    if (!commodoreId || !commodore) return "unknown";
-    return commodore.knowledge.exists(commodoreId) ? "available" : "unavailable";
-  }
 
   /** An accepted update stops this Console from inside: the same stop request a signal makes, with the same deadline. */
   async function stopAfterAcceptedUpdateApply(): Promise<void> {
@@ -2705,7 +2678,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           stopObjectives: async (id) => {
             // 이미 시작한 보관 전이가 정지 뒤 저장하지 않도록 소유자 차단 후 큐를 비운다.
             await objectiveRecordArchive.settled();
-            await codexFeature.settleCommodore(id);
             await execution.stopShellForKey(`session:commodore:commodore:${id}`);
             for (const node of ownerRecords(id).flatMap(archiveSessionNodes)) await execution.stopForArchive(node, false);
           },
@@ -2770,7 +2742,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             deletedOwnerKeys.delete(id);
             return warnings;
           },
-          releaseKnowledge: (id) => codexFeature.forgetCommodore(id),
         },
         order: {
           read: () => consoleSettingsStore.load().commodoreOrder ?? [],
@@ -2785,7 +2756,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
         attachments: attachmentsForPlugin?.("commodore"),
         http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
-        knowledgeTools: (commodoreId) => consoleFeaturePorts.admiralMcp.bindCommodore?.(commodoreId) ?? [],
         processes: { spawnOwned: (request) => {
           const child = ownedProcesses.spawn({
             command: request.command, args: request.args,
@@ -2830,13 +2800,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         routeRegistry.register(routePath, (context) => context.pathname === routePath ? route.handler(context) : false);
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Objectives", gate: "origin-write", transport: "http" });
       }
-      const codexFeature = await createCodexFeature({
-        knowledge: consoleFeaturePorts.knowledge, paths: consoleFeaturePorts.paths,
-        events: consoleFeaturePorts.events, server: consoleFeaturePorts.server,
-        http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
-        registerMcp: (name, tools, options) => pluginMcp.register(name, tools, options),
-      });
-      featureCleanupCallbacks.add(() => codexFeature.dispose());
       const quotaFeature = createQuotaFeature({
         server: consoleFeaturePorts.server, storage: consoleFeaturePorts.storage,
         http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
@@ -2855,7 +2818,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       consoleAgentOwners.add("scuttlebutt");
       featureCleanupCallbacks.add(async () => { consoleAgentOwners.delete("scuttlebutt"); await scuttlebuttAgent.dispose(); });
       const scuttlebuttFeature = await createScuttlebuttFeature({
-        paths: consoleFeaturePorts.paths, knowledge: consoleFeaturePorts.knowledge,
+        paths: consoleFeaturePorts.paths,
         experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
         http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         agent: scuttlebuttAgent,
@@ -2879,7 +2842,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         } },
       });
       featureCleanupCallbacks.add(() => repositoryFeature.dispose());
-      for (const feature of [codexFeature, quotaFeature, scuttlebuttFeature, fileExplorerFeature, repositoryFeature]) {
+      for (const feature of [quotaFeature, scuttlebuttFeature, fileExplorerFeature, repositoryFeature]) {
         for (const route of feature.routes) {
           routeRegistry.register(route.path, route.handler);
           executionApiCatalog.push(...route.catalog);

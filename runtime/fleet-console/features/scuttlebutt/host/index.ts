@@ -1,4 +1,3 @@
-import type { KnowledgeHost } from "../../codex/host/knowledge-port.js";
 import type { AgentHost } from "../../execution/shared/agent.js";
 import type { ModelRosterHost } from "../../ai-gateway/host/model-ports.js";
 import type { ExperimentsHost } from "../../settings/shared/experiment-ports.js";
@@ -7,7 +6,7 @@ import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import { createChatRoutes } from "./chat-routes.js";
 
-export type ScuttlebuttFeatureDeps = { readonly paths: WorkspacePaths; readonly security: HttpSecurityPort; readonly http: HttpPort; readonly experiments?: ExperimentsHost; readonly models?: ModelRosterHost; readonly agent: AgentHost; readonly knowledge?: KnowledgeHost; };
+export type ScuttlebuttFeatureDeps = { readonly paths: WorkspacePaths; readonly security: HttpSecurityPort; readonly http: HttpPort; readonly experiments?: ExperimentsHost; readonly models?: ModelRosterHost; readonly agent: AgentHost; };
 export interface ScuttlebuttRouteContext { readonly host: ScuttlebuttFeatureDeps }
 export async function createScuttlebuttFeature(deps: ScuttlebuttFeatureDeps) {
   const chat = createChatRoutes({ host: deps });

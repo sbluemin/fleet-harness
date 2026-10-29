@@ -411,7 +411,7 @@ export const chromeEn = {
   "chrome.backendApi.copyAria": "Copy path {path}",
   "chrome.backendApi.loading": "Loading backend API catalog.",
   "chrome.backendApi.noRoutes": "No backend API routes reported.",
-  "chrome.backendApi.foot": "Core and loaded-plugin API routes, excluding Fleet Wiki.",
+  "chrome.backendApi.foot": "Console API routes.",
   "chrome.backendApi.uncategorized": "Uncategorized",
 
   // expanded-surface — the non-modal work surface anchored to the conversation pane
@@ -419,7 +419,6 @@ export const chromeEn = {
   "chrome.expandedSurface.dividerAria": "Resize slot",
   "chrome.expandedSurface.missing": "The plugin that provided this surface is no longer loaded.",
 
-  // codex-reading-sheet
 
   // 실패 화법: 무슨 일(title) · 왜와 지금 할 일(cause). 서버가 보내는 기계 코드는 문장
   // 자리를 차지하지 않고 진단으로만 남는다.
@@ -946,7 +945,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.backendApi.copyAria": "경로 {path} 복사",
   "chrome.backendApi.loading": "Backend API 카탈로그를 불러오는 중.",
   "chrome.backendApi.noRoutes": "보고된 Backend API 라우트가 없어요.",
-  "chrome.backendApi.foot": "Core와 로드된 플러그인의 API 목록이에요. Fleet Wiki는 빠져 있어요.",
+  "chrome.backendApi.foot": "Console API 목록이에요.",
   "chrome.backendApi.uncategorized": "미분류",
 
   "chrome.expandedSurface.closeAria": "{title} 닫기",

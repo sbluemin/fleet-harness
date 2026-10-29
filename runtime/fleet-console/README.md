@@ -4,13 +4,11 @@ Standalone loopback web console for observing live output streams and Console-ow
 
 ## What It Does
 
-Fleet Console core owns HTTP, Agent execution, Chat, commodore-scoped Shell, PTYs, tickets, WebSocket transport, and AI Gateway composition. Product surfaces such as Objectives, Codex, File Explorer, and Repository are Console features composed with explicit dependencies; Console loads no plugins.
+Fleet Console core owns HTTP, Agent execution, Chat, commodore-scoped Shell, PTYs, tickets, WebSocket transport, and AI Gateway composition. Product surfaces such as Objectives, File Explorer, and Repository are Console features composed with explicit dependencies; Console loads no plugins.
 
 - Console-owned terminal sessions and observed jobs in a navigable rail.
 - Workspace hub sessions created through an in-console directory browser — no OS-native dialog.
 - Console-spawned Agent CLI PTYs with in-process observation.
-- Codex/Fleet Wiki browsing under the shared Console GNB at `/console/codex`.
-- Codex quotes: select a passage in a Wiki entry and attach it as a comment or question chip to a chat-mode commander's or the Theater Commodore's composer. Attaching never sends; the conversation continues in that chat, and any revision updates the entry directly, with earlier versions kept so they can be restored.
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
 - Browser terminal access through short-lived tickets over WebSocket.
 
@@ -27,7 +25,6 @@ Agent is a durable Console-owned Objective (`pluginId: null`, `type: "agent"`). 
 | `/api/v1/agent/*` | Agent launch, session, ticket, job, event, tenant, and state routes for Agent ObjectiveRecords. | Requires the terminal Origin boundary; MCP/session tokens remain server-only. |
 | `/api/v1/terminal/ws` | Console PTY and Chat WebSocket transport. | Short-lived one-use ticket and Origin authorization. |
 | `/console/` | Static React client served from this package's `dist/client`. | Served directly from the loopback console URL. |
-| `/console/codex/*` | Console-owned Codex/Fleet Wiki web, workspace API, and migrated Maritime Codex client. | Admin workspace registration uses the lock bearer token; browser reads stay token-free on allowed local origins. |
 
 `/observer/tenants` may include `terminalSessionId` for plugin-owned terminal sessions. Shell and Agent routes live under `/api/v1/{shell,agent}/*`; WebSocket transport lives at `/api/v1/terminal/ws`.
 
@@ -154,7 +151,6 @@ HTTP surfaces are loopback-only. Browser observer routes are directly available 
 
 `POST /theaters/folders/list` and `POST /theaters/folders/grants` both require `validateHost` and `isTerminalAuthorized`. No adminToken or bearer auth is used for folder endpoints. Selected absolute paths appear only in list and grant API responses; they are not included in session, Theater, observer, or SSE payloads. When a Theater is registered, the resolved cwd is stored in durable local state (`~/.fleet/console/state.json`, `sensitivity: "sensitive"`) exactly as before; this is a sensitive local file and is not transmitted to the browser.
 
-Codex/Fleet Wiki routes preserve the migrated wiki security boundary: Host allowlist, Origin checks for write routes, loopback write gates, path containment, DOMPurify markdown sanitization, strict Mermaid rendering, and lockfile bearer auth for workspace registration.
 
 ## Usage
 

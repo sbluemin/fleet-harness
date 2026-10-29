@@ -1,11 +1,8 @@
-import type { ComposerQuote, ComposerQuoteAttachResult } from "../../execution/client/composer-primitives/quotes.js";
 import type { MentionTargetDescriptor } from "../../execution/shared/composer-ports.js";
 
 import { CommodoreAvatar } from "./commodore-avatar.js";
-import { attachQuoteToCommodoreComposer } from "./commodore-inbox-section.js";
-import { isCommodoreConversationOpen, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { commodoreMongleState } from "./commodore-header.js";
-import { commodoreLanguage, commodoreOwnerAlias, messageCommodore, readCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { commodoreLanguage, commodoreOwnerAlias, messageCommodore, readCommodore, useCommodore } from "./commodore-state.js";
 import { readCommodoreList } from "./commodore-list.js";
 import { getT } from "./i18n/index.js";
 import { useObjectiveTheater } from "./board.js";
@@ -70,31 +67,3 @@ export async function messageCommodoreMention(targetId: string, text: string): P
   await messageCommodore(commodoreId, text);
 }
 
-/**
- * 인용을 받을 수 있는 사령관 — 호스트가 Codex 문서의 선택 알약이 붙일 곳을 정할 때 읽는다. 새 세션 '@' 덱과 같은 조건
- * (사령관과 보드가 준비됨)일 때만 낸다. 이름은 덱과 같다(별칭이 있으면 별칭). 가운데 칸에 이 사령관 대화가
- * 서 있으면 `current` 로 알려 지금 열린 대화로 붙게 한다. `commodoreId`는 지금 화면이 가리키는 사령관이다.
- */
-export function commodoreQuoteTargets(commodoreId: string | null): readonly { readonly targetId: string; readonly label: string; readonly current?: boolean }[] {
-  if (!commodoreId || !readCommodoreList().some((row) => row.commodoreId === commodoreId) || !acceptsMessage(commodoreId)) return [];
-  const { alias, theater } = targetNames(commodoreId);
-  return [{
-    targetId: `${TARGET_PREFIX}${commodoreId}`,
-    label: alias ?? (theater || commodoreId),
-    ...(isCommodoreConversationOpen(commodoreId) ? { current: true } : {}),
-  }];
-}
-
-/** 받을 곳의 바뀜 — 사령관 상태(가용 여부·별칭)와 가운데 칸에 선 대화가 바뀌면 깨운다. */
-export function subscribeCommodoreQuoteTargets(listener: () => void): () => void {
-  const offCommodore = subscribeCommodore(listener);
-  const offConversation = subscribeCommodoreConversationActive(listener);
-  return () => { offCommodore(); offConversation(); };
-}
-
-/** 붙이기 — 사령관 입력창(데스크톱·폰이 같은 초안)에 칩을 세운다. 보내지 않는다. */
-export function receiveCommodoreQuote(targetId: string, quote: ComposerQuote): ComposerQuoteAttachResult {
-  const commodoreId = targetCommodore(targetId);
-  if (!commodoreId || !acceptsMessage(commodoreId)) return "unavailable";
-  return attachQuoteToCommodoreComposer(commodoreId, quote);
-}

@@ -15,7 +15,6 @@ export interface CommodoreDeletionHost {
   /** 메모리 상태를 거둔 뒤 rename 실패에 쓸 복원 함수를 돌려준다. */
   readonly detachObjectives: (id: string) => { readonly removedObjectives: number; readonly rollback: () => void; readonly committed: () => void };
   readonly cleanup: (id: string) => readonly string[];
-  readonly releaseKnowledge: (id: string) => void;
   readonly claudeProjectsDirectory: string;
 }
 
@@ -83,7 +82,6 @@ export function createCommodoreDeletion(deps: {
         catch { warnings.push("directory_cleanup_failed"); console.warn(`[commodore] deletion ${id}: directory_cleanup_failed`); }
         bestEffort("settings_cleanup_failed", () => { warnings.push(...deps.host.cleanup(id)); });
         bestEffort("claude_history_cleanup_failed", () => removeClaudeHistory(deps.host.claudeProjectsDirectory, directory, keptDirectories));
-        bestEffort("knowledge_cleanup_failed", () => deps.host.releaseKnowledge(id));
         deps.removed(id, theaterIds);
         return { deleted: id, removedObjectives: detached.removedObjectives, warnings };
       } finally {

@@ -29,7 +29,6 @@ import type { AgentCliDetector } from "../features/execution/host/agent/agent-cl
 import { canonicalizeTheaterPathSync, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import type { TheaterRegistration } from "../features/workspace/host/theaters/theater-domain.js";
 import { isClaudePathTrusted, trustClaudeTheater } from "../features/workspace/host/theaters/claude-trust.js";
-import { WorkspaceRegistry } from "../features/codex/host/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../features/execution/host/terminal/terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "../features/execution/host/terminal/ws.js";
 
@@ -51,14 +50,14 @@ vi.mock("@fleet-console/agent-runtime/fleet", async (importOriginal) => {
   };
 });
 
-vi.mock("../features/codex/host/index.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../features/codex/host/index.js")>();
-  return { ...actual, createCodexFeature: async (deps: Parameters<typeof actual.createCodexFeature>[0]) => {
+vi.mock("../features/scuttlebutt/host/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../features/scuttlebutt/host/index.js")>();
+  return { ...actual, createScuttlebuttFeature: async (deps: Parameters<typeof actual.createScuttlebuttFeature>[0]) => {
     await fleetAdmiralMock.startupGate?.();
-    const feature = await actual.createCodexFeature(deps);
+    const feature = await actual.createScuttlebuttFeature(deps);
     return { ...feature, dispose: () => {
       let pending: void | Promise<void>;
-      try { pending = fleetAdmiralMock.cleanupHooks.get("codex")?.(); }
+      try { pending = fleetAdmiralMock.cleanupHooks.get("scuttlebutt")?.(); }
       catch (error) { void feature.dispose(); throw error; }
       return Promise.resolve(pending).then(() => feature.dispose());
     } };
@@ -499,7 +498,7 @@ describe("console terminal observability", () => {
   it("finishes every overlapping stop request only after the one shutdown has ended", async () => {
     const slowCleanup = (lockFile: string) => {
       const state = { entered: false, finished: false, lockHeldAtEnd: false };
-      fleetAdmiralMock.cleanupHooks.set("codex", async () => {
+      fleetAdmiralMock.cleanupHooks.set("scuttlebutt", async () => {
         state.entered = true;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         state.lockHeldAtEnd = fs.existsSync(lockFile);
@@ -548,7 +547,7 @@ describe("console terminal observability", () => {
   it("runs every feature cleanup and releases the lock when one cleanup throws synchronously", async () => {
     const runs: string[] = [];
     const fixture = await startFixture();
-    fleetAdmiralMock.cleanupHooks.set("codex", () => { runs.push("before"); });
+    fleetAdmiralMock.cleanupHooks.set("scuttlebutt", () => { runs.push("before"); });
     fleetAdmiralMock.cleanupHooks.set("file-explorer", () => { runs.push("throws"); throw new Error("sync cleanup failure"); });
     fleetAdmiralMock.cleanupHooks.set("repository", async () => { runs.push("after"); });
     const warn = vi.spyOn(console, "warn");
@@ -1514,30 +1513,7 @@ async function createMockLaunch(cwd?: string, context?: { readonly sessionId?: s
   };
 }
 
-function createWikiRoot(cwd: string): void {
-  const knowledgeRoot = path.join(cwd, ".fleet", "knowledge");
-  fs.mkdirSync(path.join(knowledgeRoot, "wiki"), { recursive: true });
-  fs.mkdirSync(path.join(knowledgeRoot, "raw"), { recursive: true });
-  fs.mkdirSync(path.join(knowledgeRoot, "queue"), { recursive: true });
-  fs.mkdirSync(path.join(knowledgeRoot, "archive"), { recursive: true });
-  fs.mkdirSync(path.join(knowledgeRoot, "conflicts"), { recursive: true });
-  fs.writeFileSync(path.join(knowledgeRoot, "wiki", "index.md"), "# Index\n");
-  fs.writeFileSync(path.join(knowledgeRoot, "log.md"), "## Log\n");
-}
 
-function makeWikiEntryMd(id: string): string {
-  return [
-    "---",
-    `id: "${id}"`,
-    `title: "Entry ${id}"`,
-    "tags: []",
-    'created: "2026-01-01T00:00:00.000Z"',
-    'updated: "2026-01-01T00:00:00.000Z"',
-    "version: 1",
-    "---",
-    "Test content",
-  ].join("\n");
-}
 
 function putWithHost(url: URL, origin: string, host: string, body: unknown): Promise<number> {
   return requestWithHost(url, origin, host, "PUT", body);

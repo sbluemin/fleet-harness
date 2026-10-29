@@ -189,7 +189,6 @@ export function ObjectiveRecordsSideBar({
     label: section.alias ?? section.label,
     createdAt: "",
     lastOpenedAt: "",
-    hasWiki: false,
     activeAdmiralCount: 0,
     commodore: { id: section.commodoreId, ...(section.alias ? { alias: section.alias } : {}) },
   }));

@@ -1,5 +1,5 @@
 import type { ConsoleClientCapabilities } from "../../../core/client/src/integration/client-capabilities.js";
-import type { OpenFileRequest, OpenWikiEntryRequest, OpenResult } from "./navigation.js";
+import type { OpenFileRequest, OpenResult } from "./navigation.js";
 import type { ConversationToolScope, PaneTarget } from "./pane.js";
 import type { ReactNode } from "react";
 
@@ -122,7 +122,6 @@ export type RailPanelDescriptor = RailContributionBase & ({
 export interface RailEntryDescriptor {
   readonly handles?: {
     readonly openFile?: (request: OpenFileRequest, host: ConsoleClientCapabilities) => PaneTarget | OpenResult | Promise<PaneTarget | OpenResult>;
-    readonly openWikiEntry?: (request: OpenWikiEntryRequest, host: ConsoleClientCapabilities) => void | OpenResult | Promise<void | OpenResult>;
   };
   readonly id: string;
   readonly title: LocalizedText;

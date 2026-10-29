@@ -414,11 +414,8 @@ export const pagesEn = {
   // Objective 종류 마크 — Shell은 활동 축을 발행하지 않으므로 그 자리를 종류가 채운다.
   "objectiveRecord.kind.shell": "Shell",
 
-  // codex — reading / drydock / conflicts / schema
 
-  // codex — meta chips / toc / op-badge
 
-  // codex — navigator
 
   "mobile.toast.renamed": "Renamed",
   "mobile.sheet.folder.title": "Add Theater",

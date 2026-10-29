@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { renderMarkdown, type RenderMarkdownOptions } from "@fleet-console/markdown/core";
+import { renderMarkdown } from "@fleet-console/markdown/core";
 import { bindMarkdownLinkActivation, type MarkdownLinkTarget } from "@fleet-console/markdown/link-activation";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
@@ -11,13 +11,9 @@ import { positiveCoordinate } from "../file-navigation.js";
 import { showFileNavigationError } from "../view-store.js";
 import { buildFileExplorerImageSrc, isAllowedExternalMarkdownImageSrc, isSupportedMarkdownImagePath, resolveMarkdownFileRef } from "./markdown-links.js";
 
-const WIKI_LINK_PREFIX = "#file-explorer-wiki:";
-export const resolveFileExplorerWikiLink = (id: string): string => WIKI_LINK_PREFIX + encodeURIComponent(id);
-
 interface MarkdownViewerProps {
   readonly content: string;
   readonly navigate: ClientNavigateCapability;
-  readonly resolveWikiLink: RenderMarkdownOptions["resolveWikiLink"];
   readonly relativePath: string;
   readonly theaterId: string | null;
   readonly objectiveId?: string;
@@ -34,17 +30,12 @@ interface NeutralizeOptions {
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
-export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePath, theaterId, objectiveId, truncated, language, target }: MarkdownViewerProps) {
+export function MarkdownViewer({ content, navigate, relativePath, theaterId, objectiveId, truncated, language, target }: MarkdownViewerProps) {
   const t = getT(language);
   const html = useMemo(() => {
     const rendered = renderMarkdown(content, {
       ...markdownCopyOptions(t),
-      resolveWikiLink,
       resolveLink: (href): MarkdownLinkTarget | null => {
-        if (href.startsWith(WIKI_LINK_PREFIX)) {
-          try { return { kind: "wiki", data: { entryId: decodeURIComponent(href.slice(WIKI_LINK_PREFIX.length)) } }; }
-          catch { return null; }
-        }
         const ref = resolveMarkdownFileRef(href, relativePath);
         return ref ? { kind: "file", data: {
           path: ref.path,
@@ -57,7 +48,7 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
     const doc = new DOMParser().parseFromString(rendered, "text/html");
     neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId, objectiveId, t });
     return doc.body.innerHTML;
-  }, [content, relativePath, resolveWikiLink, theaterId, t]);
+  }, [content, relativePath, theaterId, t]);
   // React 19는 dangerouslySetInnerHTML을 객체 참조로 비교한다 — 글자가 같으면 같은 객체를 유지해
   // 그린 다이어그램 SVG가 통째로 갈아끼워지지 않게 한다. 그 밖의 memo화는 하지 않는다.
   const markup = useMemo(() => ({ __html: html }), [html]);
@@ -78,9 +69,7 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
     const root = rootRef.current;
     if (!root || !theaterId) return;
     return bindMarkdownLinkActivation(root, (kind, data) => {
-      const request = kind === "wiki"
-        ? navigate.openWikiEntry({ theaterId, entryId: data.entryId ?? "" })
-        : kind === "file" && data.path
+      const request = kind === "file" && data.path
           ? navigate.openFile({
             theaterId, path: data.path + (data.anchor ? `#${encodeURIComponent(data.anchor)}` : ""),
             pathKind: "theater-relative", line: positiveCoordinate(data.line), column: positiveCoordinate(data.column), source: "files",

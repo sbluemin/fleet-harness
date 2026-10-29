@@ -8,7 +8,7 @@ import { getT } from "./scuttlebutt-catalog.js";
  * 도구 제목을 계열로 푼다. 서버는 내장 도구를 `이름: 인자`로, Console·컴퓨터 도구를 MCP 이름 그대로
  * 보낸다 — 인자는 화면에 내지 않고 대상 한 조각(호스트·질의)만 남긴다.
  */
-export type ToolFamily = "search" | "read" | "console" | "direct" | "computer" | "wiki" | "tool";
+export type ToolFamily = "search" | "read" | "console" | "direct" | "computer" | "tool";
 
 // 제목에는 action 이 없다 — 이름만으로 실행이 확실한 도구는 console_launcher(새 세션) 뿐이다(Objective 패널의 send·stop 은 같은 도구의 읽기와 이름을 나눈다).
 const CONSOLE_DIRECT = new Set(["console_launcher"]);
@@ -20,13 +20,12 @@ export function toolFamily(title: string): ToolFamily {
   if (lowered.startsWith("mcp__fleet-console-use__")) {
     return CONSOLE_DIRECT.has(lowered.slice("mcp__fleet-console-use__".length)) ? "direct" : "console";
   }
-  if (lowered.startsWith("console_wiki")) return "wiki";
   if (lowered.includes("search")) return "search";
   if (lowered.includes("fetch") || lowered.includes("read")) return "read";
   return "tool";
 }
 
-/** 문구 뒤에 붙는 대상 한 조각 — 검색어, 읽는 페이지의 호스트, Wiki 질의. Console·컴퓨터 도구는 대상을 내지 않는다. */
+/** 문구 뒤에 붙는 대상 한 조각 — 검색어, 읽는 페이지의 호스트. Console·컴퓨터 도구는 대상을 내지 않는다. */
 export function toolDetail(entry: Extract<ChatEntry, { kind: "tool" }>): string | undefined {
   const family = toolFamily(entry.title);
   const colon = entry.title.indexOf(":");
@@ -42,7 +41,7 @@ export function toolDetail(entry: Extract<ChatEntry, { kind: "tool" }>): string 
       return argument || undefined;
     }
   }
-  if (family === "search" || family === "wiki") return argument ? (argument.length > 48 ? `${argument.slice(0, 46)}…` : argument) : undefined;
+  if (family === "search") return argument ? (argument.length > 48 ? `${argument.slice(0, 46)}…` : argument) : undefined;
   return undefined;
 }
 

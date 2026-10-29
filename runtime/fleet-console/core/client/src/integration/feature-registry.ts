@@ -23,12 +23,11 @@ import type { PaneDescriptor } from "../../../../features/workspace/shared/pane.
 import type { RailEntryDescriptor, RailPanelDescriptor } from "../../../../features/workspace/shared/rail.js";
 import type { SettingsSectionDescriptor } from "../../../../features/settings/shared/types.js";
 import type { TheaterInboxSectionDescriptor } from "../../../../features/workspace/shared/theater-inbox.js";
-import { codexClient, installCodexClient } from "../../../../features/codex/client/index.js";
 import { quotaClient, installQuotaClient } from "../../../../features/quota/client/index.js";
 import { scuttlebuttClient, installScuttlebuttClient } from "../../../../features/scuttlebutt/client/index.js";
 import { fileExplorerClient } from "../../../../features/file-explorer/client/index.js";
 import { repositoryClient } from "../../../../features/repository/client/index.js";
-const builtInPlugins = [codexClient, fileExplorerClient, repositoryClient, quotaClient, scuttlebuttClient];
+const builtInPlugins = [fileExplorerClient, repositoryClient, quotaClient, scuttlebuttClient];
 import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 
 /** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */
@@ -158,7 +157,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
   }
   return {
     install(deps) {
-      const cleanups = [installConsoleExecution(deps), commodore.install({ chat: deps.chat, rail: deps.rail, api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, composer: deps.composer, conversation: deps.conversation, theaterInbox: deps.theaterInbox, objectiveRecords: deps.objectiveRecords, navigate: deps.navigate, mobileSessions: { List: MobileCommodoreSessions, useAttentionCount: useMobileCommodoreAttentionCount }, mobileActions: { commanders: openMobileCommanderSheet, delete: openCommodoreDeleteSheet, editLook: ({ commodoreId, label, alias }) => openCommodoreLookSheet(commodoreId, label, alias), newSession: (commodoreId) => openMobileNewSession(commodoreId) } }), objectives.install({ api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, objectiveRecords: deps.objectiveRecords, preferences: deps.preferences, runtime: deps.runtime, rail: deps.rail, conversation: deps.conversation, models: deps.models, navigate: deps.navigate, navigation: deps.navigation, composer: deps.composer, surfaces: deps.surfaces, notifications: deps.notifications }), installCodexClient({ consoleState: deps.consoleState, navigation: deps.navigation, surfaces: deps.surfaces, rail: deps.rail, composer: deps.composer, objectiveRecords: deps.objectiveRecords, consoleEvents: deps.consoleEvents }), installQuotaClient({ api: deps.api, settings: createSettingsDocumentApi("/api/v1/settings/quota") }), installScuttlebuttClient({ consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, settings: createSettingsDocumentApi("/api/v1/settings/scuttlebutt") })];
+      const cleanups = [installConsoleExecution(deps), commodore.install({ chat: deps.chat, rail: deps.rail, api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, composer: deps.composer, conversation: deps.conversation, theaterInbox: deps.theaterInbox, objectiveRecords: deps.objectiveRecords, navigate: deps.navigate, mobileSessions: { List: MobileCommodoreSessions, useAttentionCount: useMobileCommodoreAttentionCount }, mobileActions: { commanders: openMobileCommanderSheet, delete: openCommodoreDeleteSheet, editLook: ({ commodoreId, label, alias }) => openCommodoreLookSheet(commodoreId, label, alias), newSession: (commodoreId) => openMobileNewSession(commodoreId) } }), objectives.install({ api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, objectiveRecords: deps.objectiveRecords, preferences: deps.preferences, runtime: deps.runtime, rail: deps.rail, conversation: deps.conversation, models: deps.models, navigate: deps.navigate, navigation: deps.navigation, composer: deps.composer, surfaces: deps.surfaces, notifications: deps.notifications }), installQuotaClient({ api: deps.api, settings: createSettingsDocumentApi("/api/v1/settings/quota") }), installScuttlebuttClient({ consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, settings: createSettingsDocumentApi("/api/v1/settings/scuttlebutt") })];
       return () => { for (const cleanup of cleanups.reverse()) cleanup(); };
     },
     objectives,
@@ -171,7 +170,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
     settingsSections: providers.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: providers.flatMap((plugin) => plugin.notificationKinds ?? []),
     railPanels,
-    railEntries: [...railEntries.filter((entry) => entry.id === "codex"), ...railEntries.filter((entry) => entry.id !== "codex")],
+    railEntries,
     panes,
     floatingWidgets: providers.flatMap((plugin) => (plugin.floatingWidgets ?? []).map((descriptor) => ({
       ...descriptor,

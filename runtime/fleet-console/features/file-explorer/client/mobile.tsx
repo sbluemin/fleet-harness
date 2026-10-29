@@ -14,7 +14,7 @@ import { activateStoredDocument, getFileExplorerSnapshot, setDocumentPaneOpen, u
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
-import { MarkdownViewer, resolveFileExplorerWikiLink } from "./viewer/markdown.js";
+import { MarkdownViewer } from "./viewer/markdown.js";
 import { parentDirOf } from "./viewer/stale.js";
 import "./mobile.css";
 
@@ -190,21 +190,6 @@ export function MobileFileDocument(ctx: PaneContext) {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // 문서의 위키 링크는 다른 목적지(위키)로 옮겨 간다 — 그 전에 문서를 접어 막대가 쌓은 깊이 항목을 걷고(`mobileBar.leave`), 그 뒤에 연다.
-  // 다른 파일 열기는 같은 목적지 안이라 그대로 둔다.
-  const viewerNavigate = useMemo<typeof navigate>(() => {
-    if (!mobileBar) return navigate;
-    return {
-      openFile: (request) => navigate.openFile(request),
-      openWikiEntry: (request) => new Promise((resolve, reject) => {
-        mobileBar.leave(
-          () => { if (theaterId) setDocumentPaneOpen(theaterId, false); panes.close(); },
-          () => { navigate.openWikiEntry({ ...request, replace: true }).then(resolve, reject); },
-        );
-      }),
-    };
-  }, [mobileBar, navigate, panes, theaterId]);
-
   const latest = useRef({ theaterId, path, t });
   latest.current = { theaterId, path, t };
   const openShell = useCallback(() => {
@@ -255,7 +240,7 @@ export function MobileFileDocument(ctx: PaneContext) {
         {viewState.kind === "error" ? <p className="fexp-m-note is-error">{viewState.message}</p> : null}
         {isCode && isMarkdown && !source ? (
           <div className="fexp-m-reading">
-            <MarkdownViewer content={viewState.content} navigate={viewerNavigate} resolveWikiLink={resolveFileExplorerWikiLink} relativePath={viewState.relativePath} theaterId={theaterId} truncated={viewState.truncated} language={language} />
+            <MarkdownViewer content={viewState.content} navigate={navigate}  relativePath={viewState.relativePath} theaterId={theaterId} truncated={viewState.truncated} language={language} />
           </div>
         ) : null}
         {isCode && (!isMarkdown || source) ? (
