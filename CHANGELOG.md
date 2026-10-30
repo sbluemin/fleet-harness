@@ -5,6 +5,15 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.272.1] - 2026-10-30
+
+### fleet-console
+
+#### Fixed
+- File links in a conversation now open on the phone instead of getting stuck while loading.
+- Commodore plugins whose MCP servers sign in with a header script or connect over WebSocket now connect in the Commodore's own conversation, as they already did in its objectives; the header script also appears among the commands you review before trusting the plugin.
+- Restarting Console no longer wakes Commodores that have nothing new to handle; a wake cut off by the shutdown still reaches the Commodore on the next start.
+
 ## [1.272.0] - 2026-10-29
 
 ### fleet-console
