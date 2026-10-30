@@ -126,6 +126,14 @@ const detailTool = defineConsoleTool({
     }) },
   },
 });
+/** Console Use 표식의 행위 낱말 — 내부 action 이름을 보이지 않는다. 쓰기 action 이 늘면 타입이 여기 낱말을 요구한다. */
+type DetailWriteAction = { [K in keyof typeof detailTool.actions]: (typeof detailTool.actions)[K]["kind"] extends "write" ? K : never }[keyof typeof detailTool.actions];
+const DETAIL_WRITE_WORDS: Record<Exclude<DetailWriteAction, "edit_due">, string> = {
+  edit_title: "제목 변경", edit_brief: "브리핑 편집", criteria_approve: "기준 승인", criteria_reject: "기준 거절", answer: "결정 응답",
+  complete: "완료", reopen: "완료 되돌림", followup_retry: "후속 재시도", followup_abandon: "후속 포기", followup_discard: "후속 버림",
+  plan: "구상 요청", commence: "출범", steer: "스티어링", message: "메시지", stop: "중단", compact: "문맥 정리", hand_off: "검토로 인계",
+  extend: "확장", hand_to_person: "사람에게 넘김",
+};
 type ListCall = Extract<ReturnType<typeof listTool.parse>, { ok: true }>["call"];
 type DetailCall = Extract<ReturnType<typeof detailTool.parse>, { ok: true }>["call"];
 
@@ -290,7 +298,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         const at = { view: "objective", ...(found ? { path: found.id } : {}), ...rowAt(found?.id, theaterId) };
         const title = short(found?.title ?? "");
         if (action === "edit_due") return { theaterId, summary: `목표 기한 ${args.dueDate === null ? "해제" : "변경"} 「${title}」`, gesture: "press", ...at };
-        if (detailTool.actions[action]?.kind === "write") return { theaterId, summary: `목표 ${action} 「${title}」`, gesture: "press", ...at };
+        if (detailTool.actions[action]?.kind === "write") return { theaterId, summary: `목표 ${DETAIL_WRITE_WORDS[action as DetailWriteAction] ?? "편집"} 「${title}」`, gesture: "press", ...at };
         return { theaterId, summary: action === "transcript" ? `세션 기록 봄 「${title}」` : action === "evidence" ? `증거 봄 「${title}」` : `목표 봄 「${title}」`, ...at };
       },
     },
