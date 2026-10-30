@@ -6,6 +6,7 @@ import { readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPrese
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
+import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
@@ -287,11 +288,23 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (node && node.objectiveLanguage !== language) ctx.objectiveRecords.patch(sessionId, { ...({ ...node, objectiveLanguage: language }) });
   };
 
+  /**
+   * 지휘관 턴 끝의 OpenUI 되먹임 — 그 턴의 최종 응답 원문에서 낸 모델용 메모를 목표별로 하나씩 둔다. 지휘관에게 가는 다음 입력 본문에
+   * 한 번만 붙고 소비된다. 표시 문면(`display`)·보드·알림에는 싣지 않는다. 구성원은 OpenUI를 그리지 않으므로 모으지 않는다.
+   */
+  const pendingOpenUIFeedback = new Map<string, string>();
+  const withOpenUIFeedback = (sessionId: string, text: string): string => {
+    const note = pendingOpenUIFeedback.get(sessionId);
+    if (note === undefined) return text;
+    pendingOpenUIFeedback.delete(sessionId);
+    return `${text}\n\n${note}`;
+  };
   // 오류를 보존해야 하는 통지는 이 경로를 직접 쓴다. 전송 상한도 호스트가 판단하며 원문은 그대로 둔다.
+  // 지휘관에게 가는 입력은 이 한 곳(과 아래 직접 전송 몇 곳)에서 `withOpenUIFeedback` 으로 되먹임을 싣는다 — 종류별 프롬프트는 고치지 않는다.
   const requestSend = async (sessionId: string, text: string, display: string, humanInput?: ConsoleActionInput["humanInput"]): Promise<void> => {
     if (!ctx.consoleControl) throw new ObjectiveStoreError("launch_unavailable");
     if (!ctx.objectiveRecords.get(sessionId)) throw new ObjectiveStoreError("unknown_objectiveRecord");
-    await ctx.consoleControl.request({ kind: "send", objectiveId: sessionId, text, display, displayFormat: "markdown", ...(humanInput ? { humanInput } : {}) });
+    await ctx.consoleControl.request({ kind: "send", objectiveId: sessionId, text: withOpenUIFeedback(sessionId, text), display, displayFormat: "markdown", ...(humanInput ? { humanInput } : {}) });
     touchLive(sessionId);
   };
   /**
@@ -1093,6 +1106,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const forgetOutcome = (sessionId: string) => {
     store.settleMemberFailure(sessionId, null);
     store.settleMemberUnreported(sessionId, null);
+    pendingOpenUIFeedback.delete(sessionId);
     dropOutcome(sessionId);
     for (const [id, objectiveId] of [...outcomeWatched]) if (objectiveId === sessionId) {
       store.settleMemberFailure(id, null);
@@ -1229,6 +1243,15 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const observed = ctx.consoleControl?.observe(event.objectiveId);
       if (!current || !observed) return;
       const snapshot: ConsoleObjectiveObservation = { ...observed, activity: "idle", lifecycle: "live", generation: event.generation ?? observed.generation, output: event.output };
+      // 지휘관 턴 끝 — 최종 응답 원문에서 다음 입력용 OpenUI 되먹임을 모은다(최신 턴이 기준이라 빠진 것이 없으면 거둔다).
+      if (event.objectiveId === current.id) {
+        const reply = event.output.report?.answer ?? event.output.failure?.last_assistant_message;
+        if (typeof reply === "string") {
+          const note = openUIFeedbackNote(reply);
+          if (note === null) pendingOpenUIFeedback.delete(current.id);
+          else pendingOpenUIFeedback.set(current.id, note);
+        }
+      }
       if (syncOutcome(current.id, event.objectiveId, snapshot)) store.refresh(current.id);
       // 사람이 멈췄거나 실패한 턴은 구상이 끝난 것이 아니다 — 확장 개시는 다음 정상 턴이나 기준 결정 때 다시 본다.
       if (event.objectiveId === current.id && event.output.outcome !== "interrupted" && event.output.outcome !== "failed") service.continueExtension(current.id, true);
@@ -1778,7 +1801,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         }
         try {
           await accessObjective(objectiveId);
-          await control().request({ kind: "send", objectiveId: objectiveId, text: decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options), options?.actor), display: "", displayFormat: "markdown" });
+          await control().request({ kind: "send", objectiveId: objectiveId, text: withOpenUIFeedback(objectiveId, decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options), options?.actor)), display: "", displayFormat: "markdown" });
           store.setStopped(objectiveId, false);
           touchLive(objectiveId);
         } catch (error) {
@@ -1810,7 +1833,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         }
         try {
           await accessObjective(objectiveId);
-          await control().request({ kind: "send", objectiveId: objectiveId, text: declinedDecisionTurn(declined.objective, declined.request, languageOf(options), options?.actor), display: "", displayFormat: "markdown" });
+          await control().request({ kind: "send", objectiveId: objectiveId, text: withOpenUIFeedback(objectiveId, declinedDecisionTurn(declined.objective, declined.request, languageOf(options), options?.actor)), display: "", displayFormat: "markdown" });
           store.setStopped(objectiveId, false);
           touchLive(objectiveId);
         } catch (error) {
@@ -1860,7 +1883,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
       // 제안 창은 전달된 뒤에만 연다. 실패하면 열지 않고, 구상(planning)으로도 바꾸지 않는다.
       const authored = authoredWords(options?.context, "steer", options?.actor);
-      await control().request({ kind: "send", objectiveId: objectiveId, text: steerTurn(current, languageOf(options), options?.context, options?.actor), display: humanWords(options?.context), displayFormat: "markdown", ...(authored ? { humanInput: authored } : {}) }).catch(asStoreError);
+      await control().request({ kind: "send", objectiveId: objectiveId, text: withOpenUIFeedback(objectiveId, steerTurn(current, languageOf(options), options?.context, options?.actor)), display: humanWords(options?.context), displayFormat: "markdown", ...(authored ? { humanInput: authored } : {}) }).catch(asStoreError);
       touchLive(objectiveId);
       // 대기 중에 생긴 편집·제안은 옛 스냅샷으로 되돌리지 않는다. 알린 편집만 지운다.
       const delivered = store.find(objectiveId);
@@ -1891,7 +1914,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
       const humanInput = (options?.actor ?? "human") === "human" ? { id: randomUUID(), ...(member ? { targetObjectiveId: member.id } : {}) } : undefined;
       const attached = humanInput && attachmentIds && attachmentIds.length > 0 ? { attachmentIds } : {};
-      await control().request({ kind: "send", objectiveId: target, text, display: text.trim(), displayFormat: humanInput ? "text" : "markdown", ...(humanInput ? { humanInput } : {}), ...attached }).catch(asStoreError);
+      await control().request({ kind: "send", objectiveId: target, text: member ? text : withOpenUIFeedback(target, text), display: text.trim(), displayFormat: humanInput ? "text" : "markdown", ...(humanInput ? { humanInput } : {}), ...attached }).catch(asStoreError);
       if (member) { store.acknowledgeMemberFailure(member.id); store.refresh(objectiveId); }
       // 보드를 거친 말 — 사람이면 그 구성원의 다음 턴은 사람에게 답하는 턴이고, 지휘관·사령관이면 그 구성원에게 일을 맡긴 발주다(본문은 남기지 않는다).
       if (member) {
