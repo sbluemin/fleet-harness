@@ -37,6 +37,11 @@
       "import": "./openui.ts",
       "default": "./openui.ts"
     },
+    "./openui-feedback": {
+      "types": "./openui-feedback.ts",
+      "import": "./openui-feedback.ts",
+      "default": "./openui-feedback.ts"
+    },
     "./openui-guide": {
       "types": "./openui-guide.ts",
       "import": "./openui-guide.ts",
