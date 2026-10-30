@@ -7512,6 +7512,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   line-height: 1;
 }
 
+.whatsnew-page-button svg { flex: none; width: 14px; height: 14px; }
 .whatsnew-page-button:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-primary); }
 .whatsnew-page-button:focus-visible { box-shadow: var(--focus-face); }
 
