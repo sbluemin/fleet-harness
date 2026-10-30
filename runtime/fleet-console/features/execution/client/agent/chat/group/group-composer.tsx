@@ -14,7 +14,9 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import * as React from "react";
 
 import { useMenuButtonKeyboard } from "../../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
+import { getState, subscribe as subscribeConsole } from "../../../../../../core/client/src/integration/store.js";
 import { useViewMode } from "../../../../../../core/client/src/integration/view-mode-store.js";
+import { claimComposerKeyboardFocus } from "../composer-keyboard-focus.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
 import { getComposerDraft } from "../../../objective-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
@@ -151,6 +153,15 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
   const [popDismissed, setPopDismissed] = React.useState(false);
   const [stopOpen, setStopOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
+  // 그룹 대화가 루트 본문을 대신할 때 보이는 입력창은 이쪽이다. 키보드 포커스 요청은 그 본문과 같은 계약이다.
+  const focusRequestId = React.useSyncExternalStore(subscribeConsole, () => {
+    const request = getState().keyboardFocusRequest;
+    return request?.objectiveId === rootObjectiveId ? request.requestId : 0;
+  }, () => 0);
+  React.useEffect(() => {
+    if (!claimComposerKeyboardFocus(rootObjectiveId)) return;
+    inputRef.current?.focus();
+  }, [focusRequestId, rootObjectiveId]);
   // 다른 표면(Codex 문서)이 인용을 붙이면 커서가 이 입력창으로 온다. 처음 서는 순간의 기존 칩은 초점을 가져가지 않는다.
   const quoteCount = React.useRef(quotes.length);
   React.useEffect(() => {

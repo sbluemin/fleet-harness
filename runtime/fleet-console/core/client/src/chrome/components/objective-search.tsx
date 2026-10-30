@@ -9,7 +9,7 @@ import { useCommodoreList, setZoneCommodore, selectMobileCommodore, useZoneCommo
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
 import { createHostPaneTargetPorts } from "../../integration/feature-capabilities.js";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { ClientFeatureDescriptor } from "../../../../../features/workspace/shared/feature-surfaces.js";
@@ -44,9 +44,7 @@ import { resolveObjectiveActivity, resolveObjectiveDisplayActivity, resolveObjec
 import { useObjectiveClusters } from "../../../../../features/workspace/client/objective-clusters.js";
 import { CONVERSATION_ROW_PHRASE } from "../../../../../features/workspace/client/sidebar/side-bar-row-style.js";
 import { archiveObjectiveFromUi, resumeObjectiveInPlace, type ArchiveOutcome } from "../../integration/objective-actions.js";
-import { openArchiveSheet, openRestoredObjective, refreshObjectiveArchive, useObjectiveArchive } from "../../integration/objective-archive.js";
-import { restoreObjectiveCluster } from "../../../../../features/execution/client/objective-records.js";
-import { fetchObjectiveRecords } from "../../integration/api.js";
+import { openArchiveSheet } from "../../integration/objective-archive.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/objective-marks.js";
 import {
   buildPaletteCommands,
@@ -67,8 +65,6 @@ import { requestSideBarObjectiveAction, type SideBarObjectiveAction } from "../.
 import {
   closeObjectiveSearch,
   focusObjective,
-  hydrateObjectiveRecords,
-  getState,
   openKeyboardShortcuts,
   openOnboarding,
   openWhatsNew,
@@ -159,20 +155,10 @@ export function ObjectiveSearch({
   const commandMode = mode === "commands";
   // 사이드바·커맨드 밴드와 같은 마크 축 — 안 본 채 끝난 Objective이 팔레트에서만 침묵하지 않게 한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  const archive = useObjectiveArchive();
-  const [archiveNotice, setArchiveNotice] = useState(false);
-  const restoringArchive = useRef(false);
-  useEffect(() => {
-    if (state.objectiveRecordSearchOpen) { setArchiveNotice(false); void refreshObjectiveArchive(); }
-  }, [state.objectiveRecordSearchOpen]);
-  const entries = useMemo(() => {
-    const active = objectiveRecordSearchEntries(state);
-    const activeIds = new Set(active.map((entry) => entry.objectiveId));
-    const pendingIds = new Set(archive.snapshot?.pendingPurges?.flatMap((batch) => batch.objectiveIds) ?? []);
-    const archivedNodes = (archive.snapshot?.entries ?? []).filter((entry) => !activeIds.has(entry.objectiveRecord.id) && !pendingIds.has(entry.objectiveRecord.id)).map((entry) => entry.objectiveRecord);
-    const archived = objectiveRecordSearchEntries({ ...state, objectiveRecords: archivedNodes }).map((entry) => ({ ...entry, archived: true as const, activity: "ended" as const }));
-    return [...active, ...archived];
-  }, [state, archive.snapshot]);
+  // 보관된 Objective은 결과에서 뺀다. 보관함은 명령(open-archive)으로만 연다.
+  const entries = useMemo(() => objectiveRecordSearchEntries(state), [state]);
+  // 팔레트가 포인터 아래에 그려지거나 스크롤돼도, 포인터가 실제로 움직이기 전의 좌표는 선택을 옮기지 않는다.
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   // 섹션 상태(실험 기능이 뒤늦게 알려지거나 scope가 바뀌는 일)를 팔레트가 열려 있는 동안 다시 읽는다.
   const [sectionVersion, setSectionVersion] = useState(0);
   const commodores = useCommodoreList();
@@ -317,7 +303,11 @@ export function ObjectiveSearch({
   }, [mode, text, railPanels, getViewedTheaterId(), state.objectiveRecordSearchOpen, t]);
 
   useEffect(() => {
-    if (!state.objectiveRecordSearchOpen) return;
+    if (!state.objectiveRecordSearchOpen) {
+      lastPointerRef.current = null;
+      return;
+    }
+    lastPointerRef.current = null;
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -378,21 +368,8 @@ export function ObjectiveSearch({
   if (!state.objectiveRecordSearchOpen) return null;
 
   const selectEntry = (objectiveId: string) => {
-    if (entries.find((entry) => entry.objectiveId === objectiveId)?.archived) {
-      if (restoringArchive.current) return;
-      restoringArchive.current = true;
-      void restoreObjectiveCluster(objectiveId).then(async (result) => {
-        const restoredIds = new Set(result.objectiveRecords.map((node) => node.id));
-        hydrateObjectiveRecords([...getState().objectiveRecords.filter((node) => !restoredIds.has(node.id)), ...result.objectiveRecords]);
-        await fetchObjectiveRecords(null).then(hydrateObjectiveRecords).catch(() => {});
-        previousFocusRef.current = null;
-        if (!openRestoredObjective(result.rootObjectiveId)) throw new Error("restore_failed");
-        // focusObjective의 일반 열기 경로는 자동 재개할 수 있다. 보관 복원은 휴면 상태만 표시한다.
-        navigate("/objectives"); closeObjectiveSearch(); void refreshObjectiveArchive();
-      }).catch(() => { setArchiveNotice(true); void refreshObjectiveArchive(); }).finally(() => { restoringArchive.current = false; });
-      return;
-    }
     // 선택은 대상 Objective으로 키보드 포커스를 넘기므로 닫힘 cleanup이 이전 UI 포커스를 되찾지 않게 한다.
+    // 컴포저(또는 터미널) 포커스는 pendingObjectiveFocus → requestObjectiveKeyboardFocus 계약이 맡는다.
     previousFocusRef.current = null;
     // 최대화 해제는 이동 경로(objectiveRecords.tsx의 pendingObjectiveFocus 소비)에 위임한다 — 최대화 중이면 유지·교체.
     focusObjective(objectiveId);
@@ -579,7 +556,6 @@ export function ObjectiveSearch({
 
   // Objective 행의 동작 띠. 정의는 명령 팔레트의 액션과 같다 — 같은 일이 두 자리에 서도 한 경로로 간다.
   const rowActions = (entry: ObjectiveSearchEntry): readonly RowAction[] => {
-    if (entry.archived) return [{ id: "restore-open", label: t("archive.searchRestoreOpen"), glyph: "objective-open", run: () => selectEntry(entry.objectiveId) }];
     const actions: RowAction[] = [
       { id: "open", label: t("chrome.objectiveRecordSearch.actionOpen"), glyph: "objective-open", run: () => selectEntry(entry.objectiveId) },
     ];
@@ -688,6 +664,32 @@ export function ObjectiveSearch({
     if (event.key === "Tab") trapFocus(event, cardRef.current);
   };
 
+  // mouseenter는 행이 포인터 밑으로 그려져도 난다. 좌표가 바뀐 pointermove만 선택을 옮긴다.
+  const onPalettePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const point = { x: event.clientX, y: event.clientY };
+    const last = lastPointerRef.current;
+    lastPointerRef.current = point;
+    // 행이 포인터 밑으로 그려질 때 나는 이벤트는 movement가 0이고 좌표도 같다. 그건 선택이 아니다.
+    const moved = event.movementX !== 0 || event.movementY !== 0 || (last !== null && (last.x !== point.x || last.y !== point.y));
+    if (!moved) return;
+    const hit = event.target instanceof Element ? event.target : null;
+    if (!hit) return;
+    const action = hit.closest<HTMLElement>("[data-palette-action]");
+    if (action?.dataset.paletteAction !== undefined) {
+      const next = Number(action.dataset.paletteAction);
+      if (!Number.isInteger(next)) return;
+      setNavigation("pointer");
+      setActionIndex(next);
+      return;
+    }
+    const option = hit.closest<HTMLElement>("[data-palette-index]");
+    if (option?.dataset.paletteIndex === undefined) return;
+    const next = Number(option.dataset.paletteIndex);
+    if (!Number.isInteger(next)) return;
+    setNavigation("pointer");
+    setSelectedIndex(next);
+  };
+
   const placeholder = t(mode === "commands" ? "chrome.objectiveRecordSearch.placeholderCommands" : "chrome.objectiveRecordSearch.placeholderObjectiveRecords");
   const emptyMessage = t(mode === "commands" ? "chrome.objectiveRecordSearch.noMatchingCommands" : "chrome.objectiveRecordSearch.noMatching");
   const sectionTitle = (id: "recent" | PaletteCommandGroup | "matches"): string => {
@@ -741,7 +743,7 @@ export function ObjectiveSearch({
               className={`objective-search-result objective-search-panel-result ${active ? "is-active" : ""}`}
               role="option"
               aria-selected={active}
-              onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
+              data-palette-index={index}
               onClick={() => { void selectRailResult(group.panelId, result); }}
             >
               <PaletteRailIcon icon={result.icon ?? panelIcon} />
@@ -775,6 +777,7 @@ export function ObjectiveSearch({
         aria-label={commandMode ? t("chrome.objectiveRecordSearch.commandsDialog") : t("chrome.objectiveRecordSearch.quickSearchDialog")}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
+        onPointerMove={onPalettePointerMove}
       >
         <div className="objective-search-field">
           <SearchIcon />
@@ -845,7 +848,7 @@ export function ObjectiveSearch({
                           className={`objective-search-result${active ? " is-active" : ""}${command.danger ? " is-danger" : ""}`}
                           role="option"
                           aria-selected={active}
-                          onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
+                          data-palette-index={index}
                           onClick={() => runCommand(command)}
                         >
                           <PaletteCommandGlyph command={command} />
@@ -889,7 +892,7 @@ export function ObjectiveSearch({
                           className={`objective-search-result objective-search-commodore-row${active ? " is-active" : ""}${row.context ? " is-context" : ""}`}
                           role="option"
                           aria-selected={active}
-                          onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
+                          data-palette-index={index}
                           onClick={() => selectCommodore(row.commodoreId)}
                         >
                           <span className="objective-search-commodore-mark">
@@ -930,7 +933,7 @@ export function ObjectiveSearch({
                           className={`objective-search-result objective-search-member-row${active ? " is-active" : ""}`}
                           role="option"
                           aria-selected={active}
-                          onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
+                          data-palette-index={index}
                           onClick={() => selectEntry(record.id)}
                         >
                           <span className="objective-search-op-mark">
@@ -961,8 +964,8 @@ export function ObjectiveSearch({
                     // 오른쪽 상태는 한 단어다(칩 아님) — 사이드바 지휘관 행과 같은 출처·같은 말
                     // (CONVERSATION_ROW_PHRASE, idle은 "대기 중").
                     const mark = resolveObjectiveMarkVisual({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds });
-                    const status = entry.archived ? t("archive.searchArchived") : t(CONVERSATION_ROW_PHRASE[mark]);
-                    const statusTone = row.context || entry.archived ? "" : mark === "running" ? " is-running" : mark === "awaiting" ? " is-awaiting" : "";
+                    const status = t(CONVERSATION_ROW_PHRASE[mark]);
+                    const statusTone = row.context ? "" : mark === "running" ? " is-running" : mark === "awaiting" ? " is-awaiting" : "";
                     return (
                       <div key={entry.objectiveId} className={`objective-search-row${stripOpen ? " has-actions" : ""}`}>
                         <button
@@ -972,10 +975,10 @@ export function ObjectiveSearch({
                             else resultRefs.current.delete(resultKey);
                           }}
                           type="button"
-                          className={`objective-search-result objective-search-objective-row${active ? " is-active" : ""}${row.context || entry.archived ? " is-context" : ""}`}
+                          className={`objective-search-result objective-search-objective-row${active ? " is-active" : ""}${row.context ? " is-context" : ""}`}
                           role="option"
                           aria-selected={active}
-                          onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
+                          data-palette-index={index}
                           onClick={() => selectEntry(entry.objectiveId)}
                         >
                           {/* 이름 왼쪽 슬롯은 사이드바 칩과 같은 활동 상태 소유다.
@@ -983,7 +986,6 @@ export function ObjectiveSearch({
                           <span className="objective-search-op-mark">
                             <ObjectiveNameMark
                               objectiveRecord={{ id: entry.objectiveId, parentObjectiveId: entry.parentObjectiveId }}
-                              archived={entry.archived}
                               status={mark}
                             />
                           </span>
@@ -1002,7 +1004,7 @@ export function ObjectiveSearch({
                                 type="button"
                                 tabIndex={-1}
                                 className={`objective-search-action${i === actionIndex ? " is-active" : ""}${action.danger ? " is-danger" : ""}`}
-                                onMouseEnter={() => { setNavigation("pointer"); setActionIndex(i); }}
+                                data-palette-action={i}
                                 onClick={action.run}
                               >
                                 <PaletteActionGlyph glyph={action.glyph} />
@@ -1021,7 +1023,6 @@ export function ObjectiveSearch({
           )}
         </div>
         {shellNotice ? <p className="archive-sheet-notice" role="alert">{shellNotice}</p> : null}
-        {archiveNotice ? <p className="archive-sheet-notice" role="status">{t("archive.notice.restoreFailed")}</p> : null}
         <div className="objective-search-legend">
           <span><kbd>↑</kbd><kbd>↓</kbd>{t("chrome.objectiveRecordSearch.legendMove")}</span>
           <span><kbd>↵</kbd>{t(mode === "objectiveRecords" ? "chrome.objectiveRecordSearch.legendOpen" : "chrome.objectiveRecordSearch.legendRun")}</span>
@@ -1091,7 +1092,7 @@ function railResultKey(panelId: string, resultId: string): string {
 function commodoreGroupMark(group: CommodorePaletteGroup, idleArrivalIds: ReadonlySet<string>): MongleState {
   let awaiting = false;
   for (const row of group.rows) {
-    if (row.kind !== "objective" || row.context || row.entry.archived === true) continue;
+    if (row.kind !== "objective" || row.context) continue;
     const display = resolveObjectiveDisplayActivity({ activity: row.entry.activity, objectiveId: row.entry.objectiveId, idleArrivalIds });
     if (display === "running") return "running";
     if (display === "awaiting") awaiting = true;
