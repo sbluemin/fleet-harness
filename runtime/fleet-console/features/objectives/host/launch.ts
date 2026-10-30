@@ -299,6 +299,38 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     pendingOpenUIFeedback.delete(sessionId);
     return `${text}\n\n${note}`;
   };
+  /**
+   * 턴 전체 되먹임 넓히기 — 채팅 저널 꼬리에서 이번 턴의 assistant 텍스트 블록을 모아 다시 판정한다. 저널 `text`는
+   * assistant 블록마다 하나씩(관측 꼬리처럼 끝에서 잘리지 않는다)이라 도구 호출 앞 블록도 든다. `turn-end` 표식으로
+   * 이번 턴 범위를 잡고(끝에서 두 번째 표식 뒤 — 방금 끝난 턴의 표식이 아직 없으면 마지막 표식 뒤), 못 잡으면 최종
+   * 원문 판정을 둔다. 텍스트가 없거나 그새 메모가 소비·교체됐으면 늦은 결과는 버린다.
+   */
+  const broadenOpenUIFeedback = async (objectiveId: string, fallback: string | null): Promise<void> => {
+    try {
+      const page = await ctx.consoleControl?.transcript?.(objectiveId, { limit: 200, tail: true });
+      if (disposed || !page || "error" in page) return;
+      const entries = page.entries;
+      let seenEnd = 0;
+      let start = -1;
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if ((entries[i] as { readonly kind?: unknown }).kind === "turn-end") {
+          seenEnd += 1;
+          if (seenEnd === 2) { start = i + 1; break; }
+        }
+      }
+      if (seenEnd === 0) return;
+      if (start < 0) start = entries.findLastIndex((entry) => (entry as { readonly kind?: unknown }).kind === "turn-end") + 1;
+      const texts = entries.slice(start).flatMap((entry) => {
+        const record = entry as { readonly kind?: unknown; readonly text?: unknown };
+        return record.kind === "assistant" && typeof record.text === "string" && record.text.trim() ? [record.text] : [];
+      });
+      if (!texts.length) return;
+      if ((pendingOpenUIFeedback.get(objectiveId) ?? null) !== fallback) return;
+      const note = openUIFeedbackNote(texts.join("\n\n"));
+      if (note === null) pendingOpenUIFeedback.delete(objectiveId);
+      else pendingOpenUIFeedback.set(objectiveId, note);
+    } catch { /* 최종 원문 판정을 둔다 */ }
+  };
   // 오류를 보존해야 하는 통지는 이 경로를 직접 쓴다. 전송 상한도 호스트가 판단하며 원문은 그대로 둔다.
   // 지휘관에게 가는 입력은 이 한 곳(과 아래 직접 전송 몇 곳)에서 `withOpenUIFeedback` 으로 되먹임을 싣는다 — 종류별 프롬프트는 고치지 않는다.
   const requestSend = async (sessionId: string, text: string, display: string, humanInput?: ConsoleActionInput["humanInput"]): Promise<void> => {
@@ -1244,12 +1276,15 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!current || !observed) return;
       const snapshot: ConsoleObjectiveObservation = { ...observed, activity: "idle", lifecycle: "live", generation: event.generation ?? observed.generation, output: event.output };
       // 지휘관 턴 끝 — 최종 응답 원문에서 다음 입력용 OpenUI 되먹임을 모은다(최신 턴이 기준이라 빠진 것이 없으면 거둔다).
+      // 성공 턴은 이어서 저널 꼬리로 턴 전체 assistant 텍스트를 모아 넓힌다(도구 호출 앞 블록·관측 꼬리 절단 대책).
+      // 실패·중단 턴은 최종 원문만 쓴다. 저널이 없거나 범위를 못 잡으면 최종 원문 판정을 그대로 둔다.
       if (event.objectiveId === current.id) {
         const reply = event.output.report?.answer ?? event.output.failure?.last_assistant_message;
         if (typeof reply === "string") {
           const note = openUIFeedbackNote(reply);
           if (note === null) pendingOpenUIFeedback.delete(current.id);
           else pendingOpenUIFeedback.set(current.id, note);
+          if (event.output.report?.answer !== undefined) void broadenOpenUIFeedback(current.id, note);
         }
       }
       if (syncOutcome(current.id, event.objectiveId, snapshot)) store.refresh(current.id);
