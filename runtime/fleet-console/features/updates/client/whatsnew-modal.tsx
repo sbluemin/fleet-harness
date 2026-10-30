@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Select } from "../../settings/client/mobile-host.js";
@@ -205,11 +206,11 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
             {pageCount > 1 ? (
               <div className="whatsnew-pagination">
                 <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(-1)} disabled={currentPage === 0} aria-label={t("chrome.whatsnew.newerVersions")}>
-                  ‹
+                  <ChevronGlyph direction="left" />
                 </button>
                 <span className="whatsnew-page-status">{currentPage + 1} / {pageCount}</span>
                 <button type="button" className="whatsnew-page-button" onClick={() => goToReleasePage(1)} disabled={currentPage >= pageCount - 1} aria-label={t("chrome.whatsnew.olderVersions")}>
-                  ›
+                  <ChevronGlyph direction="right" />
                 </button>
               </div>
             ) : null}

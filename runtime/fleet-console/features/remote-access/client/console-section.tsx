@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import type { ConsoleSectionCommand, ConsoleSectionEntry, ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
 import { desktopPickerUrl, PICKER_SURFACE_DISMISS } from "../../../core/client/src/integration/desktop-shell.js";
@@ -94,7 +95,7 @@ function ConsoleSectionView({ state, command, picker = false }: {
     </button>{entry.active && away && home ? <button type="button" className="console-section-action" title={t("chrome.consoles.home")} aria-label={t("chrome.consoles.home")} onClick={() => send({ switch: home.id })}><HomeGlyph /></button> : null}</div>;
   };
   return <nav className={`console-section${picker ? " is-picker" : ""}`} aria-label={t("chrome.consoles.document")}>
-      <header className="console-section-header"><button type="button" className="console-section-toggle" aria-expanded={expanded} aria-controls={listId} onClick={toggle}><span className={expanded ? "" : "is-folded"} aria-hidden="true">⌄</span>{t("chrome.hosts.heading")}</button>
+      <header className="console-section-header"><button type="button" className="console-section-toggle" aria-expanded={expanded} aria-controls={listId} onClick={toggle}><ChevronGlyph direction="down" {...(expanded ? {} : { className: "is-folded" })} />{t("chrome.hosts.heading")}</button>
         <button type="button" className="console-section-action console-section-glyph" title={t("chrome.hosts.add")} aria-label={t("chrome.hosts.add")} onClick={() => send({ add: true })}><PlusGlyph /></button>
         <button type="button" className="console-section-action console-section-glyph" aria-pressed={editing} title={t("chrome.hosts.manage")} aria-label={t("chrome.hosts.manage")} onClick={() => { setEditing(!editing); setRenaming(null); setConfirming(null); if (!expanded) expand(true); }}><SlidersGlyph /></button></header>
       {expanded ? <div id={listId} className="console-section-list">{(["local", "remote"] as const).map((kind) => {

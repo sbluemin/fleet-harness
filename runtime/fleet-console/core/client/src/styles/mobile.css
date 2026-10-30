@@ -236,6 +236,8 @@
 }
 .mobile-tool-sheet-bar h1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-md); }
 .mobile-tool-sheet-bar button { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--text-primary); }
+.mobile-tool-sheet-bar > button:first-child { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.mobile-tool-sheet-bar > button:first-child svg { flex: none; width: 14px; height: 14px; }
 .mobile-tool-sheet-body { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 .mobile-tool-sheet-body > .rail-surface,
 .mobile-tool-sheet-body > .expanded-surface-pane { flex: 1; min-height: 0; width: 100%; border: 0; border-radius: 0; }

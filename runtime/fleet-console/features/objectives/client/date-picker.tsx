@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/i18n";
@@ -98,9 +99,9 @@ export function DatePicker({ anchor, trigger, value, language, t, onPick, onClos
         {value ? <button type="button" className="objectives-cal-chip is-clear" onClick={() => { onPick(null); onClose(); }}>{t("objectives.date.clear")}</button> : null}
       </div>
       <div className="objectives-cal-head">
-        <button type="button" className="objectives-glyph" aria-label={t("objectives.date.prevMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
+        <button type="button" className="objectives-glyph" aria-label={t("objectives.date.prevMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronGlyph direction="left" /></button>
         <span className="objectives-cal-month">{monthLabel}</span>
-        <button type="button" className="objectives-glyph" aria-label={t("objectives.date.nextMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
+        <button type="button" className="objectives-glyph" aria-label={t("objectives.date.nextMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronGlyph direction="right" /></button>
       </div>
       <div className="objectives-cal-grid" role="grid">
         {weekdays.map((day, index) => <span key={`w${index}`} className="objectives-cal-wd" aria-hidden="true">{day}</span>)}

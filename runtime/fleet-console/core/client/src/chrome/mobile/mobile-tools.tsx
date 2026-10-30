@@ -1,6 +1,6 @@
 import { getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { FeatureErrorBoundary, ChevronGlyph } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 import { useT } from "../../i18n/index.js";
@@ -155,7 +155,7 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   // 플러그인 CSS에 공개하는 배치 신호 — 내부 호스트 클래스 대신 시트 문맥만 판별한다.
   return <section className="mobile-tool-sheet" data-host-surface="mobile-sheet" aria-label={title}>
     <header className="mobile-tool-sheet-bar">
-      <button type="button" ref={backRef} onClick={back} aria-label={t("mobile.tools.back")}>‹ <span>{t("mobile.tools.back")}</span></button>
+      <button type="button" ref={backRef} onClick={back} aria-label={t("mobile.tools.back")}><ChevronGlyph direction="left" /> <span>{t("mobile.tools.back")}</span></button>
       <h1>{title}</h1>
       <button type="button" onClick={close} aria-label={t("mobile.tools.close")}>×</button>
     </header>

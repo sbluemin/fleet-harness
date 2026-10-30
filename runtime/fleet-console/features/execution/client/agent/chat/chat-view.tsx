@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useChromeHeightProperty } from "@fleet-console/ui/react";
+import { ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
 import { UseRequestCards } from "../use-request-card.js";
 import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
 import { ChatReferenceLinks, ChatReferenceText, referenceLabelText } from "./chat-reference.js";
@@ -1811,7 +1811,7 @@ function ReceivedLine({
     <details className="agent-chat-tally-fold">
       <summary className="agent-chat-tally">
         {line}
-        <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
+        <ChevronGlyph direction="down" className="agent-chat-tally-chev" />
       </summary>
       <div className="agent-chat-tally-body">
         <StreamedMarkdown text={text} streaming={false} className="agent-chat-received-body markdown-body" language={language} />
@@ -1861,7 +1861,7 @@ function OriginLine({
       <summary className="agent-chat-tally agent-chat-origin">
         {line}
         {time}
-        <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
+        <ChevronGlyph direction="down" className="agent-chat-tally-chev" />
       </summary>
       <div className="agent-chat-origin-body">
         {attachments?.length ? <ChatDispatchAttachments attachments={attachments} language={language} /> : null}
@@ -2131,7 +2131,7 @@ function Tally({
     }}>
       <summary className={`agent-chat-tally${alive ? " is-live" : ""}`} aria-label={t("terminal.chat.tallyAria")}>
         {line}
-        <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
+        <ChevronGlyph direction="down" className="agent-chat-tally-chev" />
       </summary>
       {/* 펼침은 줄기 하나다. 예전에는 스텝마다 자기 테두리와 면을 든 상자가 섰고, 여덟 개가
           이어지면 원장 안에서 가장 시끄러운 덩어리가 됐다(실측 33px/행). 지금은 헤어라인 한 겹이
@@ -2184,7 +2184,7 @@ function JobAnchor({
           `who`는 카드에서도 제목이 아니라 메타 줄의 값이었고, 그 줄은 작업 면이 진다. */}
       <span className="agent-chat-job-title">{job.title}</span>
       <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
-      <span className="agent-chat-job-chev" aria-hidden="true">›</span>
+      <ChevronGlyph direction="right" className="agent-chat-job-chev" />
     </button>
   );
 }
@@ -2646,7 +2646,7 @@ function Step({
   const opened = openedTools.has(id);
   return <details className="agent-chat-tool-fold" data-chat-tool-id={id} open={opened}>
     <summary className={className} onClick={(event) => { event.preventDefault(); onToggleTool(id); }}>
-      {content}<span className="agent-chat-tool-chevron" aria-hidden="true">⌄</span>
+      {content}<ChevronGlyph direction="down" className="agent-chat-tool-chevron" />
     </summary>
     {opened ? <ToolDetail detail={detail} name={name} path={item.detail ?? ""} state={item.state} language={language} /> : null}
   </details>;
@@ -2729,7 +2729,7 @@ function WorkFold({
             {contextGrew > 0 ? "+" : "−"}{formatTokens(Math.abs(contextGrew))}
           </span>
         ) : null}
-        <span className="agent-chat-fold-chev" aria-hidden="true">⌄</span>
+        <ChevronGlyph direction="down" className="agent-chat-fold-chev" />
         {leadsToAnswer ? (
           <>
             <span className="agent-chat-completion-rule" aria-hidden="true" />
@@ -2852,7 +2852,7 @@ function JobRow({
           ))}
           {job.kind === "workflow" && job.stages.length > 0 ? <StageDots stages={job.stages} /> : null}
           <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
-          <span className="agent-chat-job-chev" aria-hidden="true">›</span>
+          <ChevronGlyph direction="right" className="agent-chat-job-chev" />
         </span>
       </span>
       {now ? (
@@ -2926,7 +2926,7 @@ function SettledBranches({
               {failed > 0 ? (
                 <span className="agent-chat-work-branch-fail">{t("terminal.chat.groupJobFailed", { count: failed })}</span>
               ) : null}
-              <span className="agent-chat-work-branch-chev" aria-hidden="true">⌄</span>
+              <ChevronGlyph direction="down" className="agent-chat-work-branch-chev" />
             </button>
             <div className="agent-chat-work-branch-kids" hidden={!open}>
               {list.map((entry) => <JobRow key={entry.id} job={entry} language={language} onOpen={onOpen} />)}
@@ -3132,7 +3132,7 @@ function JobDetail({
     <>
       <div className="agent-chat-detail-head">
         <button type="button" className="agent-chat-detail-back" aria-label={t("terminal.chat.workBackAria")} onClick={onBack}>
-          ‹ {t("terminal.chat.workBack")}
+          <ChevronGlyph direction="left" /> {t("terminal.chat.workBack")}
         </button>
         <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
         <span className="agent-chat-detail-title">{job.title}</span>

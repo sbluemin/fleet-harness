@@ -779,9 +779,10 @@
    차이는 이 글리프 하나뿐). 크기와 잉크를 한 단씩 올려 쉬는 상태에서도 읽히게 하고, hover는
    그 위 한 단으로 남긴다 — brass는 위치·포커스 채널이라 "눌린다"를 질 수 없다. */
 .agent-chat-tally-chev {
+  display: block;
+  width: 12px;
+  height: 12px;
   flex: none;
-  font-size: var(--t-xs);
-  line-height: 1;
   align-self: center;
   color: var(--text-tertiary);
   transition: transform var(--duration-fast), color var(--duration-fast);
@@ -1361,14 +1362,10 @@
 .agent-chat-fold-stopped { color: var(--text-secondary); }
 
 .agent-chat-fold-chev {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
+  display: block;
+  width: 12px;
+  height: 12px;
   flex: none;
-  font-size: 9px;
-  line-height: 1;
   /* 테두리는 컴포저 프레임 하나만 남긴다 — 셰브론은 글자색으로 반응한다. */
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
@@ -3129,7 +3126,7 @@
 .agent-chat-job-row.is-stopped .agent-chat-job-outcome,
 .agent-chat-job-outcome.is-stopped { color: var(--warn-ink); }
 
-.agent-chat-job-chev { flex: none; color: var(--text-tertiary); }
+.agent-chat-job-chev { display: block; width: 12px; height: 12px; flex: none; color: var(--text-tertiary); }
 
 /* ── 끝난 잡의 종류 가지 ──────────────────────────────────────────────────
    가지 머리는 접힌 채로도 자기 안의 실패 수를 말한다 — 그러지 않으면 접기가 손댈 것을 감춘다.
@@ -3171,10 +3168,11 @@
 }
 
 .agent-chat-work-branch-chev {
+  display: block;
+  width: 12px;
+  height: 12px;
   margin-left: auto;
   flex: none;
-  font-size: var(--t-xs);
-  line-height: 1;
   color: var(--text-tertiary);
   transition: transform var(--duration-fast);
 }
@@ -3516,6 +3514,9 @@
 .agent-chat-detail-gap { flex: 1 1 auto; min-width: 0; }
 
 .agent-chat-detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   appearance: none;
   cursor: pointer;
   background: transparent;
@@ -3528,6 +3529,8 @@
   color: var(--text-tertiary);
   transition: color var(--duration-fast), border-color var(--duration-fast);
 }
+
+.agent-chat-detail-back svg { display: block; width: 12px; height: 12px; flex: none; }
 
 .agent-chat-detail-back:hover {
   color: var(--brass-ink);
@@ -4176,7 +4179,7 @@
 .agent-chat-tally-body > .agent-chat-tool-fold > summary.agent-chat-step.is-leaf::before {
   content: ""; position: absolute; left: calc(var(--space-3) * -1); top: 50%; width: 7px; height: 1px; background: var(--hairline);
 }
-.agent-chat-tool-chevron { flex: none; margin-left: auto; font-size: var(--t-xs); color: var(--text-tertiary); transition: transform var(--duration-fast); }
+.agent-chat-tool-chevron { display: block; width: 12px; height: 12px; flex: none; margin-left: auto; color: var(--text-tertiary); transition: transform var(--duration-fast); }
 .agent-chat-tool-fold[open] .agent-chat-tool-chevron { transform: rotate(180deg); }
 .agent-chat-change.is-link { appearance: none; width: 100%; text-align: left; background: transparent; border-right: 0; border-bottom: 0; border-left: 0; cursor: pointer; }
 .agent-chat-change.is-link:hover { background: var(--control-rest); }

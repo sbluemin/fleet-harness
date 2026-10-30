@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { ChevronGlyph } from "@fleet-console/ui/react";
 
 import type { ObjectiveLaunchVariantChip, ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 
@@ -385,7 +386,7 @@ export function EffortTrack({
             }
             setApexOpen(false);
           }}
-        >{apexOpen ? "‹" : "✦"}</button>
+        >{apexOpen ? <ChevronGlyph direction="left" /> : "✦"}</button>
       ) : null}
       {/* 단계 톤은 CSS가 이 속성 하나로 읽는다 — 라벨 문자열은 번역·모델마다 달라 색의 기준이 될 수 없다.
           data-apex는 게이트 뒤 티어의 라벨 모션 전용이다: 게이트 없는 모델의 최고 단(max)은 같은

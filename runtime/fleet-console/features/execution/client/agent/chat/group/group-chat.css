@@ -254,7 +254,7 @@
 }
 .group-chat-line-status.is-failed { color: var(--coral-ink); }
 .group-chat-line-time { flex: none; margin-left: var(--space-1); font-variant-numeric: tabular-nums; }
-.group-chat-line-chev { flex: none; margin-left: auto; padding-left: var(--space-1); transition: transform var(--duration-fast); }
+.group-chat-line-chev { display: block; width: 12px; height: 12px; flex: none; margin-left: auto; transition: transform var(--duration-fast); }
 details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rotate(180deg); }
 
 /* 목표를 가리키는 행위 줄(사령관 기록) — 행위 낱말은 서고, 줄어드는 것은 목표 이름뿐이다. 열 목표가 있으면 줄 전체가 단추이고,
@@ -1144,7 +1144,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   -webkit-mask-image: linear-gradient(90deg, transparent, black 24px, black);
   mask-image: linear-gradient(90deg, transparent, black 24px, black);
 }
-.group-chat-notes-chip .group-chat-line-chev { margin-left: 0; padding-left: 0; }
+.group-chat-notes-chip .group-chat-line-chev { margin-left: 0; }
 .group-chat-notes-chip[aria-expanded="true"] .group-chat-line-chev { transform: rotate(180deg); }
 /* 흐르는 중인 말이 있으면 이름 앞에 작업 중 점이 숨 쉰다 — 신호 토큰(positive)은 상태를 말하는 이 자리에만 쓴다. */
 .group-chat-notes-chip.is-live .group-chat-notes-count::before {

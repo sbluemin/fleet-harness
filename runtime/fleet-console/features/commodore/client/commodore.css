@@ -223,14 +223,11 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-commodore-turn-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .objectives-commodore-turn-meta { color: var(--text-tertiary); font-size: var(--t-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .objectives-commodore-turn-chev {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
+  display: block;
+  flex: none;
+  width: 12px;
+  height: 12px;
   color: var(--text-tertiary);
-  font-size: var(--t-2xs);
-  line-height: 1;
   transition: transform var(--duration-fast);
 }
 .objectives-commodore-turn.is-open .objectives-commodore-turn-chev { transform: rotate(180deg); }

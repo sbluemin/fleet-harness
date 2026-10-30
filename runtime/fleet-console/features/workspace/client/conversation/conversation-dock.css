@@ -91,7 +91,7 @@
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button > svg { width: var(--popover-icon); height: var(--popover-icon); flex: none; }
 .conversation-dock-count { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
 .conversation-dock-label { flex: 1; min-width: 0; text-align: left; }
-.conversation-dock-next { flex: none; font-size: var(--t-xl); color: var(--text-tertiary); }
+.conversation-dock-next { flex: none; width: 14px; height: 14px; color: var(--text-tertiary); }
 .conversation-dock-divider { height: 1px; margin: var(--popover-divider-space); background: var(--popover-divider); }
 .conversation-dock :is(button, a):focus-visible { box-shadow: var(--focus-face); }
 /* 도움말 항목은 옆으로 펼치는 서브메뉴다. 판이 서 있는 동안 항목은 겨눔 워시를 입은 채 남아 어느 줄의 판인지 말한다. */

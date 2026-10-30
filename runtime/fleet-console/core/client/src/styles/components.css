@@ -5029,7 +5029,13 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   flex-basis: 18px;
   width: 18px;
   border-color: transparent;
-  font-size: var(--t-md);
+}
+
+.effort-track-apex-toggle svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: auto;
 }
 
 .effort-track-apex-toggle[data-open="true"]:hover {
@@ -6526,10 +6532,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   flex: none;
   /* 상태 열의 오른쪽 끝을 맞추는 기준 — 지휘관 행의 ▸/◂와 사령관·구성원 행의 빈자리가 같은 폭이다. */
   width: var(--space-4);
-  text-align: center;
+  height: 12px;
   color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -6788,10 +6792,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .directory-browser-course-sep {
+  flex: none;
+  width: 12px;
+  height: 12px;
   margin: 0 1px;
   color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
 }
 
 .directory-browser-crumb {
@@ -7010,9 +7015,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .directory-browser-sector-advance {
+  flex: none;
+  width: 14px;
+  height: 14px;
   color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: 15px;
   opacity: 0;
   transform: translateX(-3px);
   transition: opacity var(--duration-fast) var(--ease-glide), transform var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
@@ -7506,6 +7512,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   line-height: 1;
 }
 
+.whatsnew-page-button svg { flex: none; width: 14px; height: 14px; }
 .whatsnew-page-button:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-primary); }
 .whatsnew-page-button:focus-visible { box-shadow: var(--focus-face); }
 
@@ -9082,10 +9089,9 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   top: 50%;
   width: 32px;
   height: 32px;
-  font-size: var(--t-lg);
-  line-height: 1;
   transform: translateY(-50%);
 }
+.fc-composer-viewer__nav svg { display: block; width: 16px; height: 16px; }
 .fc-composer-viewer__nav.is-prev { left: var(--space-2); }
 .fc-composer-viewer__nav.is-next { right: var(--space-2); }
 .fc-composer-viewer__close:hover,
@@ -9380,7 +9386,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-select__trigger[aria-expanded="true"] { border-color: var(--control-open-rim); background: var(--control-tint-fill); }
 .fc-select__trigger:active:not(:disabled) { transform: translateY(1px); }
 .fc-select__trigger:disabled { opacity: var(--control-disabled-opacity); cursor: not-allowed; }
-.fc-select__caret { color: var(--text-tertiary); font-size: var(--t-xs); transition: transform var(--duration-fast) var(--ease-glide); }
+.fc-select__caret { flex: none; width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-fast) var(--ease-glide); }
 .fc-select__trigger[aria-expanded="true"] .fc-select__caret { transform: rotate(180deg); }
 .fc-select__popup {
   position: absolute; z-index: var(--z-select-popover); inset-inline: 0; top: calc(100% + 6px);
@@ -9706,8 +9712,9 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 
 .launch-caret {
   flex: none;
+  width: 12px;
+  height: 12px;
   color: var(--text-tertiary);
-  font-size: var(--t-2xs);
 }
 
 /* 실행 종류 글리프는 캔버스 메뉴의 아이콘 슬롯과 같은 치수·색을 쓴다. */
@@ -10410,6 +10417,9 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-live-fold.is-error .fc-live-fold__summary { color: light-dark(color-mix(in oklch, var(--coral) 72%, var(--text-secondary)), color-mix(in oklab, var(--coral) 72%, var(--text-secondary))); }
 
 .fc-live-fold__chev {
+  flex: none;
+  width: 12px;
+  height: 12px;
   transition: transform var(--duration-fast) var(--ease-glide);
 }
 

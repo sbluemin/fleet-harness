@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { requestCommodoreDelete } from "./commodore-delete-modal.js";
 import { commodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
@@ -472,7 +473,7 @@ function CommodoreTurnLine({ t, turn, open, onToggle }: { readonly t: T; readonl
       <span className="objectives-commodore-turn-label">{turn.label}</span>
       <span className="objectives-commodore-turn-summary">{turn.summary}</span>
       <span className="objectives-commodore-turn-meta">{meta}</span>
-      <span className="objectives-commodore-turn-chev" aria-hidden="true">⌄</span>
+      <ChevronGlyph direction="down" className="objectives-commodore-turn-chev" />
     </button>
   );
 }

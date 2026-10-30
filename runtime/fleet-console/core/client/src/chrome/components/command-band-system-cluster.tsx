@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
@@ -206,7 +207,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
         같은 뜻의 표식이 둘이 되지 않도록 설정 쪽은 함께 제거했다. */}
     <button ref={triggerRef} type="button" role={menuItem ? "menuitem" : undefined} className="command-band-button command-band-help" onClick={() => { if (!side.openByHand()) setOpen((previous) => !previous); }} onPointerEnter={side.onTriggerPointerEnter} onPointerLeave={side.onTriggerPointerLeave} onKeyDown={side.onTriggerKeyDown} aria-haspopup="menu" aria-expanded={open} aria-label={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")} data-tip={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")}>
       <HelpGlyph />
-      {menuItem ? <><span className="conversation-dock-label">{t("chrome.system.help")}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
+      {menuItem ? <><span className="conversation-dock-label">{t("chrome.system.help")}</span><ChevronGlyph direction="right" className="conversation-dock-next" /></> : null}
       {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")} onPointerEnter={side.onPanelPointerEnter} onPointerLeave={side.onPanelPointerLeave}>

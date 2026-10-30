@@ -623,3 +623,25 @@ export function useViewportFit(target: React.RefObject<HTMLElement | null>, open
 export function MenuCheckGlyph(): React.ReactElement {
   return <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>;
 }
+
+export type ChevronDirection = "down" | "up" | "left" | "right";
+
+/* 좌측 사이드바 아코디언의 선 꺾쇠 하나를 네 방향으로 둔다. 회전 변환 없이 방향마다 path를 따로 두어, 쓰는 곳의 transform(접힘 회전 등)과 겹치지 않는다. */
+const CHEVRON_PATHS: Record<ChevronDirection, string> = {
+  down: "M3.8 6 8 10.2 12.2 6",
+  up: "M3.8 10 8 5.8 12.2 10",
+  right: "M6 3.8 10.2 8 6 12.2",
+  left: "M10 3.8 5.8 8 10 12.2",
+};
+
+/**
+ * 화살표 표식 — 글자 「›」「‹」 대신 그리는 선 꺾쇠. 폰트 설정과 무관하게 사이드바 아코디언과 같은 모양·굵기로 선다.
+ * 기본 크기는 1em이라 자리의 글자 크기를 따르고, 자리의 CSS가 width/height로 덮어쓸 수 있다. 색은 currentColor다.
+ */
+export function ChevronGlyph({ direction, className }: { direction: ChevronDirection; className?: string }): React.ReactElement {
+  return (
+    <svg className={className} viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth={1.45} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d={CHEVRON_PATHS[direction]} />
+    </svg>
+  );
+}
