@@ -1,6 +1,8 @@
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import type { CommodoreRouteContext } from "../features/commodore/host/routes.js";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -760,7 +762,7 @@ describe("commodore theater state", () => {
       "ext2@team": [install("ext2@team", "1.0.0", SHA_A)],
     } }));
     fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: {} }));
-    // CLI 대역 — `claude plugin update` 가 남기는 설치 기록 변화를 그대로 흉내 낸다. 마켓플레이스 명령은 실패로 둔다.
+    // CLI 대역 — 설치 기록 변화를 흉내 내고 마켓 갱신은 이미 준비한 로컬 Git 픽스처를 그대로 둔다.
     const stub = path.join(root, "update-stub.mjs");
     fs.writeFileSync(stub, `#!/usr/bin/env node
 import fs from "node:fs";
@@ -769,6 +771,9 @@ const home = process.env.CLAUDE_CONFIG_DIR ?? "";
 const log = process.env.FLEET_UPDATE_STUB_LOG ?? "";
 const mode = process.env.FLEET_UPDATE_STUB_MODE ?? "";
 const [command, op, id] = process.argv.slice(2, 5);
+if (command === "plugin" && op === "marketplace" && id === "update") {
+  console.log(JSON.stringify({ outcome: "ok" })); process.exit(0);
+}
 if (command !== "plugin" || op !== "update" || !id) {
   console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected", message: "unexpected args" }));
   process.exit(1);
@@ -790,7 +795,10 @@ else if (mode === "swapped-tool") {
   fs.writeFileSync(file, JSON.stringify(raw, null, 2));
   console.log(JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "updated", pluginId: id, oldVersion: "1.0.0", newVersion: "1.1.0" }));
 }
-else if (mode === "updated-nover") bump("b8394fda9111", "${SHA_B}", "b2271ea45eea");
+else if (mode === "updated-nover") {
+  const sha = process.env.FLEET_UPDATE_STUB_SHA;
+  bump(sha.slice(0, 12), sha, JSON.parse(fs.readFileSync(file, "utf8")).plugins[id][0].version);
+}
 else if (mode === "relabel-ext2" || mode === "relabel-ext2-c") {
   const raw = JSON.parse(fs.readFileSync(file, "utf8"));
   const [dir, sha] = mode === "relabel-ext2" ? ["1.0.0-b", "${SHA_B}"] : ["1.0.0-c", "${SHA_C}"];
@@ -806,7 +814,8 @@ else { console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected"
     fs.chmodSync(stub, 0o755);
     const stubLog = path.join(root, "stub.log");
     let mode = "updated-tool";
-    const plugins = createCommodorePlugins({ root, executable: async () => stub, env: () => ({ ...process.env, FLEET_UPDATE_STUB_MODE: mode, FLEET_UPDATE_STUB_LOG: stubLog }) });
+    let sourceSha = "";
+    const plugins = createCommodorePlugins({ root, executable: async () => stub, env: () => ({ ...process.env, FLEET_UPDATE_STUB_MODE: mode, FLEET_UPDATE_STUB_LOG: stubLog, FLEET_UPDATE_STUB_SHA: sourceSha }) });
     const updateLog = () => (fs.existsSync(stubLog) ? fs.readFileSync(stubLog, "utf8") : "");
     const trusted = () => (JSON.parse(fs.readFileSync(path.join(root, "registry.json"), "utf8")) as { trusted: Record<string, string> }).trusted;
     const changed = vi.fn();
@@ -879,9 +888,51 @@ else { console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected"
     // CLI 없이는 같은 이유로 거절한다.
     const offline = createCommodorePlugins({ root, executable: async () => { throw new Error("agent_cli_unavailable"); } });
     expect(await h.route("commodore/plugins/update", { pluginId: "tool@team" }, { plugins: offline })).toMatchObject({ status: 409, value: { error: "cli_unavailable" } });
+
+    // 무버전 설치의 갱신→후보→신뢰→업데이트 계약. 기존 버전 문자열 사례는 실제 Git HEAD 변화 경로를 지나지 않았다.
+    // 마켓과 외부 저장소가 같은 로컬 픽스처를 가리켜도 출처 방식에 따라 각각 rev-parse/ls-remote 를 거친다.
+    const git = (...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args], {
+      cwd: market, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.test", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.test" },
+    }).trim();
+    writePlugin(path.join(market, "plugins", "nover"), { name: "nover" }, hooksOf("echo new"));
+    const marketFile = path.join(market, ".claude-plugin", "marketplace.json");
+    const marketDoc = JSON.parse(fs.readFileSync(marketFile, "utf8"));
+    marketDoc.plugins.push({ name: "floating", source: { source: "url", url: pathToFileURL(market).href } });
+    fs.writeFileSync(marketFile, JSON.stringify(marketDoc));
+    git("init", "-b", "main"); git("add", "."); git("commit", "-m", "fixture");
+    const firstSha = git("rev-parse", "HEAD");
+    for (const name of ["nover", "floating"]) writePlugin(path.join(cache, name, firstSha.slice(0, 12)), { name });
+    const initial = installedFile();
+    for (const name of ["nover", "floating"]) initial.plugins[`${name}@team`] = [install(`${name}@team`, firstSha.slice(0, 12), firstSha)];
+    fs.writeFileSync(path.join(root, "claude", "plugins", "installed_plugins.json"), JSON.stringify(initial));
+    await plugins.refresh("team");
+    for (const name of ["nover", "floating"]) expect(byId().get(`${name}@team`)).not.toHaveProperty("latestVersion");
+    // 플러그인 폴더 밖의 변경도 CLI 와 같은 마켓 HEAD 판정으로 잡는다.
+    fs.writeFileSync(path.join(market, "README.md"), "next revision"); git("add", "."); git("commit", "-m", "advance market head");
+    sourceSha = git("rev-parse", "HEAD");
+    const nextVersion = sourceSha.slice(0, 12);
+    for (const name of ["nover", "floating"]) writePlugin(path.join(cache, name, nextVersion), { name }, hooksOf("echo new"));
+    const refreshed = await plugins.refresh("team");
+    for (const name of ["nover", "floating"]) expect(refreshed.plugins.find((plugin) => plugin.id === `${name}@team`)).toMatchObject({ version: firstSha.slice(0, 12), latestVersion: nextVersion });
+    expect(byId().get("nover@team")?.latestRuns).toEqual([{ kind: "hook", label: "SessionStart", command: "echo new" }]);
+    expect(byId().get("floating@team")).not.toHaveProperty("latestRuns");
+    // 다시 연 저장소도 네트워크 없이 캐시한 후보를 보여 준다.
+    expect(offline.catalog().plugins.find((plugin) => plugin.id === "floating@team")?.latestVersion).toBe(nextVersion);
+    mode = "updated-nover";
+    fs.writeFileSync(stubLog, "");
+    expect(await updateRoute({ pluginId: "nover@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: nextVersion } } });
+    expect(updateLog()).toBe("");
+    expect(await updateRoute({ pluginId: "floating@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: nextVersion } } });
+    expect(installedFile().plugins["floating@team"]![0]!.gitCommitSha).toBe(firstSha);
+    for (const name of ["nover", "floating"]) {
+      expect(await updateRoute({ pluginId: `${name}@team`, trusted: true, version: nextVersion, runs: [{ kind: "hook", label: "SessionStart", command: "echo new" }] })).toMatchObject({ status: 200, value: { outcome: "updated", newVersion: nextVersion } });
+      expect(installedFile().plugins[`${name}@team`]![0]!.gitCommitSha).toBe(sourceSha);
+      expect(byId().get(`${name}@team`)).not.toHaveProperty("latestVersion");
+      expect(trusted()[`${name}@team`]).toBe(nextVersion);
+    }
   });
   it("rolls an untrusted plugin update back to the previously installed version", async () => {
-    // 버전 없는 상대 플러그인 — 미리 새 버전을 알 수 없어 업데이트 뒤 새 설치본으로 신뢰를 판단한다.
+    // Git 커밋도 없는 상대 플러그인 — 미리 새 버전을 알 수 없어 업데이트 뒤 새 설치본으로 신뢰를 판단한다.
     const SHA_A = "a".repeat(40);
     const SHA_B = "b".repeat(40);
     const h = harness();
