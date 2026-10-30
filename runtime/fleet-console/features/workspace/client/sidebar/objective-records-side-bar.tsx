@@ -1,4 +1,5 @@
 import { ChevronGlyph } from "@fleet-console/ui/react";
+import { FolderIcon, PencilIcon, PlusIcon, TrashIcon } from "./sidebar-menu-icons.js";
 import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
 
 /**
@@ -32,7 +33,8 @@ import { useFeatureRegistry } from "../../../../core/client/src/integration/feat
 import { resolveTheaterInboxLanding, TheaterContributionMenuItems, useTheaterContributionMark, useTheaterHeaderLive, useTheaterHeaderSelected } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
-import { reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
+import { commodoreSectionDropFromPoint, type CommodoreSectionDrop, reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
+import { CommodoreSidebarSection, CommodoreSectionMoveMenu, useCommodoreSidebarSections, type SidebarSectionsController } from "./commodore-sidebar-sections.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { useAvatarClaims } from "../avatars.js";
 import { TheaterGlyph } from "../components/theater-glyph.js";
@@ -83,6 +85,7 @@ interface TheaterDragState {
   readonly currentY: number;
   readonly dragging: boolean;
   readonly dropIndex: number;
+  readonly sectionDrop?: CommodoreSectionDrop | null;
 }
 
 /** 머리의 별칭 편집 — 한 번에 한 머리만 그 자리에서 편집한다. 끝낼 때 undefined 는 취소, null 은 해제다. */
@@ -116,6 +119,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
 }
 
 interface TheaterActionsMenuProps {
+  readonly sections: SidebarSectionsController;
   readonly theater: SideBarHead;
   readonly anchor: DOMRect;
   /** 앵커가 커서 한 점이다 — 메뉴 윗변을 커서에 두고, 아래가 모자라면 커서 위로 뒤집는다. */
@@ -151,6 +155,8 @@ export function ObjectiveRecordsSideBar({
   const surface = useConversationSurface();
   const placement = useEffectiveCommanderPlacement();
   const sectionFolds = useCommanderSectionFolds();
+  const sidebarSections = useCommodoreSidebarSections();
+  const sidebarSectionsRef = useRef(sidebarSections);
   const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
   const dragRef = useRef<TheaterDragState | null>(null);
@@ -198,6 +204,11 @@ export function ObjectiveRecordsSideBar({
     const rank = (id: string) => { const index = pendingOrder.indexOf(id); return index === -1 ? pendingOrder.length : index; };
     return rank(left.id) - rank(right.id);
   });
+  const hasSections = sidebarSections.layout.sections.length > 0;
+  const sidebarBuckets: { id: string | null | undefined; faces: SideBarHead[] }[] = hasSections
+    ? [...sidebarSections.layout.sections.map((section) => ({ id: section.id, faces: orderedFaces.filter((face) => sidebarSections.layout.membership[face.id] === section.id) })),
+      { id: null, faces: orderedFaces.filter((face) => !sidebarSections.layout.membership[face.id]) }]
+    : [{ id: undefined, faces: orderedFaces }];
   const contextMenuTheater: SideBarHead | null = activeContextMenu
     ? sectionFaces.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
     : null;
@@ -205,6 +216,7 @@ export function ObjectiveRecordsSideBar({
   // window 이벤트 핸들러에서 commit 시점 최신값을 읽기 위해 매 렌더 ref를 동기화한다.
   useEffect(() => {
     orderedTheaterIdsRef.current = orderedFaces.map((theater) => theater.id);
+    sidebarSectionsRef.current = sidebarSections;
   });
 
   const updateDrag = (next: TheaterDragState | null) => {
@@ -230,7 +242,9 @@ export function ObjectiveRecordsSideBar({
       if (current.dragging) event.preventDefault();
       autoScrollSideBar(event.clientY, listRef.current);
       const dropIndex = theaterDropIndexFromPoint(event.clientY, orderedTheaterIdsRef.current, listRef.current, current.sourceTheaterId);
-      updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex });
+      const sectionDrop = sidebarSectionsRef.current.layout.sections.length
+        ? commodoreSectionDropFromPoint(event.clientX, event.clientY, listRef.current, current.sourceTheaterId) : undefined;
+      updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex, sectionDrop });
     };
 
     const onUp = (event: PointerEvent) => {
@@ -238,6 +252,10 @@ export function ObjectiveRecordsSideBar({
       const snap = dragRef.current;
       updateDrag(null);
       if (!snap?.dragging) return;
+      if (sidebarSectionsRef.current.layout.sections.length) {
+        if (snap.sectionDrop) void sidebarSectionsRef.current.run({ op: "move", commodoreId: snap.sourceTheaterId, ...snap.sectionDrop });
+        return;
+      }
       const nextTheaterIds = reorderTheaterIds(orderedTheaterIdsRef.current, snap.sourceTheaterId, snap.dropIndex);
       if (nextTheaterIds.join("\0") === orderedTheaterIdsRef.current.join("\0")) return;
       setOrderError(null);
@@ -391,15 +409,19 @@ export function ObjectiveRecordsSideBar({
       {addFailure ? <p className="side-bar-theater-error" role="alert">{addFailure}</p> : null}
       {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
+      {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
-        {orderedFaces.map((theater, theaterIndex) => {
+        {sidebarBuckets.map((bucket) => {
+          const rows = bucket.faces.map((theater) => {
+          const theaterIndex = orderedFaces.indexOf(theater);
           const commanderRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theater.id);
           const waitingCount = countAwaitingObjectiveRecords(commanderRecords, objectiveRecordRuntime);
           const isTheaterDragging = drag?.sourceTheaterId === theater.id && drag.dragging;
           const theaterDragOffsetY = isTheaterDragging ? drag.currentY - drag.startY : 0;
-          const theaterDropBefore = drag !== null && drag.dragging && drag.sourceTheaterId !== theater.id && drag.dropIndex === theaterIndex;
-          const theaterDropAfter = drag !== null && drag.dragging && drag.sourceTheaterId !== theater.id
-            && theaterIndex === orderedFaces.length - 1 && drag.dropIndex === orderedFaces.length;
+          const theaterDropBefore = hasSections ? drag?.sectionDrop?.targetId === theater.id && !drag.sectionDrop.after
+            : drag !== null && drag.dragging && drag.sourceTheaterId !== theater.id && drag.dropIndex === theaterIndex;
+          const theaterDropAfter = hasSections ? drag?.sectionDrop?.targetId === theater.id && drag.sectionDrop.after
+            : drag !== null && drag.dragging && drag.sourceTheaterId !== theater.id && theaterIndex === orderedFaces.length - 1 && drag.dropIndex === orderedFaces.length;
           // 사령관 섹션의 지휘관 목록 펼침 — 저장값을 바꾸지 않는 파생값이다. 접힌 섹션은 마운트하지 않는다.
           const sectionExpanded = placement.place === "sidebar"
             && isCommanderSectionExpanded(sectionFolds.folds, dismissedCommodoreId, theater.id, owningCommodoreId);
@@ -457,6 +479,9 @@ export function ObjectiveRecordsSideBar({
               ) : null}
             </li>
           );
+          });
+          return bucket.id === undefined ? rows : <CommodoreSidebarSection key={bucket.id ?? "none"} id={bucket.id} controller={sidebarSections} count={bucket.faces.length}
+            dropTarget={!!drag?.dragging && !!drag.sectionDrop && !drag.sectionDrop.targetId && drag.sectionDrop.sectionId === bucket.id}>{rows}</CommodoreSidebarSection>;
         })}
         {orderedFaces.length === 0 && commodoresLoaded ? (
           // 사령관이 없는 사이드바는 목록이 아니라 시작 화면이다 — 유령 행 하나로 빈 높이를 남기지 않고,
@@ -491,6 +516,7 @@ export function ObjectiveRecordsSideBar({
 
       {activeContextMenu && contextMenuTheater ? (
         <TheaterActionsMenu
+          sections={sidebarSections}
           theater={contextMenuTheater}
           anchor={activeContextMenu.anchor}
           atCursor={activeContextMenu.atCursor === true}
@@ -768,7 +794,7 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
   );
 }
 
-function TheaterActionsMenu({ theater, anchor, atCursor = false, onDeleteCommodore, onOpenZone, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onOpenZone, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
   const t = useT();
   const menuRef = useRef<HTMLDivElement | null>(null);
   // 사이드바 하단 행에서 anchor.bottom+6 고정 배치가 뷰포트 아래로 밀리면 스크롤로 닫혀
@@ -849,6 +875,7 @@ function TheaterActionsMenu({ theater, anchor, atCursor = false, onDeleteCommodo
           <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
           <span className="theater-menu-label">{t("sidebar.commodore.zone")}</span>
         </button>
+        <CommodoreSectionMoveMenu commodoreId={theater.id} controller={sections} onClose={onClose} />
         <TheaterContributionMenuItems theater={theater} onClose={onClose} />
         {onDeleteCommodore ? (
           <>
@@ -878,39 +905,6 @@ function autoScrollSideBar(clientY: number, chipsElement: HTMLOListElement | nul
   } else if (clientY > rect.bottom - AUTO_SCROLL_EDGE_PX) {
     chipsElement.scrollTop += AUTO_SCROLL_STEP_PX;
   }
-}
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M2.5 5a1 1 0 0 1 1-1h2.6l1.3 1.3h5.1a1 1 0 0 1 1 1V11.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M10.6 3.2 12.8 5.4 6.2 12H4v-2.2z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M5.2 5.8v6.1M8 5.8v6.1M10.8 5.8v6.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <path d="M3.7 4.1h8.6M6.4 4.1l.4-1h2.4l.4 1M4.6 4.1l.5 9.1h5.8l.5-9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 /** Console Use 시선 — 에이전트가 이 Theater 의 목록을 훑거나 그룹을 만지면 헤더에 점이 두 번 맥동한다. */

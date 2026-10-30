@@ -233,7 +233,7 @@ describe("console terminal observability", () => {
           groups: [{ id: "owned-group", commodoreId: owner, theaterId: workspaceHash(theater), name: "Owned", color: "blue", order: 0, createdAt: 1 }],
           deletionTombstones: [{ deletionId: "closed-tombstone", kind: "objectiveRecord", targetId: closedId, objectiveRecord: records(closedId), deletedAt: Date.now(), expiresAt: Date.now() + 60_000 }],
         }, [{ archiveId: "archived-entry", archivedAt: 2, objectiveRecord: records(archivedId) }]);
-        write(path.join(directory, "settings.json"), { version: 1, commodoreOrder: [owner, keptOwner], agent: { claudeCodeCommodoreSubagents: { [owner]: true, [keptOwner]: true }, commodoreSettingsMigrated: { [owner]: true, [keptOwner]: true } } });
+        write(path.join(directory, "settings.json"), { version: 1, commodoreOrder: [owner, keptOwner], commodoreSidebar: { sections: [{ id: activeId, name: "Kept section", collapsed: true }], membership: { [owner]: activeId, [keptOwner]: activeId }, unsectionedCollapsed: false }, agent: { claudeCodeCommodoreSubagents: { [owner]: true, [keptOwner]: true }, commodoreSettingsMigrated: { [owner]: true, [keptOwner]: true } } });
         const look = { base: 1, origin: 1, tone: null };
         write(path.join(directory, "avatars.json"), { version: 1, avatars: Object.fromEntries([`theater:commodore:${owner}`, `theater:commodore:${keptOwner}`, ...[activeId, archivedId, closedId, childId, keptId].map((id) => `objective:${id}`)].map((key) => [key, look])) });
         write(path.join(directory, "conversation-workbench.json"), { version: 1, layouts: Object.fromEntries([`session:commodore:commodore:${owner}`, `operation:${activeId}`, `session:commodore:commodore:${keptOwner}`].map((key) => [key, { layout, updatedAt: 1 }])) });
@@ -263,6 +263,7 @@ describe("console terminal observability", () => {
       expect(fs.readFileSync(keptFile, "utf8")).toBe(keptBefore);
       const settings = JSON.parse(fs.readFileSync(path.join(directory, "settings.json"), "utf8"));
       expect(settings.commodoreOrder).toEqual([keptOwner]);
+      expect(settings.commodoreSidebar).toEqual({ sections: [{ id: activeId, name: "Kept section", collapsed: true }], membership: { [keptOwner]: activeId }, unsectionedCollapsed: false });
       expect(settings.agent.claudeCodeCommodoreSubagents).toEqual({ [keptOwner]: true });
       const avatars = JSON.parse(fs.readFileSync(path.join(directory, "avatars.json"), "utf8")).avatars;
       expect(Object.keys(avatars).sort()).toEqual([`objective:${keptId}`, `theater:commodore:${keptOwner}`].sort());

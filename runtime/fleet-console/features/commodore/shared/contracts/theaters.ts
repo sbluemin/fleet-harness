@@ -1,4 +1,5 @@
 import type { CommodoreRunStatus } from "./types.js";
+import type { CommodoreSidebarLayout } from "./sidebar-layout.js";
 
 /** Browser projection. Filesystem coordinates stay on the host. */
 export interface CommodoreTheaterSummary {
@@ -23,7 +24,8 @@ export interface ConsoleCommodoreSummary {
   /** Latest commodore reply, independent of the person’s most recent message. */
   readonly lastResponse?: CommodoreLastMessage;
 }
-export interface CommodoreListResponse { readonly commodores: readonly ConsoleCommodoreSummary[] }
+export interface CommodoreListResponse { readonly commodores: readonly ConsoleCommodoreSummary[]; readonly sidebarLayout?: CommodoreSidebarLayout }
+export interface CommodoreSidebarResponse extends CommodoreListResponse { readonly createdSectionId?: string }
 export interface CommodoreOrderInput { readonly commodoreIds: readonly string[] }
 export type CommodoreOrderResponse = CommodoreListResponse;
 export interface CommodoreCreateInput { readonly alias: string }

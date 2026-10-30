@@ -77,6 +77,7 @@ it("persists UUID section order through the public route without rewriting entit
   let result: { status: number; value: any };
   let authorized = true;
   const events: CommodoreEvent[] = [];
+  const sidebarEvents: unknown[] = [];
   const write = vi.fn((ids: readonly string[]) => { settings.update((current) => ({ ...current, commodoreOrder: ids })); });
   const create = () => createCommodoreFeature({
     paths: { fleetDataDir: dir, consoleDataDir: dir, resolveCommodoreTheaterPath: () => null, resolveObjectiveOwner: () => null, listCommodoreTheaters: () => [], workspaceHash,
@@ -85,7 +86,8 @@ it("persists UUID section order through the public route without rewriting entit
       withDirectoryLock: (_lock, run) => run(),
     },
     order: { read: () => settings.load().commodoreOrder ?? [], write },
-    events: { registerSseChannel: () => () => {}, subscribe: () => () => {}, publish: (_channel, value) => { events.push(value as CommodoreEvent); } },
+    sidebar: { read: () => settings.load().commodoreSidebar, write: (layout, order) => { settings.update((current) => ({ ...current, commodoreSidebar: layout, ...(order ? { commodoreOrder: order } : {}) })); } },
+    events: { registerSseChannel: () => () => {}, subscribe: () => () => {}, publish: (channel, value) => { if (channel === "commodore-sidebar") sidebarEvents.push(value); else events.push(value as CommodoreEvent); } },
     http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value }; } } as never,
     security: { isTerminalAuthorized: () => authorized } as never,
     agent: { baseUrl: () => "http://127.0.0.1", resolveExecutablePath: async () => { throw new Error("unexpected_agent_launch"); } } as never,
@@ -99,6 +101,15 @@ it("persists UUID section order through the public route without rewriting entit
     return result!;
   };
   try {
+    // 사령관이 없어도 서버 공유 레이아웃은 저장·방송한다. 기존 순서 계약에 영속 관계의 방어를 함께 얹는다.
+    authorized = false;
+    expect((await route("sidebar", { op: "create", name: "Work" })).status).toBe(401);
+    expect(settings.load().commodoreSidebar).toBeUndefined();
+    authorized = true;
+    expect((await route("sidebar", { op: "create", name: " " })).status).toBe(400);
+    const emptySection = (await route("sidebar", { op: "create", name: "Work" })).value.createdSectionId;
+    expect(sidebarEvents).toEqual([{ op: "changed" }]);
+    expect((await route("list")).value).toMatchObject({ commodores: [], sidebarLayout: { sections: [{ id: emptySection, name: "Work", collapsed: false }] } });
     const a = (await route("create", { alias: "A" })).value.commodoreId;
     const b = (await route("create", { alias: "B" })).value.commodoreId;
     const c = (await route("create", { alias: "C" })).value.commodoreId;
@@ -133,6 +144,32 @@ it("persists UUID section order through the public route without rewriting entit
     expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(staleBytes);
     await route("order", { commodoreIds: [stale, c, a] });
     expect(settings.load().commodoreOrder).toEqual([c, a]);
+    expect((await route("list")).value.sidebarLayout.membership).toEqual({});
+    const section = (await route("sidebar", { op: "create", name: "Review", commodoreId: a })).value.createdSectionId;
+    expect(await ids()).toEqual([c, a, b]);
+    await route("sidebar", { op: "move", commodoreId: b, sectionId: section, targetId: a });
+    expect(await ids()).toEqual([c, b, a]);
+    await route("sidebar", { op: "collapse", sectionId: section, collapsed: true });
+    await route("sidebar", { op: "collapse", sectionId: null, collapsed: true });
+    await route("sidebar", { op: "rename", sectionId: section, name: "Reviewed" });
+    await route("sidebar", { op: "reorder", sectionId: section, direction: "down" });
+    const savedLayout = settings.load().commodoreSidebar!;
+    expect(savedLayout).toEqual({ sections: [{ id: emptySection, name: "Work", collapsed: false }, { id: section, name: "Reviewed", collapsed: true }], membership: { [a]: section, [b]: section }, unsectionedCollapsed: true });
+    const layoutBytes = fs.readFileSync(paths.settingsFile, "utf8");
+    const notifications = sidebarEvents.length;
+    await route("sidebar", { op: "collapse", sectionId: section, collapsed: true });
+    expect(sidebarEvents).toHaveLength(notifications);
+    expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(layoutBytes);
+    expect((await route("sidebar", { op: "delete", sectionId: section })).status).toBe(400);
+    expect((await route("sidebar", { op: "move", commodoreId: stale, sectionId: section })).status).toBe(404);
+    expect((await route("sidebar", { op: "move", commodoreId: a, sectionId: stale })).status).toBe(400);
+    expect(settings.load().commodoreSidebar).toEqual(savedLayout);
+    settings.update((current) => ({ ...current, commodoreSidebar: { ...savedLayout, membership: { ...savedLayout.membership, [stale]: section } } }));
+    await feature.dispose(); settings = createConsoleSettingsStore({ paths }); feature = create();
+    expect((await route("list")).value.sidebarLayout).toEqual(savedLayout);
+    await route("sidebar", { op: "delete", sectionId: section, confirm: true });
+    expect((await route("list")).value.sidebarLayout).toEqual({ sections: [{ id: emptySection, name: "Work", collapsed: false }], membership: {}, unsectionedCollapsed: true });
+    expect(await ids()).toEqual([c, b, a]);
     expect(entityFiles.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
   } finally { await feature.dispose(); }
 });
