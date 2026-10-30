@@ -627,11 +627,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runners.set(commodoreId, runner);
     setPhase(runner, "idle");
     scheduleRoutines(runner);
+    // 끊긴 빈 보드 알림은 Clear 뒤에도 다시 낸다 — 감시는 기동 때의 빈 보드를 들은 것으로 두므로 여기서 놓치면 다시 오지 않는다.
+    if (unheard?.empty && runner.board?.emptyOperated()) wake(runner, "empty");
     // Clear 뒤에는 기존 기록을 되살리지 않는다. 재시작 자체는 깨움 이유가 아니다.
     if (!wakeImmediately) { if (reason === "message") requeueUndelivered(runner); return; }
     requeueUndelivered(runner);
     requeueMail(runner);
-    if (unheard?.empty && runner.board?.emptyOperated()) wake(runner, "empty");
     // 자율 운영이 꺼진 동안 사람이 답한 질문 — 사령관이 아직 읽지 않았다.
     for (const ask of deps.store.read(commodoreId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });
   };
@@ -643,9 +644,20 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const mentionsOf = (entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>) =>
     (entry.references ?? []).flatMap((ref) => ref.kind === "commodore" ? [{ id: ref.id, alias: ref.title }] : []);
 
+  /** 마지막 session 줄과 그 앞 unheard 줄들이 다 들어올 때까지 앞쪽 쪽을 더 읽는다 — 긴 세션 뒤의 비정상 종료도 폴백을 잃지 않는다. */
   const unheardOf = (commodoreId: string): CommodoreUnheardWakes | null => {
-    try { return unheardWakes(deps.store.transcriptRead(commodoreId, { limit: MAX_TRANSCRIPT_PAGE }).entries); }
-    catch { return null; }
+    try {
+      let entries: CommodoreTranscriptEntry[] = [];
+      let before: number | undefined;
+      for (;;) {
+        const page = deps.store.transcriptRead(commodoreId, { limit: MAX_TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) });
+        entries = [...page.entries, ...entries];
+        const last = entries.findLastIndex((entry) => entry.kind === "session");
+        const settled = last >= 0 && entries.slice(0, last).some((entry) => entry.kind !== "unheard");
+        if (settled || !page.hasMore || !page.entries.length) return unheardWakes(entries);
+        before = page.entries[0]!.seq;
+      }
+    } catch { return null; }
   };
 
   const requeueMail = (runner: Runner) => {
