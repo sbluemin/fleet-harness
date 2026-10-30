@@ -302,25 +302,20 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   /**
    * 턴 전체 되먹임 넓히기 — 채팅 저널 꼬리에서 이번 턴의 assistant 텍스트 블록을 모아 다시 판정한다. 저널 `text`는
    * assistant 블록마다 하나씩(관측 꼬리처럼 끝에서 잘리지 않는다)이라 도구 호출 앞 블록도 든다. `turn-end` 표식으로
-   * 이번 턴 범위를 잡고(끝에서 두 번째 표식 뒤 — 방금 끝난 턴의 표식이 아직 없으면 마지막 표식 뒤), 못 잡으면 최종
-   * 원문 판정을 둔다. 텍스트가 없거나 그새 메모가 소비·교체됐으면 늦은 결과는 버린다.
+   * 이번 턴 범위를 잡고, 표식이 없으면 최종 원문 판정을 둔다. 텍스트가 없거나 그새 메모가 소비·교체됐으면 늦은 결과는 버린다.
    */
   const broadenOpenUIFeedback = async (objectiveId: string, fallback: string | null): Promise<void> => {
     try {
       const page = await ctx.consoleControl?.transcript?.(objectiveId, { limit: 200, tail: true });
       if (disposed || !page || "error" in page) return;
       const entries = page.entries;
-      let seenEnd = 0;
-      let start = -1;
-      for (let i = entries.length - 1; i >= 0; i--) {
-        if ((entries[i] as { readonly kind?: unknown }).kind === "turn-end") {
-          seenEnd += 1;
-          if (seenEnd === 2) { start = i + 1; break; }
-        }
-      }
-      if (seenEnd === 0) return;
-      if (start < 0) start = entries.findLastIndex((entry) => (entry as { readonly kind?: unknown }).kind === "turn-end") + 1;
-      const texts = entries.slice(start).flatMap((entry) => {
+      // 방금 끝난 턴의 표식은 onTurnEnd 전에 기록된다 — 마지막 표식이 이번 턴의 끝이고, 그 앞 표식(없으면 페이지 처음)부터가 이번 턴이다.
+      // 페이지 안에 앞 표식이 없으면(첫 턴이거나 꼬리가 잘림) 페이지 전체가 이번 턴이다 — 앞 턴의 항목은 그 턴의 표식보다 앞에 있다.
+      const isEnd = (entry: unknown) => (entry as { readonly kind?: unknown }).kind === "turn-end";
+      const end = entries.findLastIndex(isEnd);
+      if (end < 0) return;
+      const start = entries.slice(0, end).findLastIndex(isEnd) + 1;
+      const texts = entries.slice(start, end).flatMap((entry) => {
         const record = entry as { readonly kind?: unknown; readonly text?: unknown };
         return record.kind === "assistant" && typeof record.text === "string" && record.text.trim() ? [record.text] : [];
       });
