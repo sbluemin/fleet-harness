@@ -167,9 +167,9 @@ function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "me
 
 /**
  * 사령관 기록 → 대화 중심 화면의 대화 어휘(SDK `ctx.chat.Conversation`). Objective 대화와 같은 문법이다: 사람의 말은 오른쪽 말풍선,
- * 사령관의 글은 왼쪽 말풍선(턴 안의 글마다 하나 — 그룹 대화의 저널과 같다), 보드에 쓴 행위는 가운데 행위 줄, 세션 교대·실패는
- * 노트 줄이다. 보드를 읽기만 한 도구는 Objective 대화가 도구 단계를 본류에 두지 않듯 세우지 않는다. 사람의 말이 깨운 턴은 그
- * 말풍선이 원인이라 깨움 줄을 따로 세우지 않고, 그 밖의 깨움(자율 운영 켬·보드 바뀜·루틴 등)만 노트 줄로 남긴다.
+ * 사령관의 글은 왼쪽 말풍선(턴 안의 글마다 하나 — 그룹 대화의 저널과 같다), 보드에 쓴 행위는 가운데 행위 줄, 실패와 모델 대체는
+ * 노트 줄이다. 보드를 읽기만 한 도구는 Objective 대화가 도구 단계를 본류에 두지 않듯 세우지 않는다. 메신저처럼 대화만 남도록
+ * 깨움·세션 교대(열림·재시작·멈춤)·문맥 압축 같은 실행 경과는 세우지 않는다 — 그 경과는 펼친 턴 기록(`commodoreChatEntries`)이 보인다.
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
 export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], finished: readonly Objective[] | null = null, name = t("commodore.name")): readonly AgentConversationEntry[] {
@@ -186,11 +186,6 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const out: AgentConversationEntry[] = [];
   for (const entry of entries) {
     switch (entry.kind) {
-      case "wake": {
-        if (entry.reasons.every((reason) => reason === "message" || reason.startsWith("message:"))) break;
-        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t("commodore.log.woke"), ...entry.reasons.map((reason) => reasonWord(t, reason))].join(" · ") });
-        break;
-      }
       case "message": {
         const { text, references, quotes } = quotedMessageWords(entry);
         const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
@@ -225,12 +220,12 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       case "result":
         if (entry.outcome === "error") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("commodore.meta.error") }) });
         break;
-      case "compacted":
-        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: compactedText(t, entry) });
+      // 세션 교대 자체는 세우지 않고, 고른 모델 대신 다른 모델로 돈다는 안내만 남긴다 — 사람이 모델을 다시 골라야 할 수 있다.
+      case "session": {
+        const fallback = entry.reason ? fallbackWord(t, entry.reason) : "";
+        if (fallback) out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: fallback });
         break;
-      case "session":
-        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t(`commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
-        break;
+      }
       case "error": {
         const code = errorWord(t, entry.code);
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }) });
@@ -249,6 +244,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: human, objectiveId: "",
           action: t("commodore.board.ask.answered"), target: {}, text: entry.answers.map((answer) => `${answer.question}\n\n→ ${answerWords(answer)}`).join("\n\n") });
         break;
+      case "wake":
+      case "compacted":
       case "thinking":
       case "undelivered":
       case "delivered":
