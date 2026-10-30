@@ -649,12 +649,17 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       hooks: hooks.length,
       mcp: Object.keys(mcp).length,
     };
-    // 사람의 신뢰가 필요한 것은 이 컴퓨터에서 실행되는 것뿐이다 — 훅 명령과 stdio MCP. 원격(http·sse) MCP 는 실행이 아니라 접속이다.
+    // 사람의 신뢰가 필요한 것은 이 컴퓨터에서 실행되는 것뿐이다 — 훅 명령, stdio MCP, 원격 MCP 의 동적 헤더 명령.
     const runs = [
       ...hooks.map(([event, command]) => ({ kind: "hook" as const, label: event!, command: command! })),
-      ...Object.entries(mcp).flatMap(([name, config]) => typeof config.command === "string" && config.command.trim()
-        ? [{ kind: "mcp" as const, label: name, command: [config.command, ...(Array.isArray(config.args) ? config.args.map(String) : [])].join(" ") }]
-        : []),
+      ...Object.entries(mcp).flatMap(([name, config]) => [
+        ...(typeof config.command === "string" && config.command.trim()
+          ? [{ kind: "mcp" as const, label: name, command: [config.command, ...(Array.isArray(config.args) ? config.args.map(String) : [])].join(" ") }]
+          : []),
+        ...(typeof config.headersHelper === "string" && config.headersHelper.trim()
+          ? [{ kind: "mcp" as const, label: `${name} headersHelper`, command: config.headersHelper }]
+          : []),
+      ]),
     ];
     const version = typeof manifest.version === "string" ? manifest.version : installed()[id]?.[0]?.version;
     return { components, ...(runs.length ? { runs } : {}), ...(version ? { version } : {}) };
@@ -909,7 +914,8 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
 
   /**
    * 세션에 실을 수 있는 플러그인과 그 MCP 서버. 서버 이름은 Claude Code 가 `--plugin-dir` 플러그인 서버에 붙이는
-   * `plugin:<plugin.json name>:<서버>`(CLI 2.1.312 판독)다. 값은 `${CLAUDE_PLUGIN_ROOT}`만 펼친 선언 그대로다.
+   * `plugin:<plugin.json name>:<서버>`(CLI 2.1.312 판독)다. `${CLAUDE_PLUGIN_ROOT}`를 펼치고, 동적 헤더 명령은
+   * `--mcp-config`에서도 플러그인 로딩 때와 같은 루트 환경·작업 폴더로 실행되도록 감싼다.
    */
   const loadable = (ids: readonly string[]) => {
     const found: { readonly id: string; readonly dir: string; readonly servers: readonly { readonly server: string; readonly name: string; readonly config: ClaudeGatewayExternalMcpServer }[] }[] = [];
@@ -922,11 +928,11 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       const servers: { server: string; name: string; config: ClaudeGatewayExternalMcpServer }[] = [];
       for (const [server, config] of Object.entries(mcpDeclarations(dir))) {
         const name = `plugin:${pluginName}:${server}`;
-        const type = config.type === "http" || config.type === "sse" ? config.type : typeof config.url === "string" && config.command === undefined ? "http" : "stdio";
+        const type = config.type === "http" || config.type === "sse" || config.type === "ws" ? config.type : typeof config.url === "string" && config.command === undefined ? "http" : "stdio";
         if (type === "stdio" && typeof config.command === "string") {
           servers.push({ server, name, config: { type: "stdio", command: config.command, ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}), ...(isRecord(config.env) ? { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, String(value)])) } : {}) } });
-        } else if (type !== "stdio" && typeof config.url === "string" && /^https?:\/\/\S+$/i.test(config.url)) {
-          servers.push({ server, name, config: { type, url: config.url, ...(isRecord(config.headers) ? { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, String(value)])) } : {}) } });
+        } else if (type !== "stdio" && typeof config.url === "string" && (type === "ws" ? /^wss?:\/\/\S+$/i : /^https?:\/\/\S+$/i).test(config.url)) {
+          servers.push({ server, name, config: { type, url: config.url, ...(isRecord(config.headers) ? { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, String(value)])) } : {}), ...(typeof config.headersHelper === "string" ? { headersHelper: pluginHeadersHelper(config.headersHelper, dir) } : {}) } });
         }
       }
       found.push({ id, dir, servers });
@@ -1146,11 +1152,18 @@ export function mergePluginEnv(plugins: readonly Pick<ResolvedPlugin, "env">[]):
   return env;
 }
 
+/** 원문은 셸 명령 그대로 두고 플러그인별 환경·작업 폴더만 복원한다. Console 은 이 명령을 실행하지 않는다. */
+function pluginHeadersHelper(command: string, root: string): string {
+  if (!command.trim()) return command;
+  const quotedRoot = `'${root.replaceAll("'", "'\\''")}'`;
+  return `cd ${quotedRoot} && export CLAUDE_PLUGIN_ROOT=${quotedRoot} && (\n${command}\n)`;
+}
+
 /** 선언의 모든 문자열 값에서 기본값 없는 `${VAR}` 이름. */
 function placeholdersOf(config: ClaudeGatewayExternalMcpServer): string[] {
   const values = config.type === "stdio"
     ? [config.command, ...(config.args ?? []), ...Object.values(config.env ?? {})]
-    : [config.url, ...Object.values(config.headers ?? {})];
+    : [config.url, config.headersHelper ?? "", ...Object.values(config.headers ?? {})];
   const names: string[] = [];
   for (const value of values) for (const match of value.matchAll(PLACEHOLDER)) {
     const name = match[1]!;

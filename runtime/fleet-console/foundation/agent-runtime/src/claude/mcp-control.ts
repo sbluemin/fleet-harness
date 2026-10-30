@@ -35,7 +35,7 @@ export function openClaudeMcpControl(options: OpenClaudeMcpControlOptions): Clau
   else delete env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
   const mcpServers = Object.fromEntries(Object.entries(options.servers).map(([name, server]) => [name, server.type === "stdio"
     ? { type: "stdio", command: server.command, ...(server.args ? { args: [...server.args] } : {}), ...(server.env ? { env: { ...server.env } } : {}) }
-    : { type: server.type, url: server.url, ...(server.headers ? { headers: { ...server.headers } } : {}) }]));
+    : { type: server.type, url: server.url, ...(server.headers ? { headers: { ...server.headers } } : {}), ...(server.headersHelper === undefined ? {} : { headersHelper: server.headersHelper }) }]));
   return runVendorMcpControl({
     options: {
       env,

@@ -122,7 +122,7 @@ export interface PluginCatalogEntry {
   readonly icon?: true;
   readonly components?: PluginComponents;
   /**
-   * 설치하면 사령관 권한으로 실행되는 명령(훅·stdio MCP) — 사람이 신뢰를 확인하는 원문. 받은 뒤에만 안다.
+   * 설치하면 사령관 권한으로 실행되는 명령(훅·stdio MCP·동적 헤더 명령) — 사람이 신뢰를 확인하는 원문. 받은 뒤에만 안다.
    * 한 줄씩 `훅 <이벤트> · <명령>` 이 아니라 구조로 준다: 화면이 문구를 고른다.
    */
   readonly runs?: readonly { readonly kind: "hook" | "mcp"; readonly label: string; readonly command: string }[];

@@ -91,7 +91,7 @@ export interface ClaudeGatewayLocalPlugin {
 
 export type ClaudeGatewayExternalMcpServer =
   | { readonly type: "stdio"; readonly command: string; readonly args?: readonly string[]; readonly env?: Readonly<Record<string, string>> }
-  | { readonly type: "http" | "sse"; readonly url: string; readonly headers?: Readonly<Record<string, string>> };
+  | { readonly type: "http" | "sse" | "ws"; readonly url: string; readonly headers?: Readonly<Record<string, string>>; readonly headersHelper?: string };
 
 export interface ClaudeGatewayToolExtras {
   readonly annotations?: Readonly<Record<string, unknown>>;
