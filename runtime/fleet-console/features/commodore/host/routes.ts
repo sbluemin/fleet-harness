@@ -1,4 +1,6 @@
 import type { ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
+import { commodoreSidebarCommandSchema } from "../shared/contracts/sidebar-layout.js";
+import type { createCommodoreSidebar } from "./sidebar-layout.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { AttachmentHost } from "../../execution/shared/agent.js";
@@ -56,6 +58,7 @@ export interface CommodoreRouteHooks {
   readonly assertWritable?: (commodoreId: string) => void;
   readonly create?: (alias: string) => string;
   readonly list?: () => readonly ConsoleCommodoreSummary[];
+  readonly sidebar?: ReturnType<typeof createCommodoreSidebar>;
   readonly setOrder?: (commodoreIds: readonly string[]) => void;
   readonly summary?: (id: string) => ConsoleCommodoreSummary;
   readonly addTheater?: (id: string, folderGrantId: string, claudeTrustConsent: boolean) => Promise<string>;
@@ -172,7 +175,12 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       return hooks.deletion.remove(commodoreId, alias, language);
     }, false) },
     { name: "commodore/alias", method: "POST", summary: "Set or clear a Commodore alias by UUID, independently of autonomous work.", handler: json(commodoreRef.extend({ alias: z.union([z.string(), z.null()]).transform(normalizeCommodoreAlias).pipe(z.string().nullable()) }).strict(), ({ commodoreId, alias }) => { read(commodoreId); return view(commodoreId, store.setAlias(commodoreId, alias)); }) },
-    { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [] })) },
+    { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [], sidebarLayout: hooks.sidebar?.read() })) },
+    { name: "commodore/sidebar", method: "POST", summary: "Manage shared sidebar sections without changing Commodore ownership.", handler: json(commodoreSidebarCommandSchema, (command) => {
+      if (!hooks.sidebar) throw new CommodoreStoreError("commodore_unavailable");
+      const result = hooks.sidebar.update(command);
+      return { ...result, commodores: hooks.list?.() ?? [], sidebarLayout: hooks.sidebar.read() };
+    }, false) },
     { name: "commodore/order", method: "POST", summary: "Save the display order of Commodore sections.", handler: json(z.object({ commodoreIds: z.array(ids) }).strict(), ({ commodoreIds }) => {
       if (!hooks.setOrder || !hooks.list) throw new CommodoreStoreError("commodore_unavailable");
       hooks.setOrder(commodoreIds);

@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { createCommodoreSidebar, type CommodoreSidebarPersistence } from "./sidebar-layout.js";
+import { COMMODORE_SIDEBAR_CHANNEL } from "../shared/contracts/sidebar-layout.js";
 import os from "node:os";
 import { openClaudeMcpControl } from "@fleet-console/agent-runtime/claude";
 import { createCommodorePluginAuth } from "./plugin-auth.js";
@@ -45,6 +47,7 @@ export interface CommodoreFeatureDeps {
   readonly beforeTheatersChange?: (commodoreId: string) => void;
   /** Console 단위 설정 저장소의 주입 포트. 엔티티의 strict state에는 표시 순서를 쓰지 않는다. */
   readonly order?: { readonly read: () => readonly string[]; readonly write: (commodoreIds: readonly string[]) => void };
+  readonly sidebar?: CommodoreSidebarPersistence;
   readonly paths: WorkspacePaths;
   readonly events: EventPort;
   readonly experiments: (ExperimentsHost | undefined);
@@ -67,6 +70,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const ownership = deps.ownership ?? createCommodoreOwnership(deps.paths);
   const { entities, theaterIds, knowledge } = ownership;
   const releaseChannel = deps.events.registerSseChannel(COMMODORE_CHANNEL);
+  const releaseSidebarChannel = deps.events.registerSseChannel(COMMODORE_SIDEBAR_CHANNEL);
   const agent = createConsoleResidentAgentHost(deps.agent);
   const emit = (event: CommodoreEvent) => {
     deps.events.publish(COMMODORE_CHANNEL, event);
@@ -161,8 +165,12 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     removing: (commodoreId, ids) => emit({ op: "removing", commodoreId, theaterIds: ids }),
     removed: (commodoreId, ids) => emit({ op: "removed", commodoreId, theaterIds: ids }),
   }) : undefined;
+  const sidebar = createCommodoreSidebar({
+    persistence: deps.sidebar, ids: entities.ids, order: orderedIds, assertWritable: ownership.assertWritable,
+    changed: () => deps.events.publish(COMMODORE_SIDEBAR_CHANNEL, { op: "changed" }),
+  });
   const routes = createCommodoreRoutes(context, store, {
-    plugins, pluginAuth, pluginsChanged, deletion, assertWritable: ownership.assertWritable,
+    sidebar, plugins, pluginAuth, pluginsChanged, deletion, assertWritable: ownership.assertWritable,
     knowledgeFolder: createKnowledgeFolderAction({ root: knowledge.root, ...(deps.openKnowledgeDirectory ? { openDirectory: deps.openKnowledgeDirectory } : {}) }),
     theaterIds, summary, list: () => orderedIds().map(summary),
     setOrder: (requested) => {
@@ -228,7 +236,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     async dispose() {
       if (disposed) return;
       disposed = true;
-      try { await supervisor.dispose(); } finally { await pluginAuth.dispose().catch(() => undefined); await agent.dispose(); releaseChannel(); }
+      try { await supervisor.dispose(); } finally { await pluginAuth.dispose().catch(() => undefined); await agent.dispose(); releaseChannel(); releaseSidebarChannel(); }
     },
   };
 }

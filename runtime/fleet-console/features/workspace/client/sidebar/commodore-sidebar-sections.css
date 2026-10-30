@@ -1,0 +1,60 @@
+.workspace-commodore-section { list-style: none; margin-top: 10px; min-width: 0; }
+.workspace-commodore-section:first-child { margin-top: 4px; }
+.workspace-commodore-section-rows { display: flex; flex-direction: column; gap: 2px; list-style: none; padding: 0; margin: 0; }
+.objective-records-side-bar.is-compact .workspace-commodore-section-rows { gap: calc(12px / var(--compact-layout-zoom, 1)); }
+.workspace-commodore-section-head {
+  display: flex; align-items: center; gap: 6px; width: calc(100% - 8px); height: 28px;
+  margin: 0 4px; padding: 0 8px 0 10px; border: 0; border-radius: var(--radius-xs);
+  background: transparent; color: var(--text-tertiary); text-align: left;
+  font: var(--weight-medium) var(--t-sm)/1.4 var(--font-ui); cursor: pointer;
+}
+.workspace-commodore-section-head:hover,
+.workspace-commodore-section-head:focus-visible,
+.workspace-commodore-section.is-drop-target > .workspace-commodore-section-head { background: var(--wash-hover); color: var(--text-secondary); }
+.workspace-commodore-section-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-commodore-section-count { font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.workspace-commodore-section-chevron { display: none; width: 14px; height: 14px; }
+.workspace-commodore-section-head:hover .workspace-commodore-section-chevron,
+.workspace-commodore-section-head:focus-visible .workspace-commodore-section-chevron { display: block; }
+.workspace-commodore-section-head:hover .workspace-commodore-section-count,
+.workspace-commodore-section-head:focus-visible .workspace-commodore-section-count { display: none; }
+.workspace-commodore-section-empty {
+  margin: 2px 4px; padding: 8px 10px; border: 1px dashed var(--surface-rim); border-radius: var(--radius-md);
+  color: var(--text-tertiary); font-size: var(--t-xs);
+}
+.workspace-commodore-section.is-drop-target .workspace-commodore-section-empty { background: var(--wash-selected); }
+.workspace-commodore-section-name {
+  width: calc(100% - 16px); min-width: 0; height: 28px; margin: 0 8px; padding: 0 6px;
+  border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: transparent;
+  color: var(--text-primary); font: var(--weight-medium) var(--t-sm)/1.4 var(--font-ui);
+}
+.workspace-commodore-section-name:focus { border-color: var(--text-tertiary); outline: none; }
+.workspace-commodore-section-menu.theater-menu,
+.workspace-commodore-section-submenu.theater-menu {
+  right: auto; width: var(--popover-width); max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px); overflow-y: auto;
+}
+.workspace-commodore-section-submenu.theater-menu { z-index: 1; }
+.workspace-commodore-section-menu .theater-menu-item:disabled { color: var(--text-tertiary); background: transparent; cursor: default; }
+.workspace-commodore-section-move > .theater-menu-item > .theater-menu-label { flex: 1; }
+.workspace-commodore-section-dialog {
+  width: min(360px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--popover-rim);
+  border-radius: var(--popover-radius); background: var(--popover-face); color: var(--text-secondary); box-shadow: var(--popover-shadow);
+}
+.workspace-commodore-section-dialog::backdrop { background: oklch(0% 0 0 / 55%); }
+.workspace-commodore-section-dialog h2 { margin: 0 0 8px; color: var(--text-primary); font-size: var(--t-base); }
+.workspace-commodore-section-dialog p { margin: 0 0 18px; font-size: var(--t-sm); }
+.workspace-commodore-section-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
+.workspace-commodore-section-dialog button {
+  padding: 7px 14px; border: 0; border-radius: var(--popover-row-radius); background: var(--wash-hover);
+  color: var(--text-primary); font: inherit; cursor: pointer;
+}
+.workspace-commodore-section-dialog button:hover,
+.workspace-commodore-section-dialog button:focus-visible { background: var(--wash-selected); }
+.workspace-commodore-section-dialog .workspace-commodore-section-delete { color: var(--coral-ink); }
+.workspace-commodore-section-dialog button:disabled { opacity: 0.5; cursor: wait; }
+@media (forced-colors: active) {
+  .workspace-commodore-section-head:focus-visible,
+  .workspace-commodore-section-name:focus,
+  .workspace-commodore-section-dialog button:focus-visible { outline: 2px solid Highlight; }
+}

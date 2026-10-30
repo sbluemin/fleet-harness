@@ -6,6 +6,7 @@ import type { CommodoreEvent } from "../shared/contracts/types.js";
 import { commodoreLastMessage } from "../shared/last-message.js";
 import { fetchCommodores } from "./theaters-api.js";
 import { wasCommodoreRemoved } from "./commodore-delete-events.js";
+import { COMMODORE_SIDEBAR_CHANNEL, EMPTY_SIDEBAR_LAYOUT, type CommodoreSidebarLayout } from "../shared/contracts/sidebar-layout.js";
 
 /**
  * 사령관 목록 — `fetchCommodores()` 와 commodore SSE 의 state/run 이 다시 읽게 한다.
@@ -16,6 +17,15 @@ const COMMODORE_CHANNEL = "commodore";
 
 let commodores: readonly ConsoleCommodoreSummary[] = [];
 let loaded = false;
+let sidebarLayout: CommodoreSidebarLayout = EMPTY_SIDEBAR_LAYOUT;
+const readSidebarLayout = () => sidebarLayout;
+export function useCommodoreSidebarLayout(): CommodoreSidebarLayout {
+  return useSyncExternalStore(subscribeCommodoreList, readSidebarLayout, readSidebarLayout);
+}
+export function replaceCommodoreSidebarLayout(next: CommodoreSidebarLayout): void {
+  sidebarLayout = next;
+  emit();
+}
 let zoneCommodoreId: string | null = null;
 const MOBILE_COMMODORE_KEY = "fleet.mobile.commodore";
 let mobileCommodoreId: string | null = readSavedMobileCommodore();
@@ -121,6 +131,7 @@ export function refreshCommodoreList(): Promise<void> {
       try {
         const result = await fetchCommodores();
         commodores = result.commodores.filter((row) => !wasCommodoreRemoved(row.commodoreId));
+        sidebarLayout = result.sidebarLayout ?? EMPTY_SIDEBAR_LAYOUT;
         forgetMissingMobileCommodore();
       } catch {
         // 목록이 비어도 기록의 commodoreId 로 섹션은 남는다.
@@ -150,7 +161,8 @@ export function installCommodoreList(events: ClientConsoleEventsCapability): () 
     if (event?.op === "transcript") noteLastMessage(event.commodoreId, commodoreLastMessage(event.entry));
   });
   const offReconnect = events.onReconnect?.(() => { void refreshCommodoreList(); });
-  return () => { off(); offReconnect?.(); };
+  const offSidebar = events.subscribe(COMMODORE_SIDEBAR_CHANNEL, () => { void refreshCommodoreList(); });
+  return () => { off(); offSidebar(); offReconnect?.(); };
 }
 
 /** 섹션 머리 이름. 별칭, 없으면 첫 Theater 이름, 없으면 현지화된 fallback. 서버 label 의 영문 Commodore 는 쓰지 않는다. */

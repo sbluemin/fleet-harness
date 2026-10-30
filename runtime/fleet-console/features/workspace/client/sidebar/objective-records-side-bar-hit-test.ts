@@ -1,3 +1,26 @@
+export interface CommodoreSectionDrop {
+  readonly sectionId: string | null;
+  readonly targetId?: string;
+  readonly after?: boolean;
+}
+
+/** 상위 섹션 제목·빈 자리와 사령관 행을 나눠 판정한다. 접힌 섹션도 제목으로 받는다. */
+export function commodoreSectionDropFromPoint(x: number, y: number, container: HTMLElement | null, sourceId: string): CommodoreSectionDrop | null {
+  if (!container) return null;
+  const bounds = container.getBoundingClientRect();
+  if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return null;
+  for (const element of container.querySelectorAll<HTMLElement>("[data-sidebar-section-drop], .side-bar-theater-section[data-theater-id]")) {
+    if (element.dataset.theaterId === sourceId) continue;
+    const rect = element.getBoundingClientRect();
+    if (y < rect.top || y > rect.bottom) continue;
+    const sectionId = element.closest<HTMLElement>("[data-sidebar-section]")?.dataset.sidebarSection || null;
+    return element.dataset.theaterId
+      ? { sectionId, targetId: element.dataset.theaterId, after: y > rect.top + rect.height / 2 }
+      : { sectionId };
+  }
+  return null;
+}
+
 /** 사령관 머리 끌기의 놓을 자리 — 포인터가 지난 머리의 가운데를 기준으로 그 앞에 놓는다. */
 export function theaterDropIndexFromPoint(
   clientY: number,

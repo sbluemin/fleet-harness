@@ -1,5 +1,6 @@
 import { readFontSettings, migrateFontSettings, migrateTerminalFont, type ConsoleFontSettings } from "../shared/fonts.js";
 import crypto from "node:crypto";
+import { sanitizeCommodoreSidebarLayout, type CommodoreSidebarLayout } from "../../commodore/shared/contracts/sidebar-layout.js";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
@@ -182,6 +183,7 @@ export interface ConsoleSettingsData {
   readonly general?: ConsoleGeneralSettings;
   /** 사령관 섹션의 표시 순서. 존재 여부는 사령관 feature가 조회·저장할 때 판단한다. */
   readonly commodoreOrder?: readonly string[];
+  readonly commodoreSidebar?: CommodoreSidebarLayout;
   readonly browser?: ConsoleBrowserSettings;
   readonly execution?: Record<string, unknown>;
   /**
@@ -277,6 +279,7 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
     ...(Object.keys(agent).length > 0 ? { agent } : {}),
     ...(browser ? { browser } : {}),
     ...(commodoreOrder.length ? { commodoreOrder } : {}),
+    ...(value.commodoreSidebar ? { commodoreSidebar: sanitizeCommodoreSidebarLayout(value.commodoreSidebar) } : {}),
   };
 }
 

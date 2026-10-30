@@ -1,5 +1,8 @@
 import { issueTheaterFolderGrant } from "../../../core/client/src/integration/api.js";
 import type { CommodoreDeletePreview, CommodoreDeleteResult } from "../shared/contracts/deletion.js";
+import type { CommodoreSidebarCommand } from "../shared/contracts/sidebar-layout.js";
+import type { CommodoreSidebarResponse } from "../shared/contracts/theaters.js";
+export const updateCommodoreSidebar = (input: CommodoreSidebarCommand): Promise<CommodoreSidebarResponse> => post("/api/v1/commodore/sidebar", input);
 import { COMMODORE_ROUTES, type CommodoreCreateInput, type CommodoreCreateResponse, type CommodoreListResponse, type CommodoreOrderInput, type CommodoreOrderResponse, type CommodoreTheaterAddInput, type CommodoreTheaterInput, type CommodoreTheaterResponse } from "../shared/contracts/theaters.js";
 
 async function post<T>(route: string, body: unknown, signal?: AbortSignal): Promise<T> {

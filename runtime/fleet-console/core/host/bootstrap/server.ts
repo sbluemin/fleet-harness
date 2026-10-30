@@ -9,6 +9,7 @@ import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
+import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
 import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../../features/workspace/host/objective-archive-storage.js";
@@ -2760,7 +2761,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
               }
               const { commodoreOrder: _order, ...rest } = current;
               const order = current.commodoreOrder?.filter((value) => value !== id) ?? [];
-              return { ...rest, agent, ...(order.length ? { commodoreOrder: order } : {}) };
+              return { ...rest, agent, ...(order.length ? { commodoreOrder: order } : {}),
+                ...(current.commodoreSidebar ? { commodoreSidebar: withoutSidebarCommodore(current.commodoreSidebar, id) } : {}) };
             }));
             clean("commodore_avatars_cleanup_failed", () => avatarStore.update((current) => {
               const avatars = { ...current.avatars }; delete avatars[`theater:commodore:${id}`];
@@ -2783,6 +2785,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             const { commodoreOrder: _previous, ...rest } = current;
             return commodoreIds.length ? { ...rest, commodoreOrder: [...commodoreIds] } : rest;
           }); },
+        },
+        sidebar: {
+          read: () => consoleSettingsStore.load().commodoreSidebar,
+          write: (layout, order) => { consoleSettingsStore.update((current) => ({
+            ...current, commodoreSidebar: layout, ...(order ? { commodoreOrder: [...order] } : {}),
+          })); },
         },
         created: (id) => { commodoreSystemPrompts.save(id, null); },
         beforeTheatersChange: (id) => archiveStorage.assertTheatersMutable(id),
