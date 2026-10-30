@@ -106,7 +106,7 @@
 .objectives-pop-fold:focus-visible { box-shadow: var(--focus-face); }
 .objectives-pop-fold-rings { display: inline-flex; flex: none; justify-content: center; gap: 2px; width: 24px; }
 .objectives-pop-fold-rings i { width: 6px; height: 6px; border: 1px solid var(--ink-fog); border-radius: 50%; }
-.objectives-pop-fold-chev { margin-left: auto; transition: transform var(--duration-fast) ease; }
+.objectives-pop-fold-chev { display: block; flex: none; width: 12px; height: 12px; margin-left: auto; transition: transform var(--duration-fast) ease; }
 .objectives-pop-fold[aria-expanded="true"] .objectives-pop-fold-chev { transform: rotate(90deg); }
 .objectives-pop-fold-body { padding-left: 10px; }
 @media (prefers-reduced-motion: reduce) { .objectives-pop-fold-chev { transition: none; } }
@@ -450,7 +450,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-cal-chip.is-on { background: color-mix(in oklch, var(--brass) 14%, transparent); border-color: var(--brass); color: var(--text-primary); }
 .objectives-cal-chip.is-clear { margin-left: auto; color: var(--text-tertiary); border-color: transparent; }
 .objectives-cal-head { display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; padding: 0 2px 4px; }
-.objectives-cal-head .objectives-glyph { width: 24px; height: 24px; border-color: transparent; color: var(--text-tertiary); font-size: var(--t-base); }
+.objectives-cal-head .objectives-glyph { width: 24px; height: 24px; border-color: transparent; color: var(--text-tertiary); }
 .objectives-cal-month { text-align: center; font-size: var(--t-sm); color: var(--text-primary); }
 .objectives-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .objectives-cal-wd { text-align: center; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); padding: 2px 0 4px; }
@@ -537,6 +537,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-att-err { font-size: var(--t-xs); color: var(--coral); }
 /* 넘김 글리프 — 결과물 창의 이미지 양옆 가운데에 겹친다. 끝에 닿으면 꺼지고 흐려진다(돌지 않는다). */
 .objectives-att-view-step { position: absolute; top: 50%; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--glass-tint-panel); color: var(--text-secondary); cursor: pointer; transform: translateY(-50%); }
+.objectives-att-view-step svg { display: block; width: 16px; height: 16px; }
 .objectives-att-view-step.is-prev { left: var(--space-2); }
 .objectives-att-view-step.is-next { right: var(--space-2); }
 .objectives-att-view-step:hover:not(:disabled) { color: var(--text-primary); }

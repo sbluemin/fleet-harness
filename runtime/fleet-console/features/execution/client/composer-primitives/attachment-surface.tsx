@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type RefObject } from "react";
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/i18n";
@@ -104,11 +105,11 @@ export function ComposerAttachmentViewer({
     <div ref={viewerRef} className="fc-composer-viewer" role="dialog" aria-modal="true" aria-label={image.name} onMouseDown={onClose}>
       <div className="fc-composer-viewer__frame" onMouseDown={(event) => event.stopPropagation()}>
         {images.length > 1 ? (
-          <button type="button" className="fc-composer-viewer__nav is-prev" aria-label={previousLabel} onClick={() => onIndex((index - 1 + images.length) % images.length)}>‹</button>
+          <button type="button" className="fc-composer-viewer__nav is-prev" aria-label={previousLabel} onClick={() => onIndex((index - 1 + images.length) % images.length)}><ChevronGlyph direction="left" /></button>
         ) : null}
         <img src={image.src} alt={image.name} onError={() => onImageError?.(image.key)} />
         {images.length > 1 ? (
-          <button type="button" className="fc-composer-viewer__nav is-next" aria-label={nextLabel} onClick={() => onIndex((index + 1) % images.length)}>›</button>
+          <button type="button" className="fc-composer-viewer__nav is-next" aria-label={nextLabel} onClick={() => onIndex((index + 1) % images.length)}><ChevronGlyph direction="right" /></button>
         ) : null}
         <button ref={closeRef} type="button" className="fc-composer-viewer__close" onClick={onClose} aria-label={closeLabel}>✕</button>
       </div>

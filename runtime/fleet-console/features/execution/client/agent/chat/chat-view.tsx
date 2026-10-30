@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useChromeHeightProperty } from "@fleet-console/ui/react";
+import { ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
 import { UseRequestCards } from "../use-request-card.js";
 import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
 import { ChatReferenceLinks, ChatReferenceText, referenceLabelText } from "./chat-reference.js";
@@ -2184,7 +2184,7 @@ function JobAnchor({
           `who`는 카드에서도 제목이 아니라 메타 줄의 값이었고, 그 줄은 작업 면이 진다. */}
       <span className="agent-chat-job-title">{job.title}</span>
       <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
-      <span className="agent-chat-job-chev" aria-hidden="true">›</span>
+      <ChevronGlyph direction="right" className="agent-chat-job-chev" />
     </button>
   );
 }
@@ -2852,7 +2852,7 @@ function JobRow({
           ))}
           {job.kind === "workflow" && job.stages.length > 0 ? <StageDots stages={job.stages} /> : null}
           <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
-          <span className="agent-chat-job-chev" aria-hidden="true">›</span>
+          <ChevronGlyph direction="right" className="agent-chat-job-chev" />
         </span>
       </span>
       {now ? (
@@ -3132,7 +3132,7 @@ function JobDetail({
     <>
       <div className="agent-chat-detail-head">
         <button type="button" className="agent-chat-detail-back" aria-label={t("terminal.chat.workBackAria")} onClick={onBack}>
-          ‹ {t("terminal.chat.workBack")}
+          <ChevronGlyph direction="left" /> {t("terminal.chat.workBack")}
         </button>
         <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
         <span className="agent-chat-detail-title">{job.title}</span>

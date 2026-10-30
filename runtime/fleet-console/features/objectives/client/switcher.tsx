@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { ChevronGlyph } from "@fleet-console/ui/react";
 
 import type { Translate } from "@fleet-console/i18n";
 import type { StatusGlyphState } from "./components/status-glyph.js";
@@ -184,7 +185,7 @@ export function ObjectiveSwitcher({ t, language, commodoreId, objectives, groups
                   <span className="objectives-pop-fold-rings" aria-hidden="true"><i /><i /><i /></span>
                   <span aria-hidden="true">{t("objectives.switch.notStarted")}</span>
                   <span className="objectives-pop-count" aria-hidden="true">{fresh.length}</span>
-                  <span className="objectives-pop-fold-chev" aria-hidden="true">›</span>
+                  <ChevronGlyph direction="right" className="objectives-pop-fold-chev" />
                 </button>
                 {expanded ? <ol className="objectives-pop-fold-body">{fresh.map((objective) => row(objective, false, true))}</ol> : null}
               </li>

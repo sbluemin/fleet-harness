@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { useSelect, type SelectOption } from "@fleet-console/ui/react";
+import { ChevronGlyph, useSelect, type SelectOption } from "@fleet-console/ui/react";
 import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { missionTitle, type Objective, type ObjectiveResult } from "../shared/types.js";
@@ -241,12 +241,12 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
             : <div className="objectives-rw-link-card">{result.kind === "pr" ? <PrRow result={result} t={t} language={language} now={now} missionTag="" /> : <div className="objectives-rw-artifact"><b>{title}</b><span>claude.ai</span>{result.note ? <p>{result.note}</p> : null}<p>{t("objectives.results.artifact.notice")}</p><a href={result.url} target="_blank" rel="noopener noreferrer">{t("objectives.results.artifact.newTab")} ↗</a></div>}</div>}
           {attachmentMode
             ? attachments.length > 1 && attachment ? <>
-            <button type="button" className="objectives-att-view-step is-prev" aria-label={t("objectives.results.window.previous")} disabled={shownAttachmentAt <= 0} onClick={() => { const previous = attachments[shownAttachmentAt - 1]; if (previous) chooseAttachment(previous.id); }}>‹</button>
-            <button type="button" className="objectives-att-view-step is-next" aria-label={t("objectives.results.window.next")} disabled={shownAttachmentAt >= attachments.length - 1} onClick={() => { const next = attachments[shownAttachmentAt + 1]; if (next) chooseAttachment(next.id); }}>›</button>
+            <button type="button" className="objectives-att-view-step is-prev" aria-label={t("objectives.results.window.previous")} disabled={shownAttachmentAt <= 0} onClick={() => { const previous = attachments[shownAttachmentAt - 1]; if (previous) chooseAttachment(previous.id); }}><ChevronGlyph direction="left" /></button>
+            <button type="button" className="objectives-att-view-step is-next" aria-label={t("objectives.results.window.next")} disabled={shownAttachmentAt >= attachments.length - 1} onClick={() => { const next = attachments[shownAttachmentAt + 1]; if (next) chooseAttachment(next.id); }}><ChevronGlyph direction="right" /></button>
           </> : null
             : !shared && result?.kind === "evidence" && result.mediaType !== "text/plain" && ordered.length > 1 ? <>
-            <button type="button" className="objectives-att-view-step is-prev" aria-label={t("objectives.results.window.previous")} disabled={index <= 0} onClick={() => { const previous = ordered[index - 1]; if (previous) choose(previous.id); }}>‹</button>
-            <button type="button" className="objectives-att-view-step is-next" aria-label={t("objectives.results.window.next")} disabled={index >= ordered.length - 1} onClick={() => { const next = ordered[index + 1]; if (next) choose(next.id); }}>›</button>
+            <button type="button" className="objectives-att-view-step is-prev" aria-label={t("objectives.results.window.previous")} disabled={index <= 0} onClick={() => { const previous = ordered[index - 1]; if (previous) choose(previous.id); }}><ChevronGlyph direction="left" /></button>
+            <button type="button" className="objectives-att-view-step is-next" aria-label={t("objectives.results.window.next")} disabled={index >= ordered.length - 1} onClick={() => { const next = ordered[index + 1]; if (next) choose(next.id); }}><ChevronGlyph direction="right" /></button>
           </> : null}
         </div>
         {attachmentMode

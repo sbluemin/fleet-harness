@@ -3129,7 +3129,7 @@
 .agent-chat-job-row.is-stopped .agent-chat-job-outcome,
 .agent-chat-job-outcome.is-stopped { color: var(--warn-ink); }
 
-.agent-chat-job-chev { flex: none; color: var(--text-tertiary); }
+.agent-chat-job-chev { display: block; width: 12px; height: 12px; flex: none; color: var(--text-tertiary); }
 
 /* ── 끝난 잡의 종류 가지 ──────────────────────────────────────────────────
    가지 머리는 접힌 채로도 자기 안의 실패 수를 말한다 — 그러지 않으면 접기가 손댈 것을 감춘다.
@@ -3516,6 +3516,9 @@
 .agent-chat-detail-gap { flex: 1 1 auto; min-width: 0; }
 
 .agent-chat-detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   appearance: none;
   cursor: pointer;
   background: transparent;
@@ -3528,6 +3531,8 @@
   color: var(--text-tertiary);
   transition: color var(--duration-fast), border-color var(--duration-fast);
 }
+
+.agent-chat-detail-back svg { display: block; width: 12px; height: 12px; flex: none; }
 
 .agent-chat-detail-back:hover {
   color: var(--brass-ink);
