@@ -64,6 +64,7 @@ test('does not read prose or unrelated calls as specifiers', () => {
     `const label = t("chrome.hosts.local");`,
     `const parts = Array.from("abc");`,
     `const note = "imported from a remote host";`,
+    'throw new Error(`If you are on zod@3.25+, import from "zod/v4" instead of "zod".`);',
   ].join('\n');
 
   assert.deepEqual(names(bundle), []);
