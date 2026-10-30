@@ -941,9 +941,8 @@ code.hljs {
 /* 보조 잉크는 다크 말풍선·줄무늬 위의 판독 하한을 넘되 2단 라벨보다 낮게 둔다. 라이트는 기존 3단을 보존한다. */
 .openui-block, .openui { --openui-muted: light-dark(var(--text-tertiary), color-mix(in oklch, var(--text-tertiary) 70%, var(--text-secondary))); }
 .openui-block { min-width: 0; }
-.openui-block[data-openui-settling] { overflow: clip; }
-.openui-block:not([data-openui-state="fallback"]) > pre { display: none; }
-.openui-block > .code-block { margin: 0; }
+/* 원문 코드는 어떤 상태에서도 보이지 않는다. 그릴 것이 남지 않은 확정 블록은 자리째 숨긴다. */
+.openui-block > pre, .openui-block[data-openui-state="hidden"] { display: none; }
 .openui-pending { margin: 0; font-size: var(--t-sm); color: var(--openui-muted); }
 
 .openui { display: flex; flex-direction: column; gap: var(--space-3); inline-size: 36em; max-inline-size: 100%; min-width: 0; container: openui / inline-size; }

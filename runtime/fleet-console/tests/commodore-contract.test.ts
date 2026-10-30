@@ -1,3 +1,4 @@
+import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import type { CommodoreRouteContext } from "../features/commodore/host/routes.js";
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -1097,8 +1098,10 @@ describe("commodore session", () => {
     h.store.setSources("t1", [{ kind: "github-issues", label: "feedback", locator: "acme/fleet" }, { kind: "url", label: "forum", locator: "https://example.test/forum" }]);
     const stub = agentStub();
     const commands: { file: string; args: readonly string[] }[] = [];
+    let nextFeedback: string | null = null;
     const session = createCommodoreSession({
       commodoreId: "t1", cwd: h.objectivesDir, theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
+      onOpenUIFeedback: (note) => { nextFeedback = note; },
       theaters: () => [{ theaterId: "th1", label: "fleet-harness", root: theaterRoot }, { theaterId: "th2", label: "gone", root: null }],
       coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [
         defineConsoleTool({ name: "console_objectives", description: "list", actions: { inbox: { kind: "read", input: z.object({}) } } }).plugin({ execute: async () => ({ content: [] }) }),
@@ -1209,6 +1212,29 @@ describe("commodore session", () => {
     expect(stub.sent[1]).toContain("Your fleet-memory index (read an entry with memory_view):");
     expect(stub.sent[1]).toContain("CDP offline leaves an open EventSource alive.");
     expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "error", error: "rate_limited" });
+    // 최종 응답의 OpenUI 진단은 다음 모델 입력에 한 번만 싣고, 공개 기록·미리보기에는 남기지 않는다.
+    const malformed = "```openui-lang\nnot a valid root\n```";
+    const feedback = openUIFeedbackNote(malformed)!;
+    expect(feedback).toBeTruthy();
+    stub.setScript(async () => {
+      stub.emit({ kind: "text", text: malformed });
+      stub.emit({ kind: "tool-start", id: "openui-check", name: "Read", input: {} });
+      stub.emit({ kind: "tool-end", id: "openui-check", isError: false });
+      stub.emit({ kind: "text", text: "Done." });
+      stub.emit({ kind: "result", isError: false, source: "message" });
+    });
+    await session.turn({ reasons: ["message"] });
+    stub.setScript(async () => { stub.emit({ kind: "result", isError: false, source: "message" }); });
+    expect(nextFeedback).toBe(feedback);
+    await session.turn({ reasons: ["routine"], openUIFeedback: nextFeedback! });
+    expect(nextFeedback).toBeNull();
+    const feedbackInput = stub.sent.at(-1)!;
+    expect(feedbackInput).toContain(feedback);
+    const serializedFeedback = JSON.stringify(feedback).slice(1, -1);
+    expect(JSON.stringify(h.store.transcriptRead("t1"))).not.toContain(serializedFeedback);
+    expect(JSON.stringify(h.store.transcriptLast("t1"))).not.toContain(serializedFeedback);
+    await session.turn({ reasons: ["routine"] });
+    expect(stub.sent.at(-1)).not.toContain(feedback);
     await session.dispose();
     expect(stub.disposedCount()).toBe(1);
     await expect(session.turn({ reasons: ["routine"] })).rejects.toThrow("session_disposed");
@@ -1231,6 +1257,7 @@ describe("commodore supervisor", () => {
     attachments.claim("t2", "another-message", [foreign], MAX_COMMODORE_MESSAGE_IMAGE_BYTES);
     const rejected: string[] = [];
     let fail = true;
+    let nextReply: string | undefined;
     let created = 0;
     const agent: AgentHost = { createSession: async (options) => { created += 1; return ({
       send: async (input) => {
@@ -1239,6 +1266,7 @@ describe("commodore supervisor", () => {
           copies.push(readTurnAttachments([activeId])[0]!.bytes);
           try { readTurnAttachments([foreign]); } catch (error) { rejected.push((error as Error).message); }
         }
+        if (nextReply) { options.onEvent?.({ kind: "text", text: nextReply }); nextReply = undefined; }
         options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) });
       },
       steer: () => false, cancel() {}, dispose: async () => undefined,
@@ -1285,11 +1313,22 @@ describe("commodore supervisor", () => {
       expect(fs.existsSync(path.join(h.objectivesDir, "images"))).toBe(false);
       const beforeBudget = created;
       const fourMiB = Buffer.alloc(4 * 1024 * 1024); png.copy(fourMiB);
+      const malformed = "```openui-lang\nnot a valid root\n```";
+      const feedback = openUIFeedbackNote(malformed)!;
+      expect(feedback).toBeTruthy();
       for (let index = 0; index < 3; index += 1) {
+        // 다음 이미지 입력으로 세션이 교대해도 직전 응답의 진단을 잃지 않는다.
+        if (index === 1) nextReply = malformed;
         expect((await sendImage(fourMiB)).result.status).toBe(200);
         await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       }
       expect(created - beforeBudget).toBe(2);
+      const promptText = (input: AgentInput) => typeof input === "string" ? input : input.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+      expect(promptText(turns.at(-1)!)).toContain(feedback);
+      expect(JSON.stringify(h.store.transcriptRead("t1"))).not.toContain(JSON.stringify(feedback).slice(1, -1));
+      expect((await sendImage()).result.status).toBe(200);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(promptText(turns.at(-1)!)).not.toContain(feedback);
       const tooLarge = Buffer.alloc(MAX_COMMODORE_MESSAGE_IMAGE_BYTES + 1); png.copy(tooLarge);
       const over = await sendImage(tooLarge);
       expect(over.result).toMatchObject({ status: 400, value: { error: "attachment_budget_exceeded" } });

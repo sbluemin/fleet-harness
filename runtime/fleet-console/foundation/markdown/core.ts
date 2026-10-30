@@ -1,4 +1,5 @@
 import type { MarkdownLinkTarget } from "./link-activation.js";
+import { OPENUI_LANGUAGES } from "./openui-actions.js";
 import { siteIconName, siteIconSvg } from "./site-icons.js";
 import { Marked, type Token, type Tokens } from "marked";
 import DOMPurify from "dompurify";
@@ -42,15 +43,13 @@ export interface RenderMarkdownOptions {
    */
   readonly deferUnclosedMermaid?: boolean;
   /**
-   * `openui-lang`(별칭 `openui`) 펜스를 OpenUI 자리표시자(`.openui-block`)로 감싼다. 안에는 평소의 코드 블록이 그대로 있어
-   * 그리지 못하면 그 코드 블록이 폴백이 된다. 그림은 `installOpenUIHydrator`가 그린다. 기본은 꺼짐(지금과 같은 코드 블록)이다.
+   * `openui-lang`(별칭 `openui`) 펜스를 OpenUI 자리표시자(`.openui-block`)로 감싼다. 안의 코드 블록은 보이지 않으며,
+   * 그릴 것이 남지 않은 확정 블록은 자리째 숨긴다. 그림은 `installOpenUIHydrator`가 그린다. 기본은 꺼짐(지금과 같은 코드 블록)이다.
    * `deferUnclosedMermaid`(흐르는 중)와 함께 켜면 아직 닫히지 않은 마지막 OpenUI 펜스는 미확정(`data-openui-final="0"`)으로 둔다.
    */
   readonly openui?: boolean;
 }
 
-/** OpenUI 펜스 언어 — 정식 이름은 업스트림 inline mode 관례인 `openui-lang`, `openui`는 별칭이다. */
-const OPENUI_LANGUAGES: ReadonlySet<string> = new Set(["openui-lang", "openui"]);
 
 interface FrontmatterEntry {
   key: string;

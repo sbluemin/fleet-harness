@@ -1,4 +1,7 @@
 /** OpenUI의 평문·대상 판정 — 원문을 정규화해서 권한을 넓히지 않는다. */
+
+/** OpenUI 펜스 언어 — 정식 이름은 업스트림 inline mode 관례인 `openui-lang`, `openui`는 별칭이다. */
+export const OPENUI_LANGUAGES: ReadonlySet<string> = new Set(["openui-lang", "openui"]);
 export type OpenUISendPort = (text: string) => void;
 export type OpenUIOpenTarget =
   | { readonly kind: "https"; readonly url: string; readonly hostname: string }

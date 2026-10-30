@@ -1,3 +1,4 @@
+import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { mergePluginEnv, type ResolvedPlugin } from "./plugins.js";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { CommodoreToolTheater } from "./tools.js";
@@ -41,6 +42,8 @@ export interface CommodoreSessionOptions {
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
   readonly onLive?: (event: CommodoreLiveEvent) => void;
+  /** 다음 깨움에만 실을 진단 — 공개 사건·원장이 아닌 호스트 내부 전달이다. */
+  readonly onOpenUIFeedback?: (note: string | null) => void;
   /** `steer` 로 건넨 말의 행방 — 도는 턴이 집었다(started) 또는 모델에 닿지 못했다(cancelled). id 는 건넬 때 준 그대로다. */
   readonly onInput?: (event: { readonly id: string; readonly state: "started" | "cancelled" }) => void;
   readonly now?: () => number;
@@ -52,6 +55,8 @@ export interface CommodoreTurnInput {
   readonly reasons: readonly string[];
   /** 모델에게 가는 깨움 문장 — 토큰과 같은 순서의 영어 문장. 없으면 토큰 그대로. */
   readonly sentences?: readonly string[];
+  /** 이전 세션의 응답도 포함하는 모델 전용 진단. 기록하지 않는다. */
+  readonly openUIFeedback?: string;
   /** 깨움 노트 아래에 싣는 보드 요약(모델 입력). */
   readonly board?: string;
   /** wake 줄 바로 뒤에 남는 보드 범위(목표 id·운영 판정·코드) — 기록에만 남고 모델에게는 가지 않는다. */
@@ -102,6 +107,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
 
   // 텍스트·사고는 델타로 온다 — 블록 단위로 모아 도구 호출·결과 경계에서 기록 한 줄로 내린다.
   let textBuffer = "";
+  const turnTextBlocks: string[] = [];
   let thinkingBuffer = "";
   const pendingTools = new Map<string, { readonly name: string; readonly input: unknown }>();
   // 거절 코드 — 세션 이벤트(tool-end)는 결과를 싣지 않으므로, 도구를 감싸 결과의 `error` 한 낱말만 호출 id·이름으로 기억한다.
@@ -117,7 +123,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     catch (error) { console.warn(`[objectives] commodore transcript append failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
   const flushText = () => {
-    if (textBuffer.trim()) record({ kind: "text", text: clip(textBuffer, MAX_TRANSCRIPT_TEXT) });
+    if (textBuffer.trim()) {
+      turnTextBlocks.push(textBuffer);
+      record({ kind: "text", text: clip(textBuffer, MAX_TRANSCRIPT_TEXT) });
+    }
     textBuffer = "";
     if (thinkingBuffer.trim()) record({ kind: "thinking", text: clip(thinkingBuffer, MAX_TRANSCRIPT_TEXT) });
     thinkingBuffer = "";
@@ -266,7 +275,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
-      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); createdCommodores.length = 0;
+      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); createdCommodores.length = 0;
       record({ kind: "wake", reasons: input.reasons });
       if (input.scope) {
         // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
@@ -277,6 +286,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
+        ...(input.openUIFeedback ? [input.openUIFeedback] : []),
         ...(input.board ? [input.board] : []),
         memoryNote(readMemoryIndex()),
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
@@ -301,6 +311,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });
       try { options.store.addRunTotals(options.commodoreId, { ...(result.usage?.costUsd ? { costUsd: result.usage.costUsd } : {}), ...(result.actions ? { actions: result.actions } : {}) }); }
       catch (error) { console.warn(`[objectives] commodore totals failed: ${error instanceof Error ? error.message : String(error)}`); }
+      // 도구 앞 블록까지 포함한 턴 전체 원문을 판정한다. 실패·취소는 이전 진단도 비운다.
+      options.onOpenUIFeedback?.(result.outcome === "ok" ? openUIFeedbackNote(turnTextBlocks.join("\n\n")) : null);
       return result;
     },
     cancel() { if (turnActive) session?.cancel(); },
