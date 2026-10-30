@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.273.0] - 2026-10-30
+
+### fleet-console
+
+#### Added
+- 사이드바 사령관을 이름 있는 섹션으로 묶고, 같은 Console에 연결된 기기에서 그룹 구성과 접힘 상태를 공유할 수 있습니다.
+
 ## [1.272.3] - 2026-10-30
 
 ### fleet-console

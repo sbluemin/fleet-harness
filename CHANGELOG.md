@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.273.0] - 2026-10-30
+
+### fleet-console
+
+#### Added
+- Organize sidebar commodores into named sections, with shared grouping and collapse state across devices connected to the same Console.
+
 ## [1.272.3] - 2026-10-30
 
 ### fleet-console
