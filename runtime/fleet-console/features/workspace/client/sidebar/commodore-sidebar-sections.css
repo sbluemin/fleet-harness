@@ -20,7 +20,7 @@
 .workspace-commodore-section-head:hover .workspace-commodore-section-count,
 .workspace-commodore-section-head:focus-visible .workspace-commodore-section-count { display: none; }
 .workspace-commodore-section-empty {
-  margin: 2px 4px; padding: 8px 10px; border: 1px dashed var(--surface-rim); border-radius: var(--radius-md);
+  margin: 2px 4px; padding: 8px 10px; border-radius: var(--radius-md);
   color: var(--text-tertiary); font-size: var(--t-xs);
 }
 .workspace-commodore-section.is-drop-target .workspace-commodore-section-empty { background: var(--wash-selected); }
