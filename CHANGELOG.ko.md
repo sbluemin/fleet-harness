@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.272.3] - 2026-10-30
+
+### fleet-console
+
+#### Changed
+- Cmd+K 검색 결과에 보관된 항목이 더 이상 나오지 않습니다. 보관된 항목은 보관함에서 찾을 수 있습니다.
+- 사령관 채팅에 깨어남·새 세션·재시작·멈춤·문맥 압축 줄 없이 대화만 보입니다. 오류와 모델 대체 안내는 그대로 보입니다.
+
+#### Fixed
+- Cmd+K에서 채팅을 열면 바로 메시지 입력창에 입력할 수 있고, 가만히 놓인 마우스 포인터가 더 이상 검색 결과 선택을 바꾸지 않습니다.
+
 ## [1.272.2] - 2026-10-30
 
 ### fleet-console

@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.272.3] - 2026-10-30
+
+### fleet-console
+
+#### Changed
+- Cmd+K search no longer lists archived items; open the archive to find them.
+- The Commodore chat now shows only the conversation, without wake-up, new-session, restart, stop, or context-compaction lines; errors and model-fallback notices still appear.
+
+#### Fixed
+- Opening a chat from Cmd+K now puts the cursor in its message box, and a mouse pointer left resting over the results no longer changes the selection.
+
 ## [1.272.2] - 2026-10-30
 
 ### fleet-console
