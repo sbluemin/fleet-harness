@@ -1159,11 +1159,14 @@ function pluginHeadersHelper(command: string, root: string): string {
   return `cd ${quotedRoot} && export CLAUDE_PLUGIN_ROOT=${quotedRoot} && (\n${command}\n)`;
 }
 
-/** 선언의 모든 문자열 값에서 기본값 없는 `${VAR}` 이름. */
+/**
+ * 선언의 문자열 값에서 기본값 없는 `${VAR}` 이름. `headersHelper`는 넣지 않는다 — CLI 는 그 문자열을 펼치지 않고 셸에
+ * 넘기므로(CLI 2.1.312 실측: 헬퍼 안의 지역 변수는 그대로 쓰이고, 없는 환경 변수는 빈 값이 된다) 그 안의 `${…}`는 키가 아니다.
+ */
 function placeholdersOf(config: ClaudeGatewayExternalMcpServer): string[] {
   const values = config.type === "stdio"
     ? [config.command, ...(config.args ?? []), ...Object.values(config.env ?? {})]
-    : [config.url, config.headersHelper ?? "", ...Object.values(config.headers ?? {})];
+    : [config.url, ...Object.values(config.headers ?? {})];
   const names: string[] = [];
   for (const value of values) for (const match of value.matchAll(PLACEHOLDER)) {
     const name = match[1]!;
