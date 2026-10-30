@@ -1216,6 +1216,9 @@ describe("commodore session", () => {
     expect(feedback).toBeTruthy();
     stub.setScript(async () => {
       stub.emit({ kind: "text", text: malformed });
+      stub.emit({ kind: "tool-start", id: "openui-check", name: "Read", input: {} });
+      stub.emit({ kind: "tool-end", id: "openui-check", isError: false });
+      stub.emit({ kind: "text", text: "Done." });
       stub.emit({ kind: "result", isError: false, source: "message" });
     });
     await session.turn({ reasons: ["message"] });
