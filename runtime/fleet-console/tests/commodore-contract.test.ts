@@ -1509,6 +1509,9 @@ describe("commodore supervisor", () => {
       const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => objectives, subscribeObjectives: () => () => undefined, observe: restClock(() => ({ lifecycle, activity: commanderActivity, generation: "g1", output: { revision } })), resumeFailures: { take: () => resumeFailures.splice(0), subscribe: () => () => undefined }, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, managementTools: (_id, turn) => createCommodoreManagementTools({ hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: () => [], create: createCommodore }), emit: () => undefined });
       let supervisor = make();
       h.store.read("t1");
+      // 지난 종료가 듣지 못한 빈 보드 알림 — 다음 기동이 다시 깨운다.
+      h.store.transcriptAppend("t1", { kind: "unheard", codes: ["empty"] });
+      h.store.transcriptAppend("t1", { kind: "session", event: "stopped", reason: "Console stopping" });
       supervisor.sync("started");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
@@ -1546,10 +1549,13 @@ describe("commodore supervisor", () => {
       expect(await callCreate()).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
       expect(createCommodore).toHaveBeenCalledTimes(1);
 
-      // Console 재시작 — 재시작만으로는 깨우지 않는다. 새 대화의 첫 턴은 제품 기록의 최근 결과 요약과 empty 깨움이다.
+      // Console 재시작 — 재시작만으로는 깨우지 않는다(빈 보드도 다시 알리지 않는다). 새 대화의 첫 턴은 제품 기록의 최근 결과 요약을 싣는다.
       await supervisor.dispose();
       supervisor = make();
       supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(1);
+      h.store.transcriptAppend("t1", { kind: "message", text: "Status?" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(2);
       expect(sessions[1]!.sent).toHaveLength(1);
@@ -1624,21 +1630,23 @@ describe("commodore supervisor", () => {
       expect(wakes().at(-1)).toMatchObject({ reasons: ["settled:1"] });
       sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
       await supervisor.dispose();
-      // 재기동 전에 보고했어도 미처리 대기는 남아 있다. 같은 보드를 다시 복원해도 깨우되 사람 몫은 제외한다.
+      // 끌 때 아직 듣지 못한 대기만 다음 기동이 다시 깨운다. 이미 들었거나 재기동만 거친 대기는 깨우지 않는다.
       Object.assign(running, { awaitingReview: true });
       supervisor = make(); supervisor.sync("restart");
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(settleWait * 2);
+      expect(sessions).toHaveLength(beforeRestart + 2);
+      Object.assign(running, { boardUpdatedAt: Date.now() });
+      await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions).toHaveLength(beforeRestart + 3);
-      expect(sessions.at(-1)!.sent[0]).toContain("waits on you: awaiting review");
-      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
-      await supervisor.dispose();
+      await supervisor.dispose(); // 깨운 턴이 끝나기 전에 꺼진다.
+      expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "unheard", codes: ["settled"], objectiveIds: [running.id] }, { kind: "session", event: "stopped" }]);
       supervisor = make(); supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(beforeRestart + 4);
       expect(wakes().at(-1)).toMatchObject({ reasons: ["settled:1"] });
+      expect(sessions.at(-1)!.sent[0]).toContain("waits on you: awaiting review");
       sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
       await supervisor.dispose();
-      Object.assign(running, { personHolds: [{ target: "review", requestId: null, reason: "Product call", at: Date.now(), by: { kind: "commodore" }, settled: null }] });
       supervisor = make(); supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(settleWait * 2);
       expect(sessions).toHaveLength(beforeRestart + 4);
@@ -1760,7 +1768,9 @@ describe("commodore supervisor", () => {
       const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
       const sessionEvents = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "session" ? [entry.event] : []);
 
-      // 등록 복원 — 재시작 자체는 깨움이 아니다. 사령관이 운영하는 열린 목표가 없는 보드는 이유가 된다.
+      // 등록 복원 — 재시작 자체는 깨움이 아니다. 지난 실행이 종료를 남기지 못하고 끝났으면(열린 세션이 마지막) 무엇을 듣지 못했는지
+      // 모르므로 빈 보드도 다시 알린다.
+      h.store.transcriptAppend("t1", { kind: "session", event: "opened", model: "claude-sonnet-installed", effort: "medium" });
       supervisor.sync("restart");
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
@@ -1768,8 +1778,8 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.options).toMatchObject({ model: "claude-sonnet-installed", effort: "medium" });
       expect(sessions[0]!.options.systemPrompt).toContain("The person reads the log in Korean.");
       expect(tokens()).toEqual([["empty"]]);
-      expect(sessionEvents()).toEqual(["restarted"]);
-      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "session")).toMatchObject({ reason: "fallback:model_off:sonnet[1m]" });
+      expect(sessionEvents()).toEqual(["opened", "restarted"]);
+      expect(h.store.transcriptRead("t1").entries.findLast((entry) => entry.kind === "session")).toMatchObject({ reason: "fallback:model_off:sonnet[1m]" });
       expect(h.store.read("t1")?.model).toBe("codex--gpt-6-luna");
       expect(sessions[0]!.sent[0]).toContain("the board has no open objective you operate");
       expect(sessions[0]!.sent[0]).not.toContain("Console restarted");
@@ -2012,7 +2022,7 @@ describe("commodore supervisor", () => {
       await supervisor.retry("t1");
       expect(sessions).toHaveLength(2);
       expect(sessions[0]!.disposed).toBe(true);
-      expect(sessionEvents()).toEqual(["restarted", "replaced"]);
+      expect(sessionEvents()).toEqual(["opened", "restarted", "replaced"]);
       expect(tokens().at(-1)).toEqual(["intel:1", "retry", "rotated"]);
       expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
       expect(h.store.read("t1")!.run!.session).toBe(2);

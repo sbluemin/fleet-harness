@@ -14,9 +14,9 @@ import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoo
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
-import { undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
+import { undeliveredMessageSeqs, unheardWakes, type CommodoreUnheardWakes } from "../shared/contracts/delivery.js";
 import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/contracts/attachment-budget.js";
-import { commodoreCompactAt, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import { commodoreCompactAt, EMPTY_RUN_TOTALS, MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_PAGE, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 
 /**
  * 사령관별 감독자. 사건과 켜진 루틴만 깨우며 고정 주기는 없다.
@@ -103,6 +103,8 @@ interface PendingReason {
 
 /** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
 const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
+/** 끌 때 듣지 못하면 다음 기동이 다시 볼 보드 깨움 — 사람의 말·연락·답은 따로 남아 다시 실린다. */
+const UNHEARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>([...BOARD_CODES, "settled", "status", "stalled", "empty", "returned", "resume-failed"]);
 
 /** 깨움 문장의 질문 가리킴 — 첫 질문 앞부분. 답은 asks 도구에 있다. */
 const askDetail = (question: string) => `your question "${question.length > 60 ? `${question.slice(0, 59)}…` : question}" (read asks)`;
@@ -201,7 +203,8 @@ interface Runner {
   replacementSummary?: readonly string[];
   board: CommodoreBoardWatch | null;
   stalledReported: Set<string>;
-  emptyReported: boolean;
+  /** 끌 때 아직 턴이 듣지 못한 보드 깨움 — stop() 이 기록에 남긴다. */
+  unheard: { codes: Set<WakeCode>; ids: Set<string>; all: boolean };
 }
 
 export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): CommodoreSupervisor {
@@ -525,7 +528,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (runner.stopping) {
         // 끄기로 끝나지 못한 턴의 메시지도 stop()이 표시한다. 성공한 턴은 이미 전달됐으므로 제외한다. 남는 대화라도 끊긴 턴의 말이 그
         // 대화에 닿았는지는 모른다(자식이 기록하기 전에 접혔을 수 있다) — 성공을 듣기 전까지는 다시 보낼 수 있게 둔다. 겹쳐 읽는 쪽이 잃는 쪽보다 낫다.
-        if (outcome.outcome !== "ok") runner.messages.unshift(...messages);
+        if (outcome.outcome !== "ok") { runner.messages.unshift(...messages); keepUnheard(runner, pending); }
         return;
       }
       if (outcome.outcome !== "ok") {
@@ -603,11 +606,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return results.slice(-RECENT_ACTIONS);
   };
 
-  const start = (commodoreId: string, reason: WakeCode, wakeImmediately = true) => {
+  const start = (commodoreId: string, reason: WakeCode, wakeImmediately = true, carried?: CommodoreUnheardWakes | null) => {
     if (disposed || clears.has(commodoreId) || stops.has(commodoreId) || !canRun(commodoreId)) return;
     let runner = runners.get(commodoreId);
     if (runner && !runner.stopping) return;
-    runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], mail: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), emptyReported: false };
+    // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
+    const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
+    runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], mail: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),
@@ -617,6 +622,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       },
       forget: (objectiveId) => forgetStatus(current, objectiveId),
       stalledChanged: (ids) => { current.stalledReported = new Set(ids); publish(current); },
+      unheard,
     }) ?? null;
     runners.set(commodoreId, runner);
     setPhase(runner, "idle");
@@ -625,7 +631,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!wakeImmediately) { if (reason === "message") requeueUndelivered(runner); return; }
     requeueUndelivered(runner);
     requeueMail(runner);
-    if (runner.board?.emptyOperated()) { runner.emptyReported = true; wake(runner, "empty"); }
+    if (unheard?.empty && runner.board?.emptyOperated()) wake(runner, "empty");
     // 자율 운영이 꺼진 동안 사람이 답한 질문 — 사령관이 아직 읽지 않았다.
     for (const ask of deps.store.read(commodoreId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });
   };
@@ -636,6 +642,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
    */
   const mentionsOf = (entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>) =>
     (entry.references ?? []).flatMap((ref) => ref.kind === "commodore" ? [{ id: ref.id, alias: ref.title }] : []);
+
+  const unheardOf = (commodoreId: string): CommodoreUnheardWakes | null => {
+    try { return unheardWakes(deps.store.transcriptRead(commodoreId, { limit: MAX_TRANSCRIPT_PAGE }).entries); }
+    catch { return null; }
+  };
 
   const requeueMail = (runner: Runner) => {
     runner.mail.push(...deps.store.pendingReceived(runner.commodoreId));
@@ -662,6 +673,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.stopping = true;
     runner.board?.dispose();
     clearTimer(runner, "coalesce"); clearTimer(runner, "routineTimer"); clearTimer(runner, "retry");
+    keepUnheard(runner, runner.pending);
     runner.pending.clear();
     runner.nextWakeAt = undefined;
     runner.session?.cancel();
@@ -675,6 +687,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.messages.sort((a, b) => a.seq - b.seq);
       const undelivered = takeUndelivered(runner);
       for (let index = 0; index < undelivered.length; index += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "undelivered", seqs: undelivered.slice(index, index + MAX_TRANSCRIPT_PAGE) });
+      // stopped 바로 앞에 둔다 — 다음 기동은 마지막 stopped 앞의 이 줄만 읽는다.
+      const { codes, ids, all } = runner.unheard;
+      if (codes.size) record(runner, { kind: "unheard", codes: [...codes], ...(ids.size && ids.size <= MAX_SCOPE_ITEMS ? { objectiveIds: [...ids] } : {}), ...(all || ids.size > MAX_SCOPE_ITEMS ? { all: true as const } : {}) });
       record(runner, { kind: "session", event: "stopped", reason });
       await runner.session?.dispose();
       runner.session = null;
@@ -759,6 +774,17 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
   }));
 
+  /** 듣지 못한 보드 깨움을 모은다 — 목표를 가리키지 않는 이유(보드에서 다시 세는 대기 수)는 다음 기동이 모든 대기를 다시 보게 한다. */
+  const keepUnheard = (runner: Runner, reasons: Iterable<readonly [WakeCode, PendingReason]>) => {
+    for (const [code, reason] of reasons) {
+      if (!UNHEARD_CODES.has(code)) continue;
+      runner.unheard.codes.add(code);
+      if (code === "empty") continue;
+      const ids = [...(reason.ids?.keys() ?? [])];
+      if (!ids.length) runner.unheard.all = true;
+      for (const id of ids) runner.unheard.ids.add(id);
+    }
+  };
   const noteIds = (runner: Runner, code: WakeCode, id: string, detail: string) => {
     const reason = runner.pending.get(code);
     if (!reason) return;
@@ -804,13 +830,15 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const pending = clears.get(commodoreId);
       if (pending) return pending;
       if (disposed) return Promise.reject(new Error("commodore_inactive"));
+      let carried: CommodoreUnheardWakes | null = null;
       const work = (async () => {
         await stop(commodoreId, "cleared");
-        // 새 문맥 — 제품 기록을 지우므로 다음 세션에는 요약도 없다.
+        // 새 문맥 — 제품 기록을 지우므로 다음 세션에는 요약도 없다. 끊긴 턴이 듣지 못한 보드 깨움만 지우기 전에 건진다.
+        carried = unheardOf(commodoreId);
         deps.store.transcriptClear(commodoreId);
       })().finally(() => {
         clears.delete(commodoreId);
-        if (!disposed && canRun(commodoreId)) start(commodoreId, "started", false);
+        if (!disposed && canRun(commodoreId)) start(commodoreId, "started", false, carried);
       });
       clears.set(commodoreId, work);
       return work;

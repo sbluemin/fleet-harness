@@ -24,6 +24,11 @@ export interface CommodoreWakeSink {
   wake(code: CommodoreBoardWakeCode, input?: { readonly count?: number; readonly bump?: boolean; readonly detail?: string; readonly objectiveId?: string }): void;
   forget(objectiveId: string): void;
   stalledChanged(ids: readonly string[]): void;
+  /**
+   * 지난 종료가 듣지 못했다고 남긴 깨움 — 감시가 막 섰을 때 이미 대기 중인 그룹은 여기 든 목표(`all` 이면 모두)만 깨운다.
+   * 없으면 기동만으로는 깨우지 않는다.
+   */
+  readonly unheard?: { readonly all: boolean; readonly objectiveIds: readonly string[] } | null;
 }
 
 /** 보드 의미·관측·자기 쓰기 판정의 수명은 어댑터가 소유한다. */

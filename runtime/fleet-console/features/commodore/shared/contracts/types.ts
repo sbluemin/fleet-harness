@@ -239,6 +239,11 @@ export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "delivered"; readonly seqs: readonly number[] }
   /** 「전달되지 않음」이었던 메시지를 다시 대기열에 실었다 — 자율 운영이 다시 서면 다음 턴이 읽는다. */
   | CommodoreTranscriptBase & { readonly kind: "requeued"; readonly seqs: readonly number[] }
+  /**
+   * 끌 때 아직 턴이 듣지 못한 보드 깨움 — 대기하던 이유와 끊긴 턴의 이유. 다음 기동은 이 줄이 가리킨 목표만 다시 깨운다
+   * (`objectiveIds`, 목표를 가리키지 않는 이유가 섞였으면 `all`). 재기동 자체는 깨움이 아니다.
+   */
+  | CommodoreTranscriptBase & { readonly kind: "unheard"; readonly codes: readonly string[]; readonly objectiveIds?: readonly string[]; readonly all?: true }
   | CommodoreTranscriptBase & { readonly kind: "error"; readonly code: string; readonly retryAt?: number }
   /** 사령관이 사람에게 물었다 — 질문·선택지 이름·사유·가리킨 목표. 답은 `ask-answered` 줄이 잇는다. */
   | CommodoreTranscriptBase & { readonly kind: "ask"; readonly askId: string; readonly reason: string; readonly questions: readonly CommodoreAskLine[]; readonly objective?: { readonly id: string; readonly title: string } }
@@ -299,6 +304,8 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("undelivered"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("delivered"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("requeued"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
+  // 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
+  z.object({ ...transcriptBase, kind: z.literal("unheard"), codes: z.array(z.string().max(32)).min(1).max(32), objectiveIds: z.array(z.string().min(1).max(128)).min(1).max(MAX_SCOPE_ITEMS).optional(), all: z.literal(true).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("error"), code: z.string().max(64), retryAt: z.number().int().nonnegative().optional() }).strict(),
   // 질문과 답 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("ask"), askId: ids, reason: z.string().max(MAX_ASK_REASON),
