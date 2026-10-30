@@ -201,6 +201,8 @@ interface Runner {
   recentActions: string[];
   /** 실제 첫 턴까지 붙든다 — 보드 사유가 사라져 방금 연 세션이 쉬어도 요약을 잃지 않는다. */
   replacementSummary?: readonly string[];
+  /** 세션 교대에도 유지하는 모델 전용 일회성 진단 — 원장·상태에는 싣지 않는다. */
+  openUIFeedback?: string;
   board: CommodoreBoardWatch | null;
   stalledReported: Set<string>;
   /** 끌 때 아직 턴이 듣지 못한 보드 깨움 — stop() 이 기록에 남긴다. */
@@ -366,6 +368,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = createCommodoreSession({
       commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: boardTools(runner), now,
+      onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },
       onLive: (live) => deps.emit({ op: "live", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), live }),
@@ -511,7 +514,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.turnSent.clear();
       let outcome: CommodoreTurnOutcome;
       try {
-        outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}) });
+        const openUIFeedback = runner.openUIFeedback;
+        runner.openUIFeedback = undefined;
+        outcome = await session.turn({ reasons, sentences, ...(openUIFeedback ? { openUIFeedback } : {}), ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}) });
         // 실패·취소된 시도는 다시 실릴 수 있다. 전하지 않았다는 판정은 성공한 턴에서만 확정한다.
         if (outcome.outcome === "ok") for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
       } finally { runner.turnMessages = []; }

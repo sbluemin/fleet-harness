@@ -42,6 +42,8 @@ export interface CommodoreSessionOptions {
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
   readonly onLive?: (event: CommodoreLiveEvent) => void;
+  /** 다음 깨움에만 실을 진단 — 공개 사건·원장이 아닌 호스트 내부 전달이다. */
+  readonly onOpenUIFeedback?: (note: string | null) => void;
   /** `steer` 로 건넨 말의 행방 — 도는 턴이 집었다(started) 또는 모델에 닿지 못했다(cancelled). id 는 건넬 때 준 그대로다. */
   readonly onInput?: (event: { readonly id: string; readonly state: "started" | "cancelled" }) => void;
   readonly now?: () => number;
@@ -53,6 +55,8 @@ export interface CommodoreTurnInput {
   readonly reasons: readonly string[];
   /** 모델에게 가는 깨움 문장 — 토큰과 같은 순서의 영어 문장. 없으면 토큰 그대로. */
   readonly sentences?: readonly string[];
+  /** 이전 세션의 응답도 포함하는 모델 전용 진단. 기록하지 않는다. */
+  readonly openUIFeedback?: string;
   /** 깨움 노트 아래에 싣는 보드 요약(모델 입력). */
   readonly board?: string;
   /** wake 줄 바로 뒤에 남는 보드 범위(목표 id·운영 판정·코드) — 기록에만 남고 모델에게는 가지 않는다. */
@@ -100,8 +104,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let starting: Promise<void> | null = null;
   let disposed = false;
   let turnActive = false;
-  // 같은 대화의 다음 깨움에만 쓰는 모델용 메모 — 원장·깨움 이유·라이브 사건에는 싣지 않는다.
-  let pendingOpenUIFeedback: string | null = null;
 
   // 텍스트·사고는 델타로 온다 — 블록 단위로 모아 도구 호출·결과 경계에서 기록 한 줄로 내린다.
   let textBuffer = "";
@@ -183,8 +185,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       }
       case "result": {
         flushText(); flushTools();
-        // 도구 호출 앞의 블록도 화면에 그려지므로 턴 전체의 텍스트 원문을 판정한다. 실패 응답은 제외한다.
-        pendingOpenUIFeedback = event.isError ? null : openUIFeedbackNote(turnTextBlocks.join("\n\n"));
         const error = event.isError ? clip(event.detail ?? event.source, MAX_ERROR) : undefined;
         turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(error ? { error } : {}), ...(compactionFailed ? { compactionFailed: true as const } : {}), actions: turnActions };
         record({ kind: "result", outcome: turnResult.outcome, ...(event.usage?.costUsd !== undefined ? { costUsd: event.usage.costUsd } : {}), ...(event.usage ? { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens } : {}), ...(error ? { error } : {}) });
@@ -286,7 +286,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
-        ...(pendingOpenUIFeedback ? [pendingOpenUIFeedback] : []),
+        ...(input.openUIFeedback ? [input.openUIFeedback] : []),
         ...(input.board ? [input.board] : []),
         memoryNote(readMemoryIndex()),
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
@@ -300,8 +300,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
           ? [{ type: "text", text: messageNote([message]) }]
           : [{ type: "text", text: messageNote([message.text]) }, ...message.images]),
       ] : [note, ...(input.messages?.length ? [messageNote(input.messages.map((message) => typeof message === "string" ? message : message.text))] : [])].join("\n\n");
-      // 전송을 시도하면 소비한다. 오류 뒤 재시도나 다음 깨움에 같은 메모를 반복하지 않는다.
-      pendingOpenUIFeedback = null;
       turnActive = true;
       try { await session.send(prompt); }
       catch (error) {
@@ -313,6 +311,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });
       try { options.store.addRunTotals(options.commodoreId, { ...(result.usage?.costUsd ? { costUsd: result.usage.costUsd } : {}), ...(result.actions ? { actions: result.actions } : {}) }); }
       catch (error) { console.warn(`[objectives] commodore totals failed: ${error instanceof Error ? error.message : String(error)}`); }
+      // 도구 앞 블록까지 포함한 턴 전체 원문을 판정한다. 실패·취소는 이전 진단도 비운다.
+      options.onOpenUIFeedback?.(result.outcome === "ok" ? openUIFeedbackNote(turnTextBlocks.join("\n\n")) : null);
       return result;
     },
     cancel() { if (turnActive) session?.cancel(); },
