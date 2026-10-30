@@ -243,7 +243,7 @@ it("strips document-escaping <style> elements and style attributes from shared o
 });
 
 // OpenUI — 사령관·지휘관 말풍선의 생성형 UI는 원문을 HTML로 해석하지 않는다. 화이트리스트 컴포넌트만 고정 태그로 그리고,
-// 확정 때 그릴 수 없는 블록(잘림·미등록 컴포넌트)은 정제된 코드 블록으로 남는다. 답·열기 단추는 사람의 클릭으로만 전송·열기 포트에 닿는다.
+// 틀린 요소만 빼고 나머지를 그리며, 그릴 것이 남지 않은 확정 블록은 원문 코드 없이 숨긴다. 답·열기 단추는 사람의 클릭으로만 전송·열기 포트에 닿는다.
 describe("openui hydrator containment", () => {
   const ALLOWED_TAGS = new Set(["DIV", "SECTION", "P", "SPAN", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "svg", "path"]);
   const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "aria-busy", "aria-hidden", "data-openui-owned", "viewBox", "preserveAspectRatio", "d", "fill", "vector-effect", "focusable"]);
@@ -267,7 +267,7 @@ describe("openui hydrator containment", () => {
     const { installOpenUIHydrator } = await import("@fleet-console/markdown/openui");
     installOpenUIHydrator(container, undefined, options.reply, options.open);
     const blocks = [...container.querySelectorAll<HTMLElement>(".openui-block")];
-    await waitFor(() => blocks.every((block) => block.dataset.openuiState === "fallback" || (block.dataset.openuiState === "rendered" && block.querySelector("section.openui") !== null)), 5000);
+    await waitFor(() => blocks.every((block) => block.dataset.openuiState === "hidden" || (block.dataset.openuiState === "rendered" && block.querySelector("section.openui") !== null)), 5000);
     return blocks;
   }
 
@@ -331,7 +331,7 @@ describe("openui hydrator containment", () => {
     expect(view.querySelector(".openui-progress-note")?.textContent).toBe("<iframe src=//evil.example>");
   });
 
-  it("falls back to the sanitized code block for truncated or unknown programs", async () => {
+  it("draws the valid parts and hides blocks with nothing left to draw", async () => {
     const blocks = await hydrated([
       "```openui-lang",
       'root = Card("x", [Html("<script>alert(1)</script>")])',
@@ -340,25 +340,29 @@ describe("openui hydrator containment", () => {
       ...[
         'root = Card("x", [Moment("14:02", "x")])',
         'root = Card("x", [Sparklines([Sparkline("x", [1])])])',
-        `root = Card("x", [Tags([${Array.from({ length: 13 }, () => 'Tag("x")').join(", ")}])])`,
+        'root = Card("x", [Callout("남는다"), Button("X", @Run("anything")), Tags([Tag("a"), Tag(1)])])',
       ].flatMap((source) => ["```openui-lang", source, "```", ""]),
       "```openui-lang",
       'root = Card("x", [kpi])',
       'kpi = Stats([Stat("목표", "3"), Stat("결정", ',
     ].join("\n"));
 
-    expect(blocks).toHaveLength(5);
-    for (const block of blocks) {
-      expect(block.dataset.openuiState).toBe("fallback");
+    expect(blocks.map((block) => block.dataset.openuiState)).toEqual(["hidden", "hidden", "hidden", "rendered", "rendered"]);
+    for (const block of blocks.slice(0, 3)) {
       expect(block.querySelector("[data-openui-owned]")).toBeNull();
-      expect(block.querySelector("pre.code-block")).not.toBeNull();
+      expect(block.textContent).not.toContain("Drawing");
     }
     expect(blocks[0]!.querySelector("script")).toBeNull();
-    // 흐르는 중이라도 더 와도 풀리지 않는 위반(원문에 적힌 Stat 5개 > 상한 4)은 카드를 거치지 않고 바로 코드 블록이다.
-    const [streaming] = await hydrated(["```openui-lang", 'root = Card("x", [kpi])', "kpi = Stats([a, b, c, d, e])", 'a = Stat("목표", '].join("\n"), { streaming: true });
-    expect(streaming!.getAttribute("data-openui-final")).toBe("0");
-    expect(streaming!.dataset.openuiState).toBe("fallback");
-    expect(streaming!.querySelector("[data-openui-owned]")).toBeNull();
+    // 틀린 단추·태그만 빠지고 형제는 남는다. 잘린 마지막 Stat 도 그것만 빠진다. 원문은 어느 블록에서도 보이지 않는다.
+    expect(blocks[3]!.querySelector(".openui-callout-text")?.textContent).toBe("남는다");
+    expect(blocks[3]!.querySelector("[data-openui-owned] button")).toBeNull();
+    expect([...blocks[3]!.querySelectorAll(".openui-tags .openui-tag")].map((tag) => tag.textContent)).toEqual(["a"]);
+    expect([...blocks[4]!.querySelectorAll(".openui-stat-label")].map((label) => label.textContent)).toEqual(["목표"]);
+    // 다음 턴 되먹임은 같은 정제 판정으로 무엇이 왜 빠졌는지 모델용 메모로 만든다. 화면에는 그리지 않는다.
+    const { openUIFeedbackNote } = await import("@fleet-console/markdown/openui-feedback");
+    const note = openUIFeedbackNote(["```openui-lang", 'root = Card("x", [Callout("남는다"), Button("X", @Run("anything"))])', "```"].join("\n"));
+    expect(note).toContain("block 1 · Button");
+    expect(openUIFeedbackNote(["```openui-lang", 'root = Card("x", [Callout("남는다")])', "```"].join("\n"))).toBeNull();
     // 켜지 않은 대화(구성원·일반 채팅)에서는 자리표시자조차 생기지 않는다.
     expect(renderMarkdown("```openui-lang\nroot = Card(\"x\", [])\n```").html).not.toContain("openui-block");
   });
@@ -399,8 +403,8 @@ describe("openui hydrator containment", () => {
       ["```openui-lang", `root = Card("x", [Button("긴 답", @ToAssistant("${"가".repeat(201)}"))])`, "```"].join("\n"),
     ].join("\n\n"));
     const [hidden] = await hydrated(['```openui-lang', 'root = Card("x", [Button("요약", @ToAssistant("요약해 주세요", "숨은 문맥"))])', '```'].join("\n"), { reply });
-    expect(hidden!.dataset.openuiState).toBe("fallback");
-    expect(refused.map((block) => block.dataset.openuiState)).toEqual(["fallback", "fallback", "fallback"]);
+    expect(hidden!.dataset.openuiState).toBe("hidden");
+    expect(refused.map((block) => block.dataset.openuiState)).toEqual(["hidden", "hidden", "hidden"]);
     expect(reply).not.toHaveBeenCalled();
 
     // 말 속 원시 HTML의 표식을 정제가 걷는다. 정제를 우회해 소유 칸 안에 들어온 위조 단추도 React 클릭 클로저가 없다.
@@ -438,7 +442,7 @@ describe("openui hydrator containment", () => {
     expect(inert!.querySelector("[data-openui-owned] button")).toBeNull();
     const [streaming] = await hydrated(["```openui-lang", source].join("\n"), { streaming: true, open });
     expect([...streaming!.querySelectorAll<HTMLButtonElement>("[data-openui-owned] button")].every((button) => button.disabled)).toBe(true);
-    // 대상만 거부된 단일 @OpenUrl은 카드를 남기고 그 단추만 누를 수 없는 라벨이 된다. 다른 형태의 액션은 블록을 거절한다.
+    // 대상만 거부된 단일 @OpenUrl은 카드를 남기고 그 단추만 누를 수 없는 라벨이 된다. 다른 형태의 액션은 그 단추를 뺀다.
     const targets = ["javascript:alert(1)", "http://example.com/", "https://github.com@evil.example/x", "https://GitHub.com/", `https://example.com/${"a".repeat(8173)}`, "commodore:01234567-89AB-CDEF-0123-456789ABCDEF", "commodore:01234567-89ab-cdef-0123-456789abcdef/other"];
     const refused = await hydrated([
       ...targets.map((target) => `root = Card("x", [Callout("남는다"), Button("X", @OpenUrl(${JSON.stringify(target)}))])`),
@@ -453,7 +457,7 @@ describe("openui hydrator containment", () => {
       expect(candidate.querySelector("[data-openui-owned] button, a, [href]")).toBeNull();
       expect(candidate.querySelector<HTMLElement>(".openui-inert")?.title).toBe(targets[i]);
     }
-    expect(refused.slice(targets.length).every((candidate) => candidate.dataset.openuiState === "fallback")).toBe(true);
+    expect(refused.slice(targets.length).every((candidate) => candidate.dataset.openuiState === "hidden")).toBe(true);
     inertTargets.forEach((candidate) => candidate.querySelector<HTMLElement>(".openui-inert")!.click());
     expect(open.open).not.toHaveBeenCalled();
 
@@ -524,12 +528,13 @@ describe("openui hydrator containment", () => {
     ].map((template) => ["```openui-lang", `root = Card("x", [Form([Input("pr", "PR")], "${template}", "보내기")])`, "```"].join("\n")).concat([
       ["```openui-lang", 'root = Card("x", [Form([Input("a", "A")], "A {a}", "보내기"), Form([Input("pr", "PR")], "PR {pr}", "보내기")])', "```"].join("\n"),
     ]).join("\n\n"));
-    expect(refused.every((candidate) => candidate.dataset.openuiState === "fallback")).toBe(true);
+    expect(refused.map((candidate) => candidate.dataset.openuiState)).toEqual(["hidden", "hidden", "hidden", "hidden", "hidden", "rendered"]);
+    expect(refused[5]!.querySelectorAll(".openui-form")).toHaveLength(1);
   });
 
   // 블록·호스트가 사라질 때 루트가 남으면 스트림과 함께 구독·메모리가 누적된다. 기존 격리 검사는 이 수명을 보지 않는다.
   it("releases React roots when blocks leave or the host releases", async () => {
-    const markdown = '```openui-lang\nroot = Card("수명", [])\n```';
+    const markdown = '```openui-lang\nroot = Card("수명", [Callout("x")])\n```';
     const blocks = await hydrated([markdown, markdown, markdown, markdown].join("\n\n"));
     const container = blocks[0]!.parentElement!;
     const views = blocks.map((block) => block.querySelector<HTMLElement>("[data-openui-owned]")!);
@@ -538,8 +543,8 @@ describe("openui hydrator containment", () => {
     await waitFor(() => views[0]!.childNodes.length === 0);
     blocks[1]!.replaceWith(document.createElement("p"));
     await waitFor(() => views[1]!.childNodes.length === 0);
-    blocks[2]!.setAttribute("data-openui-source", encodeMermaidSource('root = Card("잘림", ['));
-    await waitFor(() => blocks[2]!.dataset.openuiState === "fallback" && views[2]!.childNodes.length === 0);
+    blocks[2]!.setAttribute("data-openui-source", encodeMermaidSource('root = Card("빠짐", [Html("x")])'));
+    await waitFor(() => blocks[2]!.dataset.openuiState === "hidden" && views[2]!.childNodes.length === 0);
     container.innerHTML = markdown;
     await waitFor(() => views[3]!.childNodes.length === 0);
 

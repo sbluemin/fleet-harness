@@ -1,6 +1,7 @@
 /**
  * OpenUI 하이드레이터 — 정제된 자리표시자 옆의 소유 칸에 블록별 React 루트를 둔다.
- * 원문·확정 여부가 바뀌면 같은 루트를 갱신하고, 폴백·블록 제거·호스트 해제 때 루트를 걷는다.
+ * 원문·확정 여부가 바뀌면 같은 루트를 갱신하고, 숨김·블록 제거·호스트 해제 때 루트를 걷는다.
+ * 렌더러에는 정제한 원문만 넘긴다. 그릴 것이 남지 않은 확정 블록은 원문 코드도 안내 문구도 없이 숨긴다.
  * 렌더러는 처음 블록을 만날 때 지연 로드한다. 모듈 상태는 이 번들 안에서만 쓰며 다른 번들과 조율하지 않는다.
  * 전송·열기 포트는 설치 root마다 주입하고 React 컴포넌트의 클릭 클로저로만 건넨다. DOM 속성은 행동의 권한이 아니다.
  */
@@ -66,66 +67,6 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
   const generations = new WeakMap<HTMLElement, number>();
   // 제거된 블록도 찾을 수 있도록 설치마다 소유 블록을 추적한다. 전역 맵은 약한 참조만 갖는다.
   const mine = new Set<HTMLElement>();
-  const settling = new Map<HTMLElement, { h: Animation; o: Animation; from: number }>();
-
-  const endSettle = (block: HTMLElement) => {
-    settling.delete(block);
-    block.removeAttribute("data-openui-settling");
-  };
-  const stopSettle = (block: HTMLElement) => {
-    const current = settling.get(block);
-    if (!current) return;
-    // 늦게 오는 취소 이벤트가 다음 보간을 지우지 않도록 먼저 연결을 끊는다.
-    current.h.onfinish = current.h.oncancel = null;
-    endSettle(block);
-    current.h.cancel();
-    current.o.cancel();
-  };
-  const startSettle = (block: HTMLElement, from: number) => {
-    const view = block.ownerDocument.defaultView;
-    if (typeof block.animate !== "function" || typeof view?.matchMedia !== "function"
-      || view.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const pre = block.querySelector<HTMLElement>(":scope > pre");
-    if (!pre || typeof pre.animate !== "function") return;
-    const style = view.getComputedStyle(block);
-    const duration = (token: string) => {
-      const value = style.getPropertyValue(token).trim();
-      const match = /^(\d+(?:\.\d+)?|\.\d+)(ms|s)$/.exec(value);
-      return match ? Number(match[1]) * (match[2] === "s" ? 1000 : 1) : 0;
-    };
-    const slow = duration("--duration-slow");
-    const fast = duration("--duration-fast");
-    const glide = style.getPropertyValue("--ease-glide").trim();
-    const spring = style.getPropertyValue("--ease-spring").trim();
-    if (!(slow > 0 && fast > 0) || !glide || !spring) return;
-    let h: Animation | undefined;
-    let o: Animation | undefined;
-    try {
-      const to = pre.getBoundingClientRect().height;
-      block.setAttribute("data-openui-settling", "");
-      h = block.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: slow, easing: glide });
-      o = pre.animate([{ opacity: 0 }, { opacity: 1 }], { duration: fast, easing: spring });
-      settling.set(block, { h, o, from });
-      h.onfinish = h.oncancel = () => stopSettle(block);
-    } catch {
-      // 호스트 토큰이나 애니메이션을 쓸 수 없으면 원문 전체를 자연 높이로 보인다.
-      h?.cancel();
-      o?.cancel();
-      endSettle(block);
-    }
-  };
-  const retargetSettle = (block: HTMLElement) => {
-    const current = settling.get(block);
-    if (!current) return;
-    const pre = block.querySelector<HTMLElement>(":scope > pre");
-    try {
-      if (!pre || !(current.h.effect instanceof KeyframeEffect)) return stopSettle(block);
-      current.h.effect.setKeyframes([{ height: `${current.from}px` }, { height: `${pre.getBoundingClientRect().height}px` }]);
-    } catch {
-      stopSettle(block);
-    }
-  };
-
   const release = (block: HTMLElement) => {
     const mounted = roots.get(block);
     if (!mounted) return;
@@ -140,14 +81,11 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
   const paint = (mounted: Mounted, library: Library) => {
     mounted.root.render(createElement(library.OpenUIView, { source: mounted.source, final: mounted.final, labels, send: port, open: openPort }));
   };
-  const fallback = (block: HTMLElement) => {
-    const wasCard = block.getAttribute("data-openui-state") === "rendered";
-    const from = wasCard ? block.getBoundingClientRect().height : 0;
+  // 원문(코드 블록)도 보조 글자도 남기지 않는다. 무엇이 왜 빠졌는지는 화면이 아니라 다음 턴 입력으로 모델에게만 간다.
+  const hide = (block: HTMLElement) => {
     release(block);
     block.querySelector(OWNED_SELECTOR)?.remove();
-    block.setAttribute("data-openui-state", "fallback");
-    if (wasCard) startSettle(block, from);
-    else retargetSettle(block);
+    block.setAttribute("data-openui-state", "hidden");
   };
   async function hydrate(block: HTMLElement): Promise<void> {
     const generation = (generations.get(block) ?? 0) + 1;
@@ -159,14 +97,14 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
     let library: Library;
     try { library = await loadLibrary(); }
     catch {
-      if (!disposed && generations.get(block) === generation && final) fallback(block);
+      if (!disposed && generations.get(block) === generation && final) hide(block);
       return;
     }
     if (disposed || generations.get(block) !== generation || !root.contains(block) || !block.isConnected) return;
     const verdict = library.judge(source, final);
-    if (verdict.kind === "fallback") return fallback(block);
+    if (verdict.kind === "hide") return hide(block);
     if (verdict.kind === "hold") return; // 지난 그림(또는 보조 글자)을 지킨다.
-    stopSettle(block);
+    source = verdict.source;
     const mounted = roots.get(block);
     if (!mounted) {
       const view = owned(block);
@@ -200,7 +138,6 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
       }
     }
     for (const block of mine) if (!root.contains(block) || !block.isConnected) release(block);
-    for (const block of settling.keys()) if (!root.contains(block) || !block.isConnected) stopSettle(block);
     for (const block of touched) if (root.contains(block) && block.isConnected) void hydrate(block);
   });
   observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-openui-source", "data-openui-final"] });
@@ -222,7 +159,6 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
       disposed = true;
       observer.disconnect();
       for (const block of mine) release(block);
-      for (const block of settling.keys()) stopSettle(block);
     },
   });
   for (const block of root.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)) void hydrate(block);
