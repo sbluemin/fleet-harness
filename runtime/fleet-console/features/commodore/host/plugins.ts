@@ -113,6 +113,8 @@ interface RegistryMarketplace {
   readonly updatedAt?: number;
   /** 마지막으로 받기를 시도한 시각 — 실패한 기본 제공을 목록 읽기마다 다시 받지 않게 한다. */
   readonly attemptedAt?: number;
+  /** 마켓 갱신 때 확인한 설치 플러그인의 출처 커밋. 목록 읽기는 네트워크 대신 이 스냅샷을 쓴다. */
+  readonly revisions?: Readonly<Record<string, { readonly source: string; readonly sha: string }>>;
 }
 
 interface Registry {
@@ -457,6 +459,29 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     });
   };
 
+  /** 커밋 확인만 하는 Git 자식. 인증 프롬프트·임의 전송 헬퍼를 막고 실패·시간 초과는 후보 없음으로 돌린다. */
+  const readGit = (args: readonly string[], cwd: string): Promise<string | undefined> => new Promise((resolve) => {
+    const env = { ...(options.env?.() ?? process.env), GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes" };
+    const fullArgs = ["-c", "protocol.allow=never", ...["https", "http", "ssh", "git", "file"].flatMap((protocol) => ["-c", `protocol.${protocol}.allow=always`]), ...args];
+    let owned: ReturnType<OwnedProcessPort["spawnOwned"]> | undefined;
+    let child: ReturnType<typeof spawn> | NonNullable<typeof owned>;
+    try {
+      owned = options.processes?.spawnOwned({ command: "git", args: fullArgs, cwd, env, stdin: "ignore" });
+      child = owned ?? spawn("git", fullArgs, { cwd, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    } catch { resolve(undefined); return; }
+    let stdout = "";
+    let expired = false;
+    const timer = setTimeout(() => {
+      expired = true;
+      if (owned) owned.killGroup("SIGKILL"); else child.kill("SIGKILL");
+      resolve(undefined);
+    }, 15_000);
+    child.stdout?.on("data", (chunk: Buffer) => { if (stdout.length < 64_000) stdout += chunk.toString("utf8"); });
+    child.stderr?.on("data", () => undefined);
+    child.on("error", () => { clearTimeout(timer); resolve(undefined); });
+    child.on("close", (code) => { clearTimeout(timer); resolve(!expired && code === 0 ? stdout.trim() : undefined); });
+  });
+
   const errorCode = (result: CliResult): MarketplaceErrorCode => {
     const text = `${result.failureCode ?? ""} ${result.message ?? ""}`.toLowerCase();
     if (result.failureCode === "invalid_source") return "invalid_source";
@@ -550,6 +575,59 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     const { plugin, marketplace } = splitPluginId(id);
     return entriesOf(marketplace).find((entry) => entry.name === plugin);
   };
+
+  const revisionSource = (document: MarketplaceDocument, entry: MarketplaceEntry): string =>
+    JSON.stringify([document?.root, entry.source]);
+  const cachedRevision = (id: string, document: MarketplaceDocument, entry: MarketplaceEntry): string | undefined => {
+    const { plugin, marketplace } = splitPluginId(id);
+    const cached = readRegistry().marketplaces.find((row) => row.name === marketplace)?.revisions?.[plugin];
+    return cached?.source === revisionSource(document, entry) && /^[a-f0-9]{40,64}$/i.test(cached.sha) ? cached.sha : undefined;
+  };
+  /** CLI 와 같이 상대 출처는 폴더의 마지막 커밋이 아니라 마켓 HEAD 를 버전으로 삼는다. */
+  const refreshRevisions = async (name: string): Promise<void> => {
+    const document = documentOf(name);
+    const installs = installed();
+    const revisions: Record<string, { source: string; sha: string }> = {};
+    const pending = entriesOf(name).filter((entry) => installs[`${entry.name}@${name}`]);
+    const requests = new Map<string, Promise<string | undefined>>();
+    const once = (key: string, read: () => Promise<string | undefined>) => {
+      let result = requests.get(key);
+      if (!result) { result = read(); requests.set(key, result); }
+      return result;
+    };
+    const readRevision = async (entry: MarketplaceEntry): Promise<string | undefined> => {
+      if (typeof entry.source === "string") {
+        // 상위 저장소를 우연히 찾지 않는다 — 비 Git 디렉터리 마켓은 커밋 후보가 없다.
+        if (!document?.root || !fs.existsSync(path.join(document.root, ".git"))) return undefined;
+        return await once(document.root, () => readGit(["rev-parse", "--verify", "HEAD^{commit}"], document.root!));
+      }
+      const source = isRecord(entry.source) ? entry.source : null;
+      if (!source || source.sha) return undefined;
+      const url = source.source === "github" && typeof source.repo === "string" && /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(source.repo)
+        ? `https://github.com/${source.repo}.git`
+        : (source.source === "url" || source.source === "git-subdir") && typeof source.url === "string" ? source.url : undefined;
+      if (!url || !url.trim() || url.startsWith("-") || /[\s\0]/.test(url)) return undefined;
+      const ref = source.ref === undefined ? "HEAD" : source.ref;
+      if (typeof ref !== "string" || !ref || ref.startsWith("-") || !/^[A-Za-z0-9._/-]+$/.test(ref)) return undefined;
+      return await once(JSON.stringify([url, ref]), async () => {
+        const refs = ref === "HEAD" || ref.startsWith("refs/") ? [ref] : [`refs/heads/${ref}`, `refs/tags/${ref}`];
+        const output = await readGit(["ls-remote", "--exit-code", "--", url, ...refs.flatMap((item) => [item, `${item}^{}`])], options.root);
+        const found = new Map(output?.split("\n").map((line) => line.split(/\s+/) as [string, string]).map(([sha, ref]) => [ref, sha]));
+        for (const ref of refs) { const sha = found.get(`${ref}^{}`) ?? found.get(ref); if (sha) return sha; }
+        return undefined;
+      });
+    };
+    // 설치한 출처만 최대 네 개씩 확인한다. 하나가 실패해도 다른 마켓 항목과 설치본에는 영향이 없다.
+    await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
+      for (let entry = pending.shift(); entry; entry = pending.shift()) {
+        const sha = await readRevision(entry);
+        if (sha && /^[a-f0-9]{40,64}$/i.test(sha)) revisions[entry.name] = { source: revisionSource(document, entry), sha };
+      }
+    }));
+    patchMarketplace(name, { revisions });
+  };
+  const bundledVersion = (id: string, document: MarketplaceDocument, entry: MarketplaceEntry, dir: string): string | undefined =>
+    text(manifestOf(dir).version, 128) ?? text(entry.version, 128) ?? cachedRevision(id, document, entry)?.slice(0, 12);
 
   /**
    * 세션이 실을 디렉터리. 설치본에 plugin.json 이 있거나 marketplace 항목이 strict 이면 설치본 그대로다.
@@ -717,17 +795,11 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       ...(description ? { description } : {}), ...(owner ? { owner } : {}),
     };
   };
-  /** `v1.5.5` 같은 표기는 앞의 `v` 를 벗기고 버전으로 받는다. `main` 같은 ref 는 버전이 아니다. */
-  const versionShapedRef = (ref: unknown): string | undefined => {
-    if (typeof ref !== "string") return undefined;
-    const bare = /^[vV](?=\d)/.test(ref) ? ref.slice(1) : ref;
-    return /^\d+\.\d+/.test(bare) ? bare : undefined;
-  };
   /**
    * 설치본 대비 마켓 쪽 새 버전 후보 — 파일만 읽고 CLI·네트워크를 부르지 않는다.
-   * - 상대 경로 출처(마켓 저장소 안 폴더): 그 폴더 plugin.json version → 마켓 항목 version. 둘 다 없으면 비움.
-   * - 외부 출처(url·git-subdir·github): 항목 source.sha 가 설치본 gitCommitSha 와 다르면 항목 version → 버전 모양의
-   *   source.ref → sha 앞 12자. 새 버전의 실행 명령은 미리 읽을 수 없어 runs 는 싣지 않는다.
+   * - 상대 경로 출처(마켓 저장소 안 폴더): plugin.json version → 마켓 항목 version → 갱신 때 확인한 마켓 HEAD 앞 12자.
+   * - 외부 출처(url·git-subdir·github): source.sha 또는 갱신 때 확인한 원격 커밋이 설치본과 다르면 항목 version →
+   *   sha 앞 12자. ref 는 버전 선언이 아니다. 새 버전의 실행 명령은 미리 읽을 수 없어 runs 는 싣지 않는다.
    * - 설치본과 같은 표시값이어도 sha 가 다르면 싣는다(버전을 올리지 않은 채 내용만 바뀐 경우). 그 밖이나 읽을 수 없으면 비움.
    */
   const latestOf = (
@@ -740,17 +812,17 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   ): Pick<PluginCatalogEntry, "latestVersion" | "latestRuns"> => {
     if (!installs[id] || !installedVersion) return {};
     const bundled = bundledDirOf(document, entry);
-    if (bundled) {
-      const candidate = text(manifestOf(bundled).version, 128) ?? text(entry.version, 128);
+    if (typeof entry.source === "string") {
+      const candidate = bundled ? bundledVersion(id, document, entry, bundled) : text(entry.version, 128) ?? cachedRevision(id, document, entry)?.slice(0, 12);
       if (!candidate || candidate === installedVersion) return {};
-      const runs = describe(id, bundled).runs;
+      const runs = bundled ? describe(id, bundled).runs : undefined;
       return { latestVersion: candidate, ...(runs?.length && trusted[id] !== candidate ? { latestRuns: runs } : {}) };
     }
     const source = isRecord(entry.source) ? entry.source : null;
-    const sha = source && typeof source.sha === "string" && source.sha ? source.sha : undefined;
+    const sha = source && typeof source.sha === "string" && source.sha ? source.sha : cachedRevision(id, document, entry);
     const installedSha = installs[id]?.[0]?.gitCommitSha;
     if (!source || !sha || !installedSha || sha === installedSha) return {};
-    const display = text(entry.version, 128) ?? versionShapedRef(source.ref) ?? sha.slice(0, 12);
+    const display = text(entry.version, 128) ?? sha.slice(0, 12);
     if (!display) return {};
     return { latestVersion: display };
   };
@@ -798,6 +870,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       const merged = existing ? { ...row, enabled: existing.enabled } : row;
       return { ...current, marketplaces: existing ? current.marketplaces.map((item) => item.name === name ? merged : item) : [...current.marketplaces, merged] };
     });
+    await refreshRevisions(name);
     return view(registry.marketplaces.find((item) => item.name === name)!);
   };
 
@@ -814,6 +887,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
         else patchMarketplace(preset.name, { status: "syncing", attemptedAt: now() });
         if (known()[preset.name]) {
           const result = await runCli(["marketplace", "update", preset.name]);
+          if (result.outcome === "ok") await refreshRevisions(preset.name);
           // CLI 가 없으면 실패로 남겨 재시도 간격(PRESET_RETRY_MS)을 따르게 한다 — 받아 둔 이전 목록은 실패여도 그대로 보인다.
           const unavailable = result.failureCode === "cli_unavailable";
           patchMarketplace(preset.name, result.outcome === "ok" ? { status: "ready", updatedAt: now() } : { status: known()[preset.name] && !unavailable ? "ready" : "failed", ...(result.outcome === "ok" ? {} : { error: errorCode(result) }) }, result.outcome === "ok");
@@ -984,6 +1058,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
             continue;
           }
           const result = await runCli(["marketplace", "update", target]);
+          if (result.outcome === "ok") await refreshRevisions(target);
           patchMarketplace(target, result.outcome === "ok" ? { status: "ready", updatedAt: now() } : { status: "failed", error: errorCode(result) }, result.outcome === "ok");
         }
       });
@@ -1024,7 +1099,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
      *
      * 신뢰(기준 6): 새 버전에 실행 명령이 있고 그 버전을 신뢰한 적이 없으면, 사람이 확인하기 전에 새 버전이 어떤 세션에도
      * 실리지 않게 거절한다(`trust_required`, details `{ version, runs }`). 상대 경로 출처는 업데이트 전에 번들 폴더로
-     * 판단하므로 CLI 를 부르기 전에 거절한다. 미리 읽을 수 없으면(외부 출처·버전 없는 상대 플러그인) 업데이트 뒤 새
+     * 판단하므로 CLI 를 부르기 전에 거절한다. 미리 읽을 수 없으면(외부 출처·커밋도 확인하지 못한 상대 플러그인) 업데이트 뒤 새
      * 설치본으로 판단하고, 신뢰가 없으면 설치 기록을 이전 버전(캐시에 남아 있음)으로 되돌린 뒤 같은 거절을 낸다.
      * `trusted` 로 다시 오면 `trusted[id] = 새 버전` 을 기록하고 진행한다.
      */
@@ -1045,8 +1120,9 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
         const beforeVersion = beforeDescribed?.version ?? before?.version;
         const beforeRuns = JSON.stringify(beforeDescribed?.runs ?? []);
         // 상대 출처는 업데이트 전에 번들 폴더로 새 버전·실행 명령을 안다 — 신뢰 없으면 CLI 를 부르기 전에 거절한다.
-        const bundled = bundledDirOf(documentOf(row.name), entry);
-        const candidate = bundled ? text(manifestOf(bundled).version, 128) ?? text(entry.version, 128) : undefined;
+        const document = documentOf(row.name);
+        const bundled = bundledDirOf(document, entry);
+        const candidate = bundled ? bundledVersion(id, document, entry, bundled) : undefined;
         const preRuns = bundled ? describe(id, bundled).runs ?? [] : [];
         if (bundled && candidate && beforeVersion && candidate !== beforeVersion && preRuns.length > 0 && readRegistry().trusted[id] !== candidate) {
           if (!approves(candidate, preRuns)) throw new CommodoreStoreError("trust_required", undefined, { version: candidate, runs: preRuns });
