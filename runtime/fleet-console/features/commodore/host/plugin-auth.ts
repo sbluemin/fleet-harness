@@ -56,7 +56,8 @@ const SIGNAL_TIMEOUT_MS = 8_000;
  * `needs-auth`가 아니라 `failed`로 보고한다(CLI 2.1.312 실측). 그때 이 신호로 다시 판정한다. 응답 본문은 읽지 않는다.
  */
 export async function readMcpAuthSignal(config: ClaudeGatewayExternalMcpServer): Promise<"needs-auth" | PluginAuthFailure> {
-  if (config.type === "stdio") return "error";
+  // WebSocket 과 동적 헤더는 이 HTTP 탐침으로 재현할 수 없다. 헬퍼는 Claude 자식만 실행하고 그 자식의 상태를 따른다.
+  if (config.type === "stdio" || config.type === "ws" || config.headersHelper !== undefined) return "error";
   // 펼치지 않은 자리표시가 남은 주소·헤더는 보내지 않는다.
   if (config.url.includes("${") || Object.values(config.headers ?? {}).some((value) => value.includes("${"))) return "error";
   let response: Response;

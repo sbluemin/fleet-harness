@@ -51,14 +51,19 @@ describe("Claude MCP control child", () => {
     writeFileSync(cli, FAKE_CLI);
     writeFileSync(log, "");
     const spawned: Record<string, string | undefined>[] = [];
+    const configs: unknown[] = [];
     const control = openClaudeMcpControl({
       executablePath: cli,
       env: { PATH: process.env.PATH, ANTHROPIC_API_KEY: "sk-never", FAKE_CLI_LOG: log },
       configDir: path.join(root, "home"),
       cwd: root,
       credentials: "shared",
-      servers: { "plugin:fixture:remote": { type: "http", url: "https://mcp.example.test/mcp" } },
-      spawnProcess: (request) => { spawned.push({ ...request.env }); return spawn(process.execPath, [cli], { cwd: request.cwd, env: { ...request.env }, stdio: ["pipe", "pipe", "pipe"] }); },
+      servers: { "plugin:fixture:remote": { type: "ws", url: "wss://mcp.example.test/mcp", headers: { "X-Client": "fleet" }, headersHelper: "node /plugin/headers.cjs" } },
+      spawnProcess: (request) => {
+        spawned.push({ ...request.env });
+        configs.push(JSON.parse(request.args[request.args.indexOf("--mcp-config") + 1]!));
+        return spawn(process.execPath, [cli], { cwd: request.cwd, env: { ...request.env }, stdio: ["pipe", "pipe", "pipe"] });
+      },
     });
     try {
       // 설정(헤더)과 모르는 상태는 상태 목록에 실리지 않는다.
@@ -73,6 +78,8 @@ describe("Claude MCP control child", () => {
     expect(requests[2]).toMatchObject({ serverName: "plugin:fixture:remote" });
     expect(requests[3]).toMatchObject({ serverName: "plugin:fixture:remote", callbackUrl: "http://localhost:1/callback?code=c&state=s" });
     expect(requests[4]).toMatchObject({ serverName: "plugin:fixture:remote" });
+    // 원격 전송 방식과 동적 인증 명령도 실제 CLI 인자로 보존한다. 헬퍼를 이 프로세스에서 실행하지 않는다.
+    expect(configs).toEqual([{ mcpServers: { "plugin:fixture:remote": { type: "ws", url: "wss://mcp.example.test/mcp", headers: { "X-Client": "fleet" }, headersHelper: "node /plugin/headers.cjs" } } }]);
     // 기본 보안 저장소 항목을 쓰고, 모델 자격은 싣지 않는다.
     expect(spawned[0]).toMatchObject({ CLAUDE_CONFIG_DIR: path.join(root, "home"), CLAUDE_SECURESTORAGE_CONFIG_DIR: "" });
     expect(spawned[0]?.ANTHROPIC_API_KEY).toBeUndefined();

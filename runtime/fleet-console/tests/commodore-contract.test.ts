@@ -740,8 +740,8 @@ describe("commodore theater state", () => {
     writePlugin(path.join(cache, "nover", "b8394fda9111"), { name: "nover" }, hooksOf("echo new"));
     writePlugin(path.join(cache, "ext", "1.9.0"), { name: "ext", version: "1.9.0" });
     writePlugin(path.join(cache, "ext2", "1.0.0"), { name: "ext2", version: "1.0.0" });
-    writePlugin(path.join(cache, "ext2", "1.0.0-b"), { name: "ext2", version: "1.0.0" }, hooksOf("echo added"));
-    writePlugin(path.join(cache, "ext2", "1.0.0-c"), { name: "ext2", version: "1.0.0" }, hooksOf("echo changed"));
+    writePlugin(path.join(cache, "ext2", "1.0.0-b"), { name: "ext2", version: "1.0.0", mcpServers: { remote: { type: "ws", url: "wss://mcp.example.test/mcp", headersHelper: "echo added" } } });
+    writePlugin(path.join(cache, "ext2", "1.0.0-c"), { name: "ext2", version: "1.0.0", mcpServers: { remote: { type: "ws", url: "wss://mcp.example.test/mcp", headersHelper: "echo changed" } } });
     fs.mkdirSync(path.join(market, ".claude-plugin"), { recursive: true });
     fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", plugins: [
       { name: "tool", source: "./plugins/tool", version: "1.0.0" },
@@ -856,12 +856,12 @@ else { console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected"
     expect(invalidate).toHaveBeenCalledTimes(1);
     // 표시 버전이 같아도 설치본이 바뀌어 새 명령이 생기면 신뢰를 묻고 되돌린다.
     mode = "relabel-ext2";
-    expect(await updateRoute({ pluginId: "ext2@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.0.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo added" }] } } });
+    expect(await updateRoute({ pluginId: "ext2@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.0.0", runs: [{ kind: "mcp", label: "remote headersHelper", command: "echo added" }] } } });
     expect(installedFile().plugins["ext2@team"]![0]).toMatchObject({ installPath: path.join(cache, "ext2", "1.0.0"), gitCommitSha: SHA_A });
     // 그 명령을 신뢰한 뒤에도 같은 표시 버전 아래 명령이 다시 바뀌면 또 묻는다.
-    expect(await updateRoute({ pluginId: "ext2@team", trusted: true, version: "1.0.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo added" }] })).toMatchObject({ status: 200, value: { outcome: "updated" } });
+    expect(await updateRoute({ pluginId: "ext2@team", trusted: true, version: "1.0.0", runs: [{ kind: "mcp", label: "remote headersHelper", command: "echo added" }] })).toMatchObject({ status: 200, value: { outcome: "updated" } });
     mode = "relabel-ext2-c";
-    expect(await updateRoute({ pluginId: "ext2@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.0.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo changed" }] } } });
+    expect(await updateRoute({ pluginId: "ext2@team" })).toMatchObject({ status: 409, value: { error: "trust_required", details: { version: "1.0.0", runs: [{ kind: "mcp", label: "remote headersHelper", command: "echo changed" }] } } });
     expect(installedFile().plugins["ext2@team"]![0]).toMatchObject({ installPath: path.join(cache, "ext2", "1.0.0-b") });
     // 이미 최신이면 그대로 돌려준다.
     mode = "up_to_date";
