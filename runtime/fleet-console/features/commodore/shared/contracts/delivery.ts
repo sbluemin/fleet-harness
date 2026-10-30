@@ -13,3 +13,31 @@ export function undeliveredMessageSeqs(entries: readonly CommodoreTranscriptEntr
   }
   return new Set([...waiting].flatMap(([seq, open]) => (open ? [seq] : [])));
 }
+
+/** 다음 기동이 다시 깨울 보드 깨움 — 지난 종료가 듣지 못했다고 남긴 것. */
+export interface CommodoreUnheardWakes {
+  /** 대기 중인 그룹을 가리지 않고 다시 본다 — 목표를 가리키지 않는 이유가 남았거나 지난 실행이 종료를 기록하지 못했다. */
+  readonly all: boolean;
+  readonly empty: boolean;
+  readonly objectiveIds: readonly string[];
+}
+
+/**
+ * 마지막 `session` 줄이 `stopped` 면 그 바로 앞의 `unheard` 줄들이 다음 기동의 몫이다(없으면 깨울 것이 없다). 마지막 `session` 줄이
+ * 열린 세션이면 지난 실행은 종료를 남기지 못하고 끝났다 — 무엇을 듣지 못했는지 모르므로 모두 다시 본다. 기록에 세션이 없으면 null.
+ */
+export function unheardWakes(entries: readonly CommodoreTranscriptEntry[]): CommodoreUnheardWakes | null {
+  const last = entries.findLastIndex((entry) => entry.kind === "session");
+  if (last < 0) return null;
+  if ((entries[last] as Extract<CommodoreTranscriptEntry, { kind: "session" }>).event !== "stopped") return { all: true, empty: true, objectiveIds: [] };
+  let all = false; let empty = false;
+  const ids = new Set<string>();
+  for (let index = last - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (entry.kind !== "unheard") break;
+    if (entry.all) all = true;
+    if (entry.codes.includes("empty")) empty = true;
+    for (const id of entry.objectiveIds ?? []) ids.add(id);
+  }
+  return all || empty || ids.size ? { all, empty, objectiveIds: [...ids] } : null;
+}

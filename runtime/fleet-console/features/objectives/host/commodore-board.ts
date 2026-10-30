@@ -80,9 +80,9 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   const now = deps.now ?? Date.now;
   const cleanups: (() => void)[] = [];
   let disposed = false;
-  const runner: Runner = { commodoreId, seen: waitingKeys(deps.objectives(commodoreId), deps.observe), statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: false, selfWrites: new Map(), moves: new Map(), idleSince: new Map(), settledAt: new Map(), restSince: new Map(), blockedHeard: new Map() };
-  // 감시 이전부터 멈춘 보드는 이미 들은 자리다. 자동 재개 턴이 돌아도 보드가 그대로면 다시 깨우지 않는다.
-  // 미처리 대기는 이전 보고 여부와 무관하게 다시 깨워야 하므로 서명을 채우지 않는다. 사람 몫 대기는 제외한다.
+  const runner: Runner = { commodoreId, seen: waitingKeys(deps.objectives(commodoreId), deps.observe), statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: !hasOpenOperated(deps.objectives(commodoreId)), selfWrites: new Map(), moves: new Map(), idleSince: new Map(), settledAt: new Map(), restSince: new Map(), blockedHeard: new Map() };
+  // 감시 이전부터 멈춘 보드는 이미 들은 자리다. 자동 재개 턴이 돌아도 보드가 그대로면 다시 깨우지 않는다. 빈 보드도 기동 때의 것은
+  // 들은 것으로 둔다. 사령관 몫 대기가 남은 그룹은 첫 점검(`settle(…, true)`)이 지난 종료가 듣지 못한 목표인지 가려 서명을 채운다.
   if (deps.observe) for (const objective of deps.objectives(commodoreId)) {
     if (groupIdle(objective, deps.observe) && !waitingReasons(objective, deps.observe).some((reason) => !heldForPerson(objective, reason))) runner.settledAt.set(objective.id, boardSignature(objective));
   }
@@ -207,7 +207,8 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   // 그룹 대화의 대기 중 — 사령관이 운영하는 열린 목표에서 지휘관과 띄운 구성원이 모두 멈춰 `SETTLE_MS` 이어지면 들어선 것이다.
   // 들어설 때 한 번 깨운다: 같은 보드 서명으로 이미 깨웠으면 다시 깨우지 않고(그 뒤는 정체 판정이 맡는다), 남은 일이 모두 사람
   // 몫이면 깨우지 않는다. 대기 항목(기준·개시·결정·검토·후속·구성원 실패)과 단계 이동은 이 깨움의 보드 요약으로 실린다.
-  // 감시가 막 섰을 때(Console 재시작·자동 운영 시작) 이미 대기 중인 그룹은 미처리 대기 항목으로만 깨운다. 진행 상태만으로는 깨우지 않는다.
+  // 감시가 막 섰을 때(Console 재시작·자동 운영 시작) 이미 대기 중인 그룹은 지난 종료가 듣지 못했다고 남긴 목표(`sink.unheard`)의
+  // 미처리 대기 항목으로만 깨운다. 기동 자체나 진행 상태만으로는 깨우지 않는다.
   // 그룹이 아직 일하는 목표는 `blocked` 가 맡는다.
   const settle = (runner: Runner, seeded: boolean) => {
     if (disposed || !sink.automatic() || !deps.observe) return;
@@ -233,6 +234,8 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       hearBlocked(runner, objective);
       // 사령관 자신이 막 쓴 보드는 제가 한 일이다 — 그 서명으로는 깨우지 않는다.
       if ((runner.selfWrites.get(objective.id) ?? 0) >= at) continue;
+      // 기동 때 이미 선 대기는 지난 종료가 듣지 못한 목표의 것만 새 사건이다.
+      if (seeded && !sink.unheard?.all && !sink.unheard?.objectiveIds.includes(objective.id)) continue;
       if (awaitsCommodore(objective, observe)) wake(runner, "settled", { bump: true, detail: `"${objective.title}"`, objectiveId: objective.id });
     }
     for (const map of [runner.idleSince, runner.settledAt, runner.restSince, runner.blockedHeard]) for (const id of [...map.keys()]) if (!open.has(id)) map.delete(id);
@@ -411,7 +414,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   return {
     recount: () => new Map(inboxDigest(deps.objectives(commodoreId), deps.observe)),
     scope: (pending) => scopeOf(runner, pending),
-    emptyOperated: () => { const empty = !hasOpenOperated(deps.objectives(commodoreId)); runner.emptyReported = empty; return empty; },
+    emptyOperated: () => !hasOpenOperated(deps.objectives(commodoreId)),
     brief: (ids) => briefOf(runner, ids),
     attribute: (tool, turn) => selfAttributed(runner, tool, turn),
     dispose: () => { disposed = true; for (const cleanup of cleanups.splice(0)) cleanup(); },

@@ -127,6 +127,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
       case "undelivered":
       case "delivered":
       case "requeued":
+      case "unheard":
         break;
     }
   }
@@ -252,6 +253,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       case "undelivered":
       case "delivered":
       case "requeued":
+      case "unheard":
       case "wake-scope":
         break;
     }
