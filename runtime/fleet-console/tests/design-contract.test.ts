@@ -130,7 +130,6 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".alerts-icon-badge",
   ".fexp-refresh-btn",
   ".history-commit-avatar",
-  ".agent-chat-fold-chev",
 ] as const;
 const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 // color 값 안의 정확한 base brass. --brass-ink·--brass-glow·--brass-bright는 닫는 괄호가 바로 오지 않아 빠진다.

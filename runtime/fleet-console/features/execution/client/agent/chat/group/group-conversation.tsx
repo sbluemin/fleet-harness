@@ -1,7 +1,7 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import * as React from "react";
-import { useChromeHeightProperty } from "@fleet-console/ui/react";
+import { ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
 import { useAvatarAccent } from "../../../../../workspace/client/avatar-accent.js";
 import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
@@ -592,7 +592,7 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
         <SpeakerMark speaker={speaker} size="sm" />
         <span className="group-chat-notes-count"><SpeakerName speaker={speaker} />{item.notes.length > 0 ? null : <><span className="group-chat-line-sep" aria-hidden="true">·</span>{t("group.streaming")}</>}</span>
         {preview ? <TailExcerpt text={preview} /> : null}
-        <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
+        <ChevronGlyph direction="down" className="group-chat-line-chev" />
       </button>
       {open ? (
         <div className="group-chat-notes-list" id={detailId}>
@@ -1016,7 +1016,7 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
     <details className="group-chat-line group-chat-board" data-entry-id={entry.id}>
       <summary className="group-chat-line-summary">
         {summary}
-        <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
+        <ChevronGlyph direction="down" className="group-chat-line-chev" />
       </summary>
       <div className="group-chat-line-detail">
         <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
@@ -1080,7 +1080,7 @@ function BoardActionTargetLine({ entry, target, language, time, action, onOpenRe
       <details className="group-chat-line group-chat-board has-target" data-entry-id={entry.id}>
         <summary className="group-chat-line-summary">
           {summary}
-          <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
+          <ChevronGlyph direction="down" className="group-chat-line-chev" />
         </summary>
         <div className="group-chat-line-detail">
           <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />

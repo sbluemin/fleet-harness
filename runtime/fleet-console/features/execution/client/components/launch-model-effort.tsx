@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { MenuCheckGlyph } from "@fleet-console/ui/react";
+import { ChevronGlyph, MenuCheckGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 
@@ -220,7 +220,7 @@ export function LaunchModelEffort({
             </span>
           ) : null}
           <span className="launch-chip-label">{modelLabel}</span>
-          <span className="launch-caret" aria-hidden="true">▾</span>
+          <ChevronGlyph direction="down" className="launch-caret" />
         </ComposerChip>
         {hosted ? null : menu}
       </span>

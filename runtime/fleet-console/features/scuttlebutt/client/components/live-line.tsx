@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import React from "react";
 
 /**
@@ -62,7 +63,7 @@ export function LiveFold({ summary, ariaLabel, tone = "done", className, childre
     <details className={base}>
       <summary className="fc-live-fold__summary" aria-label={ariaLabel}>
         <span>{summary}</span>
-        <span className="fc-live-fold__chev" aria-hidden="true">⌄</span>
+        <ChevronGlyph direction="down" className="fc-live-fold__chev" />
       </summary>
       <div className="fc-live-fold__body">{children}</div>
     </details>
