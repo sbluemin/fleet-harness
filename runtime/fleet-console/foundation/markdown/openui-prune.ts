@@ -171,7 +171,7 @@ const FORM_REASON = "it needs 1-4 Input/Select fields with unique names matching
 const DYNAMIC = Symbol("dynamic");
 // 자식 요소를 담는 자리. 비면 그 요소를 뺀다.
 const ELEMENT_SLOTS: Readonly<Record<string, string>> = { Card: "children", Stats: "items", Steps: "items", Facts: "items", Choices: "items", Timeline: "items", Compare: "items", Tags: "items", Sparklines: "items", Form: "fields" };
-const where = (path: readonly PropertyKey[]) => path.length ? path.map(String).join(".") : "its arguments";
+const where = (path: readonly PropertyKey[]) => path.length ? path.map(String).join(".") : "the call";
 function issueReason(issue: z.core.$ZodIssue): string {
   if (issue.code === "too_big" && issue.origin === "array") return `${where(issue.path)} holds at most ${String(issue.maximum)} items`;
   if (issue.code === "too_small" && issue.origin === "array") return `${where(issue.path)} needs at least ${String(issue.minimum)} items`;
