@@ -1,3 +1,4 @@
+import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { mergePluginEnv, type ResolvedPlugin } from "./plugins.js";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { CommodoreToolTheater } from "./tools.js";
@@ -99,6 +100,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let starting: Promise<void> | null = null;
   let disposed = false;
   let turnActive = false;
+  // 같은 대화의 다음 깨움에만 쓰는 모델용 메모 — 원장·깨움 이유·라이브 사건에는 싣지 않는다.
+  let pendingOpenUIFeedback: string | null = null;
 
   // 텍스트·사고는 델타로 온다 — 블록 단위로 모아 도구 호출·결과 경계에서 기록 한 줄로 내린다.
   let textBuffer = "";
@@ -175,6 +178,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         return;
       }
       case "result": {
+        // 도구 경계 뒤 최종 응답의 원문을 자르거나 비우기 전에 판정한다. 실패·취소된 응답은 제외한다.
+        pendingOpenUIFeedback = event.isError ? null : openUIFeedbackNote(textBuffer);
         flushText(); flushTools();
         const error = event.isError ? clip(event.detail ?? event.source, MAX_ERROR) : undefined;
         turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(error ? { error } : {}), ...(compactionFailed ? { compactionFailed: true as const } : {}), actions: turnActions };
@@ -277,6 +282,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
+        ...(pendingOpenUIFeedback ? [pendingOpenUIFeedback] : []),
         ...(input.board ? [input.board] : []),
         memoryNote(readMemoryIndex()),
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
@@ -290,6 +296,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
           ? [{ type: "text", text: messageNote([message]) }]
           : [{ type: "text", text: messageNote([message.text]) }, ...message.images]),
       ] : [note, ...(input.messages?.length ? [messageNote(input.messages.map((message) => typeof message === "string" ? message : message.text))] : [])].join("\n\n");
+      // 전송을 시도하면 소비한다. 오류 뒤 재시도나 다음 깨움에 같은 메모를 반복하지 않는다.
+      pendingOpenUIFeedback = null;
       turnActive = true;
       try { await session.send(prompt); }
       catch (error) {
