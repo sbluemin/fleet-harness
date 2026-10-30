@@ -1349,14 +1349,16 @@ a {
   box-shadow: var(--focus-face);
 }
 
-/* 독립 입력의 명시적 포커스 규칙도 채움 대신 외곽선만 소비한다. 버튼·메뉴의 면 포커스는 유지한다. */
-:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"]), textarea, [contenteditable="true"]) {
+/* 독립 입력의 명시적 포커스 규칙도 채움 대신 외곽선만 소비한다. 버튼·메뉴의 면 포커스는 유지한다.
+   `[role="textbox"]`는 잠긴 contenteditable 입력이다 — 보내는 동안 contenteditable=false 로 바뀌어도 초점은 남으므로,
+   속성 하나로만 입력을 알아보면 그 사이 전역 면 포커스가 입력 안을 칠한다(전송 순간의 깜빡임). */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"]), textarea, [contenteditable="true"], [role="textbox"]) {
   --focus-face: var(--field-focus-edge);
 }
 
 /* 복합 입력의 포커스는 외피가 소유한다. 내부 입력에 전역 그림자를 덧칠하면
    캡슐·검색창 안에 사각형이 겹치므로, 독립 필드의 명시적 규칙만 남긴다. */
-:where(input, textarea, [contenteditable="true"]):focus-visible {
+:where(input, textarea, [contenteditable="true"], [role="textbox"]):focus-visible {
   box-shadow: none;
 }
 
