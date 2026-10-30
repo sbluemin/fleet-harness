@@ -293,7 +293,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-batch-trigger:focus-visible { box-shadow: var(--focus-face); }
 .objectives-batch-trigger:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 .objectives-batch-trigger svg { width: 14px; height: 14px; }
-.objectives-batch-menu { position: absolute; top: calc(100% + 4px); right: 0; width: var(--popover-width); z-index: 60; }
+/* commodore.css도 .objectives-menu { position: fixed }를 정의하고 번들에서 뒤에 오므로, 순서에 기대지 않게 두 클래스로 이긴다. */
+.objectives-menu.objectives-batch-menu { position: absolute; top: calc(100% + 4px); right: 0; width: var(--popover-width); z-index: 60; }
 .objectives-batch-menu-glyph { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; }
 .objectives-batch-menu-glyph.is-same { color: var(--brass-ink); }
 .objectives-batch-menu-glyph.is-route { color: var(--aurora); }
