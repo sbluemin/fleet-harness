@@ -72,7 +72,12 @@ html[data-mobile-scheme="light"] .mls-input { background: var(--m-surface); }
 .mls-mention-aux { color: var(--m-text-muted); font-size: var(--m-fs-caption); margin-left: 8px; }
 .mls-mention-kind { flex: none; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .mls-mention-mark { display: grid; place-items: center; flex: none; width: 20px; height: 20px; color: var(--m-text-muted); }
-.mls-mention-chip { margin-bottom: 8px; }
+/* 고른 받는 곳 — 면 없는 인라인 멘션(데스크톱 `.new-session-mention`과 같은 문법). 지우기 ×는 터치 몫을 넓힌다. */
+.mls-mention-chip { display: flex; align-items: center; gap: 6px; min-height: 32px; margin-bottom: 8px; padding: 0 4px; color: var(--m-text); font-size: var(--m-fs-list); font-weight: var(--weight-medium); }
+.mls-mention-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mls-mention-chip-clear { position: relative; display: grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--m-text-muted); }
+.mls-mention-chip-clear::before { content: ""; position: absolute; inset: -8px; }
+.mls-mention-chip-clear:active { background: var(--m-selected); }
 
 @media (prefers-reduced-motion: reduce) {
   .mls-toggle::after { transition: none; }

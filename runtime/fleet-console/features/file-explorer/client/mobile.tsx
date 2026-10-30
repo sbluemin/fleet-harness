@@ -187,11 +187,17 @@ export function MobileFileDocument(ctx: PaneContext) {
   const name = path ? nameOfPath(path) : "";
 
   useEffect(() => { setSource(false); }, [path]);
+  const preview = ctx.params.preview !== "false";
   useEffect(() => {
     if (!theaterId || !path) return;
+    // 다른 곳(대화의 파일 링크 등)에서 연 문서는 아직 열린 문서가 아니다 — 그대로 읽으면 응답이 현재 읽기로 인정되지 않아
+    // 로딩에 멈춘다. 트리에서 연 것과 같이 먼저 연 문서로 세운다.
+    if (!getFileExplorerSnapshot(theaterId).openDocs.some((doc) => doc.relativePath === path)) {
+      activateStoredDocument(theaterId, { relativePath: path, name: nameOfPath(path), preview });
+    }
     // 문서를 바꿀 때만 읽는다 — 캐시가 있으면 로딩 화면 없이 배경에서 다시 확인한다.
     void loadDocument(theaterId, path, { silent: getFileExplorerSnapshot(theaterId).docStates.has(path), language, signal, ...(commodoreId ? { commodoreId } : {}) });
-  }, [commodoreId, theaterId, path, language, signal]);
+  }, [commodoreId, theaterId, path, preview, language, signal]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), TOAST_MS);

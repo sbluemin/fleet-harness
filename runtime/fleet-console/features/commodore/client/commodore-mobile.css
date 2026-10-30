@@ -122,6 +122,9 @@
 .objectives-cm-content { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .objectives-cm-content::-webkit-scrollbar { display: none; }
 .objectives-cm-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
+/* 정보 화면 머리(설명·정보) — 감싼 묶음 안에서도 같은 14px 간격으로 선다. 기억 항목을 읽는 동안에는 숨는다. */
+.objectives-cm-pad-head { display: flex; flex-direction: column; gap: 14px; }
+.objectives-cm-pad-head[hidden] { display: none; }
 .objectives-cm-glab { margin: 0; padding: 6px 4px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
 .objectives-cm-glab .is-light { font-weight: var(--weight-regular); }
 .objectives-cm-field { box-sizing: border-box; width: 100%; padding: 12px 14px; border: 1px solid var(--m-hairline-strong); border-radius: 14px; outline: none; resize: none; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.45; user-select: text; }

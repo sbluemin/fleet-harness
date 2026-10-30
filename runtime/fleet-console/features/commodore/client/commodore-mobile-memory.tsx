@@ -62,7 +62,7 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, lea
     <div ref={scrollRef} className={`objectives-cm-content objectives-cm-memory${entry ? " is-entry" : ""}`}>
       <div className="objectives-cm-pad">
         {/* 머리(설명·정보)는 항목을 읽는 동안에도 같은 자리에 마운트된 채 숨는다 — 쓰던 설명 초안이 사라지지 않는다. */}
-        {header ? <div hidden={entry !== undefined}>{header}</div> : null}
+        {header ? <div className="objectives-cm-pad-head" hidden={entry !== undefined}>{header}</div> : null}
         {entry ? <>
           <nav className="objectives-cm-memory-crumbs" aria-label={t("commodore.memory.label")}>
             <span>{t("commodore.memory.label")}</span><span aria-hidden="true">/</span><span>{t(MEMORY_BRANCH_LABEL[entry.branch])}</span><span aria-hidden="true">/</span><span>{entry.topic}</span>

@@ -309,9 +309,14 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
       <div className="mls-compose">
         {mentionRows.length > 0 ? <div className="mls-mentions" role="listbox" aria-label={t("chrome.launch.mobile.inputLabel")}>{mentionRows}</div> : null}
         {props.mentionTarget ? (
-          <button type="button" className="mobile-pill-secondary mls-mention-chip" aria-label={t("chrome.launch.mobile.mentionClear")} onClick={props.onClearMention}>
-            @{mentionTargetName(props.mentionTarget)}<MobileIcon name="x" size={16} />
-          </button>
+          // 고른 받는 곳 — 데스크톱 새 세션과 같은 면 없는 인라인 멘션([표식][이름], `@` 없음). 터치에는 hover가 없어 지우기는 늘 보인다.
+          <span className="mls-mention-chip">
+            <span className="mls-mention-mark" aria-hidden="true">{props.mentionTarget.kind === "plugin"
+              ? props.mentionTarget.row.renderMark?.() ?? "@"
+              : <ObjectiveNameMark objectiveRecord={{ id: props.mentionTarget.entry.objectiveId, parentObjectiveId: props.mentionTarget.entry.parentObjectiveId }} status={resolveObjectiveMarkVisual({ activity: props.mentionTarget.entry.activity, objectiveId: props.mentionTarget.entry.objectiveId, idleArrivalIds })} size={20} />}</span>
+            <span className="mls-mention-chip-name">{mentionTargetName(props.mentionTarget)}</span>
+            <button type="button" className="mls-mention-chip-clear" aria-label={t("chrome.launch.mobile.mentionClear")} onClick={props.onClearMention}><MobileIcon name="x" size={16} /></button>
+          </span>
         ) : null}
         <textarea
           ref={inputRef}
