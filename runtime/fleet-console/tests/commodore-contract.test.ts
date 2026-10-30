@@ -1,3 +1,4 @@
+import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import type { CommodoreRouteContext } from "../features/commodore/host/routes.js";
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -1209,6 +1210,27 @@ describe("commodore session", () => {
     expect(stub.sent[1]).toContain("Your fleet-memory index (read an entry with memory_view):");
     expect(stub.sent[1]).toContain("CDP offline leaves an open EventSource alive.");
     expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "error", error: "rate_limited" });
+    // 최종 응답의 OpenUI 진단은 다음 모델 입력에 한 번만 싣고, 공개 기록·미리보기에는 남기지 않는다.
+    const malformed = "```openui-lang\nnot a valid root\n```";
+    const feedback = openUIFeedbackNote(malformed)!;
+    expect(feedback).toBeTruthy();
+    stub.setScript(async () => {
+      stub.emit({ kind: "text", text: malformed });
+      stub.emit({ kind: "tool-start", id: "openui-check", name: "Read", input: {} });
+      stub.emit({ kind: "tool-end", id: "openui-check", isError: false });
+      stub.emit({ kind: "text", text: "Done." });
+      stub.emit({ kind: "result", isError: false, source: "message" });
+    });
+    await session.turn({ reasons: ["message"] });
+    stub.setScript(async () => { stub.emit({ kind: "result", isError: false, source: "message" }); });
+    await session.turn({ reasons: ["routine"] });
+    const feedbackInput = stub.sent.at(-1)!;
+    expect(feedbackInput).toContain(feedback);
+    const serializedFeedback = JSON.stringify(feedback).slice(1, -1);
+    expect(JSON.stringify(h.store.transcriptRead("t1"))).not.toContain(serializedFeedback);
+    expect(JSON.stringify(h.store.transcriptLast("t1"))).not.toContain(serializedFeedback);
+    await session.turn({ reasons: ["routine"] });
+    expect(stub.sent.at(-1)).not.toContain(feedback);
     await session.dispose();
     expect(stub.disposedCount()).toBe(1);
     await expect(session.turn({ reasons: ["routine"] })).rejects.toThrow("session_disposed");

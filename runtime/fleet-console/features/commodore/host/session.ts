@@ -1,3 +1,4 @@
+import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { mergePluginEnv, type ResolvedPlugin } from "./plugins.js";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { CommodoreToolTheater } from "./tools.js";
@@ -99,9 +100,12 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let starting: Promise<void> | null = null;
   let disposed = false;
   let turnActive = false;
+  // 같은 대화의 다음 깨움에만 쓰는 모델용 메모 — 원장·깨움 이유·라이브 사건에는 싣지 않는다.
+  let pendingOpenUIFeedback: string | null = null;
 
   // 텍스트·사고는 델타로 온다 — 블록 단위로 모아 도구 호출·결과 경계에서 기록 한 줄로 내린다.
   let textBuffer = "";
+  const turnTextBlocks: string[] = [];
   let thinkingBuffer = "";
   const pendingTools = new Map<string, { readonly name: string; readonly input: unknown }>();
   // 거절 코드 — 세션 이벤트(tool-end)는 결과를 싣지 않으므로, 도구를 감싸 결과의 `error` 한 낱말만 호출 id·이름으로 기억한다.
@@ -117,7 +121,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     catch (error) { console.warn(`[objectives] commodore transcript append failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
   const flushText = () => {
-    if (textBuffer.trim()) record({ kind: "text", text: clip(textBuffer, MAX_TRANSCRIPT_TEXT) });
+    if (textBuffer.trim()) {
+      turnTextBlocks.push(textBuffer);
+      record({ kind: "text", text: clip(textBuffer, MAX_TRANSCRIPT_TEXT) });
+    }
     textBuffer = "";
     if (thinkingBuffer.trim()) record({ kind: "thinking", text: clip(thinkingBuffer, MAX_TRANSCRIPT_TEXT) });
     thinkingBuffer = "";
@@ -176,6 +183,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       }
       case "result": {
         flushText(); flushTools();
+        // 도구 호출 앞의 블록도 화면에 그려지므로 턴 전체의 텍스트 원문을 판정한다. 실패 응답은 제외한다.
+        pendingOpenUIFeedback = event.isError ? null : openUIFeedbackNote(turnTextBlocks.join("\n\n"));
         const error = event.isError ? clip(event.detail ?? event.source, MAX_ERROR) : undefined;
         turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(error ? { error } : {}), ...(compactionFailed ? { compactionFailed: true as const } : {}), actions: turnActions };
         record({ kind: "result", outcome: turnResult.outcome, ...(event.usage?.costUsd !== undefined ? { costUsd: event.usage.costUsd } : {}), ...(event.usage ? { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens } : {}), ...(error ? { error } : {}) });
@@ -266,7 +275,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
-      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); createdCommodores.length = 0;
+      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); createdCommodores.length = 0;
       record({ kind: "wake", reasons: input.reasons });
       if (input.scope) {
         // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
@@ -277,6 +286,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
+        ...(pendingOpenUIFeedback ? [pendingOpenUIFeedback] : []),
         ...(input.board ? [input.board] : []),
         memoryNote(readMemoryIndex()),
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
@@ -290,6 +300,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
           ? [{ type: "text", text: messageNote([message]) }]
           : [{ type: "text", text: messageNote([message.text]) }, ...message.images]),
       ] : [note, ...(input.messages?.length ? [messageNote(input.messages.map((message) => typeof message === "string" ? message : message.text))] : [])].join("\n\n");
+      // 전송을 시도하면 소비한다. 오류 뒤 재시도나 다음 깨움에 같은 메모를 반복하지 않는다.
+      pendingOpenUIFeedback = null;
       turnActive = true;
       try { await session.send(prompt); }
       catch (error) {
