@@ -24,6 +24,7 @@ import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, 
 import type { ChatConsoleCommand } from "./composer-deck.js";
 import { readAgentChatCatalog } from "../api.js";
 import { getComposerDraft } from "../../objective-view-state.js";
+import { claimComposerKeyboardFocus } from "./composer-keyboard-focus.js";
 import { drainComposerInbox, subscribeComposerInbox } from "./composer-inbox.js";
 import { OriginMark, originExcerpt } from "./origin-mark.js";
 
@@ -299,6 +300,14 @@ export function AgentChatComposer({
     setConsoleNotice(null);
     inputRef.current?.focus();
   }, [sentEpoch]);
+  // 팔레트·알림의 이동은 requestObjectiveKeyboardFocus로 온다. 주차된 본문(bodyLive false)은
+  // 요청을 소비하지 않아, 가운데에 선 다른 컴포저가 같은 요청을 가져갈 수 있다.
+  const keyboardFocusRequestId = context.keyboardFocusRequestId;
+  React.useEffect(() => {
+    if (!context.active || context.bodyLive === false) return;
+    if (!claimComposerKeyboardFocus(context.objectiveId)) return;
+    inputRef.current?.focus();
+  }, [keyboardFocusRequestId, context.objectiveId, context.active, context.bodyLive]);
 
   // ── 능력 덱 ────────────────────────────────────────────────────────────────
   // `/`는 세션의 능력(명령·스킬), `@`는 행위자(서브에이전트). 두 글자가 한 덱을 공유한다 —
