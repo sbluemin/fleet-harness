@@ -433,7 +433,7 @@ function createdCommodoreTarget(tool: Extract<CommodoreTranscriptEntry, { kind: 
  * 열 목표면 참조로 실어 그 이름을 누르면 목표가 열린다(얼굴은 싣지 않는다 — 한 줄 단계다).
  */
 function toolDetail(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>, index: CommodoreObjectiveIndex | undefined): { readonly detail: string; readonly references?: readonly ConversationReference[] } {
-  if (!tool.action) return { detail: tool.summary ?? "" };
+  if (!tool.action) return { detail: readActionWord(t, tool) };
   const action = actionWord(t, tool.action);
   const created = createdCommodoreTarget(tool);
   if (created) return { detail: `${action} · ${CONVERSATION_REFERENCE_MARK}`, references: [created] };
@@ -522,7 +522,17 @@ export function fallbackWord(t: T, reason: string): string {
   return t(match[1] === "roster_empty" ? "commodore.log.fallback.rosterEmpty" : "commodore.log.fallback.modelOff", { model: match[2]! });
 }
 
+/** 보드 쓰기 행위의 낱말 — 낱말이 없는 action 도 내부 식별자 대신 일반 낱말로 선다. */
 export function actionWord(t: T, action: string): string {
   const key = `commodore.action.${action}`;
-  return key in commodoreEn ? t(key as CommodoreMessageKey) : action;
+  return Object.hasOwn(commodoreEn, key) ? t(key as CommodoreMessageKey) : t("commodore.action.unknown");
+}
+
+/** 보드 도구는 읽기 action 을 요약으로 남긴다 — 그 낱말을 화면 언어로 옮긴다. 다른 도구의 요약(명령 설명·패턴)은 그대로다. */
+const BOARD_TOOL_NAMES: ReadonlySet<string> = new Set(["console_objectives", "console_objectives_detail", "console_commodores"]);
+
+function readActionWord(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): string {
+  const summary = tool.summary ?? "";
+  const key = `commodore.readAction.${summary}`;
+  return BOARD_TOOL_NAMES.has(tool.name) && Object.hasOwn(commodoreEn, key) ? t(key as CommodoreMessageKey) : summary;
 }
