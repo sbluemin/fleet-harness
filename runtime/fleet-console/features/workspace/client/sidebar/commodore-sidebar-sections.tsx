@@ -7,6 +7,7 @@ import { updateCommodoreSidebar } from "../../../commodore/client/theaters-api.j
 import { MAX_SIDEBAR_SECTION_NAME, type CommodoreSidebarCommand, type CommodoreSidebarSection } from "../../../commodore/shared/contracts/sidebar-layout.js";
 import { useLongPress } from "../long-press.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
+import { FolderIcon, PencilIcon, PlusIcon, TrashIcon } from "./sidebar-menu-icons.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import "./commodore-sidebar-sections.css";
 
@@ -71,7 +72,7 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
       restoreNameFocus.current = viaKey;
       controller.setEditing(null);
       if (value && value !== name) void controller.run({ op: "rename", sectionId: section.id, name: value });
-    }} /> : <button ref={header} type="button" className="workspace-commodore-section-head" data-sidebar-section-drop={id ?? ""}
+    }} /> : <button ref={header} type="button" className={`workspace-commodore-section-head${menu && section ? " is-menu-target" : ""}`} data-sidebar-section-drop={id ?? ""}
       data-keep-objective-active="" aria-expanded={!collapsed} aria-disabled={controller.busy} title={name}
       onClick={() => { void controller.run({ op: "collapse", sectionId: id, collapsed: !collapsed }); }}
       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (!longPress.claimContextMenu(event)) openMenu(new DOMRect(event.clientX, event.clientY, 0, 0)); }}
@@ -88,12 +89,12 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
       {count ? children : <li className="workspace-commodore-section-empty" data-sidebar-section-drop={id ?? ""}>{t("sidebar.commodoreSection.empty")}</li>}
     </ol> : null}
     {menu && section ? <SectionMenu anchor={menu} opener={header.current} label={t("sidebar.commodoreSection.actions", { name })} onClose={closeMenu}>
-      <MenuItem onClick={() => { closeMenu(); controller.setEditing(section.id); }}>{t("sidebar.commodoreSection.rename")}</MenuItem>
-      <MenuItem disabled={index === 0 || controller.busy} onClick={() => action({ op: "reorder", sectionId: section.id, direction: "up" })}>{t("sidebar.commodoreSection.up")}</MenuItem>
-      <MenuItem disabled={index === controller.layout.sections.length - 1 || controller.busy} onClick={() => action({ op: "reorder", sectionId: section.id, direction: "down" })}>{t("sidebar.commodoreSection.down")}</MenuItem>
-      <MenuItem disabled={controller.busy} onClick={() => { closeMenu(); void controller.create({ afterId: section.id }); }}>{t("sidebar.commodoreSection.createBelow")}</MenuItem>
+      <MenuItem icon={<PencilIcon />} onClick={() => { closeMenu(); controller.setEditing(section.id); }}>{t("sidebar.commodoreSection.rename")}</MenuItem>
+      <MenuItem icon={<ChevronGlyph direction="up" />} disabled={index === 0 || controller.busy} onClick={() => action({ op: "reorder", sectionId: section.id, direction: "up" })}>{t("sidebar.commodoreSection.up")}</MenuItem>
+      <MenuItem icon={<ChevronGlyph direction="down" />} disabled={index === controller.layout.sections.length - 1 || controller.busy} onClick={() => action({ op: "reorder", sectionId: section.id, direction: "down" })}>{t("sidebar.commodoreSection.down")}</MenuItem>
+      <MenuItem icon={<PlusIcon />} disabled={controller.busy} onClick={() => { closeMenu(); void controller.create({ afterId: section.id }); }}>{t("sidebar.commodoreSection.createBelow")}</MenuItem>
       <div className="theater-menu-divider" role="separator" />
-      <MenuItem danger onClick={() => { setMenu(null); setDeleting(true); }}>{t("sidebar.commodoreSection.deleteMenu")}</MenuItem>
+      <MenuItem icon={<TrashIcon />} danger onClick={() => { setMenu(null); setDeleting(true); }}>{t("sidebar.commodoreSection.deleteMenu")}</MenuItem>
     </SectionMenu> : null}
     {deleting && section ? <SectionDeleteDialog section={section} count={count} controller={controller} onClose={() => {
       setDeleting(false);
@@ -122,8 +123,10 @@ function SectionNameInput({ name, onDone }: { readonly name: string; readonly on
     }} />;
 }
 
-function MenuItem({ children, onClick, disabled, danger }: { readonly children: ReactNode; readonly onClick: () => void; readonly disabled?: boolean; readonly danger?: boolean }) {
-  return <button type="button" role="menuitem" className={`theater-menu-item${danger ? " theater-menu-forget" : ""}`} disabled={disabled} onClick={onClick}>{children}</button>;
+function MenuItem({ icon, children, onClick, disabled, danger }: { readonly icon: ReactNode; readonly children: ReactNode; readonly onClick: () => void; readonly disabled?: boolean; readonly danger?: boolean }) {
+  return <button type="button" role="menuitem" className={`theater-menu-item${danger ? " theater-menu-forget" : ""}`} disabled={disabled} onClick={onClick}>
+    <span className="theater-menu-check" aria-hidden="true">{icon}</span><span className="theater-menu-label">{children}</span>
+  </button>;
 }
 
 function SectionMenu({ anchor, opener, label, children, onClose }: { readonly anchor: DOMRect; readonly opener: HTMLElement | null; readonly label: string; readonly children: ReactNode; readonly onClose: () => void }) {
@@ -165,6 +168,7 @@ export function CommodoreSectionMoveMenu({ commodoreId, controller, onClose }: {
   return <div className="workspace-commodore-section-move" onPointerEnter={() => setOpen(true)} onPointerLeave={() => setOpen(false)}>
     <button ref={trigger} type="button" role="menuitem" className="theater-menu-item" aria-haspopup="menu" aria-expanded={open} disabled={controller.busy}
       onClick={() => setOpen(true)} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); event.stopPropagation(); setOpen(true); } }}>
+      <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
       <span className="theater-menu-label">{t("sidebar.commodoreSection.move")}</span><ChevronGlyph direction="right" />
     </button>
     {open ? <div ref={menu} data-section-submenu={id} className="theater-menu workspace-commodore-section-submenu" role="menu" aria-label={t("sidebar.commodoreSection.move")} style={{ position: "fixed", ...position }}
@@ -173,7 +177,7 @@ export function CommodoreSectionMoveMenu({ commodoreId, controller, onClose }: {
         <span className="theater-menu-check" aria-hidden="true">{current === section.id ? "✓" : ""}</span><span className="theater-menu-label">{section.name}</span>
       </button>)}
       <div className="theater-menu-divider" role="separator" />
-      <MenuItem onClick={() => { onClose(); void controller.create({ commodoreId }); }}>{t("sidebar.commodoreSection.create")}</MenuItem>
+      <MenuItem icon={<PlusIcon />} onClick={() => { onClose(); void controller.create({ commodoreId }); }}>{t("sidebar.commodoreSection.create")}</MenuItem>
     </div> : null}
   </div>;
 }

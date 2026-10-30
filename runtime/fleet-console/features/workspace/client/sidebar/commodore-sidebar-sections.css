@@ -10,6 +10,7 @@
 }
 .workspace-commodore-section-head:hover,
 .workspace-commodore-section-head:focus-visible,
+.workspace-commodore-section-head.is-menu-target,
 .workspace-commodore-section.is-drop-target > .workspace-commodore-section-head { background: var(--wash-hover); color: var(--text-secondary); }
 .workspace-commodore-section-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-commodore-section-count { font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
