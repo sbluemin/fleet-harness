@@ -269,7 +269,7 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
 function MissionSwitcher({ label, value, options, onChange }: { readonly label: string; readonly value: string; readonly options: readonly SelectOption[]; readonly onChange: (id: string) => void }) {
   const select = useSelect({ value, options, onChange });
   return <div {...select.rootProps} className={`${select.rootProps.className} objectives-rw-switch`}>
-    <button {...select.triggerProps} className="fc-select__trigger" aria-label={label}><span className="fc-select__value">{options.find((item) => item.value === value)?.label}</span><span className="fc-select__caret" aria-hidden="true">⌄</span></button>
+    <button {...select.triggerProps} className="fc-select__trigger" aria-label={label}><span className="fc-select__value">{options.find((item) => item.value === value)?.label}</span><ChevronGlyph direction="down" className="fc-select__caret" /></button>
     {select.isOpen ? createPortal(<ul {...select.listboxProps} className={`${select.listboxProps.className} objectives-rw-menu`} aria-label={label}>{options.map((item, index) => <li key={item.value} {...select.getOptionProps(index)} className="fc-select__option">{item.label}</li>)}</ul>, document.body) : null}
   </div>;
 }

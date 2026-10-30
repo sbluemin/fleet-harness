@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
 
 /**
@@ -709,9 +710,7 @@ function TheaterSectionHeader({
           onClick={(event) => { event.stopPropagation(); onToggleFold(); }}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <svg className={`side-bar-theater-chevron${expanded ? "" : " is-collapsed"}`} viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <ChevronGlyph direction="down" className={`side-bar-theater-chevron${expanded ? "" : " is-collapsed"}`} />
         </button>
       ) : null}
 

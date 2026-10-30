@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useSelect, type SelectProps } from "@fleet-console/ui/react";
+import { useSelect, type SelectProps, ChevronGlyph } from "@fleet-console/ui/react";
 import * as React from "react";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 /**
@@ -183,7 +183,7 @@ export function Select({
         })}
       >
         <span className="fc-select__value">{selected?.label ?? ""}</span>
-        <span className="fc-select__caret" aria-hidden="true">›</span>
+        <ChevronGlyph direction="right" className="fc-select__caret" />
       </button>
     );
   }
@@ -205,9 +205,7 @@ export function Select({
     <div ref={select.rootRef} className={rootClassName}>
       <button {...select.triggerProps} {...sharedLabelProps}>
         <span className="fc-select__value">{selected?.label ?? ""}</span>
-        <span className="fc-select__caret" aria-hidden="true">
-          ⌄
-        </span>
+        <ChevronGlyph direction="down" className="fc-select__caret" />
       </button>
       {select.isOpen
         ? createPortal(

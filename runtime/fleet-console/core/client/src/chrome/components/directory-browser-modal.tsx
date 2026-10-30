@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
@@ -192,7 +193,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
             const isLast = index === breadcrumb.length - 1;
             return (
               <span className="directory-browser-course-seg" key={segment.path}>
-                {index > 0 ? <span className="directory-browser-course-sep" aria-hidden="true">›</span> : null}
+                {index > 0 ? <ChevronGlyph direction="right" className="directory-browser-course-sep" /> : null}
                 <button
                   type="button"
                   className={`directory-browser-crumb ${isLast ? "is-current" : ""}`}
@@ -304,7 +305,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
                 <span className="directory-browser-sector-glyph" aria-hidden="true"><FolderGlyph /></span>
                 <span className="directory-browser-sector-name">{entry.name}</span>
                 {entry.accessible ? (
-                  <span className="directory-browser-sector-advance" aria-hidden="true">›</span>
+                  <ChevronGlyph direction="right" className="directory-browser-sector-advance" />
                 ) : (
                   <span className="directory-browser-sector-lock"><LockGlyph /> {t("chrome.directoryBrowser.locked")}</span>
                 )}

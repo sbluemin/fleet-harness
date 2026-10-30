@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { useViewportFit, MenuCheckGlyph } from "@fleet-console/ui/react";
+import { useViewportFit, MenuCheckGlyph, ChevronGlyph } from "@fleet-console/ui/react";
 import type { ObjectiveCatalogPlugin, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../objectives/shared/records/types.js";
 import { fetchObjectiveCatalog, OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../../execution/client/objective-records.js";
 
@@ -347,7 +347,7 @@ export function NewSessionColumn({ state, target, tools }: {
             kind: "row" as const,
             key: "effort-gate",
             gate: true,
-            icon: <span>{deck.gateOpen ? "‹" : "✦"}</span>,
+            icon: <span>{deck.gateOpen ? <ChevronGlyph direction="left" /> : "✦"}</span>,
             name: t(deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle", { tiers: deck.gatedNames }),
             pick: () => {
               if (apexCollapseTimerRef.current !== null) clearTimeout(apexCollapseTimerRef.current);

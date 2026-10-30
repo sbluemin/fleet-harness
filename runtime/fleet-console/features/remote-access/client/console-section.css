@@ -4,8 +4,8 @@
 .console-section button:disabled { cursor: default; opacity: .5; }
 .console-section button:focus-visible { box-shadow: var(--focus-face); }
 .console-section-toggle { display: inline-flex; flex: 1; align-items: center; gap: 4px; align-self: stretch; padding: 0 8px; border: 0; background: transparent; color: var(--text-tertiary); text-align: left; font-size: var(--t-xs) !important; font-weight: var(--weight-medium) !important; border-radius: 6px; }
-.console-section-toggle > span { display: inline-block; width: 10px; }
-.console-section-toggle > span.is-folded { transform: rotate(-90deg); }
+.console-section-toggle > svg { flex: none; width: 12px; height: 12px; }
+.console-section-toggle > svg.is-folded { transform: rotate(-90deg); }
 .console-section-action { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border: 0; border-radius: 6px; padding: 4px; color: var(--text-tertiary); background: transparent; }
 .console-section svg { display: block; width: 16px; height: 16px; flex: none; }
 .console-section-glyph { opacity: 0; }

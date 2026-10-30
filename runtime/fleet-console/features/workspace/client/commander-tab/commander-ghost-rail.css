@@ -102,9 +102,9 @@
   background: none;
   color: var(--text-secondary);
   font: inherit;
-  font-size: var(--t-lg);
   cursor: pointer;
 }
+.commander-ghost-open svg, .commander-ghost-close svg { width: 14px; height: 14px; }
 .commander-ghost-open { position: relative; z-index: 7; margin-bottom: 4px; }
 .commander-ghost-tip {
   position: absolute;

@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
@@ -157,7 +158,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     } else if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); select(cursor); }
     else if (event.key === (side === "left" ? "ArrowRight" : "ArrowLeft") || event.key === " ") { event.preventDefault(); event.stopPropagation(); reveal(true); }
   };
-  const glyph = side === "left" ? "›" : "‹";
+  const glyph = <ChevronGlyph direction={side === "left" ? "right" : "left"} />;
   const tipRow = tip !== null && tip.index > 0 ? rows[tip.index - 1] : null;
   const tipSummary = tipRow ? clusterRowSummary(tipRow, locale, t) : null;
   return <nav ref={nav} className="commander-ghost" data-keep-objective-active="" aria-label={t("commanderTab.aria")}
@@ -208,7 +209,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     {!expanded && tip ? <span className="commander-ghost-tip" style={{ top: tip.top }} role="tooltip"><strong>{tipRow?.layout.cluster.title ?? owner.name}</strong><small>{tipSummary?.conversationLine ?? t("sidebar.commodore.fallback")}</small></span> : null}
     {expanded ? <div ref={panel} id={`${id}-list`} className="commander-ghost-list">
       <div className="commander-ghost-list-head"><CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => select(0)} />
-        <button type="button" className="commander-ghost-close" aria-label={t("commanderRail.collapse")} aria-expanded={true} onClick={() => collapse()}>{side === "left" ? "‹" : "›"}</button></div>
+        <button type="button" className="commander-ghost-close" aria-label={t("commanderRail.collapse")} aria-expanded={true} onClick={() => collapse()}><ChevronGlyph direction={side === "left" ? "left" : "right"} /></button></div>
       <CommodoreCommanderList commodoreId={commodoreId} selectedId={selectedId} onSelect={selectRow} />
     </div> : null}
   </nav>;

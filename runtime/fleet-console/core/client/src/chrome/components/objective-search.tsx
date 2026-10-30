@@ -1,3 +1,4 @@
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import { closeConversationSurface } from "../../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { openTheaterInbox } from "../../../../../features/workspace/client/theater-inbox/store.js";
 import { resolveTheaterInboxLanding } from "../../../../../features/workspace/client/theater-contributions.js";
@@ -908,7 +909,7 @@ export function ObjectiveSearch({
                                 {working ? t("chrome.objectiveRecordSearch.commodoreWorking") : t("chrome.objectiveRecordSearch.commodoreWaiting")}
                               </span>
                               {/* 지휘관 행의 ▸와 같은 너비의 자리 — 상태 열의 오른쪽 끝을 맞춘다. */}
-                              <span className="objective-search-row-arrow is-spacer" aria-hidden="true">▸</span>
+                              <ChevronGlyph direction="right" className="objective-search-row-arrow is-spacer" />
                             </>
                           )}
                         </button>
@@ -951,7 +952,7 @@ export function ObjectiveSearch({
                           </span>
                           <span className={`objective-search-status${mark === "running" ? " is-running" : mark === "awaiting" ? " is-awaiting" : ""}`}>{t(CONVERSATION_ROW_PHRASE[mark])}</span>
                           {/* 지휘관 행의 ▸와 같은 너비의 자리 — 상태 열의 오른쪽 끝을 맞춘다. */}
-                          <span className="objective-search-row-arrow is-spacer" aria-hidden="true">▸</span>
+                          <ChevronGlyph direction="right" className="objective-search-row-arrow is-spacer" />
                         </button>
                       );
                     }
@@ -994,7 +995,7 @@ export function ObjectiveSearch({
                             <span className="objective-search-sr-only">{t("chrome.objectiveRecordSearch.roleCommander")}</span>
                           </span>
                           {row.context ? null : <span className={`objective-search-status${statusTone}`}>{status}</span>}
-                          <span className="objective-search-row-arrow" aria-hidden="true">{stripOpen ? "◂" : "▸"}</span>
+                          <ChevronGlyph direction={stripOpen ? "left" : "right"} className="objective-search-row-arrow" />
                         </button>
                         {stripOpen ? (
                           <div className="objective-search-actions" role="group" aria-label={t("chrome.objectiveRecordSearch.actionsAria", { title: entry.objectiveRecordName })}>
