@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.272.2] - 2026-10-30
+
+### fleet-console
+
+#### Fixed
+- 사령관이나 지휘관이 그린 카드에 틀린 부분이 있어도 대화에 원문 코드가 보이지 않고 나머지 부분이 그려지며, 그릴 것이 남지 않은 카드는 숨겨집니다.
+- 버전이 명시되지 않은 설치 플러그인도 마켓플레이스를 갱신하면 업데이트를 찾으며, 새로 실행할 명령은 신뢰하기 전에 확인합니다.
+
 ## [1.272.1] - 2026-10-30
 
 ### fleet-console

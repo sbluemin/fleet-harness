@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.272.2] - 2026-10-30
+
+### fleet-console
+
+#### Fixed
+- When a commodore or commander draws a card with a mistake in it, the chat shows the rest of the card instead of its raw code, and a card with nothing left to draw stays hidden.
+- Marketplace refresh now finds updates for installed plugins without a declared version, while still asking you to trust new executable commands.
+
 ## [1.272.1] - 2026-10-30
 
 ### fleet-console
