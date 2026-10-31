@@ -330,13 +330,13 @@ describe("taskforce runtime board actions", () => {
   it("appends board writes under the post with replyTo", async () => {
     vi.useFakeTimers();
     try {
-      // `add` 의 id는 입력이 아니라 결과에만 있다 — 기록이 결과를 이어야 묶음이 생긴다.
+      // `add` 의 id는 입력이 아니라 결과 본문에만 있다 — 실제 경로처럼 structuredContent 없이 content 텍스트로만 온다.
       const objectivesAddTool = {
         name: "objectives",
         description: "fake board",
         inputSchema: {},
         actionSchema: { actions: { add: { kind: "write" } } },
-        execute: async () => ({ content: [{ type: "text", text: "{}" }], structuredContent: { ok: true, objectiveId: "o1", stored: { title: "온보딩 결제 단계 분리" } }, isError: false }),
+        execute: async () => ({ content: [{ type: "text", text: JSON.stringify({ ok: true, objectiveId: "o1", stored: { title: "온보딩 결제 단계 분리" } }) }], isError: false }),
       } as unknown as ConsoleMcpTool;
       const h = runtimeHarness([objectivesAddTool]);
       const { a } = h.ids;

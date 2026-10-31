@@ -155,8 +155,14 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     if (described.counts && ok !== false) turnActions += 1;
     const error = ok === false ? (id && toolErrors.get(id)) || toolErrors.get(`name:${described.name}`) : undefined;
     // 성공한 보드 쓰기는 결과의 objectiveId·제목을 잇는다 — `add` 의 id는 결과에만 있다.
-    const resultInfo = ok !== false && id ? toolResultObjectives.get(id) : undefined;
-    if (id) { toolResultObjectives.delete(id); toolErrors.delete(id); }
+    // 이름 일치는 호출 id가 result와 tool-end를 잇지 못하는 경로의 예비라 쓰기 호출에만 쓴다.
+    const writes = boardWrites.get(described.name);
+    const isWrite = !!described.action && (writes?.has(described.action) ?? false);
+    const byId = id ? toolResultObjectives.get(id) : undefined;
+    const resultInfo = ok !== false ? byId ?? (isWrite ? toolResultObjectives.get(`name:${described.name}`) : undefined) : undefined;
+    if (id) toolResultObjectives.delete(id);
+    toolResultObjectives.delete(`name:${described.name}`);
+    if (id) toolErrors.delete(id);
     toolErrors.delete(`name:${described.name}`);
     const objectiveId = described.objectiveId ?? resultInfo?.objectiveId;
     const title = described.title ?? resultInfo?.title;
@@ -175,8 +181,12 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       if (code) { if (context.toolCallId) toolErrors.set(context.toolCallId, code); toolErrors.set(`name:${tool.name}`, code); }
       else if (boardWrites.has(tool.name)) {
         // `add` 처럼 id가 결과에만 있는 보드 쓰기 — 기록 한 줄이 그 말 아래 묶음을 잇는다.
+        // 호출 id가 result와 tool-end를 잇지 못하는 경로도 있어 이름으로도 남긴다(거절 코드와 같은 관행).
         const info = resultObjectiveOf(result);
-        if ((info.objectiveId || info.title) && context.toolCallId) toolResultObjectives.set(context.toolCallId, info);
+        if (info.objectiveId || info.title) {
+          if (context.toolCallId) toolResultObjectives.set(context.toolCallId, info);
+          toolResultObjectives.set(`name:${tool.name}`, info);
+        }
       }
       if (COMMODORES_TOOL_NAMES.has(tool.name)) {
         const call = args as { action?: unknown; alias?: unknown };
@@ -392,17 +402,37 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   }
 }
 
-/** 도구 결과의 objectiveId·제목 — `add` 처럼 id가 결과에만 있는 보드 쓰기를 기록이 잇는다. */
+/** 보드 쓰기 결과의 objectiveId·제목 — `add` 처럼 id가 결과에만 있는 보드 쓰기를 기록이 잇는다. */
 function resultObjectiveOf(result: unknown): { objectiveId?: string; title?: string } {
   if (!result || typeof result !== "object") return {};
-  const structured = (result as { structuredContent?: unknown }).structuredContent;
-  if (!structured || typeof structured !== "object") return {};
-  const record = structured as Record<string, unknown>;
-  const objectiveId = typeof record.objectiveId === "string" && record.objectiveId.length >= 1 && record.objectiveId.length <= 128 ? record.objectiveId : undefined;
-  const stored = record.stored as Record<string, unknown> | undefined;
-  const storedTitle = stored && typeof stored.title === "string" ? stored.title : undefined;
-  const directTitle = typeof record.title === "string" ? record.title : undefined;
-  const title = (storedTitle ?? directTitle)?.slice(0, 200) || undefined;
+  const record = result as Record<string, unknown>;
+  // MCP 경계를 넘어 structuredContent가 벗겨진 결과도 잇는다 — 첫 텍스트 블록의 JSON을 읽는다(크기 상한 안).
+  const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+    value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  const structured = asRecord(record.structuredContent);
+  const content = Array.isArray(record.content) ? record.content : undefined;
+  const firstText = content?.find((item): item is { type: string; text: string } => {
+    const row = asRecord(item);
+    return row?.type === "text" && typeof row.text === "string";
+  });
+  let textJson: Record<string, unknown> | undefined;
+  if (firstText && firstText.text.length <= 16_384) {
+    try {
+      const parsed: unknown = JSON.parse(firstText.text);
+      textJson = asRecord(parsed);
+    } catch { /* JSON이 아니면 structuredContent만 쓴다 */ }
+  }
+  const pick = (key: string): string | undefined => {
+    const fromStructured = structured?.[key];
+    if (typeof fromStructured === "string" && fromStructured) return fromStructured;
+    const fromText = textJson?.[key];
+    return typeof fromText === "string" && fromText ? fromText : undefined;
+  };
+  const stored = asRecord(structured?.stored) ?? asRecord(textJson?.stored);
+  const storedTitle = typeof stored?.title === "string" ? stored.title : undefined;
+  const title = (storedTitle ?? pick("title"))?.slice(0, 200) || undefined;
+  const objectiveId = pick("objectiveId");
+  if (objectiveId && (objectiveId.length < 1 || objectiveId.length > 128)) return title ? { title } : {};
   return { ...(objectiveId ? { objectiveId } : {}), ...(title ? { title } : {}) };
 }
 
