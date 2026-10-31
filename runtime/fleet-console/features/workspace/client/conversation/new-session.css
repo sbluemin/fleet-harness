@@ -166,7 +166,7 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 /* '/'·'@' 덱 — 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이 캡슐 위에 뜬다. 여기는 자리만 둔다:
    놀이터·카드 위에 서는 층. 모델 행의 ★ 는 별표 모델 표식이다. */
 .fc-composer-deck.new-session-deck { z-index: 5; }
-/* '@' 멘션 덱만 패널 폭에 상한을 둔다 — 내용에 맞는 359px, 좁은 화면에서는 100%. '/' 덱의 폭은 그대로다. */
+/* '@' 멘션 덱만 패널 폭에 상한을 둔다 — 내용에 맞는 480px, 좁은 화면에서는 100%. '/' 덱의 폭은 그대로다. */
 .fc-composer-deck.new-session-deck.is-mention-deck { left: 0; right: auto; width: var(--fc-mention-deck-width, 100%); }
 .new-session-deck-star { color: var(--brass-ink); font-size: var(--t-xs); }
 

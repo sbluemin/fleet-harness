@@ -9186,9 +9186,9 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 }
 /* 멘션 행 문법 — 모든 '@' 목록이 이 한 모양으로 선다(SDK `ComposerMentionRow`: [머리 20][이름][흐린 보조] … [오른쪽 끝 흐린 종류]).
    한 줄·말줄임(행 공용 규칙). 멘션과 다른 덱 모두 활성 행은 은은한 중립 워시 한 겹으로 표시한다. */
-/* 멘션 덱 폭 — 컴포저 왼쪽 끝에 붙는 359px 카드다. 덱을 띄우는 각 멘션 컴포저가 이 폭을 쓴다.
+/* 멘션 덱 폭 — 컴포저 왼쪽 끝에 붙는 480px 카드다. 덱을 띄우는 각 멘션 컴포저가 이 폭을 쓴다.
    높이는 덱 배치(deck.tsx)가 정한다. */
-.fc-composer-deck { --fc-mention-deck-width: min(100%, 359px); }
+.fc-composer-deck { --fc-mention-deck-width: min(100%, 480px); }
 /* 멘션·슬래시 덱의 행 문법 — 높이 28px, 간격 2px, 반경 8px. */
 .fc-composer-deck-row.is-mention {
   min-height: 28px;
@@ -9204,7 +9204,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .agent-chat-deck .fc-composer-deck-list {
   row-gap: var(--popover-list-gap);
 }
-/* 채팅 컴포저의 '@' 덱 — 멘션 카드 자리(컴포저 왼쪽, 359px). '/' 덱은 컴포저 폭을 그대로 쓴다. */
+/* 채팅 컴포저의 '@' 덱 — 멘션 카드 자리(컴포저 왼쪽, 480px). '/' 덱은 컴포저 폭을 그대로 쓴다. */
 .agent-chat-deck.is-mention-deck {
   left: 0;
   right: auto;
