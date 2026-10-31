@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../../workspace/shared/conversation-surfaces.js";
 import type { ConversationParticipant, ConversationSpeaker } from "../../../execution/shared/conversation/types.js";
 import type { AgentConversationEntry, AgentConversationProps } from "../../../execution/shared/chat-renderer.js";
-import { MAX_TASKFORCE_MEMBERS, MAX_TASKFORCE_NAME, MAX_TASKFORCE_TEXT, MAX_TASKFORCE_TOPIC, TASKFORCE_ROUTES, type TaskforceAction, type TaskforceLedgerEntry, type TaskforceState } from "../../shared/contracts/taskforce.js";
+import { MAX_TASKFORCE_MEMBERS, MAX_TASKFORCE_NAME, MAX_TASKFORCE_TEXT, MAX_TASKFORCE_TOPIC, TASKFORCE_ROUTE_NAMES, type TaskforceAction, type TaskforceLedgerEntry, type TaskforceState } from "../../shared/contracts/taskforce.js";
 import { commodoreAvatarKey } from "../../../workspace/shared/avatars.js";
 import { mongleBase } from "../../../workspace/shared/avatars.js";
 import { useAvatarBook, resolveMongleLook, useMongleLook } from "../../../workspace/client/avatar-events.js";
@@ -181,7 +181,7 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
     }
     if (entry.speaker.kind === "system") return [{ kind: "note", id: String(entry.seq), at: entry.at, text: t(`taskforce.system.${entry.speaker.code}`, { text: entry.text.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, (id) => memberName(id, language)) }), ...(entry.speaker.code === "chain-paused" ? { tone: "warn" as const } : {}) }];
     return [{ kind: "message", id: String(entry.seq), at: entry.at, objectiveId: id, speaker: entry.speaker.kind === "person" ? { kind: "human", name: "" } : speaker(entry.speaker.commodoreId), text: entry.text || (entry.actions?.length ? " " : ""), streaming: false,
-      ...(entry.images?.length ? { attachments: entry.images.map((image) => ({ preview: { id: image.id, url: `${TASKFORCE_ROUTES.image}?${new URLSearchParams({ taskforceId: id, seq: String(entry.seq), imageId: image.id })}` } })) } : {}) }];
+      ...(entry.images?.length ? { attachments: entry.images.map((image) => ({ preview: { id: image.id, url: `/api/v1/${TASKFORCE_ROUTE_NAMES.image}?${new URLSearchParams({ taskforceId: id, seq: String(entry.seq), imageId: image.id })}` } })) } : {}) }];
   }), [entries, id, language, book, commodores, bySeq]);
   const participants: readonly ConversationParticipant[] = [...new Set([...(state?.members ?? []), ...entries.flatMap((entry) => entry.speaker.kind === "commodore" ? [entry.speaker.commodoreId] : [])])].map((id) => ({ speaker: speaker(id), activity: judging.includes(id) ? "running" : "idle" }));
   const run = async (route: "continue" | "close" | "reopen") => { if (busy) return; setBusy(true); setFailure(false); try { await mutateTaskforce(route, { taskforceId: id }); } catch { setFailure(true); } finally { setBusy(false); } };

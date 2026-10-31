@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { CommodoreClientDeps } from "../deps.js";
 import { post } from "../request.js";
-import { MAX_TASKFORCE_LEDGER_PAGE, TASKFORCE_ROUTES, type TaskforceEvent, type TaskforceJudgingStatus, type TaskforceLedgerEntry, type TaskforceLedgerPage, type TaskforceState, type TaskforceSummary } from "../../shared/contracts/taskforce.js";
+import { MAX_TASKFORCE_LEDGER_PAGE, TASKFORCE_ROUTE_NAMES, type TaskforceEvent, type TaskforceJudgingStatus, type TaskforceLedgerEntry, type TaskforceLedgerPage, type TaskforceState, type TaskforceSummary } from "../../shared/contracts/taskforce.js";
 
 type Snapshot = {
   readonly state?: TaskforceState;
@@ -71,9 +71,9 @@ function rememberJudging(status: TaskforceJudgingStatus): void {
   summaries = summaries.map((row) => row.id === status.taskforceId ? { ...row, judging: status.judging } : row);
 }
 
-export async function taskforceRequest<T>(route: keyof typeof TASKFORCE_ROUTES, body: unknown): Promise<T> {
+export async function taskforceRequest<T>(route: keyof typeof TASKFORCE_ROUTE_NAMES, body: unknown): Promise<T> {
   if (!deps) throw new Error("taskforce_unavailable");
-  return post<T>(deps.api, TASKFORCE_ROUTES[route], body);
+  return post<T>(deps.api, TASKFORCE_ROUTE_NAMES[route], body);
 }
 
 export function refreshTaskforces(): Promise<void> {
@@ -146,7 +146,7 @@ export async function loadTaskforceActions(id: string): Promise<void> {
   finally { if (deps === owner && !removed.has(id)) { snapshots.set(id, { ...readTaskforce(id), actionsLoading: false }); emit(); } }
 }
 
-export async function mutateTaskforce(route: Exclude<keyof typeof TASKFORCE_ROUTES, "list" | "read" | "image">, body: unknown): Promise<TaskforceState | undefined> {
+export async function mutateTaskforce(route: Exclude<keyof typeof TASKFORCE_ROUTE_NAMES, "list" | "read" | "image">, body: unknown): Promise<TaskforceState | undefined> {
   const owner = deps;
   const result = await taskforceRequest<{ taskforce?: TaskforceState; entry?: TaskforceLedgerEntry; deleted?: string }>(route, body);
   if (deps !== owner) return;
