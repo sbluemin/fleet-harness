@@ -5,6 +5,29 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.275.0] - 2026-10-31
+
+### fleet-console
+
+#### Added
+- Commodores and Commanders can search past objectives, archived ones included, to find earlier decisions, retrospectives, mission records and PRs without opening each objective.
+- Install plugins globally for every Commodore and their commander and member sessions, with global installations taking precedence over matching Commodore plugins in new sessions.
+- Organize the mobile home commodore list with the same sections as desktop, and collapse sections or move commodores between them.
+- The commodore panel's Routines tab is now the Tasks tab. With the list on the right, the tab shows the commanders as goal cards above the routines.
+- With the list on the right, choosing a commander opens its chat in the center and expands its goal, crew and library under its row in the Tasks tab.
+- Fold the not-started and finished group in the commander list; it stays folded the next time you open Console.
+- Create a TaskForce to bring multiple Commodores together around a topic, follow their discussion and actions, and finish or reopen the topic without mixing it into their 1:1 conversations.
+
+#### Changed
+- Mark completed objectives in the commander list with a check glyph instead of their completion date, so they stand apart from not-started ones at a glance.
+- The commander list no longer appears inside chats. Keep it in the left or right sidebar from the list header; the move shows a short undo notice.
+
+#### Fixed
+- Routines you ask the Commodore to set up can now archive completed objectives; routines it sets up on its own still cannot. For a routine created before this update, confirm it with the Commodore once in a message.
+
+#### Removed
+- Objective commanders and members no longer use the Console. The Console use switch is gone from the commander menu, and rows are no longer wrapped in a pulse when the Console is used. The adjutant keeps Console use.
+
 ## [1.274.0] - 2026-10-31
 
 ### fleet-console
