@@ -2,7 +2,7 @@ import { createContext, createElement, Fragment, useContext, useEffect, useMemo,
 
 import type { ClientMobileBarCapability, MobileBarSpec } from "../../../../../features/workspace/shared/pane.js";
 
-import { pushBackLayer } from "./mobile-back.js";
+import { closeTopBackLayer, pushBackLayer } from "./mobile-back.js";
 import { claimMobileBar, releaseMobileBar, type MobileBarState } from "./mobile-store.js";
 
 /**
@@ -44,7 +44,7 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
         ...(spec.subtitle ? { subtitle: spec.subtitle } : {}),
         leading: "back",
         ...(spec.round ? { round: true } : {}),
-        ...(spec.depth > 0 ? { onBack: () => window.history.back() } : {}),
+        ...(spec.pill?.takeover ? { onBack: () => { if (!closeTopBackLayer()) window.history.back(); } } : spec.depth > 0 ? { onBack: () => window.history.back() } : {}),
         ...(spec.actions && spec.actions.length > 0 ? { actions: spec.actions } : {}),
         ...(spec.menu && spec.menu.items.length > 0 ? { menu: { label: spec.menu.label ?? spec.title, ...(spec.menu.caption ? { caption: spec.menu.caption } : {}), items: spec.menu.items } } : {}),
       };
@@ -132,7 +132,8 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
  */
 function pluginPill(spec: MobileBarSpec, pill: NonNullable<MobileBarSpec["pill"]>): NonNullable<MobileBarState["pill"]> {
   return {
-    key: `${spec.title}\u0001${spec.subtitle ?? ""}\u0001${pill.avatarKey ?? ""}`,
+    key: `${spec.title}\u0001${spec.subtitle ?? ""}\u0001${pill.avatarKey ?? ""}\u0001${pill.takeover?.key ?? ""}`,
+    takeover: pill.takeover ?? null,
     label: pill.label,
     onPress: pill.onPress,
     node: createElement(Fragment, null,

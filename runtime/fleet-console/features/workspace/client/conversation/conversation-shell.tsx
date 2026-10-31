@@ -43,8 +43,7 @@ import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
-import { useConversationPillTakeover } from "./conversation-slots.js";
-import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
+import { ConversationPill, ConversationPillContext, PILL_MORPHING_CLASS, useConversationPillHost } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
@@ -407,7 +406,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const hiddenActive = overflow.find((tab) => tab.active) ?? null;
   return (
     <div className="conversation-panel-head">
-      {/* 맨 위 줄 — Grok 세부 정보처럼 원형 단추(닫기)만 선다. Desktop 에서는 이 줄의 빈 자리가 창을 끄는 자리다. */}
+      {/* 맨 위 줄 — 원형 단추(닫기)만 선다. Desktop 에서는 이 줄의 빈 자리가 창을 끄는 자리다. */}
       <div className="conversation-panel-toolbar">
         <span className="conversation-panel-toolbar-spacer" aria-hidden="true" />
         <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) dismissRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
@@ -437,7 +436,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       {tabsEntry?.conversationTabs?.renderTools && tabsState !== null ? (
         <div className="conversation-panel-sections is-tools">{tabsEntry.conversationTabs.renderTools({ theaterId: tabsTheaterId, language: context.language })}</div>
       ) : null}
-      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 기록·루틴·정보·설정)이 Grok 세그먼트처럼 한 줄에 선다.
+      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 기록·루틴·정보·설정)이 한 줄에 선다.
           켜진 것은 둥근 면 하나로 말한다. 넘치는 탭은 줄 끝 「⋯」 메뉴에 모인다. */}
       <div className="conversation-panel-segments">
         <div className="conversation-panel-segment-row" ref={rowRef}>
@@ -530,7 +529,7 @@ function PanelIdentityName({ title, onRename, subject = "objective" }: { readonl
   );
 }
 
-/** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름(Grok 세부 정보의 아바타·이름 자리). 대상이 없으면 서지 않는다. */
+/** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름. 대상이 없으면 서지 않는다. */
 function ConversationPanelIdentity() {
   const inbox = useTheaterInboxState();
   const theaterLabel = useTheaterLabel(inbox?.theaterId);
@@ -1358,23 +1357,21 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />;
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
+  const pill = useConversationPillHost(descriptor.pillOwner?.(context) ?? { kind: "surface", id: descriptor.id });
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <div className="conversation-pill">
-          <button type="button" className="conversation-pill-details" onClick={onToggleDetails} aria-label={t("conversation.pill.detailsAria", { title })}>
+        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title })} controls={hasActions ? <FeatureErrorBoundary fallback={null}>{actions}</FeatureErrorBoundary> : null}>
             {avatar
               ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
               : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
             <span className="conversation-pill-title">{title}</span>
             {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
-          </button>
-          {hasActions ? <span className="conversation-pill-controls"><FeatureErrorBoundary fallback={null}>{actions}</FeatureErrorBoundary></span> : null}
-        </div>
+        </ConversationPill>
         {tools(browser)}
       </div>
       <div className="conversation-body is-surface">
-        <FeatureErrorBoundary fallback={null}>{descriptor.render(context)}</FeatureErrorBoundary>
+        <ConversationPillContext.Provider value={pill.port}><FeatureErrorBoundary fallback={null}>{descriptor.render(context)}</FeatureErrorBoundary></ConversationPillContext.Provider>
       </div>
     </div>
   );
@@ -1396,11 +1393,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const capabilities = useHostCapabilities();
   const clusterIndex = useClusterIndex();
   const bodyRenderer = useConversationBodyRenderer();
-  // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 제 내용으로 바꾼다 — 내용 교체와 폭 전환은 pill-takeover 가 진다.
-  const pillRef = useRef<HTMLDivElement | null>(null);
-  const pillTakeover = usePillTakeoverPhase(useConversationPillTakeover(objectiveRecord.id));
-  const pillTaken = pillTakeover.phase === "in";
-  usePillMorphWidth(pillRef, pillTaken ? pillTakeover.shown?.key ?? null : null, pillTakeover.phase === "out");
+  const pill = useConversationPillHost({ kind: "objective", id: objectiveRecord.id });
   const clusterRoot = clusterIndex.rootOf.get(objectiveRecord.id) ?? null;
   const nested = state.nestedObjectiveRecords.filter((candidate) => candidate.parentObjectiveId === objectiveRecord.id);
   const chosen = state.nestedBodySelection[objectiveRecord.id];
@@ -1527,24 +1520,14 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <div className="conversation-pill" ref={pillRef} data-takeover={pillTaken || undefined}>
-          <button
-            type="button"
-            className="conversation-pill-details"
-            onClick={onToggleDetails}
-            aria-label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })}
-            inert={pillTaken || undefined}
-          >
+        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
             {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
             {memberCount > 0 ? (
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
             ) : null}
-          </button>
-          {viewSwitch !== null ? <span className="conversation-pill-controls" inert={pillTaken || undefined}>{viewSwitch}</span> : null}
-          <PillTakeoverLayer {...pillTakeover} />
-        </div>
+        </ConversationPill>
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
         {tools(toolsLead)}
@@ -1552,7 +1535,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
           노드 줄을 따로 세우지 않는다. */}
       <div className="conversation-body" ref={bodyRef} onPointerDownCapture={activate}>
-        {custom ?? defaultBody}
+        <ConversationPillContext.Provider value={pill.port}>{custom ?? defaultBody}</ConversationPillContext.Provider>
       </div>
     </div>
   );

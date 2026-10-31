@@ -8,7 +8,7 @@ import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { pluginOriginIdentity } from "../origin-mark.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { LedgerTargetContext, SpeakerMark, speakerKey } from "./speaker-mark.js";
-import { publishConversationPillTakeover, useConversationPillHosted } from "../../../../../workspace/client/conversation/conversation-slots.js";
+import { ConversationPillContext } from "../../../../../workspace/client/conversation/pill-takeover.js";
 import { useViewMode } from "../../../../../../core/client/src/integration/view-mode-store.js";
 import { pushBackLayer } from "../../../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
@@ -21,9 +21,9 @@ import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } fro
  * 「채팅 닫기」. 오른쪽에서 밀려 들어오고 뒤의 기록은 조금 왼쪽으로 밀리며 흐려진다(움직임 줄이기면 바로 바뀐다). 열면 포커스가 화면으로
  * 가고 Esc·「채팅 닫기」로 닫으면 누른 줄로 돌아온다. 원장은 보낸 이 ⇄ 받는 이의 구성원 이름이 연다.
  *
- * 보낸 이 ⇄ 받는 이는 대화 주인 Objective 의 머리 pill(데스크톱 맨 위 줄·모바일 상단 막대)이 그 자리에서 바뀌어 보인다
- * (`publishConversationPillTakeover`) — 대화 화면은 그 줄을 덮지 않는다. 그 pill 이 없는 대화(플러그인 대화 등)에서만 화면 맨 위에
- * 같은 칩을 대신 세운다. pill 의 칩은 화면 밖 DOM 이지만 화면이 소유한다 — 접근성 트리에서는 화면이 `aria-owns` 로 품고, Tab 순환의 첫 자리다.
+ * 머리 pill 이 있는 대화에서는 주인의 표식·이름 뒤에 ⇄ 상대만 붙인다 — 호스트가 본문에 제공한 포트로 같은 pill 을 넓힌다.
+ * 머리 없는 대화에서만 화면 맨 위에 보낸 이 ⇄ 받는 이 칩을 대신 세운다. pill 은 화면 밖 DOM 이지만 화면이 소유한다 —
+ * 접근성 트리에서는 화면이 `aria-owns` 로 품고, Tab 순환의 첫 자리다.
  *
  * 상태는 `useRelayConversation` 이 지고 화면은 `RelayConversation` 이 그린다 — 그룹 대화 루트에는 화면 한 줄만 끼운다.
  */
@@ -187,22 +187,20 @@ function trapTab(event: React.KeyboardEvent<HTMLElement>, root: HTMLElement, own
 }
 
 /** 대화 화면 — 연 전언이 없으면 아무것도 그리지 않는다. 다른 전언을 열면 새 화면으로 선다. */
-export function RelayConversation({ selected, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel, pillObjectiveId = null }: RelayLayerPorts & {
+export function RelayConversation({ selected, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel }: RelayLayerPorts & {
   readonly entries: readonly AgentConversationEntry[];
   readonly participants: readonly ConversationParticipant[];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger?: ((objectiveId: string) => void) | undefined;
   /** 메시지 위 가운데 시각 — 그룹 대화의 시각 줄과 같은 문구. */
   readonly timeLabel: (at: number) => string;
-  /** 머리 pill 을 바꿀 대화 주인 Objective — 그 pill 이 서 있으면 보낸 이 ⇄ 받는 이를 거기에 보인다. 없으면 화면 안에 칩을 둔다. */
-  readonly pillObjectiveId?: string | null | undefined;
 }) {
   const entry = selected === null ? undefined : entries.find((candidate) => candidate.id === selected);
   if (!entry || !isRelay(entry)) return null;
-  return <RelayLayer key={entry.id} entry={entry} origin={origin} onDismiss={onDismiss} entries={entries} participants={participants} language={language} onOpenLedger={onOpenLedger} timeLabel={timeLabel} pillObjectiveId={pillObjectiveId} />;
+  return <RelayLayer key={entry.id} entry={entry} origin={origin} onDismiss={onDismiss} entries={entries} participants={participants} language={language} onOpenLedger={onOpenLedger} timeLabel={timeLabel} />;
 }
 
-function RelayLayer({ entry, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel, pillObjectiveId }: {
+function RelayLayer({ entry, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel }: {
   readonly entry: RelayEntry;
   readonly origin: React.RefObject<HTMLElement | null>;
   readonly onDismiss: () => void;
@@ -211,7 +209,6 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger: ((objectiveId: string) => void) | undefined;
   readonly timeLabel: (at: number) => string;
-  readonly pillObjectiveId: string | null;
 }) {
   const t = getGroupT(language);
   const ledgerOf = React.useContext(LedgerTargetContext);
@@ -223,7 +220,8 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   const returnFocus = React.useRef(false);
   const titleId = React.useId();
   const pairId = React.useId();
-  const hosted = useConversationPillHosted(pillObjectiveId);
+  const pill = React.useContext(ConversationPillContext);
+  const hosted = pill !== null;
 
   // 폰 배치에서는 하드웨어·브라우저 뒤로와 상단 ‹ 가 Objective 을 떠나지 않고 이 화면부터 닫는다(좌표 시트와 같은 계약) — 열린 동안
   // history 항목 하나와 뒤로 층 하나를 올린다. 데스크톱은 올리지 않는다(브라우저 뒤로도 지금 그대로다).
@@ -351,7 +349,7 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   const actions = React.useRef({ openLedger, onKey });
   actions.current = { openLedger, onKey };
   const ledgerFor = (party: Party): string | null =>
-    party.kind === "speaker" && party.speaker.kind === "member" && onOpenLedger ? ledgerOf(party.speaker, participants) : null;
+    party.kind === "speaker" && party.speaker.kind !== "human" && onOpenLedger ? ledgerOf(party.speaker, participants) : null;
 
   const partyChip = (party: Party, place: "head" | "pill") => {
     const target = ledgerFor(party);
@@ -377,19 +375,33 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
     </>
   );
 
-  const names = [partyName(sender), ...recipients.map(partyName)].join(", ");
-  const ledgerKey = [sender, ...recipients].map((party) => ledgerFor(party) ?? "").join(",");
-  // 머리 pill 에 보일 칩 — 화면이 선 동안(밀려 들어온 뒤부터 내려가기 시작할 때까지) 주인 Objective 의 pill 을 이것으로 바꾼다.
+  const parties = [sender, ...recipients].filter((party, index, all) => all.findIndex((candidate) => candidate.key === party.key) === index);
+  const owner = parties.find((party) => party.kind === "speaker" && (pill?.owner.kind === "commodore"
+    ? party.speaker.kind === "commodore" && party.speaker.commodoreId === pill.owner.id
+    : pill?.owner.kind === "objective" && party.speaker.kind !== "commodore" && party.speaker.objectiveId === pill.owner.id));
+  const peers = parties.filter((party) => party !== owner);
+  const names = (owner ? [owner, ...peers] : parties).map(partyName).join(", ");
+  const ledgerKey = parties.map((party) => ledgerFor(party) ?? "").join(",");
+  const ownerTarget = owner ? ledgerFor(owner) : null;
+  // 주인은 기존 머리에 남고, 발신 방향과 무관하게 그 뒤에 상대들만 붙는다.
   const takeover = React.useMemo(() => ({
-    key: `relay:${entry.id}`,
+    id: pairId,
+    key: `relay:${entry.id}:${names}:${ledgerKey}`,
     label: t("group.relay.title", { names }),
-    content: <span id={pairId} className="group-relay-pill" onKeyDown={(event) => actions.current.onKey(event)}>{pairBody("pill")}</span>,
-  }), [entry.id, names, ledgerKey, language, pairId]); // eslint-disable-line react-hooks/exhaustive-deps -- 칩 모양은 이름·원장 대상·언어만 바꾼다.
+    ownerLabel: owner ? t("group.speaker.openLedger", { name: partyName(owner) }) : names,
+    onOwnerPress: ownerTarget ? () => actions.current.openLedger(ownerTarget) : undefined,
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => actions.current.onKey(event),
+    content: <span className="group-relay-pill">
+      <svg className="group-relay-swap" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 8h15m0 0-3.5-3.5M19 8l-3.5 3.5M20 16H5m0 0 3.5-3.5M5 16l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {peers.map((party, index) => <React.Fragment key={party.key}>{index > 0 ? <span className="group-relay-pair-sep" aria-hidden="true">·</span> : null}{partyChip(party, "pill")}</React.Fragment>)}
+    </span>,
+  }), [entry.id, names, ledgerKey, language, pairId, ownerTarget, owner?.key]); // eslint-disable-line react-hooks/exhaustive-deps -- 동작은 ref 로, 모양은 이름·원장 대상·언어로 갱신한다.
   React.useLayoutEffect(() => {
-    if (!hosted || !open || pillObjectiveId === null) return;
-    publishConversationPillTakeover(pillObjectiveId, takeover);
-    return () => publishConversationPillTakeover(pillObjectiveId, null);
-  }, [hosted, open, pillObjectiveId, takeover]);
+    if (!pill || !open) return;
+    return pill.publish(takeover);
+  }, [pill, open, takeover]);
   const owned = hosted && open;
   return (
     <div
