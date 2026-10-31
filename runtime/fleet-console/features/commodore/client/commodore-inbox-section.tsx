@@ -358,7 +358,7 @@ export function CommodoreSessionSettings({ t, commodoreId, phone = false }: { re
           {controller.loading || controller.loadFailed ? <p className="objectives-commodore-hint" role={controller.loadFailed ? "alert" : "status"}>{promptT(controller.loadFailed ? "sidebar.theater.prompt.loadFailed" : "sidebar.theater.prompt.loading")}</p> : <>
             <div className="objectives-commodore-prompt-modes" role="radiogroup" aria-labelledby={labelId}>
               {modes.map((mode) => (
-                <label key={mode}>
+                <label key={mode} title={names[mode]}>
                   <input type="radio" name={`commodore-prompt-${bodyId}`} checked={controller.draft.mode === mode} onChange={() => controller.changeMode(mode)} />
                   <span>{names[mode]}</span>
                 </label>
@@ -1055,8 +1055,8 @@ export function CommodoreDescription({ t, commodoreId, description, onFail, onCl
           <button type="button" className={phone ? "objectives-cm-pill" : "objectives-btn"} disabled={saving} onClick={cancel}>{t("commodore.description.cancel")}</button>
           <button type="button" className={phone ? "objectives-cm-pill is-inverse" : "objectives-btn"} disabled={saving || !dirty || !online} onClick={save}>{t("commodore.description.save")}</button>
         </div>
-      </> : <button ref={previewRef} type="button" className={`objectives-commodore-description-preview${description.text ? "" : " is-empty"}`} title={description.text ? t("commodore.description.edit") : undefined} disabled={!online} onClick={() => { onClear(); setEditing(true); }}>
-        {description.text || <><span aria-hidden="true">+</span><span>{t("commodore.description.add")}</span></>}
+      </> : <button ref={previewRef} type="button" className={description.text ? "objectives-commodore-description-preview" : phone ? "objectives-cm-gr objectives-cm-intel-add commodore-theaters-phone-add" : "commodore-theaters-add"} title={description.text ? t("commodore.description.edit") : undefined} disabled={!online} onClick={() => { onClear(); setEditing(true); }}>
+        {description.text || <><span className={phone ? "objectives-cm-intel-plus" : "objectives-row-ic objectives-plus"} aria-hidden="true">+</span><span className={phone ? "objectives-cm-gr-tx" : undefined}>{t("commodore.description.add")}</span></>}
       </button>}
     </section>
   );
