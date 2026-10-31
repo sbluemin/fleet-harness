@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { ClientAgentChatCapability } from "../../execution/shared/chat-renderer.js";
 import type { ClientRailCapability } from "../../workspace/shared/navigation-ports.js";
 import type { ClientNavigateCapability } from "../../workspace/shared/navigation.js";
@@ -54,4 +54,20 @@ export interface CommodoreClientDeps {
   readonly mobileSessions?: CommodoreMobileSessions;
   /** 폰 사령관 세부의 「편집」·⋮ 「새 세션」. 없으면 그 동작이 서지 않는다. */
   readonly mobileActions?: CommodoreMobileActions;
+  /**
+   * 작업 탭 「목표」 섹션의 지휘관 목록 — workspace 목록을 직접 가져오면 순환이 생기므로 조립(호스트)이 렌더러와 배치를 넘긴다.
+   * 없으면 목표 섹션이 서지 않고 작업 탭은 루틴만 둔다.
+   */
+  readonly tasksList?: CommodoreTasksList;
+}
+/** 작업 탭 「목표」 섹션이 쓰는 목록 렌더러와 배치 읽기. `left`가 기본이다. */
+export interface CommodoreTasksListProps {
+  readonly commodoreId: string;
+  readonly selectedId: string | null;
+  readonly heading: (count: number) => ReactNode;
+}
+export interface CommodoreTasksList {
+  readonly List: ComponentType<CommodoreTasksListProps>;
+  readonly usePlacement: () => "left" | "right";
+  readonly readPlacement: () => "left" | "right";
 }

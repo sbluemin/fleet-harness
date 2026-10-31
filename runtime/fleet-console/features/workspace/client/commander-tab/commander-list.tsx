@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useViewportFit, MenuCheckGlyph } from "@fleet-console/ui/react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -9,6 +9,7 @@ import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { SideBarClusterRow } from "../sidebar/side-bar-cluster-row.js";
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
+import { openCommodoreTasksPanel } from "../../../commodore/client/commodore-conversation.js";
 import { commodoreSectionLabel, useCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { useCommodore } from "../../../commodore/client/commodore-state.js";
 import { commodoreMongleState } from "../../../commodore/client/commodore-header.js";
@@ -21,8 +22,8 @@ import { Toast, ToastHost } from "../../../../core/client/src/chrome/components/
 import { toggleCommanderSectionCollapsed } from "../sidebar/commander-section-folds.js";
 import "./commander-list.css";
 
-/** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. */
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false }: {
+/** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, chevron = false, heading }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
@@ -30,14 +31,21 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly onRowMenu?: (item: SideBarRowItem) => void;
   /** 사이드바·좁은 팝오버처럼 좁을 때만 정렬 칩에 현재 이름만 보인다. 폰은 접두어를 유지한다. */
   readonly sortNameOnly?: boolean;
+  /** 루틴 목록과 같은 테두리 카드 안에 행이 선다(작업 탭 목표 섹션). */
+  readonly card?: boolean;
+  /** 진행 중 행 끝에 chevron이 선다(작업 탭 목표 섹션). 시작 전·완료 행에는 서지 않는다. */
+  readonly chevron?: boolean;
+  /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
+  readonly heading?: ((count: number) => ReactNode) | undefined;
 }) {
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
   const { sorted, listSections, preference, settledEmpty } = useCommanderRows(commodoreId, selectedId);
 
   return (
-    <section className="commander-tab" aria-label={t("commanderTab.aria")}>
+    <section className={["commander-tab", card ? "commander-tab--card" : "", chevron ? "commander-tab--chevron" : ""].filter(Boolean).join(" ")} aria-label={t("commanderTab.aria")}>
       <div className="commander-tab-bar">
+        {heading ? <span className="commander-tab-heading">{heading(sorted.length)}</span> : null}
         <SortMenu preference={preference} nameOnly={sortNameOnly} />
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
@@ -55,7 +63,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
                 const selected = objectiveId !== null && selectedId === objectiveId;
-                return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected} settled={group.settled === true}
+                return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected} settled={group.settled === true} chevron={chevron}
                   onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
                   onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />;
               })}
@@ -104,14 +112,16 @@ function CommanderPlacementGlyphs({ commodoreId }: { readonly commodoreId: strin
     if (next === placement) return;
     const prev = placement;
     setCommanderPlacement(next);
-    // 옮겨 간 쪽을 보이게 한다. 왼쪽이면 그 사령관 섹션을 펼친다. 오른쪽(작업 탭 열기)은 미션 6에서 잇는다.
+    // 옮겨 간 쪽을 보이게 한다. 왼쪽이면 그 사령관 섹션을 펼치고, 오른쪽이면 사령관 패널을 작업 탭으로 연다.
     if (next === "left") toggleCommanderSectionCollapsed(commodoreId, false);
+    else openCommodoreTasksPanel(commodoreId);
     setNotice({ next, prev, nonce: Date.now() });
   };
   const undo = () => {
     if (notice === null) return;
     setCommanderPlacement(notice.prev);
     if (notice.prev === "left") toggleCommanderSectionCollapsed(commodoreId, false);
+    else openCommodoreTasksPanel(commodoreId);
     setNotice(null);
   };
   return (

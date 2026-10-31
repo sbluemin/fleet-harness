@@ -1294,15 +1294,17 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
   useEffect(() => {
-    if (descriptor.defaultTab === undefined) return;
+    if (descriptor.defaultTab === undefined && descriptor.resolveDefaultTab === undefined) return;
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && !tabIdsRef.current.includes(active)) {
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
     } else if (active !== null || !mayAutoOpenConversationRail(descriptor.id)) return;
-    openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, descriptor.defaultTab));
-  }, [descriptor.defaultTab, descriptor.id, selection.nonce]);
+    const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
+    if (fallback === undefined) return;
+    openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
+  }, [descriptor.defaultTab, descriptor.resolveDefaultTab, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Objective 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.

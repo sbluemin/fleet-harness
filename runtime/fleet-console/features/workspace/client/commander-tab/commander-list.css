@@ -204,6 +204,33 @@
 }
 :root[data-view-mode="mobile"] .commander-compact-popover { display: none; }
 
+/* 목록 막대 앞의 섹션 머리 — 정보·설정 탭의 섹션 제목과 같은 모양이다. 개수는 3차 글자로 읽는다. */
+.commander-tab-heading {
+  margin: 0 auto 0 0;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.commander-tab-heading > span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* 작업 탭 목표 카드 — 루틴 목록과 같은 테두리 카드 안에 행이 선다. */
+.commander-tab--card .commander-tab-groups {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  overflow: clip;
+}
+.commander-tab--card .commander-tab-list { gap: 0; }
+.commander-tab--card .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
+.commander-tab--card .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
+
+/* 진행 중 행 끝 chevron — 가운데가 아니라 떠 있는 창으로 여는 길이다(미션 7에서 잇는다). */
+.side-bar-cluster-row-chevron { display: flex; color: var(--text-tertiary); }
+.side-bar-cluster-row-chevron svg { width: 14px; height: 14px; }
+
 .commander-tab-empty {
   margin: 0;
   padding: var(--space-3) var(--space-2);
