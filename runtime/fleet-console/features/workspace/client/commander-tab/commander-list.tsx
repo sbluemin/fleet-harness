@@ -24,7 +24,7 @@ import { toggleCommanderSectionCollapsed } from "../sidebar/commander-section-fo
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, chevron = false, heading }: {
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, heading }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
@@ -34,8 +34,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly sortNameOnly?: boolean;
   /** 루틴 목록과 같은 테두리 카드 안에 행이 선다(작업 탭 목표 섹션). */
   readonly card?: boolean;
-  /** 진행 중 행 끝에 chevron이 선다(작업 탭 목표 섹션). 시작 전·완료 행에는 서지 않는다. */
-  readonly chevron?: boolean;
   /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
   readonly heading?: ((count: number) => ReactNode) | undefined;
 }) {
@@ -44,7 +42,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   const { sorted, listSections, preference, settledEmpty } = useCommanderRows(commodoreId, selectedId);
 
   return (
-    <section className={["commander-tab", card ? "commander-tab--card" : "", chevron ? "commander-tab--chevron" : ""].filter(Boolean).join(" ")} aria-label={t("commanderTab.aria")}>
+    <section className={["commander-tab", card ? "commander-tab--card" : ""].filter(Boolean).join(" ")} aria-label={t("commanderTab.aria")}>
       <div className="commander-tab-bar">
         {heading ? <span className="commander-tab-heading">{heading(sorted.length)}</span> : null}
         <SortMenu preference={preference} nameOnly={sortNameOnly} />
@@ -64,7 +62,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
                 const selected = objectiveId !== null && selectedId === objectiveId;
-                return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected} settled={group.settled === true} chevron={chevron}
+                return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected} settled={group.settled === true}
                   onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
                   onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />;
               })}

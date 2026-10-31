@@ -34,6 +34,8 @@
 .commander-tab-sort-button { padding: 0 4px; }
 .commander-tab-direction { width: 26px; padding: 0; }
 .commander-place { display: inline-flex; gap: 2px; margin-left: auto; }
+/* G: 제목이 있는 막대에서는 위치 버튼 묶음을 정렬·+ 바로 옆에 둔다 — 남는 폭을 반씩 나누지 않는다. */
+.commander-tab-heading ~ .commander-place { margin-left: 0; }
 .commander-place-button {
   display: grid;
   place-items: center;
@@ -228,6 +230,9 @@
 }
 .commander-tab--card .commander-tab-sort-label,
 .commander-compact-popover .commander-tab-sort-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* H: 카드에서는 메뉴를 막대 오른쪽 끝에 붙인다 — 좁은 패널에서 프레임에 잘리지 않게. */
+.commander-tab--card .commander-tab-sort { position: static; }
+.commander-tab--card .commander-tab-menu { max-width: 100%; }
 
 /* 작업 탭 목표 카드 — 루틴 목록과 같은 테두리 카드 안에 행이 선다. 카드 자체에는 여백을 두지 않아
    루틴 카드와 가장자리가 맞고, 첫 섹션 간격도 정보·설정 탭과 같은 리듬이 된다. 뒤의 .commander-tab
@@ -243,13 +248,14 @@
 .commander-tab--card .commander-tab-list { gap: 0; }
 .commander-tab--card .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
 .commander-tab--card .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
-/* 진행 중 행 끝 chevron은 같은 줄 네 번째 칸에 둔다 — 자동 배치로 implicit 행에 떨어지는 일이 없게 셀을 고정한다. */
-.commander-tab--chevron .side-bar-cluster-row { grid-template-columns: 30px 1fr auto auto; }
-.commander-tab--chevron .side-bar-cluster-row-chevron { grid-column: 4; grid-row: 1; align-self: center; }
-
-/* 진행 중 행 끝 chevron — 가운데가 아니라 떠 있는 창으로 여는 길이다(미션 7에서 잇는다). */
-.side-bar-cluster-row-chevron { display: flex; color: var(--text-tertiary); }
-.side-bar-cluster-row-chevron svg { width: 14px; height: 14px; }
+/* F: 위임 토글을 행 끝으로 — chevron이 있던 자리(행 끝 10px 안쪽, 두 줄 세로 가운데). */
+.commander-tab--card .side-bar-cluster-row { grid-template-columns: 30px 1fr auto; }
+.commander-tab--card .side-bar-cluster-row:has(.side-bar-cluster-row-mark-toggle) { padding-right: 10px; }
+.commander-tab--card .side-bar-cluster-row-aside { grid-row: 1 / -1; align-self: center; }
+.commander-tab--card .side-bar-cluster-row-mark-toggle { width: 30px; height: 30px; margin: 0; }
+.commander-tab--card .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark { width: 18px; height: 18px; border-radius: 5px; }
+.commander-tab--card .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark.has-glyph { border-radius: 4px; }
+.commander-tab--card .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark.has-glyph.is-hollow { border-width: 2px; }
 
 .commander-tab-empty {
   margin: 0;

@@ -15,7 +15,6 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
     selectedId={selectedId}
     sortNameOnly
     card
-    chevron
     heading={heading}
     {...(onSelect ? {
       onSelect: (item) => {
