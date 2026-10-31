@@ -11,6 +11,7 @@ interface ContextMenuKeyboardOptions {
   readonly menuSelector: string;
   readonly returnFocusRef: RefObject<HTMLElement | null>;
   readonly requestedAction?: SideBarObjectiveMenuAction;
+  readonly focusFirst?: boolean;
   readonly onEscape: () => void;
 }
 
@@ -19,6 +20,7 @@ export function useContextMenuKeyboard({
   menuSelector,
   returnFocusRef,
   requestedAction,
+  focusFirst = false,
   onEscape,
 }: ContextMenuKeyboardOptions): void {
   useEffect(() => {
@@ -36,19 +38,22 @@ export function useContextMenuKeyboard({
         if (focus) currentItems[nextIndex]?.focus();
       };
       const initialItems = items();
-      if (initialItems.length > 0) {
+      if (!menu.contains(document.activeElement)) {
         const requestedIndex = requestedAction === "set-accent"
           ? initialItems.findIndex((item) => item.hasAttribute(ACCENT_OPTION_ATTRIBUTE))
           : 0;
-        // 마커를 못 찾으면 첫 항목으로 안전하게 떨어진다.
-        const initialIndex = Math.max(0, requestedIndex);
+        // 포인터로 열면 카드가 키 입력을 받되 행은 고르지 않는다. ↓는 첫 항목부터 시작한다.
+        const initialIndex = focusFirst ? Math.max(0, requestedIndex) : -1;
         setCurrent(initialIndex, false);
-        if (returnFocusRef.current !== null) {
-          focusFrame = window.requestAnimationFrame(() => {
-            if (!cancelled && menu.isConnected) setCurrent(initialIndex, true);
-          });
-        }
+        menu.tabIndex = -1;
+        if (!focusFirst) menu.dataset.menuPointerIdle = "";
+        focusFrame = window.requestAnimationFrame(() => {
+          if (cancelled || !menu.isConnected || menu.contains(document.activeElement)) return;
+          if (initialIndex >= 0) setCurrent(initialIndex, true);
+          else menu.focus({ preventScroll: true });
+        });
       }
+      const handlePointerMove = () => { delete menu.dataset.menuPointerIdle; };
 
       const handleKeyDown = (event: KeyboardEvent) => {
         const currentItems = items();
@@ -95,15 +100,18 @@ export function useContextMenuKeyboard({
           return;
         }
         const currentIndex = currentItems.findIndex((item) => item.tabIndex === 0);
-        if (currentItems.length > 0) setCurrent(Math.max(0, currentIndex), false);
+        if (currentItems.length > 0) setCurrent(currentIndex, false);
       });
 
       menu.addEventListener("keydown", handleKeyDown);
       menu.addEventListener("focusin", handleFocusIn);
+      menu.addEventListener("pointermove", handlePointerMove);
       contentObserver.observe(menu, { childList: true, subtree: true });
       cleanupMenu = () => {
         menu.removeEventListener("keydown", handleKeyDown);
         menu.removeEventListener("focusin", handleFocusIn);
+        menu.removeEventListener("pointermove", handlePointerMove);
+        delete menu.dataset.menuPointerIdle;
         contentObserver.disconnect();
       };
       return true;
@@ -122,5 +130,5 @@ export function useContextMenuKeyboard({
       observer?.disconnect();
       cleanupMenu?.();
     };
-  }, [menuSelector, onEscape, open, requestedAction, returnFocusRef]);
+  }, [focusFirst, menuSelector, onEscape, open, requestedAction, returnFocusRef]);
 }

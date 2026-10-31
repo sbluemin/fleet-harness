@@ -801,6 +801,8 @@ describe("Console core design contract", () => {
       // 관여하지 않고, 계산 함수는 그 안의 px만 본다.
       const offLadder = (value: string): boolean => {
         if (/var\(\s*--t-(?:2xs|xs|sm|md|base|lg|xl)\s*\)/.test(value)) return false;
+        // 메뉴 크기는 데스크톱 md·모바일 base 사다리의 별칭이다.
+        if (/var\(\s*--popover-font-size\s*\)/.test(value)) return false;
         // 모바일 배치는 Console과 다른 자기 사다리를 갖는다(시안 크기 이름, theme.css 모바일 팔레트
         // 구역에서만 정의). 데스크톱에서는 정의되지 않으므로 모바일 전용 선택자 아래에서만 의미가 있다.
         if (MOBILE_TYPE_STEP.test(value)) return false;
@@ -1355,7 +1357,7 @@ describe("Console core design contract", () => {
     // 폴백 어느 쪽도 덮어쓰지 않으므로 모든 테마에서 불투명이다 — 상주 크롬·패널만 --glass-underlay로 비친다.
     // 옛 바탕층 이름(--float-underlay)은 아직 옮기지 않은 소비처를 위한 별칭으로만 남는다.
     const theme = desktopThemeSource();
-    expect(theme).toContain("--popover-face: var(--ink-deep);");
+    expect(theme).toContain("--popover-face: oklch(23.9% 0 0);");
     expect(theme).toContain("--float-underlay: var(--popover-face);");
     const gates = theme.slice(theme.indexOf(':root:not([data-theme="light"]) {'));
     expect(gates).not.toContain("--float-underlay:");
@@ -1401,15 +1403,18 @@ describe("Console core design contract", () => {
   });
 
   it("pins one popover size grammar and outline-free keyboard focus", () => {
-    // 참고 앱 메뉴 실측(폭 240 · 반경 16 · 여백 6 · 행 36 · 행 반경 10)을 theme.css 의 --popover-* 한 벌로 둔다.
+    // 참고 앱 메뉴 실측(내용 폭 · 최소 200 · 반경 12 · 여백 6 · 행 32 · 행 반경 6)을 theme.css 의 --popover-* 한 벌로 둔다.
     // 메뉴가 자기 리터럴 크기로 돌아가면 팝오버마다 반경·여백·행이 다시 갈린다(실측: 반경 10/16, 여백 4~12, 행 33~40).
     const theme = source("styles/theme.css");
     for (const declaration of [
-      "--popover-width: 240px;",
+      "--popover-width: max-content;",
+      "--popover-min-width: 200px;",
       "--popover-pad: 6px;",
-      "--popover-radius: var(--radius-lg);",
-      "--popover-row: 36px;",
-      "--popover-row-radius: var(--radius-md);",
+      "--popover-radius: 12px;",
+      "--popover-row: 32px;",
+      "--popover-row-radius: 6px;",
+      "--popover-font-size: var(--t-md);",
+      "--popover-font-size: var(--t-base);",
       "--popover-icon: 16px;",
     ]) expect(theme).toContain(declaration);
     const rule = (css: string, selector: string) => {
@@ -1649,7 +1654,7 @@ describe("Console core design contract", () => {
         // [doctrine] identity-file·quiet·두 배지 면은 다크 3종 보정(채도 봉투·lights-out)이 라이트로
         // 내려오지 않게 지금의 값을 잇는 자리다 — 사용자 범위가 다크 테마였다(목표 f90ef806).
         // [doctrine] 팝오버 그림자는 종이 위 무채색 깊이로, 역할 표식은 중립 행동 잉크와 독립된 기존 금색으로 분화한다.
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge|popover-shadow|role-commodore)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge|popover-(?:face|rim|icon-ink|shadow|surface-shadow)|wash-(?:hover|selected)|role-commodore)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.

@@ -75,6 +75,7 @@ interface ActiveContextMenu {
   readonly anchor: DOMRect;
   readonly returnFocus?: HTMLElement | null;
   readonly atCursor?: boolean;
+  readonly focusFirst?: boolean;
 }
 
 interface TheaterDragState {
@@ -112,7 +113,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   /** 머리를 눌렀을 때 — 그 사령관의 대화를 연다. */
   readonly onOpenInbox: (theater: SideBarHead, returnFocus: HTMLElement | null) => void;
   /** 이 머리의 사령관 메뉴를 연다 — 우클릭은 커서 자리(atCursor), 키·길게 누르기는 앵커 아래. */
-  readonly onContextMenu: (anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => void;
+  readonly onContextMenu: (anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean, focusFirst?: boolean) => void;
   /** 열린 사령관 메뉴가 이 머리를 대상으로 한다 — 활성이 아닌 사령관에서도 열리므로 머리가 대상을 말한다. */
   readonly menuTarget: boolean;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
@@ -124,6 +125,7 @@ interface TheaterActionsMenuProps {
   readonly anchor: DOMRect;
   /** 앵커가 커서 한 점이다 — 메뉴 윗변을 커서에 두고, 아래가 모자라면 커서 위로 뒤집는다. */
   readonly atCursor?: boolean;
+  readonly focusFirst?: boolean;
   readonly onDeleteCommodore?: (() => void) | undefined;
   readonly onOpenZone: () => void;
   readonly onNewSession: () => void;
@@ -303,9 +305,9 @@ export function ObjectiveRecordsSideBar({
 
   // 사령관 메뉴는 누른 그 사령관을 대상으로 한다(전환하지 않는다). 길게 누르기는 손가락이 아직 머리 위에 있을 때 열리므로,
   // 그 누름이 세워 둔 끌기 대기를 거둔다 — 메뉴가 열린 뒤 손가락이 미끄러져도 사령관이 옮겨지지 않는다.
-  const openTheaterMenu = (theaterId: string, anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => {
+  const openTheaterMenu = (theaterId: string, anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean, focusFirst = false) => {
     if (dragRef.current && !dragRef.current.dragging) updateDrag(null);
-    setActiveContextMenu({ theaterId, anchor, returnFocus, atCursor });
+    setActiveContextMenu({ theaterId, anchor, returnFocus, atCursor, focusFirst });
   };
 
   const openTheaterBrowser = (commodoreId: string) => {
@@ -349,6 +351,7 @@ export function ObjectiveRecordsSideBar({
     open: activeContextMenu !== null,
     menuSelector: '.side-bar-theater-menu[role="menu"]',
     returnFocusRef: contextMenuReturnFocusRef,
+    focusFirst: activeContextMenu?.focusFirst,
     onEscape: closeActiveContextMenu,
   });
 
@@ -460,7 +463,7 @@ export function ObjectiveRecordsSideBar({
                 dropTarget={theaterDropBefore}
                 dragOffsetY={theaterDragOffsetY}
                 onOpenInbox={openTheaterHeaderInbox}
-                onContextMenu={(anchor, returnFocus, atCursor) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor)}
+                onContextMenu={(anchor, returnFocus, atCursor, focusFirst) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor, focusFirst)}
                 menuTarget={activeContextMenu?.theaterId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
@@ -638,7 +641,7 @@ function TheaterSectionHeader({
     }
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
-    onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget, false);
+    onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget, false, true);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {

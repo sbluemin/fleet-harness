@@ -61,7 +61,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
                 const selected = objectiveId !== null && selectedId === objectiveId;
                 return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected}
                   onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
-                  onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus) => openCommanderRowMenu({ item: row, anchor, returnFocus }) : undefined)} />;
+                  onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />;
               })}
             </ol>}
           </section>;

@@ -249,7 +249,7 @@ function CommanderGhostFace({
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
     event.stopPropagation();
-    openCommanderRowMenu({ item, anchor: event.currentTarget.getBoundingClientRect(), returnFocus: event.currentTarget });
+    openCommanderRowMenu({ item, anchor: event.currentTarget.getBoundingClientRect(), returnFocus: event.currentTarget, focusFirst: true });
   };
   return (
     <button id={id} data-ghost-index={index} data-ghost-commander={commanderObjectiveId(item.layout.cluster) ?? item.layout.cluster.id}

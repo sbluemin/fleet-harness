@@ -334,34 +334,41 @@
   --radius-xl: 20px;
   --radius-sheet: 28px;
 
-  /* ── 공통 팝업 표면 (대화 독 메뉴 문법) ─────────────────────────────────
-     메뉴·팝오버·말풍선·토스트는 한 장의 불투명 면이다 — 광택·rim 하이라이트·반투명 틴트를 겹치지 않는다.
-     면은 앱 바탕 한 단(--ink-deep), 테두리는 글자색 14%, 그림자는 안쪽 광택 없이 짧고 옅은 한 겹이다.
-     크기는 한 벌이다(참고 앱 메뉴 실측): 폭 240(문맥 메뉴 최소 220) · 반경 16 · 여백 6 · 행 36 · 행 반경 10 ·
-     행 좌우 10 · 아이콘 16과 글자 사이 10 · 본문 14 · 구분선 위아래 6 좌우 10. 보조값과 ›는 행 끝의 3티어 잉크다.
-     행 상태는 중립 워시(hover·키보드 포커스·열린 하위 메뉴 7% · 고른 행 9% + 체크) 하나로만 말한다 — 외곽선은 없다.
-     워시는 팝업 밖 목록도 같은 이름으로 빌려 쓴다. 대화상자는 설정 모달 문법(대화 바탕 면 · 48% 검정 덮개 · --radius-xl)을 받는다. */
-  --popover-face: var(--ink-deep);
-  --popover-rim: color-mix(in oklch, var(--text-primary) 14%, transparent);
-  /* Doctrine: 무채색 그림자 리터럴(깊이 예외). */
-  --popover-shadow: 0 18px 44px -18px oklch(0% 0 0 / 70%);
-  --popover-width: 240px;
-  --popover-min-width: 220px;
+  /* ── 공통 팝업 표면 ──────────────────────────────────────────────────
+     불투명 면과 0.5px 안쪽 링을 쓴다. 다크에는 깊이 그림자가 없고 라이트만 옅은 그림자를 더한다.
+     내용 폭(최소 200) · 반경 12 · 여백 6 · 행 32 · 행 반경 6 · 본문 13/18 · 행 사이 2.
+     hover·키보드 포커스는 6%, 선택은 8% 중립 워시다. 보조값과 셰브런은 행 끝에 둔다.
+     surface-shadow는 링과 깊이의 합성값이다 — CSS 그림자 목록에 none을 섞을 수 없으므로 따로 둔다. */
+  --popover-face: oklch(23.9% 0 0);
+  --popover-rim: color-mix(in oklch, var(--text-primary) 10%, transparent);
+  --popover-ring: inset 0 0 0 0.5px var(--popover-rim);
+  --popover-shadow: none;
+  --popover-surface-shadow: var(--popover-ring);
+  --popover-width: max-content;
+  --popover-min-width: 200px;
   --popover-pad: 6px;
-  --popover-radius: var(--radius-lg);
-  --popover-row: 36px;
+  --popover-radius: 12px;
+  --popover-row: 32px;
   --popover-row-dense: var(--popover-row);
-  --popover-row-radius: var(--radius-md);
-  --popover-row-inline: 10px;
-  --popover-row-gap: 10px;
+  --popover-row-radius: 6px;
+  --popover-row-inline: 8px;
+  --popover-row-gap: 8px;
+  --popover-list-gap: 2px;
+  --popover-font-size: var(--t-md);
+  --popover-line-height: 18px;
   --popover-icon: 16px;
-  --popover-divider: color-mix(in oklch, var(--text-primary) 10%, transparent);
-  --popover-divider-space: 6px 10px;
-  --wash-hover: color-mix(in oklch, var(--text-primary) 7%, transparent);
-  --wash-selected: color-mix(in oklch, var(--text-primary) 9%, transparent);
-  --dialog-face: var(--canvas-abyss);
-  /* Doctrine: 무채색 덮개 리터럴(깊이 예외) — 설정 모달 덮개와 같은 값. */
-  --dialog-scrim: oklch(0% 0 0 / 48%);
+  --popover-icon-ink: color-mix(in oklch, var(--text-primary) 64%, transparent);
+  --popover-divider: var(--popover-rim);
+  --popover-divider-width: 0.5px;
+  --popover-divider-space: 4px 8px;
+  --wash-hover: color-mix(in oklch, var(--text-primary) 6%, transparent);
+  --wash-selected: color-mix(in oklch, var(--text-primary) 8%, transparent);
+  --dialog-face: var(--popover-face);
+  --dialog-radius: 12px;
+  --dialog-shadow: none;
+  --dialog-surface-shadow: var(--popover-ring);
+  /* Doctrine: 무채색 덮개 리터럴(깊이 예외). */
+  --dialog-scrim: oklch(0% 0 0 / 69.7%);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -688,15 +695,24 @@
      입력 필드에 깔면 라이트에서 필드가 "파인 우물"로 되돌아간다(다크 우물 퇴역과 같은 이유). */
   --control-rest: oklch(30% 0.015 95 / 4.5%);
   --control-rest-hover: oklch(30% 0.015 95 / 7.5%);
-  /* 대화상자 덮개 — 밝은 바탕에서는 48% 검정이 화면을 꺼뜨리므로 설정 모달의 라이트 덮개를 그대로 쓴다. */
-  --dialog-scrim: oklch(18% 0 0 / 24%);
+  /* Doctrine: 무채색 덮개 리터럴(깊이 예외). */
+  --dialog-scrim: oklch(0% 0 0 / 50%);
   --control-field: oklch(99.3% 0.003 95);
   --control-wash: oklch(30% 0.015 95 / 6.5%);
   --control-wash-hover: oklch(30% 0.015 95 / 3.5%);
 
   --shadow-soft: 0 1px 0 0 oklch(99.5% 0.004 100 / 70%) inset, 0 18px 38px -22px oklch(30% 0.015 95 / 26%);
   --shadow-floating: 0 1px 0 0 oklch(99.5% 0.004 100 / 80%) inset, 0 32px 60px -28px oklch(28% 0.015 95 / 30%);
-  --popover-shadow: 0 18px 44px -18px oklch(28% 0.015 95 / 26%);
+  --popover-face: oklch(100% 0 0);
+  --popover-rim: rgb(28 28 28 / 12%);
+  --popover-icon-ink: rgb(28 28 28 / 66%);
+  --wash-hover: rgb(28 28 28 / 6%);
+  --wash-selected: rgb(28 28 28 / 8%);
+  /* Doctrine: 무채색 그림자 리터럴(깊이 예외). */
+  --popover-shadow: 0 10px 20px -3px #1c1c1c1a, 0 4px 6px -4px #1c1c1c1a, 0 0 0 1px #1c1c1c01;
+  --popover-surface-shadow: var(--popover-ring), var(--popover-shadow);
+  --dialog-shadow: 0 20px 32px -5px #1c1c1c1a, 0 8px 12px -6px #1c1c1c1a, 0 0 0 1px #1c1c1c01;
+  --dialog-surface-shadow: var(--popover-ring), var(--dialog-shadow);
   --shadow-anchor: 0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent), 0 12px 32px -16px color-mix(in oklch, var(--brass) 26%, transparent);
 
   /* 다크 lights-out 보정은 라이트 범위 밖이다 — 파일 종류 매핑과 --quiet-* 슬롯은 지금의 점등 값을 그대로 잇는다. */
@@ -1081,7 +1097,18 @@
 
   /* 팝업 면은 모바일 표면 한 장, 구분선은 모바일 헤어라인, 대화상자 덮개는 시트 덮개다. */
   --popover-face: var(--m-surface);
+  --popover-rim: var(--m-hairline);
+  --popover-icon-ink: var(--text-secondary);
+  --popover-font-size: var(--t-base);
+  --popover-line-height: 1.5;
+  --popover-row: 44px;
+  --popover-row-radius: 8px;
   --popover-shadow: var(--m-shadow);
+  --popover-surface-shadow: var(--popover-ring), var(--m-shadow);
+  --wash-hover: var(--m-chip);
+  --wash-selected: var(--m-selected);
+  --dialog-shadow: var(--m-shadow);
+  --dialog-surface-shadow: var(--popover-ring), var(--m-shadow);
   --popover-divider: var(--m-hairline);
   --dialog-scrim: var(--m-scrim);
 
