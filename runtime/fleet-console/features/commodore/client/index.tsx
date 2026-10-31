@@ -7,7 +7,8 @@ import type { CommodoreClientHost, CommodoreClientSnapshot } from "../shared/con
 import type { PaneDescriptor } from "../../workspace/shared/pane.js";
 import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 import { commodoreInboxSection } from "./commodore-inbox-section.js";
-import { commodoreMarketplaceSettingsSection } from "./commodore-plugins.js";
+import { commodoreMarketplaceSettingsSection, GlobalPluginsHost, GlobalPluginsEntry } from "./commodore-plugins.js";
+import { installGlobalPlugins } from "./global-plugins.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { knowledgeFolderEntry, knowledgeFolderPane } from "./knowledge-folder.js";
@@ -82,8 +83,9 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
       const offBoard = installCommodoreBoard(board);
       const offState = installCommodoreState(ctx);
       const offList = installCommodoreList(ctx.consoleEvents);
+      const offGlobalPlugins = installGlobalPlugins(ctx.consoleEvents);
       const offConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
-      return () => { offRemoved(); offConversation(); offList(); offState(); offBoard(); snapshots.clear(); };
+      return () => { offRemoved(); offConversation(); offGlobalPlugins(); offList(); offState(); offBoard(); snapshots.clear(); };
 
   };
   const plugin: ClientFeatureDescriptor = {
@@ -98,7 +100,9 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     theaterInboxSections: [{ ...commodoreInboxSection, omitsRailEntries: board?.railEntryIds ?? [] }],
     // Console 설정 작업 묶음의 「마켓플레이스」 — 사령관들이 함께 보는 등록부. 설치는 사령관마다 그 설정 칸에서 고른다.
     settingsSections: [commodoreMarketplaceSettingsSection],
+    sidebarFooterEntries: [{ id: "global-plugins", layout: "fill", render: () => <GlobalPluginsEntry /> }],
     persistentComponents: [
+      { id: "global-plugins", render: () => <GlobalPluginsHost /> },
       { id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } },
       { id: "commodore-zone", render: () => <CommodoreZoneHost /> },
     ],

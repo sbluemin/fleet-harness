@@ -8,6 +8,7 @@ import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtim
 import { CommodoreStoreError } from "./errors.js";
 import {
   MAX_CUSTOM_MARKETPLACES,
+  MAX_GLOBAL_PLUGINS,
   MAX_PLUGIN_CARD_DESCRIPTION,
   MAX_PLUGIN_DETAIL_DESCRIPTION,
   MAX_PLUGIN_ICON_BYTES,
@@ -147,6 +148,7 @@ const PLACEHOLDER = /\$\{([A-Za-z_][A-Za-z0-9_]{0,127})(:-[^}]*)?\}/g;
 /** 플러그인이 아니라 실행 환경이 정하는 이름 — 키로 받지도 자식 환경에 얹지도 않는다. */
 const RESERVED_KEY = /^(?:PATH|HOME|SHELL|USER|LOGNAME|PWD|TMPDIR|TEMP|TMP|NODE_OPTIONS|NODE_PATH|(?:LD|DYLD|CLAUDE|ANTHROPIC|FLEET|FLEET_CONSOLE|NPM|npm)_[A-Za-z0-9_]*)$/;
 export const MAX_PLUGIN_KEY_BYTES = 8_192;
+const GLOBAL_FILE = "global.json";
 const KEYS_FILE = "keys.json";
 const PRESET_REFRESH_MS = 24 * 60 * 60_000;
 /**
@@ -381,6 +383,30 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     fs.renameSync(tmp, registryFile);
   };
   const update = (change: (registry: Registry) => Registry): Registry => { const next = change(readRegistry()); writeRegistry(next); return next; };
+  /**
+   * 전역 설치 목록 — 모든 사령관과 그 목표 세션이 함께 싣는다. registry.json 과 같은 방식(임시 파일 + rename,
+   * mode 0600)으로 쓰고, 파일이 없거나 형식이 틀리면 빈 목록으로 읽는다. 순서를 유지하고 상한을 넘기지 않는다.
+   */
+  const globalFile = path.join(options.root, GLOBAL_FILE);
+  const readGlobal = (): string[] => {
+    const raw = readJson(globalFile);
+    if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.plugins)) return [];
+    const seen = new Set<string>();
+    const plugins: string[] = [];
+    for (const id of raw.plugins) {
+      if (typeof id !== "string" || !pluginIdSchema.safeParse(id).success || seen.has(id)) continue;
+      seen.add(id);
+      plugins.push(id);
+      if (plugins.length >= MAX_GLOBAL_PLUGINS) break;
+    }
+    return plugins;
+  };
+  const writeGlobal = (plugins: readonly string[]): void => {
+    fs.mkdirSync(options.root, { recursive: true });
+    const tmp = `${globalFile}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify({ version: 1, plugins }, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, globalFile);
+  };
   const patchMarketplace = (name: string, patch: Partial<RegistryMarketplace>, clearError = false) => update((registry) => ({
     ...registry,
     marketplaces: registry.marketplaces.map((row) => {
@@ -404,7 +430,8 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   /** 고른 플러그인이 가리키는 기본 제공 이름. 형식이 아닌 값과 기본 제공이 아닌 마켓은 설치로 치지 않는다. */
   const selectedPresetNames = (): ReadonlySet<string> => {
     const names = new Set<string>();
-    for (const id of options.selectedPlugins?.() ?? []) {
+    // 전역 설치도 기본 켜짐을 한 번 정할 때 본다 — 어느 사령관도 고르지 않은 기본 제공을 전역이 가리키면 그대로 둔다.
+    for (const id of [...readGlobal(), ...(options.selectedPlugins?.() ?? [])]) {
       if (!pluginIdSchema.safeParse(id).success) continue;
       const marketplace = splitPluginId(id).marketplace;
       if (PRESET_MARKETPLACES.some((preset) => preset.name === marketplace)) names.add(marketplace);
@@ -1034,6 +1061,24 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       if (missing.length) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, ...missing.map((preset): RegistryMarketplace => ({ name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: preset.enabled, status: preset.enabled ? "syncing" : "ready" }))] }));
       void ensurePresets();
       return catalog();
+    },
+    /** 전역 설치 목록 — 파일이 없거나 형식이 틀리면 빈 목록이다. */
+    listGlobal(): readonly string[] {
+      return readGlobal();
+    },
+    /**
+     * 전역 설치·제거 — 목록이 그대로면 쓰지 않고 `changed: false` 로 돌려준다(세션을 헛되이 교체하지 않는다).
+     * 상한을 넘기는 추가는 `limit` 로 거절한다. 받는 것(CLI 설치)은 라우트가 `prepareInstall` 로 먼저 한다.
+     */
+    setGlobal(pluginId: string, installed: boolean): { readonly plugins: readonly string[]; readonly changed: boolean } {
+      const current = readGlobal();
+      const next = installed
+        ? (current.includes(pluginId) ? current : [...current, pluginId])
+        : (current.includes(pluginId) ? current.filter((id) => id !== pluginId) : current);
+      if (next === current) return { plugins: current, changed: false };
+      if (next.length > MAX_GLOBAL_PLUGINS) throw new CommodoreStoreError("limit");
+      writeGlobal(next);
+      return { plugins: next, changed: true };
     },
     async add(rawSource: string, ref?: string): Promise<MarketplaceView> {
       const source = detectMarketplaceSource(rawSource, ref);

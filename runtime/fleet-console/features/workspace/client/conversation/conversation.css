@@ -96,13 +96,16 @@
   display: none;
 }
 
-/* 아래 줄은 계정 아바타만 남긴다 — 보관함·보기 단추는 창을 넓히면 돌아온다. */
-.console-body.is-conversation .objective-records-side-bar.is-compact .conversation-dock > :not(.conversation-dock-host) {
+/* compact의 채우기 항목은 아바타 위에 남고, 옛 내용 폭 기여는 창을 넓히면 돌아온다. */
+.console-body.is-conversation .objective-records-side-bar.is-compact .conversation-dock > :not(.conversation-dock-host, .sidebar-footer-entries.has-fill) {
   display: none;
 }
-
+.console-body.is-conversation .objective-records-side-bar.is-compact .sidebar-footer-entries.has-fill > .sidebar-footer-entries { display: none; }
+.console-body.is-conversation .objective-records-side-bar.is-compact .sidebar-footer-entries.has-fill { flex: none; }
 .console-body.is-conversation .objective-records-side-bar.is-compact .conversation-dock {
+  flex-direction: column-reverse;
   justify-content: center;
+  gap: 16px;
   padding-inline: 0;
 }
 

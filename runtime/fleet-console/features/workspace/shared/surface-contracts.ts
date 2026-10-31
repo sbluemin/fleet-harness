@@ -28,6 +28,8 @@ export interface SidebarFooterEntryContext {
 
 export interface SidebarFooterEntryDescriptor {
   readonly id: string;
+  /** fill은 남은 폭을 채우고 compact에서도 남는다. 생략한 항목은 기존 내용 폭·숨김 규칙을 따른다. */
+  readonly layout?: "fill";
   readonly render: (context: SidebarFooterEntryContext) => ReactNode;
 }
 
