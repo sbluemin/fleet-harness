@@ -234,7 +234,8 @@ if (!sdk) {
     sdkFile(`calls-${at.replace(/[:.]/g, "-")}-${process.pid}.json`, { at, pid: process.pid, sessionId, calls: results });
   };
 
-  const runTurn = async (text, ask = takeAsk()) => {
+  // hostStarted is false for the idle ask hold the fake opens itself; SDK call plans wait for a host-started turn.
+  const runTurn = async (text, ask = takeAsk(), hostStarted = true) => {
     turnOpen = true;
     turnAborted = false;
     const turnModel = model;
@@ -248,7 +249,7 @@ if (!sdk) {
     out({ type: "stream_event", event: { type: "message_start", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [], usage: { input_tokens: 0, output_tokens: 0 } } }, ...envelope() });
     out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: null }, usage }, ...envelope() });
     await sdkReady;
-    const sdkCalls = takeSdkCalls();
+    const sdkCalls = hostStarted ? takeSdkCalls() : [];
     if (sdkCalls.length > 0) await runSdkCalls(sdkCalls, turnModel, usage);
     let interrupted = turnAborted;
     if (interrupted) {
@@ -353,7 +354,7 @@ if (!sdk) {
   const wakePollingTimer = setInterval(() => {
     if (turnOpen) return;
     if (inited && takeAsk()) {
-      void runTurn("", true);
+      void runTurn("", true, false);
       return;
     }
     const wakeFile = join(dir, "wake");
