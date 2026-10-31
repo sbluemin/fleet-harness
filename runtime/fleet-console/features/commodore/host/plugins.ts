@@ -1067,18 +1067,18 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       return readGlobal();
     },
     /**
-     * 전역 설치·제거 — 목록이 그대로면 쓰지 않고 그대로 돌려준다(세션을 헛되이 교체하지 않는다).
+     * 전역 설치·제거 — 목록이 그대로면 쓰지 않고 `changed: false` 로 돌려준다(세션을 헛되이 교체하지 않는다).
      * 상한을 넘기는 추가는 `limit` 로 거절한다. 받는 것(CLI 설치)은 라우트가 `prepareInstall` 로 먼저 한다.
      */
-    setGlobal(pluginId: string, installed: boolean): readonly string[] {
+    setGlobal(pluginId: string, installed: boolean): { readonly plugins: readonly string[]; readonly changed: boolean } {
       const current = readGlobal();
       const next = installed
         ? (current.includes(pluginId) ? current : [...current, pluginId])
         : (current.includes(pluginId) ? current.filter((id) => id !== pluginId) : current);
-      if (next === current) return current;
+      if (next === current) return { plugins: current, changed: false };
       if (next.length > MAX_GLOBAL_PLUGINS) throw new CommodoreStoreError("limit");
       writeGlobal(next);
-      return next;
+      return { plugins: next, changed: true };
     },
     async add(rawSource: string, ref?: string): Promise<MarketplaceView> {
       const source = detectMarketplaceSource(rawSource, ref);

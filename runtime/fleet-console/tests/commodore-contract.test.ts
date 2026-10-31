@@ -26,7 +26,7 @@ import { createCommodoreManagementTools } from "../features/commodore/host/conso
 import { createCommodoreMessenger } from "../features/commodore/host/messaging.js";
 import { createCommodoreDeletion } from "../features/commodore/host/deletion.js";
 import { createCommodorePlugins } from "../features/commodore/host/plugins.js";
-import { MAX_PLUGIN_README_BYTES } from "../features/commodore/shared/contracts/plugins.js";
+import { effectiveCommodorePlugins, MAX_PLUGIN_README_BYTES } from "../features/commodore/shared/contracts/plugins.js";
 import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
@@ -751,6 +751,39 @@ describe("commodore theater state", () => {
     await expect(plugins.remove("team")).rejects.toMatchObject({ code: "cli_unavailable" });
     expect(rows().has("team")).toBe(true);
     await expect(plugins.inspect("tool@team")).rejects.toMatchObject({ code: "cli_unavailable" });
+  });
+  it("loads a globally installed plugin once when a Commodore also selects it by the same id or name", async () => {
+    // 전역∪사령관 중복 제거의 대표 계약 — 전역 쪽만 실제 적재 경로(resolve)에 한 번 실린다.
+    const h = harness();
+    const root = path.join(h.objectivesDir, "commodore-plugins");
+    const market = path.join(root, "markets", "team");
+    const pluginDir = path.join(market, "plugins", "tool");
+    fs.mkdirSync(path.join(pluginDir, ".claude-plugin"), { recursive: true });
+    fs.mkdirSync(path.join(market, ".claude-plugin"), { recursive: true });
+    fs.mkdirSync(path.join(root, "claude", "plugins"), { recursive: true });
+    fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", plugins: [{ name: "tool", source: "./plugins/tool" }] }));
+    fs.writeFileSync(path.join(root, "claude", "plugins", "known_marketplaces.json"), JSON.stringify({ team: { installLocation: market } }));
+    fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: {} }));
+    fs.writeFileSync(path.join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", version: "1.0.0" }));
+    fs.writeFileSync(path.join(root, "claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "tool@team": [{ installPath: pluginDir, version: "1.0.0" }] } }));
+    const plugins = createCommodorePlugins({ root, executable: async () => { throw new Error("unexpected_cli_call"); } });
+
+    // 전역 목록은 쓰고 다시 읽어도 같다. 그대로 두면 쓰지도 않는다.
+    expect(plugins.listGlobal()).toEqual([]);
+    expect(plugins.setGlobal("tool@team", true)).toEqual({ plugins: ["tool@team"], changed: true });
+    expect(createCommodorePlugins({ root, executable: async () => { throw new Error("unexpected_cli_call"); } }).listGlobal()).toEqual(["tool@team"]);
+    expect(plugins.setGlobal("tool@team", true)).toEqual({ plugins: ["tool@team"], changed: false });
+    expect(plugins.setGlobal("tool@gone", false)).toEqual({ plugins: ["tool@team"], changed: false });
+
+    // 같은 id·같은 이름은 전역 쪽만 실리고, 사령관 쪽은 대체됨으로 남는다.
+    const { effective, replaced } = effectiveCommodorePlugins(plugins.listGlobal(), ["tool@team", "tool@other"]);
+    expect(effective).toEqual(["tool@team"]);
+    expect(replaced).toEqual([
+      { pluginId: "tool@team", by: "tool@team", reason: "same-id" },
+      { pluginId: "tool@other", by: "tool@team", reason: "same-name" },
+    ]);
+    // 실제 적재 경로도 전역 쪽을 한 번만 싣는다 — CLI 를 부르지 않는다.
+    expect(plugins.resolve(effective).map((plugin) => plugin.id)).toEqual(["tool@team"]);
   });
   it("computes the next plugin version from files only and updates one plugin through its trust boundary", async () => {
     // 업데이트 호스트 픽스처 — 상대 출처(tool·nover)와 외부 출처(ext·ext2), 설치본 캐시, CLI 대역 스크립트.
