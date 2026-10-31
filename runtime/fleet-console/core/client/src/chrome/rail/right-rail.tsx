@@ -3,7 +3,6 @@ import { theaterLabelOf } from "../../../../../features/commodore/client/theater
 import { usePaneOverlay } from "../pane/use-pane-overlay.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { consoleUseWrapClassName, consoleUseWrapLabel, getPanelWrap, subscribeConsoleUseGestures } from "../../../../../features/console-use/client/gestures.js";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -675,9 +674,6 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
   const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);
   const icon = typeof entry.icon === "function" ? entry.icon() : entry.icon;
   const title = resolveLocalizedText(entry.title, language);
-  // Console Use — 에이전트가 이 패널(저장소·탐색기)을 읽으면 버튼 상자가 감싸인다. 아이콘 잉크는 그대로다.
-  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => getPanelWrap(entry.id), () => null);
-  const wrapClassName = consoleUseWrapClassName(wrap);
   // 사람의 손을 기다리는 수 — 표면이 닫혀 있어도 아이콘 모서리에 선다. 이름 뒤에 붙어 말풍선·스크린 리더도 같은 수를 읽는다.
   const attention = entry.attention;
   // 배지는 지금 화면이 가리키는 사령관의 것이다 — Theater 에서 주인을 찾지 않는다.
@@ -695,15 +691,15 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
   return (
     <button
       id={`rail-tab-${entry.id}`}
-      className={`right-rail-ico${text ? " is-text" : ""}${pressed ? " is-active" : ""}${paused ? " is-paused" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
+      className={`right-rail-ico${text ? " is-text" : ""}${pressed ? " is-active" : ""}${paused ? " is-paused" : ""}`}
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={pressed}
       aria-label={named}
       disabled={!paused && disabled}
       aria-disabled={paused || undefined}
-      // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다. 닫아 둔 도구는 그 까닭을 말한다.
-      data-tip={entry.tooltip ? resolveLocalizedText(entry.tooltip.title, language) : paused ? `${title} · ${t("rail.paused.commodoreRevamp")}` : wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
+      // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키도 같은 말풍선에 싣는다. 닫아 둔 도구는 그 까닭을 말한다.
+      data-tip={entry.tooltip ? resolveLocalizedText(entry.tooltip.title, language) : paused ? `${title} · ${t("rail.paused.commodoreRevamp")}` : shortcut ? `${named} (${shortcut})` : named}
       data-tip-body={entry.tooltip ? resolveLocalizedText(entry.tooltip.body, language) : undefined}
       // 선언한 도구만 활성 해제 가드를 넘는다(active-objective-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.
       data-keep-objective-active={entry.keepsObjectiveActive ? "" : undefined}

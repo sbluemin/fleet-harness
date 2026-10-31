@@ -10443,61 +10443,8 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   }
 }
 
-/* ------------------------------------------------------------------------------------------
- * Console Use 제스처 — 에이전트가 쓰고 있는 리소스를 통째로 감싸는 펄스.
- * 요소 안에 점이나 아이콘을 그리지 않는다: 사이드바 행·Theater 행·그룹 헤더·레일 버튼·패널이 각자의
- * 윤곽 그대로 감싸인다. 링은 캡션 「콘솔 사용」 배지의 halo(agent-use-halo-console, 0→7px 1.6s ease-out)와
- * 같은 값이라 배지와 표식이 한 행위자로 읽히고, 면은 14%↔5% 로 같은 리듬에 숨쉰다.
- * 색은 Console Use 채널(--console-use-badge) 하나다 — 정체성 톤·상태 토큰을 빌리지 않고, 테두리(상태 소유)는
- * 건드리지 않는다: 행은 box-shadow 링 + background-image 워시, 패널은 outline 이 함께 호흡한다.
- * 도착은 8px 바깥에서 링이 몸에 붙듯 들어오고(360ms), 걷힐 때는 스토어가 LEAVE_MS 전에 is-leaving 을 얹어
- * 220ms 페이드한다. 같은 대상 재호출은 클래스가 그대로라 도착을 다시 재생하지 않는다.
- * ------------------------------------------------------------------------------------------ */
-.is-console-use-wrapped { --console-use-wrap: var(--console-use-badge); }
-@keyframes console-use-wrap-arrive {
-  from { box-shadow: 0 0 0 8px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
-  to { box-shadow: 0 0 0 0 color-mix(in oklch, var(--console-use-wrap) 70%, transparent); }
-}
-@keyframes console-use-wrap-halo {
-  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--console-use-wrap) 70%, transparent); }
-  100% { box-shadow: 0 0 0 7px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
-}
-@keyframes console-use-wrap-breathe {
-  0%, 100% { background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 14%, transparent), color-mix(in oklch, var(--console-use-wrap) 14%, transparent)); }
-  50% { background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 5%, transparent), color-mix(in oklch, var(--console-use-wrap) 5%, transparent)); }
-}
-@keyframes console-use-panel-arrive {
-  from { box-shadow: 0 0 0 8px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
-  to { box-shadow: 0 0 0 0 color-mix(in oklch, var(--console-use-wrap) 55%, transparent); }
-}
-@keyframes console-use-panel-halo {
-  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--console-use-wrap) 55%, transparent); }
-  100% { box-shadow: 0 0 0 10px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
-}
-@keyframes console-use-panel-settle {
-  from { inset: calc(var(--focus-ring-top, -33px) - 7px) -8px -8px; border-color: color-mix(in oklch, var(--console-use-wrap) 25%, transparent); }
-  to { inset: calc(var(--focus-ring-top, -33px) - 1px) -2px -2px; }
-}
-@keyframes console-use-panel-breathe {
-  0%, 100% { border-color: color-mix(in oklch, var(--console-use-wrap) 85%, transparent); }
-  50% { border-color: color-mix(in oklch, var(--console-use-wrap) 35%, transparent); }
-}
-/* 레일 버튼 — 상자 테두리만 채널 색을 잠깐 빌린다. 아이콘 잉크는 그대로다. */
-.right-rail-ico.is-console-use-wrapped { border-color: color-mix(in oklch, var(--console-use-wrap) 50%, transparent); }
-@keyframes console-use-wrap-press { 50% { transform: scale(0.97); } }
-@keyframes console-use-wrap-caret { 50% { opacity: 0; } }
-
-@keyframes console-use-wrap-grow { from { opacity: 0; transform: scaleY(0.6); transform-origin: top; } to { opacity: 1; transform: none; } }
-.is-console-use-wrapped.is-leaving::after { display: none; }
-@keyframes console-use-wrap-leave { to { box-shadow: 0 0 0 0 transparent; background-image: none; } }
-@keyframes console-use-panel-leave { to { box-shadow: 0 0 0 0 transparent; border-color: transparent; } }
 /* 저자 잉크 — 사람이 아닌 발화자·답변자·닫은 이. */
 .chat-by-agent { color: var(--console-use-badge); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; }
-/* reduced-motion — 정지한 1px 링 + 12% 워시. 무엇이 감싸였는지는 남고 움직임만 없다. */
-@media (prefers-reduced-motion: reduce) {
-  .is-console-use-wrapped,
-.is-console-use-wrapped::after{ animation: none; }
-}
 
 /* ── G Quiet Controls 고대비 경계 ─────────────────────────────────────────
    파일 끝자리에 둔다 — 같은 특정도라 순서가 이기므로, 쉬는 면 규칙보다 앞에 서면

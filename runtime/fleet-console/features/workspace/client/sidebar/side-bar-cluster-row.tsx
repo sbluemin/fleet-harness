@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
 import { ChevronGlyph } from "@fleet-console/ui/react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
@@ -7,7 +7,6 @@ import type { ObjectiveClusterRow, ObjectiveClusterRowGlyph, ObjectiveClusterRow
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
-import { consoleUseWrapClassName, gestureCallerLabel, getClusterWrap, getObjectiveWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
 import { objectiveRecordMarkLabel, resolveObjectiveActivity, resolveObjectiveMarkVisual, type ObjectiveActivityVisual, type ObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
 import { getIdleArrivalIds } from "../../../execution/client/objective-marks.js";
 import type { ObjectiveRuntimeState } from "../../../execution/shared/client-contract.js";
@@ -32,18 +31,6 @@ import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph, CaptionConsoleUseGlyph
  * 플러그인이 판정해 넘기고, 여기서는 그리기만 진다. 순서는 탭이 고른 정렬이다.
  */
 
-
-/** 줄 하나가 감싸이는 표식 — 목표 자체, 그다음 접혀 든 뿌리·구성원 Objective. 목록 읽기는 줄이 아니라 머리가 받는다. 저장된 객체를 그대로 돌린다. */
-function rowWrapOf(item: SideBarRowItem): ConsoleUseWrap | null {
-  const { layout, anchor, fold } = item;
-  const direct = getClusterWrap(layout.cluster.id) ?? (anchor ? getObjectiveWrap(anchor.objectiveRecord.id) : null);
-  if (direct) return direct;
-  for (const entry of fold) {
-    const wrap = getObjectiveWrap(entry.objectiveRecord.id);
-    if (wrap) return wrap;
-  }
-  return null;
-}
 
 export interface SideBarEntry {
   readonly objectiveRecord: ObjectiveRecord;
@@ -269,9 +256,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
   const { layout, row, anchor } = item;
-  // Console Use — 에이전트가 이 목표를 읽거나 고치면 Objective 칩과 같은 펄스로 줄 전체가 감싸인다.
-  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
-  // 지휘관이나 구성원이 브라우저·콘솔·컴퓨터를 쓰는 동안 상태 줄이 그 도구를 말한다.
+  // 지휘관이나 구성원이 브라우저·컴퓨터를 쓰는 동안 상태 줄이 그 도구를 말한다. 호스트가 콘솔 사용을 알리면 그 표시도 남긴다.
   const toolUse = useObjectivesToolUse(rowUseIds(item));
   const toolUseLabel = toolUse ? rowToolUseLabel(item, toolUse, t) : null;
   const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, locale, t);
@@ -375,7 +360,6 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       ref={rowRef}
       className={[
         "side-bar-cluster-row",
-        consoleUseWrapClassName(wrap),
         toolUse ? "is-tool-using" : "",
         active ? "side-bar-cluster-row--active" : "",
         "side-bar-cluster-row--conversation",
@@ -418,7 +402,6 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         className="side-bar-cluster-row-main"
         aria-current={active ? "true" : undefined}
         aria-haspopup={onContextMenu ? "menu" : undefined}
-        aria-description={wrap ? t("sidebar.chip.gaze", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : undefined}
         aria-label={[layout.cluster.title, label, toolUseLabel ?? "", ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
         onClick={open}
         onKeyDown={(event) => {

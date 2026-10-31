@@ -171,10 +171,7 @@ export async function registerAgentRoutes(
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const agentCliPathStore = createAgentCliPathStore(ctx.dataDir);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
-  // 이 연결 하나를 모든 Objective이 공유한다 — 그래서 허용은 연결이 아니라 호출자 Objective 단위로
-  // 판정해야 하고, 그 판정은 호스트가 도구 호출마다 직접 한다.
-  const consoleUse = ctx.host.consoleUse.connect({ allowControl: true, objectiveRecordCallers: true });
-  ctx.host.lifecycle.registerCleanup(() => consoleUse.dispose());
+  // 목표의 지휘관·구성원에게는 fleet-console-use 를 넣지 않는다. Console Use 는 부관 세션만 연다.
   const computerUseMcp = ctx.host.computerUseMcp?.connect();
   if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());
   const browserMcp = ctx.host.browserMcp?.connect();
@@ -200,7 +197,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return stored || null;
   };
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
-    additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
+    additionalMcpSessions: [ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
     onFailure: ctx.recordFailure,
   });
   const observability = createConsoleObservabilityStore({
