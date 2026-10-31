@@ -22,7 +22,8 @@ import { z } from "zod";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 
 import { CommodoreStoreError } from "./errors.js";
-import { commodorePluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema, pluginUpdateSchema } from "../shared/contracts/plugins.js";
+import { commodorePluginSetSchema, effectiveCommodorePlugins, effectivePluginsQuerySchema, globalPluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema, pluginUpdateSchema } from "../shared/contracts/plugins.js";
+import type { EffectiveCommodorePluginsView, GlobalPluginsView } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DESCRIPTION, MAX_INTEL_TEXT, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
@@ -53,6 +54,8 @@ export interface CommodoreRouteHooks {
   readonly pluginAuth?: import("./plugin-auth.js").CommodorePluginAuth;
   /** 키·토큰이 바뀐 플러그인 — 그 플러그인을 고른 사령관의 다음 턴이 새 세션으로 이어진다. */
   readonly pluginsChanged?: (pluginIds: readonly string[]) => void;
+  /** 전역 설치 목록이 바뀌었다 — 모든 사령관의 다음 턴이 새 세션으로 이어지고 `global-plugins` 사건이 난다. */
+  readonly globalPluginsChanged?: (plugins: readonly string[]) => void;
   readonly deletion?: ReturnType<typeof import("./deletion.js").createCommodoreDeletion>;
   readonly knowledgeFolder?: ReturnType<typeof import("./knowledge-folder.js").createKnowledgeFolderAction>;
   readonly assertWritable?: (commodoreId: string) => void;
@@ -125,6 +128,27 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     if (!state) throw new CommodoreStoreError("theater_unavailable");
     return state;
   };
+  /**
+   * 전역 목록 읽기 — 그 id를 직접 설치한 사령관과 함께. 파일 경로는 싣지 않는다. `installedBy`는 사령관이 직접
+   * 설치한 모든 플러그인 id를 가리킨다(전역 팔레트의 카탈로그 힌트가 읽는다). `state`(change `plugins`)와
+   * `global-plugins` 사건이 오면 다시 읽는다.
+   */
+  const globalView = (): GlobalPluginsView => {
+    const list = plugins().listGlobal();
+    const installedBy: Record<string, { readonly commodoreId: string; readonly alias?: string }[]> = {};
+    for (const commodoreId of store.availableCommodores()) {
+      const state = store.read(commodoreId);
+      if (!state?.plugins?.length) continue;
+      for (const pluginId of state.plugins) {
+        const rows = installedBy[pluginId] ??= [];
+        rows.push(state.alias ? { commodoreId, alias: state.alias } : { commodoreId });
+      }
+    }
+    return { plugins: list, installedBy };
+  };
+  /** 그 사령관의 실제 로드 id — 전역 먼저, 대체된 사령관 항목은 뺀다. 모든 적재 지점이 같은 계산을 쓴다. */
+  const effectiveIds = (commodoreId: string): readonly string[] =>
+    effectiveCommodorePlugins(plugins().listGlobal(), read(commodoreId).plugins ?? []).effective;
 
   const imageQuery = z.object({ commodoreId: ids, messageId: z.string().refine(validCommodoreImageId), attachmentId: z.string().refine(validCommodoreImageId) }).strict();
   const image: RouteHandler = ({ req, res }) => {
@@ -223,6 +247,28 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       }
       return view(commodoreId, store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId)));
     }) },
+    { name: "commodore/plugins/global/list", method: "POST", summary: "Read the global plugin installs with the Commodores that installed each id directly.", handler: json(z.object({}).strict(), () => globalView(), false) },
+    { name: "commodore/plugins/global/set", method: "POST", summary: "Install (fetching like a Commodore install, then adding to the list) or remove a global plugin; applies from every Commodore's next session.", handler: json(globalPluginSetSchema, async ({ pluginId, installed, trusted }) => {
+      if (installed) {
+        const before = plugins().listGlobal();
+        if (!before.includes(pluginId) && before.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
+        await plugins().prepareInstall(pluginId, trusted === true);
+        // 받는 동안 다른 전역 설치·제거가 끝났을 수 있다 — 저장 직전의 목록에 더한다.
+        const latest = plugins().listGlobal();
+        if (!latest.includes(pluginId) && latest.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
+      }
+      const before = plugins().listGlobal();
+      const next = plugins().setGlobal(pluginId, installed);
+      // 목록이 그대로면 쓰지도 알리지도 않았다 — 세션을 헛되이 교체하지 않는다.
+      if (next !== before) hooks.globalPluginsChanged?.(next);
+      return globalView();
+    }, false) },
+    { name: "commodore/plugins/effective", method: "POST", summary: "Read one Commodore's actual plugin load: the global list, the effective ids, and the replaced entries.", handler: json(effectivePluginsQuerySchema, ({ commodoreId }): EffectiveCommodorePluginsView => {
+      const state = read(commodoreId);
+      const global = plugins().listGlobal();
+      const { effective, replaced } = effectiveCommodorePlugins(global, state.plugins ?? []);
+      return { global, effective, replaced };
+    }, false) },
     { name: "commodore/plugins/update", method: "POST", summary: "Update one plugin with the Claude Code CLI; applies from its next session and reports the old and new versions with the refreshed catalog.", handler: json(pluginUpdateSchema, async ({ pluginId, trusted, version, runs }) => {
       const result = await plugins().updatePlugin(pluginId, trusted === true, version, runs);
       // 인증 캐시를 버리고, 그 플러그인을 고른 모든 사령관에 알린다. 적용은 다음 세션부터다.

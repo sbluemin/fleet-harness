@@ -115,6 +115,17 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       if ((store.read(commodoreId)?.plugins ?? []).some((id) => pluginIds.includes(id))) supervisor.replaceSessionNext(commodoreId);
     }
   };
+  /**
+   * 전역 설치 목록이 바뀌었다 — 모든 사령관의 다음 턴을 새 세션으로 열고, 사령관마다 `global-plugins` 사건을
+   * 낸다(하단 알약·사령관 섹션이 목록을 다시 읽는다). 목표 세션은 다음 실행부터 받는다(기존과 같은 규칙).
+   */
+  const globalPluginsChanged = (next: readonly string[]) => {
+    const list = [...next];
+    for (const commodoreId of entities.ids()) {
+      supervisor.replaceSessionNext(commodoreId);
+      emit({ op: "global-plugins", commodoreId, theaterIds: theaterIds(commodoreId), plugins: list });
+    }
+  };
   const pluginAuth = createCommodorePluginAuth({
     servers: (ids) => plugins.authServers(ids),
     env: (ids) => plugins.pluginEnv(ids),
@@ -170,7 +181,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     changed: () => deps.events.publish(COMMODORE_SIDEBAR_CHANNEL, { op: "changed" }),
   });
   const routes = createCommodoreRoutes(context, store, {
-    sidebar, plugins, pluginAuth, pluginsChanged, deletion, assertWritable: ownership.assertWritable,
+    sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, deletion, assertWritable: ownership.assertWritable,
     knowledgeFolder: createKnowledgeFolderAction({ root: knowledge.root, ...(deps.openKnowledgeDirectory ? { openDirectory: deps.openKnowledgeDirectory } : {}) }),
     theaterIds, summary, list: () => orderedIds().map(summary),
     setOrder: (requested) => {
