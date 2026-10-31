@@ -319,7 +319,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 .objectives-commodore-trail-more {
   display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 2px; padding: 7px 10px;
-  border: 1px solid var(--commodore-settings-line); border-radius: var(--radius-sm, 8px); background: transparent; cursor: pointer;
+  border: 1px solid var(--commodore-settings-line); border-radius: var(--radius-md); background: transparent; cursor: pointer;
   color: var(--text-secondary); font: inherit; font-size: var(--t-xs); transition: background-color .15s, color .15s;
 }
 .objectives-commodore-trail-more:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); }
