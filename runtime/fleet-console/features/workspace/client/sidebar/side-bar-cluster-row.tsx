@@ -155,6 +155,16 @@ function localIsoDate(at: number): string {
   return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
 }
 
+/** 완료일의 긴 표기 — 접근 이름이 날짜 자리를 대신 읽는다. 완료 줄이 아니거나 시각이 없으면 null. */
+export function clusterRowDoneLabel(row: ObjectiveClusterRow, locale: ConsoleLocale): string | null {
+  return row.doneAt !== undefined ? formatDue(localIsoDate(row.doneAt), locale) : null;
+}
+
+/** 통합 목록·접힌 레일이 날짜 자리에 적는 날의 긴 표기 — 시작 전은 기한, 완료는 완료일. */
+export function clusterRowDateLabel(row: ObjectiveClusterRow, locale: ConsoleLocale): string | null {
+  return row.glyph === "done" ? clusterRowDoneLabel(row, locale) : row.due ? formatDue(row.due.date, locale) : null;
+}
+
 const monthFormats = new Map<ConsoleLocale, Intl.DateTimeFormat>();
 
 /**
@@ -285,7 +295,8 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
   if (decisionNote) meta.push({ key: "req-note", text: decisionNote });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
-  if (row.doneAt !== undefined) meta.push({ key: "done-at", text: formatDue(localIsoDate(row.doneAt), locale) });
+  const doneLabel = clusterRowDoneLabel(row, locale);
+  if (doneLabel) meta.push({ key: "done-at", text: doneLabel });
   if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });
   row.provenance?.forEach((part, index) => {
     const text = resolveLocalizedText(part.text, locale);

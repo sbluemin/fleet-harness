@@ -5,7 +5,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
-import { ClusterRowAvatar, ClusterRowDate, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
+import { ClusterRowAvatar, ClusterRowDate, ClusterRowProgress, clusterRowDateLabel, clusterRowSummary, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
 import { useLongPress } from "../long-press.js";
 import { CommanderListOwner, CommodoreCommanderList, useCommanderOwner } from "./commander-list.js";
@@ -197,7 +197,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
             const position = before + index + 1;
             return <CommanderGhostFace key={item.layout.cluster.id} item={item} id={itemId(position)} index={position}
               tabIndex={Math.min(cursor, rows.length) === position ? 0 : -1}
-              label={`${item.layout.cluster.title}, ${summary.conversationLine}${item.row.progress ? `, ${item.row.progress.done}/${item.row.progress.total}` : ""}`}
+              label={[item.layout.cluster.title, summary.conversationLine, item.row.progress ? `${item.row.progress.done}/${item.row.progress.total}` : "", section.settled ? clusterRowDateLabel(item.row, locale) ?? "" : ""].filter(Boolean).join(", ")}
               current={selectedId !== null && commanderObjectiveId(item.layout.cluster) === selectedId}
               cursor={cursor === position}
               summary={summary}
