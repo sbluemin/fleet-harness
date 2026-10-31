@@ -22,7 +22,7 @@ import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
-import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, patchOwnerView, post, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner } from "./objectives-state.js";
+import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, objectiveRecordSummaries, patchOwnerView, post, subscribeObjective, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner, objectivesApi } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./board-commodore.js";
 import { ObjectiveSwitcher } from "./switcher.js";
@@ -39,6 +39,7 @@ import {
 import { FollowupBatchResults, FollowupCandidateList, FollowupForkGlyph } from "./followups-view.js";
 import { criterionSources, MergedTrail } from "./merged.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
+import { DatePicker } from "./date-picker.js";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 
 export interface ObjectiveContext {
@@ -129,6 +130,132 @@ const RouteGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentCol
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const CrewGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M2 13c0-2.2 1.8-3.8 4-3.8s4 1.6 4 3.8M10.6 3.6a2.1 2.1 0 0 1 0 3.9M11.6 9.4c1.4.4 2.4 1.8 2.4 3.6" /></svg>;
 const GraphGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.6" /><circle cx="12.5" cy="4" r="1.6" /><circle cx="12.5" cy="12" r="1.6" /><path d="M5 7.3l6-2.6M5 8.7l6 2.6" /></svg>;
+/**
+ * 머리 「오늘까지 · 기한」 줄 — ObjectivesHeadTools와 같은 구성요소·모양이다. 목표를 직접 받으므로
+ * 패널 선택 상태를 읽지 않는다. 행 아래 펼침과 오른쪽 패널 머리가 함께 쓴다.
+ */
+export function ObjectiveScheduleRow({ objective, language }: { readonly objective: Objective; readonly language: "en" | "ko" }) {
+  const lang = language === "ko" ? "ko" : "en";
+  const t = getT(lang);
+  const readActivity = () => objectiveRecordSummaries().find((objectiveRecord) => objectiveRecord.id === objective.id)?.activity ?? null;
+  const activity = useSyncExternalStore(subscribeObjective, readActivity, readActivity);
+  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
+  const dueButton = useRef<HTMLButtonElement | null>(null);
+  // 지휘관이 일하는 동안에는 잠긴다 — 상세의 편집 잠금과 같은 기준이다(서버도 같은 기준으로 거절한다).
+  const editable = !objective.done && activity !== "running" && activity !== "background";
+  const patch = (next: Record<string, unknown>) => {
+    const api = objectivesApi();
+    if (api) void post(api, "/objective/patch", { objectiveId: objective.id, patch: next, language: lang }).catch(() => undefined);
+  };
+  const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
+  const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
+  const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, lang) }) : t("objectives.schedule.setDue");
+  return (
+    <span className="objectives-head-tools" role="group" aria-label={t("objectives.schedule.title")}>
+      <button type="button" className={`objectives-tab-glyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} title={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /><span aria-hidden="true">{t("objectives.tabs.today")}</span></button>
+      <button ref={dueButton} type="button" className={`objectives-tab-glyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} title={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
+        <CalGlyph /><span aria-hidden="true">{t("objectives.schedule.due")}{objective.dueDate ? <span> · {dueShort(objective.dueDate, lang)}</span> : null}</span>
+      </button>
+      {dateAnchor ? <DatePicker anchor={dateAnchor} trigger={dueButton} value={objective.dueDate} language={lang} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
+    </span>
+  );
+}
+
+/**
+ * 우측 작업 탭의 행 아래 펼침 패널 — 오늘·기한 줄, 목표·구성원·라이브러리 글자 탭, ObjectiveDetail 본문.
+ * 행이 머리이므로 아바타·이름을 두지 않는다. 탭·구획 접힘은 화면 메모리로만 둔다. workspace 목록이 행 아래에 그린다.
+ */
+export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective }: {
+  readonly commodoreId: string;
+  readonly objectiveId: string;
+  readonly language: "en" | "ko";
+  /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 있는 항목만 연다. */
+  readonly onOpenObjective: (objectiveId: string) => void;
+}) {
+  const t = getT(language);
+  const board = useObjectiveBoard(commodoreId);
+  const objectiveRecords = useObjectiveSummaries();
+  const api = objectivesApi();
+  useEffect(() => { if (api !== null) void loadBoard(api, commodoreId); }, [api, commodoreId]);
+  const [tab, setTab] = useState<DetailTab>("goal");
+  const [collapsed, setCollapsed] = useState<Readonly<Record<string, boolean>>>({});
+  const [groupCollapsed, setGroupCollapsed] = useState<Readonly<Record<string, boolean>>>({});
+  const detailRef = useRef<HTMLElement | null>(null);
+  // 중앙 하단 알림은 두지 않는다 — 결과는 화면 자체가 말한다. 호출부는 남겨 두되 아무것도 띄우지 않는다.
+  const toast = useCallback((_text: string, _undo?: () => Promise<void>) => undefined, []);
+  const fail = useCallback((error: unknown) => {
+    const code = error instanceof Error ? error.message : "unknown";
+    toast(code === "objective_busy" ? t("objectives.toast.busy") : t("objectives.toast.failed", { code }));
+  }, [t, toast]);
+  const call = useCallback(async <R,>(path: string, body: Record<string, unknown>): Promise<R | null> => {
+    try { if (api === null) return null; return await post<R>(api, path, { ...body, language }); } catch (error) { fail(error); return null; }
+  }, [api, fail, language]);
+  const objectiveRecordOf = useCallback((id: string) => objectiveRecords.find((candidate) => candidate.id === id) ?? null, [objectiveRecords]);
+  // 턴 뒤에 남은 백그라운드 작업(background)은 화면에서 진행 중(running)이다.
+  const objectiveRecordState = useCallback((id: string): string => shownActivity(objectiveRecordOf(id)?.activity ?? "closed"), [objectiveRecordOf]);
+  // 끌어올리기 전 자기 활동 — 지휘관 자신의 대기·실행을 구성원 것과 가를 때.
+  const objectiveRecordOwnState = useCallback((id: string): string => { const objectiveRecord = objectiveRecordOf(id); return objectiveRecord ? shownActivity(objectiveRecord.ownActivity ?? objectiveRecord.activity) : "closed"; }, [objectiveRecordOf]);
+  const objectiveRecordTitle = useCallback((id: string) => objectiveRecordOf(id)?.title ?? "—", [objectiveRecordOf]);
+  const request = useCallback((path: string, body: Record<string, unknown>) => api === null ? Promise.resolve(null) : post<unknown>(api, path, { ...body, language }), [api, language]);
+  const modeLabel = (mode: CommanderMode) => t(mode === "direct" ? "objectives.mode.direct" : mode === "coordinate" ? "objectives.mode.coordinate" : "objectives.mode.mixed");
+  const stateLabel = (state: string) => t((["running", "awaiting", "idle", "ended", "closed"].includes(state) ? `objectives.state.${state}` : "objectives.state.unknown") as Parameters<typeof t>[0]);
+  const toggleEdge = useCallback(async (objective: Objective, from: string, to: string, linked?: boolean) => {
+    const result = await call<{ objective: Objective; linked: boolean }>("/edge/toggle", { objectiveId: objective.id, from, to, linked });
+    if (!result) return;
+    const index = (id: string) => objective.missions.findIndex((mission) => mission.id === id) + 1;
+    toast(t(result.linked ? "objectives.toast.linkedEdge" : "objectives.toast.cutEdge", { from: index(from), to: index(to) }));
+  }, [call, t, toast]);
+  const objective = api === null || !board.loaded ? undefined : board.objectives.find((candidate) => candidate.id === objectiveId) ?? null;
+  if (objective === undefined) return null;
+  if (objective === null) return <p className="commander-row-panel-empty" role="status">{t("objectives.results.window.empty")}</p>;
+  // 지휘관이 일하는 동안 카드는 잠긴다 — 편집 대신 「중단」 하나만 남긴다(서버도 같은 기준으로 거절한다).
+  const busy = !objective.done && WORKING.has(objectiveRecordState(objective.id));
+  const decision = !!objective.decisionRequest && !objective.done;
+  const unseen = objective.missions.some((mission) => unseenRecords(mission) > 0);
+  return <>
+    <div className="commander-row-panel-tools"><ObjectiveScheduleRow objective={objective} language={language} /></div>
+    <div className="commander-row-panel-tabs" role="tablist" aria-label={t("objectives.panel.title")}>
+      {DETAIL_TABS.map((id) => {
+        const dot = id === "goal" && decision ? { tone: "attention", label: t("objectives.tabs.decisionDot") }
+          : id === "crew" && unseen ? { tone: "unseen", label: t("objectives.tabs.unseenDot") } : null;
+        const title = t(`objectives.tabs.${id}` as Parameters<typeof t>[0]);
+        return (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} aria-label={dot ? `${title} · ${dot.label}` : title}
+            className={`right-rail-ico is-text${tab === id ? " is-active" : ""}`} onClick={() => setTab(id)}>
+            <span className="right-rail-ico-label">{title}</span>
+            {dot ? <span className={`right-rail-ico-dot is-${dot.tone}`} aria-hidden="true" /> : null}
+          </button>
+        );
+      })}
+    </div>
+    <ObjectiveDetail
+      objective={objective}
+      t={t}
+      language={language}
+      call={call}
+      toast={toast}
+      modeLabel={modeLabel}
+      stateLabel={stateLabel}
+      objectiveRecordTitle={objectiveRecordTitle}
+      objectiveRecordState={objectiveRecordState}
+      objectiveRecordOwnState={objectiveRecordOwnState}
+      busy={busy}
+      request={request}
+      tab={tab}
+      onTab={setTab}
+      sectionOpen={(key) => key in collapsed ? !collapsed[key] : false}
+      onToggleSection={(key) => setCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
+      groupOpen={(key) => key in groupCollapsed ? !groupCollapsed[key] : false}
+      onToggleGroup={(key) => setGroupCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
+      onOpenGroup={(key) => setGroupCollapsed((current) => ({ ...current, [key]: false }))}
+      highlightMission={null}
+      detailRef={detailRef}
+      onToggleEdge={(from, to, linked) => toggleEdge(objective, from, to, linked)}
+      onOpenObjective={onOpenObjective}
+    />
+  </>;
+}
+
 const WORKING = new Set(["running"]);
 /** 호스트 요약의 원시 활동 → 이 패널이 그리는 활동. 백그라운드 작업만 남은 Objective 도 진행 중으로 선다. */
 const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);

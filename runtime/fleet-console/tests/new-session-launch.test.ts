@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement as h } from "react";
 import { createRoot } from "react-dom/client";
 import type { Objective } from "../features/objectives/shared/types.js";
-import type { ObjectiveCluster } from "../features/objectives/shared/objective-clusters.js";
+import type { ObjectiveCluster, ObjectiveClusterRow } from "../features/objectives/shared/objective-clusters.js";
 
 import { readNewSessionSelection } from "../features/workspace/client/conversation/new-session-preferences.js";
 import { resolveMentionEntry } from "../features/workspace/client/conversation/new-session-mention.js";
@@ -209,4 +209,98 @@ it("opens a registry goal as a full conversation before and after its session ar
     node.remove(); closeConversationSurface(); offFresh(); offComposer(); offBody(); offBoard();
     removeObjectiveLocally(id); setState(previous); replaceCommodoreList(previousCommodores); canvas.mockRestore(); range.mockRestore(); vi.unstubAllGlobals();
   }
+});
+
+describe("kept commander tabs", () => {
+  // 우측 펼침의 탭 유지 — 주인이 바뀌면 걷히고, 같은 주인이 돌아오면 두 겹으로 서지 않는다.
+  const tab = (id: string) => ({ id, title: () => id, icon: () => null, render: () => null });
+
+  it("releases the kept registration when the owner changes", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const tabs = await import("../core/client/src/chrome/rail/objective-tabs.js");
+    const node = document.createElement("div"); document.body.append(node);
+    const root = createRoot(node);
+    const seen: string[][] = [];
+    function Probe() {
+      seen.push(tabs.useRegisteredConversationObjectiveTabs().map((entry) => entry.id));
+      return null;
+    }
+    try {
+      await act(async () => root.render(h(Probe)));
+      const disposers = await act(async () => [tab("kt-1"), tab("kt-2")].map((entry) => tabs.registerConversationObjectiveTab(entry)));
+      await act(async () => root.render(h(Probe)));
+      tabs.keepConversationObjectiveTabs("c1", () => { for (const dispose of disposers) dispose(); });
+      // 다른 주인으로 바뀌면 걷힌다.
+      tabs.releaseKeptConversationObjectiveTabs("c2");
+      await act(async () => root.render(h(Probe)));
+      expect(seen.at(-1)).toEqual([]);
+    } finally {
+      tabs.releaseKeptConversationObjectiveTabs(null);
+      await act(async () => root.unmount());
+      node.remove(); vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not double-register when the same owner returns", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const tabs = await import("../core/client/src/chrome/rail/objective-tabs.js");
+    const node = document.createElement("div"); document.body.append(node);
+    const root = createRoot(node);
+    const seen: string[][] = [];
+    function Probe() {
+      seen.push(tabs.useRegisteredConversationObjectiveTabs().map((entry) => entry.id));
+      return null;
+    }
+    try {
+      await act(async () => root.render(h(Probe)));
+      const first = await act(async () => [tab("kt-1"), tab("kt-2")].map((entry) => tabs.registerConversationObjectiveTab(entry)));
+      tabs.keepConversationObjectiveTabs("c1", () => { for (const dispose of first) dispose(); });
+      // 같은 사령관으로 돌아오면 보관만 버리고 새로 등록한다 — 같은 id가 두 겹으로 서지 않는다.
+      tabs.adoptKeptConversationObjectiveTabs("c1");
+      const second = await act(async () => [tab("kt-1"), tab("kt-2")].map((entry) => tabs.registerConversationObjectiveTab(entry)));
+      await act(async () => root.render(h(Probe)));
+      expect(seen.at(-1)).toEqual(["kt-1", "kt-2"]);
+      for (const dispose of second) dispose();
+      await act(async () => root.render(h(Probe)));
+      expect(seen.at(-1)).toEqual([]);
+    } finally {
+      tabs.releaseKeptConversationObjectiveTabs(null);
+      await act(async () => root.unmount());
+      node.remove(); vi.unstubAllGlobals();
+    }
+  });
+});
+describe("commander rail keep rule", () => {
+  // 우측 펼침의 행 펼치기와 레일 유지가 함께 읽는 판정 — 진행 중·시작 전·완료 지휘관만 그 사령관의 것으로 본다.
+  const cluster = (id: string, init: Partial<ObjectiveCluster>): ObjectiveCluster => ({
+    id, theaterId: "th-a", title: id, members: [], ...init,
+  });
+  const row = (fold: readonly string[]): ObjectiveClusterRow => ({ groupId: null, order: 0, fold });
+
+  it("treats running, not-started and finished commanders of the commodore as its own", async () => {
+    const { isCommanderObjective } = await import("../features/workspace/client/commander-tab/commander-rows.js");
+    const clusters = [
+      cluster("c-live", { commodoreId: "c1", root: "op-live", row: row(["op-live"]) }),
+      cluster("c-fresh", { commodoreId: "c1", avatarObjectiveId: "op-fresh", row: row(["op-fresh"]) }),
+      cluster("c-done", { commodoreId: "c1", root: "op-done", row: row(["op-done"]) }),
+    ];
+    expect(isCommanderObjective(clusters, "c1", "op-live")).toBe(true);
+    expect(isCommanderObjective(clusters, "c1", "op-fresh")).toBe(true);
+    expect(isCommanderObjective(clusters, "c1", "op-done")).toBe(true);
+  });
+
+  it("rejects other commodores, members and unknown ids", async () => {
+    const { isCommanderObjective } = await import("../features/workspace/client/commander-tab/commander-rows.js");
+    const clusters = [
+      cluster("c-other", { commodoreId: "c2", root: "op-other", row: row(["op-other"]) }),
+      cluster("c-mixed", {
+        commodoreId: "c1", root: "op-root", decisionRequest: true,
+        members: [{ objectiveId: "op-member", label: "member", after: [], progress: "open" }],
+        row: row(["op-root", "op-member"]),
+      }),
+    ];
+    expect(isCommanderObjective(clusters, "c1", "op-other")).toBe(false);
+    expect(isCommanderObjective(clusters, "c1", "op-member")).toBe(false);
+    expect(isCommanderObjective(clusters, "c1", "op-missing")).toBe(false);
+  });
 });

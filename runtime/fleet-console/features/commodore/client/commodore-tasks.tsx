@@ -36,7 +36,7 @@ function CommodoreTasksInner({ commodoreId, language, selectedId, tasks }: {
           selectedId={selectedId}
           heading={(count) => <>{t("commodore.tasks.goals")} <span>{count}</span></>}
           onSelect={({ objectiveId, open }) => {
-            // 미션 3 임시 — 우측 목표 섹션에서도 가운데에서 연다. 미션 5가 이 자리에 C의 펼침을 넣는다.
+            // 목표 섹션에서 고르면 가운데에서 그 지휘관을 연다. 우측 목록은 작업 탭에 머문 채 그 행 아래에 펼친다(펼침은 목록이 맡는다).
             if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
             else open?.();
           }}

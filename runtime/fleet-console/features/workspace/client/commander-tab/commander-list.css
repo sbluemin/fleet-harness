@@ -246,8 +246,20 @@
   overflow: clip;
 }
 .commander-tab--card .commander-tab-list { gap: 0; }
+/* 우측 작업 탭의 행 아래 펼침 — 행과 같은 배경 위에 hairline으로만 나뉜다. 펼친 행·패널 사이와 패널·다음 행 사이가 각각 한 줄이다. */
 .commander-tab--card .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
 .commander-tab--card .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
+.commander-tab--card .commander-row-panel {
+  min-width: 0;
+  padding: 4px 8px 10px;
+  border-top: 1px solid var(--hairline);
+}
+.commander-tab--card .commander-row-panel + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
+.commander-row-panel-tools { display: flex; min-width: 0; }
+.commander-row-panel-tabs { display: flex; gap: 2px; margin-top: 6px; }
+.commander-tab--card .commander-row-panel-tabs .right-rail-ico.is-text { flex: 1 1 0; min-width: 0; padding: 5px 6px; }
+.commander-tab--card .commander-row-panel-tabs .right-rail-ico-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commander-row-panel-empty { margin: 0; padding: 8px 4px; color: var(--text-tertiary); font-size: var(--t-sm); text-align: center; }
 /* 위임 토글을 행 끝으로 — 진행 중 행에만. 시작 전·완료 한 줄 행은 이전 크기와 높이를 그대로 둔다. */
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) { grid-template-columns: 30px 1fr auto; }
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):has(.side-bar-cluster-row-mark-toggle) { padding-right: 10px; }

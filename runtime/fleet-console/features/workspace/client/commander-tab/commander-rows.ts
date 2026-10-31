@@ -4,7 +4,8 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { objectiveRecordOrderFromNodes } from "../../../../core/client/src/integration/store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
-import { useClusterIndex } from "../objective-clusters.js";
+import { commanderObjectiveId, indexClusters, useClusterIndex } from "../objective-clusters.js";
+import type { ObjectiveCluster } from "../../../objectives/shared/objective-clusters.js";
 import { buildTheaterEntries, sideBarRowItems, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { isNotStartedRow } from "../conversation/new-session-mention.js";
 import type { CommanderFold } from "./commander-folds.js";
@@ -18,6 +19,18 @@ export interface CommanderSection {
   readonly fold: CommanderFold | null;
   /** 데스크톱 명단의 시작 전·완료 통합 목록 — 구분 머리(접기 단추) 아래 한 줄짜리 행으로 선다. */
   readonly settled?: true;
+}
+
+/**
+ * 가운데 objectiveId가 이 사령관의 지휘관인가 — 시작 전(avatarObjectiveId)·완료 포함.
+ * 우측 펼침의 행 펼치기와 레일 유지가 함께 읽는 판정이다. 묶음 선언이 없는 Objective 은 지휘관이 아니다.
+ */
+export function isCommanderObjective(clusters: readonly ObjectiveCluster[], commodoreId: string, objectiveId: string): boolean {
+  for (const layout of indexClusters(clusters).rows) {
+    if (commanderObjectiveId(layout.cluster) !== objectiveId) continue;
+    if (layout.cluster.commodoreId === undefined || layout.cluster.commodoreId === commodoreId) return true;
+  }
+  return false;
 }
 
 /**

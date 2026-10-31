@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useViewportFit, ChevronGlyph, MenuCheckGlyph } from "@fleet-console/ui/react";
 
@@ -25,7 +25,12 @@ import { toggleCommanderSectionCollapsed } from "../sidebar/commander-section-fo
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, heading }: {
+/** 우측 작업 탭 카드의 행 아래 펼침 — 펼친 행 id와 그 아래 그릴 패널. 다른 목록(좌측·팝오버·폰)은 두지 않는다. */
+export interface CommanderListExpansion {
+  readonly expandedId: string | null;
+  readonly renderPanel: (item: SideBarRowItem, titleId: string) => ReactNode;
+}
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, heading, expansion }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
@@ -37,6 +42,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly card?: boolean;
   /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
   readonly heading?: ((count: number) => ReactNode) | undefined;
+  readonly expansion?: CommanderListExpansion | undefined;
 }) {
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
@@ -75,9 +81,19 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
                 const selected = objectiveId !== null && selectedId === objectiveId;
-                return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected} settled={group.settled === true}
+                const expanded = expansion !== undefined && objectiveId !== null && expansion.expandedId === objectiveId;
+                const titleId = `${listId}-${item.layout.cluster.id}-title`;
+                return <Fragment key={item.layout.cluster.id}>
+                <SideBarClusterRow item={item} selected={selected} settled={group.settled === true}
+                  titleId={titleId} ariaExpanded={expansion === undefined ? undefined : expanded}
                   onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
-                  onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />;
+                  onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />
+                {expanded && expansion !== undefined ? (
+                  <li className="commander-row-panel" role="region" aria-labelledby={titleId}>
+                    {expansion.renderPanel(item, titleId)}
+                  </li>
+                ) : null}
+                </Fragment>;
               })}
             </ol>
           </section>;
