@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from "react";
 import { isFleetMobileShell, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
@@ -919,6 +919,8 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  /** 상세 조회 실패 뒤 「다시 시도」 — 같은 플러그인의 조회 효과를 다시 돌린다. */
+  const [detailRetry, setDetailRetry] = useState(0);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -951,7 +953,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
       (reason) => { if (!cancelled) { setDetailLoading(false); setDetailError(codeOf(reason)); } },
     );
     return () => { cancelled = true; };
-  }, [openedId, detailEpoch]);
+  }, [openedId, detailEpoch, detailRetry]);
   useEffect(() => {
     if (openedId) return;
     const id = returnFocusId.current;
@@ -1062,12 +1064,13 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
             onClose={onClose}
             onInstall={() => install(opened)}
             onRemove={() => removeInstalled(opened.id)}
+            onRetry={() => setDetailRetry((n) => n + 1)}
             onTrust={(fresh) => save(opened.id, true, fresh)}
             onCancel={() => setRow(null)}
           />
         ) : (
           <>
-            <h2 id={titleId} className="commodore-palette-title">{t("commodore.plugins.palette.title", { name })}</h2>
+            <PaletteBar t={t} title={t("commodore.plugins.palette.title", { name })} titleId={titleId} onClose={onClose} />
             <div className="commodore-palette-search">
               <SearchGlyph />
               <input
@@ -1081,7 +1084,6 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
                 spellCheck={false}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <button type="button" className="commodore-plugins-text" onClick={onClose}>{t("commodore.plugins.palette.close")}</button>
             </div>
             {enabled.length > 0 ? (
               <div className="commodore-palette-filters" role="group" aria-label={t("commodore.plugins.palette.filterAria")}>
@@ -1183,17 +1185,95 @@ const DETAIL_PARTS: readonly (readonly [keyof PluginContents, CommodoreMessageKe
   ["mcp", "commodore.plugins.detail.mcp"],
 ];
 
-function WebLink({ href, children }: { readonly href: string | undefined; readonly children: string }) {
-  const safe = href ? httpUrl(href) : null;
-  if (!safe) return null;
-  return <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a>;
+/**
+ * 팔레트 상단 바 — 목록과 상세가 같은 바를 써서 닫기(오른쪽)·뒤로(왼쪽) 아이콘이 두 화면에서 같은 자리에 선다.
+ * 목록은 왼쪽 칸을 비워 두고 제목을 싣는다. 상세는 큰 이름이 스크롤로 가려질 때만 가운데에 이름을 보인다(그때도 읽는 이름은 본문 h2 다).
+ */
+function PaletteBar({ t, title, titleId, pinned, backRef, onBack, onClose }: {
+  readonly t: T;
+  readonly title: string;
+  readonly titleId?: string;
+  readonly pinned?: boolean;
+  readonly backRef?: Ref<HTMLButtonElement>;
+  readonly onBack?: () => void;
+  readonly onClose: () => void;
+}) {
+  return (
+    <div className={`commodore-palette-bar${onBack ? " is-detail" : ""}${pinned ? " is-pinned" : ""}`}>
+      {onBack ? (
+        <button ref={backRef} type="button" className="commodore-palette-icon" aria-label={t("commodore.plugins.detail.back")} title={t("commodore.plugins.detail.back")} onClick={onBack}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      ) : null}
+      {titleId ? <h2 id={titleId} className="commodore-palette-title">{title}</h2> : <p className="commodore-palette-title" aria-hidden="true">{title}</p>}
+      <button type="button" className="commodore-palette-icon" aria-label={t("commodore.plugins.palette.close")} title={t("commodore.plugins.palette.close")} onClick={onClose}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+      </button>
+    </div>
+  );
 }
+
+/** 섹션마다 먼저 보이는 행 수 — 넘으면 「모두 보기」로 펼친다. */
+const DETAIL_PREVIEW_ROWS = 5;
+
+const PART_GLYPH: Readonly<Record<keyof PluginContents, ReactNode>> = {
+  skills: <path d="M8 2.5l1.6 3.3 3.6.5-2.6 2.5.6 3.6L8 10.7l-3.2 1.7.6-3.6L2.8 6.3l3.6-.5z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />,
+  commands: <path d="M3.5 5l3 3-3 3M8.5 11.5h4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />,
+  agents: <><circle cx="8" cy="6" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M3.5 13c.6-2.3 2.4-3.5 4.5-3.5s3.9 1.2 4.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></>,
+  hooks: <path d="M9 2.5 4.5 9H8l-1 4.5L11.5 7H8z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />,
+  mcp: <><rect x="3" y="3" width="10" height="4" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.2" /><rect x="3" y="9" width="10" height="4" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.2" /></>,
+};
+
+type DetailRow = { readonly name: string; readonly commands: readonly string[] };
+
+/**
+ * 구성 섹션의 행 — 구성 이름마다 한 행이고, 실행 명령은 같은 이름의 훅·MCP 행 둘째 줄에 붙는다. 구성 목록에 없는 실행 명령도
+ * 자기 이름의 행으로 남겨, 설치 전에 돌 명령이 하나도 가려지지 않게 한다.
+ */
+function detailSections(parts: PluginContents | undefined, runs: PluginCatalogEntry["runs"]): readonly (readonly [keyof PluginContents, CommodoreMessageKey, readonly DetailRow[]])[] {
+  return DETAIL_PARTS.map(([key, label]) => {
+    const kind = key === "hooks" ? "hook" : key === "mcp" ? "mcp" : null;
+    const own = (runs ?? []).filter((run) => run.kind === kind);
+    const names = [...(parts?.[key] ?? [])];
+    for (const run of own) if (!names.includes(run.label)) names.push(run.label);
+    const rows = names.map((name) => ({ name, commands: own.filter((run) => run.label === name).map((run) => run.command) }));
+    return [key, label, rows] as const;
+  }).filter(([, , rows]) => rows.length > 0);
+}
+
+function DetailSection({ t, partKey, label, rows }: { readonly t: T; readonly partKey: keyof PluginContents; readonly label: CommodoreMessageKey; readonly rows: readonly DetailRow[] }) {
+  const [open, setOpen] = useState(false);
+  const headId = useId();
+  const shown = open || rows.length <= DETAIL_PREVIEW_ROWS ? rows : rows.slice(0, DETAIL_PREVIEW_ROWS);
+  return (
+    <section className="commodore-plugin-detail-section" aria-labelledby={headId}>
+      <h3 id={headId} className="commodore-plugin-detail-head">{t(label)}<span>{rows.length}</span></h3>
+      <div className="commodore-plugin-detail-rows">
+        <ul>
+          {shown.map((row, index) => (
+            <li key={`${row.name}-${index}`} className="commodore-plugin-detail-row">
+              <span className="commodore-plugin-detail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16">{PART_GLYPH[partKey]}</svg></span>
+              <span className="commodore-plugin-detail-row-main">
+                <span className="commodore-plugin-detail-row-name">{row.name}</span>
+                {row.commands.map((command, at) => <code key={at}>{command}</code>)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {shown.length < rows.length ? <button type="button" className="commodore-plugin-detail-more" onClick={() => setOpen(true)}>{t("commodore.plugins.detail.showAll", { n: rows.length })}</button> : null}
+      </div>
+    </section>
+  );
+}
+
+/** 링크 칸에 보일 글자 — 프로토콜과 끝 빗금을 뗀 주소. */
+const linkText = (url: string): string => url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
 /**
  * 팔레트 안의 상세. 카탈로그 필드는 바로 보이고, 구성 이름·실행 명령·README 는 상세 응답이 오면 채워진다.
- * 조회가 실패해도 카탈로그 필드는 남는다. README 는 정화된 markdown 이다.
+ * 조회가 실패해도 카탈로그 필드는 남는다. README 는 정화된 markdown 이다 — 그 표현은 공용 markdown 스타일이 맡고 여기서는 자리만 둔다.
  */
-function PluginDetailView({ t, titleId, entry, detail, loading, error, installed, row, dismissConfirm, onFocusFallback, onBack, onClose, onInstall, onRemove, onTrust, onCancel }: {
+function PluginDetailView({ t, titleId, entry, detail, loading, error, installed, row, dismissConfirm, onFocusFallback, onBack, onClose, onInstall, onRemove, onRetry, onTrust, onCancel }: {
   readonly t: T;
   readonly titleId: string;
   readonly entry: PluginCatalogEntry;
@@ -1208,6 +1288,7 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
   readonly onClose: () => void;
   readonly onInstall: () => void;
   readonly onRemove: () => void;
+  readonly onRetry: () => void;
   readonly onTrust: (entry: PluginCatalogEntry) => void;
   readonly onCancel: () => void;
 }) {
@@ -1215,8 +1296,11 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
   const trustRef = useRef<HTMLButtonElement | null>(null);
   const cancelRemoveRef = useRef<HTMLButtonElement | null>(null);
   const removeRef = useRef<HTMLButtonElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const nameRef = useRef<HTMLHeadingElement | null>(null);
   const confirmWasOpen = useRef(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const shown = detail ? { ...entry, ...detail } : row?.entry ? { ...entry, ...row.entry } : entry;
   const title = titleOf(shown, entry.name);
   const working = row?.phase === "checking" || row?.phase === "saving";
@@ -1224,12 +1308,29 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
   const trustEntry = row?.entry ?? shown;
   const readme = detail?.readme ?? "";
   const readmeHtml = useMemo(() => (readme ? pluginReadmeHtml(readme) : ""), [readme]);
-  const parts = detail?.contents;
-  const hasParts = DETAIL_PARTS.some(([key]) => (parts?.[key].length ?? 0) > 0);
   const runs = detail?.runs ?? entry.runs;
-  const meta = [shown.version ? `v${shown.version}` : null, shown.author ? t("commodore.plugins.byAuthor", { name: shown.author }) : null, shown.category ?? null, shown.marketplace].filter(Boolean).join(" · ");
+  const sections = trusting ? [] : detailSections(detail?.contents, runs);
+  const homepage = shown.homepage ? httpUrl(shown.homepage) : null;
+  const repository = shown.repository ? httpUrl(shown.repository) : null;
+  const facts: (readonly [CommodoreMessageKey, ReactNode])[] = [];
+  if (shown.version) facts.push(["commodore.plugins.detail.version", `v${shown.version}`]);
+  if (shown.author) facts.push(["commodore.plugins.detail.author", shown.author]);
+  if (shown.category) facts.push(["commodore.plugins.detail.category", shown.category]);
+  facts.push(["commodore.plugins.detail.marketplace", shown.marketplace]);
+  if (shown.license) facts.push(["commodore.plugins.detail.license", shown.license]);
+  if (homepage) facts.push(["commodore.plugins.homepage", <a href={homepage} target="_blank" rel="noopener noreferrer">{linkText(homepage)}</a>]);
+  if (repository) facts.push(["commodore.plugins.detail.repository", <a href={repository} target="_blank" rel="noopener noreferrer">{linkText(repository)}</a>]);
+  if (shown.keywords?.length) facts.push(["commodore.plugins.detail.keywords", shown.keywords.join(", ")]);
   useEffect(() => { backRef.current?.focus(); }, []);
   useEffect(() => { if (trusting) trustRef.current?.focus({ preventScroll: false }); }, [trusting]);
+  useEffect(() => {
+    const root = scrollRef.current;
+    const name = nameRef.current;
+    if (!root || !name || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([seen]) => setPinned(!seen?.isIntersecting), { root, threshold: 0 });
+    observer.observe(name);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     dismissConfirm.current = () => {
       if (!confirmRemove) return false;
@@ -1251,76 +1352,49 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
   }, [confirmRemove, onFocusFallback]);
   return (
     <div className="commodore-plugin-detail">
-      <div className="commodore-plugin-detail-bar">
-        <button ref={backRef} type="button" className="commodore-plugin-detail-back" onClick={onBack}>
-          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M6.5 2 L3.5 5 L6.5 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          {t("commodore.plugins.detail.back")}
-        </button>
-        <button type="button" className="commodore-plugins-text" onClick={onClose}>{t("commodore.plugins.palette.close")}</button>
-      </div>
-      <div className="commodore-plugin-detail-scroll">
+      <PaletteBar t={t} title={title} pinned={pinned} backRef={backRef} onBack={onBack} onClose={onClose} />
+      <div ref={scrollRef} className="commodore-plugin-detail-scroll">
         <header className="commodore-plugin-detail-hero">
           <PluginTile name={title} iconId={shown.icon ? entry.id : undefined} size="detail" />
           <span className="commodore-plugin-detail-heading">
-            <h2 id={titleId} className="commodore-plugin-detail-name">{title}</h2>
-            {meta ? <p className="commodore-plugin-detail-meta">{meta}</p> : null}
+            <h2 ref={nameRef} id={titleId} className="commodore-plugin-detail-name">{title}</h2>
+            <p className="commodore-plugin-detail-meta">{installed ? `${shown.marketplace} · ${t("commodore.plugins.palette.installed")}` : shown.marketplace}</p>
           </span>
           <span className="commodore-plugin-detail-action">
-            {trusting ? null : installed ? (
-              confirmRemove ? (
-                <span className="commodore-plugin-detail-confirm" role="alert">
-                  <span>{t("commodore.plugins.removeConfirm", { plugin: title })}</span>
-                  <button ref={cancelRemoveRef} type="button" className="commodore-plugins-text" onClick={() => setConfirmRemove(false)}>{t("commodore.plugins.removeCancel")}</button>
-                  <button type="button" className="commodore-plugins-text is-danger" disabled={working} onClick={() => { setConfirmRemove(false); onRemove(); }}>{t("commodore.plugins.detail.remove")}</button>
-                </span>
-              ) : <button ref={removeRef} type="button" className="fc-btn fc-btn--secondary" onClick={() => setConfirmRemove(true)}>{t("commodore.plugins.detail.remove")}</button>
-            ) : (
-              <button type="button" className="fc-btn fc-btn--secondary commodore-palette-install" disabled={working} aria-label={t("commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>
-            )}
+            {trusting ? null : installed
+              ? <button ref={removeRef} type="button" className="fc-btn fc-btn--secondary" disabled={confirmRemove || working} onClick={() => setConfirmRemove(true)}>{t("commodore.plugins.detail.remove")}</button>
+              : <button type="button" className="fc-btn fc-btn--primary" disabled={working} aria-label={t("commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>}
           </span>
         </header>
         {shown.description ? <p className="commodore-plugin-detail-desc">{shown.description}</p> : null}
-        {shown.homepage || shown.repository || shown.license || shown.keywords?.length ? (
-          <div className="commodore-plugin-detail-facts">
-            {shown.homepage || shown.repository ? (
-              <p className="commodore-plugin-detail-links">
-                <WebLink href={shown.homepage}>{t("commodore.plugins.homepage")}</WebLink>
-                <WebLink href={shown.repository}>{t("commodore.plugins.detail.repository")}</WebLink>
-              </p>
-            ) : null}
-            {shown.license ? <span className="commodore-plugins-comp">{t("commodore.plugins.detail.license", { name: shown.license })}</span> : null}
-            {shown.keywords?.length ? (
-              <span className="commodore-plugin-detail-keywords">
-                <span className="commodore-plugin-detail-kicker">{t("commodore.plugins.detail.keywords")}</span>
-                {shown.keywords.map((word, index) => <span key={`${word}-${index}`} className="commodore-plugins-comp">{word}</span>)}
-              </span>
-            ) : null}
+        {confirmRemove ? (
+          <div className="commodore-plugin-detail-notice" role="alert">
+            <p>{t("commodore.plugins.removeConfirm", { plugin: title })}</p>
+            <div className="commodore-plugin-detail-notice-actions">
+              <button ref={cancelRemoveRef} type="button" className="fc-btn fc-btn--secondary" onClick={() => setConfirmRemove(false)}>{t("commodore.plugins.removeCancel")}</button>
+              <button type="button" className="fc-btn fc-btn--secondary is-danger" disabled={working} onClick={() => { setConfirmRemove(false); onRemove(); }}>{t("commodore.plugins.detail.remove")}</button>
+            </div>
           </div>
         ) : null}
         {loading ? <p className="commodore-plugin-detail-status" role="status">{t("commodore.plugins.detail.loading")}</p> : null}
-        {error ? <p className="commodore-plugin-detail-status is-failed" role="alert">{t("commodore.plugins.detail.failed")}</p> : null}
+        {error ? (
+          <p className="commodore-plugin-detail-status is-failed" role="alert">
+            <span>{t("commodore.plugins.detail.failed")}</span>
+            <button type="button" className="commodore-plugins-text" onClick={onRetry}>{t("commodore.plugins.detail.retry")}</button>
+          </p>
+        ) : null}
         {row?.phase === "failed" ? <p className="commodore-plugin-detail-status is-failed" role="alert">{errorWord(t, row.code ?? "failed")}</p> : null}
         {trusting ? <TrustPanel t={t} entry={trustEntry} onTrust={onTrust} onCancel={onCancel} trustRef={trustRef} /> : null}
-        {hasParts && parts ? (
-          <section className="commodore-plugin-detail-included" aria-label={t("commodore.plugins.detail.included")}>
-            <h3>{t("commodore.plugins.detail.included")}</h3>
-            {DETAIL_PARTS.map(([key, label]) => parts[key].length ? (
-              <div key={key} className="commodore-plugin-detail-group">
-                <h4>{t(label)}</h4>
-                <span className="commodore-plugins-meta">{parts[key].map((part, index) => <span key={`${part}-${index}`} className="commodore-plugins-comp">{part}</span>)}</span>
-              </div>
-            ) : null)}
-          </section>
-        ) : null}
-        {runs && runs.length > 0 && !trusting ? (
-          <section className="commodore-plugin-detail-runs" aria-label={t("commodore.plugins.detail.runs")}>
-            <h3>{t("commodore.plugins.detail.runs")}</h3>
-            <ul>{runs.map((run, index) => <li key={index}><span>{t(run.kind === "hook" ? "commodore.plugins.trust.hook" : "commodore.plugins.trust.mcp", { label: run.label })}</span><code>{run.command}</code></li>)}</ul>
-          </section>
-        ) : null}
+        {sections.map(([key, label, rows]) => <DetailSection key={key} t={t} partKey={key} label={label} rows={rows} />)}
+        <section className="commodore-plugin-detail-section" aria-labelledby={`${titleId}-about`}>
+          <h3 id={`${titleId}-about`} className="commodore-plugin-detail-head">{t("commodore.plugins.detail.about")}</h3>
+          <dl className="commodore-plugin-detail-info">
+            {facts.map(([label, value]) => <div key={label} className="commodore-plugin-detail-fact"><dt>{t(label)}</dt><dd>{value}</dd></div>)}
+          </dl>
+        </section>
         {readmeHtml ? (
           <section className="commodore-plugin-detail-readme" aria-label={t("commodore.plugins.detail.readme")}>
-            <h3>{t("commodore.plugins.detail.readme")}</h3>
+            <h3 className="commodore-plugin-detail-head">{t("commodore.plugins.detail.readme")}</h3>
             {detail?.readmeTruncated ? <p className="commodore-plugin-detail-status">{t("commodore.plugins.detail.readmeTruncated")}</p> : null}
             <div className="markdown-body" dangerouslySetInnerHTML={{ __html: readmeHtml }} />
           </section>
