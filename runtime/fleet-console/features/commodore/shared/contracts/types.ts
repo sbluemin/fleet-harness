@@ -335,7 +335,13 @@ export type CommodoreEvent =
   | { readonly op: "transcript"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly run: CommodoreRunStatus }
   /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
-  | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
+  | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string }
+  /**
+   * 전역 설치 목록이 바뀌었다 — 사령관마다 한 건씩 난다. 사령관 `state`는 그대로다. 하단 알약과 사령관 플러그인
+   * 섹션은 전역 목록 읽기(`commodore/plugins/global/list`)와 실제 로드 읽기(`commodore/plugins/effective`)를
+   * 다시 읽는다. 사령관이 없어 바뀐 목록을 받을 곳이 없으면 사건 없이 지나간다(목록 읽기가 진실이다).
+   */
+  | { readonly op: "global-plugins"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly plugins: readonly string[] };
 
 export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "description" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "routines" | "language" | "run" | "clear" | "asks";
 

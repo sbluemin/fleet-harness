@@ -24,6 +24,8 @@ export const PRESET_MARKETPLACES = Object.freeze([
 
 /** 사령관 하나가 설치할 수 있는 플러그인 수. */
 export const MAX_COMMODORE_PLUGINS = 64;
+/** Console 전체가 설치하는 전역 플러그인 수 — 사령관 상한과 같다. */
+export const MAX_GLOBAL_PLUGINS = MAX_COMMODORE_PLUGINS;
 /** 커스텀 마켓플레이스 수(기본 제공 제외). */
 export const MAX_CUSTOM_MARKETPLACES = 32;
 export const MAX_MARKETPLACE_SOURCE = 512;
@@ -37,10 +39,73 @@ export const pluginIdSchema = z.string().max(256).refine((value) => {
   return at > 0 && segment.test(value.slice(0, at)) && segment.test(value.slice(at + 1));
 });
 export const commodorePluginsSchema = z.array(pluginIdSchema).max(MAX_COMMODORE_PLUGINS);
+/** 전역 설치 목록 — `commodore-plugins/global.json`의 `plugins`. 순서를 유지한다. */
+export const globalPluginsSchema = z.array(pluginIdSchema).max(MAX_GLOBAL_PLUGINS);
 
 export function splitPluginId(id: string): { readonly plugin: string; readonly marketplace: string } {
   const at = id.lastIndexOf("@");
   return { plugin: id.slice(0, at), marketplace: id.slice(at + 1) };
+}
+
+/* ── 전역 ∪ 사령관 중복 제거 ─────────────────────────────────────────── */
+
+/**
+ * 전역 설치가 사령관 설치를 대신하는 이유 — 같은 id, 또는 이름만 같고 마켓플레이스가 다름.
+ * 대체된 행의 hover 말풍선 문구를 고른다.
+ */
+export type GlobalPluginReplacementReason = "same-id" | "same-name";
+
+/** 사령관 목록에서 건너뛴 항목 — `by`는 대신 실리는 전역 id다. */
+export interface GlobalPluginReplacement {
+  readonly pluginId: string;
+  readonly by: string;
+  readonly reason: GlobalPluginReplacementReason;
+}
+
+/**
+ * 실제 로드 목록 — 전역 먼저, 사령관 목록에서 (a) 같은 id 또는 (b) 같은 플러그인 이름(`@` 왼쪽)이
+ * 이미 있으면 건너뛴다. 사령관 세션·목표 세션·인증 상태가 모두 이 계산을 쓴다.
+ */
+export function effectiveCommodorePlugins(global: readonly string[], own: readonly string[]): { readonly effective: readonly string[]; readonly replaced: readonly GlobalPluginReplacement[] } {
+  const effective: string[] = [];
+  const replaced: GlobalPluginReplacement[] = [];
+  const seenIds = new Set<string>();
+  const byName = new Map<string, string>();
+  for (const id of global) {
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+    effective.push(id);
+    const { plugin } = splitPluginId(id);
+    if (!byName.has(plugin)) byName.set(plugin, id);
+  }
+  for (const id of own) {
+    if (seenIds.has(id)) { replaced.push({ pluginId: id, by: id, reason: "same-id" }); continue; }
+    const { plugin } = splitPluginId(id);
+    const by = byName.get(plugin);
+    if (by !== undefined) { replaced.push({ pluginId: id, by, reason: "same-name" }); continue; }
+    seenIds.add(id);
+    effective.push(id);
+    byName.set(plugin, id);
+  }
+  return { effective, replaced };
+}
+
+/**
+ * 전역 목록 읽기 — 그 id를 직접 설치한 사령관과 함께. 파일 경로는 싣지 않는다.
+ * `installedBy`는 사령관이 직접 설치한 모든 플러그인 id를 가리킨다(전역 팔레트의 카탈로그 힌트가 읽는다).
+ * 키가 없는 id는 직접 설치한 사령관이 없다는 뜻이다. `state`(change `plugins`)와 `global-plugins`
+ * 사건이 오면 다시 읽는다.
+ */
+export interface GlobalPluginsView {
+  readonly plugins: readonly string[];
+  readonly installedBy: Readonly<Record<string, readonly { readonly commodoreId: string; readonly alias?: string }[]>>;
+}
+
+/** 그 사령관의 실제 로드 목록 — 전역과, 대체됨(사령관 목록에서 건너뛴 항목). */
+export interface EffectiveCommodorePluginsView {
+  readonly global: readonly string[];
+  readonly effective: readonly string[];
+  readonly replaced: readonly GlobalPluginReplacement[];
 }
 
 /** 사람이 넣은 출처를 서버가 알아본 결과. git 은 https·ssh 주소, url 은 marketplace.json 주소다. */
@@ -194,6 +259,13 @@ export type MarketplaceErrorCode =
  *   마켓 안 상대 경로 플러그인은 받지 않고 읽고, 그 외에는 inspect 와 같이 Fleet 전용 홈에 받은 뒤 읽는다. 플러그인 코드는 실행하지 않는다.
  * - `commodore/plugins/set` { commodoreId, pluginId, installed, trusted? } → CommodoreStateView
  *   실행 명령이 있는 플러그인을 처음 설치할 때 trusted 가 없으면 trust_required 로 거절한다.
+ * - `commodore/plugins/global/list` {} → { plugins, installedBy } — 전역 설치 목록과, 그 id를 직접 설치한
+ *   사령관(`[{ commodoreId, alias? }]`). 전역 팔레트의 카탈로그 힌트가 읽는다.
+ * - `commodore/plugins/global/set` { pluginId, installed, trusted? } → { plugins, installedBy }
+ *   전역 설치(=받기 + 목록 추가, 사령관 설치와 같은 받기·신뢰) 또는 전역 제거. 목록이 바뀌면 모든 사령관의
+ *   다음 턴이 새 세션으로 이어지고 `commodore` 채널에 `global-plugins` 사건이 난다.
+ * - `commodore/plugins/effective` { commodoreId } → { global, effective, replaced } — 그 사령관의 실제 로드
+ *   목록. `replaced`는 건너뛴 사령관 항목(`[{ pluginId, by: globalId, reason: "same-id" | "same-name" }]`).
  * - `commodore/plugins/update` { pluginId, trusted?, version? } → { outcome: "updated" | "up_to_date", oldVersion, newVersion, view: PluginCatalogView }
  *   `claude plugin update <id> --json` 으로 올린다. 새 버전에 실행 명령이 있고 그 버전을 신뢰한 적이 없으면
  *   trust_required 로 거절한다(details: { version, runs }). 확인은 trusted 와 그때 본 version·runs 를 함께 보내야 하고,
@@ -227,6 +299,14 @@ export const commodorePluginSetSchema = z.object({
   installed: z.boolean(),
   trusted: z.boolean().optional(),
 }).strict();
+/** 전역 설치·제거 — 사령관 설치와 같은 받기·신뢰를 거친다. 목록이 그대로면 쓰지 않는다. */
+export const globalPluginSetSchema = z.object({
+  pluginId: pluginIdSchema,
+  installed: z.boolean(),
+  trusted: z.boolean().optional(),
+}).strict();
+/** 그 사령관의 실제 로드 목록 읽기 — 전역과 대체됨을 함께 준다. */
+export const effectivePluginsQuerySchema = z.object({ commodoreId: z.string().min(1).max(128) }).strict();
 
 /* ── 플러그인 MCP 인증 ─────────────────────────────────────────────── */
 
