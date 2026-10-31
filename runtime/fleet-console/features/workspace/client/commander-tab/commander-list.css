@@ -255,7 +255,7 @@
   border-top: 1px solid var(--hairline);
 }
 .commander-tab--card .commander-row-panel + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
-.commander-row-panel-tools { display: flex; min-width: 0; }
+.commander-row-panel-tools { display: flex; justify-content: center; min-width: 0; }
 .commander-row-panel-tabs { display: flex; justify-content: center; gap: 2px; margin-top: 6px; }
 .commander-tab--card .commander-row-panel-tabs .right-rail-ico-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 카드 면과 같은 다크 켜짐 면은 카드에서 보이지 않는다 — 선택 워시로 구분한다. */
