@@ -9,6 +9,8 @@ import { openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
 import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { SideBarClusterRow } from "../sidebar/side-bar-cluster-row.js";
+import { objectiveRecordAvatarKey } from "../../shared/avatars.js";
+import { useAvatarAccent } from "../avatar-accent.js";
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
 import { openCommodoreTasksPanel } from "../../../commodore/client/commodore-conversation.js";
 import { commodoreSectionLabel, useCommodoreList } from "../../../commodore/client/commodore-list.js";
@@ -29,6 +31,23 @@ import "./commander-list.css";
 export interface CommanderListExpansion {
   readonly expandedId: string | null;
   readonly renderPanel: (item: SideBarRowItem, titleId: string) => ReactNode;
+}
+
+/** 펼친 행 아래 패널 — 그 지휘관의 accent를 다시 씌운다. 카드 밖(사령관 머리·탭)은 사령관 색 그대로다. */
+function ExpandedCommanderPanel({ item, titleId, renderPanel }: {
+  readonly item: SideBarRowItem;
+  readonly titleId: string;
+  readonly renderPanel: (item: SideBarRowItem, titleId: string) => ReactNode;
+}) {
+  const objectiveId = commanderObjectiveId(item.layout.cluster);
+  // 시작 전(기록 없음) 지휘관도 행 아바타와 같은 열쇠를 쓴다 — avatarObjectiveId에서 온 id다.
+  const accent = useAvatarAccent(objectiveId === null ? null : objectiveRecordAvatarKey(objectiveId));
+  if (objectiveId === null) return null;
+  return (
+    <li className="commander-row-panel workspace-avatar-panel" role="region" aria-labelledby={titleId} style={accent}>
+      {renderPanel(item, titleId)}
+    </li>
+  );
 }
 export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, heading, expansion }: {
   readonly commodoreId: string;
@@ -89,9 +108,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
                   onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
                   onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />
                 {expanded && expansion !== undefined ? (
-                  <li className="commander-row-panel" role="region" aria-labelledby={titleId}>
-                    {expansion.renderPanel(item, titleId)}
-                  </li>
+                  <ExpandedCommanderPanel item={item} titleId={titleId} renderPanel={expansion.renderPanel} />
                 ) : null}
                 </Fragment>;
               })}
