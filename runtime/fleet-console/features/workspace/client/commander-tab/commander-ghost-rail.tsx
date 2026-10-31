@@ -5,7 +5,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
-import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
+import { ClusterRowAvatar, ClusterRowDate, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
 import { useLongPress } from "../long-press.js";
 import { CommanderListOwner, CommodoreCommanderList, useCommanderOwner } from "./commander-list.js";
@@ -19,7 +19,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const t = useT();
   const locale = useConsoleLocale();
   const owner = useCommanderOwner(commodoreId);
-  const { sections } = useCommanderRows(commodoreId, selectedId);
+  const { listSections: sections } = useCommanderRows(commodoreId, selectedId);
   const rows = sections.flatMap((section) => section.rows);
   const selected = selectedId === null ? 0 : rows.findIndex((item) => commanderObjectiveId(item.layout.cluster) === selectedId) + 1;
   const [cursor, setCursor] = useState(selected);
@@ -189,7 +189,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     <div ref={scroller} className="commander-ghost-scroll" tabIndex={-1}>
       {sections.map((section, sectionIndex) => {
         const before = sections.slice(0, sectionIndex).reduce((count, prior) => count + prior.rows.length, 0);
-        const separated = section.fold !== null && sections.slice(0, sectionIndex).some((prior) => prior.rows.length > 0);
+        const separated = section.settled === true && sectionIndex > 0;
         return <Fragment key={section.id}>
           {separated ? <div className="commander-ghost-rule" role="separator" /> : null}
           {section.rows.map((item, index) => {
@@ -201,6 +201,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
               current={selectedId !== null && commanderObjectiveId(item.layout.cluster) === selectedId}
               cursor={cursor === position}
               summary={summary}
+              settled={section.settled === true}
               onSelect={() => select(position)} />;
           })}
         </Fragment>;
@@ -224,6 +225,7 @@ function CommanderGhostFace({
   current,
   cursor,
   summary,
+  settled,
   onSelect,
 }: {
   readonly item: SideBarRowItem;
@@ -234,6 +236,8 @@ function CommanderGhostFace({
   readonly current: boolean;
   readonly cursor: boolean;
   readonly summary: ReturnType<typeof clusterRowSummary>;
+  /** 시작 전·완료 줄은 얼굴 대신 펼친 목록과 같은 두 줄 날짜로 선다. */
+  readonly settled: boolean;
   readonly onSelect: () => void;
 }) {
   const longPress = useLongPress<HTMLButtonElement>((button) => {
@@ -257,8 +261,10 @@ function CommanderGhostFace({
       aria-current={current ? "true" : undefined} data-cursor={cursor || undefined} onClick={onSelect}
       onContextMenu={openAtCursor} onKeyDown={openFromKey}
       onPointerDown={longPress.onPointerDown} onPointerMove={longPress.onPointerMove} onPointerUp={longPress.onPointerUp} onPointerCancel={longPress.onPointerCancel}>
-      <span className="commander-ghost-face"><ClusterRowAvatar item={item} rowState={summary.state} label={summary.label} size={26} decorative /></span>
-      <span className="commander-ghost-progress" aria-hidden="true"><ClusterRowProgress progress={item.row.progress ?? null} /></span>
+      {settled ? <span className="commander-ghost-face"><ClusterRowDate item={item} /></span> : <>
+        <span className="commander-ghost-face"><ClusterRowAvatar item={item} rowState={summary.state} label={summary.label} size={26} decorative /></span>
+        <span className="commander-ghost-progress" aria-hidden="true"><ClusterRowProgress progress={item.row.progress ?? null} /></span>
+      </>}
       {item.row.decisionRequestedAt !== undefined && item.row.decisionQuestions ? <span className="commander-ghost-questions" aria-hidden="true">{item.row.decisionQuestions}</span> : null}
     </button>
   );

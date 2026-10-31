@@ -213,3 +213,27 @@
 .commander-list-owner strong { font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .commander-list-owner small { font-size: var(--t-xs); color: var(--text-tertiary); }
 .commander-list-rule { flex: none; height: 1px; margin: 0 10px; background: var(--hairline); }
+
+/* 시작 전·완료 통합 목록 — 섹션 머리 없이 앞 구역과 얇은 선으로만 갈린다. 줄은 제목 한 줄이고, 아바타 자리(30px)에 두 줄 날짜가
+   서서 제목은 진행 중 줄과 같은 세로선에 선다. 완료 줄은 날짜와 제목이 한 단계 흐리다. */
+.commander-tab-settled-rule { height: 1px; margin: 6px 12px; background: var(--hairline); }
+.side-bar-cluster-row--conversation.side-bar-cluster-row--settled { min-height: 36px; padding-block: 6px; }
+.side-bar-cluster-row--conversation.side-bar-cluster-row--settled .side-bar-cluster-row-aside { align-self: center; }
+.side-bar-cluster-row--conversation.side-bar-cluster-row--settled.is-done .side-bar-cluster-row-title { color: var(--text-tertiary); }
+.side-bar-cluster-row-date {
+  display: grid;
+  justify-items: center;
+  width: 30px;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+.side-bar-cluster-row-date-month { font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
+.side-bar-cluster-row-date-day { margin-top: 2px; font-size: var(--t-md); font-weight: var(--weight-bold); }
+.side-bar-cluster-row-date.is-late .side-bar-cluster-row-date-day { color: var(--coral); }
+.side-bar-cluster-row-date.is-done,
+.side-bar-cluster-row-date.is-done .side-bar-cluster-row-date-month { color: color-mix(in oklch, var(--text-tertiary) 72%, transparent); }
+.side-bar-cluster-row-date.is-done .side-bar-cluster-row-date-day { font-weight: var(--weight-medium); }
+.side-bar-cluster-row-date.is-glyph { place-items: center; height: 26px; color: color-mix(in oklch, var(--text-tertiary) 80%, transparent); }
+.side-bar-cluster-row-date.is-glyph > svg { width: 15px; height: 15px; }
