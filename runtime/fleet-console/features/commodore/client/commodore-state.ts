@@ -1,4 +1,4 @@
-import type { CommodoreClientDeps, CommodoreMobileActions, CommodoreMobileSessions } from "./deps.js";
+import type { CommodoreClientDeps, CommodoreMobileActions, CommodoreMobileSessions, CommodoreTasksList } from "./deps.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { uploadComposerAttachment, discardComposerAttachment } from "../../execution/client/composer-primitives/attachments.js";
 import { createConversationStream } from "../../execution/shared/conversation/stream.js";
@@ -370,6 +370,16 @@ export function commodoreDecisionCardRenderer(): ComponentType<AgentDecisionCard
 /** 폰 「지휘관 세션」 탭의 본문과 확인 필요 수(호스트 `mobileSessions`). 설치 전이거나 호스트가 주지 않으면 null — 탭이 서지 않는다. */
 export function commodoreMobileSessions(): CommodoreMobileSessions | null {
   return installed?.mobileSessions ?? null;
+}
+
+/** 작업 탭 「목표」 섹션의 목록 렌더러와 배치 읽기(조립 `tasksList`). 없으면 목표 섹션이 서지 않는다. */
+export function commodoreTasksList(): CommodoreTasksList | null {
+  return installed?.tasksList ?? null;
+}
+
+/** 작업 탭이 읽는 목록 배치 — 설치 전이면 왼쪽이다. */
+export function readCommodoreTasksPlacement(): "left" | "right" {
+  return installed?.tasksList?.readPlacement() ?? "left";
 }
 
 

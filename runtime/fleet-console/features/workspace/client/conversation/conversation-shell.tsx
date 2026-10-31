@@ -40,7 +40,7 @@ import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/capti
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
-import { useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
+import { useClusterIndex, useObjectiveClusters, commanderObjectiveId } from "../objective-clusters.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { ConversationPill, ConversationPillContext, PILL_MORPHING_CLASS, useConversationPillHost } from "./pill-takeover.js";
@@ -50,16 +50,16 @@ import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
+import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
+import { CommanderWindowHost, openCommanderWindow } from "../commander-tab/commander-window.js";
+import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout, workbenchLayoutKeeping } from "./workbench/workbench-store.js";
-import { CommanderGhostRail } from "../commander-tab/commander-ghost-rail.js";
-import { effectiveCommanderPlacement, setCommanderRailExpanded, useCommanderPlacement, useCommanderRailExpanded, useEffectiveCommanderPlacement } from "../commander-tab/commander-placement.js";
-import { setSideBarConversationCompact, sideBarOccupiedWidth, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
-import type { WorkbenchLayout } from "../../shared/conversation-workbench.js";
+import { setSideBarConversationCompact, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
 import { ConversationDockHost } from "./conversation-dock-height.js";
 import "./conversation.css";
 
@@ -776,8 +776,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           : surfaceTheaterId !== null ? `surface:${surface.surfaceId}:theater:${surfaceTheaterId}`
             : `surface:${surface.surfaceId}:${stableParamsKey(surface.params)}`
         : null;
-  const commanderPlacement = useEffectiveCommanderPlacement();
-  const showCommanderRail = toolCommodoreId !== null && !newSession && commanderPlacement.place === "chat";
   const railBindings = useDesktopRailEntries();
   const toolEntryIds = useMemo(
     () => railBindings.filter((binding) => isWorkbenchToolBinding(binding) && binding.entry.visible?.() !== false).map((binding) => binding.entry.id),
@@ -859,7 +857,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
-  useCommanderConversationWidth(stageElement, toolCommodoreId !== null && !newSession, viewport, insets.right, shownLayout);
+  useConversationSidebarCompact(stageElement, viewport, insets.right);
   const tools = (lead: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} band={band} />;
 
   return (
@@ -870,8 +868,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     <section
       ref={setStageElement}
       className="conversation-stage"
-      data-commander-rail={showCommanderRail || undefined}
-      // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
+      // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
       // 대화 아래 줄 높이(아래)만큼 더 비킨다. 비킨 폭은 머리 pill 줄이 그만큼 오른쪽으로 더 뻗어 맨 위 줄 전체에 걸칠 때 쓴다.
       style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom, "--conversation-split-right": `${geometry.conversationRight}px` } as CSSProperties}
       aria-label={t("conversation.stage.aria")}
@@ -912,9 +909,10 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           </div>
         </div>
       )}
-      {showCommanderRail && toolCommodoreId !== null ? <CommanderGhostRail key={toolCommodoreId} commodoreId={toolCommodoreId} selectedId={surfaceDescriptor ? standInId : stageSubject?.id ?? null} /> : null}
       </ConversationDockHost.Provider>
     </section>
+    {/* 떠 있는 지휘관 창 — 가운데 칸과 같은 Objective 본문 풀을 쓴다. 폰 셸에는 서지 않는다. */}
+    <CommanderWindowHost language={language} />
     <ConversationWorkbench
       layerRef={workbenchLayerRef}
       insets={insets}
@@ -932,63 +930,26 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   );
 }
 
-/** 펼친 채팅 목록과 오른쪽 패널은 나중에 연 쪽을 남긴다. 패널만 있어도 대화가 좁으면 사이드바가 잠깐 물러난다. */
-function useCommanderConversationWidth(
+/** 오른쪽 패널이 열려 대화가 좁아지면 사이드바가 잠깐 물러난다. 저장된 사이드바 폭은 그대로 둔다. */
+function useConversationSidebarCompact(
   stage: HTMLElement | null,
-  hasCommander: boolean,
   viewport: { readonly width: number; readonly height: number },
   railWidth: number,
-  layout: WorkbenchLayout,
 ): void {
-  const placement = useCommanderPlacement();
-  const expanded = useCommanderRailExpanded();
   const panelId = useRailActivePanelId();
   const sideBar = useSideBarState();
-  const listOpen = hasCommander && effectiveCommanderPlacement(placement, sideBar.compact).place === "chat" && expanded;
-  // 복귀 판정은 임시 compact가 옮긴 목록을 제외한다. 그렇지 않으면 sidebar 선호도 채팅에 붙잡힌다.
-  const savedListOpen = hasCommander && effectiveCommanderPlacement(placement, sideBar.viewportCompact).place === "chat" && expanded;
-  const previous = useRef({ listOpen: false, panelOpen: false });
-  const lastOpened = useRef<"list" | "panel">("list");
   useLayoutEffect(() => {
     const panelOpen = panelId !== null;
-    if (panelOpen && !previous.current.panelOpen) lastOpened.current = "panel";
-    if (listOpen && !previous.current.listOpen) lastOpened.current = "list";
-    previous.current = { listOpen, panelOpen };
-    if (!stage || (!listOpen && !panelOpen)) {
+    if (!stage || !panelOpen) {
       setSideBarConversationCompact(false);
       return;
     }
     // RightRail은 대화 최소 폭을 예약하되 패널 하한(240px) 아래로는 줄지 않는다. 그 하한이 예약을 침범할 때만 물러난다.
     // compact 뒤 넓어진 패널 실측을 복귀 판정에 쓰지 않는다. 저장 사이드바 폭과 같은 패널 하한으로 왕복을 막는다.
-    const panelNeedsCompact = !sideBar.viewportCompact && panelOpen && railWidth > 0
+    const panelNeedsCompact = !sideBar.viewportCompact && railWidth > 0
       && viewport.width - sideBar.width - MIN_PANEL_WIDTH < CONVERSATION_MIN_WIDTH;
-    if (!listOpen) {
-      setSideBarConversationCompact(panelNeedsCompact);
-      return;
-    }
-    // 전이 중인 DOM 폭 대신 도착할 폭을 쓴다. 228px 목록은 CSS 토큰 그대로이며 작업대의 물러남도 같은 함수로 셈한다.
-    const listWidth = Number.parseFloat(getComputedStyle(stage).getPropertyValue("--commander-list-span"));
-    if (!Number.isFinite(listWidth)) return;
-    const conversationWidth = (sideWidth: number, rightWidth: number) => {
-      const region = Math.max(0, viewport.width - sideWidth - rightWidth);
-      return region - computeWorkbenchGeometry(layout, region, viewport.height).conversationRight - listWidth;
-    };
-    let rightWidth = panelOpen ? railWidth : 0;
-    if (panelId !== null && rightWidth > 0 && conversationWidth(sideBarOccupiedWidth(sideBar), rightWidth) < CONVERSATION_MIN_WIDTH) {
-      if (lastOpened.current === "panel") {
-        setCommanderRailExpanded(false);
-        setSideBarConversationCompact(panelNeedsCompact);
-        return;
-      }
-      // 닫기 단추와 같은 경로라 이 대화의 닫힘 기억도 남는다. 패널 폭의 저장값은 건드리지 않는다.
-      dismissRailPanel(panelId);
-      rightWidth = 0;
-    }
-    // 복귀도 사람이 정한 폭으로 판정한다. compact의 늘어난 여유로 바로 복귀하면 두 폭 사이를 왕복하게 된다.
-    setSideBarConversationCompact(savedListOpen
-      ? !sideBar.viewportCompact && conversationWidth(sideBar.width, rightWidth) < CONVERSATION_MIN_WIDTH
-      : rightWidth > 0 && panelNeedsCompact);
-  }, [stage, listOpen, savedListOpen, panelId, sideBar, viewport.width, viewport.height, railWidth, layout]);
+    setSideBarConversationCompact(panelNeedsCompact);
+  }, [stage, panelId, sideBar, viewport.width, viewport.height, railWidth]);
   useLayoutEffect(() => () => setSideBarConversationCompact(false), []);
 }
 
@@ -1338,15 +1299,17 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
   useEffect(() => {
-    if (descriptor.defaultTab === undefined) return;
+    if (descriptor.defaultTab === undefined && descriptor.resolveDefaultTab === undefined) return;
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && !tabIdsRef.current.includes(active)) {
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
     } else if (active !== null || !mayAutoOpenConversationRail(descriptor.id)) return;
-    openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, descriptor.defaultTab));
-  }, [descriptor.defaultTab, descriptor.id, selection.nonce]);
+    const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
+    if (fallback === undefined) return;
+    openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
+  }, [descriptor.defaultTab, descriptor.resolveDefaultTab, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Objective 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.
@@ -1516,11 +1479,24 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const memberIds = new Set([...roster.flatMap((member) => (member.objectiveId ? [member.objectiveId] : [])), ...nested.map((candidate) => candidate.id)]);
   memberIds.delete(objectiveRecord.id);
   const memberCount = memberIds.size;
+  // 지휘관 채팅 머리 칩의 「팝업으로 띄우기」 — 글리프 단추 하나다. 누르면 가운데는 그 사령관 대화로 돌아가고
+  // 같은 지휘관이 떠 있는 창으로 뜬다(어느 배치에서든 쓴다).
+  const { sorted: commanderCandidates } = useCommanderRows(objectiveRecord.commodoreId, objectiveRecord.id);
+  const isCommander = commanderCandidates.some((item) => commanderObjectiveId(item.layout.cluster) === objectiveRecord.id);
+  const popout = isCommander ? (
+    <button type="button" className="conversation-pill-popout" aria-label={t("commanderWindow.popout")} title={t("commanderWindow.popout")} onClick={(event) => {
+      event.stopPropagation();
+      openCommanderWindow(objectiveRecord.commodoreId, objectiveRecord.id, event.currentTarget);
+      openCommodoreConversation(objectiveRecord.commodoreId);
+    }}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="5" width="8.5" height="8.5" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M8 2.5h5.5V8M13.5 2.5 8.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+    </button>
+  ) : null;
 
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}>
+        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={popout ? <>{viewSwitch}{popout}</> : viewSwitch}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
             {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}

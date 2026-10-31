@@ -1,0 +1,52 @@
+/* 떠 있는 지휘관 창 — 결과물 창과 같은 틀이다. 배경을 덮지 않는 비모달 창으로, 머리 끌기 이동과 8방향 크기 조절을 쓴다. */
+.commander-window { position: fixed; z-index: 59; display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; min-height: 0; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); outline: none; }
+.commander-window:focus-visible { box-shadow: var(--focus-face); }
+.commander-window.is-dragging { user-select: none; }
+.commander-window.is-dragging * { user-select: none; }
+.commander-window :is(button, select, a):focus-visible { box-shadow: var(--focus-face); }
+
+.commander-window-head { display: flex; flex: none; align-items: center; gap: 8px; height: 44px; min-width: 0; padding: 0 8px 0 12px; border-bottom: 1px solid var(--hairline); border-radius: inherit; border-bottom-left-radius: 0; border-bottom-right-radius: 0; touch-action: none; cursor: grab; }
+.commander-window.is-dragging .commander-window-head { cursor: grabbing; }
+.commander-window-face { display: flex; flex: none; }
+.commander-window-title { flex: none; max-width: 40%; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.commander-window-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: var(--t-xs); }
+.commander-window-button { display: grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; }
+.commander-window-button:hover { background: var(--control-rest-hover); color: var(--text-primary); }
+.commander-window-button.is-active { background: var(--wash-selected); color: var(--text-primary); }
+
+.commander-window-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-width: 0; min-height: 0; overflow: hidden; border-radius: 0 0 var(--dialog-radius) var(--dialog-radius); }
+/* 보드를 접으면 한 열로 — 빈 300px 열을 남기지 않는다. */
+.commander-window-body.is-board-closed { grid-template-columns: minmax(0, 1fr); }
+.commander-window-body.is-board-closed .commander-window-board { display: none; }
+.commander-window-chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.commander-window-chat-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.commander-window-chat-slot { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.commander-window-board { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--hairline); background: color-mix(in srgb, var(--surface-panel) 60%, transparent); overflow: hidden; }
+.commander-window-board-tabs { display: flex; flex: none; gap: 2px; padding: 8px 8px 0; }
+.commander-window-board-tab { flex: 1; min-width: 0; padding: 5px 4px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.commander-window-board-tab:hover { background: var(--wash-hover); color: var(--text-primary); }
+.commander-window-board-tab.is-active { background: var(--wash-selected); color: var(--text-primary); font-weight: var(--weight-medium); }
+
+/* 좁으면 보드를 접는다 — 「보드」 단추로 펼치면 본문 위에 덮는다. */
+.commander-window.is-narrow .commander-window-body { grid-template-columns: minmax(0, 1fr); }
+.commander-window.is-narrow .commander-window-board { position: absolute; top: 44px; right: 0; bottom: 0; width: min(300px, 85%); border-left: 1px solid var(--hairline); box-shadow: var(--dialog-surface-shadow); }
+.commander-window.is-narrow .commander-window-status { display: none; }
+
+/* 가운데 지휘관 채팅 머리 칩의 「팝업으로 띄우기」 — 글자 없이 글리프만 선다. */
+.conversation-pill-popout { display: inline-flex; align-items: center; align-self: stretch; margin: 3px 0 3px 4px; padding: 0 0 0 8px; border: 0; border-left: 1px solid var(--hairline); background: none; color: var(--text-tertiary); cursor: pointer; }
+.conversation-pill-popout svg { width: 14px; height: 14px; }
+.conversation-pill-popout:hover { color: var(--text-primary); }
+.conversation-pill-popout:focus-visible { box-shadow: var(--focus-face); }
+
+.commander-window-empty { margin: auto; padding: 16px; color: var(--text-tertiary); font-size: var(--t-sm); text-align: center; }
+
+.commander-window-resize { position: absolute; z-index: 3; touch-action: none; }
+.commander-window-resize.is-n, .commander-window-resize.is-s { left: 10px; right: 10px; height: 10px; cursor: ns-resize; }
+.commander-window-resize.is-e, .commander-window-resize.is-w { top: 10px; bottom: 10px; width: 10px; cursor: ew-resize; }
+.commander-window-resize:is(.is-ne, .is-nw, .is-se, .is-sw) { width: 16px; height: 16px; }
+.commander-window-resize:is(.is-n, .is-ne, .is-nw) { top: -5px; }
+.commander-window-resize:is(.is-s, .is-se, .is-sw) { bottom: -5px; }
+.commander-window-resize:is(.is-e, .is-ne, .is-se) { right: -5px; }
+.commander-window-resize:is(.is-w, .is-nw, .is-sw) { left: -5px; }
+.commander-window-resize:is(.is-ne, .is-sw) { cursor: nesw-resize; }
+.commander-window-resize:is(.is-nw, .is-se) { cursor: nwse-resize; }

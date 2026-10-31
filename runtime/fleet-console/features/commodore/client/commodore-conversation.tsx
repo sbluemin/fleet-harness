@@ -1,5 +1,4 @@
 import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
-import { CommodoreRoutines } from "./commodore-routines.js";
 import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore, renameCommodore } from "./commodore-state.js";
@@ -14,14 +13,17 @@ import type { ClientTheaterInboxCapability } from "../../workspace/shared/theate
 
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
+import { CommodoreTasks } from "./commodore-tasks.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo, CommodoreSettings } from "./commodore-inbox-section.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, readCommodoreTasksPlacement, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
 import { getState } from "../../../core/client/src/integration/store.js";
+import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
+import { openRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { useTheaterInboxState } from "../../workspace/client/theater-inbox/store.js";
 import { readCommodoreList, setZoneCommodore, useZoneCommodore } from "./commodore-list.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
@@ -30,7 +32,7 @@ import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js
 type T = Translate<CommodoreMessageKey>;
 
 /**
- * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 패널 앞 묶음에 루틴·정보(설명·정보·기억·목표 기록)·
+ * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 패널 앞 묶음에 작업(목표·루틴)·정보(설명·정보·기억·목표 기록)·
  * 기억·설정이 선다(Theater 설정 곁의 「사령관」 섹션). 데이터·쓰기 경로는 Inbox 시트와 같은 사령관 상태이고, 여닫기는 SDK 능력
  * (`ctx.conversation`)만 쓴다. 대화 중심 화면에서 Theater 머리나 Inbox 요청이 사령관 기록을 열면 Inbox 섹션의 `openConversation` 이
  * 이 대화를 세운다. 대화 중심 화면이 꺼져 있으면 이 모듈은 아무것도 열지 않고, 머리는 Inbox 시트를 연다.
@@ -129,11 +131,23 @@ export function openCommodoreConversation(commodoreId: string, options: Commodor
 }
 
 /**
+ * 목록을 오른쪽으로 옮긴 뒤 옮겨 간 쪽을 보이게 한다 — 그 사령관 대화를 세우고 오른쪽 패널을 작업 탭으로 연다.
+ * 대화가 이미 서 있으면 작업 탭을 곧장 열고, 새로 세우면 저절로 열림이 작업 탭을 고른다. 대화 중심 화면이
+ * 꺼져 있으면 아무것도 하지 않는다.
+ */
+export function openCommodoreTasksPanel(commodoreId: string): void {
+  if (isCommodoreConversationOpen(commodoreId)) {
+    openRailPanel(TAB_IDS.routines);
+    return;
+  }
+  openCommodoreConversation(commodoreId);
+}
+
+/**
  * 사령관 기록을 연다 — 대화 중심 화면이면 가운데 대화, 아니면 Theater Inbox 의 사령관 기록 칸(질문 카드가 그 위에 서 있다).
  * 사이드바 「내 결정」의 질문 줄과 확인 필요 행이 부른다.
  */
-export function openCommodoreLog(commodoreId: string, theaterId: string | null = null): void {
-  if (openCommodoreConversation(commodoreId)) return;
+export function openCommodoreLog(commodoreId: string, theaterId: string | null = null): void {  if (openCommodoreConversation(commodoreId)) return;
   if (theaterId) inbox?.open({ theaterId, sectionId: "commodore:commodore", pageId: "log" });
 }
 
@@ -444,6 +458,13 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
+  // 작업 탭 목표 섹션이 가리키는 지휘관 — 왼쪽 목록·좁은 창 팝오버가 같은 선택을 말한다.
+  const surface = useConversationSurface();
+  const { activeObjectiveId, objectiveRecords } = useConsoleState();
+  const objectiveOwner = objectiveRecords.find((record) => record.id === activeObjectiveId)?.commodoreId ?? null;
+  const selectedId = typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === commodoreId
+    ? surface.params.objectiveId
+    : objectiveOwner === commodoreId ? activeObjectiveId : null;
   if (!view) return null;
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
@@ -458,7 +479,7 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
           after={<CommodoreTrailSection t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} onOpenObjective={(objectiveId) => openReferencedObjective(commodoreId, objectiveId)} />}
         />
       ) : null}
-      {tab === "routines" ? <CommodoreRoutines commodoreId={commodoreId} language={language} /> : null}
+      {tab === "routines" ? <CommodoreTasks commodoreId={commodoreId} language={language} selectedId={selectedId} /> : null}
       {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
     </div>
@@ -538,8 +559,9 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
       return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} language={ctx.language} /> : null;
     },
   })),
-  // 사령관 대화의 기본 문맥은 정보(설명·정보·기억)다.
+  // 사령관 대화의 기본 문맥은 정보다. 목록이 오른쪽에 서면 작업 탭이 기본이다 — 사람이 고른 탭 기억이 있으면 그 기억이 먼저다.
   defaultTab: TAB_IDS.info,
+  resolveDefaultTab: () => readCommodoreTasksPlacement() === "right" ? TAB_IDS.routines : TAB_IDS.info,
   onLeaveDesktop: ({ params, tabId }) => {
     const target = readParams(params);
     if (!target || target.readOnly) return;

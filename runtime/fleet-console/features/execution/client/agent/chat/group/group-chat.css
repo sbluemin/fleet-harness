@@ -1411,17 +1411,3 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-relay-pill-party { flex: 0 1 auto; gap: 10px; min-height: 36px; overflow: hidden; color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.2; }
 :root[data-view-mode="mobile"] .group-relay-pill-party .group-chat-mark { flex: none; width: 36px; height: 36px; }
 :root[data-view-mode="mobile"] .group-relay-pill-party-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* 접힌 레일은 거터다 — 기록만 얼굴을 피하고 입력창은 원래 폭이다. 펼치면 대화 열 자체가 좁아지므로 그 여백은 거둔다. */
-.conversation-stage[data-commander-rail] .group-chat-log {
-  padding-right: max(clamp(var(--space-4), 4cqi, 48px), 54px);
-  transition: padding-left var(--duration-base) ease, padding-right var(--duration-base) ease;
-}
-.conversation-stage[data-commander-rail]:has(.commander-ghost[data-side="left"]) .group-chat-log {
-  padding-right: clamp(var(--space-4), 4cqi, 48px);
-  padding-left: max(clamp(var(--space-4), 4cqi, 48px), 54px);
-}
-.conversation-stage[data-commander-rail]:has(.commander-ghost[data-expanded]) .group-chat-log {
-  padding-right: clamp(var(--space-4), 4cqi, 48px);
-  padding-left: clamp(var(--space-4), 4cqi, 48px);
-}
