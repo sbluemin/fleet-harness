@@ -913,32 +913,73 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-composer-suggest-link:hover { background: var(--control-wash-hover); color: var(--text-primary); }
 .group-composer-suggest-note.is-awaiting .group-composer-suggest-link { color: var(--aurora-ink); }
 .group-composer-suggest-hint { font-size: var(--t-xs); color: var(--text-tertiary); }
+/* 보드 커맨드의 색 — 지휘관 아바타색(.group-composer-wrap 의 --conversation-accent*)을 따른다. 아바타 키가 없으면
+   이 변수들이 무효가 되어 각 규칙의 대체값(지금의 무채색 brass)으로 선다. 주행동은 채움, 보조·되돌림은 윤곽이다.
+   완료(청록)·두 번 누름(산호)은 상태 신호라 아바타색으로 바꾸지 않는다. */
+.group-composer-wrap {
+  --board-fill: var(--conversation-accent-body);
+  --board-on-fill: var(--conversation-action-ink, var(--mongle-face));
+  --board-fill-hover: color-mix(in oklab, var(--conversation-accent-body) 86%, var(--mongle-face));
+  --board-fill-press: color-mix(in oklab, var(--conversation-accent-body) 74%, var(--mongle-face));
+  --board-halo: color-mix(in oklab, var(--conversation-accent-body) 24%, transparent);
+  --board-edge: var(--conversation-accent-body);
+  --board-ink: var(--conversation-accent);
+  --board-line: color-mix(in oklab, var(--conversation-accent) 45%, transparent);
+  --board-wash: color-mix(in oklab, var(--conversation-accent) 11%, transparent);
+  --board-wash-press: color-mix(in oklab, var(--conversation-accent) 18%, transparent);
+}
+/* 라이트의 파스텔 몸색은 흰 바탕과 대비가 1.6–2.0이다 — 채움 칩의 테두리는 짙은 정체성 잉크 쪽으로 세운다. */
+:root[data-theme="light"] .group-composer-wrap,
+:root[data-view-mode="mobile"][data-mobile-scheme="light"] .group-composer-wrap {
+  --board-edge: color-mix(in oklab, var(--conversation-accent) 55%, var(--conversation-accent-body));
+}
 .group-composer-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 28px;
   padding: 0 11px 0 9px;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--board-line, var(--hairline-strong));
   border-radius: var(--radius-pill);
   background: transparent;
   font: inherit;
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
-  color: var(--text-secondary);
+  color: var(--board-ink, var(--text-secondary));
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color var(--duration-fast), background var(--duration-fast);
+  transition: border-color var(--duration-fast) var(--ease-glide), background-color var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide), box-shadow var(--duration-fast) var(--ease-glide), transform 90ms ease-out;
 }
 .group-composer-action svg { flex: none; width: 12px; height: 12px; }
-.group-composer-action:hover,
-.group-composer-action:focus-visible { border-color: var(--brass); color: var(--brass-ink); outline: none; }
+/* 포커스는 외곽선 없이 면으로 말한다 — 키보드로 온 칩은 마우스가 얹힌 칩과 같은 면을 받는다. */
+.group-composer-action:focus-visible { outline: none; }
+/* 보조·되돌림 — 윤곽. hover 에 옅은 면이 깔리고 선이 짙어지며, 누르면 면이 한 단계 더 짙어진다. */
+.group-composer-action:not([aria-disabled="true"]):hover,
+.group-composer-action:not([aria-disabled="true"]):focus-visible { border-color: var(--board-ink, var(--brass)); background: var(--board-wash, var(--control-wash-hover)); color: var(--board-ink, var(--brass-ink)); }
+.group-composer-action:not([aria-disabled="true"]):active { background: var(--board-wash-press, color-mix(in oklch, var(--brass) 12%, transparent)); transform: scale(0.97); }
+/* 주행동과 고른(입력창에 앉은) 칩 — 아바타 몸색 면, 같은 입력창의 보내기 단추와 같은 문법이다. hover 는 :hover 규칙 뒤에 다시 적어 덮이지 않게 한다. */
 .group-composer-action.is-primary,
-.group-composer-action[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 45%, transparent); background: var(--brass-glow); color: var(--brass-ink); font-weight: var(--weight-bold); }
+.group-composer-action[aria-pressed="true"] { border-color: var(--board-edge, color-mix(in oklch, var(--brass) 45%, transparent)); background: var(--board-fill, var(--brass-glow)); color: var(--board-on-fill, var(--brass-ink)); font-weight: var(--weight-bold); }
+.group-composer-action.is-primary:not([aria-disabled="true"]):hover,
+.group-composer-action[aria-pressed="true"]:not([aria-disabled="true"]):hover,
+.group-composer-action.is-primary:not([aria-disabled="true"]):focus-visible,
+.group-composer-action[aria-pressed="true"]:not([aria-disabled="true"]):focus-visible { border-color: var(--board-edge, var(--brass)); background: var(--board-fill-hover, color-mix(in oklch, var(--brass) 16%, transparent)); color: var(--board-on-fill, var(--brass-ink)); box-shadow: 0 0 0 3px var(--board-halo, color-mix(in oklch, var(--brass) 10%, transparent)); }
+.group-composer-action.is-primary:not([aria-disabled="true"]):active,
+.group-composer-action[aria-pressed="true"]:not([aria-disabled="true"]):active { background: var(--board-fill-press, color-mix(in oklch, var(--brass) 22%, transparent)); box-shadow: none; }
 .group-composer-action.is-review { border-color: color-mix(in oklch, var(--aurora) 50%, transparent); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora-ink); font-weight: var(--weight-bold); }
+.group-composer-action.is-review:not([aria-disabled="true"]):hover,
+.group-composer-action.is-review:not([aria-disabled="true"]):focus-visible { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 20%, transparent); color: var(--aurora-ink); }
 /* 두 번 누름의 첫 누름 — 다음 누름이 실행이라는 상태다. */
-.group-composer-action.is-armed { border-color: var(--coral); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
+.group-composer-action.is-armed,
+.group-composer-action.is-armed:not([aria-disabled="true"]):hover { border-color: var(--coral); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); box-shadow: none; }
+.group-composer-action.is-armed:not([aria-disabled="true"]):hover,
+.group-composer-action.is-armed:not([aria-disabled="true"]):focus-visible { background: color-mix(in oklch, var(--coral) 16%, transparent); }
 .group-composer-action[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .group-composer-action { transition: none; }
+  .group-composer-action:not([aria-disabled="true"]):active { transform: none; }
+}
 .group-composer-action-detail { font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
 /* 입력창 안에 앉은 동작 칩 — 받는 이 멘션 자리라 brass 면 없이 중성으로 선다. 멘션 칩 자체는 fc-mention-chip. */
 .group-composer-chip.is-action {
@@ -965,8 +1006,17 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 }
 .group-composer-chip.is-action .group-composer-chip-x:hover { color: var(--text-primary); }
 .fc-composer-send.group-composer-send-action { background: var(--conversation-accent-body, var(--brass)); color: var(--conversation-action-ink, var(--text-on-brass)); }
-.fc-composer-send.group-composer-send-action:hover:not(:disabled),
-.fc-composer-send.group-composer-send-action:focus-visible { background: var(--conversation-accent-body, var(--brass)); color: var(--conversation-action-ink, var(--text-on-brass)); filter: brightness(1.05); }
+/* 보내기·멈춤 원도 보드 커맨드다 — 칩의 주행동과 같은 hover·포커스(한 단계 짙은 면과 옅은 둘레)·누름을 받는다. 빈 원(is-idle)과 잠긴 원은 반응하지 않는다. */
+.group-composer-wrap .fc-composer-send:focus-visible:not(:disabled):not(.is-idle) { background: var(--board-fill-hover, var(--brass-glow)); color: var(--board-on-fill, var(--brass-ink)); box-shadow: 0 0 0 3px var(--board-halo, color-mix(in oklch, var(--brass) 10%, transparent)); }
+@media (hover: hover) {
+  .group-composer-wrap .fc-composer-send:hover:not(:disabled):not(.is-idle) { background: var(--board-fill-hover, var(--brass-glow)); color: var(--board-on-fill, var(--brass-ink)); box-shadow: 0 0 0 3px var(--board-halo, color-mix(in oklch, var(--brass) 10%, transparent)); }
+}
+.group-composer-wrap .fc-composer-send:active:not(:disabled):not(.is-idle) { background: var(--board-fill-press, var(--brass-glow)); box-shadow: none; transform: scale(0.94); }
+.group-composer-wrap .fc-composer-send { transition: background-color var(--duration-fast) var(--ease-glide), box-shadow var(--duration-fast) var(--ease-glide), transform 90ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .group-composer-wrap .fc-composer-send { transition: none; }
+  .group-composer-wrap .fc-composer-send:active:not(:disabled):not(.is-idle) { transform: none; }
+}
 /* 플러그인이 이어받는 칸(라우팅 확인·후속 후보) — 입력창 오른쪽 위로 뜬다. 안의 내용은 플러그인이 그린다. */
 .group-composer-panel {
   position: absolute;
