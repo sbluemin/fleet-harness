@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect, useRef, useState } from "react";
+import { useId, useMemo, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 
@@ -125,6 +125,16 @@ const TIME_FORMATS = {
 function when(at: number, language: "en" | "ko"): string {
   const formats = TIME_FORMATS[language];
   return new Date(at).toDateString() === new Date().toDateString() ? formats.time.format(at) : formats.day.format(at);
+}
+
+const DAY_FORMATS = {
+  en: new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }),
+  ko: new Intl.DateTimeFormat("ko", { month: "short", day: "numeric" }),
+};
+
+/** 한 줄 목록의 좁은 시각 — 오늘이면 시각, 아니면 날짜만. */
+function whenShort(at: number, language: "en" | "ko"): string {
+  return new Date(at).toDateString() === new Date().toDateString() ? TIME_FORMATS[language].time.format(at) : DAY_FORMATS[language].format(at);
 }
 
 function TrailGlyph({ family }: { readonly family: CommodoreTrailFamily }) {
@@ -254,6 +264,198 @@ export function CommodoreTrail({
             </ul>
           </div>
           {fresh ? <button type="button" className="objectives-commodore-trail-fresh" onClick={jump}>{t("commodore.trail.new")}</button> : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** 정보 탭 「목표 기록」이 처음 보이는 목표 수 — 나머지는 「더 보기」로 같은 자리에 펼친다. */
+const SECTION_ROWS = 5;
+/** 펼침 높이 전환과 같은 길이 — 전환이 끝났다는 이벤트가 오지 않아도 이 뒤에 높이를 풀어 준다. */
+const SECTION_MOTION_MS = 320;
+
+function reducedMotion(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * 높이를 고정한 상자를 목표 높이로 옮긴 뒤 풀어 준다. 동작 줄이기면 바로 끝낸다. `hold` 면 끝나도 높이를 쥔 채 `done` 만 부른다 —
+ * 접기처럼 행을 줄인 렌더가 커밋된 뒤에 풀어야 펼친 높이가 한 프레임 튀지 않는다.
+ */
+function slideHeight(box: HTMLElement, from: number, to: number, done?: () => void, hold = false): void {
+  if (reducedMotion() || from === to) { if (hold) box.style.height = `${to}px`; else box.style.height = ""; done?.(); return; }
+  box.style.height = `${from}px`;
+  void box.offsetHeight;
+  box.style.height = `${to}px`;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    box.removeEventListener("transitionend", onEnd);
+    if (!hold) box.style.height = "";
+    done?.();
+  };
+  const onEnd = (event: TransitionEvent) => { if (event.target === box) finish(); };
+  box.addEventListener("transitionend", onEnd);
+  window.setTimeout(finish, SECTION_MOTION_MS + 80);
+}
+
+function TrailSectionRow({ t, language, group, open, onToggle, onReveal, onOpenObjective, rowRef, style }: {
+  readonly t: T;
+  readonly language: "en" | "ko";
+  readonly group: CommodoreTrailGroup;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  readonly onReveal?: (at: number) => void;
+  readonly onOpenObjective?: (objectiveId: string) => void;
+  readonly rowRef?: (node: HTMLButtonElement | null) => void;
+  readonly style?: CSSProperties;
+}) {
+  const foldId = useId();
+  const last = group.entries[group.entries.length - 1]!;
+  return (
+    <li className={`objectives-commodore-trail-row-item${group.done ? " is-done" : ""}${style ? " is-revealed" : ""}`} style={style}>
+      <button ref={rowRef} type="button" className="objectives-commodore-trail-row" aria-expanded={open} aria-controls={foldId} onClick={onToggle}>
+        <span className={`objectives-commodore-trail-glyph is-${last.family}`} aria-hidden="true"><TrailGlyph family={last.family} /></span>
+        <span className="objectives-commodore-trail-row-title">{group.title}</span>
+        <span className="objectives-commodore-trail-row-last">{last.word} · {whenShort(last.at, language)}</span>
+        <span className="objectives-commodore-trail-row-chev" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3.5 1.8 L6.7 5 L3.5 8.2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+      </button>
+      <div id={foldId} className={`objectives-commodore-trail-fold${open ? " is-open" : ""}`} inert={!open}>
+        <div className="objectives-commodore-trail-fold-body">
+          <ul className="objectives-commodore-trail-entries">
+            {group.entries.map((entry) => {
+              const body = (
+                <>
+                  <span className="objectives-commodore-trail-glyph" aria-hidden="true"><TrailGlyph family={entry.family} /></span>
+                  <span className="objectives-commodore-trail-word">{entry.word}</span>
+                  {entry.label ? (
+                    <>
+                      <span className="objectives-commodore-trail-dot" aria-hidden="true">·</span>
+                      <span className="objectives-commodore-trail-label">{entry.label}</span>
+                    </>
+                  ) : null}
+                  <span className="objectives-commodore-trail-time">{when(entry.at, language)}</span>
+                </>
+              );
+              return (
+                <li key={entry.key}>
+                  {onReveal
+                    ? <button type="button" className={`objectives-commodore-trail-entry is-${entry.family}`} title={entry.title} onClick={() => onReveal(entry.at)}>{body}</button>
+                    : <div className={`objectives-commodore-trail-entry is-${entry.family}`} title={entry.title}>{body}</div>}
+                </li>
+              );
+            })}
+          </ul>
+          <button type="button" className="objectives-commodore-trail-row-open" onClick={() => { if (onOpenObjective) onOpenObjective(group.objectiveId); else revealObjective({ objectiveId: group.objectiveId }); }}>{t("commodore.trail.open")}</button>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * 정보 탭의 「목표 기록」 — 기억 아래 섹션. 최근에 움직인 목표가 위로, 목표마다 한 줄(마지막 행위·시각)이고, 행을 누르면 그 목표의
+ * 최근 행위가 펼쳐진다(줄 = 채팅의 그 턴, 「목표 열기」 = 그 목표). 처음엔 최근 목표 몇 개만 서고 「더 보기」가 나머지를 같은 자리에
+ * 펼친다. 높이는 미끄러지듯 바뀌고, 동작 줄이기면 바로 바뀐다. 폰 정보 화면도 같은 섹션을 쓴다(`phone`).
+ */
+export function CommodoreTrailSection({ t, language, theaterId, phone = false, onReveal, onOpenObjective }: {
+  readonly t: T;
+  readonly language: "en" | "ko";
+  readonly theaterId: string;
+  readonly phone?: boolean;
+  readonly onReveal?: (at: number) => void;
+  readonly onOpenObjective?: (objectiveId: string) => void;
+}) {
+  const { objectives } = useObjectiveTheater(theaterId);
+  const groups = useMemo(() => [...commodoreTrail(t, theaterId, objectives)].reverse(), [t, theaterId, objectives]);
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [all, setAll] = useState(false);
+  const [revealFrom, setRevealFrom] = useState<number | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const grow = useRef<{ readonly from: number; readonly focusId: string | null } | null>(null);
+  const collapsing = useRef(false);
+  const hiddenCount = Math.max(0, groups.length - SECTION_ROWS);
+  const shown = all ? groups : groups.slice(0, SECTION_ROWS);
+
+  // 「더 보기」 직후 — 늘어난 목록 높이로 미끄러지고, 처음 드러난 행으로 초점을 옮긴다. 접기 직후 — 쥐고 있던 높이를 칠하기 전에 푼다.
+  useLayoutEffect(() => {
+    const pending = grow.current;
+    const box = boxRef.current;
+    const list = listRef.current;
+    if (!all && box && !pending) { box.style.height = ""; return; }
+    if (!pending || !box || !list) return;
+    grow.current = null;
+    slideHeight(box, pending.from, list.offsetHeight);
+    if (pending.focusId) rowRefs.current.get(pending.focusId)?.focus({ preventScroll: true });
+  }, [all]);
+
+  const showMore = () => {
+    if (!boxRef.current) { setAll(true); return; }
+    grow.current = { from: boxRef.current.offsetHeight, focusId: groups[SECTION_ROWS]?.objectiveId ?? null };
+    setRevealFrom(SECTION_ROWS);
+    setAll(true);
+  };
+  const showLess = () => {
+    const box = boxRef.current;
+    const list = listRef.current;
+    const cut = list?.children[SECTION_ROWS] as HTMLElement | undefined;
+    if (collapsing.current) return;
+    const end = () => {
+      collapsing.current = false;
+      setAll(false);
+      setRevealFrom(null);
+      // 펼친 행 가운데 접혀 사라지는 것은 닫는다 — 다시 펼쳤을 때 열린 채로 튀어나오지 않는다.
+      setOpenIds((current) => new Set([...current].filter((id) => groups.slice(0, SECTION_ROWS).some((group) => group.objectiveId === id))));
+      const section = sectionRef.current;
+      if (section) section.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+    };
+    if (!box || !list || !cut) { end(); return; }
+    collapsing.current = true;
+    slideHeight(box, box.offsetHeight, cut.offsetTop - list.offsetTop, end, true);
+  };
+  const toggle = (objectiveId: string) => setOpenIds((current) => {
+    const next = new Set(current);
+    if (next.has(objectiveId)) next.delete(objectiveId); else next.add(objectiveId);
+    return next;
+  });
+
+  return (
+    <section ref={sectionRef} className={`objectives-commodore-section objectives-commodore-panel-section objectives-commodore-trail-section${phone ? " is-phone" : ""}`} aria-label={t("commodore.trail.section")}>
+      <div className="objectives-commodore-panel-head">
+        <h3 className="objectives-commodore-panel-title">{t("commodore.trail.section")}</h3>
+        {groups.length > 0 ? <span className="objectives-commodore-panel-meta">{t("commodore.trail.count", { n: groups.length })}</span> : null}
+      </div>
+      {groups.length === 0 ? <p className="objectives-commodore-trail-empty">{t("commodore.trail.empty")}</p> : (
+        <>
+          <div ref={boxRef} className="objectives-commodore-trail-box">
+            <ul ref={listRef} className="objectives-commodore-trail-rows">
+              {shown.map((group, index) => (
+                <TrailSectionRow
+                  key={group.objectiveId}
+                  t={t}
+                  language={language}
+                  group={group}
+                  open={openIds.has(group.objectiveId)}
+                  onToggle={() => toggle(group.objectiveId)}
+                  onReveal={onReveal}
+                  onOpenObjective={onOpenObjective}
+                  rowRef={(node) => { if (node) rowRefs.current.set(group.objectiveId, node); else rowRefs.current.delete(group.objectiveId); }}
+                  style={revealFrom !== null && index >= revealFrom ? { animationDelay: `${Math.min(index - revealFrom, 8) * 30}ms` } : undefined}
+                />
+              ))}
+            </ul>
+          </div>
+          {hiddenCount > 0 ? (
+            <button type="button" className="objectives-commodore-trail-more" aria-expanded={all} onClick={all ? showLess : showMore}>
+              {all ? t("commodore.trail.less") : t("commodore.trail.more", { n: hiddenCount })}
+              <span className="objectives-commodore-trail-more-chev" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M1.8 3.5 L5 6.7 L8.2 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+            </button>
+          ) : null}
         </>
       )}
     </section>

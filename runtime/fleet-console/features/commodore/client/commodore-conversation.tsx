@@ -17,6 +17,7 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo, CommodoreSettings } from "./commodore-inbox-section.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
+import { CommodoreTrailSection } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
@@ -446,7 +447,17 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   if (!view) return null;
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
-      {tab === "info" ? <CommodoreInfo t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
+      {tab === "info" ? (
+        <CommodoreInfo
+          t={t}
+          commodoreId={commodoreId}
+          view={view}
+          onFail={fail}
+          onClear={clear}
+          // 사령관이 목표에서 한 일 — 줄은 채팅의 그 턴으로, 목표 제목은 그 목표로 간다.
+          after={<CommodoreTrailSection t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} onOpenObjective={(objectiveId) => openReferencedObjective(commodoreId, objectiveId)} />}
+        />
+      ) : null}
       {tab === "routines" ? <CommodoreRoutines commodoreId={commodoreId} language={language} /> : null}
       {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}

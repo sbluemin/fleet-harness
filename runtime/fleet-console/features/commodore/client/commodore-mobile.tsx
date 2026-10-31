@@ -20,7 +20,7 @@ import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/con
 import type { CommodoreMobileSessions } from "./deps.js";
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
-import { CommodoreTrail } from "./commodore-trail.js";
+import { CommodoreTrailSection } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
@@ -192,7 +192,6 @@ function sectionTitle(t: T, section: CommodoreMobileTab): string {
     case "sessions": return t("commodore.tabs.sessions");
     case "log": return t("commodore.tabs.log");
     case "routines": return t("commodore.tabs.routines");
-    case "goals": return t("commodore.trail.title");
     case "info": return t("commodore.tabs.info");
     case "settings": return t("commodore.tabs.settings");
   }
@@ -311,9 +310,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           {section === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} leave={leave} /></div> : null}
           {section === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} leave={leave} /> : null}
           {section === "routines" ? <div className="objectives-cm-content"><CommodoreRoutines commodoreId={commodoreId ?? ""} language={commodoreLanguage() ?? "en"} phone /></div> : null}
-          {section === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} /></div> : null}
           {/* 정보 화면 — 설명 · 정보 아래 기억이 한 스크롤로 선다. 기억 항목을 열면 그 항목이 화면 전체를 받는다. */}
-          {section === "info" && view ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} leave={leave} header={<CommodoreMobileDescription t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} />} /> : null}
+          {section === "info" && view ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} leave={leave} header={<CommodoreMobileDescription t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} />} footer={<CommodoreTrailSection t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} phone onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} />} /> : null}
           {section === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
@@ -371,7 +369,6 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
     : run.phase === "error" ? { text: t("commodore.meta.error"), tone: "danger" }
     : run.phase === "retrying" && run.nextWakeAt ? { text: t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }) }
     : run.totals.actions > 0 ? { text: t("commodore.meta.handled", { n: run.totals.actions }) } : null;
-  const goalsValue: ProfileValue = objectives.length > 0 ? { text: t("commodore.mobile.count", { n: objectives.length }) } : null;
   const memoryValue: ProfileValue = memory.loaded && memory.entries.length > 0 ? { text: t("commodore.mobile.count", { n: memory.entries.length }) } : null;
   const settingsValue: ProfileValue = view ? { text: view.state.model ?? view.defaults.model } : null;
   const routinesValue: ProfileValue = view ? { text: t("commodore.routines.enabledCount", { n: (view.state.routines ?? []).filter((r) => r.enabled).length }) } : null;
@@ -389,7 +386,6 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
           {sessions ? <ProfileRow section="sessions" icon={<TargetIcon />} label={t("commodore.tabs.sessions")} value={sessionsValue} onOpen={onOpen} /> : null}
           <ProfileRow section="log" icon={<LogIcon />} label={t("commodore.tabs.log")} value={logValue} onOpen={onOpen} />
           <ProfileRow section="routines" icon={<ClockIcon />} label={t("commodore.tabs.routines")} value={routinesValue} onOpen={onOpen} />
-          <ProfileRow section="goals" icon={<PennantIcon />} label={t("commodore.trail.title")} value={goalsValue} onOpen={onOpen} />
         </div>
         <div className="objectives-cm-card">
           <ProfileRow section="info" icon={<InfoIcon />} label={t("commodore.tabs.info")} value={memoryValue} onOpen={onOpen} />

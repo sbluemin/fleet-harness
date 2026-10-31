@@ -17,7 +17,7 @@ const StaleDot = ({ t }: { readonly t: T }) => <span className="objectives-cm-me
  * 폰 정보 화면의 기억 — 같은 스토어를 읽되, 항목 이동과 뒤로 가기는 호스트 막대의 깊이에 싣는다. `header`(설명·정보)는 트리 위에
  * 같은 스크롤로 서고, 항목을 읽는 동안에는 내린다. 갈래는 처음에 모두 접혀 있고, 찾은 낱말은 `<mark>`로 보인다.
  */
-export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, leave, header }: {
+export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, leave, header, footer }: {
   readonly t: T;
   readonly theaterId: string;
   readonly trail: readonly string[];
@@ -26,6 +26,8 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, lea
   /** 출처 목표를 열 때 세부(기억 단계 포함)를 먼저 접는다 — 사령관 화면의 `leave`. */
   readonly leave: (run: () => void) => void;
   readonly header?: ReactNode;
+  /** 기억 아래 섹션(「목표 기록」) — 항목을 읽는 동안에는 내린다. */
+  readonly footer?: ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const branchToggle = useMemoryBranchToggle();
@@ -126,6 +128,7 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, lea
             </section>;
           })}
         </>}</section>}
+        {entry ? null : footer}
       </div>
     </div>
   );

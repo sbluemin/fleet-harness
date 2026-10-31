@@ -34,7 +34,7 @@ export function commodoreTabOf(page: string | undefined): CommodoreTab | null {
   return page === "log" || page === "routines" || page === "settings" ? page : null;
 }
 /** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. 「지휘관 세션」(`sessions`)은 폰에만 있는 맨 앞 구역이다. */
-export type CommodoreMobileTab = CommodoreTab | "goals" | "sessions";
+export type CommodoreMobileTab = CommodoreTab | "sessions";
 
 interface TheaterCommodore {
   readonly view: CommodoreStateView | null;
