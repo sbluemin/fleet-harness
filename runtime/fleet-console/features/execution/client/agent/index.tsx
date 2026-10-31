@@ -6,7 +6,7 @@ import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import "@fleet-console/font-picker/styles.css";
-import { CaptionActionButton, CaptionBrowserUseGlyph, CaptionChatGlyph, CaptionComputerUseGlyph, CaptionConsoleUseGlyph, CaptionTerminalGlyph } from "../../../workspace/client/components/caption-actions.js";
+import { CaptionActionButton, CaptionBrowserUseGlyph, CaptionChatGlyph, CaptionComputerUseGlyph, CaptionTerminalGlyph } from "../../../workspace/client/components/caption-actions.js";
 import { launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { defineNotificationKind } from "../notifications.js";
@@ -22,7 +22,6 @@ import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus,
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
-import { gestureCallerLabel, getObjectiveWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { disposeObjectiveViewState, installObjectiveViewState } from "../objective-view-state.js";
 import type { ChatReadingWidth, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
@@ -33,7 +32,7 @@ import { useObjectiveLinks } from "./objective-links.js";
 import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
 import { MobileGlyph, MobileSurfaceProvider, mobileObjectiveOf, useMobileMenuItems, useMobileSurface, type MobileMenuItemLike, type MobileObjectiveLike } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
-import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, recordObjectiveReveal, setComputerUse, setConsoleUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
+import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, readComputerUseEnabled, readInstalledExperiments, recordObjectiveReveal, setComputerUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
 import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
 import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitchState } from "./view-switch-store.js";
 
@@ -493,27 +492,21 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
     </CaptionActionButton>
   );
 
-  // console_reveal·Console Use 시선의 말풍선 — 선반 끝에 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다.
+  // console_reveal 말풍선 — 선반 끝에 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다.
   // 산 이벤트에만 뜬다(지난 사건은 다시 튀어나오지 않는다).
   const liveReveal = React.useSyncExternalStore(subscribeObjectiveReveals, () => getObjectiveReveal(context.objectiveId), () => null);
-  // Console Use 시선 — 에이전트가 이 Objective 을 읽거나 만지면 같은 말풍선 자리에 "○○: 전사 읽음" 이 잠깐 선다.
-  const liveGaze = React.useSyncExternalStore(subscribeConsoleUseGestures, () => getObjectiveWrap(context.objectiveId)?.gesture ?? null, () => null);
-  const bubble = liveReveal || liveGaze
-    ? <span className="session-watch-host">
-        <RevealBubble context={context} reveal={liveReveal} />
-        {liveGaze && !liveReveal ? <div className="session-watch-bubble is-gaze" role="status" aria-live="polite"><span className="session-watch-bubble__text"><span className="chat-by-agent">{gestureCallerLabel(liveGaze.caller)}</span> {liveGaze.summary}</span></div> : null}
-      </span>
+  const bubble = liveReveal
+    ? <span className="session-watch-host"><RevealBubble context={context} reveal={liveReveal} /></span>
     : null;
 
   // 그룹 대화는 구성원 턴을 항상 접는다. 1:1 채팅만 이전 문답 자동 접기 전환을 보탠다.
   if (part === "view-switch") return <>{chatMode && !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null}{viewSwitch}</>;
   if (part === "tools-lead") return browser;
   // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
-  if (!using.console && !using.computer && bubble === null) return null;
+  if (!using.computer && bubble === null) return null;
   return (
     <>
       <span className="agent-objective-marks">
-        <ObjectiveUseBadge active={using.console} kind="console" label={using.turnOnly.console ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuConsoleUse") }) : t("terminal.experiments.menuConsoleUse")} />
         <ObjectiveUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
       </span>
       {bubble}
@@ -521,7 +514,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   );
 }
 
-function ObjectiveUseBadge({ active, kind, label }: { active: boolean; kind: "console" | "computer" | "browser"; label: string }) {
+function ObjectiveUseBadge({ active, kind, label }: { active: boolean; kind: "computer" | "browser"; label: string }) {
   const [present, setPresent] = React.useState(active);
   React.useEffect(() => {
     if (active) { setPresent(true); return; }
@@ -530,7 +523,7 @@ function ObjectiveUseBadge({ active, kind, label }: { active: boolean; kind: "co
   }, [active]);
   if (!present && !active) return null;
   return <span className={`agent-control-badge is-${kind}${active ? "" : " is-leaving"}`} role="img" aria-label={label} title={label}>
-    {kind === "console" ? <CaptionConsoleUseGlyph /> : kind === "browser" ? <CaptionBrowserUseGlyph /> : <CaptionComputerUseGlyph />}
+    {kind === "browser" ? <CaptionBrowserUseGlyph /> : <CaptionComputerUseGlyph />}
   </span>;
 }
 
@@ -790,55 +783,42 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
 }
 
 /**
- * Objective 메뉴의 실험 섹션 — 이 세션에 대한 사용 스위치. 설정에서 켠 실험만 행으로 서고, 켜져
- * 있는지는 Objective payload가 말한다(서버가 쓴다). 행은 한 줄이다 — 무엇을 허용하는지는 툴팁과
- * 접근성 라벨이 진다. 켜고 끄는 것은 재연결 없이 다음 도구 호출부터 듣는다.
+ * Objective 메뉴의 실험 섹션 — 컴퓨터 사용 스위치만 선다. 콘솔 사용은 부관 전용이라 여기 없다.
+ * 켜져 있는지는 Objective payload가 말한다(서버가 쓴다). 켜고 끄는 것은 재연결 없이 다음 도구 호출부터 듣는다.
  */
 function AgentObjectiveMenu({ context }: { readonly context: ObjectiveMenuContext }) {
   const t = getT(context.language);
   const experiments = useExperimentsSnapshot();
   const payload = context.objectiveRecord;
-  const [pending, setPending] = React.useState<"console" | "computer" | null>(null);
+  const [pending, setPending] = React.useState(false);
   // 자식 세션(목표 구성원)에는 사용 스위치가 없다 — 허용은 루트(지휘관)의 것이고 호스트도 자식 스위치를 거부한다.
-  if (!experiments || !installedApi || context.objectiveRecord.parentObjectiveId) return null;
+  if (!experiments || experiments.computerUse !== true || !installedApi || context.objectiveRecord.parentObjectiveId) return null;
   const api = installedApi;
   const language = context.language;
-  const toggle = (kind: "console" | "computer", next: boolean) => {
-    setPending(kind);
-    const request = kind === "console"
-      ? setConsoleUse(api, context.objectiveRecord.id, next, language)
-      : setComputerUse(api, context.objectiveRecord.id, next, language);
-    void request.then(() => api.resync()).catch(() => undefined).finally(() => setPending(null));
-  };
-  const consoleUseEnabled = readConsoleUseEnabled(payload);
   const computerUseEnabled = readComputerUseEnabled(payload);
-  const rows = [
-    { id: "console-use" as const, kind: "console" as const, checked: consoleUseEnabled, glyph: <CaptionConsoleUseGlyph />, name: t("terminal.experiments.menuConsoleUse"), hint: t(consoleUseEnabled ? "terminal.experiments.menuConsoleUseOn" : "terminal.experiments.menuConsoleUseOff") },
-    experiments.computerUse === true ? { id: "computer-use" as const, kind: "computer" as const, checked: computerUseEnabled, glyph: <CaptionComputerUseGlyph />, name: t("terminal.experiments.menuComputerUse"), hint: t(computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff") } : null,
-  ].filter((row) => row !== null);
-  if (rows.length === 0) return null;
+  const toggle = () => {
+    setPending(true);
+    void setComputerUse(api, context.objectiveRecord.id, !computerUseEnabled, language).then(() => api.resync()).catch(() => undefined).finally(() => setPending(false));
+  };
   return (
     <>
       <div className="group-context-menu-section-label">{t("terminal.experiments.menuSection")}</div>
-      {rows.map((row) => (
-        <button
-          key={row.id}
-          type="button"
-          className={`group-context-menu-item group-context-menu-item--switch${row.checked ? " is-selected" : ""}`}
-          role="menuitemcheckbox"
-          aria-checked={row.checked}
-          aria-busy={pending === row.kind}
-          aria-label={`${row.name} · ${row.hint}`}
-          title={row.hint}
-          disabled={pending !== null}
-          data-objective-menu-item={row.id}
-          onClick={() => toggle(row.kind, !row.checked)}
-        >
-          <span className="group-context-menu-item__glyph" aria-hidden="true">{row.glyph}</span>
-          <span className="group-context-menu-item__name">{row.name}</span>
-          <SwitchCheckMark />
-        </button>
-      ))}
+      <button
+        type="button"
+        className={`group-context-menu-item group-context-menu-item--switch${computerUseEnabled ? " is-selected" : ""}`}
+        role="menuitemcheckbox"
+        aria-checked={computerUseEnabled}
+        aria-busy={pending}
+        aria-label={`${t("terminal.experiments.menuComputerUse")} · ${t(computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff")}`}
+        title={t(computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff")}
+        disabled={pending}
+        data-objective-menu-item="computer-use"
+        onClick={toggle}
+      >
+        <span className="group-context-menu-item__glyph" aria-hidden="true"><CaptionComputerUseGlyph /></span>
+        <span className="group-context-menu-item__name">{t("terminal.experiments.menuComputerUse")}</span>
+        <SwitchCheckMark />
+      </button>
     </>
   );
 }
@@ -849,7 +829,6 @@ function AgentObjectiveMarks({ context }: { readonly context: ObjectiveMenuConte
   const using = useObjectiveUse(context.objectiveRecord.id);
   return (
     <span className="agent-objective-marks">
-      <ObjectiveUseBadge active={using.console} kind="console" label={t("terminal.experiments.menuConsoleUse")} />
       <ObjectiveUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
       <ObjectiveUseBadge active={using.browser} kind="browser" label={t("terminal.browser.agentUsing")} />
     </span>

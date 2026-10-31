@@ -21,7 +21,8 @@ export const OBJECTIVES_MCP_SERVER = "fleet-objectives";
  *
  * 목표와 실행 신분은 사령관의 `objectives/<목표>/objective.json`에 함께 산다.
  * Objective은 실행·화면 호환을 위한 메모리 어댑터다. 목록의 그룹은 Objective 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
- * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로 보드를 쓴다.
+ * 목표를 수행하는 세션은 `fleet-objectives` 로, 부관 Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로,
+ * 사령관 세션은 같은 보드를 `fleet-commodore` 의 `objectives`·`objective` 로 쓴다.
  */
 const objectiveIdOf = (payload: unknown): string | null => {
   const objectiveId = (payload as { objectiveId?: unknown } | null)?.objectiveId;
@@ -147,7 +148,8 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       },
     };
 
-    // 두 표면 — Console Use 의 보드(`console_objectives`·`console_objectives_detail`, 사람처럼 보고 더한다)와 목표 수행 세션의 작업 도구(`fleet-objectives`).
+    // 부관 Console Use 의 보드(`console_objectives`·`console_objectives_detail`)와 목표 수행 세션의 `fleet-objectives`.
+    // 사령관 세션은 같은 정의를 `objectives`·`objective` 로 받아 Console Use 기여에 기대지 않는다.
     const releaseConsoleTools = deps.consoleUse.contribute?.(createObjectiveConsoleTools(deps, store, launch));
     if (releaseConsoleTools) registerCleanup(releaseConsoleTools);
     registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, createObjectiveMcpTools(deps, store, launch, prStatus)));

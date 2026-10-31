@@ -428,7 +428,7 @@ ts: child.ts});
         capabilities: { read: true, control: allowControl && !!callerId && !!control, surface: Object.keys(readActions()).filter((key) => typeof (readActions() as Record<string, unknown>)[key] === "function"), approval: "For an Objective caller, Console use is allowed when that Objective's own Console use toggle is on, or when the person allowed it for this turn from the request card in the Objective panel. Without either, your call waits up to four minutes for the person's answer on that card; if they decline or do not answer, do not request Console use again in this turn.", enabled: !!control },
         coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length },
         pausedAutomations: callerId && control ? control.listAutomations(callerId).filter((a) => a.status === "paused").length : 0,
-        semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console: the target you read or change (Objective row and panel, Theater, group, Repository/File panel) is wrapped in a Console use pulse with your name; nothing is written on your own caption." },
+        semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console. Nothing is written on your own caption." },
       };
     }),
     define(SIDEBAR_TOOL, async (call, ctx) => {

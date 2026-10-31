@@ -6,6 +6,7 @@ import type { CommodoreMessageInput } from "./messaging.js";
 import { MAX_DESCRIPTION, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_TRANSCRIPT_TEXT } from "../shared/contracts/types.js";
 import { MAX_MEMORY_ENTRIES, memoryRefSchema } from "./memory.js";
 import type { CommodoreCreateInput } from "./creation.js";
+import { commodoreSessionToolName } from "../shared/tool-names.js";
 import { refuse, text } from "./tool-results.js";
 
 const commodores = defineConsoleTool({
@@ -28,7 +29,7 @@ const commodores = defineConsoleTool({
   },
 });
 
-/** 사령관 세션의 console 묶음에만 싣는다. Console Use·목표 세션에 기여하지 않는다. */
+/** 사령관 세션의 fleet-commodore 묶음에만 싣는다. Console Use·목표 세션에 기여하지 않는다. 광고 이름은 commodores. */
 export function createCommodoreManagementTools(options: {
   readonly hasPersonMessage: () => boolean;
   readonly stopping: () => boolean;
@@ -36,7 +37,7 @@ export function createCommodoreManagementTools(options: {
   readonly message?: (input: CommodoreMessageInput) => unknown;
   readonly create: (input: CommodoreCreateInput) => { readonly commodoreId: string; readonly target: string };
 }): readonly ConsoleMcpTool[] {
-  return [commodores.plugin({
+  const tool = commodores.plugin({
     async execute(raw) {
       const parsed = commodores.parse(raw, { caller: "commodore" });
       if (!parsed.ok) return refuse(parsed.error, { issues: parsed.issues });
@@ -52,5 +53,7 @@ export function createCommodoreManagementTools(options: {
         return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed");
       }
     },
-  }, { caller: "commodore" })];
+  }, { caller: "commodore" });
+  const name = commodoreSessionToolName(tool.name);
+  return [name === tool.name ? tool : { ...tool, name }];
 }

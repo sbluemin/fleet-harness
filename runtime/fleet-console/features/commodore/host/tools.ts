@@ -13,13 +13,11 @@ import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
 import { MAX_ASK_REASON, routineInputSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
 
 /**
- * 사령관 전용 도구 `commodore` — createSession 의 tools.custom 으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
+ * 사령관 전용 도구 — `fleet-commodore` 묶음으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
  *
  * 설명·정보는 여기서만 읽힌다(시스템 프롬프트·깨움 턴에 싣지 않는다). Theater 는 Agent SDK 내장 도구(Bash·Glob·Grep·Read)로
  * 직접 다루고, 정보 출처의 이슈만 여기서 읽는다.
  */
-
-export const COMMODORE_TOOL_GROUP = "commodore";
 const MAX_ISSUES = 100;
 const COMMAND_TIMEOUT_MS = 20_000;
 const COMMAND_BUFFER = 1024 * 1024;

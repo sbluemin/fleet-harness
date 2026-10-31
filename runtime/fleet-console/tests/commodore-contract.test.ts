@@ -190,7 +190,7 @@ it("delivers peer messages to a resting Commodore without person authority and r
   let finish = () => {};
   const steer = vi.fn(() => true);
   const agent: AgentHost = { createSession: async (options) => {
-    recipientTool = options.tools?.custom?.find((group) => group.name === "console")?.tools.find((tool) => tool.name === "console_commodores");
+    recipientTool = options.tools?.custom?.find((group) => group.name === "fleet-commodore")?.tools.find((tool) => tool.name === "commodores");
     return {
       send: async (input) => { prompts.push(input as string); await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; }); },
       steer, cancel: () => finish(), dispose: async () => {},
@@ -1199,16 +1199,16 @@ describe("commodore session", () => {
 
     stub.setScript(async () => {
       // 호스트처럼 도구를 먼저 실행하고(결과는 세션 이벤트에 실리지 않는다) tool-end 로 끝만 알린다.
-      await stub.created[0]!.tools!.custom![1]!.tools[1]!.execute({ action: "complete", objectiveId: "o2" }, { cwd: theaterRoot, toolCallId: "u0" });
-      stub.emit({ kind: "tool-start", id: "u0", name: "mcp__console__console_objectives_detail", input: { action: "complete", objectiveId: "o2" } });
+      await stub.created[0]!.tools!.custom![0]!.tools.find((tool) => tool.name === "console_objectives_detail")!.execute({ action: "complete", objectiveId: "o2" }, { cwd: theaterRoot, toolCallId: "u0" });
+      stub.emit({ kind: "tool-start", id: "u0", name: "mcp__fleet-commodore__console_objectives_detail", input: { action: "complete", objectiveId: "o2" } });
       stub.emit({ kind: "tool-end", id: "u0", isError: true });
       stub.emit({ kind: "thinking", text: "The description " }); stub.emit({ kind: "thinking", text: "changed." });
-      stub.emit({ kind: "tool-start", id: "u1", name: "mcp__commodore__description", input: {} });
+      stub.emit({ kind: "tool-start", id: "u1", name: "mcp__fleet-commodore__description", input: {} });
       stub.emit({ kind: "tool-end", id: "u1", isError: false });
       stub.emit({ kind: "text", text: "Completing " }); stub.emit({ kind: "text", text: "the pairing objective." });
-      stub.emit({ kind: "tool-start", id: "u2", name: "mcp__console__console_objectives_detail", input: { action: "complete", batchId: "secret detail that must not be logged", objectiveId: "o1", title: "Remote pairing" } });
+      stub.emit({ kind: "tool-start", id: "u2", name: "mcp__fleet-commodore__console_objectives_detail", input: { action: "complete", batchId: "secret detail that must not be logged", objectiveId: "o1", title: "Remote pairing" } });
       stub.emit({ kind: "tool-end", id: "u2", isError: false });
-      stub.emit({ kind: "tool-start", id: "u3", name: "mcp__console__console_objectives", input: { action: "inbox" } });
+      stub.emit({ kind: "tool-start", id: "u3", name: "mcp__fleet-commodore__console_objectives", input: { action: "inbox" } });
       stub.emit({ kind: "tool-end", id: "u3", isError: false });
       stub.emit({ kind: "tool-start", id: "u4", name: "Read", input: { file_path: outside } });
       stub.emit({ kind: "tool-end", id: "u4", isError: false });
@@ -1230,7 +1230,7 @@ describe("commodore session", () => {
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();
     expect(options.tools!.consoleUse).toBeUndefined();
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["fleet-commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list", "console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] description changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]\n\nCurrent alias: none\. You have no alias for this turn\.$/);
     expect(stub.sent[0]).not.toContain("newest");
@@ -1609,7 +1609,7 @@ describe("commodore supervisor", () => {
       const callCreate = () => managementTool!.execute(createInput, { cwd: theaterRoot, toolCallId: "create-browser" });
       const agent: AgentHost = {
         createSession: async (options) => {
-          managementTool = options.tools?.custom?.find((group) => group.name === "console")?.tools.find((tool) => tool.name === "console_commodores");
+          managementTool = options.tools?.custom?.find((group) => group.name === "fleet-commodore")?.tools.find((tool) => tool.name === "commodores");
           let finish = () => {};
           const entry = { sent: [] as string[], steered: [] as { text: string; id: string }[], emit: (event: AgentEvent) => options.onEvent?.(event), finish: () => finish() };
           sessions.push(entry);
@@ -1650,12 +1650,12 @@ describe("commodore supervisor", () => {
       sessions[0]!.emit({ kind: "input-started", id: `m${read.seq}` });
       expect(hasPersonMessage!()).toBe(true);
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "delivered", seqs: [read.seq] });
-      sessions[0]!.emit({ kind: "tool-start", id: "create-browser", name: "mcp__console__console_commodores", input: createInput });
+      sessions[0]!.emit({ kind: "tool-start", id: "create-browser", name: "mcp__fleet-commodore__commodores", input: createInput });
       expect(await callCreate()).toMatchObject({ isError: false, structuredContent: { commodoreId: "new" } });
       expect(createCommodore).toHaveBeenCalledTimes(1);
       sessions[0]!.emit({ kind: "tool-end", id: "create-browser", isError: false });
       const createdEntry = h.store.transcriptRead("t1").entries.at(-1)!;
-      expect(createdEntry).toEqual({ seq: expect.any(Number), at: expect.any(Number), kind: "tool", name: "console_commodores", ok: true, action: "create", commodoreId: "new", alias: "Browser" });
+      expect(createdEntry).toEqual({ seq: expect.any(Number), at: expect.any(Number), kind: "tool", name: "commodores", ok: true, action: "create", commodoreId: "new", alias: "Browser" });
       // 집히지 못한 말은 대기열로 돌아와 다음 턴에 실린다 — 잃지 않는다.
       const unread = h.store.transcriptAppend("t1", { kind: "message", text: "And check the roster." });
       sessions[0]!.emit({ kind: "input-cancelled", id: `m${unread.seq}` });
@@ -2151,7 +2151,7 @@ describe("commodore supervisor", () => {
 
       // 사람에게 묻기 — 사령관의 질문은 기록에 구조화된 줄로 남고, 사람의 답이 사령관을 「사람이 답함」으로 깨우며 답은 asks 도구로 읽힌다.
       // 끝난 질문은 다른 답으로 덮이지 않고 거둘 수도 없다.
-      const commodoreTool = (name: string) => sessions[1]!.options.tools!.custom!.find((group) => group.name === "commodore")!.tools.find((tool) => tool.name === name)!;
+      const commodoreTool = (name: string) => sessions[1]!.options.tools!.custom!.find((group) => group.name === "fleet-commodore")!.tools.find((tool) => tool.name === name)!;
       const useTool = async (name: string, args: Record<string, unknown>) => ((await commodoreTool(name).execute(args, { cwd: theaterRoot })) as { structuredContent: Record<string, unknown> }).structuredContent;
       const asked = await useTool("ask_person", { questions: [{ header: "Candidates", text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "ask", askId: asked.askId, questions: [{ options: ["Open both", "Only the first"] }] });

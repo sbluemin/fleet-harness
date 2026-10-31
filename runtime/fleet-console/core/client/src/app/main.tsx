@@ -36,7 +36,7 @@ import { installConsoleUseGestures } from "../../../../features/console-use/clie
 import { loadFeatureRegistry, FeatureRegistryProvider } from "../integration/feature-registry.js";
 import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
 import { ComposerTopEntriesProvider } from "../../../../features/execution/client/agent/chat/composer-top-entries.js";
-import { applyDesktopShellMarker, migrateStoredCommissioningSeen, objectiveRecordsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
 import { bindConversationSurfaceLayout } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getRailStoreSnapshot } from "../chrome/rail/rail-store.js";
@@ -109,8 +109,8 @@ if (app && hostPicker) {
   await migration;
   // 대화 중심 화면의 본문 렌더러·「구성원」 탭 등록은 훅 밖에서 목표 묶음을 읽는다 — Provider 와 같은 원천을 묶는다.
   bindGroupClusterSource(registry.objectiveRecordClusters);
-  // 제스처는 id 로 대상·호출자를 찾는다 — 구성원이 부른 Console Use 도 제 이름으로 선다.
-  installConsoleUseGestures({ objectiveRecords: () => objectiveRecordsIncludingNested(), subscribeConsoleChannel });
+  // 부관이 Objective 을 보관·지우면 되돌리기 창을 연다. 감싸기 제스처는 없다.
+  installConsoleUseGestures({ subscribeConsoleChannel });
   // 보관함의 수와 목록 — 보관된 Objective은 일반 목록에 없으므로 자기 사건으로 따라간다.
   // 첫 읽기는 데스크톱 차선이 열려 있을 때 목록·ready보다 뒤로 밀린다.
   installObjectiveArchive(subscribeConsoleChannel);

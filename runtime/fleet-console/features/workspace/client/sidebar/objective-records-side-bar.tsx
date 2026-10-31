@@ -8,8 +8,7 @@ import { ConsoleSectionSlot } from "../../../remote-access/client/console-sectio
  */
 type SideBarHead = TheaterInfo & { readonly commodore?: { readonly id: string; readonly alias?: string } };
 export { theaterInitials } from "./theater-initials.js";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { ObjectiveRuntimeState } from "../../../execution/shared/client-contract.js";
@@ -609,12 +608,6 @@ function TheaterSectionHeader({
   // 사령관 카드 — 아바타와 이름 아래에 사령관의 마지막 응답만 싣는다.
   const suppressClickRef = useRef(false);
   const activateRef = useRef<HTMLButtonElement | null>(null);
-  // Console Use — 에이전트가 이 사령관의 목록·그룹을 읽으면 헤더 행 전체가 감싸인다. 지휘관 줄은 「지휘관」 탭에 있으므로 목록 읽기도 머리가 말한다.
-  const wrap = useSyncExternalStore(
-    subscribeConsoleUseGestures,
-    () => getTheaterWrap(theater.id) ?? getAnyClusterListWrap(theater.id),
-    () => null,
-  );
   // 플러그인 표식(자율 운영의 사령관 글리프)이 있으면 이니셜 칩 자리에 선다. 운영자가 일하는 동안 이름에 라이브 물결이 흐른다.
   const contributionSummary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
   const mark = useTheaterContributionMark(contributionSummary);
@@ -632,7 +625,6 @@ function TheaterSectionHeader({
   const summaryText = live ? t("sidebar.commodore.responding") : lastResponse ?? t("sidebar.commodore.noConversation");
   const headerClassName = [
     "side-bar-theater-header",
-    consoleUseWrapClassName(wrap),
     active ? "is-active" : "",
     selected ? "is-current" : "",
     "is-card",
@@ -744,7 +736,7 @@ function TheaterSectionHeader({
           onClick={select}
           onKeyDown={handleKeyDown}
           aria-current={selected ? "true" : undefined}
-          title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : `${active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })} · ${t("sidebar.theater.actionsHint")}`}
+          title={`${active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })} · ${t("sidebar.theater.actionsHint")}`}
         >
           {mark === null ? avatarAnchor(true) : null}
           <span className="side-bar-theater-text">
