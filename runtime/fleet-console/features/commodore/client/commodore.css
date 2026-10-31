@@ -383,6 +383,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   margin: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-md); font-weight: var(--weight-medium); letter-spacing: -0.01em;
 }
 .objectives-commodore-panel-section { display: grid; min-width: 0; gap: 8px; padding-block: 18px; }
+/* 대화 탭(작업·정보) 본문 맨 첫 섹션 — 탭 줄과 첫 머리 사이만 붙인다. 「루틴」 머리 아래 두 번째 섹션은 그대로 둔다. */
+.objectives-commodore-conversation-tab > .objectives-commodore-panel-section:first-child { padding-top: 0; }
 .objectives-commodore-panel-section + .objectives-commodore-panel-section,
 .objectives-cm-pad-head + .objectives-commodore-panel-section { border-top: 1px solid var(--commodore-settings-line); }
 .objectives-commodore-body.is-info { gap: 0; }
