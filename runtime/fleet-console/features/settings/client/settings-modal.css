@@ -44,7 +44,7 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
 /* 다크 설정 화면 — 데스크톱 다크에서 설정 모달만 레퍼런스 설정 화면의 실측 팔레트를 입는다. 설정 밖 화면·라이트·모바일은
    그대로이고, 강조색(켜진 토글)도 이 모달 안에서만 바뀐다. 실측(sRGB → OKLCH L): 바탕 #121212(18.2%), 카드 #1f1f1f(23.9%),
    카드 테두리 #2c2c2c(29.3%), 고른 범주 #242424(26.0%), 목록 경계 #1f1f1f(23.9% = --hairline-column), 닫기·보조 글자 #8d8d8d(64.3%),
-   켜진 토글 #326bcb(--settings-accent) 위 손잡이 #f5f5f5. 범주 목록 글자는 고르지 않아도 본문 글자색이다 — 고른 범주는 면이 말한다. */
+   범주 목록 글자는 고르지 않아도 본문 글자색이다 — 고른 범주는 면이 말한다. */
 :root[data-view-mode="desktop"]:not([data-theme="light"]) .settings-modal {
   --dialog-face: oklch(18.2% 0 0);
   --hairline: oklch(29.3% 0 0);
@@ -54,9 +54,14 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
   --settings-modal-tab-ink: var(--text-primary);
   --settings-modal-close-ink: var(--text-tertiary);
   --settings-modal-divider: var(--hairline-column);
+}
+
+/* 켜진 토글 — 데스크톱 설정 모달은 다크·라이트 모두 강조색 트랙(--settings-accent, 실측 #326bcb) 위에 밝은 손잡이
+   #f5f5f5(97%)를 세운다. 손잡이 대비 4.7:1. 꺼진 토글과 설정 밖 스위치는 테마의 중립 슬롯 그대로다. */
+:root[data-view-mode="desktop"] .settings-modal {
   --quiet-switch-track: var(--settings-accent);
   --quiet-switch-rim: var(--settings-accent);
-  --quiet-switch-knob: var(--ink-pearl);
+  --quiet-switch-knob: oklch(97% 0 0);
 }
 
 @keyframes settings-modal-scrim-in { from { opacity: 0; } }
