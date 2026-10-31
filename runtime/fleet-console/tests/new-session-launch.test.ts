@@ -323,3 +323,111 @@ describe("commander rail keep rule", () => {
     expect(isCommanderObjective(clusters, "c1", "op-missing")).toBe(false);
   });
 });
+
+describe("kept tabs across a fresh center", () => {
+  // 재현: 시작 전 행 펼침(유지) → 좌측 전환 → 사령관 탭이 남지 않는다.
+  // 탭 없는 시작 화면 마운트가 보관 등록의 손잡이를 버리면 전환 때 release가 빗나간다.
+  it("releases kept tabs when flipping left from a fresh commander", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const range = vi.spyOn(document, "createRange").mockImplementation(() => Object.assign(new Range(), {
+      getBoundingClientRect: () => new DOMRect(),
+    }));
+    const { combineClusterSources, loadFeatureRegistry, FeatureRegistryProvider } = await import("../core/client/src/integration/feature-registry.js");
+    const { ConversationStage } = await import("../features/workspace/client/conversation/conversation-shell.js");
+    const { useConsoleState } = await import("../core/client/src/hooks/use-store.js");
+    const { getState, setState } = await import("../core/client/src/integration/store.js");
+    const { openConversationSurface, closeConversationSurface } = await import("../features/workspace/client/conversation/conversation-surface-store.js");
+    const { freshConversationSurface } = await import("../features/objectives/client/fresh-conversation.js");
+    const { mountConversationObjectiveTabsHost, useRegisteredConversationObjectiveTabs } = await import("../core/client/src/chrome/rail/objective-tabs.js");
+    const { openRailPanel } = await import("../core/client/src/chrome/rail/rail-store.js");
+    const { setCommanderPlacement } = await import("../features/workspace/client/commander-tab/commander-placement.js");
+    const { readCommodoreList, replaceCommodoreList } = await import("../features/commodore/client/commodore-list.js");
+    const { installCommodoreBoard } = await import("../features/commodore/client/board.js");
+    const { loadBoard } = await import("../features/objectives/client/objectives-state.js");
+    type BoardApi = import("@fleet-console/infra/http/client-ports").ClientApiCapability;
+
+    const owner = "aaaaaaaa-1111-4111-8111-111111111111";
+    const commanderId = "bbbbbbbb-2222-4222-8222-222222222222";
+    const localClusters: readonly ObjectiveCluster[] = [{
+      id: "c-fresh", commodoreId: owner, theaterId: "th-a", title: "Fresh commander",
+      avatarObjectiveId: commanderId, members: [], row: { groupId: null, order: 0, fold: [commanderId] },
+    }];
+    const listeners = new Set<() => void>();
+    const clusters = combineClusterSources([{ pluginId: "objectives", source: {
+      get: () => localClusters, subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    } }]);
+    const registry = { ...await loadFeatureRegistry(), objectiveRecordClusters: clusters, conversationSurfaces: [{
+      id: "test-commodore-tabs", title: () => "Owner", render: () => h("p", null, "Owner"),
+      commodoreId: () => owner, theater: () => ({ theaterId: owner, inboxSection: "test-inbox" }),
+      tabs: [
+        { id: "commodore-routines", title: () => "Routines", render: () => h("p", null, "routines") },
+        { id: "commodore-info", title: () => "Info", render: () => h("p", null, "info") },
+      ],
+      defaultTab: "commodore-routines",
+    }, freshConversationSurface] };
+    const goal: Objective = {
+      id: commanderId, commodoreId: owner, theaterId: "th-a", groupId: null, title: "Fresh goal", createdAt: 1,
+      commander: { sessionName: null, started: false }, note: "", attachments: [], results: [],
+      planning: false, criteriaOpen: false, stoppedAt: null, dueDate: null, today: false,
+      addedBy: { kind: "commodore", commodoreId: owner, why: "" },
+      done: null, awaitingHandoff: false, awaitingReview: false, handoff: null, extensions: [], extensionActive: false,
+      criteria: [], criteriaProposals: [], members: [], missions: [], followups: [], followupBatches: [], followupHistory: null,
+      origin: null, decisionRequest: null, decisionRequestRevision: 0, decisionDelivery: null, decisions: [], personHolds: [],
+      commenced: false, operator: "human", removed: null, merged: [],
+    };
+    const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false }] };
+    // 시작 화면의 findObjective가 사령관을 읽도록 보드를 채운다 — 실앱의 로드된 보드와 같다.
+    const boardApi = { fetch: async () => new Response(JSON.stringify({ objectives: board.objectives, groups: [], launch: { available: false } }), { status: 200, headers: { "Content-Type": "application/json" } }) } as unknown as BoardApi;
+    await act(async () => { await loadBoard(boardApi, owner); });
+    const offBoard = installCommodoreBoard({
+      read: () => board, subscribe: () => () => {}, subscribeFinished: () => () => {}, railEntryIds: [],
+      finished: () => [], finishedLoaded: () => true, findFinished: () => null, serverReached() {}, loadFinished() {},
+      openObjective() {}, openObjectiveFromCluster() {}, openObjectiveOnPhone() {}, revealObjective() {}, renderObjectiveAvatar: () => null,
+    });
+    const previousCommodores = readCommodoreList();
+    replaceCommodoreList([{ commodoreId: owner, label: owner, active: false,
+      run: { phase: "idle", totals: { session: 0, costUsd: 0, actions: 0 } },
+      theaters: [{ theaterId: "th-a", label: "Shared Theater", status: "available" }] }]);
+    const previous = getState();
+    setState({ ...getState(), activeObjectiveId: null, newSession: null });
+    const node = document.createElement("div"); document.body.append(node);
+    const root = createRoot(node);
+    const seen: string[][] = [];
+    function Probe() {
+      seen.push(useRegisteredConversationObjectiveTabs().map((entry) => entry.id));
+      return null;
+    }
+    function Screen() {
+      const state = useConsoleState();
+      return h(FeatureRegistryProvider, { value: registry },
+        h(ConversationStage, { state, insets: { top: 0, right: 0, bottom: 0, left: 0 }, language: "en", objectiveRecordKinds: [], onClose() {},
+          toolContext: { theaterId: null, pathContext: { kind: "root", relPath: null, label: "" }, language: "en", api: {} } as Parameters<typeof ConversationStage>[0]["toolContext"] }),
+        h(Probe));
+    }
+    try {
+      // 레일 앞 묶음 호스트가 있어야 등록 탭이 보인다(실앱의 대화 중심 화면과 같게).
+      const unmountHost = mountConversationObjectiveTabsHost();
+      try {
+        await act(async () => root.render(h(Screen)));
+        await act(async () => setCommanderPlacement("right"));
+        await act(async () => openConversationSurface("test-commodore-tabs", { commodoreId: owner }));
+        expect(seen.at(-1)).toEqual(["commodore-routines", "commodore-info"]);
+        await act(async () => openRailPanel("commodore-routines"));
+        // 시작 전 지휘관으로 — 탭 없는 fresh 대화가 마운트돼도 보관은 살아 있다.
+        await act(async () => openConversationSurface(freshConversationSurface.id, { objectiveId: commanderId }));
+        expect(seen.at(-1)).toEqual(["commodore-routines", "commodore-info"]);
+        // 좌측으로 바꾸면 유지가 풀리고 사령관 탭이 남지 않는다.
+        await act(async () => setCommanderPlacement("left"));
+        expect(seen.at(-1)).toEqual([]);
+      } finally {
+        unmountHost();
+      }
+    } finally {
+      await act(async () => closeConversationSurface());
+      await act(async () => root.unmount());
+      node.remove(); setState(previous); replaceCommodoreList(previousCommodores);
+      offBoard(); canvas.mockRestore(); range.mockRestore(); vi.unstubAllGlobals();
+    }
+  });
+});

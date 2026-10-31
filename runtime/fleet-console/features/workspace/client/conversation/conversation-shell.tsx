@@ -1353,9 +1353,10 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     let surfaceCommodore: string | null = null;
     try { surfaceCommodore = descriptor.commodoreId?.(context) ?? null; } catch { surfaceCommodore = null; }
     surfaceCommodoreRef.current = surfaceCommodore;
-    // 같은 사령관으로 돌아오면 유지 중인 등록이 새 등록에 이어진다 — 보관만 버리고 dispose하지 않는다(두 겹 방지).
-    if (surfaceCommodore !== null) adoptKeptConversationObjectiveTabs(surfaceCommodore);
     const tabs = descriptor.tabs ?? [];
+    // 같은 사령관으로 돌아오면 유지 중인 등록이 새 등록에 이어진다 — 보관만 버리고 dispose하지 않는다(두 겹 방지).
+    // 탭을 세우지 않는 대화(시작 화면 등)는 보관에 손대지 않는다. 손대면 유지 중인 등록의 손잡이를 잃는다.
+    if (surfaceCommodore !== null && tabs.length > 0) adoptKeptConversationObjectiveTabs(surfaceCommodore);
     const disposers = tabs.map((tab, order) => registerConversationObjectiveTab({
       id: tab.id,
       title: tab.title,
@@ -1370,8 +1371,9 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     return () => {
       // 우측 배치에서 이 사령관의 지휘관이 가운데로 오면 등록을 유지한다(보관함에 맡긴다) — 레일이 작업 탭에 머물고 패널이 깜빡이지 않는다.
       // cleanup은 저장소가 바뀐 뒤 커밋에 딸려 돌므로 새 가운데를 읽는다. 다른 주인이 맡겨져 있으면 먼저 걷는다.
+      // 세울 탭이 없는 대화는 보관에 맡기지 않는다 — 빈 손잡이가 실등록을 덮어 유지가 풀리지 않게 한다.
       const commodoreId = surfaceCommodoreRef.current;
-      if (commodoreId !== null && shouldKeepCommodoreTabs(clustersRef.current, commodoreId)) {
+      if (disposers.length > 0 && commodoreId !== null && shouldKeepCommodoreTabs(clustersRef.current, commodoreId)) {
         keepConversationObjectiveTabs(commodoreId, () => { for (const dispose of disposers) dispose(); });
         return;
       }
