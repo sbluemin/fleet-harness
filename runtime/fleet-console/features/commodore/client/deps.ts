@@ -60,11 +60,17 @@ export interface CommodoreClientDeps {
    */
   readonly tasksList?: CommodoreTasksList;
 }
+/** 작업 탭 「목표」 섹션의 목록이 고른 줄 — 지휘관은 id, 시작 전 등은 목록의 열기 동작을 쓴다. */
+export interface CommodoreTasksListSelection {
+  readonly objectiveId: string | null;
+  readonly open: (() => void) | undefined;
+}
 /** 작업 탭 「목표」 섹션이 쓰는 목록 렌더러와 배치 읽기. `left`가 기본이다. */
 export interface CommodoreTasksListProps {
   readonly commodoreId: string;
   readonly selectedId: string | null;
   readonly heading: (count: number) => ReactNode;
+  readonly onSelect?: ((selection: CommodoreTasksListSelection) => void) | undefined;
 }
 export interface CommodoreTasksList {
   readonly List: ComponentType<CommodoreTasksListProps>;

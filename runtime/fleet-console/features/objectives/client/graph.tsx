@@ -5,7 +5,7 @@ import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { graphLayout, horizontalLayout, type Point } from "./graph-layout.js";
 import { GraphPopup, scrollContainer } from "./graph-popup.js";
 import { ResultsGlyph } from "./results.js";
-import { usePointerDrag } from "./pointer-drag.js";
+import { usePointerDrag } from "@fleet-console/ui/react";
 import "./graph.css";
 
 export type MissionState = "done" | "unplaced" | "ready" | "blocked" | "running" | "awaiting";

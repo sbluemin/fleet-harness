@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { ChevronGlyph, useSelect, type SelectOption } from "@fleet-console/ui/react";
+import { ChevronGlyph, useSelect, usePointerDrag, type SelectOption } from "@fleet-console/ui/react";
+import { focusFloatingWindow, useFloatingWindowZ } from "@fleet-console/ui/store";
 import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { missionTitle, type Objective, type ObjectiveResult } from "../shared/types.js";
@@ -9,7 +10,6 @@ import type { SharedFolderEntry } from "../shared/shared-folder.js";
 import { getT } from "./i18n/index.js";
 import { findAnyObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 import { absolute, bytesLabel, EvidenceTextContent, PrRow, resultFileUrl, useNow } from "./result-content.js";
-import { usePointerDrag } from "./pointer-drag.js";
 import { LinkText } from "./link-text.js";
 import { sharedFileUrl } from "./shared-folder-url.js";
 import { attachmentFileUrl } from "./attachment-file-url.js";
@@ -23,7 +23,13 @@ let selection: Selection | null = null;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const snapshot = () => selection;
-function updateSelection(next: Selection | null) { selection = next; for (const listener of listeners) listener(); }
+const RESULT_WINDOW_ID = "objectives-result";
+function updateSelection(next: Selection | null) {
+  selection = next;
+  // 나중에 손댄 창이 위다 — 결과물을 고르면 지휘관 창보다 앞으로 온다.
+  if (next !== null) focusFloatingWindow(RESULT_WINDOW_ID);
+  for (const listener of listeners) listener();
+}
 const RECT_KEY = "fleet.objectives.result-window.rect";
 
 export function openResultWindow(objectiveId: string, resultId: string, opener: HTMLElement | null = null): void {
@@ -103,6 +109,8 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   const [rect, setRect] = useState(initialRect);
   const [dragging, setDragging] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(false);
+  // 지휘관 창과 겹치면 나중에 손댄 쪽이 위다.
+  const zIndex = useFloatingWindowZ(RESULT_WINDOW_ID, 59);
   const drag = usePointerDrag();
   const groups = objective ? objective.missions.map((mission, index) => ({ id: mission.id, n: index + 1, title: missionTitle(mission), record: mission.records.at(-1), results: objective.results.filter((result) => result.sourceMissionId === mission.id) })).filter((group) => group.results.length > 0) : [];
   const loose = objective?.results.filter((result) => !result.sourceMissionId || !objective.missions.some((mission) => mission.id === result.sourceMissionId)) ?? [];
@@ -210,7 +218,7 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   };
   const label = (item: typeof groups[number]) => `${item.n || "—"} · ${item.title}`;
   const narrow = !mobile && (rect.w < 520 || railCollapsed);
-  return <div ref={rootRef} className={`objectives-result-window${shared ? " is-shared" : ""}${attachmentMode ? " is-attachment" : ""}${mobile ? " is-mobile" : ""}${narrow ? " is-narrow" : ""}${dragging ? " is-dragging" : ""}`} role="dialog" aria-modal={mobile} aria-label={`${heading} · ${objective?.title ?? ""}`} tabIndex={-1} style={mobile ? undefined : { left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
+  return <div ref={rootRef} className={`objectives-result-window${shared ? " is-shared" : ""}${attachmentMode ? " is-attachment" : ""}${mobile ? " is-mobile" : ""}${narrow ? " is-narrow" : ""}${dragging ? " is-dragging" : ""}`} role="dialog" aria-modal={mobile} aria-label={`${heading} · ${objective?.title ?? ""}`} tabIndex={-1} onPointerDownCapture={() => focusFloatingWindow(RESULT_WINDOW_ID)} style={mobile ? undefined : { left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex }}>
     <header className="objectives-rw-head" onPointerDown={(event) => start(event)}>
       {!shared && !attachmentMode && !mobile && rect.w >= 520 ? <button type="button" aria-label={t("objectives.results.window.missions")} title={t("objectives.results.window.missions")} aria-pressed={!railCollapsed} onClick={() => setRailCollapsed((current) => !current)}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M6 2.5v11" /></svg></button> : null}
       <span className="objectives-rw-heading">{heading}</span>
