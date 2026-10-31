@@ -1,4 +1,5 @@
 import type { CommodoreTasksListProps } from "../../../commodore/client/deps.js";
+import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { CommodoreCommanderList } from "./commander-list.js";
 import { readCommanderPlacement, useCommanderPlacement } from "./commander-placement.js";
@@ -8,6 +9,7 @@ import { readCommanderPlacement, useCommanderPlacement } from "./commander-place
  * commodore feature가 workspace 목록을 직접 가져오면 순환이 생기므로, 이 모듈 한 곳에서만 잇는다.
  */
 export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect }: CommodoreTasksListProps) {
+  const state = useConsoleState();
   return <CommodoreCommanderList
     commodoreId={commodoreId}
     selectedId={selectedId}
@@ -15,7 +17,16 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
     card
     chevron
     heading={heading}
-    {...(onSelect ? { onSelect: (item) => onSelect({ objectiveId: commanderObjectiveId(item.layout.cluster), open: item.layout.cluster.open }) } : {})}
+    {...(onSelect ? {
+      onSelect: (item) => {
+        const objectiveId = commanderObjectiveId(item.layout.cluster);
+        onSelect({
+          objectiveId,
+          open: item.layout.cluster.open,
+          hasRecord: objectiveId !== null && state.objectiveRecords.some((record) => record.id === objectiveId),
+        });
+      },
+    } : {})}
   />;
 }
 

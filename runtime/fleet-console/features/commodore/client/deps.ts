@@ -64,6 +64,8 @@ export interface CommodoreClientDeps {
 export interface CommodoreTasksListSelection {
   readonly objectiveId: string | null;
   readonly open: (() => void) | undefined;
+  /** 대화 기록이 있는가 — 없으면 시작 전 목표라 시작 화면으로 보낸다. */
+  readonly hasRecord: boolean;
 }
 /** 작업 탭 「목표」 섹션이 쓰는 목록 렌더러와 배치 읽기. `left`가 기본이다. */
 export interface CommodoreTasksListProps {
