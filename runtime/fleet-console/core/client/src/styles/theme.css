@@ -819,6 +819,8 @@
   --control-wash-hover: oklch(95% 0 0 / 4%);
 
   --console-use-badge: oklch(76% 0.1 60);
+  /* 설정 모달 안에서만 쓰는 강조색(켜진 토글 트랙) — 레퍼런스 설정 화면 실측 #326bcb. 설정 밖은 Fleet 의 중립 강조를 지킨다. */
+  --settings-accent: oklch(54.2% 0.161 260);
   --provider-claude: oklch(76% 0.085 62);
   --provider-typesafe: oklch(73% 0.085 339);
   --provider-antigravity: oklch(73% 0.08 288);
