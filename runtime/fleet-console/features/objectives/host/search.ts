@@ -15,7 +15,6 @@ const PART_PRIORITY: readonly SearchPart[] = ["title", "decision", "handoff", "c
 export const SEARCH_STATUSES = ["open", "done", "archived", "any"] as const;
 type SearchStatus = Exclude<typeof SEARCH_STATUSES[number], "any">;
 
-const MAX_TERMS = 8;
 const SNIPPET = 160;
 const RESPONSE_BYTES = 8_000;
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -139,7 +138,8 @@ function hitOf(objective: Objective, terms: readonly string[], parts: ReadonlySe
 
 /** 한 사령관의 목표 기록을 찾는다. 호출자가 그 사령관의 목표만 넘긴다 — 이 함수는 범위를 넓히지 않는다. */
 export function searchObjectives(objectives: readonly Objective[], input: SearchInput): SearchPage {
-  const terms = [...new Set(fold(input.query).split(/\s+/).filter(Boolean))].slice(0, MAX_TERMS);
+  // 받은 단어는 모두 맞춘다 — 단어 수는 query 길이(200자)가 묶는다.
+  const terms = [...new Set(fold(input.query).split(/\s+/).filter(Boolean))];
   const parts = new Set<SearchPart>(input.parts ?? SEARCH_PARTS);
   const status = input.status ?? "any";
   const matched = objectives
