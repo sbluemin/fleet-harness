@@ -1032,8 +1032,8 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
               {marketplace.preset ? <span>{t("commodore.marketplaces.by")}</span> : <span className="commodore-plugins-locator">{marketplace.locator}</span>}
               <span>{browsing ? t("commodore.marketplaces.count", { n: marketplace.pluginCount }) : t("commodore.plugins.palette.found", { n: items.length })}</span>
             </p>
-            <div className="commodore-palette-grid">
-              {items.map((entry) => <PaletteCard key={entry.id} t={t} entry={entry} installed={installedSet.has(entry.id)} row={row?.pluginId === entry.id ? row : null} showTrust={openedId === null} onOpen={() => openDetail(entry.id)} onInstall={() => install(entry)} onTrust={(fresh) => save(entry.id, true, fresh)} onCancel={() => setRow(null)} />)}
+            <div className="commodore-palette-rows">
+              {items.map((entry) => <PaletteRow key={entry.id} t={t} entry={entry} installed={installedSet.has(entry.id)} row={row?.pluginId === entry.id ? row : null} showTrust={openedId === null} onOpen={() => openDetail(entry.id)} onInstall={() => install(entry)} onTrust={(fresh) => save(entry.id, true, fresh)} onCancel={() => setRow(null)} />)}
             </div>
           </section>
         ));
@@ -1131,10 +1131,10 @@ function TrustPanel({ t, entry, onTrust, onCancel, trustRef }: {
 }
 
 /**
- * 팔레트 카드 — 설치 단추를 제외한 카드는 상세를 연다. Enter 는 그 단추의 기본 동작이다.
- * 신뢰 확인이 필요하면 카드가 한 줄 전체를 차지하며 펼치고 설명 전체를 보인다.
+ * 팔레트 행 — 마켓플레이스 묶음의 둥근 카드 안에 한 줄씩 선다. 설치 단추를 제외한 행은 상세를 연다. Enter 는 그 단추의 기본 동작이다.
+ * 둘째 줄은 설명 한 줄(없으면 버전·만든 이)이고, 나머지 사실은 상세의 정보 카드가 맡는다. 신뢰 확인이 필요하면 행 아래로 펼친다.
  */
-function PaletteCard({ t, entry, installed, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
+function PaletteRow({ t, entry, installed, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
   readonly t: T;
   readonly entry: PluginCatalogEntry;
   readonly installed: boolean;
@@ -1151,20 +1151,16 @@ function PaletteCard({ t, entry, installed, row, showTrust, onOpen, onInstall, o
   const trustRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { if (trusting) trustRef.current?.focus({ preventScroll: false }); }, [trusting]);
   const title = titleOf(shown, entry.name);
-  const byline = [shown.displayName ? entry.name : null, shown.version ? `v${shown.version}` : null, shown.author ? t("commodore.plugins.byAuthor", { name: shown.author }) : null].filter(Boolean).join(" · ");
-  const chips = shown.category || shown.components;
+  const byline = [shown.version ? `v${shown.version}` : null, shown.author ? t("commodore.plugins.byAuthor", { name: shown.author }) : null].filter(Boolean).join(" · ");
+  const sub = shown.description ?? (byline || null);
   return (
-    <article className={`commodore-palette-card${trusting ? " is-open" : ""}`}>
+    <article className={`commodore-palette-row${trusting ? " is-open" : ""}`}>
       <button type="button" className="commodore-palette-open" data-plugin-id={entry.id} aria-label={t("commodore.plugins.detail.openAria", { plugin: title })} onClick={() => { if (!working && row?.phase !== "trust") onOpen(); }}>
-        <span className="commodore-palette-card-head">
-          <PluginTile name={title} iconId={shown.icon ? entry.id : undefined} size="card" />
-          <span className="commodore-palette-card-title">
-            <span className="commodore-palette-name">{title}</span>
-            {byline ? <span className="commodore-palette-byline">{byline}</span> : null}
-          </span>
+        <PluginTile name={title} iconId={shown.icon ? entry.id : undefined} size="card" />
+        <span className="commodore-palette-row-main">
+          <span className="commodore-palette-name">{title}</span>
+          {sub ? <span className={`commodore-palette-desc${trusting ? "" : " is-clamped"}`}>{sub}</span> : null}
         </span>
-        {shown.description ? <span className={`commodore-palette-desc${trusting ? "" : " is-clamped"}`}>{shown.description}</span> : null}
-        {chips ? <span className="commodore-plugins-meta">{shown.category ? <span className="commodore-plugins-comp">{shown.category}</span> : null}<Components t={t} components={shown.components} /></span> : null}
       </button>
       <span className="commodore-palette-action">
         {installed ? <span className="commodore-plugins-state is-done">{t("commodore.plugins.palette.installed")}</span>

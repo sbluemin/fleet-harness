@@ -887,7 +887,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
    흰 바탕 아이콘이 밝은 테마에서 번지지 않게 그림 위에 안쪽 1px 고리를 겹친다. */
 .commodore-tile { position: relative; display: inline-grid; place-items: center; flex: none; overflow: hidden; background: color-mix(in oklch, var(--text-primary) 7%, transparent); color: var(--text-secondary); font-family: var(--font-ui); font-weight: var(--weight-medium); letter-spacing: 0.02em; line-height: 1; user-select: none; }
 .commodore-tile.is-row { width: 20px; height: 20px; border-radius: 5px; font-size: var(--t-2xs); }
-.commodore-tile.is-card { width: 32px; height: 32px; border-radius: 8px; font-size: var(--t-sm); }
+.commodore-tile.is-card { width: 36px; height: 36px; border-radius: 10px; font-size: var(--t-sm); }
 .commodore-tile.is-market { width: 36px; height: 36px; border-radius: 9px; font-size: var(--t-md); }
 .commodore-tile.is-phone { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
 .commodore-tile.is-detail { width: 44px; height: 44px; border-radius: 12px; font-size: var(--t-md); }
@@ -963,29 +963,25 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 16px 8px; }
 .commodore-palette-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; padding: 12px 0 4px; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-palette-group-head > span:first-child { color: var(--text-secondary); font-weight: var(--weight-medium); }
-/* 팔레트 카드 — 넓은 화면은 세 열, 그 아래는 두 열, 520px 이하는 한 열. 설명은 두 줄에서 자른다.
-   신뢰 확인이 열린 카드는 열 수와 상관없이 한 줄 전체(1 / -1)를 차지해 경고가 한 칸에 끼지 않는다. */
-.commodore-palette-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-@media (min-width: 900px) { .commodore-palette-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.commodore-palette-card { position: relative; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
-.commodore-palette-card.is-open { grid-column: 1 / -1; }
-.commodore-palette-open { display: flex; flex: 1 1 auto; flex-direction: column; gap: 10px; width: 100%; min-width: 0; padding: 12px 96px 12px 12px; border: 0; border-radius: inherit; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
-/* hover 빛은 카드 면이 진다 — 열기 단추는 행 높이로 늘어난 카드를 채우고, 「설치」에 올려도 같은 카드가 밝아진다. */
-.commodore-palette-card:has(> .commodore-palette-open:hover, .commodore-palette-install:hover) { background: color-mix(in oklch, var(--text-primary) 6.5%, transparent); }
+/* 팔레트 행 — 마켓플레이스 묶음마다 둥근 카드 하나, 그 안에 플러그인이 한 줄씩 선다(상세의 구성 섹션과 같은 문법).
+   설명은 한 줄에서 자르고, 신뢰 확인이 열린 행만 설명 전체와 확인 칸을 아래로 펼친다. */
+.commodore-palette-rows { min-width: 0; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+.commodore-palette-row { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.commodore-palette-row + .commodore-palette-row { border-top: 1px solid var(--hairline); }
+.commodore-palette-open { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; padding: 10px 104px 10px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+/* hover 빛은 행 면이 진다 — 「설치」에 올려도 같은 행이 밝아진다. */
+.commodore-palette-row:has(> .commodore-palette-open:hover, .commodore-palette-install:hover) { background: color-mix(in oklch, var(--text-primary) 5%, transparent); }
 .commodore-palette-open:focus-visible { box-shadow: var(--focus-face); }
-.commodore-palette-card.is-open .commodore-palette-open { padding-right: 12px; }
-.commodore-palette-card-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
-.commodore-palette-card-title { display: grid; flex: 1 1 auto; gap: 1px; min-width: 0; }
+.commodore-palette-row.is-open .commodore-palette-open { align-items: flex-start; padding-right: 14px; }
+.commodore-palette-row-main { display: grid; flex: 1 1 auto; gap: 1px; min-width: 0; }
 .commodore-palette-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); line-height: 1.4; }
-.commodore-palette-byline { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
-.commodore-palette-action { position: absolute; top: 12px; right: 12px; z-index: 1; display: inline-flex; flex: none; pointer-events: none; }
-.commodore-palette-install { pointer-events: auto; }
+.commodore-palette-desc { min-width: 0; margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
+.commodore-palette-desc.is-clamped { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-palette-action { position: absolute; top: 0; right: 14px; z-index: 1; display: inline-flex; flex: none; align-items: center; height: 56px; pointer-events: none; }
+.commodore-palette-action > * { pointer-events: auto; }
 .commodore-palette-install { padding: 3px 12px; font-size: var(--t-xs); }
-.commodore-palette-desc { width: 100%; margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
-.commodore-palette-desc.is-clamped { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.commodore-palette-open > .commodore-plugins-meta { margin-top: auto; }
-.commodore-palette-card > .commodore-plugins-state,
-.commodore-palette-card > .commodore-palette-trust { margin: 0 12px 12px; }
+.commodore-palette-row > .commodore-plugins-state,
+.commodore-palette-row > .commodore-palette-trust { margin: 0 14px 12px; }
 .commodore-palette-trust { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); border-radius: var(--radius-md); background: color-mix(in oklab, var(--warn) 7%, transparent); color: var(--text-secondary); font-size: var(--t-xs); }
 .commodore-palette-trust p { margin: 0; }
 .commodore-palette-trust strong { color: var(--text-primary); font-weight: var(--weight-medium); }
@@ -998,13 +994,8 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--hairline); color: var(--text-tertiary); font-size: var(--t-2xs); }
 :root[data-view-mode="mobile"] .commodore-palette-scrim { place-items: end stretch; padding: 0; background: var(--m-scrim); }
 :root[data-view-mode="mobile"] .commodore-palette { width: auto; height: calc(100% - 56px); padding-bottom: max(12px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--m-surface); box-shadow: none; }
-/* 폰 시트 — 한 열, 카드 면 대신 묶음 줄(머리줄 선)로 접는다. */
-:root[data-view-mode="mobile"] .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
-:root[data-view-mode="mobile"] .commodore-palette-card { border: 0; border-top: 1px solid var(--hairline); border-radius: 0; background: none; }
-:root[data-view-mode="mobile"] .commodore-palette-open { padding: 12px 96px 12px 4px; }
-:root[data-view-mode="mobile"] .commodore-palette-card.is-open .commodore-palette-open { padding-right: 4px; }
-:root[data-view-mode="mobile"] .commodore-palette-card .commodore-tile.is-card { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
-@media (max-width: 520px) { .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); } }
+:root[data-view-mode="mobile"] .commodore-palette-row .commodore-tile.is-card { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
+:root[data-view-mode="mobile"] .commodore-palette-action { height: 60px; }
 .commodore-plugin-detail { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
 .commodore-plugin-detail-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 20px 24px; }
 .commodore-plugin-detail-hero { display: flex; align-items: center; gap: 14px; min-width: 0; }
