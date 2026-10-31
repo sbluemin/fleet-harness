@@ -131,7 +131,7 @@ internal object AppearanceBridge {
   }
 
   /** The page background before it paints, matching `--m-bg`, so a load never flashes the wrong pole. */
-  fun backgroundColor(dark: Boolean): Int = if (dark) 0xFF151515.toInt() else 0xFFF7F6F2.toInt()
+  fun backgroundColor(dark: Boolean): Int = if (dark) 0xFF151515.toInt() else 0xFFFCFCFC.toInt()
 }
 
 internal class AppearanceStore(context: Context) {
