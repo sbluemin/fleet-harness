@@ -1626,8 +1626,8 @@ describe("Console core design contract", () => {
     expect(theme).toContain(':root[data-theme="light"]');
     // 테마는 다크·라이트 둘뿐이다 — 퇴역 팔레트 셀렉터가 되살아나면 저장값 정규화와 어긋난 색이 선다.
     expect(new Set(theme.match(/data-theme="[a-z]+"/g))).toEqual(new Set(['data-theme="dark"', 'data-theme="light"']));
-    // 라이트의 대기는 오트밀 웜 뉴트럴(hue 95~100)이다 — 청색(hue 250대) 대기 회귀를 차단한다.
-    expect(theme).toContain("--ink-abyss: oklch(97% 0.003 100);");
+    // 라이트 대기는 무채색(채도 0)이다 — 오트밀 hue와 청색(hue 250대) 대기 회귀를 함께 차단한다.
+    expect(theme).toContain("--ink-abyss: oklch(97% 0 0);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
     // 다크 셀렉터는 첫 페인트 계약만 진다 — 팔레트는 base가 이미 다크라 이 블록은 color-scheme 하나뿐이다.
     const darkBlocks = theme.match(/^:root\[data-theme="dark"\][^{]*\{[^}]*\}/gm) ?? [];
@@ -1666,15 +1666,15 @@ describe("Console core design contract", () => {
     // 라이트(Whites)만 종이 표면보다 어두운 자체 리터럴로 분화한다(작업면 최명면 극성).
     expect(base).toContain("--surface-chrome: var(--surface-glass);");
     expect(theme.match(/--surface-chrome:/g)).toHaveLength(2);
-    expect(theme).toContain("--surface-chrome: oklch(96% 0.004 100);");
+    expect(theme).toContain("--surface-chrome: oklch(96% 0 0);");
     // 라이트 캔버스는 종이(터미널 98.2%)보다 어둡고 크롬보다 밝은 중간층이다 —
     // 이 순서가 무너지면 작업면 최명면 극성이 다시 뒤집힌다.
-    expect(theme).toContain("--canvas-abyss: oklch(97.8% 0.003 100);");
+    expect(theme).toContain("--canvas-abyss: oklch(99.1% 0 0);");
     // brass 채움 위 텍스트 티어 — 다크는 abyss 별칭, 라이트는 페이지 배경과 독립된 자체 리터럴로
     // AA 4.5:1을 보장한다(abyss 결합 시 페이지 배경 조정이 버튼 대비를 함께 끌어내린다).
     expect(base).toContain("--text-on-brass: var(--ink-abyss);");
     expect(theme.match(/--text-on-brass:/g)).toHaveLength(2);
-    expect(theme).toContain("--text-on-brass: oklch(99.5% 0.004 95);");
+    expect(theme).toContain("--text-on-brass: oklch(99.5% 0 0);");
     // Objective 패널 면 티어 — 두 테마 모두가 값을 가지며 전부 작업면(터미널 필드) 톤이다.
     // Whites는 종이가 최명면이어야 한다: 크롬(96%)보다도, 패널 둘레에서 실측되는 sea 그라디언트
     // (L 94.9~96.6)보다도 밝아야 창이 책상에 녹지 않는다. 프레임 톤(ink-deep 95.5%)으로 내리면
@@ -1684,11 +1684,11 @@ describe("Console core design contract", () => {
     // 셋째 정의는 대화 중심 화면의 「대화 다크」(데스크톱 다크의 테마 스코프) — 무채 작업면 21.8%(Grok 선택 면 실측).
     expect(theme.match(/--surface-panel:/g)).toHaveLength(3);
     expect(theme).toContain("--surface-panel: oklch(21.8% 0 0);");
-    expect(theme).toContain("--surface-panel: oklch(98.2% 0.004 100);");
+    expect(theme).toContain("--surface-panel: oklch(100% 0 0);");
     expect(theme.match(/--surface-panel: var\(--ink-deep\);/g)).toHaveLength(1);
     // 라이트 종이는 크롬보다 밝다 — 이 부등호가 뒤집히면 시선이 크롬으로 끌리는 극성 역전이다.
     const whitesBlock = theme.slice(theme.indexOf(':root[data-theme="light"]'));
-    expect(whitesBlock).toContain("--surface-chrome: oklch(96% 0.004 100);");
+    expect(whitesBlock).toContain("--surface-chrome: oklch(96% 0 0);");
     // 얹히는 면은 패널 면에서 한 칸 물러난다 — 다크는 위(ink-mid), 라이트는 아래(ink-deep).
     expect(base).toContain("--surface-panel-raised: var(--ink-mid);");
     expect(whitesBlock).toContain("--surface-panel-raised: var(--ink-deep);");
@@ -1737,7 +1737,7 @@ describe("Console core design contract", () => {
     const baseTheme = theme.slice(0, theme.indexOf(':root[data-theme="'));
     const inkDeepOf = (block: string) => block.match(/--ink-deep: (oklch\([^)]*\));/)?.[1] ?? "";
     expect(fallbackOf("DARK_TERMINAL_THEME")).toBe(inkDeepOf(baseTheme));
-    expect(fallbackOf("LIGHT_TERMINAL_THEME")).toBe("oklch(98.2% 0.004 100)");
+    expect(fallbackOf("LIGHT_TERMINAL_THEME")).toBe("oklch(100% 0 0)");
 
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
@@ -1933,7 +1933,7 @@ describe("Console core design contract", () => {
     // 그 행에서 4.03:1로 본문 AA 아래였다. L52가 라이브 행 4.58:1 / 패널 5.23:1로 경계(L52.39)
     // 안쪽이다. 트러프는 물결의 3분의 2를 차지하는 휴지 잉크라 판독이 진폭보다 먼저다.
     const whitesSweepBlock = themeCssForSweep.match(/^:root\[data-theme="light"\][^{]*\{[^}]*\}/m)?.[0] ?? "";
-    expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(52% 0.012 95);");
+    expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(52% 0 0);");
     // 라이브 행의 바탕이 바뀌면 위 대비 계산의 전제가 무너진다 — 채팅 행이 같은 레시피를 쓰는 것이
     // 그 계산의 근거이므로 함께 못박는다.
     // 섞는 공간은 oklab이다 — oklch는 두 색의 색상 호를 걸어 whites에서 aurora 30% 테두리가
