@@ -1035,6 +1035,12 @@
   overflow-wrap: anywhere;
 }
 
+/* 탭 머리 아래 본문 — 오른쪽 사이드바의 탭 줄과 본문 첫 요소 사이만 좁힌다. 머리 없는 패널과
+   폰(레일 슬롯을 쓰지 않는다)은 그대로다. */
+.right-rail-panel-slot.has-header .conversation-panel-frame[data-layout="read"] {
+  padding-top: var(--space-2);
+}
+
 .conversation-panel-frame[data-layout="fill"] {
   display: flex;
   flex-direction: column;
