@@ -976,7 +976,8 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-composer-action.is-review:not([aria-disabled="true"]):focus-visible { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 20%, transparent); color: var(--aurora-ink); }
 /* 두 번 누름의 첫 누름 — 다음 누름이 실행이라는 상태다. */
 .group-composer-action.is-armed,
-.group-composer-action.is-armed:not([aria-disabled="true"]):hover { border-color: var(--coral); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); box-shadow: none; }
+.group-composer-action.is-armed:not([aria-disabled="true"]):hover,
+.group-composer-action.is-armed:not([aria-disabled="true"]):focus-visible { border-color: var(--coral); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); box-shadow: none; }
 .group-composer-action.is-armed:not([aria-disabled="true"]):hover,
 .group-composer-action.is-armed:not([aria-disabled="true"]):focus-visible { background: color-mix(in oklch, var(--coral) 16%, transparent); }
 .group-composer-action[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
@@ -985,6 +986,9 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   .group-composer-action:not([aria-disabled="true"]):active { transform: none; }
 }
 .group-composer-action-detail { font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
+/* 채운 칩 안의 부제(구성원 수·고친 항목)는 면 위 글자색을 따른다 — 회색 부제는 파스텔 면 위에서 대비가 2.3 정도다. */
+.group-composer-action.is-primary .group-composer-action-detail,
+.group-composer-action[aria-pressed="true"] .group-composer-action-detail { color: var(--board-on-fill, var(--text-tertiary)); }
 /* 입력창 안에 앉은 동작 칩 — 받는 이 멘션 자리라 brass 면 없이 중성으로 선다. 멘션 칩 자체는 fc-mention-chip. */
 .group-composer-chip.is-action {
   flex: none;
