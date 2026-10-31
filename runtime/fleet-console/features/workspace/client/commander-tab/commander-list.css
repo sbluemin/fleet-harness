@@ -230,8 +230,10 @@
 .commander-compact-popover .commander-tab-sort-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 작업 탭 목표 카드 — 루틴 목록과 같은 테두리 카드 안에 행이 선다. 카드 자체에는 여백을 두지 않아
-   루틴 카드와 가장자리가 맞는다. */
-.commander-tab--card { padding: 0; }
+   루틴 카드와 가장자리가 맞고, 첫 섹션 간격도 정보·설정 탭과 같은 리듬이 된다. 뒤의 .commander-tab
+   규칙과 동률이므로 밀리지 않게 두 계급으로 적는다. */
+.commander-tab.commander-tab--card { padding: 0; }
+.commander-tab.commander-tab--card .commander-tab-bar { padding-block: 0; }
 .commander-tab--card .commander-tab-groups {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
@@ -241,8 +243,9 @@
 .commander-tab--card .commander-tab-list { gap: 0; }
 .commander-tab--card .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
 .commander-tab--card .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
-/* 진행 중 행 끝 chevron은 같은 줄 네 번째 칸에 둔다 — implicit 행으로 떨어지지 않게 열을 미리 낸다. */
+/* 진행 중 행 끝 chevron은 같은 줄 네 번째 칸에 둔다 — 자동 배치로 implicit 행에 떨어지는 일이 없게 셀을 고정한다. */
 .commander-tab--chevron .side-bar-cluster-row { grid-template-columns: 30px 1fr auto auto; }
+.commander-tab--chevron .side-bar-cluster-row-chevron { grid-column: 4; grid-row: 1; align-self: center; }
 
 /* 진행 중 행 끝 chevron — 가운데가 아니라 떠 있는 창으로 여는 길이다(미션 7에서 잇는다). */
 .side-bar-cluster-row-chevron { display: flex; color: var(--text-tertiary); }

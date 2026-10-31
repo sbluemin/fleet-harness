@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useViewportFit, MenuCheckGlyph } from "@fleet-console/ui/react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -140,10 +141,12 @@ export function CommanderPlacementNoticeHost() {
     else openCommodoreTasksPanel(notice.commodoreId);
     dismissCommanderPlacementNotice();
   };
-  return (
+  // 화면 최상위 층에 포털로 그린다 — 사이드바 스택 문맥 안에 두면 오른쪽 패널에 가려진다.
+  return createPortal(
     <ToastHost>
       <Toast open tone="info" title={t(notice.next === "left" ? "commanderRail.movedToLeft" : "commanderRail.movedToRight")} actionLabel={t("chrome.toast.undo")} onAction={undo} onDismiss={dismissCommanderPlacementNotice} />
-    </ToastHost>
+    </ToastHost>,
+    document.body,
   );
 }
 
