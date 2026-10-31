@@ -4,7 +4,8 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { objectiveRecordOrderFromNodes } from "../../../../core/client/src/integration/store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
-import { useClusterIndex } from "../objective-clusters.js";
+import { commanderObjectiveId, indexClusters, useClusterIndex } from "../objective-clusters.js";
+import type { ObjectiveCluster } from "../../../objectives/shared/objective-clusters.js";
 import { buildTheaterEntries, sideBarRowItems, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { isNotStartedRow } from "../conversation/new-session-mention.js";
 import type { CommanderFold } from "./commander-folds.js";
@@ -16,8 +17,29 @@ export interface CommanderSection {
   readonly rows: readonly SideBarRowItem[];
   /** 시작 전·완료만 접힌다. 그룹 제목은 접지 않는다. */
   readonly fold: CommanderFold | null;
-  /** 데스크톱 명단의 시작 전·완료 통합 목록 — 머리 없이 구분선 뒤에 한 줄짜리 행으로 선다. */
+  /** 데스크톱 명단의 시작 전·완료 통합 목록 — 구분 머리(접기 단추) 아래 한 줄짜리 행으로 선다. */
   readonly settled?: true;
+}
+
+/**
+ * 우측 펼침의 유지 주인 — 레일이 이 사령관의 작업 탭에 머물 때 그 사령관 id. 펼침 행의 패널과 레일 머리가 함께 읽는다.
+ * 우측 배치이고, 레일이 보여 주는 패널 주인의 지휘관이 가운데일 때만 그 주인이다.
+ */
+export function keptCommodoreOwnerOf(placement: "left" | "right", panelOwner: string | null, centerIsOwnerCommander: boolean): string | null {
+  if (placement !== "right" || panelOwner === null || !centerIsOwnerCommander) return null;
+  return panelOwner;
+}
+
+/**
+ * 가운데 objectiveId가 이 사령관의 지휘관인가 — 시작 전(avatarObjectiveId)·완료 포함.
+ * 우측 펼침의 행 펼치기와 레일 유지가 함께 읽는 판정이다. 묶음 선언이 없는 Objective 은 지휘관이 아니다.
+ */
+export function isCommanderObjective(clusters: readonly ObjectiveCluster[], commodoreId: string, objectiveId: string): boolean {
+  for (const layout of indexClusters(clusters).rows) {
+    if (commanderObjectiveId(layout.cluster) !== objectiveId) continue;
+    if (layout.cluster.commodoreId === undefined || layout.cluster.commodoreId === commodoreId) return true;
+  }
+  return false;
 }
 
 /**
@@ -72,7 +94,7 @@ export function useCommanderRows(commodoreId: string, selectedId: string | null)
   const settled = settledOrder(fresh, done);
   const listSections: CommanderSection[] = [
     ...activeSections,
-    ...(settled.length > 0 ? [{ id: "settled", title: null, rows: settled, fold: null, settled: true as const }] : []),
+    ...(settled.length > 0 ? [{ id: "settled", title: null, rows: settled, fold: "settled" as const, settled: true as const }] : []),
   ];
   // 이 사령관의 기록이 아직 오지 않았거나, 기록은 있는데 줄이 아직 서지 않았으면(묶음 원천 설치 전) 빈 상태가 아니다.
   const settledEmpty = sorted.length === 0 && state.objectiveRecordsHydrated

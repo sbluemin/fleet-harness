@@ -12,7 +12,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
-import { closeNewSession, selectNestedBody, setActiveObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
+import { closeNewSession, getState, selectNestedBody, setActiveObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
 import { useNewSessionShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, useFeatureRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/feature-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
@@ -22,12 +22,12 @@ import { MIN_PANEL_WIDTH, openConversationTab, RightRail, RailToolIcons, useConv
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { closeRailPanel, dismissRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { conversationRailTab, mayAutoOpenConversationRail, useConversationRailMemory } from "./conversation-rail-memory.js";
-import { mountConversationObjectiveTabsHost, registerConversationObjectiveTab, useConversationObjectiveTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/objective-tabs.js";
+import { mountConversationObjectiveTabsHost, registerConversationObjectiveTab, useConversationObjectiveTabPanels, adoptKeptConversationObjectiveTabs, keepConversationObjectiveTabs, releaseKeptConversationObjectiveTabs, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/objective-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
+import { objectiveRecordAvatarKey, commodoreAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { TheaterGlyph } from "../components/theater-glyph.js";
 import { AvatarEditor, KeyedAvatar, ObjectiveAvatar, objectiveRecordAvatarRole, objectiveRecordMongleState } from "../avatars.js";
 import { useAvatarAccent } from "../avatar-accent.js";
@@ -40,19 +40,20 @@ import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/capti
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
-import { useClusterIndex, useObjectiveClusters, commanderObjectiveId } from "../objective-clusters.js";
+import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
+import { isCommanderObjective, keptCommodoreOwnerOf } from "../commander-tab/commander-rows.js";
+import { readCommanderPlacement, useCommanderPlacement } from "../commander-tab/commander-placement.js";
+import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
+import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { ConversationPill, ConversationPillContext, PILL_MORPHING_CLASS, useConversationPillHost } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
-import { closeConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
+import { closeConversationSurface, getConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
-import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
-import { CommanderWindowHost, openCommanderWindow } from "../commander-tab/commander-window.js";
-import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
@@ -144,32 +145,83 @@ function useToggleDetails(objectiveRecordConversation: boolean): () => void {
 }
 
 /**
+ * 지금 가운데가 이 사령관의 지휘관인가 — 시작 전·완료 포함. 우측 펼침의 레일 유지와 행 펼치기가 함께 읽는 판정이다.
+ * cleanup은 저장소가 바뀐 뒤 커밋에 딸려 돌므로 새 가운데를 읽는다.
+ */
+function centerCommanderOf(clusterIndex: ClusterIndex, commodoreId: string): string | null {
+  const surface = getConversationSurface();
+  const params = surface?.params as { readonly objectiveId?: unknown } | undefined;
+  const freshId = surface?.surfaceId === FRESH_SURFACE_ID && typeof params?.objectiveId === "string" ? params.objectiveId : null;
+  const centerId = freshId ?? getState().activeObjectiveId;
+  return centerId !== null && isCommanderObjective(clusterIndex.clusters, commodoreId, centerId) ? centerId : null;
+}
+
+function shouldKeepCommodoreTabs(clusterIndex: ClusterIndex, commodoreId: string): boolean {
+  return readCommanderPlacement() === "right" && centerCommanderOf(clusterIndex, commodoreId) !== null;
+}
+
+/**
+ * 우측 펼침의 유지 주인 — 레일이 이 사령관의 작업 탭에 머물고 가운데가 그 지휘관일 때 그 사령관 id.
+ * 머리(사령관 머리·작업 탭 3개)가 가운데 대상이 아니라 레일을 따르는 길이다.
+ */
+function useKeptCommodoreOwner(): string | null {
+  const placement = useCommanderPlacement();
+  const clusterIndex = useClusterIndex();
+  const tabs = useConversationObjectiveTabPanels();
+  const activePanelId = useRailActivePanelId();
+  const subject = useConversationSubject();
+  const standIn = useConversationStandIn();
+  const ownerTab = tabs.find((tab) => tab.id === activePanelId);
+  const panelOwner = ownerTab?.section?.theaterId ?? null;
+  const centerId = subject?.id ?? standIn ?? null;
+  return keptCommodoreOwnerOf(placement, panelOwner, centerId !== null && panelOwner !== null && isCommanderObjective(clusterIndex.clusters, panelOwner, centerId));
+}
+
+/**
  * 가운데 칸의 대상이 Objective(아직 서지 않은 Objective 을 대신하는 시작 전 목표 포함)으로 바뀌면(Objective 을 고르거나 사령관 같은
  * 플러그인 대화가 걷히면) 오른쪽 패널의 열림/닫힘을 잇는다.
  * 닫혀 있었으면 열지 않는다. 열려 있었고 앞 대상의 탭(구성원·사령관 탭·Theater 설정)을 보이던 중이면 탭 줄 맨 앞의 목표로 돌린다 —
  * 그 탭이 대상과 함께 걷히며 패널을 이미 닫았어도(대화 칸의 cleanup 은 이 effect 보다 먼저 돈다) 다시 연다. Theater 를 연 채 대상이
  * 바뀌면 Theater 는 곧 걷히므로 그 경우도 Objective 대화로 다룬다. 대상의 탭이 아닌 패널(설정, 목표 등 도구)과 목표 도구가 없는
  * 경우는 그대로 둔다.
+ * 우측 배치에서 지금 사령관 패널 주인의 지휘관이 가운데로 오면 사령관 패널(작업 탭)에 머문다 — 레일을 지휘관 화면으로 넘기지 않는다.
+ * 다른 사령관의 지휘관이 오거나 좌측 배치이면 지금 규칙을 그대로 따른다.
+ * 유지 조건이 깨진 보관 등록(다른 사령관·새 세션·좌측 배치)은 여기서 걷는다.
  */
 function usePanelFollowsSubject(subjectId: string | null): void {
   const bindings = useDesktopRailEntries();
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
+  const placement = useCommanderPlacement();
+  const clusterIndex = useClusterIndex();
+  const clustersRef = useRef(clusterIndex);
+  clustersRef.current = clusterIndex;
+  const objectiveTabs = useConversationObjectiveTabPanels();
+  const tabsRef = useRef(objectiveTabs);
+  tabsRef.current = objectiveTabs;
   // 대상이 바뀌는 렌더는 앞 대상의 탭이 걷히기(cleanup) 전에 돈다 — 이 렌더가 읽은 것이 바뀌기 직전 패널의 열림이다. 등록 목록에
   // 없는 id(내려간 플러그인)는 레일이 그리지 않으므로 닫힌 것이다.
   const openBeforeRef = useRef(false);
   const activeAtRender = getRailStoreSnapshot().activePanelId;
   openBeforeRef.current = activeAtRender !== null && bindings.some((binding) => binding.entry.id === activeAtRender && binding.panes.length > 0);
   useEffect(() => {
-    if (subjectId === null || !openBeforeRef.current) return;
-    const current = bindingsRef.current;
     const active = getRailStoreSnapshot().activePanelId;
+    const ownerTab = tabsRef.current.find((tab) => tab.id === active);
+    const panelOwner = ownerTab?.section?.theaterId ?? null;
+    const survivor = keptCommodoreOwnerOf(placement, panelOwner, panelOwner !== null && centerCommanderOf(clustersRef.current, panelOwner) !== null);
+    releaseKeptConversationObjectiveTabs(survivor);
+    if (subjectId === null || !openBeforeRef.current) return;
     if (active === SETTINGS_RAIL_ENTRY_ID) return;
+    if (survivor !== null) {
+      openRailPanel(COMMODORE_ROUTINES_TAB_ID);
+      return;
+    }
+    const current = bindingsRef.current;
     const activeBinding = active === null ? null : current.find((binding) => binding.entry.id === active) ?? null;
     if (activeBinding !== null && !activeBinding.core) return;
     const lead = firstConversationTab(current);
     if (lead) openRailPanel(lead.entry.id);
-  }, [subjectId]);
+  }, [subjectId, placement]);
 }
 
 // ── 사이드바 위·아래 줄 ────────────────────────────────────────────────────
@@ -304,6 +356,7 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
 export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
   const subject = useConversationSubject();
   const standIn = useConversationStandIn();
+  const keepOwner = useKeptCommodoreOwner();
   const surface = useConversationSurface();
   const { conversationSurfaces } = useFeatureRegistry();
   const state = useConsoleState();
@@ -311,7 +364,7 @@ export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
   const descriptor = surface === null ? null : conversationSurfaces.find((entry) => entry.id === surface.surfaceId) ?? null;
   useConversationSurfaceHead(descriptor);
   const context = surface && descriptor ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const : null;
-  const avatarKey = subject ? objectiveRecordAvatarKey(subject.id) : standIn ? objectiveRecordAvatarKey(standIn) : context ? descriptor?.avatar?.(context)?.key ?? null : null;
+  const avatarKey = keepOwner !== null ? commodoreAvatarKey(keepOwner) : subject ? objectiveRecordAvatarKey(subject.id) : standIn ? objectiveRecordAvatarKey(standIn) : context ? descriptor?.avatar?.(context)?.key ?? null : null;
   const accent = useAvatarAccent(avatarKey);
   const activeId = useRailActivePanelId();
   const entries = useDesktopRailEntries();
@@ -319,6 +372,14 @@ export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
   const tabs = useConversationObjectiveTabPanels();
   const ownedPanel = tabs.some((tab) => tab.id === activeId) || entries.some(({ entry }) => entry.id === activeId && isConversationTab(entry));
   return <RightRail {...props} {...(ownedPanel && accent ? { panelClassName: "workspace-avatar-panel", panelStyle: accent } : {})} />;
+}
+
+/**
+ * 기본 「구성원」 탭을 가리는가 — objectives crew 탭이 대신하거나(기존 규칙), 유지 상태에서 펼친 행 패널의
+ * 「구성원」 탭이 대신할 때. 유지 상태의 탭 줄은 사령관 탭 3개뿐이다.
+ */
+export function hidesCoreMembersTab(hasMembersStandIn: boolean, keepOwner: string | null): boolean {
+  return hasMembersStandIn || keepOwner !== null;
 }
 
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
@@ -330,7 +391,9 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const subject = useConversationSubject();
   const standIn = useConversationStandIn();
   const inbox = useTheaterInboxState();
-  const objectiveRecordConversation = (subject !== null || standIn !== null) && inbox === null;
+  // 우측 펼침의 유지 상태에서는 가운데 지휘관의 목표 탭·머리 줄을 세우지 않는다 — 사령관 패널(작업 탭)만 선다.
+  const keepOwner = useKeptCommodoreOwner();
+  const objectiveRecordConversation = keepOwner === null && (subject !== null || standIn !== null) && inbox === null;
   // 하위 탭을 내는 도구(목표)가 「구성원」을 대신하면 대상의 구성원 탭은 서지 않는다 — 그 자리에 도구의 구성원 탭이 선다.
   const bindings = useDesktopRailEntries();
   const activePanelId = useRailActivePanelId();
@@ -340,7 +403,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const tabsTheaterId = tabsEntry?.scope === "fleet" ? null : context.theaterId;
   const tabsState = useConversationTabsState(tabsEntry?.conversationTabs, tabsTheaterId);
   const membersStandIn = tabsState?.tabs.find((tab) => tab.replacesMembers === true) ?? null;
-  const coreFilter = membersStandIn === null
+  const coreFilter = !hidesCoreMembersTab(membersStandIn !== null, keepOwner)
     ? sections.filter
     : (entryId: string) => entryId !== CONVERSATION_MEMBERS_TAB_ID && (sections.filter?.(entryId) ?? true);
   // 걷힌 구성원 탭이 켜져 있었으면(대화를 옮기기 전에 열어 둔 것) 대신하는 탭으로 옮긴다.
@@ -543,10 +606,28 @@ function ConversationPanelIdentity() {
   const clusterIndex = useClusterIndex();
   const renameObjective = useConversationObjectiveRename();
   useConversationSurfaceHead(centerSurface);
+  // 우측 펼침의 유지 상태에서는 가운데 지휘관이 아니라 사령관 머리를 민다 — 펼친 행 패널이 지휘관을 보인다.
+  const keepOwner = useKeptCommodoreOwner();
+  if (keepOwner !== null) {
+    const keepDescriptor = conversationSurfaces.find((candidate) => candidate.id === COMMODORE_SURFACE_ID) ?? null;
+    if (keepDescriptor !== null) {
+      const keepContext = { params: { commodoreId: keepOwner }, language, theme: state.activeTheme, close: () => undefined } as const;
+      try {
+        const avatar = keepDescriptor.avatar?.(keepContext) ?? null;
+        return (
+          <div className="conversation-panel-identity">
+            {avatar
+              ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
+              : null}
+            <PanelIdentityName title={keepDescriptor.title(keepContext)} onRename={keepDescriptor.rename?.(keepContext) ?? undefined} subject="surface" />
+          </div>
+        );
+      } catch { /* 아래에서 가운데 대상으로 폴백한다. */ }
+    }
+  }
   // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 는 정체성이 아니므로 표식은 Theater 표식이다.
   // 가운데 칸에 그 Theater 를 대신하는 대화가 서 있으면 표식과 이름은 그 대화의 것이다 — 패널을 어느 길로 열든 머리가 같다.
-  if (inbox !== null && theaterLabel !== null) {
-    const context = centerSurface !== null && surface !== null
+  if (inbox !== null && theaterLabel !== null) {    const context = centerSurface !== null && surface !== null
       ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
       : null;
     let owner: { readonly title: string; readonly label: string; readonly state: MongleState; readonly rename: ((title: string) => void) | null } | null = null;
@@ -911,8 +992,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       )}
       </ConversationDockHost.Provider>
     </section>
-    {/* 떠 있는 지휘관 창 — 가운데 칸과 같은 Objective 본문 풀을 쓴다. 폰 셸에는 서지 않는다. */}
-    <CommanderWindowHost language={language} />
     <ConversationWorkbench
       layerRef={workbenchLayerRef}
       insets={insets}
@@ -1265,8 +1344,19 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // 때는 패널을 그대로 둔다.
   const tabIdsRef = useRef<readonly string[]>([]);
   tabIdsRef.current = (descriptor.tabs ?? []).map((tab) => tab.id);
+  const clusterIndex = useClusterIndex();
+  const clustersRef = useRef(clusterIndex);
+  clustersRef.current = clusterIndex;
+  const surfaceCommodoreRef = useRef<string | null>(null);
   useEffect(() => {
+    // 이 대화의 사령관 — 우측 펼침의 유지·복귀 판정이 읽는다.
+    let surfaceCommodore: string | null = null;
+    try { surfaceCommodore = descriptor.commodoreId?.(context) ?? null; } catch { surfaceCommodore = null; }
+    surfaceCommodoreRef.current = surfaceCommodore;
     const tabs = descriptor.tabs ?? [];
+    // 같은 사령관으로 돌아오면 유지 중인 등록이 새 등록에 이어진다 — 보관만 버리고 dispose하지 않는다(두 겹 방지).
+    // 탭을 세우지 않는 대화(시작 화면 등)는 보관에 손대지 않는다. 손대면 유지 중인 등록의 손잡이를 잃는다.
+    if (surfaceCommodore !== null && tabs.length > 0) adoptKeptConversationObjectiveTabs(surfaceCommodore);
     const disposers = tabs.map((tab, order) => registerConversationObjectiveTab({
       id: tab.id,
       title: tab.title,
@@ -1279,12 +1369,22 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       render: () => <ConversationPanelFrame layout={tab.layout}><FeatureErrorBoundary fallback={null}>{tab.render(context)}</FeatureErrorBoundary></ConversationPanelFrame>,
     }));
     return () => {
+      // 우측 배치에서 이 사령관의 지휘관이 가운데로 오면 등록을 유지한다(보관함에 맡긴다) — 레일이 작업 탭에 머물고 패널이 깜빡이지 않는다.
+      // cleanup은 저장소가 바뀐 뒤 커밋에 딸려 돌므로 새 가운데를 읽는다. 다른 주인이 맡겨져 있으면 먼저 걷는다.
+      // 세울 탭이 없는 대화는 보관에 맡기지 않는다 — 빈 손잡이가 실등록을 덮어 유지가 풀리지 않게 한다.
+      const commodoreId = surfaceCommodoreRef.current;
+      if (disposers.length > 0 && commodoreId !== null && shouldKeepCommodoreTabs(clustersRef.current, commodoreId)) {
+        keepConversationObjectiveTabs(commodoreId, () => { for (const dispose of disposers) dispose(); });
+        return;
+      }
       for (const dispose of disposers) dispose();
     };
   }, [context, descriptor, section]);
   // 대화가 걷히면 그 탭이 연 패널도 걷힌다 — 다음 대상이 Objective 이면 가운데 칸이 이 열림을 이어 그 대화의 탭을 연다
-  // (usePanelFollowsSubject).
+  // (usePanelFollowsSubject). 우측 배치에서 이 사령관의 지휘관으로 옮기면 패널을 닫지 않고 작업 탭에 머문다.
   useEffect(() => () => {
+    const commodoreId = surfaceCommodoreRef.current;
+    if (commodoreId !== null && shouldKeepCommodoreTabs(clustersRef.current, commodoreId)) return;
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && tabIdsRef.current.includes(active)) closeRailPanel(active);
   }, []);
@@ -1479,24 +1579,11 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const memberIds = new Set([...roster.flatMap((member) => (member.objectiveId ? [member.objectiveId] : [])), ...nested.map((candidate) => candidate.id)]);
   memberIds.delete(objectiveRecord.id);
   const memberCount = memberIds.size;
-  // 지휘관 채팅 머리 칩의 「팝업으로 띄우기」 — 글리프 단추 하나다. 누르면 가운데는 그 사령관 대화로 돌아가고
-  // 같은 지휘관이 떠 있는 창으로 뜬다(어느 배치에서든 쓴다).
-  const { sorted: commanderCandidates } = useCommanderRows(objectiveRecord.commodoreId, objectiveRecord.id);
-  const isCommander = commanderCandidates.some((item) => commanderObjectiveId(item.layout.cluster) === objectiveRecord.id);
-  const popout = isCommander ? (
-    <button type="button" className="conversation-pill-popout" aria-label={t("commanderWindow.popout")} title={t("commanderWindow.popout")} onClick={(event) => {
-      event.stopPropagation();
-      openCommanderWindow(objectiveRecord.commodoreId, objectiveRecord.id, event.currentTarget);
-      openCommodoreConversation(objectiveRecord.commodoreId);
-    }}>
-      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="5" width="8.5" height="8.5" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M8 2.5h5.5V8M13.5 2.5 8.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-    </button>
-  ) : null;
 
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={popout ? <>{viewSwitch}{popout}</> : viewSwitch}>
+        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
             {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}

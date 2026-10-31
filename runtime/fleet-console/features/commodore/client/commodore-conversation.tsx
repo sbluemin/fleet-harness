@@ -41,6 +41,8 @@ type T = Translate<CommodoreMessageKey>;
 export const COMMODORE_SURFACE_ID = "commodore";
 const TAB_IDS = { routines: "commodore-routines", info: "commodore-info", settings: "commodore-settings" } as const;
 type ConversationTab = keyof typeof TAB_IDS;
+/** 우측 배치에서 지휘관 가운데를 두는 동안 레일이 머무는 작업 탭 id. */
+export const COMMODORE_ROUTINES_TAB_ID = TAB_IDS.routines;
 
 let port: ClientConversationCapability | null = null;
 let inbox: ClientTheaterInboxCapability | null = null;

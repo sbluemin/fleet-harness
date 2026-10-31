@@ -6,6 +6,8 @@ export type CommanderPlacement = "left" | "right";
 const KEY = "fleet-console.commanderList.place";
 const LEGACY_SIDE_KEY = "fleet-console.commanderRail.side";
 const RAIL_EXPANDED_KEY = "fleet-console.commanderList.expanded";
+// 거둔 떠 있는 지휘관 창의 크기 기억 — 읽는 김에 지운다. 값은 따로 쓰지 않는다.
+const LEGACY_WINDOW_RECT_KEY = "fleet-console.commanderWindow.rect";
 
 export function readCommanderPlacement(): CommanderPlacement {
   try {
@@ -13,6 +15,7 @@ export function readCommanderPlacement(): CommanderPlacement {
     // 고스팅 레일 잔재는 읽는 김에 지운다 — 값은 따로 쓰지 않는다.
     window.localStorage.removeItem(LEGACY_SIDE_KEY);
     window.localStorage.removeItem(RAIL_EXPANDED_KEY);
+    window.localStorage.removeItem(LEGACY_WINDOW_RECT_KEY);
     const raw = window.localStorage.getItem(KEY);
     if (raw === null) return "left";
     const parsed: unknown = JSON.parse(raw);

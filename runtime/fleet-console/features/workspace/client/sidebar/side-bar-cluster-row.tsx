@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
-import { ChevronGlyph } from "@fleet-console/ui/react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -221,8 +220,10 @@ interface SideBarClusterRowProps {
   readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null, focusFirst?: boolean) => void;
   /** 시작 전·완료 통합 목록의 줄 — 아바타 대신 날짜, 둘째 줄 없이 제목 한 줄로 선다. */
   readonly settled?: boolean;
-  /** 작업 탭 목표 카드의 진행 중 행 끝 chevron — 목록을 여는 길이지 동작이 아니다. */
-  readonly chevron?: boolean;
+  /** 펼침 패널이 라벨로 가리키는 제목 id — 우측 카드의 펼친 행에만 둔다. */
+  readonly titleId?: string | undefined;
+  /** 행 아래 펼침의 열림 — 펼침을 그리는 목록만 건넨다. 없으면 버튼에 달지 않는다. */
+  readonly ariaExpanded?: boolean | undefined;
 }
 
 /** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. */
@@ -251,7 +252,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu, settled = false, chevron = false }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu, settled = false, titleId, ariaExpanded }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -353,7 +354,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       rename.begin();
     }
     : undefined;
-  const titleNode = <span className="side-bar-cluster-row-title" onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
+  const titleNode = <span className="side-bar-cluster-row-title" id={titleId} onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
   const style = accentValue ? ({ "--user-accent": accentValue } as CSSProperties) : undefined;
   return (
     <li
@@ -401,6 +402,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         type="button"
         className="side-bar-cluster-row-main"
         aria-current={active ? "true" : undefined}
+        aria-expanded={ariaExpanded}
         aria-haspopup={onContextMenu ? "menu" : undefined}
         aria-label={[layout.cluster.title, label, toolUseLabel ?? "", ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
         onClick={open}
@@ -431,7 +433,6 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle ? {} : { "aria-hidden": true })}>
         {row.mark ? (row.mark.toggle ? <ClusterRowMarkToggle mark={row.mark} toggle={row.mark.toggle} /> : <ClusterRowMark mark={row.mark} />) : null}
       </span>
-      {chevron && !settled ? <span className="side-bar-cluster-row-chevron" aria-hidden="true"><ChevronGlyph direction="right" /></span> : null}
     </li>
   );
 }

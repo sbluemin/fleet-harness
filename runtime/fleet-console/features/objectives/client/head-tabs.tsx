@@ -3,12 +3,11 @@ import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import type { RailEntryConversationPane, RailEntryConversationTab, RailEntryConversationTabs, RailEntryConversationTabsState } from "../../workspace/shared/rail.js";
 
 import { unseenRecords, type Objective } from "../shared/types.js";
-import { DatePicker } from "./date-picker.js";
 import { freshConversationObjectiveId, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { objectiveOfObjective } from "./mobile.js";
-import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { findAnyObjective, followedObjectiveId, isObjectiveSurfaceOpen, objectiveDisplayOwnerId, objectivesApi, objectiveRecordSummaries, patchOwnerView, post, readOwnerView, readBoard, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { DETAIL_TABS, detailTabOf, ObjectiveScheduleRow, type DetailTab } from "./objectives-panel.js";
+import { findAnyObjective, followedObjectiveId, isObjectiveSurfaceOpen, objectiveDisplayOwnerId, patchOwnerView, readOwnerView, readBoard, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 상세의 탭과 오늘·기한은 Console 오른쪽 패널 머리(아바타·이름 아래)에 두 줄로 선다 — 첫 줄은 오늘·기한(사령관 패널의 섹션 줄 자리),
@@ -90,37 +89,13 @@ export const objectiveMobileConversationTabs: NonNullable<RailEntryConversationP
 };
 
 /**
- * 탭 줄 위 한 줄의 오늘·기한 — 글리프와 짧은 낱말이 섹션 줄 문법(작은 pill)으로 선다. 불리언이라 켜짐은 면 없이 잉크(brass-ink)로만
- * 말하고, 기한이 지나면 coral. 기한 지우기는 달력의 「기한 없음」과 고른 날짜의 재선택이 맡는다.
+ * 탭 줄 위 한 줄의 오늘·기한 — 목표를 직접 받는 행을 objectives-panel의 공용 줄로 둔다.
  */
 function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonly theaterId: string | null; readonly language: ConsoleLocale }) {
   const read = () => headObjective(contextTheaterId).objective;
   const objective = useSyncExternalStore(subscribeHead, read, read);
-  const readActivity = () => (objective ? objectiveRecordSummaries().find((objectiveRecord) => objectiveRecord.id === objective.id)?.activity ?? null : null);
-  const activity = useSyncExternalStore(subscribeObjective, readActivity, readActivity);
-  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
-  const dueButton = useRef<HTMLButtonElement | null>(null);
   if (!objective) return null;
-  const lang = language === "ko" ? "ko" : "en";
-  const t = getT(lang);
-  // 지휘관이 일하는 동안에는 잠긴다 — 상세의 편집 잠금과 같은 기준이다(서버도 같은 기준으로 거절한다).
-  const editable = !objective.done && activity !== "running" && activity !== "background";
-  const patch = (next: Record<string, unknown>) => {
-    const api = objectivesApi();
-    if (api) void post(api, "/objective/patch", { objectiveId: objective.id, patch: next, language: lang }).catch(() => undefined);
-  };
-  const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
-  const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
-  const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, lang) }) : t("objectives.schedule.setDue");
-  return (
-    <span className="objectives-head-tools" role="group" aria-label={t("objectives.schedule.title")}>
-      <button type="button" className={`objectives-tab-glyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} title={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /><span aria-hidden="true">{t("objectives.tabs.today")}</span></button>
-      <button ref={dueButton} type="button" className={`objectives-tab-glyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} title={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
-        <CalGlyph /><span aria-hidden="true">{t("objectives.schedule.due")}{objective.dueDate ? <span> · {dueShort(objective.dueDate, lang)}</span> : null}</span>
-      </button>
-      {dateAnchor ? <DatePicker anchor={dateAnchor} trigger={dueButton} value={objective.dueDate} language={lang} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
-    </span>
-  );
+  return <ObjectiveScheduleRow objective={objective} language={language} />;
 }
 
 export const objectiveConversationTabs: RailEntryConversationTabs = {

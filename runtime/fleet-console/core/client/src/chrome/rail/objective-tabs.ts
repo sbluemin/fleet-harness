@@ -62,6 +62,36 @@ export function registerConversationObjectiveTab(tab: ConversationObjectiveTab):
   };
 }
 
+/**
+ * 우측 펼침이 유지하는 사령관 탭 등록 — 가운데가 그 사령관의 지휘관인 동안 걷지 않는다.
+ * 주인이 바뀌면(다른 사령관·새 세션·좌측 배치) 걷는다. 한 번에 한 주인만 둔다.
+ */
+let keptTabs: { readonly owner: string; readonly dispose: () => void } | null = null;
+
+/** 유지 등록을 맡긴다 — 다른 주인이 있으면 먼저 걷는다. */
+export function keepConversationObjectiveTabs(owner: string, dispose: () => void): void {
+  if (keptTabs !== null && keptTabs.owner !== owner) {
+    const stale = keptTabs;
+    keptTabs = null;
+    stale.dispose();
+  }
+  keptTabs = { owner, dispose };
+}
+
+/** 새 등록이 이어받으므로 보관만 버린다 — 같은 id가 두 겹으로 서지 않는다. */
+export function adoptKeptConversationObjectiveTabs(owner: string): void {
+  if (keptTabs?.owner === owner) keptTabs = null;
+}
+
+/** 보관 등록을 걷는다 — 같은 주인은 둔다. */
+export function releaseKeptConversationObjectiveTabs(exceptOwner: string | null): void {
+  if (keptTabs !== null && keptTabs.owner !== exceptOwner) {
+    const stale = keptTabs;
+    keptTabs = null;
+    stale.dispose();
+  }
+}
+
 /** 대화 중심 화면이 서 있음을 알린다. 걷는 함수는 언마운트 cleanup 에서 부른다. */
 export function mountConversationObjectiveTabsHost(): () => void {
   hostCount += 1;
