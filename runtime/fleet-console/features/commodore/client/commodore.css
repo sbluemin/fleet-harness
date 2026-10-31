@@ -283,6 +283,53 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 .objectives-commodore-trail-fresh:focus-visible { box-shadow: var(--focus-face); }
 
+/* 정보 탭 「목표 기록」 — 기억 아래 섹션. 목표마다 한 줄(마지막 행위·시각)이고, 행을 누르면 그 목표의 최근 행위가 펼쳐진다.
+   줄 모양은 위 흔적 줄을 그대로 쓴다. 「더 보기」는 상자 높이를 미끄러지듯 바꾸고, 새로 드러난 행은 차례로 떠오른다. */
+.objectives-commodore-trail-box { overflow: hidden; transition: height .32s cubic-bezier(.2, .7, .2, 1); }
+.objectives-commodore-trail-rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; min-width: 0; }
+.objectives-commodore-trail-row-item { min-width: 0; }
+.objectives-commodore-trail-row-item.is-revealed { animation: objectives-commodore-trail-rise .3s cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes objectives-commodore-trail-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.objectives-commodore-trail-row {
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 10px; align-items: center; gap: 8px; width: calc(100% + 12px); min-width: 0;
+  margin-inline: -6px; padding: 6px; border: 0; border-radius: var(--radius-xs); background: transparent; text-align: left; cursor: pointer;
+  color: var(--text-secondary); font: inherit; font-size: var(--t-sm); line-height: 1.4;
+}
+.objectives-commodore-trail-row:hover, .objectives-commodore-trail-row-open:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
+.objectives-commodore-trail-row:focus-visible, .objectives-commodore-trail-row-open:focus-visible, .objectives-commodore-trail-more:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.objectives-commodore-trail-row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-weight: var(--weight-medium); }
+.objectives-commodore-trail-row-item.is-done .objectives-commodore-trail-row-title { color: var(--text-secondary); }
+.objectives-commodore-trail-row-last { color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.objectives-commodore-trail-row-chev { width: 10px; height: 10px; color: var(--text-tertiary); transition: transform .25s cubic-bezier(.2, .7, .2, 1); }
+.objectives-commodore-trail-row-chev svg, .objectives-commodore-trail-more-chev svg { display: block; width: 10px; height: 10px; }
+.objectives-commodore-trail-row[aria-expanded="true"] .objectives-commodore-trail-row-chev { transform: rotate(90deg); }
+.objectives-commodore-trail-glyph.is-progress { color: var(--aurora-ink); }
+.objectives-commodore-trail-glyph.is-done { color: var(--positive-ink); }
+.objectives-commodore-trail-glyph.is-back { color: var(--coral-ink); }
+.objectives-commodore-trail-glyph.is-edit { color: var(--brass-ink); }
+.objectives-commodore-trail-glyph.is-added { color: var(--crest-ink); }
+.objectives-commodore-trail-glyph.is-decision { color: var(--apex-ink); }
+.objectives-commodore-trail-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s cubic-bezier(.2, .7, .2, 1); }
+.objectives-commodore-trail-fold.is-open { grid-template-rows: 1fr; }
+.objectives-commodore-trail-fold-body { min-height: 0; overflow: hidden; padding-left: 14px; }
+.objectives-commodore-trail-fold.is-open .objectives-commodore-trail-fold-body { padding-bottom: 8px; }
+.objectives-commodore-trail-row-open {
+  display: inline-block; margin-top: 2px; padding: 3px 6px; border: 0; border-radius: var(--radius-xs); background: transparent; cursor: pointer;
+  color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs);
+}
+.objectives-commodore-trail-more {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 2px; padding: 7px 10px;
+  border: 1px solid var(--commodore-settings-line); border-radius: var(--radius-md); background: transparent; cursor: pointer;
+  color: var(--text-secondary); font: inherit; font-size: var(--t-xs); transition: background-color .15s, color .15s;
+}
+.objectives-commodore-trail-more:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); }
+.objectives-commodore-trail-more-chev { width: 10px; height: 10px; transition: transform .28s cubic-bezier(.2, .7, .2, 1); }
+.objectives-commodore-trail-more[aria-expanded="true"] .objectives-commodore-trail-more-chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .objectives-commodore-trail-box, .objectives-commodore-trail-fold, .objectives-commodore-trail-row-chev, .objectives-commodore-trail-more-chev { transition: none; }
+  .objectives-commodore-trail-row-item.is-revealed { animation: none; }
+}
+
 /* 목표 칸 이음매 — Repository 분할선과 같은 문법. 선은 1px, 손잡이가 끌 수 있음을 말하고, 잡는 영역은 양쪽 5px. */
 .objectives-commodore-trail-seam {
   position: relative; z-index: 1; flex: none; width: 1px; height: auto; align-self: stretch; background: var(--hairline);
@@ -609,11 +656,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 .objectives-commodore-conversation-back:hover,
 .objectives-commodore-conversation-back:focus-visible { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); outline: none; }
-/* 「행위 기록」 탭의 목표 흔적은 Inbox 곁 칸의 고정 폭(260px·이음매)이 아니라 이 탭의 가용 폭을 채운다.
-   좌우 여백은 읽기 열과 같은 거터다. 흔적 상자의 가로 패딩은 여기서만 거터와 겹치지 않게 걷는다. Inbox 곁 칸의 패딩은 그대로다.
-   높이는 내용만큼이라 짧으면 제목 바로 아래에서 시작하고, 탭보다 길면 탭 높이에서 멈춰 흔적 스크롤이 바닥 붙기·「새 흔적」 단추를 쓴다. */
-.objectives-commodore-conversation-tab.is-goals { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 12px var(--conversation-panel-gutter, 16px); overflow: hidden; }
-.objectives-commodore-conversation-tab.is-goals .objectives-commodore-trail { flex: 0 1 auto; box-sizing: border-box; width: 100%; max-inline-size: none; margin-inline: 0; padding-inline: 0; }
 
 /* 대화 중심 화면의 사령관 — Objective 대화와 같은 화면(호스트 대화 렌더러)이다. 그 화면이 이 칸을 채우고, 입력 캡슐은 그 화면의
    입력 자리(진행 줄 아래)에 그룹 입력창과 같은 좌우 여백·아래 여백으로 선다. */

@@ -976,7 +976,8 @@ function saveDescriptionBoxHeight(height: number): void {
  * 「정보」 칸 — 설명 · 정보 · 기억이 한 칸에 위에서 아래로 선다(오른쪽 패널 탭과 Theater Inbox 칸이 함께 쓴다).
  * 기억 항목을 여는 동안은 그 읽기 화면이 칸을 받는다 — 위 두 섹션은 내리고, 쓰던 설명 초안은 시트 초안에 남는다.
  */
-export function CommodoreInfo({ t, commodoreId, view, onFail, onClear, focusRequest }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly focusRequest?: TheaterInboxBodyContext["focusRequest"] }) {
+/** `after` 는 기억 아래 섹션(대화 중심 화면의 「목표 기록」)이다 — 기억 항목을 읽는 동안에는 설명·정보처럼 내린다. */
+export function CommodoreInfo({ t, commodoreId, view, onFail, onClear, focusRequest, after }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly focusRequest?: TheaterInboxBodyContext["focusRequest"]; readonly after?: ReactNode }) {
   const [reading, setReading] = useState(false);
   return (
     <>
@@ -987,6 +988,7 @@ export function CommodoreInfo({ t, commodoreId, view, onFail, onClear, focusRequ
         </>
       )}
       <CommodoreMemory t={t} theaterId={commodoreId} onReading={setReading} />
+      {reading ? null : after}
     </>
   );
 }
