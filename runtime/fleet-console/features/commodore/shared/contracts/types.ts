@@ -51,6 +51,8 @@ export const routineScheduleSchema = z.discriminatedUnion("kind", [
 export const routineInputSchema = z.object({ name: z.string().trim().min(1).max(60), task: z.string().trim().min(1).max(1000), schedule: routineScheduleSchema }).strict();
 export const commodoreRoutineSchema = routineInputSchema.extend({
   id: ids, enabled: z.boolean(), pausedBy: z.literal("person").optional(),
+  /** 사람 메시지가 실린 턴에서 등록·수정된 루틴 — 이 루틴이 깨운 턴은 사람의 요청을 이어받는다. 자율 턴이 이름·할 일·일정을 바꾸면 지워진다. */
+  requestedBy: z.literal("person").optional(),
   createdAt: routineTimestamp, updatedAt: routineTimestamp, lastRunAt: routineTimestamp.optional(),
 }).strict();
 export type CommodoreRoutine = z.output<typeof commodoreRoutineSchema>;

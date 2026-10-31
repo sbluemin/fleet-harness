@@ -93,10 +93,13 @@ export type WakeCode = "settled" | "routine" | "description" | "intel" | "intel-
 
 const STATUS_DETAILS = 8;
 
+/** requested — 깨울 때 루틴이 사람 요청 출처를 가졌는지. 실행되어 사라진 일회성은 이 기록으로 재시도한다. */
+interface RoutineAttempt { readonly id: string; readonly name: string; readonly task: string; readonly once: boolean; readonly requested: boolean }
+
 interface PendingReason {
   count?: number;
   /** 실패 재시도의 루틴. 일회성 소비와 사람의 반복 루틴 취소를 구별한다. */
-  routines?: { readonly id: string; readonly name: string; readonly task: string; readonly once: boolean }[];
+  routines?: RoutineAttempt[];
   readonly details: string[];
   /** 이 이유를 낸 목표(상태·정체)와 그 목표가 보탠 상세 — 범위 줄과, 돌려받은 목표의 사유를 걷는 데 쓴다. 보드 대기 코드는 턴 직전 보드에서 다시 찾는다. */
   ids?: Map<string, string[]>;
@@ -181,6 +184,8 @@ interface Runner {
   hosted: Map<string, QueuedMessage>;
   /** 이번 턴에 실은 메시지만 보드 도구가 복사할 수 있다. 대기·과거 메시지는 권한이 아니다. */
   turnMessages: readonly QueuedMessage[];
+  /** 이번 턴을 사람 요청 출처의 루틴이 깨웠는지 — 완료 목표 보관만 이것을 사람의 요청으로 받는다. */
+  turnPersonRoutine: boolean;
   sessionImageBytes: number;
   sessionImageBase64Bytes: number;
   coalesce: ReturnType<typeof setTimeout> | null;
@@ -240,10 +245,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       return image;
     });
   };
+  const inTurn = (runner: Runner) => !disposed && !runner.stopping && runner.phase === "turn";
+  const hasPersonMessage = (runner: Runner) => () => inTurn(runner) && runner.turnMessages.length > 0;
   const boardTools = (runner: Runner): readonly ConsoleMcpTool[] => {
     const turn: CommodoreTurnBindings = {
       readAttachments: turnAttachments(runner),
-      hasPersonMessage: () => !disposed && !runner.stopping && runner.phase === "turn" && runner.turnMessages.length > 0,
+      hasPersonMessage: hasPersonMessage(runner),
+      hasPersonRoutine: () => inTurn(runner) && runner.turnPersonRoutine,
       stopping: () => disposed || runner.stopping,
     };
     return [
@@ -368,7 +376,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
       commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
-      boardTools: boardTools(runner), now,
+      boardTools: boardTools(runner), hasPersonMessage: hasPersonMessage(runner), now,
       onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },
@@ -467,10 +475,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           // 소비한 일회성은 재시도하되, 사람이 그새 끄거나 지운 반복 루틴은 실행하지 않는다.
           const attempts = new Map((reason.routines ?? []).flatMap((attempt) => {
             const current = routines.find((r) => r.id === attempt.id);
-            return current?.enabled ? [[attempt.id, { ...attempt, name: current.name, task: current.task }] as const]
+            return current?.enabled ? [[attempt.id, { ...attempt, name: current.name, task: current.task, requested: current.requestedBy === "person" }] as const]
               : !current && attempt.once ? [[attempt.id, attempt] as const] : [];
           }));
-          for (const routine of due) attempts.set(routine.id, { id: routine.id, name: routine.name, task: routine.task, once: routine.schedule.kind === "once" });
+          for (const routine of due) attempts.set(routine.id, { id: routine.id, name: routine.name, task: routine.task, once: routine.schedule.kind === "once", requested: routine.requestedBy === "person" });
           const selected = [...attempts.values()];
           return selected.length ? [[code, { details: selected.map((r) => `${r.name}: ${r.task}`), routines: selected }]] : [];
         }
@@ -512,6 +520,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       }
       const mail = runner.mail.splice(0, mailCount);
       runner.turnMessages = messages;
+      runner.turnPersonRoutine = pending.some(([code, reason]) => code === "routine" && (reason.routines ?? []).some((attempt) => attempt.requested));
       runner.turnSent.clear();
       let outcome: CommodoreTurnOutcome;
       try {
@@ -520,7 +529,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         outcome = await session.turn({ reasons, sentences, ...(openUIFeedback ? { openUIFeedback } : {}), ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}) });
         // 실패·취소된 시도는 다시 실릴 수 있다. 전하지 않았다는 판정은 성공한 턴에서만 확정한다.
         if (outcome.outcome === "ok") for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
-      } finally { runner.turnMessages = []; }
+      } finally { runner.turnMessages = []; runner.turnPersonRoutine = false; }
       if (outcome.outcome === "ok") {
         for (let at = 0; at < mail.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "received-read", seqs: mail.slice(at, at + MAX_TRANSCRIPT_PAGE).map((entry) => entry.seq) });
       } else runner.mail.unshift(...mail);
@@ -618,7 +627,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], mail: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], mail: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnPersonRoutine: false, sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),

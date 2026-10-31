@@ -52,7 +52,7 @@ const sliceOffset = z.number().int().min(0).optional().describe("Slice offset: f
 /** 거절의 뜻은 거절 응답에 싣는다 — 도구 설명에 미리 싣지 않는다. */
 const HINTS: Readonly<Record<string, string>> = {
   own_objective: "An Objective cannot act on an objective it commands or belongs to.",
-  person_message_required: "Archive completed objectives only in a turn carrying a message from the person. Ask the person to request archiving; an autonomous turn cannot do this.",
+  person_message_required: "Archive completed objectives only in a turn carrying a message from the person or woken by a routine the person requested (registered or updated in a turn carrying their message). Ask the person to request archiving; other autonomous turns cannot do this.",
   objective_working: "A session is working and the objective waits on nothing; judge it by its results on the board.",
   budget_exceeded: "Too many calls in 10 minutes; wait before calling again.",
   routing_preview_stale: "Judge with routing first; commence launches routed members with the models it showed.",
@@ -63,7 +63,7 @@ const HINTS: Readonly<Record<string, string>> = {
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
 const scope = { commodoreId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
-const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: restorable archive, including unstarted objectives. Commodore: done needs a person message this turn.");
+const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: restorable, incl. unstarted objectives. Commodore: done needs a person message or requested routine.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
   description: "Objective lists, groups, inbox, fleet, history, archive and models; add/tidy. archive/remove are restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
@@ -144,7 +144,7 @@ export function createObjectiveConsoleTools(ctx: ObjectivesFeatureDeps, store: O
 }
 
 /** 호스트가 호출자를 넣지 않는 사령관 전용 도구. 소유 UUID는 호스트가 고정하고 생성 장소는 별도로 받는다. */
-export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, commodoreId: string, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
+export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, commodoreId: string, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader, hasPersonRoutine?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
   // 호스트와 플러그인 번들은 오류 클래스도 따로 갖는다 — 공개 포트의 거절을 보드 오류로 옮겨 코드·힌트를 보존한다.
   const read: CommodoreAttachmentReader | undefined = readAttachments ? (ids) => {
     try { return readAttachments(ids); }
@@ -154,14 +154,14 @@ export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: Obj
       throw error;
     }
   } : undefined;
-  return createBoardTools(ctx, store, launch, { kind: "commodore", commodoreId }, read, hasPersonMessage).map((tool) => {
+  return createBoardTools(ctx, store, launch, { kind: "commodore", commodoreId }, read, hasPersonMessage, hasPersonRoutine).map((tool) => {
     const name = commodoreSessionToolName(tool.name);
     return name === tool.name ? tool : { ...tool, name };
   });
 }
 type CommodoreCaller = { readonly kind: "commodore"; readonly commodoreId: string };
 type BoardCaller = ConsoleCaller | CommodoreCaller;
-function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
+function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader, hasPersonRoutine?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
   const { languageOf, sessions } = createBoardViews(ctx, store);
   const { rowView, historyView, detailRead } = createConsoleBoardViews(ctx, store);
   const modelCatalog = createModelCatalog(ctx);
@@ -246,7 +246,8 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
             const refusals = targets.flatMap((found) => {
               const reason = caller.kind === "objectiveRecord" && roleIn(found, caller) ? "own_objective"
                 : caller.kind === "objectiveRecord" && found.commodoreId !== ownerOfCaller(caller) ? "other_theater"
-                : found.done && caller.kind === "commodore" && !hasPersonMessage?.() ? "person_message_required" : null;
+                // 완료 목표 보관의 권한은 사람의 요청이다 — 이번 턴의 사람 메시지, 또는 사람이 요청한 루틴이 깨운 턴.
+                : found.done && caller.kind === "commodore" && !hasPersonMessage?.() && !hasPersonRoutine?.() ? "person_message_required" : null;
               return reason ? [{ objectiveId: found.id, reason, ...(HINTS[reason] ? { hint: HINTS[reason] } : {}) }] : [];
             });
             if (refusals.length) return refuse("tidy_refused", { refusals });

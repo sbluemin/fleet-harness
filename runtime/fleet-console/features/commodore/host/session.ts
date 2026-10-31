@@ -49,6 +49,8 @@ export interface CommodoreSessionOptions {
   readonly onInput?: (event: { readonly id: string; readonly state: "started" | "cancelled" }) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
+  /** 지금 턴에 사람 메시지가 실렸는지 — 루틴 도구가 사람 요청 출처를 판정한다. */
+  readonly hasPersonMessage?: () => boolean;
 }
 
 export interface CommodoreTurnInput {
@@ -216,7 +218,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 그 프로젝트 스킬을 싣는다. 뒤에 더한 Theater 는 다음 세션부터 실린다.
     // Theater 의 `.mcp.json` 서버는 싣지 않는다 — Theater 에서 하는 실무는 그 목표의 지휘관·구성원 몫이다.
     const roots = [...new Set((options.theaters?.() ?? []).flatMap(({ root }) => (root ? [root] : [])))];
-    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
+    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}), ...(options.hasPersonMessage ? { hasPersonMessage: options.hasPersonMessage } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.

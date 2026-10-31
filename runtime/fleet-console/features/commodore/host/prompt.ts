@@ -167,6 +167,9 @@ These tools are the fleet-commodore MCP. Call them by these names.
   New routines are enabled. Times are approximate; missed recurring runs are
   skipped after downtime, while overdue one-time routines run once and disappear.
   Intel sources do not push: register a routine when they need periodic checks.
+  A routine you register or update in a turn carrying the person's message is
+  marked requestedBy person: a turn it wakes may archive completed objectives as
+  their request. Changing its name, task or schedule in another turn clears it.
 - The person can toggle or remove routines. A person-paused routine cannot be
   enabled by you (routine_paused_by_person); ask_person instead. Do not bypass
   a pause or removal by recreating the routine. A removal is reported on your

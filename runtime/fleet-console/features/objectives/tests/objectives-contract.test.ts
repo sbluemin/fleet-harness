@@ -2065,7 +2065,8 @@ describe("Objectives contract", () => {
     });
     const firstImage = image();
     let hasPersonMessage = false;
-    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "c1", readAttachments, () => hasPersonMessage) as [ConsoleMcpTool, ConsoleMcpTool];
+    let hasPersonRoutine = false;
+    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "c1", readAttachments, () => hasPersonMessage, () => hasPersonRoutine) as [ConsoleMcpTool, ConsoleMcpTool];
     // 사령관 묶음은 두 화면 — action 이 목록 화면의 것이면 목록 도구, 아니면 목표 화면 도구로 간다.
     const toolFor = (args: Record<string, unknown>) => (String(args.action) in commodoreList.actionSchema!.actions ? commodoreList : commodore);
     const board = async (args: Record<string, unknown>) => {
@@ -2209,7 +2210,7 @@ describe("Objectives contract", () => {
     expect(await board({ action: "restore", objectiveIds: [personal] })).toMatchObject({ restored: [personal] });
     expect(store.find(personal)).toMatchObject({ archived: false, hasSession: true });
     expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[1]!, { action: "read", objectiveId: id })).toBe("other_theater");
-    // 완료 목표 보관은 현재 턴의 사람 메시지가 권한이다. 미기동 완료 목표도 삭제하지 않고 완료 기록과 함께 보관한다.
+    // 완료 목표 보관은 현재 턴의 사람 메시지, 또는 사람이 요청한 루틴이 깨운 턴이 권한이다. 미기동 완료 목표도 삭제하지 않고 완료 기록과 함께 보관한다.
     const completed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Completed before launch", groupId: null });
     await launch.complete(completed.id);
     const completion = store.find(completed.id)!.done;
@@ -2218,9 +2219,14 @@ describe("Objectives contract", () => {
     expect(deniedArchive.structuredContent).toMatchObject({ error: "tidy_refused", refusals: [{ objectiveId: completed.id, reason: "person_message_required", hint: expect.any(String) }] });
     expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "c1")[0]!, archiveCompleted)).toBe("tidy_refused");
     expect(store.find(completed.id)).toMatchObject({ archived: false, hasSession: false, done: completion });
-    hasPersonMessage = true;
+    hasPersonRoutine = true;
     expect(await board(archiveCompleted)).toMatchObject({ ok: true, archived: [completed.id], deleted: [] });
     expect(store.find(completed.id)).toMatchObject({ archived: true, hasSession: true, done: completion });
+    hasPersonRoutine = false;
+    const completedLater = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Completed by hand", groupId: null });
+    await launch.complete(completedLater.id);
+    hasPersonMessage = true;
+    expect(await board({ action: "remove", objectiveIds: [completedLater.id] })).toMatchObject({ ok: true, archived: [completedLater.id], deleted: [] });
     hasPersonMessage = false;
     // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 다음 사건까지 멈추지 않는다.
     expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
