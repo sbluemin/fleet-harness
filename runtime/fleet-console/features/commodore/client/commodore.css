@@ -167,8 +167,8 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 /* 행 값의 오른쪽 음수 마진은 패딩 있는 설정 카드의 끝선 맞춤이다. 이 칸은 좌우 패딩이 없어 그 8px이 본문 밖으로 넘친다. */
 .objectives-commodore-settings :is(.fc-row-value, .fc-coord-trigger.is-field) { margin-right: 0; }
 .objectives-commodore-settings-divider { height: 1px; margin: 6px 0; background: var(--commodore-settings-line); }
-/* 지침 선택 상자 밑의 구성원 맡기기 토글 — 상자와 붙지 않게 위로 한 줄 간격과 머리카락 선을 둔 자기 설정 줄이다. */
-.objectives-commodore-settings .theater-subagents { gap: 0; margin-top: 22px; padding-top: 0; border-top: 1px solid var(--commodore-settings-line); }
+/* 지침 선택 상자 밑의 지휘관 서브에이전트 허용 토글 — 상자와 붙지 않게 위로 한 줄 간격과 머리카락 선을 둔 자기 설정 줄이다. */
+.objectives-commodore-settings .commander-subagents { gap: 0; margin-top: 22px; padding-top: 0; border-top: 1px solid var(--commodore-settings-line); }
 .objectives-commodore-default {
   padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; cursor: pointer;
   text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px;

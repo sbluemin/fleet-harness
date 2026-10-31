@@ -19,7 +19,7 @@ import { SyncedTextarea } from "../../execution/client/composer-primitives/input
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
 import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow } from "../../settings/client/preferences-context.js";
-import { TheaterSubagentsSection, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
+import { CommanderSubagentsSection, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodorePlugins } from "./commodore-plugins.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
@@ -331,7 +331,7 @@ export function CommodoreSessionSettings({ commodoreId, phone = false }: { reado
   const names = useTheaterPromptModeNames();
   const modes = Object.keys(names) as Array<keyof typeof names>;
   if (!commodoreId) return null;
-  // 지침 선택(모드 상자와 본문)과 구성원 맡기기 토글은 서로 다른 설정이다 — 토글은 상자 밖 자기 줄에 선다.
+  // 지침 선택(모드 상자와 본문)과 지휘관 서브에이전트 허용은 서로 다른 설정이다 — 토글은 상자 밖 자기 줄에 선다.
   return (
     <>
       <div className="theater-prompt-page">
@@ -347,7 +347,7 @@ export function CommodoreSessionSettings({ commodoreId, phone = false }: { reado
           <SyncedTextarea className="commodore-prompt-body" value={controller.draft.body} aria-label={names[controller.draft.mode]} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} />
         ) : null}
       </div>
-      <TheaterSubagentsSection theaterId={commodoreId} mobile={phone} />
+      <CommanderSubagentsSection commodoreId={commodoreId} mobile={phone} />
     </>
   );
 }

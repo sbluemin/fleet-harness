@@ -9,7 +9,6 @@ import type { ClaudeCodeSystemPromptMode } from "./execution-settings.js";
 import {
   isNearPromptLimit,
   isOverPromptLimit,
-  TheaterSubagentsSection,
   useFocusAfterReset,
   useTheaterPromptController,
   useTheaterPromptEmptyNotice,
@@ -21,13 +20,12 @@ import "./theater-system-prompt-sheet.css";
 /** 호스트 정준 id 는 `console:settings` 다 — 코어 어댑터가 이 id 앞에 `console:` 을 붙인다. */
 export const THEATER_SETTINGS_SECTION_ID = "settings";
 export const THEATER_SYSTEM_PROMPT_PAGE_ID = "system-prompt";
-export const THEATER_SUBAGENTS_PAGE_ID = "subagents";
 export const THEATER_MEMBERSHIP_PAGE_ID = "theaters";
 
 const sectionStates = new Map<string, TheaterInboxSectionState>();
 
 /**
- * Theater Inbox 의 「Theater 설정」 — 이 Theater 에서 여는 Claude Code 세션의 시스템 프롬프트와 서브에이전트.
+ * Theater Inbox 의 「Theater 설정」 — 이 Theater 에서 여는 Claude Code 세션의 시스템 프롬프트.
  * 플러그인이 아니라 호스트의 기본 섹션이라, 사령관(실험 기능)이 꺼져 있거나 플러그인이 빠져도 남는다.
  */
 export function createTheaterSettingsInboxSection({ icon }: { readonly icon: TheaterInboxSectionDescriptor["icon"] }): TheaterInboxSectionDescriptor {

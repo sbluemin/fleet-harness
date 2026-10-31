@@ -377,64 +377,60 @@ export function isOverPromptLimit(draft: TheaterSystemPrompt): boolean {
   return draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
 }
 
-/**
- * Theater의 서브에이전트 — 켜져 있으면(기본) 서브에이전트 호출 자리에 Objectives 구성원이 선다. 프롬프트와 달리
- * Console이 호출마다 읽으므로 실행 중인 세션도 다음 호출부터 따른다. 저장은 누르는 즉시이며, 실패하면 되돌린다.
- * 데스크톱 Theater Inbox 는 이 칸을 따로 세우고(`titled` 없음 — 칸 제목이 대신한다), 폰 시트는 프롬프트 아래에 붙인다.
- */
-export function TheaterSubagentsSection({ theaterId, mobile = false }: { readonly theaterId: string; readonly mobile?: boolean }) {
+/** 지휘관 서브에이전트 허용. 호출마다 적용하며 저장 실패 시 이전 값으로 되돌린다. */
+export function CommanderSubagentsSection({ commodoreId, mobile = false }: { readonly commodoreId: string; readonly mobile?: boolean }) {
   const t = useT(mobile);
-  const [replaced, setReplaced] = useState<boolean | null>(null);
+  const [allowed, setAllowed] = useState<boolean | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "saving" | "loadFailed" | "saveFailed">("loading");
   const revisionRef = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
     setState("loading");
-    void fetchCommodoreSubagents(theaterId, controller.signal).then((result) => {
-      setReplaced(!result.subagentsKept);
+    void fetchCommodoreSubagents(commodoreId, controller.signal).then((result) => {
+      setAllowed(result.subagentsKept);
       setState("ready");
     }, () => { if (!controller.signal.aborted) setState("loadFailed"); });
     return () => controller.abort();
-  }, [theaterId]);
+  }, [commodoreId]);
 
   const change = (next: boolean) => {
-    const previous = replaced;
+    const previous = allowed;
     const revision = ++revisionRef.current;
-    setReplaced(next);
+    setAllowed(next);
     setState("saving");
-    void saveCommodoreSubagents(theaterId, !next).then((result) => {
+    void saveCommodoreSubagents(commodoreId, next).then((result) => {
       if (revision !== revisionRef.current) return;
-      setReplaced(!result.subagentsKept);
+      setAllowed(result.subagentsKept);
       setState("ready");
     }, () => {
       if (revision !== revisionRef.current) return;
-      setReplaced(previous);
+      setAllowed(previous);
       setState("saveFailed");
     });
   };
 
   if (mobile) {
     return state === "loading" ? <p className="settings-mobile-note" role="status">{t("sidebar.theater.prompt.loading")}</p>
-      : state === "loadFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</p>
+      : state === "loadFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.commodore.commanderSubagents.loadFailed")}</p>
         : <>
           <SettingsCard>
-            <SettingsRow label={t("sidebar.theater.subagents.toggle")}>
-              <SettingsToggle checked={replaced === true} busy={state === "saving"} ariaLabel={t("sidebar.theater.subagents.toggle")} onChange={change} />
+            <SettingsRow label={t("sidebar.commodore.commanderSubagents.toggle")}>
+              <SettingsToggle checked={allowed === true} busy={state === "saving"} ariaLabel={t("sidebar.commodore.commanderSubagents.toggle")} onChange={change} />
             </SettingsRow>
           </SettingsCard>
-          {state === "saveFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
+          {state === "saveFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.commodore.commanderSubagents.saveFailed")}</p> : null}
         </>;
   }
   // 설정 줄 하나 — 제목 자리가 곧 토글 이름이고, 지침 선택과는 구분선으로 떨어진다. 켜고 끈 뜻을 풀어 쓰는 부가 문구는 두지 않는다.
   return (
-    <div className="theater-subagents">
-      <SettingsRow label={t("sidebar.theater.subagents.toggle")}>
+    <div className="commander-subagents">
+      <SettingsRow label={t("sidebar.commodore.commanderSubagents.toggle")}>
         {state === "loading" ? <span className="theater-prompt-caption" role="status">{t("sidebar.theater.prompt.loading")}</span>
-          : state === "loadFailed" ? <span className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</span>
-            : <SettingsToggle checked={replaced === true} busy={state === "saving"} ariaLabel={t("sidebar.theater.subagents.toggle")} onChange={change} />}
+          : state === "loadFailed" ? <span className="theater-prompt-save is-error" role="alert">{t("sidebar.commodore.commanderSubagents.loadFailed")}</span>
+            : <SettingsToggle checked={allowed === true} busy={state === "saving"} ariaLabel={t("sidebar.commodore.commanderSubagents.toggle")} onChange={change} />}
       </SettingsRow>
-      {state === "saveFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
+      {state === "saveFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.commodore.commanderSubagents.saveFailed")}</p> : null}
     </div>
   );
 }

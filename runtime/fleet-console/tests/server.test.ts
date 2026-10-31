@@ -890,7 +890,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(serialized).not.toContain("providerTitle");
   });
 
-  it("persists a member subagent block across the durable state boundary", async () => {
+  it("scopes live subagent permission to Commanders and preserves member policy across the durable state boundary", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-subagent-"));
     tempDirs.push(dir);
     const other = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-location-"));
@@ -927,6 +927,8 @@ describe("console static and terminal ticket boundary", () => {
           ts: { createdAt: 1_000, updatedAt: 1_000 },
         }], [{ id: workspaceHash(registered), path: registered, realpath: registered, label: "B", registeredAt: "2026-09-25T00:00:00.000Z", lastOpenedAt: "2026-09-25T00:00:01.000Z" }]);
         const ownerId = storage.board.owners()[0]!.commodoreId;
+        // 기존 UUID 저장값 true는 지휘관 허용이며, 키가 없으면 비허용이다.
+        fs.writeFileSync(path.join(fleetDataDir, "console", "settings.json"), JSON.stringify({ version: 1, agent: { claudeCodeCommodoreSubagents: { [ownerId]: true } } }));
         storage.board.save(ownerId, {
           ...storage.board.list(ownerId)[0]!,
           rank: 0,
@@ -950,6 +952,33 @@ describe("console static and terminal ticket boundary", () => {
     expect(response.status).toBe(200);
     const ownerRoot = path.join(fixture.fleetDataDir, "console", "commodore");
     const ownerId = fs.readdirSync(ownerRoot).find((id) => fs.existsSync(path.join(ownerRoot, id, "objectives/commander-1/objective.json")))!;
+    const settingsFile = path.join(fixture.fleetDataDir, "console", "settings.json");
+    const agentOptions = () => JSON.parse(fs.readFileSync(settingsFile, "utf8")).agent;
+    expect(agentOptions().claudeCodeCommodoreSubagents).toEqual({ [ownerId]: true });
+    const agentCall = async (sessionId: string) => {
+      const response = await fetch(`${origin}/api/v1/agent/sessions/${sessionId}/agent-call`, {
+        method: "POST", headers: { Authorization: `Bearer ${fixture.lock.token}` },
+      });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    const setAllowed = async (subagentsKept: boolean) => {
+      const response = await fetch(`${origin}/api/v1/agent/commodore-subagents?commodoreId=${ownerId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ subagentsKept }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ commodoreId: ownerId, subagentsKept });
+    };
+    expect(await agentCall("commander-1")).toEqual({ reason: null });
+    await setAllowed(false);
+    expect(agentOptions().claudeCodeCommodoreSubagents).toBeUndefined();
+    expect(await agentCall("commander-1")).toEqual({ reason: expect.any(String) });
+    // 구성원 기동 정책은 별도 방어다. hook은 사령관 설정으로 구성원을 막지 않는다.
+    expect(await agentCall("member-1")).toEqual({ reason: null });
+    await setAllowed(true);
+    expect(agentOptions().claudeCodeCommodoreSubagents).toEqual({ [ownerId]: true });
+    expect(await agentCall("commander-1")).toEqual({ reason: null });
+    expect(await agentCall("member-1")).toEqual({ reason: null });
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
     expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
     expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);

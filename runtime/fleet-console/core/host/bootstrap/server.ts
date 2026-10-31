@@ -823,8 +823,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const mcpHttp = createMcpHttpTransport(() => consoleFeaturePorts.server.origin());
   const consoleAgentOwners = new Set<string>();
-  // 플러그인이 등록한 서브에이전트 호출 판단(redirectAgentCalls). 플러그인 id마다 하나다.
-  const agentCallRedirects = new Map<string, (objectiveId: string) => string | null>();
   const consoleControl = createConsoleControl({ legacyAutomationScope: (theaterId) => {
     const owners = ownership?.legacyOwners(theaterId) ?? [];
     const commodoreId = owners.length === 1 ? owners[0]! : null;
@@ -1287,11 +1285,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       consoleFeaturePorts.objectiveRecords.patch(objectiveId, { ...(next) });
     },
     // 떠 있는 채팅의 모델·강도 — 채팅 화면의 메뉴와 같은 길. 적용되면 실행 호스트가 세션 좌표(payload)를 고친다.
-    // 서브에이전트 호출의 거절 사유 — 플러그인마다 한 자리. 실행 기능의 hook 응답이 호출마다 읽는다.
-    redirectAgentCalls: (reason) => {
-      agentCallRedirects.set(pluginId, reason);
-      return () => { if (agentCallRedirects.get(pluginId) === reason) agentCallRedirects.delete(pluginId); };
-    },
     setCoordinates: (objectiveId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, objectiveId, input),
     coordinates: (objectiveId) => consoleControl.readCoordinates(objectiveId),
     prepareChat: (objectiveId) => consoleControl.prepareChat({ kind: "plugin", pluginId }, objectiveId),
@@ -2664,12 +2657,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const launchPromptDirectories = createLaunchPromptNamespace({ lockFile: lockPaths.lockFile });
       const execution = await startConsoleExecution(createConsoleRuntimeContext({
         consoleControl,
-        agentCallRedirect: (objectiveId) => {
-          for (const reason of agentCallRedirects.values()) {
-            const answer = reason(objectiveId);
-            if (answer !== null) return answer;
-          }
-          return null;
+        isCommanderSession: (sessionId) => {
+          if (!objectives) throw new Error("objectives_unavailable");
+          return objectives.isCommanderSession(sessionId);
         },
         host: { ...consoleFeaturePorts, computerUseMcp, browserMcp, useRequests, useContext, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
         dataDir: durablePaths.dir,

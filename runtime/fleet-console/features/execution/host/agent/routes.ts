@@ -2465,22 +2465,19 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   async function handleAgentCall(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
     if (req.method !== "POST") return methodNotAllowed(res);
     if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
-    if (!ctx.host.objectiveRecords.get(sessionId)) {
+    const node = ctx.host.objectiveRecords.get(sessionId);
+    if (!node) {
       ctx.host.http.writeJson(res, 404, { error: "unknown_objectiveRecord" });
       return true;
     }
-    // 서브에이전트를 그대로 쓰기로 한 사령관에서는 아무것도 묻지 않는다 — 호출마다 읽어 떠 있는 세션에도 곧바로 닿는다.
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    const commodoreId = node?.commodoreId;
-    if (node && !subagentSpawnBlocked(node) && deps.commodoreSystemPrompts?.subagentsKept(commodoreId)) {
-      ctx.host.http.writeJson(res, 200, { reason: null });
-      return true;
-    }
-    let reason: string | null;
+    let reason: string | null = null;
     try {
-      reason = ctx.agentCallRedirect?.(sessionId) ?? null;
+      // 사령관의 지휘관 허용값은 호출마다 읽는다. 구성원별 기동 정책은 별도 경로가 그대로 맡는다.
+      if (ctx.isCommanderSession?.(sessionId) && (subagentSpawnBlocked(node) || !deps.commodoreSystemPrompts?.subagentsKept(node.commodoreId))) {
+        reason = "Subagents are disabled for this Commander. This Agent call did not run.";
+      }
     } catch (error) {
-      ctx.recordFailure?.("agent-call-redirect", error);
+      ctx.recordFailure?.("commander-subagents", error);
       ctx.host.http.writeJson(res, 500, { error: "agent_call_undecided" });
       return true;
     }

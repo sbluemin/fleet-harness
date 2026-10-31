@@ -8,7 +8,6 @@ import { createCommodoreBoardTools, createObjectiveConsoleTools } from "./consol
 import { createLaunchService } from "./launch.js";
 import { createObjectiveMcpTools } from "./objective-tools.js";
 import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./pr-status.js";
-import { agentCallRedirect } from "./prompts.js";
 import { createObjectiveRoutes } from "./routes.js";
 import { createObjectiveStore } from "./store.js";
 import { OBJECTIVE_CHANNEL, type ObjectiveEvent } from "../shared/types.js";
@@ -148,15 +147,11 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       },
     };
 
-    // Console 세션의 서브에이전트 호출 — 띄우지 않고, 그 자리를 이 목표의 구성원이 맡는다는 사실로 답한다.
-    const releaseAgentCalls = deps.consoleControl?.redirectAgentCalls?.((objectiveId) => agentCallRedirect(store.find(objectiveId), store.findMember(objectiveId) !== null));
-    if (releaseAgentCalls) registerCleanup(releaseAgentCalls);
-
     // 두 표면 — Console Use 의 보드(`console_objectives`·`console_objectives_detail`, 사람처럼 보고 더한다)와 목표 수행 세션의 작업 도구(`fleet-objectives`).
     const releaseConsoleTools = deps.consoleUse.contribute?.(createObjectiveConsoleTools(deps, store, launch));
     if (releaseConsoleTools) registerCleanup(releaseConsoleTools);
     registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, createObjectiveMcpTools(deps, store, launch, prStatus)));
-    return { routes, board, dispose, listAll: store.all, forgetOwner: store.forgetOwner };
+    return { routes, board, dispose, listAll: store.all, isCommanderSession: (sessionId: string) => store.findMember(sessionId) === null && store.find(sessionId) !== null, forgetOwner: store.forgetOwner };
   } catch (error) {
     dispose();
     throw error;

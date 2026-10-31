@@ -12,7 +12,6 @@ import {
   isNearPromptLimit,
   isOverPromptLimit,
   subscribeTheaterSystemPromptOpen,
-  TheaterSubagentsSection,
   useFocusAfterReset,
   useTheaterPromptController,
   useTheaterPromptEmptyNotice,
@@ -163,7 +162,6 @@ export function TheaterSystemPromptSheet() {
             </div>
           </> : null}
         </>}
-      {forgotten ? null : <TheaterSubagentsSection key={theater.id} theaterId={theater.id} mobile />}
     </>,
   };
   return null;
