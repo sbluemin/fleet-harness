@@ -5,6 +5,7 @@ import { type ConversationSpeaker } from "../../execution/shared/conversation/ty
 import type { Translate } from "@fleet-console/i18n";
 
 import { undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
+import { BOARD_TOOL_NAMES, COMMODORES_TOOL_NAMES } from "../shared/tool-names.js";
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
 import { readCommodore } from "./commodore-state.js";
@@ -82,7 +83,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
         break;
       }
       case "tool": {
-        if (entry.name === "console_commodores" && entry.summary === "message") break;
+        if (COMMODORES_TOOL_NAMES.has(entry.name) && entry.summary === "message") break;
         resume(entry.at);
         const id = `c${entry.seq}`;
         push({ kind: "tool", id, name: entry.name, ...toolDetail(t, entry, index) }, entry.at);
@@ -424,7 +425,7 @@ function plainFirstLine(text: string): string {
 
 /** 메인 대화와 원장이 함께 쓰는 생성 결과의 사령관 참조. */
 function createdCommodoreTarget(tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): ConversationReference | undefined {
-  return tool.name === "console_commodores" && tool.action === "create" && tool.ok !== false && tool.commodoreId && tool.alias
+  return COMMODORES_TOOL_NAMES.has(tool.name) && tool.action === "create" && tool.ok !== false && tool.commodoreId && tool.alias
     ? { id: `commodore:${tool.commodoreId}`, label: tool.alias } : undefined;
 }
 
@@ -529,8 +530,6 @@ export function actionWord(t: T, action: string): string {
 }
 
 /** 보드 도구는 읽기 action 을 요약으로 남긴다 — 그 낱말을 화면 언어로 옮긴다. 다른 도구의 요약(명령 설명·패턴)은 그대로다. */
-const BOARD_TOOL_NAMES: ReadonlySet<string> = new Set(["console_objectives", "console_objectives_detail", "console_commodores"]);
-
 function readActionWord(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): string {
   const summary = tool.summary ?? "";
   const key = `commodore.readAction.${summary}`;

@@ -1,4 +1,5 @@
 import { nextRoutineAt } from "../shared/routines.js";
+import { BOARD_WRITE_TOOL_NAMES } from "../shared/tool-names.js";
 import type { ConsoleResidentAgentHost } from "../../execution/host/agent/console-resident.js";
 import { Buffer } from "node:buffer";
 import type { AgentInputBlock, AttachmentHost } from "../../execution/shared/agent.js";
@@ -602,7 +603,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     let actions = 0;
     for (const entry of chunks.flat()) {
       if (entry.kind === "wake") actions = 0;
-      else if (entry.kind === "tool" && entry.action && entry.ok !== false && (entry.name === "console_objectives" || entry.name === "console_objectives_detail")) actions += 1;
+      else if (entry.kind === "tool" && entry.action && entry.ok !== false && BOARD_WRITE_TOOL_NAMES.has(entry.name)) actions += 1;
       else if (entry.kind === "result") {
         results.push(`${new Date(entry.at).toISOString()}: ${entry.outcome}${entry.error ? ` (${entry.error})` : ""}, ${actions} board action${actions === 1 ? "" : "s"}`.slice(0, 200));
         actions = 0;

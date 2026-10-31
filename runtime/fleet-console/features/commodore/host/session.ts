@@ -9,7 +9,8 @@ import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
 import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
-import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
+import { COMMODORES_TOOL_NAMES, FLEET_COMMODORE_TOOL_GROUP } from "../shared/tool-names.js";
+import { createCommodoreTools, type CommandExecute } from "./tools.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /** 사령관 세션 — Console 내부 상주 자식을 매번 새 대화로 연다. 제품 기록·기억만 다음 세션으로 이어진다. */
@@ -91,7 +92,6 @@ export interface CommodoreSession {
   dispose(): Promise<void>;
 }
 
-export const BOARD_TOOL_GROUP = "console";
 const MCP_PREFIX = /^mcp__[^_]+(?:_[^_]+)*__/;
 const MAX_SUMMARY = 200;
 const MAX_ERROR = 200;
@@ -138,7 +138,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     if (id) toolErrors.delete(id);
     toolErrors.delete(`name:${described.name}`);
     const args = input as { action?: unknown; alias?: unknown } | undefined;
-    const createdIndex = described.name === "console_commodores" && args?.action === "create"
+    const createdIndex = COMMODORES_TOOL_NAMES.has(described.name) && args?.action === "create"
       ? createdCommodores.findIndex((created) => created.callId ? created.callId === id : created.alias === args.alias) : -1;
     const created = createdIndex >= 0 ? createdCommodores.splice(createdIndex, 1)[0] : undefined;
     record({ kind: "tool", name: described.name, ...(described.summary ? { summary: described.summary } : {}), ...(ok === undefined ? {} : { ok }), ...(described.action ? { action: described.action } : {}), ...(described.objectiveId ? { objectiveId: described.objectiveId } : {}), ...(described.title ? { title: described.title } : {}), ...(created && ok !== false ? { action: "create", commodoreId: created.commodoreId, alias: created.alias } : {}), ...(error ? { error } : {}) });
@@ -150,7 +150,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const result = await tool.execute(args, context);
       const code = errorCodeOf(result);
       if (code) { if (context.toolCallId) toolErrors.set(context.toolCallId, code); toolErrors.set(`name:${tool.name}`, code); }
-      if (tool.name === "console_commodores") {
+      if (COMMODORES_TOOL_NAMES.has(tool.name)) {
         const call = args as { action?: unknown; alias?: unknown };
         const reply = result as { isError?: boolean; structuredContent?: { commodoreId?: unknown } };
         const commodoreId = reply.structuredContent?.commodoreId;
@@ -249,8 +249,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
         browser: { scopeId: `commodore:${options.commodoreId}` },
         custom: [
-          { name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) },
-          ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : []),
+          { name: FLEET_COMMODORE_TOOL_GROUP, tools: [...tools.map(observed), ...options.boardTools.map(observed)] },
         ],
       },
       onEvent,
@@ -341,7 +340,7 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   const args = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
   const str = (key: string) => (typeof args[key] === "string" ? clip(args[key] as string, MAX_SUMMARY) : undefined);
   // 연락은 보드 행위가 아니다. 송수신 원문은 별도 transcript 줄이 소유한다.
-  if (name === "console_commodores" && args.action === "message") return { name, summary: "message", counts: false };
+  if (COMMODORES_TOOL_NAMES.has(name) && args.action === "message") return { name, summary: "message", counts: false };
   const writes = boardWrites.get(name);
   if (writes) {
     const called = str("action");
