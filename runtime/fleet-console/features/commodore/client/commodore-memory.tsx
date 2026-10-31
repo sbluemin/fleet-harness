@@ -13,8 +13,8 @@ type T = Translate<CommodoreMessageKey>;
 /**
  * 사령관의 fleet-memory — 오른쪽 패널(대화 중심 화면)과 Inbox 시트의 「정보」 칸 맨 아래 섹션. 사령관만 쓰고 사람은 읽기만 한다.
  *
- * 찾기는 평소 머리 오른쪽 돋보기 글리프로 접혀 있다가, 누르면 그 자리에서 입력으로 펼쳐진다. 비어 있을 때 Esc·바깥 클릭으로 다시 접히고,
- * 기억이 `MEMORY_SEARCH_MIN_ENTRIES` 개보다 적으면 갈래를 펼쳐 훑는 편이 빨라 글리프를 세우지 않는다.
+ * 찾기는 평소 머리 오른쪽 돋보기 글리프로 접혀 있다가, 누르면 그 자리에서 입력으로 펼쳐진다. 비어 있을 때 Esc·바깥 클릭으로 다시 접힌다.
+ * 글리프는 기억이 하나라도 있으면 개수와 상관없이 선다 — 기억이 없을 때는 찾을 것이 없고 빈 안내가 그 자리를 말하므로 세우지 않는다.
  *
  * 갈래(정보 칸의 다른 섹션과 같은 구분선 섹션) → 주제 → 항목 줄. 갈래는 처음에 모두 접혀 있고, 찾는 동안에는 맞는 갈래가 펼쳐진다.
  * 찾은 낱말은 제목·주제에, 제목 밖에서 맞았으면 그 자리의 한 줄 발췌에 `<mark>`로 보인다. 항목을 누르면 정보 칸이 그 항목의 읽기 화면이 되고,
@@ -35,9 +35,6 @@ export const MEMORY_BRANCH_HINT: Record<MemoryBranch, CommodoreMessageKey> = {
   lessons: "commodore.memory.hint.lessons",
   crew: "commodore.memory.hint.crew",
 };
-
-/** 이보다 기억이 적으면 찾기 글리프를 세우지 않는다 — 찾던 낱말이 남아 있으면 지울 수 있게 입력은 남긴다. */
-export const MEMORY_SEARCH_MIN_ENTRIES = 6;
 
 const pad = (value: number) => String(value).padStart(2, "0");
 /** 정보 칸의 정보 목록과 같은 날짜 표기(MM-DD). */
@@ -142,7 +139,7 @@ export function CommodoreMemory({ t, theaterId, onReading }: { readonly t: T; re
   if (entry) return <CommodoreMemoryEntry t={t} entry={entry} entries={memory.entries} query={query} stale={stale(entry)} onBack={() => setSelected(null)} onOpen={setSelected} />;
 
   const toggle = branchToggle.toggle;
-  // 찾던 낱말이 남아 있으면 펼친 채 둔다 — 기억이 기준 아래로 줄어도 지울 수 있게.
+  // 찾던 낱말이 남아 있으면 펼친 채 둔다 — 항목을 읽고 돌아와도 같은 결과가 선다.
   const searchShown = memory.entries.length > 0 && (searchOpen || query.length > 0);
   const closeSearch = (refocus: boolean) => {
     setSearchOpen(false);
@@ -179,7 +176,7 @@ export function CommodoreMemory({ t, theaterId, onReading }: { readonly t: T; re
           ) : (
             <>
               {memory.entries.length ? <span className="objectives-commodore-memory-meta">{t("commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</span> : null}
-              {memory.entries.length >= MEMORY_SEARCH_MIN_ENTRIES ? (
+              {memory.entries.length ? (
                 <button ref={searchGlyph} type="button" className="objectives-commodore-memory-search-glyph" aria-label={t("commodore.memory.search")} title={t("commodore.memory.search")} onClick={() => { searchFocus.current = true; setSearchOpen(true); }}>
                   {searchGlyphIcon}
                 </button>
