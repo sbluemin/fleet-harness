@@ -918,20 +918,24 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
    완료(청록)·두 번 누름(산호)은 상태 신호라 아바타색으로 바꾸지 않는다. */
 .group-composer-wrap {
   --board-fill: var(--conversation-accent-body);
-  --board-on-fill: var(--conversation-action-ink, var(--mongle-face));
+  /* 몸색이 없으면 글자색도 무효여야 대체값(brass-ink)으로 돌아간다 — 얼굴색을 몸색에 묶어 둔다(몸색이 있으면 100% 얼굴색). */
+  --board-on-fill: color-mix(in oklab, var(--mongle-face) 100%, var(--conversation-accent-body));
   --board-fill-hover: color-mix(in oklab, var(--conversation-accent-body) 86%, var(--mongle-face));
   --board-fill-press: color-mix(in oklab, var(--conversation-accent-body) 74%, var(--mongle-face));
   --board-halo: color-mix(in oklab, var(--conversation-accent-body) 24%, transparent);
   --board-edge: var(--conversation-accent-body);
   --board-ink: var(--conversation-accent);
+  --board-ink-hover: var(--conversation-accent);
   --board-line: color-mix(in oklab, var(--conversation-accent) 45%, transparent);
   --board-wash: color-mix(in oklab, var(--conversation-accent) 11%, transparent);
   --board-wash-press: color-mix(in oklab, var(--conversation-accent) 18%, transparent);
 }
-/* 라이트의 파스텔 몸색은 흰 바탕과 대비가 1.6–2.0이다 — 채움 칩의 테두리는 짙은 정체성 잉크 쪽으로 세운다. */
+/* 라이트의 파스텔 몸색은 흰 바탕과 대비가 1.6–2.0이다 — 채움 칩의 테두리는 짙은 정체성 잉크 쪽으로 세우고(바탕 대비 3:1 이상),
+   옅은 면이 깔리는 hover 의 글자는 한 단계 짙게 섞어 4.5:1 을 지킨다. */
 :root[data-theme="light"] .group-composer-wrap,
 :root[data-view-mode="mobile"][data-mobile-scheme="light"] .group-composer-wrap {
-  --board-edge: color-mix(in oklab, var(--conversation-accent) 55%, var(--conversation-accent-body));
+  --board-edge: color-mix(in oklab, var(--conversation-accent) 80%, var(--conversation-accent-body));
+  --board-ink-hover: color-mix(in oklab, var(--conversation-accent) 72%, var(--text-primary));
 }
 .group-composer-action {
   display: inline-flex;
@@ -956,7 +960,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-composer-action:focus-visible { outline: none; }
 /* 보조·되돌림 — 윤곽. hover 에 옅은 면이 깔리고 선이 짙어지며, 누르면 면이 한 단계 더 짙어진다. */
 .group-composer-action:not([aria-disabled="true"]):hover,
-.group-composer-action:not([aria-disabled="true"]):focus-visible { border-color: var(--board-ink, var(--brass)); background: var(--board-wash, var(--control-wash-hover)); color: var(--board-ink, var(--brass-ink)); }
+.group-composer-action:not([aria-disabled="true"]):focus-visible { border-color: var(--board-ink-hover, var(--brass)); background: var(--board-wash, var(--control-wash-hover)); color: var(--board-ink-hover, var(--brass-ink)); }
 .group-composer-action:not([aria-disabled="true"]):active { background: var(--board-wash-press, color-mix(in oklch, var(--brass) 12%, transparent)); transform: scale(0.97); }
 /* 주행동과 고른(입력창에 앉은) 칩 — 아바타 몸색 면, 같은 입력창의 보내기 단추와 같은 문법이다. hover 는 :hover 규칙 뒤에 다시 적어 덮이지 않게 한다. */
 .group-composer-action.is-primary,
