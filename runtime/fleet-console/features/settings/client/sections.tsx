@@ -124,7 +124,7 @@ function buildThemeOptions(t: T, desktop: boolean): readonly ThemeOption[] {
   const polarity = desktop ? t("settings.theme.conversationLayout") : undefined;
   return [
     { id: "dark", label: t("settings.theme.group.dark"), polarity, swatch: desktop ? ["oklch(12.9% 0 0)", "oklch(26.9% 0 0)", "oklch(77% 0.085 64)"] : ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
-    { id: "light", label: t("settings.theme.group.light"), polarity, swatch: ["oklch(95.5% 0.005 100)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
+    { id: "light", label: t("settings.theme.group.light"), polarity, swatch: ["oklch(99.1% 0 0)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
   ];
 }
 

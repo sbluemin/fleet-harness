@@ -110,6 +110,12 @@
 }
 /* 대화 다크의 봇 말풍선은 바탕에서 한 단만 떠오른다(레퍼런스 #1b1b1b ≈ --surface-panel). 라이트는 위의 얹힌 면 그대로다. */
 :root[data-view-mode="desktop"]:not([data-theme="light"]) .group-chat-bubble.is-agent { background: var(--surface-panel); }
+/* 라이트만 반경 18·줄높이 22, 에이전트 0.5px 링. 사람 면(고유 색)은 그대로다. */
+:root[data-theme="light"] .group-chat-bubble { border-radius: 18px; line-height: 22px; }
+:root[data-theme="light"] .group-chat-bubble.is-agent {
+  border-color: color-mix(in srgb, var(--ink-pearl) 10%, var(--canvas-abyss));
+  border-width: 0.5px;
+}
 /* 데스크톱 가운데 칸 그룹 대화의 링크 경계 — 상자 없이 이벤트만 받는다(대화 배치는 그대로). */
 .group-chat-link-boundary { display: contents; }
 .group-chat-md > :first-child { margin-top: 0; }
@@ -789,7 +795,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-composer-stop-mark { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 
 /* '@' 멘션 덱의 자리 — 덱 자체는 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이다. 캡슐 왼쪽에
-   맞춰 내용 폭(상한 480px, 좁은 화면에서는 100%)으로 캡슐 위에 뜬다 — '/' 덱이 아니라 멘션 덱만 이 자리다. */
+   맞춰 내용 폭(상한 359px, 좁은 화면에서는 100%)으로 캡슐 위에 뜬다 — '/' 덱이 아니라 멘션 덱만 이 자리다. */
 /* 덱 기본 자리(`.fc-composer-deck`)와 특이도가 같으면 시트 적재 순서가 이긴다 — 두 클래스로 선언한다. */
 .fc-composer-deck.group-composer-deck {
   left: clamp(var(--space-4), 4cqi, 48px);
@@ -808,16 +814,20 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--popover-list-gap);
   max-height: 320px;
   overflow-y: auto;
-  padding: var(--space-1);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: 0 12px 28px oklch(5% 0.01 245 / 35%);
+  padding: var(--popover-pad);
+  border: 0;
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+  width: var(--popover-width);
+  min-width: var(--popover-min-width);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
+  max-width: calc(100vw - 32px);
 }
-.group-composer-pop.is-stop { left: auto; width: 260px; }
+.group-composer-pop.is-stop { left: auto; width: var(--popover-width); }
 /* 「+」 메뉴(SDK 부품)의 자리 — 캡슐 왼쪽 끝(감싼 칸의 안쪽 여백과 같은 자리)에 맞춰, 캡슐 테두리에 겹치지 않고 한 칸 띄워 위로 뜬다. */
 .group-composer-plus-menu {
   position: absolute;
@@ -827,19 +837,22 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-composer-pop-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 7px var(--space-2);
+  gap: var(--popover-row-gap);
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--popover-row-radius);
   background: none;
   font: inherit;
-  font-size: var(--t-sm);
+  font-size: var(--popover-font-size);
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
+  min-height: var(--popover-row);
+  line-height: var(--popover-line-height);
+  letter-spacing: 0;
 }
 .group-composer-pop-row:hover,
-.group-composer-pop-row:focus-visible { background: var(--control-wash-hover); outline: none; }
+.group-composer-pop-row:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
 .group-composer-pop-name { flex: none; font-weight: var(--weight-regular); }
 
 /* 제안과 요약은 입력창 바로 위 한 줄을 공유한다. 안내를 먼저 줄이고, 칩 영역 12rem과 요약이 함께 들어가지 못하면

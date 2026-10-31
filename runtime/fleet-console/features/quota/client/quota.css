@@ -9,10 +9,10 @@
   flex-direction: column;
   min-height: 0;
   overflow: auto;
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
   color: var(--text-primary);
   outline: none;
   animation: quota-popover-in var(--duration-fast) var(--ease-glide) both;

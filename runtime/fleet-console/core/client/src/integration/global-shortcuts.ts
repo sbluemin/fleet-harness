@@ -44,24 +44,15 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     // 설정 카드가 조합을 기록하는 동안은 어떤 명령도 발화하지 않는다 — 기록기가 그 키를 받는다.
     if (isShortcutRecording(windowFor.document)) return;
     const matches = (commandId: string) => matchesShortcutCommand(event, commandId);
-    // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면
-    // 닫기」, ⌘P가 「명령 탭으로」다. 자기 모달 가드보다 먼저 봐야 닫힘·전환이 막히지 않는다.
-    if (matches("console.search-objectiveRecords")) {
+    // ⌘K / ⌘P — 한 팔레트를 여닫는 두 문. 모드는 열림 표시로만 남고, 두 단축키 모두
+    // 같은 한 목록을 토글한다. 자기 모달 가드보다 먼저 봐야 닫힘이 막히지 않는다.
+    if (matches("console.search-objectiveRecords") || matches("console.command-palette")) {
       // 여기서 양보하지 않으면 세션 검색과 전환기가 같은 키에 함께 열린다.
       if (isForeignBlockingDialogOpen(windowFor.document, ".objective-search-overlay")) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      const mode = dependencies.getObjectiveSearchMode();
-      if (mode === null) dependencies.openObjectiveSearch();
-      else if (mode === "objectiveRecords") dependencies.closeObjectiveSearch();
-      else dependencies.openObjectiveSearch("");
-      return;
-    }
-    if (matches("console.command-palette")) {
-      if (isForeignBlockingDialogOpen(windowFor.document, ".objective-search-overlay")) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (dependencies.getObjectiveSearchMode() !== "commands") dependencies.openObjectiveSearch(">");
+      if (dependencies.getObjectiveSearchMode() !== null) dependencies.closeObjectiveSearch();
+      else dependencies.openObjectiveSearch();
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;

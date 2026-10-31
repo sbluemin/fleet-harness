@@ -58,11 +58,14 @@
   max-width: calc(100vw - 32px);
   padding: var(--popover-pad);
   /* 공통 팝업 표면(theme.css --popover-*)의 원형이다 — 다른 팝업이 이 판의 값을 토큰으로 받는다. */
-  border: 1px solid var(--popover-rim);
+  border: 0;
   border-radius: var(--popover-radius);
   background: var(--popover-face);
   color: var(--text-primary);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
+  min-width: var(--popover-min-width);
+  gap: var(--popover-list-gap);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
 .conversation-dock-menu[hidden] { display: none; }
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) { position: relative; display: block; width: 100%; }
@@ -80,7 +83,8 @@
   background: transparent;
   color: var(--text-primary);
   font: inherit;
-  font-size: var(--t-base);
+  font-size: var(--popover-font-size);
+  line-height: var(--popover-line-height);
   cursor: pointer;
   min-height: var(--popover-row);
   font-weight: var(--weight-regular);
@@ -92,7 +96,7 @@
 .conversation-dock-count { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
 .conversation-dock-label { flex: 1; min-width: 0; text-align: left; }
 .conversation-dock-next { flex: none; width: 14px; height: 14px; color: var(--text-tertiary); }
-.conversation-dock-divider { height: 1px; margin: var(--popover-divider-space); background: var(--popover-divider); }
+.conversation-dock-divider { height: var(--popover-divider-width); margin: var(--popover-divider-space); background: var(--popover-divider); }
 .conversation-dock :is(button, a):focus-visible { box-shadow: var(--focus-face); }
 /* 도움말 항목은 옆으로 펼치는 서브메뉴다. 판이 서 있는 동안 항목은 겨눔 워시를 입은 채 남아 어느 줄의 판인지 말한다. */
 .conversation-dock-menu > :is(.command-band-system-anchor) > button[aria-expanded="true"] { background: var(--wash-hover); }

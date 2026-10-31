@@ -130,6 +130,8 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".alerts-icon-badge",
   ".fexp-refresh-btn",
   ".history-commit-avatar",
+  // 승인 시안 §2의 검색 입력 글자 15px — 사다리(t-md 13·t-base 14·t-lg 17) 사이에 없는 Grok 원본 값이다.
+  "#objective-search-input",
 ] as const;
 const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 // color 값 안의 정확한 base brass. --brass-ink·--brass-glow·--brass-bright는 닫는 괄호가 바로 오지 않아 빠진다.
@@ -801,6 +803,8 @@ describe("Console core design contract", () => {
       // 관여하지 않고, 계산 함수는 그 안의 px만 본다.
       const offLadder = (value: string): boolean => {
         if (/var\(\s*--t-(?:2xs|xs|sm|md|base|lg|xl)\s*\)/.test(value)) return false;
+        // 메뉴 크기는 데스크톱 md·모바일 base 사다리의 별칭이다.
+        if (/var\(\s*--popover-font-size\s*\)/.test(value)) return false;
         // 모바일 배치는 Console과 다른 자기 사다리를 갖는다(시안 크기 이름, theme.css 모바일 팔레트
         // 구역에서만 정의). 데스크톱에서는 정의되지 않으므로 모바일 전용 선택자 아래에서만 의미가 있다.
         if (MOBILE_TYPE_STEP.test(value)) return false;
@@ -1355,7 +1359,7 @@ describe("Console core design contract", () => {
     // 폴백 어느 쪽도 덮어쓰지 않으므로 모든 테마에서 불투명이다 — 상주 크롬·패널만 --glass-underlay로 비친다.
     // 옛 바탕층 이름(--float-underlay)은 아직 옮기지 않은 소비처를 위한 별칭으로만 남는다.
     const theme = desktopThemeSource();
-    expect(theme).toContain("--popover-face: var(--ink-deep);");
+    expect(theme).toContain("--popover-face: oklch(23.9% 0 0);");
     expect(theme).toContain("--float-underlay: var(--popover-face);");
     const gates = theme.slice(theme.indexOf(':root:not([data-theme="light"]) {'));
     expect(gates).not.toContain("--float-underlay:");
@@ -1401,15 +1405,18 @@ describe("Console core design contract", () => {
   });
 
   it("pins one popover size grammar and outline-free keyboard focus", () => {
-    // 참고 앱 메뉴 실측(폭 240 · 반경 16 · 여백 6 · 행 36 · 행 반경 10)을 theme.css 의 --popover-* 한 벌로 둔다.
+    // 참고 앱 메뉴 실측(내용 폭 · 최소 200 · 반경 12 · 여백 6 · 행 32 · 행 반경 6)을 theme.css 의 --popover-* 한 벌로 둔다.
     // 메뉴가 자기 리터럴 크기로 돌아가면 팝오버마다 반경·여백·행이 다시 갈린다(실측: 반경 10/16, 여백 4~12, 행 33~40).
     const theme = source("styles/theme.css");
     for (const declaration of [
-      "--popover-width: 240px;",
+      "--popover-width: max-content;",
+      "--popover-min-width: 200px;",
       "--popover-pad: 6px;",
-      "--popover-radius: var(--radius-lg);",
-      "--popover-row: 36px;",
-      "--popover-row-radius: var(--radius-md);",
+      "--popover-radius: 12px;",
+      "--popover-row: 32px;",
+      "--popover-row-radius: 6px;",
+      "--popover-font-size: var(--t-md);",
+      "--popover-font-size: var(--t-base);",
       "--popover-icon: 16px;",
     ]) expect(theme).toContain(declaration);
     const rule = (css: string, selector: string) => {
@@ -1621,8 +1628,8 @@ describe("Console core design contract", () => {
     expect(theme).toContain(':root[data-theme="light"]');
     // 테마는 다크·라이트 둘뿐이다 — 퇴역 팔레트 셀렉터가 되살아나면 저장값 정규화와 어긋난 색이 선다.
     expect(new Set(theme.match(/data-theme="[a-z]+"/g))).toEqual(new Set(['data-theme="dark"', 'data-theme="light"']));
-    // 라이트의 대기는 오트밀 웜 뉴트럴(hue 95~100)이다 — 청색(hue 250대) 대기 회귀를 차단한다.
-    expect(theme).toContain("--ink-abyss: oklch(97% 0.003 100);");
+    // 라이트 대기는 무채색(채도 0)이다 — 오트밀 hue와 청색(hue 250대) 대기 회귀를 함께 차단한다.
+    expect(theme).toContain("--ink-abyss: oklch(97% 0 0);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
     // 다크 셀렉터는 첫 페인트 계약만 진다 — 팔레트는 base가 이미 다크라 이 블록은 color-scheme 하나뿐이다.
     const darkBlocks = theme.match(/^:root\[data-theme="dark"\][^{]*\{[^}]*\}/gm) ?? [];
@@ -1649,7 +1656,7 @@ describe("Console core design contract", () => {
         // [doctrine] identity-file·quiet·두 배지 면은 다크 3종 보정(채도 봉투·lights-out)이 라이트로
         // 내려오지 않게 지금의 값을 잇는 자리다 — 사용자 범위가 다크 테마였다(목표 f90ef806).
         // [doctrine] 팝오버 그림자는 종이 위 무채색 깊이로, 역할 표식은 중립 행동 잉크와 독립된 기존 금색으로 분화한다.
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge|popover-shadow|role-commodore)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge|popover-(?:face|rim|icon-ink|shadow|surface-shadow)|wash-(?:hover|selected)|role-commodore)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -1661,15 +1668,15 @@ describe("Console core design contract", () => {
     // 라이트(Whites)만 종이 표면보다 어두운 자체 리터럴로 분화한다(작업면 최명면 극성).
     expect(base).toContain("--surface-chrome: var(--surface-glass);");
     expect(theme.match(/--surface-chrome:/g)).toHaveLength(2);
-    expect(theme).toContain("--surface-chrome: oklch(96% 0.004 100);");
+    expect(theme).toContain("--surface-chrome: oklch(96% 0 0);");
     // 라이트 캔버스는 종이(터미널 98.2%)보다 어둡고 크롬보다 밝은 중간층이다 —
     // 이 순서가 무너지면 작업면 최명면 극성이 다시 뒤집힌다.
-    expect(theme).toContain("--canvas-abyss: oklch(97.8% 0.003 100);");
+    expect(theme).toContain("--canvas-abyss: oklch(99.1% 0 0);");
     // brass 채움 위 텍스트 티어 — 다크는 abyss 별칭, 라이트는 페이지 배경과 독립된 자체 리터럴로
     // AA 4.5:1을 보장한다(abyss 결합 시 페이지 배경 조정이 버튼 대비를 함께 끌어내린다).
     expect(base).toContain("--text-on-brass: var(--ink-abyss);");
     expect(theme.match(/--text-on-brass:/g)).toHaveLength(2);
-    expect(theme).toContain("--text-on-brass: oklch(99.5% 0.004 95);");
+    expect(theme).toContain("--text-on-brass: oklch(99.5% 0 0);");
     // Objective 패널 면 티어 — 두 테마 모두가 값을 가지며 전부 작업면(터미널 필드) 톤이다.
     // Whites는 종이가 최명면이어야 한다: 크롬(96%)보다도, 패널 둘레에서 실측되는 sea 그라디언트
     // (L 94.9~96.6)보다도 밝아야 창이 책상에 녹지 않는다. 프레임 톤(ink-deep 95.5%)으로 내리면
@@ -1679,11 +1686,11 @@ describe("Console core design contract", () => {
     // 셋째 정의는 대화 중심 화면의 「대화 다크」(데스크톱 다크의 테마 스코프) — 무채 작업면 21.8%(Grok 선택 면 실측).
     expect(theme.match(/--surface-panel:/g)).toHaveLength(3);
     expect(theme).toContain("--surface-panel: oklch(21.8% 0 0);");
-    expect(theme).toContain("--surface-panel: oklch(98.2% 0.004 100);");
+    expect(theme).toContain("--surface-panel: oklch(100% 0 0);");
     expect(theme.match(/--surface-panel: var\(--ink-deep\);/g)).toHaveLength(1);
     // 라이트 종이는 크롬보다 밝다 — 이 부등호가 뒤집히면 시선이 크롬으로 끌리는 극성 역전이다.
     const whitesBlock = theme.slice(theme.indexOf(':root[data-theme="light"]'));
-    expect(whitesBlock).toContain("--surface-chrome: oklch(96% 0.004 100);");
+    expect(whitesBlock).toContain("--surface-chrome: oklch(96% 0 0);");
     // 얹히는 면은 패널 면에서 한 칸 물러난다 — 다크는 위(ink-mid), 라이트는 아래(ink-deep).
     expect(base).toContain("--surface-panel-raised: var(--ink-mid);");
     expect(whitesBlock).toContain("--surface-panel-raised: var(--ink-deep);");
@@ -1732,7 +1739,7 @@ describe("Console core design contract", () => {
     const baseTheme = theme.slice(0, theme.indexOf(':root[data-theme="'));
     const inkDeepOf = (block: string) => block.match(/--ink-deep: (oklch\([^)]*\));/)?.[1] ?? "";
     expect(fallbackOf("DARK_TERMINAL_THEME")).toBe(inkDeepOf(baseTheme));
-    expect(fallbackOf("LIGHT_TERMINAL_THEME")).toBe("oklch(98.2% 0.004 100)");
+    expect(fallbackOf("LIGHT_TERMINAL_THEME")).toBe("oklch(100% 0 0)");
 
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
@@ -1928,7 +1935,7 @@ describe("Console core design contract", () => {
     // 그 행에서 4.03:1로 본문 AA 아래였다. L52가 라이브 행 4.58:1 / 패널 5.23:1로 경계(L52.39)
     // 안쪽이다. 트러프는 물결의 3분의 2를 차지하는 휴지 잉크라 판독이 진폭보다 먼저다.
     const whitesSweepBlock = themeCssForSweep.match(/^:root\[data-theme="light"\][^{]*\{[^}]*\}/m)?.[0] ?? "";
-    expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(52% 0.012 95);");
+    expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(52% 0 0);");
     // 라이브 행의 바탕이 바뀌면 위 대비 계산의 전제가 무너진다 — 채팅 행이 같은 레시피를 쓰는 것이
     // 그 계산의 근거이므로 함께 못박는다.
     // 섞는 공간은 oklab이다 — oklch는 두 색의 색상 호를 걸어 whites에서 aurora 30% 테두리가

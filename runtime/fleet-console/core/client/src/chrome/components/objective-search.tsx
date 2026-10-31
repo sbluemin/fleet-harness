@@ -27,20 +27,17 @@ import { setGlobalSettingsField } from "../../../../../features/settings/client/
 import {
   buildTheaterSectionSearchEntries,
   groupCommodorePaletteEntries,
-  PALETTE_MODES,
-  paletteModeForPrefix,
   parsePaletteSeed,
   RAIL_SEARCH_DEBOUNCE_MS,
   searchRailPanels,
   searchTokens,
   type CommodorePaletteGroup,
   type ObjectiveSearchEntry,
-  type PaletteMode,
   type PaletteSearchPanel,
   type RailSearchGroup,
 } from "../../integration/objective-search.js";
 import { noteCommandRun, readRecentCommandIds, recentObjectiveRank } from "../../integration/palette-recent.js";
-import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon, PaletteSectionGlyph } from "./palette-glyphs.js";
+import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon } from "./palette-glyphs.js";
 import { resolveObjectiveActivity, resolveObjectiveDisplayActivity, resolveObjectiveMarkVisual } from "../../../../../features/execution/client/objective-activity.js";
 import { useObjectiveClusters } from "../../../../../features/workspace/client/objective-clusters.js";
 import { CONVERSATION_ROW_PHRASE } from "../../../../../features/workspace/client/sidebar/side-bar-row-style.js";
@@ -49,7 +46,9 @@ import { openArchiveSheet } from "../../integration/objective-archive.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/objective-marks.js";
 import {
   buildPaletteCommands,
+  commandModeQuery,
   groupPaletteCommands,
+  isCommandModeInput,
   matchPaletteCommands,
   type PaletteCommandAction,
   type PaletteCommandEntry,
@@ -113,7 +112,6 @@ export function ObjectiveSearch({
   const railBindings = useDesktopRailEntries();
   const navigate = useNavigate();
   const location = useLocation();
-  const [mode, setMode] = useState<PaletteMode>("objectiveRecords");
   const [text, setText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   // 활성 행을 마지막으로 옮긴 입력 — 키보드일 때만 활성 행이 포커스 링을 그리고, 마우스가 옮긴 행은 hover 워시뿐이다.
@@ -121,9 +119,8 @@ export function ObjectiveSearch({
   const [providerSearchGroups, setRailSearchGroups] = useState<readonly RailSearchGroup[]>([]);
   const capabilities = useHostCapabilities();
   const [shellNotice, setShellNotice] = useState<string | null>(null);
-  useEffect(() => setShellNotice(null), [text, mode, state.objectiveRecordSearchOpen]);
+  useEffect(() => setShellNotice(null), [text, state.objectiveRecordSearchOpen]);
   const railSearchGroups = useMemo<readonly RailSearchGroup[]>(() => {
-    if (mode !== "objectiveRecords") return [];
     const query = text.trim().toLowerCase();
     const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
     if (!matchesShell || !desktopView) return providerSearchGroups;
@@ -143,7 +140,7 @@ export function ObjectiveSearch({
         } }] : []),
       ],
     }];
-  }, [providerSearchGroups, mode, text, getViewedTheaterId(), getViewedCommodoreId(), desktopView, capabilities, t]);
+  }, [providerSearchGroups, text, getViewedTheaterId(), getViewedCommodoreId(), desktopView, capabilities, t]);
   // 동작 띠가 펼쳐진 Objective 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [actionIndex, setActionIndex] = useState(0);
@@ -153,7 +150,6 @@ export function ObjectiveSearch({
   const appliedSeedNonceRef = useRef(0);
   const resultRefs = useRef(new Map<string, HTMLButtonElement>());
   const searchGenerationRef = useRef(0);
-  const commandMode = mode === "commands";
   // 사이드바·커맨드 밴드와 같은 마크 축 — 안 본 채 끝난 Objective이 팔레트에서만 침묵하지 않게 한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   // 보관된 Objective은 결과에서 뺀다. 보관함은 명령(open-archive)으로만 연다.
@@ -182,8 +178,7 @@ export function ObjectiveSearch({
     return names;
   }, [clusters]);
   const commodoreGroups = useMemo<readonly CommodorePaletteGroup[]>(
-    () => mode === "objectiveRecords"
-      ? groupCommodorePaletteEntries({
+    () => groupCommodorePaletteEntries({
         entries,
         members: state.nestedObjectiveRecords,
         memberNames,
@@ -196,9 +191,8 @@ export function ObjectiveSearch({
         viewedCommodoreId: viewedCommodoreId ?? zoneCommodoreId,
         recentRank: recentObjectiveRank,
         unknownLabel: t("chrome.objectiveRecordSearch.sectionFormer"),
-      })
-      : [],
-    [entries, mode, state.nestedObjectiveRecords, memberNames, text, commodores, viewedCommodoreId, zoneCommodoreId, t],
+      }),
+    [entries, state.nestedObjectiveRecords, memberNames, text, commodores, viewedCommodoreId, zoneCommodoreId, t],
   );
   const ownedTheaters = useMemo(() => (commodore?.theaters ?? []).filter((row) => row.status === "available").map((row) => ({ id: row.theaterId, label: row.label })), [commodore]);
   useEffect(() => {
@@ -237,7 +231,6 @@ export function ObjectiveSearch({
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.objectiveRecordSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
-    if (mode !== "commands") return [];
     if (searchTokens(text).length === 0) {
       return groupPaletteCommands(commands, recentCommandIds).map((section) => ({
         id: section.id,
@@ -245,13 +238,12 @@ export function ObjectiveSearch({
       }));
     }
     return [{ id: "matches", commands: matchPaletteCommands(commands, text) }];
-  }, [mode, commands, recentCommandIds, text]);
+  }, [commands, recentCommandIds, text]);
   // 같은 명령이 최근 구역과 자기 구역에 함께 설 수 있다 — 선택·스크롤 키는 구역까지 담아 둘을 가른다.
   const commandRows = useMemo(
     () => commandSections.flatMap((section) => section.commands.map((scored) => ({ scored, key: commandResultKey(scored.command.commandId) + (section.id === "recent" ? ":recent" : "") }))),
     [commandSections],
   );
-  const matchedCommands = useMemo(() => commandRows.map((row) => row.scored), [commandRows]);
   const tokens = useMemo(() => searchTokens(text), [text]);
   const railSearchEntries = useMemo(
     // info 행(상한 표식 등)은 표시만 하고 키보드 이동·활성화 대상에서는 뺀다.
@@ -259,35 +251,40 @@ export function ObjectiveSearch({
     [railSearchGroups],
   );
   const exactCount = railSearchEntries.filter((entry) => entry.result.exact === true).length;
-  const primaryCount = mode === "objectiveRecords" ? primaryRows.length : matchedCommands.length;
-  const resultCount = primaryCount + railSearchEntries.length;
+  // 한 목록의 순서 — 정확히 맞은 패널 결과, 목표·사령관·파일 결과, 명령 순이다. 각 묶음 안에서는
+  // 지금의 점수 순서를 그대로 쓰고, 묶음 사이에는 섹션 제목을 두지 않는다.
+  const primaryCount = primaryRows.length;
+  const railRestCount = railSearchEntries.length - exactCount;
+  const commandCount = commandRows.length;
+  const resultCount = exactCount + primaryCount + railRestCount + commandCount;
   const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
-  const primaryIndex = clampedSelectedIndex - exactCount;
-  const selectedRailIndex = clampedSelectedIndex < exactCount ? clampedSelectedIndex : clampedSelectedIndex - primaryCount;
+  const selectedExactRail = clampedSelectedIndex < exactCount ? railSearchEntries[clampedSelectedIndex] ?? null : null;
+  const primaryPos = clampedSelectedIndex - exactCount;
+  const selectedPrimaryRow = selectedExactRail === null && primaryPos >= 0 && primaryPos < primaryCount ? primaryRows[primaryPos] ?? null : null;
+  const restPos = primaryPos - primaryCount;
+  const selectedRestRail = selectedExactRail === null && selectedPrimaryRow === null && restPos >= 0 && restPos < railRestCount ? railSearchEntries[exactCount + restPos] ?? null : null;
+  const commandPos = restPos - railRestCount;
+  const selectedCommand = selectedExactRail === null && selectedPrimaryRow === null && selectedRestRail === null && commandPos >= 0 && commandPos < commandCount ? commandRows[commandPos]?.scored ?? null : null;
   const selectedResultKey = (() => {
-    if (primaryIndex >= 0 && primaryIndex < primaryCount) {
-      if (mode === "objectiveRecords") return primaryRows[primaryIndex]!.key;
-      return commandRows[primaryIndex]!.key;
-    }
-    const rail = railSearchEntries[selectedRailIndex];
-    return rail ? railResultKey(rail.group.panelId, rail.result.id) : undefined;
+    if (selectedExactRail) return railResultKey(selectedExactRail.group.panelId, selectedExactRail.result.id);
+    if (selectedPrimaryRow) return selectedPrimaryRow.key;
+    if (selectedRestRail) return railResultKey(selectedRestRail.group.panelId, selectedRestRail.result.id);
+    if (selectedCommand) return commandRows[commandPos]?.key;
+    return undefined;
   })();
   const activeOptionId = selectedResultKey === undefined ? undefined : resultOptionId(selectedResultKey);
-  const selectedPrimaryRow = mode === "objectiveRecords" && primaryIndex >= 0 ? primaryRows[primaryIndex] ?? null : null;
   // 동작 띠(→)는 지휘관 행에만 선다 — 사령관·구성원 행은 여는 일 하나뿐이다.
   const selectedObjective = selectedPrimaryRow?.kind === "objective" ? selectedPrimaryRow.entry : null;
-  // 탭·범례·힌트의 조합 표기는 등록부의 현재 값이다 — 재배정이 바뀌면 함께 바뀐다.
+  // 힌트의 조합 표기는 등록부의 현재 값이다 — 재배정이 바뀌면 함께 바뀐다.
   useShortcutOverrides();
-  const searchShortcut = shortcutCommandLabel("console.search-objectiveRecords");
-  const paletteShortcut = shortcutCommandLabel("console.command-palette");
   const undoShortcut = shortcutCommandLabel("console.undo-close");
 
-  // 패널 내용 검색은 Objective 모드에서만 — 명령 모드는 명령만 보여 주는 편이 손에 맞는다.
+  // 패널 내용 검색은 팔레트가 열려 있고 질의가 있을 때만 — 빈 입력에는 명령 홈만 보인다.
   useEffect(() => {
     const generation = ++searchGenerationRef.current;
     setRailSearchGroups([]);
     const theaterId = getViewedTheaterId();
-    if (!state.objectiveRecordSearchOpen || text.trim() === "" || !theaterId || mode !== "objectiveRecords") return;
+    if (!state.objectiveRecordSearchOpen || text.trim() === "" || !theaterId) return;
 
     const abort = new AbortController();
     const timer = window.setTimeout(() => {
@@ -301,7 +298,7 @@ export function ObjectiveSearch({
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [mode, text, railPanels, getViewedTheaterId(), state.objectiveRecordSearchOpen, t]);
+  }, [text, railPanels, getViewedTheaterId(), state.objectiveRecordSearchOpen, t]);
 
   useEffect(() => {
     if (!state.objectiveRecordSearchOpen) {
@@ -319,11 +316,10 @@ export function ObjectiveSearch({
     };
   }, [state.objectiveRecordSearchOpen]);
 
-  // seed는 번호가 바뀔 때마다 반영한다 — 열린 창에서 ⌘P를 눌러도 명령 탭으로 옮겨 가야 한다.
+  // seed는 번호가 바뀔 때마다 반영한다 — 초기 질의만 싣고, 모드는 이제 하나뿐이다.
   useEffect(() => {
     if (!state.objectiveRecordSearchOpen) {
       appliedSeedNonceRef.current = 0;
-      setMode("objectiveRecords");
       setText("");
       setSelectedIndex(0);
       setActionsFor(null);
@@ -332,34 +328,33 @@ export function ObjectiveSearch({
     if (appliedSeedNonceRef.current === state.objectiveRecordSearchSeedNonce) return;
     appliedSeedNonceRef.current = state.objectiveRecordSearchSeedNonce;
     const seed = parsePaletteSeed(state.objectiveRecordSearchSeed);
-    setMode(seed.mode);
     setText(seed.text);
     setSelectedIndex(0);
     setActionsFor(null);
     inputRef.current?.focus();
   }, [state.objectiveRecordSearchOpen, state.objectiveRecordSearchSeed, state.objectiveRecordSearchSeedNonce]);
 
+  // 모드는 전역 단축키의 열림 표시로만 남는다 — ⌘K·⌘P가 같은 한 목록을 여닫는다.
   useEffect(() => {
-    setObjectiveSearchMode(state.objectiveRecordSearchOpen ? mode : null);
-  }, [mode, state.objectiveRecordSearchOpen]);
+    setObjectiveSearchMode(state.objectiveRecordSearchOpen ? "objectiveRecords" : null);
+  }, [state.objectiveRecordSearchOpen]);
 
   // 첫 선택은 가장 잘 맞은 행이다 — 맥락 행(흐린 이름)은 건너뛴다. 빈 질의에서는 보고 있는
-  // 사령관의 가장 최근 지휘관이다. 여닫을 때도 고쳐 잡는다(닫힐 때 0으로 남은 선택이 다음 열림에 남지 않게).
+  // 사령관의 가장 최근 지휘관이다.
   const defaultPrimaryIndex = useMemo(() => {
-    if (mode !== "objectiveRecords") return 0;
     const hasQuery = searchTokens(text).length > 0;
     const first = hasQuery
       ? primaryRows.findIndex((row) => row.kind === "member" || (row.kind === "objective" && !row.context) || (row.kind === "commodore" && !row.context))
       : primaryRows.findIndex((row) => row.kind === "objective" || row.kind === "member");
     return first === -1 ? 0 : first;
-  }, [mode, text, primaryRows]);
+  }, [text, primaryRows]);
 
-  // 선택 인덱스는 정확히 맞은 레일 결과가 앞에 붙은 결합 목록 기준이다. 정확 결과가 있으면 그것이 먼저다(0),
-  // 없으면 기본 행의 인덱스를 그대로 쓴다.
+  // 선택 인덱스는 정확히 맞은 레일 결과가 앞에 붙은 결합 목록 기준이다. 정확 결과가 있으면 그것이 먼저다(0).
+  // 질의·열림·기본 행이 바뀔 때만 고쳐 잡는다 — 늦게 도착한 레일 결과가 사용자가 옮긴 선택을 되돌리지 않게.
   useEffect(() => {
     setSelectedIndex(exactCount > 0 ? 0 : defaultPrimaryIndex);
     setActionsFor(null);
-  }, [state.objectiveRecordSearchOpen, mode, text, defaultPrimaryIndex, exactCount]);
+  }, [state.objectiveRecordSearchOpen, text, defaultPrimaryIndex, exactCount]);
 
   useEffect(() => {
     if (!state.objectiveRecordSearchOpen || selectedResultKey === undefined) return;
@@ -575,45 +570,35 @@ export function ObjectiveSearch({
   };
 
   const activateSelected = () => {
-    if (primaryIndex >= 0 && primaryIndex < primaryCount) {
-      if (mode === "objectiveRecords") {
-        const row = primaryRows[primaryIndex];
-        if (!row) return;
-        if (row.kind === "commodore") {
-          selectCommodore(row.group.commodoreId);
-          return;
-        }
-        // 구성원은 부모가 대표하는 Objective — focusObjective이 부모 패널로 가서 그 구성원 본문을 보인다.
-        if (row.kind === "member") {
-          selectEntry(row.record.id);
-          return;
-        }
-        const selected = row.entry;
-        if (actionsFor === selected.objectiveId) rowActions(selected)[actionIndex]?.run();
-        else selectEntry(selected.objectiveId);
+    if (selectedPrimaryRow) {
+      const row = selectedPrimaryRow;
+      if (row.kind === "commodore") {
+        selectCommodore(row.group.commodoreId);
         return;
       }
-      const selected = matchedCommands[primaryIndex];
-      if (selected) runCommand(selected.command);
+      // 구성원은 부모가 대표하는 Objective — focusObjective이 부모 패널로 가서 그 구성원 본문을 보인다.
+      if (row.kind === "member") {
+        selectEntry(row.record.id);
+        return;
+      }
+      const selected = row.entry;
+      if (actionsFor === selected.objectiveId) rowActions(selected)[actionIndex]?.run();
+      else selectEntry(selected.objectiveId);
       return;
     }
-    const panelEntry = railSearchEntries[selectedRailIndex];
+    if (selectedCommand) {
+      runCommand(selectedCommand.command);
+      return;
+    }
+    const panelEntry = selectedExactRail ?? selectedRestRail;
     if (panelEntry) void selectRailResult(panelEntry.group.panelId, panelEntry.result);
   };
 
-  const switchMode = (next: PaletteMode) => {
-    setMode(next);
-    setText("");
-    inputRef.current?.focus();
-  };
-
   const handleInputChange = (value: string) => {
-    // 접두 문법은 스위치를 모르는 손을 위한 것이다 — 빈 입력에 `>`로 시작하는 값이 들어오면(타자든
-    // `>sidebar` 붙여넣기든) 명령 모드로 옮기고 접두 뒤를 질의로 남긴다.
-    const prefixMode = text === "" && mode === "objectiveRecords" ? paletteModeForPrefix(value[0] ?? "") : null;
-    if (prefixMode) {
-      setMode(prefixMode);
-      setText(value.slice(1));
+    // 접두 문법은 그대로 둔다 — 빈 입력에 `>`로 시작하는 값이 들어오면(타자든
+    // `>sidebar` 붙여넣기든) 접두 뒤를 질의로 남기고 한 목록에서 찾는다.
+    if (text === "" && isCommandModeInput(value)) {
+      setText(commandModeQuery(value));
       return;
     }
     setText(value);
@@ -625,11 +610,6 @@ export function ObjectiveSearch({
       event.preventDefault();
       if (actionsFor !== null) setActionsFor(null);
       else closeObjectiveSearch();
-      return;
-    }
-    if (event.key === "Backspace" && text === "" && mode !== "objectiveRecords") {
-      event.preventDefault();
-      switchMode("objectiveRecords");
       return;
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -691,22 +671,8 @@ export function ObjectiveSearch({
     setSelectedIndex(next);
   };
 
-  const placeholder = t(mode === "commands" ? "chrome.objectiveRecordSearch.placeholderCommands" : "chrome.objectiveRecordSearch.placeholderObjectiveRecords");
-  const emptyMessage = t(mode === "commands" ? "chrome.objectiveRecordSearch.noMatchingCommands" : "chrome.objectiveRecordSearch.noMatching");
-  const sectionTitle = (id: "recent" | PaletteCommandGroup | "matches"): string => {
-    switch (id) {
-      case "recent": return t("chrome.objectiveRecordSearch.sectionRecent");
-      case "current-objectiveRecord": {
-        const active = state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === state.activeObjectiveId);
-        return active ? `${t("chrome.objectiveRecordSearch.sectionCurrentObjective")} · ${active.title}` : t("chrome.objectiveRecordSearch.sectionCurrentObjective");
-      }
-      case "theater": return t("chrome.objectiveRecordSearch.sectionTheater");
-      case "view": return t("chrome.objectiveRecordSearch.sectionView");
-      case "panel": return t("chrome.objectiveRecordSearch.sectionPanel");
-      case "console": return t("chrome.objectiveRecordSearch.sectionConsole");
-      case "matches": return t("chrome.objectiveRecordSearch.commands");
-    }
-  };
+  const placeholder = t("chrome.objectiveRecordSearch.placeholder");
+  const emptyMessage = t("chrome.objectiveRecordSearch.noMatching");
 
   const renderRailGroups = (exact: boolean) => railSearchGroups.map((group) => {
     const results = group.results.filter((result) => (result.exact === true) === exact);
@@ -718,7 +684,7 @@ export function ObjectiveSearch({
         <h2 id={headingId} className="objective-search-section-heading">{group.panelTitle}</h2>
         {results.map((result) => {
           const railIndex = railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
-          const index = railIndex < exactCount ? railIndex : primaryCount + railIndex;
+          const index = railIndex < exactCount ? railIndex : exactCount + primaryCount + (railIndex - exactCount);
           const active = index === clampedSelectedIndex;
           const resultKey = railResultKey(group.panelId, result.id);
           if (result.kind === "info") {
@@ -748,9 +714,9 @@ export function ObjectiveSearch({
               onClick={() => { void selectRailResult(group.panelId, result); }}
             >
               <PaletteRailIcon icon={result.icon ?? panelIcon} />
-              {/* 패널 결과도 한 줄이다 — 부제(경로·태그)는 제목 오른쪽에 조용한 메타로 서고,
+              {/* 패널 결과는 두 줄이다 — 제목 아래에 부제(경로·태그)가 조용한 보조로 서고,
                   제목과 같은 부제(파일명 = 상대 경로)는 반복하지 않는다. */}
-              <span className="objective-search-result-text objective-search-result-text-inline">
+              <span className="objective-search-result-text">
                 <strong>{highlightText(result.title, tokens)}</strong>
                 {panelSubtitle(result) ? <small>{highlightText(panelSubtitle(result)!, tokens)}</small> : null}
               </span>
@@ -775,7 +741,7 @@ export function ObjectiveSearch({
         className="objective-search-card"
         role="dialog"
         aria-modal="true"
-        aria-label={commandMode ? t("chrome.objectiveRecordSearch.commandsDialog") : t("chrome.objectiveRecordSearch.quickSearchDialog")}
+        aria-label={t("chrome.objectiveRecordSearch.quickSearchDialog")}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
         onPointerMove={onPalettePointerMove}
@@ -797,76 +763,12 @@ export function ObjectiveSearch({
             aria-autocomplete="list"
             spellCheck={false}
           />
-          {/* 모드 스위치 — 검색창 오른쪽의 두 칸. ⌘K/⌘P가 같은 두 칸을 오간다. */}
-          <div className="objective-search-switch" role="tablist" aria-label={t("chrome.objectiveRecordSearch.switchAria")}>
-            {PALETTE_MODES.map((candidate) => (
-              <button
-                key={candidate}
-                type="button"
-                role="tab"
-                className={`objective-search-switch-option${candidate === mode ? " is-active" : ""}`}
-                aria-selected={candidate === mode}
-                tabIndex={-1}
-                title={candidate === "objectiveRecords" ? searchShortcut : paletteShortcut}
-                onClick={() => switchMode(candidate)}
-              >
-                {t(candidate === "objectiveRecords" ? "chrome.objectiveRecordSearch.tabObjectiveRecords" : "chrome.objectiveRecordSearch.tabCommands")}
-                <kbd>{candidate === "objectiveRecords" ? searchShortcut : paletteShortcut}</kbd>
-              </button>
-            ))}
-          </div>
         </div>
-        <div id={LISTBOX_ID} className="objective-search-results" data-nav={navigation} role="listbox" aria-label={commandMode ? t("chrome.objectiveRecordSearch.commandResults") : t("chrome.objectiveRecordSearch.objectiveRecordResults")}>
+        <div id={LISTBOX_ID} className="objective-search-results" data-nav={navigation} role="listbox" aria-label={t("chrome.objectiveRecordSearch.objectiveRecordResults")}>
           {!hasResults ? (
             <p className="objective-search-empty">
               {emptyMessage}
-              {mode === "objectiveRecords" ? <span className="objective-search-empty-hint">{t("chrome.objectiveRecordSearch.noMatchingObjectiveRecordsHint", { shortcut: paletteShortcut })}</span> : null}
             </p>
-          ) : mode !== "objectiveRecords" ? (
-            <>
-              {commandSections.map((section) => {
-                const headingId = commandSectionHeadingId(section.id);
-                return (
-                  <section className="objective-search-section" key={section.id} role="group" aria-labelledby={headingId}>
-                    <h2 id={headingId} className="objective-search-section-heading">
-                      {section.id !== "matches" ? <PaletteSectionGlyph section={section.id} /> : null}
-                      {sectionTitle(section.id)}
-                    </h2>
-                    {section.commands.map((scored) => {
-                      const { command } = scored;
-                      const index = matchedCommands.indexOf(scored);
-                      const active = index === clampedSelectedIndex;
-                      const resultKey = commandRows[index]!.key;
-                      return (
-                        <button
-                          id={resultOptionId(resultKey)}
-                          key={resultKey}
-                          ref={(node) => {
-                            if (node) resultRefs.current.set(resultKey, node);
-                            else resultRefs.current.delete(resultKey);
-                          }}
-                          type="button"
-                          className={`objective-search-result${active ? " is-active" : ""}${command.danger ? " is-danger" : ""}`}
-                          role="option"
-                          aria-selected={active}
-                          data-palette-index={index}
-                          onClick={() => runCommand(command)}
-                        >
-                          <PaletteCommandGlyph command={command} />
-                          <span className="objective-search-result-text">
-                            <strong>{highlightIndices(command.label, scored.matchedIndices)}</strong>
-                          </span>
-                          {command.current ? <span className="objective-search-theater">{t("chrome.objectiveRecordSearch.current")}</span> : null}
-                          {command.undoable ? <span className="objective-search-undoable">{t("chrome.objectiveRecordSearch.undoable", { shortcut: undoShortcut })}</span> : null}
-                          {command.shortcut ? <span className="objective-search-shortcut">{chordKeyLabels(resolveShortcutChords(command.shortcut)[0] ?? "").map((key, keyIndex) => <kbd key={`${keyIndex}:${key}`}>{key}</kbd>)}</span> : null}
-                        </button>
-                      );
-                    })}
-                  </section>
-                );
-              })}
-              {renderRailGroups(false)}
-            </>
           ) : (
             <>
               {renderRailGroups(true)}
@@ -1020,17 +922,42 @@ export function ObjectiveSearch({
                 </div>
               ))}
               {renderRailGroups(false)}
+              {/* 명령은 결과 뒤에 한 목록으로 잇는다 — 섹션 제목 없이, 각 묶음 안의 점수 순서 그대로. */}
+              {commandRows.map((row, position) => {
+                const { command } = row.scored;
+                const index = exactCount + primaryCount + railRestCount + position;
+                const active = index === clampedSelectedIndex;
+                return (
+                  <button
+                    id={resultOptionId(row.key)}
+                    key={row.key}
+                    ref={(node) => {
+                      if (node) resultRefs.current.set(row.key, node);
+                      else resultRefs.current.delete(row.key);
+                    }}
+                    type="button"
+                    className={`objective-search-result${active ? " is-active" : ""}${command.danger ? " is-danger" : ""}`}
+                    role="option"
+                    aria-selected={active}
+                    data-palette-index={index}
+                    onClick={() => runCommand(command)}
+                  >
+                    <PaletteCommandGlyph command={command} />
+                    <span className="objective-search-result-text">
+                      <strong>{highlightIndices(command.label, row.scored.matchedIndices)}</strong>
+                    </span>
+                    {command.current ? <span className="objective-search-theater">{t("chrome.objectiveRecordSearch.current")}</span> : null}
+                    {command.undoable ? <span className="objective-search-undoable">{t("chrome.objectiveRecordSearch.undoable", { shortcut: undoShortcut })}</span> : null}
+                    {command.shortcut ? <span className="objective-search-shortcut">{chordKeyLabels(resolveShortcutChords(command.shortcut)[0] ?? "").map((key, keyIndex) => <kbd key={`${keyIndex}:${key}`}>{key}</kbd>)}</span> : null}
+                  </button>
+                );
+              })}
             </>
           )}
         </div>
+        {/* 단축키 안내 줄은 그리지 않는다 — 키보드 조작 문구는 보조기기에만 남긴다. */}
+        <p className="objective-search-sr-only">{t("chrome.objectiveRecordSearch.legendMove")} ↑↓ · {t("chrome.objectiveRecordSearch.legendOpen")} Enter · {t("chrome.objectiveRecordSearch.legendActions")} → · {t("chrome.objectiveRecordSearch.legendClose")} Esc</p>
         {shellNotice ? <p className="archive-sheet-notice" role="alert">{shellNotice}</p> : null}
-        <div className="objective-search-legend">
-          <span><kbd>↑</kbd><kbd>↓</kbd>{t("chrome.objectiveRecordSearch.legendMove")}</span>
-          <span><kbd>↵</kbd>{t(mode === "objectiveRecords" ? "chrome.objectiveRecordSearch.legendOpen" : "chrome.objectiveRecordSearch.legendRun")}</span>
-          {mode === "objectiveRecords" ? <span><kbd>→</kbd>{t("chrome.objectiveRecordSearch.legendActions")}</span> : null}
-          <span><kbd>esc</kbd>{t("chrome.objectiveRecordSearch.legendClose")}</span>
-          <span className="objective-search-legend-switch">{t(mode === "objectiveRecords" ? "chrome.objectiveRecordSearch.legendToCommands" : "chrome.objectiveRecordSearch.legendToObjectiveRecords", { shortcut: mode === "objectiveRecords" ? paletteShortcut : searchShortcut })}</span>
-        </div>
       </section>
     </div>
   );
@@ -1047,10 +974,6 @@ interface RowAction {
   readonly glyph: "objective-open" | "objective-resume" | "objective-rename" | "objective-archive";
   readonly danger?: boolean;
   readonly run: () => void;
-}
-
-function commandSectionHeadingId(id: string): string {
-  return `objective-search-heading-commands-${domIdPart(id)}`;
 }
 
 function paletteActionToSideBarAction(

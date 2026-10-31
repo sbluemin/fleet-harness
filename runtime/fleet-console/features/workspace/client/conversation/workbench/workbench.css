@@ -181,10 +181,13 @@
   display: grid;
   padding: var(--popover-pad);
   box-sizing: border-box;
-  border: 1px solid var(--popover-rim);
+  border: 0;
   border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
+  width: var(--popover-width);
+  gap: var(--popover-list-gap);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
 
 .workbench-tile-menu-item {
@@ -198,15 +201,17 @@
   background: transparent;
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-base);
+  font-size: var(--popover-font-size);
   text-align: left;
   cursor: pointer;
   min-height: var(--popover-row);
   font-weight: var(--weight-regular);
+  line-height: var(--popover-line-height);
+  letter-spacing: 0;
 }
 
 .workbench-tile-menu-item:hover:not(:disabled),
-.workbench-tile-menu-item:focus-visible { background: var(--control-rest-hover); outline: none; }
+.workbench-tile-menu-item:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
 .workbench-tile-menu-item:disabled { color: var(--text-tertiary); cursor: default; }
 .workbench-tile-menu-item kbd { font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); }
 

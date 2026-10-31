@@ -158,33 +158,31 @@ const DARK_TERMINAL_THEME: ITheme = {
 
 // 라이트 터미널의 bright 계열은 밝히지 않고 더 진하게(L −5%p, C +0.02) 간다 — 밝은 배경에서 '밝은' ANSI는 판독 불능이기 때문.
 // 단 brightWhite는 예외로 배경보다 밝게 유지한다(SGR 107 블록이 종이보다 희어야 극성이 산다).
-// 라이트 배경은 화면 최명면이어야 한다: 테마의 --canvas-abyss(L 97.8%)보다 밝게 고정 —
+// 라이트 배경은 화면 최명면이어야 한다: 테마의 --surface-panel(#ffffff)과 같고, 대화 바탕(#fcfcfc)보다 밝다.
 // 작업면이 크롬보다 어두워지면 시선이 크롬으로 끌리는 극성 역전이 재발한다(다크는 반대 방향으로 동일 원칙).
-// 동시에 chroma는 테마 대기(캔버스~밴드 패밀리)를 따른다 — 최명면 + 최저채도가 겹치면
-// 터미널이 테마 밖 백지로 읽힌다(실사용 피드백으로 확인된 과중화 회귀).
-// 종이·잉크·흑백 rung은 라이트 테마의 오트밀 대기(hue 95~100)를 따르고, 유채 ANSI 6색은 CLI 콘텐츠의
-// 의미색이므로 대기 이동과 무관하게 유지한다(cursor=aurora·selection=brass 채널 역할도 불변).
+// 종이·잉크·흑백 rung은 라이트 테마의 무채색 대기(채도 0)를 따른다. 유채 ANSI 6색은 CLI 콘텐츠의
+// 의미색이므로 그대로 둔다(cursor=aurora·selection=brass 채널 역할도 불변).
 const LIGHT_TERMINAL_THEME: ITheme = {
-  background: "oklch(98.2% 0.004 100)",
-  foreground: "oklch(24% 0.012 95)",
+  background: "oklch(100% 0 0)",
+  foreground: "oklch(22.6% 0 0)",
   cursor: "oklch(50% 0.1 210)",
   selectionBackground: "oklch(56% 0.125 82 / 20%)",
-  black: "oklch(25% 0.014 95)",
-  brightBlack: "oklch(46% 0.012 95)",
+  black: "oklch(25% 0 0)",
+  brightBlack: "oklch(46% 0 0)",
   red: "oklch(52% 0.16 25)",
   green: "oklch(50% 0.12 160)",
   yellow: "oklch(55% 0.11 82)",
   blue: "oklch(50% 0.1 250)",
   magenta: "oklch(51% 0.1 318)",
   cyan: "oklch(50% 0.1 210)",
-  white: "oklch(89% 0.008 98)",
+  white: "oklch(89% 0 0)",
   brightRed: "oklch(47% 0.18 25)",
   brightGreen: "oklch(45% 0.14 160)",
   brightYellow: "oklch(49% 0.13 80)",
   brightBlue: "oklch(45% 0.11 250)",
   brightMagenta: "oklch(46% 0.12 318)",
   brightCyan: "oklch(45% 0.11 210)",
-  brightWhite: "oklch(99.3% 0.003 100)",
+  brightWhite: "oklch(99.3% 0 0)",
 };
 
 /* 모바일 팔레트의 ANSI — 크롬과 같은 따뜻한 중성 회색 위에 신호와 같은 색상각을 쓴다. 커서·선택은

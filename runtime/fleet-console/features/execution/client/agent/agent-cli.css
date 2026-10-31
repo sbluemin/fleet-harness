@@ -388,10 +388,10 @@
   width: var(--ai-gateway-palette-width, 720px);
   max-width: 100%;
   /* 공통 팝업 표면(theme.css --popover-*) — 다른 팝업과 같은 불투명 면 한 장이다. */
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
 }
 
 .ai-gateway-palette.is-resizing {

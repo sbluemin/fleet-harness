@@ -166,7 +166,7 @@ interface SideBarClusterRowProps {
    * 우클릭·ContextMenu·Shift+F10·길게 누르기. 데스크톱 목록만 넘긴다.
    * 사이드바 aside 가 빈 영역 우클릭을 새 세션으로 읽으므로, 행은 이벤트를 삼켜야 한다.
    */
-  readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => void;
+  readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null, focusFirst?: boolean) => void;
 }
 
 /** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. */
@@ -278,7 +278,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
     event.stopPropagation();
-    onContextMenu(item, event.currentTarget.getBoundingClientRect(), event.currentTarget);
+    onContextMenu(item, event.currentTarget.getBoundingClientRect(), event.currentTarget, true);
   };
   // 목표 줄은 세션 유무와 무관하게 그 대화로 간다. 목표가 아닌 사령관 질문만 기존 질문 카드를 연다.
   const open = () => {

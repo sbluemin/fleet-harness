@@ -216,7 +216,7 @@
 /* 하단 시트 — 스크림 + 위 모서리 28 판. 손잡이에서 끌어내려 닫는다. */
 .objectives-m-sheet-layer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; justify-content: flex-end; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 .objectives-m-scrim { position: absolute; inset: 0; background: var(--m-scrim); animation: objectives-m-fade .2s ease-out; }
-.objectives-m-sheet { position: relative; display: flex; flex-direction: column; max-height: calc(100% - 56px); padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: 28px 28px 0 0; background: var(--m-surface); animation: objectives-m-sheet-in .3s cubic-bezier(.05,.7,.1,1); transition: transform .2s cubic-bezier(.05,.7,.1,1); }
+.objectives-m-sheet { position: relative; display: flex; flex-direction: column; max-height: calc(100% - 56px); padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: 28px 28px 0 0; background: var(--popover-face); animation: objectives-m-sheet-in .3s cubic-bezier(.05,.7,.1,1); transition: transform .2s cubic-bezier(.05,.7,.1,1); border: 0; box-shadow: var(--popover-surface-shadow); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
 .objectives-m-sheet.is-dragging { transition: none; }
 .objectives-m-sheet-layer.is-closing .objectives-m-scrim { opacity: 0; transition: opacity .2s; }
 .objectives-m-sheet-layer.is-closing .objectives-m-sheet { transform: translateY(100%); transition: transform .22s cubic-bezier(.3,0,.8,.15); }
@@ -235,10 +235,10 @@
 .objectives-m-sheet-ft { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 16px 0; }
 .objectives-m-sheet-layer :focus-visible:not([data-press]) { border-radius: 8px; box-shadow: var(--focus-face); }
 /* 열릴 때 포커스를 받는 시트 판 자체는 고리를 그리지 않는다 — 판 전체가 대화상자다. */
-.objectives-m-sheet-layer .objectives-m-sheet:focus-visible { outline: none; border-radius: 28px 28px 0 0; }
+.objectives-m-sheet-layer .objectives-m-sheet:focus-visible { outline: none; border-radius: 28px 28px 0 0; box-shadow: var(--popover-surface-shadow); }
 /* 라우팅 확인 시트 — 라우팅 구성원마다 역할 · 판단된 모델 · 강도, 그 아래 근거 또는 폴백 사유. */
 .objectives-m-route { display: flex; flex-direction: column; }
-.objectives-m-route-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; padding: 12px 4px; border-top: 1px solid var(--m-hairline); }
+.objectives-m-route-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; padding: 12px 4px; border-top: var(--popover-divider-width) solid var(--popover-divider); }
 .objectives-m-route-row:first-child { border-top: 0; }
 .objectives-m-route-role { font-size: var(--m-fs-body); font-weight: var(--weight-bold); overflow-wrap: anywhere; }
 .objectives-m-route-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); white-space: nowrap; }
@@ -252,7 +252,7 @@
  * 체크는 결정 질문의 여러 개 고르기(.objectives-m-ind.is-check)와 같은 모서리 6 네모다. 색은 모바일 토큰만.
  */
 .objectives-m-followups .objectives-followup-list { padding: 0; }
-.objectives-m-followups .objectives-followup-item { border-top: 1px solid var(--m-hairline); border-radius: 0; }
+.objectives-m-followups .objectives-followup-item { border-top: var(--popover-divider-width) solid var(--popover-divider); border-radius: 0; }
 .objectives-m-followups .objectives-followup-item:first-child { border-top: 0; }
 .objectives-m-followups .objectives-followup-item.is-open { background: none; }
 .objectives-m-followups .objectives-followup-row { gap: 12px; padding: 12px 4px; }
@@ -280,7 +280,7 @@
 .objectives-m-followup-results .objectives-followup-trace { margin-left: 4px; margin-right: 4px; font-family: var(--m-sans); font-size: var(--m-fs-caption); color: var(--m-text-faint); }
 .objectives-m-followup-results .objectives-followup-sum { color: var(--m-text-muted); }
 .objectives-m-followup-results .objectives-followup-res { padding: 0; }
-.objectives-m-followup-results .objectives-followup-rrow { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 4px; border-top: 1px solid var(--m-hairline); border-radius: 0; }
+.objectives-m-followup-results .objectives-followup-rrow { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 4px; border-top: var(--popover-divider-width) solid var(--popover-divider); border-radius: 0; }
 .objectives-m-followup-results .objectives-followup-rrow:hover { background: none; }
 .objectives-m-followup-results .objectives-followup-rt { white-space: normal; color: var(--m-text); font-size: var(--m-fs-list); }
 .objectives-m-followup-results .objectives-followup-rstat { flex-wrap: wrap; white-space: normal; font-size: var(--m-fs-caption); }

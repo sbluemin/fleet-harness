@@ -93,7 +93,7 @@ export function NewSessionDeck({ id, label, items, activeKey, emptyText, mention
     <ComposerDeck id={id} label={label} listbox={rowCount > 0} contentKey={`${rowCount}:${groups.map((group) => group.head?.key ?? "").join(",")}`} className={mention ? "new-session-deck is-mention-deck" : "new-session-deck"}>
       {rowCount === 0 ? <ComposerDeckEmpty>{emptyText}</ComposerDeckEmpty> : null}
       {groups.map((group, at) => group.head
-        ? <ComposerDeckGroup key={group.head.key} label={group.head.label} note={group.head.note ?? undefined}>{group.items.map(renderItem)}</ComposerDeckGroup>
+        ? <ComposerDeckGroup key={group.head.key} label={group.head.label}>{group.items.map(renderItem)}</ComposerDeckGroup>
         : <div key={`lead-${at}`} className="fc-composer-deck-group" role="group">{group.items.map(renderItem)}</div>)}
     </ComposerDeck>
   );

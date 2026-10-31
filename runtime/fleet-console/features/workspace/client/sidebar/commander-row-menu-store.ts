@@ -7,6 +7,7 @@ export interface CommanderRowMenuRequest {
   readonly item: SideBarRowItem;
   readonly anchor: DOMRect;
   readonly returnFocus: HTMLElement | null;
+  readonly focusFirst?: boolean;
 }
 
 let request: CommanderRowMenuRequest | null = null;

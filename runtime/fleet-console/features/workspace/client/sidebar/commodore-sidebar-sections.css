@@ -39,10 +39,10 @@
 .workspace-commodore-section-menu .theater-menu-item:disabled { color: var(--text-tertiary); background: transparent; cursor: default; }
 .workspace-commodore-section-move > .theater-menu-item > .theater-menu-label { flex: 1; }
 .workspace-commodore-section-dialog {
-  width: min(360px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--popover-rim);
-  border-radius: var(--popover-radius); background: var(--popover-face); color: var(--text-secondary); box-shadow: var(--popover-shadow);
+  width: min(360px, calc(100vw - 32px)); padding: 20px; border: 0;
+  border-radius: var(--dialog-radius); background: var(--dialog-face); color: var(--text-secondary); box-shadow: var(--dialog-surface-shadow);
 }
-.workspace-commodore-section-dialog::backdrop { background: oklch(0% 0 0 / 55%); }
+.workspace-commodore-section-dialog::backdrop { background: var(--dialog-scrim); }
 .workspace-commodore-section-dialog h2 { margin: 0 0 8px; color: var(--text-primary); font-size: var(--t-base); }
 .workspace-commodore-section-dialog p { margin: 0 0 18px; font-size: var(--t-sm); }
 .workspace-commodore-section-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }

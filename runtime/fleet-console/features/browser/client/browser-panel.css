@@ -28,7 +28,7 @@
 .op-browser__chip { background: transparent; border: 1px solid var(--hairline); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); padding: 2px var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
 .op-browser__chip.is-set { color: var(--brass-ink); border-color: var(--brass); }
 .op-browser__chip:hover, .op-browser__chip:focus-visible { color: var(--text-primary); border-color: var(--brass); outline: none; }
-.op-browser__menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 3; min-width: 120px; display: flex; flex-direction: column; background: var(--popover-face); border: 1px solid var(--popover-rim); border-radius: var(--popover-radius); padding: var(--popover-pad); box-shadow: var(--popover-shadow); }
+.op-browser__menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 3; min-width: var(--popover-min-width); display: flex; flex-direction: column; background: var(--popover-face); border: 0; border-radius: var(--popover-radius); padding: var(--popover-pad); box-shadow: var(--popover-surface-shadow); width: var(--popover-width); gap: var(--popover-list-gap); --focus-face: inset 0 0 0 100vmax var(--wash-hover); max-width: calc(100vw - 16px); }
 .op-browser__menu--row { flex-direction: row; gap: 2px; min-width: 0; }
 .op-browser__icon.is-set { color: var(--brass-ink); }
 /* 툴팁 — data-tip 을 단 컨트롤 아래에 짧은 한 줄. 포인터를 받지 않고 지연 없이 뜬다. */
@@ -36,9 +36,9 @@
 .op-browser [data-tip]:hover::after, .op-browser [data-tip]:focus-visible::after, .op-browser-cap [data-tip]:hover::after, .op-browser-cap [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 7; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); }
 .op-browser-cap .op-browser__viewport-menu [data-tip]:hover::after, .op-browser-cap > .op-browser__icon[data-tip]:hover::after { left: auto; right: 0; transform: none; }
 .op-browser [data-tip][aria-expanded="true"]::after, .op-browser-cap [data-tip][aria-expanded="true"]::after { display: none; }
-.op-browser__menu-item { text-align: start; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-base); min-height: var(--popover-row); padding: var(--space-2) var(--popover-row-inline); border-radius: var(--popover-row-radius); cursor: pointer; }
+.op-browser__menu-item { text-align: start; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--popover-font-size); min-height: var(--popover-row); padding: 6px var(--popover-row-inline); border-radius: var(--popover-row-radius); cursor: pointer; gap: var(--popover-row-gap); line-height: var(--popover-line-height); letter-spacing: 0; }
 .op-browser__menu-item[aria-checked="true"] { color: var(--brass-ink); }
-.op-browser__menu-item:hover, .op-browser__menu-item:focus-visible { background: var(--wash-hover); color: var(--text-primary); outline: none; }
+.op-browser__menu-item:hover, .op-browser__menu-item:focus-visible { background: var(--wash-hover); color: var(--text-primary); outline: none; box-shadow: none; }
 
 .op-browser__nav { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); background: var(--ink-deep); }
 .op-browser__icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-secondary); font: inherit; font-size: var(--t-md); text-decoration: none; cursor: pointer; }
@@ -53,9 +53,9 @@
 .op-browser__url.is-display .op-browser__url-input { color: transparent; caret-color: transparent; }
 .op-browser__url-input:focus { outline: none; }
 /* 제안은 주소창 아래에 선다. 네이티브 뷰의 가림은 패널의 기존 주차 경로가 맡는다. */
-.op-browser__suggestions { position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 7; display: flex; flex-direction: column; padding: var(--space-1); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); }
-.op-browser__suggestion { text-align: start; min-width: 0; padding: var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.op-browser__suggestion:hover, .op-browser__suggestion:focus-visible, .op-browser__suggestion[aria-selected="true"] { background: var(--ink-veil); color: var(--brass-ink); }
+.op-browser__suggestions { position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 7; display: flex; flex-direction: column; padding: var(--popover-pad); background: var(--popover-face); border: 0; border-radius: var(--popover-radius); box-shadow: var(--popover-surface-shadow); gap: var(--popover-list-gap); }
+.op-browser__suggestion { text-align: start; min-width: 0; padding: 0 var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-primary); font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; min-height: var(--popover-row); gap: var(--popover-row-gap); font-size: var(--popover-font-size); line-height: var(--popover-line-height); letter-spacing: 0; }
+.op-browser__suggestion:hover, .op-browser__suggestion:focus-visible, .op-browser__suggestion[aria-selected="true"] { background: var(--wash-hover); color: var(--text-primary); box-shadow: none; }
 .op-browser__suggestion-prompt { gap: var(--space-1); padding: var(--space-2); color: var(--text-secondary); font-size: var(--t-sm); }
 .op-browser__suggestion-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .op-browser__suggestion:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
@@ -122,8 +122,8 @@
 .op-browser__swatch--green { background: var(--id-moss); }
 .op-browser__swatch--black { background: var(--ink-abyss); }
 /* 가져오기 대화상자 — 뷰포트 위에 얹히는 시트. 네이티브 뷰는 이 위에 그려지므로 패널이 그동안 뷰를 물러서게 한다. */
-.op-browser__scrim { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; background: oklch(0% 0 0 / 45%); padding: var(--space-4); }
-.op-browser__dialog { width: min(440px, 100%); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 16px 40px oklch(0% 0 0 / 45%); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.op-browser__scrim { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; background: var(--dialog-scrim); padding: var(--space-4); }
+.op-browser__dialog { width: min(440px, 100%); background: var(--dialog-face); border: 0; border-radius: var(--dialog-radius); box-shadow: var(--dialog-surface-shadow); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
 .op-browser__dialog-head { display: flex; align-items: flex-start; gap: var(--space-2); }
 .op-browser__dialog-head > div { flex: 1; min-width: 0; }
 .op-browser__dialog h3 { margin: 0; font-size: var(--t-base); font-weight: var(--weight-medium); color: var(--text-primary); }
@@ -169,7 +169,7 @@
 .op-browser__pin { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border-radius: var(--radius-pill); border: 2px solid var(--agent-control-badge-ink); background: var(--id-cerulean); color: var(--agent-control-badge-ink); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 1; box-shadow: 0 2px 8px oklch(0% 0 0 / 35%); cursor: pointer; }
 .op-browser__pin:hover, .op-browser__pin:focus-visible { background: var(--coral); outline: none; }
 .op-browser__pin.is-anchor { position: absolute; z-index: 5; transform: translate(-50%, -50%); cursor: default; pointer-events: none; }
-.op-browser__comment { position: absolute; z-index: 6; display: flex; align-items: center; gap: var(--space-2); width: min(320px, calc(100% - 16px)); padding: 3px 3px 3px var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); }
+.op-browser__comment { position: absolute; z-index: 6; display: flex; align-items: center; gap: var(--space-2); width: min(320px, calc(100% - 16px)); padding: 3px 3px 3px var(--space-3); background: var(--popover-face); border: 0; border-radius: var(--popover-radius); box-shadow: var(--popover-surface-shadow); }
 .op-browser__comment-input { flex: 1; min-width: 0; height: 26px; background: transparent; border: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); }
 .op-browser__comment-input:focus { outline: none; }
 .op-browser__comment-input::placeholder { color: var(--text-tertiary); }
@@ -185,9 +185,9 @@
 .op-browser__pchip.is-persistent { color: var(--positive-ink); }
 .op-browser__pchip.is-persistent:hover:not(:disabled) { color: var(--positive-ink); background: color-mix(in oklch, var(--positive) 12%, transparent); }
 /* 세션 메뉴 — 항목마다 앞에 자기 글리프가 서고, 설명은 한 줄을 넘지 않는다. */
-.op-browser__profile .op-browser__menu { right: 0; min-width: var(--popover-width); }
+.op-browser__profile .op-browser__menu { right: 0; min-width: var(--popover-min-width); }
 .op-browser__menu-item { display: flex; align-items: flex-start; gap: var(--popover-row-gap); }
-.op-browser__menu-glyph { flex: none; display: inline-flex; margin-top: 1px; color: var(--text-tertiary); }
+.op-browser__menu-glyph { flex: none; display: inline-flex; margin-top: 1px; color: var(--popover-icon-ink); }
 .op-browser__menu-glyph svg { width: var(--popover-icon); height: var(--popover-icon); }
 .op-browser__menu-item:hover .op-browser__menu-glyph, .op-browser__menu-item:focus-visible .op-browser__menu-glyph { color: inherit; }
 .op-browser__menu-item[aria-checked="true"] .op-browser__menu-glyph { color: inherit; }
@@ -196,7 +196,7 @@
 .op-browser__menu-body { display: flex; flex-direction: column; min-width: 0; }
 .op-browser__menu-body strong { font-weight: var(--weight-medium); }
 .op-browser__menu-item .op-browser__help { display: block; color: var(--text-tertiary); font-size: var(--t-2xs); margin-top: 1px; white-space: normal; line-height: 1.35; }
-.op-browser__menu-sep { height: 1px; margin: var(--space-1) 0; background: var(--hairline); }
+.op-browser__menu-sep { height: var(--popover-divider-width); margin: var(--popover-divider-space); background: var(--popover-divider); flex: none; }
 /* 행 끝 — 기본인 행은 「기본」 한 낱말이 늘 서고, 다른 행은 올렸을 때만 핀이 떠오른다. 폭을 미리 잡아 행이 흔들리지 않게. */
 .op-browser__menu-tail { flex: none; display: inline-flex; align-items: center; justify-content: flex-end; align-self: center; min-width: 34px; margin-left: auto; }
 .op-browser__menu-default { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0.02em; }

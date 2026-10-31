@@ -1176,18 +1176,19 @@
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 0;
-  width: max-content;
+  gap: var(--popover-list-gap);
+  width: var(--popover-width);
   min-width: var(--popover-min-width);
   max-width: calc(100% - 8px);
   max-height: calc(100% - 8px);
   overflow-y: auto;
   padding: var(--popover-pad);
   /* 공통 팝업 표면(theme.css --popover-*) — 메뉴 행은 40px · 본문 글자 · 중립 워시다. */
-  border: 1px solid var(--popover-rim);
+  border: 0;
   border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
 
 .repository-context-menu-item {
@@ -1202,11 +1203,13 @@
   color: var(--text-primary);
   cursor: pointer;
   font-family: var(--font-ui);
-  font-size: var(--t-base);
+  font-size: var(--popover-font-size);
   font-weight: var(--weight-regular);
   text-align: left;
   white-space: nowrap;
   gap: var(--popover-row-gap);
+  line-height: var(--popover-line-height);
+  letter-spacing: 0;
 }
 
 .repository-context-menu-item:hover:not(:disabled) {
@@ -1214,7 +1217,8 @@
 }
 
 .repository-context-menu-item:focus-visible {
-  box-shadow: var(--focus-face);
+  box-shadow: none;
+  background: var(--wash-hover);
 }
 
 .repository-context-menu-item:disabled {
@@ -1884,10 +1888,10 @@
   width: 240px;
   padding: 12px;
   /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
 }
 .repository-stash-popover-label {
   font-family: var(--font-ui);
@@ -2252,14 +2256,16 @@
   top: calc(100% + 6px);
   z-index: 30;
   display: grid;
-  gap: 0;
+  gap: var(--popover-list-gap);
   min-width: var(--popover-min-width);
   padding: var(--popover-pad);
   /* 공통 팝업 표면(theme.css --popover-*) — 메뉴 행은 40px · 본문 글자 · 중립 워시다. */
-  border: 1px solid var(--popover-rim);
+  border: 0;
   border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
+  width: var(--popover-width);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
 .repository-verb-menu-item {
   display: flex;
@@ -2275,14 +2281,16 @@
   cursor: pointer;
   font: inherit;
   font-family: var(--font-ui);
-  font-size: var(--t-base);
+  font-size: var(--popover-font-size);
   font-weight: var(--weight-regular);
   text-align: left;
   white-space: nowrap;
+  line-height: var(--popover-line-height);
+  letter-spacing: 0;
 }
 .repository-verb-menu-item .repository-icon { color: var(--text-secondary); }
 .repository-verb-menu-item:hover:not(:disabled) { background: var(--wash-hover); }
-.repository-verb-menu-item:focus-visible { box-shadow: var(--focus-face); }
+.repository-verb-menu-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 .repository-verb-menu-item:disabled { opacity: .4; cursor: default; }
 .repository-verb-menu-item .repository-verb-count { margin-left: auto; }
 .repository-verb-cluster .repository-stash-popover { top: calc(100% + 6px); }
@@ -2379,10 +2387,10 @@
   display: flex;
   flex-direction: column;
   /* 공통 팝업 표면(theme.css --popover-*) — 불투명 면 한 장이 뒤쪽 브랜치·커밋 텍스트를 차폐한다. */
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
   overflow: hidden;
 }
 .repository-context-search { position: relative; display: flex; align-items: center; flex: none; height: var(--popover-row); border-bottom: 1px solid var(--popover-divider); }

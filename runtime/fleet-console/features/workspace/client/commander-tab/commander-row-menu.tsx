@@ -51,6 +51,7 @@ export function CommanderRowMenuLayer({
     open: request !== null && (objective !== null || request.item.row.archive !== undefined),
     menuSelector: '.group-context-menu-card[role="menu"]',
     returnFocusRef,
+    focusFirst: request?.focusFirst,
     onEscape: close,
   });
 

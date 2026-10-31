@@ -18,7 +18,7 @@ export function FontMenu({ label, selectedLabel, busy = false, ...picker }: Font
   const trigger = useRef<HTMLButtonElement>(null);
   const popup = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ left: 0, top: 0, width: 260, maxHeight: 360 });
+  const [position, setPosition] = useState({ left: 0, top: 0, maxWidth: 0, maxHeight: 360 });
   const close = (restoreFocus: boolean) => {
     setOpen(false);
     // 저장 중(busy)에도 버튼은 포커스를 받는다 — 고른 직후 그대로 돌아온다.
@@ -26,18 +26,27 @@ export function FontMenu({ label, selectedLabel, busy = false, ...picker }: Font
   };
   useLayoutEffect(() => {
     if (!open || !trigger.current || !popup.current) return;
-    const rect = trigger.current.getBoundingClientRect();
-    const pane = trigger.current.closest(".rail-pane-body, .settings-pane")?.getBoundingClientRect();
-    const leftLimit = Math.max(16, (pane?.left ?? 0) + 16);
-    const rightLimit = Math.min(innerWidth - 16, (pane?.right ?? innerWidth) - 16);
-    const width = Math.min(280, Math.max(160, rightLimit - leftLimit));
-    const below = innerHeight - rect.bottom - 22;
-    const above = rect.top - 22;
-    const down = below >= Math.min(320, above);
-    const maxHeight = Math.max(120, Math.min(360, down ? below : above));
-    const height = Math.min(popup.current.scrollHeight, maxHeight);
-    setPosition({ width, maxHeight, left: Math.max(leftLimit, Math.min(rect.right - width, rightLimit - width)), top: down ? rect.bottom + 6 : Math.max(16, rect.top - height - 6) });
+    const place = () => {
+      if (!trigger.current || !popup.current) return;
+      const rect = trigger.current.getBoundingClientRect();
+      const pane = trigger.current.closest(".rail-pane-body, .settings-pane")?.getBoundingClientRect();
+      const leftLimit = Math.max(16, (pane?.left ?? 0) + 16);
+      const rightLimit = Math.min(innerWidth - 16, (pane?.right ?? innerWidth) - 16);
+      const maxWidth = Math.max(200, rightLimit - leftLimit);
+      const width = Math.min(popup.current.getBoundingClientRect().width, maxWidth);
+      const below = innerHeight - rect.bottom - 22;
+      const above = rect.top - 22;
+      const down = below >= Math.min(320, above);
+      const maxHeight = Math.max(120, Math.min(360, down ? below : above));
+      const height = Math.min(popup.current.scrollHeight, maxHeight);
+      setPosition({ maxWidth, maxHeight, left: Math.max(leftLimit, Math.min(rect.right - width, rightLimit - width)), top: down ? rect.bottom + 6 : Math.max(16, rect.top - height - 6) });
+    };
+    place();
     popup.current.querySelector<HTMLInputElement>("input[type=search]")?.focus();
+    // 글꼴 목록을 불러오거나 검색해 내용 폭이 달라져도 앵커와 화면 안쪽에 붙인다.
+    const observer = new ResizeObserver(place);
+    observer.observe(popup.current);
+    return () => observer.disconnect();
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -70,7 +79,7 @@ export function FontMenu({ label, selectedLabel, busy = false, ...picker }: Font
     <button ref={trigger} type="button" className="settings-font-trigger" aria-label={`${label}: ${selectedLabel}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} disabled={picker.disabled} aria-disabled={(busy && !picker.disabled) || undefined} onClick={() => { if (!busy) setOpen(!open); }}>
       <span>{selectedLabel}</span><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m3 4.5 3 3 3-3" /></svg>
     </button>
-    {open ? createPortal(<div ref={popup} id={id} role="dialog" aria-label={label} className="settings-font-popover" style={position} onKeyDown={(event) => {
+    {open ? createPortal(<div ref={popup} id={id} role="dialog" aria-label={label} className="settings-font-popover" style={{ ...position, maxWidth: position.maxWidth || undefined }} onKeyDown={(event) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
       // 팝오버 안의 컨트롤(검색, 목록, 접힌 묶음, 하단 동작) 사이는 Tab으로 오간다. 끝을 넘어설 때만 닫는다.
       if (event.key === "Tab") {

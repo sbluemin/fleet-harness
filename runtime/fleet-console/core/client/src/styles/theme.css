@@ -334,34 +334,43 @@
   --radius-xl: 20px;
   --radius-sheet: 28px;
 
-  /* ── 공통 팝업 표면 (대화 독 메뉴 문법) ─────────────────────────────────
-     메뉴·팝오버·말풍선·토스트는 한 장의 불투명 면이다 — 광택·rim 하이라이트·반투명 틴트를 겹치지 않는다.
-     면은 앱 바탕 한 단(--ink-deep), 테두리는 글자색 14%, 그림자는 안쪽 광택 없이 짧고 옅은 한 겹이다.
-     크기는 한 벌이다(참고 앱 메뉴 실측): 폭 240(문맥 메뉴 최소 220) · 반경 16 · 여백 6 · 행 36 · 행 반경 10 ·
-     행 좌우 10 · 아이콘 16과 글자 사이 10 · 본문 14 · 구분선 위아래 6 좌우 10. 보조값과 ›는 행 끝의 3티어 잉크다.
-     행 상태는 중립 워시(hover·키보드 포커스·열린 하위 메뉴 7% · 고른 행 9% + 체크) 하나로만 말한다 — 외곽선은 없다.
-     워시는 팝업 밖 목록도 같은 이름으로 빌려 쓴다. 대화상자는 설정 모달 문법(대화 바탕 면 · 48% 검정 덮개 · --radius-xl)을 받는다. */
-  --popover-face: var(--ink-deep);
-  --popover-rim: color-mix(in oklch, var(--text-primary) 14%, transparent);
-  /* Doctrine: 무채색 그림자 리터럴(깊이 예외). */
-  --popover-shadow: 0 18px 44px -18px oklch(0% 0 0 / 70%);
-  --popover-width: 240px;
-  --popover-min-width: 220px;
+  /* ── 공통 팝업 표면 ──────────────────────────────────────────────────
+     불투명 면과 0.5px 안쪽 링을 쓴다. 다크에는 깊이 그림자가 없고 라이트만 옅은 그림자를 더한다.
+     내용 폭(최소 200) · 반경 12 · 여백 6 · 행 32 · 행 반경 6 · 본문 13/18 · 행 사이 2.
+     hover·키보드 포커스는 6%, 선택은 8% 중립 워시다. 보조값과 셰브런은 행 끝에 둔다.
+     surface-shadow는 링과 깊이의 합성값이다 — CSS 그림자 목록에 none을 섞을 수 없으므로 따로 둔다. */
+  --popover-face: oklch(23.9% 0 0);
+  --popover-rim: color-mix(in oklch, var(--text-primary) 10%, transparent);
+  --popover-ring: inset 0 0 0 0.5px var(--popover-rim);
+  --popover-shadow: none;
+  --popover-surface-shadow: var(--popover-ring);
+  --popover-width: max-content;
+  --popover-min-width: 200px;
   --popover-pad: 6px;
-  --popover-radius: var(--radius-lg);
-  --popover-row: 36px;
+  --popover-radius: 12px;
+  --popover-row: 32px;
   --popover-row-dense: var(--popover-row);
-  --popover-row-radius: var(--radius-md);
-  --popover-row-inline: 10px;
-  --popover-row-gap: 10px;
+  --popover-row-radius: 6px;
+  --popover-row-inline: 8px;
+  --popover-row-gap: 8px;
+  --popover-list-gap: 2px;
+  --popover-font-size: var(--t-md);
+  --popover-line-height: 18px;
   --popover-icon: 16px;
-  --popover-divider: color-mix(in oklch, var(--text-primary) 10%, transparent);
-  --popover-divider-space: 6px 10px;
-  --wash-hover: color-mix(in oklch, var(--text-primary) 7%, transparent);
-  --wash-selected: color-mix(in oklch, var(--text-primary) 9%, transparent);
-  --dialog-face: var(--canvas-abyss);
-  /* Doctrine: 무채색 덮개 리터럴(깊이 예외) — 설정 모달 덮개와 같은 값. */
-  --dialog-scrim: oklch(0% 0 0 / 48%);
+  --popover-icon-ink: color-mix(in oklch, var(--text-primary) 64%, transparent);
+  --popover-divider: var(--popover-rim);
+  --popover-divider-width: 0.5px;
+  /* 검색 팔레트 입력 줄 아래 선 — 레퍼런스의 3티어 선(다크 6%, 라이트 8%). */
+  --surface-rule-soft: color-mix(in oklch, var(--text-primary) 6%, transparent);
+  --popover-divider-space: 4px 8px;
+  --wash-hover: color-mix(in oklch, var(--text-primary) 6%, transparent);
+  --wash-selected: color-mix(in oklch, var(--text-primary) 8%, transparent);
+  --dialog-face: var(--popover-face);
+  --dialog-radius: 12px;
+  --dialog-shadow: none;
+  --dialog-surface-shadow: var(--popover-ring);
+  /* Doctrine: 무채색 덮개 리터럴(깊이 예외). */
+  --dialog-scrim: oklch(0% 0 0 / 69.7%);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -519,16 +528,12 @@
   color-scheme: dark;
 }
 
-/* 라이트 테마 — 잉크 스케일을 역할째 반전한 오트밀(warm-neutral) 주간 변주.
-   대기(배경·잉크·헤어라인·표면)는 hue 95~100의 미세 웜 뉴트럴로 통일한다 — 청색(hue 250~260)
-   대기는 라이트에서 시린 백색으로 체감됨이 실측 확인됐고, 기준 이미지 실측도 chroma ≤0.004의
-   거의 무채색 웜이었다(짙은 베이지 과교정 금지 — 지각 축은 hue 이동으로만 옮긴다).
-   팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/본문 굵기 보정)만 오버라이드하며
-   형상은 다크 그대로(계약 테스트가 화이트리스트로 고정). 신호·brass는 라이트 배경(L≈95%+)에서
-   AA를 위해 L 44~58% 대역으로 재조율된다 — 다크 값의 단순 명도 반전은 신호 5종 전멸(1.7~2.8:1)로
-   실측 확인됨. 신호색 "텍스트"는 base가 아닌 --*-ink(L 42~46%)를 쓴다 — base 신호색은 자기 glow
-   틴트 위에서 3.3~4.2:1로 AA 미달임이 실측됨. 본문 regular 450은 밝은 배경에서 스템이 가늘어
-   보이는 광학 보정이다(위계 3티어는 불변 — regular 티어의 값만 라이트에서 재조율). */
+/* 라이트 테마 — Grok Bot 라이트와 같은 무채색 주간 변주.
+   면·글자·선 잉크는 채도 0이다. 대화·우측 레일 #fcfcfc, 사이드바 #f5f5f5, 떠 있는 면은 흰색,
+   본문 #1c1c1c. 신호·정체성·provider·사령관 금색은 채도를 유지한다.
+   이 블록은 팔레트와 광학만 덮는다. 말풍선 반경처럼 다크와 공유된 기하는 라이트 셀렉터로만
+   바꾸고, 다크 크롬은 아래 데스크톱 다크 벌 그대로다. 신호색 텍스트는 base가 아닌 --*-ink를
+   쓴다. 본문 regular 450은 밝은 배경에서 스템이 가늘어 보이는 광학 보정이다. */
 :root[data-theme="light"] {
   color-scheme: light;
 
@@ -538,37 +543,33 @@
   --agent-control-badge: oklch(57% 0.24 285);
   --console-use-badge: oklch(76% 0.15 60);
 
-  --ink-abyss: oklch(97% 0.003 100);
-  --ink-deep: oklch(95.5% 0.005 100);
-  --ink-mid: oklch(93% 0.007 100);
-  --ink-veil: oklch(90.5% 0.009 100);
-  --ink-rim: oklch(80% 0.012 100);
-  --ink-fog: oklch(45% 0.012 95);
-  --ink-muted: oklch(41% 0.013 95);
-  --ink-spectral: oklch(37% 0.014 95);
-  --ink-pearl: oklch(22.5% 0.012 95);
+  --ink-abyss: oklch(97% 0 0);
+  /* 에이전트 말풍선 면 #f0f0f0. 사이드바는 대화 면에서 --ink-abyss 로 다시 꽂는다. */
+  --ink-deep: oklch(95.5% 0 0);
+  --ink-mid: oklch(93% 0 0);
+  /* 1:1 사람 말풍선이 이 면을 탄다. 그룹 대화의 고유 색은 여기 오지 않는다. */
+  --ink-veil: oklch(90.5% 0 0);
+  --ink-rim: oklch(80% 0 0);
+  /* 흐린 글자 #808080(#1c1c1c 56%). 본문 AA 4.5:1 아래인 것은 승인 사양이다. */
+  --ink-fog: oklch(60% 0 0);
+  /* 보조(#656565)와 흐린 글자 사이. 사다리가 뒤집히지 않게 그 사이에 둔다. */
+  --ink-muted: oklch(55% 0 0);
+  /* 보조 글자. 흰 면 위 #1c1c1c 68% = #656565. */
+  --ink-spectral: oklch(50.7% 0 0);
+  /* 본문 #1c1c1c. */
+  --ink-pearl: oklch(22.6% 0 0);
 
   --weight-regular: 450;
 
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-spectral);
   --text-tertiary: var(--ink-fog);
-  --text-on-brass: oklch(99.5% 0.004 95);
+  --text-on-brass: oklch(99.5% 0 0);
 
-  /* 라이트의 물결 트러프만 텍스트 사다리에서 한 단 떼어 낸다. --text-tertiary(L45)를 그대로 쓰면
-     마루(--ink-pearl L22.5)와의 간격이 22.5단뿐이고, 어두운 끝의 L* 압축까지 겹쳐 실측 진폭이
-     13.9 L*(다크 25.7 L*의 54%)로 죽는다 — 물결이 도는데도 정지한 줄로 읽힌다.
-     [기준 면] 값을 가르는 것은 평평한 패널(--surface-panel L98.2%)이 아니라 **라이브 행**이다.
-     "Thinking" 줄(.agent-chat-step.is-running)은
-     `color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised))` = L93.68% 위에 앉고,
-     라이트에서 raised는 --ink-deep(L95.5)이라 패널보다 어둡다. 물결이 실제로 도는 자리가 여기이므로
-     대비의 최악 조건도 여기다 — 패널 기준으로 고르면 L55(패널 4.60:1)가 이 행에서 4.03:1로
-     본문 AA 아래로 떨어진다(리뷰 적발). 이 면에서 4.5:1이 깨지는 경계는 L52.39다.
-     L52는 라이브 행 4.58:1 / 패널 5.23:1로 두 면 모두 AA를 넘기면서 진폭 18.0 L*(다크의 70%)를
-     지킨다. 마루는 --text-primary 그대로다: 두 테마 모두 "마루 = 가장 진한 잉크"여야 같은 몸짓이
-     된다. 진폭을 더 얻겠다고 트러프를 올리면 물결의 3분의 2를 차지하는 "휴지 잉크"가 판독 계약을
-     깬다 — 그 순서는 뒤집지 않는다. */
-  --live-sweep-trough: oklch(52% 0.012 95);
+  /* 물결 트러프는 텍스트 사다리와 별개다. 마루는 --text-primary 그대로고, 트러프를
+     --text-tertiary(#808080)로 올리면 라이브 행(aurora 4% + raised)에서 본문 AA가 깨진다.
+     L52 무채색은 그 행에서도 4.5:1을 넘기는 자리다. hue만 걷고 명도는 유지한다. */
+  --live-sweep-trough: oklch(52% 0 0);
 
 
   --brass: var(--text-primary);
@@ -620,9 +621,9 @@
          color-mix로 이미 도착해 있던 값(L63.8/C0.103)과 같은 자리다.
      게이트 티어(ULTRACODE/MAX)는 결(--gauge-texture)을 걷고 표류(--gauge-drift)를 멈춰 워시 한 겹으로
      남긴다 — 종이 위에서 흐르는 금속 결은 계기가 아니라 소음이다. */
-  --gauge-face: oklch(99% 0.004 95);
-  --gauge-face-lift: 0 1px 3px oklch(30% 0.015 95 / 26%);
-  --gauge-face-lift-strong: 0 2px 8px oklch(30% 0.015 95 / 34%);
+  --gauge-face: oklch(99% 0 0);
+  --gauge-face-lift: 0 1px 3px oklch(30% 0 0 / 26%);
+  --gauge-face-lift-strong: 0 2px 8px oklch(30% 0 0 / 34%);
   --gauge-fill: var(--brass-deep);
   --gauge-apex: oklch(64% 0.1 296);
   --gauge-crest: oklch(66% 0.1 48);
@@ -639,9 +640,10 @@
      경고 무게(warn × warn 무게)를 veil에 합성한 L55 — 쿼터 막대의 경고 채움과 같은 자리다. */
   --gauge-fill-warn: color-mix(in oklch, var(--warn) var(--gauge-weight-warn), var(--ink-veil));
 
-  --canvas-abyss: oklch(97.8% 0.003 100);
-  --canvas-sea-core: oklch(94% 0.006 98);
-  --canvas-sea-far: oklch(97.6% 0.003 100);
+  /* 대화·우측 레일 #fcfcfc. 사이드바 #f5f5f5 는 --ink-abyss 를 대화 면에서만 다시 꽂는다. */
+  --canvas-abyss: oklch(99.1% 0 0);
+  --canvas-sea-core: oklch(94% 0 0);
+  --canvas-sea-far: oklch(97.6% 0 0);
 
   --provider-claude: oklch(54% 0.135 62);
   --provider-typesafe: oklch(52% 0.135 339);
@@ -658,45 +660,50 @@
   --id-plum: oklch(51% 0.095 318);
   --id-rose: oklch(53% 0.09 350);
 
-  --surface-glass: oklch(98% 0.004 100 / 70%);
-  --surface-chrome: oklch(96% 0.004 100);
+  --surface-glass: oklch(98% 0 0 / 70%);
+  --surface-chrome: oklch(96% 0 0);
   /* 라이트는 리퀴드 글래스를 받지 않는다 — 파일 하단 게이트가 이 테마를 제외하므로
      유리 재료(--glass-on-, --canvas-on- 계열)를 여기 두지 않는다. 채널은 전부 base의 닫힌-게이트
      기본값(불투명 언더레이·현행 틴트·무블러)으로 남고, 그 폴백이 곧 종이 위의 판독 계약이다.
      백지 위 백유리는 애초에 지각 불가에 가깝고, 밝은 바탕에서 blur가 굴절시킬 명도차도 없다. */
-  /* 라이트에서 패널은 종이다 — 크롬(96%)보다 밝은 최명면이어야 시선이 작업면에 남는다.
-     캔버스는 base 색이 아니라 그 위에 칠하는 sea 그라디언트가 실제 픽셀을 정하며 패널 둘레에서
-     L 94.9~96.6으로 실측된다. 그래서 프레임 톤(ink-deep 95.5%)으로 통일하면 패널이 책상과
-     같은 밝기가 되어 창이 배경에 녹는다 — 캔버스 base(--canvas-abyss 97.8%)만 보고 2.4 차가
-     남는다고 읽으면 안 된다. 종이 톤을 유지해 둘레 대비 +2.8을 확보한다. */
-  --surface-panel: oklch(98.2% 0.004 100);
-  /* 라이트는 얹히는 면이 아래로 물러난다 — 종이(98.2%) 위에서 ink-deep이 한 칸이고,
-     ink-mid까지 내려가면 카드가 종이 위에 뚫린 구멍처럼 무거워진다. */
+  /* 패널은 흰 종이다. 크롬(L96)보다, 대화 바탕(#fcfcfc)보다 밝아 작업면이 최명면으로 남는다. */
+  --surface-panel: oklch(100% 0 0);
+  /* 얹히는 면은 종이 아래에서 한 칸 — 에이전트 말풍선 #f0f0f0. */
   --surface-panel-raised: var(--ink-deep);
   --surface-round-control: oklch(100% 0 0);
-  --surface-glass-strong: oklch(96.5% 0.005 100 / 82%);
-  --surface-pillar: oklch(98.5% 0.003 100 / 90%);
-  --surface-rim: oklch(38% 0.02 95 / 18%);
-  --surface-rim-strong: oklch(38% 0.02 95 / 30%);
+  --surface-glass-strong: oklch(96.5% 0 0 / 82%);
+  --surface-pillar: oklch(98.5% 0 0 / 90%);
+  --surface-rim: oklch(38% 0 0 / 18%);
+  --surface-rim-strong: oklch(38% 0 0 / 30%);
 
-  --hairline: oklch(86% 0.01 100);
-  --hairline-strong: oklch(76% 0.014 100);
+  --hairline: oklch(86% 0 0);
+  --hairline-strong: oklch(76% 0 0);
 
   /* Quiet Controls 워시 — 종이 위 잉크 극. 다크의 화이트 워시를 그대로 반전하면 백지 위
      백워시라 지각 불가이므로, 라이트만 어두운 잉크를 낮은 알파로 얹는다.
      rest도 같은 극 — field만은 알파 워시가 아니라 종이보다 밝은 실색이다: 어두운 잉크 워시를
      입력 필드에 깔면 라이트에서 필드가 "파인 우물"로 되돌아간다(다크 우물 퇴역과 같은 이유). */
-  --control-rest: oklch(30% 0.015 95 / 4.5%);
-  --control-rest-hover: oklch(30% 0.015 95 / 7.5%);
-  /* 대화상자 덮개 — 밝은 바탕에서는 48% 검정이 화면을 꺼뜨리므로 설정 모달의 라이트 덮개를 그대로 쓴다. */
-  --dialog-scrim: oklch(18% 0 0 / 24%);
-  --control-field: oklch(99.3% 0.003 95);
-  --control-wash: oklch(30% 0.015 95 / 6.5%);
-  --control-wash-hover: oklch(30% 0.015 95 / 3.5%);
+  --control-rest: oklch(30% 0 0 / 4.5%);
+  --control-rest-hover: oklch(30% 0 0 / 7.5%);
+  /* Doctrine: 무채색 덮개 리터럴(깊이 예외). */
+  --dialog-scrim: oklch(0% 0 0 / 50%);
+  --control-field: oklch(99.3% 0 0);
+  --control-wash: oklch(30% 0 0 / 6.5%);
+  --control-wash-hover: oklch(30% 0 0 / 3.5%);
 
-  --shadow-soft: 0 1px 0 0 oklch(99.5% 0.004 100 / 70%) inset, 0 18px 38px -22px oklch(30% 0.015 95 / 26%);
-  --shadow-floating: 0 1px 0 0 oklch(99.5% 0.004 100 / 80%) inset, 0 32px 60px -28px oklch(28% 0.015 95 / 30%);
-  --popover-shadow: 0 18px 44px -18px oklch(28% 0.015 95 / 26%);
+  --shadow-soft: 0 1px 0 0 oklch(99.5% 0 0 / 70%) inset, 0 18px 38px -22px oklch(30% 0 0 / 26%);
+  --shadow-floating: 0 1px 0 0 oklch(99.5% 0 0 / 80%) inset, 0 32px 60px -28px oklch(28% 0 0 / 30%);
+  --popover-face: oklch(100% 0 0);
+  --popover-rim: rgb(28 28 28 / 12%);
+  --popover-icon-ink: rgb(28 28 28 / 66%);
+  --wash-hover: rgb(28 28 28 / 6%);
+  --wash-selected: rgb(28 28 28 / 8%);
+  --surface-rule-soft: rgb(28 28 28 / 8%);
+  /* Doctrine: 무채색 그림자 리터럴(깊이 예외). */
+  --popover-shadow: 0 10px 20px -3px #1c1c1c1a, 0 4px 6px -4px #1c1c1c1a, 0 0 0 1px #1c1c1c01;
+  --popover-surface-shadow: var(--popover-ring), var(--popover-shadow);
+  --dialog-shadow: 0 20px 32px -5px #1c1c1c1a, 0 8px 12px -6px #1c1c1c1a, 0 0 0 1px #1c1c1c01;
+  --dialog-surface-shadow: var(--popover-ring), var(--dialog-shadow);
   --shadow-anchor: 0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent), 0 12px 32px -16px color-mix(in oklch, var(--brass) 26%, transparent);
 
   /* 다크 lights-out 보정은 라이트 범위 밖이다 — 파일 종류 매핑과 --quiet-* 슬롯은 지금의 점등 값을 그대로 잇는다. */
@@ -726,9 +733,9 @@
   --quiet-count-fill: color-mix(in oklch, var(--brass) 28%, transparent);
   --quiet-count-ink: var(--brass-ink);
 
-  --scrollbar-thumb: oklch(44% 0.015 95 / 35%);
-  --scrollbar-thumb-hover: oklch(37% 0.018 95 / 55%);
-  --scrollbar-thumb-classic: oklch(44% 0.015 95 / 45%);
+  --scrollbar-thumb: oklch(44% 0 0 / 35%);
+  --scrollbar-thumb-hover: oklch(37% 0 0 / 55%);
+  --scrollbar-thumb-classic: oklch(44% 0 0 / 45%);
 }
 
 /* 대화 다크 — 대화 중심 화면(기본)인 데스크톱에서 다크 테마는 이 한 벌로 선다(라이트는 그대로). 저장된 테마는 바꾸지
@@ -1081,8 +1088,20 @@
 
   /* 팝업 면은 모바일 표면 한 장, 구분선은 모바일 헤어라인, 대화상자 덮개는 시트 덮개다. */
   --popover-face: var(--m-surface);
+  --popover-rim: var(--m-hairline);
+  --popover-icon-ink: var(--text-secondary);
+  --popover-font-size: var(--t-base);
+  --popover-line-height: 1.5;
+  --popover-row: 44px;
+  --popover-row-radius: 8px;
   --popover-shadow: var(--m-shadow);
+  --popover-surface-shadow: var(--popover-ring), var(--m-shadow);
+  --wash-hover: var(--m-chip);
+  --wash-selected: var(--m-selected);
+  --dialog-shadow: var(--m-shadow);
+  --dialog-surface-shadow: var(--popover-ring), var(--m-shadow);
   --popover-divider: var(--m-hairline);
+  --surface-rule-soft: var(--m-hairline);
   --dialog-scrim: var(--m-scrim);
 
   /* 유리 닫기 — 게이트 블록보다 높은 특이도로 틴트 채널을 불투명 면에 직접 싣는다. */
@@ -1146,20 +1165,21 @@
 
   --m-bg-deep: #111111;
   --m-bg: #151515;
-  --m-surface: #20201f;
-  --m-chip: #313131;
-  --m-selected: #414141;
-  --m-hairline: #212120;
-  --m-hairline-strong: #3d3c3a;
-  --m-handle: #4a4a48;
-  --m-text: #f9f9f7;
-  --m-text-nav: #c3c2b7;
-  --m-text-muted: #97958d;
-  --m-text-faint: #898781;
-  --m-inverse: #f9f9f7;
-  --m-on-inverse: #282827;
-  --m-scrim: rgb(0 0 0 / 0.5);
-  --m-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  --m-surface: #1f1f1f;
+  --m-chip: rgb(245 245 245 / 6%);
+  --m-selected: rgb(245 245 245 / 8%);
+  --m-hairline: rgb(245 245 245 / 10%);
+  --m-hairline-strong: #3d3d3d;
+  --m-handle: #4a4a4a;
+  --m-text: #f5f5f5;
+  --m-text-nav: rgb(245 245 245 / 66%);
+  --m-text-muted: rgb(245 245 245 / 54%);
+  --m-text-faint: rgb(245 245 245 / 54%);
+  --m-inverse: #f5f5f5;
+  --m-on-inverse: #282828;
+  --m-scrim: rgb(0 0 0 / 69.7%);
+  /* Doctrine: 합성 그림자 목록에서도 링을 지키는 무채색 무그림자 값. */
+  --m-shadow: 0 0 transparent;
   --m-awaiting: #6fc6d6;
   --m-running: #d9b46a;
   --m-idle: #74c99a;
@@ -1196,27 +1216,29 @@
   --provider-codex: oklch(78% 0.035 248);
   --provider-xai: oklch(76% 0.055 258);
   --provider-antigravity: oklch(73% 0.085 288);
+  --popover-icon-ink: rgb(245 245 245 / 64%);
 }
 
 :root[data-view-mode="mobile"][data-mobile-scheme="light"] {
   color-scheme: light;
 
-  --m-bg-deep: #efeee9;
-  --m-bg: #f7f6f2;
+  --m-bg-deep: #f5f5f5;
+  --m-bg: #fcfcfc;
   --m-surface: #ffffff;
-  --m-chip: #ebe9e3;
-  --m-selected: #e2e0d8;
-  --m-hairline: #e4e2da;
-  --m-hairline-strong: #d3d0c6;
-  --m-handle: #ebe9e3;
-  --m-text: #1b1b19;
-  --m-text-nav: #45443f;
-  --m-text-muted: #64625b;
-  --m-text-faint: #706e66;
-  --m-inverse: #1f1f1d;
-  --m-on-inverse: #f9f9f7;
-  --m-scrim: rgb(20 20 18 / 0.32);
-  --m-shadow: 0 8px 24px rgb(20 20 18 / 0.14);
+  --m-chip: rgb(28 28 28 / 6%);
+  --m-selected: rgb(28 28 28 / 8%);
+  --m-hairline: rgb(28 28 28 / 12%);
+  --m-hairline-strong: #d3d3d3;
+  --m-handle: #ebebeb;
+  --m-text: #1c1c1c;
+  --m-text-nav: rgb(28 28 28 / 68%);
+  --m-text-muted: rgb(28 28 28 / 56%);
+  --m-text-faint: rgb(28 28 28 / 56%);
+  --m-inverse: #1c1c1c;
+  --m-on-inverse: #ffffff;
+  --m-scrim: rgb(0 0 0 / 50%);
+  /* Doctrine: 무채색 팝오버 그림자(깊이 예외). */
+  --m-shadow: 0 10px 20px -3px #1c1c1c1a, 0 4px 6px -4px #1c1c1c1a, 0 0 0 1px #1c1c1c01;
   --m-awaiting: #0f7487;
   --m-running: #8f6512;
   --m-idle: #1a7a4b;
@@ -1233,14 +1255,14 @@
   --m-id-indigo: #575d99;
   --m-id-plum: #7a5186;
   --m-id-rose: #8b4b6b;
-  --m-term-bg: #fbfaf7;
+  --m-term-bg: #fcfcfc;
 
   --apex: oklch(50% 0.14 296);
   --apex-glow: oklch(50% 0.14 296 / 14%);
   --crest: oklch(50% 0.14 48);
   --crest-glow: oklch(50% 0.14 48 / 14%);
-  --gauge-face-lift: 0 1px 3px rgb(20 20 18 / 0.26);
-  --gauge-face-lift-strong: 0 2px 8px rgb(20 20 18 / 0.34);
+  --gauge-face-lift: 0 1px 3px rgb(28 28 28 / 0.26);
+  --gauge-face-lift-strong: 0 2px 8px rgb(28 28 28 / 0.34);
   /* 라이트 입력칸은 흰 면(종이보다 밝은 쪽) — 잉크 워시를 깔면 파인 우물이 된다. */
   --control-field: var(--m-surface);
 
@@ -1252,6 +1274,7 @@
   --provider-codex: oklch(43% 0.035 255);
   --provider-xai: oklch(46% 0.06 258);
   --provider-antigravity: oklch(51% 0.1 288);
+  --popover-icon-ink: rgb(28 28 28 / 66%);
 }
 
 /* 글자 배율 세 단(브리지 계약 fontScale) — 기본은 위 블록의 1. */

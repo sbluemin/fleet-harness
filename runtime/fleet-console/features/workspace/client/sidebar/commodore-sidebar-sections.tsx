@@ -61,8 +61,9 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
     }
   }, [controller.editing, controller.busy, id]);
   const [menu, setMenu] = useState<DOMRect | null>(null);
+  const [menuFocusFirst, setMenuFocusFirst] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const openMenu = (anchor: DOMRect) => { if (section) setMenu(anchor); };
+  const openMenu = (anchor: DOMRect, focusFirst = false) => { setMenuFocusFirst(focusFirst); if (section) setMenu(anchor); };
   const longPress = useLongPress<HTMLButtonElement>((element) => openMenu(element.getBoundingClientRect()));
   const closeMenu = () => { setMenu(null); header.current?.focus({ preventScroll: true }); };
   const index = controller.layout.sections.findIndex((row) => row.id === id);
@@ -79,7 +80,7 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
       onPointerDown={longPress.onPointerDown} onPointerMove={longPress.onPointerMove} onPointerUp={longPress.onPointerUp} onPointerCancel={longPress.onPointerCancel}
       onKeyDown={(event) => {
         if (section && event.key === "F2") { event.preventDefault(); controller.setEditing(section.id); }
-        if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") { event.preventDefault(); openMenu(event.currentTarget.getBoundingClientRect()); }
+        if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") { event.preventDefault(); openMenu(event.currentTarget.getBoundingClientRect(), true); }
       }}>
       <span className="workspace-commodore-section-label">{name}</span>
       {collapsed ? <span className="workspace-commodore-section-count">{count}</span> : null}
@@ -88,7 +89,7 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
     {!collapsed ? <ol className="workspace-commodore-section-rows">
       {count ? children : <li className="workspace-commodore-section-empty" data-sidebar-section-drop={id ?? ""}>{t("sidebar.commodoreSection.empty")}</li>}
     </ol> : null}
-    {menu && section ? <SectionMenu anchor={menu} opener={header.current} label={t("sidebar.commodoreSection.actions", { name })} onClose={closeMenu}>
+    {menu && section ? <SectionMenu anchor={menu} focusFirst={menuFocusFirst} opener={header.current} label={t("sidebar.commodoreSection.actions", { name })} onClose={closeMenu}>
       <MenuItem icon={<PencilIcon />} onClick={() => { closeMenu(); controller.setEditing(section.id); }}>{t("sidebar.commodoreSection.rename")}</MenuItem>
       <MenuItem icon={<ChevronGlyph direction="up" />} disabled={index === 0 || controller.busy} onClick={() => action({ op: "reorder", sectionId: section.id, direction: "up" })}>{t("sidebar.commodoreSection.up")}</MenuItem>
       <MenuItem icon={<ChevronGlyph direction="down" />} disabled={index === controller.layout.sections.length - 1 || controller.busy} onClick={() => action({ op: "reorder", sectionId: section.id, direction: "down" })}>{t("sidebar.commodoreSection.down")}</MenuItem>
@@ -129,12 +130,12 @@ function MenuItem({ icon, children, onClick, disabled, danger }: { readonly icon
   </button>;
 }
 
-function SectionMenu({ anchor, opener, label, children, onClose }: { readonly anchor: DOMRect; readonly opener: HTMLElement | null; readonly label: string; readonly children: ReactNode; readonly onClose: () => void }) {
+function SectionMenu({ anchor, opener, focusFirst, label, children, onClose }: { readonly anchor: DOMRect; readonly focusFirst: boolean; readonly opener: HTMLElement | null; readonly label: string; readonly children: ReactNode; readonly onClose: () => void }) {
   const menu = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef(opener);
   const id = useId();
   const [position, setPosition] = useState({ left: anchor.left, top: anchor.bottom });
-  useContextMenuKeyboard({ open: true, menuSelector: `[data-section-menu="${CSS.escape(id)}"]`, returnFocusRef, onEscape: onClose });
+  useContextMenuKeyboard({ open: true, menuSelector: `[data-section-menu="${CSS.escape(id)}"]`, returnFocusRef, focusFirst, onEscape: onClose });
   useLayoutEffect(() => {
     const rect = menu.current!.getBoundingClientRect();
     setPosition({ left: Math.max(8, Math.min(anchor.left, window.innerWidth - rect.width - 8)), top: Math.max(8, Math.min(anchor.bottom, window.innerHeight - rect.height - 8)) });
@@ -153,11 +154,12 @@ function SectionMenu({ anchor, opener, label, children, onClose }: { readonly an
 export function CommodoreSectionMoveMenu({ commodoreId, controller, onClose }: { readonly commodoreId: string; readonly controller: SidebarSectionsController; readonly onClose: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [focusFirst, setFocusFirst] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 0, top: 0 });
   const id = useId();
-  useContextMenuKeyboard({ open, menuSelector: `[data-section-submenu="${CSS.escape(id)}"]`, returnFocusRef: trigger, onEscape: () => { setOpen(false); trigger.current?.focus(); } });
+  useContextMenuKeyboard({ open, menuSelector: `[data-section-submenu="${CSS.escape(id)}"]`, returnFocusRef: trigger, focusFirst, onEscape: () => { setOpen(false); trigger.current?.focus(); } });
   useLayoutEffect(() => {
     if (!open) return;
     const anchor = trigger.current!.getBoundingClientRect(), rect = menu.current!.getBoundingClientRect();
@@ -165,9 +167,9 @@ export function CommodoreSectionMoveMenu({ commodoreId, controller, onClose }: {
   }, [open, controller.layout.sections.length]);
   const move = (sectionId: string | null) => { onClose(); void controller.run({ op: "move", commodoreId, sectionId }); };
   const current = controller.layout.membership[commodoreId] ?? null;
-  return <div className="workspace-commodore-section-move" onPointerEnter={() => setOpen(true)} onPointerLeave={() => setOpen(false)}>
+  return <div className="workspace-commodore-section-move" onPointerEnter={() => { setFocusFirst(false); setOpen(true); }} onPointerLeave={() => setOpen(false)}>
     <button ref={trigger} type="button" role="menuitem" className="theater-menu-item" aria-haspopup="menu" aria-expanded={open} disabled={controller.busy}
-      onClick={() => setOpen(true)} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); event.stopPropagation(); setOpen(true); } }}>
+      onClick={(event) => { setFocusFirst(event.detail === 0); setOpen(true); }} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); event.stopPropagation(); setFocusFirst(true); setOpen(true); } }}>
       <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
       <span className="theater-menu-label">{t("sidebar.commodoreSection.move")}</span><ChevronGlyph direction="right" />
     </button>

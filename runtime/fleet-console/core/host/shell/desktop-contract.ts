@@ -313,7 +313,7 @@ const CONVERSATION_TOP_ROW = 52;
  */
 const DESKTOP_CONVERSATION_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSnapshot["titleBarOverlay"]>> = {
   dark: { color: "#121212", symbolColor: "#a7a7a7", height: CONVERSATION_TOP_ROW },
-  light: { color: "#f8f8f5", symbolColor: "#424038", height: CONVERSATION_TOP_ROW },
+  light: { color: "#fcfcfc", symbolColor: "#656565", height: CONVERSATION_TOP_ROW },
 };
 
 const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalette>> = {
@@ -330,13 +330,13 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
   },
   light: {
     scheme: "light",
-    canvas: "#f7f7f5",
+    canvas: "#fcfcfc",
     tokens: {
-      "ink-abyss": "oklch(97% 0.003 100)", "ink-deep": "oklch(95.5% 0.005 100)", "ink-veil": "oklch(90.5% 0.009 100)",
-      "ink-rim": "oklch(80% 0.012 100)", "ink-fog": "oklch(45% 0.012 95)", "ink-muted": "oklch(41% 0.013 95)",
-      "ink-spectral": "oklch(37% 0.014 95)", "ink-pearl": "oklch(22.5% 0.012 95)", brass: "oklch(56% 0.125 82)",
+      "ink-abyss": "oklch(97% 0 0)", "ink-deep": "oklch(95.5% 0 0)", "ink-veil": "oklch(90.5% 0 0)",
+      "ink-rim": "oklch(80% 0 0)", "ink-fog": "oklch(60% 0 0)", "ink-muted": "oklch(55% 0 0)",
+      "ink-spectral": "oklch(50.7% 0 0)", "ink-pearl": "oklch(22.6% 0 0)", brass: "oklch(56% 0.125 82)",
       aurora: "oklch(50% 0.1 210)", positive: "oklch(50% 0.12 160)", coral: "oklch(52% 0.16 25)",
-      hairline: "oklch(86% 0.01 100)", "hairline-strong": "oklch(76% 0.014 100)",
+      hairline: "oklch(86% 0 0)", "hairline-strong": "oklch(76% 0 0)",
     },
   },
 };
