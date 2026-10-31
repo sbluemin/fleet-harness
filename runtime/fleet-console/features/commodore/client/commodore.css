@@ -594,6 +594,12 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-ref-sub { display: inline-flex; gap: 6px; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .objectives-commodore-ref-sub .is-decision { color: var(--warn-ink); }
 .objectives-commodore-ref-sub .is-review { color: var(--aurora-ink); }
+/*
+ * 보조가 없는 행(임무 없는 시작 전)은 이름이 보조 열까지 쓴다. 이름 열 폭은 보조가 있는 행이 정하므로 그 행들의 보조 자리는 그대로다.
+ * 공용 멘션 격자에 두지 않는다 — 그룹 채팅은 보조 없는 구성원 행이 이름 열을 정하므로, 그 행을 빼면 「모두」·「사령관」 보조가 옮겨진다.
+ */
+.objectives-commodore-ref-list .fc-composer-deck-row.is-mention:has(> .fc-composer-deck-value:empty) > .fc-composer-deck-name { grid-column: 2 / 4; }
+.objectives-commodore-ref-list .fc-composer-deck-row.is-mention:has(> .fc-composer-deck-value:empty) > .fc-composer-deck-value { display: none; }
 .objectives-commodore-ref-note { grid-column: 1 / -1; margin: 0; padding: 6px 12px; color: var(--warn-ink); font-size: var(--t-xs); }
 
 /* 문맥 원호 — 채팅 컴포저의 16px 글리프. 채움은 상태 잉크, 호버는 brass. */
