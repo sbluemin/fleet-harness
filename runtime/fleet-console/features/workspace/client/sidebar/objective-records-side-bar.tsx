@@ -25,6 +25,7 @@ import { requestCommodoreDelete } from "../../../commodore/client/commodore-dele
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { refreshCommodoreList, replaceCommodoreList, setZoneCommodore, useCommodoreListLoaded, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
 import { saveCommodoreOrder } from "../../../commodore/client/theaters-api.js";
+import { commodoreSidebarBuckets } from "../../../commodore/client/sidebar-sections.js";
 import { setCommodoreAlias } from "../../../../core/client/src/integration/api.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { KeyedAvatar } from "../avatars.js";
@@ -207,10 +208,7 @@ export function ObjectiveRecordsSideBar({
     return rank(left.id) - rank(right.id);
   });
   const hasSections = sidebarSections.layout.sections.length > 0;
-  const sidebarBuckets: { id: string | null | undefined; faces: SideBarHead[] }[] = hasSections
-    ? [...sidebarSections.layout.sections.map((section) => ({ id: section.id, faces: orderedFaces.filter((face) => sidebarSections.layout.membership[face.id] === section.id) })),
-      { id: null, faces: orderedFaces.filter((face) => !sidebarSections.layout.membership[face.id]) }]
-    : [{ id: undefined, faces: orderedFaces }];
+  const sidebarBuckets = commodoreSidebarBuckets(sidebarSections.layout, orderedFaces, (face) => face.id);
   const contextMenuTheater: SideBarHead | null = activeContextMenu
     ? sectionFaces.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
     : null;
@@ -415,7 +413,7 @@ export function ObjectiveRecordsSideBar({
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
         {sidebarBuckets.map((bucket) => {
-          const rows = bucket.faces.map((theater) => {
+          const rows = bucket.rows.map((theater) => {
           const theaterIndex = orderedFaces.indexOf(theater);
           const commanderRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theater.id);
           const waitingCount = countAwaitingObjectiveRecords(commanderRecords, objectiveRecordRuntime);
@@ -483,7 +481,7 @@ export function ObjectiveRecordsSideBar({
             </li>
           );
           });
-          return bucket.id === undefined ? rows : <CommodoreSidebarSection key={bucket.id ?? "none"} id={bucket.id} controller={sidebarSections} count={bucket.faces.length}
+          return bucket.id === undefined ? rows : <CommodoreSidebarSection key={bucket.id ?? "none"} id={bucket.id} controller={sidebarSections} count={bucket.rows.length}
             dropTarget={!!drag?.dragging && !!drag.sectionDrop && !drag.sectionDrop.targetId && drag.sectionDrop.sectionId === bucket.id}>{rows}</CommodoreSidebarSection>;
         })}
         {orderedFaces.length === 0 && commodoresLoaded ? (
