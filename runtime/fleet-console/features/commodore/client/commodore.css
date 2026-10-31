@@ -934,11 +934,21 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 /* 팔레트 — 사령관 설정이 Inbox 시트(스크림 90)나 오른쪽 패널에서 열리므로 덮개 층 위에 선다.
    높이는 스크림 padding(위 10vh·아래 16px)을 뺀 뷰포트 안에 둔다. */
 .commodore-palette-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 4); display: grid; place-items: start center; padding: 10vh 16px 16px; background: var(--dialog-scrim); }
-.commodore-palette { display: flex; flex-direction: column; width: min(1040px, 100%); min-width: 0; max-height: min(760px, calc(90vh - 16px)); border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); overflow: hidden; }
+.commodore-palette { display: flex; flex-direction: column; width: min(1040px, 100%); min-width: 0; height: min(760px, calc(90vh - 16px)); border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); overflow: hidden; }
 /* 다이얼로그 자체는 Esc 를 받으려고 포커스만 받는다 — 조작 대상이 아니라 링을 그리지 않는다. */
 .commodore-palette:focus { outline: none; }
-.commodore-palette-title { margin: 12px 16px 0; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
-.commodore-palette-search { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; margin: 8px; padding: 0 12px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
+/* 목록·상세가 함께 쓰는 상단 바 — 뒤로(왼쪽)·닫기(오른쪽)는 설정 창 닫기와 같은 32px 원형 아이콘이고 두 화면에서 같은 자리다. */
+.commodore-palette-bar { display: grid; flex: none; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: 8px; min-height: 52px; padding: 0 10px 0 12px; transition: box-shadow var(--duration-fast) var(--ease-soft); }
+.commodore-palette-bar.is-pinned { box-shadow: 0 1px 0 var(--hairline); }
+.commodore-palette-bar:not(.is-detail) { grid-template-columns: minmax(0, 1fr) 32px; padding-left: 20px; }
+.commodore-palette-icon { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
+.commodore-palette-icon > svg { width: 16px; height: 16px; }
+.commodore-palette-icon:hover { background: color-mix(in oklch, var(--text-primary) 8%, transparent); color: var(--text-primary); }
+.commodore-palette-icon:focus-visible { box-shadow: var(--focus-face); }
+.commodore-palette-title { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.commodore-palette-bar.is-detail .commodore-palette-title { color: var(--text-primary); text-align: center; opacity: 0; transform: translateY(4px); transition: opacity var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft); }
+.commodore-palette-bar.is-detail.is-pinned .commodore-palette-title { opacity: 1; transform: none; }
+.commodore-palette-search { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; margin: 0 16px 8px; padding: 0 12px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
 .commodore-palette-search:focus-within { box-shadow: var(--field-focus-edge); }
 .commodore-palette-search-glyph { flex: none; color: var(--text-tertiary); }
 .commodore-palette-input { flex: 1 1 auto; min-width: 0; padding: 6px 0; border: 0; background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-md); outline: none; }
@@ -987,7 +997,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-trust-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .commodore-palette-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--hairline); color: var(--text-tertiary); font-size: var(--t-2xs); }
 :root[data-view-mode="mobile"] .commodore-palette-scrim { place-items: end stretch; padding: 0; background: var(--m-scrim); }
-:root[data-view-mode="mobile"] .commodore-palette { width: auto; max-height: calc(100% - 56px); padding-bottom: max(12px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--m-surface); box-shadow: none; }
+:root[data-view-mode="mobile"] .commodore-palette { width: auto; height: calc(100% - 56px); padding-bottom: max(12px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--m-surface); box-shadow: none; }
 /* 폰 시트 — 한 열, 카드 면 대신 묶음 줄(머리줄 선)로 접는다. */
 :root[data-view-mode="mobile"] .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
 :root[data-view-mode="mobile"] .commodore-palette-card { border: 0; border-top: 1px solid var(--hairline); border-radius: 0; background: none; }
@@ -996,37 +1006,44 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .commodore-palette-card .commodore-tile.is-card { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
 @media (max-width: 520px) { .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); } }
 .commodore-plugin-detail { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
-.commodore-plugin-detail-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px 0; }
-.commodore-plugin-detail-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 2px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
-.commodore-plugin-detail-back svg { width: 10px; height: 10px; }
-.commodore-plugin-detail-back:hover { color: var(--brass-ink); }
-.commodore-plugin-detail-back:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
-.commodore-plugin-detail-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 16px 16px; }
-.commodore-plugin-detail-hero { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.commodore-plugin-detail-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 20px 24px; }
+.commodore-plugin-detail-hero { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.commodore-plugin-detail-hero .commodore-tile.is-detail { width: 56px; height: 56px; border-radius: 14px; font-size: var(--t-lg); }
 .commodore-plugin-detail-heading { display: grid; flex: 1 1 auto; gap: 2px; min-width: 0; }
-.commodore-plugin-detail-name { margin: 0; color: var(--text-primary); font-size: var(--t-lg); font-weight: var(--weight-medium); line-height: 1.35; overflow-wrap: anywhere; }
+.commodore-plugin-detail-name { margin: 0; color: var(--text-primary); font-size: var(--t-xl); font-weight: var(--weight-bold); line-height: 1.25; overflow-wrap: anywhere; text-wrap: balance; }
 .commodore-plugin-detail-meta { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; overflow-wrap: anywhere; }
-.commodore-plugin-detail-action { display: inline-flex; flex: none; align-items: center; max-width: 100%; }
-.commodore-plugin-detail-desc { margin: 12px 0 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.commodore-plugin-detail-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
-.commodore-plugin-detail-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; }
-.commodore-plugin-detail-links a { color: var(--brass-ink); font-size: var(--t-sm); }
-.commodore-plugin-detail-keywords { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-.commodore-plugin-detail-kicker { color: var(--text-tertiary); font-size: var(--t-2xs); }
-.commodore-plugin-detail-status { margin: 12px 0 0; color: var(--text-tertiary); font-size: var(--t-xs); }
+.commodore-plugin-detail-action { display: inline-flex; flex: none; align-items: center; gap: 8px; max-width: 100%; }
+.commodore-plugin-detail-desc { margin: 14px 0 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.commodore-plugin-detail-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 14px 0 0; color: var(--text-tertiary); font-size: var(--t-xs); }
 .commodore-plugin-detail-status.is-failed { color: var(--coral-ink); }
-.commodore-plugin-detail-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: 100%; color: var(--text-secondary); font-size: var(--t-xs); }
-.commodore-plugin-detail-included,
-.commodore-plugin-detail-runs,
-.commodore-plugin-detail-readme { display: grid; gap: 8px; margin-top: 18px; min-width: 0; }
-.commodore-plugin-detail-included h3,
-.commodore-plugin-detail-runs h3,
-.commodore-plugin-detail-readme h3 { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
-.commodore-plugin-detail-group { display: grid; gap: 4px; min-width: 0; }
-.commodore-plugin-detail-group h4 { margin: 0; color: var(--text-tertiary); font-size: var(--t-2xs); font-weight: var(--weight-regular); }
-.commodore-plugin-detail-runs ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.commodore-plugin-detail-runs li { display: grid; gap: 1px; min-width: 0; color: var(--text-secondary); font-size: var(--t-xs); }
-.commodore-plugin-detail-runs code { color: var(--text-primary); font-family: var(--font-code); font-size: var(--t-2xs); overflow-wrap: anywhere; }
+.commodore-plugin-detail-scroll > .commodore-palette-trust { margin-top: 16px; }
+.commodore-plugin-detail-notice { display: grid; gap: 10px; margin-top: 16px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); color: var(--text-primary); font-size: var(--t-sm); }
+.commodore-plugin-detail-notice p { margin: 0; }
+.commodore-plugin-detail-notice-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.commodore-plugin-detail-notice .is-danger { color: var(--coral-ink); }
+/* 구성·정보·README 섹션 — 개수 붙은 머리와 둥근 행 카드. 칩 대신 행이라 이름이 길어도 줄이 흐트러지지 않는다. */
+.commodore-plugin-detail-section,
+.commodore-plugin-detail-readme { display: grid; gap: 8px; margin-top: 22px; min-width: 0; }
+.commodore-plugin-detail-head { display: flex; align-items: baseline; gap: 6px; margin: 0 2px; color: var(--text-primary); font-size: var(--t-sm); font-weight: var(--weight-bold); }
+.commodore-plugin-detail-head > span { color: var(--text-tertiary); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
+.commodore-plugin-detail-rows,
+.commodore-plugin-detail-info { min-width: 0; margin: 0; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+.commodore-plugin-detail-rows ul { margin: 0; padding: 0; list-style: none; }
+.commodore-plugin-detail-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px; }
+.commodore-plugin-detail-row + .commodore-plugin-detail-row { border-top: 1px solid var(--hairline); }
+.commodore-plugin-detail-glyph { display: grid; flex: none; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: color-mix(in oklch, var(--text-primary) 7%, transparent); color: var(--text-secondary); }
+.commodore-plugin-detail-glyph svg { width: 14px; height: 14px; }
+.commodore-plugin-detail-row-main { display: grid; flex: 1 1 auto; gap: 1px; min-width: 0; }
+.commodore-plugin-detail-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); }
+.commodore-plugin-detail-row-main code { color: var(--text-secondary); font-family: var(--font-code); font-size: var(--t-2xs); overflow-wrap: anywhere; }
+.commodore-plugin-detail-more { width: 100%; padding: 10px 14px; border: 0; border-top: 1px solid var(--hairline); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); text-align: start; cursor: pointer; }
+.commodore-plugin-detail-more:hover { background: color-mix(in oklch, var(--text-primary) 5%, transparent); color: var(--text-primary); }
+.commodore-plugin-detail-more:focus-visible { box-shadow: var(--focus-face); }
+.commodore-plugin-detail-fact { display: grid; grid-template-columns: minmax(80px, 120px) minmax(0, 1fr); gap: 12px; padding: 10px 14px; font-size: var(--t-sm); }
+.commodore-plugin-detail-fact + .commodore-plugin-detail-fact { border-top: 1px solid var(--hairline); }
+.commodore-plugin-detail-fact dt { color: var(--text-tertiary); }
+.commodore-plugin-detail-fact dd { min-width: 0; margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.commodore-plugin-detail-fact a { color: var(--brass-ink); }
 .commodore-plugin-detail .markdown-body { max-inline-size: none; margin: 0; color: var(--text-primary); font-size: var(--t-sm); }
 .commodore-plugin-detail .markdown-body pre,
 .commodore-plugin-detail .markdown-body pre code,
@@ -1037,11 +1054,13 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 @media (max-width: 520px) {
   .commodore-plugin-detail-hero { flex-wrap: wrap; }
   .commodore-plugin-detail-action { flex-basis: 100%; }
+  .commodore-plugin-detail-action > .fc-btn { flex: 1 1 auto; }
 }
 :root[data-view-mode="mobile"] .commodore-plugin-detail-hero { flex-wrap: wrap; }
 :root[data-view-mode="mobile"] .commodore-plugin-detail-action { flex-basis: 100%; }
-:root[data-view-mode="mobile"] .commodore-plugin-detail-bar,
+:root[data-view-mode="mobile"] .commodore-plugin-detail-action > .fc-btn { flex: 1 1 auto; }
 :root[data-view-mode="mobile"] .commodore-plugin-detail-scroll { padding-left: 16px; padding-right: 16px; }
+@media (prefers-reduced-motion: reduce) { .commodore-palette-bar, .commodore-palette-bar.is-detail .commodore-palette-title { transition: none; } }
 .commodore-market-card-failure { margin: 0; font-size: var(--t-sm); line-height: 1.5; }
 /* 폰 마켓플레이스 행 — 행 전체를 덮는 열기 단추 위에 토글만 올린다(모바일 설정 행의 <label> 대신). 꺼진 행은 옅어짐으로 말한다. */
 .commodore-market-row { position: relative; }
