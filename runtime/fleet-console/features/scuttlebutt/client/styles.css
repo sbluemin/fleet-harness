@@ -1471,13 +1471,9 @@
   }
 }
 
-/* ── 마크다운 조판 — core 공유 .markdown-body 를 카드 밀도로 ─────────────────
-   렌더러는 이미 core 공유였다. 조판도 공유 규칙(제목 위계·표·인용·코드 툴바·brass 인라인 코드)을
-   들이고, 읽기 스케일(17px·78ch 중앙)만 봉투 밀도로 되돌린다 — 채팅뷰가 하는 오버라이드와 같다.
-   말풍선과 카드가 같은 클래스를 쓰므로 「이어 묻기」 전이에서 조판이 바뀌지 않는다. */
+/* ── 마크다운 조판 — 공유 .markdown-body 의 제목 비율은 그대로 두고 봉투 밀도만 좁힌다. */
 .scuttlebutt-chat-log .markdown-body,
 .scuttlebutt-answer-text.markdown-body {
-  --font-size-body: var(--t-md);
   max-inline-size: 100%;
   margin-inline: 0;
   font-family: var(--font-content);
@@ -1489,16 +1485,6 @@
 .scuttlebutt-chat-log .markdown-body > * + *,
 .scuttlebutt-answer-text.markdown-body > * + * {
   margin-top: var(--space-2);
-}
-
-.scuttlebutt-chat-log .markdown-body h1,
-.scuttlebutt-chat-log .markdown-body h2,
-.scuttlebutt-chat-log .markdown-body h3,
-.scuttlebutt-answer-text.markdown-body h1,
-.scuttlebutt-answer-text.markdown-body h2,
-.scuttlebutt-answer-text.markdown-body h3 {
-  font-size: var(--t-md);
-  margin-top: var(--space-3);
 }
 
 /* 흐르는 글의 표식 — 채팅뷰의 스트림 캐럿과 같은 문법(secondary 잉크, 어느 채널의 색도 아니다). */

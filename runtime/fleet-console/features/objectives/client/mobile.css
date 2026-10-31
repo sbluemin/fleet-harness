@@ -363,11 +363,7 @@
 /* 텍스트 증거 본문 — 전체 화면 창 안에서 스크롤한다. */
 :root[data-view-mode="mobile"] .objectives-result-markdown.markdown-body { max-height: none; height: 100%; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 24px); border-radius: 0; background: var(--m-bg); color: var(--m-text); font-size: var(--m-fs-secondary); line-height: 1.6; overscroll-behavior: contain; }
 :root[data-view-mode="mobile"] .objectives-result-markdown :is(h1, h2, h3, h4, h5, h6, p, li, td) { color: var(--m-text); }
-:root[data-view-mode="mobile"] .objectives-result-markdown :is(h1, h2) { font-size: var(--m-fs-heading); }
-:root[data-view-mode="mobile"] .objectives-result-markdown table { font-size: var(--m-fs-caption); border-color: var(--m-hairline-strong); border-radius: 10px; }
 :root[data-view-mode="mobile"] .objectives-result-markdown table :is(th, td) { padding: 8px 12px; border-bottom-color: var(--m-hairline); }
-:root[data-view-mode="mobile"] .objectives-result-markdown table th { background: var(--m-chip); color: var(--m-text-muted); letter-spacing: 0; text-transform: none; }
-:root[data-view-mode="mobile"] .objectives-result-markdown table tr:nth-child(even) td { background: var(--m-surface); }
 :root[data-view-mode="mobile"] .objectives-result-plain { font-family: var(--m-mono); font-size: var(--m-fs-mono); color: var(--m-text); }
 :root[data-view-mode="mobile"] .objectives-result-textstate { font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
 :root[data-view-mode="mobile"] .objectives-result-textstate.is-error { color: var(--m-danger); }

@@ -1364,7 +1364,6 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-chat-bubble :is(.markdown-body, .agent-chat-dispatch-md, .agent-chat-dispatch-text) {
   --font-content: var(--m-sans);
   --font-content-size: var(--m-fs-list);
-  --font-size-body: var(--m-fs-list);
   font-family: var(--m-sans);
   font-size: var(--m-fs-list);
   line-height: 24px;

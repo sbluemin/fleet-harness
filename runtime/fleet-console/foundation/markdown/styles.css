@@ -143,20 +143,12 @@ code.hljs {
   --font-size-sm: 12px;
   --font-size-lg: 14px;
   --font-size-code: 13.5px;
-  --font-size-body: 17px;
-  --font-size-title-md: 22px;
-  --font-size-display-md: 30px;
-  --font-size-display-lg: 36px;
   --space-hair: 2px;
   --space-tight: 6px;
 }
 
 .markdown-body {
   font-family: var(--font-content);
-  --font-size-body: var(--font-content-size);
-  --font-size-title-md: calc(var(--font-content-size) * 22 / 14);
-  --font-size-display-md: calc(var(--font-content-size) * 30 / 14);
-  --font-size-display-lg: calc(var(--font-content-size) * 36 / 14);
   --font-size-code: var(--font-code-size);
   inline-size: 100%;
   min-width: 0;
@@ -178,68 +170,26 @@ code.hljs {
 
 
 .markdown-body > * + * {
-  margin-top: var(--space-5);
+  margin-top: 0.85em;
 }
 
-/* 임의 Markdown 문서의 최상위 제목. h2(display-md) 위 단계인 display-lg로 위계를 잡는다. */
-.markdown-body h1 {
+/* 제목은 그 표면의 본문(em) 기준. 위계는 크기·굵기·간격만 진다. */
+.markdown-body :is(h1, h2, h3, h4) {
   scroll-margin-top: var(--space-6);
   color: var(--text-primary);
   font-family: var(--font-content);
   font-weight: var(--weight-medium);
-  letter-spacing: -0.024em;
-  font-variation-settings: "opsz" 72;
-  font-size: calc(var(--font-content-size) * 2.571429);
-  line-height: 1.14;
+  text-wrap: balance;
 }
 
-.markdown-body h2,
-.markdown-body h3,
-.markdown-body h4 {
-  scroll-margin-top: var(--space-6);
-  color: var(--text-primary);
-  font-family: var(--font-content);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.022em;
-  font-variation-settings: "opsz" 60;
-}
-
-.markdown-body h2 {
-  margin-top: var(--space-10);
-  font-size: var(--font-size-display-md);
-  line-height: 1.18;
-  position: relative;
-  padding-left: var(--space-4);
-}
-
-.markdown-body h2::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.35em;
-  bottom: 0.3em;
-  width: var(--space-hair);
-  border-radius: var(--radius-pill);
-  background: linear-gradient(180deg, var(--brass) 30%, var(--brass-deep));
-  box-shadow: 0 0 8px var(--brass-glow);
-}
-
-.markdown-body h3 {
-  margin-top: var(--space-8);
-  font-size: calc(var(--font-content-size) * 1.571429);
-  line-height: 1.3;
-  font-family: var(--font-content);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.012em;
-}
-
-.markdown-body h4 {
-  margin-top: var(--space-6);
-  font-family: var(--font-content);
-  font-size: var(--font-content-size);
-  font-weight: var(--weight-medium);
-  color: var(--brass-bright);
-}
+.markdown-body h1 { font-size: 1.43em; line-height: 1.3; letter-spacing: -0.012em; }
+.markdown-body h2 { font-size: 1.21em; line-height: 1.35; letter-spacing: -0.008em; }
+.markdown-body h3 { font-size: 1.07em; line-height: 1.4; }
+.markdown-body h4 { font-size: 1em; }
+.markdown-body > h2 { margin-top: 1.7em; }
+.markdown-body > h3 { margin-top: 1.5em; }
+.markdown-body > h4 { margin-top: 1.3em; }
+.markdown-body > :is(h1, h2, h3, h4) + * { margin-top: 0.5em; }
 
 .markdown-body p,
 .markdown-body li {
@@ -259,17 +209,14 @@ code.hljs {
 .markdown-body a {
   color: var(--aurora-ink);
   text-decoration: underline;
-  text-decoration-color: color-mix(in oklch, var(--aurora) 35%, transparent);
+  text-decoration-color: color-mix(in oklch, currentColor 40%, transparent);
   text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    text-decoration-color var(--duration-fast) var(--ease-spring);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--duration-fast) var(--ease-spring);
 }
 
 .markdown-body a:hover {
-  color: var(--brass-bright);
-  text-decoration-color: var(--brass);
+  text-decoration-color: currentColor;
 }
 
 /* 사이트 링크(AI 응답 본문) — 아이콘은 링크 잉크(currentColor)를 따르고 밑줄 밖에 선다.
@@ -301,7 +248,7 @@ code.hljs {
 .markdown-body ol li::marker {
   color: var(--aurora-ink);
   font-family: var(--font-content);
-  font-size: var(--font-content-size);
+  font-size: 1em;
 }
 
 .markdown-body img {
@@ -311,15 +258,14 @@ code.hljs {
 }
 
 .markdown-body blockquote {
-  margin: var(--space-6) 0;
-  padding: var(--space-4) var(--space-5);
-  /* 인용의 띠는 표준 문법이라 남기되, 상시 서 있는 장식이므로 다크는 quiet brass로 가라앉힌다.
-     라이트는 light-dark()의 라이트 쪽이 지금의 brass 띠·틴트를 그대로 잇는다. */
-  border-left: 3px solid light-dark(var(--brass), var(--brass-quiet));
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  background: light-dark(color-mix(in oklch, var(--brass) 8%, transparent), color-mix(in oklch, var(--brass-quiet) 6%, transparent));
-  color: var(--text-primary);
-  font-style: italic;
+  margin-inline: 0;
+  padding: 0 0 0 1em;
+  border: none;
+  border-left: 2px solid var(--hairline);
+  border-radius: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-style: normal;
 }
 
 .markdown-body blockquote p {
@@ -328,11 +274,7 @@ code.hljs {
 }
 
 /* Frontmatter metadata card — YAML frontmatter (---) extracted in core.ts and
-   rendered as a key/value manifest instead of a mangled setext heading. Keys
-   are mono uppercase eyebrows, values body ink, on a glass surface
-   consistent with the Maritime "MANIFEST" language. The eyebrow is a standing
-   label, so the dark theme uses the tertiary ink; the light theme keeps its brass through
-   the light side of light-dark(). */
+   rendered as a key/value list instead of a mangled setext heading. */
 .markdown-body .frontmatter {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -347,19 +289,19 @@ code.hljs {
 
 .markdown-body .frontmatter dt {
   margin: 0;
-  color: light-dark(var(--brass-bright), var(--text-tertiary));
+  color: var(--text-tertiary);
   font-family: var(--font-content);
-  font-size: calc(var(--font-content-size) * 0.785714);
+  font-size: 0.86em;
   font-weight: var(--weight-medium);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .markdown-body .frontmatter dd {
   margin: 0;
   min-width: 0;
   color: var(--text-secondary);
-  font-size: var(--font-size-lg);
+  font-size: 1em;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -374,28 +316,29 @@ code.hljs {
   display: block;
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-lg);
-  border-radius: var(--radius-md);
+  font-size: 0.93em;
+  border-radius: 0;
   overflow-x: auto;
   overflow-wrap: normal;
-  border: 1px solid var(--surface-rim);
+  border: 0;
+  background: none;
 }
 
 .markdown-body table th,
 .markdown-body table td {
-  padding: var(--space-3) var(--space-4);
+  padding: 0.5em 0.9em 0.5em 0;
   text-align: left;
-  border-bottom: 1px solid var(--surface-rim);
+  border-bottom: 1px solid var(--hairline);
 }
 
 .markdown-body table th {
-  background: color-mix(in oklch, var(--ink-mid) 70%, transparent);
-  color: var(--brass-bright);
-  font-family: var(--font-content);
+  background: none;
+  color: var(--text-primary);
+  font-family: inherit;
   font-weight: var(--weight-medium);
-  font-size: calc(var(--font-content-size) * 0.857143);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: inherit;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* 표는 칸을 최소 내용 폭까지 누른 뒤에야 가로로 흐른다. 좁은 자리에서 칸은 어절 경계에서만 줄을
@@ -439,40 +382,33 @@ code.hljs {
   }
 }
 
-.markdown-body table tr:nth-child(even) td {
-  background: var(--ink-mid);
-}
-
-.markdown-body table tr:last-child td {
-  border-bottom: none;
-}
-
-.markdown-body code {
-  background: var(--ink-deep);
-  border: 1px solid var(--surface-rim);
-  border-radius: 6px;
+.markdown-body :not(pre) > code {
+  background: color-mix(in oklch, var(--text-primary) 6%, transparent);
+  border: 0;
+  border-radius: 4px;
   font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  padding: 1px var(--space-tight);
-  color: var(--brass-bright);
+  font-size: 0.88em;
+  padding: 0.1em 0.35em;
+  color: var(--text-primary);
 }
 
 .markdown-body hr {
-  border: none;
-  height: 1px;
-  margin: var(--space-10) 0;
-  background: linear-gradient(90deg, transparent, var(--surface-rim-strong), transparent);
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  height: 0;
+  margin: 1.6em 0;
+  background: none;
 }
 
 .code-block {
   position: relative;
   padding: 0;
   margin: var(--space-5) 0;
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in oklch, var(--surface-rim) 78%, transparent);
-  background: color-mix(in oklch, var(--ink-abyss) 82%, var(--ink-deep));
+  border-radius: 8px;
+  border: 0;
+  background: color-mix(in oklch, var(--text-primary) 6%, transparent);
   overflow: hidden;
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
   white-space: normal;
 }
 
@@ -485,62 +421,37 @@ code.hljs {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: color-mix(in oklch, var(--ink-deep) 72%, transparent);
-  border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
+  padding: 6px 8px 0 14px;
+  background: transparent;
+  border-bottom: 0;
 }
 
-.code-block-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-tight);
-}
-
-.code-block-dots span {
-  width: var(--space-tight);
-  height: var(--space-tight);
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--ink-rim) 56%, transparent);
-  display: inline-block;
-}
-
-/* 창 버튼을 흉내 낸 세 점은 장식이지 상태가 아니다 — 다크는 신호색을 빌리지 않고 무채 잉크 세 점으로
-   선다. 라이트만 light-dark()의 라이트 쪽이 지금의 세 색을 그대로 잇는다(다크 보정 범위 밖). */
-.code-block-dots span:nth-child(1) {
-  background: light-dark(var(--coral), var(--ink-rim));
-}
-
-.code-block-dots span:nth-child(2) {
-  background: light-dark(var(--warn), var(--ink-rim));
-}
-
-.code-block-dots span:nth-child(3) {
-  background: light-dark(var(--positive), var(--ink-rim));
-}
+.code-block-dots { display: none; }
 
 .code-block-language {
   flex: 1;
-  text-align: center;
+  text-align: left;
   color: var(--text-tertiary);
   font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--t-xs);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .copy-code {
   display: inline-flex;
   align-items: center;
   gap: var(--space-tight);
-  padding: var(--space-tight) var(--space-3);
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent);
-  background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
+  margin-left: auto;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   cursor: pointer;
   transition:
     color var(--duration-fast) var(--ease-spring),
@@ -549,29 +460,26 @@ code.hljs {
 }
 
 .copy-code:hover {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 50%, transparent);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--text-primary) 6%, transparent);
 }
 
 .code-block code {
   display: block;
   overflow-x: auto;
-  padding: var(--space-4) var(--space-5) var(--space-5);
-  background: transparent;
-  border: none;
+  padding: 6px 14px 12px;
+  background: none;
+  border: 0;
   border-radius: 0;
   color: var(--text-secondary);
   font-family: var(--font-code);
-  font-size: var(--font-code-size);
+  font-size: 0.88em;
   line-height: 1.7;
 }
 
 /* ===== Diagram block (Mermaid placeholder + hydrated SVG) =====
-   Visually distinct from .code-block — brass-led glass surface with the
-   .document hairline. No macOS dots, no copy button. Eyebrow rendered as
-   a pseudo-element so the SVG slot stays uncluttered. Edge color comes
-   from Mermaid theme variables in client/src/markdown/diagrams.ts. */
+   Quiet surface, no eyebrow label. Edge color comes from Mermaid theme
+   variables in client/src/markdown/diagrams.ts. */
 
 .diagram-block {
   position: relative;
@@ -579,7 +487,7 @@ code.hljs {
   width: 100%;
   max-width: none;
   margin: var(--space-6) 0;
-  padding: clamp(40px, 5vw, 56px) clamp(20px, 3vw, 32px) clamp(20px, 3vw, 28px);
+  padding: clamp(20px, 3vw, 28px);
   border-radius: var(--radius-md);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
@@ -591,31 +499,6 @@ code.hljs {
   scrollbar-width: thin;
   scrollbar-color: var(--brass) transparent;
   cursor: zoom-in;
-}
-
-.diagram-block::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--brass) 50%, transparent) 30%, color-mix(in oklch, var(--aurora) 40%, transparent) 70%, transparent);
-  pointer-events: none;
-  z-index: 1;
-}
-
-.diagram-block::after {
-  content: "MANIFEST · DIAGRAM";
-  position: absolute;
-  top: var(--space-4);
-  left: clamp(20px, 3vw, 32px);
-  z-index: 2;
-  color: var(--brass-bright);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  pointer-events: none;
 }
 
 .diagram-block:focus-visible {
@@ -716,14 +599,6 @@ code.hljs {
   cursor: zoom-in;
 }
 
-.diagram-block[data-diagram-state="pending"]::before {
-  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--brass) 50%, transparent) 30%, color-mix(in oklch, var(--aurora) 40%, transparent) 70%, transparent);
-}
-
-.diagram-block[data-diagram-state="pending"]:empty::after {
-  content: "MANIFEST · DIAGRAM · RENDERING";
-}
-
 .diagram-block[data-diagram-state="error"] {
   border-color: light-dark(color-mix(in oklch, var(--coral) 36%, var(--surface-rim)), color-mix(in oklab, var(--coral) 36%, var(--surface-rim)));
   color: var(--coral-ink);
@@ -733,11 +608,6 @@ code.hljs {
   letter-spacing: 0.02em;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.diagram-block[data-diagram-state="error"]::after {
-  content: "MANIFEST · DIAGRAM · ERROR";
-  color: var(--coral-ink);
 }
 
 .diagram-lightbox {
@@ -788,12 +658,12 @@ code.hljs {
 
 .diagram-lightbox__header h2 {
   margin: 0;
-  color: var(--brass-bright);
+  color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--font-size-xs);
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .diagram-lightbox__controls {
@@ -890,11 +760,7 @@ code.hljs {
 
 @media (max-width: 960px) {
   .diagram-block {
-    padding: 44px var(--space-4) var(--space-4);
-  }
-
-  .diagram-block::after {
-    left: var(--space-4);
+    padding: var(--space-4);
   }
 
   .diagram-lightbox {
