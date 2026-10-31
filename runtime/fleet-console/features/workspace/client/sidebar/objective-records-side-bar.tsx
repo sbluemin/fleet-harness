@@ -43,7 +43,7 @@ import { useLongPress } from "../long-press.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { useConversationSurface } from "../conversation/conversation-surface-store.js";
-import { CommodoreCommanderList } from "../commander-tab/commander-list.js";
+import { CommanderPlacementNoticeHost, CommodoreCommanderList } from "../commander-tab/commander-list.js";
 import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
 import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
@@ -539,6 +539,8 @@ export function ObjectiveRecordsSideBar({
 
       {compact ? <ConsoleSectionSlot compact /> : null}
       {bottomAccessory}
+      {/* 옮기기 알림 한 곳 — 목록이 반대쪽으로 넘어가며 언마운트돼도 살아남는다. */}
+      <CommanderPlacementNoticeHost />
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} />
 

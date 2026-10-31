@@ -223,7 +223,7 @@ function CommanderWindow({ opened, language }: { readonly opened: CommanderSelec
         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9" /></svg>
       </button>
       <button type="button" className="commander-window-button" aria-label={t("commanderWindow.resetSize")} title={t("commanderWindow.resetSize")} onClick={() => { const next = defaultRect(); setRect(next); saveRect(next); }}>↺</button>
-      <button type="button" className="commander-window-button" aria-label={t("pane.caption.close")} title={t("pane.caption.close")} onClick={closeWindow}>
+      <button type="button" className="commander-window-button" aria-label={t("commanderWindow.close")} title={t("commanderWindow.close")} onClick={closeWindow}>
         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
       </button>
     </header>

@@ -17,7 +17,7 @@ import { useObjectiveTheater } from "../../../commodore/client/board.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { useCommanderRows } from "./commander-rows.js";
-import { setCommanderPlacement, useCommanderPlacement, type CommanderPlacement } from "./commander-placement.js";
+import { dismissCommanderPlacementNotice, notifyCommanderPlacementMoved, setCommanderPlacement, useCommanderPlacement, useCommanderPlacementNotice, type CommanderPlacement } from "./commander-placement.js";
 import { Toast, ToastHost } from "../../../../core/client/src/chrome/components/toast.js";
 import { toggleCommanderSectionCollapsed } from "../sidebar/commander-section-folds.js";
 import "./commander-list.css";
@@ -101,45 +101,49 @@ function CommanderPlacementGlyphs({ commodoreId }: { readonly commodoreId: strin
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
   const placement = useCommanderPlacement();
-  const [notice, setNotice] = useState<{ readonly next: CommanderPlacement; readonly prev: CommanderPlacement; readonly nonce: number } | null>(null);
-  useEffect(() => {
-    if (notice === null) return;
-    const timer = setTimeout(() => setNotice(null), 5000);
-    return () => clearTimeout(timer);
-  }, [notice]);
   if (!desktop) return null;
   const choose = (next: CommanderPlacement) => {
     if (next === placement) return;
     const prev = placement;
     setCommanderPlacement(next);
-    // 옮겨 간 쪽을 보이게 한다. 왼쪽이면 그 사령관 섹션을 펼치고, 오른쪽이면 사령관 패널을 작업 탭으로 연다.
-    if (next === "left") toggleCommanderSectionCollapsed(commodoreId, false);
-    else openCommodoreTasksPanel(commodoreId);
-    setNotice({ next, prev, nonce: Date.now() });
-  };
-  const undo = () => {
-    if (notice === null) return;
-    setCommanderPlacement(notice.prev);
-    if (notice.prev === "left") toggleCommanderSectionCollapsed(commodoreId, false);
-    else openCommodoreTasksPanel(commodoreId);
-    setNotice(null);
+    // 알림·되돌리기·옮겨 간 쪽 보이기는 언마운트되지 않는 호스트가 맡는다.
+    notifyCommanderPlacementMoved(commodoreId, next, prev);
   };
   return (
-    <>
-      <span className="commander-place" role="group" aria-label={t("commanderRail.place")}>
-        <button type="button" className="commander-place-button" aria-pressed={placement === "left"} aria-label={t("commanderRail.placeSidebar")} title={t("commanderRail.placeSidebar")} onClick={() => choose("left")}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.4h3.1v11.2H2.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M7.6 4.6h6M7.6 8h6M7.6 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-        </button>
-        <button type="button" className="commander-place-button" aria-pressed={placement === "right"} aria-label={t("commanderRail.placeRight")} title={t("commanderRail.placeRight")} onClick={() => choose("right")}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.7 2.4h3.1v11.2h-3.1z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M2.4 4.6h6M2.4 8h6M2.4 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-        </button>
-      </span>
-      {notice !== null ? (
-        <ToastHost>
-          <Toast open tone="info" title={t(notice.next === "left" ? "commanderRail.movedToLeft" : "commanderRail.movedToRight")} actionLabel={t("chrome.toast.undo")} onAction={undo} onDismiss={() => setNotice(null)} />
-        </ToastHost>
-      ) : null}
-    </>
+    <span className="commander-place" role="group" aria-label={t("commanderRail.place")}>
+      <button type="button" className="commander-place-button" aria-pressed={placement === "left"} aria-label={t("commanderRail.placeSidebar")} title={t("commanderRail.placeSidebar")} onClick={() => choose("left")}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.4h3.1v11.2H2.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M7.6 4.6h6M7.6 8h6M7.6 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+      </button>
+      <button type="button" className="commander-place-button" aria-pressed={placement === "right"} aria-label={t("commanderRail.placeRight")} title={t("commanderRail.placeRight")} onClick={() => choose("right")}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.7 2.4h3.1v11.2h-3.1z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M2.4 4.6h6M2.4 8h6M2.4 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+      </button>
+    </span>
+  );
+}
+
+/**
+ * 옮기기 알림 한 곳 — 목록이 반대쪽으로 넘어가며 언마운트돼도 살아남는다. 사이드바 뿌리처럼 옮겨도
+ * 바뀌지 않는 자리에 둔다. 옮겨 간 쪽을 보이게 하고, 되돌리기는 그 반대로 보인다.
+ */
+export function CommanderPlacementNoticeHost() {
+  const t = useT();
+  const notice = useCommanderPlacementNotice();
+  useEffect(() => {
+    if (notice === null) return;
+    if (notice.next === "left") toggleCommanderSectionCollapsed(notice.commodoreId, false);
+    else openCommodoreTasksPanel(notice.commodoreId);
+  }, [notice]);
+  if (notice === null) return null;
+  const undo = () => {
+    setCommanderPlacement(notice.prev);
+    if (notice.prev === "left") toggleCommanderSectionCollapsed(notice.commodoreId, false);
+    else openCommodoreTasksPanel(notice.commodoreId);
+    dismissCommanderPlacementNotice();
+  };
+  return (
+    <ToastHost>
+      <Toast open tone="info" title={t(notice.next === "left" ? "commanderRail.movedToLeft" : "commanderRail.movedToRight")} actionLabel={t("chrome.toast.undo")} onAction={undo} onDismiss={dismissCommanderPlacementNotice} />
+    </ToastHost>
   );
 }
 

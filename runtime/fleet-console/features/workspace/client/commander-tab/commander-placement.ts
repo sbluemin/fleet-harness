@@ -42,3 +42,43 @@ export function useCommanderPlacement(): CommanderPlacement {
     () => placement,
   );
 }
+
+/* ── 옮기기 알림 — 목록이 반대쪽으로 넘어가며 언마운트돼도 살아남는다 ────── */
+
+// 옮기는 순간 그 목록(사이드바 섹션·작업 탭 목표 섹션)이 언마운트되므로, 알림은 저장소 모듈에 두고 한 곳에서만 그린다.
+export interface CommanderPlacementNotice {
+  readonly commodoreId: string;
+  readonly next: CommanderPlacement;
+  readonly prev: CommanderPlacement;
+  readonly nonce: number;
+}
+
+let notice: CommanderPlacementNotice | null = null;
+const noticeListeners = new Set<() => void>();
+let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function emitNotice(): void {
+  for (const listener of noticeListeners) listener();
+}
+
+export function notifyCommanderPlacementMoved(commodoreId: string, next: CommanderPlacement, prev: CommanderPlacement): void {
+  if (noticeTimer !== null) { clearTimeout(noticeTimer); noticeTimer = null; }
+  notice = { commodoreId, next, prev, nonce: Date.now() };
+  emitNotice();
+  noticeTimer = setTimeout(() => { notice = null; noticeTimer = null; emitNotice(); }, 5000);
+}
+
+export function dismissCommanderPlacementNotice(): void {
+  if (noticeTimer !== null) { clearTimeout(noticeTimer); noticeTimer = null; }
+  if (notice === null) return;
+  notice = null;
+  emitNotice();
+}
+
+export function useCommanderPlacementNotice(): CommanderPlacementNotice | null {
+  return useSyncExternalStore(
+    (listener) => { noticeListeners.add(listener); return () => { noticeListeners.delete(listener); }; },
+    () => notice,
+    () => null,
+  );
+}

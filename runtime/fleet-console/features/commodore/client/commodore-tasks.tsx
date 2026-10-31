@@ -26,23 +26,26 @@ function CommodoreTasksInner({ commodoreId, language, selectedId, tasks }: {
 }) {
   const t = getT(language);
   const placement = tasks.usePlacement();
+  // 오른쪽 배치에만 목표·루틴 두 섹션이 선다. 왼쪽 배치의 루틴만은 그대로 둔다.
+  if (placement !== "right") return <CommodoreRoutines commodoreId={commodoreId} language={language} />;
   return (
     <>
-      {placement === "right" ? (
-        <section className="objectives-commodore-panel-section" aria-label={t("commodore.tasks.goals")}>
-          <tasks.List
-            commodoreId={commodoreId}
-            selectedId={selectedId}
-            heading={(count) => <>{t("commodore.tasks.goals")} <span>{count}</span></>}
-            onSelect={({ objectiveId, open }) => {
-              // 목표 섹션에서 고르면 같은 떠 있는 창으로 바뀐다. 가운데는 사령관 대화 유지다.
-              if (objectiveId !== null) openCommanderWindow(commodoreId, objectiveId, document.activeElement instanceof HTMLElement ? document.activeElement : null);
-              else open?.();
-            }}
-          />
-        </section>
-      ) : null}
-      <CommodoreRoutines commodoreId={commodoreId} language={language} />
+      <section className="objectives-commodore-panel-section" aria-label={t("commodore.tasks.goals")}>
+        <tasks.List
+          commodoreId={commodoreId}
+          selectedId={selectedId}
+          heading={(count) => <>{t("commodore.tasks.goals")} <span>{count}</span></>}
+          onSelect={({ objectiveId, open }) => {
+            // 목표 섹션에서 고르면 같은 떠 있는 창으로 바뀐다. 가운데는 사령관 대화 유지다.
+            if (objectiveId !== null) openCommanderWindow(commodoreId, objectiveId, document.activeElement instanceof HTMLElement ? document.activeElement : null);
+            else open?.();
+          }}
+        />
+      </section>
+      <section className="objectives-commodore-panel-section" aria-label={t("commodore.tasks.routines")}>
+        <h3 className="objectives-commodore-panel-title">{t("commodore.tasks.routines")}</h3>
+        <CommodoreRoutines commodoreId={commodoreId} language={language} />
+      </section>
     </>
   );
 }
