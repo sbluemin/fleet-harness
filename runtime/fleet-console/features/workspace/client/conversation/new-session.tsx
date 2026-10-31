@@ -32,6 +32,7 @@ import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunc
 import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
 import { TheaterGlyph } from "../components/theater-glyph.js";
 import { KeyedAvatar } from "../avatars.js";
+import { useAvatarAccent } from "../avatar-accent.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { commodoreSectionLabel, refreshCommodoreList, useCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { addCommodoreTheaterFromPath } from "../../../commodore/client/theaters-api.js";
@@ -69,6 +70,9 @@ export function NewSessionColumn({ state, target, tools }: {
   const commodoreId = target.commodoreId ?? resolveNewSessionCommodoreId();
   const commodore = commodores.find((candidate) => candidate.commodoreId === commodoreId) ?? null;
   const commodoreName = commodore ? commodoreSectionLabel(commodore, t("sidebar.commodore.fallback")) : t("sidebar.commodore.fallback");
+  // 모델·강도 칸의 강조색 — 활성 사령관 아바타를 따른다. 입력창 전체·보내기 단추·크럼은 범위 밖이라 이 칸에만 싣는다.
+  // 키가 없으면 undefined → 기본색 그대로다.
+  const launchSlotAccent = useAvatarAccent(commodoreId !== null ? commodoreAvatarKey(commodoreId) : null);
   // Theater 후보는 이 사령관의 목록뿐이다. 폴더가 사라진 행은 시작할 수 없으므로 세우지 않는다.
   // 사령관이 없으면 후보가 없다 — 「Theater 추가…」는 새 사령관 만들기 흐름으로 이어진다.
   const theaters = useMemo(() => {
@@ -736,7 +740,7 @@ export function NewSessionColumn({ state, target, tools }: {
               {tooLong ? <span className="new-session-status is-alert" role="alert">{t("chrome.launch.tooLong", { over: String(text.length - LAUNCH_PROMPT_MAX_CHARS) })}</span> : null}
               {composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <span className="new-session-status is-alert" role="alert">{composerAttachmentNoticeText(attachmentSnap.notice, ct)}</span> : null}
               {/* 모델·강도 칸 — data-objective-launch-kind 는 실행 기능 투어(「Claude, 하나의 Gateway」)의 앵커다. */}
-              <span className="new-session-launch-slot" {...(variantTarget ? { "data-objective-launch-kind": variantTarget.kind.id } : {})}>
+              <span className={`new-session-launch-slot${launchSlotAccent ? " is-avatar-accent" : ""}`} style={launchSlotAccent} {...(variantTarget ? { "data-objective-launch-kind": variantTarget.kind.id } : {})}>
                 <NewSessionLaunchSlot groups={groups} value={launchChoice} onChange={setChoice} disabled={starting} apexOpen={apexOpen} onApexOpenChange={setApexOpen} />
               </span>
             </span>
