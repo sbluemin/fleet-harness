@@ -1517,9 +1517,10 @@ html[data-view-mode="mobile"] .app-toast-action {
 /* 고정 폭인 폰 머리도 주인 아바타·이름은 그대로 두고 상대만 같은 박자로 드러낸다. */
 .mobile-conv-pill.conversation-pill-host { gap: 0; }
 .mobile-conv-pill > .conversation-pill-details { display: flex; flex: 1; align-items: center; gap: 10px; min-height: 40px; min-width: 0; text-align: left; }
-.mobile-conv-pill[data-takeover="true"] > .conversation-pill-details { flex: 0 1 auto; }
-.mobile-conv-pill[data-takeover="true"] .mobile-conv-pill-copy small { visibility: hidden; }
+.mobile-conv-pill[data-takeover="true"] > .conversation-pill-details { flex: 0 0 auto; max-width: 50%; }
+.mobile-conv-pill[data-takeover="true"] .mobile-conv-pill-copy small { display: none; }
 .mobile-conv-pill > .conversation-pill-takeover { flex: 1 1 auto; }
+.mobile-conv-pill .conversation-pill-peer { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .mobile-conv-pill > .conversation-pill-takeover.is-out { width: auto; right: 14px; }
 
 .mobile-info-screen { height: 100%; padding-top: var(--m-chrome-top); overflow-y: auto; overscroll-behavior: contain; background: var(--m-bg); }

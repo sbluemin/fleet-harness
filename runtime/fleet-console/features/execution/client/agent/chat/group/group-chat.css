@@ -31,7 +31,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  /* 말풍선 열은 가운데 칸을 채운다(Fit) — 읽는 폭은 말풍선 자체의 최대 폭이 지킨다(Grok Bot 배치). */
+  /* 말풍선 열은 가운데 칸을 채운다(Fit) — 읽는 폭은 말풍선 자체의 최대 폭이 지킨다. */
   width: 100%;
   margin: 0 auto;
   font-family: var(--font-ui);
@@ -1350,9 +1350,10 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-relay-foot { padding: 10px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
 :root[data-view-mode="mobile"] .group-relay-close { height: 48px; padding: 0 24px; background-color: var(--m-chip); color: var(--m-text); font-size: var(--m-fs-list); }
 :root[data-view-mode="mobile"] .group-relay-close:is(:hover, :active) { background-color: var(--m-selected); background-image: none; }
-:root[data-view-mode="mobile"] .group-relay-pill { gap: 8px; }
-:root[data-view-mode="mobile"] .group-relay-pill-party { gap: 7px; min-height: 36px; color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
-:root[data-view-mode="mobile"] .group-relay-pill-party .group-chat-mark { width: 28px; height: 28px; }
+:root[data-view-mode="mobile"] .group-relay-pill { gap: 8px; max-width: 100%; }
+:root[data-view-mode="mobile"] .group-relay-pill-party { flex: 0 1 auto; gap: 10px; min-height: 36px; overflow: hidden; color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.2; }
+:root[data-view-mode="mobile"] .group-relay-pill-party .group-chat-mark { flex: none; width: 36px; height: 36px; }
+:root[data-view-mode="mobile"] .group-relay-pill-party-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 접힌 레일은 거터다 — 기록만 얼굴을 피하고 입력창은 원래 폭이다. 펼치면 대화 열 자체가 좁아지므로 그 여백은 거둔다. */
 .conversation-stage[data-commander-rail] .group-chat-log {
