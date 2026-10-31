@@ -476,16 +476,32 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 정보 칸의 다른 섹션과 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
    색은 검증 경과(warn 점) 하나만 상태를 말하고, 나머지는 글자 층위로만 나눈다. */
 .objectives-commodore-memory { display: grid; gap: 14px; min-width: 0; }
-.objectives-commodore-memory-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+/* 머리 줄은 찾기를 접든 펼치든 22px 그대로다 — 펼치고 접을 때 아래 갈래가 움직이지 않는다. */
+.objectives-commodore-memory-head { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 22px; }
 .objectives-commodore-memory-meta { margin-left: auto; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.objectives-commodore-memory-search {
-  display: flex; align-items: center; gap: 8px; box-sizing: border-box; height: 32px; padding: 0 10px;
-  border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); background: var(--control-field); color: var(--text-tertiary);
+/* 찾기 글리프 — 루틴·플러그인·기억 줄과 같은 호버 면(ink-spectral 8%)으로만 누를 수 있다고 말한다. */
+.objectives-commodore-memory-search-glyph {
+  flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: -5px; padding: 0; border: 0; border-radius: var(--radius-xs);
+  background: transparent; color: var(--text-tertiary); cursor: pointer;
 }
-.objectives-commodore-memory-search:focus-within { box-shadow: var(--field-focus-edge); }
-.objectives-commodore-memory-search svg { flex: none; width: 12px; height: 12px; }
-.objectives-commodore-memory-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); }
+.objectives-commodore-memory-meta + .objectives-commodore-memory-search-glyph { margin-left: -2px; }
+.objectives-commodore-memory-search-glyph:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-secondary); }
+.objectives-commodore-memory-search-glyph:focus-visible { box-shadow: var(--focus-face); }
+.objectives-commodore-memory-search-glyph svg, .objectives-commodore-memory-search svg { flex: none; width: 12px; height: 12px; }
+/* 펼친 찾기 — 상자 없이 머리 줄 오른쪽을 채우는 밑줄 한 줄. 포커스는 밑줄 잉크로만 말한다. */
+.objectives-commodore-memory-search {
+  flex: 1 1 auto; display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-width: 0; height: 22px; margin-left: 4px;
+  border-bottom: 1px solid var(--surface-rim-strong); color: var(--text-tertiary);
+}
+.objectives-commodore-memory-search:focus-within { border-bottom-color: var(--brass-ink); }
+.objectives-commodore-memory-search input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-xs); }
 .objectives-commodore-memory-search input::placeholder { color: var(--text-tertiary); }
+.objectives-commodore-memory-search input::-webkit-search-cancel-button { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .objectives-commodore-memory-search-glyph { transition: background-color 120ms ease, color 120ms ease; }
+  .objectives-commodore-memory-search { animation: objectives-commodore-memory-search-in var(--duration-fast) var(--ease-glide); }
+}
+@keyframes objectives-commodore-memory-search-in { from { opacity: 0; clip-path: inset(0 0 0 100%); } to { opacity: 1; clip-path: inset(0); } }
 .objectives-commodore-memory-branch { gap: 6px; }
 .objectives-commodore-memory-branch-head {
   display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 2px 0; border: 0; border-radius: var(--radius-xs);

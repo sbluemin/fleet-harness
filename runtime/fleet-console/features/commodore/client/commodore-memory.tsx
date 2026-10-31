@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 
@@ -12,6 +12,9 @@ type T = Translate<CommodoreMessageKey>;
 
 /**
  * 사령관의 fleet-memory — 오른쪽 패널(대화 중심 화면)과 Inbox 시트의 「정보」 칸 맨 아래 섹션. 사령관만 쓰고 사람은 읽기만 한다.
+ *
+ * 찾기는 평소 머리 오른쪽 돋보기 글리프로 접혀 있다가, 누르면 그 자리에서 입력으로 펼쳐진다. 비어 있을 때 Esc·바깥 클릭으로 다시 접히고,
+ * 기억이 `MEMORY_SEARCH_MIN_ENTRIES` 개보다 적으면 갈래를 펼쳐 훑는 편이 빨라 글리프를 세우지 않는다.
  *
  * 갈래(정보 칸의 다른 섹션과 같은 구분선 섹션) → 주제 → 항목 줄. 갈래는 처음에 모두 접혀 있고, 찾는 동안에는 맞는 갈래가 펼쳐진다.
  * 찾은 낱말은 제목·주제에, 제목 밖에서 맞았으면 그 자리의 한 줄 발췌에 `<mark>`로 보인다. 항목을 누르면 정보 칸이 그 항목의 읽기 화면이 되고,
@@ -32,6 +35,9 @@ export const MEMORY_BRANCH_HINT: Record<MemoryBranch, CommodoreMessageKey> = {
   lessons: "commodore.memory.hint.lessons",
   crew: "commodore.memory.hint.crew",
 };
+
+/** 이보다 기억이 적으면 찾기 글리프를 세우지 않는다 — 찾던 낱말이 남아 있으면 지울 수 있게 입력은 남긴다. */
+export const MEMORY_SEARCH_MIN_ENTRIES = 6;
 
 const pad = (value: number) => String(value).padStart(2, "0");
 /** 정보 칸의 정보 목록과 같은 날짜 표기(MM-DD). */
@@ -116,6 +122,10 @@ export function useMemoryBranchToggle() {
  */
 export function CommodoreMemory({ t, theaterId, onReading }: { readonly t: T; readonly theaterId: string; readonly onReading?: (reading: boolean) => void }) {
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchFocus = useRef(false);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const searchGlyph = useRef<HTMLButtonElement>(null);
   const branchToggle = useMemoryBranchToggle();
   const [selected, setSelected] = useState<string | null>(null);
   const { memory, branches, latest, searching, stale } = useCommodoreMemoryTree(theaterId, query);
@@ -123,23 +133,60 @@ export function CommodoreMemory({ t, theaterId, onReading }: { readonly t: T; re
   const reading = entry !== null;
   useEffect(() => { onReading?.(reading); }, [reading, onReading]);
   useEffect(() => () => onReading?.(false), [onReading]);
+  // 글리프를 눌러 펼쳤을 때만 입력으로 포커스를 옮긴다 — 항목을 읽고 돌아와 펼친 채 다시 설 때는 옮기지 않는다.
+  useEffect(() => {
+    if (!searchOpen || !searchFocus.current) return;
+    searchFocus.current = false;
+    searchInput.current?.focus();
+  }, [searchOpen]);
   if (entry) return <CommodoreMemoryEntry t={t} entry={entry} entries={memory.entries} query={query} stale={stale(entry)} onBack={() => setSelected(null)} onOpen={setSelected} />;
 
   const toggle = branchToggle.toggle;
+  // 찾던 낱말이 남아 있으면 펼친 채 둔다 — 기억이 기준 아래로 줄어도 지울 수 있게.
+  const searchShown = memory.entries.length > 0 && (searchOpen || query.length > 0);
+  const closeSearch = (refocus: boolean) => {
+    setSearchOpen(false);
+    setQuery("");
+    if (refocus) requestAnimationFrame(() => searchGlyph.current?.focus());
+  };
+  const searchGlyphIcon = <svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="5.2" cy="5.2" r="3.4" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M7.8 7.8 L10.5 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 
   return (
     <div className="objectives-commodore-memory objectives-commodore-panel-section">
       <div className="objectives-commodore-section">
         <div className="objectives-commodore-memory-head">
           <h3 className="objectives-commodore-panel-title">{t("commodore.memory.label")}</h3>
-          {memory.entries.length ? <span className="objectives-commodore-memory-meta">{t("commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</span> : null}
+          {searchShown ? (
+            <label className="objectives-commodore-memory-search">
+              {searchGlyphIcon}
+              <input
+                ref={searchInput}
+                type="search"
+                value={query}
+                placeholder={t("commodore.memory.search")}
+                aria-label={t("commodore.memory.search")}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (query) { setQuery(""); return; }
+                  closeSearch(true);
+                }}
+                onBlur={(event) => { if (!event.currentTarget.value.trim()) closeSearch(false); }}
+              />
+            </label>
+          ) : (
+            <>
+              {memory.entries.length ? <span className="objectives-commodore-memory-meta">{t("commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</span> : null}
+              {memory.entries.length >= MEMORY_SEARCH_MIN_ENTRIES ? (
+                <button ref={searchGlyph} type="button" className="objectives-commodore-memory-search-glyph" aria-label={t("commodore.memory.search")} title={t("commodore.memory.search")} onClick={() => { searchFocus.current = true; setSearchOpen(true); }}>
+                  {searchGlyphIcon}
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
-        {memory.entries.length ? (
-          <label className="objectives-commodore-memory-search">
-            <svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="5.2" cy="5.2" r="3.4" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M7.8 7.8 L10.5 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
-            <input type="search" value={query} placeholder={t("commodore.memory.search")} aria-label={t("commodore.memory.search")} onChange={(event) => setQuery(event.target.value)} />
-          </label>
-        ) : null}
         {memory.failed && !memory.entries.length ? <p className="objectives-commodore-hint">{t("commodore.memory.failed")}</p> : null}
         {memory.loaded && !memory.failed && !memory.entries.length ? <p className="objectives-commodore-hint">{t("commodore.memory.empty")}</p> : null}
         {searching && !branches.length ? <p className="objectives-commodore-hint">{t("commodore.memory.noMatch")}</p> : null}
