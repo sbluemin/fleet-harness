@@ -29,12 +29,17 @@
 .taskforce-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px 12px 22px; border-top: 1px solid var(--hairline); }
 .taskforce-dialog footer > span { display: flex; gap: 8px; }
 .taskforce-picks { display: flex; flex-wrap: wrap; gap: 8px; }
-.taskforce-member-chip, .taskforce-mention { --taskforce-member-ink: var(--text-primary); }
+.taskforce-member-chip, .taskforce-mention { --taskforce-member-ink: var(--text-primary); --taskforce-member-face: var(--text-primary); }
 .taskforce-member-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px 4px 4px; border: 0; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--taskforce-member-ink); background: var(--surface-panel); font: inherit; font-size: var(--t-md); cursor: pointer; }
 .taskforce-member-chip[aria-pressed="true"] { background: var(--wash-selected); box-shadow: inset 0 0 0 1.5px var(--text-primary); }
 .taskforce-member-chip:hover, .taskforce-close:hover { background: var(--wash-hover); }
 .taskforce-mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; color: var(--taskforce-member-ink); font-size: inherit; font-weight: var(--weight-medium); }
 .taskforce-message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.taskforce-message-text > .taskforce-mention { margin-inline: 4px; }
+.taskforce-message-mentions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+/* 다크 피드의 저채도 이름 잉크에 같은 사령관의 아바타 톤을 더한다. 라이트는 대비를 지키는 기본 identity ink를 쓴다. */
+:root:not([data-theme="light"]) .taskforce-conversation .group-chat-name[class*="is-tone-"] { --speaker-name-ink: var(--text-primary); --speaker-name-face: var(--text-primary); color: color-mix(in oklch, var(--speaker-name-ink) 25%, var(--speaker-name-face)); }
+:root:not([data-theme="light"]) .taskforce-message-text .taskforce-mention { color: color-mix(in oklch, var(--taskforce-member-ink) 25%, var(--taskforce-member-face)); }
 .taskforce-error { color: var(--coral); font-size: var(--t-sm); margin: 4px 0; }
 .taskforce-conversation { display: flex; flex: 1; height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
 .conversation-pill-surface-mark:has(> .taskforce-stack) { width: 36px; height: 32px; flex: none; }

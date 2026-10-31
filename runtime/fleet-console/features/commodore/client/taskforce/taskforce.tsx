@@ -96,7 +96,7 @@ function MemberChip({ id, selected, onClick, language }: { readonly id: string; 
   const look = useMongleLook(commodoreAvatarKey(id));
   const tone = look.tone ?? mongleBase(look.base).tone;
   const content = <><CommodoreAvatar commodoreId={id} state="idle" size={22} label="" decorative /><span>{memberName(id, language)}</span></>;
-  const style = { "--taskforce-member-ink": `var(--id-${tone})` } as CSSProperties;
+  const style = { "--taskforce-member-ink": `var(--id-${tone})`, "--taskforce-member-face": `var(--mongle-${tone})` } as CSSProperties;
   return onClick ? <button type="button" className="taskforce-member-chip" style={style} aria-pressed={selected} onClick={onClick}>{content}</button>
     : <span className="taskforce-mention" style={style}>{content}</span>;
 }
@@ -156,7 +156,7 @@ function MentionText({ entry, language }: { readonly entry: TaskforceLedgerEntry
     const index = remaining.indexOf(match.id); if (index >= 0) remaining.splice(index, 1);
     text = text.slice(match.at + match.token.length);
   }
-  return <span className="taskforce-message-text">{remaining.map((id) => <MemberChip key={id} id={id} language={language} />)}{parts}</span>;
+  return <span className="taskforce-message-text">{remaining.length ? <span className="taskforce-message-mentions">{remaining.map((id) => <MemberChip key={id} id={id} language={language} />)}</span> : null}{parts}</span>;
 }
 
 function TaskforceBody({ id, language }: { readonly id: string; readonly language: "ko" | "en" }) {
