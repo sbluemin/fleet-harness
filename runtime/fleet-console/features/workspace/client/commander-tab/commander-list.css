@@ -70,6 +70,8 @@
   display: flex;
   min-width: 0;
   max-width: 100%;
+  /* 사이드바에서는 이 라벨이 섹션 이름 자리다 — 위 섹션 머리와 같은 잉크로 읽힌다. */
+  color: var(--text-secondary);
 }
 .side-bar-commander-list .commander-tab-sort-label {
   overflow: hidden;

@@ -5,13 +5,13 @@
 .workspace-commodore-section-head {
   display: flex; align-items: center; gap: 6px; width: calc(100% - 8px); height: 28px;
   margin: 0 4px; padding: 0 8px 0 10px; border: 0; border-radius: var(--radius-xs);
-  background: transparent; color: var(--text-tertiary); text-align: left;
+  background: transparent; color: var(--text-secondary); text-align: left;
   font: var(--weight-medium) var(--t-sm)/1.4 var(--font-ui); cursor: pointer;
 }
 .workspace-commodore-section-head:hover,
 .workspace-commodore-section-head:focus-visible,
 .workspace-commodore-section-head.is-menu-target,
-.workspace-commodore-section.is-drop-target > .workspace-commodore-section-head { background: var(--wash-hover); color: var(--text-secondary); }
+.workspace-commodore-section.is-drop-target > .workspace-commodore-section-head { background: var(--wash-hover); color: var(--text-primary); }
 .workspace-commodore-section-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-commodore-section-count { font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .workspace-commodore-section-chevron { display: none; width: 14px; height: 14px; }
