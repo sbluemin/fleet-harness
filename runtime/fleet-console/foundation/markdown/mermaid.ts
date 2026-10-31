@@ -73,7 +73,7 @@ type ResolvedDiagramLabels = {
 const DEFAULT_DIAGRAM_LABELS: ResolvedDiagramLabels = {
   renderFailed: (message) => `Diagram render failed: ${message}`,
   openExpandedAria: "Open diagram in expanded view",
-  lightboxTitle: "MANIFEST · DIAGRAM",
+  lightboxTitle: "Diagram",
   close: "Close",
   closeExpandedAria: "Close expanded diagram",
   zoomControlsAria: "Diagram zoom controls",
