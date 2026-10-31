@@ -1043,6 +1043,9 @@ export function CommodoreDescription({ t, commodoreId, description, onFail, onCl
     setSaving(true);
     void saveCommodoreDescription(commodoreId, draft).then(close).catch(onFail).finally(() => setSaving(false));
   };
+  const preview = <button ref={previewRef} type="button" className={description.text ? "objectives-commodore-description-preview" : phone ? "objectives-cm-gr objectives-cm-intel-add commodore-theaters-phone-add" : "commodore-theaters-add"} title={description.text ? t("commodore.description.edit") : undefined} disabled={!online} onClick={() => { onClear(); setEditing(true); }}>
+    {description.text || <><span className={phone ? "objectives-cm-intel-plus" : "objectives-row-ic objectives-plus"} aria-hidden="true">+</span><span className={phone ? "objectives-cm-gr-tx" : undefined}>{t("commodore.description.add")}</span></>}
+  </button>;
   return (
     <section className="objectives-commodore-section objectives-commodore-panel-section">
       <div className="objectives-commodore-panel-head">
@@ -1055,9 +1058,7 @@ export function CommodoreDescription({ t, commodoreId, description, onFail, onCl
           <button type="button" className={phone ? "objectives-cm-pill" : "objectives-btn"} disabled={saving} onClick={cancel}>{t("commodore.description.cancel")}</button>
           <button type="button" className={phone ? "objectives-cm-pill is-inverse" : "objectives-btn"} disabled={saving || !dirty || !online} onClick={save}>{t("commodore.description.save")}</button>
         </div>
-      </> : <button ref={previewRef} type="button" className={description.text ? "objectives-commodore-description-preview" : phone ? "objectives-cm-gr objectives-cm-intel-add commodore-theaters-phone-add" : "commodore-theaters-add"} title={description.text ? t("commodore.description.edit") : undefined} disabled={!online} onClick={() => { onClear(); setEditing(true); }}>
-        {description.text || <><span className={phone ? "objectives-cm-intel-plus" : "objectives-row-ic objectives-plus"} aria-hidden="true">+</span><span className={phone ? "objectives-cm-gr-tx" : undefined}>{t("commodore.description.add")}</span></>}
-      </button>}
+      </> : phone && !description.text ? <div className="objectives-cm-grp">{preview}</div> : preview}
     </section>
   );
 }
