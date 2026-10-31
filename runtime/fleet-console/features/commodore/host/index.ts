@@ -28,6 +28,7 @@ import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import path from "node:path";
 import type { CommodoreBoardAdapter, CommodoreBoardHost } from "../../objectives/shared/commodore-board.js";
 import type { CommodoreEvent } from "../shared/contracts/types.js";
+import type { TaskforceEvent } from "../shared/contracts/taskforce.js";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "../../settings/shared/experiments.js";
 import { createConsoleResidentAgentHost, type ConsoleResidentAgentDeps } from "../../execution/host/agent/console-resident.js";
 import { createCommodoreRoutes, commodoreActive } from "./routes.js";
@@ -74,7 +75,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const releaseChannel = deps.events.registerSseChannel(COMMODORE_CHANNEL);
   const releaseSidebarChannel = deps.events.registerSseChannel(COMMODORE_SIDEBAR_CHANNEL);
   const agent = createConsoleResidentAgentHost(deps.agent);
-  const emit = (event: CommodoreEvent) => {
+  const emit = (event: CommodoreEvent | TaskforceEvent) => {
     deps.events.publish(COMMODORE_CHANNEL, event);
   };
   // 목록을 읽기 전에 연결한다. 등록부가 기본 켜짐을 정할 때 어느 사령관의 state.json `plugins` 든 본다.
@@ -114,6 +115,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     }),
     plugins: (ids) => plugins.resolve(effectiveCommodorePlugins(plugins.listGlobal(), ids).effective),
     emit,
+    taskforce: taskforce.store,
+    onTaskforceEvent: (event) => emit(event),
   });
   /**
    * 키·토큰이 바뀐 플러그인을 고른 사령관 — 고른 목록은 그대로라 저장소 사건이 없으므로 감독자에게 직접 알려 다음 턴을 새 세션

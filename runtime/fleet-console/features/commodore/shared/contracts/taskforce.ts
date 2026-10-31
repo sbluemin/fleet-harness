@@ -82,6 +82,26 @@ export type TaskforceLedgerEntry = z.output<typeof taskforceLedgerEntrySchema>;
 /** 쌓을 때 넘기는 모양 — seq·at 는 저장소가 찍는다. */
 export type TaskforceLedgerInput = Omit<TaskforceLedgerEntry, "seq" | "at">;
 
+/** 말 수 — 사람이 `person`, 사령관이 `commodore`. system 항목은 세지 않는다. */
+export const taskforceCountsSchema = z.object({
+  person: z.number().int().nonnegative(),
+  commodore: z.number().int().nonnegative(),
+}).strict();
+export type TaskforceCounts = z.output<typeof taskforceCountsSchema>;
+
+/**
+ * 판단 스냅샷 — 지금 판단 중인 성원(`judging`)과 성원별 마지막 결과(`outcomes`).
+ * `outcomes`는 판단이 끝난 성원만 든다: 말했으면 `spoke`, 말 없이 턴을 끝냈으면
+ * `silent`, 턴이 오류·취소로 끝나 항목이 다시 줄을 섰으면 `failed`. 휘발성이라
+ * 재시작하면 비어 있을 수 있다.
+ */
+export const taskforceJudgingSnapshotSchema = z.object({
+  judging: z.array(memberId).max(MAX_TASKFORCE_MEMBERS),
+  outcomes: z.record(z.string(), z.object({ outcome: z.enum(["spoke", "silent", "failed"]), at: z.number().int().nonnegative() }).strict()).default({}),
+  at: z.number().int().nonnegative(),
+}).strict();
+export type TaskforceJudgingSnapshot = z.output<typeof taskforceJudgingSnapshotSchema>;
+
 export const taskforceStateSchema = z.object({
   id: taskforceIdSchema,
   name: z.string().trim().min(1).max(MAX_TASKFORCE_NAME),
@@ -97,6 +117,10 @@ export const taskforceStateSchema = z.object({
     paused: z.boolean(),
   }).strict(),
   lastSeq: z.number().int().nonnegative(),
+  /** 말 수 — 없는 옛 state.json은 읽을 때 0으로 둔다(그 전 말은 세지 않는다). */
+  counts: taskforceCountsSchema.default({ person: 0, commodore: 0 }),
+  /** 판단 스냅샷 — 런타임이 남긴 마지막 모습. 읽을 때만 쓰고 판단은 사건으로 따라간다. */
+  judging: taskforceJudgingSnapshotSchema.optional(),
 }).strict();
 export type TaskforceState = z.output<typeof taskforceStateSchema>;
 
@@ -122,6 +146,10 @@ export interface TaskforceSummary {
   readonly lastSeq: number;
   readonly createdAt: number;
   readonly closedAt?: number;
+  /** 말 수 — 개요 탭이 「발언 N개 (사람 a · 사령관 b)」를 원장 paging 없이 그린다. */
+  readonly counts: TaskforceCounts;
+  /** 지금 판단 중인 성원 — 사이드바의 pulsing dot이 이것만 본다. */
+  readonly judging: readonly string[];
   readonly preview?: { readonly seq: number; readonly at: number; readonly text: string; readonly speaker: TaskforceSpeaker };
 }
 
@@ -135,6 +163,7 @@ export interface TaskforceLedgerPage {
 export interface TaskforceJudgingStatus {
   readonly taskforceId: string;
   readonly judging: readonly string[];
+  readonly outcomes: Readonly<Record<string, { readonly outcome: "spoke" | "silent" | "failed"; readonly at: number }>>;
   readonly at: number;
 }
 
@@ -142,10 +171,13 @@ export interface TaskforceJudgingStatus {
  * `commodore` 채널로 함께 나가는 TF 사건 — 화면은 응답이 아니라 이 사건으로 갱신되므로
  * 라우트 응답은 확인용이다. 런타임(판단·깨움)은 판단 상태 사건을 여기서 낸다.
  */
+export interface TaskforceJudgingEvent extends TaskforceJudgingStatus {
+  readonly op: "taskforce-judging";
+}
 export type TaskforceEvent =
   | { readonly op: "taskforce-state"; readonly taskforceId: string; readonly state: TaskforceState; readonly change: TaskforceStateChange }
   | { readonly op: "taskforce-ledger"; readonly taskforceId: string; readonly entry: TaskforceLedgerEntry }
-  | { readonly op: "taskforce-judging"; readonly taskforceId: string; readonly judging: readonly string[]; readonly at: number }
+  | TaskforceJudgingEvent
   | { readonly op: "taskforce-removed"; readonly taskforceId: string };
 
 /** 라우트 이름 — Console 서버에는 `/api/v1/<이름>` 으로 걸린다. */

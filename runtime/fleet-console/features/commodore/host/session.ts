@@ -9,6 +9,7 @@ import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
 import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
+import type { TaskforceStore } from "./taskforce/store.js";
 import { COMMODORES_TOOL_NAMES, FLEET_COMMODORE_TOOL_GROUP } from "../shared/tool-names.js";
 import { createCommodoreTools, type CommandExecute } from "./tools.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
@@ -51,6 +52,8 @@ export interface CommodoreSessionOptions {
   readonly execute?: CommandExecute;
   /** 지금 턴에 사람 메시지가 실렸는지 — 루틴 도구가 사람 요청 출처를 판정한다. */
   readonly hasPersonMessage?: () => boolean;
+  /** 속한 TaskForce 원장 — 판단 턴의 taskforce_post·taskforce_propose_close가 여기에 닿는다. */
+  readonly taskforce?: Pick<TaskforceStore, "append" | "proposeClose" | "read">;
 }
 
 export interface CommodoreTurnInput {
@@ -70,6 +73,16 @@ export interface CommodoreTurnInput {
   readonly messages?: readonly (string | { readonly text: string; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] })[];
   /** 다른 사령관의 말. 사람 입력이나 사람 권한으로 취급하지 않는다. */
   readonly mail?: readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[];
+  /**
+   * 속한 TaskForce 블록 — 이름·주제·성원과 읽지 않은 원장 항목만 싣는다. 1:1 기록·기억·연락은
+   * 절대 섞지 않는다(격리). 새 세션의 첫 턴에는 최근 원장 맥락이 앞에 선다.
+   */
+  readonly taskforce?: readonly string[];
+  /**
+   * TF로만 깬 턴 — 모델의 자유 텍스트를 1:1 기록에 남기지 않는다(도구 호출만 남는다).
+   * 사람 메시지가 함께 실린 턴은 평소대로 기록한다.
+   */
+  readonly quietText?: boolean;
 }
 
 export interface CommodoreTurnOutcome {
@@ -108,7 +121,9 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let turnActive = false;
 
   // 텍스트·사고는 델타로 온다 — 블록 단위로 모아 도구 호출·결과 경계에서 기록 한 줄로 내린다.
+  // TF로만 깬 턴(quietText)은 자유 텍스트를 1:1 기록에 남기지 않는다. 도구 호출은 그대로 남는다.
   let textBuffer = "";
+  let quietText = false;
   const turnTextBlocks: string[] = [];
   let thinkingBuffer = "";
   const pendingTools = new Map<string, { readonly name: string; readonly input: unknown }>();
@@ -127,10 +142,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const flushText = () => {
     if (textBuffer.trim()) {
       turnTextBlocks.push(textBuffer);
-      record({ kind: "text", text: clip(textBuffer, MAX_TRANSCRIPT_TEXT) });
+      if (!quietText) record({ kind: "text", text: clip(textBuffer, MAX_TRANSCRIPT_TEXT) });
     }
     textBuffer = "";
-    if (thinkingBuffer.trim()) record({ kind: "thinking", text: clip(thinkingBuffer, MAX_TRANSCRIPT_TEXT) });
+    if (thinkingBuffer.trim() && !quietText) record({ kind: "thinking", text: clip(thinkingBuffer, MAX_TRANSCRIPT_TEXT) });
     thinkingBuffer = "";
   };
   const recordTool = (name: string, input: unknown, ok: boolean | undefined, id?: string) => {
@@ -218,7 +233,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 그 프로젝트 스킬을 싣는다. 뒤에 더한 Theater 는 다음 세션부터 실린다.
     // Theater 의 `.mcp.json` 서버는 싣지 않는다 — Theater 에서 하는 실무는 그 목표의 지휘관·구성원 몫이다.
     const roots = [...new Set((options.theaters?.() ?? []).flatMap(({ root }) => (root ? [root] : [])))];
-    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}), ...(options.hasPersonMessage ? { hasPersonMessage: options.hasPersonMessage } : {}) });
+    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.taskforce ? { taskforce: options.taskforce } : {}), ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}), ...(options.hasPersonMessage ? { hasPersonMessage: options.hasPersonMessage } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
@@ -276,7 +291,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
-      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); createdCommodores.length = 0;
+      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; quietText = !!input.quietText; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); createdCommodores.length = 0;
       record({ kind: "wake", reasons: input.reasons });
       if (input.scope) {
         // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
@@ -293,6 +308,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
         aliasNote(options.store.read(options.commodoreId)?.alias),
         ...(input.mail?.length ? ["Messages from other Commodores (their words, not the person's):\n" + input.mail.map(({ messageId, from, text, replyTo }) => JSON.stringify({ messageId, from, text, ...(replyTo ? { replyTo } : {}) })).join("\n")] : []),
+        ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with taskforce_post, propose closing only with taskforce_propose_close):\n" + input.taskforce.join("\n\n")] : []),
       ].join("\n\n");
       const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
       const prompt = hasImages ? [

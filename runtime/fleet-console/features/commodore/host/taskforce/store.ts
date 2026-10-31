@@ -10,9 +10,11 @@ import {
   TASKFORCE_CHAIN_LIMIT,
   TASKFORCE_ID,
   taskforceLedgerEntrySchema,
+  taskforceJudgingSnapshotSchema,
   taskforceStateSchema,
   type TaskforceAction,
   type TaskforceEvent,
+  type TaskforceJudgingSnapshot,
   type TaskforceLedgerEntry,
   type TaskforceLedgerImage,
   type TaskforceSpeaker,
@@ -93,6 +95,15 @@ export interface TaskforceStore {
   removeMember(taskforceId: string, commodoreId: string): TaskforceState;
   /** 사령관 삭제가 부른다 — 속한 모든 TF에서 빼고 system 항목을 남긴다. */
   removeCommodoreFromAll(commodoreId: string): readonly string[];
+  /** chain을 멈춘다 — 12번째 사령관 발언을 본 런타임이 `chain-paused` 항목과 함께 잠근다. */
+  pauseChain(taskforceId: string): TaskforceState;
+  /** 판단 스냅샷을 조용히 영속한다 — 읽을 때의 모습이다. 판단 사건 방송은 런타임이 따로 낸다. */
+  saveJudging(taskforceId: string, snapshot: { readonly judging: readonly string[]; readonly outcomes: Readonly<Record<string, { readonly outcome: "spoke" | "silent" | "failed"; readonly at: number }>>; readonly at: number }): TaskforceState;
+  /**
+   * 보드 쓰기 묶음 — 같은 턴에 말한 사령관의 성공한 보드 쓰기를 그 말(`replyTo`) 아래에
+   * 덧붙인다. chain을 건드리지 않고 렌더용으로만 방송한다(깨우지 않는다).
+   */
+  appendActions(taskforceId: string, commodoreId: string, input: { readonly actions: readonly TaskforceAction[]; readonly replyTo: number }): { readonly state: TaskforceState; readonly entry: TaskforceLedgerEntry } | null;
   /** chain을 돌리고 연다 — 멈췄거나 쌓인 수가 있을 때만 chain-resumed 항목을 남긴다. */
   continue(taskforceId: string): TaskforceState;
   close(taskforceId: string): TaskforceState;
@@ -240,7 +251,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     const mentions = [...new Set(input.mentions ?? [])];
     if (mentions.some((id) => !current.members.includes(id))) throw new TaskforceStoreError("invalid_request");
     if (input.replyTo !== undefined && (input.replyTo < 1 || input.replyTo > current.lastSeq)) throw new TaskforceStoreError("invalid_request");
-    if (input.speaker.kind !== "system" && !input.text.trim()) throw new TaskforceStoreError("invalid_request");
+    if (input.speaker.kind !== "system" && !input.text.trim() && !(input.actions?.length)) throw new TaskforceStoreError("invalid_request");
     const entry = { ...input, mentions, seq: seqOf(taskforceId) + 1, at: now() } as TaskforceLedgerEntry;
     const parsed = taskforceLedgerEntrySchema.safeParse(entry);
     if (!parsed.success) throw new TaskforceStoreError("invalid_request");
@@ -257,7 +268,12 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     const readSeq = input.speaker.kind === "commodore"
       ? { ...current.readSeq, [input.speaker.commodoreId]: parsed.data.seq }
       : current.readSeq;
-    const next: TaskforceState = { ...current, chain, readSeq, lastSeq: parsed.data.seq };
+    // 말 수 — system 항목은 세지 않고, 보드 쓰기 묶음(빈 본문)도 세지 않는다.
+    const baseCounts = current.counts ?? { person: 0, commodore: 0 };
+    const counts = input.speaker.kind !== "system" && input.text.trim()
+      ? { ...baseCounts, [input.speaker.kind]: baseCounts[input.speaker.kind] + 1 }
+      : baseCounts;
+    const next: TaskforceState = { ...current, chain, readSeq, counts, lastSeq: parsed.data.seq };
     const validated = taskforceStateSchema.parse(next);
     writeFileAtomic(stateFile(taskforceId), JSON.stringify(validated));
     states.set(taskforceId, validated);
@@ -277,6 +293,8 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     return {
       id: state.id, name: state.name, topic: state.topic, members: [...state.members],
       status: state.status, lastSeq: state.lastSeq, createdAt: state.createdAt,
+      counts: { ...(state.counts ?? { person: 0, commodore: 0 }) },
+      judging: [...(state.judging?.judging ?? [])],
       ...(state.closedAt !== undefined ? { closedAt: state.closedAt } : {}),
       ...(preview ? { preview: { seq: preview.seq, at: preview.at, text: preview.text, speaker: preview.speaker } } : {}),
     };
@@ -336,6 +354,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
         readSeq: Object.fromEntries(members.map((member) => [member, 0])),
         chain: { count: 0, limit: TASKFORCE_CHAIN_LIMIT, paused: false },
         lastSeq: 0,
+        counts: { person: 0, commodore: 0 },
       };
       commit(id, state, "created");
       // 만드는 말(주제)이 곧 `created` 항목이다 — 모든 성원이 판단 대상이다.
@@ -395,6 +414,51 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
         } catch { /* 읽을 수 없는 TF는 다음 기회가 다시 본다 */ }
       }
       return touched;
+    },
+    saveJudging(taskforceId, snapshot) {
+      const current = load(taskforceId);
+      const judging = taskforceJudgingSnapshotSchema.safeParse({
+        judging: [...snapshot.judging].filter((member) => current.members.includes(member)).sort(),
+        outcomes: { ...snapshot.outcomes },
+        at: snapshot.at,
+      });
+      if (!judging.success) throw new TaskforceStoreError("invalid_request");
+      // 판단 스냅샷은 읽을 때의 모습이라 사건으로 방송하지 않는다 — 판단 사건이 따로 나간다.
+      const validated = taskforceStateSchema.parse({ ...current, judging: judging.data });
+      writeFileAtomic(stateFile(taskforceId), JSON.stringify(validated));
+      states.set(taskforceId, validated);
+      return validated;
+    },
+    pauseChain(taskforceId) {      const current = load(taskforceId);
+      if (current.status !== "open") throw new TaskforceStoreError("taskforce_closed");
+      if (current.chain.paused) return current;
+      commit(taskforceId, { ...current, chain: { ...current.chain, paused: true } }, "ledger");
+      appendSystem(taskforceId, "chain-paused", "");
+      return load(taskforceId);
+    },
+    appendActions(taskforceId, commodoreId, input) {
+      const current = load(taskforceId);
+      // 턴이 끝나기 전에 TF가 닫혔으면 묶음을 버린다 — 말 자체는 이미 원장에 있다.
+      if (current.status !== "open") return null;
+      if (!current.members.includes(commodoreId) || !input.actions.length) throw new TaskforceStoreError("invalid_request");
+      if (input.replyTo < 1 || input.replyTo > current.lastSeq) throw new TaskforceStoreError("invalid_request");
+      const entry = { speaker: { kind: "commodore", commodoreId } as const, text: "", mentions: [] as string[], actions: [...input.actions], replyTo: input.replyTo, seq: seqOf(taskforceId) + 1, at: now() };
+      const parsed = taskforceLedgerEntrySchema.safeParse(entry);
+      if (!parsed.success) throw new TaskforceStoreError("invalid_request");
+      const file = ledgerFile(taskforceId);
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o600 });
+      fs.appendFileSync(file, `${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
+      lastSeqs.set(taskforceId, parsed.data.seq);
+      lastEntries.set(taskforceId, parsed.data);
+      // chain은 건드리지 않는다 — 이것은 말이 아니라 같은 턴의 보드 쓰기 묶음이다.
+      const readSeq = { ...current.readSeq, [commodoreId]: Math.max(current.readSeq[commodoreId] ?? 0, parsed.data.seq) };
+      const validated = taskforceStateSchema.parse({ ...current, readSeq, lastSeq: parsed.data.seq });
+      writeFileAtomic(stateFile(taskforceId), JSON.stringify(validated));
+      states.set(taskforceId, validated);
+      lastSeqs.set(taskforceId, validated.lastSeq);
+      broadcast({ op: "taskforce-ledger", taskforceId, entry: parsed.data });
+      broadcast({ op: "taskforce-state", taskforceId, state: validated, change: "ledger" });
+      return { state: validated, entry: parsed.data };
     },
     continue(taskforceId) {
       const current = load(taskforceId);

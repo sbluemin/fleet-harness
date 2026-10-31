@@ -14,6 +14,8 @@ import {
   taskforcePostSchema,
   taskforceReadSchema,
   taskforceUpdateSchema,
+  type TaskforceJudgingStatus,
+  type TaskforceState,
 } from "../../shared/contracts/taskforce.js";
 import { TaskforceStoreError } from "./errors.js";
 import type { TaskforceStore } from "./store.js";
@@ -80,6 +82,10 @@ export function createTaskforceRoutes(
     if (!state) throw new TaskforceStoreError("unknown_taskforce");
     return state;
   };
+  /** 읽을 때의 판단 스냅샷 — 사건과 같은 모양에서 `op`만 뺀다. 아직 판단이 없으면 빈 모습이다. */
+  const judgingOf = (state: TaskforceState): TaskforceJudgingStatus => state.judging
+    ? { taskforceId: state.id, judging: [...state.judging.judging], outcomes: { ...state.judging.outcomes }, at: state.judging.at }
+    : { taskforceId: state.id, judging: [], outcomes: {}, at: 0 };
 
   const image: RouteHandler = ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
@@ -103,7 +109,7 @@ export function createTaskforceRoutes(
     }) },
     { name: TASKFORCE_ROUTE_NAMES.read, method: "POST", summary: "Read a TaskForce with a page of its ledger, newest last.", handler: json(taskforceReadSchema, ({ taskforceId, limit, before }) => {
       const taskforce = read(taskforceId);
-      return { taskforce, ...store.readLedger(taskforceId, { ...(limit !== undefined ? { limit } : {}), ...(before !== undefined ? { before } : {}) }) };
+      return { taskforce, judging: judgingOf(taskforce), ...store.readLedger(taskforceId, { ...(limit !== undefined ? { limit } : {}), ...(before !== undefined ? { before } : {}) }) };
     }) },
     { name: TASKFORCE_ROUTE_NAMES.post, method: "POST", summary: "Post the person's utterance to an open TaskForce.", handler: json(taskforcePostSchema, ({ taskforceId, text, mentions = [], replyTo, images = [] }) => {
       read(taskforceId);

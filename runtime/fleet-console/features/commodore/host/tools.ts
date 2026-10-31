@@ -8,6 +8,8 @@ import { z } from "zod";
 import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "../shared/contracts/questions.js";
 import { refuse, text } from "./tool-results.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
+import type { TaskforceStore } from "./taskforce/store.js";
+import { MAX_TASKFORCE_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
 import { MAX_ASK_REASON, routineInputSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
@@ -46,6 +48,11 @@ export interface CommodoreToolsOptions {
   readonly execute?: CommandExecute;
   /** 지금 턴에 사람 메시지가 실렸는지 — 그 턴에 등록·수정한 루틴은 사람 요청 출처를 갖는다. 없으면 자율 턴으로 본다. */
   readonly hasPersonMessage?: () => boolean;
+  /**
+   * 속한 TaskForce 원장 — 판단 턴의 말하기·닫기 제안이 여기에 닿는다. 없으면 TF 도구를
+   * 거절한다(판단 런타임이 없는 호스트).
+   */
+  readonly taskforce?: Pick<TaskforceStore, "append" | "proposeClose" | "read">;
 }
 
 export function createCommodoreTools(options: CommodoreToolsOptions): readonly ConsoleMcpTool[] {
@@ -178,6 +185,27 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       const { stdout } = await run("gh", args, { cwd: options.cwd ?? options.theaterRoot, signal: context.signal }).catch((error: unknown) => { throw new Error(commandFailure(error, "gh_failed")); });
       const parsed = JSON.parse(stdout) as readonly { number?: number; title?: string; state?: string; updatedAt?: string; labels?: readonly { name?: string }[]; url?: string }[];
       return { source: sourceView(source), issues: parsed.map((issue) => ({ number: issue.number, title: issue.title, state: issue.state, updatedAt: issue.updatedAt, labels: (issue.labels ?? []).map((label) => label.name).filter((name): name is string => typeof name === "string"), url: issue.url })) };
+    }),
+    // TaskForce — 판단 턴의 말하기와 닫기 제안은 이 두 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
+    // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
+    tool("taskforce_post", "Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit.", z.object({
+      taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
+      text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT),
+      mentions: z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).max(32).optional(),
+    }).strict(), ({ taskforceId, text, mentions }) => {
+      const taskforce = options.taskforce;
+      if (!taskforce) throw new Error("taskforce_unavailable");
+      const { entry } = taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text, ...(mentions ? { mentions } : {}) });
+      return { taskforceId, seq: entry.seq };
+    }),
+    tool("taskforce_propose_close", "Propose closing a TaskForce you belong to, with your reason. Only the person can close it; a proposal alone changes nothing and wakes the other members to judge it.", z.object({
+      taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
+      reason: z.string().trim().min(1).max(1000),
+    }).strict(), ({ taskforceId, reason }) => {
+      const taskforce = options.taskforce;
+      if (!taskforce) throw new Error("taskforce_unavailable");
+      const { entry } = taskforce.proposeClose(taskforceId, options.commodoreId, reason);
+      return { taskforceId, seq: entry.seq };
     }),
   ];
 }
