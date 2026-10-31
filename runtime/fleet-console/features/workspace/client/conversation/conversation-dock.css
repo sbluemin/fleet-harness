@@ -5,18 +5,18 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 17px 18px 17px 17px;
   min-width: 0;
 }
 .conversation-dock-host { position: relative; flex: none; }
-.conversation-dock-popover-anchor { position: absolute; top: 12px; left: 12px; width: 0; height: 0; pointer-events: none; }
+.conversation-dock-popover-anchor { position: absolute; top: 17px; left: 17px; width: 0; height: 0; pointer-events: none; }
 .conversation-dock-avatar {
   position: relative;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border: 0;
   border-radius: 50%;
   background: var(--surface-round-control);
@@ -49,6 +49,10 @@
 .sidebar-footer-entries { flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .sidebar-footer-entries [data-sidebar-footer-dropped] { display: none; }
 .sidebar-footer-entries-content { display: inline-flex; align-items: center; gap: 4px; width: max-content; transform: translateX(var(--sidebar-footer-offset, 0px)); }
+.sidebar-footer-entries.has-fill { display: flex; align-items: center; gap: 4px; overflow: visible; }
+.sidebar-footer-entries.has-fill > .sidebar-footer-entries { flex: 0 1 auto; }
+.sidebar-footer-entry-fill { display: flex; flex: 1 1 0; min-width: 0; }
+.sidebar-footer-entry-fill:empty { display: none; }
 .conversation-dock-menu {
   position: absolute;
   z-index: 90;

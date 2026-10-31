@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from "react";
 import { isFleetMobileShell, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
@@ -8,11 +8,15 @@ import { httpUrl, pluginReadmeHtml } from "./plugin-readme.js";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { defineSettingsSection, SettingsGroup, SettingsItem, SettingsToggle, useMobileSettingsHost } from "../../settings/client/preferences-context.js";
 import { openSettingsSurface } from "../../settings/client/settings-door.js";
-import { pluginIconPath, splitPluginId, type CommodorePluginAuthView, type PluginServerAuthView, type MarketplaceErrorCode, type MarketplaceView, type PluginCatalogEntry, type PluginCatalogView, type PluginComponents, type PluginContents, type PluginDetail } from "../shared/contracts/plugins.js";
+import { effectiveCommodorePlugins, pluginIconPath, splitPluginId, type GlobalPluginReplacement, type CommodorePluginAuthView, type PluginServerAuthView, type MarketplaceErrorCode, type MarketplaceView, type PluginCatalogEntry, type PluginCatalogView, type PluginComponents, type PluginContents, type PluginDetail } from "../shared/contracts/plugins.js";
 import { postCommodorePlugins, setCommodorePlugin, useCommodore, useCommodoreEnabled } from "./commodore-state.js";
 import { commodoreName } from "./commodore-name.js";
+import { loadGlobalPlugins, setGlobalPlugin, useGlobalPlugins } from "./global-plugins.js";
+import { useMongleLook } from "../../workspace/client/avatar-events.js";
+import { commodoreAvatarKey, mongleBase } from "../../workspace/shared/avatars.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import "./commodore-routines.css";
+import "./global-plugins.css";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -176,7 +180,7 @@ function initialsOf(name: string): string {
  * 마켓플레이스·플러그인 머리 타일 — 아이콘이 없으면(대부분이다) 무채색 이니셜, 플러그인이 낸 아이콘이 있으면 같은 자리·같은 모서리의
  * 그림이다. 그림을 읽지 못하면 이니셜로 돌아간다. 이름은 옆 글자가 말하므로 타일은 장식이다.
  */
-function PluginTile({ name, iconId, size }: { readonly name: string; readonly iconId?: string | undefined; readonly size: "row" | "card" | "market" | "phone" | "detail" }) {
+function PluginTile({ name, iconId, size }: { readonly name: string; readonly iconId?: string | undefined; readonly size: "row" | "card" | "market" | "phone" | "detail" | "summary" }) {
   const [broken, setBroken] = useState<string | null>(null);
   if (iconId && broken !== iconId) {
     return (
@@ -185,10 +189,99 @@ function PluginTile({ name, iconId, size }: { readonly name: string; readonly ic
       </span>
     );
   }
-  return <span className={`commodore-tile is-${size}`} aria-hidden="true">{initialsOf(name)}</span>;
+  return <span className={`commodore-tile is-${size}`} aria-hidden="true">{size === "summary" ? Array.from(name.trim())[0]?.toLocaleUpperCase() || "?" : initialsOf(name)}</span>;
 }
 
 const titleOf = (entry: PluginCatalogEntry | undefined, fallback: string): string => entry?.displayName ?? fallback;
+
+function GlobalPluginMark() {
+  return <svg className="commodore-global-mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.2 14 5.3 8 8.4 2 5.3Z" /><path d="M2.4 8.2 8 11.1l5.6-2.9M2.4 11 8 13.9l5.6-2.9" /></svg>;
+}
+
+let globalTrigger: HTMLElement | null = null;
+const globalPaletteListeners = new Set<() => void>();
+const subscribeGlobalPalette = (listener: () => void) => { globalPaletteListeners.add(listener); return () => { globalPaletteListeners.delete(listener); }; };
+const useGlobalPalette = () => useSyncExternalStore(subscribeGlobalPalette, () => globalTrigger !== null, () => false);
+function openGlobalPalette(trigger: HTMLElement): void {
+  globalTrigger = trigger;
+  for (const listener of globalPaletteListeners) listener();
+}
+function closeGlobalPalette(): void {
+  const trigger = globalTrigger;
+  globalTrigger = null;
+  for (const listener of globalPaletteListeners) listener();
+  trigger?.focus({ preventScroll: true });
+}
+
+/** 팔레트는 footer·사령관 설정의 수명과 독립적으로 한 번만 선다. */
+export function GlobalPluginsHost() {
+  const t = getT(useConsoleLocale());
+  const open = useGlobalPalette();
+  const global = useGlobalPlugins();
+  useLiveCatalog(open);
+  return open ? <PluginPalette t={t} installed={global.view?.plugins ?? []} onClose={closeGlobalPalette} /> : null;
+}
+
+export function GlobalPluginsEntry() {
+  const t = getT(useConsoleLocale());
+  const global = useGlobalPlugins();
+  const { view } = useLiveCatalog(true);
+  const open = useGlobalPalette();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [tip, setTip] = useState<DOMRect | null>(null);
+  const plugins = global.view?.plugins ?? [];
+  const shown = plugins.slice(0, plugins.length > 3 ? 2 : 3);
+  const label = t("commodore.plugins.global.countAria", { n: plugins.length });
+  const showTip = () => setTip(trigger.current?.closest(".is-compact") ? trigger.current.getBoundingClientRect() : null);
+  return <>
+    <button ref={trigger} type="button" className="commodore-global-pill" aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={(event) => { setTip(null); openGlobalPalette(event.currentTarget); }} onPointerEnter={showTip} onPointerLeave={() => setTip(null)} onFocus={showTip} onBlur={() => setTip(null)}>
+      <span className="commodore-global-pill-tiles" aria-hidden="true">{shown.map((id) => {
+        const entry = view?.plugins.find((plugin) => plugin.id === id);
+        return <PluginTile key={id} name={titleOf(entry, splitPluginId(id).plugin)} iconId={entry?.icon ? id : undefined} size="summary" />;
+      })}{plugins.length > 3 ? <span className="commodore-tile is-summary is-more">+{plugins.length - 2}</span> : plugins.length === 0 ? <span className="commodore-global-plus">＋</span> : null}</span>
+      <span className="commodore-global-pill-label">{t("commodore.plugins.global.title")}</span>
+      <svg className="commodore-global-pill-glyph" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.6" /><rect x="11" y="3" width="6" height="6" rx="1.6" /><rect x="3" y="11" width="6" height="6" rx="1.6" /><path d="M14 11.2v5.6M11.2 14h5.6" strokeLinecap="round" /></svg>
+      {plugins.length ? <span className="commodore-global-pill-count" aria-hidden="true">{plugins.length}</span> : null}
+    </button>
+    {tip && !open ? createPortal(<span className="commodore-global-pill-tip" role="tooltip" style={{ left: tip.right + 10, top: tip.top + tip.height / 2 }}>{label}</span>, document.body) : null}
+  </>;
+}
+
+function ReplacementHint({ t, replacement, id }: { readonly t: T; readonly replacement: GlobalPluginReplacement | undefined; readonly id: string }) {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  useEffect(() => {
+    const row = anchor.current?.parentElement;
+    if (!row || !replacement) return;
+    const show = () => setRect(row.getBoundingClientRect());
+    const hide = () => setRect(null);
+    row.addEventListener("pointerenter", show); row.addEventListener("pointerleave", hide);
+    row.addEventListener("focusin", show); row.addEventListener("focusout", hide);
+    window.addEventListener("scroll", hide, true); window.addEventListener("resize", hide);
+    return () => { row.removeEventListener("pointerenter", show); row.removeEventListener("pointerleave", hide); row.removeEventListener("focusin", show); row.removeEventListener("focusout", hide); window.removeEventListener("scroll", hide, true); window.removeEventListener("resize", hide); };
+  }, [replacement]);
+  if (!replacement) return null;
+  return <><span ref={anchor} hidden />{createPortal(<span id={id} role="tooltip" className="commodore-plugins-replacement-tip" hidden={!rect} style={rect ? { left: Math.max(12, Math.min(rect.left, window.innerWidth - 272)), top: rect.top - 8 } : undefined}>{t(replacement.reason === "same-id" ? "commodore.plugins.global.sameId" : "commodore.plugins.global.sameName", { marketplace: splitPluginId(replacement.by).marketplace })}</span>, document.body)}</>;
+}
+
+function GlobalPluginGroup({ t, plugins, entries, phone }: { readonly t: T; readonly plugins: readonly string[]; readonly entries: ReadonlyMap<string, PluginCatalogEntry>; readonly phone: boolean }) {
+  if (!plugins.length) return null;
+  return <div className="commodore-global-group">
+    <p className="commodore-plugins-group-head"><GlobalPluginMark /><span>{t("commodore.plugins.global.group")}</span><button type="button" className="commodore-plugins-text" onClick={(event) => openGlobalPalette(event.currentTarget)}>{t("commodore.plugins.global.manage")}</button></p>
+    <ul className={`commodore-plugins-list${phone ? " is-phone" : ""}`}>
+      {plugins.map((pluginId) => {
+        const { plugin, marketplace } = splitPluginId(pluginId);
+        const entry = entries.get(pluginId);
+        return <li key={pluginId} className="commodore-plugins-row commodore-global-row">
+          <span className="commodore-global-tile"><PluginTile name={titleOf(entry, plugin)} iconId={entry?.icon ? pluginId : undefined} size={phone ? "phone" : "row"} /><span className="commodore-global-badge"><GlobalPluginMark /></span></span>
+          <span className="commodore-plugins-name">{titleOf(entry, plugin)}<span className="commodore-plugins-at">@{marketplace}</span></span>
+          <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
+          <span className="commodore-plugins-meta"><Components t={t} components={entry?.components} /></span>
+        </li>;
+      })}
+    </ul>
+  </div>;
+}
 
 /**
  * 마켓플레이스 타일은 켜기/끄기 단추다 — 켜지면 brass, 꺼지면 무채색. 이름은 「{이름} 켜기」로 고정하고 상태는 aria-pressed 가 말한다.
@@ -569,6 +662,10 @@ type InlineForm = { readonly pluginId: string; readonly kind: "key"; readonly na
 export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t: T; readonly commodoreId: string; readonly phone?: boolean }) {
   const { view } = useCommodore(commodoreId);
   const { view: catalogView } = useLiveCatalog(Boolean(commodoreId));
+  const global = useGlobalPlugins();
+  const look = useMongleLook(commodoreAvatarKey(commodoreId));
+  const identityStyle = { "--commodore-plugin-identity": `var(--id-${look.tone ?? mongleBase(look.base).tone})` } as CSSProperties;
+  const replacementId = useId();
   const [palette, setPalette] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -585,7 +682,9 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const suppressClick = useRef(false);
   const installed = view?.state.plugins ?? [];
-  const auth = usePluginAuth(commodoreId, installed.length ? `${installed.join("\n")}\n${authRevision}` : "");
+  const effective = effectiveCommodorePlugins(global.view?.plugins ?? [], installed);
+  const replacements = new Map(effective.replaced.map((replacement) => [replacement.pluginId, replacement]));
+  const auth = usePluginAuth(commodoreId, effective.effective.length ? `${effective.effective.join("\n")}\n${authRevision}` : "");
   const cancelPress = () => { if (press.current) clearTimeout(press.current.timer); press.current = null; };
   const closeMenu = (focus = true) => { if (focus) menu?.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); setTrust(null); };
   const openMenu = (pluginId: string, trigger: HTMLElement, x: number, y: number, anchored = false) => { cancelPress(); setArmed(false); setTrust(null); setMenu({ pluginId, trigger, x, y, anchored }); };
@@ -723,13 +822,15 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   };
   const close = () => { setPalette(false); addRef.current?.focus({ preventScroll: true }); };
   const note = installed.length === 0 ? t("commodore.plugins.empty") : null;
+  const globalGroup = <GlobalPluginGroup t={t} plugins={global.view?.plugins ?? []} entries={entries} phone={phone} />;
+  const ownHeading = global.view?.plugins.length ? <p className="commodore-plugins-group-head">{t("commodore.plugins.global.own")}</p> : null;
   const rows = installed.map((pluginId) => {
     const { plugin, marketplace } = splitPluginId(pluginId);
     const entry = entries.get(pluginId);
     const source = marketplaces.get(marketplace);
     const mark = catalogView && !source?.enabled ? <span className="commodore-plugins-state is-warn">{t("commodore.plugins.marketplaceOff")}</span>
       : catalogView && !entry ? <span className="commodore-plugins-state">{t("commodore.plugins.notListed")}</span> : authMark(t, authOf.get(pluginId));
-    return { pluginId, plugin, title: titleOf(entry, plugin), marketplace, entry, mark: <>{updateMark(entry, pluginId)}{mark}</> };
+    return { pluginId, plugin, title: titleOf(entry, plugin), marketplace, entry, replacement: replacements.get(pluginId), mark: <>{updateMark(entry, pluginId)}{mark}</> };
   });
   const rowHandlers = (pluginId: string) => ({
     tabIndex: 0,
@@ -810,15 +911,18 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
 
   if (phone) {
     return (
-      <section className="commodore-plugins is-phone" aria-label={t("commodore.plugins.title")}>
+      <section className="commodore-plugins is-phone" style={identityStyle} aria-label={t("commodore.plugins.title")}>
         <p className="objectives-cm-glab">{t("commodore.plugins.title")}</p>
+        {globalGroup}
+        {ownHeading}
         <div className="objectives-cm-grp">
-          {rows.map(({ pluginId, title, marketplace, entry, mark }) => (
+          {rows.map(({ pluginId, title, marketplace, entry, mark, replacement }) => (
             <Fragment key={pluginId}>
-              <div className={`objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId ? " is-target" : ""}`} aria-label={title} {...rowHandlers(pluginId)}>
+              <div className={`objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
                 <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="phone" />
                 <span className="objectives-cm-gr-tx"><span className="commodore-plugins-name">{title}</span><small className="is-mono">@{marketplace}</small><small className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></small></span>
                 <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
+                <ReplacementHint t={t} replacement={replacement} id={`${replacementId}-${pluginId}`} />
               </div>
               {inline(pluginId, title)}
             </Fragment>
@@ -837,16 +941,19 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   }
 
   return (
-    <section className="objectives-commodore-section commodore-plugins" aria-label={t("commodore.plugins.title")}>
+    <section className="objectives-commodore-section commodore-plugins" style={identityStyle} aria-label={t("commodore.plugins.title")}>
       <p className="objectives-commodore-section-title commodore-plugins-head"><span className="fc-settings-row__label">{t("commodore.plugins.title")}</span><button type="button" className="commodore-plugins-text" onClick={() => openSettingsSurface(MARKETPLACE_SETTINGS_ADDRESS)}>{t("commodore.plugins.manage")}</button></p>
+      {globalGroup}
+      {ownHeading}
       {rows.length ? (
         <ul className="commodore-plugins-list">
-          {rows.map(({ pluginId, title, marketplace, entry, mark }) => (
-            <li key={pluginId} className={`commodore-plugins-row${menu?.pluginId === pluginId ? " is-target" : ""}`} aria-label={title} {...rowHandlers(pluginId)}>
+          {rows.map(({ pluginId, title, marketplace, entry, mark, replacement }) => (
+            <li key={pluginId} className={`commodore-plugins-row${menu?.pluginId === pluginId ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
               <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="row" />
               <span className="commodore-plugins-name" title={pluginId}>{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
               <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
               <span className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></span>
+              <ReplacementHint t={t} replacement={replacement} id={`${replacementId}-${pluginId}`} />
               {inline(pluginId, title)}
             </li>
           ))}
@@ -911,8 +1018,12 @@ interface RowState {
  * 검색어·필터·스크롤이 남고, Esc 는 상세에서 뒤로, 목록에서 닫기다. 설치는 inspect 로 구성 요소·실행 명령을 받은 뒤, 실행 명령이
  * 있으면 그 원문을 보여 주고 사람이 확인해야 `trusted` 로 저장한다. 바깥 누름은 팔레트만 닫는다(뒤의 시트·패널은 그대로).
  */
-function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { readonly t: T; readonly commodoreId: string; readonly installed: readonly string[]; readonly phone?: boolean; readonly onClose: () => void }) {
+function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { readonly t: T; readonly commodoreId?: string; readonly installed: readonly string[]; readonly phone?: boolean; readonly onClose: () => void }) {
   const { view, error } = usePluginCatalog();
+  const global = useGlobalPlugins();
+  const globalScope = !commodoreId;
+  const [armed, setArmed] = useState<string | null>(null);
+  const mutate = (pluginId: string, selected: boolean, trusted = false) => commodoreId ? setCommodorePlugin(commodoreId, pluginId, selected, trusted) : setGlobalPlugin(pluginId, selected, trusted);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
   const [row, setRow] = useState<RowState | null>(null);
@@ -930,7 +1041,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
   const dismissConfirm = useRef<() => boolean>(() => false);
   const titleId = useId();
   const detailTitleId = useId();
-  const name = commodoreName(commodoreId, t);
+  const name = commodoreId ? commodoreName(commodoreId, t) : "";
   const detailEpoch = useDetailGeneration();
   const holdFocus = () => {
     const dialog = dialogRef.current;
@@ -985,7 +1096,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
 
   const save = (pluginId: string, trusted: boolean, entry?: PluginCatalogEntry) => {
     setRow({ pluginId, phase: "saving", ...(entry ? { entry } : {}) });
-    void setCommodorePlugin(commodoreId, pluginId, true, trusted).then(() => setRow(null), (reason) => {
+    void mutate(pluginId, true, trusted).then(() => setRow(null), (reason) => {
       const code = codeOf(reason);
       // 서버가 신뢰 확인을 요구하면(받은 뒤 실행 명령이 생겼다) 원문을 다시 받아 확인 칸을 세운다.
       if (code === "trust_required") { void inspectPlugin(pluginId).then((fresh) => setRow({ pluginId, phase: "trust", entry: fresh }), (again) => setRow({ pluginId, phase: "failed", code: codeOf(again) })); return; }
@@ -993,7 +1104,8 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
     });
   };
   const install = (entry: PluginCatalogEntry) => {
-    if (row && (row.phase === "checking" || row.phase === "saving")) return;
+    if (!global.view || row && (row.phase === "checking" || row.phase === "saving")) return;
+    if (!globalScope && global.view.plugins.includes(entry.id)) return;
     setRow({ pluginId: entry.id, phase: "checking" });
     void inspectPlugin(entry.id).then((fresh) => {
       if (fresh.runs?.length) setRow({ pluginId: entry.id, phase: "trust", entry: fresh });
@@ -1003,7 +1115,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
   const removeInstalled = (pluginId: string) => {
     if (row && (row.phase === "checking" || row.phase === "saving")) return;
     setRow({ pluginId, phase: "saving" });
-    void setCommodorePlugin(commodoreId, pluginId, false).then(() => setRow(null), (reason) => setRow({ pluginId, phase: "failed", code: codeOf(reason) }));
+    void mutate(pluginId, false).then(() => { setArmed(null); setRow(null); }, (reason) => setRow({ pluginId, phase: "failed", code: codeOf(reason) }));
   };
   useEffect(() => {
     // 포커스가 BODY 로 빠져도 Esc 규칙은 유지된다. 다이얼로그의 onKeyDown 은 그때 이벤트를 받지 못한다.
@@ -1019,7 +1131,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
     document.addEventListener("keydown", onEscape, true);
     return () => document.removeEventListener("keydown", onEscape, true);
   }, [onClose, openedId, row]);
-  const opened = openedId ? view?.plugins.find((entry) => entry.id === openedId) ?? null : null;
+  const opened = openedId ? view?.plugins.find((entry) => entry.id === openedId) ?? (installedSet.has(openedId) ? { id: openedId, name: splitPluginId(openedId).plugin, marketplace: splitPluginId(openedId).marketplace } : null) : null;
   const openedDetail = openedId ? detailCache.get(openedId) : undefined;
 
   const body = !view ? <p className="commodore-plugins-empty" role={error ? "alert" : "status"}>{error ? errorWord(t, error) : t("commodore.plugins.loading")}</p>
@@ -1033,7 +1145,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
               <span>{browsing ? t("commodore.marketplaces.count", { n: marketplace.pluginCount }) : t("commodore.plugins.palette.found", { n: items.length })}</span>
             </p>
             <div className="commodore-palette-rows">
-              {items.map((entry) => <PaletteRow key={entry.id} t={t} entry={entry} installed={installedSet.has(entry.id)} row={row?.pluginId === entry.id ? row : null} showTrust={openedId === null} onOpen={() => openDetail(entry.id)} onInstall={() => install(entry)} onTrust={(fresh) => save(entry.id, true, fresh)} onCancel={() => setRow(null)} />)}
+              {items.map((entry) => <PaletteRow key={entry.id} t={t} entry={entry} installed={installedSet.has(entry.id)} installedGlobally={!globalScope && Boolean(global.view?.plugins.includes(entry.id))} globalScope={globalScope} disabled={!global.view || row?.phase === "checking" || row?.phase === "saving"} hint={globalScope && global.view?.installedBy[entry.id]?.length ? t("commodore.plugins.global.alreadyOwn", { name: global.view.installedBy[entry.id]!.map((owner) => owner.alias || commodoreName(owner.commodoreId, t)).join(", ") }) : undefined} row={row?.pluginId === entry.id ? row : null} showTrust={openedId === null} onOpen={() => openDetail(entry.id)} onInstall={() => install(entry)} onTrust={(fresh) => save(entry.id, true, fresh)} onCancel={() => setRow(null)} />)}
             </div>
           </section>
         ));
@@ -1057,6 +1169,9 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
             loading={detailLoading && !openedDetail}
             error={detailError}
             installed={installedSet.has(opened.id)}
+            installedGlobally={!globalScope && Boolean(global.view?.plugins.includes(opened.id))}
+            globalScope={globalScope}
+            disabled={!global.view || row?.phase === "checking" || row?.phase === "saving"}
             row={row?.pluginId === opened.id ? row : null}
             dismissConfirm={dismissConfirm}
             onFocusFallback={holdFocus}
@@ -1070,7 +1185,8 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
           />
         ) : (
           <>
-            <PaletteBar t={t} title={t("commodore.plugins.palette.title", { name })} titleId={titleId} onClose={onClose} />
+            <PaletteBar t={t} title={globalScope ? t("commodore.plugins.global.title") : t("commodore.plugins.palette.title", { name })} titleId={titleId} globalScope={globalScope} onClose={onClose} />
+            {globalScope ? <p className="commodore-global-lede">{t("commodore.plugins.global.lede")}</p> : null}
             <div className="commodore-palette-search">
               <SearchGlyph />
               <input
@@ -1093,7 +1209,18 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
             ) : null}
           </>
         )}
-        <div ref={listRef} className="commodore-palette-list" hidden={opened !== null}>{body}</div>
+        <div ref={listRef} className="commodore-palette-list" hidden={opened !== null}>
+          {global.error ? <p className="commodore-plugins-empty" role="alert">{errorWord(t, global.error)} <button type="button" className="commodore-plugins-text" onClick={() => { void loadGlobalPlugins(); }}>{t("commodore.plugins.detail.retry")}</button></p> : null}
+          {globalScope ? <section className="commodore-global-installed">
+            <h3 className="commodore-palette-group-head"><GlobalPluginMark /><span>{t("commodore.plugins.global.installedCount", { n: installed.length })}</span></h3>
+            {global.view ? installed.length ? <div className="commodore-palette-rows">{installed.map((pluginId) => {
+              const parts = splitPluginId(pluginId);
+              const entry = view?.plugins.find((plugin) => plugin.id === pluginId) ?? { id: pluginId, name: parts.plugin, marketplace: parts.marketplace };
+              return <PaletteRow key={pluginId} t={t} entry={entry} installed globalScope disabled={row?.phase === "checking" || row?.phase === "saving"} row={row?.pluginId === pluginId ? row : null} showTrust onOpen={() => openDetail(pluginId)} onInstall={() => {}} onTrust={(fresh) => save(pluginId, true, fresh)} onCancel={() => setRow(null)} onRemove={() => { if (armed === pluginId) removeInstalled(pluginId); else setArmed(pluginId); }} removeArmed={armed === pluginId} />;
+            })}</div> : <p className="commodore-plugins-empty">{t("commodore.plugins.empty")}</p> : <p className="commodore-plugins-empty" role="status">{t("commodore.plugins.loading")}</p>}
+          </section> : null}
+          {body}
+        </div>
         {opened ? null : (
           <div className="commodore-palette-foot">
             <button type="button" className="commodore-plugins-text" onClick={() => { onClose(); openSettingsSurface(MARKETPLACE_SETTINGS_ADDRESS); }}>{t("commodore.plugins.manage")}</button>
@@ -1134,12 +1261,18 @@ function TrustPanel({ t, entry, onTrust, onCancel, trustRef }: {
  * 팔레트 행 — 마켓플레이스 묶음의 둥근 카드 안에 한 줄씩 선다. 설치 단추를 제외한 행은 상세를 연다. Enter 는 그 단추의 기본 동작이다.
  * 둘째 줄은 설명 한 줄(없으면 버전·만든 이)이고, 나머지 사실은 상세의 정보 카드가 맡는다. 신뢰 확인이 필요하면 행 아래로 펼친다.
  */
-function PaletteRow({ t, entry, installed, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
+function PaletteRow({ t, entry, installed, installedGlobally = false, globalScope = false, disabled = false, hint, onRemove, removeArmed = false, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
   readonly t: T;
   readonly entry: PluginCatalogEntry;
   readonly installed: boolean;
+  readonly installedGlobally?: boolean;
+  readonly globalScope?: boolean;
+  readonly disabled?: boolean;
+  readonly hint?: string | undefined;
   readonly row: RowState | null;
   readonly showTrust: boolean;
+  readonly onRemove?: () => void;
+  readonly removeArmed?: boolean;
   readonly onOpen: () => void;
   readonly onInstall: () => void;
   readonly onTrust: (entry: PluginCatalogEntry) => void;
@@ -1160,12 +1293,14 @@ function PaletteRow({ t, entry, installed, row, showTrust, onOpen, onInstall, on
         <span className="commodore-palette-row-main">
           <span className="commodore-palette-name">{title}</span>
           {sub ? <span className={`commodore-palette-desc${trusting ? "" : " is-clamped"}`}>{sub}</span> : null}
+          {hint ? <span className="commodore-global-own-hint">{hint}</span> : null}
         </span>
       </button>
       <span className="commodore-palette-action">
-        {installed ? <span className="commodore-plugins-state is-done">{t("commodore.plugins.palette.installed")}</span>
-          : row?.phase === "trust" ? null
-            : <button type="button" className="fc-btn fc-btn--secondary commodore-palette-install" disabled={working} aria-label={t("commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>}
+        {installedGlobally ? <span className="commodore-plugins-state">{t("commodore.plugins.global.installed")}</span>
+          : installed ? onRemove ? <button type="button" className="fc-btn fc-btn--secondary commodore-palette-install" disabled={working || disabled} onClick={onRemove}>{t(removeArmed ? "commodore.plugins.removeArmed" : "commodore.plugins.remove")}</button> : <span className="commodore-plugins-state is-done">{t("commodore.plugins.palette.installed")}</span>
+            : row?.phase === "trust" ? null
+              : <button type="button" className="fc-btn fc-btn--secondary commodore-palette-install" disabled={working || disabled} aria-label={t(globalScope ? "commodore.plugins.global.installAria" : "commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>}
       </span>
       {row?.phase === "failed" && showTrust ? <span className="commodore-plugins-state is-failed" role="alert">{errorWord(t, row.code ?? "failed")}</span> : null}
       {trusting ? <TrustPanel t={t} entry={shown} onTrust={onTrust} onCancel={onCancel} trustRef={trustRef} /> : null}
@@ -1185,10 +1320,11 @@ const DETAIL_PARTS: readonly (readonly [keyof PluginContents, CommodoreMessageKe
  * 팔레트 상단 바 — 목록과 상세가 같은 바를 써서 닫기(오른쪽)·뒤로(왼쪽) 아이콘이 두 화면에서 같은 자리에 선다.
  * 목록은 왼쪽 칸을 비워 두고 제목을 싣는다. 상세는 큰 이름이 스크롤로 가려질 때만 가운데에 이름을 보인다(그때도 읽는 이름은 본문 h2 다).
  */
-function PaletteBar({ t, title, titleId, pinned, backRef, onBack, onClose }: {
+function PaletteBar({ t, title, titleId, pinned, backRef, onBack, onClose, globalScope = false }: {
   readonly t: T;
   readonly title: string;
   readonly titleId?: string;
+  readonly globalScope?: boolean;
   readonly pinned?: boolean;
   readonly backRef?: Ref<HTMLButtonElement>;
   readonly onBack?: () => void;
@@ -1201,7 +1337,7 @@ function PaletteBar({ t, title, titleId, pinned, backRef, onBack, onClose }: {
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       ) : null}
-      {titleId ? <h2 id={titleId} className="commodore-palette-title">{title}</h2> : <p className="commodore-palette-title" aria-hidden="true">{title}</p>}
+      {titleId ? <h2 id={titleId} className="commodore-palette-title">{globalScope ? <GlobalPluginMark /> : null}{title}</h2> : <p className="commodore-palette-title" aria-hidden="true">{title}</p>}
       <button type="button" className="commodore-palette-icon" aria-label={t("commodore.plugins.palette.close")} title={t("commodore.plugins.palette.close")} onClick={onClose}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
       </button>
@@ -1269,7 +1405,7 @@ const linkText = (url: string): string => url.replace(/^https?:\/\//, "").replac
  * 팔레트 안의 상세. 카탈로그 필드는 바로 보이고, 구성 이름·실행 명령·README 는 상세 응답이 오면 채워진다.
  * 조회가 실패해도 카탈로그 필드는 남는다. README 는 정화된 markdown 이다 — 그 표현은 공용 markdown 스타일이 맡고 여기서는 자리만 둔다.
  */
-function PluginDetailView({ t, titleId, entry, detail, loading, error, installed, row, dismissConfirm, onFocusFallback, onBack, onClose, onInstall, onRemove, onRetry, onTrust, onCancel }: {
+function PluginDetailView({ t, titleId, entry, detail, loading, error, installed, installedGlobally = false, globalScope = false, disabled = false, row, dismissConfirm, onFocusFallback, onBack, onClose, onInstall, onRemove, onRetry, onTrust, onCancel }: {
   readonly t: T;
   readonly titleId: string;
   readonly entry: PluginCatalogEntry;
@@ -1277,6 +1413,9 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
   readonly loading: boolean;
   readonly error: string | null;
   readonly installed: boolean;
+  readonly installedGlobally?: boolean;
+  readonly globalScope?: boolean;
+  readonly disabled?: boolean;
   readonly row: RowState | null;
   readonly dismissConfirm: { current: () => boolean };
   readonly onFocusFallback: () => void;
@@ -1357,15 +1496,15 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
             <p className="commodore-plugin-detail-meta">{installed ? `${shown.marketplace} · ${t("commodore.plugins.palette.installed")}` : shown.marketplace}</p>
           </span>
           <span className="commodore-plugin-detail-action">
-            {trusting ? null : installed
-              ? <button ref={removeRef} type="button" className="fc-btn fc-btn--secondary" disabled={confirmRemove || working} onClick={() => setConfirmRemove(true)}>{t("commodore.plugins.detail.remove")}</button>
-              : <button type="button" className="fc-btn fc-btn--primary" disabled={working} aria-label={t("commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>}
+            {trusting ? null : installedGlobally ? <span className="commodore-plugins-state">{t("commodore.plugins.global.installed")}</span> : installed
+              ? <button ref={removeRef} type="button" className="fc-btn fc-btn--secondary" disabled={confirmRemove || working || disabled} onClick={() => setConfirmRemove(true)}>{t("commodore.plugins.detail.remove")}</button>
+              : <button type="button" className="fc-btn fc-btn--primary" disabled={working || disabled} aria-label={t(globalScope ? "commodore.plugins.global.installAria" : "commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>}
           </span>
         </header>
         {shown.description ? <p className="commodore-plugin-detail-desc">{shown.description}</p> : null}
         {confirmRemove ? (
           <div className="commodore-plugin-detail-notice" role="alert">
-            <p>{t("commodore.plugins.removeConfirm", { plugin: title })}</p>
+            <p>{t(globalScope ? "commodore.plugins.global.removeConfirm" : "commodore.plugins.removeConfirm", { plugin: title })}</p>
             <div className="commodore-plugin-detail-notice-actions">
               <button ref={cancelRemoveRef} type="button" className="fc-btn fc-btn--secondary" onClick={() => setConfirmRemove(false)}>{t("commodore.plugins.removeCancel")}</button>
               <button type="button" className="fc-btn fc-btn--secondary is-danger" disabled={working} onClick={() => { setConfirmRemove(false); onRemove(); }}>{t("commodore.plugins.detail.remove")}</button>
