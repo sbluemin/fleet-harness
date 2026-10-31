@@ -7,6 +7,7 @@
 .commodore-global-badge { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 11px; height: 11px; border-radius: 50%; background: var(--surface-panel); }
 .commodore-global-badge .commodore-global-mark { width: 9px; height: 9px; }
 .commodore-plugins-list > .commodore-global-row { cursor: default; }
+.commodore-plugins-list > .commodore-global-row.is-auth { cursor: pointer; }
 .commodore-global-group .commodore-plugins-list.is-phone > li { grid-template-columns: 40px minmax(0, 1fr) auto; padding-block: 8px; }
 .commodore-plugins.is-phone .commodore-global-badge { background: var(--m-surface); }
 .commodore-plugins .is-replaced > :is(.commodore-tile, .commodore-plugins-name, .commodore-plugins-version, .commodore-plugins-meta),

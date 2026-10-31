@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type HTMLAttributes, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from "react";
 import { isFleetMobileShell, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
@@ -265,7 +265,15 @@ function ReplacementHint({ t, replacement, id }: { readonly t: T; readonly repla
   return <><span ref={anchor} hidden />{createPortal(<span id={id} role="tooltip" className="commodore-plugins-replacement-tip" hidden={!rect} style={rect ? { left: Math.max(12, Math.min(rect.left, window.innerWidth - 272)), top: rect.top - 8 } : undefined}>{t(replacement.reason === "same-id" ? "commodore.plugins.global.sameId" : "commodore.plugins.global.sameName", { marketplace: splitPluginId(replacement.by).marketplace })}</span>, document.body)}</>;
 }
 
-function GlobalPluginGroup({ t, plugins, entries, phone }: { readonly t: T; readonly plugins: readonly string[]; readonly entries: ReadonlyMap<string, PluginCatalogEntry>; readonly phone: boolean }) {
+function GlobalPluginGroup({ t, plugins, entries, phone, authOf, getRowHandlers, renderInline }: {
+  readonly t: T;
+  readonly plugins: readonly string[];
+  readonly entries: ReadonlyMap<string, PluginCatalogEntry>;
+  readonly phone: boolean;
+  readonly authOf: ReadonlyMap<string, readonly ServerAuth[]>;
+  readonly getRowHandlers: (pluginId: string) => HTMLAttributes<HTMLElement>;
+  readonly renderInline: (pluginId: string, title: string) => ReactNode;
+}) {
   if (!plugins.length) return null;
   return <div className="commodore-global-group">
     <p className="commodore-plugins-group-head"><GlobalPluginMark /><span>{t("commodore.plugins.global.group")}</span><button type="button" className="commodore-plugins-text" onClick={(event) => openGlobalPalette(event.currentTarget)}>{t("commodore.plugins.global.manage")}</button></p>
@@ -273,11 +281,14 @@ function GlobalPluginGroup({ t, plugins, entries, phone }: { readonly t: T; read
       {plugins.map((pluginId) => {
         const { plugin, marketplace } = splitPluginId(pluginId);
         const entry = entries.get(pluginId);
-        return <li key={pluginId} className="commodore-plugins-row commodore-global-row">
-          <span className="commodore-global-tile"><PluginTile name={titleOf(entry, plugin)} iconId={entry?.icon ? pluginId : undefined} size={phone ? "phone" : "row"} /><span className="commodore-global-badge"><GlobalPluginMark /></span></span>
-          <span className="commodore-plugins-name">{titleOf(entry, plugin)}<span className="commodore-plugins-at">@{marketplace}</span></span>
+        const title = titleOf(entry, plugin);
+        const handlers = getRowHandlers(pluginId);
+        return <li key={pluginId} className={`commodore-plugins-row commodore-global-row${handlers.tabIndex === 0 ? " is-auth" : ""}${handlers["aria-expanded"] ? " is-target" : ""}`} aria-label={title} {...handlers}>
+          <span className="commodore-global-tile"><PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size={phone ? "phone" : "row"} /><span className="commodore-global-badge"><GlobalPluginMark /></span></span>
+          <span className="commodore-plugins-name">{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
           <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
-          <span className="commodore-plugins-meta"><Components t={t} components={entry?.components} /></span>
+          <span className="commodore-plugins-meta">{authMark(t, authOf.get(pluginId))}<Components t={t} components={entry?.components} /></span>
+          {renderInline(pluginId, title)}
         </li>;
       })}
     </ul>
@@ -653,7 +664,7 @@ function updateTrustOf(error: unknown, pluginId: string): UpdateTrust | null {
     run !== null && typeof run === "object" && (run.kind === "hook" || run.kind === "mcp") && typeof run.label === "string" && typeof run.command === "string");
   return runs.length === details.runs.length ? { pluginId, version: details.version, runs } : null;
 }
-type InlineForm = { readonly pluginId: string; readonly kind: "key"; readonly names: readonly string[] } | { readonly pluginId: string; readonly kind: "callback"; readonly server: string };
+type InlineForm = ({ readonly pluginId: string; readonly kind: "key"; readonly names: readonly string[] } | { readonly pluginId: string; readonly kind: "callback"; readonly server: string }) & { readonly global: boolean };
 
 /**
  * 사령관 설정 칸에서 Theater 목록 바로 아래 — 이 사령관이 고른 플러그인. 상태는 메타 줄의 한 마디로만 보이고, 인증·키·제거는
@@ -670,7 +681,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const [palette, setPalette] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ readonly pluginId: string; readonly x: number; readonly y: number; readonly trigger: HTMLElement; readonly anchored: boolean } | null>(null);
+  const [menu, setMenu] = useState<{ readonly pluginId: string; readonly x: number; readonly y: number; readonly trigger: HTMLElement; readonly anchored: boolean; readonly global: boolean } | null>(null);
   const [armed, setArmed] = useState(false);
   const [updates, setUpdates] = useState<Readonly<Record<string, PluginUpdateState>>>({});
   const [trust, setTrust] = useState<UpdateTrust | null>(null);
@@ -688,11 +699,11 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const auth = usePluginAuth(commodoreId, effective.effective.length ? `${effective.effective.join("\n")}\n${authRevision}` : "");
   const cancelPress = () => { if (press.current) clearTimeout(press.current.timer); press.current = null; };
   const closeMenu = (focus = true) => { if (focus) menu?.trigger.focus({ preventScroll: true }); setMenu(null); setArmed(false); setTrust(null); };
-  const openMenu = (pluginId: string, trigger: HTMLElement, x: number, y: number, anchored = false) => { cancelPress(); setArmed(false); setTrust(null); setMenu({ pluginId, trigger, x, y, anchored }); };
-  const toggleMenu = (pluginId: string, trigger: HTMLElement) => {
-    if (menu?.pluginId === pluginId) { closeMenu(); return; }
+  const openMenu = (pluginId: string, trigger: HTMLElement, x: number, y: number, anchored = false, global = false) => { cancelPress(); setArmed(false); setTrust(null); setMenu({ pluginId, trigger, x, y, anchored, global }); };
+  const toggleMenu = (pluginId: string, trigger: HTMLElement, global = false) => {
+    if (menu?.pluginId === pluginId && menu.global === global) { closeMenu(); return; }
     const rect = trigger.getBoundingClientRect();
-    openMenu(pluginId, trigger, rect.left, rect.bottom + 4, true);
+    openMenu(pluginId, trigger, rect.left, rect.bottom + 4, true, global);
   };
   useEffect(() => () => cancelPress(), []);
   useEffect(() => {
@@ -785,13 +796,13 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     return entry?.latestVersion ? <span className="commodore-plugins-state is-update">{isCommitVersion(entry.latestVersion) ? t("commodore.plugins.update.available") : t("commodore.plugins.update.version", { version: entry.latestVersion })}</span> : null;
   };
   /** 상태별 항목. 서버가 여럿이면 서버 이름을 붙인다. 원격 기기에서 진행 중이면 돌아온 주소를 옮겨 붙일 수 있다. */
-  const itemsOf = (pluginId: string): MenuItem[] => {
+  const itemsOf = (pluginId: string, global = false): MenuItem[] => {
     const servers = authOf.get(pluginId) ?? [];
     const oauth = servers.filter((server) => server.mode === "oauth");
     const named = oauth.length > 1;
     const items: MenuItem[] = [];
     const entry = entries.get(pluginId);
-    if (entry?.latestVersion || updates[pluginId]?.kind === "failed") {
+    if (!global && (entry?.latestVersion || updates[pluginId]?.kind === "failed")) {
       const version = entry?.latestVersion;
       const runs = entry?.latestRuns;
       items.push({ id: "update", label: t(updates[pluginId]?.kind === "failed" ? "commodore.plugins.update.retry" : runs?.length ? "commodore.plugins.update.review" : "commodore.plugins.update.action"), ...(version ? { version: isCommitVersion(version) ? menuVersion(t, version) : version } : {}), run: () => {
@@ -808,14 +819,14 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
       else if (server.state === "pending") {
         const prefix = named ? `${server.server} · ` : "";
         if (server.authUrl) { const url = server.authUrl; items.push({ id: `${id}:reopen`, label: `${prefix}${t("commodore.plugins.auth.reopen")}`, run: () => { openInDefaultOsBrowser(url); } }); }
-        if (server.local && !onConsoleComputer()) items.push({ id: `${id}:paste`, label: `${prefix}${t("commodore.plugins.auth.paste")}`, run: () => setForm({ pluginId, kind: "callback", server: server.server }) });
+        if (server.local && !onConsoleComputer()) items.push({ id: `${id}:paste`, label: `${prefix}${t("commodore.plugins.auth.paste")}`, run: () => setForm({ pluginId, kind: "callback", server: server.server, global }) });
         items.push({ id: `${id}:cancel`, label: `${prefix}${t("commodore.plugins.auth.cancel")}`, run: () => authAction(pluginId, server.server, "cancel") });
       }
     }
     const keyed = servers.filter((server) => server.mode === "key");
     const names = [...new Set(keyed.flatMap((server) => server.keys ?? []))];
     if (names.length) {
-      items.push({ id: "key", label: t(keyed.some((server) => server.state === "key-needed") ? "commodore.plugins.key.enter" : "commodore.plugins.key.change"), run: () => setForm({ pluginId, kind: "key", names }) });
+      items.push({ id: "key", label: t(keyed.some((server) => server.state === "key-needed") ? "commodore.plugins.key.enter" : "commodore.plugins.key.change"), run: () => setForm({ pluginId, kind: "key", names, global }) });
       const saved = [...new Set(keyed.filter((server) => server.saved).flatMap((server) => server.keys ?? []))];
       if (saved.length) items.push({ id: "key-clear", label: t("commodore.plugins.key.clear"), run: () => setKeys(pluginId, saved.map((name) => [name, null] as const)) });
     }
@@ -823,7 +834,6 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   };
   const close = () => { setPalette(false); addRef.current?.focus({ preventScroll: true }); };
   const note = installed.length === 0 ? t("commodore.plugins.empty") : null;
-  const globalGroup = <GlobalPluginGroup t={t} plugins={global.view?.plugins ?? []} entries={entries} phone={phone} />;
   const ownHeading = global.view?.plugins.length ? <p className="commodore-plugins-group-head">{t("commodore.plugins.global.own")}</p> : null;
   const rows = installed.map((pluginId) => {
     const { plugin, marketplace } = splitPluginId(pluginId);
@@ -833,21 +843,21 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
       : catalogView && !entry ? <span className="commodore-plugins-state">{t("commodore.plugins.notListed")}</span> : authMark(t, authOf.get(pluginId));
     return { pluginId, plugin, title: titleOf(entry, plugin), marketplace, entry, replacement: replacements.get(pluginId), mark: <>{updateMark(entry, pluginId)}{mark}</> };
   });
-  const rowHandlers = (pluginId: string) => ({
+  const rowHandlers = (pluginId: string, global = false) => ({
     tabIndex: 0,
     "aria-haspopup": phone ? "dialog" as const : "menu" as const,
-    "aria-expanded": menu?.pluginId === pluginId,
-    onContextMenu: (event: ReactMouseEvent<HTMLElement>) => { if ((event.target as HTMLElement).closest("form, button, a, input")) return; event.preventDefault(); openMenu(pluginId, event.currentTarget, event.clientX, event.clientY); },
-    onClick: (event: ReactMouseEvent<HTMLElement>) => { if (!(event.target as HTMLElement).closest("form, button, a, input")) toggleMenu(pluginId, event.currentTarget); },
+    "aria-expanded": menu?.pluginId === pluginId && menu.global === global,
+    onContextMenu: (event: ReactMouseEvent<HTMLElement>) => { if ((event.target as HTMLElement).closest("form, button, a, input")) return; event.preventDefault(); openMenu(pluginId, event.currentTarget, event.clientX, event.clientY, false, global); },
+    onClick: (event: ReactMouseEvent<HTMLElement>) => { if (!(event.target as HTMLElement).closest("form, button, a, input")) toggleMenu(pluginId, event.currentTarget, global); },
     onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => {
       if (event.target !== event.currentTarget) return;
-      if (["Enter", " ", "ContextMenu"].includes(event.key) || (event.shiftKey && event.key === "F10")) { event.preventDefault(); toggleMenu(pluginId, event.currentTarget); }
+      if (["Enter", " ", "ContextMenu"].includes(event.key) || (event.shiftKey && event.key === "F10")) { event.preventDefault(); toggleMenu(pluginId, event.currentTarget, global); }
     },
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
       if (event.pointerType === "mouse" || event.button !== 0 || (event.target as HTMLElement).closest("form, button, a, input")) return;
       cancelPress(); suppressClick.current = false;
       const trigger = event.currentTarget; const { clientX: x, clientY: y } = event;
-      press.current = { x, y, timer: setTimeout(() => { suppressClick.current = true; openMenu(pluginId, trigger, x, y); }, 500) };
+      press.current = { x, y, timer: setTimeout(() => { suppressClick.current = true; openMenu(pluginId, trigger, x, y, false, global); }, 500) };
     },
     onPointerMove: (event: ReactPointerEvent<HTMLElement>) => { if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 6) cancelPress(); },
     onPointerUp: cancelPress, onPointerCancel: cancelPress, onPointerLeave: cancelPress,
@@ -866,14 +876,17 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }} onKeyDown={stop}
       onClick={(event) => { event.stopPropagation(); openInDefaultOsBrowser(found.url); setReady(null); }}>{t("commodore.plugins.auth.openBrowser")}</button>;
   };
-  const inline = (pluginId: string, title: string) => form?.pluginId === pluginId
+  const inline = (pluginId: string, title: string, global = false) => form?.pluginId === pluginId && form.global === global
     ? form.kind === "key"
       ? <KeyForm key={`key:${pluginId}`} t={t} plugin={title} names={form.names} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(values) => setKeys(pluginId, values)} />
       : <CallbackForm key={`callback:${pluginId}:${form.server}`} t={t} server={form.server} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(url) => submitCallback(pluginId, form.server, url)} />
     : null;
-  const selected = menu ? rows.find((row) => row.pluginId === menu.pluginId) : undefined;
-  const menuItems = selected ? itemsOf(selected.pluginId) : [];
-  const selectedTrust = selected?.pluginId === trust?.pluginId ? trust : null;
+  const globalGroup = <GlobalPluginGroup t={t} plugins={global.view?.plugins ?? []} entries={entries} phone={phone} authOf={authOf} getRowHandlers={(pluginId) => itemsOf(pluginId, true).length ? rowHandlers(pluginId, true) : {}} renderInline={(pluginId, title) => inline(pluginId, title, true)} />;
+  const selectedId = menu && (menu.global ? global.view?.plugins : installed)?.includes(menu.pluginId) ? menu.pluginId : undefined;
+  const selectedEntry = selectedId ? entries.get(selectedId) : undefined;
+  const selected = selectedId ? { pluginId: selectedId, title: titleOf(selectedEntry, splitPluginId(selectedId).plugin), marketplace: splitPluginId(selectedId).marketplace, entry: selectedEntry } : undefined;
+  const menuItems = selected ? itemsOf(selected.pluginId, menu?.global) : [];
+  const selectedTrust = !menu?.global && selected?.pluginId === trust?.pluginId ? trust : null;
   const failureLine = failure ? <p className={phone ? "objectives-cm-note" : "objectives-commodore-hint is-error"} role="alert">{failure}</p> : null;
   const dialog = palette ? <PluginPalette t={t} commodoreId={commodoreId} installed={installed} phone={phone} onClose={close} /> : null;
   const itemRole = phone ? undefined : "menuitem";
@@ -890,7 +903,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     <div ref={menuRef} tabIndex={-1} data-plugin-id={selected.pluginId} className={`commodore-routines-menu${phone ? " is-sheet" : ""}`} role={phone || selectedTrust ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.title} onKeyDown={onMenuKey}>
       <div className="commodore-routines-menu-head">
         <div className="commodore-routines-menu-title">{selected.title}</div>
-        <div className="commodore-routines-menu-meta is-mono">{[menuVersion(t, selected.entry?.version), `@${selected.marketplace}`].filter(Boolean).join(" · ")}{selected.entry?.latestVersion ? ` → ${isCommitVersion(selected.entry.latestVersion) ? menuVersion(t, selected.entry.latestVersion) : selected.entry.latestVersion}` : ""}</div>
+        <div className="commodore-routines-menu-meta is-mono">{[menuVersion(t, selected.entry?.version), `@${selected.marketplace}`].filter(Boolean).join(" · ")}{!menu.global && selected.entry?.latestVersion ? ` → ${isCommitVersion(selected.entry.latestVersion) ? menuVersion(t, selected.entry.latestVersion) : selected.entry.latestVersion}` : ""}</div>
       </div>
       {selectedTrust ? <div className="commodore-plugins-update-trust">
         <p>{t("commodore.plugins.update.commands", { version: isCommitVersion(selectedTrust.version) ? menuVersion(t, selectedTrust.version) : selectedTrust.version })}</p>
@@ -901,11 +914,13 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
         </div>
       </div> : <>
         {menuItems.map((item) => <button key={item.id} type="button" role={itemRole} disabled={busy !== null} onClick={() => { if (item.id !== "update") closeMenu(); item.run(); }}>{item.label}{item.version ? <small className="commodore-plugins-menu-version">{item.version}</small> : null}</button>)}
-        {menuItems.length ? <div className="commodore-routines-separator" role="separator" /> : null}
-        <button type="button" role={itemRole} className={`is-danger${armed ? " is-armed" : ""}`} disabled={busy !== null} onClick={() => {
-          if (!armed) { setArmed(true); return; }
-          closeMenu(); remove(selected.pluginId);
-        }}>{t(armed ? "commodore.plugins.removeArmed" : "commodore.plugins.remove")}</button>
+        {!menu.global ? <>
+          {menuItems.length ? <div className="commodore-routines-separator" role="separator" /> : null}
+          <button type="button" role={itemRole} className={`is-danger${armed ? " is-armed" : ""}`} disabled={busy !== null} onClick={() => {
+            if (!armed) { setArmed(true); return; }
+            closeMenu(); remove(selected.pluginId);
+          }}>{t(armed ? "commodore.plugins.removeArmed" : "commodore.plugins.remove")}</button>
+        </> : null}
       </>}
     </div>
   </div>, document.body) : null;
@@ -919,7 +934,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
         <div className="objectives-cm-grp">
           {rows.map(({ pluginId, title, marketplace, entry, mark, replacement }) => (
             <Fragment key={pluginId}>
-              <div className={`objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
+              <div className={`objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId && !menu.global ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
                 <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="phone" />
                 <span className="objectives-cm-gr-tx"><span className="commodore-plugins-name">{title}</span><small className="is-mono">@{marketplace}</small><small className="commodore-plugins-meta">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></small></span>
                 <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
@@ -949,7 +964,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
       {rows.length ? (
         <ul className="commodore-plugins-list">
           {rows.map(({ pluginId, title, marketplace, entry, mark, replacement }) => (
-            <li key={pluginId} className={`commodore-plugins-row${menu?.pluginId === pluginId ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
+            <li key={pluginId} className={`commodore-plugins-row${menu?.pluginId === pluginId && !menu.global ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
               <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="row" />
               <span className="commodore-plugins-name" title={pluginId}>{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
               <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
