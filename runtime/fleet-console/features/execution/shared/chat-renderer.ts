@@ -122,6 +122,8 @@ export interface AgentConversationProps {
   readonly loading?: boolean;
   /** The line shown when there are no entries. */
   readonly empty?: string;
+  /** Domain-owned accessible names; omitted names keep the standard conversation vocabulary. */
+  readonly accessibleNames?: { readonly log?: string; readonly composer?: string };
   /** Older entries exist above the first one — a text button at the top reads them. The view keeps its place as they arrive. */
   readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
   /** Bring this entry into view and mark it briefly. A new `nonce` repeats the request for the same entry. */
@@ -136,6 +138,8 @@ export interface AgentConversationProps {
   readonly openBoardAction?: { readonly label: string; readonly open: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void } | null;
   /** After the latest entries, inside the scrolling log and above the working line. Follows the bottom while the person is there. */
   readonly cards?: ReactNode;
+  /** Optional domain-owned inline content and footer; omitted parts keep the standard message renderer. */
+  readonly messageContent?: (entry: Extract<GroupTimelineEntry, { kind: "message" }>) => { readonly body?: ReactNode; readonly footer?: ReactNode } | undefined;
   /** Below the working line — the plugin's own composer or a way back. */
   readonly composer?: ReactNode;
   /** Opt this conversation into the host's plugin summaries above the composer. Omitted on read-only records. */

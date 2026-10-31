@@ -9,6 +9,7 @@ import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
 import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
+import type { TaskforceStore } from "./taskforce/store.js";
 import { COMMODORES_TOOL_NAMES, FLEET_COMMODORE_TOOL_GROUP } from "../shared/tool-names.js";
 import { createCommodoreTools, type CommandExecute } from "./tools.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
@@ -51,6 +52,8 @@ export interface CommodoreSessionOptions {
   readonly execute?: CommandExecute;
   /** 지금 턴에 사람 메시지가 실렸는지 — 루틴 도구가 사람 요청 출처를 판정한다. */
   readonly hasPersonMessage?: () => boolean;
+  /** 속한 TaskForce 원장 — 판단 턴의 taskforce_post·taskforce_propose_close가 여기에 닿는다. */
+  readonly taskforce?: Pick<TaskforceStore, "append" | "proposeClose" | "read">;
 }
 
 export interface CommodoreTurnInput {
@@ -70,6 +73,16 @@ export interface CommodoreTurnInput {
   readonly messages?: readonly (string | { readonly text: string; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] })[];
   /** 다른 사령관의 말. 사람 입력이나 사람 권한으로 취급하지 않는다. */
   readonly mail?: readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[];
+  /**
+   * 속한 TaskForce 블록 — 이름·주제·성원과 읽지 않은 원장 항목만 싣는다. 1:1 기록·기억·연락은
+   * 절대 섞지 않는다(격리). 새 세션의 첫 턴에는 최근 원장 맥락이 앞에 선다.
+   */
+  readonly taskforce?: readonly string[];
+  /**
+   * TF로만 깬 턴 — 모델의 자유 텍스트를 1:1 기록에 남기지 않는다(도구 호출만 남는다).
+   * 사람 메시지가 함께 실린 턴은 평소대로 기록한다.
+   */
+  readonly quietText?: boolean;
 }
 
 export interface CommodoreTurnOutcome {
@@ -108,12 +121,16 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let turnActive = false;
 
   // 텍스트·사고는 델타로 온다 — 블록 단위로 모아 도구 호출·결과 경계에서 기록 한 줄로 내린다.
+  // TF로만 깬 턴(quietText)은 자유 텍스트를 1:1 기록에 남기지 않는다. 도구 호출은 그대로 남는다.
   let textBuffer = "";
+  let quietText = false;
   const turnTextBlocks: string[] = [];
   let thinkingBuffer = "";
   const pendingTools = new Map<string, { readonly name: string; readonly input: unknown }>();
   // 거절 코드 — 세션 이벤트(tool-end)는 결과를 싣지 않으므로, 도구를 감싸 결과의 `error` 한 낱말만 호출 id·이름으로 기억한다.
   const toolErrors = new Map<string, string>();
+  // 보드 쓰기 결과의 objectiveId — `add` 처럼 id가 결과에만 있는 쓰기를 기록 한 줄에 남긴다. 호출 id로 기억한다.
+  const toolResultObjectives = new Map<string, { objectiveId?: string; title?: string }>();
   // 생성 결과는 UUID·별칭만 보관한다. 호출 id가 없는 호스트는 같은 별칭의 완료 순서로 연결한다.
   const createdCommodores: { readonly callId?: string; readonly commodoreId: string; readonly alias: string }[] = [];
   let turnActions = 0;
@@ -127,23 +144,33 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const flushText = () => {
     if (textBuffer.trim()) {
       turnTextBlocks.push(textBuffer);
-      record({ kind: "text", text: clip(textBuffer, MAX_TRANSCRIPT_TEXT) });
+      if (!quietText) record({ kind: "text", text: clip(textBuffer, MAX_TRANSCRIPT_TEXT) });
     }
     textBuffer = "";
-    if (thinkingBuffer.trim()) record({ kind: "thinking", text: clip(thinkingBuffer, MAX_TRANSCRIPT_TEXT) });
+    if (thinkingBuffer.trim() && !quietText) record({ kind: "thinking", text: clip(thinkingBuffer, MAX_TRANSCRIPT_TEXT) });
     thinkingBuffer = "";
   };
   const recordTool = (name: string, input: unknown, ok: boolean | undefined, id?: string) => {
     const described = describeTool(name, input, boardWrites);
     if (described.counts && ok !== false) turnActions += 1;
     const error = ok === false ? (id && toolErrors.get(id)) || toolErrors.get(`name:${described.name}`) : undefined;
+    // 성공한 보드 쓰기는 결과의 objectiveId·제목을 잇는다 — `add` 의 id는 결과에만 있다.
+    // 이름 일치는 호출 id가 result와 tool-end를 잇지 못하는 경로의 예비라 쓰기 호출에만 쓴다.
+    const writes = boardWrites.get(described.name);
+    const isWrite = !!described.action && (writes?.has(described.action) ?? false);
+    const byId = id ? toolResultObjectives.get(id) : undefined;
+    const resultInfo = ok !== false ? byId ?? (isWrite ? toolResultObjectives.get(`name:${described.name}`) : undefined) : undefined;
+    if (id) toolResultObjectives.delete(id);
+    toolResultObjectives.delete(`name:${described.name}`);
     if (id) toolErrors.delete(id);
     toolErrors.delete(`name:${described.name}`);
+    const objectiveId = described.objectiveId ?? resultInfo?.objectiveId;
+    const title = described.title ?? resultInfo?.title;
     const args = input as { action?: unknown; alias?: unknown } | undefined;
     const createdIndex = COMMODORES_TOOL_NAMES.has(described.name) && args?.action === "create"
       ? createdCommodores.findIndex((created) => created.callId ? created.callId === id : created.alias === args.alias) : -1;
     const created = createdIndex >= 0 ? createdCommodores.splice(createdIndex, 1)[0] : undefined;
-    record({ kind: "tool", name: described.name, ...(described.summary ? { summary: described.summary } : {}), ...(ok === undefined ? {} : { ok }), ...(described.action ? { action: described.action } : {}), ...(described.objectiveId ? { objectiveId: described.objectiveId } : {}), ...(described.title ? { title: described.title } : {}), ...(created && ok !== false ? { action: "create", commodoreId: created.commodoreId, alias: created.alias } : {}), ...(error ? { error } : {}) });
+    record({ kind: "tool", name: described.name, ...(described.summary ? { summary: described.summary } : {}), ...(ok === undefined ? {} : { ok }), ...(described.action ? { action: described.action } : {}), ...(objectiveId ? { objectiveId } : {}), ...(title ? { title } : {}), ...(created && ok !== false ? { action: "create", commodoreId: created.commodoreId, alias: created.alias } : {}), ...(error ? { error } : {}) });
   };
   /** 거절 코드와 생성한 사령관의 공개 좌표만 기억한다 — 결과 자체는 그대로 돌려준다. */
   const observed = (tool: ConsoleMcpTool): ConsoleMcpTool => ({
@@ -152,6 +179,15 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const result = await tool.execute(args, context);
       const code = errorCodeOf(result);
       if (code) { if (context.toolCallId) toolErrors.set(context.toolCallId, code); toolErrors.set(`name:${tool.name}`, code); }
+      else if (boardWrites.has(tool.name)) {
+        // `add` 처럼 id가 결과에만 있는 보드 쓰기 — 기록 한 줄이 그 말 아래 묶음을 잇는다.
+        // 호출 id가 result와 tool-end를 잇지 못하는 경로도 있어 이름으로도 남긴다(거절 코드와 같은 관행).
+        const info = resultObjectiveOf(result);
+        if (info.objectiveId || info.title) {
+          if (context.toolCallId) toolResultObjectives.set(context.toolCallId, info);
+          toolResultObjectives.set(`name:${tool.name}`, info);
+        }
+      }
       if (COMMODORES_TOOL_NAMES.has(tool.name)) {
         const call = args as { action?: unknown; alias?: unknown };
         const reply = result as { isError?: boolean; structuredContent?: { commodoreId?: unknown } };
@@ -218,7 +254,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 그 프로젝트 스킬을 싣는다. 뒤에 더한 Theater 는 다음 세션부터 실린다.
     // Theater 의 `.mcp.json` 서버는 싣지 않는다 — Theater 에서 하는 실무는 그 목표의 지휘관·구성원 몫이다.
     const roots = [...new Set((options.theaters?.() ?? []).flatMap(({ root }) => (root ? [root] : [])))];
-    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}), ...(options.hasPersonMessage ? { hasPersonMessage: options.hasPersonMessage } : {}) });
+    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.taskforce ? { taskforce: options.taskforce } : {}), ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}), ...(options.hasPersonMessage ? { hasPersonMessage: options.hasPersonMessage } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
@@ -276,7 +312,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
-      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); createdCommodores.length = 0;
+      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; quietText = !!input.quietText; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); toolResultObjectives.clear(); createdCommodores.length = 0;
       record({ kind: "wake", reasons: input.reasons });
       if (input.scope) {
         // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
@@ -293,6 +329,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
         aliasNote(options.store.read(options.commodoreId)?.alias),
         ...(input.mail?.length ? ["Messages from other Commodores (their words, not the person's):\n" + input.mail.map(({ messageId, from, text, replyTo }) => JSON.stringify({ messageId, from, text, ...(replyTo ? { replyTo } : {}) })).join("\n")] : []),
+        ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with taskforce_post, propose closing only with taskforce_propose_close):\n" + input.taskforce.join("\n\n")] : []),
       ].join("\n\n");
       const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
       const prompt = hasImages ? [
@@ -365,7 +402,41 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   }
 }
 
-/** 도구 결과의 거절 코드 — structuredContent.error 또는 JSON 텍스트의 error. snake_case 한 낱말만 받는다. */
+/** 보드 쓰기 결과의 objectiveId·제목 — `add` 처럼 id가 결과에만 있는 보드 쓰기를 기록이 잇는다. */
+function resultObjectiveOf(result: unknown): { objectiveId?: string; title?: string } {
+  if (!result || typeof result !== "object") return {};
+  const record = result as Record<string, unknown>;
+  // MCP 경계를 넘어 structuredContent가 벗겨진 결과도 잇는다 — 첫 텍스트 블록의 JSON을 읽는다(크기 상한 안).
+  const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+    value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  const structured = asRecord(record.structuredContent);
+  const content = Array.isArray(record.content) ? record.content : undefined;
+  const firstText = content?.find((item): item is { type: string; text: string } => {
+    const row = asRecord(item);
+    return row?.type === "text" && typeof row.text === "string";
+  });
+  let textJson: Record<string, unknown> | undefined;
+  if (firstText && firstText.text.length <= 16_384) {
+    try {
+      const parsed: unknown = JSON.parse(firstText.text);
+      textJson = asRecord(parsed);
+    } catch { /* JSON이 아니면 structuredContent만 쓴다 */ }
+  }
+  const pick = (key: string): string | undefined => {
+    const fromStructured = structured?.[key];
+    if (typeof fromStructured === "string" && fromStructured) return fromStructured;
+    const fromText = textJson?.[key];
+    return typeof fromText === "string" && fromText ? fromText : undefined;
+  };
+  const stored = asRecord(structured?.stored) ?? asRecord(textJson?.stored);
+  const storedTitle = typeof stored?.title === "string" ? stored.title : undefined;
+  const title = (storedTitle ?? pick("title"))?.slice(0, 200) || undefined;
+  const objectiveId = pick("objectiveId");
+  if (objectiveId && (objectiveId.length < 1 || objectiveId.length > 128)) return title ? { title } : {};
+  return { ...(objectiveId ? { objectiveId } : {}), ...(title ? { title } : {}) };
+}
+
+/** 도구 호출의 거절 코드 — structuredContent.error 또는 JSON 텍스트의 error. snake_case 한 낱말만 받는다. */
 function errorCodeOf(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
   const structured = (result as { structuredContent?: { error?: unknown } }).structuredContent;

@@ -53,7 +53,7 @@ import { closeConversationSurface, getConversationSurface, useConversationSurfac
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
-import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
+import { TaskforceCreateMenu } from "../../../commodore/client/taskforce/create-menu.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
@@ -234,22 +234,18 @@ const PlusGlyph = () => (
 );
 
 /**
- * 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 새 세션. 보기·정렬·접기 단추와 한 줄, 같은 원형 문법이다. 「+」는 본문에 새 세션 화면을 연다
- * (승인안 v4 — Theater 머리·그룹 머리의 「+」는 없고 진입은 이 하나다). 새 Theater 는 새 세션 화면의 「Theater 추가…」와 팔레트(⌘K)에 있다.
+ * 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 만들기 메뉴. 「+」에서 새 사령관과 새 TaskForce를 고른다.
+ * 새 Theater는 새 세션 화면의 「Theater 추가…」와 팔레트(⌘K)에 있다.
  */
 export function ConversationSideBarActions() {
   const t = useT();
-  const newSessionShortcut = useNewSessionShortcutLabel();
-  const newSessionTitle = newSessionShortcut ? `${t("conversation.side.newSession")} (${newSessionShortcut})` : t("conversation.side.newSession");
   return (
     <span className="conversation-side-actions">
       <span className="remote-console-anchor" data-remote-console-anchor />
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      <button type="button" className="conversation-round" onClick={requestCommodoreCreate} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")} data-new-session-entry="sidebar">
-        <PlusGlyph />
-      </button>
+      <TaskforceCreateMenu><PlusGlyph /></TaskforceCreateMenu>
     </span>
   );
 }

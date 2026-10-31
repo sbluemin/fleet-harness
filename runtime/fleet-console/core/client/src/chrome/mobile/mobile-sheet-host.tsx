@@ -6,6 +6,8 @@ import type { MobileConfirmSpec } from "../../../../../features/workspace/shared
 import { addCommodoreTheaterFromPath } from "../../../../../features/commodore/client/theaters-api.js";
 import { describeTheaterRegistrationError } from "../../integration/failure-notices.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
+import { requestTaskforceCreate } from "../../../../../features/commodore/client/taskforce/taskforce.js";
+import { taskforceT } from "../../../../../features/commodore/client/taskforce/i18n.js";
 import { CommodoreDeleteFlow } from "../../../../../features/commodore/client/commodore-delete-body.js";
 import { announceCommodoreDeletion, subscribeCommodoreLifecycle, wasCommodoreRemoved } from "../../../../../features/commodore/client/commodore-delete-events.js";
 import { commodoreSectionLabel, readCommodoreList, refreshCommodoreList, setZoneCommodore, useCommodoreList, useCommodoreSidebarLayout, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
@@ -152,6 +154,7 @@ function TheaterSheet() {
         <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
       </button>
+      <TaskforceCreateSheetRow />
       <div className="mobile-sheet-sep" role="separator" />
       <p className="mobile-sheet-hint">{t("mobile.sheet.commodore.actionsHint")}</p>
     </MobileSheet>
@@ -348,6 +351,14 @@ export function runAfterSheetRelease(action: () => void): void {
  * 홈 머리 +의 메뉴 — 새 대화(새 작업 시트), 새 터미널(Shell 목적지, 보일 때만), Theater 추가(폴더 시트).
  * 고르면 이 시트를 닫고 이어서 연다. Theater 추가는 시트 위에 쌓아 닫으면 이 메뉴로 돌아온다.
  */
+function TaskforceCreateSheetRow() {
+  const t = taskforceT(useConsoleLocale());
+  return <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(() => requestTaskforceCreate())}>
+    <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
+    <span className="mobile-sheet-row-copy"><strong>{t("taskforce.new")}</strong></span>
+  </button>;
+}
+
 function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const bindings = useRailEntries();
@@ -359,6 +370,7 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
         <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
       </button>
+      <TaskforceCreateSheetRow />
       <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(() => openMobileNewSession())}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>

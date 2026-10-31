@@ -20,7 +20,7 @@ const TONES = new Set(["teal", "amber", "plum", "moss", "cerulean", "rose", "ind
 
 export function speakerTone(speaker: ConversationSpeaker): string | null {
   const tone = speaker.mark?.tone;
-  return speaker.kind === "member" && tone && TONES.has(tone) ? tone : speaker.kind === "member" ? "teal" : null;
+  return (speaker.kind === "member" || speaker.kind === "commodore") && tone && TONES.has(tone) ? tone : speaker.kind === "member" ? "teal" : null;
 }
 
 /** 같은 발화자를 가리키는 좌표 — 원장 보기·정지 대상의 키. 사람에게는 Objective 이 없다. */
@@ -120,7 +120,8 @@ export function LiveSpeakerMark({ speaker, participants }: { readonly speaker: C
 /** 발화자 이름 — 구성원은 표식과 같은 톤의 잉크로, 그 밖은 중립 잉크로 선다. */
 export function SpeakerName({ speaker, className = "" }: { readonly speaker: ConversationSpeaker; readonly className?: string }) {
   const tone = speakerTone(speaker);
-  return <span className={`group-chat-name${tone ? ` is-tone-${tone}` : ` is-${speaker.kind}`}${className ? ` ${className}` : ""}`}>{speaker.name}</span>;
+  const style = tone ? { "--speaker-name-ink": `var(--id-${tone})`, "--speaker-name-face": `var(--mongle-${tone})` } as React.CSSProperties : undefined;
+  return <span className={`group-chat-name${tone ? ` is-tone-${tone}` : ` is-${speaker.kind}`}${className ? ` ${className}` : ""}`} style={style}>{speaker.name}</span>;
 }
 
 /**

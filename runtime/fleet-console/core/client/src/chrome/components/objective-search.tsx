@@ -6,6 +6,7 @@ import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
 import { getViewedCommodoreId, getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
+import { requestTaskforceCreate } from "../../../../../features/commodore/client/taskforce/taskforce.js";
 import { useCommodoreList, setZoneCommodore, selectMobileCommodore, useZoneCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
@@ -442,6 +443,12 @@ export function ObjectiveSearch({
         previousFocusRef.current = null;
         openTheaterInbox({ theaterId: action.theaterId, sectionId: action.sectionId, pageId: action.pageId, returnFocus: null });
         if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
+        break;
+      }
+      case "new-taskforce": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
+        requestTaskforceCreate();
         break;
       }
       case "new-theater": {

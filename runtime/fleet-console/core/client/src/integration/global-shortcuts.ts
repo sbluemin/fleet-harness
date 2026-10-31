@@ -23,6 +23,7 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly getObjectiveSearchMode: () => "objectiveRecords" | "commands" | null;
   /** 새 세션 화면을 열고 컴포저에 포커스한다. 그릴 셸이 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
   readonly openNewSession?: () => boolean;
+  readonly openTaskforce?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
@@ -62,6 +63,13 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     if (matches("console.new-session")) {
       // 길게 눌러도 한 번만 연다. 반복 이벤트는 터미널 입력으로 새지 않게 소비한다.
       if (event.repeat || dependencies.openNewSession?.()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
+    if (matches("console.new-taskforce")) {
+      if (event.repeat || dependencies.openTaskforce?.()) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }

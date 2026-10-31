@@ -13,7 +13,7 @@ import { ChatReferenceContext, ChatReferenceText } from "../chat-reference.js";
 import { useCodeBlockCopy } from "../code-block-copy.js";
 import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
-import type { AgentConversationEntry } from "../../../../shared/chat-renderer.js";
+import type { AgentConversationEntry, AgentConversationProps } from "../../../../shared/chat-renderer.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
 import { MentionChip } from "../../../composer-primitives/mention-chip.js";
@@ -45,9 +45,12 @@ import "./group-chat.css";
 /** 그룹 스냅숏에 플러그인 대화의 노트 줄을 더한 모양 — 그룹 대화의 스냅숏도 그대로 들어온다. */
 export type ConversationLogSnapshot = Omit<GroupTimelineSnapshot, "entries"> & { readonly entries: readonly AgentConversationEntry[] };
 
+export const ConversationMessageContent = React.createContext<AgentConversationProps["messageContent"]>(undefined);
+
 export interface GroupConversationProps {
   readonly snapshot: ConversationLogSnapshot;
   readonly language: ConsoleLocale | undefined;
+  readonly accessibleNames?: AgentConversationProps["accessibleNames"];
   /** 한 참여자의 원장을 이 자리에 연다 — 셸의 구성원 본문 선택으로 연결한다. */
   readonly onOpenLedger?: (objectiveId: string) => void;
   /**
@@ -100,7 +103,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, onOpenUISend }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, onOpenUISend }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -282,7 +285,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         ref={logRef}
         className="group-chat-log"
         role="log"
-        aria-label={t("group.aria.log")}
+        aria-label={accessibleNames?.log ?? t("group.aria.log")}
         aria-busy={snapshot.loading}
         onWheel={markUserScroll}
         onTouchMove={markUserScroll}
@@ -374,7 +377,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         {renderComposerWithWorking ? renderComposerWithWorking(workingLine) : <>
           {inlineWorking ? <ComposerTopEntries leading={workingLine} /> : workingLine}
           {/* 플러그인이 준 입력 자리(입력창 또는 단추 하나)는 상자 없는 슬롯에 담는다 — 독 빈 자리의 포인터 통과 규칙이 그 루트를 가리지 않게(group-chat.css). */}
-          {composer ? <div className="group-chat-dock-composer">{composer}</div> : null}
+          {composer ? <div className="group-chat-dock-composer" {...(accessibleNames?.composer ? { role: "group", "aria-label": accessibleNames.composer } : {})}>{composer}</div> : null}
         </>}
       </div>
       <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} />
@@ -791,6 +794,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   readonly onOpenUISend?: GroupConversationProps["onOpenUISend"];
 }) {
   const t = getGroupT(language);
+  const content = React.useContext(ConversationMessageContent)?.(entry);
   // 답 단추는 이 말의 화자에게 보낸다 — 훅은 이른 반환보다 앞에 선다.
   const replySpeaker = entry.speaker;
   const reply = React.useMemo(() => (onOpenUISend ? (text: string) => onOpenUISend(text, replySpeaker) : undefined), [onOpenUISend, replySpeaker]);
@@ -824,9 +828,10 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
               {via}
             </span>
           ) : null}
-          {entry.format === "markdown"
+          {content?.body ?? (entry.format === "markdown"
             ? <StreamedMarkdown text={entry.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
-            : <ChatReferenceText text={entry.text} references={entry.references} />}
+            : <ChatReferenceText text={entry.text} references={entry.references} />)}
+          {content?.footer}
         </div>
         {entry.pending ? <span className="group-chat-pending">{t("group.pending")}</span> : null}
         {entry.undelivered ? <span className="agent-chat-undelivered" title={t("group.undelivered")}>{t("group.undelivered")}</span> : null}
@@ -877,9 +882,10 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
           <div ref={clip.ref} className="group-chat-bubble-body">
             {/* 첨부는 사람 말풍선과 같은 자리(본문 앞)에 선다 — 문면 없이 첨부만 실은 말도 빈 말풍선이 아니다. */}
             {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
-            {entry.text.trim().length === 0
+            {content?.body ?? (entry.text.trim().length === 0
               ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
-              : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks openui={openui} {...(openui && reply ? { onOpenUISend: reply } : {})} />}
+              : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks openui={openui} {...(openui && reply ? { onOpenUISend: reply } : {})} />)}
+            {content?.footer}
           </div>
         </div>
         {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}

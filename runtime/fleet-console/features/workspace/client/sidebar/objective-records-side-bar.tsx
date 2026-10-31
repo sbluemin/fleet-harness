@@ -13,7 +13,9 @@ import { createPortal } from "react-dom";
 
 import type { ObjectiveRuntimeState } from "../../../execution/shared/client-contract.js";
 
-import { useT } from "../../../../core/client/src/i18n/index.js";
+import { useT, useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
+import { requestTaskforceCreate, TaskforceSidebarGroup } from "../../../commodore/client/taskforce/taskforce.js";
+import { taskforceT } from "../../../commodore/client/taskforce/i18n.js";
 import type { ObjectiveRecord, TheaterInfo } from "../../../../core/client/src/integration/types.js";
 import { useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
@@ -417,6 +419,7 @@ export function ObjectiveRecordsSideBar({
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
+        <TaskforceSidebarGroup />
         {sidebarBuckets.map((bucket) => {
           const rows = bucket.rows.map((theater) => {
           const theaterIndex = orderedFaces.indexOf(theater);
@@ -818,6 +821,7 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
 
 function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onOpenZone, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
   const t = useT();
+  const tf = taskforceT(useConsoleLocale());
   const menuRef = useRef<HTMLDivElement | null>(null);
   // 사이드바 하단 행에서 anchor.bottom+6 고정 배치가 뷰포트 아래로 밀리면 스크롤로 닫혀
   // Forget/New group에 도달할 수 없다(Codex P2) — 실측 크기로 상단을 클램프한다. 커서 자리 메뉴는 아래가 모자라면
@@ -892,6 +896,10 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onNewSession}>
           <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
           <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
+        </button>
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(theater.id); }}>
+          <span className="theater-menu-check" aria-hidden="true">⧉</span>
+          <span className="theater-menu-label">{tf("taskforce.fromCommodore")}</span>
         </button>
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenZone}>
           <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
