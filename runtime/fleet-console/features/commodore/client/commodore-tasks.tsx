@@ -1,7 +1,6 @@
 import { getT } from "./i18n/index.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
 import { openCommanderConversation } from "../../workspace/client/commander-tab/commander-navigation.js";
-import { openCommanderWindow } from "../../workspace/client/commander-tab/commander-window.js";
 import type { CommodoreTasksList as TasksList } from "./deps.js";
 import { commodoreTasksList } from "./commodore-state.js";
 
@@ -36,11 +35,9 @@ function CommodoreTasksInner({ commodoreId, language, selectedId, tasks }: {
           commodoreId={commodoreId}
           selectedId={selectedId}
           heading={(count) => <>{t("commodore.tasks.goals")} <span>{count}</span></>}
-          onSelect={({ objectiveId, open, hasRecord }) => {
-            // 목표 섹션에서 고르면 같은 떠 있는 창으로 바뀐다. 가운데는 사령관 대화 유지다.
-            // 대화 기록이 없으면 시작 전 목표라 왼쪽 목록과 같은 시작 화면으로 보낸다.
-            if (objectiveId !== null && hasRecord) openCommanderWindow(commodoreId, objectiveId, document.activeElement instanceof HTMLElement ? document.activeElement : null);
-            else if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
+          onSelect={({ objectiveId, open }) => {
+            // 미션 3 임시 — 우측 목표 섹션에서도 가운데에서 연다. 미션 5가 이 자리에 C의 펼침을 넣는다.
+            if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
             else open?.();
           }}
         />

@@ -40,7 +40,7 @@ import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/capti
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
-import { useClusterIndex, useObjectiveClusters, commanderObjectiveId } from "../objective-clusters.js";
+import { useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { ConversationPill, ConversationPillContext, PILL_MORPHING_CLASS, useConversationPillHost } from "./pill-takeover.js";
@@ -50,9 +50,6 @@ import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
-import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
-import { CommanderWindowHost, openCommanderWindow } from "../commander-tab/commander-window.js";
-import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
@@ -911,8 +908,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       )}
       </ConversationDockHost.Provider>
     </section>
-    {/* 떠 있는 지휘관 창 — 가운데 칸과 같은 Objective 본문 풀을 쓴다. 폰 셸에는 서지 않는다. */}
-    <CommanderWindowHost language={language} />
     <ConversationWorkbench
       layerRef={workbenchLayerRef}
       insets={insets}
@@ -1479,24 +1474,11 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const memberIds = new Set([...roster.flatMap((member) => (member.objectiveId ? [member.objectiveId] : [])), ...nested.map((candidate) => candidate.id)]);
   memberIds.delete(objectiveRecord.id);
   const memberCount = memberIds.size;
-  // 지휘관 채팅 머리 칩의 「팝업으로 띄우기」 — 글리프 단추 하나다. 누르면 가운데는 그 사령관 대화로 돌아가고
-  // 같은 지휘관이 떠 있는 창으로 뜬다(어느 배치에서든 쓴다).
-  const { sorted: commanderCandidates } = useCommanderRows(objectiveRecord.commodoreId, objectiveRecord.id);
-  const isCommander = commanderCandidates.some((item) => commanderObjectiveId(item.layout.cluster) === objectiveRecord.id);
-  const popout = isCommander ? (
-    <button type="button" className="conversation-pill-popout" aria-label={t("commanderWindow.popout")} title={t("commanderWindow.popout")} onClick={(event) => {
-      event.stopPropagation();
-      openCommanderWindow(objectiveRecord.commodoreId, objectiveRecord.id, event.currentTarget);
-      openCommodoreConversation(objectiveRecord.commodoreId);
-    }}>
-      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="5" width="8.5" height="8.5" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M8 2.5h5.5V8M13.5 2.5 8.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-    </button>
-  ) : null;
 
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={popout ? <>{viewSwitch}{popout}</> : viewSwitch}>
+        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
             {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}

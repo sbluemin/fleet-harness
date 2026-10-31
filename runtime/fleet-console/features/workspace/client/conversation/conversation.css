@@ -368,7 +368,7 @@
   flex: none;
   width: 1px;
   height: 16px;
-  margin: 0 2px 0 6px;
+  margin: 0 0 0 8px;
   background: var(--surface-rim);
 }
 .conversation-pill-controls:not(:has(button)),
