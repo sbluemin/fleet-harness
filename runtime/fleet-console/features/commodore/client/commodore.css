@@ -157,18 +157,14 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
    이 칸의 선은 행 구분선(.fc-settings-row + .fc-settings-row)과 같은 color-mix 한 곳이다. */
 .objectives-commodore-settings {
   display: grid;
-  --commodore-settings-line: color-mix(in oklch, var(--surface-rim) 55%, transparent);
 }
 .objectives-commodore-settings .fc-settings-row { padding: 18px 0; }
 .objectives-commodore-settings .fc-settings-row + .fc-settings-row { padding-top: 18px; border-top-color: var(--commodore-settings-line); }
 .objectives-commodore-settings .fc-settings-row__copy { max-width: 60ch; }
-.objectives-commodore-settings .fc-settings-row__label { font-size: var(--t-md); }
 .objectives-commodore-settings .fc-settings-row__hint { font-size: var(--t-sm); line-height: 1.55; }
 /* 행 값의 오른쪽 음수 마진은 패딩 있는 설정 카드의 끝선 맞춤이다. 이 칸은 좌우 패딩이 없어 그 8px이 본문 밖으로 넘친다. */
 .objectives-commodore-settings :is(.fc-row-value, .fc-coord-trigger.is-field) { margin-right: 0; }
 .objectives-commodore-settings-divider { height: 1px; margin: 6px 0; background: var(--commodore-settings-line); }
-/* 지침 선택 상자 밑의 지휘관 서브에이전트 허용 토글 — 상자와 붙지 않게 위로 한 줄 간격과 머리카락 선을 둔 자기 설정 줄이다. */
-.objectives-commodore-settings .commander-subagents { gap: 0; margin-top: 22px; padding-top: 0; border-top: 1px solid var(--commodore-settings-line); }
 .objectives-commodore-default {
   padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; cursor: pointer;
   text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px;
@@ -245,11 +241,11 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 
 /* 기록 곁 칸 「목표」 — 글리프·낱말·시각만. 묶음마다 기존 신호 토큰의 -ink. 최신이 아래이고, 너비는 이음매가 가른다.
    좁은 시트에서는 기록 아래로 내려가 세로 선은 없다. */
-.objectives-commodore-trail { position: relative; flex: none; width: 260px; min-width: 0; min-height: 0; overflow: hidden; padding: 12px 12px 14px; background: transparent; display: flex; flex-direction: column; gap: 6px; }
+.objectives-commodore-trail { position: relative; flex: none; width: 260px; min-width: 0; min-height: 0; overflow: hidden; padding: 18px 12px; background: transparent; display: flex; flex-direction: column; gap: 8px; }
 .objectives-commodore-inbox.is-compact .objectives-commodore-body.is-log { flex-direction: column; }
-.objectives-commodore-inbox.is-compact .objectives-commodore-trail { width: auto; max-height: 38%; border-top: 1px solid var(--hairline); }
+.objectives-commodore-inbox.is-compact .objectives-commodore-trail { width: auto; max-height: 38%; border-top: 1px solid var(--commodore-settings-line); }
 .objectives-commodore-inbox.is-compact .objectives-commodore-trail-seam { display: none; }
-.objectives-commodore-trail-title { margin: 0; padding: 0 6px; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-bold); letter-spacing: 0.06em; text-transform: uppercase; }
+.objectives-commodore-trail-title { padding: 0 6px; }
 .objectives-commodore-trail-empty { margin: 0; padding: 0 6px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
 .objectives-commodore-trail-scroll { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
 .objectives-commodore-trail-spacer { flex: 1 1 auto; }
@@ -326,9 +322,61 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-older { justify-self: center; }
 
 .objectives-commodore-section { display: grid; gap: 8px; }
-.objectives-commodore-section + .objectives-commodore-section { border-top: 1px solid var(--surface-rim); padding-top: 14px; }
+.objectives-commodore-section + .objectives-commodore-section:not(.objectives-commodore-panel-section) { border-top: 1px solid var(--surface-rim); padding-top: 14px; }
 .objectives-commodore-section-title { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
-.objectives-commodore-section-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* 사령관 패널의 상위 섹션만 설정 탭 문법을 공유한다. 기억 갈래·상세 h4는 기존 작은 제목을 유지한다. */
+.objectives-commodore-inbox, .objectives-commodore-conversation-tab, .objectives-cm, .objectives-commodore-settings {
+  --commodore-settings-line: color-mix(in oklch, var(--surface-rim) 55%, transparent);
+}
+.objectives-commodore-panel-title,
+.objectives-commodore-settings .fc-settings-row__label,
+.objectives-cm-settings .fc-settings-row__label,
+.objectives-cm-settings > :is(.commodore-theaters, .commodore-plugins) > .objectives-cm-glab,
+.objectives-commodore-settings > .commodore-theaters > .objectives-commodore-section-title {
+  margin: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-md); font-weight: var(--weight-medium); letter-spacing: -0.01em;
+}
+.objectives-commodore-panel-section { display: grid; min-width: 0; gap: 8px; padding-block: 18px; }
+.objectives-commodore-panel-section + .objectives-commodore-panel-section,
+.objectives-cm-pad-head + .objectives-commodore-panel-section { border-top: 1px solid var(--commodore-settings-line); }
+.objectives-commodore-body.is-info { gap: 0; }
+.objectives-commodore-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+.objectives-commodore-panel-meta { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-description-preview {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; margin: 0; padding: 0;
+  border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); line-height: 1.55; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+}
+.objectives-commodore-description-preview.is-empty { display: flex; align-items: center; gap: 10px; padding-block: 6px; color: var(--brass-ink); cursor: pointer; }
+.objectives-commodore-description-preview.is-empty > span:first-child { font-size: var(--t-xl); line-height: 1; }
+.objectives-commodore-description-preview:hover { background: var(--wash-hover); }
+.objectives-commodore-description-preview:focus-visible { box-shadow: var(--focus-face); }
+.objectives-commodore-description-preview:disabled { opacity: 0.45; cursor: default; }
+.objectives-commodore-description-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* 지휘관 모델 아래의 고급 옵션 하나로만 접는다. 하위 설정끼리는 안내선만 공유하고 구분선은 두지 않는다. */
+.objectives-commodore-advanced { min-width: 0; }
+.objectives-cm-settings .objectives-commodore-advanced { padding-inline: 14px; }
+.objectives-commodore-advanced-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 8px 0; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; text-align: start; cursor: pointer; }
+.objectives-commodore-advanced-toggle[aria-expanded="true"] { color: var(--text-primary); }
+.objectives-commodore-advanced-toggle:hover { background: var(--wash-hover); }
+.objectives-commodore-advanced-toggle:focus-visible { box-shadow: var(--focus-face); }
+.objectives-commodore-advanced-copy { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.objectives-commodore-advanced-label { font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.objectives-commodore-advanced-summary { overflow: hidden; color: var(--text-tertiary); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-advanced-chevron { flex: none; width: 12px; height: 12px; color: var(--text-tertiary); }
+.objectives-commodore-advanced-chevron.is-open { transform: rotate(90deg); }
+.objectives-commodore-commander-options { display: grid; min-width: 0; gap: 8px; margin: 4px 0 12px 2px; padding-left: 14px; border-left: 1px solid var(--commodore-settings-line); }
+.objectives-commodore-commander-options[hidden] { display: none; }
+.objectives-commodore-option-label { margin: 0; color: var(--text-primary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.objectives-commodore-prompt-editor { display: grid; min-width: 0; gap: 8px; }
+.objectives-commodore-prompt-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); }
+.objectives-commodore-prompt-modes label { position: relative; min-width: 0; cursor: pointer; }
+.objectives-commodore-prompt-modes input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.objectives-commodore-prompt-modes span { display: block; padding: 6px 4px; border-radius: var(--radius-xs); color: var(--text-secondary); font-size: var(--t-xs); text-align: center; }
+.objectives-commodore-prompt-modes input:checked + span { background: var(--control-rest); color: var(--text-primary); }
+.objectives-commodore-prompt-modes input:focus-visible + span { box-shadow: var(--focus-face); }
+.objectives-commodore-commander-options .commander-subagents { gap: 0; margin: 0; padding: 0; border: 0; }
+.objectives-commodore-commander-options .fc-settings-row { padding-block: 12px; border: 0; }
+.objectives-commodore-commander-options .fc-settings-row__label { font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .objectives-commodore-hint { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
 .objectives-commodore-hint.is-done { color: var(--positive); }
 
@@ -651,20 +699,14 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .is-sheet .commodore-create-foot { padding: 10px 16px max(16px, env(safe-area-inset-bottom)); border-top: 0; }
 .is-sheet .commodore-create-button { flex: 1; height: 56px; font-size: var(--m-fs-body); font-weight: var(--weight-bold); }
 @media (prefers-reduced-motion: reduce) { .is-sheet .commodore-create { animation: none; } }
-.commodore-prompt-body { width: 100%; color: var(--text-primary); background: var(--control-field); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); }
+.objectives-commodore-prompt-editor .commodore-prompt-body { box-sizing: border-box; width: 100%; min-height: 120px; margin: 0; padding: 10px 12px; resize: vertical; color: var(--text-primary); background: var(--control-field); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); font: inherit; font-size: var(--t-sm); line-height: 1.55; }
+.objectives-commodore-prompt-editor .commodore-prompt-body:focus-visible { box-shadow: var(--field-focus-edge); }
 /* 설정 맨 위의 Theater·플러그인 — 정보 탭 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px, --commodore-settings-line)로만 나눈다.
    Theater 제목은 이 칸의 SettingsRow(.fc-settings-row__label + 위 font-size 재정의)와 같은 크기·색·굵기. 플러그인 제목은 그 클래스를 그대로 쓴다.
    폰·Theater Inbox 제목에는 닿지 않는다. */
 .objectives-commodore-settings > :is(.commodore-theaters, .commodore-plugins) { padding-bottom: 18px; }
 /* divider가 두 섹션 사이에 서면 형제 섹션의 padding-top이 빠진다. 선 뒤 섹션은 행과 같이 18px. 폰·설정 밖에는 닿지 않는다. */
 .objectives-commodore-settings > .objectives-commodore-settings-divider + :is(.commodore-theaters, .commodore-plugins) { padding-top: 18px; }
-.objectives-commodore-settings > .commodore-theaters > .objectives-commodore-section-title {
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--t-md);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.01em;
-}
 .commodore-theaters-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .commodore-theaters-list li { display: flex; align-items: baseline; gap: 10px; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
 .commodore-theaters-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -675,7 +717,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-theaters-add:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 .commodore-theaters-add:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-hint.is-error { color: var(--coral-ink); }
-.commodore-prompt-body { min-height: 120px; margin-top: 8px; }
 
 /* 사령관 삭제 — 두 안내 패널은 같은 프레임 안에서 바뀐다. */
 .commodore-delete .commodore-create-body { align-items: stretch; gap: 16px; padding: 20px 24px 24px; }
@@ -711,9 +752,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .fc-btn.commodore-delete-confirm { color: var(--coral-ink); border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
 .fc-btn.commodore-delete-confirm:hover:not(:disabled) { background: var(--coral-glow); border-color: var(--coral); }
 .fc-btn.commodore-delete-confirm { white-space: nowrap; }
-.commodore-delete-setting { margin-top: 8px; padding-top: 20px; border-top: 1px solid var(--hairline); }
-.commodore-delete-setting .fc-settings-row__label { color: var(--coral-ink); }
-.commodore-delete-setting .fc-settings-row__control { flex: none; }
 /* 폰 시트는 모바일 토큰으로 같은 정보 위계를 유지한다. */
 .commodore-delete-sheet .mobile-sheet-body { display: flex; flex-direction: column; gap: 14px; padding-bottom: 4px; }
 .commodore-delete-sheet .commodore-delete-question { font-size: var(--m-fs-heading); font-weight: var(--weight-medium); }
@@ -728,8 +766,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-delete-sheet .commodore-delete-failed { color: var(--m-danger); background: color-mix(in srgb, var(--m-danger) 12%, transparent); }
 .commodore-delete-sheet .commodore-delete-failed button { color: var(--m-text); border-color: var(--m-hairline-strong, var(--m-hairline)); }
 .commodore-delete-sheet .mobile-pill-secondary.is-danger:disabled { opacity: 0.4; }
-.commodore-delete-row { width: 100%; font: inherit; text-align: left; background: none; border: 0; cursor: pointer; }
-.fc-settings-card .fc-settings-row.commodore-delete-row, .fc-settings-card .fc-settings-row.commodore-delete-row .fc-settings-row__label, .fc-settings-card .fc-settings-row.commodore-delete-row .fc-settings-row__icon { color: var(--m-danger); }
 
 .commodore-delete-question, .commodore-delete-prompt { overflow-wrap: anywhere; }
 .commodore-delete-who > div { min-width: 0; }

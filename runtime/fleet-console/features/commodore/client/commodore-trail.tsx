@@ -216,7 +216,7 @@ export function CommodoreTrail({
   };
   return (
     <section className="objectives-commodore-trail" aria-label={t("commodore.trail.title")} style={width !== undefined ? { width } : undefined}>
-      <h3 className="objectives-commodore-trail-title">{t("commodore.trail.title")}</h3>
+      <h3 className="objectives-commodore-trail-title objectives-commodore-panel-title">{t("commodore.trail.title")}</h3>
       {groups.length === 0 ? <p className="objectives-commodore-trail-empty">{t("commodore.trail.empty")}</p> : (
         <>
           <div ref={scrollRef} className="objectives-commodore-trail-scroll" onScroll={onScroll}>

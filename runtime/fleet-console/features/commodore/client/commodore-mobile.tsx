@@ -28,7 +28,7 @@ import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
-import { CommodoreComposer, CommodoreSessionSettings, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
+import { CommodoreComposer, CommodoreDescription, CommodoreSessionSettings, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   commodoreComposerTopEntriesRenderer,
   commodoreConversationRenderer,
@@ -44,7 +44,6 @@ import {
   transcriptNeeded,
   removeCommodoreIntel,
   retryCommodore,
-  saveCommodoreDescription,
   setCommodoreCommander,
   setCommodoreCoordinates,
   subscribeCommodore,
@@ -652,39 +651,14 @@ interface TabProps {
 
 /** 정보 화면 머리 — 설명 입력과 그 아래 정보 목록. 기억 트리가 이 아래에 이어 선다. */
 function CommodoreMobileDescription({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
-  const description = view.state.description;
-  const [draft, setDraft] = useState(description.text);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  // 실패 한 줄은 그 일을 한 자리(설명 저장 단추 곁, 정보 목록 곁)에 선다 — 한 화면에 두 일이 있다.
+  // 실패는 그 일을 한 섹션 곁에 남긴다.
   const [failedAt, setFailedAt] = useState<"description" | "intel">("description");
   const failIn = (part: "description" | "intel") => (error: unknown) => { setFailedAt(part); onFail(error); };
-  // 다른 곳에서 고친 설명은 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다(데스크톱과 같다).
-  const base = useRef(description.text);
-  useEffect(() => {
-    if (draft === base.current) setDraft(description.text);
-    base.current = description.text;
-  }, [description.text]); // eslint-disable-line react-hooks/exhaustive-deps -- 서버 값이 바뀔 때만.
-  const dirty = draft !== description.text;
-  const save = () => {
-    if (saving || !dirty || !online) return;
-    onClear();
-    setSaving(true);
-    setSaved(false);
-    void saveCommodoreDescription(theaterId, draft).then(() => setSaved(true)).catch(failIn("description")).finally(() => setSaving(false));
-  };
   return (
     <>
-      <label className="objectives-cm-glab" htmlFor="objectives-cm-description">{t("commodore.description.label")}</label>
-      <textarea id="objectives-cm-description" className="objectives-cm-field is-tall" value={draft} maxLength={8_000} placeholder={t("commodore.description.placeholder")} onChange={(event) => { setDraft(event.target.value); setSaved(false); }} />
+      <CommodoreDescription key={theaterId} t={t} commodoreId={theaterId} description={view.state.description} phone online={online} onFail={failIn("description")} onClear={onClear} />
       {failure && failedAt === "description" ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
-      <div className="objectives-cm-crow">
-        <span className="objectives-cm-secnote is-grow" role={saved && !dirty ? "status" : undefined}>{saved && !dirty ? t("commodore.description.saved") : description.rev > 0 ? t("commodore.description.rev", { rev: description.rev, time: clockTime(description.updatedAt) }) : ""}</span>
-        <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={saving || !dirty || !online} onClick={save}>{t("commodore.description.save")}</button>
-      </div>
-      <hr className="objectives-cm-divider" />
       <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failedAt === "intel" ? failure : null} onFail={failIn("intel")} onClear={onClear} />
-      <hr className="objectives-cm-divider" />
     </>
   );
 }
@@ -698,8 +672,8 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
   const sourceLabel = (source: string) => source === "person" ? t("commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
   const day = (at: number) => { const date = new Date(at); return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
   return (
-    <>
-      <p className="objectives-cm-glab">{t("commodore.intel.label")}</p>
+    <section className="objectives-commodore-panel-section">
+      <h3 className="objectives-commodore-panel-title">{t("commodore.intel.label")}</h3>
       {intel.length === 0 ? <p className="objectives-cm-secnote">{t("commodore.intel.empty")}</p> : null}
       {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
       <div ref={editing.listRef} className="objectives-cm-grp">
@@ -746,7 +720,7 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
           {adder.draft.trim() ? <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={adder.adding || !online} onClick={adder.add}>{t("commodore.intel.addShort")}</button> : null}
         </div>
       </div>
-    </>
+    </section>
   );
 }
 
@@ -781,8 +755,8 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
             />
           </SettingsRow>
         </SettingsCard>
-        <SettingsCard description={t("commodore.settings.commanderHint")}>
-          <SettingsRow label={t("commodore.settings.commander")} icon={<TargetIcon />} disabled={!online}>
+        <SettingsCard>
+          <SettingsRow label={t("commodore.settings.commander")} hint={t("commodore.settings.commanderHint")} icon={<TargetIcon />} disabled={!online}>
             <CommodoreCoordinateField
               t={t}
               target="launch"
@@ -794,18 +768,13 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
             />
           </SettingsRow>
+          <CommodoreSessionSettings key={theaterId} t={t} commodoreId={theaterId} phone />
         </SettingsCard>
         <SettingsCard>
           {/* 정보 행 — 누름 없음. 값 줄은 다른 행의 값과 같은 자리·같은 글자다(비활성 단추가 아니다). */}
           <SettingsRow label={t("commodore.mobile.usage")} icon={<ChartIcon />}>
             <span className="fc-select__trigger fc-select--mobile objectives-cm-info-value"><span className="fc-select__value">{usage}</span></span>
           </SettingsRow>
-        </SettingsCard>
-        <CommodoreSessionSettings commodoreId={theaterId} phone />
-        <SettingsCard description={t("commodore.delete.settingsHint")}>
-          <button type="button" className="fc-settings-row is-mobile commodore-delete-row" onClick={() => commodoreMobileActions()?.delete(theaterId)}>
-            <span className="fc-settings-row__icon"><TrashIcon /></span><span className="fc-settings-row__label">{t("commodore.delete.open")}</span>
-          </button>
         </SettingsCard>
       </div>
     </div>
