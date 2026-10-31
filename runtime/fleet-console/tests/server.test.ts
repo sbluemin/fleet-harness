@@ -205,7 +205,6 @@ describe("console terminal observability", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "commodore", commodoreId, "objectives", objective.id, "objective.json"), "utf8"));
     expect(saved.cwd).toBe(path.join(fs.realpathSync.native(fixture.fleetDataDir), "console", "commodore", commodoreId, "objectives"));
     expect(saved.sessions[0].cwd).toBe(saved.cwd);
-    expect((await (await fetch(new URL("api/v1/theaters", fixture.endpoint))).json())).toEqual({ error: "theater_registry_retired" });
   });
 
   it("deletes only a confirmed Commodore and never recreates its owner through durable saves or restart", async () => {
@@ -376,7 +375,7 @@ describe("console terminal observability", () => {
       expect(health.status).toBe(503);
       await expect(health.json()).resolves.toEqual({ error: "console_starting", pid: owner.pid, stopRequest: 1 });
       expect((await fetch(healthUrl)).status).toBe(401);
-      expect((await fetch(new URL("api/v1/theaters", owner.endpoint), { method: "POST", body: "{}" })).status).toBe(503);
+      expect((await fetch(new URL("api/v1/status", owner.endpoint), { method: "POST", body: "{}" })).status).toBe(503);
 
       // 승자가 소비한 seed를 다시 두어, 패자 constructor와 start의 공유 쓰기를 함께 잡는다.
       const settingsFile = path.join(consoleDir, "settings.json");
@@ -869,9 +868,6 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
 
-    const retired = await fetch(`${fixture.endpoint}api/v1/theaters`);
-    expect(retired.status).toBe(410);
-    expect(await retired.json()).toEqual({ error: "theater_registry_retired" });
     const sessions = await getJson<{ readonly sessions: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/agent/sessions`);
     const ownerRoot = path.join(fixture.fleetDataDir, "console", "commodore");
     const ownerId = fs.readdirSync(ownerRoot).find((id) => /^[a-f0-9-]{36}$/.test(id))!;
@@ -1088,14 +1084,12 @@ describe("console static and terminal ticket boundary", () => {
       const origin = new URL(fixture.endpoint).origin;
       const post = (route: string, body: unknown) => fetch(`${fixture.endpoint}api/v1/${route}`, { method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify(body) });
       const { commodoreId } = await (await post("commodore/create", { alias: "Folder owner" })).json();
-      const before = await (await fetch(`${fixture.endpoint}api/v1/theaters`)).json();
       const grant = await issueTheaterFolderGrant(fixture, second);
       expect((await post("commodore/theaters/add", { commodoreId, path: second })).status).toBe(400);
       const response = await post("commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId, claudeTrustConsent: true });
       expect(response.status).toBe(200);
       const { theaterId } = await response.json();
       expect((await post("commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId })).status).toBe(400);
-      expect(await (await fetch(`${fixture.endpoint}api/v1/theaters`)).json()).toEqual(before);
       const owner = (await (await post("commodore/list", {})).json()).commodores.find((row: { commodoreId: string }) => row.commodoreId === commodoreId);
       expect(owner.theaters).toEqual([{ theaterId, label: "second", status: "available" }]);
       const created = await post("objectives/records", { commodoreId, theaterId, title: "Unregistered folder" });
@@ -1104,7 +1098,6 @@ describe("console static and terminal ticket boundary", () => {
       const saved = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "commodore", commodoreId, "objectives", record.id, "objective.json"), "utf8"));
       expect(saved.cwd).toBe(fs.realpathSync(second));
       await post("commodore/theaters/remove", { commodoreId, theaterId });
-      expect(await (await fetch(`${fixture.endpoint}api/v1/theaters`)).json()).toEqual(before);
       expect(fs.existsSync(second)).toBe(true);
       expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({
         custom: "keep", projects: { elsewhere: { hasTrustDialogAccepted: true }, [fs.realpathSync(second)]: { hasTrustDialogAccepted: true } },
@@ -1174,18 +1167,6 @@ describe("console static and terminal ticket boundary", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ error: "objectiveRecord_exists" });
     }
-  });
-
-  it("rejects the retired global Theater registration API without consuming a grant", async () => {
-    const failed = await startFixture();
-
-    const errorResponse = await fetch(`${failed.endpoint}api/v1/theaters`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ folderGrantId: "missing-grant" }),
-    });
-    await expect(errorResponse.json()).resolves.toEqual({ error: "theater_registry_retired" });
-    expect(errorResponse.status).toBe(410);
   });
 
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
