@@ -16,7 +16,6 @@ interface BrowserRouteDeps {
   };
   readonly logSuggestion?: (event: { readonly event: "browser.suggest"; readonly timestamp: string; readonly transmitted: boolean; readonly reason: string; readonly count: number }) => void;
   readonly browserMcp: {
-    interruptObjective(id: string): number;
     pasteIntoTerminal(id: string): boolean;
     resolveSessionOwner?(pluginId: string, scopeId: string): string | null;
     isSessionOwner?(id: string): boolean;
@@ -128,7 +127,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|history|place|import|profile|clear-profile)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|import|profile|clear-profile)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -214,7 +213,6 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         const colorScheme = body.colorScheme === "light" || body.colorScheme === "dark" ? body.colorScheme : body.colorScheme === null ? null : undefined;
         writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user") }); return true;
       }
-      if (action === "interrupt") { writeJson(res, 200, { interrupted: browserMcp.interruptObjective(objectiveId) }); return true; }
       if (action === "place") {
         const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
         const x = num(body.x), y = num(body.y), width = num(body.width), height = num(body.height);

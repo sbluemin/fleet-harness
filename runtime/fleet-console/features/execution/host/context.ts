@@ -18,7 +18,7 @@ import type { RouteHandler, UpgradeHandler } from "@fleet-console/infra/http/rou
 export type ConsoleRuntimeHost = { readonly consoleUse: ConsoleUseMcpHost; readonly mcpTransport?: McpTransport; readonly events: EventPort; readonly server: ServerOriginPort; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly lifecycle: CleanupPort; readonly experiments?: ExperimentsHost; } & {
   readonly admiralMcp: Pick<AdmiralMcpHost, "connect">;
   readonly computerUseMcp?: { connect(): import("../../computer-use/host/mcp.js").ComputerUseMcpConnection; revokeObjective(objectiveId: string): void; endParticipant(objectiveId: string): void };
-  readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeObjective(objectiveId: string): void | Promise<void>; interruptObjective(objectiveId: string): number; bindTerminalPaste(paste: (objectiveId: string) => boolean): () => void; endAgentSession(objectiveId: string): void };
+  readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeObjective(objectiveId: string): void | Promise<void>; bindTerminalPaste(paste: (objectiveId: string) => boolean): () => void; endAgentSession(objectiveId: string): void };
   /** 패널 안 허용 요청(콘솔 사용·컴퓨터 사용). 답하는 라우트와 턴 종료가 쓴다. */
   readonly useRequests?: Pick<import("../../console-use/host/use-requests.js").UseRequestBroker, "answer" | "settle" | "leave" | "revoke" | "list">;
   /** 자식 세션 → 루트. 세 사용 도구가 공유하는 컨텍스트의 계보 규칙이다(`use-context.ts`). */

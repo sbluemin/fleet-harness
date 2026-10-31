@@ -182,7 +182,22 @@ describe("console terminal observability", () => {
         };
       },
     });
-    const fixture = await startFixture();
+    const fixture = await startFixture({
+      // 목표 생성 HTTP는 제거됐다 — 보드는 제품이 쓰는 저장 형식 그대로 디스크에 둔다.
+      beforeCreateServer: ({ fleetDataDir }) => {
+        const directory = path.join(fleetDataDir, "console");
+        const entities = createCommodoreEntities(path.join(directory, "commodore"), workspaceHash);
+        const ownerId = entities.create();
+        const objectivesDir = path.join(entities.dirOf(ownerId)!, "objectives");
+        fs.mkdirSync(objectivesDir, { recursive: true });
+        const cwd = fs.realpathSync.native(objectivesDir);
+        const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
+        const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: objectivesDir, commodoreId: ownerId, legacyTheaterId: workspaceHash(cwd), legacyCwd: cwd, theaterIdOf: (value: string) => workspaceHash(value) }] });
+        storage.load();
+        storage.save({ version: STATE_VERSION, objectiveRecords: [] });
+        storage.board.save(ownerId, { id: "11111111-1111-4111-8111-111111111111", cwd, commodoreId: ownerId, theaterId: workspaceHash(cwd), pending: true, title: "Owned objective", rank: 0, note: "", enlisted: true, missions: [], groupId: null, session: { sessionName: "owned-1-cmdr" }, chatMode: true, ts: { createdAt: 1, updatedAt: 1 } });
+      },
+    });
     const post = async (pathname: string, body: unknown) => {
       const response = await fetch(new URL(`api/v1/${pathname}`, fixture.endpoint), {
         method: "POST", headers: { Origin: new URL(fixture.endpoint).origin, "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -191,8 +206,9 @@ describe("console terminal observability", () => {
       expect(response.status, JSON.stringify(value)).toBe(200);
       return value;
     };
-    const { commodoreId } = await post("commodore/create", { alias: "No Theater" });
-    const { objective } = await post("objectives/objective/create", { commodoreId, title: "Owned objective" });
+    const ownerRoot = path.join(fixture.fleetDataDir, "console", "commodore");
+    const commodoreId = fs.readdirSync(ownerRoot).find((id) => /^[a-f0-9-]{36}$/.test(id))!;
+    const objective = { id: "11111111-1111-4111-8111-111111111111" };
     await post("objectives/plan/request", { objectiveId: objective.id });
     const added = await post("objectives/member/add", { objectiveId: objective.id, member: { role: "Verifier" } });
     // 개시는 임무를 맡은 구성원만 세운다.
@@ -246,7 +262,9 @@ describe("console terminal observability", () => {
         const response = await fetch(new URL(`api/v1/${route}`, fixture.endpoint), { method: "POST", headers: { Origin: new URL(fixture.endpoint).origin, "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const value = await response.json(); expect(response.status, JSON.stringify(value)).toBe(expected); return value;
       };
-      await post("objectives/objective/create", { commodoreId: owner, title: "Pending" });
+      // 목표 생성 HTTP는 제거됐다 — 삭제 집계용 추가 목표는 레코드 공개 경로로 둔다.
+      const pendingRecord = await fetch(new URL("api/v1/objectives/records", fixture.endpoint), { method: "POST", headers: { Origin: new URL(fixture.endpoint).origin, "Content-Type": "application/json" }, body: JSON.stringify({ commodoreId: owner, theaterId: workspaceHash(theater), title: "Pending" }) });
+      expect(pendingRecord.status).toBe(201);
       const before = fs.readFileSync(path.join(ownerDirectory, "state.json"), "utf8");
       await post("commodore/delete", { commodoreId: owner, alias: "Delete exactly", language: "ko" }, 400);
       await post("commodore/delete", { commodoreId: owner, confirm: true, alias: "Delete exactly ", language: "ko" }, 409);
@@ -276,7 +294,6 @@ describe("console terminal observability", () => {
       expect(projects).toContain(theater.replace(/[^a-zA-Z0-9]/g, "-"));
       await post("commodore/delete-preview", { commodoreId: owner }, 404);
       expect(await post("commodore/delete", { commodoreId: owner, confirm: true, alias: "Delete exactly" }, 404)).toEqual({ error: "unknown_commodore" });
-      await post("objectives/objective/create", { commodoreId: keptOwner, title: "After deletion" });
       expect(fs.existsSync(ownerDirectory)).toBe(false);
       expect((await post("commodore/list", {})).commodores.map((row: { commodoreId: string }) => row.commodoreId)).toEqual([keptOwner]);
       await fixture.server.stop();
@@ -1001,27 +1018,6 @@ describe("console static and terminal ticket boundary", () => {
     expect(ownerless.status).toBe(400);
     expect(await ownerless.json()).toEqual({ error: "commodore_required" });
     expect(await getJson(`${origin}/api/v1/agent/sessions`)).toEqual(sessionsBefore);
-    // 같은 호스트의 생성 경계는 실행 전부터 소유 UUID와 고정 cwd를 분리한다.
-    // 넘긴 등록 id는 배치다. 응답 theaterId는 그 id이고, cwd는 목표 폴더 그대로다. 문서에는 theaterId를 쓰지 않는다.
-    const createdResponse = await fetch(`${origin}/api/v1/objectives/objective/create`, {
-      method: "POST", headers: { "Content-Type": "application/json", origin },
-      body: JSON.stringify({ commodoreId: ownerId, theaterId, title: "Unlaunched location" }),
-    });
-    expect(createdResponse.status).toBe(200);
-    const created = await createdResponse.json() as { objective: { id: string; commodoreId: string; theaterId: string } };
-    expect(created.objective).toMatchObject({ commodoreId: ownerId, theaterId });
-    expect(created.objective).not.toHaveProperty("cwd");
-    const pending = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8"));
-    const objectivesCwd = fs.realpathSync.native(path.join(ownerRoot, ownerId, "objectives"));
-    expect(pending).toMatchObject({ pending: true, cwd: objectivesCwd, placementTheaterId: theaterId });
-    expect(pending).not.toHaveProperty("theaterId");
-    expect(pending.cwd).not.toBe(realpath);
-    const deniedOwner = await fetch(`${origin}/api/v1/objectives/objective/create`, {
-      method: "POST", headers: { "Content-Type": "application/json", origin },
-      body: JSON.stringify({ commodoreId: "00000000-0000-4000-8000-000000000000", theaterId, title: "Not this owner" }),
-    });
-    expect(deniedOwner.status).toBe(409);
-    expect(await deniedOwner.json()).toEqual({ error: "objective_owner_unavailable" });
 
     // 사령관 생성·그룹·다중 작업 범위는 같은 서버 writer를 지나며 기존 목표 위치와 파일을 건드리지 않는다.
     const post = async (route: string, body: unknown) => {
@@ -1052,12 +1048,10 @@ describe("console static and terminal ticket boundary", () => {
     const recordFile = path.join(ownerRoot, freshId, "objectives", record.objectiveRecord.id, "objective.json");
     const recordBefore = fs.readFileSync(recordFile, "utf8");
     expect(JSON.parse(recordBefore).cwd).toBe(registered);
-    const pendingBefore = fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8");
     await post("commodore/theaters/remove", { commodoreId: freshId, theaterId });
     const removed = await post("commodore/theaters/remove", { commodoreId: freshId, theaterId: workspaceHash(registered) });
     expect(removed.commodore.theaters).toEqual([]);
     expect(fs.readFileSync(recordFile, "utf8")).toBe(recordBefore);
-    expect(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8")).toBe(pendingBefore);
     expect(fs.existsSync(registered)).toBe(true);
     const listing = await post("commodore/list", {});
     expect(listing.commodores).toEqual(expect.arrayContaining([expect.objectContaining({ commodoreId: freshId, theaters: [] })]));

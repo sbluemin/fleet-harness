@@ -12,7 +12,7 @@ import { CommodoreStoreError } from "./errors.js";
 import { migrateCommodoreState } from "./state-migration.js";
 import type { CommodoreLastMessage } from "../shared/contracts/theaters.js";
 import { commodoreLastMessage } from "../shared/last-message.js";
-import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DESCRIPTION, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodoreRoutine, type RoutineInput, type RoutineUpdate, routineInputSchema, MAX_ROUTINES, type CommodoreIntel, type CommodoreRunTotals, type CommodoreSource, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
+import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DESCRIPTION, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodoreRoutine, type RoutineInput, type RoutineUpdate, routineInputSchema, MAX_ROUTINES, type CommodoreIntel, type CommodoreRunTotals, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /**
  * 사령관 상태 저장소 — Console 데이터의 `commodore/<UUID>/` 하나.
@@ -66,7 +66,6 @@ export interface CommodoreStore {
   /** 사람이 항목 본문을 고친다 — id·출처·자리는 그대로, `editedAt` 이 남는다. 본문이 그대로면 사건도 없다(사령관을 헛되이 깨우지 않는다). */
   editIntel(commodoreId: string, intelId: string, text: string): { readonly state: CommodoreState; readonly item: CommodoreIntel };
   removeIntel(commodoreId: string, intelId: string): CommodoreState;
-  setSources(commodoreId: string, sources: readonly Omit<CommodoreSource, "id">[]): CommodoreState;
   setCoordinates(commodoreId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
   /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
   setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string } | null): CommodoreState;
@@ -332,13 +331,6 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       if (!item) throw new CommodoreStoreError("unknown_intel");
       const intel = current.intel.filter((entry) => entry.id !== intelId);
       return commit(commodoreId, { ...current, intel }, "intel-removed", intelId, { id: item.id, text: item.text });
-    },
-    setSources(commodoreId, sources) {
-      if (sources.length > MAX_SOURCES) throw new CommodoreStoreError("invalid_request");
-      const current = load(commodoreId);
-      // 같은 종류·위치의 출처는 id 를 잇는다 — 정보 항목의 source 가 가리키는 자리가 바뀌지 않게.
-      const next = sources.map((source) => ({ id: current.sources.find((known) => known.kind === source.kind && known.locator === source.locator)?.id ?? `s_${randomUUID().slice(0, 8)}`, ...source }));
-      return commit(commodoreId, { ...current, sources: next }, "sources");
     },
     setCoordinates(commodoreId, coordinates) {
       const current = load(commodoreId);

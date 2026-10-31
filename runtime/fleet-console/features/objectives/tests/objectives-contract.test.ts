@@ -1360,7 +1360,8 @@ describe("Objectives contract", () => {
     expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "three"]);
     expect(store.find(duplicate.id)).toBeNull();
     expect(byId(await rows("all")).has(duplicate.id)).toBe(false);
-    expect((await route("objective/restore", { objectiveId: duplicate.id })).status).toBe(404);
+    // 합쳐져 사라진 목표는 도메인 복원도 거절한다 — HTTP 라우트는 제거됐다.
+    await expect(launch.restore(duplicate.id)).rejects.toThrow("unknown_objective");
     expect(savedIds()).not.toContain(duplicate.id);
     const reloaded = createObjectiveStore({ documentContext, dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (oid) => objectiveRecords.get(oid) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     expect(reloaded.find(waiting.id)!.merged).toContainEqual(expect.objectContaining({ sourceId: duplicate.id, restorable: false }));
@@ -1390,17 +1391,19 @@ describe("Objectives contract", () => {
     expect(launches).toHaveLength(launchedBefore);
     expect((await route("objective/archive", { objectiveId: pendingCompletion.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, done: expect.any(Object) } });
     expect(launches).toHaveLength(launchedBefore);
-    expect((await route("objective/restore", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, done: expect.any(Object) });
+    // 보관 복원은 도메인 경로로 확인한다 — HTTP 라우트는 제거됐다.
+    expect(await launch.restore(pendingCompletion.id)).toMatchObject({ archived: false, done: expect.any(Object) });
     // 사람이 「보관」을 고른 기동 전 목표(restorable)는 지우지 않는다 — 무기동 지휘관 Objective 으로 보관되고, 복원하면 기록과 함께 돌아온다.
     const shelved = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Shelve before starting", groupId: null, note: "keep the brief" });
     expect((await route("objective/archive", { objectiveId: shelved.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, note: "keep the brief" } });
     expect(launches).toHaveLength(launchedBefore);
-    expect((await route("objective/restore", { objectiveId: shelved.id })).value.objective).toMatchObject({ archived: false, hasSession: true, note: "keep the brief" });
+    expect(await launch.restore(shelved.id)).toMatchObject({ archived: false, hasSession: true, note: "keep the brief" });
     // 플래그가 없어도 보관만 한다. 영구 삭제는 이 라우트에서 할 수 없다.
     const discarded = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Archive before starting", groupId: null });
     expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: false });
     expect(store.find(discarded.id)).toMatchObject({ archived: true });
-    expect((await route("objective/restore", { objectiveId: discarded.id })).status).toBe(200);
+    await launch.restore(discarded.id);
+    expect(store.find(discarded.id)).toMatchObject({ archived: false });
 
     // 보관함을 읽고 영구 삭제를 예약하는 같은 정리 경계 — Core의 타이머·파일 삭제 알고리즘은 재현하지 않는다.
     await launch.archive(shelved.id);

@@ -27,7 +27,7 @@ describe("session browser host contract", () => {
     let status = 0;
     const router = createBrowserRouter({
       browserService: service,
-      browserMcp: { interruptObjective: () => 0, pasteIntoTerminal: () => false },
+      browserMcp: { pasteIntoTerminal: () => false },
       objectiveRecords: { get: () => null },
       suggestionSettings: {
         read: () => ({ enabled: stored.browser?.suggestionsEnabled === true, prompted: stored.browser?.suggestionsPrompted === true }),
@@ -136,7 +136,7 @@ describe("session browser host contract", () => {
 
     const router = createBrowserRouter({
       browserService: service,
-      browserMcp: { interruptObjective: () => 0, pasteIntoTerminal: () => false },
+      browserMcp: { pasteIntoTerminal: () => false },
       objectiveRecords: { get: (id: string) => objectiveRecords.get(id) ?? null },
       isWriteAdmitted: () => writeAdmitted,
       isExactConsoleOrigin: () => exactOrigin,
