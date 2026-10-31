@@ -32,6 +32,7 @@ import { DEFAULT_EXPERIMENT_SETTINGS } from "../../settings/shared/experiments.j
 import { createConsoleResidentAgentHost, type ConsoleResidentAgentDeps } from "../../execution/host/agent/console-resident.js";
 import { createCommodoreRoutes, commodoreActive } from "./routes.js";
 import { createCommodoreStore } from "./store.js";
+import { createTaskforceFeature } from "./taskforce/index.js";
 import { createCommodoreMessenger } from "./messaging.js";
 import { createCommodoreCreator } from "./creation.js";
 import { createCommodoreManagementTools } from "./console-tools.js";
@@ -88,6 +89,10 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const effectiveIds = (commodoreId: string): readonly string[] =>
     effectiveCommodorePlugins(plugins.listGlobal(), store.read(commodoreId)?.plugins ?? []).effective;
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
+  const taskforce = createTaskforceFeature({
+    consoleDataDir: deps.paths.consoleDataDir, events: deps.events, http: deps.http, security: deps.security,
+    isKnownCommodore: (id) => entities.ids().includes(id),
+  });
   selectedPlugins = () => entities.ids().flatMap((id) => store.read(id)?.plugins ?? []);
   const createFromCommodore = createCommodoreCreator({ ownership, store, ...(deps.created ? { created: deps.created } : {}) });
   const supervisor = createCommodoreSupervisor({
@@ -177,16 +182,29 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     const known = new Set(ids);
     return [...new Set([...(deps.order?.read() ?? []).filter((id) => known.has(id)), ...ids])];
   };
-  const deletion = deps.deletion ? createCommodoreDeletion({ ownership, store, supervisor, host: deps.deletion, consoleDataDir: deps.paths.consoleDataDir, summary,
+  const commodoreDeletion = deps.deletion ? createCommodoreDeletion({ ownership, store, supervisor, host: deps.deletion, consoleDataDir: deps.paths.consoleDataDir, summary,
     protectedDirectories: () => entities.ids().flatMap((id) => entities.theatersOf(id).map((row) => row.path)),
     removing: (commodoreId, ids) => emit({ op: "removing", commodoreId, theaterIds: ids }),
     removed: (commodoreId, ids) => emit({ op: "removed", commodoreId, theaterIds: ids }),
   }) : undefined;
+  /**
+   * 사령관 삭제는 TF 성원에서도 뺀다 — 속한 TF마다 `member-removed` system 항목을 남긴다.
+   * 정리가 실패해도 삭제 자체를 막지 않는다(다음 TF 읽기가 다시 볼 수 있게 id만 남는다).
+   */
+  const deletion = commodoreDeletion ? {
+    preview: (id: string, language?: "en" | "ko") => commodoreDeletion.preview(id, language),
+    remove: async (id: string, alias: string, language?: "en" | "ko") => {
+      const result = await commodoreDeletion.remove(id, alias, language);
+      try { taskforce.store.removeCommodoreFromAll(id); }
+      catch (error) { console.warn(`[objectives] taskforce member cleanup failed: ${error instanceof Error ? error.message : String(error)}`); }
+      return result;
+    },
+  } : undefined;
   const sidebar = createCommodoreSidebar({
     persistence: deps.sidebar, ids: entities.ids, order: orderedIds, assertWritable: ownership.assertWritable,
     changed: () => deps.events.publish(COMMODORE_SIDEBAR_CHANNEL, { op: "changed" }),
   });
-  const routes = createCommodoreRoutes(context, store, {
+  const commodoreRoutes = createCommodoreRoutes(context, store, {
     sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, deletion, assertWritable: ownership.assertWritable,
     knowledgeFolder: createKnowledgeFolderAction({ root: knowledge.root, ...(deps.openKnowledgeDirectory ? { openDirectory: deps.openKnowledgeDirectory } : {}) }),
     theaterIds, summary, list: () => orderedIds().map(summary),
@@ -241,10 +259,13 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       return null;
     },
   });
+  const routes = [...commodoreRoutes, ...taskforce.routes];
   return {
     host,
     knowledge,
     routes,
+    /** TaskForce 저장소 — 판단·깨움 런타임과 TF 화면이 쓰는 TF 원장의 주인이다. */
+    taskforce: taskforce.store,
     sync: () => { restored = true; supervisor.sync("restart"); },
     /** 이 사령관이 고른 플러그인의 로컬 경로 — 전역 먼저, 대체된 항목은 뺀다. 그 사령관 목표의 지휘관·구성원 세션이 연다(MCP 는 그 세션들이 플러그인에서 직접 읽는다). */
     pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(effectiveIds(commodoreId)).map((plugin) => plugin.path),
