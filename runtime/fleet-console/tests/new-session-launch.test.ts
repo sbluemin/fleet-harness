@@ -220,6 +220,14 @@ describe("kept commodore owner", () => {
     expect(keptCommodoreOwnerOf("right", null, true)).toBeNull();
     expect(keptCommodoreOwnerOf("right", "c1", false)).toBeNull();
   });
+
+  // 유지 상태의 탭 줄은 사령관 탭 3개뿐 — 기본 「구성원」 탭은 펼친 행 패널의 「구성원」 탭이 대신한다.
+  it("hides the core members tab while the kept panel stands", async () => {
+    const { hidesCoreMembersTab } = await import("../features/workspace/client/conversation/conversation-shell.js");
+    expect(hidesCoreMembersTab(false, "c1")).toBe(true);
+    expect(hidesCoreMembersTab(true, null)).toBe(true);
+    expect(hidesCoreMembersTab(false, null)).toBe(false);
+  });
 });
 
 describe("kept commander tabs", () => {

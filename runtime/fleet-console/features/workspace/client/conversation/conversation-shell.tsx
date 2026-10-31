@@ -374,6 +374,14 @@ export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
   return <RightRail {...props} {...(ownedPanel && accent ? { panelClassName: "workspace-avatar-panel", panelStyle: accent } : {})} />;
 }
 
+/**
+ * 기본 「구성원」 탭을 가리는가 — objectives crew 탭이 대신하거나(기존 규칙), 유지 상태에서 펼친 행 패널의
+ * 「구성원」 탭이 대신할 때. 유지 상태의 탭 줄은 사령관 탭 3개뿐이다.
+ */
+export function hidesCoreMembersTab(hasMembersStandIn: boolean, keepOwner: string | null): boolean {
+  return hasMembersStandIn || keepOwner !== null;
+}
+
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
   const t = useT();
   const sections = usePanelSections();
@@ -395,7 +403,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const tabsTheaterId = tabsEntry?.scope === "fleet" ? null : context.theaterId;
   const tabsState = useConversationTabsState(tabsEntry?.conversationTabs, tabsTheaterId);
   const membersStandIn = tabsState?.tabs.find((tab) => tab.replacesMembers === true) ?? null;
-  const coreFilter = membersStandIn === null
+  const coreFilter = !hidesCoreMembersTab(membersStandIn !== null, keepOwner)
     ? sections.filter
     : (entryId: string) => entryId !== CONVERSATION_MEMBERS_TAB_ID && (sections.filter?.(entryId) ?? true);
   // 걷힌 구성원 탭이 켜져 있었으면(대화를 옮기기 전에 열어 둔 것) 대신하는 탭으로 옮긴다.
