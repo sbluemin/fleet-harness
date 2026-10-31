@@ -1,5 +1,5 @@
 ---
-branch: feat/taskforce-client
+branch: feat/taskforce-host
 ---
 
 ### fleet-console
