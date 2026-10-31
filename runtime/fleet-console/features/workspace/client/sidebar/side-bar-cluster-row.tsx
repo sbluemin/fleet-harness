@@ -149,6 +149,56 @@ function formatDue(date: string, locale: ConsoleLocale): string {
   return format.format(parsed);
 }
 
+/** 완료 시각(ms)을 그 날의 YYYY-MM-DD 로 — 기한과 같은 셈법으로 적는다. */
+function localIsoDate(at: number): string {
+  const day = new Date(at);
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+}
+
+/** 완료일의 긴 표기 — 접근 이름이 날짜 자리를 대신 읽는다. 완료 줄이 아니거나 시각이 없으면 null. */
+export function clusterRowDoneLabel(row: ObjectiveClusterRow, locale: ConsoleLocale): string | null {
+  return row.doneAt !== undefined ? formatDue(localIsoDate(row.doneAt), locale) : null;
+}
+
+/** 통합 목록·접힌 레일이 날짜 자리에 적는 날의 긴 표기 — 시작 전은 기한, 완료는 완료일. */
+export function clusterRowDateLabel(row: ObjectiveClusterRow, locale: ConsoleLocale): string | null {
+  return row.glyph === "done" ? clusterRowDoneLabel(row, locale) : row.due ? formatDue(row.due.date, locale) : null;
+}
+
+const monthFormats = new Map<ConsoleLocale, Intl.DateTimeFormat>();
+
+/**
+ * 시작 전·완료 통합 목록에서 아바타 자리에 서는 두 줄 날짜 — 시작 전은 기한(지나면 숫자만 경고색), 완료는 완료일을 흐리게.
+ * 날짜가 없으면 같은 자리에 흐린 선 글리프가 선다(시작 전은 빈 선, 완료는 체크). 접근 이름은 행이 말하므로 장식이다.
+ */
+export function ClusterRowDate({ item }: { readonly item: SideBarRowItem }) {
+  const locale = useConsoleLocale();
+  const { row } = item;
+  const done = row.glyph === "done";
+  const iso = done ? (row.doneAt !== undefined ? localIsoDate(row.doneAt) : null) : row.due?.date ?? null;
+  const day = iso ? new Date(`${iso}T00:00:00`) : null;
+  if (!day || Number.isNaN(day.getTime())) {
+    return (
+      <span className={`side-bar-cluster-row-date is-glyph${done ? " is-done" : ""}`} aria-hidden="true">
+        <svg viewBox="0 0 16 16">{done
+          ? <path d="M3.6 8.4l2.8 2.8 6-6.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          : <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" />}</svg>
+      </span>
+    );
+  }
+  let format = monthFormats.get(locale);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", { month: "short" });
+    monthFormats.set(locale, format);
+  }
+  return (
+    <span className={["side-bar-cluster-row-date", done ? "is-done" : "", !done && row.due?.overdue ? "is-late" : ""].filter(Boolean).join(" ")} aria-hidden="true">
+      <span className="side-bar-cluster-row-date-month">{format.format(day)}</span>
+      <span className="side-bar-cluster-row-date-day">{day.getDate()}</span>
+    </span>
+  );
+}
+
 /** 대화 중심 화면의 제목 줄 끝에 서는 짧은 기한 — 월/일 숫자만 쓴다(요일은 접근 이름의 긴 표기가 말한다). */
 function formatDueShort(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
@@ -167,6 +217,8 @@ interface SideBarClusterRowProps {
    * 사이드바 aside 가 빈 영역 우클릭을 새 세션으로 읽으므로, 행은 이벤트를 삼켜야 한다.
    */
   readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null, focusFirst?: boolean) => void;
+  /** 시작 전·완료 통합 목록의 줄 — 아바타 대신 날짜, 둘째 줄 없이 제목 한 줄로 선다. */
+  readonly settled?: boolean;
 }
 
 /** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. */
@@ -195,7 +247,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu, settled = false }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -243,6 +295,8 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
   if (decisionNote) meta.push({ key: "req-note", text: decisionNote });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
+  const doneLabel = clusterRowDoneLabel(row, locale);
+  if (doneLabel) meta.push({ key: "done-at", text: doneLabel });
   if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });
   row.provenance?.forEach((part, index) => {
     const text = resolveLocalizedText(part.text, locale);
@@ -253,9 +307,10 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
     if (text) meta.push({ key: `note-${index}`, text, ...(note.tone ? { tone: note.tone } : {}) });
   });
   // 제목 끝에는 짧은 기한·주의 메모, 둘째 줄에는 상태·게이지·분모가 선다. 나머지 메타는 접근 이름이 보존한다.
+  // 통합 목록의 줄은 기한이 날짜 자리에 서므로 제목 끝에 다시 적지 않는다.
   const progress = row.progress && row.progress.total > 0 ? row.progress : null;
   const headMeta = meta.flatMap((part) => (
-    part.key === "due" && row.due ? [{ ...part, text: t("sidebar.row.dueShort", { date: formatDueShort(row.due.date) }) }]
+    part.key === "due" && row.due ? (settled ? [] : [{ ...part, text: t("sidebar.row.dueShort", { date: formatDueShort(row.due.date) }) }])
       : part.key.startsWith("note-") && part.tone === "warn" ? [part]
         : []
   ));
@@ -307,6 +362,8 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         toolUse ? "is-tool-using" : "",
         active ? "side-bar-cluster-row--active" : "",
         "side-bar-cluster-row--conversation",
+        settled ? "side-bar-cluster-row--settled" : "",
+        settled && state === "done" ? "is-done" : "",
       ].filter(Boolean).join(" ")}
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}
@@ -320,7 +377,11 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       onPointerUp={onContextMenu ? longPress.onPointerUp : undefined}
       onPointerCancel={onContextMenu ? longPress.onPointerCancel : undefined}
     >
-      {state === "review" && row.review ? (
+      {settled ? (
+        <span className="side-bar-cluster-row-glyph">
+          <ClusterRowDate item={item} />
+        </span>
+      ) : state === "review" && row.review ? (
         <button
           type="button"
           className="side-bar-cluster-row-glyph is-actionable"
@@ -358,13 +419,13 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
             ))}
         </span>
-        <span className="side-bar-cluster-row-line" aria-hidden="true">
+        {settled ? null : <span className="side-bar-cluster-row-line" aria-hidden="true">
           <span className="side-bar-cluster-row-swap">
             <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
             <RowToolUse tool={toolUse?.tool ?? null} label={toolUseLabel} />
           </span>
           <ClusterRowProgress progress={progress} />
-        </span>
+        </span>}
       </button>
       {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식만 숨긴다. */}
       <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle ? {} : { "aria-hidden": true })}>

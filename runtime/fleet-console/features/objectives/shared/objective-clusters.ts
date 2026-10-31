@@ -94,6 +94,8 @@ export interface ObjectiveClusterRow {
   readonly today?: boolean;
   /** 둘째 줄의 기한 — `date` 는 YYYY-MM-DD, 호스트가 자기 로케일로 적는다. 지남 판정은 플러그인이 한다. */
   readonly due?: { readonly date: string; readonly overdue: boolean };
+  /** 완료한 시각(ms) — `glyph` 가 `done` 인 줄만 싣는다. 호스트는 기한 자리에 완료일로 적고 최근 완료부터 세운다. */
+  readonly doneAt?: number;
   /**
    * 사람의 결정을 기다리기 시작한 시각(ms). 있으면 「내 결정」 구역에 그 시각순으로 선다. 사람이 답할 차례인 줄만 낸다 —
    * 플러그인이 정한 맡은 이가 다루는 요청은 `delegated` 로 낸다.

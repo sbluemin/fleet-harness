@@ -15,7 +15,6 @@ import { commodoreMongleState } from "../../../commodore/client/commodore-header
 import { useObjectiveTheater } from "../../../commodore/client/board.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
-import { toggleFold, useCommanderFolds } from "./commander-folds.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { setCommanderPlacement, useCommanderPlacement, useEffectiveCommanderPlacement, type CommanderPlacement } from "./commander-placement.js";
 import "./commander-list.css";
@@ -32,9 +31,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
 }) {
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
-  const foldDomId = useId();
-  const folds = useCommanderFolds();
-  const { sorted, sections, preference, settledEmpty } = useCommanderRows(commodoreId, selectedId);
+  const { sorted, listSections, preference, settledEmpty } = useCommanderRows(commodoreId, selectedId);
 
   return (
     <section className="commander-tab" aria-label={t("commanderTab.aria")}>
@@ -47,23 +44,20 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
       </div>
       {sorted.length === 0 ? (settledEmpty ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : null) : (
         <div className="commander-tab-groups">
-          {sections.map((group) => {
-            const collapsed = group.fold !== null && folds[group.fold];
-            const listId = `${foldDomId}-${group.id}`;
+          {listSections.map((group, index) => {
+            // 시작 전·완료 통합 목록은 머리 없이 앞 구역과 얇은 선으로만 갈린다.
             return <section key={group.id}>
-            {group.fold !== null ? <button type="button" className="commander-tab-fold" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : listId} onClick={() => toggleFold(group.fold!)}>
-              <span className="commander-tab-fold-label">{group.title}</span>
-              <span className="commander-tab-fold-count">{group.rows.length}</span>
-            </button> : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
-            {collapsed ? null : <ol id={listId} className="commander-tab-list side-bar-group-chips">
+            {group.settled ? (index > 0 ? <div className="commander-tab-settled-rule" role="separator" /> : null)
+              : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
+            <ol className="commander-tab-list side-bar-group-chips">
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
                 const selected = objectiveId !== null && selectedId === objectiveId;
-                return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected}
+                return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected} settled={group.settled === true}
                   onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
                   onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />;
               })}
-            </ol>}
+            </ol>
           </section>;
           })}
         </div>
