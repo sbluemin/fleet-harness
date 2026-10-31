@@ -238,7 +238,12 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     if (logRef.current) {
       const log = logRef.current;
       setFollowing(log, false);
-      target.scrollIntoView({ block: "center", behavior: "auto" });
+      // 기록 상자만 옮긴다. scrollIntoView 는 overflow:hidden 인 바깥 조상까지 굴려, 바닥의 줄을 가운데로 못 올리는 몫만큼
+      // 대화 열(독·입력창 포함)을 통째로 위로 밀어 아래를 비운다.
+      const box = log.getBoundingClientRect();
+      const row = target.getBoundingClientRect();
+      const top = log.scrollTop + row.top - box.top - log.clientTop + row.height / 2 - log.clientHeight / 2;
+      log.scrollTop = Math.max(0, Math.min(top, log.scrollHeight - log.clientHeight));
       programmaticTop.current = log.scrollTop;
     }
     target.classList.remove("is-revealed");
