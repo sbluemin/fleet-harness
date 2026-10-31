@@ -16,7 +16,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { SHARED_FOLDER_LIMITS, type SharedFolderEntry, type SharedFolderKind, type SharedFolderList } from "../shared/shared-folder.js";
 import { ObjectiveArchiveError } from "../../workspace/host/objective-archive-storage.js";
-import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
+import { decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -344,32 +344,6 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
 
   const groupsOf = (commodoreId: string) => ctx.objectiveRecords.groups?.list(commodoreId) ?? [];
   const objective = (value: Objective) => ({ objective: value });
-  const syncSidebarOrder = async (moved: Objective) => {
-    const reorder = ctx.objectiveRecords.reorder;
-    if (!reorder) return;
-    // 사람이 옮긴 미완료 목표의 Objective 자리만 명시적으로 되찾는다. 완료 기록의 순서 변경은 깨우지 않는다.
-    if (!moved.done && !store.pending(moved.id)) await ctx.objectiveRecords.access?.(moved.id, "ensure-active");
-    moved = store.find(moved.id) ?? moved;
-    const members = ctx.objectiveRecords.list().filter((node) => node.commodoreId === moved.commodoreId && node.theaterId === moved.theaterId && (node.groupId ?? null) === moved.groupId);
-    const memberIds = new Set(members.map((node) => node.id));
-    const boardIds = store.list(moved.commodoreId).filter((entry) => entry.groupId === moved.groupId && memberIds.has(entry.id)).map((entry) => entry.id);
-    const objectives = new Set(boardIds);
-    // 목표가 차지한 자리만 재배열한다. 터미널·담당 Objective 은 기존 자리에 그대로 둔다.
-    const slots = members.map((node) => node.id);
-    let index = 0;
-    const desired = slots.map((id) => objectives.has(id) ? boardIds[index++]! : id);
-    if (desired.every((id, at) => id === slots[at])) return;
-    // 호스트 포트는 한 덩어리를 삽입하므로 앞에서부터 목표 하나씩 제자리로 옮긴다.
-    // 앞 멤버를 anchor 로 쓰면 이미 정렬된 접두부와 비목표 Objective 의 자리를 보존한다.
-    const current = [...slots];
-    for (let at = 0; at < desired.length; at += 1) {
-      const id = desired[at]!;
-      if (!objectives.has(id) || current[at] === id) continue;
-      reorder({ commodoreId: moved.commodoreId, theaterId: moved.theaterId, groupId: moved.groupId, objectiveIds: [id], position: at === 0 ? "first" : { after: desired[at - 1]! } });
-      current.splice(current.indexOf(id), 1);
-      current.splice(at, 0, id);
-    }
-  };
 
   return [
     { name: "state", method: "POST", summary: "Read the objectives and groups of a Commodore.", handler: json(z.object({ commodoreId: ids, language }), ({ commodoreId }) => { prStatus?.refresh(); return { objectives: store.list(commodoreId), groups: groupsOf(commodoreId), launch: launch.describe() }; }) },
@@ -377,23 +351,13 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     { name: "finished", method: "POST", summary: "Read the completed objectives of a Commodore that a person archived (completion itself does not archive), most recent first (the phone's archived completed section).", handler: json(z.object({ commodoreId: ids, language }), ({ commodoreId }) => ({ objectives: store.all().filter((item) => item.commodoreId === commodoreId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
     // 따로 만든 Objective 도 목표다 — 화면이 처음 보는 에이전트 Objective 을 목표 모양으로 받아 간다.
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Objective of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
-    // 목표 레코드만 만든다 — 같은 ID의 지휘관 Objective은 첫 「구상」·「시작」 때 선다.
-    { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander session.", handler: json(createObjectiveSchema, async ({ language, commodoreId, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ commodoreId, theaterId, theaterIdSpecified: theaterId !== "", title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
     // 라우팅 확인 스위치는 사람의 개시 방식이라 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 편집도 아니다.
     { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Objective's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), actions.patch) },
-    // 순서는 내용이 아니다 — 지휘관이 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.
-    { name: "objective/move", method: "POST", summary: "Reorder an objective before or after another objective of the same Theater.", handler: json(objectiveRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), async ({ objectiveId, beforeId, afterId }) => {
-      const moved = store.move(objectiveId, beforeId !== undefined ? { beforeId } : { afterId: afterId! });
-      // 보드의 저장은 이미 끝났다. 호스트 동기화 실패가 성공한 카드 이동을 실패로 보이게 해서는 안 된다.
-      try { await syncSidebarOrder(moved); } catch (error) { console.warn(`[objectives] sidebar reorder failed: ${error instanceof Error ? error.message : String(error)}`); }
-      return objective(store.find(moved.id) ?? moved);
-    }) },
     // 목표를 지우면 지휘관 Objective 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
     // 운영 주체 — 사람만 바꾼다. 사령관 보드 도구에는 이 쓰기가 없고, 사령관은 조회의 operator 로 읽기만 한다.
     { name: "objective/operator", method: "POST", summary: "Hand an objective to the Theater's Commodore (commodore true) or take it back (false). Only the person sets it; the change is kept in the objective's actions. The Commodore is woken by an objective's board changes only while it operates it.", handler: json(objectiveRef.extend({ commodore: z.boolean() }), ({ objectiveId, commodore }) => objective(store.setCommodoreOperated(objectiveId, commodore, "human"))) },
     // 사령관에게 돌려주기 — 사령관이 사람에게 넘긴 항목을 사람이 되돌린다. 넘김은 「돌려줌」으로 남고 사령관이 깨어나 그 항목을 다시 맡는다.
     { name: "person-hold/return", method: "POST", summary: "Return an item the Commodore handed to the person (decision, criteria, review or followup) to the Commodore; it can answer it again and is woken.", handler: json(objectiveRef.extend({ target: z.enum(PERSON_HOLD_TARGETS) }), actions.returnToCommodore) },
-    { name: "objective/restore", method: "POST", summary: "Restore the archived Commander conversation live and idle without starting an SDK child, preserving the objective's completion and records.", handler: json(objectiveRef, async ({ objectiveId }) => objective(await launch.restore(objectiveId))) },
     // 옛 페이지의 restorable 필드는 받아 두되, 값과 기동 여부에 관계없이 복원 가능한 보관만 한다.
     { name: "objective/archive", method: "POST", summary: "Archive the Commander conversation restorably, including never-launched objectives. Permanent deletion is available only through archived-objective purge with its undo grace period.", handler: json(objectiveRef.extend({ restorable: z.boolean().optional() }), ({ objectiveId }) => launch.archive(objectiveId)) },
     // 후속 후보를 고른 완료는 새 경계다 — 검토 대기·스티어링 우선·제안 대기를 서버가 원자적으로 다시 따진다. 고른 것이 없으면 지금 완료 그대로.
@@ -404,7 +368,6 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     // 후속 후보에 대한 사람의 판단 — 지휘관이 알아야 할 보드 편집이 아니므로 edited 를 쌓지 않는다(기준 제안의 거절과 같다).
     { name: "followup/discard", method: "POST", summary: "Discard an open follow-up candidate; its title and summary stay as a trace.", handler: json(objectiveRef.extend({ candidateId: ids }), actions.followupDiscard) },
     { name: "followup/retry", method: "POST", summary: "Re-check or re-create a failed or unconfirmed follow-up with the same snapshot and key.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), actions.followupRetry) },
-    { name: "followup/abandon", method: "POST", summary: "Give up a failed follow-up; the candidate returns to open.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), actions.followupAbandon) },
     { name: "member/add", method: "POST", summary: "Add a member to the roster.", handler: json(objectiveRef.extend({ member: memberAddSchema }), actions.memberAdd) },
     // 띄운 구성원의 모델만 바꾸면 그 세션의 좌표 변경이다(곧바로 또는 이번 턴 뒤) — 지휘관의 일과 무관한 값이라 편집으로 쌓지 않는다.
     { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in. For a member whose session exists, a launch selection switches that session's model now (dormant or idle) or after its current turn (working).", handler: json(objectiveRef.extend({ memberId: ids, patch: memberPatchSchema }), actions.memberPatch) },
@@ -458,6 +421,5 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     { name: "shared/list", method: "GET", summary: "Read an objective's shared folder file list (read-only).", handler: sharedList },
     { name: "shared/file", method: "GET", summary: "Read one file from an objective's shared folder by relative path (read-only).", handler: sharedFile },
     { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(objectiveRef.extend({ attachmentId: ids }), steerable(() => true, ({ objectiveId, attachmentId }) => edited(objectiveId, ["note"], () => store.attachmentRemove(objectiveId, attachmentId)))) },
-    { name: "plan/apply", method: "POST", summary: "Replace the unassigned missions with a plan (Commander tool path; also used by tests).", handler: json(objectiveRef.extend({ plan: planSchema.omit({ criteria: true }) }), ({ objectiveId, plan }) => objective(launch.planApplied(objectiveId, plan))) },
   ];
 }

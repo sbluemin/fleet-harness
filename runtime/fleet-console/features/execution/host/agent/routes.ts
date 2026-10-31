@@ -145,7 +145,6 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/message", summary: "Deliver a prompt to an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat", summary: "Switch an Agent session to chat mode.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId/chat", summary: "Leave chat mode for an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/sessions/:sessionId/chat-stream", summary: "Removed — Chat Mode observation uses the ticketed WebSocket.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-answer", summary: "Answer a pending Agent chat question.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-stop", summary: "Stop the in-flight Agent chat turn.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-coordinates", summary: "Change an Agent chat session's model and effort.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -1096,7 +1095,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "resume") return handleResume(req, res, sessionId);
     if (action === "message") return handleMessage(req, res, sessionId);
     if (action === "chat") return handleChat(req, res, sessionId);
-    if (action === "chat-stream") return handleChatStream(req, res, sessionId);
     if (action === "chat-answer") return handleChatAnswer(req, res, sessionId);
     if (action === "chat-stop") return handleChatStop(req, res, sessionId);
     if (action === "chat-coordinates") return handleChatCoordinates(req, res, sessionId);
@@ -1113,7 +1111,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }
-    return methodNotAllowed(res);
+    // 알 수 없는 세션 동작은 404 — 알려진 동작의 메서드 오류(각 핸들러의 405)와 구분한다.
+    ctx.host.http.writeJson(res, 404, { error: "not_found" });
+    return true;
   }
 
   /**
@@ -2139,22 +2139,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     ctx.host.http.writeJson(res, 200, catalog);
-    return true;
-  }
-
-  function handleChatStream(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): boolean {
-    if (req.method !== "GET") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
-    if (node[CHAT_MODE_PAYLOAD_KEY] !== true) {
-      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
-      return true;
-    }
-    ctx.host.http.writeJson(res, 410, { error: "chat_stream_moved" });
     return true;
   }
 

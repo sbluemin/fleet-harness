@@ -1183,9 +1183,7 @@ describe("commodore session", () => {
     h.store.setDescription("t1", "Fix remote first.");
     h.store.addIntel("t1", { text: "older" });
     const newest = h.store.addIntel("t1", { text: "newest" }).item;
-    h.store.setSources("t1", [{ kind: "github-issues", label: "feedback", locator: "acme/fleet" }, { kind: "url", label: "forum", locator: "https://example.test/forum" }]);
     const stub = agentStub();
-    const commands: { file: string; args: readonly string[] }[] = [];
     let nextFeedback: string | null = null;
     const session = createCommodoreSession({
       commodoreId: "t1", cwd: h.objectivesDir, theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
@@ -1196,7 +1194,7 @@ describe("commodore session", () => {
         defineConsoleTool({ name: "console_objectives_detail", description: "objective", actions: { complete: { kind: "write", input: z.object({ objectiveId: z.string() }) } } })
           .plugin({ execute: async (args) => (args as { action?: unknown }).action === "complete" ? { content: [{ type: "text", text: JSON.stringify({ error: "not_awaiting_review", hint: "secret hint" }) }], isError: true } : { content: [] } }),
       ], now: () => 10_000,
-      execute: async (file, args) => { commands.push({ file, args }); return { stdout: JSON.stringify([{ number: 7, title: "Pairing drops", state: "OPEN", updatedAt: "2026-10-01T00:00:00Z", labels: [{ name: "bug" }], url: "https://example.test/7" }]), stderr: "" }; },
+      execute: async () => ({ stdout: JSON.stringify([]), stderr: "" }),
     });
 
     stub.setScript(async () => {
@@ -1261,7 +1259,7 @@ describe("commodore session", () => {
     expect((await call("description", {})).structuredContent).toMatchObject({ text: "Fix remote first.", rev: 1 });
     const intel = (await call("intel", {})).structuredContent as { items: { text: string }[]; sources: { kind: string }[] };
     expect(intel.items.map((item) => item.text)).toEqual(["newest", "older"]);
-    expect(intel.sources.map((source) => source.kind)).toEqual(["github-issues", "url"]);
+    expect(intel.sources).toEqual([]);
     expect(((await call("intel", { since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([]);
     // 이미 본 항목이 그 뒤에 고쳐지면 since 로도 보인다 — id 와 자리는 그대로, editedAt 이 붙는다.
     const olderId = h.store.read("t1")!.intel[1]!.id;
@@ -1284,10 +1282,8 @@ describe("commodore session", () => {
     expect((await call("routines", {})).structuredContent).toMatchObject({ routines: [{ id: routineId, nextRunAt: expect.any(Number) }] });
     expect((await call("routine_remove", { routineId, reason: "Finished" })).isError).toBe(false);
     expect(h.store.read("t1")?.routines).toEqual([]);
-    const sources = h.store.read("t1")!.sources;
-    expect((await call("issue_list", { sourceId: sources[0]!.id })).structuredContent).toMatchObject({ issues: [{ number: 7, labels: ["bug"] }] });
-    expect(commands.at(-1)).toMatchObject({ file: "gh", args: ["issue", "list", "-R", "acme/fleet", "--state", "open", "--limit", "30", "--json", "number,title,state,updatedAt,labels,url"] });
-    expect((await call("issue_list", { sourceId: sources[1]!.id })).structuredContent).toMatchObject({ hint: expect.stringContaining("WebFetch") });
+    // 정보 출처 쓰기 경로가 없다 — 읽기는 빈 목록을 돌려준다.
+    expect((await call("intel", {})).structuredContent).toMatchObject({ sources: [] });
 
     // fleet-memory — 사령관 도구로만 쓰고, 다음 깨움부터 인덱스가 턴에 실린다. 출처는 이 Theater 보드의 목표만 받는다.
     expect((await call("memory_save", { branch: "lessons", topic: "Console E2E", slug: "offline-keeps-sse", title: "Offline keeps SSE", description: "CDP offline leaves an open EventSource alive.", why: "A reconnect repro stayed connected.", how: "Fire onerror on a hooked EventSource.", sourceObjectiveIds: ["elsewhere"] })).structuredContent).toMatchObject({ error: "unknown_objective" });
@@ -1450,7 +1446,6 @@ describe("commodore supervisor", () => {
       h.setExperiments({ commodore: true });
       h.store.setDescription("t1", "Keep the description.");
       h.store.addIntel("t1", { text: "Keep the intel." });
-      h.store.setSources("t1", [{ kind: "url", label: "Reference", locator: "https://example.com" }]);
       h.store.setCoordinates("t1", { model: "sonnet", effort: "high" });
       h.store.setCommander("t1", { model: "opus[1m]", effort: "high" });
       h.store.routineAdd("t1", { name: "Standing routine", task: "Keep the routine", schedule: { kind: "every", minutes: 120 } });

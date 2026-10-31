@@ -237,8 +237,6 @@ export interface ObjectiveStore {
   recordMemberNotificationFailure(memberId: string, failure: NonNullable<ObjectiveMemberFailure["notificationFailure"]>, signal?: "failure" | "unreported"): void;
   /** 지휘관 Objective 이 복원 불가로 사라졌다 — 레코드와 첨부를 지운다. 담당이었다면 그 임무의 연결을 푼다. */
   forget(objectiveId: string): void;
-  /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. */
-  move(objectiveId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): Objective;
   complete(objectiveId: string, by?: ObjectiveActor): Objective;
   reopen(objectiveId: string, lifecycleIntent?: StoredObjective["lifecycleIntent"], by?: ObjectiveActor): Objective;
   /** 완료 복원은 의도만 먼저 쓰고, 호스트가 복원한 뒤 회차를 시작한다. */
@@ -385,7 +383,7 @@ const RANK_STEP = 1024;
  * id 의 안정 해시 소수부 — 같은 밀리초에 태어난 목표들이 같은 가상 자리에 겹치지 않게 1/1024 칸으로 흩는다.
  * 1/1024 은 지금 시각(약 1.79e12 ms)에서 4 ulp 라 인접한 칸 사이에도 중간값이 남는다. 2^42 ms(약 2109년)부터는 1 ulp 로
  * 좁아지고 2^43 부터는 소수부가 사라져 다시 겹치며, 해시는 1024 칸이라 같은 밀리초의 두 목표가 겹칠 수도 있다 —
- * 그 경우의 자리는 `respread` 의 구간 확장이 만든다.
+ * 겹친 두 목표는 같은 자리를 갖는다.
  */
 const idFraction = (id: string): number => {
   let hash = 0x811c9dc5;
@@ -1489,29 +1487,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       }
     },
 
-    move(objectiveId, anchor) {
-      const { commodoreId, stored, node } = locate(objectiveId);
-      const anchorId = "beforeId" in anchor ? anchor.beforeId : anchor.afterId;
-      if (anchorId === objectiveId) return project(stored, node);
-      const board = visible(commodoreId).filter((entry) => entry.stored.id !== objectiveId);
-      const target = board.findIndex((entry) => entry.stored.id === anchorId);
-      if (target < 0) throw new ObjectiveStoreError("unknown_objective");
-      const at = "beforeId" in anchor ? target : target + 1;
-      // 자리는 보이는 줄에서 정한다 — 이웃이 레코드든 아니든 그 둘의 자리 사이 값을 받으므로 떨어뜨린 자리가 그대로 남고,
-      // 파일을 얻는 목표는 옮긴 이 하나뿐이다(이웃이 레코드 없는 목표여도 파일을 만들지 않는다).
-      const previous = board[at - 1] ?? null;
-      const following = board[at] ?? null;
-      const rank = previous && following ? (previous.rank + following.rank) / 2
-        : previous ? previous.rank + RANK_STEP
-        : following ? following.rank - RANK_STEP
-        : 0;
-      const moved: StoredObjective = { ...stored, rank };
-      // 이웃 사이에 실수가 남지 않았다 — 그때만 이 자리를 감싼 「레코드 없는 목표」 경계 안의 저장 목표들을 다시 벌린다.
-      if (!Number.isFinite(rank) || (previous && previous.rank >= rank) || (following && rank >= following.rank)) {
-        return respread(commodoreId, board, at, moved, node);
-      }
-      return commit(commodoreId, moved, true) ?? project(moved, node);
-    },
 
     // 완료는 상태이지 연결 해제가 아니다 — 담당 연결은 그대로 남아 묶음·이동이 살아 있다.
     complete: (objectiveId, by = "human") => update(objectiveId, (stored) => {
@@ -2263,113 +2238,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       });
     },
   };
-
-  /** 떨어뜨린 한 줄의 새 자리 — 쓰는 순서대로 담는다. */
-  type Placement = { readonly entry: BoardEntry; readonly rank: number };
-
-  /** 두 자리 사이에 쓸 수 있는 실수가 남았는가 — 같은 자리끼리 맞붙거나 IEEE 754 로 중간값이 사라지면 아니다. */
-  const roomBetween = (below: number, above: number): boolean => {
-    if (below === -Infinity || above === Infinity) return true;
-    const middle = (below + above) / 2;
-    return below < middle && middle < above;
-  };
-
-  /**
-   * 구간을 위에서 아래로 다시 벌린 계획 — 「방금 정한 위 자리」와 「아직 손대지 않은 아래 벽」 사이를 잡는다. 아래 벽은
-   * 아직 쓰지 않은 첫 목표의 **지금** 자리(없으면 구간 밖 경계)이므로, 앞몫까지만 쓰이고 멈춰도 쓴 몫과 안 쓴 몫이
-   * 섞인 줄의 순서가 그대로다. 자리가 없으면 파일을 하나도 쓰기 전에 `rank_exhausted` 로 끝난다.
-   */
-  function planSpread(run: readonly BoardEntry[], placed: BoardEntry, lower: number, upper: number): readonly Placement[] {
-    const plan: Placement[] = [];
-    let previous = lower;
-    for (const [ix, member] of run.entries()) {
-      // 옮긴 목표는 지금 자리가 없으므로 벽이 되지 못한다.
-      const barrier = run.slice(ix + 1).find((rest) => rest !== placed)?.rank ?? upper;
-      const rank = previous === -Infinity && barrier === Infinity ? 0
-        : previous === -Infinity ? barrier - RANK_STEP
-        : barrier === Infinity ? previous + RANK_STEP
-        : (previous + barrier) / 2;
-      if (!Number.isFinite(rank) || rank <= previous || rank >= barrier) throw new ObjectiveStoreError("rank_exhausted");
-      previous = rank;
-      plan.push({ entry: member, rank });
-    }
-    return plan;
-  }
-
-  /**
-   * 마지막 수단 — 보드 전체를 1024 간격 정수로 균등하게 다시 깐다. 새 자리는 지금 자리 전부보다 아래(큰 값)에 깔고
-   * **아래에서 위로** 쓴다: 어디까지만 쓰이고 멈춰도 손대지 않은 앞몫은 전부 쓴 몫보다 위에 남아 줄의 순서가 그대로다.
-   * 바깥 경계를 침범할 일은 없다 — 구간을 보드 전체까지 넓힌 뒤에만 이 길로 오므로 바깥이 없다.
-   */
-  function planUniform(line: readonly BoardEntry[]): readonly Placement[] {
-    let previous = 0;
-    for (const entry of line) if (entry.rank > previous) previous = entry.rank;
-    const plan: Placement[] = [];
-    for (const entry of line) {
-      const rank = previous + RANK_STEP;
-      // 1024 걸음이 자리로 남지 않는 크기(약 4.6e18 이상)이거나 무한으로 넘치면 여기서 멈춘다.
-      if (!Number.isFinite(rank) || rank <= previous) throw new ObjectiveStoreError("rank_exhausted");
-      previous = rank;
-      plan.push({ entry, rank });
-    }
-    return plan.reverse();
-  }
-
-  /**
-   * 자리를 다시 벌리기 — 이웃 사이에 실수가 남지 않았을 때만 지난다(일반 이동은 떨어뜨린 목표 파일 하나뿐이다).
-   *
-   * 떨어뜨린 자리에서 시작해 **양쪽에 표현 가능한 간격이 나올 때까지** 구간을 넓힌다. 구간 안의 레코드 없는 목표는
-   * 이때 레코드가 되고(자리를 우리가 정해야 하므로), 저장 목표는 그대로 남아 자리만 바뀐다. 계획을 먼저 세우므로
-   * 되는 구간을 찾기까지 넓혀도 파일은 하나도 쓰이지 않는다.
-   *
-   * 한 건씩 쓰고 성공한 것만 캐시에 올리므로 캐시와 디스크는 늘 같은 몫에서 멈추고, 멈춘 자리의 줄을 방송해 화면도
-   * 같은 순서를 본다. 보드 전체까지 넓혀도 수치 검사가 깨지면 보드 전체를 1024 간격으로 한 번 더 균등하게 깔고,
-   * 그마저 안 되면 아무 것도 뒤집지 않은 채 `rank_exhausted` 로 멈춘다 — 어느 길에서도 내용은 잃지 않는다.
-   */
-  function respread(commodoreId: string, board: readonly BoardEntry[], at: number, moved: StoredObjective, node: ObjectiveRecord | null): Objective {
-    const objectives = load(commodoreId);
-    const placed: BoardEntry = { stored: moved, node, bare: false, rank: moved.rank };
-    const line = [...board.slice(0, at), placed, ...board.slice(at)];
-    const edge = (ix: number, beyond: number): number => line[ix]?.rank ?? beyond;
-    let head = at;
-    let tail = at;
-    let spread: readonly Placement[] | null = null;
-    for (;;) {
-      try { spread = planSpread(line.slice(head, tail + 1), placed, edge(head - 1, -Infinity), edge(tail + 1, Infinity)); break; }
-      catch (error) { if (!(error instanceof ObjectiveStoreError) || error.code !== "rank_exhausted") throw error; }
-      // 간격이 없는 쪽을 먼저 삼킨다. 양쪽에 간격이 있는데도 모자라면(구간 안이 촘촘하다) 위쪽부터 더 넓힌다.
-      if (head > 0 && !roomBetween(edge(head - 1, -Infinity), line[head]!.rank)) head -= 1;
-      else if (tail + 1 < line.length && !roomBetween(line[tail]!.rank, edge(tail + 1, Infinity))) tail += 1;
-      else if (head > 0) head -= 1;
-      else if (tail + 1 < line.length) tail += 1;
-      else break;
-    }
-    const placements = spread ?? planUniform(line);
-    // 자리가 바닥난 예외 — 한 줄 남긴다(일반 이동은 파일 하나이므로 여기 오는 일 자체가 드물다).
-    if (!spread || placements.length > 1) {
-      const born = placements.filter(({ entry }) => entry.bare).length;
-      console.warn(`[objectives] ${commodoreId}: ${moved.id} 자리가 바닥나 ${spread ? `구간 ${placements.length}건을 다시 벌렸다` : `보드 ${placements.length}건 전체를 1024 간격으로 다시 깔았다`} (레코드 새로 세움 ${born}건)`);
-    }
-
-    let settled: StoredObjective | null = null;
-    try {
-      for (const { entry, rank } of placements) {
-        // 이미 그 자리인 레코드는 다시 쓰지 않는다 — 레코드 없는 목표는 자리가 같아도 파일을 세워야 한다.
-        if (entry !== placed && !entry.bare && entry.rank === rank) continue;
-        const record: StoredObjective = { ...entry.stored, rank };
-        if (options.storage) options.storage.save(commodoreId, compact(record));
-        else writeObjectiveAtomic(objectiveDir(commodoreId, record.id), record, sessionRecord(record.id));
-        objectives.set(record.id, record);
-        if (entry === placed) settled = record;
-      }
-    } catch (error) {
-      // 성공한 몫만 디스크와 캐시에 남았다 — 화면이 옛 줄에 머물지 않게 지금의 줄을 방송한 뒤 알린다.
-      console.warn(`[objectives] respread stopped in ${commodoreId}: ${error instanceof Error ? error.message : String(error)}`);
-      announce(commodoreId, objectives.get(moved.id) ?? bareRecord(moved.id));
-      throw error;
-    }
-    return (settled ? announce(commodoreId, settled) : null) ?? project(settled ?? moved, node);
-  }
 
   /** 화면의 「완료」와 같은 조건을 서버가 원자적으로 다시 따진다 — 제안 대기·스티어링 우선·검토 대기. */
   function assertReviewable(stored: StoredObjective): void {

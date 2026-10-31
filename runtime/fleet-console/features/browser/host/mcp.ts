@@ -228,8 +228,6 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
     },
     /** 턴이 끝났다 — 그 참가자를 사용 세션에서 빼고, 남은 참가자가 없을 때만 표시를 내린다. 실행 런타임의 턴 종료 훅이 부른다. */
     endAgentSession(objectiveId: string): void { const scope = scopeOf(deps, objectiveId); deps.service.endAgentSession(scope.contextId, "turn", scope.participantId); },
-    /** 사용자의 「중단」 — 허용은 남기고 진행 중 호출만 끊는다. 공유 브라우저면 모든 참가자의 호출을 끊는다. */
-    interruptObjective(objectiveId: string): number { return deps.service.interrupt(scopeOf(deps, objectiveId).contextId); },
     toolNames: specs.map((spec) => spec.id),
     async dispose(): Promise<void> {
       disposed = true;

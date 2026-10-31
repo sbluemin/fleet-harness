@@ -207,17 +207,7 @@ const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
 const OBJECTIVE_RESTORED_EVENT_CHANNEL = "objective:restored";
 /** 브라우저 스트림의 제거 프레임 — 삭제 유예에 들어간 Objective 의 id 만 싣는다. */
 const OBJECTIVE_REMOVED_SSE_EVENT = "objective:removed";
-export const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
-export const PAIRING_IDENTITY = { product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 } as const;
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
-  {
-    method: "GET",
-    path: PAIRING_IDENTITY_PATH,
-    summary: "Read the loopback runtime pairing identity.",
-    category: "Observer",
-    gate: "loopback",
-    transport: "http",
-  },
   {
     method: "GET",
     path: "/api/v1/status",
@@ -240,38 +230,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Get the console release notes.",
     category: "Update",
     gate: "loopback",
-    transport: "http",
-  },
-  {
-    method: "GET",
-    path: "/api/v1/theaters",
-    summary: "퇴역한 전역 Theater 목록 요청에 410을 반환합니다.",
-    category: "Observer",
-    gate: "loopback",
-    transport: "http",
-  },
-  {
-    method: "POST",
-    path: "/api/v1/theaters",
-    summary: "퇴역한 전역 Theater 등록 요청에 410을 반환합니다.",
-    category: "Observer",
-    gate: "origin-write",
-    transport: "http",
-  },
-  {
-    method: "PATCH",
-    path: "/api/v1/theaters/:theaterId",
-    summary: "퇴역한 전역 Theater 수정 요청에 410을 반환합니다.",
-    category: "Observer",
-    gate: "origin-write",
-    transport: "http",
-  },
-  {
-    method: "DELETE",
-    path: "/api/v1/theaters/:theaterId",
-    summary: "퇴역한 전역 Theater 삭제 요청에 410을 반환합니다.",
-    category: "Observer",
-    gate: "origin-write",
     transport: "http",
   },
   {
@@ -320,14 +278,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Re-check the registry for a newer console version now, bypassing the cached result.",
     category: "Update",
     gate: "origin-strict",
-    transport: "http",
-  },
-  {
-    method: "POST",
-    path: "/api/v1/access-grants",
-    summary: "Issue a single-use grant that opens a console session.",
-    category: "Access",
-    gate: "lock-token",
     transport: "http",
   },
   {
@@ -454,7 +404,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/tabs", summary: "Create, close or select a tab in an Objective's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/navigate", summary: "Navigate an Objective's browser tab as the user.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/viewport", summary: "Set the viewport preset or size of an Objective's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/interrupt", summary: "Interrupt the agent's in-flight browser calls for an Objective.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/inspect", summary: "Describe the page element under a viewport coordinate.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/favicon", summary: "Serve a tab's favicon through the Console (the page CSP allows no external images).", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/place", summary: "Tell the Desktop shell where an Objective's native browser view sits in the window.", category: "Console Execution", gate: "origin-strict", transport: "http" },
@@ -1566,9 +1515,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   }));
-  routeRegistry.register("/api/v1/theaters", async (context) => {
-    return false;
-  });
   routeRegistry.register("/api/v1/settings", async (ctx) => {
     const { req, res, pathname } = ctx;
     if (pathname === "/api/v1/settings/api-catalog") {
@@ -1714,10 +1660,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       mcpHttp.handle(req, res);
       return;
     }
-    if (pathname === PAIRING_IDENTITY_PATH) {
-      handlePairingIdentity(req, res);
-      return;
-    }
     // 플러그인이 선언한 콘솔 경로는 정적 파일보다 먼저 본다 — 뒤에 두면 /console/* 요청이
     // SPA 문서로 먼저 답해져, 그 경로를 소유한 플러그인은 영영 호출되지 않는다.
     // 플러그인이 선언한 콘솔 경로는 정적 파일보다 먼저 본다 — 뒤에 두면 /console/* 요청이
@@ -1733,10 +1675,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === CONSOLE_STOP_REQUEST_PATH) {
       handleStopRequest(req, res);
-      return;
-    }
-    if (pathname === "/api/v1/access-grants") {
-      handleAccessGrantIssue(req, res);
       return;
     }
     if (pathname === "/api/v1/access-links") {
@@ -1787,10 +1725,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handleStatus(req, res);
       return;
     }
-    if (pathname === "/api/v1/theaters") {
-      runAsyncHandler(handleObserverTheaters(req, res), res);
-      return;
-    }
     if (pathname === "/api/v1/theaters/folder-listings") {
       runAsyncHandler(handleTheaterFoldersList(req, res), res);
       return;
@@ -1802,11 +1736,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const restoreMatch = pathname.match(/^\/api\/v1\/deletions\/([^/]+)\/restore$/);
     if (restoreMatch) {
       runAsyncHandler(handleDeferredDeletionRestore(req, res, decodeURIComponent(restoreMatch[1] ?? "")), res);
-      return;
-    }
-    const theaterItemMatch = pathname.match(/^\/api\/v1\/theaters\/([^/]+)$/);
-    if (theaterItemMatch) {
-      runAsyncHandler(handleObserverTheaterItem(req, res, decodeURIComponent(theaterItemMatch[1] ?? "")), res);
       return;
     }
     if (pathname === "/api/v1/updates/release-notes") {
@@ -1827,15 +1756,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     res.writeHead(404);
     res.end();
-  }
-
-  function handlePairingIdentity(req: http.IncomingMessage, res: http.ServerResponse): void {
-    if (req.method !== "GET") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    // Discovery only: no process, path, owner, or durable-state data; no CORS/bearer change.
-    writeJson(res, 200, PAIRING_IDENTITY);
   }
 
   function handleHealth(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -1903,23 +1823,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         console.warn(`[fleet-console] Stop request shutdown failed: ${error instanceof Error ? error.message : String(error)}`);
       });
     });
-  }
-
-  // 조인 자격 발급. 로컬 자격이라도 링크와 같은 grant 문법을 거치게 해서, 세션을 여는
-  // 경로가 하나로 유지되도록 한다. 락 토큰은 이미 프로세스 제어 권한이므로 로컬 세션으로의
-  // 교환은 권한 확대가 아니라 축소다.
-  function handleAccessGrantIssue(req: http.IncomingMessage, res: http.ServerResponse): void {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const listener = listenerForRequest(req);
-    if (!listener || !isLockAuthorized(req)) {
-      writeJson(res, 401, { error: "unauthorized" });
-      return;
-    }
-    const grant = access.issueGrant(listener.audience);
-    writeJson(res, 201, { token: grant.token, audience: grant.audience, expiresAt: grant.expiresAt });
   }
 
   /**
@@ -2609,7 +2512,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
   lifecycle.setShutdown(stopServer);
 
-  const { handleTheaterFoldersList, handleTheaterFolderGrants, handleObserverTheaters, handleObserverTheaterItem, handleDeferredDeletionRestore } = createWorkspaceRoutes({ folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson });
+  const { handleTheaterFoldersList, handleTheaterFolderGrants, handleDeferredDeletionRestore } = createWorkspaceRoutes({ folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson });
 
   const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
 

@@ -1149,134 +1149,6 @@ describe("Objectives contract", () => {
     expect(fs.readFileSync(recoveryBytes, "utf8")).toBe("recovery evidence");
   });
 
-  it("keeps the dropped position of objectives with and without records, through reload and a stopped respread", () => {
-    const { store, events, add, objectiveRecords, objectivesDir, objectiveFile, savedIds } = harness();
-    const reload = (emit: (event: ObjectiveEvent) => void = () => undefined) =>
-      createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? objectivesDir : null), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit });
-    const order = (board: ObjectiveStore) => board.list("c1").map((objective) => objective.id);
-    add("one");
-    add("two");
-    add("three");
-    // 레코드 없는 목표의 자리는 만든 시각이다 — 새것이 위.
-    expect(order(store)).toEqual(["three", "two", "one"]);
-
-    // 레코드 없는 두 목표 사이로 떨어뜨린다 — 파일을 얻는 목표는 옮긴 하나뿐이고, 그 자리는 다시 읽어도 그대로다.
-    store.move("one", { afterId: "three" });
-    expect(order(store)).toEqual(["three", "one", "two"]);
-    expect(savedIds()).toEqual(["one"]);
-    expect(events.at(-1)).toMatchObject({ op: "upsert", objectiveId: "one", order: ["three", "one", "two"] });
-    expect(order(reload())).toEqual(["three", "one", "two"]);
-    // 첫 편집도 지금 자리를 그대로 받는다(레코드가 되면서 튀지 않는다) — 바뀐 줄은 방송에 실린다.
-    store.patch("two", { note: "b" });
-    expect(order(store)).toEqual(["three", "one", "two"]);
-    expect(events.at(-1)).toMatchObject({ op: "upsert", objectiveId: "two", order: ["three", "one", "two"] });
-    // 새로 세운 목표는 저장된 자리의 맨 아래에 선다.
-    add("four");
-    store.adopt("four", { note: "d" });
-    expect(order(store)).toEqual(["three", "one", "two", "four"]);
-
-    // 이웃한 실수 둘 사이에는 남은 자리가 없다 — 그때만 레코드 없는 목표 경계 안의 저장 목표들을 다시 벌린다.
-    for (const [id, rank] of [["left", 0], ["right", Number.MIN_VALUE], ["spare", 10]] as const) {
-      add(id);
-      fs.mkdirSync(path.join(objectivesDir, id), { recursive: true });
-      fs.writeFileSync(objectiveFile(id), JSON.stringify({ id: id, rank, note: id, missions: [] }));
-    }
-    const spread: ObjectiveEvent[] = [];
-    const packed = reload((event) => spread.push(event));
-    const before = order(packed);
-    expect(before).toEqual(["three", "one", "two", "left", "right", "spare", "four"]);
-
-    // 다시 벌리는 도중 쓰기가 실패하면 성공한 앞몫만 남고 줄의 순서는 하나도 뒤집히지 않는다 — 캐시·디스크·방송이 같은 줄을 말한다.
-    const realWrite = fs.writeFileSync;
-    let writes = 0;
-    const flaky = vi.spyOn(fs, "writeFileSync").mockImplementation(((...args: Parameters<typeof fs.writeFileSync>) => {
-      writes += 1;
-      if (writes === 2) throw new Error("EIO: i/o error");
-      return realWrite(...args);
-    }) as typeof fs.writeFileSync);
-    expect(() => packed.move("spare", { afterId: "left" })).toThrow(/EIO/);
-    flaky.mockRestore();
-    expect(order(packed)).toEqual(before);
-    expect(order(reload())).toEqual(before);
-    expect(spread.at(-1)).toMatchObject({ op: "upsert", objectiveId: "spare", order: before });
-
-    // 같은 이동을 다시 하면 자리가 벌어지고, 레코드 없는 목표는 끝까지 파일을 얻지 않는다.
-    packed.move("spare", { afterId: "left" });
-    expect(order(packed)).toEqual(["three", "one", "two", "left", "spare", "right", "four"]);
-    expect(order(reload())).toEqual(["three", "one", "two", "left", "spare", "right", "four"]);
-    expect(savedIds()).not.toContain("three");
-
-    // 같은 밀리초에 태어난 목표들 — id 안정 해시가 1/1024 칸으로 가른다. `tie-*` 세 개는 칸까지 겹쳐 자리가 완전히
-    // 같고, `adj-0`/`adj-416` 은 이웃 칸(지금 시각에서 4 ulp)이다.
-    const born = 1_790_000_000_000;
-    const tail = ["three", "one", "two", "left", "spare", "right", "four"];
-    for (const id of ["adj-0", "adj-416", "tie-10", "tie-591", "tie-762"]) add(id, { ts: { createdAt: born, updatedAt: born } });
-    expect(order(packed)).toEqual(["adj-416", "adj-0", "tie-10", "tie-591", "tie-762", ...tail]);
-
-    // 자리가 완전히 같은 셋 사이로 떨어뜨린다 — 그 자리만으로는 실수가 없으니 구간을 위로 넓혀 자리를 만든다.
-    // 넓힌 구간의 레코드 없는 목표만 레코드가 되고(tie-10), 건드릴 필요 없는 tie-591 은 그대로 남는다.
-    packed.move("tie-762", { afterId: "tie-10" });
-    expect(order(packed)).toEqual(["adj-416", "adj-0", "tie-10", "tie-762", "tie-591", ...tail]);
-    expect(order(reload())).toEqual(["adj-416", "adj-0", "tie-10", "tie-762", "tie-591", ...tail]);
-    expect(savedIds()).toContain("tie-10");
-    expect(savedIds()).not.toContain("tie-591");
-
-    // 이웃 칸 사이에는 중간값이 남아 있다 — 구간을 넓히지 않고 옮긴 파일 하나로 끝난다.
-    packed.move("tie-591", { beforeId: "adj-0" });
-    expect(order(packed)).toEqual(["adj-416", "tie-591", "adj-0", "tie-10", "tie-762", ...tail]);
-    expect(order(reload())).toEqual(["adj-416", "tie-591", "adj-0", "tie-10", "tie-762", ...tail]);
-    expect(savedIds()).not.toContain("adj-0");
-    expect(savedIds()).not.toContain("adj-416");
-  });
-
-  // 실수의 자리가 정말 바닥난 보드 — 1024 걸음이 자리로 남지 않는 크기(ulp ≥ 1024)에서만 일어난다.
-  it("renumbers a board whose ranks leave no representable gap, and refuses the drop instead of corrupting the order", () => {
-    const { objectiveRecords, add, workspace } = harness();
-    const objectivesDir = path.join(workspace, "objectives-packed");
-    const open = () => createObjectiveStore({ documentContext, dirOf: (theaterId) => (theaterId === "c2" ? objectivesDir : null), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
-    const board = (rank: number) => {
-      fs.rmSync(objectivesDir, { recursive: true, force: true });
-      for (const id of ["pack-a", "pack-b", "pack-c"]) {
-        fs.mkdirSync(path.join(objectivesDir, id), { recursive: true });
-        fs.writeFileSync(path.join(objectivesDir, id, "objective.json"), JSON.stringify({ id: id, rank, note: id, missions: [] }));
-      }
-      return open();
-    };
-    for (const id of ["pack-a", "pack-b", "pack-c"]) add(id, { commodoreId: "c2", theaterId: "t2" });
-    const order = (store: ObjectiveStore) => store.list("c2").map((objective) => objective.id);
-    const rankOf = (id: string) => (JSON.parse(fs.readFileSync(path.join(objectivesDir, id, "objective.json"), "utf8")) as Saved).rank;
-
-    // 1.5×2^62 에서 ulp 는 1024 다 — 1024 를 뺀 자리까지는 있어도 그 사이 중간값이 없어, 구간을 보드 전체로 넓혀도
-    // 자리가 나오지 않는다. 그때 보드 전체를 1024 간격으로 다시 깔아 떨어뜨린 자리를 지킨다.
-    const crowded = board(3 * 2 ** 61);
-    crowded.move("pack-c", { afterId: "pack-a" });
-    expect(order(crowded)).toEqual(["pack-a", "pack-c", "pack-b"]);
-    expect([rankOf("pack-a"), rankOf("pack-c"), rankOf("pack-b")]).toEqual([3 * 2 ** 61 + 1024, 3 * 2 ** 61 + 2048, 3 * 2 ** 61 + 3072]);
-    expect(order(board(3 * 2 ** 61))).toEqual(["pack-a", "pack-b", "pack-c"]); // 같은 폴더를 다시 깔았으니 원래 줄로 돌아온다
-
-    // 균등 재번호도 아래에서 위로 쓴다 — 도중에 실패하면 쓴 몫은 안 쓴 몫 아래에 그대로 남아 줄이 뒤집히지 않고,
-    // 캐시·디스크가 같은 몫에서 멈추며 어느 목표도 내용을 잃지 않는다.
-    const flaky = board(3 * 2 ** 61);
-    const realWrite = fs.writeFileSync;
-    let writes = 0;
-    const stub = vi.spyOn(fs, "writeFileSync").mockImplementation(((...args: Parameters<typeof fs.writeFileSync>) => {
-      writes += 1;
-      if (writes === 2) throw new Error("EIO: i/o error");
-      return realWrite(...args);
-    }) as typeof fs.writeFileSync);
-    expect(() => flaky.move("pack-c", { afterId: "pack-a" })).toThrow(/EIO/);
-    stub.mockRestore();
-    expect(order(flaky)).toEqual(order(open()));
-    expect([rankOf("pack-a"), rankOf("pack-c"), rankOf("pack-b")]).toEqual([3 * 2 ** 61, 3 * 2 ** 61, 3 * 2 ** 61 + 3072]);
-    expect(flaky.find("pack-b")!.note).toBe("pack-b");
-
-    // 1024 걸음조차 자리로 남지 않는 크기(1.5×2^63, ulp 2048)에서는 아무 것도 뒤집지 않고 거절한다 — 내용도 자리도 그대로다.
-    const exhausted = board(3 * 2 ** 62);
-    expect(() => exhausted.move("pack-c", { afterId: "pack-a" })).toThrow(ObjectiveStoreError);
-    expect(order(exhausted)).toEqual(["pack-a", "pack-b", "pack-c"]);
-    expect([rankOf("pack-a"), rankOf("pack-b"), rankOf("pack-c")]).toEqual([3 * 2 ** 62, 3 * 2 ** 62, 3 * 2 ** 62]);
-  });
-
   it("adds an objective from Console Use with a title and brief only, through the same action gate the host checks", async () => {
     const { store, objectiveRecords, add, savedIds, workspace, launches, consoleTool } = harness();
     const caller = add("console-caller", { title: "Console caller", groupId: "g-console" });
@@ -1360,7 +1232,8 @@ describe("Objectives contract", () => {
     expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "three"]);
     expect(store.find(duplicate.id)).toBeNull();
     expect(byId(await rows("all")).has(duplicate.id)).toBe(false);
-    expect((await route("objective/restore", { objectiveId: duplicate.id })).status).toBe(404);
+    // 합쳐져 사라진 목표는 도메인 복원도 거절한다 — HTTP 라우트는 제거됐다.
+    await expect(launch.restore(duplicate.id)).rejects.toThrow("unknown_objective");
     expect(savedIds()).not.toContain(duplicate.id);
     const reloaded = createObjectiveStore({ documentContext, dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (oid) => objectiveRecords.get(oid) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     expect(reloaded.find(waiting.id)!.merged).toContainEqual(expect.objectContaining({ sourceId: duplicate.id, restorable: false }));
@@ -1390,17 +1263,19 @@ describe("Objectives contract", () => {
     expect(launches).toHaveLength(launchedBefore);
     expect((await route("objective/archive", { objectiveId: pendingCompletion.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, done: expect.any(Object) } });
     expect(launches).toHaveLength(launchedBefore);
-    expect((await route("objective/restore", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, done: expect.any(Object) });
+    // 보관 복원은 도메인 경로로 확인한다 — HTTP 라우트는 제거됐다.
+    expect(await launch.restore(pendingCompletion.id)).toMatchObject({ archived: false, done: expect.any(Object) });
     // 사람이 「보관」을 고른 기동 전 목표(restorable)는 지우지 않는다 — 무기동 지휘관 Objective 으로 보관되고, 복원하면 기록과 함께 돌아온다.
     const shelved = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Shelve before starting", groupId: null, note: "keep the brief" });
     expect((await route("objective/archive", { objectiveId: shelved.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, note: "keep the brief" } });
     expect(launches).toHaveLength(launchedBefore);
-    expect((await route("objective/restore", { objectiveId: shelved.id })).value.objective).toMatchObject({ archived: false, hasSession: true, note: "keep the brief" });
+    expect(await launch.restore(shelved.id)).toMatchObject({ archived: false, hasSession: true, note: "keep the brief" });
     // 플래그가 없어도 보관만 한다. 영구 삭제는 이 라우트에서 할 수 없다.
     const discarded = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Archive before starting", groupId: null });
     expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: false });
     expect(store.find(discarded.id)).toMatchObject({ archived: true });
-    expect((await route("objective/restore", { objectiveId: discarded.id })).status).toBe(200);
+    await launch.restore(discarded.id);
+    expect(store.find(discarded.id)).toMatchObject({ archived: false });
 
     // 보관함을 읽고 영구 삭제를 예약하는 같은 정리 경계 — Core의 타이머·파일 삭제 알고리즘은 재현하지 않는다.
     await launch.archive(shelved.id);

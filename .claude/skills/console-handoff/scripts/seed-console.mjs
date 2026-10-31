@@ -57,42 +57,47 @@ async function api(method, pathname, body) {
   return json;
 }
 
-/** Read the chat journal, calling onEvent for each entry. Returns when onEvent says stop. */
+/** Read the chat journal over the ticketed WebSocket, calling onEvent for each entry. Returns when onEvent says stop. */
 async function readChat(sessionId, onEvent, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const res = await fetch(`${base}/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-stream`, {
-    headers: { Origin: base, Accept: "text/event-stream" },
-    signal: controller.signal,
+  // chat-stream SSE는 제거됐다 — 채팅 관측은 티켓 WebSocket이 맡는다.
+  const ticketRes = await fetch(`${base}/api/v1/agent/ticket`, {
+    method: "POST",
+    headers: { Origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ objectiveId: sessionId, channel: "chat" }),
   });
-  if (!res.ok || !res.body) fail(`chat-stream -> ${res.status}`);
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
+  const ticketText = await ticketRes.text();
+  if (!ticketRes.ok) fail(`chat ticket -> ${ticketRes.status} ${ticketText.slice(0, 300)}`);
+  let ticket = null;
+  try { ticket = JSON.parse(ticketText)?.ticket; } catch { /* 아래에서 검증 */ }
+  if (typeof ticket !== "string" || !ticket) fail("chat ticket -> invalid response");
+  const url = `${base.replace(/^http/, "ws")}/api/v1/terminal/ws?ticket=${encodeURIComponent(ticket)}`;
+  await new Promise((resolve, reject) => {
+    let done = false;
+    let ws = null;
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    const finish = (error) => {
       if (done) return;
-      buffer += decoder.decode(value, { stream: true });
-      let cut;
-      while ((cut = buffer.indexOf("\n\n")) >= 0) {
-        const frame = buffer.slice(0, cut);
-        buffer = buffer.slice(cut + 2);
-        for (const line of frame.split("\n")) {
-          if (!line.startsWith("data:")) continue;
-          const payload = line.slice(5).trim();
-          if (!payload) continue;
-          let entry = null;
-          try { entry = JSON.parse(payload); } catch { continue; }
-          if (onEvent(entry.event ?? entry) === true) { controller.abort(); return; }
-        }
-      }
-    }
-  } catch (error) {
-    if (error?.name !== "AbortError") throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+      done = true;
+      clearTimeout(timer);
+      try { ws?.close(); } catch { /* 이미 닫힘 */ }
+      if (error) reject(error);
+      else resolve();
+    };
+    try {
+      ws = new WebSocket(url);
+    } catch (error) { finish(error); return; }
+    ws.onmessage = (event) => {
+      let entry = null;
+      try { entry = JSON.parse(typeof event.data === "string" ? event.data : String(event.data)); } catch { return; }
+      // ack/nack 프레임은 저널이 아니다.
+      if (entry?.type === "ok" || entry?.type === "nack") return;
+      try {
+        if (onEvent(entry.event ?? entry) === true) finish(null);
+      } catch (error) { finish(error); }
+    };
+    ws.onerror = () => finish(new Error("chat socket error"));
+    ws.onclose = () => finish(null);
+  });
 }
 
 const timeoutMs = Number(args.get("timeout") ?? 240) * 1000;

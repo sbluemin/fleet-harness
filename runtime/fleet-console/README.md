@@ -34,7 +34,7 @@ When Console creates a terminal session, it generates a session id and resolves 
 
 Folder selection is handled entirely in the browser UI: the React directory browser modal calls `POST /api/v1/theaters/folder-listings`, then `POST /api/v1/theaters/folder-grants` once the operator confirms a directory. `POST /api/v1/commodore/theaters/add` consumes the one-use grant with the owning `commodoreId`. Each commodore has its own folder list; the same folder may belong to several lists. Tool requests select `{ commodoreId, theaterId }`, while an explicit `{ objectiveId }` file link resolves that Objective's fixed cwd. Removing a folder from a list does not move an existing Objective or revoke its fixed cwd. Missing or replaced paths remain unavailable rather than falling back to another owner's folder. No OS-native dialog or child process is involved.
 
-The former Console-wide `/api/v1/theaters` registry and its item CRUD/order routes return `410 theater_registry_retired`. They no longer produce lifecycle SSE events or a bootstrap list. Startup preserves legacy source bytes, commits and verifies owner folders and Objective documents, then removes migrated registration rows. Unrecognized rows and ambiguous aliases are held in `.archive-migration` for explicit recovery, never used as a runtime registry. Existing unexpired deletion records still restore their Objectives under their owners, not a global Theater registration.
+There is no Console-wide Theater registry and no list, create, update, or delete API for one. Startup preserves legacy source bytes, commits and verifies owner folders and Objective documents, then removes migrated registration rows. Unrecognized rows and ambiguous aliases are held in `.archive-migration` for explicit recovery, never used as a runtime registry. Existing unexpired deletion records still restore their Objectives under their owners, not a global Theater registration.
 
 Folder grants are one-use and in-memory. Browser-side cancellation stays local to the modal and does not call the server grant endpoint.
 
@@ -183,7 +183,7 @@ Fleet Console Desktop is a thin Electron shell around this service, not a second
 
 Published stable CLI/browser and Desktop-supervised Console share one canonical stable lock and `~/.fleet/console` durable-state namespace (unless the `FLEET_CONSOLE_DATA_DIR` override — formerly `FLEET_CONSOLE_DIR`, still accepted — is deliberately set). Owner metadata remains provenance/lifecycle compatibility data; it does not alter Console channel, health, update, or CLI-control behavior. Desktop adopts only a Console it launched itself; when another Console, such as one started with `fleet console`, already holds the lock, Desktop asks you to stop it and quits without touching it.
 
-Updates apply in-session only to ordinary global packages through the npm-global worker. For a Desktop-managed `console/latest` runtime, `POST /api/v1/updates/apply` never mutates the live runtime: it answers `delegated` and hands the request to the supervising Desktop, which relaunches so its hardened entry-flow installer installs the new version. The `/api/v1/pairing-identity` endpoint is discovery only, never authentication.
+Updates apply in-session only to ordinary global packages through the npm-global worker. For a Desktop-managed `console/latest` runtime, `POST /api/v1/updates/apply` never mutates the live runtime: it answers `delegated` and hands the request to the supervising Desktop, which relaunches so its hardened entry-flow installer installs the new version.
 
 ## Fonts on WSL
 

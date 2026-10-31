@@ -153,15 +153,27 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     }
   }, 10_000);
 
-  it("refuses a loopback grant presented to the remote listener", async () => {
+  it("spends a link grant on its first exchange and pairs the device", async () => {
     const fixture = await startFixture({ remote: true });
-    const issued = await fetch(`${fixture.loopbackEndpoint}api/v1/access-grants`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${fixture.lockToken}` },
-    });
-    const localGrant = (await issued.json() as { token: string }).token;
+    const token = grantTokenOf(await createLink(fixture));
 
-    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: localGrant }));
+    const first = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, device: "once" }));
+    expect(first.status).toBe(204);
+    expect((first.headers["set-cookie"] ?? []).some((cookie) => cookie.startsWith("fleet_console_pairing_"))).toBe(true);
+
+    const second = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, device: "once" }));
+    expect(second.status).toBe(401);
+  });
+
+  it("refuses a remote link grant presented to the loopback listener", async () => {
+    const fixture = await startFixture({ remote: true });
+    const token = grantTokenOf(await createLink(fixture));
+
+    const joined = await fetch(`${fixture.loopbackEndpoint}api/v1/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
 
     expect(joined.status).toBe(401);
   });

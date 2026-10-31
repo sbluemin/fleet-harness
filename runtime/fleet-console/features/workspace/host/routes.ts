@@ -65,16 +65,6 @@ export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   }
 
-  async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "GET" && !isTerminalAuthorized(req)) {
-      writeJson(res, 401, { error: "unauthorized" }); return;
-    }
-    writeJson(res, 410, { error: "theater_registry_retired" });
-  }
-  async function handleObserverTheaterItem(req: http.IncomingMessage, res: http.ServerResponse, _theaterId: string): Promise<void> {
-    return handleObserverTheaters(req, res);
-  }
-
   async function handleDeferredDeletionRestore(req: http.IncomingMessage, res: http.ServerResponse, deletionId: string): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -96,7 +86,7 @@ export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
     }
   }
 
-  return { handleTheaterFoldersList, handleTheaterFolderGrants, handleObserverTheaters, handleObserverTheaterItem, handleDeferredDeletionRestore };
+  return { handleTheaterFoldersList, handleTheaterFolderGrants, handleDeferredDeletionRestore };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
