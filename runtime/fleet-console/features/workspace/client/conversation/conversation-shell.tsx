@@ -21,7 +21,7 @@ export { ConversationSideBarBottom } from "./conversation-dock.js";
 import { MIN_PANEL_WIDTH, openConversationTab, RightRail, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { closeRailPanel, dismissRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
-import { mayAutoOpenConversationRail, useConversationRailMemory } from "./conversation-rail-memory.js";
+import { conversationRailTab, mayAutoOpenConversationRail, useConversationRailMemory } from "./conversation-rail-memory.js";
 import { mountConversationObjectiveTabsHost, registerConversationObjectiveTab, useConversationObjectiveTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/objective-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { useTheaterInboxState } from "../theater-inbox/store.js";
@@ -1328,11 +1328,13 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && tabIdsRef.current.includes(active)) closeRailPanel(active);
   }, []);
-  // 사람이 이 대화에서 사이드바를 여닫은 것을 기억한다 — 위 cleanup 의 닫힘과 아래 기본 탭 열림은 사람의 것이 아니라 남지 않는다.
-  useConversationRailMemory(descriptor.id, descriptor.defaultTab !== undefined);
-  // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있거나 앞 Objective 대화의 탭(목표, 대화와 함께 걷힌 구성원)을 보이던 중이면 기본
-  // 탭을 연다 — 다만 패널이 닫혀 있고 사람이 이 대화에서 닫아 둔 것이면 열지 않는다. 이 대화의 탭과 그 밖의 패널(Theater 설정·도구·설정)은
-  // 그대로 둔다.
+  // 사람이 이 대화에서 사이드바를 여닫은 것과 마지막으로 선 탭을 기억한다 — 위 cleanup 의 닫힘과 아래 자동 열림은 사람의 것이 아니라
+  // 여닫힘으로 남지 않는다.
+  const railActivePanelId = useRailActivePanelId();
+  useConversationRailMemory(descriptor.id, descriptor.defaultTab !== undefined, railActivePanelId, tabIdsRef.current);
+  // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있거나 앞 Objective 대화의 탭(목표, 대화와 함께 걷힌 구성원)을 보이던 중이면 이
+  // 대화에서 마지막으로 선 탭(없으면 기본 탭)을 연다 — 다만 패널이 닫혀 있고 사람이 이 대화에서 닫아 둔 것이면 열지 않는다. 이 대화의 탭과
+  // 그 밖의 패널(Theater 설정·도구·설정)은 그대로 둔다.
   const bindings = useDesktopRailEntries();
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
@@ -1344,7 +1346,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
     } else if (active !== null || !mayAutoOpenConversationRail(descriptor.id)) return;
-    openRailPanel(descriptor.defaultTab);
+    openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, descriptor.defaultTab));
   }, [descriptor.defaultTab, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;

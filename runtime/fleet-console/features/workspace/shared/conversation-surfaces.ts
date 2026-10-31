@@ -69,7 +69,7 @@ export interface ConversationSurfaceDescriptor {
    */
   readonly actions?: (ctx: ConversationSurfaceContext) => ReactNode;
   readonly tabs?: readonly ConversationSurfaceTab[];
-  /** 열 때 오른쪽 패널이 닫혀 있으면 이 탭을 연다. */
+  /** 열 때 오른쪽 패널이 닫혀 있으면 연다 — 이 대화에서 마지막으로 선 탭이 있으면 그 탭을, 없으면 이 탭을 연다. */
   readonly defaultTab?: string;
   /** 데스크톱 배치를 떠나 표면을 걷기 직전 한 번 부른다. tabId 는 활성 오른쪽 패널 id 이며, 없으면 null 이다. 폰 착지는 플러그인이 정한다. */
   readonly onLeaveDesktop?: (context: { readonly params: Readonly<Record<string, unknown>>; readonly tabId: string | null }) => void;
