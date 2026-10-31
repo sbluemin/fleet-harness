@@ -251,7 +251,8 @@
 /* 위임 토글을 행 끝으로 — chevron이 있던 자리(행 끝 10px 안쪽, 두 줄 세로 가운데). */
 .commander-tab--card .side-bar-cluster-row { grid-template-columns: 30px 1fr auto; }
 .commander-tab--card .side-bar-cluster-row:has(.side-bar-cluster-row-mark-toggle) { padding-right: 10px; }
-.commander-tab--card .side-bar-cluster-row-aside { grid-row: 1 / span 2; align-self: center; }
+/* 위임 토글을 행 끝으로 — 행 전체 세로 가운데. 좌측 목록의 제목 줄 중심 규칙보다 구체성을 올려 카드에서만 덮는다. */
+.commander-tab--card .side-bar-cluster-row--conversation .side-bar-cluster-row-aside { grid-row: 1; align-self: center; height: auto; }
 .commander-tab--card .side-bar-cluster-row-mark-toggle { width: 30px; height: 30px; margin: 0; }
 .commander-tab--card .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark { width: 18px; height: 18px; border-radius: 5px; }
 .commander-tab--card .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark.has-glyph { border-radius: 4px; }
