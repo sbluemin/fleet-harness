@@ -187,6 +187,8 @@ export interface ObjectivePatch {
 
 export interface ObjectiveStore {
   list(commodoreId: string): readonly Objective[];
+  /** 한 사령관의 목표 기록 — 보관 포함, 정리(removed) 제외. 보드 검색의 원본이다. */
+  records(commodoreId: string): readonly Objective[];
   /** 알려진 모든 Theater 의 목표. */
   all(): readonly Objective[];
   /** 같은 가시성 경계에서 PR 관찰에 필요한 값만 읽는다. 화면·임무·구성원 투영은 만들지 않는다. */
@@ -1222,6 +1224,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const store: ObjectiveStore = {
     forgetOwner(commodoreId) { cache.delete(commodoreId); },
     list: (commodoreId) => visible(commodoreId).map(({ stored, node }) => project(stored, node)),
+    records: (commodoreId) => visible(commodoreId, true).flatMap(({ stored, node }) => stored.removed ? [] : [project(stored, node)]),
     // 보관된 목표도 관계·복구·purge 소유권은 가진다. 활성 공급은 list만 사용한다.
     all: () => commodoreIds().flatMap((commodoreId) => visible(commodoreId, true).map(({ stored, node }) => project(stored, node))),
     prTargets: () => commodoreIds().flatMap((commodoreId) => visible(commodoreId, true).flatMap(({ stored }) => (stored.results ?? []).flatMap((result) => result.kind === "pr" ? [{ objectiveId: stored.id, done: !!stored.done, result }] : []))),
