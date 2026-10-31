@@ -9,6 +9,7 @@ import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_
 import { refuse, text } from "./tool-results.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
 import type { TaskforceStore } from "./taskforce/store.js";
+import { TaskforceStoreError } from "./taskforce/errors.js";
 import { MAX_TASKFORCE_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
@@ -71,7 +72,9 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       try { return text(await body(parsed.data, context)); }
       catch (error) {
         const code = error instanceof Error ? error.message : "commodore_failed";
-        return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed");
+        // 같은 턴에 바로잡을 수 있게 거절 사유를 돌려준다 — TaskforceStoreError의 details가 힌트를 싣는다.
+        const details = error instanceof TaskforceStoreError ? error.details ?? {} : {};
+        return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed", details);
       }
     },
   });
@@ -188,24 +191,38 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     }),
     // TaskForce — 판단 턴의 말하기와 닫기 제안은 이 두 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
     // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
-    tool("taskforce_post", "Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit.", z.object({
+    tool("taskforce_post", "Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit. Use the TaskForce id and member ids exactly as shown in this turn's TaskForce block (the id: line and the Members line); never guess or shorten them.", z.object({
       taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
       text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT),
       mentions: z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).max(32).optional(),
     }).strict(), ({ taskforceId, text, mentions }) => {
       const taskforce = options.taskforce;
       if (!taskforce) throw new Error("taskforce_unavailable");
-      const { entry } = taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text, ...(mentions ? { mentions } : {}) });
-      return { taskforceId, seq: entry.seq };
+      try {
+        const { entry } = taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text, ...(mentions ? { mentions } : {}) });
+        return { taskforceId, seq: entry.seq };
+      } catch (error) {
+        // 같은 턴에 바로잡을 수 있게 거절 사유를 돌려준다 — id는 추측하지 말고 이번 턴의 TaskForce 블록을 그대로 쓴다.
+        if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Use the TaskForce id exactly as shown in this turn's TaskForce block (the id: line); do not guess or shorten it, then call again in this turn." });
+        if (error instanceof TaskforceStoreError && error.code === "taskforce_closed") throw new TaskforceStoreError(error.code, undefined, { hint: "This TaskForce is closed; only the person can reopen it." });
+        if (error instanceof TaskforceStoreError && error.code === "invalid_request") throw new TaskforceStoreError(error.code, undefined, { hint: "mentions must be member ids from this turn's TaskForce block Members line." });
+        throw error;
+      }
     }),
-    tool("taskforce_propose_close", "Propose closing a TaskForce you belong to, with your reason. Only the person can close it; a proposal alone changes nothing and wakes the other members to judge it.", z.object({
+    tool("taskforce_propose_close", "Propose closing a TaskForce you belong to, with your reason. Only the person can close it; a proposal alone changes nothing and wakes the other members to judge it. Use the TaskForce id exactly as shown in this turn's TaskForce block; never guess or shorten it.", z.object({
       taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
       reason: z.string().trim().min(1).max(1000),
     }).strict(), ({ taskforceId, reason }) => {
       const taskforce = options.taskforce;
       if (!taskforce) throw new Error("taskforce_unavailable");
-      const { entry } = taskforce.proposeClose(taskforceId, options.commodoreId, reason);
-      return { taskforceId, seq: entry.seq };
+      try {
+        const { entry } = taskforce.proposeClose(taskforceId, options.commodoreId, reason);
+        return { taskforceId, seq: entry.seq };
+      } catch (error) {
+        if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Use the TaskForce id exactly as shown in this turn's TaskForce block (the id: line); do not guess or shorten it, then call again in this turn." });
+        if (error instanceof TaskforceStoreError && error.code === "taskforce_closed") throw new TaskforceStoreError(error.code, undefined, { hint: "This TaskForce is already closed." });
+        throw error;
+      }
     }),
   ];
 }

@@ -180,15 +180,22 @@ describe("taskforce runtime", () => {
       const { state: created } = h.taskforce.create({ name: "출격 TF", topic: "오늘의 주제", members: [a, b] });
       const taskforceId = created.id;
       h.supervisor.sync("started");
-      // 사람의 말 — 두 성원이 판단 대상이다.
+      // 사람의 말 — 두 성원이 판단 대상이다. Alpha는 세션을 먼저 교체한다.
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 말" });
+      h.supervisor.replaceSessionNext(a);
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       const sendsOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).flatMap((session) => session.sent);
-      const sessionOf = (alias: string) => h.sessions.find((session) => session.name.includes(alias))!;
+      // 세션은 교체될 때마다 새로 열린다 — 항상 마지막 세션으로 말한다.
+      const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
       expect(sendsOf("Alpha")).toHaveLength(1);
       expect(sendsOf("Beta")).toHaveLength(1);
       expect(sendsOf("Alpha")[0]).toContain("TaskForce");
       expect(sendsOf("Alpha")[0]).toContain("사람의 말");
+      // 판단 블록에는 말하는 데 필요한 id가 그대로 있다 — 모델이 추측하지 않게 한다.
+      expect(sendsOf("Alpha")[0]).toContain(`(id: ${taskforceId})`);
+      expect(sendsOf("Alpha")[0]).toContain(`Alpha (${a})`);
+      expect(sendsOf("Alpha")[0]).toContain(`Beta (${b})`);
+      expect(sendsOf("Alpha")[0]!.match(/\(id: ([0-9a-f-]{36})\)/)![1]).toBe(taskforceId);
       expect(h.tfEvents.some((event) => event.op === "taskforce-judging" && event.judging.length === 2)).toBe(true);
 
       const post = async (alias: string, text: string) => {
@@ -199,17 +206,29 @@ describe("taskforce runtime", () => {
       // Beta는 침묵으로 첫 턴을 끝낸다.
       sessionOf("Beta").finish();
       await vi.advanceTimersByTimeAsync(10);
-      // TF로만 깬 Alpha 턴의 자유 텍스트는 1:1 기록에 남지 않는다.
-      sessionOf("Alpha").emit({ kind: "text", text: "TF chatter that must not surface" });
+      // Alpha도 말 없이 첫 턴을 끝낸다 — 교대한 세션의 rotated 이유가 다음 턴에 남는다.
+      sessionOf("Alpha").finish();
+      await vi.advanceTimersByTimeAsync(10);
+      // 사람의 말이 또 오면 rotated와 taskforce가 한 턴에 겹친다.
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 말 2" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      // 겹친 턴의 자유 텍스트도 1:1 기록에 남지 않는다 — 세션 수명주기는 조용함을 깨지 않는다.
+      sessionOf("Alpha").emit({ kind: "text", text: "rotated chatter that must not surface" });
       await post("Alpha", "Alpha의 말");
       sessionOf("Alpha").finish();
       await vi.advanceTimersByTimeAsync(10);
+      // Beta의 겹친 턴은 침묵으로 끝낸다.
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
       // 자신의 말에는 스스로 깨지 않는다.
-      expect(sendsOf("Alpha")).toHaveLength(1);
+      expect(sendsOf("Alpha")).toHaveLength(2);
       const alphaEntries = h.store.transcriptRead(a).entries;
       expect(alphaEntries.some((entry) => entry.kind === "text")).toBe(false);
-      expect(JSON.stringify(alphaEntries)).not.toContain("TF chatter that must not surface");
+      expect(JSON.stringify(alphaEntries)).not.toContain("rotated chatter that must not surface");
       expect(JSON.stringify(alphaEntries)).not.toContain("오늘의 주제");
+      // 깨움 이유에 taskforce와 rotated가 함께 남았다.
+      const wakeReasons = alphaEntries.flatMap((entry) => (entry.kind === "wake" ? [entry.reasons] : []));
+      expect(wakeReasons.some((reasons) => reasons.includes("taskforce") && reasons.includes("rotated"))).toBe(true);
 
       // chain을 12까지 쌓는다 — Beta부터 번갈아 말한다.
       const speakers = ["Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta"];
@@ -220,7 +239,7 @@ describe("taskforce runtime", () => {
         await vi.advanceTimersByTimeAsync(10);
       }
       const final = h.taskforce.read(taskforceId)!;
-      expect(final.counts).toEqual({ person: 1, commodore: 12 });
+      expect(final.counts).toEqual({ person: 2, commodore: 12 });
       expect(final.chain.count).toBe(12);
       expect(final.chain.paused).toBe(true);
       const codes = h.taskforce.readLedger(taskforceId).entries.flatMap((entry) => (entry.speaker.kind === "system" ? [entry.speaker.code] : []));
@@ -242,16 +261,37 @@ describe("taskforce runtime", () => {
       // 판단 결과 — 침묵과 말하기가 남았다. 읽을 때에도 스냅샷이 있다.
       expect(h.tfEvents.some((event) => event.op === "taskforce-judging" && event.outcomes?.[b]?.outcome === "silent")).toBe(true);
       expect(h.tfEvents.some((event) => event.op === "taskforce-judging" && event.outcomes?.[a]?.outcome === "spoke")).toBe(true);
+      // 끝난 판단마다 시각을 새긴다 — 1:1 턴에 실린 새 세션 맥락도 판단이다.
+      // 판단으로 깨지 않은 턴의 되풀이 침묵도 최근 시각으로 남는다.
+      const lastSilentAt = () => h.tfEvents.flatMap((event) => {
+        if (event.op !== "taskforce-judging") return [];
+        const outcome = event.outcomes[b];
+        return outcome?.outcome === "silent" ? [outcome.at] : [];
+      }).at(-1);
+      h.supervisor.replaceSessionNext(b);
+      h.store.transcriptAppend(b, { kind: "message", text: "1:1 말 1" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
+      const r1 = lastSilentAt();
+      h.supervisor.replaceSessionNext(b);
+      h.store.transcriptAppend(b, { kind: "message", text: "1:1 말 2" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
+      const r2 = lastSilentAt();
+      expect(r1).toBeDefined();
+      expect(r2).toBeGreaterThan(r1!);
       const snapshot = h.taskforce.read(taskforceId)?.judging;
       expect(snapshot?.judging).toEqual([]);
       expect(snapshot?.outcomes?.[a]?.outcome).toBe("spoke");
-      expect(snapshot?.outcomes?.[b]?.outcome).toBe("spoke");
+      expect(snapshot?.outcomes?.[b]?.outcome).toBe("silent");
       const listed = h.taskforce.list().find((row) => row.id === taskforceId)!;
-      expect(listed.counts).toEqual({ person: 1, commodore: 12 });
+      expect(listed.counts).toEqual({ person: 2, commodore: 12 });
       expect(listed.judging).toEqual([]);
       // 재기동 복원 — 말 수와 판단 스냅샷이 함께 돌아온다.
       const restored = createTaskforceStore({ root: path.join(h.consoleDataDir, "taskforce"), emit: () => undefined });
-      expect(restored.read(taskforceId)?.counts).toEqual({ person: 1, commodore: 12 });
+      expect(restored.read(taskforceId)?.counts).toEqual({ person: 2, commodore: 12 });
       expect(restored.read(taskforceId)?.judging?.outcomes?.[a]?.outcome).toBe("spoke");
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
