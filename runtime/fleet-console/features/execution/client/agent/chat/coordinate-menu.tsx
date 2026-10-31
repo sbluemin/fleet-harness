@@ -29,7 +29,6 @@ interface LaunchGroup {
   readonly rows: readonly ObjectiveLaunchVariantRow[];
 }
 
-const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
 const menuItems = (root: HTMLElement): HTMLButtonElement[] =>
   [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"],[role="menuitemradio"]')];
@@ -149,13 +148,14 @@ export function SessionCoordinateMenu({
   // 메뉴는 body 포털의 고정 위치다 — 패널은 확대 표면의 transform 조상 안에 있어 그 안의 fixed는 갇히고 잘린다.
   // 좌표는 패널 바닥에 앉으므로 아래 자리가 모자라면 위로 연다.
   React.useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
+    if (!open || !triggerRef.current || !menuRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
-    const left = Math.max(MENU_MARGIN, Math.min(rect.left, window.innerWidth - MENU_WIDTH - MENU_MARGIN));
+    const width = menuRef.current.getBoundingClientRect().width;
+    const left = Math.max(MENU_MARGIN, Math.min(rect.left, window.innerWidth - width - MENU_MARGIN));
     const below = rect.bottom + 6;
     const height = menuRef.current?.offsetHeight ?? 320;
     const top = below + height > window.innerHeight - MENU_MARGIN ? Math.max(MENU_MARGIN, rect.top - height - 6) : below;
-    setPos({ left, top, width: MENU_WIDTH });
+    setPos({ left, top });
   }, [open, stage, groups, pending, failed, working]);
 
   React.useLayoutEffect(() => {

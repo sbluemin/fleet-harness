@@ -58,11 +58,14 @@
   max-width: calc(100vw - 32px);
   padding: var(--popover-pad);
   /* 공통 팝업 표면(theme.css --popover-*)의 원형이다 — 다른 팝업이 이 판의 값을 토큰으로 받는다. */
-  border: 1px solid var(--popover-rim);
+  border: 0;
   border-radius: var(--popover-radius);
   background: var(--popover-face);
   color: var(--text-primary);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
+  min-width: var(--popover-min-width);
+  gap: var(--popover-list-gap);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
 .conversation-dock-menu[hidden] { display: none; }
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) { position: relative; display: block; width: 100%; }

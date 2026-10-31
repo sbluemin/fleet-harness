@@ -808,16 +808,20 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--popover-list-gap);
   max-height: 320px;
   overflow-y: auto;
-  padding: var(--space-1);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: 0 12px 28px oklch(5% 0.01 245 / 35%);
+  padding: var(--popover-pad);
+  border: 0;
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+  width: var(--popover-width);
+  min-width: var(--popover-min-width);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
+  max-width: calc(100vw - 32px);
 }
-.group-composer-pop.is-stop { left: auto; width: 260px; }
+.group-composer-pop.is-stop { left: auto; width: var(--popover-width); }
 /* 「+」 메뉴(SDK 부품)의 자리 — 캡슐 왼쪽 끝(감싼 칸의 안쪽 여백과 같은 자리)에 맞춰, 캡슐 테두리에 겹치지 않고 한 칸 띄워 위로 뜬다. */
 .group-composer-plus-menu {
   position: absolute;
@@ -827,19 +831,22 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-composer-pop-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 7px var(--space-2);
+  gap: var(--popover-row-gap);
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--popover-row-radius);
   background: none;
   font: inherit;
-  font-size: var(--t-sm);
+  font-size: var(--popover-font-size);
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
+  min-height: var(--popover-row);
+  line-height: var(--popover-line-height);
+  letter-spacing: 0;
 }
 .group-composer-pop-row:hover,
-.group-composer-pop-row:focus-visible { background: var(--control-wash-hover); outline: none; }
+.group-composer-pop-row:focus-visible { background: var(--wash-hover); outline: none; }
 .group-composer-pop-name { flex: none; font-weight: var(--weight-regular); }
 
 /* 제안과 요약은 입력창 바로 위 한 줄을 공유한다. 안내를 먼저 줄이고, 칩 영역 12rem과 요약이 함께 들어가지 못하면

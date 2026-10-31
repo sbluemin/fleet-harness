@@ -10,12 +10,11 @@
   display: grid;
   place-items: center;
   padding: 32px;
-  /* Doctrine: 무채색 덮개 리터럴(깊이 예외). --ink-abyss 섞기는 라이트에서 밝은 면이 되어 뒤가 가라앉지 않는다 —
-     모달이 화면 가운데를 차지하는 만큼 뒤는 두 테마 모두 한 단 물러서야 한다. */
-  background: oklch(0% 0 0 / 48%);
+  /* 뒤쪽 화면은 테마별 공통 대화상자 덮개로 가라앉힌다. */
+  background: var(--dialog-scrim);
   animation: settings-modal-scrim-in var(--duration-fast) ease-out;
 }
-:root[data-theme="light"] .settings-modal-scrim { background: oklch(18% 0 0 / 24%); }
+:root[data-theme="light"] .settings-modal-scrim { background: var(--dialog-scrim); }
 /* 모달 안의 SDK Select 목록은 body로 포털되고 자기 층(--z-select-popover, 40)에 서서 모달 덮개(z 90) 아래로 깔린다 —
    보이지 않는 목록을 누르면 클릭이 아래 행으로 떨어진다. 모달이 떠 있는 동안에는 body 포털 목록이 모델 선택기 메뉴
    (.fc-coord-menu)와 같은 오버레이 층에 선다. 모달 밖의 셀렉트와 전역 층 값은 그대로다. */
@@ -28,11 +27,11 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
   height: min(760px, 100%);
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
-  background: var(--canvas-abyss);
+  border: 0;
+  border-radius: var(--dialog-radius);
+  background: var(--dialog-face);
   color: var(--text-primary);
-  box-shadow: var(--shadow-floating);
+  box-shadow: var(--dialog-surface-shadow);
   animation: settings-modal-in var(--duration-base) var(--ease-spring);
 }
 
@@ -50,7 +49,7 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
   min-height: 0;
   padding: 18px 12px;
   border-right: 1px solid var(--hairline);
-  background: var(--ink-deep);
+  background: var(--dialog-face);
 }
 
 .settings-modal-search {

@@ -15,10 +15,10 @@
   position: fixed;
   width: min(340px, calc(100vw - 24px));
   padding: var(--space-4);
-  border: 1px solid color-mix(in oklab, var(--brass) 34%, var(--hairline));
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
   color: var(--text-primary);
   pointer-events: auto;
   animation: feature-tour-enter var(--duration-slow) var(--ease-glide) both;

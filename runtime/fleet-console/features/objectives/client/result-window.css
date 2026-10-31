@@ -1,5 +1,5 @@
 /* 결과물 창 — 배경을 덮지 않는다. 다이어그램·브리핑 모달보다 아래, 채팅·레일보다 위에 선다. */
-.objectives-result-window { position: fixed; z-index: 59; display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; min-height: 0; border: 1px solid var(--popover-rim); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--popover-shadow); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); outline: none; container: objectives-result / inline-size; }
+.objectives-result-window { position: fixed; z-index: 59; display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; min-height: 0; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); outline: none; container: objectives-result / inline-size; }
 .objectives-result-window:focus-visible { box-shadow: var(--focus-face); }
 .objectives-result-window.is-dragging { user-select: none; }
 .objectives-result-window.is-dragging * { user-select: none; }

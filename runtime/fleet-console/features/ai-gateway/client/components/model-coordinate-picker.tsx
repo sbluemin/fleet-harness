@@ -109,7 +109,6 @@ export interface ModelCoordinatePickerProps {
 
 export type { MobileCoordinateChoiceProps as ModelCoordinateMobileProps } from "../../../settings/client/mobile-host.js";
 
-const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
 const OFF_GROUP_ID = "off";
 
@@ -274,19 +273,20 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   const menuRef = React.useRef<HTMLDivElement | null>(null);
   const focusIntent = React.useRef<"first" | "last" | null>(null);
   const [pos, setPos] = React.useState<React.CSSProperties>({});
-  const menuWidth = props.menuWidth ?? MENU_WIDTH;
+  const menuWidth = props.menuWidth;
   // 문서 리스너는 열릴 때 한 번 붙는다 — 그 뒤 렌더의 값(value·staged)으로 닫도록 최신 닫기 함수를 ref로 읽는다.
   const closeMenuRef = React.useRef(closeMenu);
   closeMenuRef.current = closeMenu;
 
   React.useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
+    if (!open || !triggerRef.current || !menuRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
-    const left = Math.max(MENU_MARGIN, Math.min(rect.left, window.innerWidth - menuWidth - MENU_MARGIN));
+    const width = menuRef.current.getBoundingClientRect().width;
+    const left = Math.max(MENU_MARGIN, Math.min(rect.left, window.innerWidth - width - MENU_MARGIN));
     const below = rect.bottom + 6;
     const height = menuRef.current?.offsetHeight ?? 320;
     const top = below + height > window.innerHeight - MENU_MARGIN ? Math.max(MENU_MARGIN, rect.top - height - 6) : below;
-    setPos({ left, top, width: menuWidth });
+    setPos({ left, top });
   }, [open, groups.length, activeModel, focused, menuWidth, footer]);
 
   React.useLayoutEffect(() => {
@@ -390,7 +390,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
           className={["fc-coord-menu", showTrack ? "is-focused" : "", props.menuClassName ?? ""].filter(Boolean).join(" ")}
           role="menu"
           aria-label={labels.menu}
-          style={pos}
+          style={{ ...pos, minWidth: menuWidth }}
           // 메뉴는 body 포털이지만 React 이벤트는 컴포넌트 트리를 따라 선택기를 품은 서랍·패널·시트로 올라간다. 그쪽의 Esc 닫기가
           // 문서 리스너보다 먼저 돌므로, 메뉴 안의 키는 여기서 먼저 처리하고 멈춘다 — Esc는 메뉴만 취소해 닫는다. 강도 트랙에서의
           // Tab은 목록 항목의 경계 Tab처럼 지금 미리보기 좌표로 한 번 확정하고 닫는다(Shift+Tab도 같다).

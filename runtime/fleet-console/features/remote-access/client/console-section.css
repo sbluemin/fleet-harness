@@ -33,7 +33,7 @@
 .console-section-rename button, .console-section-confirm button { border: 0; border-radius: 8px; background: var(--wash-hover); color: var(--text-secondary); padding: 4px 10px; font-size: var(--t-xs); }
 .console-section-confirm { padding: 4px 10px 8px; font-size: var(--t-xs); color: var(--text-secondary); }
 .console-section-confirm button + button { margin-left: 4px; }
-.host-picker-surface .console-section.is-picker { width: min(360px, calc(100vw - 24px)); border-radius: 16px; border: 1px solid var(--popover-rim); background: var(--popover-face); box-shadow: var(--popover-shadow); }
+.host-picker-surface .console-section.is-picker { width: var(--popover-width); border-radius: var(--popover-radius); border: 0; background: var(--popover-face); box-shadow: var(--popover-surface-shadow); min-width: var(--popover-min-width); max-width: calc(100vw - 24px); }
 .host-picker-surface[data-anchored="true"] .console-section.is-picker { position: absolute; left: var(--picker-left, 12px); top: var(--picker-top, 52px); bottom: var(--picker-bottom, auto); }
 .host-picker-surface .console-section-list { max-height: min(60vh, 480px); }
 .host-picker-surface[data-place="side"]:not([data-anchored]) { justify-content: flex-start; padding: 8px 12px 12px 62px; }

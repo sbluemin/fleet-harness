@@ -3386,7 +3386,7 @@
    .theater-menu가 파일 후반에 선언되므로 복합 셀렉터로 특이도를 올려 이긴다. */
 .theater-menu.side-bar-theater-menu {
   /* 커서 자리에 서는 문맥 메뉴도 글자 폭으로 줄지 않고 팝오버 한 벌의 폭을 진다. */
-  min-width: var(--popover-width);
+  min-width: var(--popover-min-width);
   max-width: min(300px, calc(100vw - 16px));
   right: auto;
 }
@@ -8986,10 +8986,10 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: 0 12px 28px oklch(0% 0 0 / 28%);
+  border: 0;
+  border-radius: var(--dialog-radius);
+  background: var(--dialog-face);
+  box-shadow: var(--dialog-surface-shadow);
   color: var(--text-primary);
 }
 .fc-composer-quote-editor__excerpt { font-size: var(--t-sm); color: var(--text-tertiary); overflow-wrap: anywhere; }
@@ -9074,7 +9074,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   display: grid;
   place-items: center;
   padding: var(--space-6);
-  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
+  background: var(--dialog-scrim);
 }
 .fc-composer-viewer__frame {
   position: relative;
@@ -9625,6 +9625,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   display: flex; flex-direction: column;
   gap: var(--popover-list-gap);
   max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
+  max-width: calc(100vw - 24px);
 }
 .fc-coord-menu::-webkit-scrollbar { display: none; }
 .fc-coord-menu-head { display: grid; gap: 2px; margin: 0 0 5px; padding: 8px 12px; border-bottom: 1px solid var(--popover-divider); font-size: var(--t-sm); line-height: 1.45; color: var(--text-secondary); }
@@ -9902,9 +9903,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 
 .control-curtain-scrim,
 .control-reclaimed-notice {
-  background:
-    radial-gradient(circle at 50% 18%, color-mix(in oklch, var(--warn) 13%, transparent), transparent 42%),
-    color-mix(in oklch, var(--ink-abyss) 76%, transparent);
+  background: var(--dialog-scrim);
 }
 
 .control-curtain-scrim {
@@ -9921,8 +9920,8 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   overflow: hidden;
   /* 경고색 테두리가 신호다 — 면은 불투명 대화상자 면 한 장이고 광택·후광은 두지 않는다. */
   border: 1px solid color-mix(in oklab, var(--warn) 48%, var(--surface-rim));
-  border-radius: var(--radius-xl);
-  box-shadow: var(--popover-shadow);
+  border-radius: var(--dialog-radius);
+  box-shadow: var(--dialog-shadow);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
 

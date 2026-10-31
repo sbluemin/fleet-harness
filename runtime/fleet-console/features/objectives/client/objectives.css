@@ -62,7 +62,7 @@
 .objectives-switch svg { width: 13px; height: 13px; }
 .objectives-switch:hover, .objectives-switch[aria-expanded="true"] { color: var(--brass-ink); }
 .objectives-switch:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
-.objectives-pop { position: absolute; z-index: 20; top: calc(100% + 4px); left: 14px; width: 300px; max-width: calc(100% - 28px); max-height: 460px; overflow: auto; padding: 6px 4px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: 0 16px 40px oklch(0% 0 0 / 50%); }
+.objectives-pop { position: absolute; z-index: 20; top: calc(100% + 4px); left: 14px; width: var(--popover-width); max-width: calc(100% - 28px); max-height: 460px; overflow: auto; padding: var(--popover-pad); border: 0; border-radius: var(--popover-radius); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); min-width: var(--popover-min-width); gap: var(--popover-list-gap); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
 .objectives-pop-tree, .objectives-pop-tree ol { margin: 0; padding: 0; list-style: none; }
 .objectives-pop-zone + li, .objectives-pop-group + li { margin-top: 6px; }
 .objectives-pop-zone-hd, .objectives-pop-group-hd { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
@@ -76,19 +76,19 @@
 .objectives-pop-count { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 /* 줄은 사이드바 목표 줄·칩과 같은 이름 문법과 격자다 — 제목 700/13, 글리프 칸은 칩 비콘과 같은 24px이고 한 줄이면 가운데로,
    메타가 붙은 두 줄이면 글리프와 점이 제목 줄의 세로 가운데에 선다. */
-.objectives-pop-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) 6px; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.objectives-pop-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) 6px; align-items: center; gap: var(--popover-row-gap); width: 100%; padding: 6px var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; min-height: var(--popover-row); font-size: var(--popover-font-size); line-height: var(--popover-line-height); letter-spacing: 0; }
 .objectives-pop-row > :first-child { justify-self: center; }
 /* 부가 줄이 있는 행 — 조건은 :has() 대신 렌더러가 붙인 클래스다. `:has(...) > :first-child` 는 문서 어디서든 자식이 바뀔 때마다
    (컴포저 입력 한 글자마다) 화면 전체 스타일을 다시 계산하게 해, 긴 대화에서 입력을 수백 ms 늦췄다. */
 .objectives-pop-row.has-meta { align-items: start; }
 .objectives-pop-row.has-meta > :first-child { margin-top: calc((var(--t-md) * 1.3 - 20px) / 2); }
 .objectives-pop-row.has-meta .objectives-pop-dot { margin-top: calc((var(--t-md) * 1.3 - 6px) / 2); }
-.objectives-pop-row:hover { background: var(--control-rest); }
+.objectives-pop-row:hover { background: var(--wash-hover); }
 .objectives-pop-row:focus-visible { box-shadow: var(--focus-face); }
 /* 선택은 사이드바 줄과 같은 문법 — 테두리 전체와 brass 워시(왼쪽 띠 없음). */
-.objectives-pop-row[aria-current="true"] { background: var(--brass-glow); border-color: color-mix(in oklch, var(--brass) 45%, transparent); }
+.objectives-pop-row[aria-current="true"] { background: var(--wash-selected);  }
 .objectives-pop-body { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 24px; }
-.objectives-pop-title { font-family: var(--font-ui); font-size: var(--t-md); font-weight: var(--weight-bold); line-height: 1.3; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-pop-title { font-family: var(--font-ui); font-size: var(--popover-font-size); font-weight: var(--weight-bold); line-height: var(--popover-line-height); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-pop-row[aria-current="true"] .objectives-pop-title { color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary)); }
 .objectives-pop-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-pop-meta .is-req { color: var(--aurora); }
@@ -101,8 +101,8 @@
 .objectives-pop-meta .is-warn { color: var(--warn-ink); }
 .objectives-pop-meta .is-from { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 「시작 전 N ›」 — 글자형 한 줄. 상자·채움·왼쪽 띠 없이, 머무를 때만 줄 배경이 옅게 선다. */
-.objectives-pop-fold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
-.objectives-pop-fold:hover { background: var(--control-rest); color: var(--text-secondary); }
+.objectives-pop-fold { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; padding: 0 var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--popover-font-size); text-align: left; cursor: pointer; min-height: var(--popover-row); line-height: var(--popover-line-height); letter-spacing: 0; }
+.objectives-pop-fold:hover { background: var(--wash-hover); color: var(--text-secondary); }
 .objectives-pop-fold:focus-visible { box-shadow: var(--focus-face); }
 .objectives-pop-fold-rings { display: inline-flex; flex: none; justify-content: center; gap: 2px; width: 24px; }
 .objectives-pop-fold-rings i { width: 6px; height: 6px; border: 1px solid var(--ink-fog); border-radius: 50%; }
@@ -258,15 +258,19 @@ span.objectives-row-main { cursor: default; }
   position: fixed;
   z-index: 60;
   padding: var(--popover-pad);
-  border: 1px solid var(--popover-rim);
+  border: 0;
   border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
   display: flex; flex-direction: column;
   max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
+  width: var(--popover-width);
+  min-width: var(--popover-min-width);
+  gap: var(--popover-list-gap);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
 .objectives-menu::-webkit-scrollbar { display: none; }
-.objectives-menu-item { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; min-height: var(--popover-row); padding: 6px var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-base); font-weight: var(--weight-regular); text-align: left; cursor: pointer; transition: background var(--duration-fast); }
+.objectives-menu-item { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; min-height: var(--popover-row); padding: 0 var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--popover-font-size); font-weight: var(--weight-regular); text-align: left; cursor: pointer; transition: background var(--duration-fast); line-height: var(--popover-line-height); letter-spacing: 0; }
 .objectives-menu-item:hover { background: var(--wash-hover); }
 .objectives-menu-item:focus-visible { box-shadow: var(--focus-face); }
 .objectives-menu-item.is-active { background: var(--wash-selected); }
@@ -384,7 +388,7 @@ span.objectives-row-main { cursor: default; }
   .objectives-row-lab { overflow-wrap: normal; }
 }
 .objectives-zoom-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 12px; background: var(--dialog-scrim); }
-.objectives-zoom { box-sizing: border-box; width: min(940px, 100%); max-height: 100%; overflow: auto; padding: 12px 16px 16px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); outline: none; }
+.objectives-zoom { box-sizing: border-box; width: min(940px, 100%); max-height: 100%; overflow: auto; padding: 12px 16px 16px; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); outline: none; }
 .objectives-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .objectives-zoom-title { display: inline-flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--t-base); font-weight: var(--weight-bold); color: var(--text-primary); }
 .objectives-zoom-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
@@ -442,7 +446,7 @@ a.objectives-link:focus-visible { color: var(--brass-ink); text-decoration-color
 }
 
 /* 기한 달력 — 메뉴와 같은 카드 위에 월 하나. 숫자는 모노, 오늘은 고리, 고른 날은 brass 채움, 지난 날은 dim. */
-.objectives-cal { position: fixed; z-index: 60; width: min(252px, calc(100vw - 16px)); padding: 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); outline: none; }
+.objectives-cal { position: fixed; z-index: 60; width: min(252px, calc(100vw - 16px)); padding: 8px; border: 0; border-radius: var(--popover-radius); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); outline: none; }
 /* 달력은 body 끝 포털이라 패널 머리(창 끌기 줄) 위에 겹쳐 선다 — 카드 전체를 창 끌기에서 빼야 겹친 자리(「기한 없음」 등)가 클릭을 받는다. */
 html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-cal-quick { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 8px; border-bottom: 1px solid var(--hairline); margin-bottom: 6px; }
