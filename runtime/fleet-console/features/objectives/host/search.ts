@@ -23,7 +23,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /** 두 도구가 그대로 싣는 입력 모양. 범위(사령관)는 입력이 아니라 도구가 정한다. */
 export const searchInputShape = {
   query: z.string().trim().min(1).max(200).describe("Words, all required (AND), each matched as a case-insensitive substring."),
-  parts: z.array(z.enum(SEARCH_PARTS)).min(1).max(SEARCH_PARTS.length).optional().describe("Where to look; omitted, everywhere. remark: plan requests, extension context and hand-to-person reasons. ref: PR, artifact and evidence results."),
+  parts: z.array(z.enum(SEARCH_PARTS)).min(1).max(SEARCH_PARTS.length).optional().describe("Omitted, all. remark: plan/extension context, hand-to-person reasons. ref: PR, artifact, evidence results."),
   status: z.enum(SEARCH_STATUSES).optional().describe("open: not done, not archived. Default any, archived included."),
   since: day.optional().describe("YYYY-MM-DD, inclusive, on each objective's last-updated date (UTC)."),
   until: day.optional().describe("YYYY-MM-DD, inclusive."),

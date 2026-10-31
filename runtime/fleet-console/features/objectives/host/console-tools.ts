@@ -67,7 +67,7 @@ const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0
 const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: restorable, incl. unstarted objectives. Commodore: done needs a person message or requested routine.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
-  description: "Objective lists, groups, inbox, fleet, history, archive and models; search past and archived records; add/tidy. archive/remove are restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
+  description: "Objective lists, groups, inbox, fleet, history, archive, search, models; add/tidy. archive/remove: restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
   actions: {
     groups: { kind: "read", input: z.object(scope) },
     list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },

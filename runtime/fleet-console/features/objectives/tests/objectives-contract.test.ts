@@ -1384,11 +1384,11 @@ describe("Objectives contract", () => {
   });
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
-    const { ctx, store, call, launch, workspace, events, add, objectiveFile, objectiveRecords, objectivesDir } = harness();
+    const { ctx, store, call, launch, workspace, events, add, objectiveFile, objectiveRecords, objectiveRecordsHost, objectivesDir } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
-    const other = (await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Other", groupId: null })).id;
+    const other = (await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Other", groupId: null, note: "Pelican rollout brief" })).id;
     // 다른 목표의 지휘관은 이 목표를 쓰지도 읽지도 못한다.
     expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "p", text: "p" }] }, other)).structuredContent.error).toBe("not_participant");
     expect((await call("read", { objectiveId: objective.id }, other)).structuredContent.error).toBe("not_participant");
@@ -1562,6 +1562,20 @@ describe("Objectives contract", () => {
     expect((await call("complete_mission", { ...completion, results: [{ kind: "pr", url: "https://github.com/example/project/pull/999" }] }, commander)).structuredContent.error).toBe("objective_done");
     expect(store.find(objective.id)).toEqual(completed);
     expect((await call("detach_result", { objectiveId: objective.id, resultId }, commander)).structuredContent.error).toBe("objective_done");
+    // 보드 검색 — 지휘관과 사령관은 같은 핵심으로 그 사령관의 기록(보관 포함)만 찾는다. 구성원·밖의 세션·다른 사령관은 받지 못한다.
+    await objectiveRecordsHost.archive(other);
+    expect((await call("search", { objectiveId: objective.id, query: "PELICAN rollout" }, commander)).structuredContent).toMatchObject({ total: 1, nextCursor: null, hits: [{ objectiveId: other, status: "archived", part: "brief" }] });
+    expect((await call("search", { objectiveId: objective.id, query: "shipped", parts: ["mission"], status: "done" }, commander)).structuredContent).toMatchObject({ total: 1, hits: [{ objectiveId: objective.id, part: "mission", snippet: expect.stringContaining("shipped p1"), prs: expect.arrayContaining([{ number: 2, url: "https://github.com/example/project/pull/2" }]) }] });
+    expect((await call("search", { objectiveId: objective.id, query: "pelican" }, member.id)).structuredContent.error).toBe("not_commander");
+    expect((await call("search", { objectiveId: objective.id, query: "pelican" }, collision)).structuredContent.error).toBe("not_participant");
+    const commodoreSearch = async (commodoreId: string) => {
+      const tool = createCommodoreBoardTools(ctx, store, launch, commodoreId)[0]!;
+      const parsed = tool.actionSchema!.parse({ action: "search", query: "pelican" });
+      if (!parsed.ok) throw new Error("search refused by the action gate");
+      return ((await tool.execute(parsed.call, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
+    };
+    expect(await commodoreSearch("c1")).toMatchObject({ total: 1, hits: [{ objectiveId: other, status: "archived" }] });
+    expect(await commodoreSearch("c2")).toEqual({ query: "pelican", total: 0, hits: [], nextCursor: null });
   });
 
   it("keeps the person's answers to a decision request as decisions only once delivered, and clears a request the board no longer supports without recording one", async () => {
