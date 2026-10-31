@@ -358,3 +358,30 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 
 .new-session-status { color: var(--text-tertiary); font-size: var(--t-sm); }
 .new-session-status.is-alert { color: var(--coral); }
+
+/* ── 사령관 아바타 강조 (모델·강도 칸) ──────────────────────────────────────
+   활성 사령관 아바타색을 노브·게이지·모델 강조에 싣는다. 입력창 전체·보내기 단추·크럼은 범위 밖이다.
+   .workspace-avatar-panel 의 토큰 매핑을 따르되, :root 에서 풀린 값으로 상속되는 --gauge-fill 은
+   경계에서 다시 결합한다. accent 가 있을 때만 걸리므로 키가 없으면 기본색 그대로다.
+   손잡이(--gauge-face)·게이트 티어(crest·apex)·공급자 톤은 중립·정체성이라 바꾸지 않는다. */
+.new-session-launch-slot.is-avatar-accent {
+  --brass: var(--conversation-accent-body);
+  --brass-bright: var(--conversation-accent);
+  --brass-deep: var(--conversation-accent-body);
+  --brass-ink: var(--conversation-accent);
+  --brass-quiet: var(--conversation-accent-body);
+  --brass-quiet-ink: var(--conversation-accent);
+  --brass-glow: color-mix(in oklab, var(--conversation-accent) 12%, transparent);
+  --text-on-brass: var(--mongle-face);
+  --gauge-fill: var(--brass);
+  --conversation-add-ink: var(--conversation-accent-body);
+}
+:root[data-theme="light"] .new-session-launch-slot.is-avatar-accent { --conversation-add-ink: var(--conversation-accent); }
+/* 강도 값 라벨은 아바타색 잉크로 — 다크는 몸색, 라이트는 글자용 잉크. 게이트 뒤 티어(MAX·ULTRACODE)는
+   crest·apex 정체성을 유지하므로 제외한다. */
+.new-session-launch-slot.is-avatar-accent .effort-track-value:not([data-effort-level="max"]):not([data-effort-level="ultra"]) {
+  color: var(--conversation-add-ink);
+}
+/* 모델 팝오버는 범위 밖 — 인라인으로 열려도 강조색을 물려받지 않는다. 그 안에서 쓰는 rebound 토큰은
+   ★의 --brass-ink 뿐이다(다크·라이트 기본값이 모두 --text-primary 라 한 줄로 되돌린다). */
+.new-session-launch-slot.is-avatar-accent .launch-pop { --brass-ink: var(--text-primary); }
