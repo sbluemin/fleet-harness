@@ -128,10 +128,10 @@ export function CommodoreMemory({ t, theaterId, onReading }: { readonly t: T; re
   const toggle = branchToggle.toggle;
 
   return (
-    <div className="objectives-commodore-memory">
+    <div className="objectives-commodore-memory objectives-commodore-panel-section">
       <div className="objectives-commodore-section">
         <div className="objectives-commodore-memory-head">
-          <h3 className="objectives-commodore-section-title">{t("commodore.memory.label")}</h3>
+          <h3 className="objectives-commodore-panel-title">{t("commodore.memory.label")}</h3>
           {memory.entries.length ? <span className="objectives-commodore-memory-meta">{t("commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</span> : null}
         </div>
         {memory.entries.length ? (

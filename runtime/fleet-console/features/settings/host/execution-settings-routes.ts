@@ -222,7 +222,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       ctx.host.http.writeJson(res, 400, { error: "invalid_commodore_system_prompt" });
       return true;
     }
-    // readJsonBody yields: the Theater may have been forgotten while the body was arriving.
+    // readJsonBody yields: the Commodore may have been removed while the body was arriving.
     if (!deps.commodoreSystemPrompts.exists(commodoreId)) {
       ctx.host.http.writeJson(res, 404, { error: "commodore_not_found" });
       return true;
@@ -235,8 +235,8 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
     { method: "PUT", path: "", summary: "Save or clear a Commodore's Claude Code system prompt.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
-  // Theater별 서브에이전트 — 기본은 대체(키 없음)이고, 켜 둔 Theater만 서브에이전트를 그대로 쓴다.
-  // 판단은 호출마다 읽으므로 떠 있는 세션도 다음 서브에이전트 호출부터 바뀐 값을 따른다.
+  // 사령관별 지휘관 서브에이전트 허용 — 키가 없으면 비허용이다. 구성원과 사령관 본인 세션에는 적용하지 않는다.
+  // 판단은 호출마다 읽으므로 떠 있는 지휘관도 다음 서브에이전트 호출부터 바뀐 값을 따른다.
   ctx.registerRouter("agent/commodore-subagents", async ({ req, res }) => {
     if (req.method !== "GET" && req.method !== "PUT") {
       ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
@@ -265,7 +265,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       ctx.host.http.writeJson(res, 400, { error: "invalid_commodore_subagents" });
       return true;
     }
-    // readJsonBody yields: the Theater may have been forgotten while the body was arriving.
+    // readJsonBody yields: the Commodore may have been removed while the body was arriving.
     if (!deps.commodoreSystemPrompts.exists(commodoreId)) {
       ctx.host.http.writeJson(res, 404, { error: "commodore_not_found" });
       return true;
@@ -273,8 +273,8 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
     ctx.host.http.writeJson(res, 200, { commodoreId, subagentsKept: deps.commodoreSystemPrompts.keepSubagents(commodoreId, kept) });
     return true;
   }, [
-    { method: "GET", path: "", summary: "Read whether a Commodore keeps Claude Code subagents.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "PUT", path: "", summary: "Choose whether a Commodore keeps Claude Code subagents.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "", summary: "Read whether a Commodore allows its Commanders to use Claude Code subagents.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "", summary: "Choose whether a Commodore allows its Commanders to use Claude Code subagents.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 }
 

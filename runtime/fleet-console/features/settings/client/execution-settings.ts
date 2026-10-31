@@ -119,31 +119,6 @@ export async function saveTheaterSystemPrompt(theaterId: string, prompt: Theater
   return assertTheaterSystemPromptState(await response.json(), theaterId, response.status);
 }
 
-/** Theater의 서브에이전트 — false(기본)면 서브에이전트 호출 자리에 Objectives 구성원이 선다. */
-export interface TheaterSubagentsState { readonly theaterId: string; readonly subagentsKept: boolean }
-
-export async function fetchTheaterSubagents(theaterId: string, signal?: AbortSignal): Promise<TheaterSubagentsState> {
-  const response = await fetch(`/api/v1/agent/theater-subagents?theaterId=${encodeURIComponent(theaterId)}`, { signal });
-  await assertOk(response);
-  return assertTheaterSubagentsState(await response.json(), theaterId, response.status);
-}
-
-export async function saveTheaterSubagents(theaterId: string, subagentsKept: boolean, signal?: AbortSignal): Promise<TheaterSubagentsState> {
-  const response = await fetch(`/api/v1/agent/theater-subagents?theaterId=${encodeURIComponent(theaterId)}`, {
-    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subagentsKept }), signal,
-  });
-  await assertOk(response);
-  return assertTheaterSubagentsState(await response.json(), theaterId, response.status);
-}
-
-function assertTheaterSubagentsState(value: unknown, theaterId: string, status: number): TheaterSubagentsState {
-  const result = (value ?? {}) as Partial<TheaterSubagentsState>;
-  if (result.theaterId !== theaterId || typeof result.subagentsKept !== "boolean") {
-    throw new TerminalSettingsApiError(status, "Invalid Theater subagents response");
-  }
-  return { theaterId, subagentsKept: result.subagentsKept };
-}
-
 function assertTheaterSystemPromptState(value: unknown, theaterId: string, status: number): TheaterSystemPromptState {
   if (!value || typeof value !== "object") throw new TerminalSettingsApiError(status, "Invalid Theater system prompt response");
   const result = value as Partial<TheaterSystemPromptState>;

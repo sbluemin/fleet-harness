@@ -64,10 +64,10 @@ export interface ConsoleRuntimeContext {
   readonly host: ConsoleRuntimeHost;
   readonly consoleControl?: import("../../console-use/host/console-control.js").ConsoleControl;
   /**
-   * 이 Objective의 서브에이전트(Agent 도구) 호출에 돌려줄 거절 사유. null이면 호출을 그대로 둔다.
-   * 사유는 등록한 플러그인이 정하고, 실행 기능은 묻고 전달만 한다.
+   * 이 세션이 목표의 지휘관인지 조회한다. 사령관 설정은 지휘관에만 적용한다.
+   * 호스트가 Objectives의 공개 보드로 신원을 판별하며 구성원·사령관 본인 세션은 제외한다.
    */
-  readonly agentCallRedirect?: (objectiveId: string) => string | null;
+  readonly isCommanderSession?: (sessionId: string) => boolean;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   registerWsHandler(path: string, handler: UpgradeHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }

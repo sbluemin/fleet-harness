@@ -97,12 +97,12 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, lea
             </div>
           </> : null}
           <p className="objectives-cm-secnote objectives-cm-memory-path">{`commodore/memory/${entry.ref}.md`}</p>
-        </> : !memory.entries.length ? <>
-          <p className="objectives-cm-glab">{t("commodore.memory.label")}</p>
+        </> : <section className="objectives-commodore-panel-section">{!memory.entries.length ? <>
+          <h3 className="objectives-commodore-panel-title">{t("commodore.memory.label")}</h3>
           <p className="objectives-cm-secnote" role="status">{t(memory.failed ? "commodore.memory.failed" : memory.loaded ? "commodore.memory.empty" : "commodore.memory.loading")}</p>
           {memory.failed ? <button type="button" data-press="r3" className="objectives-cm-pill" onClick={() => { void loadCommodoreMemory(theaterId); }}>{t("commodore.memory.retry")}</button> : null}
         </> : <>
-          {header ? <p className="objectives-cm-glab">{t("commodore.memory.label")}</p> : null}
+          {header ? <h3 className="objectives-commodore-panel-title">{t("commodore.memory.label")}</h3> : null}
           <p className="objectives-cm-secnote">{t("commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</p>
           <label className="objectives-cm-memory-search">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
@@ -125,7 +125,7 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, lea
               </div>) : null}
             </section>;
           })}
-        </>}
+        </>}</section>}
       </div>
     </div>
   );

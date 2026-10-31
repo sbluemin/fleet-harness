@@ -57,7 +57,7 @@ describe("terminal settings routes", () => {
     // 사령관 설정은 Theater 잊기의 원본 정리와 독립적이다.
     const subagentsUrl = "/api/v1/agent/commodore-subagents?commodoreId=theater-1";
     const kept = createRouteHarness({ body: { subagentsKept: true }, data: harness.currentData() });
-    await kept.handleTheaterSubagents({ req: req("PUT", "application/json", subagentsUrl), res: res(), pathname: subagentsUrl });
+    await kept.handleCommodoreSubagents({ req: req("PUT", "application/json", subagentsUrl), res: res(), pathname: subagentsUrl });
     expect(kept.writes.pop()?.body).toEqual({ commodoreId: "theater-1", subagentsKept: true });
     expect(kept.commodoreSystemPrompts.subagentsKept("theater-1")).toBe(true);
     kept.commodoreSystemPrompts.purge("theater-1");
@@ -291,7 +291,7 @@ function createRouteHarness(options: HarnessOptions = {}) {
   return {
     handle,
     handleTheaterPrompt: routers.get("agent/commodore-system-prompt")!,
-    handleTheaterSubagents: routers.get("agent/commodore-subagents")!,
+    handleCommodoreSubagents: routers.get("agent/commodore-subagents")!,
     commodoreSystemPrompts,
     writes,
     currentData: () => data,

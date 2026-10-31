@@ -1,8 +1,7 @@
 import { ChevronGlyph } from "@fleet-console/ui/react";
-import { requestCommodoreDelete } from "./commodore-delete-modal.js";
 import { commodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 
 import { CaptionTipHost } from "../../workspace/client/components/caption-actions.js";
 import { useAvatarAccent } from "../../workspace/client/avatar-accent.js";
@@ -19,7 +18,7 @@ import { SyncedTextarea } from "../../execution/client/composer-primitives/input
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
 import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow } from "../../settings/client/preferences-context.js";
-import { TheaterSubagentsSection, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
+import { CommanderSubagentsSection, useCommanderSubagents, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodorePlugins } from "./commodore-plugins.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
@@ -65,6 +64,7 @@ import {
   type CommodoreTab,
 } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
+import { useT as useConsoleT } from "../../../core/client/src/i18n/index.js";
 import { DEFAULT_LAUNCH } from "./defaults.js";
 
 type T = Translate<CommodoreMessageKey>;
@@ -195,12 +195,12 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   };
   const run = view?.run;
 
-  // 입구가 맡긴 포커스 — 기록은 입력란(바로 말할 수 있게), 정보는 설명 입력란. 링크로 온 「입력 끝」은 커서를 글 끝에 둔다.
-  // 입력란이 없는 칸은 호스트가 준 칸 제목 포커스를 그대로 둔다. 설명 입력란은 상태를 읽은 뒤에야 서므로 그때 한 번.
+  // 입구가 맡긴 기록 포커스는 입력란으로 간다. 정보는 접힌 설명이 따로 받으며 명시적인 「입력 끝」만 편집기를 연다.
+  // 그 밖의 칸은 호스트가 준 칸 제목 포커스를 그대로 둔다.
   const handledFocus = useRef(0);
   useEffect(() => {
     if (!visible || !focusRequest || handledFocus.current === focusRequest.nonce) return;
-    const selector = tab === "info" ? "#objectives-commodore-description" : tab === "log" ? ".objectives-commodore-composer-input" : null;
+    const selector = tab === "log" ? ".objectives-commodore-composer-input" : null;
     if (!selector) { handledFocus.current = focusRequest.nonce; return; }
     const field = rootRef.current?.querySelector<HTMLTextAreaElement>(selector);
     if (!field) return;
@@ -254,7 +254,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             <CommodoreTrail t={t} language={language} theaterId={commodoreId ?? ""} width={compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
           </>
         ) : null}
-        {tab === "info" && view ? <CommodoreInfo t={t} commodoreId={commodoreId ?? ""} view={view} onFail={fail} onClear={() => setFailure(null)} /> : null}
+        {tab === "info" && view ? <CommodoreInfo t={t} commodoreId={commodoreId ?? ""} view={view} focusRequest={visible ? focusRequest : null} onFail={fail} onClear={() => setFailure(null)} /> : null}
         {tab === "routines" && visible ? <CommodoreRoutines commodoreId={commodoreId ?? ""} language={language} /> : null}
         {/* 설정 칸의 메뉴(모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
@@ -318,37 +318,61 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
           onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
         />
       </SettingsRow>
-      <CommodoreSessionSettings commodoreId={theaterId} />
-      <div className="commodore-delete-setting"><SettingsRow label={t("commodore.delete.settingsLabel")} hint={t("commodore.delete.settingsHint")}>
-        <button type="button" className="fc-btn fc-btn--secondary commodore-create-button commodore-delete-confirm" onClick={(event) => requestCommodoreDelete(theaterId, event.currentTarget)}>{t("commodore.delete.open")}</button>
-      </SettingsRow></div>
+      <CommodoreSessionSettings key={theaterId} t={t} commodoreId={theaterId} />
     </div>
   );
 }
 
-export function CommodoreSessionSettings({ commodoreId, phone = false }: { readonly commodoreId: string; readonly phone?: boolean }) {
+export function CommodoreSessionSettings({ t, commodoreId, phone = false }: { readonly t: T; readonly commodoreId: string; readonly phone?: boolean }) {
   const controller = useTheaterPromptController(commodoreId ? { id: commodoreId, label: commodoreId } : null, 0, { onMissing: () => undefined, onDiscarded: () => undefined, ignoreTheaterRegistry: true });
-  const names = useTheaterPromptModeNames();
+  const subagents = useCommanderSubagents(commodoreId);
+  const names = useTheaterPromptModeNames(phone);
+  const promptT = useConsoleT(phone);
+  const [expanded, setExpanded] = useState(false);
+  const bodyId = useId();
+  const labelId = `${bodyId}-instructions`;
   const modes = Object.keys(names) as Array<keyof typeof names>;
+  const body = controller.draft.body;
+  const custom = controller.draft.mode !== "on";
+  const loading = controller.loading || subagents.state === "loading";
+  const failed = controller.loadFailed || subagents.state === "loadFailed";
+  const summary = loading ? promptT("sidebar.theater.prompt.loading") : failed ? t("commodore.settings.advancedLoadFailed") : t("commodore.settings.advancedSummary", {
+    mode: names[controller.draft.mode],
+    count: custom && body.trim() ? ` · ${t("commodore.settings.characters", { n: body.length })}` : "",
+    subagents: promptT(subagents.allowed ? "sidebar.commodore.commanderSubagents.allowed" : "sidebar.commodore.commanderSubagents.off"),
+  });
+  const toggle = () => { if (expanded) controller.flush(); setExpanded(!expanded); };
   if (!commodoreId) return null;
-  // 지침 선택(모드 상자와 본문)과 구성원 맡기기 토글은 서로 다른 설정이다 — 토글은 상자 밖 자기 줄에 선다.
   return (
-    <>
-      <div className="theater-prompt-page">
-        <div className="theater-prompt-modes" role="radiogroup">
-          {modes.map((mode) => (
-            <label key={mode} className="theater-prompt-mode-choice">
-              <input type="radio" name={`commodore-prompt-${commodoreId}`} checked={controller.draft.mode === mode} onChange={() => controller.changeMode(mode)} />
-              <span>{names[mode]}</span>
-            </label>
-          ))}
+    <div className="objectives-commodore-advanced">
+      <button type="button" className="objectives-commodore-advanced-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={toggle}>
+        <span className="objectives-commodore-advanced-copy">
+          <span className="objectives-commodore-advanced-label">{t("commodore.settings.advanced")}</span>
+          {!expanded ? <span className="objectives-commodore-advanced-summary">{summary}</span> : null}
+        </span>
+        <ChevronGlyph direction="right" className={`objectives-commodore-advanced-chevron${expanded ? " is-open" : ""}`} />
+      </button>
+      <div id={bodyId} className="objectives-commodore-commander-options" hidden={!expanded}>
+        <div className="objectives-commodore-prompt-editor">
+          <h4 id={labelId} className="objectives-commodore-option-label">{t("commodore.settings.instructions")}</h4>
+          {controller.loading || controller.loadFailed ? <p className="objectives-commodore-hint" role={controller.loadFailed ? "alert" : "status"}>{promptT(controller.loadFailed ? "sidebar.theater.prompt.loadFailed" : "sidebar.theater.prompt.loading")}</p> : <>
+            <div className="objectives-commodore-prompt-modes" role="radiogroup" aria-labelledby={labelId}>
+              {modes.map((mode) => (
+                <label key={mode} title={names[mode]}>
+                  <input type="radio" name={`commodore-prompt-${bodyId}`} checked={controller.draft.mode === mode} onChange={() => controller.changeMode(mode)} />
+                  <span>{names[mode]}</span>
+                </label>
+              ))}
+            </div>
+            {custom ? <SyncedTextarea className="commodore-prompt-body" value={body} aria-labelledby={labelId} aria-invalid={controller.status === "over"} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} /> : null}
+          </>}
+          {controller.status !== "untouched" ? <p className={`objectives-commodore-hint${controller.status === "error" || controller.status === "over" ? " is-error" : ""}`} role={controller.status === "error" || controller.status === "over" ? "alert" : "status"}>{promptT(`sidebar.theater.prompt.save.${controller.status}`)}</p> : null}
         </div>
-        {controller.draft.mode !== "on" ? (
-          <SyncedTextarea className="commodore-prompt-body" value={controller.draft.body} aria-label={names[controller.draft.mode]} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} />
-        ) : null}
+        <CommanderSubagentsSection controller={subagents} mobile={phone} />
       </div>
-      <TheaterSubagentsSection theaterId={commodoreId} mobile={phone} />
-    </>
+      {!expanded && (controller.status === "error" || controller.status === "over") ? <p className="objectives-commodore-hint is-error" role="alert">{promptT(`sidebar.theater.prompt.save.${controller.status}`)}</p> : null}
+      {!expanded && subagents.state === "saveFailed" ? <p className="objectives-commodore-hint is-error" role="alert">{promptT("sidebar.commodore.commanderSubagents.saveFailed")}</p> : null}
+    </div>
   );
 }
 
@@ -952,13 +976,13 @@ function saveDescriptionBoxHeight(height: number): void {
  * 「정보」 칸 — 설명 · 정보 · 기억이 한 칸에 위에서 아래로 선다(오른쪽 패널 탭과 Theater Inbox 칸이 함께 쓴다).
  * 기억 항목을 여는 동안은 그 읽기 화면이 칸을 받는다 — 위 두 섹션은 내리고, 쓰던 설명 초안은 시트 초안에 남는다.
  */
-export function CommodoreInfo({ t, commodoreId, view, onFail, onClear }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+export function CommodoreInfo({ t, commodoreId, view, onFail, onClear, focusRequest }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly focusRequest?: TheaterInboxBodyContext["focusRequest"] }) {
   const [reading, setReading] = useState(false);
   return (
     <>
       {reading ? null : (
         <>
-          <CommodoreDescription t={t} commodoreId={commodoreId} description={view.state.description} onFail={onFail} onClear={onClear} />
+          <CommodoreDescription key={commodoreId} t={t} commodoreId={commodoreId} description={view.state.description} focusRequest={focusRequest} onFail={onFail} onClear={onClear} />
           <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={onFail} onClear={onClear} />
         </>
       )}
@@ -968,19 +992,32 @@ export function CommodoreInfo({ t, commodoreId, view, onFail, onClear }: { reado
 }
 
 /** 사람이 적는 이 사령관 소개 — 정보 칸 맨 위. 사령관은 읽기만 하고, 저장하면 개정이 오르며 사령관을 깨운다. */
-export function CommodoreDescription({ t, commodoreId, description, onFail, onClear }: { readonly t: T; readonly commodoreId: string; readonly description: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+export function CommodoreDescription({ t, commodoreId, description, onFail, onClear, phone = false, online = true, focusRequest }: { readonly t: T; readonly commodoreId: string; readonly description: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly phone?: boolean; readonly online?: boolean; readonly focusRequest?: TheaterInboxBodyContext["focusRequest"] }) {
   const [draft, setDraft] = useState(() => sheetDraft(commodoreId).description ?? description.text);
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
-  // 손잡이가 남긴 inline height 는 탭이 언마운트되면 사라진다. 선호만 다시 심는다.
-  // 폭이 맞거나 뷰포트가 줄여 보인 실측(offsetHeight)은 저장하지 않는다 — inline height 가 바뀔 때만 기록한다.
+  const previewRef = useRef<HTMLButtonElement | null>(null);
+  const fieldId = useId();
+  const handledFocus = useRef(0);
+  useEffect(() => {
+    if (!focusRequest || handledFocus.current === focusRequest.nonce) return;
+    handledFocus.current = focusRequest.nonce;
+    if (focusRequest.kind === "editor-end") {
+      if (fieldRef.current) focusAtEnd(fieldRef.current); else setEditing(true);
+    } else (previewRef.current ?? fieldRef.current)?.focus({ preventScroll: true });
+  }, [focusRequest]);
+  // 편집을 열 때만 저장한 높이와 입력 끝 포커스를 되살린다.
   useLayoutEffect(() => {
     const node = fieldRef.current;
-    if (!node) return;
+    if (!node || !editing) return;
+    node.focus({ preventScroll: true });
+    node.setSelectionRange(node.value.length, node.value.length);
+    if (phone) return;
     const stored = readDescriptionBoxHeight();
     if (stored !== null) node.style.height = `${stored}px`;
     let lastInline = node.style.height;
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
       const inline = node.style.height;
       if (inline === "" || inline === lastInline) return;
@@ -989,8 +1026,8 @@ export function CommodoreDescription({ t, commodoreId, description, onFail, onCl
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
-  // 다른 곳(다른 창)에서 고친 설명은 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다. 시트를 닫아도 더러운 초안은 남는다.
+  }, [editing, phone]);
+  // 다른 창의 수정은 깨끗한 입력만 갱신한다. 탭을 닫아도 저장 전 초안은 남는다.
   const base = useRef(description.text);
   useEffect(() => {
     if (draft === base.current) setDraft(description.text);
@@ -998,31 +1035,31 @@ export function CommodoreDescription({ t, commodoreId, description, onFail, onCl
   }, [description.text]); // eslint-disable-line react-hooks/exhaustive-deps -- 서버 값이 바뀔 때만.
   useEffect(() => { rememberSheetDraft(commodoreId, { description: draft === description.text ? null : draft }); }, [commodoreId, draft, description.text]);
   const dirty = draft !== description.text;
+  const close = () => { setEditing(false); window.requestAnimationFrame(() => previewRef.current?.focus({ preventScroll: true })); };
+  const cancel = () => { if (saving) return; setDraft(description.text); onClear(); close(); };
   const save = () => {
-    if (saving || !dirty) return;
+    if (saving || !dirty || !online) return;
     onClear();
     setSaving(true);
-    setSaved(false);
-    void saveCommodoreDescription(commodoreId, draft).then(() => setSaved(true)).catch(onFail).finally(() => setSaving(false));
+    void saveCommodoreDescription(commodoreId, draft).then(close).catch(onFail).finally(() => setSaving(false));
   };
+  const preview = <button ref={previewRef} type="button" className={description.text ? "objectives-commodore-description-preview" : phone ? "objectives-cm-gr objectives-cm-intel-add commodore-theaters-phone-add" : "commodore-theaters-add"} title={description.text ? t("commodore.description.edit") : undefined} disabled={!online} onClick={() => { onClear(); setEditing(true); }}>
+    {description.text || <><span className={phone ? "objectives-cm-intel-plus" : "objectives-row-ic objectives-plus"} aria-hidden="true">+</span><span className={phone ? "objectives-cm-gr-tx" : undefined}>{t("commodore.description.add")}</span></>}
+  </button>;
   return (
-    <div className="objectives-commodore-section">
-      <label className="objectives-commodore-section-title" htmlFor="objectives-commodore-description">{t("commodore.description.label")}</label>
-      <SyncedTextarea
-        ref={fieldRef}
-        id="objectives-commodore-description"
-        className="objectives-commodore-input is-tall"
-        value={draft}
-        maxLength={8_000}
-        placeholder={t("commodore.description.placeholder")}
-        onChange={(event) => { setDraft(event.target.value); setSaved(false); }}
-      />
-      <div className="objectives-commodore-section-foot">
-        {saved && !dirty ? <span className="objectives-commodore-hint is-done" role="status">{t("commodore.description.saved")}</span>
-          : description.rev > 0 ? <span className="objectives-commodore-hint">{t("commodore.description.rev", { rev: description.rev, time: clockTime(description.updatedAt) })}</span> : <span />}
-        <button type="button" className="objectives-btn" disabled={saving || !dirty} onClick={save}>{t("commodore.description.save")}</button>
+    <section className="objectives-commodore-section objectives-commodore-panel-section">
+      <div className="objectives-commodore-panel-head">
+        <h3 className="objectives-commodore-panel-title"><label htmlFor={editing ? fieldId : undefined}>{t("commodore.description.label")}</label></h3>
+        {description.text ? <span className="objectives-commodore-panel-meta">{t("commodore.description.rev", { rev: description.rev, time: clockTime(description.updatedAt) })}</span> : null}
       </div>
-    </div>
+      {editing ? <>
+        <SyncedTextarea ref={fieldRef} id={fieldId} className={phone ? "objectives-cm-field is-tall" : "objectives-commodore-input is-tall"} value={draft} maxLength={8_000} readOnly={saving} placeholder={t("commodore.description.placeholder")} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing && !saving) { event.preventDefault(); event.stopPropagation(); cancel(); } }} />
+        <div className="objectives-commodore-description-actions">
+          <button type="button" className={phone ? "objectives-cm-pill" : "objectives-btn"} disabled={saving} onClick={cancel}>{t("commodore.description.cancel")}</button>
+          <button type="button" className={phone ? "objectives-cm-pill is-inverse" : "objectives-btn"} disabled={saving || !dirty || !online} onClick={save}>{t("commodore.description.save")}</button>
+        </div>
+      </> : phone && !description.text ? <div className="objectives-cm-grp">{preview}</div> : preview}
+    </section>
   );
 }
 
@@ -1090,8 +1127,8 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
   // 정보 칸 안에서 설명 섹션 아래 구분선(앞 섹션과의 경계) 하나 밑에 정보 목록과 「+ 정보 추가」가 한 덩어리로 선다.
   // 정보 출처 목록은 보이지 않는다(아직 없는 기능) — 출처가 단 항목의 이름표에만 `sources` 를 쓴다.
   return (
-    <div className="objectives-commodore-section">
-      <p className="objectives-commodore-section-title">{t("commodore.intel.label")}</p>
+    <div className="objectives-commodore-section objectives-commodore-panel-section">
+      <h3 className="objectives-commodore-panel-title">{t("commodore.intel.label")}</h3>
       {intel.length === 0 ? <p className="objectives-commodore-hint">{t("commodore.intel.empty")}</p> : (
         <ul ref={editing.listRef} className="objectives-commodore-intel-list">
           {intel.map((item) => {

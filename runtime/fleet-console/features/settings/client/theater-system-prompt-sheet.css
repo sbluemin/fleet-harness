@@ -83,5 +83,5 @@
 .theater-prompt-forgotten small { color: var(--text-secondary); font-size: var(--t-sm); }
 .theater-prompt-menu-state { margin-left: auto; padding-left: 12px; color: var(--text-tertiary); font: var(--t-2xs) var(--font-ui); white-space: nowrap; }
 /* 서브에이전트 — 프롬프트와 다른 설정이라 가는 선 아래 따로 선다. 제목은 필드 라벨과 같은 결이다. */
-.theater-subagents { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--hairline); }
-.theater-subagents p { margin: 0; }
+.commander-subagents { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.commander-subagents p { margin: 0; }
