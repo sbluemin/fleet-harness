@@ -1105,20 +1105,6 @@ const missionText = z.string().trim().min(1).max(MAX_MISSION_TEXT);
 export const missionTitleSchema = z.string().trim().min(1).max(MAX_MISSION_TITLE);
 const dueDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 
-export const createObjectiveSchema = z.object({
-  commodoreId: ids,
-  theaterId: ids.optional().default(""),
-  viewMode: z.enum(["terminal", "chat"]).optional(),
-  language: z.enum(["en", "ko"]).optional(),
-  groupId: ids.nullable().optional(),
-  title,
-  note: note.optional(),
-  dueDate: dueDate.optional(),
-  today: z.boolean().optional(),
-  /** 선행은 이 목록 안의 1-based 임무 번호 — 앞에 선 임무만 가리킨다. */
-  missions: z.array(z.object({ text: missionText, prerequisites: z.array(z.number().int().min(1)).optional() })).max(MAX_MISSIONS).optional(),
-}).strict();
-
 export const patchObjectiveSchema = z.object({
   title: title.optional(),
   note: note.optional(),
@@ -1251,7 +1237,6 @@ export const storedDecisionFieldsSchema = z.object({
     answer: storedDecisionAnswer.omit({ questionId: true }) }).strict()).optional(),
 });
 
-export type CreateObjectiveInput = z.output<typeof createObjectiveSchema>;
 export type PatchObjectiveInput = z.output<typeof patchObjectiveSchema>;
 export type MemberPatchInput = z.output<typeof memberPatchSchema>;
 export type MissionAddInput = z.output<typeof missionAddSchema>;
