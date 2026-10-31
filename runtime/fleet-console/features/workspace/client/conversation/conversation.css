@@ -502,6 +502,7 @@
   background: var(--wash-hover);
   color: var(--text-primary);
   outline: none;
+  box-shadow: none;
 }
 
 .conversation-pill-tools-menu-item.is-active { color: var(--brass-ink); }
@@ -1147,26 +1148,31 @@
 }
 
 .conversation-panel-more-item {
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--popover-row-inline);
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--popover-row-radius);
   background: none;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-sm);
+  font-size: var(--popover-font-size);
   text-align: left;
   cursor: pointer;
+  min-height: var(--popover-row);
+  gap: var(--popover-row-gap);
+  line-height: var(--popover-line-height);
+  letter-spacing: 0;
 }
 
 .conversation-panel-more-item:hover,
 .conversation-panel-more-item:focus-visible {
-  background: var(--control-hover-fill);
+  background: var(--wash-hover);
   color: var(--text-primary);
   outline: none;
+  box-shadow: none;
 }
 
 .conversation-panel-more-item.is-active {
-  background: var(--surface-panel);
+  background: var(--wash-selected);
   color: var(--text-primary);
   font-weight: var(--weight-bold);
 }

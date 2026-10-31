@@ -2645,7 +2645,7 @@
 }
 
 .agent-chat-coord-pop-item:hover { background: var(--wash-hover); }
-.agent-chat-coord-pop-item:focus-visible { box-shadow: var(--focus-face); }
+.agent-chat-coord-pop-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 
 .agent-chat-coord-pop-item.is-active { background: var(--wash-selected); }
 

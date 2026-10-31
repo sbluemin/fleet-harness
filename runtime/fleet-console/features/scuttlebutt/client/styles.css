@@ -1684,7 +1684,8 @@
 }
 
 .scuttlebutt-menu-row:focus-visible {
-  box-shadow: var(--focus-face);
+  box-shadow: none;
+  background: var(--wash-hover);
 }
 
 .scuttlebutt-menu-glyph {

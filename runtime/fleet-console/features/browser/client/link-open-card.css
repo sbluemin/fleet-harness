@@ -80,7 +80,8 @@
 }
 
 .link-open-choice:focus-visible {
-  box-shadow: var(--focus-face);
+  box-shadow: none;
+  background: var(--wash-hover);
 }
 
 /* 카드는 열리는 순간 기본 손잡이에 포커스를 둔다 — Enter 한 번이면 열리도록. 그 포커스를 처음부터

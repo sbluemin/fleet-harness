@@ -101,6 +101,9 @@
 .settings-font-popover .fc-font-browser__chooser { padding: 0; border: 0; min-width: 0; }
 .settings-font-popover .fc-font-browser__search-label { font: var(--t-xs)/1.45 var(--font-ui); letter-spacing: 0; text-transform: none; }
 .settings-font-popover .fc-font-browser__listbox { max-height: 260px; min-height: 0; }
+.settings-font-popover :is(.fc-font-browser__listbox, .fc-font-browser__row):focus-visible { box-shadow: none; }
+.settings-font-popover .fc-font-browser__row:focus-visible:not([aria-selected="true"]),
+.settings-font-popover .fc-font-browser__missing-toggle:focus-visible { background: var(--wash-hover); box-shadow: none; }
 .settings-font-popover .fc-font-browser__row { align-items: start; flex-wrap: wrap; gap: 3px var(--popover-row-gap); min-height: var(--popover-row); padding: 6px var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); font-size: var(--popover-font-size); line-height: var(--popover-line-height); }
 .settings-font-popover .fc-font-browser__group { display: grid; gap: var(--popover-list-gap); }
 .settings-font-popover .fc-font-browser__separator { height: var(--popover-divider-width); margin: var(--popover-divider-space); background: var(--popover-divider); }

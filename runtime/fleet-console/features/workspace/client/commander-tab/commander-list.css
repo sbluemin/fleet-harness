@@ -150,11 +150,11 @@
 .commander-tab-menu-direction svg { width: 14px; height: 14px; }
 .commander-tab-menu-direction:hover { background: var(--wash-hover); color: var(--text-primary); }
 .commander-tab-menu-direction[aria-checked="true"] { color: var(--text-primary); background: var(--wash-selected); }
-.commander-tab-menu-direction:focus-visible { box-shadow: var(--focus-face); }
+.commander-tab-menu-direction:focus-visible { box-shadow: none; background: var(--wash-hover); }
 :root[data-view-mode="mobile"] .commander-tab-menu-direction,
 :root[data-view-mode="mobile"] .commander-tab-direction { width: 44px; height: 44px; }
 .commander-tab-menu-item:hover { background: var(--wash-hover); }
-.commander-tab-menu-item:focus-visible { box-shadow: var(--focus-face); }
+.commander-tab-menu-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 
 .commander-tab-menu-check {
   width: 12px;

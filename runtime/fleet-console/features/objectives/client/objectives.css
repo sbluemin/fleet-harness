@@ -84,7 +84,7 @@
 .objectives-pop-row.has-meta > :first-child { margin-top: calc((var(--t-md) * 1.3 - 20px) / 2); }
 .objectives-pop-row.has-meta .objectives-pop-dot { margin-top: calc((var(--t-md) * 1.3 - 6px) / 2); }
 .objectives-pop-row:hover { background: var(--wash-hover); }
-.objectives-pop-row:focus-visible { box-shadow: var(--focus-face); }
+.objectives-pop-row:focus-visible { box-shadow: none; background: var(--wash-hover); }
 /* 선택은 사이드바 줄과 같은 문법 — 테두리 전체와 brass 워시(왼쪽 띠 없음). */
 .objectives-pop-row[aria-current="true"] { background: var(--wash-selected);  }
 .objectives-pop-body { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 24px; }
@@ -103,7 +103,7 @@
 /* 「시작 전 N ›」 — 글자형 한 줄. 상자·채움·왼쪽 띠 없이, 머무를 때만 줄 배경이 옅게 선다. */
 .objectives-pop-fold { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; padding: 0 var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--popover-font-size); text-align: left; cursor: pointer; min-height: var(--popover-row); line-height: var(--popover-line-height); letter-spacing: 0; }
 .objectives-pop-fold:hover { background: var(--wash-hover); color: var(--text-secondary); }
-.objectives-pop-fold:focus-visible { box-shadow: var(--focus-face); }
+.objectives-pop-fold:focus-visible { box-shadow: none; background: var(--wash-hover); }
 .objectives-pop-fold-rings { display: inline-flex; flex: none; justify-content: center; gap: 2px; width: 24px; }
 .objectives-pop-fold-rings i { width: 6px; height: 6px; border: 1px solid var(--ink-fog); border-radius: 50%; }
 .objectives-pop-fold-chev { display: block; flex: none; width: 12px; height: 12px; margin-left: auto; transition: transform var(--duration-fast) ease; }
@@ -272,7 +272,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-menu::-webkit-scrollbar { display: none; }
 .objectives-menu-item { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; min-height: var(--popover-row); padding: 0 var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--popover-font-size); font-weight: var(--weight-regular); text-align: left; cursor: pointer; transition: background var(--duration-fast); line-height: var(--popover-line-height); letter-spacing: 0; }
 .objectives-menu-item:hover { background: var(--wash-hover); }
-.objectives-menu-item:focus-visible { box-shadow: var(--focus-face); }
+.objectives-menu-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 .objectives-menu-item.is-active { background: var(--wash-selected); }
 .objectives-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-menu-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }
@@ -303,7 +303,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-batch-menu-glyph.is-same { color: var(--brass-ink); }
 .objectives-batch-menu-glyph.is-route { color: var(--aurora); }
 .objectives-batch-menu-title { display: block; font-weight: var(--weight-regular); }
-.objectives-batch-menu-hint { display: block; font-size: var(--t-sm); color: var(--text-secondary); white-space: normal; line-height: 1.4; }
+.objectives-batch-menu-hint { display: block; font-size: var(--t-sm); color: var(--text-secondary); white-space: normal; line-height: calc(14px * var(--font-ui-scale)); }
 /* 일괄 설정 결과 말풍선 — 글리프에 은은하게 붙어 잠시 나타났다 사라진다. */
 .objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 0; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in var(--duration-fast) var(--ease-spring); }
 .objectives-batch-balloon::before { content: ""; position: absolute; top: -4px; right: 8px; width: 6px; height: 6px; background: var(--surface-panel-raised); border-left: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-top: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); transform: rotate(45deg); }

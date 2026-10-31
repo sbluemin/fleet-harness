@@ -57,7 +57,7 @@
 .objectives-menu::-webkit-scrollbar { display: none; }
 .objectives-menu-item { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; min-height: var(--popover-row); padding: 0 var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--popover-font-size); font-weight: var(--weight-regular); text-align: left; cursor: pointer; transition: background var(--duration-fast); line-height: var(--popover-line-height); letter-spacing: 0; }
 .objectives-menu-item:hover { background: var(--wash-hover); }
-.objectives-menu-item:focus-visible { box-shadow: var(--focus-face); }
+.objectives-menu-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 .objectives-menu-item.is-active { background: var(--wash-selected); }
 .objectives-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-menu-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }

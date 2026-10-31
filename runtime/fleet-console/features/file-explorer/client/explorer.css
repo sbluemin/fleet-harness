@@ -126,7 +126,8 @@
 }
 
 .fexp-context-menu-item:focus-visible {
-  box-shadow: var(--focus-face);
+  box-shadow: none;
+  background: var(--wash-hover);
 }
 
 .fexp-context-menu-separator {
@@ -1875,7 +1876,8 @@
 }
 
 .fexp-quiet-menu-head:focus-visible {
-  box-shadow: var(--focus-face);
+  box-shadow: none;
+  background: var(--wash-hover);
 }
 
 .fexp-quiet-menu-item {

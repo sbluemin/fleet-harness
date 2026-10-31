@@ -3884,9 +3884,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .group-context-menu-item:hover { background: var(--wash-hover); }
 
 /* 포인터로 연 직후에는 커서 아래 행도 강조하지 않는다. 움직인 뒤부터 hover를 켠다. */
-:is(.group-context-menu-card, .theater-menu)[data-menu-pointer-idle] [role^="menuitem"]:hover { background: transparent; }
+:is(.group-context-menu-card, .theater-menu)[data-menu-pointer-idle] [role^="menuitem"]:hover:not(:focus-visible) { background: transparent; }
 
-.group-context-menu-item:focus-visible { box-shadow: var(--focus-face); }
+.group-context-menu-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 
 .group-context-menu-item.is-selected {
   color: var(--text-primary);
@@ -4632,7 +4632,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .theater-menu-item:hover:not(:disabled) { background: var(--wash-hover); }
-.theater-menu-item:focus-visible { box-shadow: var(--focus-face); }
+.theater-menu-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 
 .theater-menu-item.is-active { background: var(--wash-selected); }
 
@@ -6117,6 +6117,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   transition:
     background var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
+  font-size: var(--popover-font-size);
+  line-height: var(--popover-line-height);
 }
 
 /* 행 상태는 공통 팝업의 중립 워시다. */
@@ -6128,7 +6130,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .objective-search-result:focus-visible {
-  box-shadow: var(--focus-face);
+  box-shadow: none;
+  background: var(--wash-selected);
 }
 
 .objective-search-result-text {
@@ -6220,10 +6223,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   overflow: hidden;
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-md);
+  font-size: var(--popover-font-size);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
-  line-height: 1.4;
+  line-height: var(--popover-line-height);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6234,8 +6237,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   overflow: hidden;
   color: var(--text-secondary);
   font-family: var(--font-ui);
-  font-size: var(--t-md);
-  line-height: 1.4;
+  font-size: var(--popover-font-size);
+  line-height: var(--popover-line-height);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -8323,7 +8326,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .command-band-system-menu button:hover { background: var(--wash-hover); }
-.command-band-system-menu button:focus-visible { box-shadow: var(--focus-face); }
+.command-band-system-menu button:focus-visible { box-shadow: none; background: var(--wash-hover); }
 
 .command-band-system-menu svg { width: 16px; height: 16px; flex: none; color: var(--popover-icon-ink); }
 .command-band-system-menu-divider { height: var(--popover-divider-width); flex: none; margin: var(--popover-divider-space); background: var(--popover-divider); }
@@ -8350,7 +8353,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   white-space: nowrap;
 }
 .command-band-system-menu a.command-band-version-row:hover { background: var(--wash-hover); }
-.command-band-system-menu a.command-band-version-row:focus-visible { box-shadow: var(--focus-face); }
+.command-band-system-menu a.command-band-version-row:focus-visible { box-shadow: none; background: var(--wash-hover); }
 /* 두 몫으로 나뉜 버전 행. 왼쪽은 릴리스 페이지로 나가고 오른쪽 칩은 이 자리에서 수행한다. */
 .command-band-system-menu .command-band-version-row--split { padding: 0; gap: 0; }
 
@@ -8368,7 +8371,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .command-band-system-menu .command-band-version-row-main:hover { background: var(--wash-hover); }
-.command-band-system-menu .command-band-version-row-main:focus-visible { box-shadow: var(--focus-face); }
+.command-band-system-menu .command-band-version-row-main:focus-visible { box-shadow: none; background: var(--wash-hover); }
 
 .command-band-system-menu .command-band-version-row-chip--action {
   min-height: 0;
@@ -9037,7 +9040,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   font-weight: var(--weight-regular);
 }
 .fc-composer-menu__item:hover,
-.fc-composer-menu__item:focus-visible { background: var(--wash-hover); outline: none; }
+.fc-composer-menu__item:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
 .fc-composer-menu__item[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
 /* 두 번 눌러 확정하는 행의 첫 누름 — 다음 누름이 실행이라는 상태다. */
 .fc-composer-menu__item.is-armed .fc-composer-menu__name { color: var(--coral-ink); }
@@ -9169,18 +9172,20 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: var(--t-base);
+  font-size: var(--popover-font-size);
   text-align: left;
   cursor: pointer;
+  line-height: var(--popover-line-height);
 }
 .fc-composer-deck-row:hover:not(.is-dim) { background: var(--wash-hover); }
-/* 키보드 활성 행은 고른 행 워시 위에 메뉴 행 :focus-visible 과 같은 포커스 면을 더한다 — 입력 포커스는 컴포저에 남는다. */
+.fc-composer-deck-row:focus-visible { background: var(--wash-hover); box-shadow: none; }
+/* 키보드 활성 행도 선택 워시 한 겹이다 — 입력 포커스는 컴포저에 남는다. */
 .fc-composer-deck-row.is-active {
   background: var(--wash-selected);
-  box-shadow: var(--focus-face);
+  box-shadow: none;
 }
 /* 멘션 행 문법 — 모든 '@' 목록이 이 한 모양으로 선다(SDK `ComposerMentionRow`: [머리 20][이름][흐린 보조] … [오른쪽 끝 흐린 종류]).
-   한 줄·말줄임(행 공용 규칙). 활성 행은 은은한 중성 면만 — 멘션 목록에서는 금색 링을 쓰지 않는다(다른 덱의 링은 그대로 둔다). */
+   한 줄·말줄임(행 공용 규칙). 멘션과 다른 덱 모두 활성 행은 은은한 중립 워시 한 겹으로 표시한다. */
 /* 멘션 덱 폭 — 컴포저 왼쪽 끝에 붙는 359px 카드다. 덱을 띄우는 각 멘션 컴포저가 이 폭을 쓴다.
    높이는 덱 배치(deck.tsx)가 정한다. */
 .fc-composer-deck { --fc-mention-deck-width: min(100%, 359px); }
@@ -9251,7 +9256,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 }
 .fc-composer-deck-value {
   color: var(--text-tertiary);
-  font-size: var(--t-sm);
+  font-size: var(--popover-font-size);
 }
 .fc-composer-deck-meta {
   justify-self: end;
@@ -9263,7 +9268,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   overflow: hidden;
   color: var(--text-tertiary);
   font-family: var(--font-ui);
-  font-size: var(--t-sm);
+  font-size: var(--popover-font-size);
   white-space: nowrap;
 }
 .fc-composer-deck-token { font-size: var(--t-xs); }
@@ -9337,14 +9342,12 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 /* 키보드 활성 행(aria-activedescendant)은 hover와 같은 워시다 — 실제 포커스는 트리거에 남는다. */
 .fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"]) { background: var(--wash-hover); }
 .fc-select__option[aria-selected="true"] { background: var(--wash-selected); }
-.fc-select__option[aria-selected="true"][data-active="true"] { background: color-mix(in oklch, var(--wash-selected), var(--wash-hover)); }
+.fc-select__option[aria-selected="true"][data-active="true"] { background: var(--wash-selected); }
 .fc-select__option[aria-selected="true"]::after { content: "✓"; font-size: var(--t-sm); color: var(--text-primary); }
 .fc-select__option[aria-disabled="true"] { color: var(--text-tertiary); cursor: not-allowed; font-style: italic; opacity: var(--control-disabled-opacity); }
 .fc-select__option[aria-disabled="true"][data-active="true"] { background: transparent; color: var(--text-tertiary); }
-/* 키보드로 옮긴 활성 행은 메뉴 행 :focus-visible과 같은 2px 금색 링(행 안쪽)이 말한다 — 실제 포커스는 트리거에 남고
-   aria-activedescendant가 이 행을 가리킨다. 고른 행 위에서도 링이 서므로 「지금 짚은 행」과 「고른 행」이 갈린다.
-   포인터가 옮긴 활성 행은 hover 워시뿐이다(data-nav, useSelect). */
-.fc-select__popup[data-nav="keyboard"] .fc-select__option[data-active="true"]:not([aria-disabled="true"]) { box-shadow: var(--focus-face); }
+/* 키보드와 포인터 모두 워시 한 겹으로 표시한다. 실제 포커스는 트리거에 남고 aria-activedescendant가 행을 가리킨다. */
+.fc-select__popup[data-nav="keyboard"] .fc-select__option[data-active="true"]:not([aria-disabled="true"]) { box-shadow: none; }
 
 .fc-select--compact { min-width: 0; }
 /* compact 트리거는 칩 문법의 모노 티어를 쓴다 — 콘솔 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
@@ -9527,7 +9530,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   line-height: var(--popover-line-height);
   letter-spacing: 0; text-align: left; cursor: pointer; transition: background var(--duration-fast); font-weight: var(--weight-regular); }
 .fc-coord-menu-item:hover { background: var(--wash-hover); }
-.fc-coord-menu-item:focus-visible { box-shadow: var(--focus-face); }
+.fc-coord-menu-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 .fc-coord-menu-item.is-active { background: var(--wash-selected); }
 .fc-coord-menu-item:disabled { cursor: default; opacity: var(--control-disabled-opacity, 0.45); }
 .fc-coord-menu-item:disabled:hover { background: transparent; }

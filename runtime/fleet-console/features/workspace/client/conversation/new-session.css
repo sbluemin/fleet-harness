@@ -133,7 +133,7 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
   letter-spacing: 0;
 }
 .new-session-menu-item:hover,
-.new-session-menu-item:focus-visible { background: var(--wash-hover); outline: none; }
+.new-session-menu-item:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
 .new-session-menu-check { color: var(--brass-ink); font-size: var(--t-sm); }
 .new-session-menu-divider { height: var(--popover-divider-width); margin: var(--popover-divider-space); background: var(--popover-divider); flex: none; }
 

@@ -852,7 +852,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   letter-spacing: 0;
 }
 .group-composer-pop-row:hover,
-.group-composer-pop-row:focus-visible { background: var(--wash-hover); outline: none; }
+.group-composer-pop-row:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
 .group-composer-pop-name { flex: none; font-weight: var(--weight-regular); }
 
 /* 제안과 요약은 입력창 바로 위 한 줄을 공유한다. 안내를 먼저 줄이고, 칩 영역 12rem과 요약이 함께 들어가지 못하면

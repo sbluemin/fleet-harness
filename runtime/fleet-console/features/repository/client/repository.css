@@ -1217,7 +1217,8 @@
 }
 
 .repository-context-menu-item:focus-visible {
-  box-shadow: var(--focus-face);
+  box-shadow: none;
+  background: var(--wash-hover);
 }
 
 .repository-context-menu-item:disabled {
@@ -2289,7 +2290,7 @@
 }
 .repository-verb-menu-item .repository-icon { color: var(--text-secondary); }
 .repository-verb-menu-item:hover:not(:disabled) { background: var(--wash-hover); }
-.repository-verb-menu-item:focus-visible { box-shadow: var(--focus-face); }
+.repository-verb-menu-item:focus-visible { box-shadow: none; background: var(--wash-hover); }
 .repository-verb-menu-item:disabled { opacity: .4; cursor: default; }
 .repository-verb-menu-item .repository-verb-count { margin-left: auto; }
 .repository-verb-cluster .repository-stash-popover { top: calc(100% + 6px); }

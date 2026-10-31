@@ -211,7 +211,7 @@
 }
 
 .workbench-tile-menu-item:hover:not(:disabled),
-.workbench-tile-menu-item:focus-visible { background: var(--wash-hover); outline: none; }
+.workbench-tile-menu-item:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
 .workbench-tile-menu-item:disabled { color: var(--text-tertiary); cursor: default; }
 .workbench-tile-menu-item kbd { font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); }
 
