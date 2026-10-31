@@ -1,4 +1,5 @@
 import type { MongleState } from "./avatars.js";
+import type { ConversationPillOwner } from "./conversation-pill.js";
 import type { ReactNode } from "react";
 import type { LocalizedText } from "@fleet-console/i18n";
 import type { ConsoleTheme } from "../../settings/shared/theme.js";
@@ -43,6 +44,8 @@ export type ConversationPanelLayout = "read" | "fill";
 export interface ConversationSurfaceDescriptor {
   /** `ctx.conversation.open` 이 부르는 이름. 플러그인 사이에서 고유해야 한다. */
   readonly id: string;
+  /** 전언을 펼칠 때도 머리에 남는 이 대화의 주인. */
+  readonly pillOwner?: (ctx: ConversationSurfaceContext) => ConversationPillOwner | null;
   /** 머리 pill 의 이름과 부제. */
   readonly title: (ctx: ConversationSurfaceContext) => string;
   readonly subtitle?: (ctx: ConversationSurfaceContext) => string | null;

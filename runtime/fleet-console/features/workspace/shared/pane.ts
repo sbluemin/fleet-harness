@@ -1,4 +1,5 @@
 import type { ClientConsoleStateCapability } from "./console-state.js";
+import type { ConversationPillTakeover } from "./conversation-pill.js";
 import type { ClientNotificationsCapability } from "../../execution/shared/notification-ports.js";
 import type { ClientRailCapability } from "./navigation-ports.js";
 import type { ClientNavigateCapability, ClientShellCapability } from "./navigation.js";
@@ -321,6 +322,8 @@ export interface MobileBarSpec {
 }
 
 export interface MobileBarPill {
+  /** 대화의 주인은 남기고 상대를 붙인다. 없으면 보통의 대화 머리다. */
+  readonly takeover?: ConversationPillTakeover | null;
   /** pill 단추의 접근성 이름(이미 현지화된 문자열). */
   readonly label: string;
   /** pill 머리의 아바타(36px 자리). */

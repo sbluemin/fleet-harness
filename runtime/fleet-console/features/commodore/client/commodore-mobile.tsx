@@ -4,6 +4,7 @@ import { openOwnedObjectiveOnPhone } from "./board.js";
 import { useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
+import { ConversationPillContext, useConversationPillHost } from "../../workspace/client/conversation/pill-takeover.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { AgentConversationEntry, AgentConversationProps } from "../../execution/shared/chat-renderer.js";
@@ -212,6 +213,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   const actions = commodoreMobileActions();
   const board = useObjectiveTheater(commodoreId);
   const [panel, setPanel] = useState(false);
+  const pill = useConversationPillHost(commodoreId ? { kind: "commodore", id: commodoreId } : null, bar !== null && !panel);
   // 세부 안에서 연 구역. null이면 세부(프로필) 자체다. 세션 본문을 호스트가 주지 않으면 그 자리는 기록이다.
   const [section, setSection] = useState<CommodoreMobileTab | null>(null);
   const openSection = useCallback((next: CommodoreMobileTab) => { setSection(next === "sessions" && !SessionsList ? "log" : next); setPanel(true); }, [SessionsList]);
@@ -241,7 +243,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         ...(pillStatus ? { subtitle: pillStatus } : {}),
         depth: 0,
         // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(새 세션·Theater·삭제)는 깊이 1에 그대로 둔다.
-        pill: { label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
+        pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
         ...(actions && commodoreId ? { actions: [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] } : {}),
       });
       return;
@@ -272,7 +274,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       depth: 2 + (section === "info" ? memoryTrail.length : 0),
       onBack: () => { if (section === "info" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
-  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, newSession, online, t, actions]);
+  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, newSession, online, t, actions, pill.takeover]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -315,7 +317,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           {section === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
-        <CommodoreMobileChat
+        <ConversationPillContext.Provider value={pill.port}><CommodoreMobileChat
           t={t}
           language={commodoreLanguage() ?? "en"}
           commodoreId={commodoreId ?? ""}
@@ -330,7 +332,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           onFail={fail}
           onClear={clear}
           onOpenLog={openLog}
-        />
+        /></ConversationPillContext.Provider>
       )}
     </div>
   );

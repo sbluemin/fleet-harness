@@ -476,6 +476,10 @@ const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
 /** Console 이 가운데 칸·오른쪽 패널에 세우는 사령관 대화. */
 export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   id: COMMODORE_SURFACE_ID,
+  pillOwner: (ctx) => {
+    const params = readParams(ctx.params);
+    return params ? { kind: "commodore", id: params.commodoreId } : null;
+  },
   title: (ctx) => {
     const commodoreId = readParams(ctx.params)?.commodoreId ?? "";
     return commodoreName(commodoreId, getT(ctx.language));

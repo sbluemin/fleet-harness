@@ -248,7 +248,6 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       cards={cards}
       fold
       computerActor={computerActor}
-      pillObjectiveId={root.id}
       {...(actions ? { onOpenUISend: sendOpenUI } : {})}
       overlay={phone || !shared ? null : (
         <ComputerScreenShare

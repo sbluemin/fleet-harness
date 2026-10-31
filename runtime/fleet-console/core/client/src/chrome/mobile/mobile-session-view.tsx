@@ -19,7 +19,7 @@ import { closeTopBackLayer } from "./mobile-back.js";
 import { pushMobileSheet, setMobileDestination, setMobileObjectiveMenu, useMobileObjectiveMenu } from "./mobile-store.js";
 import { ObjectiveBodySlot, type ObjectiveBodyConfig } from "./objective-body-pool.js";
 import { ledgerObjectiveId, openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
-import { useConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
+import { ConversationPillContext, useConversationPillHost } from "../../../../../features/workspace/client/conversation/pill-takeover.js";
 import { openMobileCommanderSheet } from "./mobile-commander-sheet.js";
 
 /**
@@ -108,7 +108,8 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
   const harnessLabel = objectiveRecordHarnessLabel(bodyOwner, t);
   const conversation = useMobileConversationOf(useConsoleState())(bodyOwner);
   // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 바꾼다 — 그룹 대화는 화면 주인(지휘관)의 본문에 선다.
-  const pillTakeover = useConversationPillTakeover(covered ? null : objectiveRecord.id);
+  const pill = useConversationPillHost({ kind: "objective", id: objectiveRecord.id }, !covered);
+  const pillTakeover = pill.takeover;
   const stepBack = () => {
     if (ledgerObjectiveId(objectiveRecord.id) !== null) openLedger(objectiveRecord.id, null);
     else closeMobileObjective();
@@ -155,7 +156,7 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
   return (
     <section className={`mobile-session-view${covered ? " is-covered" : ""}`} aria-hidden={covered || undefined}>
       <div className="mobile-session-body" ref={setMeasureTarget} role="region" aria-label={title} tabIndex={-1}>
-        <ObjectiveBodySlot key={bodyOwner.id} objectiveId={bodyOwner.id} config={config} className="mobile-objective-body-slot" />
+        <ConversationPillContext.Provider value={pill.port}><ObjectiveBodySlot key={bodyOwner.id} objectiveId={bodyOwner.id} config={config} className="mobile-objective-body-slot" /></ConversationPillContext.Provider>
       </div>
     </section>
   );

@@ -81,8 +81,6 @@ export interface GroupConversationProps {
   readonly overlay?: React.ReactNode;
   /** 컴퓨터를 지금 조작하는 참여자 — 진행 줄의 그 사람 뒤에 「· 컴퓨터 사용」 꼬리가 붙는다. */
   readonly computerActor?: string | null;
-  /** 전언 대화 화면이 머리 pill 을 바꿀 대화 주인 Objective — 주지 않으면(플러그인 대화) 화면 안에 보낸 이 ⇄ 받는 이 칩을 둔다. */
-  readonly pillObjectiveId?: string;
   /**
    * 사람이 누른 OpenUI 답을 이 말의 화자에게 기존 전송 경로로 보낸다. 초안은 건드리지 않는다.
    * 포트 없는 읽기 전용 대화는 정적 칩이다.
@@ -102,7 +100,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, pillObjectiveId, onOpenUISend }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, onOpenUISend }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -379,7 +377,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
           {composer ? <div className="group-chat-dock-composer">{composer}</div> : null}
         </>}
       </div>
-      <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} pillObjectiveId={pillObjectiveId} />
+      <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} />
       {overlay}
     </div>
   );
