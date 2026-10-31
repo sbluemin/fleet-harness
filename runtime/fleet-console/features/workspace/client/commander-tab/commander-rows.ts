@@ -22,6 +22,15 @@ export interface CommanderSection {
 }
 
 /**
+ * 우측 펼침의 유지 주인 — 레일이 이 사령관의 작업 탭에 머물 때 그 사령관 id. 펼침 행의 패널과 레일 머리가 함께 읽는다.
+ * 우측 배치이고, 레일이 보여 주는 패널 주인의 지휘관이 가운데일 때만 그 주인이다.
+ */
+export function keptCommodoreOwnerOf(placement: "left" | "right", panelOwner: string | null, centerIsOwnerCommander: boolean): string | null {
+  if (placement !== "right" || panelOwner === null || !centerIsOwnerCommander) return null;
+  return panelOwner;
+}
+
+/**
  * 가운데 objectiveId가 이 사령관의 지휘관인가 — 시작 전(avatarObjectiveId)·완료 포함.
  * 우측 펼침의 행 펼치기와 레일 유지가 함께 읽는 판정이다. 묶음 선언이 없는 Objective 은 지휘관이 아니다.
  */

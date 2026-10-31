@@ -211,6 +211,17 @@ it("opens a registry goal as a full conversation before and after its session ar
   }
 });
 
+describe("kept commodore owner", () => {
+  // 레일 머리가 가운데가 아니라 레일을 따르는 조건 — 유지 상태일 때만 사령관 주인이다.
+  it("keeps the panel owner only on the right with its commander centered", async () => {
+    const { keptCommodoreOwnerOf } = await import("../features/workspace/client/commander-tab/commander-rows.js");
+    expect(keptCommodoreOwnerOf("right", "c1", true)).toBe("c1");
+    expect(keptCommodoreOwnerOf("left", "c1", true)).toBeNull();
+    expect(keptCommodoreOwnerOf("right", null, true)).toBeNull();
+    expect(keptCommodoreOwnerOf("right", "c1", false)).toBeNull();
+  });
+});
+
 describe("kept commander tabs", () => {
   // 우측 펼침의 탭 유지 — 주인이 바뀌면 걷히고, 같은 주인이 돌아오면 두 겹으로 서지 않는다.
   const tab = (id: string) => ({ id, title: () => id, icon: () => null, render: () => null });
