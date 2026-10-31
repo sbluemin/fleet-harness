@@ -251,7 +251,7 @@
 /* 위임 토글을 행 끝으로 — chevron이 있던 자리(행 끝 10px 안쪽, 두 줄 세로 가운데). */
 .commander-tab--card .side-bar-cluster-row { grid-template-columns: 30px 1fr auto; }
 .commander-tab--card .side-bar-cluster-row:has(.side-bar-cluster-row-mark-toggle) { padding-right: 10px; }
-.commander-tab--card .side-bar-cluster-row-aside { grid-row: 1 / -1; align-self: center; }
+.commander-tab--card .side-bar-cluster-row-aside { grid-row: 1 / span 2; align-self: center; }
 .commander-tab--card .side-bar-cluster-row-mark-toggle { width: 30px; height: 30px; margin: 0; }
 .commander-tab--card .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark { width: 18px; height: 18px; border-radius: 5px; }
 .commander-tab--card .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark.has-glyph { border-radius: 4px; }
@@ -320,6 +320,8 @@
 .commander-tab-settled-head:hover { color: var(--text-primary); }
 .commander-tab-settled-head:focus-visible { box-shadow: var(--focus-face); }
 .commander-tab-settled-head .commander-tab-settled-rule { flex: 1; min-width: 0; margin: 0; }
+/* 접힌 동안만 보이는 숨은 개수 — 펼치면 글리프만 남는다. */
+.commander-tab-settled-count { color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 /* ol이 줄 컨테이너(display: flex)라 hidden만으로는 숨지 않는다. */
 .commander-tab-list[hidden] { display: none; }
 .side-bar-cluster-row--conversation.side-bar-cluster-row--settled { min-height: 36px; padding-block: 6px; }

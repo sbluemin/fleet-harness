@@ -67,6 +67,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
                   aria-label={t(collapsed ? "commanderTab.settledExpand" : "commanderTab.settledCollapse", { n: group.rows.length })}
                   onClick={() => { if (foldId !== null) toggleFold(foldId); }}>
                   <span className="commander-tab-settled-rule" aria-hidden="true" />
+                  {collapsed ? <span className="commander-tab-settled-count" aria-hidden="true">{group.rows.length}</span> : null}
                   <ChevronGlyph direction={collapsed ? "right" : "down"} />
                 </button>
               : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
