@@ -55,8 +55,13 @@ export interface CommodoreStore {
   setTheaters(commodoreId: string, rows: readonly { readonly path: string }[]): CommodoreState;
   announceCreated(commodoreId: string): void;
   setAlias(commodoreId: string, alias: string | null): CommodoreState;
-  routineAdd(commodoreId: string, input: RoutineInput): CommodoreRoutine;
-  routineUpdate(commodoreId: string, routineId: string, input: RoutineUpdate, actor: "person" | "commodore"): CommodoreState;
+  /** personTurn — 사람 메시지가 실린 사령관 턴의 등록이면 루틴에 사람 요청 출처를 남긴다. */
+  routineAdd(commodoreId: string, input: RoutineInput, personTurn?: boolean): CommodoreRoutine;
+  /**
+   * 사람(화면)의 켜고 끄기는 출처를 그대로 둔다. 사람 메시지가 실린 사령관 턴의 수정은 출처를 남기고(같은 값이어도 다시 확인한다),
+   * 자율 턴이 이름·할 일·일정을 바꾸면 출처를 지운다.
+   */
+  routineUpdate(commodoreId: string, routineId: string, input: RoutineUpdate, actor: "person" | "commodore", personTurn?: boolean): CommodoreState;
   routineRemove(commodoreId: string, routineId: string, actor: "person" | "commodore"): CommodoreState;
   routinesRun(commodoreId: string, routineIds: readonly string[]): CommodoreState;
   routineNoticesRead(commodoreId: string, noticeIds: readonly string[]): void;
@@ -251,18 +256,18 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const { alias: _alias, ...rest } = current;
       return commit(commodoreId, alias === null ? rest : { ...rest, alias }, "alias");
     },
-    routineAdd(commodoreId, input) {
+    routineAdd(commodoreId, input, personTurn = false) {
       const current = load(commodoreId);
       const parsed = routineInputSchema.safeParse(input);
       if (!parsed.success || (input.schedule.kind === "once" && input.schedule.at <= now())) throw new CommodoreStoreError("invalid_request");
       const routines = current.routines ?? [];
       if (routines.length >= MAX_ROUTINES) throw new CommodoreStoreError("routine_limit");
       if (routines.some((r) => r.name === parsed.data.name)) throw new CommodoreStoreError("routine_name_taken");
-      const routine: CommodoreRoutine = { ...parsed.data, id: `r_${randomUUID()}`, enabled: true, createdAt: now(), updatedAt: now() };
+      const routine: CommodoreRoutine = { ...parsed.data, id: `r_${randomUUID()}`, enabled: true, ...(personTurn ? { requestedBy: "person" as const } : {}), createdAt: now(), updatedAt: now() };
       commit(commodoreId, { ...current, routines: [...routines, routine] }, "routines");
       return routine;
     },
-    routineUpdate(commodoreId, routineId, input, actor) {
+    routineUpdate(commodoreId, routineId, input, actor, personTurn = false) {
       const current = load(commodoreId);
       const routines = current.routines ?? [];
       const routine = routines.find((r) => r.id === routineId);
@@ -271,10 +276,12 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const parsed = routineInputSchema.safeParse({ name: input.name ?? routine.name, task: input.task ?? routine.task, schedule: input.schedule ?? routine.schedule });
       if (!parsed.success || (input.schedule?.kind === "once" && input.schedule.at <= now())) throw new CommodoreStoreError("invalid_request");
       if (routines.some((r) => r.id !== routineId && r.name === parsed.data.name)) throw new CommodoreStoreError("routine_name_taken");
-      const { pausedBy, ...rest } = routine;
+      const { pausedBy, requestedBy, ...rest } = routine;
       const enabled = input.enabled ?? routine.enabled;
       const pause = actor === "person" && input.enabled !== undefined ? !enabled : pausedBy === "person";
-      const fields = { ...rest, ...parsed.data, enabled, ...(pause ? { pausedBy: "person" as const } : {}) };
+      const rewritten = parsed.data.name !== routine.name || parsed.data.task !== routine.task || !isDeepStrictEqual(parsed.data.schedule, routine.schedule);
+      const requested = actor === "commodore" ? personTurn || (requestedBy === "person" && !rewritten) : requestedBy === "person";
+      const fields = { ...rest, ...parsed.data, enabled, ...(pause ? { pausedBy: "person" as const } : {}), ...(requested ? { requestedBy: "person" as const } : {}) };
       if (isDeepStrictEqual(routine, fields)) return current;
       const next = { ...fields, updatedAt: now() };
       return commit(commodoreId, { ...current, routines: routines.map((r) => r.id === routineId ? next : r) }, "routines");

@@ -129,7 +129,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
 
     // 사령관은 Console feature다. 보드 의미와 도구만 명시 계약으로 건넨다.
     const board: CommodoreBoardAdapter = {
-      tools: (commodoreId, turn) => createCommodoreBoardTools(deps, store, launch, commodoreId, turn.readAttachments, turn.hasPersonMessage),
+      tools: (commodoreId, turn) => createCommodoreBoardTools(deps, store, launch, commodoreId, turn.readAttachments, turn.hasPersonMessage, turn.hasPersonRoutine),
       watch: (commodoreId, sink) => createCommodoreBoardWatch({
         objectives: (id) => store.list(id),
         subscribeObjectives: (listener) => deps.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
