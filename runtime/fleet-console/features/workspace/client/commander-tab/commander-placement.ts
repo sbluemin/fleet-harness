@@ -6,7 +6,7 @@ export type CommanderPlacement = "left" | "right";
 const KEY = "fleet-console.commanderList.place";
 const LEGACY_SIDE_KEY = "fleet-console.commanderRail.side";
 const RAIL_EXPANDED_KEY = "fleet-console.commanderList.expanded";
-// 떠 있는 지휘관 창의 크기 기억 — 미션 3에서 창을 거두며 읽는 김에 지운다.
+// 거둔 떠 있는 지휘관 창의 크기 기억 — 읽는 김에 지운다. 값은 따로 쓰지 않는다.
 const LEGACY_WINDOW_RECT_KEY = "fleet-console.commanderWindow.rect";
 
 export function readCommanderPlacement(): CommanderPlacement {

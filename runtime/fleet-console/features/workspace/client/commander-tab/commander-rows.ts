@@ -16,7 +16,7 @@ export interface CommanderSection {
   readonly rows: readonly SideBarRowItem[];
   /** 시작 전·완료만 접힌다. 그룹 제목은 접지 않는다. */
   readonly fold: CommanderFold | null;
-  /** 데스크톱 명단의 시작 전·완료 통합 목록 — 머리 없이 구분선 뒤에 한 줄짜리 행으로 선다. */
+  /** 데스크톱 명단의 시작 전·완료 통합 목록 — 구분 머리(접기 단추) 아래 한 줄짜리 행으로 선다. */
   readonly settled?: true;
 }
 
@@ -72,7 +72,7 @@ export function useCommanderRows(commodoreId: string, selectedId: string | null)
   const settled = settledOrder(fresh, done);
   const listSections: CommanderSection[] = [
     ...activeSections,
-    ...(settled.length > 0 ? [{ id: "settled", title: null, rows: settled, fold: null, settled: true as const }] : []),
+    ...(settled.length > 0 ? [{ id: "settled", title: null, rows: settled, fold: "settled" as const, settled: true as const }] : []),
   ];
   // 이 사령관의 기록이 아직 오지 않았거나, 기록은 있는데 줄이 아직 서지 않았으면(묶음 원천 설치 전) 빈 상태가 아니다.
   const settledEmpty = sorted.length === 0 && state.objectiveRecordsHydrated

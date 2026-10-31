@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useViewportFit, MenuCheckGlyph } from "@fleet-console/ui/react";
+import { useViewportFit, ChevronGlyph, MenuCheckGlyph } from "@fleet-console/ui/react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
@@ -17,6 +17,7 @@ import { commodoreMongleState } from "../../../commodore/client/commodore-header
 import { useObjectiveTheater } from "../../../commodore/client/board.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
+import { toggleFold, useCommanderFolds } from "./commander-folds.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { dismissCommanderPlacementNotice, notifyCommanderPlacementMoved, setCommanderPlacement, useCommanderPlacement, useCommanderPlacementNotice, type CommanderPlacement } from "./commander-placement.js";
 import { Toast, ToastHost } from "../../../../core/client/src/chrome/components/toast.js";
@@ -40,6 +41,8 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
   const { sorted, listSections, preference, settledEmpty } = useCommanderRows(commodoreId, selectedId);
+  const folds = useCommanderFolds();
+  const groupsId = useId();
 
   return (
     <section className={["commander-tab", card ? "commander-tab--card" : ""].filter(Boolean).join(" ")} aria-label={t("commanderTab.aria")}>
@@ -53,12 +56,21 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
       </div>
       {sorted.length === 0 ? (settledEmpty ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : null) : (
         <div className="commander-tab-groups">
-          {listSections.map((group, index) => {
-            // 시작 전·완료 통합 목록은 머리 없이 앞 구역과 얇은 선으로만 갈린다.
+          {listSections.map((group) => {
+            // 시작 전·완료 통합 목록은 구분 머리(접기 단추) 아래에 선다. 진행 중 행이 없어도 머리는 선다.
+            const foldId = group.settled === true ? group.fold : null;
+            const collapsed = foldId !== null && folds[foldId];
+            const listId = `${groupsId}-${group.id}`;
             return <section key={group.id}>
-            {group.settled ? (index > 0 ? <div className="commander-tab-settled-rule" role="separator" /> : null)
+            {group.settled === true
+              ? <button type="button" className="commander-tab-settled-head" aria-expanded={!collapsed} aria-controls={listId}
+                  aria-label={t(collapsed ? "commanderTab.settledExpand" : "commanderTab.settledCollapse", { n: group.rows.length })}
+                  onClick={() => { if (foldId !== null) toggleFold(foldId); }}>
+                  <span className="commander-tab-settled-rule" aria-hidden="true" />
+                  <ChevronGlyph direction={collapsed ? "right" : "down"} />
+                </button>
               : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
-            <ol className="commander-tab-list side-bar-group-chips">
+            <ol id={group.settled === true ? listId : undefined} className="commander-tab-list side-bar-group-chips" hidden={collapsed}>
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
                 const selected = objectiveId !== null && selectedId === objectiveId;
