@@ -8,8 +8,9 @@ import { describeTheaterRegistrationError } from "../../integration/failure-noti
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { CommodoreDeleteFlow } from "../../../../../features/commodore/client/commodore-delete-body.js";
 import { announceCommodoreDeletion, subscribeCommodoreLifecycle, wasCommodoreRemoved } from "../../../../../features/commodore/client/commodore-delete-events.js";
-import { commodoreSectionLabel, readCommodoreList, refreshCommodoreList, setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
+import { commodoreSectionLabel, readCommodoreList, refreshCommodoreList, setZoneCommodore, useCommodoreList, useCommodoreSidebarLayout, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
+import { useCommodoreSidebarCommands } from "../../../../../features/commodore/client/sidebar-sections.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { IdentityTone } from "../../../../../features/workspace/shared/identity-tones.js";
 import { commodoreAvatarKey, pickMongleBase } from "../../../../../features/workspace/shared/avatars.js";
@@ -168,6 +169,9 @@ export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { re
   };
   useDismissRemovedCommodore(commodoreId, onClose);
   const openAppearance = () => openCommodoreLookSheet(commodoreId, label, alias);
+  const layout = useCommodoreSidebarLayout();
+  const currentSection = layout.sections.find((section) => section.id === layout.membership[commodoreId]);
+  const openMove = () => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreSectionMoveSheet commodoreId={commodoreId} onClose={dismiss} /> });
   return (
     <MobileSheet title={label} onClose={onClose}>
       <button type="button" className="mobile-sheet-row" onClick={openSettings}>
@@ -178,6 +182,11 @@ export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { re
         <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.appearance")}</strong></span>
       </button>
+      {layout.sections.length > 0 ? <button type="button" className="mobile-sheet-row" onClick={openMove}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="folder" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodoreSection.move")}</strong><small>{currentSection?.name ?? t("sidebar.commodoreSection.none")}</small></span>
+        <MobileIcon name="right" />
+      </button> : null}
       <div className="mobile-sheet-sep" role="separator" />
       <button type="button" className="mobile-sheet-row is-danger" onClick={() => openCommodoreDeleteSheet(commodoreId)}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="trash" /></span>
@@ -185,6 +194,28 @@ export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { re
       </button>
     </MobileSheet>
   );
+}
+
+function CommodoreSectionMoveSheet({ commodoreId, onClose }: { readonly commodoreId: string; readonly onClose: () => void }) {
+  const t = useT();
+  const sections = useCommodoreSidebarCommands();
+  useDismissRemovedCommodore(commodoreId, onClose);
+  const current = sections.layout.membership[commodoreId] ?? null;
+  const move = async (sectionId: string | null) => {
+    // targetId 없는 이동은 대상 섹션 끝에 놓는다. 다른 창의 행 순서를 덮어쓰지 않는다.
+    const result = await sections.run({ op: "move", commodoreId, sectionId });
+    if (result) closeMobileSheets();
+  };
+  return <MobileSheet title={t("sidebar.commodoreSection.move")} onClose={onClose} dismissible={!sections.busy}>
+    {sections.error ? <p className="mobile-sheet-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
+    {[...sections.layout.sections, { id: null, name: t("sidebar.commodoreSection.none") }].map((section) => (
+      <button key={section.id ?? "none"} type="button" className="mobile-sheet-row" aria-current={current === section.id ? "true" : undefined}
+        disabled={sections.busy || current === section.id} onClick={() => { void move(section.id); }}>
+        <span className="mobile-sheet-row-copy"><strong>{section.name}</strong></span>
+        {current === section.id ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
+      </button>
+    ))}
+  </MobileSheet>;
 }
 
 function useDismissRemovedCommodore(commodoreId: string, onClose: () => void): void {

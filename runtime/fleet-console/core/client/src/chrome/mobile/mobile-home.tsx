@@ -3,6 +3,7 @@ import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { commodoreListLoaded, commodoreSectionLabel, selectMobileCommodore, useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
 import type { ConsoleCommodoreSummary } from "../../../../../features/commodore/shared/contracts/theaters.js";
+import { commodoreSidebarBuckets, useCommodoreSidebarCommands } from "../../../../../features/commodore/client/sidebar-sections.js";
 import { useAvatarClaims, KeyedAvatar } from "../../../../../features/workspace/client/avatars.js";
 import { commodoreAvatarKey } from "../../../../../features/workspace/shared/avatars.js";
 import { useT } from "../../i18n/index.js";
@@ -28,6 +29,8 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
   const appearance = useMobileAppearance();
   const updateReady = useMobileUpdateReady();
   const commodores = useCommodoreList();
+  const sections = useCommodoreSidebarCommands();
+  const buckets = commodoreSidebarBuckets(sections.layout, commodores, (commodore) => commodore.commodoreId);
   const time = useConversationTime();
   // 사령관 얼굴은 몽글 아바타다 — 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
@@ -61,10 +64,27 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
         <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.create")} onClick={() => pushMobileSheet({ kind: "create" })}><MobileIcon name="plus" /></button>
       </header>
       <div className="mobile-conv-scroll">
-        {commodores.length === 0 && commodoreListLoaded() ? <p className="mobile-conv-empty-note">{t("mobile.home.noCommodore")}</p> : null}
-        {commodores.map((commodore) => (
-          <HomeCommodoreRow key={commodore.commodoreId} commodore={commodore} name={commodoreSectionLabel(commodore, fallbackName)} time={time} onOpen={() => open(commodore)} />
-        ))}
+        {sections.error ? <p className="mobile-home-section-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
+        {commodores.length === 0 && commodoreListLoaded() && sections.layout.sections.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.home.noCommodore")}</p> : null}
+        {buckets.map((bucket) => {
+          const rows = bucket.rows.map((commodore) => (
+            <HomeCommodoreRow key={commodore.commodoreId} commodore={commodore} name={commodoreSectionLabel(commodore, fallbackName)} time={time} onOpen={() => open(commodore)} />
+          ));
+          if (bucket.id === undefined) return rows;
+          const sectionId = bucket.id;
+          const section = sections.layout.sections.find((item) => item.id === sectionId);
+          const name = section?.name ?? t("sidebar.commodoreSection.none");
+          const collapsed = section?.collapsed ?? sections.layout.unsectionedCollapsed;
+          return <section key={bucket.id ?? "none"} className="mobile-home-section" aria-label={name}>
+            <h2 className="mobile-home-section-heading">
+              <button type="button" data-press="r1" className="mobile-home-section-toggle" aria-expanded={!collapsed} disabled={sections.busy}
+                onClick={() => { void sections.run({ op: "collapse", sectionId, collapsed: !collapsed }); }}>
+                <span className="mobile-home-section-name">{name}</span><MobileIcon name={collapsed ? "right" : "down"} size={14} />
+              </button>
+            </h2>
+            {!collapsed ? rows.length ? rows : <p className="mobile-home-section-empty">{t("mobile.home.sectionEmpty")}</p> : null}
+          </section>;
+        })}
       </div>
       <footer className="mobile-home-dock">
         <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.shortcutsAria")} onClick={() => pushMobileSheet({ kind: "custom", render: (close) => <MobileShortcutSheet onClose={close} /> })}><MobileIcon name="grid" /></button>

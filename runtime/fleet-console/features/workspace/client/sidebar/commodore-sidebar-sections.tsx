@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { refreshCommodoreList, replaceCommodoreList, replaceCommodoreSidebarLayout, useCommodoreSidebarLayout } from "../../../commodore/client/commodore-list.js";
-import { updateCommodoreSidebar } from "../../../commodore/client/theaters-api.js";
+import { useCommodoreSidebarCommands } from "../../../commodore/client/sidebar-sections.js";
 import { MAX_SIDEBAR_SECTION_NAME, type CommodoreSidebarCommand, type CommodoreSidebarSection } from "../../../commodore/shared/contracts/sidebar-layout.js";
 import { useLongPress } from "../long-press.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
@@ -12,32 +11,14 @@ import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal
 import "./commodore-sidebar-sections.css";
 
 export function useCommodoreSidebarSections() {
-  const layout = useCommodoreSidebarLayout();
+  const commands = useCommodoreSidebarCommands();
   const [editing, setEditing] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const pending = useRef(false);
   const t = useT();
-  const run = useCallback(async (command: CommodoreSidebarCommand) => {
-    if (pending.current) return null;
-    pending.current = true; setBusy(true); setError(false);
-    try {
-      const result = await updateCommodoreSidebar(command);
-      replaceCommodoreList(result.commodores);
-      if (result.sidebarLayout) replaceCommodoreSidebarLayout(result.sidebarLayout);
-      return result;
-    } catch { setError(true); return null; }
-    finally {
-      pending.current = false; setBusy(false);
-      // 변경과 겹친 SSE 조회가 오래된 응답을 돌려줘도 마지막 조회로 합류한다.
-      void refreshCommodoreList();
-    }
-  }, []);
   const create = async (input: { commodoreId?: string; afterId?: string }) => {
-    const result = await run({ op: "create", name: t("sidebar.commodoreSection.defaultName"), ...input });
+    const result = await commands.run({ op: "create", name: t("sidebar.commodoreSection.defaultName"), ...input });
     if (result?.createdSectionId) setEditing(result.createdSectionId);
   };
-  return { layout, editing, setEditing, error, busy, run, create };
+  return { ...commands, editing, setEditing, create };
 }
 export type SidebarSectionsController = ReturnType<typeof useCommodoreSidebarSections>;
 
