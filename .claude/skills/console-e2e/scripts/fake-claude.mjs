@@ -12,6 +12,12 @@
 //   ask              one-shot ExitPlanMode approval hold on the next turn, or while initialized and idle
 //   ask-<sessionId>  same hold, scoped to this launch's --session-id/--resume (use with a shared directory)
 //                    empty file or JSON {sessionId?: string}; mismatched targets leave the file untouched
+//   sdk-mcp/tools-<pid>.json  written by every SDK launch the host gave in-process MCP servers (Commodore's fleet-commodore):
+//                    each server's advertised tools with description and inputSchema (field limits included)
+//   sdk-calls        one-shot in-process tool calls on the next turn: {"sessionId"?: string, "calls": [{"server", "tool", "args"?}]};
+//                    taken only by a launch holding every named server (log `sdk-calls-skipped` otherwise)
+//   sdk-calls-<sessionId>  same, scoped to this launch's --session-id/--resume
+//   sdk-mcp/calls-<ts>-<pid>.json  each call's args, isError, error code and full JSON-RPC result (mode 0600)
 // FAKE_CLAUDE_VERSION (optional): the --version answer (default "2.1.999 (Claude Code)").
 //
 // Modes: `--version`; chat/SDK when `--input-format stream-json`; otherwise an interactive terminal
@@ -101,6 +107,7 @@ if (!sdk) {
   const envelope = () => ({ parent_tool_use_id: null, session_id: sessionId, uuid: randomUUID() });
   let inited = false;
   let turnOpen = false;
+  let turnAborted = false;
   let stdinEnded = false;
   const queue = [];
   let pendingAsk = null;
@@ -138,20 +145,115 @@ if (!sdk) {
     return answered;
   };
 
+  // In-process SDK MCP servers (Commodore's fleet-commodore) are not in --mcp-config: the SDK names them in
+  // `initialize` and answers JSON-RPC over the `mcp_message` control request, as it does for the real CLI.
+  let sdkServers = [];
+  let sdkReady = Promise.resolve();
+  const sdkWaiters = new Map();
+  let sdkRpcId = 1;
+  const sdkMcp = (server, method, params, notification = false) => new Promise((resolve) => {
+    const requestId = `sdkmcp-${randomUUID()}`;
+    const message = notification ? { jsonrpc: "2.0", method, params } : { jsonrpc: "2.0", id: sdkRpcId++, method, params };
+    const timer = setTimeout(() => { sdkWaiters.delete(requestId); resolve({ error: "timeout" }); }, 30_000);
+    sdkWaiters.set(requestId, (response) => {
+      clearTimeout(timer);
+      if (response?.subtype !== "success") resolve({ error: response?.error ?? response?.subtype ?? "no_response" });
+      else resolve(response.response?.mcp_response ?? { error: "no_mcp_response" });
+    });
+    out({ type: "control_request", request_id: requestId, request: { subtype: "mcp_message", server_name: server, message } });
+  });
+  const sdkFile = (name, value) => {
+    mkdirSync(join(dir, "sdk-mcp"), { recursive: true });
+    const file = join(dir, "sdk-mcp", name);
+    writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(file, 0o600);
+  };
+  const rpcErrorText = (error) => String(error?.message ?? (typeof error === "string" ? error : JSON.stringify(error))).slice(0, 200);
+  // Connect like the CLI does at startup and save each server's advertised tools (description, inputSchema with its limits).
+  const connectSdkServers = async () => {
+    const servers = {};
+    for (const server of sdkServers) {
+      const init = await sdkMcp(server, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fake-claude", version: "0" } });
+      if (init.error) {
+        servers[server] = { error: rpcErrorText(init.error) };
+        continue;
+      }
+      await sdkMcp(server, "notifications/initialized", {}, true);
+      const listed = await sdkMcp(server, "tools/list", {});
+      servers[server] = listed.error ? { error: rpcErrorText(listed.error) } : { tools: listed.result?.tools ?? [] };
+      log({ event: "sdk-tools", server, count: servers[server].tools?.length ?? null, ...(listed.error ? { error: servers[server].error } : {}) });
+    }
+    sdkFile(`tools-${process.pid}.json`, { at: new Date().toISOString(), pid: process.pid, sessionId, cwd: process.cwd(), servers });
+  };
+  // `sdk-calls-<sessionId>` or `sdk-calls`: {"sessionId"?, "calls": [{"server", "tool", "args"?}]}. A launch takes it only when it
+  // holds every named SDK server, so an Objective launch never consumes a Commodore plan in a shared directory.
+  const takeSdkCalls = () => {
+    for (const name of [`sdk-calls-${sessionId}`, "sdk-calls"]) {
+      const file = join(dir, name);
+      try {
+        const plan = JSON.parse(readFileSync(file, "utf8"));
+        if (plan.sessionId !== undefined && plan.sessionId !== sessionId) continue;
+        const calls = Array.isArray(plan.calls) ? plan.calls : [];
+        const missing = [...new Set(calls.map((call) => call?.server))].filter((server) => !sdkServers.includes(server));
+        if (calls.length === 0 || missing.length > 0) {
+          log({ event: "sdk-calls-skipped", file: name, missing, calls: calls.length });
+          continue;
+        }
+        unlinkSync(file);
+        return calls;
+      } catch (error) {
+        if (error.code !== "ENOENT") log({ event: "sdk-calls-file-error", file: name, error: String(error?.message ?? error) });
+      }
+    }
+    return [];
+  };
+  // Each call is framed as the model's tool_use and the CLI's tool_result inside the open turn, so the host records it.
+  const runSdkCalls = async (calls, turnModel, usage) => {
+    const results = [];
+    for (const [index, call] of calls.entries()) {
+      if (turnAborted) {
+        log({ event: "sdk-calls-aborted", remaining: calls.length - index });
+        break;
+      }
+      const args = call.args ?? {};
+      const toolUseId = `toolu_${randomUUID().replace(/-/g, "")}`;
+      out({ type: "assistant", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [{ type: "tool_use", id: toolUseId, name: `mcp__${call.server}__${call.tool}`, input: args }], stop_reason: "tool_use", stop_sequence: null, usage }, ...envelope() });
+      const reply = await sdkMcp(call.server, "tools/call", { name: call.tool, arguments: args });
+      const result = reply.result ?? null;
+      const text = (result?.content ?? []).map((block) => block?.text ?? "").join("");
+      let errorCode = result?.structuredContent?.error ?? null;
+      try {
+        errorCode ??= JSON.parse(text)?.error ?? null;
+      } catch {}
+      const isError = Boolean(reply.error || result?.isError);
+      out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolUseId, content: text || (reply.error ? rpcErrorText(reply.error) : ""), is_error: isError }] }, ...envelope() });
+      results.push({ server: call.server, tool: call.tool, args, isError, errorCode, ...(reply.error ? { rpcError: reply.error } : {}), result });
+      log({ event: "sdk-call", server: call.server, tool: call.tool, isError, errorCode: errorCode === null ? null : String(errorCode).slice(0, 64), ...(reply.error ? { rpcError: rpcErrorText(reply.error) } : {}) });
+    }
+    const at = new Date().toISOString();
+    sdkFile(`calls-${at.replace(/[:.]/g, "-")}-${process.pid}.json`, { at, pid: process.pid, sessionId, calls: results });
+  };
+
   const runTurn = async (text, ask = takeAsk()) => {
     turnOpen = true;
+    turnAborted = false;
     const turnModel = model;
     log({ event: "turn-start", model: turnModel, chars: text.length });
     if (!inited) {
-      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: [], mcp_servers: mcpServers.map(({ name }) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
+      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: [], mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
       inited = true;
     }
     const tokens = ctx();
     const usage = { input_tokens: tokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 8 };
     out({ type: "stream_event", event: { type: "message_start", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [], usage: { input_tokens: 0, output_tokens: 0 } } }, ...envelope() });
     out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: null }, usage }, ...envelope() });
-    let interrupted = false;
-    if (ask) {
+    await sdkReady;
+    const sdkCalls = takeSdkCalls();
+    if (sdkCalls.length > 0) await runSdkCalls(sdkCalls, turnModel, usage);
+    let interrupted = turnAborted;
+    if (interrupted) {
+      // An interrupt during the calls ends the turn without the canned wait.
+    } else if (ask) {
       interrupted = await holdForAnswer(turnModel, usage);
     } else if (text.includes("SLOW")) {
       const release = join(dir, "release");
@@ -178,7 +280,7 @@ if (!sdk) {
     const turnModel = model;
     log({ event: "turn-start", model: turnModel, wakeKind: wake.kind ?? "peer", wake });
     if (!inited) {
-      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: [], mcp_servers: mcpServers.map(({ name }) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
+      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: [], mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
       inited = true;
     }
     const tokens = ctx();
@@ -282,6 +384,12 @@ if (!sdk) {
         continue;
       }
       if (message.type === "control_response") {
+        const sdkWaiter = sdkWaiters.get(message.response?.request_id);
+        if (sdkWaiter) {
+          sdkWaiters.delete(message.response.request_id);
+          sdkWaiter(message.response);
+          continue;
+        }
         if (pendingAsk && message.response?.request_id === pendingAsk.requestId) {
           const { requestId, toolUseId, resolve } = pendingAsk;
           pendingAsk = null;
@@ -297,6 +405,11 @@ if (!sdk) {
         log({ event: "control", subtype: req.subtype ?? null, model: req.model ?? null, turnOpen });
         if (req.subtype === "initialize") {
           respond(id, { commands: [], models: [], agents: [], account: {}, output_style: "default", available_output_styles: ["default"] });
+          sdkServers = Array.isArray(req.sdkMcpServers) ? req.sdkMcpServers.filter((name) => typeof name === "string") : [];
+          if (sdkServers.length > 0) {
+            log({ event: "sdk-mcp-servers", servers: sdkServers });
+            sdkReady = connectSdkServers().catch((error) => log({ event: "sdk-tools-error", error: String(error?.message ?? error) }));
+          }
         } else if (req.subtype === "set_model") {
           if (existsSync(join(dir, "fail_set_model"))) {
             out({ type: "control_response", response: { subtype: "error", request_id: id, error: "fake set_model failure" } });
@@ -305,6 +418,7 @@ if (!sdk) {
             respond(id, {});
           }
         } else if (req.subtype === "interrupt") {
+          if (turnOpen) turnAborted = true;
           abortAsk("interrupt");
           respond(id, {});
         } else if (req.subtype === "get_context_usage") {
@@ -325,6 +439,7 @@ if (!sdk) {
   });
   process.stdin.on("end", () => {
     stdinEnded = true;
+    if (turnOpen) turnAborted = true;
     abortAsk("stdin-end");
     if (!turnOpen) exit("stdin-end");
   });

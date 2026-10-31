@@ -2,9 +2,11 @@
 // Act as a fake-claude launch on one of the MCP servers Console gave it (e.g. fleet-objectives, fleet-computer-use).
 // Objective commander and member launches do not receive fleet-console-use; that server is the adjutant legacy.
 // Usage: node fake-claude-mcp.mjs --dir <FAKE_CLAUDE_DIR> --server <name> --tool <tool> [--args '<json>'] [--pid <launch pid>]
+//        node fake-claude-mcp.mjs --dir <FAKE_CLAUDE_DIR> --server <name> --tools [--pid <launch pid>]   (tools/list: descriptions, inputSchema limits)
 //        node fake-claude-mcp.mjs --dir <FAKE_CLAUDE_DIR> --list            (launches with saved MCP configs; no secrets)
 // Without --pid the most recent launch that received <server> is used. Prints the tool result JSON only;
 // the bearer token is read from the owner-only file fake-claude.mjs saved and is never printed.
+// In-process SDK servers (Commodore's fleet-commodore) have no URL here; fake-claude.mjs dumps and calls those itself.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -31,7 +33,8 @@ if (argv.includes("--list")) {
 
 const serverName = opt("--server");
 const tool = opt("--tool");
-if (!serverName || !tool) fail("--server and --tool are required");
+const listTools = argv.includes("--tools");
+if (!serverName || (!tool && !listTools)) fail("--server and --tool (or --tools) are required");
 const pid = opt("--pid");
 const launch = launches.find((candidate) => (pid === undefined || String(candidate.pid) === pid) && candidate.servers[serverName]);
 if (!launch) fail(`no saved launch received MCP server ${serverName}${pid ? ` (pid ${pid})` : ""}`);
@@ -78,7 +81,7 @@ async function rpc(method, params, notification = false) {
 
 await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fake-claude-mcp", version: "1" } });
 await rpc("notifications/initialized", {}, true);
-const result = await rpc("tools/call", { name: tool, arguments: toolArgs });
+const result = listTools ? await rpc("tools/list", {}) : await rpc("tools/call", { name: tool, arguments: toolArgs });
 process.stdout.write(`${JSON.stringify(result)}\n`);
 
 function fail(message) {
