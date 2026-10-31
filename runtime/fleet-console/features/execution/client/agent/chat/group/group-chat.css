@@ -795,7 +795,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-composer-stop-mark { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 
 /* '@' 멘션 덱의 자리 — 덱 자체는 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이다. 캡슐 왼쪽에
-   맞춰 내용 폭(상한 480px, 좁은 화면에서는 100%)으로 캡슐 위에 뜬다 — '/' 덱이 아니라 멘션 덱만 이 자리다. */
+   맞춰 내용 폭(상한 359px, 좁은 화면에서는 100%)으로 캡슐 위에 뜬다 — '/' 덱이 아니라 멘션 덱만 이 자리다. */
 /* 덱 기본 자리(`.fc-composer-deck`)와 특이도가 같으면 시트 적재 순서가 이긴다 — 두 클래스로 선언한다. */
 .fc-composer-deck.group-composer-deck {
   left: clamp(var(--space-4), 4cqi, 48px);

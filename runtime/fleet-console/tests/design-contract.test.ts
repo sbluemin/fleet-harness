@@ -130,6 +130,8 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".alerts-icon-badge",
   ".fexp-refresh-btn",
   ".history-commit-avatar",
+  // 승인 시안 §2의 검색 입력 글자 15px — 사다리(t-md 13·t-base 14·t-lg 17) 사이에 없는 Grok 원본 값이다.
+  "#objective-search-input",
 ] as const;
 const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 // color 값 안의 정확한 base brass. --brass-ink·--brass-glow·--brass-bright는 닫는 괄호가 바로 오지 않아 빠진다.

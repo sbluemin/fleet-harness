@@ -9,12 +9,13 @@ import type { ChatDeckSection, ChatDeckToken } from "./composer-deck.js";
 /**
  * 컴포저 위에 서는 능력 덱 — '/'(명령·스킬)와 '@'(에이전트).
  *
- * 덱의 상자·묶음 머리(글자 + 구분선)·행·키 문법은 네 컴포저가 같이 쓰는 SDK 덱(`Execution composer primitives` `ComposerDeck`)이 소유한다.
+ * 덱의 상자·행·키 문법은 네 컴포저가 같이 쓰는 SDK 덱(`Execution composer primitives` `ComposerDeck`)이 소유한다.
  * 여기는 이 표면에만 있는 내용을 싣는다: 섹션 아이콘, 플러그인 네임스페이스를 흐린 이름, 설명, 메타(Console 표식·에이전트 모델·인자
- * 문법), 묶음 머리의 개수, 로딩 뼈대와 「일치 없음」 블록. 행·메타의 `agent-chat-deck-*` 클래스는 그 내용의 외형만 진다.
+ * 문법), 로딩 뼈대와 「일치 없음」 블록. 행·메타의 `agent-chat-deck-*` 클래스는 그 내용의 외형만 진다.
  */
 
-const SECTION_LABEL_KEY = {
+/** 묶음의 접근성 이름 — 시각 머리는 세우지 않지만 group 의 aria-label 은 진다. */
+const SECTION_ARIA_KEY = {
   commands: "terminal.chat.deckCommands",
   skills: "terminal.chat.deckSkills",
   agents: "terminal.chat.deckAgents",
@@ -143,7 +144,8 @@ export function ChatComposerDeck({
       label={t("terminal.chat.deckAria")}
       listbox={listbox}
       contentKey={pending ? "pending" : `${token.kind}:${rows.length}`}
-      className="agent-chat-deck"
+      // '@' 멘션은 컴포저 왼쪽에 붙는 359px 카드다. '/' 덱은 컴포저 폭을 그대로 쓴다.
+      className={token.kind === "agent" ? "agent-chat-deck is-mention-deck" : "agent-chat-deck"}
     >
       {pending ? (
         // 로딩은 뼈대 행으로 선다 — 문구 한 줄이면 "읽는 중"과 "없음"이 같은 상자로 보였다.
@@ -160,8 +162,7 @@ export function ChatComposerDeck({
           <span className="agent-chat-deck-state-hint">{t("terminal.chat.deckNoMatchHint")}</span>
         </ComposerDeckEmpty>
       ) : sections.map((section) => (
-        // 개수는 묶음 머리의 보조 문구 자리(구분선 앞)에 선다.
-        <ComposerDeckGroup key={section.id} label={t(SECTION_LABEL_KEY[section.id])} note={String(section.entries.length)}>
+        <ComposerDeckGroup key={section.id} label={t(SECTION_ARIA_KEY[section.id])}>
           {section.entries.map((entry) => {
             index += 1;
             const rowIndex = index;

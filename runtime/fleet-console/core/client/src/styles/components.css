@@ -6004,19 +6004,19 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   inset: 0;
   z-index: 90;
   display: grid;
-  place-items: start center;
-  padding: 14vh var(--space-5) var(--space-5);
-  background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--dialog-scrim);
   animation: fleet-pop 280ms var(--ease-spring) both;
 }
 
 .objective-search-card {
-  width: min(920px, 100%);
-  padding: var(--space-3);
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  width: min(560px, 100%);
+  padding: var(--popover-pad);
+  border: 0;
+  border-radius: 14px;
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
 }
 
 .objective-search-card:focus-visible {
@@ -6027,15 +6027,17 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-abyss) 80%, transparent);
+  height: 50px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: var(--popover-divider-width) solid var(--wash-hover);
+  border-radius: 0;
+  background: transparent;
 }
 
 .objective-search-field svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex: none;
   color: var(--text-secondary);
 }
@@ -6048,7 +6050,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: transparent;
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-lg);
+  font-size: 15px;
   letter-spacing: 0;
 }
 
@@ -6058,9 +6060,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .objective-search-results {
   display: grid;
-  gap: var(--space-1);
-  max-height: min(68vh, 620px);
-  margin-top: var(--space-2);
+  gap: var(--popover-list-gap);
+  max-height: min(453px, 60vh);
+  margin-top: var(--popover-pad);
   padding-right: 2px;
   overflow-y: auto;
 }
@@ -6104,9 +6106,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   width: 100%;
   min-width: 0;
   min-height: var(--popover-row-dense);
-  padding: 4px var(--space-4);
+  padding: 7px 10px;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -6117,40 +6119,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
     color var(--duration-fast) var(--ease-spring);
 }
 
-.objective-search-result::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 4px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--text-secondary);
-  opacity: 0;
-  transform: translate(-4px, -50%) scale(0);
-  transition:
-    opacity var(--duration-fast) var(--ease-spring),
-    transform var(--duration-base) var(--ease-spring);
-}
-
-/* 행 상태는 공통 팝업의 중립 워시다 — 키보드 활성 행은 고른 행 워시와 왼쪽 점 하나로 말한다. */
+/* 행 상태는 공통 팝업의 중립 워시다. */
 .objective-search-result:hover { background: var(--wash-hover); }
 
 .objective-search-result.is-active {
   background: var(--wash-selected);
   color: var(--text-primary);
-}
-
-/* 포커스는 입력칸에 남고 aria-activedescendant가 활성 행을 가리킨다. 키보드로 옮긴 활성 행(동작 칩 포함)은
-   메뉴 행 :focus-visible과 같은 포커스 면을 더한다 — 마우스가 옮긴 행은 워시뿐이다(data-nav). 외곽선은 없다. */
-.objective-search-results[data-nav="keyboard"] .objective-search-result.is-active,
-.objective-search-results[data-nav="keyboard"] .objective-search-action.is-active {
-  box-shadow: var(--focus-face);
-}
-
-.objective-search-result.is-active::before {
-  opacity: 1;
-  transform: translate(0, -50%) scale(1);
 }
 
 .objective-search-result:focus-visible {
@@ -6164,7 +6138,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   gap: 2px;
 }
 
-/* 패널 결과(파일·Codex 문서)는 제목과 부제를 한 줄에 둔다 — 제목이 먼저 자리를 갖고, 부제는 남은 폭에서 잘린다. */
+/* 읽기 전용 표식 행(info)은 제목과 부제를 한 줄에 둔다 — 제목이 먼저 자리를 갖고, 부제는 남은 폭에서 잘린다. */
 .objective-search-result-text-inline {
   display: flex;
   align-items: baseline;
@@ -6246,10 +6220,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   overflow: hidden;
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-base);
+  font-size: var(--t-md);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
-  line-height: 1.35;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6258,9 +6232,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   display: block;
   min-width: 0;
   overflow: hidden;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-family: var(--font-ui);
-  font-size: var(--t-sm);
+  font-size: var(--t-md);
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6286,8 +6261,16 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   color: var(--text-primary);
 }
 
+/* 결과 행의 왼쪽 슬롯은 28px 상자다 — 아이콘·아바타가 --wash-hover 바탕에 둥글게 서고,
+   제목 열의 시작선이 모든 행에서 맞는다. */
 .objective-search-command-glyph {
+  display: inline-grid;
+  place-items: center;
   flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--wash-hover);
   color: var(--text-tertiary);
   font-family: var(--font-ui);
   font-size: var(--t-base);
@@ -6299,14 +6282,16 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 명령 행의 선행 글리프 슬롯과 같은 자리를 Objective 행에서는 그 Objective 의 아바타가 쓴다 —
-   아바타(16px)는 사이드바 칩과 같은 얼굴로 활동을 말하고, 이 슬롯은
-   16px 그리드로 명령 글리프와 같은 정렬 계약만 진다. 아바타가 항상 서므로 제목 열이 어긋나지 않는다. */
+   아바타(16px)는 사이드바 칩과 같은 얼굴로 활동을 말하고, 28px 슬롯이 명령 글리프와
+   같은 정렬 계약만 진다. 아바타가 항상 서므로 제목 열이 어긋나지 않는다. */
 .objective-search-op-mark {
   display: grid;
   place-items: center;
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--wash-hover);
 }
 
 /* CMD+K 이동 모드의 사령관 묶음 — 머리(h2) 없이 묶음 사이 가는 선만 둔다. 구분 수단은
@@ -6327,8 +6312,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   display: grid;
   place-items: center;
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--wash-hover);
 }
 
 .objective-search-group-sep {
@@ -6402,103 +6389,14 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-size: var(--t-sm);
 }
 
-.objective-search-empty-hint {
-  display: block;
-  margin-top: var(--space-1);
-  color: color-mix(in oklch, var(--text-tertiary) 80%, transparent);
-}
-
-/* ===== 팔레트 모드 스위치 — 검색창 오른쪽의 두 칸(Objective ⌘K · 명령 ⌘P). 빈 입력의 `>`도 같은 곳으로 간다. ===== */
-.objective-search-switch {
-  display: inline-flex;
-  flex: none;
-  gap: 2px;
-  padding: 2px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: var(--control-rest);
-}
-
-.objective-search-switch-option {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 3px 9px;
-  border: 0;
-  border-radius: calc(var(--radius-xs) - 2px);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-regular);
-  line-height: 1.2;
-  white-space: nowrap;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-/* 두 칸은 승인안의 세그먼트 부품이다 — 고른 칸은 중립 워시 + 본문색 굵기, 금색은 포커스 링에만. */
-.objective-search-switch-option:hover {
-  background: var(--wash-hover);
-  color: var(--text-primary);
-}
-
-.objective-search-switch-option.is-active {
-  background: var(--wash-selected);
-  color: var(--text-primary);
-  font-weight: var(--weight-medium);
-}
-
-.objective-search-switch-option:focus-visible { box-shadow: var(--focus-face); }
-
-.objective-search-switch-option kbd {
-  padding: 0 3px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  opacity: 0.7;
-}
-
-@media (max-width: 720px) {
-  .objective-search-switch-option kbd {
-    display: none;
-  }
-}
-
 /* 구역 머리글 글리프 — 스크롤 중 위치를 알린다. 잉크는 머리글과 같다. */
-.objective-search-section-glyph {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 13px;
-  height: 13px;
-  margin-right: calc(var(--space-3) * -1 + var(--space-2));
-  opacity: 0.85;
-}
-
-.objective-search-section-glyph svg {
-  width: 13px;
-  height: 13px;
-}
-
 .objective-search-section-note {
   flex: none;
   color: var(--text-tertiary);
 }
 
-/* 행 글리프 — 16px 상자에 선 글리프·레일 아이콘이 같은 자리에 선다. 잉크는 한 채널이고
+/* 행 글리프 — 28px 슬롯 안에 선 글리프·레일 아이콘이 같은 자리에 선다. 잉크는 한 채널이고
    선택 행만 본문색으로 올라가며, 파괴 행만 coral(위험 신호)이다. */
-.objective-search-command-glyph {
-  display: inline-grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-}
-
 .objective-search-command-glyph svg {
   width: 16px;
   height: 16px;
@@ -6519,10 +6417,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .objective-search-result.is-danger:hover { background: var(--wash-hover); }
 .objective-search-result.is-danger.is-active { background: var(--wash-selected); }
 
-.objective-search-result.is-danger.is-active::before {
-  background: var(--coral);
-}
-
 .objective-search-undoable {
   flex: none;
   color: var(--text-tertiary);
@@ -6536,8 +6430,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   gap: 3px;
 }
 
-.objective-search-shortcut kbd,
-.objective-search-legend kbd {
+.objective-search-shortcut kbd {
   padding: 1px 5px 2px;
   border: 0;
   border-radius: var(--radius-xs);
@@ -6620,31 +6513,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .objective-search-action-glyph svg {
   width: 14px;
   height: 14px;
-}
-
-/* 바닥 범례 — 창 안에서 창의 키를 말한다. 오른쪽 끝은 다른 문(⌘K/⌘P)이다. */
-.objective-search-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-3) 0;
-  border-top: 1px solid var(--popover-divider);
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-}
-
-.objective-search-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.objective-search-legend-switch {
-  margin-left: auto;
-  color: var(--text-secondary);
 }
 
 .directory-browser-overlay {
@@ -9211,11 +9079,11 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   overflow-x: hidden;
   overscroll-behavior: contain;
   box-sizing: border-box;
-  padding: 6px;
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
+  padding: var(--popover-pad);
+  border: 0;
+  border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--popover-surface-shadow);
   cursor: default;
 }
 .fc-composer-deck.is-below {
@@ -9313,11 +9181,30 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 }
 /* 멘션 행 문법 — 모든 '@' 목록이 이 한 모양으로 선다(SDK `ComposerMentionRow`: [머리 20][이름][흐린 보조] … [오른쪽 끝 흐린 종류]).
    한 줄·말줄임(행 공용 규칙). 활성 행은 은은한 중성 면만 — 멘션 목록에서는 금색 링을 쓰지 않는다(다른 덱의 링은 그대로 둔다). */
-/* 멘션 덱 크기 — 첨부 레퍼런스 비율(컴포저 폭의 약 58%)로, 좁으면 컴포저 폭에 맞춘다. 덱을 띄우는 각 컴포저가 이 폭을 쓴다.
-   모서리·안쪽 여백은 멘션 덱에만 넉넉히 준다('/' 덱은 그대로). 높이는 덱 배치(deck.tsx)가 정한다. */
-.fc-composer-deck { --fc-mention-deck-width: min(100%, clamp(320px, 58%, 640px)); }
-.fc-composer-deck:has(.fc-composer-deck-row.is-mention) { padding: 8px; border-radius: 16px; }
-.fc-composer-deck-row.is-mention { border-radius: 10px; }
+/* 멘션 덱 폭 — 컴포저 왼쪽 끝에 붙는 359px 카드다. 덱을 띄우는 각 멘션 컴포저가 이 폭을 쓴다.
+   높이는 덱 배치(deck.tsx)가 정한다. */
+.fc-composer-deck { --fc-mention-deck-width: min(100%, 359px); }
+/* 멘션·슬래시 덱의 행 문법 — 높이 28px, 간격 2px, 반경 8px. */
+.fc-composer-deck-row.is-mention {
+  min-height: 28px;
+  border-radius: 8px;
+}
+.new-session-deck .fc-composer-deck-row,
+.agent-chat-deck .fc-composer-deck-row {
+  min-height: 28px;
+  border-radius: 8px;
+}
+.fc-composer-deck:has(.fc-composer-deck-row.is-mention) .fc-composer-deck-list,
+.new-session-deck .fc-composer-deck-list,
+.agent-chat-deck .fc-composer-deck-list {
+  row-gap: var(--popover-list-gap);
+}
+/* 채팅 컴포저의 '@' 덱 — 멘션 카드 자리(컴포저 왼쪽, 359px). '/' 덱은 컴포저 폭을 그대로 쓴다. */
+.agent-chat-deck.is-mention-deck {
+  left: 0;
+  right: auto;
+  width: var(--fc-mention-deck-width);
+}
 /* 멘션 덱은 보조가 이름 바로 옆에 붙는다 — 이름 열은 가장 긴 이름만큼(≤50%), 남는 폭은 보조가 진다. 머리 칸은 20px 머리를 품는다. */
 .fc-composer-deck-list:has(.fc-composer-deck-row.is-mention) {
   grid-template-columns: calc(12px + 20px) fit-content(50%) minmax(0, 1fr) fit-content(30%);

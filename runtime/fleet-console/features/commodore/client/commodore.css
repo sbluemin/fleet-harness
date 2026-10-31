@@ -478,7 +478,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-ref-input { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; cursor: text; outline: none; }
 .objectives-commodore-ref-input.is-empty::before { content: attr(data-placeholder); float: left; height: 0; color: var(--text-tertiary); pointer-events: none; }
 .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
-/* '@' 멘션 덱만 패널 폭에 상한을 둔다 — 입력 왼쪽에 맞춰 내용 480px, 좁은 화면에서는 100%. */
+/* '@' 멘션 덱만 패널 폭에 상한을 둔다 — 입력 왼쪽에 맞춰 내용 359px, 좁은 화면에서는 100%. */
 .fc-composer-deck.objectives-commodore-ref-list { left: 0; right: auto; width: var(--fc-mention-deck-width, 100%); z-index: 5; }
 .objectives-commodore-ref-sub { display: inline-flex; gap: 6px; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .objectives-commodore-ref-sub .is-decision { color: var(--warn-ink); }
