@@ -35,9 +35,10 @@
 .objectives-tab-glyph.is-overdue { color: var(--coral); }
 /* 탭 칸 — 사이드바 폭을 그대로 채운다(폭 상한이 없다). 첫 묶음은 탭 바 밑선이 갈라 주므로 머리선을 겹쳐 긋지 않는다. */
 .objectives-tab-body { padding-top: 4px; }
-/* 오른쪽 사이드바 탭 본문 — 탭 줄과 첫 묶음 사이만 붙인다. 폰 상세는 레일 슬롯을 쓰지 않아 그대로다. */
-.right-rail-panel-slot.has-header .objectives-tab-body { padding-top: 0; }
-.right-rail-panel-slot.has-header .objectives-tab-body > .objectives-group:first-child { padding-top: 0; }
+/* 오른쪽 사이드바 탭 본문 — 탭 줄과 첫 묶음 사이만 붙인다. 폰 상세는 레일 슬롯을 쓰지 않아 그대로다.
+   작업 탭의 행 펼침 패널은 탭 줄 아래 여백이 없어 이 4·6px가 탭과 본문을 가르므로 그대로 둔다. */
+.right-rail-panel-slot.has-header .objectives-tab-body:not(.commander-row-panel *) { padding-top: 0; }
+.right-rail-panel-slot.has-header .objectives-tab-body:not(.commander-row-panel *) > .objectives-group:first-child { padding-top: 0; }
 .objectives-tab-body > .objectives-extension-current { margin-top: 6px; }
 .objectives-crew-group > .objectives-members { border-top: 0; padding-top: 0; }
 /* 지휘관 이름은 입력칸이 아니라 글자다 — 숨은 복제(::after)가 첫 칸을 차지하면 글자가 둘째 줄로 밀려 표식과 어긋난다. */
