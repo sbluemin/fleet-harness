@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -168,21 +168,35 @@ export function clusterRowDateLabel(row: ObjectiveClusterRow, locale: ConsoleLoc
 const monthFormats = new Map<ConsoleLocale, Intl.DateTimeFormat>();
 
 /**
- * 시작 전·완료 통합 목록에서 아바타 자리에 서는 두 줄 날짜 — 시작 전은 기한(지나면 숫자만 경고색), 완료는 완료일을 흐리게.
- * 날짜가 없으면 같은 자리에 흐린 선 글리프가 선다(시작 전은 빈 선, 완료는 체크). 접근 이름은 행이 말하므로 장식이다.
+ * 시작 전·완료 통합 목록에서 아바타 자리에 서는 날짜·글리프 — 시작 전은 기한 두 줄 날짜(지나면 숫자만 경고색),
+ * 기한이 없으면 점선 빈 원, 완료는 doneAt 유무와 관계없이 항상 꽉 찬 원에 체크를 투명으로 뚫은 글리프.
+ * 접근 이름은 행이 말하므로 장식이다.
  */
 export function ClusterRowDate({ item }: { readonly item: SideBarRowItem }) {
   const locale = useConsoleLocale();
+  const rawId = useId();
   const { row } = item;
-  const done = row.glyph === "done";
-  const iso = done ? (row.doneAt !== undefined ? localIsoDate(row.doneAt) : null) : row.due?.date ?? null;
+  if (row.glyph === "done") {
+    // 점선 빈 원과 대비되는 꽉 찬 원 — 줄 hover·active 배경이 바뀌어도 맞도록 체크는 mask 로 뚫는다(배경색 하드코딩 없음).
+    const maskId = `done-glyph-${rawId.replace(/:/g, "")}`;
+    return (
+      <span className="side-bar-cluster-row-date is-glyph is-done" aria-hidden="true">
+        <svg viewBox="0 0 16 16">
+          <mask id={maskId}>
+            <circle cx="8" cy="8" r="5.6" fill="white" />
+            <path d="M5.3 8.1l1.8 1.8 3.6-3.8" fill="none" stroke="black" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </mask>
+          <circle cx="8" cy="8" r="5.6" fill="currentColor" mask={`url(#${maskId})`} />
+        </svg>
+      </span>
+    );
+  }
+  const iso = row.due?.date ?? null;
   const day = iso ? new Date(`${iso}T00:00:00`) : null;
   if (!day || Number.isNaN(day.getTime())) {
     return (
-      <span className={`side-bar-cluster-row-date is-glyph${done ? " is-done" : ""}`} aria-hidden="true">
-        <svg viewBox="0 0 16 16">{done
-          ? <path d="M3.6 8.4l2.8 2.8 6-6.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          : <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" />}</svg>
+      <span className="side-bar-cluster-row-date is-glyph" aria-hidden="true">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" /></svg>
       </span>
     );
   }
@@ -192,7 +206,7 @@ export function ClusterRowDate({ item }: { readonly item: SideBarRowItem }) {
     monthFormats.set(locale, format);
   }
   return (
-    <span className={["side-bar-cluster-row-date", done ? "is-done" : "", !done && row.due?.overdue ? "is-late" : ""].filter(Boolean).join(" ")} aria-hidden="true">
+    <span className={["side-bar-cluster-row-date", row.due?.overdue ? "is-late" : ""].filter(Boolean).join(" ")} aria-hidden="true">
       <span className="side-bar-cluster-row-date-month">{format.format(day)}</span>
       <span className="side-bar-cluster-row-date-day">{day.getDate()}</span>
     </span>
