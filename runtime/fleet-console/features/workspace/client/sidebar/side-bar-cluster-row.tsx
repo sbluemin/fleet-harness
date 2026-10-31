@@ -184,7 +184,7 @@ export function ClusterRowDate({ item }: { readonly item: SideBarRowItem }) {
         <svg viewBox="0 0 16 16">
           <mask id={maskId}>
             <circle cx="8" cy="8" r="5.6" fill="white" />
-            <path d="M3.6 8.4l2.8 2.8 6-6.2" fill="none" stroke="black" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M5.3 8.1l1.8 1.8 3.6-3.8" fill="none" stroke="black" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
           </mask>
           <circle cx="8" cy="8" r="5.6" fill="currentColor" mask={`url(#${maskId})`} />
         </svg>
@@ -196,7 +196,7 @@ export function ClusterRowDate({ item }: { readonly item: SideBarRowItem }) {
   if (!day || Number.isNaN(day.getTime())) {
     return (
       <span className="side-bar-cluster-row-date is-glyph" aria-hidden="true">
-        <svg viewBox="0 0 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" /></svg>
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" /></svg>
       </span>
     );
   }
