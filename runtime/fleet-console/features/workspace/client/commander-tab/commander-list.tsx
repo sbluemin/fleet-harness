@@ -16,7 +16,9 @@ import { useObjectiveTheater } from "../../../commodore/client/board.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { useCommanderRows } from "./commander-rows.js";
-import { setCommanderPlacement, useCommanderPlacement, useEffectiveCommanderPlacement, type CommanderPlacement } from "./commander-placement.js";
+import { setCommanderPlacement, useCommanderPlacement, type CommanderPlacement } from "./commander-placement.js";
+import { Toast, ToastHost } from "../../../../core/client/src/chrome/components/toast.js";
+import { toggleCommanderSectionCollapsed } from "../sidebar/commander-section-folds.js";
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. */
@@ -26,7 +28,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly onSelect?: (item: SideBarRowItem) => void;
   readonly onNewSession?: () => void;
   readonly onRowMenu?: (item: SideBarRowItem) => void;
-  /** 사이드바처럼 좁을 때만 정렬 칩에 현재 이름만 보인다. 채팅 레일과 폰은 접두어를 유지한다. */
+  /** 사이드바·좁은 팝오버처럼 좁을 때만 정렬 칩에 현재 이름만 보인다. 폰은 접두어를 유지한다. */
   readonly sortNameOnly?: boolean;
 }) {
   const t = useT();
@@ -40,7 +42,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
-        <CommanderPlacementGlyphs />
+        <CommanderPlacementGlyphs commodoreId={commodoreId} />
       </div>
       {sorted.length === 0 ? (settledEmpty ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : null) : (
         <div className="commander-tab-groups">
@@ -86,24 +88,48 @@ export function CommanderListOwner({ commodoreId, selected, onSelect }: { readon
   </button>;
 }
 
-/** 목록 위치. 글자 없이 글리프만 두고, 사이드바와 채팅의 왼쪽·오른쪽은 한 묶음이다. */
-function CommanderPlacementGlyphs() {
+/** 목록 위치. 글자 없이 글리프만 두고, 왼쪽·오른쪽 사이드바는 한 묶음이다. 폰에는 위치 선택을 두지 않는다. */
+function CommanderPlacementGlyphs({ commodoreId }: { readonly commodoreId: string }) {
   const t = useT();
+  const desktop = useViewMode().effective !== "mobile";
   const placement = useCommanderPlacement();
-  const shown = useEffectiveCommanderPlacement();
-  const choose = (next: CommanderPlacement) => setCommanderPlacement(next);
+  const [notice, setNotice] = useState<{ readonly next: CommanderPlacement; readonly prev: CommanderPlacement; readonly nonce: number } | null>(null);
+  useEffect(() => {
+    if (notice === null) return;
+    const timer = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  if (!desktop) return null;
+  const choose = (next: CommanderPlacement) => {
+    if (next === placement) return;
+    const prev = placement;
+    setCommanderPlacement(next);
+    // 옮겨 간 쪽을 보이게 한다. 왼쪽이면 그 사령관 섹션을 펼친다. 오른쪽(작업 탭 열기)은 미션 6에서 잇는다.
+    if (next === "left") toggleCommanderSectionCollapsed(commodoreId, false);
+    setNotice({ next, prev, nonce: Date.now() });
+  };
+  const undo = () => {
+    if (notice === null) return;
+    setCommanderPlacement(notice.prev);
+    if (notice.prev === "left") toggleCommanderSectionCollapsed(commodoreId, false);
+    setNotice(null);
+  };
   return (
-    <span className="commander-place" role="group" aria-label={t("commanderRail.place")}>
-      <button type="button" className="commander-place-button" aria-pressed={shown.place === "sidebar"} aria-label={t("commanderRail.placeSidebar")} title={t("commanderRail.placeSidebar")} onClick={() => choose({ place: "sidebar", side: placement.side })}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.4h3.1v11.2H2.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M7.6 4.6h6M7.6 8h6M7.6 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-      </button>
-      <button type="button" className="commander-place-button" aria-pressed={shown.place === "chat" && shown.side === "left"} aria-label={t("commanderRail.placeChatLeft")} title={t("commanderRail.placeChatLeft")} onClick={() => choose({ place: "chat", side: "left" })}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 3.2h3.2v9.6H2.2zM6.6 3.2h7.2v9.6H6.6z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
-      </button>
-      <button type="button" className="commander-place-button" aria-pressed={shown.place === "chat" && shown.side === "right"} aria-label={t("commanderRail.placeChatRight")} title={t("commanderRail.placeChatRight")} onClick={() => choose({ place: "chat", side: "right" })}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 3.2h7.2v9.6H2.2zM10.6 3.2h3.2v9.6h-3.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
-      </button>
-    </span>
+    <>
+      <span className="commander-place" role="group" aria-label={t("commanderRail.place")}>
+        <button type="button" className="commander-place-button" aria-pressed={placement === "left"} aria-label={t("commanderRail.placeSidebar")} title={t("commanderRail.placeSidebar")} onClick={() => choose("left")}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.4h3.1v11.2H2.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M7.6 4.6h6M7.6 8h6M7.6 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+        <button type="button" className="commander-place-button" aria-pressed={placement === "right"} aria-label={t("commanderRail.placeRight")} title={t("commanderRail.placeRight")} onClick={() => choose("right")}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.7 2.4h3.1v11.2h-3.1z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M2.4 4.6h6M2.4 8h6M2.4 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+      </span>
+      {notice !== null ? (
+        <ToastHost>
+          <Toast open tone="info" title={t(notice.next === "left" ? "commanderRail.movedToLeft" : "commanderRail.movedToRight")} actionLabel={t("chrome.toast.undo")} onAction={undo} onDismiss={() => setNotice(null)} />
+        </ToastHost>
+      ) : null}
+    </>
   );
 }
 

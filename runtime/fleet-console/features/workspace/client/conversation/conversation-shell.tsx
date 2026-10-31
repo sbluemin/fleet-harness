@@ -56,10 +56,7 @@ import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout, workbenchLayoutKeeping } from "./workbench/workbench-store.js";
-import { CommanderGhostRail } from "../commander-tab/commander-ghost-rail.js";
-import { effectiveCommanderPlacement, setCommanderRailExpanded, useCommanderPlacement, useCommanderRailExpanded, useEffectiveCommanderPlacement } from "../commander-tab/commander-placement.js";
-import { setSideBarConversationCompact, sideBarOccupiedWidth, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
-import type { WorkbenchLayout } from "../../shared/conversation-workbench.js";
+import { setSideBarConversationCompact, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
 import { ConversationDockHost } from "./conversation-dock-height.js";
 import "./conversation.css";
 
@@ -776,8 +773,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           : surfaceTheaterId !== null ? `surface:${surface.surfaceId}:theater:${surfaceTheaterId}`
             : `surface:${surface.surfaceId}:${stableParamsKey(surface.params)}`
         : null;
-  const commanderPlacement = useEffectiveCommanderPlacement();
-  const showCommanderRail = toolCommodoreId !== null && !newSession && commanderPlacement.place === "chat";
   const railBindings = useDesktopRailEntries();
   const toolEntryIds = useMemo(
     () => railBindings.filter((binding) => isWorkbenchToolBinding(binding) && binding.entry.visible?.() !== false).map((binding) => binding.entry.id),
@@ -859,7 +854,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
-  useCommanderConversationWidth(stageElement, toolCommodoreId !== null && !newSession, viewport, insets.right, shownLayout);
+  useConversationSidebarCompact(stageElement, viewport, insets.right);
   const tools = (lead: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} band={band} />;
 
   return (
@@ -870,8 +865,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     <section
       ref={setStageElement}
       className="conversation-stage"
-      data-commander-rail={showCommanderRail || undefined}
-      // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
+      // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
       // 대화 아래 줄 높이(아래)만큼 더 비킨다. 비킨 폭은 머리 pill 줄이 그만큼 오른쪽으로 더 뻗어 맨 위 줄 전체에 걸칠 때 쓴다.
       style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom, "--conversation-split-right": `${geometry.conversationRight}px` } as CSSProperties}
       aria-label={t("conversation.stage.aria")}
@@ -912,7 +906,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           </div>
         </div>
       )}
-      {showCommanderRail && toolCommodoreId !== null ? <CommanderGhostRail key={toolCommodoreId} commodoreId={toolCommodoreId} selectedId={surfaceDescriptor ? standInId : stageSubject?.id ?? null} /> : null}
       </ConversationDockHost.Provider>
     </section>
     <ConversationWorkbench
@@ -932,63 +925,26 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   );
 }
 
-/** 펼친 채팅 목록과 오른쪽 패널은 나중에 연 쪽을 남긴다. 패널만 있어도 대화가 좁으면 사이드바가 잠깐 물러난다. */
-function useCommanderConversationWidth(
+/** 오른쪽 패널이 열려 대화가 좁아지면 사이드바가 잠깐 물러난다. 저장된 사이드바 폭은 그대로 둔다. */
+function useConversationSidebarCompact(
   stage: HTMLElement | null,
-  hasCommander: boolean,
   viewport: { readonly width: number; readonly height: number },
   railWidth: number,
-  layout: WorkbenchLayout,
 ): void {
-  const placement = useCommanderPlacement();
-  const expanded = useCommanderRailExpanded();
   const panelId = useRailActivePanelId();
   const sideBar = useSideBarState();
-  const listOpen = hasCommander && effectiveCommanderPlacement(placement, sideBar.compact).place === "chat" && expanded;
-  // 복귀 판정은 임시 compact가 옮긴 목록을 제외한다. 그렇지 않으면 sidebar 선호도 채팅에 붙잡힌다.
-  const savedListOpen = hasCommander && effectiveCommanderPlacement(placement, sideBar.viewportCompact).place === "chat" && expanded;
-  const previous = useRef({ listOpen: false, panelOpen: false });
-  const lastOpened = useRef<"list" | "panel">("list");
   useLayoutEffect(() => {
     const panelOpen = panelId !== null;
-    if (panelOpen && !previous.current.panelOpen) lastOpened.current = "panel";
-    if (listOpen && !previous.current.listOpen) lastOpened.current = "list";
-    previous.current = { listOpen, panelOpen };
-    if (!stage || (!listOpen && !panelOpen)) {
+    if (!stage || !panelOpen) {
       setSideBarConversationCompact(false);
       return;
     }
     // RightRail은 대화 최소 폭을 예약하되 패널 하한(240px) 아래로는 줄지 않는다. 그 하한이 예약을 침범할 때만 물러난다.
     // compact 뒤 넓어진 패널 실측을 복귀 판정에 쓰지 않는다. 저장 사이드바 폭과 같은 패널 하한으로 왕복을 막는다.
-    const panelNeedsCompact = !sideBar.viewportCompact && panelOpen && railWidth > 0
+    const panelNeedsCompact = !sideBar.viewportCompact && railWidth > 0
       && viewport.width - sideBar.width - MIN_PANEL_WIDTH < CONVERSATION_MIN_WIDTH;
-    if (!listOpen) {
-      setSideBarConversationCompact(panelNeedsCompact);
-      return;
-    }
-    // 전이 중인 DOM 폭 대신 도착할 폭을 쓴다. 228px 목록은 CSS 토큰 그대로이며 작업대의 물러남도 같은 함수로 셈한다.
-    const listWidth = Number.parseFloat(getComputedStyle(stage).getPropertyValue("--commander-list-span"));
-    if (!Number.isFinite(listWidth)) return;
-    const conversationWidth = (sideWidth: number, rightWidth: number) => {
-      const region = Math.max(0, viewport.width - sideWidth - rightWidth);
-      return region - computeWorkbenchGeometry(layout, region, viewport.height).conversationRight - listWidth;
-    };
-    let rightWidth = panelOpen ? railWidth : 0;
-    if (panelId !== null && rightWidth > 0 && conversationWidth(sideBarOccupiedWidth(sideBar), rightWidth) < CONVERSATION_MIN_WIDTH) {
-      if (lastOpened.current === "panel") {
-        setCommanderRailExpanded(false);
-        setSideBarConversationCompact(panelNeedsCompact);
-        return;
-      }
-      // 닫기 단추와 같은 경로라 이 대화의 닫힘 기억도 남는다. 패널 폭의 저장값은 건드리지 않는다.
-      dismissRailPanel(panelId);
-      rightWidth = 0;
-    }
-    // 복귀도 사람이 정한 폭으로 판정한다. compact의 늘어난 여유로 바로 복귀하면 두 폭 사이를 왕복하게 된다.
-    setSideBarConversationCompact(savedListOpen
-      ? !sideBar.viewportCompact && conversationWidth(sideBar.width, rightWidth) < CONVERSATION_MIN_WIDTH
-      : rightWidth > 0 && panelNeedsCompact);
-  }, [stage, listOpen, savedListOpen, panelId, sideBar, viewport.width, viewport.height, railWidth, layout]);
+    setSideBarConversationCompact(panelNeedsCompact);
+  }, [stage, panelId, sideBar, viewport.width, viewport.height, railWidth]);
   useLayoutEffect(() => () => setSideBarConversationCompact(false), []);
 }
 

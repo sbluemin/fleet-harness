@@ -171,6 +171,39 @@
   flex: none;
 }
 
+/* 좁은 창 얼굴 열의 「지휘관 n」 단추 — 활성 사령관 얼굴 아래 한 줄로 선다. */
+.commander-compact-count {
+  display: block;
+  margin: 4px auto 0;
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.commander-compact-count:hover { background: var(--wash-hover); color: var(--text-primary); }
+.commander-compact-count:focus-visible { box-shadow: var(--focus-face); }
+
+/* 같은 카드 목록 팝오버 — 사이드바 목록과 같은 카드 형상을 얼굴 열 옆에 띄운다. */
+.commander-compact-popover {
+  position: fixed;
+  z-index: 30;
+  width: 288px;
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+}
+:root[data-view-mode="mobile"] .commander-compact-popover { display: none; }
+
 .commander-tab-empty {
   margin: 0;
   padding: var(--space-3) var(--space-2);

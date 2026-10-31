@@ -1,36 +1,27 @@
 import { useSyncExternalStore } from "react";
 
-import { getSideBarState, subscribeSideBarState, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
-
-/** 지휘관 목록이 서는 곳. 채팅 안일 때만 side 를 쓴다. 기본은 사이드바다. */
-export type CommanderPlace = "sidebar" | "chat";
-export type CommanderSide = "left" | "right";
-
-export interface CommanderPlacement {
-  readonly place: CommanderPlace;
-  readonly side: CommanderSide;
-}
+/** 지휘관 목록이 서는 사이드바. 왼쪽이 기본이다. */
+export type CommanderPlacement = "left" | "right";
 
 const KEY = "fleet-console.commanderList.place";
 const LEGACY_SIDE_KEY = "fleet-console.commanderRail.side";
-const DEFAULT_PLACEMENT: CommanderPlacement = { place: "sidebar", side: "right" };
+const RAIL_EXPANDED_KEY = "fleet-console.commanderList.expanded";
 
 export function readCommanderPlacement(): CommanderPlacement {
   try {
-    if (typeof window === "undefined") return DEFAULT_PLACEMENT;
+    if (typeof window === "undefined") return "left";
+    // 고스팅 레일 잔재는 읽는 김에 지운다 — 값은 따로 쓰지 않는다.
+    window.localStorage.removeItem(LEGACY_SIDE_KEY);
+    window.localStorage.removeItem(RAIL_EXPANDED_KEY);
     const raw = window.localStorage.getItem(KEY);
-    if (raw !== null) {
-      const parsed = JSON.parse(raw) as Partial<CommanderPlacement>;
-      return {
-        place: parsed.place === "chat" ? "chat" : "sidebar",
-        side: parsed.side === "left" ? "left" : "right",
-      };
-    }
-    const legacy = window.localStorage.getItem(LEGACY_SIDE_KEY);
-    if (legacy === "left" || legacy === "right") return { place: "chat", side: legacy };
-    return DEFAULT_PLACEMENT;
+    if (raw === null) return "left";
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === "left" || parsed === "right") return parsed;
+    // 예전 저장값(사이드바·채팅 안)은 모두 왼쪽으로 모은다.
+    window.localStorage.setItem(KEY, JSON.stringify("left"));
+    return "left";
   } catch {
-    return DEFAULT_PLACEMENT;
+    return "left";
   }
 }
 
@@ -38,9 +29,8 @@ let placement = readCommanderPlacement();
 const listeners = new Set<() => void>();
 
 export function setCommanderPlacement(next: CommanderPlacement): void {
-  if (placement.place === next.place && placement.side === next.side) return;
-  placement = { place: next.place, side: next.side };
-  updateTemporaryChatPlacement();
+  if (placement === next) return;
+  placement = next;
   try { window.localStorage.setItem(KEY, JSON.stringify(placement)); } catch { /* 저장하지 못하면 이번 화면에서만 기억한다. */ }
   for (const listener of listeners) listener();
 }
@@ -51,68 +41,4 @@ export function useCommanderPlacement(): CommanderPlacement {
     () => placement,
     () => placement,
   );
-}
-
-/** 고스팅 레일 펼침 상태. 사령관을 옮겨도(재마운트) 유지되도록 컴포넌트 밖에서 기억한다. 기본은 접힘. */
-const RAIL_EXPANDED_KEY = "fleet-console.commanderList.expanded";
-
-export function readCommanderRailExpanded(): boolean {
-  try {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(RAIL_EXPANDED_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-let railExpanded = readCommanderRailExpanded();
-const railExpandedListeners = new Set<() => void>();
-// 패널 때문에 잠깐 옮겨 온 목록은 얼굴 열로 시작한다. 그동안의 펼침도 저장된 채팅 선호와 별개다.
-let temporaryChatPlacement = isTemporaryChatPlacement();
-let temporaryRailExpanded = false;
-
-function isTemporaryChatPlacement(): boolean {
-  const sideBar = getSideBarState();
-  return placement.place === "sidebar" && sideBar.compact && !sideBar.viewportCompact;
-}
-
-function updateTemporaryChatPlacement(): void {
-  const next = isTemporaryChatPlacement();
-  if (temporaryChatPlacement === next) return;
-  temporaryChatPlacement = next;
-  temporaryRailExpanded = false;
-  for (const listener of railExpandedListeners) listener();
-}
-subscribeSideBarState(updateTemporaryChatPlacement);
-
-function effectiveRailExpanded(): boolean {
-  return temporaryChatPlacement ? temporaryRailExpanded : railExpanded;
-}
-
-export function setCommanderRailExpanded(next: boolean): void {
-  if (effectiveRailExpanded() === next) return;
-  if (temporaryChatPlacement) temporaryRailExpanded = next;
-  else {
-    railExpanded = next;
-    try { window.localStorage.setItem(RAIL_EXPANDED_KEY, String(next)); } catch { /* 저장하지 못하면 이번 화면에서만 기억한다. */ }
-  }
-  for (const listener of railExpandedListeners) listener();
-}
-
-export function useCommanderRailExpanded(): boolean {
-  return useSyncExternalStore(
-    (listener) => { railExpandedListeners.add(listener); return () => { railExpandedListeners.delete(listener); }; },
-    effectiveRailExpanded,
-    effectiveRailExpanded,
-  );
-}
-
-/** 좁은 창에서는 사이드바 목록이 사라지므로, 저장값은 그대로 두고 채팅 레일로 보여 준다. */
-export function effectiveCommanderPlacement(stored: CommanderPlacement, compact: boolean): CommanderPlacement {
-  if (compact && stored.place === "sidebar") return { place: "chat", side: stored.side };
-  return stored;
-}
-
-export function useEffectiveCommanderPlacement(): CommanderPlacement {
-  return effectiveCommanderPlacement(useCommanderPlacement(), useSideBarState().compact);
 }
