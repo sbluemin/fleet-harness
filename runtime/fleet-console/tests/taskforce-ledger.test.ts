@@ -108,7 +108,7 @@ interface StubSession {
   readonly tools: ReadonlyMap<string, ConsoleMcpTool>;
 }
 
-function runtimeHarness() {
+function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
   const consoleDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-taskforce-runtime-"));
   dirs.push(consoleDataDir);
   const theaterRoot = path.join(consoleDataDir, "theater");
@@ -152,7 +152,7 @@ function runtimeHarness() {
     },
   };
   const board: CommodoreBoardAdapter = {
-    tools: () => [],
+    tools: () => [...extraBoardTools],
     watch: () => ({ recount: () => new Map<CommodoreBoardWakeCode, number>(), scope: () => null, brief: () => null, attribute: (tool) => tool, emptyOperated: () => false, dispose: () => {} }),
     objective: () => null,
   };
@@ -293,6 +293,79 @@ describe("taskforce runtime", () => {
       const restored = createTaskforceStore({ root: path.join(h.consoleDataDir, "taskforce"), emit: () => undefined });
       expect(restored.read(taskforceId)?.counts).toEqual({ person: 2, commodore: 12 });
       expect(restored.read(taskforceId)?.judging?.outcomes?.[a]?.outcome).toBe("spoke");
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("taskforce runtime empty wakes", () => {
+  it("does not start a turn for a taskforce wake with no unread items", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const { state: created } = h.taskforce.create({ name: "빈 깨움 TF", topic: "주제", members: [a, b] });
+      const taskforceId = created.id;
+      h.supervisor.sync("started");
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 말" });
+      // 다른 턴이 이미 읽은 셈 친다 — 깨움만 남고 판단 항목은 없다.
+      h.taskforce.advanceReadSeq(taskforceId, a, 2);
+      h.taskforce.advanceReadSeq(taskforceId, b, 2);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      // 턴이 서지 않는다 — 세션도, 1:1 기록도 남지 않는다.
+      expect(h.sessions).toHaveLength(0);
+      expect(h.store.transcriptRead(a).entries).toHaveLength(0);
+      expect(h.store.transcriptRead(b).entries).toHaveLength(0);
+      expect(h.supervisor.status(a)).toMatchObject({ phase: "idle" });
+      // 판단 중에서도 조용히 빠진다.
+      const judgements = h.tfEvents.filter((event) => event.op === "taskforce-judging");
+      expect(judgements.length).toBeGreaterThan(0);
+      expect(judgements.at(-1)).toMatchObject({ taskforceId, judging: [] });
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("taskforce runtime board actions", () => {
+  it("appends board writes under the post with replyTo", async () => {
+    vi.useFakeTimers();
+    try {
+      // `add` 의 id는 입력이 아니라 결과에만 있다 — 기록이 결과를 이어야 묶음이 생긴다.
+      const objectivesAddTool = {
+        name: "objectives",
+        description: "fake board",
+        inputSchema: {},
+        actionSchema: { actions: { add: { kind: "write" } } },
+        execute: async () => ({ content: [{ type: "text", text: "{}" }], structuredContent: { ok: true, objectiveId: "o1", stored: { title: "온보딩 결제 단계 분리" } }, isError: false }),
+      } as unknown as ConsoleMcpTool;
+      const h = runtimeHarness([objectivesAddTool]);
+      const { a } = h.ids;
+      const { state: created } = h.taskforce.create({ name: "액션 TF", topic: "주제", members: [a, h.ids.b] });
+      const taskforceId = created.id;
+      h.supervisor.sync("started");
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 말" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
+      // 같은 턴에 쓰고 말한다 — 순서는 바뀌어도 같은 말 아래에 묶인다.
+      const tools = sessionOf("Alpha").tools;
+      sessionOf("Alpha").emit({ kind: "tool-start", id: "w0", name: "mcp__fleet-commodore__objectives", input: { action: "add", title: "온보딩 결제 단계 분리" } });
+      const writeResult = await tools.get("objectives")!.execute({ action: "add", title: "온보딩 결제 단계 분리" }, { cwd: h.theaterRoot, toolCallId: "w0" } as never);
+      expect(writeResult).not.toMatchObject({ isError: true });
+      sessionOf("Alpha").emit({ kind: "tool-end", id: "w0", isError: false });
+      const postResult = await tools.get("taskforce_post")!.execute({ taskforceId, text: "Alpha의 말" }, { cwd: h.theaterRoot, toolCallId: "tf-1" } as never);
+      expect(postResult).not.toMatchObject({ isError: true });
+      sessionOf("Alpha").finish();
+      await vi.advanceTimersByTimeAsync(10);
+      const entries = h.taskforce.readLedger(taskforceId).entries;
+      const postEntry = entries.find((entry) => entry.speaker.kind === "commodore" && entry.text === "Alpha의 말")!;
+      const actionsEntry = entries.find((entry) => (entry.actions?.length ?? 0) > 0)!;
+      expect(actionsEntry.replyTo).toBe(postEntry.seq);
+      expect(actionsEntry.actions).toEqual([{ kind: "add", objectiveId: "o1", title: "온보딩 결제 단계 분리" }]);
+      // 1:1 기록의 tool 줄에도 결과의 objectiveId가 남았다.
+      const toolEntry = h.store.transcriptRead(a).entries.find((entry) => entry.kind === "tool" && entry.name === "objectives");
+      expect(toolEntry).toMatchObject({ action: "add", objectiveId: "o1", title: "온보딩 결제 단계 분리", ok: true });
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });

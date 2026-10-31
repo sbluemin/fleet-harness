@@ -460,6 +460,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     emitTf({ ...tfSnapshot(taskforceId), op: "taskforce-judging" });
     persistTfJudging(taskforceId);
   };
+  /** 판단 항목이 비어 판단이 끝난 성원 — 결과 없이 판단 중에서만 뺀다(빈 깨움 정리). */
+  const judgingDropQuiet = (taskforceId: string, member: string) => {
+    if (!tfJudging.get(taskforceId)?.delete(member)) return;
+    emitTf({ ...tfSnapshot(taskforceId), op: "taskforce-judging" });
+    persistTfJudging(taskforceId);
+  };
   const recordTfOutcome = (taskforceId: string, member: string, outcome: "spoke" | "silent") => {
     if (tfJudging.get(taskforceId)?.delete(member)) { /* 판단에서 빠진다 */ }
     let outcomes = tfOutcomes.get(taskforceId);
@@ -512,7 +518,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return parts.join(" ");
   };
 
-  /** 같은 턴의 성공한 보드 쓰기 — 기록의 이 턴 구간에서 action·objectiveId가 남은 tool 줄만 모은다. */
+  /** 같은 턴의 성공한 보드 쓰기 — 기록의 이 턴 구간에서 action·objectiveId가 남은 tool 줄만 모은다. 새 쪽부터 걷는다. */
   const collectTurnBoardWrites = (commodoreId: string, afterSeq: number): TaskforceAction[] => {
     const writes: TaskforceAction[] = [];
     let before: number | undefined;
@@ -521,7 +527,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       try { page = deps.store.transcriptRead(commodoreId, { limit: MAX_TRANSCRIPT_PAGE, ...(before === undefined ? {} : { before }) }); }
       catch { break; }
       let done = false;
-      for (const entry of page.entries) {
+      for (const entry of [...page.entries].reverse()) {
         if (entry.seq <= afterSeq) { done = true; break; }
         if (entry.kind === "tool" && entry.action && entry.objectiveId && entry.ok !== false && BOARD_WRITE_TOOL_NAMES.has(entry.name)) {
           writes.push({ kind: entry.action, objectiveId: entry.objectiveId, title: entry.title ?? "" });
@@ -567,6 +573,19 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!canRun(runner.commodoreId)) return;
     if (runner.inflight) return runner.inflight;
     if (!runner.pending.size) return;
+    // 읽지 않은 판단 항목 없는 taskforce 깨움은 턴을 세우지 않는다 — 이유를 걷고 판단 중에서도
+    // 뺀다(빈 깨움 턴의 1:1 기록·유료 호출을 아낀다). 남은 이유가 없으면 쉰다.
+    if (runner.pending.has("taskforce") && deps.taskforce && !tfWakeable(runner.commodoreId)) {
+      runner.pending.delete("taskforce");
+      let memberIds: readonly string[] = [];
+      try { memberIds = deps.taskforce.list().filter((tf) => tf.members.includes(runner.commodoreId)).map((tf) => tf.id); } catch { /* 읽을 수 없으면 다음 기회에 */ }
+      for (const tfId of memberIds) {
+        let left = 0;
+        try { left = deps.taskforce.pending(tfId, runner.commodoreId).length; } catch { continue; }
+        if (!left) judgingDropQuiet(tfId, runner.commodoreId);
+      }
+      if (!runner.pending.size) { setPhase(runner, "idle"); scheduleRoutines(runner); return; }
+    }
     clearTimer(runner, "coalesce"); clearTimer(runner, "retry");
     runner.inflight = (async () => {
       // 이미 수락한 말은 순서를 지키며 나눈다. 초과분은 다음 턴에 남고 빠지지 않는다.
@@ -725,8 +744,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         }
       }
       // TF 판단 턴 — TF 항목을 싣고 사람의 1:1 메시지·mail·사람에게 말 거는 다른 이유가 없으면 조용하다.
-      // 세션 수명주기(교대·재시작·재시도)는 깨움 문장만 보탤 뿐 조용함을 깨지 않는다. 사람 메시지가 함께 실리면 평소대로 기록한다.
-      const quiet = tfPrompt.length > 0 && !mail.length && !messages.length && pending.length > 0 && pending.every(([code]) => QUIET_OK_REASONS.has(code));
+      // 세션 수명주기(교대·재시작·재시도)는 깨움 문장만 보탤 뿐 조용함을 깨지 않는다.
+      // 판단 항목이 비어 블록이 비었어도 taskforce로 깬 턴은 조용히 넘긴다(빈 깨움 방어).
+      const quiet = !mail.length && !messages.length && pending.length > 0
+        && pending.some(([code]) => code === "taskforce")
+        && pending.every(([code]) => QUIET_OK_REASONS.has(code));
       // 이 턴 구간의 시작 — 성공한 턴의 보드 쓰기 묶음을 여기서부터 모은다.
       const turnStartSeq = (() => {
         try { return deps.store.transcriptRead(runner.commodoreId, { limit: 1 }).entries[0]?.seq ?? 0; }

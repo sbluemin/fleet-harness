@@ -129,6 +129,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const pendingTools = new Map<string, { readonly name: string; readonly input: unknown }>();
   // 거절 코드 — 세션 이벤트(tool-end)는 결과를 싣지 않으므로, 도구를 감싸 결과의 `error` 한 낱말만 호출 id·이름으로 기억한다.
   const toolErrors = new Map<string, string>();
+  // 보드 쓰기 결과의 objectiveId — `add` 처럼 id가 결과에만 있는 쓰기를 기록 한 줄에 남긴다. 호출 id로 기억한다.
+  const toolResultObjectives = new Map<string, { objectiveId?: string; title?: string }>();
   // 생성 결과는 UUID·별칭만 보관한다. 호출 id가 없는 호스트는 같은 별칭의 완료 순서로 연결한다.
   const createdCommodores: { readonly callId?: string; readonly commodoreId: string; readonly alias: string }[] = [];
   let turnActions = 0;
@@ -152,13 +154,17 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     const described = describeTool(name, input, boardWrites);
     if (described.counts && ok !== false) turnActions += 1;
     const error = ok === false ? (id && toolErrors.get(id)) || toolErrors.get(`name:${described.name}`) : undefined;
-    if (id) toolErrors.delete(id);
+    // 성공한 보드 쓰기는 결과의 objectiveId·제목을 잇는다 — `add` 의 id는 결과에만 있다.
+    const resultInfo = ok !== false && id ? toolResultObjectives.get(id) : undefined;
+    if (id) { toolResultObjectives.delete(id); toolErrors.delete(id); }
     toolErrors.delete(`name:${described.name}`);
+    const objectiveId = described.objectiveId ?? resultInfo?.objectiveId;
+    const title = described.title ?? resultInfo?.title;
     const args = input as { action?: unknown; alias?: unknown } | undefined;
     const createdIndex = COMMODORES_TOOL_NAMES.has(described.name) && args?.action === "create"
       ? createdCommodores.findIndex((created) => created.callId ? created.callId === id : created.alias === args.alias) : -1;
     const created = createdIndex >= 0 ? createdCommodores.splice(createdIndex, 1)[0] : undefined;
-    record({ kind: "tool", name: described.name, ...(described.summary ? { summary: described.summary } : {}), ...(ok === undefined ? {} : { ok }), ...(described.action ? { action: described.action } : {}), ...(described.objectiveId ? { objectiveId: described.objectiveId } : {}), ...(described.title ? { title: described.title } : {}), ...(created && ok !== false ? { action: "create", commodoreId: created.commodoreId, alias: created.alias } : {}), ...(error ? { error } : {}) });
+    record({ kind: "tool", name: described.name, ...(described.summary ? { summary: described.summary } : {}), ...(ok === undefined ? {} : { ok }), ...(described.action ? { action: described.action } : {}), ...(objectiveId ? { objectiveId } : {}), ...(title ? { title } : {}), ...(created && ok !== false ? { action: "create", commodoreId: created.commodoreId, alias: created.alias } : {}), ...(error ? { error } : {}) });
   };
   /** 거절 코드와 생성한 사령관의 공개 좌표만 기억한다 — 결과 자체는 그대로 돌려준다. */
   const observed = (tool: ConsoleMcpTool): ConsoleMcpTool => ({
@@ -167,6 +173,11 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const result = await tool.execute(args, context);
       const code = errorCodeOf(result);
       if (code) { if (context.toolCallId) toolErrors.set(context.toolCallId, code); toolErrors.set(`name:${tool.name}`, code); }
+      else if (boardWrites.has(tool.name)) {
+        // `add` 처럼 id가 결과에만 있는 보드 쓰기 — 기록 한 줄이 그 말 아래 묶음을 잇는다.
+        const info = resultObjectiveOf(result);
+        if ((info.objectiveId || info.title) && context.toolCallId) toolResultObjectives.set(context.toolCallId, info);
+      }
       if (COMMODORES_TOOL_NAMES.has(tool.name)) {
         const call = args as { action?: unknown; alias?: unknown };
         const reply = result as { isError?: boolean; structuredContent?: { commodoreId?: unknown } };
@@ -291,7 +302,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
-      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; quietText = !!input.quietText; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); createdCommodores.length = 0;
+      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; quietText = !!input.quietText; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); toolResultObjectives.clear(); createdCommodores.length = 0;
       record({ kind: "wake", reasons: input.reasons });
       if (input.scope) {
         // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
@@ -381,7 +392,21 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   }
 }
 
-/** 도구 결과의 거절 코드 — structuredContent.error 또는 JSON 텍스트의 error. snake_case 한 낱말만 받는다. */
+/** 도구 결과의 objectiveId·제목 — `add` 처럼 id가 결과에만 있는 보드 쓰기를 기록이 잇는다. */
+function resultObjectiveOf(result: unknown): { objectiveId?: string; title?: string } {
+  if (!result || typeof result !== "object") return {};
+  const structured = (result as { structuredContent?: unknown }).structuredContent;
+  if (!structured || typeof structured !== "object") return {};
+  const record = structured as Record<string, unknown>;
+  const objectiveId = typeof record.objectiveId === "string" && record.objectiveId.length >= 1 && record.objectiveId.length <= 128 ? record.objectiveId : undefined;
+  const stored = record.stored as Record<string, unknown> | undefined;
+  const storedTitle = stored && typeof stored.title === "string" ? stored.title : undefined;
+  const directTitle = typeof record.title === "string" ? record.title : undefined;
+  const title = (storedTitle ?? directTitle)?.slice(0, 200) || undefined;
+  return { ...(objectiveId ? { objectiveId } : {}), ...(title ? { title } : {}) };
+}
+
+/** 도구 호출의 거절 코드 — structuredContent.error 또는 JSON 텍스트의 error. snake_case 한 낱말만 받는다. */
 function errorCodeOf(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
   const structured = (result as { structuredContent?: { error?: unknown } }).structuredContent;
