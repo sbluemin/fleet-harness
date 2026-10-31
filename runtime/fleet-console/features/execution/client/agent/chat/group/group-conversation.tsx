@@ -50,6 +50,7 @@ export const ConversationMessageContent = React.createContext<AgentConversationP
 export interface GroupConversationProps {
   readonly snapshot: ConversationLogSnapshot;
   readonly language: ConsoleLocale | undefined;
+  readonly accessibleNames?: AgentConversationProps["accessibleNames"];
   /** 한 참여자의 원장을 이 자리에 연다 — 셸의 구성원 본문 선택으로 연결한다. */
   readonly onOpenLedger?: (objectiveId: string) => void;
   /**
@@ -102,7 +103,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, onOpenUISend }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, onOpenUISend }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -284,7 +285,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         ref={logRef}
         className="group-chat-log"
         role="log"
-        aria-label={t("group.aria.log")}
+        aria-label={accessibleNames?.log ?? t("group.aria.log")}
         aria-busy={snapshot.loading}
         onWheel={markUserScroll}
         onTouchMove={markUserScroll}
@@ -376,7 +377,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         {renderComposerWithWorking ? renderComposerWithWorking(workingLine) : <>
           {inlineWorking ? <ComposerTopEntries leading={workingLine} /> : workingLine}
           {/* 플러그인이 준 입력 자리(입력창 또는 단추 하나)는 상자 없는 슬롯에 담는다 — 독 빈 자리의 포인터 통과 규칙이 그 루트를 가리지 않게(group-chat.css). */}
-          {composer ? <div className="group-chat-dock-composer">{composer}</div> : null}
+          {composer ? <div className="group-chat-dock-composer" {...(accessibleNames?.composer ? { role: "group", "aria-label": accessibleNames.composer } : {})}>{composer}</div> : null}
         </>}
       </div>
       <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} />

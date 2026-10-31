@@ -122,6 +122,8 @@ export interface AgentConversationProps {
   readonly loading?: boolean;
   /** The line shown when there are no entries. */
   readonly empty?: string;
+  /** Domain-owned accessible names; omitted names keep the standard conversation vocabulary. */
+  readonly accessibleNames?: { readonly log?: string; readonly composer?: string };
   /** Older entries exist above the first one — a text button at the top reads them. The view keeps its place as they arrive. */
   readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
   /** Bring this entry into view and mark it briefly. A new `nonce` repeats the request for the same entry. */
