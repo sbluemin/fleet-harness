@@ -144,7 +144,7 @@ export function ChatComposerDeck({
       label={t("terminal.chat.deckAria")}
       listbox={listbox}
       contentKey={pending ? "pending" : `${token.kind}:${rows.length}`}
-      // '@' 멘션은 컴포저 왼쪽에 붙는 359px 카드다. '/' 덱은 컴포저 폭을 그대로 쓴다.
+      // '@' 멘션은 컴포저 왼쪽에 붙는 480px 카드다. '/' 덱은 컴포저 폭을 그대로 쓴다.
       className={token.kind === "agent" ? "agent-chat-deck is-mention-deck" : "agent-chat-deck"}
     >
       {pending ? (
