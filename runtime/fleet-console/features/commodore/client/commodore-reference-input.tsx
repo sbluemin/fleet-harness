@@ -686,6 +686,8 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
                   const isTaken = taken.has(referenceKey(objective));
                   const missions = candidate.missions?.length ?? 0;
                   const doneMissions = candidate.missions?.filter((mission) => mission.done).length ?? 0;
+                  // 임무 없는 시작 전 행은 보조가 없다 — aux 를 비워야 이름이 보조 칸까지 쓴다(commodore.css).
+                  const bare = !isTaken && candidate.status !== "commodore" && group === "pending" && !missions;
                   return (
                     <ComposerMentionRow
                       key={objective.id}
@@ -696,7 +698,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
                       name={objective.title}
                       title={objective.title}
                       // 시작 전 묶음의 행은 머리가 이미 「시작 전」이라 그 낱말을 다시 적지 않고 임무 수만 둔다.
-                      aux={(
+                      aux={bare ? null : (
                         <span className="objectives-commodore-ref-sub">
                           {isTaken ? <span>{`✓ ${t("commodore.reference.taken")}`}</span> : <>
                             {candidate.status === "commodore" ? <span>{candidate.description}</span> : group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`commodore.reference.status.${candidate.status}`)}</span>}
