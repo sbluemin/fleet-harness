@@ -339,11 +339,22 @@ export function ObjectiveSearch({
     setObjectiveSearchMode(state.objectiveRecordSearchOpen ? "objectiveRecords" : null);
   }, [state.objectiveRecordSearchOpen]);
 
-  // 첫 결과는 전체 목록의 맨 위 행이다. 여닫을 때도 고쳐 잡는다(닫힐 때 남은 선택이 다음 열림에 남지 않게).
+  // 첫 선택은 가장 잘 맞은 행이다 — 맥락 행(흐린 이름)은 건너뛴다. 빈 질의에서는 보고 있는
+  // 사령관의 가장 최근 지휘관이다.
+  const defaultPrimaryIndex = useMemo(() => {
+    const hasQuery = searchTokens(text).length > 0;
+    const first = hasQuery
+      ? primaryRows.findIndex((row) => row.kind === "member" || (row.kind === "objective" && !row.context) || (row.kind === "commodore" && !row.context))
+      : primaryRows.findIndex((row) => row.kind === "objective" || row.kind === "member");
+    return first === -1 ? 0 : first;
+  }, [text, primaryRows]);
+
+  // 선택 인덱스는 정확히 맞은 레일 결과가 앞에 붙은 결합 목록 기준이다. 정확 결과가 있으면 그것이 먼저다(0).
+  // 질의·열림·기본 행이 바뀔 때만 고쳐 잡는다 — 늦게 도착한 레일 결과가 사용자가 옮긴 선택을 되돌리지 않게.
   useEffect(() => {
-    setSelectedIndex(0);
+    setSelectedIndex(exactCount > 0 ? 0 : defaultPrimaryIndex);
     setActionsFor(null);
-  }, [state.objectiveRecordSearchOpen, text, resultCount]);
+  }, [state.objectiveRecordSearchOpen, text, defaultPrimaryIndex, exactCount]);
 
   useEffect(() => {
     if (!state.objectiveRecordSearchOpen || selectedResultKey === undefined) return;
