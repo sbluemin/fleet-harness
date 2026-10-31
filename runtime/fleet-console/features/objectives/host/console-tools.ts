@@ -16,6 +16,7 @@ import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS } from "./console-views.js";
+import { searchInputShape, searchObjectives } from "./search.js";
 
 /**
  * 바깥 루프의 보드 — 화면 둘. `console_objectives` 는 목표 목록 화면(그룹·목록·확인 필요·진행 중·이력·모델, 추가·정리)이고
@@ -66,7 +67,7 @@ const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0
 const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: restorable, incl. unstarted objectives. Commodore: done needs a person message or requested routine.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
-  description: "Objective lists, groups, inbox, fleet, history, archive and models; add/tidy. archive/remove are restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
+  description: "Objective lists, groups, inbox, fleet, history, archive and models; search past and archived records; add/tidy. archive/remove are restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
   actions: {
     groups: { kind: "read", input: z.object(scope) },
     list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
@@ -75,6 +76,8 @@ const listTool = defineConsoleTool({
     history: { kind: "read", input: z.object(rows) },
     archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (Unix epoch ms). Newest first; follow nextOffset with the same filter.") }) },
     models: { kind: "read", input: z.object(scope) },
+    // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관의 fleet-objectives search 와 같은 핵심·같은 입력이다.
+    search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
     add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
@@ -223,7 +226,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         if (action === "merge") { const into = typeof args.into === "string" ? args.into : ""; const mergeTheaterId = theaterOf(into); return { theaterId: mergeTheaterId, summary: `목표 ${stringIds(args.from).length}개를 「${titleOf(into)}」에 합침`, view: "objective", path: into, gesture: "press", ...rowAt(into || undefined, mergeTheaterId) }; }
         if (action === "restore") { const restoreIds = stringIds(args.objectiveIds); const restoreTheaterId = theaterOf(restoreIds[0]); return { theaterId: restoreTheaterId, summary: restoreIds.length === 1 ? `목표 되돌림 「${titleOf(restoreIds[0]!)}」` : `목표 ${restoreIds.length}개 되돌림`, view: "objectives", gesture: "press", ...(restoreIds.length === 1 ? rowAt(restoreIds[0], restoreTheaterId) : listAt(restoreTheaterId, undefined)) }; }
         // 읽기 — 목표 목록류(목록·그룹·확인 필요·진행 중·이력)면 묶음 머리. 모델 목록은 목표와 무관해 레일에만 선다.
-        return { theaterId, summary: action === "models" ? "모델 목록 봄" : action === "groups" ? "그룹 봄" : "목표 목록 봄", view: "objectives", ...(action === "models" ? {} : listAt(theaterId, args.groupId)) };
+        return { theaterId, summary: action === "models" ? "모델 목록 봄" : action === "groups" ? "그룹 봄" : action === "search" ? `보드 검색 「${short(typeof args.query === "string" ? args.query : "")}」` : "목표 목록 봄", view: "objectives", ...(action === "models" ? {} : listAt(theaterId, args.groupId)) };
       },
     },
     execute: async (raw, context) => {
@@ -480,7 +483,8 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     return { objectiveId: objective.id, session, source: page.source, latest: !args.cursor, entries: page.entries, nextCursor: page.nextCursor, truncated: page.truncated };
   }
 
-  function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" | "archived" }>, commodoreId: string, caller: BoardCaller | undefined) {
+  function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" | "archived" | "search" }>, commodoreId: string, caller: BoardCaller | undefined) {
+    if (args.action === "search") return searchObjectives(store.records(commodoreId), args);
     if (args.action === "archived") {
       if (!ctx.objectiveRecords.listArchived) throw new ObjectiveStoreError("objectiveRecord_lifecycle_unavailable");
       const snapshot = ctx.objectiveRecords.listArchived();
