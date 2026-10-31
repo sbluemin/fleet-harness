@@ -6030,7 +6030,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   height: 50px;
   padding: 0 var(--space-3);
   border: 0;
-  border-bottom: var(--popover-divider-width) solid var(--wash-hover);
+  border-bottom: var(--popover-divider-width) solid var(--surface-rule-soft);
   border-radius: 0;
   background: transparent;
 }

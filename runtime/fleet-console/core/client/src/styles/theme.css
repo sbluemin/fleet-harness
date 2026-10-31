@@ -360,6 +360,8 @@
   --popover-icon-ink: color-mix(in oklch, var(--text-primary) 64%, transparent);
   --popover-divider: var(--popover-rim);
   --popover-divider-width: 0.5px;
+  /* 검색 팔레트 입력 줄 아래 선 — 레퍼런스의 3티어 선(다크 6%, 라이트 8%). */
+  --surface-rule-soft: color-mix(in oklch, var(--text-primary) 6%, transparent);
   --popover-divider-space: 4px 8px;
   --wash-hover: color-mix(in oklch, var(--text-primary) 6%, transparent);
   --wash-selected: color-mix(in oklch, var(--text-primary) 8%, transparent);
@@ -696,6 +698,7 @@
   --popover-icon-ink: rgb(28 28 28 / 66%);
   --wash-hover: rgb(28 28 28 / 6%);
   --wash-selected: rgb(28 28 28 / 8%);
+  --surface-rule-soft: rgb(28 28 28 / 8%);
   /* Doctrine: 무채색 그림자 리터럴(깊이 예외). */
   --popover-shadow: 0 10px 20px -3px #1c1c1c1a, 0 4px 6px -4px #1c1c1c1a, 0 0 0 1px #1c1c1c01;
   --popover-surface-shadow: var(--popover-ring), var(--popover-shadow);
@@ -1098,6 +1101,7 @@
   --dialog-shadow: var(--m-shadow);
   --dialog-surface-shadow: var(--popover-ring), var(--m-shadow);
   --popover-divider: var(--m-hairline);
+  --surface-rule-soft: var(--m-hairline);
   --dialog-scrim: var(--m-scrim);
 
   /* 유리 닫기 — 게이트 블록보다 높은 특이도로 틴트 채널을 불투명 면에 직접 싣는다. */
