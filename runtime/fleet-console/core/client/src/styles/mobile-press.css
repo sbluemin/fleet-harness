@@ -80,6 +80,11 @@
 /* 모양 — PR-2 표. 들여(--pr-inset)는 요소 상자 안쪽 거리, 음수는 바깥. */
 :root[data-view-mode="mobile"] :is(.mobile-bar-button, .mobile-sheet-close, .agent-chat-answer-action) { --pr-r: 50%; }
 :root[data-view-mode="mobile"] :is(.mobile-menu button, .mobile-choice-row) { --pr-inset: 0 8px; }
+:root[data-view-mode="mobile"] :is(.mobile-sheet-row, .mobile-menu button, .mobile-choice-row) { --pr-r: var(--popover-row-radius); }
+:root[data-view-mode="mobile"] :is(.mobile-choice-row.is-selected, .mobile-sheet-row[aria-checked="true"])::before { background: var(--wash-selected); opacity: 1; }
+@media (hover: hover) {
+  :root[data-view-mode="mobile"] :is(.mobile-sheet-row, .mobile-menu button, .mobile-choice-row):hover:not(:disabled, [aria-disabled="true"], .is-selected, [aria-checked="true"])::before { background: var(--wash-hover); opacity: 1; }
+}
 :root[data-view-mode="mobile"] [data-mobile-surface] .agent-chat-ask-option { --pr-inset: 0 -8px; }
 :root[data-view-mode="mobile"] :is(.mobile-choice-tab, .mls-efft button) { --pr-inset: 0 -10px; --pr-r: 10px; }
 :root[data-view-mode="mobile"] :is(.app-toast-action, .app-toast-message .app-toast-link) { --pr-r: 18px; }

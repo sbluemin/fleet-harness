@@ -636,11 +636,13 @@
   width: 228px;
   padding: 8px 0;
   color: var(--m-text);
-  background: var(--m-surface);
+  background: var(--popover-face);
   border-radius: 14px;
-  box-shadow: var(--m-shadow);
+  box-shadow: var(--popover-surface-shadow);
   transform-origin: top right;
   animation: mobile-menu-in 150ms ease-out;
+  border: 0;
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
 
 .mobile-menu.is-leaving { animation: mobile-fade-out 100ms forwards; }
@@ -668,6 +670,7 @@
   text-align: left;
   background: transparent;
   border: 0;
+  border-radius: var(--popover-row-radius);
 }
 
 .mobile-menu button svg { flex: none; width: 20px; height: 20px; color: var(--m-text-muted); }
@@ -675,7 +678,7 @@
 .mobile-menu .is-destructive,
 .mobile-menu .is-destructive svg { color: var(--m-danger); }
 
-/* 설정 선택 팝업(P-1) — 스크림 위 가운데 카드. 고른 행은 무채색 반전(굵게 + ✓), 신호색은 쓰지 않는다. */
+/* 설정 선택 팝업 — 스크림 위 가운데 카드. 고른 행은 중립 워시·굵게·체크로 말하고 신호색은 쓰지 않는다. */
 .mobile-choice-scrim {
   position: fixed;
   inset: 0;
@@ -695,12 +698,14 @@
   max-height: 70vh;
   padding-bottom: 12px;
   color: var(--m-text);
-  background: var(--m-surface);
+  background: var(--popover-face);
   border-radius: 22px;
-  box-shadow: var(--m-shadow);
+  box-shadow: var(--popover-surface-shadow);
   animation: mobile-choice-card-in 200ms cubic-bezier(0.05, 0.7, 0.1, 1);
+  border: 0;
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
-:root[data-mobile-scheme="light"] .mobile-choice { border: 1px solid var(--m-hairline); }
+:root[data-mobile-scheme="light"] .mobile-choice { border: 0; }
 .mobile-choice-scrim.is-leaving .mobile-choice { transform: scale(0.97); transition: transform 150ms cubic-bezier(0.3, 0, 0.8, 0.15); }
 .mobile-choice-title { margin: 0; padding: 20px 22px 8px; font-size: var(--m-fs-title); font-weight: var(--weight-bold); line-height: 24px; text-align: left; }
 .mobile-choice-list { min-height: 0; overflow-y: auto; scrollbar-width: none; }
@@ -717,13 +722,14 @@
   background: transparent;
   border: 0;
   transition: background 150ms ease-out;
+  border-radius: var(--popover-row-radius);
 }
 .mobile-choice-row.has-description { min-height: 64px; }
 .mobile-choice-row:disabled { opacity: 0.45; }
 .mobile-choice-icon { display: inline-flex; flex: none; width: 22px; height: 22px; color: var(--m-text-muted); }
 .mobile-choice-icon svg { width: 22px; height: 22px; }
 .mobile-choice-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.mobile-choice-label { font-size: var(--m-fs-body); font-weight: var(--weight-regular); line-height: 24px; }
+.mobile-choice-label { font-size: var(--m-fs-list); font-weight: var(--weight-regular); line-height: 24px; }
 .mobile-choice-copy small { color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 18px; }
 .mobile-choice-check-slot { flex: none; width: 22px; height: 22px; }
 .mobile-choice-check { flex: none; color: var(--m-text); stroke-width: 2; }
@@ -766,7 +772,7 @@
 /* AI Gateway 모델 추가 — 폰에서는 팔레트가 대화의 모델 시트(.mobile-sheet)와 같은 바텀시트로 선다: 덮개 + 위가 둥근 면.
    목록은 남은 높이를 다 쓰고, 터치에는 없는 방향키 힌트와 크기 손잡이는 서지 않는다. */
 :root[data-view-mode="mobile"] .ai-gateway-palette-scrim { position: fixed; inset: 0; z-index: 50; display: block; background: var(--m-scrim); animation: mobile-fade-in 200ms; }
-:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: max(18px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--m-surface); color: var(--m-text); box-shadow: none; animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); }
+:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: max(18px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--popover-face); color: var(--m-text); box-shadow: var(--popover-surface-shadow); animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
 :root[data-view-mode="mobile"] .ai-gateway-palette-list { flex: 1 1 auto; height: auto; min-height: 0; padding: 0 8px 8px; }
 :root[data-view-mode="mobile"] :is(.ai-gateway-palette-resize, .ai-gateway-palette-kbd) { display: none; }
 :root[data-view-mode="mobile"] .ai-gateway-palette-search { min-height: 44px; margin: 16px 16px 8px; background: var(--m-chip); }
@@ -799,7 +805,7 @@
 .mobile-choice-band { display: flex; align-items: center; gap: 8px; padding: 12px 22px 4px; color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-bold); line-height: 18px; }
 .mobile-choice-band-note { padding-top: 0; font-weight: var(--weight-regular); }
 .mobile-choice-meta { flex: none; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
-.mobile-choice-rule { height: 1px; margin: 8px 22px 0; background: var(--m-hairline); }
+.mobile-choice-rule { height: var(--popover-divider-width); margin: 8px 22px 0; background: var(--popover-divider); }
 .mobile-choice-tabs { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 22px 4px; }
 .mobile-choice-tab { min-height: 36px; padding: 0 0 4px; color: var(--m-text-nav); font-size: var(--m-fs-secondary); background: transparent; border: 0; border-bottom: 2px solid transparent; }
 .mobile-choice-tab.is-on { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-text); }
@@ -904,6 +910,9 @@
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1);
   will-change: transform;
+  border: 0;
+  box-shadow: var(--popover-surface-shadow);
+  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
 .mobile-sheet.is-full { top: 8px; max-height: none; }
 .mobile-sheet.is-leaving { animation: mobile-sheet-out 220ms cubic-bezier(0.3, 0, 0.8, 0.15) forwards; }
@@ -943,7 +952,7 @@
   text-align: left;
   background: transparent;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--popover-row-radius);
 }
 .mobile-sheet-row:disabled { opacity: 0.5; }
 .mobile-sheet-row-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
@@ -952,8 +961,8 @@
 .mobile-sheet-row-copy small.is-awaiting { color: var(--m-awaiting); }
 .mobile-sheet-row-glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: var(--m-text); }
 .mobile-sheet-check { color: var(--m-text); }
-/* 시트 안 구분선(S-55) — 1dp 좌우 8 들여 위 4 */
-.mobile-sheet-sep { height: 1px; margin: 4px 8px 0; background: var(--m-hairline); }
+/* 시트 안 구분선 — 공통 반 픽셀 선, 좌우 8 들여 위 4. */
+.mobile-sheet-sep { height: var(--popover-divider-width); margin: 4px 8px 0; background: var(--popover-divider); }
 .mobile-sheet-error { margin: 0; color: var(--m-danger); font-size: var(--t-md); }
 /* S-07 아래 안내 — 행을 길게 누르면 그 Theater의 동작 시트가 선다. 길게 누르는 행에는 iOS 콜아웃·글자 선택이 뜨지 않는다. */
 .mobile-sheet-hint { margin: 0; padding: 6px 8px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }
@@ -962,6 +971,16 @@
 .mobile-sheet-row-main { display: flex; flex: 1; align-items: center; gap: 14px; min-width: 0; min-height: 44px; padding: 0; color: inherit; font: inherit; text-align: left; background: transparent; border: 0; }
 .mobile-sheet-kebab { display: grid; place-items: center; flex: none; width: 44px; height: 44px; color: var(--m-text-muted); background: transparent; border: 0; border-radius: 22px; }
 .mobile-sheet-row.is-danger { color: var(--m-danger); }
+
+/* 보관함은 데스크톱 카드 골격을 공유하지만 모바일 행과 행동은 터치 크기를 지킨다. */
+:root[data-view-mode="mobile"] .archive-sheet { --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
+:root[data-view-mode="mobile"] .archive-sheet button { min-width: 44px; min-height: 44px; font-size: var(--m-fs-list); }
+:root[data-view-mode="mobile"] .archive-sheet-item { grid-template-columns: minmax(0, 1fr); min-height: 44px; border-radius: var(--popover-row-radius); }
+:root[data-view-mode="mobile"] .archive-sheet-item-title { font-size: var(--m-fs-list); }
+:root[data-view-mode="mobile"] .archive-sheet-actions { position: static; grid-area: auto; justify-content: flex-end; max-width: 100%; opacity: 1; pointer-events: auto; background: transparent; }
+:root[data-view-mode="mobile"] .archive-sheet-item + .archive-sheet-item::before { height: var(--popover-divider-width); }
+:root[data-view-mode="mobile"] .archive-sheet-commodore + .archive-sheet-commodore,
+:root[data-view-mode="mobile"] .archive-sheet-other-archives { border-top: var(--popover-divider-width) solid var(--popover-divider); }
 
 /* 묶음 카드(목록 화면 공통) */
 .mobile-group { display: flex; flex-direction: column; gap: 2px; padding: 4px 14px 24px; }
@@ -1542,5 +1561,5 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-chip-state.is-danger { color: var(--m-danger); }
 .mobile-settings-page.is-embedded { height: auto; }
 .mobile-settings-page.is-embedded .mobile-settings-scroll { overflow: visible; }
-.mobile-sheet.is-profile { background: var(--m-bg); }
+.mobile-sheet.is-profile { background: var(--popover-face); }
 .mobile-sheet.is-profile .mobile-sheet-body { padding-inline: 0; }

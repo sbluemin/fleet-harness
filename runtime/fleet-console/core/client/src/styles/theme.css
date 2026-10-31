@@ -1173,20 +1173,21 @@
 
   --m-bg-deep: #111111;
   --m-bg: #151515;
-  --m-surface: #20201f;
-  --m-chip: #313131;
-  --m-selected: #414141;
-  --m-hairline: #212120;
-  --m-hairline-strong: #3d3c3a;
-  --m-handle: #4a4a48;
-  --m-text: #f9f9f7;
-  --m-text-nav: #c3c2b7;
-  --m-text-muted: #97958d;
-  --m-text-faint: #898781;
-  --m-inverse: #f9f9f7;
-  --m-on-inverse: #282827;
-  --m-scrim: rgb(0 0 0 / 0.5);
-  --m-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  --m-surface: #1f1f1f;
+  --m-chip: rgb(245 245 245 / 6%);
+  --m-selected: rgb(245 245 245 / 8%);
+  --m-hairline: rgb(245 245 245 / 10%);
+  --m-hairline-strong: #3d3d3d;
+  --m-handle: #4a4a4a;
+  --m-text: #f5f5f5;
+  --m-text-nav: rgb(245 245 245 / 66%);
+  --m-text-muted: rgb(245 245 245 / 54%);
+  --m-text-faint: rgb(245 245 245 / 54%);
+  --m-inverse: #f5f5f5;
+  --m-on-inverse: #282828;
+  --m-scrim: rgb(0 0 0 / 69.7%);
+  /* Doctrine: 합성 그림자 목록에서도 링을 지키는 무채색 무그림자 값. */
+  --m-shadow: 0 0 transparent;
   --m-awaiting: #6fc6d6;
   --m-running: #d9b46a;
   --m-idle: #74c99a;
@@ -1223,27 +1224,29 @@
   --provider-codex: oklch(78% 0.035 248);
   --provider-xai: oklch(76% 0.055 258);
   --provider-antigravity: oklch(73% 0.085 288);
+  --popover-icon-ink: rgb(245 245 245 / 64%);
 }
 
 :root[data-view-mode="mobile"][data-mobile-scheme="light"] {
   color-scheme: light;
 
-  --m-bg-deep: #efeee9;
-  --m-bg: #f7f6f2;
+  --m-bg-deep: #f5f5f5;
+  --m-bg: #fcfcfc;
   --m-surface: #ffffff;
-  --m-chip: #ebe9e3;
-  --m-selected: #e2e0d8;
-  --m-hairline: #e4e2da;
-  --m-hairline-strong: #d3d0c6;
-  --m-handle: #ebe9e3;
-  --m-text: #1b1b19;
-  --m-text-nav: #45443f;
-  --m-text-muted: #64625b;
-  --m-text-faint: #706e66;
-  --m-inverse: #1f1f1d;
-  --m-on-inverse: #f9f9f7;
-  --m-scrim: rgb(20 20 18 / 0.32);
-  --m-shadow: 0 8px 24px rgb(20 20 18 / 0.14);
+  --m-chip: rgb(28 28 28 / 6%);
+  --m-selected: rgb(28 28 28 / 8%);
+  --m-hairline: rgb(28 28 28 / 12%);
+  --m-hairline-strong: #d3d3d3;
+  --m-handle: #ebebeb;
+  --m-text: #1c1c1c;
+  --m-text-nav: rgb(28 28 28 / 68%);
+  --m-text-muted: rgb(28 28 28 / 56%);
+  --m-text-faint: rgb(28 28 28 / 56%);
+  --m-inverse: #1c1c1c;
+  --m-on-inverse: #ffffff;
+  --m-scrim: rgb(0 0 0 / 50%);
+  /* Doctrine: 무채색 팝오버 그림자(깊이 예외). */
+  --m-shadow: 0 10px 20px -3px #1c1c1c1a, 0 4px 6px -4px #1c1c1c1a, 0 0 0 1px #1c1c1c01;
   --m-awaiting: #0f7487;
   --m-running: #8f6512;
   --m-idle: #1a7a4b;
@@ -1260,14 +1263,14 @@
   --m-id-indigo: #575d99;
   --m-id-plum: #7a5186;
   --m-id-rose: #8b4b6b;
-  --m-term-bg: #fbfaf7;
+  --m-term-bg: #fcfcfc;
 
   --apex: oklch(50% 0.14 296);
   --apex-glow: oklch(50% 0.14 296 / 14%);
   --crest: oklch(50% 0.14 48);
   --crest-glow: oklch(50% 0.14 48 / 14%);
-  --gauge-face-lift: 0 1px 3px rgb(20 20 18 / 0.26);
-  --gauge-face-lift-strong: 0 2px 8px rgb(20 20 18 / 0.34);
+  --gauge-face-lift: 0 1px 3px rgb(28 28 28 / 0.26);
+  --gauge-face-lift-strong: 0 2px 8px rgb(28 28 28 / 0.34);
   /* 라이트 입력칸은 흰 면(종이보다 밝은 쪽) — 잉크 워시를 깔면 파인 우물이 된다. */
   --control-field: var(--m-surface);
 
@@ -1279,6 +1282,7 @@
   --provider-codex: oklch(43% 0.035 255);
   --provider-xai: oklch(46% 0.06 258);
   --provider-antigravity: oklch(51% 0.1 288);
+  --popover-icon-ink: rgb(28 28 28 / 66%);
 }
 
 /* 글자 배율 세 단(브리지 계약 fontScale) — 기본은 위 블록의 1. */
