@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.274.0] - 2026-10-31
+
+### fleet-console
+
+#### Changed
+- Objective board commands such as Commence and Plan again now take the Commander's avatar color, with the next step filled and other choices outlined, and respond when you hover, focus, or press them.
+- Show not-started and completed objectives in the commander list as one compact list, ordered by due date with recent completions last, and put each objective's due or completion date where its avatar was. The separate collapsible Not started and Done sections are gone on desktop.
+- Choose whether each Commodore's Commanders may use subagents, without changing members' own permissions or redirecting calls to Objectives members.
+- Keep Commodore panels focused with collapsible instructions and descriptions, consistent section headings, and deletion kept in the context menu instead of panel settings.
+- The Commodore's objective log now sits at the bottom of the Info tab instead of a separate Log tab, one line per recent objective that expands to its actions, with more shown on demand. On phones it replaces the Objectives row in the Commodore profile.
+- Menus, popovers, and dialogs share a smaller, lighter look in both themes, and menus opened with the mouse no longer start with an item highlighted.
+- Cmd+K and Cmd+P now open one centered search that lists goals, commanders, files, and commands together.
+- The light theme now uses clean neutral grays instead of the warm oatmeal tint.
+- Markdown in chat, files, and notes now reads as quiet body text, with modest headings and without brass rules or boxed code.
+- Add plugins is easier to scan: the list shows each marketplace's plugins as one-line rows, a plugin's details group what it includes into counted sections with its facts in one About card, and Back and Close are icon buttons in the same place on the list and the details.
+- Relay conversations now expand the conversation header to show its owner and their peers, without a duplicate participant chip in the chat.
+
+#### Fixed
+- The Commodore panel now keeps the tab you chose, such as Routines, when you come back from a Commander instead of switching to Info.
+
 ## [1.273.0] - 2026-10-30
 
 ### fleet-console
