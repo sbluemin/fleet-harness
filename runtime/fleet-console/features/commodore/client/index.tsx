@@ -19,6 +19,8 @@ import { CommodoreZoneHost, commodoreConversationSurface, commodoreHomeTheater, 
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { installCommodoreBoard } from "./board.js";
 import { getT } from "./i18n/index.js";
+import { connectTaskforceConversation, TaskforceHost, taskforceConversationSurface } from "./taskforce/taskforce.js";
+import { installTaskforces } from "./taskforce/state.js";
 import "./commodore.css";
 
 /** 모바일 사령관 화면 — 바로가기 목적지 「사령관」의 본문. 데스크톱은 사이드바 줄과 「사령관 기록」 시트를 그대로 쓴다. */
@@ -85,7 +87,9 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
       const offList = installCommodoreList(ctx.consoleEvents);
       const offGlobalPlugins = installGlobalPlugins(ctx.consoleEvents);
       const offConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
-      return () => { offRemoved(); offConversation(); offGlobalPlugins(); offList(); offState(); offBoard(); snapshots.clear(); };
+      const offTaskforces = installTaskforces(ctx);
+      const offTaskforceConversation = connectTaskforceConversation(ctx.conversation);
+      return () => { offRemoved(); offTaskforceConversation(); offTaskforces(); offConversation(); offGlobalPlugins(); offList(); offState(); offBoard(); snapshots.clear(); };
 
   };
   const plugin: ClientFeatureDescriptor = {
@@ -105,8 +109,9 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
       { id: "global-plugins", render: () => <GlobalPluginsHost /> },
       { id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } },
       { id: "commodore-zone", render: () => <CommodoreZoneHost /> },
+      { id: "taskforce-host", render: () => <TaskforceHost /> },
     ],
-    conversationSurfaces: [commodoreConversationSurface],
+    conversationSurfaces: [commodoreConversationSurface, taskforceConversationSurface],
   };
   return { plugin, host, install };
 }

@@ -1,4 +1,5 @@
 import { getViewedTheaterId } from "./viewed-theater.js";
+import { taskforceT } from "../../../../features/commodore/client/taskforce/i18n.js";
 import type { ConsoleCommodoreSummary } from "../../../../features/commodore/shared/contracts/theaters.js";
 import type { ReactNode } from "react";
 
@@ -60,6 +61,7 @@ export type PaletteCommandAction =
   | { readonly kind: "switch-commodore"; readonly commodoreId: string }
   | { readonly kind: "open-theater-section"; readonly theaterId: string; readonly sectionId: string; readonly pageId: string }
   | { readonly kind: "new-theater" }
+  | { readonly kind: "new-taskforce" }
   | { readonly kind: "new-objectiveRecord" }
   | { readonly kind: "resume-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "archive-objectiveRecord"; readonly objectiveId: string }
@@ -212,6 +214,7 @@ export function buildPaletteCommands(
       glyph: "theater",
     });
   }
+  push({ commandId: "new-taskforce", label: taskforceT(language)("taskforce.new"), aliasLabel: taskforceT(language === "ko" ? "en" : "ko")("taskforce.new"), action: { kind: "new-taskforce" }, group: "console", glyph: "objective-new", shortcut: "console.new-taskforce" });
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {
     push({ commandId: "new-objectiveRecord", label: t("palette.newObjective", { label: activeTheater.label }), aliasLabel: alias("palette.newObjective", { label: activeTheater.label }), action: { kind: "new-objectiveRecord" }, group: "theater", glyph: "objective-new", shortcut: "console.new-session" });

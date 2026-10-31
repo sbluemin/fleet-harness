@@ -20,7 +20,7 @@ const TONES = new Set(["teal", "amber", "plum", "moss", "cerulean", "rose", "ind
 
 export function speakerTone(speaker: ConversationSpeaker): string | null {
   const tone = speaker.mark?.tone;
-  return speaker.kind === "member" && tone && TONES.has(tone) ? tone : speaker.kind === "member" ? "teal" : null;
+  return (speaker.kind === "member" || speaker.kind === "commodore") && tone && TONES.has(tone) ? tone : speaker.kind === "member" ? "teal" : null;
 }
 
 /** 같은 발화자를 가리키는 좌표 — 원장 보기·정지 대상의 키. 사람에게는 Objective 이 없다. */

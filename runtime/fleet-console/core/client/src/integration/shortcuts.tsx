@@ -38,6 +38,7 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
         { combos: bound("console.search-objectiveRecords"), description: t("shortcuts.console.searchOps") },
         { combos: bound("console.command-palette"), description: t("shortcuts.console.commandPalette") },
         { combos: bound("console.new-session"), description: t("shortcuts.console.newSession") },
+        { combos: bound("console.new-taskforce"), description: t("shortcuts.console.newTaskforce") },
         { combos: bound("console.toggle-global-shell"), description: t("shortcuts.console.toggleGlobalShell") },
         { combos: bound("console.toggle-repository"), description: t("shortcuts.console.toggleRepository") },
         { combos: bound("console.toggle-objectives"), description: t("shortcuts.console.toggleObjectives") },

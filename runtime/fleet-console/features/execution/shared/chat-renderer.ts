@@ -136,6 +136,8 @@ export interface AgentConversationProps {
   readonly openBoardAction?: { readonly label: string; readonly open: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void } | null;
   /** After the latest entries, inside the scrolling log and above the working line. Follows the bottom while the person is there. */
   readonly cards?: ReactNode;
+  /** Optional domain-owned inline content and footer; omitted parts keep the standard message renderer. */
+  readonly messageContent?: (entry: Extract<GroupTimelineEntry, { kind: "message" }>) => { readonly body?: ReactNode; readonly footer?: ReactNode } | undefined;
   /** Below the working line — the plugin's own composer or a way back. */
   readonly composer?: ReactNode;
   /** Opt this conversation into the host's plugin summaries above the composer. Omitted on read-only records. */

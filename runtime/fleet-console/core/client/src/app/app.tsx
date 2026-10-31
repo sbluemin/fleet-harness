@@ -46,6 +46,7 @@ import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from 
 import { CommodoreDeletionHost } from "../integration/commodore-deletion.js";
 import { CommodoreDeleteModal } from "../../../../features/commodore/client/commodore-delete-modal.js";
 import { CommodoreCreateModal } from "../../../../features/commodore/client/commodore-create-modal.js";
+import { requestTaskforceCreate } from "../../../../features/commodore/client/taskforce/taskforce.js";
 import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/objective-records-sse.js";
@@ -457,6 +458,11 @@ function ConnectedApp() {
         if (getViewModeSnapshot().effective === "mobile") return false;
         if (!objectiveRecordsViewVisibleRef.current) navigate("/objectives");
         openDefaultNewSession();
+        return true;
+      },
+      openTaskforce: () => {
+        if (!objectiveRecordsViewVisibleRef.current) navigate("/objectives");
+        requestTaskforceCreate();
         return true;
       },
       toggleRailSurface: (entryId) => {

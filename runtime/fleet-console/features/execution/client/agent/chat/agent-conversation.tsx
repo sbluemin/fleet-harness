@@ -3,7 +3,7 @@ import type { AgentConversationProps } from "../../../shared/chat-renderer.js";
 import * as React from "react";
 
 import { ChatReferenceContext } from "./chat-reference.js";
-import { GroupConversation, type BoardActionRecordRequest, type ConversationLogSnapshot } from "./group/group-conversation.js";
+import { ConversationMessageContent, GroupConversation, type BoardActionRecordRequest, type ConversationLogSnapshot } from "./group/group-conversation.js";
 import { ConversationCommodoreContext, LedgerTargetContext, speakerKey, useLocalizedSnapshot, type LedgerTargetRule } from "./group/speaker-mark.js";
 
 /**
@@ -14,7 +14,7 @@ import { ConversationCommodoreContext, LedgerTargetContext, speakerKey, useLocal
  * 원장은 플러그인이 `openLedger` 를 줄 때만 선다 — 그때 명부의 발화자(Objective 이 없는 사령관도)가 그룹 대화와 같은 입구(말풍선 이름·
  * 진행 줄 표식과 낱말)로 그 원장을 연다. 플러그인 대화는 턴을 접지 않으므로 진행 칩이 없다.
  */
-export function AgentConversation({ entries, participants, working, language, commodoreId, loading = false, empty, older = null, reveal = null, openBoardAction = null, openLedger = null, cards, composer, composerTopEntries = false, references, onOpenUISend, openUIOpen }: AgentConversationProps) {
+export function AgentConversation({ entries, participants, working, language, commodoreId, loading = false, empty, older = null, reveal = null, openBoardAction = null, openLedger = null, cards, messageContent, composer, composerTopEntries = false, references, onOpenUISend, openUIOpen }: AgentConversationProps) {
   const snapshot = useLocalizedSnapshot(React.useMemo<ConversationLogSnapshot>(() => ({
     rootObjectiveId: null,
     entries,
@@ -66,7 +66,9 @@ export function AgentConversation({ entries, participants, working, language, co
   return (
     <OpenUIPluginBoundary port={openUIOpen} language={language}><ConversationCommodoreContext.Provider value={commodoreId ?? null}>
       <ChatReferenceContext.Provider value={references ?? null}>
-        {onOpenLedger ? <LedgerTargetContext.Provider value={ledgerRule}>{conversation}</LedgerTargetContext.Provider> : conversation}
+        <ConversationMessageContent.Provider value={messageContent}>
+          {onOpenLedger ? <LedgerTargetContext.Provider value={ledgerRule}>{conversation}</LedgerTargetContext.Provider> : conversation}
+        </ConversationMessageContent.Provider>
       </ChatReferenceContext.Provider>
     </ConversationCommodoreContext.Provider></OpenUIPluginBoundary>
   );

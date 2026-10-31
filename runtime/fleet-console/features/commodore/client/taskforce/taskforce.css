@@ -1,0 +1,95 @@
+.taskforce-menu-shortcut { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
+.taskforce-stack { display: inline-block; position: relative; flex: 0 0 36px; width: 36px; height: 32px; }
+.taskforce-stack > :nth-child(1) { position: absolute; left: 0; top: 0; }
+.taskforce-stack > :nth-child(2) { position: absolute; left: 14px; top: 2px; }
+.taskforce-stack > :nth-child(3) { position: absolute; left: 7px; top: 12px; }
+.taskforce-sidebar { margin: 0 0 10px; list-style: none; }
+.taskforce-sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 4px; color: var(--text-tertiary); font-size: var(--t-xs); }
+.taskforce-sidebar-head button { border: 0; border-radius: 50%; background: transparent; color: inherit; width: 24px; height: 24px; font-size: var(--t-lg); cursor: pointer; }
+.taskforce-sidebar ul { padding: 0; margin: 0; list-style: none; }
+.taskforce-sidebar-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 9px 10px; border: 0; border-radius: 10px; color: var(--text-primary); background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.taskforce-sidebar-row:hover, .taskforce-sidebar-head button:hover { background: var(--wash-hover); }
+.taskforce-sidebar-row.is-selected { background: var(--surface-row-selected); }
+.taskforce-sidebar-row.is-closed { opacity: .55; }
+.taskforce-sidebar-copy { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.taskforce-sidebar-copy strong { font-size: var(--t-md); font-weight: var(--weight-medium); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.taskforce-sidebar-copy small { color: var(--text-tertiary); font-size: var(--t-xs); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.taskforce-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); animation: taskforce-pulse 1.4s ease-in-out infinite; }
+.taskforce-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 5); display: grid; place-items: center; padding: 16px; background: var(--dialog-scrim); }
+.taskforce-dialog { width: min(480px, 100%); max-height: 100%; overflow: auto; border: 0; border-radius: var(--dialog-radius); color: var(--text-primary); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); font-size: var(--t-md); }
+.taskforce-dialog > header { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px 16px 22px; border-bottom: 1px solid var(--hairline); }
+.taskforce-dialog h2 { font-size: var(--t-lg); margin: 0; }
+.taskforce-close { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 50%; color: var(--text-secondary); background: transparent; font-size: var(--t-xl); cursor: pointer; }
+.taskforce-dialog-body { display: grid; gap: 16px; padding: 18px 22px; }
+.taskforce-dialog label, .taskforce-field { display: grid; gap: 6px; font-size: var(--t-sm); color: var(--text-secondary); }
+.taskforce-dialog input, .taskforce-dialog textarea, .taskforce-field textarea { width: 100%; min-width: 0; border: 1px solid var(--hairline-strong); border-radius: 10px; padding: 9px 11px; color: var(--text-primary); background: var(--surface-panel); font: inherit; font-size: var(--t-md); resize: vertical; }
+.taskforce-dialog fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.taskforce-dialog legend { color: var(--text-secondary); font-size: var(--t-sm); margin-bottom: 6px; }
+.taskforce-dialog small { color: var(--text-tertiary); font-size: var(--t-sm); }
+.taskforce-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px 12px 22px; border-top: 1px solid var(--hairline); }
+.taskforce-dialog footer > span { display: flex; gap: 8px; }
+.taskforce-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.taskforce-member-chip, .taskforce-mention { --taskforce-member-ink: var(--text-primary); }
+.taskforce-member-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px 4px 4px; border: 0; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--taskforce-member-ink); background: var(--surface-panel); font: inherit; font-size: var(--t-md); cursor: pointer; }
+.taskforce-member-chip[aria-pressed="true"] { background: var(--wash-selected); box-shadow: inset 0 0 0 1.5px var(--text-primary); }
+.taskforce-member-chip:hover, .taskforce-close:hover { background: var(--wash-hover); }
+.taskforce-mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; color: var(--taskforce-member-ink); font-size: inherit; font-weight: var(--weight-medium); }
+.taskforce-message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.taskforce-error { color: var(--coral); font-size: var(--t-sm); margin: 4px 0; }
+.taskforce-conversation { display: flex; flex: 1; height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
+.conversation-pill-surface-mark:has(> .taskforce-stack) { width: 36px; height: 32px; flex: none; }
+.conversation-panel-identity-mark:has(> .taskforce-stack) { width: 64px; height: 64px; background: transparent; }
+.conversation-panel-identity-mark > .taskforce-stack { transform: scale(1.65); }
+.conversation-panel-identity-mark.is-surface > .taskforce-stack svg { width: 100%; height: 100%; }
+.taskforce-conversation > .group-chat { flex: 1; min-height: 0; }
+.taskforce-foot { width: 100%; padding: 8px clamp(16px, 4cqi, 48px) 16px; }
+.taskforce-judging { display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: var(--t-sm); margin: 8px 0 4px; }
+.taskforce-judging-avatars { display: inline-flex; gap: 3px; }
+.taskforce-typing { animation: taskforce-pulse 1s ease-in-out infinite; letter-spacing: 2px; }
+.taskforce-paused { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid color-mix(in oklch, var(--warn) 35%, transparent); border-radius: 12px; background: color-mix(in oklch, var(--warn) 9%, var(--surface-panel)); color: var(--text-primary); font-size: var(--t-md); }
+.taskforce-paused > div { flex: 1; }
+.taskforce-paused strong { font-weight: var(--weight-medium); }
+.taskforce-paused small { display: block; color: var(--text-secondary); margin-top: 2px; font-size: var(--t-sm); }
+.taskforce-paused > span:last-child { display: flex; gap: 6px; flex-wrap: wrap; }
+.taskforce-composer-wrap { position: relative; }
+.taskforce-composer { display: flex; align-items: flex-end; gap: 8px; padding: 6px; border-radius: 24px; background: var(--surface-capsule); box-shadow: var(--popover-ring); }
+.taskforce-composer:focus-within { box-shadow: var(--field-focus-edge); }
+.taskforce-composer textarea { width: 0; flex: 1; min-height: 30px; max-height: 180px; padding: 6px 0; border: 0; resize: none; field-sizing: content; color: var(--text-primary); background: transparent; font: inherit; font-size: var(--t-md); }
+.taskforce-composer textarea:focus-visible { box-shadow: none; outline: none; }
+.taskforce-composer textarea::placeholder { color: var(--text-tertiary); }
+.taskforce-mention-button, .taskforce-send { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: var(--t-lg); }
+.taskforce-send { background: var(--brass); color: var(--text-on-brass); }
+.taskforce-send:disabled { opacity: .4; cursor: default; }
+.taskforce-mention-picker { position: absolute; bottom: calc(100% + 8px); left: 0; display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; padding: var(--popover-pad); border-radius: var(--popover-radius); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); z-index: 2; }
+.taskforce-hint { font-size: var(--t-xs); text-align: right; color: var(--text-tertiary); margin: 6px 8px 0; }
+.taskforce-closed { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px; background: var(--surface-capsule); border-radius: 12px; color: var(--text-secondary); font-size: var(--t-md); }
+.taskforce-details { display: grid; gap: 16px; align-content: start; color: var(--text-primary); font-size: var(--t-md); }
+.taskforce-details h4 { margin: 4px 0 0; font-size: var(--t-md); }
+.taskforce-details dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; font-size: var(--t-sm); margin: 0; }
+.taskforce-details dt { color: var(--text-tertiary); }
+.taskforce-details dd { margin: 0; overflow-wrap: anywhere; }
+.taskforce-member { display: flex; gap: 8px; align-items: center; }
+.taskforce-member > div { flex: 1; min-width: 0; }
+.taskforce-member strong { font-weight: var(--weight-medium); }
+.taskforce-member small { display: block; color: var(--text-tertiary); font-size: var(--t-xs); margin: 3px 0; }
+.taskforce-link { padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; text-decoration: underline; text-underline-offset: 2px; font: inherit; font-size: var(--t-sm); cursor: pointer; text-align: left; }
+.taskforce-text-button, .taskforce-danger { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
+.taskforce-danger { color: var(--coral); }
+.taskforce-action-list { display: grid; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: .5px solid var(--hairline); }
+.taskforce-action { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.taskforce-action-kind { flex-shrink: 0; color: var(--text-secondary); font-size: var(--t-xs); }
+.taskforce-muted { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
+.taskforce-notices { display: grid; justify-items: center; gap: 4px; padding: var(--conversation-overlay-top, 56px) 12px 0; }
+.objectives-commodore-conversation:has(> .taskforce-notices) > .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
+.taskforce-notice { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 4px 12px; border: 1px dashed var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font-size: var(--t-sm); }
+.taskforce-notices + .objectives-commodore-conversation-log { padding-top: 0; }
+.taskforce-mobile-screen { position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; flex-direction: column; overflow: auto; background: var(--surface-panel); }
+.taskforce-mobile-screen > header { display: flex; align-items: center; gap: 12px; padding: 12px; }
+.taskforce-mobile-screen .taskforce-conversation { padding-top: 0; flex: 1 0 65vh; }
+.taskforce-mobile-screen .taskforce-details { padding: 16px; }
+.taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-notice button:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { box-shadow: var(--field-focus-edge); outline: none; }
+@keyframes taskforce-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .taskforce-live-dot, .taskforce-typing { animation: none; } }
+@media (max-width: 760px) { .taskforce-paused { flex-wrap: wrap; } .taskforce-paused > span:last-child { margin-left: 22px; } .taskforce-dialog footer { flex-wrap: wrap; } }
+@media (forced-colors: active) { .taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-notice button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { outline: 1px solid Highlight; } }
