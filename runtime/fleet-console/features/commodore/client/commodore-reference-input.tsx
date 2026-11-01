@@ -85,6 +85,8 @@ export interface CommodoreReferenceInputProps {
   /** 붙여넣거나 끌어 놓은 이미지 — 받는 쪽이 없으면 이미지는 버린다. */
   readonly onFiles?: (files: readonly File[]) => void;
   readonly isFile?: (file: File) => boolean;
+  /** TaskForce 등 사령관 보드가 아닌 표면이 공용 입력을 그대로 쓸 때 멘션 후보를 이 사령관들로 한정한다. 주면 목표 후보는 숨긴다. */
+  readonly allowedCommodoreIds?: readonly string[];
 }
 
 /* ── 순수 판정 ─────────────────────────────────────────────────────── */
@@ -325,7 +327,7 @@ interface ListState {
 const CLOSED: ListState = { open: false, query: "", index: 0 };
 
 export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle, CommodoreReferenceInputProps>(function CommodoreReferenceInput(props, ref) {
-  const { t, theaterId, value, onChange, disabled = false, className, placeholder, ariaLabel, ariaDescribedBy, phone = false } = props;
+  const { t, theaterId, value, onChange, disabled = false, className, placeholder, ariaLabel, ariaDescribedBy, phone = false, allowedCommodoreIds } = props;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const emitted = useRef<CommodoreReferenceValue | null>(null);
   const composing = useRef(false);
@@ -347,14 +349,16 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const candidates = useMemo((): readonly Candidate[] => {
     if (!list.open) return [];
     const query = list.query.trim().toLowerCase();
-    const peers: Candidate[] = commodores.filter((row) => row.commodoreId !== theaterId && row.active).flatMap((row) => {
+    const allowed = allowedCommodoreIds ? new Set(allowedCommodoreIds) : null;
+    const peers: Candidate[] = commodores.filter((row) => row.commodoreId !== theaterId && (allowed ? allowed.has(row.commodoreId) : row.active)).flatMap((row) => {
       const title = commodoreSectionLabel(row, t("commodore.name"));
       const description = row.theaters.map((theater) => theater.label).join(" · ");
       if (query && !`${title} ${description} ${row.commodoreId}`.toLowerCase().includes(query)) return [];
       return [{ objective: { kind: "commodore", id: row.commodoreId, title }, description, status: "commodore" }];
     });
+    if (allowed) return peers.slice(0, MAX_ROWS);
     return [...peers, ...candidatesOf(objectives, list.query)].slice(0, MAX_ROWS);
-  }, [list.open, list.query, objectives, commodores, theaterId, t]);
+  }, [list.open, list.query, objectives, commodores, theaterId, t, allowedCommodoreIds]);
   const taken = useMemo(() => new Set(value.references.map(referenceKey)), [value.references]);
   const full = value.references.length >= MAX_COMMODORE_REFERENCES;
   // 이미 붙었거나 상한에 닿은 행은 흐리게 서고 방향키가 건너뛴다(덱 키 문법).
