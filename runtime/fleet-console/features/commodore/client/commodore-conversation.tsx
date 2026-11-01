@@ -563,6 +563,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   })),
   // 사령관 대화의 기본 문맥은 정보다. 목록이 오른쪽에 서면 작업 탭이 기본이다 — 사람이 고른 탭 기억이 있으면 그 기억이 먼저다.
   defaultTab: TAB_IDS.info,
+  railContinuityGroup: "commodore-taskforce",
   resolveDefaultTab: () => readCommodoreTasksPlacement() === "right" ? TAB_IDS.routines : TAB_IDS.info,
   onLeaveDesktop: ({ params, tabId }) => {
     const target = readParams(params);

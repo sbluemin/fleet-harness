@@ -269,4 +269,5 @@ export const taskforceConversationSurface: ConversationSurfaceDescriptor = {
   opensWithoutTheater: true,
   tabs: (["overview", "members", "actions"] as const).map((tab) => ({ id: `taskforce-${tab}`, title: (language: "ko" | "en") => taskforceT(language)(`taskforce.${tab}`), defaultWidth: 310, render: (ctx) => <TaskforceDetails key={idOf(ctx.params)} id={idOf(ctx.params)} tab={tab} language={ctx.language} /> })),
   defaultTab: "taskforce-overview",
+  railContinuityGroup: "commodore-taskforce",
 };
