@@ -6,6 +6,8 @@
 .taskforce-stack[data-count="2"] > :nth-child(2) { grid-column: 2; grid-row: 2; }
 /* 사령관 행과 같은 카드에 서는 TF 묶음 — 32px 칸에 맞춘다. */
 .side-bar-theater-anchor > .taskforce-stack { flex-basis: 32px; width: 32px; height: 32px; }
+/* 사령관 카드의 32px 아바타 규칙이 묶음 안 아바타까지 키우지 않게 칸 크기를 따른다. */
+.console-shell.is-objective-records-view .side-bar-theater-header.is-card .side-bar-theater-anchor .taskforce-stack > .mongle-avatar { width: 100%; height: 100%; }
 .taskforce-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 5); display: grid; place-items: center; padding: 16px; background: var(--dialog-scrim); }
 .taskforce-dialog { width: min(480px, 100%); max-height: 100%; overflow: auto; border: 0; border-radius: var(--dialog-radius); color: var(--text-primary); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); font-size: var(--t-md); }
 .taskforce-dialog > header { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px 16px 22px; border-bottom: 1px solid var(--hairline); }
