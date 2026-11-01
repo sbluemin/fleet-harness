@@ -1877,7 +1877,7 @@ describe("commodore supervisor", () => {
       expect(h.store.transcriptRead("t1").entries).toEqual([]);
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
-  it("runs only enabled routines, removes one-time schedules, defers person removals, skips missed repeats on restart and carries a person-requested routine's authority", async () => {
+  it("runs only enabled routines, removes one-time schedules, defers person removals and skips missed repeats on restart without routine person authority", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
     const h = harness(Date.now);
@@ -1980,7 +1980,7 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 1);
       expect(sent).toHaveLength(9);
       expect(supervisor.status("t1")?.phase).toBe("idle");
-      // 사람이 요청한 루틴 — 사람 메시지가 실린 턴의 등록·수정만 출처를 남기고, 그 루틴이 깨운 턴만 완료 목표 보관 권한을 받는다.
+      // 루틴이 깨운 턴은 사람 요청 출처를 갖지 않는다 — 완료 목표 보관은 사람의 메시지를 요구하지 않는다.
       // 그 턴도 Commodore 생성 같은 다른 사람 메시지 권한은 받지 않는다.
       fail = false;
       for (const routine of restored.read("t1")?.routines ?? []) restored.routineRemove("t1", routine.id, "commodore");
@@ -1988,8 +1988,8 @@ describe("commodore supervisor", () => {
       restored.transcriptAppend("t1", { kind: "message", text: "Archive completed objectives every half hour." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       expect(turn!.hasPersonMessage()).toBe(true);
-      const requested = await call("routine_add", { name: "Archive done", task: "Archive completed objectives", schedule: { kind: "every", minutes: 30 } });
-      expect(requested).toMatchObject({ requestedBy: "person" });
+      const archiver = await call("routine_add", { name: "Archive done", task: "Archive completed objectives", schedule: { kind: "every", minutes: 30 } });
+      expect(archiver).not.toHaveProperty("requestedBy");
       finishTurn!();
       await vi.advanceTimersByTimeAsync(10 * 60_000);
       expect(turn!.hasPersonMessage()).toBe(false);
@@ -1997,24 +1997,21 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(20 * 60_000 + COALESCE_MS + 1);
       expect(sent.at(-1)).toContain("Archive done: Archive completed objectives");
       expect(sent.at(-1)).not.toContain("Tidy alone");
-      expect(turn!.hasPersonRoutine()).toBe(true);
       expect(turn!.hasPersonMessage()).toBe(false);
       expect(await routineTools.get("commodores")!.execute({ action: "create", alias: "Unauthorized", theaters: [], description: "", intel: [] }, { cwd: h.objectivesDir })).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
       finishTurn!();
       await vi.advanceTimersByTimeAsync(1);
-      expect(turn!.hasPersonRoutine()).toBe(false);
       await vi.advanceTimersByTimeAsync(10 * 60_000 + COALESCE_MS);
       expect(sent.at(-1)).toContain("Tidy alone: Archive completed objectives");
-      expect(turn!.hasPersonRoutine()).toBe(false);
       finishTurn!();
       await vi.advanceTimersByTimeAsync(1);
-      // 자율 턴이 할 일을 바꾸면 출처가 지워지고, 사람 메시지가 실린 턴의 수정은 같은 값이어도 다시 남긴다.
-      await call("routine_update", { routineId: requested.id, task: "Archive and remove completed objectives" });
-      expect(restored.read("t1")?.routines?.find((routine) => routine.id === requested.id)).not.toHaveProperty("requestedBy");
+      // 사람 메시지가 실린 턴의 수정도 출처를 남기지 않는다.
+      await call("routine_update", { routineId: archiver.id, task: "Archive and remove completed objectives" });
+      expect(restored.read("t1")?.routines?.find((routine) => routine.id === archiver.id)).not.toHaveProperty("requestedBy");
       restored.transcriptAppend("t1", { kind: "message", text: "Yes, keep archiving them." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      await call("routine_update", { routineId: requested.id });
-      expect(restored.read("t1")?.routines?.find((routine) => routine.id === requested.id)).toMatchObject({ requestedBy: "person" });
+      await call("routine_update", { routineId: archiver.id });
+      expect(restored.read("t1")?.routines?.find((routine) => routine.id === archiver.id)).not.toHaveProperty("requestedBy");
       holdTurn = false;
       finishTurn!();
       await vi.advanceTimersByTimeAsync(1);
