@@ -14,7 +14,8 @@ import { TrashIcon } from "../../../workspace/client/sidebar/sidebar-menu-icons.
 import { useContextMenuKeyboard } from "../../../workspace/client/sidebar/context-menu-keyboard.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../commodore-avatar.js";
-import { actionWord } from "../commodore-chat.js";
+import { actionWord, objectiveTarget, type CommodoreObjectiveIndex } from "../commodore-chat.js";
+import { finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, readTheater, subscribeFinishedObjectivesStore, subscribeObjective } from "../board.js";
 import { getT as getCommodoreT } from "../i18n/index.js";
 import { commodoreSectionLabel, readCommodoreList, subscribeCommodoreList, useCommodoreList } from "../commodore-list.js";
 import { openCommodoreConversation } from "../commodore-conversation.js";
@@ -222,8 +223,36 @@ export function TaskforceHost() {
   return <>{request ? <CreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{deleting ? <DeleteDialog key={deleting} id={deleting} language={language} onClose={() => { deleteRequest = null; emit(); }} /> : null}{mobile ? <TaskforceMobileScreen id={mobile} language={language} onClose={() => { mobileId = null; emit(); }} /> : null}</>;
 }
 
+/**
+ * 보드 행위 줄의 목표 이름 — 사령관 1:1 채팅과 같이 지금 보드의 제목을 쓴다. 원장의 제목은 목표 추가·이름 바꾸기에만 실려
+ * 구상 요청 같은 행위는 빈 제목이다(이미 쌓인 원장도 그렇다). 행위를 쓴 사령관의 보드와 끝난 목표에서 찾는다.
+ */
+function useActionTargets(commodoreIds: readonly string[], language: string): (commodoreId: string | undefined, action: TaskforceAction) => { readonly id?: string; readonly label?: string } {
+  const key = [...new Set(commodoreIds)].sort().join(",");
+  useEffect(() => { for (const commodoreId of key ? key.split(",") : []) loadFinishedObjectives(commodoreId); }, [key]);
+  const version = useSyncExternalStore(subscribeVersion, readVersion, readVersion);
+  return useMemo(() => {
+    const t = getCommodoreT(language === "ko" ? "ko" : "en");
+    const indexes = new Map<string, CommodoreObjectiveIndex>();
+    const indexOf = (commodoreId: string): CommodoreObjectiveIndex => {
+      let index = indexes.get(commodoreId);
+      if (!index) { index = { live: readTheater(commodoreId).objectives, finished: finishedObjectivesLoaded(commodoreId) ? finishedObjectives(commodoreId) : null }; indexes.set(commodoreId, index); }
+      return index;
+    };
+    return (commodoreId, action) => commodoreId ? objectiveTarget(t, indexOf(commodoreId), action.objectiveId, action.title || undefined) : { id: action.objectiveId, ...(action.title ? { label: action.title } : {}) };
+  }, [version, language]);
+}
+let boardVersion = 0;
+const readVersion = () => boardVersion;
+const subscribeVersion = (listener: () => void) => {
+  const bump = () => { boardVersion += 1; listener(); };
+  const off = subscribeObjective(bump); const offFinished = subscribeFinishedObjectivesStore(bump);
+  return () => { off(); offFinished(); };
+};
+
 function TaskforceActions({ actions, commodoreId, language }: { readonly actions: readonly TaskforceAction[]; readonly commodoreId?: string; readonly language: string }) {
-  return <div className="taskforce-action-list">{actions.map((action, index) => <div key={`${action.objectiveId}:${index}`} className="taskforce-action"><span className="taskforce-action-kind">{actionWord(getCommodoreT(language === "ko" ? "ko" : "en"), action.kind)}</span><button type="button" className="taskforce-link" onClick={() => { if (commodoreId) openReferencedObjective(commodoreId, action.objectiveId); }} disabled={!commodoreId}>{action.title || action.objectiveId}</button></div>)}</div>;
+  const targetOf = useActionTargets(commodoreId ? [commodoreId] : [], language);
+  return <div className="taskforce-action-list">{actions.map((action, index) => <div key={`${action.objectiveId}:${index}`} className="taskforce-action"><span className="taskforce-action-kind">{actionWord(getCommodoreT(language === "ko" ? "ko" : "en"), action.kind)}</span><button type="button" className="taskforce-link" onClick={() => { if (commodoreId) openReferencedObjective(commodoreId, action.objectiveId); }} disabled={!commodoreId}>{targetOf(commodoreId, action).label ?? action.objectiveId}</button></div>)}</div>;
 }
 
 /**
@@ -285,17 +314,18 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
     for (const entry of entries) if (entry.replyTo !== undefined && entry.actions?.length) grouped.set(entry.replyTo, [...(grouped.get(entry.replyTo) ?? []), ...entry.actions]);
     return grouped;
   }, [entries]);
+  const actionTarget = useActionTargets(entries.flatMap((entry) => entry.actions?.length && entry.speaker.kind === "commodore" ? [entry.speaker.commodoreId] : []), language);
   const speaker = (commodoreId: string): ConversationSpeaker => { const look = resolveMongleLook(book, commodoreAvatarKey(commodoreId)); return { kind: "commodore", commodoreId, name: memberName(commodoreId, language), mark: { number: 0, tone: look.tone ?? mongleBase(look.base).tone } }; };
   const items = useMemo<readonly AgentConversationEntry[]>(() => entries.flatMap((entry): AgentConversationEntry[] => {
     if (entry.actions?.length && entry.replyTo !== undefined && bySeq.has(entry.replyTo)) return [];
     if (entry.actions?.length && entry.speaker.kind === "commodore") {
       const owner = speaker(entry.speaker.commodoreId);
-      return entry.actions.map((action, index) => ({ kind: "board-action", id: `${entry.seq}:${index}`, at: entry.at, speaker: owner, objectiveId: action.objectiveId, action: actionWord(getCommodoreT(language), action.kind), text: "", target: { id: action.objectiveId, label: action.title } }));
+      return entry.actions.map((action, index) => ({ kind: "board-action", id: `${entry.seq}:${index}`, at: entry.at, speaker: owner, objectiveId: action.objectiveId, action: actionWord(getCommodoreT(language), action.kind), text: "", target: { id: action.objectiveId, ...actionTarget(entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined, action) } }));
     }
     if (entry.speaker.kind === "system") return [{ kind: "note", id: String(entry.seq), at: entry.at, text: t(`taskforce.system.${entry.speaker.code}`, { text: entry.text.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, (id) => memberName(id, language)) }), ...(entry.speaker.code === "chain-paused" ? { tone: "warn" as const } : {}) }];
     return [{ kind: "message", id: String(entry.seq), at: entry.at, objectiveId: id, speaker: entry.speaker.kind === "person" ? { kind: "human", name: "" } : speaker(entry.speaker.commodoreId), text: entry.text || (entry.actions?.length ? " " : ""), streaming: false,
       ...(entry.images?.length ? { attachments: entry.images.map((image) => ({ preview: { id: image.id, url: `/api/v1/${TASKFORCE_ROUTE_NAMES.image}?${new URLSearchParams({ taskforceId: id, seq: String(entry.seq), imageId: image.id })}` } })) } : {}) }];
-  }), [entries, id, language, book, commodores, bySeq]);
+  }), [entries, id, language, book, commodores, bySeq, actionTarget]);
   const participants: readonly ConversationParticipant[] = [...new Set([...(state?.members ?? []), ...entries.flatMap((entry) => entry.speaker.kind === "commodore" ? [entry.speaker.commodoreId] : [])])].map((id) => ({ speaker: speaker(id), activity: judging.includes(id) ? "running" : "idle" }));
   const run = async (route: "continue") => { if (busy) return; setBusy(true); setFailure(false); try { await mutateTaskforce(route, { taskforceId: id }); } catch { setFailure(true); } finally { setBusy(false); } };
   const Conversation = commodoreConversationRenderer();
