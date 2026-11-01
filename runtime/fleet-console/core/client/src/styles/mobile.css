@@ -535,7 +535,7 @@
     align-content: start;
     gap: var(--space-1);
     width: 76px;
-    padding: var(--space-2) max(var(--space-1), var(--m-safe-right, 0px)) max(var(--space-2), var(--m-safe-bottom, 0px)) var(--space-1);
+    padding: var(--space-2) calc(var(--space-1) + var(--m-safe-right, 0px)) calc(var(--space-2) + var(--m-safe-bottom, 0px)) var(--space-1);
     border-top: 0;
     border-left: 1px solid var(--hairline);
   }
@@ -805,7 +805,7 @@
 /* AI Gateway 모델 추가 — 폰에서는 팔레트가 대화의 모델 시트(.mobile-sheet)와 같은 바텀시트로 선다: 덮개 + 위가 둥근 면.
    목록은 남은 높이를 다 쓰고, 터치에는 없는 방향키 힌트와 크기 손잡이는 서지 않는다. */
 :root[data-view-mode="mobile"] .ai-gateway-palette-scrim { position: fixed; inset: 0; z-index: 50; display: block; background: var(--m-scrim); animation: mobile-fade-in 200ms; }
-:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: max(18px, var(--m-safe-bottom, 0px)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--popover-face); color: var(--m-text); box-shadow: var(--popover-surface-shadow); animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
+:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: calc(18px + var(--m-safe-bottom, 0px)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--popover-face); color: var(--m-text); box-shadow: var(--popover-surface-shadow); animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
 :root[data-view-mode="mobile"] .ai-gateway-palette-list { flex: 1 1 auto; height: auto; min-height: 0; padding: 0 8px 8px; }
 :root[data-view-mode="mobile"] :is(.ai-gateway-palette-resize, .ai-gateway-palette-kbd) { display: none; }
 :root[data-view-mode="mobile"] .ai-gateway-palette-search { min-height: 44px; margin: 16px 16px 8px; background: var(--m-chip); }
@@ -937,7 +937,7 @@
   display: flex;
   flex-direction: column;
   max-height: calc(100% - 56px);
-  padding-bottom: max(18px, var(--m-safe-bottom, 0px));
+  padding-bottom: calc(18px + var(--m-safe-bottom, 0px));
   color: var(--m-text);
   background: var(--popover-face);
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
@@ -971,7 +971,7 @@
 
 .mobile-sheet-body { display: flex; flex: 1; flex-direction: column; gap: 10px; min-height: 0; padding: 0 16px; overflow-y: auto; scrollbar-width: none; }
 .mobile-sheet-body::-webkit-scrollbar { display: none; }
-.mobile-sheet-foot { display: flex; flex: none; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 16px 0; }
+.mobile-sheet-foot { display: flex; flex: none; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 16px var(--m-safe-bottom, 0px); }
 
 .mobile-sheet-row {
   display: flex;
