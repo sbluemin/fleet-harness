@@ -10,12 +10,11 @@ import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 import { REPOSITORY_SURFACE_ID } from "./repository-context.js";
 import type { RepositoryContext } from "./repository-context.js";
 
-import type { DiffFileEntry, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorkstateResult, WorktreeCandidate, WorktreesResult } from "../shared/types.js";
+import type { DiffListResult, RepositorySearchResult, WorkstateResult, WorktreeCandidate, WorktreesResult } from "../shared/types.js";
 import "./repository.css";
 import { type ChangedFilesState } from "./changed-files.js";
 import { fuzzyMatch, shortRefName } from "./repository-parsers.js";
 import { getT, type RepositoryMessageKey } from "./i18n/index.js";
-import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repository-parsers.js";
 import { clearSelectedFile } from "./repository-state.js";
 import { HistoryPanel } from "./history-panel.js";
 import { readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./repository-state.js";
@@ -36,10 +35,6 @@ interface RepositoryPanelProps {
 
 const PREFS_SOURCE = "fleet-console.repository.source";
 const PREFS_REPO_PREFIX = "fleet-console.repository.repo.";
-const PREFS_SCAN_DEPTH = "fleet-console.repository.scanDepth";
-const SCAN_DEPTH_MIN = 1;
-const SCAN_DEPTH_MAX = 8;
-const SCAN_DEPTH_DEFAULT = 3;
 // ✓ 체류는 클릭했다는 사실이 눈에 남을 만큼만, 말풍선은 짧은 한 마디를 읽을 만큼만.
 // 원격 왕복이 수백 ms라 요청 자체는 거의 보이지 않으므로, 결과 쪽 체류가 피드백을 진다.
 const SYNC_SETTLED_MS = 1400;
@@ -60,29 +55,6 @@ export function readRepositorySource(): Source {
 function readStoredRepositoryRel(theaterId: string): string {
   try { return localStorage.getItem(`${PREFS_REPO_PREFIX}${theaterId}`) ?? ""; }
   catch { return ""; }
-}
-
-export function readRepositoryRel(theaterId: string, repos: readonly RepoCandidate[], worktrees: readonly WorktreeCandidate[]): string {
-  try {
-    const key = `${PREFS_REPO_PREFIX}${theaterId}`;
-    const stored = localStorage.getItem(key);
-    if (stored === null) return "";
-    if (repos.some((repo) => repo.relPath === stored) || worktrees.some((worktree) => worktree.relPath === stored)) return stored;
-    localStorage.removeItem(key);
-  } catch { /* ignore */ }
-  return "";
-}
-
-export function readScanDepth(): number {
-  try {
-    const value = Number.parseInt(localStorage.getItem(PREFS_SCAN_DEPTH) ?? "", 10);
-    if (Number.isInteger(value) && value >= SCAN_DEPTH_MIN && value <= SCAN_DEPTH_MAX) return value;
-  } catch { /* ignore */ }
-  return SCAN_DEPTH_DEFAULT;
-}
-
-function saveScanDepth(depth: number): void {
-  try { localStorage.setItem(PREFS_SCAN_DEPTH, String(depth)); } catch { /* ignore */ }
 }
 
 export function saveRepositoryRel(theaterId: string, repoRel: string): void {
@@ -213,14 +185,8 @@ export function buildRemoteGroups(refs: RepositoryRefs): RepositoryRemoteGroup[]
 }
 function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const t = getT(ctx.language);
-  const [repos, setRepos] = useState<readonly RepoCandidate[]>([]);
-  const [reposError, setReposError] = useState(false);
-  const [reposRetry, setReposRetry] = useState(0);
-  const [reposTruncated, setReposTruncated] = useState(false);
-  const [scanDepth, setScanDepthState] = useState(readScanDepth);
-  // 깊이 변경은 컨텍스트 전환이 아니다 — 선택된 저장소와 하위 상태는 그대로 두고 목록만 다시 받는다.
-  const setScanDepth = useCallback((next: number) => { setScanDepthState(next); saveScanDepth(next); }, []);
-  const [reposLoaded, setReposLoaded] = useState(false);
+  // 이 패널의 저장소는 패널 자신의 Theater 루트다 — 깊이 스캔 선택기는 없다.
+  // 그 루트의 워크트리는 아래 워크트리 섹션에서 고른다.
   const [worktrees, setWorktrees] = useState<readonly WorktreeCandidate[]>([]);
   const worktreesRef = useRef(worktrees);
   worktreesRef.current = worktrees;
@@ -461,16 +427,27 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     if (freshRefLanding) freshRefFilterCacheKeyRef.current = null;
   }, [ctx.theaterId, hydratedRepoViewCacheKey, repoRel, repoViewCacheKey]);
   useEffect(() => {
-    if (!ctx.theaterId) return;
-    let cancelled = false;
-    setReposError(false);
-    setReposLoaded(false);
-    ctx.api.fetch("repository/repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), maxDepth: scanDepth }) })
-      .then((response) => response.json() as Promise<ReposResult>)
-      .then((value) => { if (!cancelled) { setRepos(value.repos); setReposTruncated(value.truncated === true); setReposLoaded(true); } })
-      .catch(() => { if (!cancelled) setReposError(true); });
-    return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, reposRetry, scanDepth]);
+    if (!ctx.theaterId || worktreesForRepoRel !== repoRel) return;
+    // 대화의 작업 위치가 고를 수 있는 워크트리면 그것이 이긴다. 한 번만 — 사람이 그 뒤 다른 워크트리를
+    // 골라 보는 것은 막지 않는다.
+    if (conversationRel !== null && !conversationAppliedRef.current) {
+      conversationAppliedRef.current = true;
+      if (worktrees.some((worktree) => worktree.relPath === conversationRel)) {
+        if (conversationRel !== repoRelRef.current) transitionRepository(conversationRel, false);
+        return;
+      }
+    }
+    if (conversationRel !== null && repoRelRef.current === conversationRel) return;
+    // 저장된 워크트리 선택을 검증한다 — 목록에 없으면 걷고 Theater 루트로 돌아간다.
+    const stored = readStoredRepositoryRel(ctx.theaterId);
+    if (stored === repoRelRef.current) return;
+    if (stored !== "" && worktrees.some((worktree) => worktree.relPath === stored)) {
+      transitionRepository(stored, false);
+    } else if (stored !== "") {
+      clearRepositoryRel(ctx.theaterId);
+      if (repoRelRef.current !== "") transitionRepository("", false);
+    }
+  }, [conversationRel, ctx.theaterId, repoRel, transitionRepository, worktrees, worktreesForRepoRel]);
   useEffect(() => {
     if (!ctx.theaterId) return;
     let cancelled = false;
@@ -503,21 +480,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       .finally(() => { if (!cancelled) setWorktreesPending(false); });
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, repoRel, transitionRepository, worktreesRetry]);
-  useEffect(() => {
-    if (!ctx.theaterId || !reposLoaded || worktreesForRepoRel !== repoRel) return;
-    // 대화의 작업 위치가 고를 수 있는 체크아웃(저장소·워크트리)이면 그것이 이긴다. 한 번만 — 사람이 그 뒤 다른 워크트리를
-    // 골라 보는 것은 막지 않는다.
-    if (conversationRel !== null && !conversationAppliedRef.current) {
-      conversationAppliedRef.current = true;
-      if (repos.some((repo) => repo.relPath === conversationRel) || worktrees.some((worktree) => worktree.relPath === conversationRel)) {
-        if (conversationRel !== repoRelRef.current) transitionRepository(conversationRel, false);
-        return;
-      }
-    }
-    if (conversationRel !== null && repoRelRef.current === conversationRel) return;
-    const restoredRepoRel = readRepositoryRel(ctx.theaterId, repos, worktrees);
-    if (restoredRepoRel !== repoRelRef.current) transitionRepository(restoredRepoRel, false);
-  }, [conversationRel, ctx.theaterId, repoRel, repos, reposLoaded, transitionRepository, worktrees, worktreesForRepoRel]);
   // refs는 재조회 시작에 비우지 않는다 — 비우면 브랜치·원격·태그·스태시 섹션이 "없음"으로 떨어졌다 다시 차며
   // 트리 전체가 깜빡이고 스크롤이 맨 위로 튄다. 체크아웃 전환은 transitionRepository가 명시적으로 비운다.
   useEffect(() => {
@@ -579,11 +541,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setRefsRetry((value) => value + 1);
     setWorktreesRetry((value) => value + 1);
     setChangedFilesRetry((value) => value + 1);
-    setReposRetry((value) => value + 1);
     setWorkstateRetry((value) => value + 1);
     setHistoryExternalRefreshToken((value) => value + 1);
   }, []);
-  // 스테이징 뷰의 변이는 목록·울타리를 새로 읽는다 — repos 재스캔은 불필요하고,
+  // 스테이징 뷰의 변이는 목록·울타리를 새로 읽는다 — 워크트리 재조명은 불필요하고,
   // 기록·refs 재적재는 커밋처럼 기록 축이 실제로 움직인 변이에만 지불한다.
   const handleWorkspaceMutated = useCallback((options: { readonly history: boolean; readonly localState?: boolean }) => {
     setChangedFilesRetry((value) => value + 1);
@@ -848,7 +809,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     }
     // 같은 저장소의 워크트리는 그래프를 공유하지만 쓰기 컨텍스트는 실제 선택 경로로 전환한다.
     transitionRepository(next.relPath, true, "history");
-  }, [ctx.theaterId, repoRel, setSource, transitionRepository, worktrees]);
+  }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
   const openCompare = useCallback((base: string, head: string) => {
     setSource("history");
     setCompareRequest((prev) => ({
@@ -866,7 +827,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   }, [setSource]);
 
   const wipFiles = changedFiles.kind === "ok" ? changedFiles.files : [];
-  const selectedRepo = repos.find((repo) => repo.relPath === repoRel) ?? worktrees.find((worktree) => worktree.relPath === repoRel);
   const sourceTabsId = useId();
   const writeGuardMessage = workstateFailed ? t("repository.guard.stateUnknown") : guardMessageOf(workstate, t);
   const writeLocked = writeGuardMessage !== null;
@@ -896,7 +856,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   // Changes만 hidden으로 상시 마운트해 섹션 전환에도 내부 상태를 보존한다.
   const workspaceMainVisible = source === "changes";
   const workspaceMain = <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>;
-  const picker = <RepositoryPicker t={t} repos={repos} selectedRel={repoRel} selectedRepo={selectedRepo} reposError={reposError} truncated={reposTruncated} scanDepth={scanDepth} onScanDepth={setScanDepth} onReload={refreshRepositoryData} onRetryRepos={() => setReposRetry((value) => value + 1)} onRepository={handleSelectRepository} disabled={verbBusy !== null || stagingBusy} />;
   const sourceNavigation = <div className="repository-source-tabs repository-source-navigation" role="tablist" aria-orientation="vertical" aria-label={t("repository.source.aria")} onKeyDown={(event) => {
               if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
               event.preventDefault();
@@ -925,7 +884,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{rowNotice?.text ?? ""}</span>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${effectiveTreeWidth}px` } as React.CSSProperties}>
         <div className="repository-workbar">
-          {picker}
           {workstate?.headBranch && <span className="repository-workbar-branch"><Icon name="branch" size={12} />{workstate.headBranch}</span>}
           {/* 도구막대는 화면 폭을 쓰되 기록 필터는 기록에서만 표시한다. */}
           <div ref={setHistoryToolbarHost} className="repository-workbar-tools repository-history-tools" hidden={source !== "history"} />
@@ -1045,7 +1003,8 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
   };
   const currentBranchRef = refs.branches.find((item) => item.current)?.ref ?? null;
   const matches = (row: RepositoryRefRow) => !query || fuzzyMatch(query, row.primary) !== null || (row.sub ? fuzzyMatch(query, row.sub) !== null : false);
-  const emptyRow = <div className="repository-empty-row">{t(query ? "repository.refs.noMatching" : "repository.refs.empty")}</div>;
+  // 비어 있는 섹션은 조용히 비워 둔다 — "참조가 없어요" 같은 상시 문면은 세지 않는다.
+  const emptyRow = query ? <div className="repository-empty-row">{t("repository.refs.noMatching")}</div> : null;
   const openRefMenu = (row: RepositoryRefRow) => (event: React.MouseEvent) => {
     event.preventDefault();
     setRefContextMenu({ row, anchor: { x: event.clientX, y: event.clientY } });
@@ -1434,143 +1393,6 @@ function WorkspaceTreeError({ t, label, onRetry }: { readonly t: T; readonly lab
   return <div className="repository-ws-tree-error"><span>{label}</span><button type="button" onClick={onRetry}>{t("repository.common.retry")}</button></div>;
 }
 
-
-/** 선택기 푸터 — 발견 수와 탐색 깊이. 드물게 쓰는 설정이라 검색창 옆이 아니라 아래 한 줄로 내린다. */
-function RepositoryDiscoveryFooter({ t, query, totalCount, matchedCount, scanDepth, onScanDepth, truncated, onReload }: { readonly t: T; readonly query: string; readonly totalCount: number; readonly matchedCount: number; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean; readonly onReload: () => void }) {
-  return <div className="repository-context-footer">
-    <span className="repository-scan-count">{query ? t("repository.discovery.countMatched", { matched: matchedCount, total: totalCount }) : truncated ? t("repository.discovery.countFoundLimited", { count: totalCount }) : t("repository.discovery.countFound", { count: totalCount })}</span>
-    {/* 숫자는 접더라도 "한도에 걸렸다"는 사실은 접지 않는다. */}
-    {truncated && <span className="repository-scan-limit" title={t("repository.discovery.countFoundLimited", { count: totalCount })}>{t("repository.scan.limitReached")}</span>}
-    <span className="repository-discovery-depth" title={t("repository.discovery.depthTitle")}>{t("repository.discovery.depth")}
-      <button type="button" className="repository-quiet-button repository-depth-step" aria-label={t("repository.discovery.scanShallower")} disabled={scanDepth <= SCAN_DEPTH_MIN} onClick={() => onScanDepth(scanDepth - 1)}><Icon name="minus" size={12} /></button>
-      <output className="repository-depth-value">{scanDepth}</output>
-      <button type="button" className="repository-quiet-button repository-depth-step" aria-label={t("repository.discovery.scanDeeper")} disabled={scanDepth >= SCAN_DEPTH_MAX} onClick={() => onScanDepth(scanDepth + 1)}><Icon name="plus" size={12} /></button>
-    </span>
-    {/* 작업 트리·스태시·ahead는 이 패널이 관측하지 않는다. 그 축을 다시 읽는 유일한 경로가
-        원격 fetch(동기화)뿐이면, 자기 저장소의 상태를 알기 위해 네트워크를 호출해야 한다. */}
-    <button type="button" className="repository-quiet-button repository-reload-state" aria-label={t("repository.discovery.rescan")} title={t("repository.discovery.rescan")} onClick={onReload}><Icon name="refresh" size={13} /></button>
-  </div>;
-}
-function RepositoryPicker({ t, repos, selectedRel, selectedRepo, reposError, truncated, scanDepth, onScanDepth, onReload, onRetryRepos, onRepository, disabled }: {
-  readonly t: T;
-  readonly repos: readonly RepoCandidate[];
-  readonly selectedRel: string;
-  readonly selectedRepo: RepoCandidate | WorktreeCandidate | undefined;
-  readonly reposError: boolean;
-  readonly truncated: boolean;
-  readonly scanDepth: number;
-  readonly onScanDepth: (depth: number) => void;
-  readonly onReload: () => void;
-  readonly onRetryRepos: () => void;
-  readonly onRepository: (repo: RepoCandidate | WorktreeCandidate) => void;
-  readonly disabled: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [collapsedFolders, setCollapsedFolders] = useState<ReadonlySet<string>>(() => new Set());
-  const hostRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelId = useId();
-  const close = useCallback((returnFocus: boolean) => {
-    setOpen(false);
-    if (returnFocus) triggerRef.current?.focus();
-  }, []);
-  useEffect(() => {
-    if (!open) return;
-    const frame = requestAnimationFrame(() => hostRef.current?.querySelector<HTMLInputElement>("input")?.focus());
-    const outside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !hostRef.current?.contains(event.target)) close(false);
-    };
-    document.addEventListener("pointerdown", outside, true);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", outside, true); };
-  }, [close, open]);
-  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
-  const matches = (repo: RepoCandidate) => !query || fuzzyMatch(query, repo.name) !== null || fuzzyMatch(query, repo.relPath) !== null || (repo.branch !== null && fuzzyMatch(query, repo.branch) !== null);
-  const rootRepos = repos.filter((repo) => repo.kind === "root" && matches(repo));
-  const nestedRepos = repos.filter((repo) => repo.kind === "nested" && matches(repo));
-  const select = (repo: RepoCandidate) => { close(true); onRepository(repo); };
-  const toggleFolder = (path: string) => setCollapsedFolders((current) => {
-    const next = new Set(current);
-    if (next.has(path)) next.delete(path); else next.add(path);
-    return next;
-  });
-  return <div className="repository-context-picker" ref={hostRef} onKeyDown={(event) => {
-    if (!open) return;
-    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
-    // 비모달 선택기는 Tab으로 벗어날 수 있다. 앱 단축키는 열린 선택기 뒤에서 발동하지 않는다.
-    else event.stopPropagation();
-  }} onBlur={(event) => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) close(false); }}>
-    <button ref={triggerRef} type="button" className={`repository-context-trigger${selectedRel ? " is-subcontext" : ""}`} aria-label={t("repository.context.choose")} aria-expanded={open} aria-controls={panelId} disabled={disabled} onClick={() => setOpen((value) => !value)}>
-      <Icon name="repo" size={16} className="repository-context-glyph" />
-      <strong title={selectedRepo?.name}>{selectedRepo?.name ?? t("repository.panel.title")}</strong>
-      {selectedRepo?.branch && <span className="repository-context-branch" title={selectedRepo.branch}><Icon name="branch" size={11} />{selectedRepo.branch}</span>}
-      <Icon name="chevron" size={12} className="repository-context-chevron" />
-    </button>
-    {open && <section id={panelId} className="repository-context-popover" aria-label={t("repository.context.choose")}>
-      <div className="repository-context-search">
-        <Icon name="search" size={13} className="repository-discovery-glyph" />
-        <input type="text" className="repository-filter-input" placeholder={t("repository.discovery.placeholder")} aria-label={t("repository.discovery.aria")} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
-          if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-          const first = rootRepos[0] ?? nestedRepos[0];
-          if (first) select(first);
-        }} />
-        {query ? <button type="button" className="repository-quiet-button repository-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setQuery("")}><Icon name="close" size={12} /></button> : null}
-      </div>
-      <div className="repository-context-options">
-        {reposError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadReposFailed")} onRetry={onRetryRepos} /> : <>
-          {rootRepos.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={select} />)}
-          {query ? nestedRepos.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={0} selectedRel={selectedRel} onRepository={select} />) : <RepoTreeChildren node={buildRepoTree(nestedRepos)} depth={0} parentPath="" selectedRel={selectedRel} onRepository={select} collapsedFolders={collapsedFolders} onToggleFolder={toggleFolder} />}
-        </>}
-        {/* 워크트리는 트리의 워크트리 섹션이 보여 준다 — 선택기는 저장소만 고른다. */}
-        {!reposError && rootRepos.length + nestedRepos.length === 0 && <div className="repository-empty-row">{t(query ? "repository.discovery.noMatching" : "repository.context.empty")}</div>}
-      </div>
-      <RepositoryDiscoveryFooter t={t} query={query} totalCount={repos.length} matchedCount={rootRepos.length + nestedRepos.length} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={truncated} onReload={onReload} />
-    </section>}
-  </div>;
-}
-
-interface RepoTreeCommonProps {
-  readonly selectedRel: string;
-  readonly onRepository: (repo: RepoCandidate) => void;
-  readonly collapsedFolders: ReadonlySet<string>;
-  readonly onToggleFolder: (path: string) => void;
-}
-
-function RepoTreeChildren({ node, depth, parentPath, selectedRel, onRepository, collapsedFolders, onToggleFolder }: { readonly node: RepoTreeNode; readonly depth: number; readonly parentPath: string } & RepoTreeCommonProps) {
-  return <>
-    {Object.entries(node.dirs).map(([key, child]) => <RepoTreeFolder key={key} dirKey={key} node={child} depth={depth} parentPath={parentPath} collapsedFolders={collapsedFolders} onToggleFolder={onToggleFolder} selectedRel={selectedRel} onRepository={onRepository} />)}
-    {node.repos.map((repo) => <RepoLeafRow key={repo.relPath} repo={repo} depth={depth} selectedRel={selectedRel} onRepository={onRepository} />)}
-  </>;
-}
-
-function RepoTreeFolder({ dirKey, node, depth, parentPath, selectedRel, onRepository, collapsedFolders, onToggleFolder }: { readonly dirKey: string; readonly node: RepoTreeNode; readonly depth: number; readonly parentPath: string } & RepoTreeCommonProps) {
-  const { label, node: resolvedNode } = compressRepoFolder(dirKey, node);
-  const path = parentPath ? `${parentPath}/${label}` : label;
-  const collapsed = collapsedFolders.has(path);
-  const indent = depth * 16 + 12;
-  const total = countRepos(resolvedNode);
-  return <div className={`repository-folder${collapsed ? " is-collapsed" : ""}`}>
-    <button type="button" className="repository-folder-row" style={{ paddingLeft: `${indent}px`, gridTemplateColumns: "12px 15px 1fr auto" }} onClick={() => onToggleFolder(path)} aria-expanded={!collapsed}>
-      <Icon name="chevron" size={12} className="repository-folder-chevron" />
-      <Icon name="folder" size={14} className="repository-folder-icon" />
-      <span className="repository-folder-name">{label}</span>
-      <span className="repository-folder-count">{total}</span>
-    </button>
-    {!collapsed && <RepoTreeChildren node={resolvedNode} depth={depth + 1} parentPath={path} collapsedFolders={collapsedFolders} onToggleFolder={onToggleFolder} selectedRel={selectedRel} onRepository={onRepository} />}
-  </div>;
-}
-
-function RepoLeafRow({ repo, depth, selectedRel, onRepository, nameMatch }: { readonly repo: RepoCandidate; readonly depth: number; readonly nameMatch?: readonly number[] } & Pick<RepoTreeCommonProps, "selectedRel" | "onRepository">) {
-  // 폴더 아래 리프는 폴더 아이콘 컬럼(padding-left 12 + chevron 12 + gap 6 = 30) 아래에 정렬하고,
-  // 루트 저장소 행은 워크트리 행과 같은 8px에서 시작한다.
-  const indent = depth === 0 ? 8 : depth * 16 + 30;
-  return <button type="button" title={repo.relPath} className={`repository-ref-row${repo.relPath === selectedRel ? " is-current" : ""}`} style={{ paddingLeft: `${indent}px` }} onClick={() => onRepository(repo)}>
-    <Icon name="repo" />
-    <span className="repository-ref-name">{nameMatch ? Array.from(repo.name).map((character, index) => nameMatch.includes(index) ? <b key={index} className="repository-ref-hl">{character}</b> : character) : repo.name}</span>
-    {repo.branch && <span className="repository-ref-sub"><Icon name="branch" size={11} />{repo.branch}</span>}
-    {repo.relPath === selectedRel && <Icon name="check" size={13} className="repository-ref-mark" />}
-  </button>;
-}
 /** 레일 아이콘 — 브랜치 그래프. 레일 규격(18×18, stroke 1.2, 윤곽선)을 이웃 글리프와 공유하므로 패널 안 세트와 다른 그리드다. */
 function RepositoryIcon() {
   return <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="5.5" cy="4" r="1.7" stroke="currentColor" strokeWidth="1.2" /><circle cx="5.5" cy="14" r="1.7" stroke="currentColor" strokeWidth="1.2" /><circle cx="12.5" cy="6" r="1.7" stroke="currentColor" strokeWidth="1.2" /><path d="M5.5 5.7v6.6M12.5 7.7a3.3 3.3 0 01-3.3 3.3H5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;

@@ -83,8 +83,9 @@ export function CompareInspector({ ctx, repoRel, pair, onSwap, onClose }: Compar
   const deletions = state.kind === "ok" ? state.files.reduce((sum, file) => sum + file.deletions, 0) : 0;
   const loadedPair = state.kind === "ok" ? state.pair : pair;
   const compareSelection = useMemo(() => ctx.theaterId ? { base: loadedPair.base, head: loadedPair.head, theaterId: ctx.theaterId, repoRel } : null, [ctx.theaterId, loadedPair.base, loadedPair.head, repoRel]);
+  // 불러오는 동안은 조용히 비워 둔다 — "비교 중…" 같은 진행 문면은 세지 않는다.
   const empty = state.kind === "loading"
-    ? t("repository.compare.comparing")
+    ? null
     : state.kind === "notice"
       ? state.reason === "no_git_repo" ? t("repository.changes.notice.noGitRepoBody") : t("repository.changes.notice.gitUnavailableBody")
       : state.kind === "error"

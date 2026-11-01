@@ -361,7 +361,9 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const showComposer = !clean || amend || subject !== "" || bodyText !== "";
 
   return <div ref={rootRef} className={`repository-staging${hunkSelection && !guardMessage && !notice && !(amend && !amendReady) ? " is-reviewing" : ""}`} style={{ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties}>
-    {amend && !amendReady && <div className="repository-staging-guard" role="status">{t(!workstate || stateUnknown ? "repository.staging.amendChecking" : "repository.staging.amendHeadChanged")}</div>}
+    {amend && !amendReady && (!workstate || stateUnknown
+      ? <div className="repository-staging-guard" aria-hidden="true" />
+      : <div className="repository-staging-guard" role="status">{t("repository.staging.amendHeadChanged")}</div>)}
     {guardMessage && <div className="repository-staging-guard is-locked" role="status"><span className="repository-guard-signal" aria-hidden="true" />{guardMessage}</div>}
     {notice && <div className={`repository-sync-toast is-${notice.kind}`} role="status"><span>{notice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setNotice(null)}><Icon name="close" /></button></div>}
     {/* 끌어서 정한 목록 폭은 인라인 grid-template-columns가 아니라 변수로 들어온다 — 인라인 값은
@@ -375,7 +377,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
       {workstate?.headSha && <button type="button" className="repository-staging-amend-entry" disabled={busy || writeLocked} onClick={toggleAmend}>{t("repository.staging.editLastCommit")}</button>}
     </div> : <div className={`repository-root repository-staging-root${hunkSelection ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={hunkSelection ? ({ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties) : undefined}>
       <div className="repository-list-pane repository-staging-lists">
-        {status.kind === "loading" && <div className="repository-sections-loading">{t("repository.common.loading")}</div>}
+        {status.kind === "loading" && <div className="repository-sections-loading" aria-hidden="true" />}
         {status.kind === "error" && <div className="repository-sections-error"><span>{readErrorSentence(t, status.message)}</span><button type="button" className="repository-refresh-btn" onClick={() => setStatusRetry((value) => value + 1)}>{t("repository.common.retry")}</button></div>}
         {/* 한 파일이 스테이지·미스테이지 양쪽에 걸리면 parseStatusV2가 두 배열 모두에 넣는다 —
             길이를 더하면 사용자가 찾을 수 있는 파일 수보다 큰 값을 말하게 된다. 경로로 센다. */}

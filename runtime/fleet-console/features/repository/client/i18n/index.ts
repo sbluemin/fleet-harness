@@ -6,17 +6,13 @@ import { createTranslator } from "@fleet-console/i18n/translate";
 const repositoryEn = {
   // panel / identity
   "repository.panel.title": "Repository",
-  "repository.context.choose": "Choose repository or worktree",
-  "repository.context.empty": "No repositories found. Try scanning deeper.",
   "repository.source.aria": "Repository views",
   "repository.refs.search": "Find branches, tags, stashes",
   "repository.refs.noMatching": "No matching refs",
-  "repository.refs.empty": "No refs",
   "repository.staging.cleanTitle": "No changes to commit",
   "repository.staging.cleanHint": "Changes appear here when you edit files. Browse History to review earlier work.",
   "repository.staging.viewHistory": "View History",
   "repository.staging.editLastCommit": "Edit last commit",
-  "repository.staging.amendChecking": "Checking the commit for this Amend draft…",
   "repository.staging.amendHeadChanged": "HEAD changed since this Amend draft. Your message is preserved. Turn Amend off, review History, then select Amend again if you want to edit the current commit.",
 
   // workspace tree sections
@@ -33,23 +29,12 @@ const repositoryEn = {
   "repository.source.changes": "Changes",
 
   // discovery
-  "repository.discovery.placeholder": "Find repositories…",
-  "repository.discovery.aria": "Find repositories",
   "repository.discovery.clearSearch": "Clear search",
-  "repository.discovery.depth": "Depth",
-  "repository.discovery.scanShallower": "Scan shallower",
-  "repository.discovery.scanDeeper": "Scan deeper",
-  "repository.discovery.countMatched": "{matched} of {total}",
-  "repository.discovery.countFound": "{count} found",
-  "repository.discovery.countFoundLimited": "{count} found · limit reached",
-  "repository.discovery.noMatching": "No matching repositories",
-  "repository.discovery.loadReposFailed": "Unable to load repositories",
   "repository.discovery.loadWorktreesFailed": "Unable to load worktrees",
   "repository.discovery.loadRefsFailed": "Unable to load refs",
 
   // shared chrome
   "repository.common.retry": "Retry",
-  "repository.common.loading": "Loading…",
   "repository.common.filterPlaceholder": "Filter…",
   "repository.common.listView": "List view",
   "repository.common.treeView": "Tree view",
@@ -69,7 +54,6 @@ const repositoryEn = {
   // disclosed caps
   "repository.status.capped": "Only the first {count} changed files are listed.",
   "repository.commit.capped": "Some of this commit's data was cut off.",
-  "repository.scan.limitReached": "scan limit reached",
   "repository.guard.stateUnknown": "Repository state could not be read — reload before writing.",
 
   // changes notices
@@ -96,9 +80,6 @@ const repositoryEn = {
   "repository.history.refresh": "Refresh",
   "repository.history.capped": "History capped at 200 commits.",
   "repository.history.loadMore": "Load older commits",
-  "repository.history.loadingMore": "Loading…",
-  "repository.history.end": "You've reached the first commit.",
-  "repository.history.loadingCommit": "Loading commit…",
   "repository.history.noChangedFiles": "No changed files",
   "repository.history.closeInspector": "Close inspector",
   "repository.history.previousFile": "Previous file",
@@ -127,7 +108,6 @@ const repositoryEn = {
   // compare
   "repository.compare.swap": "Swap base and head",
   "repository.compare.resultsAnnounce": "Comparison finished — {count} files",
-  "repository.compare.comparing": "Comparing…",
   "repository.compare.noDifferences": "No differences between the selected refs.",
   "repository.compare.noMergeBase": "The selected refs share no common history.",
   "repository.compare.mergeBase": "merge-base",
@@ -144,8 +124,6 @@ const repositoryEn = {
   "repository.compare.pinnedHint": "Shift-click or ⇆ picks the second commit",
   "repository.compare.closeCompare": "Close comparison",
   "repository.compare.resultTitle": "Changes in {head} since the common ancestor with {base}",
-  "repository.compare.announcePinned": "Pinned {short} as compare base. Choose the second commit.",
-  "repository.compare.announceUnpinned": "Compare base unpinned.",
   "repository.compare.announceResult": "Comparing {base} with {head}.",
 
   // sync outcome surfacing (manual sync only; auto sync stays silent)
@@ -172,8 +150,6 @@ const repositoryEn = {
   "repository.verb.stash": "Stash",
   "repository.verb.more": "More actions",
   "repository.verb.menu": "Remote and stash actions",
-  "repository.discovery.depthTitle": "Scan depth",
-  "repository.discovery.rescan": "Rescan repositories",
   "repository.refs.worktreeBranch": "Checked out here",
   "repository.worktree.thisConversation": "This conversation",
   "repository.refs.upstreamGone": "Upstream gone",
@@ -273,8 +249,6 @@ const repositoryEn = {
   "repository.dock.child": "child",
   "repository.dock.parentTitle": "Go to parent {short} (⌥↑)",
   "repository.dock.childTitle": "Go to child {short} (⌥↓)",
-  "repository.dock.parentNone": "No parent loaded",
-  "repository.dock.childNone": "No child in the loaded log",
   "repository.dock.fileCounter": "{index} / {count}",
   "repository.dock.showMore": "Show more",
   "repository.dock.showLess": "Show less",
@@ -298,7 +272,6 @@ const repositoryEn = {
   "repository.filetree.fileMissing": "This file does not exist at this commit.",
   "repository.filetree.contentError": "Unable to read this file at this commit.",
   "repository.filetree.contentTruncated": "Preview cut off — the file is larger than the preview limit.",
-  "repository.filetree.loading": "Loading tree…",
   "repository.filetree.empty": "Empty folder",
   "repository.filetree.error": "Unable to load this folder",
   "repository.mobile.description": "Changes · History",
@@ -306,17 +279,13 @@ const repositoryEn = {
 
 const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.panel.title": "저장소",
-  "repository.context.choose": "저장소·워크트리 선택",
-  "repository.context.empty": "찾은 저장소가 없어요. 탐색 깊이를 늘리면 더 찾아볼 수 있어요.",
   "repository.source.aria": "저장소 작업 보기",
   "repository.refs.search": "브랜치·태그·스태시 찾기",
   "repository.refs.noMatching": "일치하는 참조가 없어요",
-  "repository.refs.empty": "참조가 없어요",
   "repository.staging.cleanTitle": "커밋할 변경이 없어요",
   "repository.staging.cleanHint": "파일을 고치면 여기에 나타나요. 이전 작업은 기록에서 볼 수 있어요.",
   "repository.staging.viewHistory": "기록 보기",
   "repository.staging.editLastCommit": "마지막 커밋 수정",
-  "repository.staging.amendChecking": "Amend 초안의 대상 커밋을 확인하고 있어요…",
   "repository.staging.amendHeadChanged": "Amend 초안을 쓴 뒤 HEAD가 바뀌었어요. 메시지는 그대로 남아 있어요. 현재 커밋을 수정하려면 Amend를 끄고 기록을 확인한 뒤 다시 골라 주세요.",
 
   "repository.section.context": "컨텍스트",
@@ -331,22 +300,11 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.source.changes": "변경",
 
 
-  "repository.discovery.placeholder": "저장소 찾기…",
-  "repository.discovery.aria": "저장소 찾기",
   "repository.discovery.clearSearch": "검색 지우기",
-  "repository.discovery.depth": "깊이",
-  "repository.discovery.scanShallower": "더 얕게 스캔",
-  "repository.discovery.scanDeeper": "더 깊게 스캔",
-  "repository.discovery.countMatched": "{matched} / {total}",
-  "repository.discovery.countFound": "{count}개 발견",
-  "repository.discovery.countFoundLimited": "{count}개 발견 · 한도 도달",
-  "repository.discovery.noMatching": "일치하는 저장소 없음",
-  "repository.discovery.loadReposFailed": "저장소를 불러오지 못했어요",
   "repository.discovery.loadWorktreesFailed": "워크트리를 불러오지 못했어요",
   "repository.discovery.loadRefsFailed": "refs를 불러오지 못했어요",
 
   "repository.common.retry": "다시 시도",
-  "repository.common.loading": "불러오는 중…",
   "repository.common.filterPlaceholder": "필터…",
   "repository.common.listView": "목록 보기",
   "repository.common.treeView": "트리 보기",
@@ -364,7 +322,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
 
   "repository.status.capped": "변경 파일 중 앞의 {count}개만 보여요.",
   "repository.commit.capped": "이 커밋의 데이터 일부가 잘렸어요.",
-  "repository.scan.limitReached": "탐색 한도 도달",
   "repository.guard.stateUnknown": "저장소 상태를 읽지 못했어요. 쓰기 전에 새로 읽어 주세요.",
 
   "repository.changes.section": "변경",
@@ -388,9 +345,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.history.refresh": "새로고침",
   "repository.history.capped": "기록은 최대 200개 커밋까지 보여요.",
   "repository.history.loadMore": "이전 커밋 더 보기",
-  "repository.history.loadingMore": "불러오는 중…",
-  "repository.history.end": "저장소의 첫 커밋까지 다 봤어요.",
-  "repository.history.loadingCommit": "커밋 불러오는 중…",
   "repository.history.noChangedFiles": "변경된 파일 없음",
   "repository.history.closeInspector": "검사기 닫기",
   "repository.history.previousFile": "이전 파일",
@@ -417,7 +371,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
 
   "repository.compare.swap": "base와 head 교환",
   "repository.compare.resultsAnnounce": "비교 완료 — 파일 {count}개",
-  "repository.compare.comparing": "비교 중…",
   "repository.compare.noDifferences": "선택한 refs 사이에 차이가 없어요.",
   "repository.compare.noMergeBase": "선택한 refs에 공통 이력이 없어요.",
   "repository.compare.mergeBase": "merge-base",
@@ -433,8 +386,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.compare.pinnedHint": "Shift-클릭이나 ⇆로 두 번째 커밋을 골라 주세요",
   "repository.compare.closeCompare": "비교 닫기",
   "repository.compare.resultTitle": "{base}와(과)의 공통 조상 이후 {head}의 변경",
-  "repository.compare.announcePinned": "{short}를 비교 기준으로 고정했어요. 두 번째 커밋을 골라 주세요.",
-  "repository.compare.announceUnpinned": "비교 기준 고정을 해제했어요.",
   "repository.compare.announceResult": "{base}와(과) {head}를 비교해요.",
 
 
@@ -460,8 +411,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.verb.stash": "Stash",
   "repository.verb.more": "더 보기",
   "repository.verb.menu": "원격·스태시 동작",
-  "repository.discovery.depthTitle": "탐색 깊이",
-  "repository.discovery.rescan": "저장소 다시 스캔",
   "repository.refs.worktreeBranch": "이 워크트리에 체크아웃됨",
   "repository.worktree.thisConversation": "이 대화",
   "repository.refs.upstreamGone": "업스트림 없음",
@@ -554,8 +503,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.dock.child": "자식",
   "repository.dock.parentTitle": "부모 {short}로 이동 (⌥↑)",
   "repository.dock.childTitle": "자식 {short}로 이동 (⌥↓)",
-  "repository.dock.parentNone": "적재된 부모가 없어요",
-  "repository.dock.childNone": "적재된 기록에 자식이 없어요",
   "repository.dock.fileCounter": "{index} / {count}",
   "repository.dock.showMore": "더 보기",
   "repository.dock.showLess": "접기",
@@ -576,7 +523,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.filetree.fileMissing": "이 커밋에는 이 파일이 없어요.",
   "repository.filetree.contentError": "이 커밋의 파일 내용을 읽지 못했어요.",
   "repository.filetree.contentTruncated": "파일이 미리보기 상한보다 커서 일부만 보여요.",
-  "repository.filetree.loading": "트리 불러오는 중…",
   "repository.filetree.empty": "빈 폴더",
   "repository.filetree.error": "이 폴더를 불러오지 못했어요",
   "repository.mobile.description": "변경·히스토리",

@@ -98,7 +98,7 @@ function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filter
   );
 
   if (state.kind === "loading") {
-    return <div className="repository-sections-loading">{t("repository.common.loading")}</div>;
+    return <div className="repository-sections-loading" aria-hidden="true" />;
   }
 
   if (state.kind === "notice") {
