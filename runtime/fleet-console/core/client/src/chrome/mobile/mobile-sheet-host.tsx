@@ -420,7 +420,7 @@ function ConfirmSheet({ spec, resolve }: { readonly spec: MobileConfirmSpec; rea
       onClose={popMobileSheet}
       labelledBy={questionId}
       footer={<div className="mobile-confirm-actions">
-        <button type="button" className="mobile-pill-secondary" onClick={() => { answer(false); popMobileSheet(); }}>{spec.cancelLabel}</button>
+        <button type="button" className="mobile-pill-secondary mobile-confirm-cancel" onClick={() => { answer(false); popMobileSheet(); }}>{spec.cancelLabel}</button>
         <button type="button" className={`mobile-pill-secondary${spec.danger ? " is-danger-fill" : " is-inverse"}`} onClick={() => { answer(true); popMobileSheet(); }}>{spec.confirmLabel}</button>
       </div>}
     >

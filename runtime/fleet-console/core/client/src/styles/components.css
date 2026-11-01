@@ -94,18 +94,19 @@
 }
 /* 카드는 진행 중에 포커스를 대신 받는 자리다 — 링을 그리지 않는다. */
 .fc-confirm:focus { outline: none; }
-.fc-confirm__question { margin: 0; font-weight: var(--weight-bold); }
+.fc-confirm__question { margin: 0; font-size: var(--t-lg); font-weight: var(--weight-bold); }
 .fc-confirm__error { margin: var(--space-3) 0 0; color: var(--coral-ink); font-size: var(--t-sm); }
-.fc-confirm__actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
+.fc-confirm__actions { display: flex; gap: var(--space-3); margin-top: var(--space-10); }
 .fc-confirm__button {
   flex: 1;
   min-height: 42px;
   padding: 8px 14px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
   box-sizing: border-box;
   font-family: var(--font-ui);
   font-size: var(--t-md);
+  font-weight: var(--weight-regular);
   cursor: pointer;
   transition:
     background var(--duration-fast),
@@ -116,9 +117,9 @@
 .fc-confirm__button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); transform: none; }
 .fc-confirm__button:focus-visible { box-shadow: var(--focus-face); }
 .fc-confirm__button--cancel {
-  background: color-mix(in oklch, var(--text-primary) 12%, transparent);
+  background: var(--dialog-cancel-face);
+  border-color: var(--hairline-strong);
   color: var(--text-primary);
-  font-weight: var(--weight-medium);
 }
 .fc-confirm__button--cancel:hover:not(:disabled) {
   background: color-mix(in oklch, var(--text-primary) 18%, transparent);
