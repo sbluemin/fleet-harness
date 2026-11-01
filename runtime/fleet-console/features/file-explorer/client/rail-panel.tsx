@@ -1,9 +1,10 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { PaneContext, PaneDescriptor, PaneSearchResult } from "../../workspace/shared/pane.js";
 import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 import { shouldSuppressCommodoreToolFileOpen } from "../../workspace/shared/commodore-tool-theater.js";
-import { useCommodoreToolTheater } from "../../workspace/client/theater-tools/store.js";
+import { selectCommodoreToolTheater, useCommodoreToolTheater } from "../../workspace/client/theater-tools/store.js";
 import { CommodoreToolsEmptyState } from "../../workspace/client/theater-tools/empty.js";
 import { parseFileRef } from "@fleet-console/markdown/file-ref";
 import { FileIcon, FolderIcon } from "./components/file-icon.js";
@@ -43,6 +44,7 @@ import { showFileNavigationError, setDocumentPaneOpen, setFileRevealTarget, setS
 import { parentDirOf } from "./viewer/stale.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
 import { MobileFileDocument, MobileFileTree } from "./mobile.js";
+import { openChatFilePreview } from "./chat-preview.js";
 
 const FEEDBACK_DURATION_MS = 2_500;
 /** 트리 열이 처음 설 때의 폭 — 문서 창이 열리기 전에는 표면 전체가 이 폭이다. */
@@ -81,12 +83,14 @@ export const fileExplorerEntry: RailEntryDescriptor = {
   mobile: { destination: { order: 20, label: (locale) => getT(locale)("fileExplorer.panel.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></svg> },
   handles: {
     openFile: async (request, host) => {
-      // 사령관이 아닌 대화의 채팅 파일 링크는 도구 패널을 열지 않는다 — 읽기 전용 미리보기는 미션 6이 잇는다.
-      if (shouldSuppressCommodoreToolFileOpen(request)) return { ok: false, reason: "unsupported" };
+      // 목표 대화의 파일은 도구 상태를 건드리지 않는 읽기 전용 미리보기로 보낸다.
+      if (shouldSuppressCommodoreToolFileOpen(request)) return openChatFilePreview(request);
       const ref = parseFileLocation(request.path);
       if (!ref) { showFileNavigationError("unsupported"); return { ok: false, reason: "unsupported" }; }
       try {
         const resolved = await resolveFilePath(request.theaterId, ref.path, request.pathKind, undefined, request.objectiveId, request.commodoreId);
+        // 서버가 이 사령관의 등록 Theater와 경로를 검증한 뒤 파일 도구의 선택만 옮긴다.
+        if (!request.objectiveId && request.commodoreId) selectCommodoreToolTheater(request.commodoreId, "file-explorer", request.theaterId);
         // 트리 창에도 같은 문맥을 심는다 — 트리 클릭·복원·검색으로 여는 다음 문서가 목표/사령관 문맥을 잇는다.
         // 심은 값의 신선도는 아래 pendingFileLanding으로 가린다(params는 Theater를 오가며 남는다).
         pendingFileLanding = {
@@ -152,21 +156,13 @@ export const fileExplorerPane: PaneDescriptor = {
         // 트리와 같은 종류 아이콘 — 팔레트 행이 폴더 레일 아이콘 대신 파일이 무엇인지 말한다.
         icon: file.kind === "dir" ? <FolderIcon name={name} open={false} /> : <FileIcon name={name} />,
         exact: file.relativePath === (referenced?.resolved.path ?? normalizedQuery),
-        activate: () => filePaneTarget(theaterId, { path: file.relativePath, kind: file.kind }, referenced?.ref ?? ref ?? {}, undefined, ownerCommodore),
+        activate: () => {
+          if (ownerCommodore) selectCommodoreToolTheater(ownerCommodore, "file-explorer", theaterId);
+          return filePaneTarget(theaterId, { path: file.relativePath, kind: file.kind }, referenced?.ref ?? ref ?? {}, undefined, ownerCommodore);
+        },
       };
     });
-    // 상한 표식 행 — 코어가 provider limit으로 자르기 때문에, 마커 자리를 확보하되
-    // 자리가 남으면 결과를 줄이지 않는다. 추가 매치 수는 실제로 유지되는 결과 기준으로 센다.
-    const keep = Math.min(items.length, Math.max(0, limit - 1));
-    const marker: PaneSearchResult | null = result.walkCapped
-      ? { id: "file-explorer.search-capped", title: t("fileExplorer.search.capped"), activate: () => undefined, kind: "info" }
-      : result.totalMatches > result.files.length
-        ? { id: "file-explorer.search-more", title: t("fileExplorer.search.moreMatches", { count: result.totalMatches - keep }), activate: () => undefined, kind: "info" }
-        : result.truncated
-          ? { id: "file-explorer.search-limit", title: t("fileExplorer.search.resultLimit", { count: result.totalMatches.toLocaleString() }), activate: () => undefined, kind: "info" }
-          : null;
-    if (!marker) return items;
-    return [...items.slice(0, keep), marker];
+    return items;
   },
 };
 
@@ -200,13 +196,13 @@ function FileExplorerTreePane(ctx: PaneContext) {
     : contextTheaterId;
   const contextScope = theaterId ?? "";
   // 창 params의 목표가 지금 보고 있는 문맥에 속할 때만 쓴다 — 다른 Theater·목표의 착지 params는 버리고 표면 문맥으로 떨어진다.
-  const objectiveId = scopeObjectiveId(ctx.params.objectiveId, theaterId, ctx.consoleState, ctx.commodoreId);
+  const objectiveId = toolTheater.active ? undefined : scopeObjectiveId(ctx.params.objectiveId, theaterId, ctx.consoleState, ctx.commodoreId);
   // 파일 요청에 실을 사령관 — 착지 params가 지금 Theater를 가리키면 그 사령관, 아니면 표면의 사령관. 추정하지 않는다.
   const commodoreId = ownerCommodoreId(ctx.params, theaterId, ctx.commodoreId);
   const { selectedPath, openDocs, docStates, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
   // 명시적으로 연 목표 파일 주소는 그 목표 기준, 도구 작업대는 사령관 Theater 기준이다.
   const location = !objectiveId && ctx.conversation?.location.theaterId === theaterId ? ctx.conversation.location : null;
-  const rootPath = location?.relative ?? "";
+  const rootPath = toolTheater.active ? "" : location?.relative ?? "";
   const shellAction = useShellAction(ctx.shell, theaterId, selectedPath, objectiveId, commodoreId);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileTreeRef = useRef<FileTreeHandle | null>(null);
@@ -253,7 +249,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
     if (panes.isOpen(DOCUMENT_PANE_ID) && (justLanded || objectiveId !== undefined)) return;
     // 복원에 쓰는 문맥은 지금 표면의 문맥이다 — 지금 대화가 이 Theater의 목표면 그 목표,
     // 아니면 Theater와 표면 사령관. 저장된 소유자·낡은 params는 쓰지 않는다.
-    const surfaceObjectiveId = scopeObjectiveId(ctx.consoleState.getActiveObjectiveId(), contextScope, ctx.consoleState, ctx.commodoreId);
+    const surfaceObjectiveId = toolTheater.active ? undefined : scopeObjectiveId(ctx.consoleState.getActiveObjectiveId(), contextScope, ctx.consoleState, ctx.commodoreId);
     const surfaceOwner = fileRequestOwner(surfaceObjectiveId, commodoreId);
     if (restored.documentPaneOpen && restored.activePath) {
       panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope, ...surfaceOwner }, focus: false });
@@ -365,7 +361,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
     }
     void performFileContextAction(action, theaterId, entry.relativePath, {}, objectiveId, commodoreId)
       .then((feedbackKey) => {
-        if (feedbackKey) showFeedback(t(feedbackKey));
+        if (feedbackKey) showFeedback("copied");
       })
       .catch(() => showFeedback(t("fileExplorer.menu.actionUnavailable")));
   }, [commodoreId, objectiveId, shellAction, showFeedback, t, theaterId]);
@@ -436,7 +432,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
       )}
       {feedback && (
         <div key={feedback.id} className="fexp-inline-toast" role="status" aria-live="polite">
-          {feedback.message}
+          {feedback.message === "copied" ? <MenuCheckGlyph size={14} /> : feedback.message}
         </div>
       )}
     </div>

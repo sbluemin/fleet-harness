@@ -2,10 +2,14 @@ import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-sur
 
 import { fileExplorerDocumentPane, fileExplorerEntry, fileExplorerPane } from "./rail-panel.js";
 import { FileExplorerNavigationFeedback } from "./navigation-feedback.js";
+import { FileExplorerChatPreview } from "./chat-preview.js";
 
 export const fileExplorerClient: ClientFeatureDescriptor = {
   id: "file-explorer",
   railEntries: [fileExplorerEntry],
   panes: [fileExplorerPane, fileExplorerDocumentPane],
-  persistentComponents: [{ id: "file-explorer-navigation-feedback", render: ({ language }) => <FileExplorerNavigationFeedback language={language} /> }],
+  persistentComponents: [
+    { id: "file-explorer-navigation-feedback", render: ({ language }) => <FileExplorerNavigationFeedback language={language} /> },
+    { id: "file-explorer-chat-preview", render: ({ language }) => <FileExplorerChatPreview language={language} /> },
+  ],
 };

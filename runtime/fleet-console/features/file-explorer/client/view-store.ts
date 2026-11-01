@@ -40,7 +40,6 @@ interface TheaterViewState extends DocSession {
   readonly selectedPath: string | null;
   readonly revealTarget: FileRevealTarget | null;
   readonly documentPaneOpen: boolean;
-  readonly discardedTabs: { readonly id: string; readonly count: number } | null;
   /** 경로별 뷰 내용 캐시 — 칩 전환을 즉시 그리기 위한 메모리 전용 상태. */
   readonly docStates: ReadonlyMap<string, ViewState>;
 }
@@ -68,7 +67,6 @@ const DEFAULT_THEATER_STATE: TheaterViewState = {
   selectedPath: null,
   revealTarget: null,
   documentPaneOpen: false,
-  discardedTabs: null,
   docStates: new Map(),
 };
 
@@ -168,7 +166,7 @@ export function setSelectedPath(theaterId: string | null, selectedPath: string |
 // ═══ 다중 열림 문서 세션 ═══════════════════════════════════════════════════════
 
 /** 순수 전이: 문서 활성화 — 칩이 없으면 만들고, 이력의 앞쪽 가지를 잘라 끝에 쌓는다. */
-function planDocumentActivation(session: DocSession, doc: OpenDocument): { readonly session: DocSession; readonly discarded: readonly OpenDocument[] } {
+export function activateDocument(session: DocSession, doc: OpenDocument): DocSession {
   const existing = session.openDocs.find((item) => item.relativePath === doc.relativePath);
   let candidates: readonly OpenDocument[];
   if (existing) {
@@ -177,16 +175,11 @@ function planDocumentActivation(session: DocSession, doc: OpenDocument): { reado
     // 고정 탭을 고른 것은 미리보기 슬롯을 지우지 않는다. 새 미리보기만 이전 미리보기를 대체한다.
     candidates = [...session.openDocs.filter((item) => !doc.preview || !item.preview), doc];
   }
-  const discarded = candidates.slice(0, Math.max(0, candidates.length - SESSION_OPEN_DOC_CAP));
   const openDocs = candidates.slice(-SESSION_OPEN_DOC_CAP);
   const openPaths = new Set(openDocs.map((item) => item.relativePath));
   const kept = session.history.slice(0, session.historyIndex + 1).filter((path) => openPaths.has(path));
   const history = kept.at(-1) === doc.relativePath ? kept : [...kept, doc.relativePath];
-  return { session: { openDocs, activePath: doc.relativePath, history, historyIndex: history.length - 1 }, discarded };
-}
-
-export function activateDocument(session: DocSession, doc: OpenDocument): DocSession {
-  return planDocumentActivation(session, doc).session;
+  return { openDocs, activePath: doc.relativePath, history, historyIndex: history.length - 1 };
 }
 
 /** 순수 전이: 이력 이동 — 닫힌 문서는 건너뛴다. */
@@ -226,14 +219,13 @@ export function closeDocument(session: DocSession, relativePath: string): DocSes
 export function activateStoredDocument(theaterId: string | null, doc: OpenDocument, location: Partial<Pick<FileRevealTarget, "requestId" | "lineNumber" | "column" | "anchor" | "ranges" | "keepFilter">> = {}): void {
   if (!theaterId) return;
   const current = getOrDefault(theaterId);
-  const { session: next, discarded } = planDocumentActivation(current, doc);
+  const next = activateDocument(current, doc);
   const keptPaths = new Set(next.openDocs.map((item) => item.relativePath));
   const docStates = new Map([...current.docStates].filter(([path]) => keptPaths.has(path)));
   const loads = documentLoads.get(theaterId);
   for (const path of loads?.keys() ?? []) if (!keptPaths.has(path)) loads?.delete(path);
-  const discardedTabs = discarded.length > 0 ? { id: crypto.randomUUID(), count: discarded.length + (current.discardedTabs?.count ?? 0) } : current.discardedTabs;
   const revealTarget: FileRevealTarget = { theaterId, relativePath: doc.relativePath, ...location, requestId: location.requestId ?? crypto.randomUUID() };
-  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, revealTarget, documentPaneOpen: true, docStates, discardedTabs });
+  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, revealTarget, documentPaneOpen: true, docStates });
   persistDocSession(theaterId, next);
 }
 
@@ -244,10 +236,6 @@ export function pinStoredDocument(theaterId: string | null, path: string): void 
   const next = { ...current, openDocs: current.openDocs.map((doc) => doc.relativePath === path ? { ...doc, preview: false } : doc) };
   patchTheaterState(theaterId, { openDocs: next.openDocs });
   persistDocSession(theaterId, next);
-}
-
-export function dismissDiscardedTabs(theaterId: string, id: string): void {
-  if (getOrDefault(theaterId).discardedTabs?.id === id) patchTheaterState(theaterId, { discardedTabs: null });
 }
 
 export function navigateStoredHistory(theaterId: string | null, delta: -1 | 1): void {
@@ -357,7 +345,6 @@ function getSnapshot(theaterId: string | null): FileExplorerViewState {
     && prev.wrapLines === wrapLines
     && prev.revealTarget === base.revealTarget
     && prev.documentPaneOpen === base.documentPaneOpen
-    && prev.discardedTabs === base.discardedTabs
     && prev.navigationError === navigationError
   ) {
     return prev;

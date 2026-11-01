@@ -146,13 +146,13 @@ export async function performFileContextAction(
   dependencies: Partial<FileContextActionDependencies> = {},
   objectiveId?: string,
   commodoreId?: string,
-): Promise<"fileExplorer.menu.pathCopied" | "fileExplorer.menu.relativePathCopied" | null> {
+): Promise<"copied" | null> {
   if (action === "copyRelativePath") {
     const clipboard = dependencies.clipboard
       ?? (typeof navigator === "undefined" ? undefined : navigator.clipboard);
     if (!clipboard) throw new Error("clipboard_unavailable");
     await clipboard.writeText(relativePath);
-    return "fileExplorer.menu.relativePathCopied";
+    return "copied";
   }
 
   if (action === "openShell") throw new Error("shell_capability_required");
@@ -170,7 +170,7 @@ export async function performFileContextAction(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("action_unavailable");
-  return action === "copyPath" ? "fileExplorer.menu.pathCopied" : null;
+  return action === "copyPath" ? "copied" : null;
 }
 
 export function FileContextMenu({

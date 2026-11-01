@@ -81,24 +81,6 @@ export interface FlatRow {
   readonly isLoading: boolean;
 }
 
-/** 목록 상한에 잘린 폴터 끝에 붙는 표식 행 — 포커스/선택 대상이 아니다. */
-export interface CapRow {
-  readonly type: "cap";
-  readonly depth: number;
-  readonly folderPath: string;
-  readonly cap: number;
-  readonly total?: number;
-  readonly key: string;
-}
-
-/** VCS 날것(.git 등)이 숨겨졌음을 이름으로 밝히는 muted 행 — 펼침/포커스 불가. */
-export interface VcsRow {
-  readonly type: "vcs";
-  readonly name: string;
-  readonly depth: number;
-  readonly key: string;
-}
-
 /** 작업 트리에서 삭제된 파일의 합성 행 — 실제 목록에 없으므로 정보 표시 전용, 포커스 불가. */
 export interface GhostRow {
   readonly type: "ghost";
@@ -124,7 +106,7 @@ export interface EmptyFolderRow {
 }
 
 export type EntryRow = FlatRow & { readonly type: "entry" };
-export type TreeRow = EntryRow | CapRow | VcsRow | GhostRow | ExpandErrorRow | EmptyFolderRow;
+export type TreeRow = EntryRow | GhostRow | ExpandErrorRow | EmptyFolderRow;
 
 export function isEntryRow(row: TreeRow): row is EntryRow {
   return row.type === "entry";
@@ -170,8 +152,6 @@ export const FOLDER_FETCH_CONCURRENCY = 6;
 const GIT_STATUS_DEBOUNCE_MS = 500;
 export const FILTER_SEARCH_DEBOUNCE_MS = 180;
 export const PALETTE_SEARCH_LIMIT = 200;
-/** i18n cap interpolation for walkCapped — matches the server directory walk budget. */
-const PALETTE_SEARCH_WALK_CAP = 500;
 const TYPEAHEAD_RESET_MS = 1000;
 
 // ═══ 정렬 ═══════════════════════════════════════════════════════════════════
@@ -663,14 +643,6 @@ function pagedEntryIndex(
   return entryIndices[next] ?? index;
 }
 
-interface LevelMeta {
-  /** 이 수준의 목록이 상한에서 잘린 경우의 상한 값 */
-  readonly truncatedCap?: number;
-  readonly totalEntries?: number;
-  /** 이 수준에서 숨겨진 VCS 날것 이름 (.git 등) */
-  readonly hiddenVcs?: readonly string[];
-}
-
 export interface BuildRowsOptions {
   readonly sortMode?: SortMode;
   /** 부모 폴더 상대경로("" = 루트) → 그 폴더에서 삭제된 파일 이름들. 고스트 행으로 합성된다. */
@@ -692,27 +664,11 @@ export function buildFlatRows(
   showHidden: boolean,
   ancestorFolders: ReadonlySet<string> = new Set(),
   filterCollapsedDirs: ReadonlySet<string> = new Set(),
-  levelMeta: LevelMeta = {},
   levelKey = "",
   options: BuildRowsOptions = {},
 ): TreeRow[] {
   const rows: TreeRow[] = [];
   const sortMode = options.sortMode ?? "name";
-  // VCS 표식 행은 디렉터리 구간에 이름순으로 끼워 넣는다 — 숨김 파일 표시 중이고 필터링이 아닐 때만.
-  // 이름순이 아닌 정렬에서는 끼워 넣을 기준이 없으므로 수준 끝에 몰아 붙인다.
-  const vcsNames = !low && showHidden && levelMeta.hiddenVcs
-    ? [...levelMeta.hiddenVcs].sort((a, b) => a.localeCompare(b))
-    : [];
-  let vcsIdx = 0;
-  const flushVcs = (beforeName?: string) => {
-    for (;;) {
-      const name = vcsNames[vcsIdx];
-      if (name === undefined) return;
-      if (sortMode === "name" && beforeName !== undefined && name.localeCompare(beforeName) >= 0) return;
-      vcsIdx += 1;
-      rows.push({ type: "vcs", name, depth, key: `vcs:${levelKey}:${name}` });
-    }
-  };
   // 삭제 고스트 행 — 삭제 파일은 목록에 실제 행이 없으므로 여기서 합성한다.
   // 필터가 켜져 있어도 유지한다. 이름 필터(low)가 있으면 이름에 바늘이 있는 것만 남긴다.
   const ghostNames = options.deletedByDir?.get(levelKey)
@@ -732,7 +688,6 @@ export function buildFlatRows(
       rows.push({ type: "ghost", name, relativePath, depth, key: `ghost:${relativePath}` });
     }
   };
-  let filesStarted = false;
   for (const entry of sortEntries(entries, sortMode)) {
     if (!showHidden && entry.name.startsWith(".")) continue;
     const childResult = childResults.get(entry.relativePath);
@@ -746,17 +701,7 @@ export function buildFlatRows(
       const directMatch = entry.name.toLowerCase().includes(low);
       if (!directMatch && !childMatch) continue;
     }
-    if (entry.kind === "dir") {
-      flushVcs(entry.name);
-    } else {
-      if (!filesStarted) {
-        // VCS 행은 "디렉터리 같은" 항목 — 첫 파일 행이 나오기 전에 남은 것을 밀어낸다.
-        filesStarted = true;
-        flushVcs();
-      }
-      // 고스트(삭제 파일)는 파일 구간에 이름순으로 끼워 넣는다.
-      flushGhosts(entry.name);
-    }
+    if (entry.kind !== "dir") flushGhosts(entry.name);
     const fetched = childResults.has(entry.relativePath);
     const isLoading = loadingDirs.has(entry.relativePath);
     const failed = options.failedDirs?.has(entry.relativePath) === true;
@@ -794,13 +739,6 @@ export function buildFlatRows(
           showHidden,
           nextAncestorFolders,
           filterCollapsedDirs,
-          {
-            // 안내문이 말하는 수는 "상한 상수"가 아니라 실제로 보여준 항목 수여야 한다 —
-            // 분류에서 버려진 항목(끊긴 심링크·소켓)이 있으면 둘이 어긋난다.
-            truncatedCap: childResult?.truncated ? childResult.entries.length : undefined,
-            totalEntries: childResult?.totalEntries,
-            hiddenVcs: childResult?.hiddenVcsInternals,
-          },
           folderIdentity,
           options,
         ));
@@ -814,11 +752,7 @@ export function buildFlatRows(
       }
     }
   }
-  flushVcs();
   flushGhosts();
-  if (levelMeta.truncatedCap !== undefined) {
-    rows.push({ type: "cap", depth, folderPath: levelKey, cap: levelMeta.truncatedCap, total: levelMeta.totalEntries, key: `cap:${levelKey}` });
-  }
   return rows;
 }
 
@@ -920,7 +854,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   /** 훑어보기 중인 파일 — 트리 안의 카드 하나. 세션·스토어에는 닿지 않는다. */
   const [peekPath, setPeekPath] = useState<string | null>(null);
   /** 행 hover 동작의 제자리 확인 — 토스트 대신 그 행의 동작 자리에 잠깐 선다. */
-  const [rowNote, setRowNote] = useState<{ readonly path: string; readonly id: number; readonly text: string } | null>(null);
+  const [rowNote, setRowNote] = useState<{ readonly path: string; readonly id: number } | null>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const treeRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -1452,7 +1386,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       showHidden,
       new Set(),
       filterCollapsedDirs,
-      { truncatedCap: result.truncated ? result.entries.length : undefined, totalEntries: result.totalEntries, hiddenVcs: result.hiddenVcsInternals },
       "",
       { sortMode, deletedByDir, autoExpandAll: false, failedDirs: new Set(expandFailedDirs.keys()) },
     );
@@ -1647,7 +1580,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       .then(() => {
         if (action !== "copyRelativePath") return;
         rowNoteIdRef.current += 1;
-        setRowNote({ path: row.entry.relativePath, id: rowNoteIdRef.current, text: t("fileExplorer.row.copied") });
+        setRowNote({ path: row.entry.relativePath, id: rowNoteIdRef.current });
       })
       .catch(() => onActionFailed?.());
   };
@@ -1785,30 +1718,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   if (!result) return <TreeSkeleton t={t} />;
 
   const renderTreeRow = (row: TreeRow) => {
-    if (row.type === "cap") {
-      return (
-        <div
-          key={row.key}
-          className="fexp-tree-cap"
-          style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
-          role="note"
-        >
-          {row.folderPath && `${row.folderPath}: `}
-          {t("fileExplorer.tree.listingCapped", { cap: row.cap.toLocaleString(), total: row.total?.toLocaleString() ?? `${row.cap}+` })}
-        </div>
-      );
-    }
-    if (row.type === "vcs") {
-      return (
-        <div
-          key={row.key}
-          className="fexp-tree-vcs"
-          style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
-        >
-          {t("fileExplorer.tree.vcsHidden", { name: row.name })}
-        </div>
-      );
-    }
     if (row.type === "ghost") {
       return (
         <div
@@ -1872,7 +1781,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         gitAvailable={gitAvailable}
         gitStatus={gitStatusByPath.get(row.entry.relativePath)}
         rollup={row.entry.kind === "dir" ? gitRollups.get(row.entry.relativePath) : undefined}
-        note={rowNote?.path === row.entry.relativePath ? rowNote.text : null}
+        note={rowNote?.path === row.entry.relativePath ? "copied" : null}
         onEntryClick={handleRowClick}
         onEntryDoubleClick={handleRowDoubleClick}
         onContextMenu={handleRowContextMenu}
@@ -1884,38 +1793,19 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     );
   };
 
-  // 상태는 한 줄로 — 필드 아래 모노 한 줄이 검색 수·캡·저하·git 상한을 차례로 말한다. 경고색은 캡·실패에만.
+  // 검색 수와 다음 동작을 막는 실패만 남긴다.
   const statusLines: { readonly key: string; readonly text: string; readonly tone: "quiet" | "warn"; readonly role: "status" | "alert" }[] = [];
   if (isFiltering && filterSearching) {
     statusLines.push({ key: "searching", text: t("fileExplorer.filter.searchingAll"), tone: "quiet", role: "status" });
   }
   if (isFiltering && !filterSearching && !filterFailed) {
-    if (filterOutcome?.walkCapped) {
-      statusLines.push({ key: "capped", text: t("fileExplorer.filter.capped", { matches: filterMatchLabel, cap: PALETTE_SEARCH_WALK_CAP }), tone: "warn", role: "status" });
-    } else if (filterOutcome?.ignoredSkipped) {
-      statusLines.push({ key: "count", text: t("fileExplorer.filter.scanSkipped", { count: filterMatchLabel }), tone: "quiet", role: "status" });
-    } else {
-      statusLines.push({ key: "count", text: t("fileExplorer.filter.resultCount", { count: filterMatchLabel }), tone: "quiet", role: "status" });
-    }
-  }
-  if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.degraded === "walker") {
-    statusLines.push({ key: "fallback", text: t("fileExplorer.filter.degraded"), tone: "warn", role: "status" });
-  }
-  // 접근 오류만으로 complete=false가 된 경우는 아래 skipped 줄이 말한다. limit 잘림은 건너뜀과 함께여도 알린다.
-  if (isFiltering && !filterSearching && !filterFailed && !filterOutcome?.walkCapped && (filterOutcome?.truncated || (filterOutcome?.complete === false && !filterOutcome.skippedPaths))) {
-    statusLines.push({ key: "partial", text: t("fileExplorer.filter.partial"), tone: "quiet", role: "status" });
+    statusLines.push({ key: "count", text: t("fileExplorer.filter.resultCount", { count: filterMatchLabel }), tone: "quiet", role: "status" });
   }
   if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.skippedPaths) {
     statusLines.push({ key: "skipped", text: t("fileExplorer.filter.skippedPaths", { count: filterOutcome.skippedPaths }), tone: "warn", role: "status" });
   }
   if (isFiltering && filterFailed) {
     statusLines.push({ key: "failed", text: filterFailed === "not_found" || filterFailed === "outside_theater" ? t(`fileExplorer.navigation.${filterFailed}`) : filterFailed === "content_search_unavailable" ? t("fileExplorer.filter.contentUnavailable") : t("fileExplorer.filter.searchFailed"), tone: "warn", role: "alert" });
-  }
-  if (watchDegraded) {
-    statusLines.push({ key: "degraded", text: t("fileExplorer.tree.watchDegraded"), tone: "quiet", role: "status" });
-  }
-  if (gitStatusResult?.truncated) {
-    statusLines.push({ key: "git", text: t("fileExplorer.git.truncated", { cap: gitStatusResult.cap ?? 0 }), tone: "warn", role: "status" });
   }
 
   return (
@@ -2364,7 +2254,7 @@ function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, no
       </button>
       <span className="fexp-row-actions">
         {note ? (
-          <span className="fexp-row-note" role="status">{note}</span>
+          <span className="fexp-row-note"><MenuCheckGlyph size={14} /></span>
         ) : (
           <>
             {!isDir && (

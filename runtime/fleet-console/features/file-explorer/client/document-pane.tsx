@@ -33,7 +33,6 @@ import {
   closeStoredDocument,
   navigateStoredHistory,
   pinStoredDocument,
-  dismissDiscardedTabs,
   setWrapLines,
   useFileExplorerViewState,
   type OpenDocument,
@@ -84,7 +83,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   // 트리 칸과 같은 대화가 이 Theater 의 보기 상태를 갖는다(rail-panel 의 같은 규칙).
   const conversationKey = ctx.conversation?.key ?? null;
   useLayoutEffect(() => { claimFileExplorerView(theaterId, conversationKey); }, [conversationKey, theaterId]);
-  const { openDocs, activePath, docStates, wrapLines, revealTarget, navigationError, discardedTabs } = useFileExplorerViewState(contextScope);
+  const { openDocs, activePath, docStates, wrapLines, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
   const shellAction = useShellAction(ctx.shell, theaterId, activePath, objectiveId, commodoreId);
   const consumedRequestRef = useRef<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -509,6 +508,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
           )}
         </div>
       )}
+      {activePath && <div className="fexp-document-name" title={activePath}><FileIcon name={nameOfPath(activePath)} /><span>{nameOfPath(activePath)}</span></div>}
       <div ref={headRef} className="fexp-viewer-head">
         <div ref={crumbRef} className="fexp-viewer-crumb" role="group" aria-label={t("fileExplorer.viewer.pathAria")}>
           {crumbSegments.map((segment, index) => (
@@ -527,9 +527,6 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
             </span>
           ))}
         </div>
-        <span className={`fexp-crumb-ok${copied ? " is-shown" : ""}`} role="status" aria-live="polite">
-          {copied ? t("fileExplorer.viewer.copied") : ""}
-        </span>
         {activePath && (
           <button
             type="button"
@@ -611,12 +608,6 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         )}
       </div>
       <div className="fexp-viewer-notices">
-        {discardedTabs && (
-          <div className="fexp-tab-notice" role="status">
-            <span>{t("fileExplorer.tabs.discarded", { count: discardedTabs.count })}</span>
-            <button type="button" aria-label={t("fileExplorer.tabs.dismissNotice")} onClick={() => dismissDiscardedTabs(contextScope, discardedTabs.id)}>✕</button>
-          </div>
-        )}
         {(viewState.kind === "code" || viewState.kind === "image") && viewState.stale && (
           <div className="fexp-disk-banner" role="status">
             <span>{t(viewState.diskStatus === "deleted" ? "fileExplorer.viewer.diskDeleted" : "fileExplorer.viewer.diskChanged")}</span>
@@ -631,7 +622,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         {navigationError && <div className="fexp-navigation-error">{t(`fileExplorer.navigation.${navigationError.reason}`)}</div>}
       </div>
       <div className="fexp-viewer-body">
-        {viewState.kind === "loading" && <div className="fexp-viewer-loading">{t("fileExplorer.status.loading")}</div>}
+        {viewState.kind === "loading" && <div className="fexp-skeleton" role="status" aria-label={t("fileExplorer.status.loading")}><span className="fexp-skeleton-bar" /></div>}
         {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}
         {viewState.kind === "code" && isMarkdownDoc && !showSource && (
           <MarkdownViewer
@@ -672,13 +663,6 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         )}
       </div>
       <div className="fexp-viewer-meta">
-        <span className="fexp-viewer-meta-part fexp-read-only">
-          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <rect x="3.5" y="7" width="9" height="6.5" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-            <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" stroke="currentColor" strokeWidth="1.3" />
-          </svg>
-          {t("fileExplorer.viewer.readOnly")}
-        </span>
         {viewerMeta.map((part, index) => (
           <span key={index} className="fexp-viewer-meta-part">{part}</span>
         ))}

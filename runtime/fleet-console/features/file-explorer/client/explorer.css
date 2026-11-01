@@ -342,11 +342,6 @@
   margin: 0 4px;
 }
 
-.fexp-read-only {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
 
 /* 브레드크럼 — 폴더 조각은 줄이지 않는다. 좁은 열에서도 가로로 움직여 모두 집을 수 있다. */
 .fexp-viewer-crumb {
@@ -382,7 +377,6 @@
   position: relative;
 }
 
-.fexp-viewer-loading,
 .fexp-viewer-error {
   padding: 16px;
   font-family: var(--font-ui);
@@ -1282,35 +1276,7 @@
   .fexp-tree-rowwrap:focus-within .fexp-tree-dot { opacity: 1; }
 }
 
-/* 표식 행도 실제 행 높이를 공유해 터치 전환 뒤의 가상화 좌표를 보존한다. */
-.fexp-tree-cap {
-  display: flex;
-  align-items: center;
-  height: var(--fexp-row-height, 28px);
-  padding-top: 0;
-  padding-bottom: 0;
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  color: var(--warn-ink);
-  background: color-mix(in oklch, var(--warn) 8%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
-.fexp-tree-vcs {
-  display: flex;
-  align-items: center;
-  height: var(--fexp-row-height, 28px);
-  padding-top: 0;
-  padding-bottom: 0;
-  font-size: var(--t-sm);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: default;
-}
 
 /* 펼친 빈 폴더 아래의 한 줄 — 자식 자리에 조용히 선다. */
 .fexp-tree-empty-row {
@@ -1920,6 +1886,65 @@
   color: var(--coral-ink);
 }
 
+/* 대화 위의 미리보기는 도구 열·탭을 만들지 않는다. */
+.fexp-chat-preview {
+  width: min(880px, calc(100vw - 32px));
+  height: min(720px, calc(100dvh - 64px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-ui);
+}
+
+.fexp-chat-preview[open] { display: flex; flex-direction: column; }
+.fexp-chat-preview::backdrop { background: rgb(0 0 0 / 35%); }
+.fexp-chat-preview-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--surface-rim);
+}
+.fexp-chat-preview-address { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.fexp-chat-preview-address strong { font-size: var(--t-sm); overflow-wrap: anywhere; }
+.fexp-chat-preview-address span { color: var(--text-tertiary); font-size: var(--t-xs); overflow-wrap: anywhere; }
+.fexp-chat-preview-head button {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.fexp-chat-preview-head button:hover,
+.fexp-chat-preview-head button:focus-visible { background: var(--control-wash); outline: none; }
+@media (forced-colors: active) {
+  .fexp-chat-preview-head button:focus-visible { outline: 1px solid ButtonText; }
+}
+.fexp-chat-preview-body { flex: 1; min-height: 0; overflow: hidden; position: relative; }
+
+/* 캡션 동작이 많아도 문서 이름은 본문 폭 전체에서 읽힌다. */
+.fexp-document-name {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 9px 12px 4px;
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+.fexp-document-name > svg { flex: 0 0 auto; margin-top: 3px; }
+.fexp-document-name > span { min-width: 0; overflow-wrap: anywhere; }
+
 /* ── 열리는 경로 조각 ── */
 .fexp-viewer-head {
   position: relative;
@@ -1963,7 +1988,7 @@
   max-height: 280px;
 }
 
-/* 복사는 hover에 나타나는 아이콘 하나. 확인은 제자리 — 체크와 "복사됨". */
+/* 복사는 hover에 나타나는 아이콘 하나. 확인은 제자리의 체크다. */
 .fexp-crumb-copy {
   display: inline-flex;
   align-items: center;
@@ -1996,22 +2021,7 @@
   color: var(--positive-ink);
 }
 
-.fexp-crumb-ok {
-  position: absolute;
-  left: 8px;
-  padding: 2px 3px;
-  background: var(--surface-panel);
-  pointer-events: none;
-  color: var(--positive-ink);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease-glide);
-}
 
-.fexp-crumb-ok.is-shown {
-  opacity: 1;
-}
 
 /* 좁은 레일은 글자 대신 이름 있는 아이콘을 쓴다. 경로 몫을 남기고 줄은 늘리지 않는다. */
 @container fexp-viewer (max-width: 360px) {
@@ -2022,35 +2032,10 @@
   .fexp-viewer-tool { width: 22px; padding: 0; }
   .fexp-tool-label { display: none; }
   .fexp-view-mode-icon { display: block; }
-  .fexp-crumb-ok { left: 4px; }
 }
 
-.fexp-tab-notice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--surface-rim);
-  color: var(--text-secondary);
-  font-size: var(--t-xs);
-  line-height: 1.5;
-}
 
-.fexp-tab-notice {
-  color: var(--warn-ink);
-  background: color-mix(in oklch, var(--warn) 8%, transparent);
-}
 
-.fexp-tab-notice button {
-  padding: 2px 7px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: var(--glass-tint-field);
-  color: var(--text-primary);
-  cursor: pointer;
-  font: inherit;
-}
 
 .fexp-disk-banner,
 .fexp-read-window,
@@ -2122,7 +2107,6 @@
 }
 
 .fexp-read-window button:disabled { opacity: 0.45; cursor: default; }
-.fexp-read-window-line-note { display: block; margin-top: 5px; color: var(--text-tertiary); }
 
 /* ── 코드 뷰어 위·아래 페이드 ── */
 .fexp-code-wrap {
@@ -2225,7 +2209,6 @@
   .fexp-tab-close,
   .fexp-tabs-more,
   .fexp-crumb-copy,
-  .fexp-crumb-ok,
   .fexp-tree-viewport::before,
   .fexp-tree-viewport::after,
   .fexp-code-wrap::before,
