@@ -74,9 +74,13 @@
 .taskforce-details dt { color: var(--text-tertiary); }
 .taskforce-details dd { margin: 0; overflow-wrap: anywhere; }
 .taskforce-member { display: flex; gap: 8px; align-items: center; }
-.taskforce-member > div { flex: 1; min-width: 0; }
+.taskforce-member-open { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.taskforce-member-open:hover, .taskforce-member-add:hover { background: var(--wash-hover); }
 .taskforce-member strong { font-weight: var(--weight-medium); }
-.taskforce-member small { display: block; color: var(--text-tertiary); font-size: var(--t-xs); margin: 3px 0; }
+.taskforce-member .taskforce-text-button { visibility: hidden; }
+.taskforce-member:hover .taskforce-text-button, .taskforce-member:focus-within .taskforce-text-button { visibility: visible; }
+.taskforce-member-add { padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; cursor: pointer; }
+.taskforce-member-add:disabled { opacity: .5; cursor: default; }
 .taskforce-link { padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; text-decoration: underline; text-underline-offset: 2px; font: inherit; font-size: var(--t-sm); cursor: pointer; text-align: left; }
 .taskforce-text-button, .taskforce-danger { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
 .taskforce-danger { color: var(--coral); }
