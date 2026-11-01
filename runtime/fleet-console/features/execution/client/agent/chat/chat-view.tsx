@@ -93,12 +93,9 @@ const HISTORY_PEEK_PX = 56;
  */
 export function AgentChatView({
   context,
-  tourAnchors,
   fileLinkError = null,
 }: {
   readonly context: ObjectiveRenderContext;
-  /** 사용자가 이 마운트에서 직접 채팅 뷰를 연 경우에만 true — 투어 앵커 렌더 여부를 결정한다. */
-  readonly tourAnchors: boolean;
   readonly fileLinkError?: string | null;
 }) {
   const t = getT(context.language ?? "en");
@@ -671,9 +668,6 @@ export function AgentChatView({
             containing block을 로그 영역으로 좁힌다 — 컴포저 높이가 얼마가 되든 부유물은
             언제나 그 위에 선다. */}
         <div ref={bodyRef} className="agent-chat-body">
-        {/* data-chat-tour는 실행·브라우저 기능의 온보딩 투어가 짚는 앵커 계약이다 —
-            사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
-            콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
         <div
           className={`agent-chat-log${awaitingFirstTurn ? " is-inviting" : ""}${workOpen ? " is-shaded" : ""}`}
           ref={logRef}
@@ -682,7 +676,6 @@ export function AgentChatView({
           aria-live="off"
           onScroll={handleScroll}
           onPointerDown={onLogPointerDown}
-          {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
         >
       {/* 아직 아무 말도 오가지 않은 패널이 지는 초대. 빈 로그를 그대로 두면 96%가 빈 면이라
           "아직 아무것도 없는 제품"으로 읽힌다 — 이 한 덩어리가 그 자리를 지고, 바로 아래
@@ -872,7 +865,6 @@ export function AgentChatView({
             onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
             onOpenCoordinates={(stage: CoordinateMenuStage) => setCoordinateOpenRequest((previous) => ({ seq: (previous?.seq ?? 0) + 1, stage }))}
             catalogEpoch={state.catalogEpoch}
-            tourAnchor={tourAnchors}
             turnRunning={turnRunning}
             stopping={stopping}
             queue={state.queue}

@@ -31,7 +31,7 @@ node $S/isolated-env.mjs --run-dir "$E2E_DIR" --bin npm \
 - `--fail-install` gives the target package a `postinstall` that exits 41: the worker records `install-failed`, npm restores the current version, and the worker brings a Console back on the same port.
 - A fresh fixture directory per scenario: `prepare` refuses a non-empty one.
 
-Then either accept in the UI with the [selected driver](agent-browser.md) after the [onboarding seed](setup.md#first-load-onboarding-state), or drive the API:
+Then either accept in the UI with the [selected driver](agent-browser.md) after the [commissioning seed](setup.md#first-load-commissioning-state), or drive the API:
 
 ```bash
 node $S/isolated-env.mjs --run-dir "$E2E_DIR" -- node $S/console-update-fixture.mjs drive --dir "$E2E_DIR/update-fixture" --run-dir "$E2E_DIR"

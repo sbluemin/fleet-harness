@@ -117,7 +117,7 @@ Check `remote/paired-devices.json` under the isolated `FLEET_CONSOLE_DATA_DIR` t
 
 A full remote session takes control, so the owner's screen raises the control curtain and the standing bar. That is correct behavior, and it will swallow clicks on anything behind it.
 
-Follow the shared [Pointer target preflight](verification.md#pointer-target-preflight) before owner-side pointer input rather than concluding a covered button is broken. A hit on `control-curtain-scrim` means a remote device holds control (expected); `commissioning-card` indicates onboarding covered by [Fresh-window chrome preflight](verification.md#fresh-window-chrome-preflight).
+Follow the shared [Pointer target preflight](verification.md#pointer-target-preflight) before owner-side pointer input rather than concluding a covered button is broken. A hit on `control-curtain-scrim` means a remote device holds control (expected); `commissioning-card` means the first-run card still covers the screen (see [Fresh-window chrome preflight](verification.md#fresh-window-chrome-preflight)).
 
 Dismiss the curtain with "Keep watching" to reach the standing bar; dismiss again if reload raises it, then repeat the shared preflight before continuing.
 
@@ -164,7 +164,7 @@ On `/objectives`, while the connection is live:
 
 ### Browser: load the remote listener
 
-Seed onboarding before the first navigation ([First-load onboarding state](setup.md#first-load-onboarding-state)), or the commissioning card covers the dock in a screenshot. Turn the listener on with [`issue-access-link.mjs`](../scripts/issue-access-link.mjs) as in [Turn the listener on](#turn-the-listener-on). Its stdout line `link written to <path> (listener <origin>)` is the origin to open. Do not print `link.txt`.
+Seed the first-run state before the first navigation ([First-load commissioning state](setup.md#first-load-commissioning-state)), or the commissioning card covers the dock in a screenshot. Turn the listener on with [`issue-access-link.mjs`](../scripts/issue-access-link.mjs) as in [Turn the listener on](#turn-the-listener-on). Its stdout line `link written to <path> (listener <origin>)` is the origin to open. Do not print `link.txt`.
 
 Join from one Node process, as in [Speak to the remote listener](#speak-to-the-remote-listener). Have that process write a mode-0600 JSON array of `{name,value}` for the `Set-Cookie` pairs, and print the status and the cookie names only (`fleet_console_session_<remotePort>` and `fleet_console_pairing_<remotePort>`). A `204` is the join. Never pass the cookie value or the lock token on a command line.
 

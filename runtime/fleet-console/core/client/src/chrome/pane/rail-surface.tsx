@@ -6,7 +6,6 @@ import type { ClientExpandedSurfacesCapability } from "../../../../../features/w
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { OpenLinkHandler } from "@fleet-console/link/core";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
-import { onboardingWorkSurface } from "../../../../../features/onboarding/shared/anchors.js";
 import type { ObjectiveLaunchKind } from "../../../../../features/objectives/shared/records/types.js";
 import type { ConversationToolScope, PaneDescriptor, PaneOpenRequest } from "../../../../../features/workspace/shared/pane.js";
 import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
@@ -499,7 +498,6 @@ function PaneHost({
       id={`rail-pane-${descriptor.id}`}
       className={`rail-pane role-${descriptor.role}${focused ? " is-focused" : ""}${visible ? "" : " is-parked"}${width === undefined ? "" : " is-sized"}${overlay ? " is-overlay" : ""}`}
       data-pane={descriptor.id}
-      {...onboardingWorkSurface()}
       hidden={!visible}
       aria-hidden={visible ? undefined : true}
       inert={visible ? undefined : true}

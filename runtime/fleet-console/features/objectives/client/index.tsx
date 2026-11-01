@@ -13,7 +13,6 @@ import { objectiveConversationTabs, objectiveMobileConversationTabs } from "./he
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfObjective, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { ResultWindowHost, resetResultWindow } from "./result-window.js";
-import { objectivesOnboarding } from "./onboarding.js";
 import { viewedCommodoreId, handleMapObjectiveSelected, installObjectiveState, loadBoard, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
 import "./objectives.css";
 
@@ -130,7 +129,6 @@ export function createObjectivesClient(commodore: CommodoreClientHost) {
     id: "objectives",
 
     railEntries: [objectivesEntry],
-    onboarding: objectivesOnboarding,
     panes: [objectivesPane, objectivesMobileDetailPane],
     // 레일·목표·탭을 바꿔도 연 목표의 결과물 창은 남는다. 폰에서는 같은 내용을 전체 화면으로 그린다.
     persistentComponents: [{ id: "objectives-result-window", render: ({ language, layout }) => <ResultWindowHost language={language} mobile={layout === "mobile"} /> }],

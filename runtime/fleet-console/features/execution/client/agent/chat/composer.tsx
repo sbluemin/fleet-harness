@@ -162,7 +162,6 @@ export function AgentChatComposer({
   coordinate,
   ledge,
   meter,
-  tourAnchor,
   turnRunning,
   stopping,
   queue,
@@ -189,7 +188,6 @@ export function AgentChatComposer({
    * "이 창에 얼마나 남았는가"가 손이 가는 자리에서 읽힌다.
    */
   readonly meter: React.ReactNode;
-  readonly tourAnchor: boolean;
   /** 지금 이 세션의 턴이 도는가 — 중지와 다음 지시 예약을 함께 세우는 축이다. */
   readonly turnRunning: boolean;
   readonly stopping: boolean;
@@ -596,7 +594,6 @@ export function AgentChatComposer({
       )}
       <div
         className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${ultracodeArmed ? " is-ultracode" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
-        {...(tourAnchor ? { "data-chat-tour": "composer" } : {})}
         onKeyDown={(event) => {
           // 도는 턴을 끊는 키. 프레임 안에서만 듣는다 — 문서 전역에 걸면 한 화면에 열린 다른
           // 채팅 패널의 턴까지 함께 끊는다. 안내(`Esc 중지`)가 서는 구간과 정확히 같은 구간이다.

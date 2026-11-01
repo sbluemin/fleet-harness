@@ -196,8 +196,6 @@ export interface CaptionActionButtonProps {
    * 배지는 장식이라 그 뜻은 `label` 이 함께 말해야 한다.
    */
   readonly badge?: number;
-  /** 크로스 번들 DOM 계약(`data-chat-tour`)을 이 버튼에 세운다. */
-  readonly tourAnchor?: string;
   /** 에이전트가 이 면을 쓰는 중 — 버튼 자체가 표식이 된다(agent-control 채널 채움 + 퍼지는 링). */
   readonly agent?: boolean;
   /**
@@ -217,7 +215,6 @@ export function CaptionActionButton({
   busy = false,
   pending = false,
   badge = 0,
-  tourAnchor,
   actionId,
   agent = false,
   onClick,
@@ -230,7 +227,6 @@ export function CaptionActionButton({
         className={className}
         aria-label={label}
         {...(pressed === undefined ? {} : { "aria-pressed": pressed })}
-        {...(tourAnchor === undefined ? {} : { "data-chat-tour": tourAnchor })}
         {...(actionId === undefined ? {} : { "data-caption-action": actionId })}
         disabled={disabled}
         // 캡션은 창을 끄는 면이다 — 여기서 멈추지 않으면 버튼을 누르는 순간 패널이 따라온다.

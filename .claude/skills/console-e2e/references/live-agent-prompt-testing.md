@@ -159,10 +159,11 @@ authentication or whether an arbitrary id exists in the current catalog.
 
 ## Clear the dialogs before the first click
 
-A fresh `FLEET_CONSOLE_DATA_DIR` opens commissioning and onboarding tours, and
-each swallows clicks aimed at the page behind it; the failure looks like a missing element,
+A fresh `FLEET_CONSOLE_DATA_DIR` opens the commissioning card, followed automatically by
+the "Fleet at a glance" popup once the card is dismissed, and
+they swallow clicks aimed at the page behind them; the failure looks like a missing element,
 not a blocked one. Seed them before the first navigation with the
-[setup onboarding seed](setup.md#first-load-onboarding-state), then assert:
+[setup commissioning seed](setup.md#first-load-commissioning-state), then assert:
 
 ```bash
 ab --session fleet-console-e2e-20260807-strict eval "document.querySelectorAll('[aria-modal=\"true\"]').length"   # expect 0

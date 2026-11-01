@@ -1,6 +1,5 @@
 import "@fleet-console/font-picker/styles.css";
 import type { Translate } from "@fleet-console/i18n";
-import { onboardingBoundary } from "../../onboarding/shared/anchors.js";
 import { SettingsGroup, SettingsRow, SettingsSubScreenRow, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { useEffect, useRef, useState, type RefObject } from "react";
@@ -88,9 +87,7 @@ function DesktopRemoteAccess({ remote, saving }: { readonly remote: RemoteAccess
 
   return (
     <>
-      {/* 안내 카드는 이 섹션 옆에 서고, 세로 위치만 지금 짚는 카드에 맞춘다. 섹션 안에 서면 화면보다 키 큰 카드의
-          머리, 곧 안내가 가리키는 컨트롤 위에 떠서 그 클릭을 받아 버린다. */}
-      <section className="global-settings-card remote-section" aria-label={t("settings.remote.title")} {...onboardingBoundary("anchor")}>
+      <section className="global-settings-card remote-section" aria-label={t("settings.remote.title")}>
         {/* 원격 접속은 이제 자기 범주라 범주 제목이 이름을 말한다 — 머리는 한 줄 소개만 진다(투어의 첫 앵커). */}
         <header className="remote-section-head">
           <p>{t("settings.remote.lede")}</p>
