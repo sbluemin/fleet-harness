@@ -136,7 +136,7 @@ const repositoryEn = {
   "repository.compare.withCurrent": "Compare with current branch",
 
   // in-history compare (anchor grammar)
-  "repository.compare.pinAction": "Compare with another commit…",
+  "repository.compare.pinAction": "Compare with another commit",
   "repository.compare.pinRow": "Pin {short} as compare base",
   "repository.compare.completeRow": "Compare {short} with base {base}",
   "repository.compare.unpinRow": "Unpin compare base {short}",
@@ -425,7 +425,7 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.compare.withBase": "베이스와 비교",
   "repository.compare.withCurrent": "현재 브랜치와 비교",
 
-  "repository.compare.pinAction": "다른 커밋과 비교…",
+  "repository.compare.pinAction": "다른 커밋과 비교",
   "repository.compare.pinRow": "{short}를 비교 기준으로 고정",
   "repository.compare.completeRow": "기준 {base}와(과) {short} 비교",
   "repository.compare.unpinRow": "비교 기준 {short} 고정 해제",

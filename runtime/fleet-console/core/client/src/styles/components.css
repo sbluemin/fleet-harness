@@ -3391,40 +3391,6 @@
   right: auto;
 }
 
-/* 메뉴 맨 위 대상 이름 — 별칭이 있으면 둘째 줄에 원래 Theater 이름. 항목이 아니므로 고르지 않는다. */
-.side-bar-theater-menu .theater-menu-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  margin-bottom: var(--space-1);
-  padding: var(--space-2) 12px;
-  border-bottom: 1px solid var(--popover-divider);
-}
-
-.side-bar-theater-menu .theater-menu-title-text {
-  display: grid;
-  min-width: 0;
-  line-height: 1.3;
-}
-
-.side-bar-theater-menu .theater-menu-title-text > * {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.side-bar-theater-menu .theater-menu-title-text strong {
-  color: var(--text-primary);
-  font-size: var(--t-base);
-  font-weight: var(--weight-medium);
-}
-
-.side-bar-theater-menu .theater-menu-title-text span {
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-}
-
 /* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 제목 글꼴·잉크, 머무름·키보드 포커스·활성·accent 이름 잉크는 아래 칩 규칙을 함께 쓴다:
    뿌리가 선 줄은 칩 자리를 이어받았으니 활성 Objective 일 때 칩과 같은 값으로 하이라이트한다(왼쪽 띠 없음).
    바탕은 공유한 상태 규칙보다 앞에 서야 한다 — 뒤에 서면 바탕의 border 가 같은 특이도의 활성 테두리를 덮는다. */
@@ -3952,6 +3918,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .group-context-menu-item--switch.is-selected .group-context-menu-item__glyph,
 .group-context-menu-item--switch:hover .group-context-menu-item__glyph {
+  color: currentColor;
+}
+
+/* 위험 항목의 글리프 — 이름과 같은 coral 잉크로 따른다(기본 popover-icon-ink가 덮지 않게). */
+.group-context-menu-item--danger .group-context-menu-item__glyph {
   color: currentColor;
 }
 

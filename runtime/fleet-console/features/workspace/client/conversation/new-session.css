@@ -134,6 +134,8 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 }
 .new-session-menu-item:hover,
 .new-session-menu-item:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
+/* 드롭다운 안의 추가 행 글리프 — Theater 행(TheaterGlyph 16px)과 글자 시작을 맞춘다. 칩(.new-session-chip-glyph)은 건드리지 않는다. */
+.new-session-menu-item > .new-session-row-glyph { width: 16px; height: 16px; }
 .new-session-menu-check { flex: none; width: 14px; color: var(--brass-ink); font-size: var(--t-sm); }
 .new-session-menu-item[aria-checked="false"] .new-session-menu-check { visibility: hidden; }
 .new-session-menu-divider { height: var(--popover-divider-width); margin: var(--popover-divider-space); background: var(--popover-divider); flex: none; }

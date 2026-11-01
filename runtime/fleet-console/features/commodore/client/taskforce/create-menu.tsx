@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { requestCommodoreCreate } from "../commodore-create-modal.js";
+import { CommodoreIcon, TaskforceIcon } from "../../../workspace/client/sidebar/sidebar-menu-icons.js";
 import { requestTaskforceCreate } from "./taskforce.js";
 import { taskforceT } from "./i18n.js";
 
@@ -26,7 +27,7 @@ export function TaskforceCreateMenu({ children }: { readonly children: ReactNode
       if (event.key === "Escape" || event.key === "Tab") { if (event.key === "Escape") event.preventDefault(); close(); }
       else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length; items[next]?.focus(); }
     }}>
-      <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); requestCommodoreCreate(); }}><span className="theater-menu-check" aria-hidden="true">✦</span><span className="theater-menu-label">{t("taskforce.newCommodore")}</span></button>
-      <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); requestTaskforceCreate(); }}><span className="theater-menu-check" aria-hidden="true">⧉</span><span className="theater-menu-label">{t("taskforce.new")}</span>{shortcut ? <kbd className="taskforce-menu-shortcut">{shortcut}</kbd> : null}</button>
+      <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); requestCommodoreCreate(); }}><span className="theater-menu-check" aria-hidden="true"><CommodoreIcon /></span><span className="theater-menu-label">{t("taskforce.newCommodore")}</span></button>
+      <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); requestTaskforceCreate(); }}><span className="theater-menu-check" aria-hidden="true"><TaskforceIcon /></span><span className="theater-menu-label">{t("taskforce.new")}</span>{shortcut ? <kbd className="taskforce-menu-shortcut">{shortcut}</kbd> : null}</button>
     </div></div>, document.body) : null}</>;
 }

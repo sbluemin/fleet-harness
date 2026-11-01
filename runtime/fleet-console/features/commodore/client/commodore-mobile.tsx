@@ -241,14 +241,14 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         title,
         ...(pillStatus ? { subtitle: pillStatus } : {}),
         depth: 0,
-        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(새 세션·Theater·삭제)는 깊이 1에 그대로 둔다.
+        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(새 목표·Theater·삭제)는 깊이 1에 그대로 둔다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
         ...(actions && commodoreId ? { actions: [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] } : {}),
       });
       return;
     }
     if (section === null) {
-      // 세부의 막대는 둥근 ‹ · ⋮ 뿐이다 — 이름은 본문의 큰 머리가 말한다. ⋮ 는 데스크톱 사이드바 사령관 메뉴의 새 세션 · Theater… 를 옮긴 것이다.
+      // 세부의 막대는 둥근 ‹ · ⋮ 뿐이다 — 이름은 본문의 큰 머리가 말한다. ⋮ 는 데스크톱 사이드바 사령관 메뉴의 새 목표 · Theater 추가 를 옮긴 것이다.
       bar.set({
         title: "",
         round: true,

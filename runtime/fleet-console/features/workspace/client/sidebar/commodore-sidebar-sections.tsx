@@ -6,7 +6,7 @@ import { useCommodoreSidebarCommands } from "../../../commodore/client/sidebar-s
 import { MAX_SIDEBAR_SECTION_NAME, type CommodoreSidebarCommand, type CommodoreSidebarSection } from "../../../commodore/shared/contracts/sidebar-layout.js";
 import { useLongPress } from "../long-press.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
-import { FolderIcon, PencilIcon, PlusIcon, TrashIcon } from "./sidebar-menu-icons.js";
+import { PencilIcon, PlusIcon, SectionMoveIcon, TrashIcon } from "./sidebar-menu-icons.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import "./commodore-sidebar-sections.css";
 
@@ -151,7 +151,7 @@ export function CommodoreSectionMoveMenu({ rowId, controller, onClose }: { reado
   return <div className="workspace-commodore-section-move" onPointerEnter={() => { setFocusFirst(false); setOpen(true); }} onPointerLeave={() => setOpen(false)}>
     <button ref={trigger} type="button" role="menuitem" className="theater-menu-item" aria-haspopup="menu" aria-expanded={open} disabled={controller.busy}
       onClick={(event) => { setFocusFirst(event.detail === 0); setOpen(true); }} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); event.stopPropagation(); setFocusFirst(true); setOpen(true); } }}>
-      <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
+      <span className="theater-menu-check" aria-hidden="true"><SectionMoveIcon /></span>
       <span className="theater-menu-label">{t("sidebar.commodoreSection.move")}</span><ChevronGlyph direction="right" />
     </button>
     {open ? <div ref={menu} data-section-submenu={id} className="theater-menu workspace-commodore-section-submenu" role="menu" aria-label={t("sidebar.commodoreSection.move")} style={{ position: "fixed", ...position }}

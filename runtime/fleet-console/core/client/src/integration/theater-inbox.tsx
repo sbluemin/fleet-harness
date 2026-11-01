@@ -26,7 +26,7 @@ const COMMODORE_SETTINGS_ADDRESS: TheaterInboxAddress = { sectionId: "commodore:
 
 /**
  * Theater Inbox 의 합성 — 시트 틀(workspace feature), 호스트의 「Theater 설정」(settings feature), 플러그인 섹션(registry)을
- * 한 자리에서 잇는다. 사이드바 Theater 메뉴의 「시스템 프롬프트…」는 데스크톱에서 여기로 와서 Theater 설정 칸을 연다.
+ * 한 자리에서 잇는다. 사이드바 Theater 메뉴의 「시스템 프롬프트」는 데스크톱에서 여기로 와서 Theater 설정 칸을 연다.
  * 데스크톱은 섹션을 오른쪽 패널의 탭으로 세운다(TheaterInboxPanel).
  * 폰 배치로 바뀌면 보던 섹션을 폰 화면에 넘기고 닫는다.
  */
