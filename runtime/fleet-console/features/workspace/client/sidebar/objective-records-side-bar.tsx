@@ -46,7 +46,6 @@ import { commodoreSectionDropFromPoint, type CommodoreSectionDrop, reorderTheate
 import { CommodoreSidebarSection, CommodoreSectionMoveMenu, useCommodoreSidebarSections, type SidebarSectionsController } from "./commodore-sidebar-sections.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { useAvatarClaims } from "../avatars.js";
-import { TheaterGlyph } from "../components/theater-glyph.js";
 import { useLongPress } from "../long-press.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
@@ -143,7 +142,7 @@ interface TheaterActionsMenuProps {
   readonly atCursor?: boolean;
   readonly focusFirst?: boolean;
   readonly onDeleteCommodore?: (() => void) | undefined;
-  readonly onOpenZone: () => void;
+  readonly onAddTheater: () => void;
   readonly onNewSession: () => void;
   readonly onEditAlias: () => void;
   readonly onClose: () => void;
@@ -635,13 +634,7 @@ export function ObjectiveRecordsSideBar({
             setActiveContextMenu(null);
             requestCommodoreDelete(id, opener);
           }}
-          onOpenZone={() => {
-            setZoneCommodore(contextMenuFace.section.commodoreId);
-            // 오른쪽 패널의 탭은 가운데에 대화가 선 동안만 선다 — 사령관 대화를 먼저 세우고 그 설정(맨 위가 Theater)을 연다.
-            openCommodoreConversation(contextMenuFace.section.commodoreId);
-            openTheaterInbox({ theaterId: contextMenuFace.section.commodoreId, sectionId: "commodore:commodore", pageId: "settings", returnFocus: activeContextMenu.returnFocus ?? null });
-            setActiveContextMenu(null);
-          }}
+          onAddTheater={() => openTheaterBrowser(contextMenuFace.section.commodoreId)}
           onNewSession={() => {
             openCommodoreNewSession(contextMenuFace.section.commodoreId);
             closeActiveContextMenu();
@@ -910,7 +903,7 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
   );
 }
 
-function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onOpenZone, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onAddTheater, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
   const t = useT();
   const tf = taskforceT(useConsoleLocale());
   const { enabled: taskforceEnabled } = useTaskforceExperiment();
@@ -970,19 +963,12 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        {/* 대상 Theater — 활성이 아닌 Theater 에서도 열리므로 무엇을 다루는지 먼저 말한다. 메뉴의 aria-label 이 같은 이름을 읽는다. */}
-        <div className="theater-menu-title" aria-hidden="true">
-          {/* 머리의 주제는 사령관이다 — 그 사령관 얼굴. 사령관이 없는 Theater 행이면 Theater 표식이다. */}
-          {theater.commodore ? <KeyedAvatar avatarKey={commodoreAvatarKey(theater.commodore.id)} role="commodore" state="idle" size={22} label="" decorative /> : <TheaterGlyph size={22} />}
-          <span className="theater-menu-title-text">
-            <strong>{theater.commodore?.alias ?? theater.label}</strong>
-            {theater.commodore?.alias ? <span>{theater.label}</span> : null}
-          </span>
-        </div>
+        <CommodoreSectionMoveMenu rowId={theater.id} controller={sections} onClose={onClose} />
+        <div className="theater-menu-divider" aria-hidden="true" />
         {/* 사령관 별칭 — 머리 자리에서 바로 편집한다(F2·이름 더블클릭도 같다). 원래 이름은 머리 둘째 줄에 남는다. */}
         <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={onEditAlias}>
           <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
-          <span className="theater-menu-label">{t("sidebar.commodore.appearance")}</span>
+          <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
         </button>
         <div className="theater-menu-divider" aria-hidden="true" />
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onNewSession}>
@@ -993,11 +979,10 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
           <span className="theater-menu-check" aria-hidden="true">⧉</span>
           <span className="theater-menu-label">{tf("taskforce.fromCommodore")}</span>
         </button> : null}
-        <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenZone}>
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={onAddTheater}>
           <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
-          <span className="theater-menu-label">{t("sidebar.commodore.zone")}</span>
+          <span className="theater-menu-label">{t("sidebar.commodore.addTheater")}</span>
         </button>
-        <CommodoreSectionMoveMenu rowId={theater.id} controller={sections} onClose={onClose} />
         <TheaterContributionMenuItems theater={theater} onClose={onClose} />
         {onDeleteCommodore ? (
           <>

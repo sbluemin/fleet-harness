@@ -14,6 +14,15 @@ export function FolderIcon() {
   );
 }
 
+export function SectionMoveIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 4.5h7M2.5 8h4.5M2.5 11.5h7" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="M9.5 8h4M11.8 6.2 13.5 8l-1.7 1.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function PencilIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
