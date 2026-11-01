@@ -21,14 +21,15 @@
   --conversation-side: var(--ink-abyss);
 }
 
-/* 라이트 데스크톱 캡슐만 흰 알약(높이 44·원 32·0.5px 12% 링). 「+」만 6%. 보내기는 고유 색. 다크·모바일은 공유 캡슐 그대로다. */
+/* 라이트 데스크톱 캡슐만 흰 알약(높이 44·원 32·0.5px 12% 링). 「+」만 6%. 보내기는 고유 색. 다크·모바일은 공유 캡슐 그대로다.
+   반경은 공유 캡슐의 고정값(원/2+8 = 24px)을 쓴다 — 한 줄 높이에선 알약으로 줄어들고, 첨부·여러 줄로 커지면 다크처럼 모서리만 둥글다.
+   pill(999px)로 두면 높아질 때 양끝이 반원이 되어 썸네일·원 버튼이 테두리 곡선에 잘린다. */
 :root[data-theme="light"]:not([data-view-mode="mobile"]) .fc-composer-capsule {
   --fc-composer-circle: 32px;
   min-height: 44px;
   padding: 5.5px;
   border-width: 0.5px;
   border-color: color-mix(in srgb, var(--ink-pearl) 12%, var(--surface-round-control));
-  border-radius: var(--radius-pill);
   background: var(--surface-round-control);
 }
 :root[data-theme="light"]:not([data-view-mode="mobile"]) .fc-composer-capsule:focus-within { border-color: var(--hairline-strong); }
