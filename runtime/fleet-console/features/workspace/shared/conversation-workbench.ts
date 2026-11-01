@@ -116,11 +116,14 @@ export function sanitizeWorkbenchParams(value: unknown): Readonly<Record<string,
   return params;
 }
 
+/** 퇴역한 레일 엔트리 — 저장된 배치에서 걷어낸다(rail-store의 퇴역 id 정규화와 같은 취지). */
+const RETIRED_WORKBENCH_ENTRY_IDS: ReadonlySet<string> = new Set(["codex"]);
+
 function sanitizeTile(value: unknown, seen: Set<string>): WorkbenchTile | null {
   if (!isRecord(value) || !validId(value.id) || seen.has(value.id)) return null;
   const id = value.id;
   let tile: WorkbenchTile | null = null;
-  if (value.kind === "entry" && validId(value.entryId)) tile = { id, kind: "entry", entryId: value.entryId };
+  if (value.kind === "entry" && validId(value.entryId) && !RETIRED_WORKBENCH_ENTRY_IDS.has(value.entryId)) tile = { id, kind: "entry", entryId: value.entryId };
   else if (value.kind === "surface" && validId(value.surfaceId)) tile = { id, kind: "surface", surfaceId: value.surfaceId, params: sanitizeWorkbenchParams(value.params) };
   else if (value.kind === "browser") tile = { id, kind: "browser" };
   if (tile !== null) seen.add(id);
