@@ -947,7 +947,7 @@
   box-shadow: var(--popover-surface-shadow);
   --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
-.mobile-sheet.is-full { top: 8px; max-height: none; }
+.mobile-sheet.is-full { top: 8px; max-height: none; padding-top: var(--m-safe-top, 0px); }
 .mobile-sheet.is-leaving { animation: mobile-sheet-out 220ms cubic-bezier(0.3, 0, 0.8, 0.15) forwards; }
 .mobile-sheet.is-dragging { animation: none; }
 
@@ -1353,7 +1353,7 @@ html[data-view-mode="mobile"] .app-toast-action {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 0 36px;
+  padding: var(--m-safe-top, 0px) 36px var(--m-safe-bottom, 0px);
   color: var(--m-text);
   background: var(--m-bg);
 }
@@ -1362,7 +1362,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-update-track { width: 220px; margin-top: 6px; }
 .mobile-update-screen .update-recovery { width: min(360px, 100%); }
 /* 복구 안내가 붙으면 묶음이 화면보다 길어질 수 있다 — 가운데 정렬 대신 위에서부터 흘려 스크롤되게 한다. */
-.mobile-update-screen:has(.update-recovery) { justify-content: flex-start; padding-top: 48px; padding-bottom: 24px; overflow-y: auto; }
+.mobile-update-screen:has(.update-recovery) { justify-content: flex-start; padding-top: calc(48px + var(--m-safe-top, 0px)); padding-bottom: calc(24px + var(--m-safe-bottom, 0px)); overflow-y: auto; }
 
 /* 확대 표면 본문(Shell)이 목적지 화면을 채운다 — 도구 시트의 표면 규칙과 같다. */
 .mobile-surface-screen-body { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
