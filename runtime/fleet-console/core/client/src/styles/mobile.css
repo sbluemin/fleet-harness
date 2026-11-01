@@ -950,7 +950,7 @@
   box-shadow: var(--popover-surface-shadow);
   --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
-.mobile-sheet.is-full { top: 8px; max-height: none; padding-top: var(--m-safe-top, 0px); }
+.mobile-sheet.is-full { top: calc(8px + var(--m-safe-top, 0px)); max-height: none; }
 .mobile-sheet.is-leaving { animation: mobile-sheet-out 220ms cubic-bezier(0.3, 0, 0.8, 0.15) forwards; }
 .mobile-sheet.is-dragging { animation: none; }
 
