@@ -292,7 +292,13 @@ function drawStructureOrbit(k: GlanceKit, c: GlancePalette, t: number, reduced: 
       if (t > 3.4 && !reduced) k.dot(ix + (mx - ix) * ph, iy + (my - iy) * ph, 2, c.flow, am * (1 - ph));
       k.orb(mx, my, 5 * am, c.result, am);
     }
-    k.text(L.members ?? "", ix, iy + 72, { color: c.ink2, size: 11, a: am });
+    // 영어처럼 한 줄이 원에 걸리면 두 줄로 나눈다 — 원의 현 안에 들어가게 윗줄·아랫줄로.
+    if (L.membersSub) {
+      k.text(L.members ?? "", ix, iy + 60, { color: c.ink2, size: 11, a: am });
+      k.text(L.membersSub, ix, iy + 76, { color: c.ink2, size: 11, a: am });
+    } else {
+      k.text(L.members ?? "", ix, iy + 72, { color: c.ink2, size: 11, a: am });
+    }
     ctx.restore();
   }
 }
@@ -794,7 +800,8 @@ function drawGraphStars(k: GlanceKit, c: GlancePalette, t: number, _reduced: boo
     if (i) k.line([[572, 214], [x, y]], c.result, fa * 0.5, 1);
     k.orb(x, y, 2.4, c.result, fa);
   });
-  k.text(L.followup ?? "", 590, 276, { size: 12, color: c.result, a: fa });
+  // 후속 목표 표기는 별자리 오른편에 — 영어 길이에서도 무대 안에 들어가게 중심을 왼편에 둔다.
+  k.text(L.followup ?? "", 566, 276, { size: 12, color: c.result, a: fa });
 }
 
 function drawAgentPrism(k: GlanceKit, c: GlancePalette, t: number, reduced: boolean, L: GlanceLabels): void {
