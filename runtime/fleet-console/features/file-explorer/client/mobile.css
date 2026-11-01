@@ -63,7 +63,7 @@
 .fexp-m-code .fexp-code-scroll { max-height: none; }
 
 /* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
-.fexp-m-toast { position: fixed; left: 16px; right: 16px; bottom: var(--m-toast-bottom); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: fexp-m-fade .2s ease-out; }
+.fexp-m-toast { position: fixed; left: 16px; right: 16px; bottom: var(--m-toast-bottom, 150px); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: fexp-m-fade .2s ease-out; }
 html[data-mobile-scheme="light"] .fexp-m-toast { border: 1px solid var(--m-hairline); }
 @keyframes fexp-m-fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .fexp-m-toast { animation: none; } }

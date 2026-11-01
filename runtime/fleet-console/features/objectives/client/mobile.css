@@ -370,7 +370,7 @@
 :root[data-view-mode="mobile"] .objectives-result-textstate.is-error { color: var(--m-danger); }
 
 /* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
-.objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: var(--m-toast-bottom); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: objectives-m-fade .2s ease-out; }
+.objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: var(--m-toast-bottom, 150px); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: objectives-m-fade .2s ease-out; }
 html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m-hairline); }
 
 @keyframes objectives-m-fade { from { opacity: 0; } }
