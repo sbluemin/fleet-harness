@@ -460,7 +460,7 @@ export interface AiGatewayCatalogProvider {
 }
 
 export interface AiGatewayCatalogModel {
-  /** Scoped gateway model id, e.g. `codex--gpt-6-sol`. */
+  /** Scoped gateway model id, e.g. `codex--gpt-6.1-sol`. */
   readonly id: string;
   /** Bare model label without the provider prefix. */
   readonly name: string;

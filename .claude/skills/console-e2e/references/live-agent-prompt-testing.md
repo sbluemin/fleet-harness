@@ -58,7 +58,7 @@ sidecar. Setting them on the spawned agent CLI is too late.
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir <owned-run> \
   --set CLAUDE_BIN=<claude-abs-path> \
   --set FLEET_GATEWAY_WIRE_LOG=<scratch>/wire.jsonl \
-  --set 'FLEET_AI_GATEWAY_MODEL=claude-gateway--codex--gpt-6-sol' \
+  --set 'FLEET_AI_GATEWAY_MODEL=claude-gateway--codex--gpt-6.1-sol' \
   -- node <worktree>/runtime/fleet-console/dist/cli.mjs serve
 ```
 
