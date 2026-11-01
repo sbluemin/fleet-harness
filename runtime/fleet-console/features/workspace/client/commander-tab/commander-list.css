@@ -295,7 +295,11 @@
 .commander-row-pips i.is-unseen { background: var(--brass); }
 
 /* 글리프 펼침의 「오늘까지·기한」 — 목표 내용 맨 위에 중앙 정렬로 둔다. 단추는 지금 모양(글리프+글자) 그대로다. */
-.commander-row-panel-schedule { display: flex; justify-content: center; margin: 2px 0 6px; }
+.commander-row-panel-schedule { display: flex; justify-content: center; margin: 2px 0 0; }
+/* 「오늘까지·기한」 아래에는 본문 첫 묶음을 바로 붙인다 — 본문 위 4·6px는 펼침에 탭 줄이 있던 때 탭과 본문을 가르던 여백이라
+   여기서는 빈 띠만 만든다. 줄 아래 간격은 첫 행(44px) 안의 여백이 맡는다. 일정 줄이 없는 구성원·라이브러리 펼침은 그대로다. */
+.commander-row-panel-schedule + .objectives-detail .objectives-tab-body { padding-top: 0; }
+.commander-row-panel-schedule + .objectives-detail .objectives-tab-body > .objectives-group:first-child { padding-top: 0; }
 
 /* 상태 줄은 줄바꿈하지 않고 상태 문구는 말줄임한다 — 게이지·분수는 기존 @container 규칙을 그대로 따른다. */
 .commander-tab--card .side-bar-cluster-row-line { flex-wrap: nowrap; white-space: nowrap; }
