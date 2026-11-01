@@ -757,12 +757,13 @@ export function ConfirmDialog({ question, cancelLabel, confirmLabel, danger = fa
     document.addEventListener("keydown", keydown, true);
     return () => { document.removeEventListener("keydown", keydown, true); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, []);
-  // 진행 중에 포커스가 카드 밖으로 빠지면 카드로 되돌린다 — 단추가 다시 살아나면 취소로 돌린다.
+  // 진행 중에는 카드 안 단추가 전부 비활성화다 — 포커스가 어디에 있든 카드로 둔다.
+  // 비활성화 직후에는 브라우저가 아직 blur 전이라 카드 안에 있어도 카드로 옮긴다.
   React.useEffect(() => {
     const root = cardRef.current;
     if (!root) return;
-    if (busy && !root.contains(document.activeElement)) root.focus();
-    else if (!busy) cancelRef.current?.focus();
+    if (busy) { if (document.activeElement !== root) root.focus(); }
+    else cancelRef.current?.focus();
   }, [busy]);
   return createPortal(
     <div className="fc-confirm-scrim" role="presentation" onPointerDown={() => { if (!busy) onCancel(); }}>
