@@ -3,7 +3,8 @@ import { defineConsoleTool } from "../../console-use/shared/actions.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 import type { CommodoreMessageInput } from "./messaging.js";
-import { MAX_DESCRIPTION, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_TRANSCRIPT_TEXT } from "../shared/contracts/types.js";
+import { COMMODORE_EFFORTS, MAX_DESCRIPTION, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_TRANSCRIPT_TEXT } from "../shared/contracts/types.js";
+import { isExperimentModelId } from "../../settings/shared/experiments.js";
 import { MAX_MEMORY_ENTRIES, memoryRefSchema } from "./memory.js";
 import type { CommodoreCreateInput } from "./creation.js";
 import { commodoreSessionToolName } from "../shared/tool-names.js";
@@ -26,6 +27,10 @@ const commodores = defineConsoleTool({
       description: z.string().max(MAX_DESCRIPTION).describe("The requested standing description for the new Commodore; do not invent authority the person did not give."),
       intel: z.array(z.string().trim().min(1).max(MAX_INTEL_TEXT)).max(MAX_INTEL_ITEMS).describe("Context to hand over as information, attributed to you rather than to the person; [] for none."),
       memoryRefs: z.array(memoryRefSchema).max(MAX_MEMORY_ENTRIES).optional().describe("Selected refs from your fleet-memory; copies keep source and verification dates, not unselected links."),
+      model: z.string().refine(isExperimentModelId, "invalid_model").optional().describe("The new Commodore's own model, only when the person named one; omitted means Opus."),
+      effort: z.enum(COMMODORE_EFFORTS).optional().describe("The new Commodore's own effort; omitted means high."),
+      commanderModel: z.string().trim().min(1).max(128).optional().describe("Commander model for objectives the new Commodore creates, only when the person named one; omitted means Opus."),
+      commanderEffort: z.string().trim().min(1).max(32).optional().describe("Commander effort for those objectives; omitted means medium."),
     }) },
   },
 });
