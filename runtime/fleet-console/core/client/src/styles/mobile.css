@@ -535,7 +535,7 @@
     align-content: start;
     gap: var(--space-1);
     width: 76px;
-    padding: var(--space-2) max(var(--space-1), env(safe-area-inset-right)) max(var(--space-2), env(safe-area-inset-bottom)) var(--space-1);
+    padding: var(--space-2) max(var(--space-1), var(--m-safe-right, 0px)) max(var(--space-2), var(--m-safe-bottom, 0px)) var(--space-1);
     border-top: 0;
     border-left: 1px solid var(--hairline);
   }
@@ -663,7 +663,7 @@
 
 .mobile-menu {
   position: absolute;
-  top: 52px;
+  top: calc(52px + var(--m-safe-top, 0px));
   right: 8px;
   z-index: 45;
   width: 228px;
@@ -805,7 +805,7 @@
 /* AI Gateway 모델 추가 — 폰에서는 팔레트가 대화의 모델 시트(.mobile-sheet)와 같은 바텀시트로 선다: 덮개 + 위가 둥근 면.
    목록은 남은 높이를 다 쓰고, 터치에는 없는 방향키 힌트와 크기 손잡이는 서지 않는다. */
 :root[data-view-mode="mobile"] .ai-gateway-palette-scrim { position: fixed; inset: 0; z-index: 50; display: block; background: var(--m-scrim); animation: mobile-fade-in 200ms; }
-:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: max(18px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--popover-face); color: var(--m-text); box-shadow: var(--popover-surface-shadow); animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
+:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: max(18px, var(--m-safe-bottom, 0px)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--popover-face); color: var(--m-text); box-shadow: var(--popover-surface-shadow); animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
 :root[data-view-mode="mobile"] .ai-gateway-palette-list { flex: 1 1 auto; height: auto; min-height: 0; padding: 0 8px 8px; }
 :root[data-view-mode="mobile"] :is(.ai-gateway-palette-resize, .ai-gateway-palette-kbd) { display: none; }
 :root[data-view-mode="mobile"] .ai-gateway-palette-search { min-height: 44px; margin: 16px 16px 8px; background: var(--m-chip); }
@@ -937,7 +937,7 @@
   display: flex;
   flex-direction: column;
   max-height: calc(100% - 56px);
-  padding-bottom: max(18px, env(safe-area-inset-bottom));
+  padding-bottom: max(18px, var(--m-safe-bottom, 0px));
   color: var(--m-text);
   background: var(--popover-face);
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
@@ -1080,7 +1080,7 @@
 /* 상단 막대와 연결·상태 띠가 한 덩어리로 화면 위에 떠 있다 — 띠나 경계선 없이, 바탕색에서 투명으로 옅어지는 페이드 하나가 그 자리를 말한다
    (데스크톱 대화 화면의 투명 맨 위 줄과 같은 문법). 본문은 그 뒤로 흐르고, 화면의 스크롤 영역이 이 묶음의 높이(--m-chrome-top)만큼 위를 비워
    맨 위 항목이 막대에 가리지 않는다. 막대를 숨긴 화면(홈·검색)에서 이 묶음은 띠가 없으면 높이 0이다. */
-.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; pointer-events: none; background: var(--m-fade-down); }
+.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; padding-top: var(--m-safe-top, 0px); pointer-events: none; background: var(--m-fade-down); }
 .mobile-frame-head .console-shell-bars { display: flex; flex-direction: column; pointer-events: auto; }
 /* 시트·선택 팝업은 화면이 아니라 겹침이다 — 그 안에 서는 화면 부품(프로필 시트의 설정 목록·도구 시트의 플러그인 본문)은 막대 몫을 비우지 않는다. */
 .mobile-sheet, .mobile-choice-scrim { --m-chrome-top: 0px; }
@@ -1119,7 +1119,7 @@
 /* 위에서 내려오는 알림(S-32) */
 .mobile-request-banner {
   position: absolute;
-  top: 64px;
+  top: calc(64px + var(--m-safe-top, 0px));
   right: 12px;
   left: 12px;
   z-index: 48;
@@ -1208,7 +1208,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-folder-locked { color: var(--m-text-faint); font-size: var(--t-sm); }
 
 /* 모바일 토스트 호스트 — 앱 루트 호스트와 같은 자리·같은 문법 */
-.mobile-toast-host { position: fixed; right: 16px; bottom: 150px; left: 16px; z-index: 47; display: flex; flex-direction: column; gap: 8px; }
+.mobile-toast-host { position: fixed; right: 16px; bottom: var(--m-toast-bottom, 150px); left: 16px; z-index: 47; display: flex; flex-direction: column; gap: 8px; }
 .mobile-toast-host .app-toast { display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; color: var(--m-text); font-size: var(--t-md); background: var(--m-surface); border: 0; border-radius: 14px; box-shadow: var(--m-shadow); animation: mobile-fade-in 200ms; }
 .mobile-toast-host .app-toast-body { flex: 1; }
 .mobile-toast-host .app-toast-title { margin: 0; font-size: var(--t-md); font-weight: var(--weight-regular); }
@@ -1496,8 +1496,8 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-home-section-empty { margin: 0; padding: 0 18px 12px; color: var(--m-text-faint); font-size: var(--m-fs-meta); }
 .mobile-home-section-error { margin: 0; padding: 12px 18px; color: var(--m-danger); font-size: var(--m-fs-meta); }
 /* 홈 아래 떠 있는 줄 — 왼쪽 바로가기 단추와 검색 입력(누르면 검색 화면). 목록은 그 높이만큼 아래를 비운다. */
-.mobile-home .mobile-conv-scroll { padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
-.mobile-home-dock { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 18px 14px calc(14px + env(safe-area-inset-bottom, 0px)); pointer-events: none; background: var(--m-fade-up); }
+.mobile-home .mobile-conv-scroll { padding-bottom: calc(88px + var(--m-safe-bottom, 0px)); }
+.mobile-home-dock { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 18px 14px calc(14px + var(--m-safe-bottom, 0px)); pointer-events: none; background: var(--m-fade-up); }
 .mobile-home-dock > * { pointer-events: auto; }
 .mobile-home-search { position: relative; font: inherit; text-align: left; --pr-r: var(--radius-pill); }
 .mobile-home-search span { flex: 1; min-width: 0; color: var(--m-text-faint); font-size: var(--m-fs-list); }
