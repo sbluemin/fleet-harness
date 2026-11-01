@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.277.0] - 2026-11-01
+
+### fleet-console
+
+#### Added
+- When you ask a Commodore to create a new Commodore, it can set the new Commodore's model and its Commanders' model right away; unnamed ones start at Opus high and Opus medium.
+
+#### Fixed
+- TaskForce chats and their Activity tab now show the objective's title for board actions such as Plan requests, instead of an objective ID.
+
+#### Removed
+- Remove GPT-6 Sol from the Codex model loadout in favor of GPT-6.1 Sol. Saved selections that chose it stay stored and fall back to the roster fallback instead of launching it.
+
 ## [1.276.0] - 2026-11-01
 
 ### fleet-console

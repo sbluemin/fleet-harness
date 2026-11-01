@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.277.0] - 2026-11-01
+
+### fleet-console
+
+#### Added
+- 사령관에게 새 사령관을 만들어 달라고 할 때 새 사령관의 모델과 그 지휘관 모델을 바로 지정할 수 있습니다. 지정하지 않으면 사령관은 Opus high, 지휘관은 Opus medium으로 시작합니다.
+
+#### Fixed
+- TaskForce 대화와 활동 탭에서 구상 요청 같은 보드 행위가 목표 ID 대신 목표 제목으로 보입니다.
+
+#### Removed
+- Codex 모델 구성에서 GPT-6 Sol을 GPT-6.1 Sol로 대체해 제거합니다. 이 모델을 저장해 둔 선택은 그대로 유지되며 실행 시 로스터 폴백으로 돌아갑니다.
+
 ## [1.276.0] - 2026-11-01
 
 ### fleet-console
