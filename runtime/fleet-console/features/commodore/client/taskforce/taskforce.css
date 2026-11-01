@@ -1,13 +1,19 @@
 .taskforce-menu-shortcut { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
-.taskforce-stack { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 1px; flex: 0 0 36px; width: 36px; height: 36px; }
-.taskforce-stack > svg { width: 100%; height: 100%; }
+.taskforce-stack { --taskforce-avatar-size: 60%; display: block; position: relative; flex: 0 0 32px; width: 32px; height: 32px; overflow: hidden; }
+.taskforce-stack[data-count="1"] { --taskforce-avatar-size: 100%; }
+.taskforce-stack > svg,
+.conversation-pill-surface-mark > .taskforce-stack > svg,
+.conversation-panel-identity-mark.is-surface > .taskforce-stack > svg,
+.console-shell.is-objective-records-view .side-bar-theater-header.is-card .side-bar-theater-anchor .taskforce-stack > .mongle-avatar { position: absolute; width: var(--taskforce-avatar-size); height: var(--taskforce-avatar-size); }
 .taskforce-stack .mongle-avatar-star { display: none; }
-.taskforce-stack[data-count="1"] > :first-child { grid-column: 1 / 3; grid-row: 1 / 3; width: 50%; height: 50%; place-self: center; }
-.taskforce-stack[data-count="2"] > :nth-child(2) { grid-column: 2; grid-row: 2; }
-/* 사령관 행과 같은 카드에 서는 TF 묶음 — 32px 칸에 맞춘다. */
-.side-bar-theater-anchor > .taskforce-stack { flex-basis: 32px; width: 32px; height: 32px; }
-/* 사령관 카드의 32px 아바타 규칙이 묶음 안 아바타까지 키우지 않게 칸 크기를 따른다. */
-.console-shell.is-objective-records-view .side-bar-theater-header.is-card .side-bar-theater-anchor .taskforce-stack > .mongle-avatar { width: 100%; height: 100%; }
+.taskforce-stack:not([data-count="1"]) .mongle-avatar-big { transform: translateY(-2px) scale(1.2); }
+.taskforce-stack > :nth-child(1) { top: 5%; left: 5%; z-index: 1; }
+.taskforce-stack > :nth-child(2) { top: 5%; right: 5%; z-index: 2; }
+.taskforce-stack > :nth-child(3) { bottom: 5%; left: 5%; z-index: 3; }
+.taskforce-stack > :nth-child(4) { bottom: 5%; right: 5%; z-index: 4; }
+.taskforce-stack[data-count="1"] > :first-child { top: 0; left: 0; }
+.taskforce-stack[data-count="2"] > :nth-child(2) { top: auto; bottom: 5%; }
+.taskforce-stack[data-count="3"] > :nth-child(3) { left: 20%; }
 .taskforce-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 5); display: grid; place-items: center; padding: 16px; background: var(--dialog-scrim); }
 .taskforce-dialog { width: min(480px, 100%); max-height: 100%; overflow: auto; border: 0; border-radius: var(--dialog-radius); color: var(--text-primary); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); font-size: var(--t-md); }
 .taskforce-dialog > header { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px 16px 22px; border-bottom: 1px solid var(--hairline); }
@@ -38,11 +44,10 @@
 :root:not([data-theme="light"]) .taskforce-message-text .taskforce-mention { color: color-mix(in oklch, var(--taskforce-member-ink) 25%, var(--taskforce-member-face)); }
 .taskforce-error { color: var(--coral); font-size: var(--t-sm); margin: 4px 0; }
 .taskforce-conversation { display: flex; flex: 1; height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
-.conversation-pill-surface-mark:has(> .taskforce-stack) { width: 36px; height: 36px; flex: none; }
+.conversation-pill-surface-mark:has(> .taskforce-stack) { width: 20px; height: 20px; flex: none; }
+.conversation-pill-surface-mark > .taskforce-stack { width: 20px; height: 20px; }
 .conversation-panel-identity-mark:has(> .taskforce-stack) { width: 64px; height: 64px; background: transparent; }
 .conversation-panel-identity-mark > .taskforce-stack { flex-basis: 64px; width: 64px; height: 64px; transform: none; }
-.conversation-panel-identity-mark.is-surface > .taskforce-stack > svg { width: 100%; height: 100%; }
-.conversation-panel-identity-mark.is-surface > .taskforce-stack[data-count="1"] > svg { width: 50%; height: 50%; }
 .taskforce-conversation > .group-chat { flex: 1; min-height: 0; }
 .taskforce-foot { width: 100%; padding: 8px clamp(16px, 4cqi, 48px) 16px; }
 /* 사령관 1:1과 같이 입력 캡슐이 대화 열 너비를 다 쓴다. */

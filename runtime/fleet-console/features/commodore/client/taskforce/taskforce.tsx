@@ -115,9 +115,7 @@ export function TaskforceRowMenu({ id, anchor, focusFirst, returnFocus, onClose 
   returnFocusRef.current = returnFocus ?? null;
   useContextMenuKeyboard({ open: true, menuSelector: '.group-context-menu-card[role="menu"]', returnFocusRef, focusFirst, onEscape: onClose });
   if (!name) return null;
-  return <GroupContextMenu kind="actions" anchor={anchor} label={name} items={[
-    { label: t("taskforce.delete"), danger: true, action: () => requestTaskforceDelete(id) },
-  ]} footer={<CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} />} onClose={onClose} />;
+  return <GroupContextMenu kind="actions" anchor={anchor} label={name} items={[]} footer={<><CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} /><div className="group-context-menu-divider" role="separator" /><button type="button" role="menuitem" className="group-context-menu-item group-context-menu-item--danger" onClick={() => { onClose(); requestTaskforceDelete(id); }}><span className="group-context-menu-item__name">{t("taskforce.delete")}</span></button></>} onClose={onClose} />;
 }
 
 function DeleteDialog({ id, language, onClose }: { readonly id: string; readonly language: "ko" | "en"; readonly onClose: () => void }) {
