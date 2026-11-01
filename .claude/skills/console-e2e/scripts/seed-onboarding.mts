@@ -71,8 +71,8 @@ for (const feature of readdirSync(featuresDir)) {
   }
 }
 
-// Seen keys outside the contributions: one-shot surfaces (first-run commissioning, the help motion
-// popup) that open without a tour. A key added there needs adding here; --dry-run shows what is covered.
+// Seen keys stored outside any contribution: first-run commissioning, the retired effort-confirm tip, and the
+// "Fleet at a glance" first-run popup. A new key stored outside a contribution needs adding here; --dry-run shows what is covered.
 const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string, FLEET_AT_A_GLANCE_SEEN_KEY as string];
 for (const contribution of contributions) {
   const hint = hintSeenKey(contribution);
