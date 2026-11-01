@@ -30,7 +30,7 @@
 .commodore-routines-menu button:disabled { opacity: .5; cursor: default; }
 .commodore-routines-separator { height: var(--popover-divider-width); margin: var(--popover-divider-space); background: var(--popover-divider); flex: none; }
 .commodore-routines-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 3); background: rgb(0 0 0 / .4); }
-.commodore-routines-menu.is-sheet { inset: auto 0 0; width: auto; border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 12px 8px max(18px, var(--m-safe-bottom, 0px)); }
+.commodore-routines-menu.is-sheet { inset: auto 0 0; width: auto; border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 12px 8px calc(18px + var(--m-safe-bottom, 0px)); }
 .commodore-routines-menu.is-sheet .commodore-routines-menu-head { text-align: center; }
 .commodore-routines-menu.is-sheet .commodore-routines-menu-title { font-size: var(--t-md); }
 .commodore-routines-menu.is-sheet button { padding: 14px; }
