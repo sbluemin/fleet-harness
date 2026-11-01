@@ -26,6 +26,8 @@
 /* 승인된 레퍼런스 알약의 중립 테두리 변화. 정체성·상태색은 쓰지 않으며 초점은 공용 wash를 따른다. */
 .commodore-global-pill:hover, .commodore-global-pill[aria-expanded="true"] { background: color-mix(in oklch, var(--text-primary) 5%, var(--surface-capsule)); border-color: color-mix(in oklch, var(--text-primary) 5%, var(--hairline)); }
 .commodore-global-pill:focus-visible { box-shadow: var(--focus-face); }
+/* 라이트에서는 알약이 회색 아바타 옆의 흰 면이고 테두리는 옅다. 토큰을 이 요소에서만 바꿔 호버·요약 타일 고리도 같은 면을 따른다. */
+:root[data-theme="light"] .commodore-global-pill { --surface-capsule: oklch(100% 0 0); --hairline: oklch(93.5% 0 0); }
 .commodore-global-pill-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commodore-global-pill-tiles { display: inline-flex; flex: none; }
 .commodore-global-pill .commodore-tile.is-summary { width: 18px; height: 18px; border-radius: 4px; font-size: var(--t-2xs); box-shadow: 0 0 0 1.5px var(--surface-capsule); }

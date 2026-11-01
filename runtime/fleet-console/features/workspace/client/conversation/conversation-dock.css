@@ -27,6 +27,9 @@
 .conversation-dock-avatar:hover,
 .conversation-dock-avatar[aria-expanded="true"] { background: color-mix(in oklch, var(--text-primary) 10%, var(--surface-round-control)); color: var(--text-primary); }
 .conversation-dock-avatar:focus-visible { box-shadow: var(--focus-face); }
+/* 라이트에서는 아바타가 옆 플러그인 알약(흰 면)과 짝을 이루는 회색 원이다. 면 토큰을 이 요소에서만 바꿔 호버 혼합도 같은 바탕을 쓴다. */
+:root[data-theme="light"] .conversation-dock-avatar { --surface-round-control: oklch(92% 0 0); }
+:root[data-theme="light"] .conversation-dock-avatar:not(:focus-visible) { box-shadow: inset 0 0 0 1px var(--hairline); }
 
 /* ConsoleGlyph의 아래 잉크 끝은 viewBox y14 + 반쪽 선폭 0.6이다. 24px 문 안 20px SVG의
    아래 여백은 2 + (16 - 14.6) × 20/16 = 3.75px이므로, 이를 빼 잉크부터 계정까지 12 DIP를 남긴다. */
