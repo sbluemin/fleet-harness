@@ -2,6 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import type { PaneContext, PaneDescriptor, PaneSearchResult } from "../../workspace/shared/pane.js";
 import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
+import { shouldSuppressCommodoreToolFileOpen } from "../../workspace/shared/commodore-tool-theater.js";
+import { useCommodoreToolTheater } from "../../workspace/client/theater-tools/store.js";
+import { CommodoreToolsEmptyState } from "../../workspace/client/theater-tools/empty.js";
 import { parseFileRef } from "@fleet-console/markdown/file-ref";
 import { FileIcon, FolderIcon } from "./components/file-icon.js";
 
@@ -70,14 +73,16 @@ export const fileExplorerEntry: RailEntryDescriptor = {
   id: "file-explorer",
   title: (locale) => getT(locale)("fileExplorer.panel.title"),
   icon: FileExplorerIcon,
-  // 사령관 개편 동안 잠시 닫아 둔다 — 레일·단축키·팔레트·모바일 입구가 함께 닫힌다.
-  paused: true,
+  // 사령관 대화에서만 선다 — 지휘관·구성원·일반 Objective 대화에는 글리프·단축키·팔레트 항목이 없다.
+  commodoreConversationOnly: true,
   panes: ["file-explorer", DOCUMENT_PANE_ID],
   // 모바일 홈 바로가기 — 목표 다음 파일.
   // 모바일 바로가기·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
   mobile: { destination: { order: 20, label: (locale) => getT(locale)("fileExplorer.panel.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></svg> },
   handles: {
     openFile: async (request, host) => {
+      // 사령관이 아닌 대화의 채팅 파일 링크는 도구 패널을 열지 않는다 — 읽기 전용 미리보기는 미션 6이 잇는다.
+      if (shouldSuppressCommodoreToolFileOpen(request)) return { ok: false, reason: "unsupported" };
       const ref = parseFileLocation(request.path);
       if (!ref) { showFileNavigationError("unsupported"); return { ok: false, reason: "unsupported" }; }
       try {
@@ -186,8 +191,13 @@ export const fileExplorerDocumentPane: PaneDescriptor = {
 };
 
 function FileExplorerTreePane(ctx: PaneContext) {
-  const { theaterId, panes } = ctx;
+  const { theaterId: contextTheaterId, panes } = ctx;
   const t = getT(ctx.language);
+  // 사령관 전용 도구는 (사령관, 도구)의 Theater를 따로 가진다 — 타일 머리의 선택기와 같은 값이다.
+  const toolTheater = useCommodoreToolTheater(ctx.commodoreId ?? null, "file-explorer");
+  const theaterId = toolTheater.active && toolTheater.resolution !== null && toolTheater.resolution.kind !== "none"
+    ? toolTheater.resolution.theaterId
+    : contextTheaterId;
   const contextScope = theaterId ?? "";
   // 창 params의 목표가 지금 보고 있는 문맥에 속할 때만 쓴다 — 다른 Theater·목표의 착지 params는 버리고 표면 문맥으로 떨어진다.
   const objectiveId = scopeObjectiveId(ctx.params.objectiveId, theaterId, ctx.consoleState, ctx.commodoreId);
@@ -379,6 +389,10 @@ function FileExplorerTreePane(ctx: PaneContext) {
     }
     return [...dirs];
   }, [openDocs]);
+
+  if (toolTheater.active && toolTheater.resolution?.kind === "none" && ctx.commodoreId) {
+    return <CommodoreToolsEmptyState commodoreId={ctx.commodoreId} />;
+  }
 
   return (
     <div ref={rootRef} className="fexp-root" onKeyDown={handleRootKeyDown}>

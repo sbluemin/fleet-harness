@@ -6,6 +6,7 @@ import { MobileFolderSheet } from "../../../core/client/src/chrome/mobile/mobile
 import { pushMobileSheet } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { describeTheaterRegistrationError } from "../../../core/client/src/integration/failure-notices.js";
 import { addCommodoreTheaterFromPath, removeCommodoreTheater } from "./theaters-api.js";
+import { queryCommodoreShellStatus } from "../../workspace/client/theater-tools/shell-status.js";
 import { refreshCommodoreList, useCommodoreList } from "./commodore-list.js";
 
 /**
@@ -19,6 +20,8 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
   const [browserOpen, setBrowserOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failureMessage, setFailureMessage] = useState<string | null>(null);
+  // 바쁜 Shell이 있는 Theater의 해제 확인 — 실행 중인 명령이 있을 때만 한 번 묻는다.
+  const [confirming, setConfirming] = useState<string | null>(null);
   const theaters = commodore?.theaters ?? [];
 
   const run = (work: () => Promise<void>) => {
@@ -27,10 +30,17 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
     setFailureMessage(null);
     void work().catch((error) => setFailureMessage(describeTheaterRegistrationError(error, t))).finally(() => setBusy(false));
   };
-  const remove = (theaterId: string) => run(async () => {
-    await removeCommodoreTheater({ commodoreId, theaterId });
-    await refreshCommodoreList();
-  });
+  const remove = (theaterId: string) => {
+    if (confirming !== theaterId && queryCommodoreShellStatus(commodoreId, theaterId).busy) {
+      setConfirming(theaterId);
+      return;
+    }
+    setConfirming(null);
+    void run(async () => {
+      await removeCommodoreTheater({ commodoreId, theaterId });
+      await refreshCommodoreList();
+    });
+  };
   const addFolder = (path: string) => run(async () => {
     await addCommodoreTheaterFromPath(commodoreId, path);
     await refreshCommodoreList();
@@ -52,7 +62,15 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
           {theaters.map((theater) => (
             <div key={theater.theaterId} className={`objectives-cm-gr${theater.status === "missing" ? " is-missing" : ""}`}>
               <span className="objectives-cm-gr-tx">{theater.label}{theater.status === "missing" ? <small>{t("theaterInbox.theaters.missing")}</small> : null}</span>
-              <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
+              {confirming === theater.theaterId ? (
+                <>
+                  <span className="objectives-cm-secnote">{t("theaterInbox.theaters.confirmBusy")}</span>
+                  <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.confirmRemove")}</button>
+                  <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={busy} onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
+                </>
+              ) : (
+                <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
+              )}
             </div>
           ))}
           <button type="button" data-press="r1" className="objectives-cm-gr commodore-theaters-phone-add" disabled={busy} onClick={pickFolder}>
@@ -75,7 +93,15 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
             <li key={theater.theaterId} className={theater.status === "missing" ? "is-missing" : undefined}>
               <span className="commodore-theaters-name" title={theater.label}>{theater.label}</span>
               {theater.status === "missing" ? <span className="commodore-theaters-missing">{t("theaterInbox.theaters.missing")}</span> : null}
-              <button type="button" className="objectives-commodore-text-button" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
+              {confirming === theater.theaterId ? (
+                <>
+                  <span className="objectives-commodore-hint">{t("theaterInbox.theaters.confirmBusy")}</span>
+                  <button type="button" className="objectives-commodore-text-button" disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.confirmRemove")}</button>
+                  <button type="button" className="objectives-commodore-text-button" disabled={busy} onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
+                </>
+              ) : (
+                <button type="button" className="objectives-commodore-text-button" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
+              )}
             </li>
           ))}
         </ul>

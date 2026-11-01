@@ -1,5 +1,8 @@
 import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "../../workspace/shared/expanded-surface.js";
 
+import { useMemo } from "react";
+import { useCommodoreToolTheater } from "../../workspace/client/theater-tools/store.js";
+import { CommodoreToolsEmptyState } from "../../workspace/client/theater-tools/empty.js";
 import { getT } from "./i18n/index.js";
 import { RepositoryPanel } from "./rail-panel.js";
 import { REPOSITORY_SURFACE_ID } from "./repository-context.js";
@@ -24,11 +27,26 @@ export const repositorySurface: ExpandedSurfaceDescriptor = {
 /**
  * 페인 본문은 가로 flex다 — 아무 말도 하지 않으면 이 화면이 내용 폭으로 서서 페인을 다 쓰지
  * 못한다. 자리를 채우는 규칙은 화면 자신이 아니라 그 화면을 페인에 앉히는 이 껍데기가 진다.
+ *
+ * 사령관 전용 도구는 (사령관, 도구)의 Theater를 따로 가진다 — 어느 호스트(칸·전체 표면)에서
+ * 열어도 타일 머리의 선택기와 같은 값을 읽는다.
  */
 function RepositorySurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
+  const toolTheater = useCommodoreToolTheater(ctx.commodoreId ?? null, "repository");
+  const theaterId = toolTheater.active && toolTheater.resolution !== null && toolTheater.resolution.kind !== "none"
+    ? toolTheater.resolution.theaterId
+    : ctx.theaterId;
+  const panelCtx = useMemo(() => (theaterId === ctx.theaterId ? ctx : { ...ctx, theaterId }), [ctx, theaterId]);
+  if (toolTheater.active && toolTheater.resolution?.kind === "none" && ctx.commodoreId) {
+    return (
+      <div className="repository-surface-body">
+        <CommodoreToolsEmptyState commodoreId={ctx.commodoreId} />
+      </div>
+    );
+  }
   return (
     <div className="repository-surface-body">
-      <RepositoryPanel ctx={ctx} />
+      <RepositoryPanel ctx={panelCtx} />
     </div>
   );
 }

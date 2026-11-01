@@ -14,6 +14,8 @@ import { TerminalSurface, type TerminalCarryOver, type TerminalExitInfo } from "
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
 import { DEFAULT_SHELL_KEY, endShellSession, getShellSessionSnapshot, readShellSession, useShellSession } from "./shell-session-store.js";
 import { requestShellOpenAt, requestShellRestartAt } from "../../../../workspace/client/navigation-events.js";
+import { useCommodoreToolTheater } from "../../../../workspace/client/theater-tools/store.js";
+import { CommodoreToolsEmptyState } from "../../../../workspace/client/theater-tools/empty.js";
 import "./shell.css";
 
 /**
@@ -192,7 +194,7 @@ export const shellSurface: ExpandedSurfaceDescriptor = {
   id: SHELL_SURFACE_ID,
   title: (ctx) => getT(ctx.language ?? "en")("terminal.kind.shell"),
   minPaneWidth: SHELL_MIN_PANE_WIDTH,
-  render: (ctx) => React.createElement(ShellSurfaceBody, { ctx }),
+  render: (ctx) => React.createElement(ShellSurfaceWithTheater, { ctx }),
   // 명령이 돌고 있는지는 닫는 그 순간 서버에 묻는다 — 서버는 어느 길(키·붙여넣기·IME·프로그램 입력)로 들어간 줄이든 실행된 것을
   // 알고, 프롬프트로 돌아올 때만 알리므로 브라우저의 스냅숏은 늦을 수 있다. 읽지 못하면 모르는 것이니 한 번 묻는다.
   confirmClose: async (closed) => {
@@ -210,6 +212,27 @@ export const shellSurface: ExpandedSurfaceDescriptor = {
     void endShellSession(mount.key);
   },
 };
+
+/**
+ * 사령관 전용 도구는 (사령관, 도구)의 Theater를 따로 가진다 — 어느 호스트(칸·전체 표면)에서
+ * 열어도 타일 머리의 선택기와 같은 값을 읽는다. 세션 키·시작 위치를 Theater마다 갖는 일은
+ * 미션 8이 맡고, 여기서는 본문이 보는 Theater와 빈 상태만 맞춘다.
+ */
+function ShellSurfaceWithTheater({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
+  const toolTheater = useCommodoreToolTheater(ctx.commodoreId ?? null, "global-shell");
+  const theaterId = toolTheater.active && toolTheater.resolution !== null && toolTheater.resolution.kind !== "none"
+    ? toolTheater.resolution.theaterId
+    : ctx.theaterId;
+  const bodyCtx = React.useMemo(() => (theaterId === ctx.theaterId ? ctx : { ...ctx, theaterId }), [ctx, theaterId]);
+  if (toolTheater.active && toolTheater.resolution?.kind === "none" && ctx.commodoreId) {
+    return (
+      <div className="global-shell-surface">
+        <CommodoreToolsEmptyState commodoreId={ctx.commodoreId} />
+      </div>
+    );
+  }
+  return React.createElement(ShellSurfaceBody, { ctx: bodyCtx });
+}
 
 /**
  * Shell 본문은 터미널을 직접 소유하지 않고 상주 호스트가 들어설 자리만 내준다.

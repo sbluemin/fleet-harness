@@ -415,8 +415,8 @@
 
 .conversation-pill-tools :is(.right-rail-ico, .fleet-caption-action) svg { width: 16px; height: 16px; }
 
-.conversation-pill-tools .right-rail-ico:hover:not(:disabled):not(.is-active):not(.is-paused),
-.conversation-pill-tools .right-rail-ico:focus-visible:not(.is-paused) {
+.conversation-pill-tools .right-rail-ico:hover:not(:disabled):not(.is-active),
+.conversation-pill-tools .right-rail-ico:focus-visible {
   background: var(--control-rest-hover);
   color: var(--text-primary);
   outline: none;
@@ -430,10 +430,8 @@
 
 .conversation-pill-tools .right-rail-ico.is-active::before { display: none; }
 
-/* Theater 가 없는 빈 칸의 Theater 도구 — 닫힌 문은 흐리게 서서 말풍선이 이름을 말한다(캡션 동작의 닫힌 문과 같은 농도).
-   잠시 닫아 둔 도구(entry.paused)도 같은 농도로 서고, 말풍선이 그 까닭을 말한다. */
-.conversation-pill-tools .right-rail-ico:disabled,
-.conversation-pill-tools .right-rail-ico.is-paused {
+/* Theater 가 없는 빈 칸의 Theater 도구 — 닫힌 문은 흐리게 서서 말풍선이 이름을 말한다(캡션 동작의 닫힌 문과 같은 농도). */
+.conversation-pill-tools .right-rail-ico:disabled {
   cursor: default;
   opacity: 0.42;
 }
