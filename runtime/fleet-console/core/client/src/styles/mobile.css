@@ -7,8 +7,6 @@
    (hints, queued lines) under the input, so its fade stays solid through the lower part. */
 .mobile-frame {
   --m-chrome-top: 0px;
-  --m-fade-down: linear-gradient(to bottom, var(--m-bg), color-mix(in srgb, var(--m-bg) 86%, transparent) 50%, color-mix(in srgb, var(--m-bg) 0%, transparent));
-  --m-fade-up: linear-gradient(to top, var(--m-bg) 40%, color-mix(in srgb, var(--m-bg) 86%, transparent) 70%, color-mix(in srgb, var(--m-bg) 0%, transparent));
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -52,8 +50,13 @@
 }
 
 /* 떠 있는 줄의 가장자리 페이드 하나 — m-edge (상단·하단용). 기존 --m-fade-up·--m-fade-down
-   모바일 토큰과 라이트·다크 표면색을 그대로 쓴다. 틀 밖 고정 겹침에서는 토큰이 없어
-   --m-bg 단색으로 떨어진다. 화면은 새로 만들지 말고 이 둘을 쓴다. */
+   모바일 토큰과 라이트·다크 표면색을 그대로 쓴다. :root에 두어 document.body 포털 화면에서도
+   같은 값이 된다. 안의 var(--m-bg)는 쓰는 요소에서 계산되므로 라이트·다크가 그대로 갈린다.
+   화면은 새로 만들지 말고 이 둘을 쓴다. */
+:root[data-view-mode="mobile"] {
+  --m-fade-down: linear-gradient(to bottom, var(--m-bg), color-mix(in srgb, var(--m-bg) 86%, transparent) 50%, color-mix(in srgb, var(--m-bg) 0%, transparent));
+  --m-fade-up: linear-gradient(to top, var(--m-bg) 40%, color-mix(in srgb, var(--m-bg) 86%, transparent) 70%, color-mix(in srgb, var(--m-bg) 0%, transparent));
+}
 .m-edge-top { background: var(--m-fade-down, var(--m-bg)); }
 .m-edge-bottom { background: var(--m-fade-up, var(--m-bg)); }
 
