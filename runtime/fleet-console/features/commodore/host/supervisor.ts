@@ -11,12 +11,12 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExper
 
 import type { CommodoreAttachmentReader, CommodoreBoardWakeCode, CommodoreBoardAdapter, CommodoreBoardWatch, CommodoreTurnBindings } from "../../objectives/shared/commodore-board.js";
 import { CommodoreStoreError } from "./errors.js";
-import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
+import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnInput, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
 import { undeliveredMessageSeqs, unheardWakes, type CommodoreUnheardWakes } from "../shared/contracts/delivery.js";
-import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/contracts/attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/contracts/attachment-budget.js";
 import { TASKFORCE_CHAIN_LIMIT } from "../shared/contracts/taskforce.js";
 import type { TaskforceAction, TaskforceEvent, TaskforceJudgingStatus, TaskforceLedgerEntry, TaskforceState } from "../shared/contracts/taskforce.js";
 import type { TaskforceStore } from "./taskforce/store.js";
@@ -511,7 +511,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const aliasOf = (id: string) => deps.store.read(id)?.alias ?? id;
     const speaker = entry.speaker.kind === "person" ? "person"
       : entry.speaker.kind === "system" ? `system(${entry.speaker.code})` : aliasOf(entry.speaker.commodoreId);
-    const parts = [`[seq ${entry.seq}] ${speaker}: ${entry.text}`];
+    const parts = [`[seq ${entry.seq}] ${entry.images?.length ? `(image ×${entry.images.length}) ` : ""}${speaker}: ${entry.text}`];
     if (entry.mentions.length) parts.push(`(to ${entry.mentions.map(aliasOf).join(", ")})`);
     if (entry.replyTo !== undefined) parts.push(`(reply to seq ${entry.replyTo})`);
     for (const action of entry.actions ?? []) parts.push(`(action ${action.kind} ${action.objectiveId} ${JSON.stringify(action.title)})`);
@@ -539,6 +539,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return writes.reverse();
   };
 
+  /** 자기 발언·렌더용 보드 묶음만으로는 깨우지 않는다. 읽음 커서는 성공한 턴만 전진시킨다. */
+  const tfNeedsJudgment = (entry: TaskforceLedgerEntry, commodoreId: string): boolean =>
+    !(entry.speaker.kind === "commodore" && entry.speaker.commodoreId === commodoreId)
+    && !(entry.actions?.length && !entry.text)
+    && !(entry.speaker.kind === "system" && entry.speaker.code === "close-proposed" && entry.mentions[0] === commodoreId);
+
   /** 재기동 재실음 — 읽지 않은 TF 원장이 있으면 판단으로 깨운다. 기록 위치(readSeq)가 남아 판단은 겹치지 않는다. */
   const requeueTaskforce = (runner: Runner) => {
     if (!deps.taskforce) return;
@@ -546,7 +552,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     for (const tf of memberTaskforces(runner.commodoreId)) {
       let state: TaskforceState | null = null;
       let left = 0;
-      try { state = deps.taskforce.read(tf.id); left = deps.taskforce.pending(tf.id, runner.commodoreId).length; } catch { continue; }
+      try { state = deps.taskforce.read(tf.id); left = deps.taskforce.pending(tf.id, runner.commodoreId).filter((entry) => tfNeedsJudgment(entry, runner.commodoreId)).length; } catch { continue; }
       // 멈춤·닫힘 TF의 남은 말은 깨우지 않는다 — 사람의 말·continue가 열 때까지 판단하지 않는다.
       if (!state || state.status !== "open" || state.chain.paused || !left) continue;
       judgingAdd(tf.id, runner.commodoreId);
@@ -562,10 +568,96 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       try {
         const state = deps.taskforce.read(tf.id);
         if (!state || state.status !== "open" || state.chain.paused) continue;
-        if (deps.taskforce.pending(tf.id, commodoreId).length) return true;
+        if (deps.taskforce.pending(tf.id, commodoreId).some((entry) => tfNeedsJudgment(entry, commodoreId))) return true;
       } catch { continue; }
     }
     return false;
+  };
+
+  /** TF 입력을 세션 교체 전에 준비한다 — 이미지도 1:1 메시지와 같은 턴·세션 예산에 센다. */
+  const prepareTaskforceTurn = (commodoreId: string, mailChars: number, messageImageBytes: number) => {
+    // 새 말은 mail과 같은 글자 예산으로 순서대로 싣고 초과분은 다음 턴에 남긴다.
+    // 읽은 이력은 TF별 최근 20항목, 턴 전체 8,000자. 오래된 쪽부터 버리고 경계 항목의
+    // 뒷부분만 자른다. 새 말은 자르지 않고, 읽은 이력의 이미지는 다시 보내지 않는다.
+    let tfChars = mailChars;
+    let tfHistoryChars = 0;
+    let tfImageBytes = 0;
+    let tfImageBase64Bytes = 0;
+    const tfPrompt: string[] = [];
+    const tfImages: NonNullable<CommodoreTurnInput["taskforceImages"]>[number][] = [];
+    const tfWatermark = new Map<string, number>();
+    const tfTakeSeqs = new Map<string, number[]>();
+    const tfContextSeqs = new Map<string, number[]>();
+    if (deps.taskforce) {
+      for (const tf of memberTaskforces(commodoreId)) {
+        let state: TaskforceState | null = null;
+        try { state = deps.taskforce.read(tf.id); } catch { continue; }
+        if (!state || state.status !== "open") continue;
+        const watermark = state.readSeq[commodoreId] ?? 0;
+        tfWatermark.set(tf.id, watermark);
+        const history: string[] = [];
+        const historySeqs: number[] = [];
+        try {
+          const page = deps.taskforce.readLedger(tf.id, { limit: 20, before: watermark + 1 });
+          for (const entry of [...page.entries].reverse()) {
+            const remaining = 8000 - tfHistoryChars;
+            const marker = " …[history truncated]";
+            if (remaining <= marker.length + 1) break;
+            const line = tfEntryLine(entry);
+            const clipped = line.length + 1 > remaining;
+            const shown = clipped ? line.slice(0, remaining - marker.length - 1) + marker : line;
+            history.unshift(shown);
+            historySeqs.unshift(entry.seq);
+            tfHistoryChars += shown.length + 1;
+            if (clipped) break;
+          }
+        } catch { /* 읽은 이력이 없어도 새 말은 싣는다. */ }
+        const take: { readonly seq: number; readonly line: string }[] = [];
+        // 멈춤 TF는 읽은 이력만 보여 준다 — 사람의 말·continue가 열 때까지 새 판단은 하지 않는다.
+        if (!state.chain.paused) {
+          let pendingEntries: readonly TaskforceLedgerEntry[] = [];
+          try { pendingEntries = deps.taskforce.pending(tf.id, commodoreId); } catch { continue; }
+          for (const entry of pendingEntries) {
+            let line = tfEntryLine(entry);
+            if (tfChars + line.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
+            let entryBytes = (entry.images ?? []).reduce((bytes, image) => bytes + image.size, 0);
+            let images: Extract<AgentInputBlock, { type: "image" }>[] = [];
+            // 과거의 발언 하나가 턴 상한보다 크면 텍스트만 싣고 생략을 밝힌다(무한 재깨움 방어).
+            if (entryBytes <= MAX_COMMODORE_MESSAGE_IMAGE_BYTES) {
+              if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) break;
+              const loaded = (entry.images ?? []).map((image) => {
+                const found = deps.taskforce!.readImage(tf.id, entry.seq, image.id);
+                if (!found) throw new Error("attachment_not_found");
+                return found;
+              });
+              entryBytes = loaded.reduce((bytes, image) => bytes + image.bytes.byteLength, 0);
+              if (entryBytes <= MAX_COMMODORE_MESSAGE_IMAGE_BYTES) {
+                if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) break;
+                images = loaded.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mime, data: image.bytes.toString("base64") } }));
+              }
+            }
+            if (entryBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) {
+              line += " (images omitted: exceeds 8 MiB message limit)";
+              entryBytes = 0;
+            }
+            tfChars += line.length;
+            tfImageBytes += entryBytes;
+            tfImageBase64Bytes += images.reduce((bytes, image) => bytes + image.source.data.length, 0);
+            take.push({ seq: entry.seq, line });
+            if (images.length) tfImages.push({ taskforceId: tf.id, seq: entry.seq, images });
+          }
+        }
+        if (!history.length && !take.length) continue;
+        tfPrompt.push([
+          tfHeadLine(tf, state.chain.paused ? "chain paused; reminder only, do not speak" : undefined),
+          ...(history.length ? ["Recent conversation reminder (already read; not new utterances):", ...history] : []),
+          ...(take.length ? ["New ledger entries (judge once; your own entries are context only):", ...take.map((entry) => entry.line)] : []),
+        ].join("\n"));
+        tfContextSeqs.set(tf.id, historySeqs);
+        tfTakeSeqs.set(tf.id, take.map((entry) => entry.seq));
+      }
+    }
+    return { tfPrompt, tfImages, tfWatermark, tfTakeSeqs, tfContextSeqs, tfImageBytes, tfImageBase64Bytes };
   };
 
   const runTurn = async (runner: Runner): Promise<void> => {
@@ -581,7 +673,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       try { memberIds = deps.taskforce.list().filter((tf) => tf.members.includes(runner.commodoreId)).map((tf) => tf.id); } catch { /* 읽을 수 없으면 다음 기회에 */ }
       for (const tfId of memberIds) {
         let left = 0;
-        try { left = deps.taskforce.pending(tfId, runner.commodoreId).length; } catch { continue; }
+        try { left = deps.taskforce.pending(tfId, runner.commodoreId).filter((entry) => tfNeedsJudgment(entry, runner.commodoreId)).length; } catch { continue; }
         if (!left) judgingDropQuiet(tfId, runner.commodoreId);
       }
       if (!runner.pending.size) { setPhase(runner, "idle"); scheduleRoutines(runner); return; }
@@ -597,10 +689,18 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (batchBytes + (message.imageBytes ?? 0) > MAX_COMMODORE_TURN_IMAGE_BYTES || batchChars + message.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
         batchBytes += message.imageBytes ?? 0; batchChars += message.text.length; batchCount += 1;
       }
+      // 배치의 글자 상한은 문맥 크기 방어다. 남은 말은 다음 턴에 싣는다.
+      let mailChars = 0;
+      let mailCount = 0;
+      for (const entry of runner.mail) {
+        if (mailChars + entry.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
+        mailChars += entry.text.length;
+        mailCount += 1;
+      }
+      let taskforceInput: ReturnType<typeof prepareTaskforceTurn>;
       const selected = runner.messages.slice(0, batchCount);
       let preparedMessages: (string | { text: string; images: Extract<AgentInputBlock, { type: "image" }>[] })[] = [];
       let session = runner.session;
-      let freshSession = false;
       try {
         // 교대 — 좌표·언어가 바뀌었거나 이미지 예산을 넘었거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
         // 문맥 길이는 교대 사유가 아니다 — 세션이 스스로 압축해 이어 간다.
@@ -612,12 +712,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           return { text: `${message.text}\n\nAttached images for this turn (copy with attachmentIds in add or edit_brief before the turn ends; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
+        taskforceInput = prepareTaskforceTurn(runner.commodoreId, mailChars, batchBytes);
+        batchBytes += taskforceInput.tfImageBytes;
+        batchBase64Bytes += taskforceInput.tfImageBase64Bytes;
         const rotate = runner.rotateNext ?? (session && (coordinatesChanged(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES) ? "replaced" : null);
         if (session && rotate) { await session.dispose(); session = null; runner.session = null; }
         if (!session) {
           const event = rotate ?? "opened";
           session = await openSession(runner, event);
-          freshSession = true;
           runner.rotateNext = null;
           if (event === "replaced") wake(runner, "rotated");
         }
@@ -628,6 +730,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       }
       // 여는 동안 꺼졌다 — 막 연 세션은 stop() 이 거둔다. 턴도 상태 방송도 하지 않는다.
       if (runner.stopping) return;
+      const { tfPrompt, tfImages, tfWatermark, tfTakeSeqs, tfContextSeqs } = taskforceInput;
       // 이유는 세션이 열린 뒤에 거둔다 — 열지 못하면 그대로 남아 재시도 턴에 실린다. 보드 대기 상태의 수는 지금 보드에서 다시 센다
       // (모인 동안 사령관 자신이 완료한 목표는 빠진다); 그새 사라진 대기 상태는 이유에서 내린다.
       const digest = runner.board?.recount() ?? new Map();
@@ -674,75 +777,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       // 실패한 턴도 살아 있는 세션의 CLI 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
       runner.sessionImageBytes += batchBytes;
       runner.sessionImageBase64Bytes += batchBase64Bytes;
-      // 배치의 글자 상한은 문맥 크기 방어다. 홉·빈도나 연락 건수에 상한을 두지 않고 남은 말은 다음 턴에 싣는다.
-      let mailChars = 0;
-      let mailCount = 0;
-      for (const entry of runner.mail) {
-        if (mailChars + entry.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
-        mailChars += entry.text.length;
-        mailCount += 1;
-      }
       const mail = runner.mail.splice(0, mailCount);
       runner.turnMessages = messages;
       runner.turnPersonRoutine = pending.some(([code, reason]) => code === "routine" && (reason.routines ?? []).some((attempt) => attempt.requested));
       runner.turnSent.clear();
       runner.tfPosts = [];
-      // TaskForce — 읽지 않은 원장만 싣는다. 한 턴 글자 상한은 mail과 함께 쓰고, 초과분은 다음 턴에 싣는다.
-      // 멈춤·닫힘 TF는 싣지 않는다(사람의 말·continue가 열 때까지 판단하지 않는다).
-      let tfChars = mailChars;
-      const tfPrompt: string[] = [];
-      const tfWatermark = new Map<string, number>();
-      const tfTakeSeqs = new Map<string, number[]>();
-      const tfContextSeqs = new Map<string, number[]>();
-      if (deps.taskforce) {
-        // 새 세션 맥락 — 새로 연 세션의 첫 턴에 속한 열린 TF마다 이름·주제·최근 20항목(8,000자 상한).
-        const contextCovered = new Map<string, { first: number; seqs: number[] }>();
-        if (freshSession) {
-          for (const tf of memberTaskforces(runner.commodoreId)) {
-            let page;
-            try { page = deps.taskforce.readLedger(tf.id, { limit: 20 }); }
-            catch { continue; }
-            let chars = 0;
-            const lines: string[] = [];
-            const seqs: number[] = [];
-            for (const entry of [...page.entries].reverse()) {
-              const line = tfEntryLine(entry);
-              if (chars + line.length > 8000) break;
-              chars += line.length;
-              lines.unshift(line);
-              seqs.unshift(entry.seq);
-            }
-            if (!lines.length) continue;
-            tfPrompt.push([tfHeadLine(tf, "context: your session is new"), ...lines].join("\n"));
-            contextCovered.set(tf.id, { first: seqs[0]!, seqs });
-            tfContextSeqs.set(tf.id, [...seqs]);
-          }
-        }
-        for (const tf of memberTaskforces(runner.commodoreId)) {
-          let state: TaskforceState | null = null;
-          try { state = deps.taskforce.read(tf.id); } catch { continue; }
-          if (!state || state.status !== "open") continue;
-          const watermark = state.readSeq[runner.commodoreId] ?? 0;
-          tfWatermark.set(tf.id, watermark);
-          // 멈춤 TF의 쌓인 말은 다음 턴에 싣지 않지만, 읽은 위치와 침묵 판단은 전진한다.
-          if (state.chain.paused) continue;
-          const coveredFirst = contextCovered.get(tf.id)?.first;
-          const take: TaskforceLedgerEntry[] = [];
-          let pendingEntries: readonly TaskforceLedgerEntry[] = [];
-          try { pendingEntries = deps.taskforce.pending(tf.id, runner.commodoreId); } catch { continue; }
-          for (const entry of pendingEntries) {
-            // 새 세션 맥락에 이미 실린 항목은 빼고 싣는다 — 같은 말을 두 번 읽지 않는다.
-            if (coveredFirst !== undefined && entry.seq >= coveredFirst) continue;
-            const line = tfEntryLine(entry);
-            if (tfChars + line.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
-            tfChars += line.length;
-            take.push(entry);
-          }
-          if (!take.length) continue;
-          tfPrompt.push([tfHeadLine(tf), ...take.map(tfEntryLine)].join("\n"));
-          tfTakeSeqs.set(tf.id, take.map((entry) => entry.seq));
-        }
-      }
       // TF 판단 턴 — TF 항목을 싣고 사람의 1:1 메시지·mail·사람에게 말 거는 다른 이유가 없으면 조용하다.
       // 세션 수명주기(교대·재시작·재시도)는 깨움 문장만 보탤 뿐 조용함을 깨지 않는다.
       // 판단 항목이 비어 블록이 비었어도 taskforce로 깬 턴은 조용히 넘긴다(빈 깨움 방어).
@@ -758,7 +797,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       try {
         const openUIFeedback = runner.openUIFeedback;
         runner.openUIFeedback = undefined;
-        outcome = await session.turn({ reasons, sentences, ...(openUIFeedback ? { openUIFeedback } : {}), ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}), ...(tfPrompt.length ? { taskforce: tfPrompt } : {}), ...(quiet ? { quietText: true as const } : {}) });
+        outcome = await session.turn({ reasons, sentences, ...(openUIFeedback ? { openUIFeedback } : {}), ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}), ...(tfPrompt.length ? { taskforce: tfPrompt } : {}), ...(tfImages.length ? { taskforceImages: tfImages } : {}), ...(quiet ? { quietText: true as const } : {}) });
         // 실패·취소된 시도는 다시 실릴 수 있다. 전하지 않았다는 판정은 성공한 턴에서만 확정한다.
         if (outcome.outcome === "ok") for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
       } finally { runner.turnMessages = []; runner.turnPersonRoutine = false; }

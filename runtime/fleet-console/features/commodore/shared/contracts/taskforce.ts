@@ -133,7 +133,7 @@ export type TaskforceStateChange =
   | "closed"
   | "reopened"
   | "read"
-  /** 원장 append로 lastSeq·chain·readSeq 가 전진했다 — 원장 사건과 함께 나간다. */
+  /** 원장 append로 lastSeq·chain이 바뀌었다 — 원장 사건과 함께 나간다. 읽음 확인은 `read`다. */
   | "ledger";
 
 /** 사이드바·목록이 그리는 한 줄 요약. 미리보기는 마지막 원장 항목이다. */

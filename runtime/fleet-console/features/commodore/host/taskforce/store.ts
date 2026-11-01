@@ -24,6 +24,7 @@ import {
   type TaskforceSystemCode,
 } from "../../shared/contracts/taskforce.js";
 import { TaskforceStoreError } from "./errors.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../../shared/contracts/attachment-budget.js";
 
 /**
  * TaskForce 저장소 — Console 데이터의 `taskforce/<TF UUID>/` 하나.
@@ -240,7 +241,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
   };
 
   /**
-   * 원장 append — seq를 찍어 덧붙이고 lastSeq·chain·화자의 readSeq를 전진시킨 뒤
+   * 원장 append — seq를 찍어 덧붙이고 lastSeq·chain을 전진시킨 뒤
    * 원장 사건과 상태 사건(`ledger`)을 순서대로 낸다. 닫힌 TF의 말은 system 항목만
    * 다는 내부 경로(`appendSystem`)로 남긴다.
    */
@@ -248,6 +249,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     const current = load(taskforceId);
     if (!closedOk && current.status !== "open") throw new TaskforceStoreError("taskforce_closed");
     if (input.speaker.kind === "commodore" && !current.members.includes(input.speaker.commodoreId)) throw new TaskforceStoreError("invalid_request");
+    if ((input.images ?? []).reduce((bytes, image) => bytes + image.size, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new TaskforceStoreError("invalid_request");
     const mentions = [...new Set(input.mentions ?? [])];
     if (mentions.some((id) => !current.members.includes(id))) throw new TaskforceStoreError("invalid_request");
     if (input.replyTo !== undefined && (input.replyTo < 1 || input.replyTo > current.lastSeq)) throw new TaskforceStoreError("invalid_request");
@@ -265,9 +267,8 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
       : input.speaker.kind === "commodore"
         ? { count: current.chain.count + 1, limit: TASKFORCE_CHAIN_LIMIT, paused: current.chain.paused }
         : current.chain;
-    const readSeq = input.speaker.kind === "commodore"
-      ? { ...current.readSeq, [input.speaker.commodoreId]: parsed.data.seq }
-      : current.readSeq;
+    // 발언은 읽음 확인이 아니다 — 동시 판단 중 들어온 다른 성원의 말을 건너뛰지 않는다.
+    const readSeq = current.readSeq;
     // 말 수 — system 항목은 세지 않고, 보드 쓰기 묶음(빈 본문)도 세지 않는다.
     const baseCounts = current.counts ?? { person: 0, commodore: 0 };
     const counts = input.speaker.kind !== "system" && input.text.trim()
@@ -451,8 +452,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
       lastSeqs.set(taskforceId, parsed.data.seq);
       lastEntries.set(taskforceId, parsed.data);
       // chain은 건드리지 않는다 — 이것은 말이 아니라 같은 턴의 보드 쓰기 묶음이다.
-      const readSeq = { ...current.readSeq, [commodoreId]: Math.max(current.readSeq[commodoreId] ?? 0, parsed.data.seq) };
-      const validated = taskforceStateSchema.parse({ ...current, readSeq, lastSeq: parsed.data.seq });
+      const validated = taskforceStateSchema.parse({ ...current, lastSeq: parsed.data.seq });
       writeFileAtomic(stateFile(taskforceId), JSON.stringify(validated));
       states.set(taskforceId, validated);
       lastSeqs.set(taskforceId, validated.lastSeq);
@@ -501,7 +501,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     },
     saveImages(taskforceId, seq, images) {
       load(taskforceId);
-      if (!images.length || images.length > 4) throw new TaskforceStoreError("invalid_request");
+      if (!images.length || images.length > 4 || images.reduce((bytes, image) => bytes + image.bytes.byteLength, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new TaskforceStoreError("invalid_request");
       const seen = new Set<string>();
       const dir = contained(path.join(base, taskforceId), `images/${seq}`);
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });

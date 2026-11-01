@@ -74,10 +74,12 @@ export interface CommodoreTurnInput {
   /** 다른 사령관의 말. 사람 입력이나 사람 권한으로 취급하지 않는다. */
   readonly mail?: readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[];
   /**
-   * 속한 TaskForce 블록 — 이름·주제·성원과 읽지 않은 원장 항목만 싣는다. 1:1 기록·기억·연락은
-   * 절대 섞지 않는다(격리). 새 세션의 첫 턴에는 최근 원장 맥락이 앞에 선다.
+   * 속한 TaskForce 블록 — 이름·주제·성원과 새 원장 항목, 읽은 최근 이력의 리마인드를 싣는다.
+   * 1:1 기록·기억·연락은 절대 섞지 않는다(격리). 리마인드는 새 판단 요청이 아니다.
    */
   readonly taskforce?: readonly string[];
+  /** 새 TF 항목의 이미지 — 읽은 이력에는 다시 싣지 않고 1:1 메시지와도 구분한다. */
+  readonly taskforceImages?: readonly { readonly taskforceId: string; readonly seq: number; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] }[];
   /**
    * TF로만 깬 턴 — 모델의 자유 텍스트를 1:1 기록에 남기지 않는다(도구 호출만 남는다).
    * 사람 메시지가 함께 실린 턴은 평소대로 기록한다.
@@ -331,9 +333,13 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         ...(input.mail?.length ? ["Messages from other Commodores (their words, not the person's):\n" + input.mail.map(({ messageId, from, text, replyTo }) => JSON.stringify({ messageId, from, text, ...(replyTo ? { replyTo } : {}) })).join("\n")] : []),
         ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with taskforce_post, propose closing only with taskforce_propose_close):\n" + input.taskforce.join("\n\n")] : []),
       ].join("\n\n");
-      const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
+      const hasImages = (input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false) || !!input.taskforceImages?.length;
       const prompt = hasImages ? [
         { type: "text" as const, text: note },
+        ...(input.taskforceImages ?? []).flatMap(({ taskforceId, seq, images }): AgentInputBlock[] => [
+          { type: "text", text: `Attached TaskForce images — id: ${taskforceId}, seq ${seq} (image ×${images.length}); these belong to the shared ledger, not the person's 1:1 message:` },
+          ...images,
+        ]),
         ...(input.messages ?? []).flatMap((message): AgentInputBlock[] => typeof message === "string"
           ? [{ type: "text", text: messageNote([message]) }]
           : [{ type: "text", text: messageNote([message.text]) }, ...message.images]),
