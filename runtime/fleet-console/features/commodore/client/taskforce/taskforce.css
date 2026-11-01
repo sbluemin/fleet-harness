@@ -9,7 +9,6 @@
 .taskforce-sidebar-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 9px 10px; border: 0; border-radius: 10px; color: var(--text-primary); background: transparent; text-align: left; font: inherit; cursor: pointer; }
 .taskforce-sidebar-row:hover { background: var(--wash-hover); }
 .taskforce-sidebar-row.is-selected { background: var(--surface-row-selected); }
-.taskforce-sidebar-row.is-closed { opacity: .55; }
 .taskforce-sidebar-copy { min-width: 0; flex: 1; display: grid; gap: 2px; }
 .taskforce-sidebar-copy strong { font-size: var(--t-md); font-weight: var(--weight-medium); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .taskforce-sidebar-copy small { color: var(--text-tertiary); font-size: var(--t-xs); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -20,8 +19,8 @@
 .taskforce-dialog h2 { font-size: var(--t-lg); margin: 0; }
 .taskforce-close { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 50%; color: var(--text-secondary); background: transparent; font-size: var(--t-xl); cursor: pointer; }
 .taskforce-dialog-body { display: grid; gap: 16px; padding: 18px 22px; }
-.taskforce-dialog label, .taskforce-field { display: grid; gap: 6px; font-size: var(--t-sm); color: var(--text-secondary); }
-.taskforce-dialog input, .taskforce-dialog textarea, .taskforce-field textarea { width: 100%; min-width: 0; border: 1px solid var(--hairline-strong); border-radius: 10px; padding: 9px 11px; color: var(--text-primary); background: var(--surface-panel); font: inherit; font-size: var(--t-md); resize: vertical; }
+.taskforce-dialog label { display: grid; gap: 6px; font-size: var(--t-sm); color: var(--text-secondary); }
+.taskforce-dialog input, .taskforce-dialog textarea { width: 100%; min-width: 0; border: 1px solid var(--hairline-strong); border-radius: 10px; padding: 9px 11px; color: var(--text-primary); background: var(--surface-panel); font: inherit; font-size: var(--t-md); resize: vertical; }
 .taskforce-dialog fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .taskforce-dialog legend { color: var(--text-secondary); font-size: var(--t-sm); margin-bottom: 6px; }
 .taskforce-dialog small { color: var(--text-tertiary); font-size: var(--t-sm); }
@@ -72,10 +71,6 @@
 .taskforce-hint { font-size: var(--t-xs); text-align: right; color: var(--text-tertiary); margin: 6px 8px 0; }
 .taskforce-closed { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px; background: var(--surface-capsule); border-radius: 12px; color: var(--text-secondary); font-size: var(--t-md); }
 .taskforce-details { display: grid; gap: 16px; align-content: start; color: var(--text-primary); font-size: var(--t-md); }
-.taskforce-details h4 { margin: 4px 0 0; font-size: var(--t-md); }
-.taskforce-details dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; font-size: var(--t-sm); margin: 0; }
-.taskforce-details dt { color: var(--text-tertiary); }
-.taskforce-details dd { margin: 0; overflow-wrap: anywhere; }
 .taskforce-member { display: flex; gap: 8px; align-items: center; }
 .taskforce-member-open { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .taskforce-member-open:hover { background: var(--wash-hover); }
@@ -95,8 +90,8 @@
 .taskforce-mobile-screen .taskforce-conversation { padding-top: 0; flex: 1 0 65vh; }
 .taskforce-mobile-screen .taskforce-details { padding: 16px; }
 .taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible { box-shadow: var(--focus-face); outline: none; }
-.taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { box-shadow: var(--field-focus-edge); outline: none; }
+.taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible { box-shadow: var(--field-focus-edge); outline: none; }
 @keyframes taskforce-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .taskforce-live-dot, .taskforce-typing { animation: none; } }
 @media (max-width: 760px) { .taskforce-paused { flex-wrap: wrap; } .taskforce-paused > span:last-child { margin-left: 22px; } .taskforce-dialog footer { flex-wrap: wrap; } }
-@media (forced-colors: active) { .taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { outline: 1px solid Highlight; } }
+@media (forced-colors: active) { .taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible { outline: 1px solid Highlight; } }
