@@ -44,8 +44,9 @@ const memberName = (id: string, language: string) => {
 };
 const time = (at: number, language: string) => new Date(at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { dateStyle: "short", timeStyle: "short" });
 
-export function TaskforceStack({ members, judging = [] }: { readonly members: readonly string[]; readonly judging?: readonly string[] }) {
-  return <span className="taskforce-stack" aria-hidden="true">{members.slice(0, 3).map((id) => <CommodoreAvatar key={id} commodoreId={id} state={judging.includes(id) ? "running" : "idle"} size={22} label="" decorative />)}</span>;
+export function TaskforceStack({ members }: { readonly members: readonly string[]; readonly judging?: readonly string[] }) {
+  const shown = members.slice(0, 4);
+  return <span className="taskforce-stack" data-count={shown.length} aria-hidden="true">{shown.map((id) => <CommodoreAvatar key={id} commodoreId={id} state="idle" size={18} label="" decorative />)}</span>;
 }
 
 export function TaskforceSidebarGroup() {

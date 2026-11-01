@@ -1,8 +1,9 @@
 .taskforce-menu-shortcut { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
-.taskforce-stack { display: inline-block; position: relative; flex: 0 0 36px; width: 36px; height: 32px; }
-.taskforce-stack > :nth-child(1) { position: absolute; left: 0; top: 0; }
-.taskforce-stack > :nth-child(2) { position: absolute; left: 14px; top: 2px; }
-.taskforce-stack > :nth-child(3) { position: absolute; left: 7px; top: 12px; }
+.taskforce-stack { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 1px; flex: 0 0 36px; width: 36px; height: 36px; }
+.taskforce-stack > svg { width: 100%; height: 100%; }
+.taskforce-stack .mongle-avatar-star { display: none; }
+.taskforce-stack[data-count="1"] > :first-child { grid-column: 1 / 3; grid-row: 1 / 3; width: 50%; height: 50%; place-self: center; }
+.taskforce-stack[data-count="2"] > :nth-child(2) { grid-column: 2; grid-row: 2; }
 .taskforce-sidebar { margin: 0 0 10px; list-style: none; }
 .taskforce-sidebar ul { padding: 0; margin: 0; list-style: none; }
 .taskforce-sidebar-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 9px 10px; border: 0; border-radius: 10px; color: var(--text-primary); background: transparent; text-align: left; font: inherit; cursor: pointer; }
@@ -43,10 +44,11 @@
 :root:not([data-theme="light"]) .taskforce-message-text .taskforce-mention { color: color-mix(in oklch, var(--taskforce-member-ink) 25%, var(--taskforce-member-face)); }
 .taskforce-error { color: var(--coral); font-size: var(--t-sm); margin: 4px 0; }
 .taskforce-conversation { display: flex; flex: 1; height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
-.conversation-pill-surface-mark:has(> .taskforce-stack) { width: 36px; height: 32px; flex: none; }
+.conversation-pill-surface-mark:has(> .taskforce-stack) { width: 36px; height: 36px; flex: none; }
 .conversation-panel-identity-mark:has(> .taskforce-stack) { width: 64px; height: 64px; background: transparent; }
-.conversation-panel-identity-mark > .taskforce-stack { transform: scale(1.65); }
-.conversation-panel-identity-mark.is-surface > .taskforce-stack svg { width: 100%; height: 100%; }
+.conversation-panel-identity-mark > .taskforce-stack { flex-basis: 64px; width: 64px; height: 64px; }
+.conversation-panel-identity-mark.is-surface > .taskforce-stack > svg { width: 100%; height: 100%; }
+.conversation-panel-identity-mark.is-surface > .taskforce-stack[data-count="1"] > svg { width: 50%; height: 50%; }
 .taskforce-conversation > .group-chat { flex: 1; min-height: 0; }
 .taskforce-foot { width: 100%; padding: 8px clamp(16px, 4cqi, 48px) 16px; }
 .taskforce-judging { display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: var(--t-sm); margin: 8px 0 4px; }
