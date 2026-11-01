@@ -630,8 +630,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRende
   };
   const toChat = async () => {
     const confirmed = await mobile.confirm({
-      title: t("terminal.mobile.toChatTitle"),
-      body: t("terminal.mobile.toChatBody"),
+      question: t("terminal.chat.confirmQuestion"),
       cancelLabel: t("terminal.chat.confirmKeep"),
       confirmLabel: t("terminal.mobile.toChatTitle"),
     });

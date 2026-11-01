@@ -12,9 +12,11 @@ const DRAG_CLOSE = 110;
  * 시트 종류마다 본문과 발만 채운다. 시트에서 다른 시트를 열면(`pushMobileSheet`) 쌓이고, 닫기·스크림·끌어내리기는
  * 앞 시트로 돌아간다 — 동작을 끝내는 버튼은 `closeMobileSheets`로 모두 닫는다.
  */
-export function MobileSheet({ title, ariaLabel, onClose, full = false, footer, children, className, focusInputOnTouch = true, dismissible = true, scrimDismissible = true, describedBy }: {
-  readonly title: string;
+export function MobileSheet({ title, ariaLabel, labelledBy, onClose, full = false, footer, children, className, focusInputOnTouch = true, dismissible = true, scrimDismissible = true, describedBy }: {
+  readonly title?: string;
   readonly ariaLabel?: string;
+  /** 제목 없이 여는 시트가 질문을 가리키는 자리 — 확인 시트가 질문 한 문장을 가리킨다. */
+  readonly labelledBy?: string;
   readonly dismissible?: boolean;
   readonly scrimDismissible?: boolean;
   readonly describedBy?: string;
@@ -90,14 +92,14 @@ export function MobileSheet({ title, ariaLabel, onClose, full = false, footer, c
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        aria-labelledby={ariaLabel ? undefined : titleId}
+        aria-labelledby={ariaLabel ? undefined : title ? titleId : labelledBy}
         aria-describedby={describedBy}
       >
         <div className="mobile-sheet-handle" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}><i /></div>
-        <div className="mobile-sheet-title">
+        {title ? <div className="mobile-sheet-title">
           <span id={titleId}>{title}</span>
           <button type="button" className="mobile-sheet-close" disabled={!dismissible} onClick={finish} aria-label={t("mobile.sheet.close")}><MobileIcon name="x" size={20} /></button>
-        </div>
+        </div> : null}
         <div className="mobile-sheet-body">{children}</div>
         {footer ? <div className="mobile-sheet-foot">{footer}</div> : null}
       </div>

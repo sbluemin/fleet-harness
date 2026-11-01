@@ -1,6 +1,6 @@
 import { commodoreAliasEditor } from "../../integration/commodore-identity.js";
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
 import { addCommodoreTheaterFromPath } from "../../../../../features/commodore/client/theaters-api.js";
@@ -408,22 +408,23 @@ function ConsoleSheet() {
   );
 }
 
-/** 플러그인이 `confirm`으로 띄운 확인 시트(예: S-14 채팅으로 보기). 확정이면 true, 취소·닫기·뒤로면 false로 한 번만 답한다. */
+/** 호스트 시트 문법의 확인 시트(예: S-14 채팅으로 보기) — 제목·닫기 없이 질문 한 문장과 반반 알약 두 개만 둔다. 확정이면 true, 취소·닫기·뒤로면 false로 한 번만 답한다. */
 function ConfirmSheet({ spec, resolve }: { readonly spec: MobileConfirmSpec; readonly resolve: (confirmed: boolean) => void }) {
   const answered = useRef(false);
   const answer = (confirmed: boolean) => { if (answered.current) return; answered.current = true; resolve(confirmed); };
   // 어떤 경로로 내려가든(뒤로·스크림·끌어내리기) 답이 빠지지 않게 한다.
   useEffect(() => () => answer(false), []);
+  const questionId = useId();
   return (
     <MobileSheet
-      title={spec.title}
       onClose={popMobileSheet}
-      footer={<>
+      labelledBy={questionId}
+      footer={<div className="mobile-confirm-actions">
         <button type="button" className="mobile-pill-secondary" onClick={() => { answer(false); popMobileSheet(); }}>{spec.cancelLabel}</button>
-        <button type="button" className="mobile-pill-secondary is-inverse" onClick={() => { answer(true); popMobileSheet(); }}>{spec.confirmLabel}</button>
-      </>}
+        <button type="button" className={`mobile-pill-secondary${spec.danger ? " is-danger-fill" : " is-inverse"}`} onClick={() => { answer(true); popMobileSheet(); }}>{spec.confirmLabel}</button>
+      </div>}
     >
-      <p className="mobile-sheet-lead">{spec.body}</p>
+      <p id={questionId} className="mobile-confirm-question">{spec.question}</p>
     </MobileSheet>
   );
 }
