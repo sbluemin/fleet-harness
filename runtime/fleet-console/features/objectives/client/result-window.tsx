@@ -226,8 +226,8 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   return <div ref={rootRef} className={`objectives-result-window${shared ? " is-shared" : ""}${attachmentMode ? " is-attachment" : ""}${mobile ? " is-mobile" : ""}${narrow ? " is-narrow" : ""}${dragging ? " is-dragging" : ""}`} role="dialog" aria-modal={mobile} aria-label={`${heading} · ${objective?.title ?? ""}`} tabIndex={-1} onPointerDownCapture={() => focusFloatingWindow(RESULT_WINDOW_ID)} style={mobile ? undefined : { left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex }}>
     <header className="objectives-rw-head" onPointerDown={(event) => start(event)}>
       {!shared && !attachmentMode && !mobile && rect.w >= 520 ? <button type="button" aria-label={t("objectives.results.window.missions")} title={t("objectives.results.window.missions")} aria-pressed={!railCollapsed} onClick={() => setRailCollapsed((current) => !current)}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M6 2.5v11" /></svg></button> : null}
-      <span className="objectives-rw-heading">{heading}</span>
-      <span className="objectives-rw-objective" title={objective?.title}>{objective?.title}</span>
+      <span className="objectives-rw-titles"><span className="objectives-rw-heading">{heading}</span>
+      <span className="objectives-rw-objective" title={objective?.title}>{objective?.title}</span></span>
       {narrow ? <span className="objectives-rw-grip" aria-hidden="true" title={objective?.title}>⠿</span> : null}
       {narrow && group ? <MissionSwitcher label={t("objectives.missions.title")} value={group.id} options={groups.map((item) => ({ value: item.id, label: `${label(item)} (${item.results.length})` }))} onChange={chooseGroup} /> : null}
       {!mobile ? <button type="button" className="objectives-rw-reset" aria-label={t("objectives.results.window.reset")} title={t("objectives.results.window.reset")} onClick={() => { const next = defaultRect(); setRect(next); saveRect(next); }}>↺</button> : null}
