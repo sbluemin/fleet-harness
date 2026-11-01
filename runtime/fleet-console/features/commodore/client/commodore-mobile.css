@@ -132,6 +132,10 @@
 .objectives-cm .objectives-cm-pill:disabled { opacity: .4; }
 .objectives-cm-grp { display: flex; flex-direction: column; gap: 2px; }
 .objectives-cm-gr { display: flex; align-items: center; gap: 14px; min-height: 72px; padding: 10px 16px; border-radius: 4px; background: var(--m-surface); }
+/* 해제 확인 상태에서는 행 이름이 줄 첫머리에 남고, 확인 문구와 단추 묶음이 그 아래 줄로 내려간다. */
+.objectives-cm-gr.is-confirming { flex-wrap: wrap; }
+.objectives-cm-gr .commodore-theaters-confirm { flex: 1 1 100%; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.objectives-cm-gr .commodore-theaters-confirm > span:first-child { flex: 1; min-width: 0; }
 .objectives-cm-grp > .objectives-cm-gr:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
 .objectives-cm-grp > .objectives-cm-gr:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
 .objectives-cm-gr-tx { flex: 1; min-width: 0; font-size: var(--m-fs-list); overflow-wrap: anywhere; }

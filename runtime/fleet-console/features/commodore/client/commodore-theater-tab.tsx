@@ -86,14 +86,14 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
         <p className="objectives-cm-glab">{t("theaterInbox.theaters.page")}</p>
         <div className="objectives-cm-grp">
           {theaters.map((theater) => (
-            <div key={theater.theaterId} className={`objectives-cm-gr${theater.status === "missing" ? " is-missing" : ""}`}>
+            <div key={theater.theaterId} className={`objectives-cm-gr${theater.status === "missing" ? " is-missing" : ""}${confirming === theater.theaterId ? " is-confirming" : ""}`}>
               <span className="objectives-cm-gr-tx">{theater.label}{theater.status === "missing" ? <small>{t("theaterInbox.theaters.missing")}</small> : null}</span>
               {confirming === theater.theaterId ? (
-                <>
+                <span className="commodore-theaters-confirm">
                   <span className="objectives-cm-secnote">{t("theaterInbox.theaters.confirmBusy")}</span>
                   <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={busy || checking !== null} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.confirmRemove")}</button>
                   <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={busy || checking !== null} onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
-                </>
+                </span>
               ) : (
                 <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy || checking !== null} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
               )}
@@ -116,15 +116,15 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
       {theaters.length > 0 ? (
         <ul className="commodore-theaters-list">
           {theaters.map((theater) => (
-            <li key={theater.theaterId} className={theater.status === "missing" ? "is-missing" : undefined}>
+            <li key={theater.theaterId} className={[theater.status === "missing" ? "is-missing" : "", confirming === theater.theaterId ? "is-confirming" : ""].filter((part) => part !== "").join(" ") || undefined}>
               <span className="commodore-theaters-name" title={theater.label}>{theater.label}</span>
               {theater.status === "missing" ? <span className="commodore-theaters-missing">{t("theaterInbox.theaters.missing")}</span> : null}
               {confirming === theater.theaterId ? (
-                <>
+                <span className="commodore-theaters-confirm">
                   <span className="objectives-commodore-hint">{t("theaterInbox.theaters.confirmBusy")}</span>
                   <button type="button" className="objectives-commodore-text-button" disabled={busy || checking !== null} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.confirmRemove")}</button>
                   <button type="button" className="objectives-commodore-text-button" disabled={busy || checking !== null} onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
-                </>
+                </span>
               ) : (
                 <button type="button" className="objectives-commodore-text-button" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy || checking !== null} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
               )}
