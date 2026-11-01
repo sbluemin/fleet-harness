@@ -945,12 +945,16 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const commodoreToolsHere = useCommodoreToolsConversation();
   const shownLayout = useMemo(
     () => {
-      if (!workbenchSuspended) return layout;
+      // 사령관 전용 도구 칸은 사령관 대화에서만 선다 — 묵은·저장된 배치에 남은 칸이 지휘관·구성원·일반
+      // Objective 대화에 뜨지 않게 보이는 배치에서만 걷는다. 저장된 배치는 그대로 두므로 사령관으로
+      // 돌아오면 그 칸들이 복원된다.
+      const visible = commodoreToolsHere ? layout : workbenchLayoutKeeping(layout, (tile) => !isCommodoreToolTile(tile, railBindings));
+      if (!workbenchSuspended) return visible;
       if (commodoreToolsHere) {
-        return workbenchLayoutKeeping(layout, (tile) => tile.kind === "browser" || isCommodoreToolTile(tile, railBindings)
+        return workbenchLayoutKeeping(visible, (tile) => tile.kind === "browser" || isCommodoreToolTile(tile, railBindings)
           || (tile.kind === "entry" && railBindings.some(({ entry }) => entry.id === tile.entryId && (entry.scope === "fleet" || entry.opensWithoutTheater === true))));
       }
-      return workbenchLayoutKeeping(layout, (tile) => tile.kind === "browser"
+      return workbenchLayoutKeeping(visible, (tile) => tile.kind === "browser"
         || (tile.kind === "entry" && railBindings.some(({ entry }) => entry.id === tile.entryId && (entry.scope === "fleet" || entry.opensWithoutTheater === true))));
     },
     [layout, railBindings, workbenchSuspended, commodoreToolsHere],

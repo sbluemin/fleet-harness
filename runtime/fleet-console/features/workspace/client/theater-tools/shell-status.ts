@@ -16,6 +16,17 @@ export interface CommodoreShellStatusProvider {
 }
 
 const IDLE: CommodoreShellTheaterStatus = { live: false, busy: false };
+const LIVE_AT_PROMPT: CommodoreShellTheaterStatus = { live: true, busy: false };
+const LIVE_BUSY: CommodoreShellTheaterStatus = { live: true, busy: true };
+
+/**
+ * 참조 안정한 답 — `useSyncExternalStore`의 getSnapshot은 같은 값에 같은 참조를 돌려줘야 한다.
+ * 매번 새 객체를 만들면 메뉴 같은 구독자가 무한 렌더에 빠진다(사령관 도구 메뉴 실측).
+ */
+export function stableShellStatus(live: boolean, busy: boolean): CommodoreShellTheaterStatus {
+  if (!live) return IDLE;
+  return busy ? LIVE_BUSY : LIVE_AT_PROMPT;
+}
 
 const idleProvider: CommodoreShellStatusProvider = {
   query: () => IDLE,

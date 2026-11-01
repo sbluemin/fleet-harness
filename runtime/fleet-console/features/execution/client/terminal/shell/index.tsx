@@ -14,7 +14,7 @@ import { TerminalSurface, type TerminalCarryOver, type TerminalExitInfo } from "
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
 import { DEFAULT_SHELL_KEY, endShellSession, getShellSessionSnapshot, readShellSession, subscribeShellSnapshots } from "./shell-session-store.js";
 import { parseToolShellKey, toolShellKey } from "../../../shared/shell-key.js";
-import { registerCommodoreShellStatusProvider } from "../../../../workspace/client/theater-tools/shell-status.js";
+import { registerCommodoreShellStatusProvider, stableShellStatus } from "../../../../workspace/client/theater-tools/shell-status.js";
 import { useCommodoreToolTheater } from "../../../../workspace/client/theater-tools/store.js";
 import { CommodoreToolsEmptyState } from "../../../../workspace/client/theater-tools/empty.js";
 import "./shell.css";
@@ -79,10 +79,10 @@ registerCommodoreShellStatusProvider({
   query: (commodoreId, theaterId) => {
     const key = toolShellKey(commodoreId, theaterId);
     const state = key === null ? null : getShellSessionSnapshot(key);
-    if (!state) return { live: false, busy: false };
+    if (!state) return stableShellStatus(false, false);
     const live = state.open;
     // 프롬프트가 아니면(모르면 포함) 실행 중으로 보고 먼저 묻는다.
-    return { live, busy: live && !state.atPrompt };
+    return stableShellStatus(live, live && !state.atPrompt);
   },
   subscribe: subscribeShellSnapshots,
 });

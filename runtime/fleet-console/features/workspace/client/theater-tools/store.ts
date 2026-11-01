@@ -10,6 +10,9 @@ import {
 
 const STORAGE_PREFIX = "fleet-console.commodore-tool-theater.";
 
+/** getSnapshot은 같은 값에 같은 참조를 돌려줘야 한다 — 빈 배열 리터럴을 그 자리에서 만들면 구독자가 무한 렌더에 빠진다. */
+const NO_THEATERS: readonly { readonly theaterId: string; readonly label: string; readonly status: "available" | "missing" }[] = [];
+
 function storageKey(commodoreId: string, tool: CommodoreToolId): string {
   return `${STORAGE_PREFIX}${commodoreId}.${tool}`;
 }
@@ -72,8 +75,8 @@ export function useCommodoreToolTheater(commodoreId: string | null, tool: Commod
   );
   const rows = useSyncExternalStore(
     subscribeCommodoreList,
-    () => readCommodoreList().find((row) => row.commodoreId === commodoreId)?.theaters ?? [],
-    () => [],
+    () => readCommodoreList().find((row) => row.commodoreId === commodoreId)?.theaters ?? NO_THEATERS,
+    () => NO_THEATERS,
   );
   const stored = useSyncExternalStore(
     subscribeStore,
