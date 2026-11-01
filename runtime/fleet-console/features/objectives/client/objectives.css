@@ -971,6 +971,18 @@ button.objectives-result-open:focus-visible { color: var(--brass-ink); box-shado
 
 /* 공유 폴더 — 증거 행 문법을 그대로 쓰고, 하위 폴더 경로만 회색 mono 접두로 더한다. */
 .objectives-shared-note { margin: 0; padding: 7px 20px 7px 22px; font-size: var(--t-2xs); color: var(--text-tertiary); }
-.objectives-result-sub .objectives-shared-dir { font-family: var(--font-mono, monospace); color: var(--text-tertiary); opacity: 0.8; }
+.objectives-shared-dir { font-family: var(--font-mono, monospace); color: var(--text-tertiary); opacity: 0.8; }
+.objectives-shared-groups > .objectives-result-group + .objectives-result-group { border-top: 1px solid var(--hairline); }
+.objectives-shared-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; padding: 4px 20px 6px 22px; }
+.objectives-shared-grid .objectives-result-thumb { min-width: 0; width: auto; }
+.objectives-shared-grid .objectives-result-img { display: grid; place-items: center; box-sizing: border-box; width: 100%; height: auto; aspect-ratio: 16 / 10; }
+.objectives-shared-grid .objectives-result-img > svg { width: 20px; height: 20px; color: var(--text-tertiary); }
+.objectives-shared-grid .objectives-result-thumb-hit { border-radius: var(--radius-xs); }
+.objectives-shared-grid .objectives-result-thumb:hover .objectives-result-img, .objectives-shared-grid .objectives-result-thumb-hit:focus-visible .objectives-result-img { border-color: var(--surface-rim); }
+.objectives-shared-grid .objectives-result-thumb-hit:hover, .objectives-shared-grid .objectives-result-thumb-hit:focus-visible { box-shadow: var(--focus-face); }
+.objectives-shared-grid .objectives-shared-dir { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-shared-more { margin: 0 20px 4px 22px; padding: 4px 8px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
+.objectives-shared-more:hover { background: var(--control-rest); }
+.objectives-shared-more:focus-visible { box-shadow: var(--focus-face); }
 a.objectives-result-open { text-decoration: none; }
 a.objectives-result-open:focus-visible { color: var(--brass-ink); box-shadow: var(--focus-face); }

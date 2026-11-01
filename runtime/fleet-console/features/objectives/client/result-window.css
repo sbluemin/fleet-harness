@@ -58,7 +58,7 @@
 .objectives-result-window.is-narrow :is(.objectives-rw-missions, .objectives-rw-heading, .objectives-rw-objective, .objectives-rw-mission-head > b) { display: none; }
 
 @container objectives-result (width < 400px) {
-  .objectives-rw-mission-head > span, .objectives-rw-caption > span:not(:last-child) { display: none; }
+  .objectives-rw-mission-head > span, .objectives-rw-caption > span:not(:last-of-type) { display: none; }
   .objectives-rw-strip button { width: 44px; height: 32px; }
 }
 
@@ -85,7 +85,7 @@
 .objectives-result-window.is-mobile .objectives-rw-stage .objectives-rw-image { padding: calc(8px + var(--rw-top-pad)) 8px calc(8px + var(--m-dock-h, 0px)); }
 .objectives-result-window.is-mobile .objectives-rw-stage :is(.objectives-rw-link-card, .objectives-result-textstate) { padding-top: calc(16px + var(--rw-top-pad)); padding-bottom: calc(16px + var(--m-dock-h, 0px)); }
 
-/* 공유 폴더 파일 — 임무 목록·띠 없이 한 파일만 보인다. */
+/* 공유 폴더 파일 — 임무 목록 없이 형식별 띠로 옮겨 본다. */
 .objectives-result-window.is-shared .objectives-rw-body { grid-template-columns: minmax(0, 1fr); }
 /* 브리핑 첨부 — 임무 목록 없이 첨부만 보인다. 틀·드래그·크기·초점 규칙은 결과물 창 그대로 쓴다. */
 .objectives-result-window.is-attachment .objectives-rw-body { grid-template-columns: minmax(0, 1fr); }
@@ -96,3 +96,11 @@
 .objectives-rw-download { align-self: flex-start; padding-bottom: 12px; color: var(--text-secondary); font-size: var(--t-xs); text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
 .objectives-rw-download:hover { color: var(--text-primary); text-decoration-color: currentColor; }
 .objectives-result-window.is-mobile .objectives-rw-download { padding-bottom: calc(var(--m-safe-bottom, 0px) + 16px); color: var(--m-text-muted); }
+/* 글·카드의 읽을 폭은 이전/다음 단추 안쪽에 둔다. 브리핑 첨부의 이미지 무대는 바꾸지 않는다. */
+.objectives-result-window { --rw-step-gutter: 52px; }
+.objectives-result-window.is-mobile { --rw-step-gutter: 64px; }
+:root .objectives-result-window .objectives-rw-stage.has-steps :is(.objectives-result-markdown.markdown-body, .objectives-rw-link-card, .objectives-result-textstate) { padding-inline: var(--rw-step-gutter); }
+.objectives-result-window.is-shared .objectives-rw-strip-n { white-space: nowrap; }
+.objectives-result-window.is-shared .objectives-rw-download { padding-bottom: 0; }
+.objectives-result-window.is-shared.is-narrow :is(.objectives-rw-heading, .objectives-rw-objective) { display: revert; }
+.objectives-result-window.is-shared.is-narrow .objectives-rw-grip { display: none; }
