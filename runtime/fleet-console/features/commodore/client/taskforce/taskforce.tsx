@@ -21,6 +21,7 @@ import { attachToCommodoreComposer, CommodoreComposer } from "../commodore-inbox
 import { commodoreConversationRenderer } from "../commodore-state.js";
 import { openReferencedObjective } from "../commodore-reference-input.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../../shared/contracts/attachment-budget.js";
+import { CONVERSATION_REFERENCE_MARK } from "../../../execution/shared/conversation/references.js";
 import { taskforceT } from "./i18n.js";
 import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, readTaskforces, subscribeTaskforces, useTaskforce, useTaskforces, wasTaskforceRemoved } from "./state.js";
 import "./taskforce.css";
@@ -260,7 +261,13 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
       // 한 발언의 이미지 합계는 사령관 1:1 메시지와 같은 상한이다 — host가 거절하기 전에 같은 안내로 막는다.
       const imageBytes = images.reduce((total, image) => total + Math.floor(image.dataBase64.length * 3 / 4), 0);
       if (imageBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new Error("attachment_budget_exceeded");
-      await mutateTaskforce("post", { taskforceId: state.id, text, ...(mentions.length ? { mentions } : {}), ...(images.length ? { images } : {}) });
+      // 공용 입력은 지목 자리에 자리표시 문자를 둔다 — 원장에는 사람이 읽는 「@이름」으로 남긴다(말풍선이 같은 자리에 칩을 세운다).
+      let referenceIndex = 0;
+      const plain = text.replace(new RegExp(CONVERSATION_REFERENCE_MARK, "g"), () => {
+        const reference = references[referenceIndex++];
+        return reference && typeof reference !== "string" && reference.kind === "commodore" ? `@${memberName(reference.id, language)}` : "";
+      }).trim();
+      await mutateTaskforce("post", { taskforceId: state.id, text: plain, ...(mentions.length ? { mentions } : {}), ...(images.length ? { images } : {}) });
       for (const imageId of attachmentIds) taskforceImagePayloads.delete(imageId);
     }} onFail={() => setFailure(true)} onClear={() => setFailure(false)} /> : null}</div>;
   return <div className="taskforce-conversation">{Conversation ? <Conversation entries={items} participants={participants} working={working} language={language} accessibleNames={{ log: t("taskforce.aria.log"), composer: t("taskforce.aria.composer") }} loading={!snapshot.loaded && !snapshot.error} empty={snapshot.error ? t("taskforce.failed") : t("taskforce.empty")} messageContent={messageContent} openBoardAction={{ label: t("taskforce.openNotice"), open: (entry) => { if (entry.speaker.commodoreId) openReferencedObjective(entry.speaker.commodoreId, entry.objectiveId); } }} older={snapshot.hasMore ? { label: t("taskforce.older"), loading: older, load: () => { setOlder(true); void loadTaskforce(id, true).finally(() => setOlder(false)); } } : null} cards={cards} composer={composer} composerTopEntries /> : <>{t("taskforce.loading")}{composer}</>}</div>;
