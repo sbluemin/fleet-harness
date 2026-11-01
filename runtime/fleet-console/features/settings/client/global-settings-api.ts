@@ -3,7 +3,7 @@ import { resolveExperimentSettings } from "../shared/experiments.js";
 import { sanitizeShortcutBindings } from "../shared/shortcuts.js";
 import { ApiError } from "../../../core/client/src/integration/api.js";
 import { normalizeUiFont } from "./ui-font.js";
-import { type ConsoleLanguagePreference, type GlobalSettingsMutationResult, type GlobalSettingsState } from "../../../core/client/src/integration/types.js";
+import { type ConsoleLanguagePreference, type CommanderFolds, type CommanderSortKey, type CommanderSortPreference, type GlobalSettingsMutationResult, type GlobalSettingsState } from "../../../core/client/src/integration/types.js";
 import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, REMOTE_PORT_MAX, REMOTE_PORT_MIN, isValidRemoteAccessAcknowledgment, isValidRemoteAccessId, isValidRemoteAccessPort, isValidRemoteAccessState, isValidRemoteFingerprint, isValidRemoteTimestamp, type RemoteAccessClass, type RemoteAccessInterface, type RemoteAccessLink, type RemoteAccessLinkSummary, type RemoteAccessPairedDevice, type RemoteAccessStatus } from "../../remote-access/client/contracts.js";
 
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
@@ -186,6 +186,9 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     calmAvatars: payload.calmAvatars === true,
     // 키 없음·손상값은 null이다 — 구서버 응답을 포함한 "저장된 적 없음"과 명시 "left"를 구분한다.
     commanderPlacement: payload.commanderPlacement === "right" ? "right" : payload.commanderPlacement === "left" ? "left" : null,
+    // 키 없음·손상값은 null이다 — "저장된 적 없음"과 명시 저장을 구분한다.
+    commanderSort: toCommanderSortPreference(payload.commanderSort),
+    commanderFolds: toCommanderFolds(payload.commanderFolds),
     lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
     uiFont: normalizeUiFont(payload.uiFont),
     fonts: readFontSettings(payload.fonts) ?? DEFAULT_FONTS,
@@ -202,6 +205,32 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
 
 function isValidConsoleStaticPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535;
+}
+
+const COMMANDER_SORT_KEYS: readonly CommanderSortKey[] = ["activity", "progress", "remaining", "due", "created", "name", "manual"];
+
+/** 정렬·접힘 읽기 — 형태가 틀리면 null(키 없음과 같다)이다. */
+function toCommanderSortPreference(value: unknown): CommanderSortPreference | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const candidate = value as Partial<CommanderSortPreference>;
+  const key = candidate.key;
+  const direction = candidate.direction;
+  const answerFirst = candidate.answerFirst;
+  const grouped = candidate.grouped;
+  if (key === undefined || !COMMANDER_SORT_KEYS.includes(key)) return null;
+  if (direction !== "asc" && direction !== "desc") return null;
+  if (typeof answerFirst !== "boolean" || typeof grouped !== "boolean") return null;
+  return { key, direction, answerFirst, grouped };
+}
+
+function toCommanderFolds(value: unknown): CommanderFolds | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const candidate = value as Partial<CommanderFolds>;
+  const fresh = candidate.fresh;
+  const done = candidate.done;
+  const settled = candidate.settled;
+  if (typeof fresh !== "boolean" || typeof done !== "boolean" || typeof settled !== "boolean") return null;
+  return { fresh, done, settled };
 }
 
 function isConsoleLanguagePreference(value: unknown): value is ConsoleLanguagePreference {

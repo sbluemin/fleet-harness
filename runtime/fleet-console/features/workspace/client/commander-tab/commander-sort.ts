@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { createServerSyncedValue } from "./commander-server-sync.js";
+
 import type { CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 
@@ -25,41 +27,68 @@ export const SORTS: readonly { readonly key: SortKey; readonly label: CoreMessag
 ];
 
 // 정렬은 브라우저에 하나 — 모든 사령관이 함께 쓴다(사이드바 닫힘과 같은 전역 규칙).
+// 같은 origin의 localStorage는 첫 그리기용 캐시로만 쓰고, 원천은 settings.json(`general.commanderSort`)이다.
 const SORT_KEY = "fleet-console.commanderTab.sort";
 const DEFAULT_SORT: SortPreference = { key: "activity", direction: "desc", answerFirst: true, grouped: false };
 
-export function readSort(): SortPreference {
+/** 서버·캐시값을 읽는다. 형태가 틀리면 null이다. */
+function parseSortPreference(value: unknown): SortPreference | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const candidate = value as Partial<SortPreference>;
+  const key = candidate.key;
+  const direction = candidate.direction;
+  const answerFirst = candidate.answerFirst;
+  const grouped = candidate.grouped;
+  if (key === undefined || !SORTS.some((sort) => sort.key === key)) return null;
+  if (direction !== "asc" && direction !== "desc") return null;
+  if (typeof answerFirst !== "boolean" || typeof grouped !== "boolean") return null;
+  return { key, direction, answerFirst, grouped };
+}
+
+function equalSortPreference(left: SortPreference, right: SortPreference): boolean {
+  return left.key === right.key && left.direction === right.direction
+    && left.answerFirst === right.answerFirst && left.grouped === right.grouped;
+}
+
+function readCache(): SortPreference {
   try {
     const raw = typeof window === "undefined" ? null : window.localStorage.getItem(SORT_KEY);
     if (raw === null) return DEFAULT_SORT;
-    const parsed = JSON.parse(raw) as Partial<SortPreference>;
-    const key = SORTS.some((sort) => sort.key === parsed.key) ? parsed.key! : DEFAULT_SORT.key;
-    const direction = parsed.direction === "asc" || parsed.direction === "desc" ? parsed.direction : DEFAULT_SORT.direction;
-    return { key, direction, answerFirst: parsed.answerFirst !== false, grouped: parsed.grouped === true };
+    return parseSortPreference(JSON.parse(raw)) ?? DEFAULT_SORT;
   } catch {
     return DEFAULT_SORT;
   }
 }
 
-let sortPreference = readSort();
-const sortListeners = new Set<() => void>();
-
-export function setSort(next: SortPreference): void {
-  sortPreference = next;
+function writeCache(next: SortPreference): void {
   try {
     window.localStorage.setItem(SORT_KEY, JSON.stringify(next));
   } catch {
     // 저장하지 못하면 이번 화면에서만 기억한다.
   }
-  for (const listener of sortListeners) listener();
+}
+
+const syncedSort = createServerSyncedValue({
+  field: "commanderSort",
+  defaultValue: DEFAULT_SORT,
+  readCache,
+  writeCache,
+  parseServerValue: parseSortPreference,
+  equal: equalSortPreference,
+  isDefault: (value) => equalSortPreference(value, DEFAULT_SORT),
+});
+
+/** 동기 읽기 — 서버 값을 받기 전·실패 시에는 같은 origin 캐시(기본 최근 활동)를 돌려준다. */
+export function readSort(): SortPreference {
+  return syncedSort.get();
+}
+
+export function setSort(next: SortPreference): void {
+  syncedSort.set(next);
 }
 
 export function useSortPreference(): SortPreference {
-  return useSyncExternalStore(
-    (listener) => { sortListeners.add(listener); return () => { sortListeners.delete(listener); }; },
-    () => sortPreference,
-    () => sortPreference,
-  );
+  return useSyncExternalStore(syncedSort.subscribe, syncedSort.get, syncedSort.get);
 }
 
 function entriesOf(item: SideBarRowItem) {
