@@ -172,6 +172,69 @@ function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
 }
 
 describe("taskforce runtime", () => {
+  it("delivers simultaneous members' posts once on their next turn and reminds them of recent conversation without self-waking", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const { state } = h.taskforce.create({ name: "동시 판단 TF", topic: "공유 대화", members: [a, b] });
+      const taskforceId = state.id;
+      h.supervisor.sync("started");
+      // 긴 사람 발언도 새 말일 때는 원문으로 싣고, 다음 턴의 리마인드만 자른다.
+      const personText = "함께 답해 주세요: " + "가".repeat(15_900);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: personText });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      const sessionOf = (alias: string) => h.sessions.find((session) => session.name.includes(alias))!;
+      expect(sessionOf("Alpha").sent[0]).toContain(personText);
+      expect(sessionOf("Beta").sent[0]).toContain(personText);
+      const post = async (alias: string, text: string) => {
+        const result = await sessionOf(alias).tools.get("taskforce_post")!.execute({ taskforceId, text }, { cwd: h.theaterRoot, toolCallId: alias } as never);
+        expect(result).not.toMatchObject({ isError: true });
+        return h.taskforce.lastEntry(taskforceId)!;
+      };
+      // 두 턴이 같은 입력을 판단 중이다. Beta가 나중에 말해도 그 전에 도착한 Alpha의 말을 읽은 셈 치면 안 된다.
+      const alpha = await post("Alpha", "Alpha의 동시 응답");
+      const beta = await post("Beta", "Beta의 동시 응답");
+      // 보드 쓰기 묶음 역시 읽음 커서를 건너뛰게 하면 안 된다.
+      h.taskforce.appendActions(taskforceId, b, { actions: [{ kind: "add", objectiveId: "o1", title: "공유 작업" }], replyTo: beta.seq });
+      expect(h.taskforce.read(taskforceId)?.readSeq).toMatchObject({ [a]: 0, [b]: 0 });
+      sessionOf("Alpha").finish();
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      for (const [alias, peer] of [["Alpha", beta], ["Beta", alpha]] as const) {
+        const session = sessionOf(alias);
+        expect(session.sent).toHaveLength(2);
+        const prompt = session.sent[1]!;
+        expect(prompt.split(`[seq ${peer.seq}]`)).toHaveLength(2);
+        expect(prompt).toContain(`${alias === "Alpha" ? "Beta" : "Alpha"}: ${peer.text}`);
+        const history = prompt.split("Recent conversation reminder (already read; not new utterances):\n")[1]!.split("New ledger entries")[0]!;
+        expect(history.length).toBeLessThanOrEqual(8001);
+        expect(history).toContain("person: 함께 답해 주세요");
+        expect(history).toContain("[history truncated]");
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(sessionOf("Alpha").sent).toHaveLength(2);
+      expect(sessionOf("Beta").sent).toHaveLength(2);
+      // 다음 사람 발언에는 읽은 동료 발언이 새 요청이 아닌 리마인드로 한 번씩 실린다.
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "서로의 응답을 확인해 주세요" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      for (const alias of ["Alpha", "Beta"]) {
+        const session = sessionOf(alias);
+        const prompt = session.sent[2]!;
+        const [history, unread] = prompt.split("New ledger entries");
+        for (const entry of [alpha, beta]) {
+          expect(history).toContain(entry.text);
+          expect(prompt.split(`[seq ${entry.seq}]`)).toHaveLength(2);
+          expect(unread).not.toContain(entry.text);
+        }
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(10);
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("pauses the chain at 12, never self-wakes, and keeps TF traffic out of 1:1 transcripts", async () => {
     vi.useFakeTimers();
     try {

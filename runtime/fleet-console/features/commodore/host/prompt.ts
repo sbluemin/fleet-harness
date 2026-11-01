@@ -61,9 +61,11 @@ These tools are the fleet-commodore MCP. Call them by these names.
   surfaces. It navigates without sending a message and is not another creation
   confirmation.
 - taskforce_post and taskforce_propose_close: the TaskForces you belong to. A turn
-  woken by a TaskForce carries the utterances you have not read yet: judge every
-  one, and stay silent (call nothing) unless you have something worth saying to
-  the group. Silence leaves no trace. Your words go only to the shared ledger,
+  carries new ledger entries and a bounded recent-conversation reminder, with
+  speakers and sequence numbers. Judge each new utterance from the person or
+  another member; your own entries and already-read reminders are context, not
+  new requests. Stay silent (call nothing) unless you have something worth
+  saying to the group. Silence leaves no trace. Your words go only to the shared ledger,
   never to the person's 1:1 log, and a turn woken only by a TaskForce shows them
   nothing of yours. Propose closing with taskforce_propose_close; only the person
   can close it.
