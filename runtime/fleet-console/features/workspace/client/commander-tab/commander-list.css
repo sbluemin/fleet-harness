@@ -264,19 +264,6 @@
 .commander-tab--card .side-bar-cluster-row:hover .commander-row-glyphs,
 .commander-tab--card .side-bar-cluster-row:focus-within .commander-row-glyphs,
 .commander-tab--card .side-bar-cluster-row.is-open .commander-row-glyphs { display: inline-flex; }
-/* 두 줄 행에서 글리프가 드러나면 상태 줄 높이·★ 왼쪽에 겹쳐 둔다 — 흐름에서 빠져 aside가 ★ 폭으로 좁아지므로
-   제목 줄은 쉬는 상태와 같은 폭(★ 앞까지)을 그대로 쓴다. ★ 자리는 그대로 둔다. */
-.commander-tab--card .side-bar-cluster-row--conversation:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-aside { align-self: stretch; }
-.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .commander-row-glyphs {
-  position: absolute;
-  right: 0;
-  /* 아래 2px: 줄 안쪽 아래 여백(6px) 기준 — 24px 글리프의 가운데가 상태 줄(11px·1.4) 가운데에 온다. */
-  bottom: 2px;
-}
-.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-aside:has(.side-bar-cluster-row-mark-toggle) .commander-row-glyphs {
-  /* 위임 토글(30px) + 칸 간격(6px) — ★ 왼쪽에 붙는다. */
-  right: 36px;
-}
 /* 한 줄 행(시작 전·완료)은 둘째 줄이 없어 글리프를 흐름에 두고 작게 그려 잃는 폭을 줄인다(최소 20px). */
 .commander-tab--card .side-bar-cluster-row--settled .commander-row-glyphs { gap: 0; }
 .commander-tab--card .side-bar-cluster-row--settled .commander-row-glyph { width: 22px; height: 22px; }
@@ -330,6 +317,23 @@
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark { width: 18px; height: 18px; border-radius: 5px; }
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark.has-glyph { border-radius: 4px; }
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark.has-glyph.is-hollow { border-width: 2px; }
+/* 드러난 두 줄 행의 글리프 자리 — 위 위임 토글 규칙과 특이도가 동률(0,5,0)이라 순서가 이기는 이 자리에 둔다.
+   앞으로 옮기면 aside가 가운데로 돌아가 글리프 묶음이 두 줄 사이 한가운데에 뜬다. */
+.commander-tab--card .side-bar-cluster-row--conversation:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-aside { align-self: stretch; }
+/* 두 줄 행에서 글리프가 드러나면 상태 줄 높이·★ 왼쪽에 겹쳐 둔다 — 흐름에서 빠져 aside가 ★ 폭으로 좁아지므로
+   제목 줄은 쉬는 상태와 같은 폭(★ 앞까지)을 그대로 쓴다. ★ 자리는 그대로 둔다. */
+.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .commander-row-glyphs {
+  position: absolute;
+  right: 0;
+  /* 아래 2px: 줄 안쪽 아래 여백(6px) 기준 — 24px 글리프의 가운데가 상태 줄(11px·1.4) 가운데에 온다. */
+  bottom: 2px;
+}
+.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-aside:has(.side-bar-cluster-row-mark-toggle) .commander-row-glyphs {
+  /* 위임 토글(30px) + 칸 간격(6px) — ★ 왼쪽에 붙는다. */
+  right: 36px;
+}
+/* 드러난 두 줄 행의 상태 줄은 글리프 앞에서 멈춘다 — 문구가 글리프 밑으로 들어가지 않게 글리프 묶음(74px) + 간격(4px)만큼 안쪽 여백을 둔다. 제목 줄은 건드리지 않는다. */
+.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-line { padding-right: 78px; }
 
 .commander-tab-empty {
   margin: 0;
