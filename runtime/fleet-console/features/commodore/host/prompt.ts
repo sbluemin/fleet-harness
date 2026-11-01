@@ -60,13 +60,15 @@ These tools are the fleet-commodore MCP. Call them by these names.
   the exact target returned by the tool. This target opens only on Commodore
   surfaces. It navigates without sending a message and is not another creation
   confirmation.
-- taskforce_post and taskforce_propose_close: the TaskForces you belong to. A turn
-  woken by a TaskForce carries the utterances you have not read yet: judge every
-  one, and stay silent (call nothing) unless you have something worth saying to
-  the group. Silence leaves no trace. Your words go only to the shared ledger,
+- taskforce_post: the TaskForces you belong to. A turn
+  carries new ledger entries with speakers and sequence numbers. Only the first
+  turn of a new session also carries a bounded recent-conversation reminder.
+  Judge each new utterance from the person or another member; your own entries
+  and already-read reminders are context, not new requests. Stay silent (call
+  nothing) unless you have something worth saying to the group. Silence leaves
+  no trace. Your words go only to the shared ledger,
   never to the person's 1:1 log, and a turn woken only by a TaskForce shows them
-  nothing of yours. Propose closing with taskforce_propose_close; only the person
-  can close it.
+  nothing of yours. Only the person can delete a TaskForce.
 - description, intel, routines, routine_add, routine_update, routine_remove, your fleet-memory (memory_view,
   memory_save, memory_update, memory_delete), and issue_list for intel
   sources. WebSearch and WebFetch.

@@ -7,7 +7,6 @@ type Snapshot = {
   readonly state?: TaskforceState;
   readonly entries: readonly TaskforceLedgerEntry[];
   readonly judging: readonly string[];
-  readonly outcomes: NonNullable<TaskforceJudgingStatus["outcomes"]>;
   readonly judgingAt: number;
   readonly hasMore: boolean;
   readonly loaded: boolean;
@@ -17,7 +16,7 @@ type Snapshot = {
   readonly actionsLoading: boolean;
   readonly actionsError: boolean;
 };
-const EMPTY: Snapshot = { entries: [], judging: [], outcomes: {}, judgingAt: -1, hasMore: false, loaded: false, error: false, actionEntries: [], actionsLoaded: false, actionsLoading: false, actionsError: false };
+const EMPTY: Snapshot = { entries: [], judging: [], judgingAt: -1, hasMore: false, loaded: false, error: false, actionEntries: [], actionsLoaded: false, actionsLoading: false, actionsError: false };
 type ReadResult = TaskforceLedgerPage & { readonly taskforce: TaskforceState; readonly judging: TaskforceJudgingStatus };
 const snapshots = new Map<string, Snapshot>();
 const removed = new Set<string>();
@@ -28,6 +27,22 @@ let refreshFlight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 const flights = new Map<string, Promise<void>>();
 const emit = () => { version += 1; for (const listener of listeners) listener(); };
+/** TF 실험 — 사령관 실험 위에서 돌아가는 옵트인이다. 읽기 전에는 꺼져 있는 것으로 다룬다. */
+let taskforceEnabledSnapshot = false;
+let taskforceExperimentsKnown = false;
+const readTaskforceEnabled = () => deps?.experiments.read()?.taskforce === true;
+const readTaskforceExperimentsKnown = () => (deps?.experiments.read() ?? null) !== null;
+// useSyncExternalStore 스냅숏은 같은 상태에 같은 객체여야 한다 — 매번 새 객체를 내면 렌더가 끝없이 되풀이된다.
+const EXPERIMENT_UNKNOWN = { known: false, enabled: false } as const;
+const EXPERIMENT_OFF = { known: true, enabled: false } as const;
+const EXPERIMENT_ON = { known: true, enabled: true } as const;
+export function readTaskforceExperiment(): { readonly known: boolean; readonly enabled: boolean } {
+  return !taskforceExperimentsKnown ? EXPERIMENT_UNKNOWN : taskforceEnabledSnapshot ? EXPERIMENT_ON : EXPERIMENT_OFF;
+}
+/** TF가 켜져 있는가 — 꺼져 있으면 사이드바 행·만들기 입구가 숨고 판단이 멈춘다. */
+export function useTaskforceExperiment(): { readonly known: boolean; readonly enabled: boolean } {
+  return useSyncExternalStore(subscribeTaskforces, readTaskforceExperiment, readTaskforceExperiment);
+}
 export const subscribeTaskforces = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const readTaskforces = () => summaries;
 export const wasTaskforceRemoved = (id: string) => removed.has(id);
@@ -67,7 +82,7 @@ function rememberJudging(status: TaskforceJudgingStatus): void {
   if (removed.has(status.taskforceId)) return;
   const previous = readTaskforce(status.taskforceId);
   if (previous.judgingAt > status.at) return;
-  snapshots.set(status.taskforceId, { ...previous, judging: status.judging, outcomes: status.outcomes ?? {}, judgingAt: status.at });
+  snapshots.set(status.taskforceId, { ...previous, judging: status.judging, judgingAt: status.at });
   summaries = summaries.map((row) => row.id === status.taskforceId ? { ...row, judging: status.judging } : row);
 }
 
@@ -168,7 +183,26 @@ function forgetTaskforce(id: string): void {
 
 export function installTaskforces(next: CommodoreClientDeps): () => void {
   deps = next;
+  taskforceEnabledSnapshot = readTaskforceEnabled();
+  taskforceExperimentsKnown = readTaskforceExperimentsKnown();
   void refreshTaskforces().catch(() => {});
+  const offExperiments = next.experiments.subscribe(() => {
+    const enabled = readTaskforceEnabled();
+    const known = readTaskforceExperimentsKnown();
+    if (enabled === taskforceEnabledSnapshot && known === taskforceExperimentsKnown) return;
+    const was = taskforceEnabledSnapshot;
+    taskforceEnabledSnapshot = enabled;
+    taskforceExperimentsKnown = known;
+    emit();
+    // 다시 켜면 저장된 TF가 그대로 이어진다 — 목록을 다시 읽는다. 설정 저장이 서버에 닿기 전에 읽으면
+    // 아직 꺼진 것으로 거절되므로, 켜져 있는 동안은 몇 번 간격을 두고 다시 읽는다.
+    if (!was && enabled) {
+      const retry = (attempt: number) => void refreshTaskforces().catch(() => {
+        if (deps === next && taskforceEnabledSnapshot && attempt < 5) setTimeout(() => retry(attempt + 1), 300 * (attempt + 1));
+      });
+      retry(0);
+    }
+  });
   const off = next.consoleEvents.subscribe("commodore", (payload) => {
     const event = payload as TaskforceEvent | null;
     if (!event?.op?.startsWith("taskforce-")) return;
@@ -181,11 +215,11 @@ export function installTaskforces(next: CommodoreClientDeps): () => void {
   });
   const offReconnect = next.consoleEvents.onReconnect?.(() => {
     for (const [id, snapshot] of snapshots) {
-      snapshots.set(id, { ...snapshot, judging: [], outcomes: {}, judgingAt: -1 });
+      snapshots.set(id, { ...snapshot, judging: [], judgingAt: -1 });
       if (snapshot.loaded) void loadTaskforce(id);
     }
     emit();
     void refreshTaskforces().catch(() => {});
   });
-  return () => { off(); offReconnect?.(); if (deps === next) deps = null; snapshots.clear(); summaries = []; removed.clear(); flights.clear(); refreshFlight = null; emit(); };
+  return () => { off(); offReconnect?.(); offExperiments(); if (deps === next) deps = null; snapshots.clear(); summaries = []; removed.clear(); flights.clear(); refreshFlight = null; taskforceEnabledSnapshot = false; taskforceExperimentsKnown = false; emit(); };
 }

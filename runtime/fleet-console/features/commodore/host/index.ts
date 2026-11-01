@@ -90,9 +90,32 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const effectiveIds = (commodoreId: string): readonly string[] =>
     effectiveCommodorePlugins(plugins.listGlobal(), store.read(commodoreId)?.plugins ?? []).effective;
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
+  /**
+   * TF 삭제는 사이드바 한 줄도 함께 걷는다 — 순서와 섹션 소속에서 id를 뺀다.
+   * 사령관 삭제 경로(서버 cleanup)가 같은 일을 하므로 두 삭제는 같은 뒷정리를 공유한다.
+   */
+  const forgetTaskforceRow = (taskforceId: string) => {
+    try {
+      if (deps.order) {
+        const order = deps.order.read();
+        if (order.includes(taskforceId)) deps.order.write(order.filter((id) => id !== taskforceId));
+      }
+    } catch (error) { console.warn(`[objectives] taskforce sidebar order cleanup failed: ${error instanceof Error ? error.message : String(error)}`); }
+    try {
+      const persistence = deps.sidebar;
+      const layout = persistence?.read();
+      if (persistence && layout && layout.membership[taskforceId] !== undefined) {
+        const { [taskforceId]: _dropped, ...membership } = layout.membership;
+        persistence.write({ ...layout, membership });
+      }
+    } catch (error) { console.warn(`[objectives] taskforce sidebar membership cleanup failed: ${error instanceof Error ? error.message : String(error)}`); }
+  };
   const taskforce = createTaskforceFeature({
     consoleDataDir: deps.paths.consoleDataDir, events: deps.events, http: deps.http, security: deps.security,
     isKnownCommodore: (id) => entities.ids().includes(id),
+    onDeleted: forgetTaskforceRow,
+    // TF는 옵트인 실험이다 — 꺼져 있으면 경로가 거절되고 깨움·판단·도구가 쉰다(데이터는 보존).
+    isEnabled: () => { try { return deps.experiments?.read().taskforce === true; } catch { return false; } },
   });
   selectedPlugins = () => entities.ids().flatMap((id) => store.read(id)?.plugins ?? []);
   const createFromCommodore = createCommodoreCreator({ ownership, store, ...(deps.created ? { created: deps.created } : {}) });
@@ -109,7 +132,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     },
     managementTools: (commodoreId, turn) => createCommodoreManagementTools({
       hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping,
-      list: () => orderedIds().map((id) => ({ commodoreId: id, alias: store.read(id)?.alias, theaters: entities.theatersOf(id) })),
+      list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map((id) => ({ commodoreId: id, alias: store.read(id)?.alias, theaters: entities.theatersOf(id) })),
       create: (input) => createFromCommodore(commodoreId, input),
       message: (input) => messageFromCommodore(commodoreId, input),
     }),
@@ -180,10 +203,34 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     const lastResponse = store.transcriptLast(commodoreId, "commodore");
     return { commodoreId, ...(state.alias ? { alias: state.alias } : {}), label: state.alias ?? theaters[0]?.label ?? "Commodore", theaters, active, run: { ...(supervisor.status(commodoreId) ?? { phase: active ? "idle" : "off" }), totals: state.run ?? EMPTY_RUN_TOTALS }, ...(last ? { last } : {}), ...(lastResponse ? { lastResponse } : {}) };
   };
+  /**
+   * 좌측 목록 한 줄의 순서 — 사령관과 TF가 한 모델에 산다. 저장된 순서는 두 종류의 id를
+   * 함께 들고, 저장에 없는 행(새로 생긴·복원된)은 사령관 먼저·TF 나중으로 뒤에 붙는다.
+   * 기존 저장(사령관만)은 그대로 읽히고, 알 수 없는 id는 읽을 때 버린다.
+   */
+  const taskforceIds = (): readonly string[] => {
+    try { return taskforce.store.availableTaskforces(); }
+    catch { return []; }
+  };
+  const knownRowIds = (): Set<string> => new Set([...entities.ids(), ...taskforceIds()]);
   const orderedIds = (): readonly string[] => {
-    const ids = entities.ids();
-    const known = new Set(ids);
-    return [...new Set([...(deps.order?.read() ?? []).filter((id) => known.has(id)), ...ids])];
+    const known = knownRowIds();
+    const stored = (deps.order?.read() ?? []).filter((id) => known.has(id));
+    const missingCommodores = entities.ids().filter((id) => !stored.includes(id));
+    const missingTaskforces = [...taskforceIds()]
+      .filter((id) => !stored.includes(id) && !missingCommodores.includes(id))
+      .sort((a, b) => {
+        let at = 0; let bt = 0;
+        try { at = taskforce.store.read(a)?.createdAt ?? 0; } catch { /* 읽을 수 없는 TF는 맨 앞으로 */ }
+        try { bt = taskforce.store.read(b)?.createdAt ?? 0; } catch { /* 읽을 수 없는 TF는 맨 앞으로 */ }
+        return at - bt || (a < b ? -1 : a > b ? 1 : 0);
+      });
+    return [...new Set([...stored, ...missingCommodores, ...missingTaskforces])];
+  };
+  /** 사이드바 행 이동의 쓰기 판정 — 사령관은 소유 판정, TF는 존재 판정을 쓴다. 둘 다 아니면 404다. */
+  const assertRowWritable = (id: string) => {
+    if (entities.dirOf(id)) { ownership.assertWritable(id); return; }
+    if (!taskforce.store.read(id)) throw new CommodoreStoreError("unknown_commodore");
   };
   const commodoreDeletion = deps.deletion ? createCommodoreDeletion({ ownership, store, supervisor, host: deps.deletion, consoleDataDir: deps.paths.consoleDataDir, summary,
     protectedDirectories: () => entities.ids().flatMap((id) => entities.theatersOf(id).map((row) => row.path)),
@@ -204,24 +251,27 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     },
   } : undefined;
   const sidebar = createCommodoreSidebar({
-    persistence: deps.sidebar, ids: entities.ids, order: orderedIds, assertWritable: ownership.assertWritable,
+    persistence: deps.sidebar, ids: () => [...knownRowIds()], order: orderedIds, assertWritable: assertRowWritable,
     changed: () => deps.events.publish(COMMODORE_SIDEBAR_CHANNEL, { op: "changed" }),
   });
   const commodoreRoutes = createCommodoreRoutes(context, store, {
     sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, deletion, assertWritable: ownership.assertWritable,
     knowledgeFolder: createKnowledgeFolderAction({ root: knowledge.root, ...(deps.openKnowledgeDirectory ? { openDirectory: deps.openKnowledgeDirectory } : {}) }),
-    theaterIds, summary, list: () => orderedIds().map(summary),
+    theaterIds, summary, list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map(summary),
+    order: orderedIds,
     setOrder: (requested) => {
       if (!deps.order) throw new CommodoreStoreError("commodore_unavailable");
-      const known = new Set(entities.ids());
+      const known = knownRowIds();
       const next = [...new Set(requested.filter((id) => known.has(id)))];
       const previous = deps.order.read();
       if (next.length === previous.length && next.every((id, index) => id === previous[index])) return;
       deps.order.write(next);
-      // 순서는 Console 전체의 투영이다. 기존 state 사건 하나로 목록을 무효화하되 엔티티 파일은 쓰지 않는다.
-      const first = orderedIds()[0];
+      // 순서는 Console 전체의 투영이다. 첫 사령관 행의 state 사건으로 목록을 무효화하되,
+      // 사령관이 하나도 없으면 사이드바 changed로 무효화한다. 엔티티 파일은 쓰지 않는다.
+      const first = orderedIds().find((id) => entities.dirOf(id) !== null);
       const state = first ? store.read(first) : null;
       if (first && state) emit({ op: "state", commodoreId: first, theaterIds: theaterIds(first), state, change: "order" });
+      else deps.events.publish(COMMODORE_SIDEBAR_CHANNEL, { op: "changed" });
     },
     create: (alias) => { const id = ownership.create(); deps.created?.(id); store.setAlias(id, alias); store.announceCreated(id); return id; },
     addTheater: async (id, folderGrantId, consent) => {

@@ -1,4 +1,3 @@
-import { TaskforceNotice } from "./taskforce/taskforce.js";
 import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
 import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
@@ -387,7 +386,6 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   );
   return (
     <div className="objectives-commodore-conversation">
-      {!readOnly ? <TaskforceNotice commodoreId={commodoreId} language={language} /> : null}
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
           밑으로 흘러 올라간다. */}
       {(run?.phase === "retrying" || run?.phase === "error") ? (
@@ -565,6 +563,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   })),
   // 사령관 대화의 기본 문맥은 정보다. 목록이 오른쪽에 서면 작업 탭이 기본이다 — 사람이 고른 탭 기억이 있으면 그 기억이 먼저다.
   defaultTab: TAB_IDS.info,
+  railContinuityGroup: "commodore-taskforce",
   resolveDefaultTab: () => readCommodoreTasksPlacement() === "right" ? TAB_IDS.routines : TAB_IDS.info,
   onLeaveDesktop: ({ params, tabId }) => {
     const target = readParams(params);

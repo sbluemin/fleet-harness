@@ -34,6 +34,7 @@ export const TASKFORCE_SYSTEM_CODES = [
   "member-removed",
   "chain-paused",
   "chain-resumed",
+  // 이전 버전의 원장 항목을 읽기 위한 코드 — 새 상태 전이는 만들지 않는다.
   "closed",
   "reopened",
   "close-proposed",
@@ -107,9 +108,7 @@ export const taskforceStateSchema = z.object({
   name: z.string().trim().min(1).max(MAX_TASKFORCE_NAME),
   topic: z.string().trim().min(1).max(MAX_TASKFORCE_TOPIC),
   members: z.array(memberId).max(MAX_TASKFORCE_MEMBERS),
-  status: z.enum(["open", "closed"]),
   createdAt: z.number().int().nonnegative(),
-  closedAt: z.number().int().nonnegative().optional(),
   readSeq: z.record(z.string(), z.number().int().nonnegative()),
   chain: z.object({
     count: z.number().int().nonnegative(),
@@ -130,10 +129,8 @@ export type TaskforceStateChange =
   | "member-added"
   | "member-removed"
   | "continued"
-  | "closed"
-  | "reopened"
   | "read"
-  /** 원장 append로 lastSeq·chain·readSeq 가 전진했다 — 원장 사건과 함께 나간다. */
+  /** 원장 append로 lastSeq·chain이 바뀌었다 — 원장 사건과 함께 나간다. 읽음 확인은 `read`다. */
   | "ledger";
 
 /** 사이드바·목록이 그리는 한 줄 요약. 미리보기는 마지막 원장 항목이다. */
@@ -142,10 +139,8 @@ export interface TaskforceSummary {
   readonly name: string;
   readonly topic: string;
   readonly members: readonly string[];
-  readonly status: "open" | "closed";
   readonly lastSeq: number;
   readonly createdAt: number;
-  readonly closedAt?: number;
   /** 말 수 — 개요 탭이 「발언 N개 (사람 a · 사령관 b)」를 원장 paging 없이 그린다. */
   readonly counts: TaskforceCounts;
   /** 지금 판단 중인 성원 — 사이드바의 pulsing dot이 이것만 본다. */
@@ -190,8 +185,6 @@ export const TASKFORCE_ROUTE_NAMES = {
   addMembers: "taskforce/members/add",
   removeMembers: "taskforce/members/remove",
   continue: "taskforce/continue",
-  close: "taskforce/close",
-  reopen: "taskforce/reopen",
   delete: "taskforce/delete",
   image: "taskforce/image",
 } as const;
@@ -206,8 +199,6 @@ export const TASKFORCE_ROUTES = {
   addMembers: "/api/v1/taskforce/members/add",
   removeMembers: "/api/v1/taskforce/members/remove",
   continue: "/api/v1/taskforce/continue",
-  close: "/api/v1/taskforce/close",
-  reopen: "/api/v1/taskforce/reopen",
   delete: "/api/v1/taskforce/delete",
   image: "/api/v1/taskforce/image",
 } as const;

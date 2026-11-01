@@ -47,6 +47,8 @@ export interface ConsoleExperimentSettings {
   readonly commodore: boolean;
   readonly commodoreModel: string;
   readonly commodoreEffort: ExperimentEffort;
+  /** TaskForce — 여러 사령관의 합동 판단. 옵트인이며 기본 꺼짐이다. */
+  readonly taskforce: boolean;
 }
 
 /**
@@ -66,6 +68,7 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   commodore: true,
   commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
   commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
+  taskforce: false,
 };
 
 /**
@@ -121,6 +124,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     // 옛 설정과 응답의 필드 모양은 유지하되, 저장된 기본 좌표는 더 이상 읽지 않는다.
     commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
     commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
+    taskforce: record.taskforce === true,
   };
 }
 

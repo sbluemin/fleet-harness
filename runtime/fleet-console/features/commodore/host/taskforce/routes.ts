@@ -25,8 +25,7 @@ import type { TaskforceStore } from "./store.js";
  * 주이고 이미지 사본 읽기만 GET이며, 같은 origin의 Console만 지난다. 화면은 응답이
  * 아니라 `commodore` 채널의 `taskforce-*` 사건으로 갱신되므로 응답은 확인용이다.
  *
- * 닫힌 TF의 말(post)은 기록에 남기기 전에 거절한다 — 조용히 잃지 않는다.
- * system 항목(종료·재열기·퇴장)은 닫힌 TF에도 남는다.
+ * TF는 삭제할 때까지 대화할 수 있다. 연쇄 제한의 멈춤·계속은 별도로 다룬다.
  */
 
 export interface TaskforceRoute {
@@ -43,6 +42,10 @@ export interface TaskforceRouteContext {
 export interface TaskforceRouteHooks {
   /** 아는 사령관인가 — 성원 검증이 여기에 기대어 선다. 없으면 모양만 검사한다. */
   readonly isKnownCommodore?: (commodoreId: string) => boolean;
+  /** TF가 지워진 뒤 부르는 조합의 뒷정리 — 사이드바 순서·섹션 소속에서 id를 뺀다. */
+  readonly onDeleted?: (taskforceId: string) => void;
+  /** TF 실험이 켜져 있는가 — 꺼져 있으면 모든 TF 경로를 거절한다(데이터는 지우지 않는다). */
+  readonly isEnabled?: () => boolean;
 }
 
 export function createTaskforceRoutes(
@@ -53,6 +56,7 @@ export function createTaskforceRoutes(
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (hooks.isEnabled && !hooks.isEnabled()) { ctx.host.http.writeJson(res, 404, { error: "taskforce_unavailable" }); return true; }
     const body = await ctx.host.http.readJsonBody<unknown>(req);
     const parsed = schema.safeParse(body ?? {});
     if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
@@ -66,7 +70,6 @@ export function createTaskforceRoutes(
     if (error instanceof TaskforceStoreError) {
       const status = error.code === "unknown_taskforce" ? 404
         : error.code === "invalid_request" ? 400
-        : error.code === "taskforce_closed" ? 409
         : 500;
       ctx.host.http.writeJson(res, status, error.details ? { error: error.code, details: error.details } : { error: error.code });
       return;
@@ -90,6 +93,7 @@ export function createTaskforceRoutes(
   const image: RouteHandler = ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (hooks.isEnabled && !hooks.isEnabled()) { ctx.host.http.writeJson(res, 404, { error: "taskforce_unavailable" }); return true; }
     const parsed = taskforceImageQuerySchema.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
     if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     const { taskforceId, seq, imageId } = parsed.data;
@@ -111,7 +115,7 @@ export function createTaskforceRoutes(
       const taskforce = read(taskforceId);
       return { taskforce, judging: judgingOf(taskforce), ...store.readLedger(taskforceId, { ...(limit !== undefined ? { limit } : {}), ...(before !== undefined ? { before } : {}) }) };
     }) },
-    { name: TASKFORCE_ROUTE_NAMES.post, method: "POST", summary: "Post the person's utterance to an open TaskForce.", handler: json(taskforcePostSchema, ({ taskforceId, text, mentions = [], replyTo, images = [] }) => {
+    { name: TASKFORCE_ROUTE_NAMES.post, method: "POST", summary: "Post the person's utterance to a TaskForce.", handler: json(taskforcePostSchema, ({ taskforceId, text, mentions = [], replyTo, images = [] }) => {
       read(taskforceId);
       for (const member of mentions) known(member);
       const decoded = images.map((image) => {
@@ -155,17 +159,11 @@ export function createTaskforceRoutes(
       read(taskforceId);
       return { taskforce: store.continue(taskforceId) };
     }) },
-    { name: TASKFORCE_ROUTE_NAMES.close, method: "POST", summary: "Close a TaskForce; closed TaskForces reject new utterances until reopened.", handler: json(taskforceIdOnlySchema, ({ taskforceId }) => {
-      read(taskforceId);
-      return { taskforce: store.close(taskforceId) };
-    }) },
-    { name: TASKFORCE_ROUTE_NAMES.reopen, method: "POST", summary: "Reopen a closed TaskForce.", handler: json(taskforceIdOnlySchema, ({ taskforceId }) => {
-      read(taskforceId);
-      return { taskforce: store.reopen(taskforceId) };
-    }) },
     { name: TASKFORCE_ROUTE_NAMES.delete, method: "POST", summary: "Permanently delete a TaskForce and its ledger.", handler: json(taskforceIdOnlySchema, ({ taskforceId }) => {
       read(taskforceId);
       store.delete(taskforceId);
+      try { hooks.onDeleted?.(taskforceId); }
+      catch (error) { console.warn(`[objectives] taskforce sidebar cleanup failed: ${error instanceof Error ? error.message : String(error)}`); }
       return { deleted: taskforceId };
     }) },
     { name: TASKFORCE_ROUTE_NAMES.image, method: "GET", summary: "Read a preserved TaskForce ledger image by TaskForce, entry seq and image id.", handler: image },

@@ -50,10 +50,10 @@ export interface CommodoreToolsOptions {
   /** 지금 턴에 사람 메시지가 실렸는지 — 그 턴에 등록·수정한 루틴은 사람 요청 출처를 갖는다. 없으면 자율 턴으로 본다. */
   readonly hasPersonMessage?: () => boolean;
   /**
-   * 속한 TaskForce 원장 — 판단 턴의 말하기·닫기 제안이 여기에 닿는다. 없으면 TF 도구를
+   * 속한 TaskForce 원장 — 판단 턴의 말하기가 여기에 닿는다. 없으면 TF 도구를
    * 거절한다(판단 런타임이 없는 호스트).
    */
-  readonly taskforce?: Pick<TaskforceStore, "append" | "proposeClose" | "read">;
+  readonly taskforce?: Pick<TaskforceStore, "append">;
 }
 
 export function createCommodoreTools(options: CommodoreToolsOptions): readonly ConsoleMcpTool[] {
@@ -189,7 +189,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       const parsed = JSON.parse(stdout) as readonly { number?: number; title?: string; state?: string; updatedAt?: string; labels?: readonly { name?: string }[]; url?: string }[];
       return { source: sourceView(source), issues: parsed.map((issue) => ({ number: issue.number, title: issue.title, state: issue.state, updatedAt: issue.updatedAt, labels: (issue.labels ?? []).map((label) => label.name).filter((name): name is string => typeof name === "string"), url: issue.url })) };
     }),
-    // TaskForce — 판단 턴의 말하기와 닫기 제안은 이 두 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
+    // TaskForce — 판단 턴의 말하기는 이 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
     // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
     tool("taskforce_post", "Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit. Use the TaskForce id and member ids exactly as shown in this turn's TaskForce block (the id: line and the Members line); never guess or shorten them.", z.object({
       taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
@@ -204,23 +204,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       } catch (error) {
         // 같은 턴에 바로잡을 수 있게 거절 사유를 돌려준다 — id는 추측하지 말고 이번 턴의 TaskForce 블록을 그대로 쓴다.
         if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Use the TaskForce id exactly as shown in this turn's TaskForce block (the id: line); do not guess or shorten it, then call again in this turn." });
-        if (error instanceof TaskforceStoreError && error.code === "taskforce_closed") throw new TaskforceStoreError(error.code, undefined, { hint: "This TaskForce is closed; only the person can reopen it." });
         if (error instanceof TaskforceStoreError && error.code === "invalid_request") throw new TaskforceStoreError(error.code, undefined, { hint: "mentions must be member ids from this turn's TaskForce block Members line." });
-        throw error;
-      }
-    }),
-    tool("taskforce_propose_close", "Propose closing a TaskForce you belong to, with your reason. Only the person can close it; a proposal alone changes nothing and wakes the other members to judge it. Use the TaskForce id exactly as shown in this turn's TaskForce block; never guess or shorten it.", z.object({
-      taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
-      reason: z.string().trim().min(1).max(1000),
-    }).strict(), ({ taskforceId, reason }) => {
-      const taskforce = options.taskforce;
-      if (!taskforce) throw new Error("taskforce_unavailable");
-      try {
-        const { entry } = taskforce.proposeClose(taskforceId, options.commodoreId, reason);
-        return { taskforceId, seq: entry.seq };
-      } catch (error) {
-        if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Use the TaskForce id exactly as shown in this turn's TaskForce block (the id: line); do not guess or shorten it, then call again in this turn." });
-        if (error instanceof TaskforceStoreError && error.code === "taskforce_closed") throw new TaskforceStoreError(error.code, undefined, { hint: "This TaskForce is already closed." });
         throw error;
       }
     }),

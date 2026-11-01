@@ -9,6 +9,7 @@ import "./settings-mobile.css";
 import { MobileIcon } from "../../../core/client/src/chrome/mobile/mobile-icons.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
+import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import type { GlobalSettingsState } from "../../../core/client/src/integration/types.js";
 
 export function ExperimentsSection({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
@@ -31,6 +32,24 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
         <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
       </h3>
       <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
+      {/* 컴퓨터 사용 행과 같은 틀 — 제목 옆 「?」에 설명을 두고 오른쪽에 토글을 둔다. */}
+      <div className="global-settings-row experiments-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("settings.taskforce.title")}
+            <SettingsHelp title={t("settings.taskforce.title")}><p>{t("settings.taskforce.help")}</p></SettingsHelp>
+          </p>
+        </div>
+        <div className="experiments-row-controls">
+          <SettingsToggle
+            checked={experiments.taskforce}
+            busy={saving}
+            disabled={saving || !experiments.commodore}
+            ariaLabel={t("settings.taskforce.title")}
+            onChange={(next) => save({ ...experiments, taskforce: next })}
+          />
+        </div>
+      </div>
     </section>
     </>
   );
@@ -90,6 +109,15 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
           disabled={saving || computerUse.working}
           label={t("settings.computerUse.backend")}
           onChange={(next) => { if (isComputerUseBackendId(next) && next !== backend) saveExperiments({ ...experiments, computerUseBackend: next, computerUse: false }); }}
+        />
+      </SettingsRow>
+      <SettingsRow label={t("settings.taskforce.title")} hint={t("settings.taskforce.help")} icon={<MobileIcon name="layout" />} disabled={!experiments.commodore}>
+        <SettingsToggle
+          checked={experiments.taskforce}
+          busy={saving}
+          disabled={saving || !experiments.commodore}
+          ariaLabel={t("settings.taskforce.title")}
+          onChange={(next) => saveExperiments({ ...experiments, taskforce: next })}
         />
       </SettingsRow>
     </SettingsCard>

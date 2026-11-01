@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { CommodoreSidebarCommand, CommodoreSidebarLayout } from "../shared/contracts/sidebar-layout.js";
-import { refreshCommodoreList, replaceCommodoreList, replaceCommodoreSidebarLayout, useCommodoreSidebarLayout } from "./commodore-list.js";
+import { refreshCommodoreList, replaceCommodoreList, replaceCommodoreSidebarLayout, replaceSidebarOrder, useCommodoreSidebarLayout } from "./commodore-list.js";
 import { updateCommodoreSidebar } from "./theaters-api.js";
 
 /** 데스크톱과 모바일이 같은 응답·SSE 합류 규칙으로 섹션 명령을 실행한다. */
@@ -15,6 +15,7 @@ export function useCommodoreSidebarCommands() {
     try {
       const result = await updateCommodoreSidebar(command);
       replaceCommodoreList(result.commodores);
+      replaceSidebarOrder(result.order);
       if (result.sidebarLayout) replaceCommodoreSidebarLayout(result.sidebarLayout);
       return result;
     } catch { setError(true); return null; }

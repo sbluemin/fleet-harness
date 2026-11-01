@@ -11,7 +11,8 @@ import type { TaskforceEvent } from "../features/commodore/shared/contracts/task
 import { createCommodoreStore, type CommodoreStore } from "../features/commodore/host/store.js";
 import { COALESCE_MS, createCommodoreSupervisor } from "../features/commodore/host/supervisor.js";
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
-import type { AgentEvent } from "../features/execution/shared/agent.js";
+import type { AgentEvent, AgentInputBlock } from "../features/execution/shared/agent.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
 import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
 import type { CommodoreBoardAdapter, CommodoreBoardWakeCode } from "../features/objectives/shared/commodore-board.js";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "../features/settings/shared/experiments.js";
@@ -60,15 +61,20 @@ describe("taskforce ledger", () => {
     const taskforceId = (created.value.taskforce as { id: string }).id;
     expect((created.value.entry as { seq: number }).seq).toBe(1);
 
-    // 닫힌 TF의 말은 기록에 남기기 전에 거절한다.
-    expect((await h.route("taskforce/close", { taskforceId })).status).toBe(200);
-    expect((await h.route("taskforce/post", { taskforceId, text: "닫힌 뒤의 말" })).status).toBe(409);
-    expect((await h.route("taskforce/reopen", { taskforceId })).status).toBe(200);
-
     const first = await h.route("taskforce/post", { taskforceId, text: "사람의 말", mentions: [members[0]] });
     expect(first.status).toBe(200);
     const second = h.store.append(taskforceId, { speaker: { kind: "commodore", commodoreId: members[0]! }, text: "사령관의 말" });
     expect(second.entry.seq).toBeGreaterThan((first.value.entry as { seq: number }).seq);
+
+    // 한 발언의 이미지 합계가 턴 예산을 넘으면 저장·원장 append 전에 거절한다.
+    const oversizePart = Buffer.alloc(MAX_COMMODORE_MESSAGE_IMAGE_BYTES / 2 + 1).toString("base64");
+    const rejected = await h.route("taskforce/post", { taskforceId, text: "너무 큰 이미지 묶음", images: [
+      { name: "a.png", mime: "image/png", dataBase64: oversizePart },
+      { name: "b.png", mime: "image/png", dataBase64: oversizePart },
+    ] });
+    expect(rejected).toMatchObject({ status: 400, value: { error: "invalid_request" } });
+    expect(h.store.read(taskforceId)?.lastSeq).toBe(second.entry.seq);
+    expect(fs.existsSync(path.join(h.consoleDataDir, "taskforce", taskforceId, "images", String(second.entry.seq + 1)))).toBe(false);
 
     const page = await h.route("taskforce/read", { taskforceId });
     expect(page.status).toBe(200);
@@ -103,6 +109,7 @@ describe("taskforce ledger", () => {
 interface StubSession {
   readonly name: string;
   readonly sent: string[];
+  readonly images: Extract<AgentInputBlock, { type: "image" }>[][];
   readonly emit: (event: AgentEvent) => void;
   readonly finish: () => void;
   readonly tools: ReadonlyMap<string, ConsoleMcpTool>;
@@ -134,6 +141,7 @@ function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
       const entry: StubSession = {
         name: options.sessionName ?? "",
         sent: [],
+        images: [],
         emit: (event) => options.onEvent?.(event),
         finish: () => finish(),
         tools,
@@ -141,7 +149,8 @@ function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
       sessions.push(entry);
       return {
         send: async (input) => {
-          entry.sent.push(typeof input === "string" ? input : JSON.stringify(input));
+          entry.sent.push(typeof input === "string" ? input : input.flatMap((block) => block.type === "text" ? [block.text] : []).join("\n\n"));
+          entry.images.push(typeof input === "string" ? [] : input.filter((block) => block.type === "image"));
           await new Promise<void>((resolve) => { finish = resolve; });
           options.onEvent?.({ kind: "result", isError: false, source: "message" });
         },
@@ -161,7 +170,7 @@ function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
     agent,
     theaterIds: () => [],
     cwd: (id) => (id === a || id === b ? theaterRoot : null),
-    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true, taskforce: true }),
     theater: () => ({ label: "x", root: theaterRoot }),
     board: () => board,
     taskforce,
@@ -172,6 +181,187 @@ function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
 }
 
 describe("taskforce runtime", () => {
+  it("migrates a previously closed TF without waking its members or changing its ledger", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const { state } = h.taskforce.create({ name: "이전 TF", topic: "보존할 대화", members: [a, b] });
+      const taskforceId = state.id;
+      for (const code of ["close-proposed", "reopened", "closed"] as const) h.taskforce.append(taskforceId, { speaker: { kind: "system", code }, text: "이전 기록" });
+      const previous = h.taskforce.read(taskforceId)!;
+      const tfDir = path.join(h.consoleDataDir, "taskforce", taskforceId);
+      const ledger = fs.readFileSync(path.join(tfDir, "ledger.jsonl"), "utf8");
+      fs.writeFileSync(path.join(tfDir, "state.json"), JSON.stringify({ ...previous, status: "closed", closedAt: Date.now() }));
+      h.taskforce.forget(taskforceId);
+      h.supervisor.sync("started");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(h.sessions).toHaveLength(0);
+      const migrated = h.taskforce.read(taskforceId)!;
+      expect(migrated).not.toHaveProperty("status");
+      expect(migrated).not.toHaveProperty("closedAt");
+      expect(migrated.readSeq).toEqual({ [a]: previous.lastSeq, [b]: previous.lastSeq });
+      const persisted = JSON.parse(fs.readFileSync(path.join(tfDir, "state.json"), "utf8"));
+      expect(persisted).not.toHaveProperty("status");
+      expect(persisted).not.toHaveProperty("closedAt");
+      expect(fs.readFileSync(path.join(tfDir, "ledger.jsonl"), "utf8")).toBe(ledger);
+      const restored = createTaskforceStore({ root: path.join(h.consoleDataDir, "taskforce"), emit: () => undefined });
+      expect(restored.read(taskforceId)?.readSeq).toEqual(migrated.readSeq);
+      expect(restored.pending(taskforceId, a)).toEqual([]);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "다시 나누는 말" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(h.sessions).toHaveLength(2);
+      for (const session of h.sessions) {
+        expect(session.sent[0]).toContain("다시 나누는 말");
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(10);
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("delivers simultaneous posts once and adds history only to a new session's first turn without self-waking", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const { state } = h.taskforce.create({ name: "동시 판단 TF", topic: "공유 대화", members: [a, b] });
+      const taskforceId = state.id;
+      h.supervisor.sync("started");
+      // 긴 사람 발언도 새 말일 때는 원문으로 싣고, 교대한 세션의 이력에서만 자른다.
+      const personText = "함께 답해 주세요: " + "가".repeat(15_900);
+      const imageBytes = Buffer.from("TF image payload");
+      const images = h.taskforce.saveImages(taskforceId, 2, [{ name: "group.png", mime: "image/png", bytes: imageBytes }]);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: personText, images });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
+      expect(sessionOf("Alpha").sent[0]).toContain(personText);
+      expect(sessionOf("Beta").sent[0]).toContain(personText);
+      for (const alias of ["Alpha", "Beta"]) {
+        expect(sessionOf(alias).images[0]).toEqual([{ type: "image", source: { type: "base64", media_type: "image/png", data: imageBytes.toString("base64") } }]);
+        expect(sessionOf(alias).sent[0]).toContain(`id: ${taskforceId}, seq 2 (image ×1)`);
+      }
+      const post = async (alias: string, text: string) => {
+        const result = await sessionOf(alias).tools.get("taskforce_post")!.execute({ taskforceId, text }, { cwd: h.theaterRoot, toolCallId: alias } as never);
+        expect(result).not.toMatchObject({ isError: true });
+        return h.taskforce.lastEntry(taskforceId)!;
+      };
+      // 두 턴이 같은 입력을 판단 중이다. Beta가 나중에 말해도 그 전에 도착한 Alpha의 말을 읽은 셈 치면 안 된다.
+      const alpha = await post("Alpha", "Alpha의 동시 응답");
+      const beta = await post("Beta", "Beta의 동시 응답");
+      // 보드 쓰기 묶음 역시 읽음 커서를 건너뛰게 하면 안 된다.
+      h.taskforce.appendActions(taskforceId, b, { actions: [{ kind: "add", objectiveId: "o1", title: "공유 작업" }], replyTo: beta.seq });
+      expect(h.taskforce.read(taskforceId)?.readSeq).toMatchObject({ [a]: 0, [b]: 0 });
+      sessionOf("Alpha").finish();
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      for (const [alias, peer] of [["Alpha", beta], ["Beta", alpha]] as const) {
+        const session = sessionOf(alias);
+        expect(session.sent).toHaveLength(2);
+        expect(session.images[1]).toEqual([]);
+        const prompt = session.sent[1]!;
+        expect(prompt.split(`[seq ${peer.seq}]`)).toHaveLength(2);
+        expect(prompt).toContain(`${alias === "Alpha" ? "Beta" : "Alpha"}: ${peer.text}`);
+        expect(prompt).not.toContain("Recent conversation reminder");
+        expect(prompt).not.toContain("person: 함께 답해 주세요");
+        expect(prompt).not.toContain("[seq 2]");
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(sessionOf("Alpha").sent).toHaveLength(2);
+      expect(sessionOf("Beta").sent).toHaveLength(2);
+      // 교대한 Alpha의 첫 턴에만 읽은 이력을 붙인다. 같은 세션의 Beta는 새 말만 받는다.
+      const oldAlpha = sessionOf("Alpha");
+      h.supervisor.replaceSessionNext(a);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "서로의 응답을 확인해 주세요" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      for (const alias of ["Alpha", "Beta"]) {
+        const session = sessionOf(alias);
+        const prompt = session.sent.at(-1)!;
+        expect(session.images.at(-1)).toEqual([]);
+        expect(prompt).toContain("서로의 응답을 확인해 주세요");
+        if (alias === "Alpha") {
+          expect(session).not.toBe(oldAlpha);
+          expect(session.sent).toHaveLength(1);
+          const history = prompt.split("Recent conversation reminder (already read; not new utterances):\n")[1]!.split("New ledger entries")[0]!;
+          expect(history.length).toBeLessThanOrEqual(8001);
+          expect(history).toContain("person: 함께 답해 주세요");
+          expect(history).toContain("[seq 2] (image ×1)");
+          expect(history).toContain("[history truncated]");
+          for (const entry of [alpha, beta]) {
+            expect(history).toContain(entry.text);
+            expect(prompt.split(`[seq ${entry.seq}]`)).toHaveLength(2);
+          }
+        } else {
+          expect(prompt).not.toContain("Recent conversation reminder");
+          for (const entry of [alpha, beta]) expect(prompt).not.toContain(`[seq ${entry.seq}]`);
+        }
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(10);
+      // 다음 1:1 턴도 새 세션이 아니므로 TF 이력을 반복하지 않는다.
+      h.store.transcriptAppend(a, { kind: "message", text: "개인 대화" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessionOf("Alpha").sent.at(-1)).not.toContain("Recent conversation reminder");
+      expect(sessionOf("Alpha").sent.at(-1)).not.toContain(`(id: ${taskforceId})`);
+      sessionOf("Alpha").finish();
+      await vi.advanceTimersByTimeAsync(10);
+      // 두 이미지 발언은 각각 한 턴에 들어간다. 합계가 턴 예산을 넘으면 두 번째 발언 전체를 남긴다.
+      const largeImage = Buffer.alloc(MAX_COMMODORE_MESSAGE_IMAGE_BYTES, 1);
+      const imageEntries = ["큰 이미지 1", "큰 이미지 2"].map((text) => {
+        const seq = h.taskforce.read(taskforceId)!.lastSeq + 1;
+        const saved = h.taskforce.saveImages(taskforceId, seq, [{ name: "large.png", mime: "image/png", bytes: largeImage }]);
+        return h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text, images: saved }).entry;
+      });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      const previous = [sessionOf("Alpha"), sessionOf("Beta")];
+      for (const session of previous) {
+        expect(session.images.at(-1)).toHaveLength(1);
+        expect(session.sent.at(-1)).toContain(imageEntries[0]!.text);
+        expect(session.sent.at(-1)).not.toContain(imageEntries[1]!.text);
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      // 누적 12 MiB 세션 상한을 넘기 전 교체하고, 새 세션에는 남겨 둔 두 번째 이미지만 싣는다.
+      for (const [index, alias] of ["Alpha", "Beta"].entries()) {
+        const session = sessionOf(alias);
+        expect(session).not.toBe(previous[index]);
+        expect(session.sent).toHaveLength(1);
+        expect(session.images[0]).toHaveLength(1);
+        const [history, unread] = session.sent[0]!.split("New ledger entries");
+        expect(history).toContain(imageEntries[0]!.text);
+        expect(history).toContain("(image ×1)");
+        expect(unread).toContain(imageEntries[1]!.text);
+        expect(unread).not.toContain(imageEntries[0]!.text);
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      for (const id of [a, b]) {
+        expect(h.taskforce.read(taskforceId)?.readSeq[id]).toBe(imageEntries[1]!.seq);
+        expect(JSON.stringify(h.store.transcriptRead(id))).not.toContain("큰 이미지");
+      }
+      // 이전 버전에서 저장한 상한 초과 묶음은 새 턴을 영원히 막지 않고, 생략 사실과 텍스트를 전달한다.
+      const persisted = h.taskforce.read(taskforceId)!;
+      const legacy = { seq: persisted.lastSeq + 1, at: Date.now(), speaker: { kind: "person" }, mentions: [], text: "과거의 큰 이미지 묶음", images: imageEntries.flatMap((entry) => entry.images ?? []) };
+      const tfDir = path.join(h.consoleDataDir, "taskforce", taskforceId);
+      fs.appendFileSync(path.join(tfDir, "ledger.jsonl"), JSON.stringify(legacy) + "\n");
+      fs.writeFileSync(path.join(tfDir, "state.json"), JSON.stringify({ ...persisted, lastSeq: legacy.seq }));
+      h.taskforce.forget(taskforceId);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "계속 판단해 주세요" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      for (const alias of ["Alpha", "Beta"]) {
+        const session = sessionOf(alias);
+        expect(session.images.at(-1)).toEqual([]);
+        expect(session.sent.at(-1)).toContain("과거의 큰 이미지 묶음 (images omitted: exceeds 8 MiB message limit)");
+        expect(session.sent.at(-1)).toContain("계속 판단해 주세요");
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      for (const id of [a, b]) expect(h.taskforce.read(taskforceId)?.readSeq[id]).toBe(legacy.seq + 1);
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("pauses the chain at 12, never self-wakes, and keeps TF traffic out of 1:1 transcripts", async () => {
     vi.useFakeTimers();
     try {

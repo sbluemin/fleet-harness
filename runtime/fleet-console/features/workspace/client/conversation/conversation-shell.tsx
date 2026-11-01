@@ -54,6 +54,8 @@ import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
 import { TaskforceCreateMenu } from "../../../commodore/client/taskforce/create-menu.js";
+import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
+import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
@@ -235,17 +237,19 @@ const PlusGlyph = () => (
 
 /**
  * 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 만들기 메뉴. 「+」에서 새 사령관과 새 TaskForce를 고른다.
+ * TF 실험이 꺼져 있으면 메뉴 없이 바로 사령관 만들기로 간다(TF 도입 전 동작).
  * 새 Theater는 새 세션 화면의 「Theater 추가…」와 팔레트(⌘K)에 있다.
  */
 export function ConversationSideBarActions() {
   const t = useT();
+  const { enabled } = useTaskforceExperiment();
   return (
     <span className="conversation-side-actions">
       <span className="remote-console-anchor" data-remote-console-anchor />
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      <TaskforceCreateMenu><PlusGlyph /></TaskforceCreateMenu>
+      {enabled ? <TaskforceCreateMenu><PlusGlyph /></TaskforceCreateMenu> : <button type="button" className="conversation-round" onClick={() => requestCommodoreCreate()} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")}><PlusGlyph /></button>}
     </span>
   );
 }
@@ -1405,8 +1409,20 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const bindings = useDesktopRailEntries();
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
+  const previousSurface = useRef<{ id: string; group: string | undefined; tabs: readonly string[] } | null>(null);
+  const activeBeforeTransition = getRailStoreSnapshot().activePanelId;
   useEffect(() => {
+    const previous = previousSurface.current;
+    previousSurface.current = { id: descriptor.id, group: descriptor.railContinuityGroup, tabs: tabIdsRef.current };
     if (descriptor.defaultTab === undefined && descriptor.resolveDefaultTab === undefined) return;
+    if (previous && previous.id !== descriptor.id && previous.group !== undefined && previous.group === descriptor.railContinuityGroup) {
+      // 앞 탭의 등록이 걷히기 전 렌더에서 읽은 열림을 잇는다. 다른 도구 패널은 그대로 둔다.
+      if (activeBeforeTransition !== null && previous.tabs.includes(activeBeforeTransition)) {
+        const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
+        if (fallback !== undefined) openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
+      }
+      return;
+    }
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && !tabIdsRef.current.includes(active)) {
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
@@ -1416,7 +1432,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
     if (fallback === undefined) return;
     openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
-  }, [descriptor.defaultTab, descriptor.resolveDefaultTab, descriptor.id, selection.nonce]);
+  }, [descriptor.defaultTab, descriptor.resolveDefaultTab, descriptor.railContinuityGroup, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Objective 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.
