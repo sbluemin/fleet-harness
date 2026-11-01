@@ -252,7 +252,7 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
   const port = useMemo(() => taskforceAttachmentPort(), [id]);
   const composerT = getCommodoreT(language);
   const composer = <div className="taskforce-foot">{failure || snapshot.error ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} {snapshot.error ? <button type="button" className="taskforce-link" onClick={() => void loadTaskforce(id)}>{t("taskforce.retry")}</button> : null}</p> : null}
-    {state ? <CommodoreComposer t={composerT} theaterId={state.id} active placeholder={t("taskforce.placeholder")} allowedCommodoreIds={state.members} attachmentPort={port} attachmentLimits={{ max: MAX_TASKFORCE_IMAGES, bytes: MAX_TASKFORCE_IMAGE_BYTES }} sender={async ({ text, attachmentIds, references }) => {
+    {state ? <CommodoreComposer t={composerT} theaterId={state.id} active placeholder={t("taskforce.placeholder")} ariaLabel={t("taskforce.aria.composer")} allowedCommodoreIds={state.members} attachmentPort={port} attachmentLimits={{ max: MAX_TASKFORCE_IMAGES, bytes: MAX_TASKFORCE_IMAGE_BYTES }} sender={async ({ text, attachmentIds, references }) => {
       const mentions = references.flatMap((reference) => typeof reference === "string" ? [] : reference.kind === "commodore" && state.members.includes(reference.id) ? [reference.id] : []);
       const images = attachmentIds.flatMap((imageId) => {
         const payload = taskforceImagePayloads.get(imageId);

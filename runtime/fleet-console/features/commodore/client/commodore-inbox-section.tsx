@@ -759,6 +759,8 @@ interface CommodoreComposerProps {
   readonly allowedCommodoreIds?: readonly string[];
   readonly attachmentPort?: ComposerAttachmentPort;
   readonly attachmentLimits?: ComposerAttachmentLimits;
+  /** 입력란의 접근성 이름 — 없으면 사령관에게 보내는 말로 읽힌다(TaskForce처럼 다른 대상에 쓸 때 넘긴다). */
+  readonly ariaLabel?: string;
   readonly sender?: (input: { readonly text: string; readonly attachmentIds: readonly string[]; readonly references: readonly (string | { readonly kind: "commodore"; readonly id: string })[] }) => Promise<void>;
 }
 
@@ -775,7 +777,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel }: CommodoreComposerProps) {
   const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId, attachmentPort, attachmentLimits);
@@ -927,7 +929,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
         isFile={isComposerAttachmentCandidate}
         ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
         placeholder={placeholder ?? composerQuotePlaceholder(quotes.length, ct) ?? t("commodore.composer.placeholder")}
-        ariaLabel={t("commodore.composer.aria")}
+        ariaLabel={ariaLabel ?? t("commodore.composer.aria")}
         onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().budgetNotice) setBudgetNotice(null); if (draft.attachments.read().notice) draft.attachments.clearNotice(); }}
         onCompositionStart={() => { composing.current = true; }}
         onCompositionEnd={() => { composing.current = false; }}
