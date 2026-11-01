@@ -70,6 +70,10 @@ export function createCommodoreImages(
     }
     return { base, messages };
   };
+  const shelteredIds = (commodoreId: string): ReadonlySet<string> => {
+    try { return options.protectedMessageIds?.(commodoreId) ?? new Set<string>(); }
+    catch { return new Set<string>(); }
+  };
   const trimInternal = (commodoreId: string, newestId?: string) => {
     let listed: { base: string; messages: { id: string; bytes: number; mtime: number }[] };
     try { listed = listMessages(commodoreId); }
@@ -77,9 +81,8 @@ export function createCommodoreImages(
     const { base, messages } = listed;
     let total = messages.reduce((sum, message) => sum + message.bytes, 0);
     if (total <= maxBytes) return;
-    let sheltered: ReadonlySet<string> = new Set();
-    try { sheltered = options.protectedMessageIds?.(commodoreId) ?? sheltered; } catch { /* 보호 목록을 읽지 못하면 newest만 살린다. */ }
     // 전달 대기·진행·재시도 중인 원본은 지우지 않는다 — 보호만으로 상한을 넘으면 이번은 초과로 두고 다음 전달 뒤에 거둔다.
+    const sheltered = shelteredIds(commodoreId);
     const candidates = messages.filter((message) => message.id !== newestId && !sheltered.has(message.id));
     let seqs: ReadonlyMap<string, number> | undefined;
     try { seqs = options.messageSeqs(commodoreId); } catch { /* 기록을 읽지 못하면 디렉터리 시각으로 되돌아간다. */ }
@@ -117,10 +120,14 @@ export function createCommodoreImages(
       try { return listMessages(commodoreId).messages.reduce((sum, message) => sum + message.bytes, 0); }
       catch { return 0; }
     },
-    /** 새 사본을 더해도 보관 상한을 넘지 않는가 — 넘으면 송신 단계에서 거절한다. */
+    /** 새 사본을 더해도 지울 수 없는 보호분과 합쳐 보관 상한을 넘지 않는가 — 넘으면 송신 단계에서 거절한다. */
     admit(commodoreId: string, newBytes: number): boolean {
       if (!Number.isFinite(newBytes) || newBytes < 0) return false;
-      try { return listMessages(commodoreId).messages.reduce((sum, message) => sum + message.bytes, 0) + newBytes <= maxBytes; }
+      try {
+        const sheltered = shelteredIds(commodoreId);
+        const held = listMessages(commodoreId).messages.reduce((sum, message) => sum + (sheltered.has(message.id) ? message.bytes : 0), 0);
+        return held + newBytes <= maxBytes;
+      }
       catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return newBytes <= maxBytes; return true; }
     },
     /** 받은 처리·정지 뒤 명시적 회수 — 대기·진행 중 보호는 유지한다. */

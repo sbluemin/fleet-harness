@@ -567,6 +567,13 @@ it("rejects mail when pending images would exceed the retained budget and trims 
     finish(); await vi.advanceTimersByTimeAsync(1);
     expect(store.pendingReceived(to)).toHaveLength(0);
     expect(store.images.bytes(to)).toBeLessThanOrEqual(10);
+    // 보호되지 않은 오래된 사본으로 상한이 차 있어도 새 이미지 mail은 수락되고, 저장 후 총량 ≤ cap.
+    const accepted = send(from, { to, text: "보호되지 않은 사본이 있어도 수락", attachmentIds: [secondId] }, turnFor(secondImage));
+    expect(accepted.delivered).toBe(true);
+    expect(store.images.bytes(to)).toBeLessThanOrEqual(10);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.pendingReceived(to)).toHaveLength(0);
     // 송신 수락을 우회한 초과분도 받은 처리 뒤에는 상한 안으로 돌아온다.
     const thirdId = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
     const fourthId = "cccccccc-cccc-4ccc-cccc-cccccccccccc";
