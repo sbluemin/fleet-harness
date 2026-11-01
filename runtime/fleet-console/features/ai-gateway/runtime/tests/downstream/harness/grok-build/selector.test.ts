@@ -15,7 +15,7 @@ import type { GatewayHttpHandlerContext } from "../../../../src/router/types.js"
 const BASE = "/ai-gateway";
 const CLAUDE_MESSAGES = `${BASE}/v1/messages`;
 const GROK_MESSAGES = `${BASE}/grok/v1/messages`;
-const GROK_MODEL = "grok-build-gateway--codex--gpt-6-sol";
+const GROK_MODEL = "grok-build-gateway--codex--gpt-6-1-sol";
 
 describe("grok build harness selector", () => {
   it("routes the selector segment to grok and leaves the bare mount on Claude Code", async () => {

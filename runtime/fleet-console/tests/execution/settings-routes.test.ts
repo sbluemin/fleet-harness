@@ -111,14 +111,14 @@ describe("terminal settings routes", () => {
   it("PUT /api/v1/agent/settings stores delegation routing mode independently", async () => {
     const harness = createRouteHarness({
       body: { delegationRoutingMode: "jev" },
-      aiGateway: { version: 1, models: [{ id: "codex--gpt-6-sol" }] },
+      aiGateway: { version: 1, models: [{ id: "codex--gpt-6.1-sol" }] },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({ delegationRoutingMode: "jev" });
     expect(harness.currentAiGateway()).toEqual({
       version: 1,
-      models: [{ id: "codex--gpt-6-sol" }],
+      models: [{ id: "codex--gpt-6.1-sol" }],
       delegationRoutingMode: "jev",
     });
 
@@ -131,7 +131,7 @@ describe("terminal settings routes", () => {
     expect(cleared.currentAiGateway()).toEqual({
       version: 1,
       delegationRoutingMode: "model",
-      models: [{ id: "codex--gpt-6-sol" }],
+      models: [{ id: "codex--gpt-6.1-sol" }],
     });
   });
 
