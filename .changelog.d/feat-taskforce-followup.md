@@ -12,8 +12,8 @@ branch: feat/taskforce-followup
   ko: 태스크포스가 사령관 목록에 사령관처럼 놓여 드래그로 순서와 섹션을 정하고 우클릭으로 삭제하며, 멤버는 작은 아바타 그리드로 보입니다.
 - The TaskForce side panel is simpler: a Members tab where clicking a member opens their 1:1 chat, and a topic you edit like a Commodore description.
   ko: 태스크포스 우측 패널이 단순해져 멤버 탭에서 멤버를 누르면 1:1 대화로 가고, 주제는 사령관 설명처럼 편집합니다.
-- The right sidebar stays open or closed as you move between Commodore chats and TaskForces.
-  ko: 사령관 대화와 태스크포스를 오가도 우측 사이드바가 열림·닫힘 상태를 그대로 유지합니다.
+- The right sidebar stays open or closed as you move between Commodore chats, TaskForces, and the New Objective screen, which now shows its Commodore's tabs.
+  ko: 사령관 대화·태스크포스·새 목표 화면을 오가도 우측 사이드바가 열림·닫힘 상태를 그대로 유지하며, 새 목표 화면에서는 그 사령관의 탭이 보입니다.
 
 #### Fixed
 - TaskForce members now see what other members said, even when they were answering at the same time, so they can build on each other's replies.
