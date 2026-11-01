@@ -248,7 +248,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       return;
     }
     if (section === null) {
-      // 세부의 막대는 둥근 ‹ · ⋮ 뿐이다 — 이름은 본문의 큰 머리가 말한다. ⋮ 는 데스크톱 사이드바 사령관 메뉴의 새 세션 · Theater… 를 옮긴 것이다.
+      // 세부의 막대는 둥근 ‹ · ⋮ 뿐이다 — 이름은 본문의 큰 머리가 말한다. ⋮ 는 데스크톱 사이드바 사령관 메뉴의 새 목표 · Theater 추가 를 옮긴 것이다.
       bar.set({
         title: "",
         round: true,
