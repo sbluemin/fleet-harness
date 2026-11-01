@@ -699,7 +699,9 @@ function TheaterSectionHeader({
   const activateRef = useRef<HTMLButtonElement | null>(null);
   // 플러그인 표식(자율 운영의 사령관 글리프)이 있으면 이니셜 칩 자리에 선다. 운영자가 일하는 동안 이름에 라이브 물결이 흐른다.
   const contributionSummary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
-  const mark = useTheaterContributionMark(contributionSummary);
+  const contributedMark = useTheaterContributionMark(contributionSummary);
+  // 자기 아바타를 가진 행(TaskForce)은 사령관 표식을 받지 않는다 — 표식이 TF id를 사령관으로 그리지 않게 한다.
+  const mark = avatarOverride ? null : contributedMark;
   const live = useTheaterHeaderLive(theater.id);
   const selected = useTheaterHeaderSelected(theater.id);
   // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
