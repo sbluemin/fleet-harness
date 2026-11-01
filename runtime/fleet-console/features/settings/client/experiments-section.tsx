@@ -31,23 +31,25 @@ const TASKFORCE_FLASH_MS = 2600;
 function useTaskforceRowFlash(): boolean {
   const highlight = useTaskforceRowHighlight();
   const [flash, setFlash] = useState(false);
-  // 타이머는 ref에 둔다 — 토큰 소비가 일으키는 highlight=0 재실행의 cleanup이
-  // 펄스를 지우지 않게 하고, 타이머는 새 요청이나 언마운트 때만 지운다.
+  // rAF와 타이머는 ref에 둔다 — 토큰 소비가 일으키는 highlight=0 재실행에서는
+  // 아무것도 정리하지 않아야 펄스가 시작되고, 새 요청이나 언마운트 때만 지운다.
+  const rafRef = useRef(0);
   const timerRef = useRef(0);
   useEffect(() => () => {
+    cancelAnimationFrame(rafRef.current);
     window.clearTimeout(timerRef.current);
   }, []);
   useEffect(() => {
     if (highlight === 0) return;
     takeTaskforceRowHighlight();
+    cancelAnimationFrame(rafRef.current);
     window.clearTimeout(timerRef.current);
     // 새 요청이 겹치면 클래스를 뗐다 붙여 애니메이션을 처음부터 다시 돌린다.
     setFlash(false);
-    const raf = requestAnimationFrame(() => {
+    rafRef.current = requestAnimationFrame(() => {
       setFlash(true);
       timerRef.current = window.setTimeout(() => setFlash(false), TASKFORCE_FLASH_MS);
     });
-    return () => cancelAnimationFrame(raf);
   }, [highlight]);
   return flash;
 }
