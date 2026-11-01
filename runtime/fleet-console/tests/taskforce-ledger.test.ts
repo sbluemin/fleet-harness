@@ -98,6 +98,27 @@ describe("taskforce ledger", () => {
     expect(fs.existsSync(path.join(h.consoleDataDir, "taskforce", taskforceId))).toBe(false);
     expect(h.reopen().read(taskforceId)).toBeNull();
   });
+
+  it("adds and removes members with a 200 response and a membership system entry", async () => {
+    const h = harness();
+    const members = [randomUUID(), randomUUID(), randomUUID()];
+    const created = await h.route("taskforce/create", { name: "성원 TF", topic: "주제", members });
+    expect(created.status).toBe(200);
+    const taskforceId = (created.value.taskforce as { id: string }).id;
+
+    const newcomer = randomUUID();
+    const added = await h.route("taskforce/members/add", { taskforceId, commodoreIds: [newcomer] });
+    expect(added.status).toBe(200);
+    expect((added.value.taskforce as { members: string[] }).members).toEqual([...members, newcomer]);
+
+    // 제거는 실제로 반영되면서 200으로 끝나고 `member-removed` 항목을 남긴다.
+    const removed = await h.route("taskforce/members/remove", { taskforceId, commodoreId: members[0] });
+    expect(removed.status).toBe(200);
+    expect((removed.value.taskforce as { members: string[] }).members).toEqual([members[1], members[2], newcomer]);
+    const codes = h.store.readLedger(taskforceId).entries.flatMap((entry) => (entry.speaker.kind === "system" ? [entry.speaker.code] : []));
+    expect(codes).toContain("member-added");
+    expect(codes).toContain("member-removed");
+  });
 });
 
 /**

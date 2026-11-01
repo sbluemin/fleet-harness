@@ -256,7 +256,8 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     if (input.speaker.kind === "commodore" && !current.members.includes(input.speaker.commodoreId)) throw new TaskforceStoreError("invalid_request");
     if ((input.images ?? []).reduce((bytes, image) => bytes + image.size, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new TaskforceStoreError("invalid_request");
     const mentions = [...new Set(input.mentions ?? [])];
-    if (mentions.some((id) => !current.members.includes(id))) throw new TaskforceStoreError("invalid_request");
+    // system 항목의 지목은 참여·나감 전이의 대상이다 — 커밋 뒤에는 성원이 아니므로 성원 검사를 건너뛴다. 모양 검사는 아래 스키마가 맡는다.
+    if (input.speaker.kind !== "system" && mentions.some((id) => !current.members.includes(id))) throw new TaskforceStoreError("invalid_request");
     if (input.replyTo !== undefined && (input.replyTo < 1 || input.replyTo > current.lastSeq)) throw new TaskforceStoreError("invalid_request");
     if (input.speaker.kind !== "system" && !input.text.trim() && !(input.actions?.length)) throw new TaskforceStoreError("invalid_request");
     const entry = { ...input, mentions, seq: seqOf(taskforceId) + 1, at: now() } as TaskforceLedgerEntry;
