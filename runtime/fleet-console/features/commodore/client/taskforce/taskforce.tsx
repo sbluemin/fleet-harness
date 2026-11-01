@@ -26,6 +26,8 @@ import { CONVERSATION_REFERENCE_MARK } from "../../../execution/shared/conversat
 import { MentionChip } from "../../../execution/client/composer-primitives/mention-chip.js";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
+import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
+import { pushOverlayHistory, releaseOverlayHistory } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { taskforceT } from "./i18n.js";
 import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, readTaskforceExperiment, readTaskforces, subscribeTaskforces, useTaskforce, useTaskforceExperiment, useTaskforces, wasTaskforceRemoved } from "./state.js";
 import "./taskforce.css";
@@ -248,6 +250,17 @@ function MentionText({ entry, language, speaker }: { readonly entry: TaskforceLe
 function TaskforceMobileScreen({ id, language, onClose }: { readonly id: string; readonly language: "ko" | "en"; readonly onClose: () => void }) {
   const t = taskforceT(language);
   const [details, setDetails] = useState(false);
+  // 이 화면은 앱 틀의 시트 호스트(z-index 50대)보다 위에 서므로 시트를 호스트로 열 수 없다 — 하드웨어·브라우저 뒤로가 TaskForce 화면보다
+  // 시트를 먼저 닫도록 열려 있는 동안만 뒤로 겹침과 history 항목을 올린다(결과 창과 같은 계약).
+  useEffect(() => {
+    if (!details) return;
+    let historyId: number | null = pushOverlayHistory(() => { historyId = null; setDetails(false); });
+    const releaseLayer = pushBackLayer(() => setDetails(false));
+    return () => {
+      releaseLayer();
+      if (historyId !== null) releaseOverlayHistory(historyId);
+    };
+  }, [details]);
   return <div className="taskforce-mobile-screen">
     <header>
       <button type="button" className="mobile-bar-button" aria-label={t("taskforce.closeDialog")} onClick={onClose}><MobileIcon name="back" /></button>
