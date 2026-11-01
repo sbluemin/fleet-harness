@@ -84,8 +84,8 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
     };
   }, []);
 
-  // 시청 기록이 줄어드는 유일한 경로는 사용자가 "화면 안내 다시 보기"를 부른 것이다. 그때는 완료 표시도 함께 풀어야
-  // 미뤄둔 투어까지 요청한 자리에서 재생된다.
+  // 시청 기록은 앞으로만 쌓인다 — 줄어들면 미뤄둔 투어의 완료 표시도 함께 풀어야
+  // 그 투어가 요청한 자리에서 다시 재생된다.
   const seenCountRef = useRef(seen.length);
   useEffect(() => {
     if (seen.length < seenCountRef.current) completedTourRef.current = null;

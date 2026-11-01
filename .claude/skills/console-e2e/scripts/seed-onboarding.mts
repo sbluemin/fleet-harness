@@ -46,7 +46,7 @@ register(`data:text/javascript,${encodeURIComponent(`export async function resol
 (globalThis as { React?: unknown }).React ??= (await load(createRequire(join(consoleSrc, "package.json")).resolve("react"))).default;
 
 const { CORE_ONBOARDING } = await load(join(consoleSrc, "core/client/src/integration/onboarding.ts"));
-const { EFFORT_CONFIRM_TIP_SEEN_KEY, hintSeenKey, tourSeenKey } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
+const { EFFORT_CONFIRM_TIP_SEEN_KEY, FLEET_AT_A_GLANCE_SEEN_KEY, hintSeenKey, tourSeenKey } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
 const { COMMISSIONING_SEEN_KEY } = await load(join(consoleSrc, "core/client/src/integration/store.ts"));
 
 // The app passes CORE_ONBOARDING and the feature registry's `onboarding` (core/client/src/app/app.tsx). The registry
@@ -71,10 +71,9 @@ for (const feature of readdirSync(featuresDir)) {
   }
 }
 
-// Seen keys outside the contributions: the ones "Replay onboarding" also clears. Their list is the unexported drop set
-// in forgetAllOnboarding (core/client/src/chrome/components/command-band-system-cluster.tsx), so a key added there
-// needs adding here; --dry-run shows what is covered.
-const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string];
+// Seen keys stored outside any contribution: first-run commissioning, the retired effort-confirm tip, and the
+// "Fleet at a glance" first-run popup. A new key stored outside a contribution needs adding here; --dry-run shows what is covered.
+const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string, FLEET_AT_A_GLANCE_SEEN_KEY as string];
 for (const contribution of contributions) {
   const hint = hintSeenKey(contribution);
   if (hint) derived.push(hint);

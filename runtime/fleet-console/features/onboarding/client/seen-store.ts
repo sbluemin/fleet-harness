@@ -13,9 +13,15 @@ const SEEN_LIMIT = 64;
 
 /**
  * 강도 확인 팁의 기록 키 — 투어 카탈로그 항목은 아니지만 같은 seenFeatureTours 필드에 실렸다. 팁을 띄우던 '+' 모델 메뉴는 새 세션
- * 화면으로 바뀌어 떠났지만, 이미 저장된 기록을 「화면 안내 다시 보기」가 함께 지우도록 키는 남긴다.
+ * 화면으로 바뀌어 떠났지만, 이미 저장된 기록은 그대로 둔다.
  */
 export const EFFORT_CONFIRM_TIP_SEEN_KEY = "effort-confirm-tip";
+
+/**
+ * 도움말 › 플릿 한눈에 보기의 본 기록 키 — 첫 실행에 한 번 자동으로 열리는 팝업이다.
+ * 한 번 배포한 키는 바꾸지 않는다. 바꾸면 이미 본 사람에게 같은 안내가 다시 선다.
+ */
+export const FLEET_AT_A_GLANCE_SEEN_KEY = "fleet-at-a-glance";
 
 export function hintSeenKey(contribution: OnboardingContribution): string | null {
   if (!contribution.entryHint) return null;
@@ -60,29 +66,4 @@ export async function persistSeen(
   if (next === seen) return seen;
   await persist(next);
   return next;
-}
-
-// "화면 안내 다시 보기"가 되돌릴 대상 — 호스트가 마운트한 기여 목록. 호스트는 코어 번들에 한 번만 마운트되므로
-// 이 모듈 상태는 그 번들 안에서만 읽힌다(플러그인 번들은 기여를 넘길 뿐 이 상태를 읽지 않는다).
-let mountedContributions: readonly OnboardingContribution[] = [];
-
-export function setMountedOnboardingContributions(contributions: readonly OnboardingContribution[]): void {
-  mountedContributions = contributions;
-}
-
-/**
- * 다시 보기 — 힌트와 투어의 본 기록을 지운다.
- */
-export function forgetReplayableOnboarding(seen: readonly string[]): readonly string[] {
-  const drop = new Set<string>();
-  for (const contribution of mountedContributions) {
-    const hint = hintSeenKey(contribution);
-    if (hint) drop.add(hint);
-    for (const tour of contribution.tours ?? []) {
-      drop.add(tourSeenKey(tour.id, "walkthrough"));
-      drop.add(tourSeenKey(tour.id, "spotlight"));
-    }
-  }
-  const next = seen.filter((key) => !drop.has(key));
-  return next.length === seen.length ? seen : next;
 }

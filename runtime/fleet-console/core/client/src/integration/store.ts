@@ -42,7 +42,7 @@ const THEME_HINT_STORAGE_KEY = "fleet-console.theme-hint";
 const RETIRED_LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
 // 서버 seenFeatureTours로 일방향 승격하기 위한 legacy migration 읽기·삭제 전용 키다. 새 값은 쓰지 않는다.
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
-// "화면 안내 다시 보기"가 온보딩 전체를 초기화할 때 함께 지우는 최초 설정 가이드 시청 키.
+// 최초 설정 가이드의 시청 키 — 닫힐 때 seenFeatureTours에 쌓여 다음 실행에 다시 서지 않는다.
 export const COMMISSIONING_SEEN_KEY = "commissioning";
 
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
@@ -125,6 +125,7 @@ let state: ConsoleState = {
   newSessionFocusRequest: 0,
   newSessionRejection: null,
   keyboardShortcutsOpen: false,
+  fleetAtAGlanceOpen: false,
   objectiveRecordNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
 };
@@ -834,6 +835,16 @@ export function closeKeyboardShortcuts(): void {
   setState({ keyboardShortcutsOpen: false });
 }
 
+export function openFleetAtAGlance(): void {
+  if (state.fleetAtAGlanceOpen) return;
+  setState({ fleetAtAGlanceOpen: true });
+}
+
+export function closeFleetAtAGlance(): void {
+  if (!state.fleetAtAGlanceOpen) return;
+  setState({ fleetAtAGlanceOpen: false });
+}
+
 export function nextObjectiveId(order: readonly string[], currentId: string | null, delta: number): string | null {
   if (order.length === 0) return null;
   const current = currentId ? order.indexOf(currentId) : -1;
@@ -1136,7 +1147,7 @@ function readStoredNotificationPreferences(): NotificationPreferences {
   }
 }
 
-function readStoredCommissioningSeen(): boolean {
+export function readStoredCommissioningSeen(): boolean {
   if (typeof window === "undefined") return false;
   try {
     return window.localStorage.getItem(COMMISSIONING_SEEN_STORAGE_KEY) === "1";

@@ -4,15 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import type { Translate } from "@fleet-console/i18n";
 
 import { refreshConsole, useConsoleUpdateAction, useVersionRefresh } from "./console-update-action.js";
-import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin, type DesktopShellHome } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { useUpdateSignals } from "./update-notice-bubble.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
-import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
-import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
-import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/onboarding/client/seen-store.js";
+import { openFleetAtAGlance, openWhatsNew, setState } from "../../integration/store.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 import { useSideSubmenu, type SideSubmenuGroup } from "./use-side-submenu.js";
@@ -146,15 +143,6 @@ export function isLoopbackOrigin(origin: string): boolean {
   }
 }
 
-// "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다. 엔진이 마운트한 모든 기여의
-// 엔트리 힌트·투어 시청 기록과 최초 설정 가이드·강도 확인 팁 기록을 함께 지워, 어느 화면에 있든 처음부터 다시 보게 한다.
-function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
-  const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY]);
-  const afterOnboarding = forgetReplayableOnboarding(seen);
-  const next = afterOnboarding.filter((key) => !drop.has(key));
-  return next.length === afterOnboarding.length ? afterOnboarding : next;
-}
-
 function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, latestVersion, version, menuItem, sideSubmenuGroup }: {
   readonly menuItem?: boolean;
   readonly sideSubmenuGroup?: SideSubmenuGroup;
@@ -180,26 +168,13 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
     group: menuItem === true ? sideSubmenuGroup : undefined,
   });
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const globalSettings = useGlobalSettingsStore();
-  const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
   // 메뉴가 열릴 때마다 셸 스냅샷을 다시 읽는다 — 느린 핸드오프에서는 버전이 첫 읽기 뒤에 도착한다.
   const [opens, setOpens] = useState(0);
   useEffect(() => { if (open) setOpens((count) => count + 1); }, [open]);
   const { shell, shellUpdate, consoleFoldsIntoShell, updateReady } = useUpdateSignals({ reloadToken: opens, updateAvailable, shellUpdateRequired });
-  // "화면 안내 다시 보기"는 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다 —
-  // 카탈로그의 모든 피처 투어 시청 기록과 최초 설정 가이드 기록을 함께 지워, 어느 화면에
-  // 있든 온보딩을 처음부터 다시 보게 한다.
-  const replayDisabled = forgetAllOnboarding(seenFeatureTours) === seenFeatureTours;
 
   // 메뉴 항목일 때는 옆 서브메뉴가 키·바깥 누름을 맡는다. 도구모음 칩은 아래로 열리는 판 그대로다.
   useMenuButtonKeyboard(rootRef, triggerRef, menuRef, menuItem === true ? false : open, setOpen);
-
-  const replayScreenGuide = () => {
-    const next = forgetAllOnboarding(seenFeatureTours);
-    setOpen(false);
-    if (next === seenFeatureTours) return;
-    void setGlobalSettingsField("seenFeatureTours", next);
-  };
 
   return <span ref={rootRef} className="command-band-system-anchor">
     {/* 표식은 실행 버튼 위에 있어야 한다. 설정에 붙어 있던 동안 그 점을 따라간 사람은
@@ -213,7 +188,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")} onPointerEnter={side.onPanelPointerEnter} onPointerLeave={side.onPanelPointerLeave}>
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
-      <button type="button" role="menuitem" disabled={replayDisabled} onClick={replayScreenGuide} title={t(replayDisabled ? "chrome.system.replayScreenGuideNone" : "chrome.system.replayScreenGuideTitle")}><ScreenGuideGlyph /><span>{t("chrome.system.replayScreenGuide")}</span></button>
+      <button type="button" role="menuitem" onClick={() => { setOpen(false); openFleetAtAGlance(); }}><FleetGlanceGlyph /><span>{t("chrome.system.fleetAtAGlance")}</span></button>
       <div className="command-band-system-menu-divider" role="separator" />
       <ConsoleVersionRow version={version} latestVersion={updateAvailable ? latestVersion : null} foldedIntoShell={consoleFoldsIntoShell} shellUpdateRequired={shellUpdateRequired} onStarted={() => setOpen(false)} />
       {shell.desktopVersion ? <DesktopVersionRow version={shell.desktopVersion} update={shellUpdate} /> : null}
@@ -507,9 +482,9 @@ function KeyboardGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M4 7h1m2 0h1m2 0h1M5 9.5h6" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
-// 화면 안내 — 안내 카드가 화면의 한 지점을 짚는 모양.
-function ScreenGuideGlyph() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><circle cx="6" cy="7" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M8.4 7h4M5 13.5h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
+// 한눈에 보기 — 가운데 점(사람)을 궤도와 바깥 점(에이전트)이 도는 모양.
+function FleetGlanceGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="1.8" fill="currentColor" /><ellipse cx="8" cy="8" rx="6" ry="3.4" fill="none" stroke="currentColor" strokeWidth="1.2" transform="rotate(-24 8 8)" /><circle cx="12.8" cy="5.2" r="1.1" fill="currentColor" /></svg>;
 }
 
 function GithubMarkIcon() {

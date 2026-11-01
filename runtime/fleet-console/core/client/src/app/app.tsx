@@ -21,6 +21,7 @@ import { ApiError, undoObjectiveArchive } from "../../../../features/execution/c
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
 import { OnboardingHost } from "../../../../features/onboarding/client/onboarding-host.js";
+import { FleetAtAGlanceHost } from "../../../../features/onboarding/client/fleet-at-a-glance.js";
 import { CORE_ONBOARDING } from "../integration/onboarding.js";
 import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
@@ -622,8 +623,9 @@ function ConnectedApp() {
         <TheaterInboxHost />
         <WhatsNewModal state={state} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
+        <FleetAtAGlanceHost />
         <OnboardingHost
-          toursSuspended={terminalFocused || mobileLayout}
+          toursSuspended={terminalFocused || mobileLayout || state.fleetAtAGlanceOpen}
           core={CORE_ONBOARDING}
           plugins={registry.onboarding}
           language={consoleLocale}

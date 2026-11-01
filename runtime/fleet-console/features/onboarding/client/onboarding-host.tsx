@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { OnboardingContribution } from "../shared/types.js";
 
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { EntryHints, hasPendingHint, type EntryHintCandidate, type EntryHintPorts } from "./entry-hint.js";
-import { hintSeenKey, setMountedOnboardingContributions } from "./seen-store.js";
+import { hintSeenKey } from "./seen-store.js";
 import { TourOverlay } from "./tour-overlay.js";
 import "./onboarding.css";
 
@@ -29,7 +29,6 @@ export function OnboardingHost({ core, plugins, language, ports, toursSuspended 
   const settings = useGlobalSettingsStore();
   const seen = settings.state?.seenFeatureTours ?? null;
   const contributions = useMemo(() => [...core, ...plugins], [core, plugins]);
-  useEffect(() => { setMountedOnboardingContributions(contributions); }, [contributions]);
 
   const hints = useMemo<readonly EntryHintCandidate[]>(() => contributions.flatMap((contribution) => {
     const key = hintSeenKey(contribution);
@@ -38,7 +37,7 @@ export function OnboardingHost({ core, plugins, language, ports, toursSuspended 
   const tours = useMemo(() => contributions.flatMap((contribution) => contribution.tours ?? []), [contributions]);
 
   // 가리킬 힌트가 남았는가를 투어가 시작을 판정하는 바로 그 순간에 잰다. 힌트 표면의 폴링 상태를 빌려 쓰면 본 기록이
-  // 바뀐 틱(예: 화면 안내 다시 보기)에 투어가 먼저 판정되어 순서가 뒤집힌다. 문이 아직 잠긴 힌트도 남은 것으로 친다.
+  // 바뀐 틱에 투어가 먼저 판정되어 순서가 뒤집힌다. 문이 아직 잠긴 힌트도 남은 것으로 친다.
   const toursBlocked = useCallback(
     () => seen !== null && hasPendingHint(hints, seen, ports),
     [hints, ports, seen],
@@ -51,5 +50,3 @@ export function OnboardingHost({ core, plugins, language, ports, toursSuspended 
     </>
   );
 }
-
-export { forgetReplayableOnboarding } from "./seen-store.js";

@@ -1,0 +1,339 @@
+/* 도움말 › 플릿 한눈에 보기 — 승인 시안의 팝업을 Console 토큰으로 옮긴 것이다.
+   면은 대화상자 토큰(--dialog-face), 글자는 텍스트 3티어, 모션 색은
+   flow→--aurora · result→--positive · loop→--apex · warm→--warn 대응이다. */
+
+.glance-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--dialog-scrim);
+}
+
+.glance-dialog {
+  width: min(760px, 100%);
+  max-height: min(720px, calc(100vh - 64px));
+  max-height: min(720px, calc(100dvh - 64px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  border: 0;
+  border-radius: var(--dialog-radius);
+  background: var(--dialog-face);
+  box-shadow: var(--dialog-surface-shadow);
+  color: var(--text-primary);
+  overflow: hidden;
+  outline: none;
+}
+
+.glance-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 6px 20px;
+}
+
+.glance-head h2 {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--t-base);
+  font-weight: var(--weight-bold);
+}
+
+.glance-count {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.glance-spacer {
+  flex: 1;
+}
+
+.glance-icon-btn {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  background: none;
+  cursor: pointer;
+}
+
+.glance-icon-btn:hover:not(:disabled) {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.glance-icon-btn[aria-pressed="true"] {
+  color: var(--aurora);
+}
+
+.glance-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.glance-stage {
+  margin: 4px 16px 0;
+  height: 300px;
+  min-height: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  /* 무대 바닥 — 맞는 Console 토큰이 없어 시안 값을 그대로 둔다(차가운 푸른 기운).
+     채도가 낮아 디자인 게이트의 유채색 리터럴 금지(0.03)에 걸리지 않는다. */
+  background: linear-gradient(180deg, oklch(21% 0.012 250), oklch(16.5% 0.012 250));
+}
+
+:root[data-theme="light"] .glance-stage {
+  background: linear-gradient(180deg, oklch(98.5% 0.004 245), oklch(94.5% 0.008 245));
+}
+
+.glance-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 캡션 묶음 — 10장을 같은 칸에 겹쳐 칸이 가장 긴 캡션 높이가 된다.
+   낮은 창에서는 묶음이 줄며 안에서 스크롤하므로 대화 상자가 잘리지 않는다. */
+.glance-caption-stack {
+  display: grid;
+  min-height: 0;
+  overflow: auto;
+}
+
+.glance-caption-stack > .glance-caption {
+  grid-area: 1 / 1;
+  min-height: 0;
+}
+
+.glance-caption-stack > .glance-caption[aria-hidden="true"] {
+  visibility: hidden;
+}
+
+.glance-caption {
+  padding: 14px 20px 4px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.glance-caption h3,
+.glance-caption p,
+.glance-tag,
+.glance-tile b,
+.glance-tile span,
+.glance-tile i {
+  /* 낱말 중간 끊김 방지 — Console 본문의 keep-all 관례(layout.css)와 같은 한 벌이다. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.glance-eyebrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+}
+
+.glance-eyebrow b {
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+}
+
+.glance-caption h3 {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.glance-caption p {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 64ch;
+}
+
+.glance-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.glance-tag {
+  font-size: var(--t-sm);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  color: var(--text-secondary);
+}
+
+.glance-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px 16px 20px;
+}
+
+.glance-seg-wrap {
+  flex: 1;
+  display: grid;
+  min-width: 0;
+}
+
+.glance-seg-labels {
+  display: grid;
+  grid-template-columns: 3fr 10px 6fr 10px 1fr;
+  gap: 4px;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.glance-segments {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) 10px repeat(6, 1fr) 10px 1fr;
+  gap: 4px;
+  align-items: end;
+}
+
+.glance-seg-gap {
+  height: 18px;
+}
+
+.glance-seg {
+  height: 18px;
+  display: grid;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.glance-seg::before {
+  content: "";
+  height: 4px;
+  border-radius: 2px;
+  background: var(--hairline);
+}
+
+.glance-seg.is-done::before {
+  background: var(--hairline-strong);
+}
+
+.glance-seg.is-on::before {
+  background: var(--text-primary);
+}
+
+.glance-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.glance-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid var(--hairline);
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.glance-btn:hover:not(:disabled) {
+  background: var(--wash-hover);
+}
+
+/* 1차 버튼 — 중립 컨트롤 면 + brass-ink 글자(최초 설정 가이드의 1차 행동과 같은 문장). */
+.glance-btn.is-primary {
+  border-color: transparent;
+  background: var(--control-rest);
+  color: var(--brass-ink);
+}
+
+.glance-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 정리 장 — 여섯 기법의 작은 그림 */
+.glance-summary {
+  position: absolute;
+  inset: 0;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  overflow: auto;
+}
+
+.glance-tile {
+  border-radius: 10px;
+  background: var(--dialog-face);
+  border: 1px solid var(--hairline);
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  column-gap: 10px;
+  align-content: center;
+}
+
+.glance-tile svg {
+  grid-row: span 3;
+  width: 36px;
+  height: 36px;
+  align-self: center;
+}
+
+.glance-tile b {
+  font-size: var(--t-md);
+}
+
+.glance-tile span {
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.glance-tile i {
+  font-style: normal;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 640px) {
+  .glance-stage {
+    height: 230px;
+  }
+
+  .glance-foot {
+    flex-wrap: wrap;
+  }
+
+  .glance-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glance-dialog {
+    animation: none;
+  }
+}
