@@ -748,12 +748,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         batchBytes += message.imageBytes ?? 0; batchChars += message.text.length; batchCount += 1;
       }
       // 배치의 글자 상한은 문맥 크기 방어다. 남은 말은 다음 턴에 싣는다.
+      // 사람·mail·TF가 턴 상한을 나눈다 — 각자 따로 고르면 합쳐서 초과한다.
       let mailChars = 0;
       let mailBytes = 0;
       let mailCount = 0;
       for (const entry of runner.mail) {
         const bytes = entry.imageBytes ?? 0;
-        if (mailChars + entry.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS || mailBytes + bytes > MAX_COMMODORE_TURN_IMAGE_BYTES) break;
+        if (batchChars + mailChars + entry.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS || batchBytes + mailBytes + bytes > MAX_COMMODORE_TURN_IMAGE_BYTES) break;
         mailChars += entry.text.length;
         mailBytes += bytes;
         mailCount += 1;
@@ -777,25 +778,30 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         });
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
         // 사령관 연락의 이미지 — 사람 메시지와 같은 턴·세션 예산에 센다. 사본은 수신 때 저장소에서 받았다.
+        // 원본을 잃은 mail 한 건이 큐 전체를 막지 않게 텍스트만 전달하고 받은 처리를 확정한다(복사는 attachment_not_available).
         const mailSelected = runner.mail.slice(0, mailCount);
         const loadedMail = mailSelected.map((entry) => {
           if (!entry.attachments?.length) return { entry, images: [] as Extract<AgentInputBlock, { type: "image" }>[] };
-          if (!entry.messageId) throw new Error("attachment_not_found");
-          const stored = entry.attachments.map((attachment) => {
-            const image = deps.store.images.read(runner.commodoreId, entry.messageId!, attachment.id);
-            if (!image || image.id !== attachment.id) throw new Error("attachment_not_found");
-            return image;
-          });
-          if (stored.length !== entry.attachments.length) throw new Error("attachment_not_found");
-          const blocks = stored.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } }));
-          return { entry, images: blocks };
+          if (!entry.messageId) return { entry: { ...entry, attachments: undefined, imageBytes: undefined, text: `${entry.text}\n(images omitted: original expired before delivery)` }, images: [] as Extract<AgentInputBlock, { type: "image" }>[] };
+          try {
+            const stored = entry.attachments.map((attachment) => {
+              const image = deps.store.images.read(runner.commodoreId, entry.messageId!, attachment.id);
+              if (!image || image.id !== attachment.id) throw new Error("attachment_not_found");
+              return image;
+            });
+            if (stored.length !== entry.attachments.length) throw new Error("attachment_not_found");
+            const blocks = stored.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } }));
+            return { entry, images: blocks };
+          } catch {
+            return { entry: { ...entry, attachments: undefined, imageBytes: undefined, text: `${entry.text}\n(images omitted: original expired before delivery)` }, images: [] as Extract<AgentInputBlock, { type: "image" }>[] };
+          }
         });
         preparedMail = loadedMail.map(({ entry }) => entry);
         mailImages = loadedMail.filter(({ images }) => images.length).map(({ entry, images }) => ({ messageId: entry.messageId!, images }));
         mailBase64Bytes = loadedMail.reduce((total, { images }) => total + images.reduce((bytes, image) => bytes + image.source.data.length, 0), 0);
         batchBytes += mailBytes;
         batchBase64Bytes += mailBase64Bytes;
-        taskforceInput = prepareTaskforceTurn(runner.commodoreId, mailChars, batchBytes);
+        taskforceInput = prepareTaskforceTurn(runner.commodoreId, batchChars + mailChars, batchBytes);
         batchBytes += taskforceInput.tfImageBytes;
         batchBase64Bytes += taskforceInput.tfImageBase64Bytes;
         const rotate = runner.rotateNext ?? (session && (coordinatesChanged(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES) ? "replaced" : null);

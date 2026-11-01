@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { createLaunchAttachmentStore } from "../features/execution/host/agent/launch-attachments.js";
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_TURN_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
 import type { AgentEvent, AgentInput } from "../features/execution/shared/agent.js";
 import { CONVERSATION_REFERENCE_MARK as MARK } from "../features/execution/shared/conversation/references.js";
 import { resolveRosterCoordinate, type ModelCoordinate } from "../features/ai-gateway/shared/models.js";
@@ -399,6 +399,119 @@ it("forwards turn and objective images through commodore messages into the recip
     expect(refused).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
     expect(store.transcriptRead(to).entries).toHaveLength(before);
     expect(store.transcriptRead(from).entries.at(-1)).toMatchObject({ kind: "sent", ok: false, error: "attachment_not_available" });
+    await supervisor.dispose();
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
+it("shares the turn image budget across human and commodore mail", async () => {
+  // 혼합 예산 대표 — 사람 5MiB + mail 5MiB는 한 턴 8MiB를 넘으므로 두 턴에 나눈다. 각 턴 raw·세션 한도 안.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-mixed-budget-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  const humanBytes = Buffer.alloc(5 * 1024 * 1024, 2);
+  const peerBytes = Buffer.alloc(5 * 1024 * 1024, 3);
+  const humanId = "44444444-4444-4444-8444-444444444444";
+  const peerId = "55555555-5555-4555-8555-555555555555";
+  const humanMessageId = "66666666-6666-4666-8666-666666666666";
+  const humanImage = { id: humanId, mime: "image/png" as const, bytes: humanBytes };
+  const peerImage = { id: peerId, mime: "image/png" as const, bytes: peerBytes };
+  const prompts: unknown[] = [];
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    attachments: { read: () => [humanImage], release: () => {}, claim: () => 0, rollbackClaim: () => {} } as never,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    store.transcriptAppend(to, { kind: "message", text: "사람 첨부", messageId: humanMessageId, attachments: [{ id: humanId }], imageBytes: humanBytes.byteLength });
+    send(from, { to, text: "사령관 첨부", attachmentIds: [peerId] }, { readAttachments: () => [peerImage], readBriefImages: () => { throw new Error("attachment_not_available"); } });
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    const rawOf = (prompt: unknown) => (Array.isArray(prompt) ? prompt : []).filter((block: { type: string }) => block.type === "image").reduce((sum: number, block: { source: { data: string } }) => sum + Buffer.from(block.source.data, "base64").byteLength, 0);
+    const firstRaw = rawOf(prompts[0]);
+    expect(firstRaw).toBeLessThanOrEqual(MAX_COMMODORE_TURN_IMAGE_BYTES);
+    expect(firstRaw).toBeLessThanOrEqual(MAX_COMMODORE_SESSION_IMAGE_BYTES);
+    const firstImages = (Array.isArray(prompts[0]) ? prompts[0] as { type: string }[] : []).filter((block) => block.type === "image");
+    expect(firstImages).toHaveLength(1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(2);
+    const secondRaw = rawOf(prompts[1]);
+    expect(secondRaw).toBeLessThanOrEqual(MAX_COMMODORE_TURN_IMAGE_BYTES);
+    const secondImages = (Array.isArray(prompts[1]) ? prompts[1] as { type: string }[] : []).filter((block) => block.type === "image");
+    expect(secondImages).toHaveLength(1);
+    expect(firstRaw + secondRaw).toBe(humanBytes.byteLength + peerBytes.byteLength);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.transcriptRead(to).entries.filter((entry) => entry.kind === "received-read")).toHaveLength(1);
+    await supervisor.dispose();
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
+it("delivers later mail when an earlier mail image expired", async () => {
+  // 원본 상실 대표 — 먼저 온 mail 사본이 지워져도 그 mail은 텍스트+만료 표시로 처리하고 확정해, 다음 mail이 막히지 않는다.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-mail-expiry-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x07]);
+  const firstId = "77777777-7777-4777-8777-777777777777";
+  const secondId = "88888888-8888-4888-8888-888888888888";
+  const firstImage = { id: firstId, mime: "image/png" as const, bytes: png };
+  const secondImage = { id: secondId, mime: "image/png" as const, bytes: png };
+  let capturedTurn: CommodoreTurnBindings | undefined;
+  const prompts: unknown[] = [];
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: (_id, turn) => { capturedTurn = turn; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    const first = send(from, { to, text: "첫 이미지", attachmentIds: [firstId] }, { readAttachments: () => [firstImage], readBriefImages: () => { throw new Error("attachment_not_available"); } });
+    send(from, { to, text: "둘째 이미지", attachmentIds: [secondId] }, { readAttachments: () => [secondImage], readBriefImages: () => { throw new Error("attachment_not_available"); } });
+    // 첫 mail 원본을 전달 전에 잃는다 — trim·삭제·손상과 같은 자리다.
+    store.images.remove(to, first.messageId);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    const blocks = Array.isArray(prompts[0]) ? prompts[0] as { type: string; text?: string }[] : [];
+    expect(blocks.filter((block) => block.type === "image")).toHaveLength(1);
+    expect(blocks.map((block) => block.text ?? "").join("\n")).toContain("original expired before delivery");
+    // 만료된 첫 mail은 복사할 수 없지만, 둘째 mail은 같은 턴에 복사할 수 있다.
+    expect(() => capturedTurn?.readAttachments([firstId])).toThrow("attachment_not_available");
+    expect(capturedTurn?.readAttachments([secondId]).map(({ id }) => id)).toEqual([secondId]);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(supervisor.status(to)?.phase).toBe("idle");
+    expect(store.pendingReceived(to)).toHaveLength(0);
+    const reads = store.transcriptRead(to).entries.filter((entry) => entry.kind === "received-read");
+    expect(reads.flatMap((entry) => (entry as { seqs: readonly number[] }).seqs)).toHaveLength(2);
     await supervisor.dispose();
   } finally { await supervisor.dispose(); vi.useRealTimers(); }
 });

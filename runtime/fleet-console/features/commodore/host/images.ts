@@ -35,6 +35,8 @@ export function createCommodoreImages(
   options: {
     readonly maxBytes?: number | undefined;
     readonly messageSeqs: (commodoreId: string) => ReadonlyMap<string, number>;
+    /** 전달 대기·진행·재시도 중인 사본 — 기록 미리보기용 trim이 원본을 지우지 않게 보호한다. */
+    readonly protectedMessageIds?: (commodoreId: string) => ReadonlySet<string>;
   },
 ) {
   const maxBytes = options.maxBytes ?? MAX_COMMODORE_RETAINED_IMAGE_BYTES;
@@ -68,7 +70,10 @@ export function createCommodoreImages(
     }
     let total = messages.reduce((sum, message) => sum + message.bytes, 0);
     if (total <= maxBytes) return;
-    const candidates = messages.filter((message) => message.id !== newestId);
+    let sheltered: ReadonlySet<string> = new Set();
+    try { sheltered = options.protectedMessageIds?.(commodoreId) ?? sheltered; } catch { /* 보호 목록을 읽지 못하면 newest만 살린다. */ }
+    // 전달 대기·진행·재시도 중인 원본은 지우지 않는다 — 보호만으로 상한을 넘으면 이번은 초과로 두고 다음 전달 뒤에 거둔다.
+    const candidates = messages.filter((message) => message.id !== newestId && !sheltered.has(message.id));
     let seqs: ReadonlyMap<string, number> | undefined;
     try { seqs = options.messageSeqs(commodoreId); } catch { /* 기록을 읽지 못하면 디렉터리 시각으로 되돌아간다. */ }
     // 모든 후보의 seq 를 알면 기록 순서, 아니면 모두 mtime 순서다 — 비교 기준을 섞지 않는다.
