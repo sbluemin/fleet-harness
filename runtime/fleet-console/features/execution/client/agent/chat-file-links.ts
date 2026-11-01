@@ -21,8 +21,11 @@ export function createChatFileLinkPorts(theaterId: string, navigate: ClientNavig
         ...(ref.column === undefined ? {} : { column: String(ref.column) }),
       } };
     },
-    onActivate: (kind, data) => {
+    onActivate: (kind, data, event) => {
       if (kind !== "file" || !data.path) return;
+      // 포인터가 링크에 포커스를 주지 않는 브라우저에서도 미리보기의 복귀점을 남긴다.
+      const target = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null;
+      target?.closest<HTMLElement>("a[data-md-link-kind]")?.focus({ preventScroll: true });
       onFailure(null);
       void navigate.openFile({
         theaterId, ...(objectiveId ? { objectiveId } : {}),

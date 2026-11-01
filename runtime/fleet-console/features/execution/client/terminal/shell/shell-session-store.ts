@@ -43,6 +43,12 @@ export function getActiveShellKey(): string {
   return activeShellKey;
 }
 
+/** Shell 상태 구독 — 메뉴의 초록 점 같은 행 단위 읽기가 함께 깬다. */
+export function subscribeShellSnapshots(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
 /**
  * 콘솔 이벤트 스트림의 push를 받고, 처음과 재연결 때마다 GET으로 다시 읽는다 — 서버는 단절 중에
  * 보낸 프레임을 다시 보내지 않는다. 다시 읽는 것은 화면이 아는 Shell 들이다.

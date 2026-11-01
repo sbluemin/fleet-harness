@@ -470,13 +470,6 @@
   white-space: nowrap;
 }
 
-.repository-folder-count {
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-  padding-left: 8px;
-}
-
 /* ── 기타 공통 ── */
 /* rest = 낮은 목소리(2-cue): 워시 한 겹 + 헤어라인이 쉬는 상태에서도 몸을 알린다. */
 
@@ -958,18 +951,6 @@
   font-size: var(--t-2xs);
 }
 
-/* 탐색 한도 표식 — 워크스페이스 트리는 개수 문면을 접지만, 한도에 걸렸다는 사실은 접지 않는다. */
-.repository-scan-limit {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: var(--radius-xs);
-  color: var(--warn-ink);
-  background: color-mix(in oklch, var(--warn) 12%, transparent);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  white-space: nowrap;
-}
-
 /* 로컬 상태를 다시 읽는 컨트롤 — 쉬는 상태는 중립이고 brass는 hover/focus에만 온다. */
 
 .history-pagination {
@@ -1113,9 +1094,6 @@
 /* ✓는 "가져올 것이 없었다"는 상태이므로 positive 신호 채널을 쓴다 — brass(위치·포커스)를 쓰면 채널이 섞인다. */
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-width: 0; min-height: 0; }
-/* 현재 체크아웃 마크 = 위치 채널 */
-/* 매칭 글자 = 포커스 채널(brass) */
-.repository-ref-hl { color: var(--brass-ink); font-weight: var(--weight-bold); }
 .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit; text-align: left; padding: 7px 10px; }
 .repository-wip-row { color: var(--brass-quiet-ink); }
 .repository-wip-row { width: 100%; border-bottom: 1px dashed var(--surface-rim); }
@@ -1141,13 +1119,8 @@
 .repository-ws-layout > .repository-ws-tree { grid-column: 1; grid-row: 2; }
 .repository-ws-tree-divider { grid-column: 2; grid-row: 2; height: 100%; }
 .repository-ws-layout > .repository-work-area { grid-column: 3; grid-row: 2; }
-.repository-workbar > .repository-context-picker { flex: 0 1 auto; min-width: 90px; max-width: min(300px, 28%); }
-.repository-workbar .repository-context-trigger { height: 32px; padding: 0 8px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); }
-.repository-workbar .repository-context-trigger strong { font-family: var(--font-content); }
-.repository-workbar .repository-context-branch { display: none; }
-.repository-workbar .repository-context-popover { left: 0; width: min(360px, calc(100vw - 48px)); }
 .repository-workbar-branch { display: inline-flex; align-items: center; gap: 5px; flex: none; min-width: 0; max-width: 17%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--brass-ink); font-family: var(--font-code); font-size: var(--font-code-size); }
-@container (max-width: 730px) { .repository-workbar > .repository-context-picker { max-width: 26%; } .repository-workbar-branch { display: none; } }
+@container (max-width: 730px) { .repository-workbar-branch { display: none; } }
 
 .repository-ws-tree {
   /* 컨텍스트 메뉴(absolute)의 containing block — 없으면 상위 positioned 조상 기준으로 오배치된다 */
@@ -1245,13 +1218,6 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit;
-}
-
-.repository-ws-tree .repository-ref-row,
-.repository-ws-tree .repository-folder-row {
-  min-height: 26px;
-  padding-top: 4px;
-  padding-bottom: 4px;
 }
 
 .repository-ws-history {
@@ -2330,127 +2296,11 @@
   .repository-segmented button { padding: 0 7px; }
 }
 
-/* ── 트리 · 컨텍스트 행(저장소 선택기) ── */
+/* ── 트리 · 컨텍스트 행(소스 탭) ── */
 .repository-ws-context { position: relative; flex: none; border-bottom: 1px solid var(--surface-rim); }
 /* 흐림은 잠깐 늦춘다 — 스테이지 한 번처럼 수백 ms 안에 끝나는 잠금은 화면에 나타나지 않는다. 풀릴 때는 즉시 돌아온다. */
 .repository-ws-context { transition: opacity var(--duration-fast) var(--ease-glide); }
 .repository-ws-context.is-disabled { opacity: .7; transition-delay: 160ms; }
-/* 팝업은 탐색 탭까지 포함한 컨텍스트 영역이 아니라 선택 버튼에 붙는다. */
-.repository-context-picker { position: relative; }
-.repository-context-trigger {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  min-width: 0;
-  height: 36px;
-  padding: 0 10px 0 12px;
-  border: 0;
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-  transition: background var(--duration-fast) var(--ease-glide);
-}
-.repository-context-trigger:hover:not(:disabled) { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); }
-.repository-context-trigger:focus-visible { box-shadow: var(--focus-face); }
-.repository-context-trigger:disabled { cursor: default; }
-.repository-context-glyph { color: var(--text-secondary); }
-/* 이름이 브랜치보다 먼저다 — 좁으면 브랜치 칩이 먼저 줄어든다. */
-.repository-context-trigger strong { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: var(--t-md); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
-.repository-context-branch {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 1000 auto;
-  min-width: 44px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
-  color: var(--brass-ink);
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.repository-context-chevron { margin-left: auto; color: var(--text-tertiary); }
-.repository-context-popover {
-  position: absolute;
-  left: 6px;
-  top: calc(100% + 2px);
-  z-index: 30;
-  width: min(360px, calc(100cqw - 24px));
-  max-height: min(440px, 65vh);
-  display: flex;
-  flex-direction: column;
-  /* 공통 팝업 표면(theme.css --popover-*) — 불투명 면 한 장이 뒤쪽 브랜치·커밋 텍스트를 차폐한다. */
-  border: 0;
-  border-radius: var(--popover-radius);
-  background: var(--popover-face);
-  box-shadow: var(--popover-surface-shadow);
-  overflow: hidden;
-}
-.repository-context-search { position: relative; display: flex; align-items: center; flex: none; height: var(--popover-row); border-bottom: 1px solid var(--popover-divider); }
-.repository-context-search .repository-filter-input { height: 100%; padding: 0 30px 0 30px; border: 0; border-radius: 0; background: transparent; font-family: var(--font-ui); font-size: var(--t-md); color: var(--text-primary); }
-.repository-context-search .repository-discovery-glyph { left: 11px; }
-.repository-context-search .repository-filter-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; }
-.repository-context-options { min-height: 0; overflow-y: auto; padding: 4px 6px; }
-/* 팝오버 안의 참조 행은 목록형 팝업 행(36px · 본문 글자 · 중립 워시)이다. 고른 행은 워시와 본문색 표식으로만 말한다 —
-   상주 트리의 같은 행(.repository-ws-tree)은 제 밀도를 지킨다. */
-.repository-context-popover .repository-ref-row { height: auto; min-height: var(--popover-row-dense); padding: 0 10px; border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--t-base); }
-.repository-context-popover .repository-ref-row:hover { background: var(--wash-hover); }
-.repository-context-popover .repository-ref-row.is-current { background: var(--wash-selected); }
-.repository-context-popover .repository-ref-row > .repository-icon { color: var(--text-secondary); }
-.repository-context-popover .repository-ref-name { font-weight: var(--weight-regular); }
-.repository-context-popover .repository-ref-row.is-current .repository-ref-sub { color: var(--text-secondary); }
-.repository-context-popover .repository-ref-row.is-current .repository-ref-mark { color: var(--text-primary); }
-.repository-ref-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 30px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--t-md);
-  text-align: left;
-  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
-}
-.repository-ref-row:hover { background: color-mix(in oklch, var(--ink-fog) 10%, transparent); color: var(--text-primary); }
-.repository-ref-row:focus-visible { box-shadow: var(--focus-face); }
-.repository-ref-row > .repository-icon { color: var(--text-tertiary); }
-.repository-ref-name { min-width: 0; overflow: hidden; color: var(--text-primary); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
-.repository-ref-row.is-current .repository-ref-name { font-weight: var(--weight-bold); }
-.repository-ref-sub { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-tertiary); flex: 0 1 auto; font-family: var(--font-ui); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
-.repository-ref-row.is-current .repository-ref-sub { color: var(--brass-ink); }
-.repository-ref-mark { color: var(--brass-ink); }
-.repository-ref-row.is-current .repository-ref-mark { margin-left: auto; }
-.repository-ref-row.is-current .repository-ref-sub + .repository-ref-mark { margin-left: 0; }
-/* 매칭 글자 = 포커스 채널(brass) */
-.repository-ref-hl { color: var(--brass-ink); font-weight: var(--weight-bold); }
-.repository-context-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  height: 32px;
-  padding: 0 6px 0 12px;
-  border-top: 1px solid var(--popover-divider);
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-}
-.repository-scan-count { min-width: 0; overflow: hidden; font-family: var(--font-ui); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-.repository-discovery-depth { display: inline-flex; align-items: center; gap: 1px; margin-left: auto; }
-.repository-depth-step { width: 20px; height: 20px; }
-.repository-depth-value { min-width: 16px; text-align: center; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 
 /* ── 트리 · 검색 줄 ── */
 .repository-discovery { position: relative; display: flex; align-items: center; gap: 4px; flex: none; height: 36px; padding: 0 6px; border-bottom: 1px solid var(--surface-rim); }

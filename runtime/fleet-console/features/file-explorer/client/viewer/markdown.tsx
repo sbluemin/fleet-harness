@@ -112,7 +112,22 @@ export function MarkdownViewer({ content, navigate, relativePath, theaterId, obj
     const settle = (state: "copied" | "failed") => {
       // 다시 눌렸거나 재렌더로 버튼이 빠졌다면 이 결과는 낡았다.
       if (entry.seq !== seq || !button.isConnected) return;
-      button.textContent = t(state === "copied" ? "fileExplorer.markdown.copied" : "fileExplorer.markdown.copyFailed");
+      if (state === "copied") {
+        const check = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        check.setAttribute("width", "14");
+        check.setAttribute("height", "14");
+        check.setAttribute("viewBox", "0 0 16 16");
+        check.setAttribute("aria-hidden", "true");
+        const path = document.createElementNS(check.namespaceURI, "path");
+        path.setAttribute("d", "m3 8 3 3 7-7");
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "currentColor");
+        path.setAttribute("stroke-width", "1.5");
+        check.append(path);
+        button.replaceChildren(check);
+      } else {
+        button.textContent = t("fileExplorer.markdown.copyFailed");
+      }
       entry.timer = window.setTimeout(() => {
         entry.timer = null;
         if (entry.seq !== seq || !button.isConnected) return;

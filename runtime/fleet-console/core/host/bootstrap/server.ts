@@ -68,6 +68,7 @@ import { resolveAgentCliBinary } from "../../../features/execution/host/agent/ag
 import type { ObjectiveRecord } from "../../../features/objectives/host/records/objective-records-domain.js";
 import { createObjectiveRecordsStore, createObjectiveRecordsRouter, createSanitizedOpDto } from "../../../features/objectives/host/records/objective-records-domain.js";
 import { stripConsoleInternalEnv } from "../../../features/execution/host/terminal/launch-env.js";
+import { parseToolShellKey } from "../../../features/execution/shared/shell-key.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "../../../features/remote-access/host/access-control-contract.js";
 import { parseAccessLink, sanitizeAccessLabel } from "../../../features/remote-access/host/access-link.js";
 import { createAccessRegistry, createLoopbackListenerIdentity, listenerAuthority, listenerOrigin, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type ListenerIdentity } from "../../../features/remote-access/host/auth.js";
@@ -2572,7 +2573,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, { canUseShellKey: (key) => !key.startsWith("session:commodore:commodore:") || writableCommodore(key.slice("session:commodore:commodore:".length)) }, (commodoreId) => commodore?.pluginDirs(commodoreId) ?? [], (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {});
+      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, { canUseShellKey: (key) => {
+        // 도구 Shell 키(tool-shell:commodore:<사령관>:theater:<Theater>)는 그 사령관이 쓰기 가능할 때만 연다 —
+        // 대화 키와 같은 경계다. 모르는 키는 예전처럼 연다.
+        if (key.startsWith("session:commodore:commodore:")) return writableCommodore(key.slice("session:commodore:commodore:".length));
+        const tool = parseToolShellKey(key);
+        if (tool) return writableCommodore(tool.commodoreId);
+        return true;
+      } }, (commodoreId) => commodore?.pluginDirs(commodoreId) ?? [], (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {});
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;

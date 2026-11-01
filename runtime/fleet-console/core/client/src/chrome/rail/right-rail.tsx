@@ -1,5 +1,6 @@
 import { useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { theaterLabelOf } from "../../../../../features/commodore/client/theater-owner.js";
+import { useCommodoreToolsConversation } from "../../../../../features/commodore/client/commodore-conversation.js";
 import { usePaneOverlay } from "../pane/use-pane-overlay.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
@@ -653,22 +654,23 @@ function standsWithoutTheater(entry: RailEntryDescriptor): boolean {
 }
 
 function RailIcon({ entry, context, language, isActive, text = false }: RailIconProps) {
-  const t = useT();
   const withoutTheater = standsWithoutTheater(entry);
-  const paused = entry.paused === true;
-  const disabled = !withoutTheater && context.theaterId === null;
+  const commodoreToolsHere = useCommodoreToolsConversation();
+  // 사령관 전용 도구는 사령관 대화에서 Theater 없이도 열린다 — 빈 상태가 그 자리에서 안내한다.
+  const gatedHere = entry.commodoreConversationOnly === true && commodoreToolsHere;
+  const disabled = !withoutTheater && context.theaterId === null && !gatedHere;
   const handleClick = useCallback(() => {
-    // 잠시 닫아 둔 도구는 누름을 받지 않는다. disabled 대신 aria-disabled 로 닫아야 겨눔이 살아 말풍선이 까닭을 말한다.
-    if (paused || disabled) return;
+    if (disabled) return;
     if (entry.activate) {
       // fleet 범위는 Console 전역이라 Theater 없이도 선다. Theater를 다루는 entry는
-      // Theater 없이 열 수 없어 조용히 둔다. 등록 때 표시한 패널(사령관)도 예외다.
-      if (context.theaterId === null && !withoutTheater) return;
+      // Theater 없이 열 수 없어 조용히 둔다 — 사령관 전용 도구는 빈 상태를 세우므로 예외다.
+      // 등록 때 표시한 패널(사령관)도 예외다.
+      if (context.theaterId === null && !withoutTheater && !gatedHere) return;
       entry.activate(context);
       return;
     }
     toggleRailPanel(entry.id);
-  }, [context, entry, paused, disabled, withoutTheater]);
+  }, [context, entry, disabled, gatedHere, withoutTheater]);
   useShortcutOverrides();
   const command = CORE_SHORTCUT_COMMANDS.find((candidate) => candidate.railEntryId === entry.id);
   const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);
@@ -691,15 +693,14 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
   return (
     <button
       id={`rail-tab-${entry.id}`}
-      className={`right-rail-ico${text ? " is-text" : ""}${pressed ? " is-active" : ""}${paused ? " is-paused" : ""}`}
+      className={`right-rail-ico${text ? " is-text" : ""}${pressed ? " is-active" : ""}`}
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={pressed}
       aria-label={named}
-      disabled={!paused && disabled}
-      aria-disabled={paused || undefined}
-      // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키도 같은 말풍선에 싣는다. 닫아 둔 도구는 그 까닭을 말한다.
-      data-tip={paused ? `${title} · ${t("rail.paused.commodoreRevamp")}` : shortcut ? `${named} (${shortcut})` : named}
+      disabled={disabled}
+      // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키도 같은 말풍선에 싣는다.
+      data-tip={shortcut ? `${named} (${shortcut})` : named}
       // 선언한 도구만 활성 해제 가드를 넘는다(active-objective-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.
       data-keep-objective-active={entry.keepsObjectiveActive ? "" : undefined}
       onClick={handleClick}

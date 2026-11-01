@@ -115,7 +115,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
   useLayoutEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [state]);
 
   if (state.kind === "loading") {
-    return <div className="repository-hunk-loading">{t("repository.common.loading")}</div>;
+    return <div className="repository-hunk-loading" aria-hidden="true" />;
   }
 
   if (state.kind === "error") {

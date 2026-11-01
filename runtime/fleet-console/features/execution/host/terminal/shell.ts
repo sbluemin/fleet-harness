@@ -7,6 +7,7 @@ import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 import type { ConsoleRuntimeContext } from "../context.js";
 import { registerRouter } from "../context.js";
+import { parseToolShellKey } from "../../shared/shell-key.js";
 
 import { readSocketRole } from "./index.js";
 import type { TerminalRuntime } from "./index.js";
@@ -234,13 +235,16 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       return true;
     }
     const body = await ctx.host.http.readJsonBody<TicketBody>(req);
-    if (conflictingSurfaceSelectors(body) || conflictingSurfaceSelectors(body?.cwd) || (body?.cwd !== undefined && (body.theaterId !== undefined || body.objectiveId !== undefined))) {
-      ctx.host.http.writeJson(res, 400, { error: "ambiguous_selector" }); return true;
-    }
     const key = readShellKey(body?.shell);
     if (key === null) {
       ctx.host.http.writeJson(res, 400, { error: "invalid_shell" });
       return true;
+    }
+    // 도구 Shell 키는 주인과 Theater를 싣는다 — 본문의 선택자와 어긋나도 키가 이긴다. 키가 곧 정체성이라
+    // 모호함 검사는 일반 키에만 둔다.
+    const tool = parseToolShellKey(key);
+    if (!tool && (conflictingSurfaceSelectors(body) || conflictingSurfaceSelectors(body?.cwd) || (body?.cwd !== undefined && (body.theaterId !== undefined || body.objectiveId !== undefined)))) {
+      ctx.host.http.writeJson(res, 400, { error: "ambiguous_selector" }); return true;
     }
     const instance = instanceFor(key, true);
     if (!instance) {
@@ -249,7 +253,9 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     }
 
     if (instance.pinnedCwd === null) {
-      const hint = body?.cwd ?? (body?.theaterId !== undefined || body?.objectiveId !== undefined ? { commodoreId: body?.commodoreId, theaterId: body?.theaterId, objectiveId: body?.objectiveId } : undefined);
+      // 도구 Shell의 작업 폴더는 그 Theater의 루트로 못 박는다 — 다른 Theater를 가리키는 본문은 무시한다.
+      const hint = tool ? { commodoreId: tool.commodoreId, theaterId: tool.theaterId }
+        : body?.cwd ?? (body?.theaterId !== undefined || body?.objectiveId !== undefined ? { commodoreId: body?.commodoreId, theaterId: body?.theaterId, objectiveId: body?.objectiveId } : undefined);
       if (hint === undefined || hint === null) {
         instance.pinnedCwd = homedir();
       } else {
@@ -452,7 +458,13 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.http.writeJson(res, 400, { error: "invalid_shell" });
       return null;
     }
-    const resolved = resolveCwdHint(body, res);
+    // 옮기기도 키의 Theater를 벗어나지 않는다 — 도구 Shell 키면 주인·Theater를 키에서 가져오고
+    // 경로만 본문에서 받는다. 일반 키는 예전처럼 본문을 그대로 읽는다.
+    const tool = parseToolShellKey(key);
+    const hint: OpenAtBody | null | undefined = tool
+      ? { commodoreId: tool.commodoreId, theaterId: tool.theaterId, ...(typeof body?.path === "string" ? { path: body.path } : {}) }
+      : body;
+    const resolved = resolveCwdHint(hint, res);
     if (!resolved) return null;
     const instance = instanceFor(key, true);
     if (!instance) {

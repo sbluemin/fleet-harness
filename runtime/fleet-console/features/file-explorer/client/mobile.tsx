@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -147,7 +148,7 @@ export function MobileFileTree(ctx: PaneContext) {
   const rows = (relativePath: string, depth: number): ReactNode[] => {
     const folder = folders.get(relativePath);
     const indent = { paddingLeft: `${16 + depth * 18}px` };
-    if (!folder || folder.kind === "loading") return [<p key={`${relativePath}:loading`} className="fexp-m-note" style={indent} role="status">{t("fileExplorer.status.loading")}</p>];
+    if (!folder || folder.kind === "loading") return [<div key={`${relativePath}:loading`} className="fexp-skeleton" style={indent} role="status" aria-label={t("fileExplorer.status.loading")}><span className="fexp-skeleton-bar" /></div>];
     if (folder.kind === "failed") {
       return [<button key={`${relativePath}:failed`} type="button" className="fexp-m-note is-retry" style={indent} onClick={() => load(relativePath)}>{translateServerError(folder.code, t)} · {t("fileExplorer.status.loadFailedRetry")}</button>];
     }
@@ -217,7 +218,7 @@ export function MobileFileDocument(ctx: PaneContext) {
   const copyPath = useCallback(() => {
     const { path: current, t: translate } = latest.current;
     void navigator.clipboard.writeText(current)
-      .then(() => setToast({ text: translate("fileExplorer.menu.relativePathCopied"), at: Date.now() }))
+      .then(() => setToast({ text: "copied", at: Date.now() }))
       .catch(() => setToast({ text: translate("fileExplorer.menu.actionUnavailable"), at: Date.now() }));
   }, []);
 
@@ -250,7 +251,7 @@ export function MobileFileDocument(ctx: PaneContext) {
         </div>
       ) : null}
       <div className="fexp-m-doc-body">
-        {viewState.kind === "loading" ? <p className="fexp-m-note" role="status">{t("fileExplorer.status.loading")}</p> : null}
+        {viewState.kind === "loading" ? <div className="fexp-skeleton" role="status" aria-label={t("fileExplorer.status.loading")}><span className="fexp-skeleton-bar" /></div> : null}
         {viewState.kind === "error" ? <p className="fexp-m-note is-error">{viewState.message}</p> : null}
         {isCode && isMarkdown && !source ? (
           <div className="fexp-m-reading">
@@ -265,7 +266,7 @@ export function MobileFileDocument(ctx: PaneContext) {
         {viewState.kind === "image" ? <ImageViewer src={viewState.src} name={viewState.name} sizeBytes={viewState.sizeBytes} t={t} /> : null}
         {viewState.kind === "binary" ? <BinaryViewer name={viewState.name} t={t} /> : null}
       </div>
-      {toast ? createPortal(<div key={toast.at} className="fexp-m-toast" role="status">{toast.text}</div>, document.body) : null}
+      {toast ? createPortal(<div key={toast.at} className="fexp-m-toast" role="status">{toast.text === "copied" ? <MenuCheckGlyph size={16} /> : toast.text}</div>, document.body) : null}
     </div>
   );
 }

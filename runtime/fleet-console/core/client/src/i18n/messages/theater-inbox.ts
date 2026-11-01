@@ -20,6 +20,8 @@ export const theaterInboxEn = {
   "theaterInbox.theaters.add": "Add Theater",
   "theaterInbox.theaters.remove": "Remove",
   "theaterInbox.theaters.removeAria": "Remove {theater} from this commodore",
+  "theaterInbox.theaters.confirmBusy": "A command is running in this Theater's Shell. Removing it ends the Shell too.",
+  "theaterInbox.theaters.confirmRemove": "Remove",
   "theaterInbox.theaters.failed": "Could not change this commodore's Theaters. Try again.",
   "theaterInbox.theaters.missing": "Not found",
 };
@@ -45,6 +47,8 @@ export const theaterInboxKo: Record<keyof typeof theaterInboxEn, string> = {
   "theaterInbox.theaters.add": "Theater 추가",
   "theaterInbox.theaters.remove": "제거",
   "theaterInbox.theaters.removeAria": "이 사령관에서 {theater} 제거",
+  "theaterInbox.theaters.confirmBusy": "이 Theater의 Shell에서 명령이 실행 중이에요. 해제하면 Shell도 끝나요.",
+  "theaterInbox.theaters.confirmRemove": "해제",
   "theaterInbox.theaters.failed": "이 사령관의 Theater를 바꾸지 못했어요. 다시 시도해 주세요.",
   "theaterInbox.theaters.missing": "찾을 수 없음",
 };

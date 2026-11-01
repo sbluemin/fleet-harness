@@ -90,10 +90,7 @@ export function buildViewerMetaParts(
     const sizePart = input.window && input.window.startByte > 0
       ? t("fileExplorer.viewer.partialWindowMeta", { start: formatByteSize(input.window.startByte), end: formatByteSize(input.window.endByte), total })
       : shown && total ? t("fileExplorer.viewer.partialMeta", { shown, total }) : shown || total;
-    return [
-      sizePart,
-      t("fileExplorer.viewer.linesLoaded", { count: lineCount }),
-    ].filter((part): part is string => Boolean(part));
+    return sizePart ? [sizePart] : [];
   }
   return [
     input.sizeBytes !== undefined ? formatByteSize(input.sizeBytes) : "",

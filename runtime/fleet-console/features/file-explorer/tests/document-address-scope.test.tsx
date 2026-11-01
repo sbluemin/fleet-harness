@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneContext } from "../../workspace/shared/pane.js";
 import { createClientCapabilities } from "../../../core/client/src/integration/http-capabilities.js";
 
-import { fileExplorerDocumentPane } from "../client/rail-panel.js";
+import { fileExplorerDocumentPane, fileExplorerEntry } from "../client/rail-panel.js";
+import { FileExplorerChatPreview } from "../client/chat-preview.js";
 import { activateStoredDocument, getFileExplorerSnapshot } from "../client/view-store.js";
 
 /**
@@ -98,6 +99,58 @@ describe("보관한 문서의 다시 읽기", () => {
     await act(async () => { container.querySelector<HTMLButtonElement>(".fexp-disk-banner button")!.click(); });
     expect(container.querySelector(".fexp-viewer-body")?.textContent).toContain("changed-one");
     expect(getFileExplorerSnapshot(theater).docStates.get("one.txt")).toMatchObject({ kind: "code", stale: false });
+  });
+});
+
+describe("대화 파일 미리보기의 격리", () => {
+  it("목표 소유권을 유지하며 실패를 재시도하고 도구의 문서·Theater를 바꾸지 않는다", async () => {
+    const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+    const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value(this: HTMLDialogElement) { this.open = true; } });
+    Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value(this: HTMLDialogElement) { this.open = false; } });
+    try {
+      const host = createClientCapabilities();
+      const openRail = vi.spyOn(host.rail, "open");
+      const theater = "chat-preview-theater";
+      activateStoredDocument(theater, { relativePath: "tool.txt", name: "tool.txt" });
+      const before = getFileExplorerSnapshot(theater);
+      window.localStorage.setItem("fleet-console.commodore-tool-theater.owner.file-explorer", "another-theater");
+      const bodies: Record<string, unknown>[] = [];
+      let failRead = true;
+      vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string) as Record<string, unknown>;
+        bodies.push(body);
+        const payload = url.endsWith("/resolve") ? { path: "src/chat.txt", kind: "file" }
+          : failRead ? { error: "read_failed" }
+            : { relativePath: "src/chat.txt", content: "objective-only-content", lang: "text", binary: false, truncated: false, mtimeMs: 1 };
+        return new Response(JSON.stringify(payload), { status: !url.endsWith("/resolve") && failRead ? 500 : 200 });
+      }));
+      await act(async () => {
+        root.render(<FileExplorerChatPreview language="en" />);
+        expect(await fileExplorerEntry.handles!.openFile!({ theaterId: theater, objectiveId: "preview-objective", path: "src/chat.txt", pathKind: "theater-relative", source: "agent-chat" }, host)).toEqual({ ok: true });
+      });
+      expect(document.querySelector(".fexp-chat-preview [role=alert]")?.textContent).toContain("read_failed");
+      failRead = false;
+      await act(async () => { document.querySelector<HTMLButtonElement>(".fexp-chat-preview .fexp-state-action")!.click(); });
+      expect(document.querySelector(".fexp-chat-preview-body")?.textContent).toContain("objective-only-content");
+      expect(bodies.length).toBeGreaterThan(0);
+      for (const body of bodies) {
+        expect(body.objectiveId).toBe("preview-objective");
+        expect(body).not.toHaveProperty("theaterId");
+        expect(body).not.toHaveProperty("commodoreId");
+      }
+      expect(openRail).not.toHaveBeenCalled();
+      expect(getFileExplorerSnapshot(theater)).toBe(before);
+      expect(window.localStorage.getItem("fleet-console.commodore-tool-theater.owner.file-explorer")).toBe("another-theater");
+      await act(async () => { document.querySelector<HTMLButtonElement>(".fexp-chat-preview-head button")!.click(); });
+      expect(document.querySelector(".fexp-chat-preview")).toBeNull();
+    } finally {
+      if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal);
+      else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+      if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose);
+      else Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+      vi.restoreAllMocks();
+    }
   });
 });
 

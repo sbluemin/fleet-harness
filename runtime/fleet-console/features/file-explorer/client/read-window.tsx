@@ -29,7 +29,6 @@ export function ReadWindowControls({ window, sizeBytes, pending, onRead, t }: {
         <label>{t("fileExplorer.viewer.windowOffset")}<input type="number" min="0" max={sizeBytes - 1} step="1" value={offset} disabled={pending} onChange={(event) => setOffset(event.target.value)} /></label>
         <button type="submit" disabled={pending || !valid}>{t("fileExplorer.viewer.windowReadRange")}</button>
       </form>
-      {window.startByte > 0 && <span className="fexp-read-window-line-note">{t("fileExplorer.viewer.windowLocalLines")}</span>}
     </div>
   );
 }

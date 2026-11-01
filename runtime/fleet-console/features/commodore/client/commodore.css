@@ -776,6 +776,10 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-theaters-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commodore-theaters-list li.is-missing .commodore-theaters-name { color: var(--text-tertiary); text-decoration: line-through; }
 .commodore-theaters-missing { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); }
+/* 해제 확인 상태에서는 행 이름이 줄 첫머리에 남고, 확인 문구와 단추 묶음이 그 아래 줄로 내려간다. */
+.commodore-theaters-list li.is-confirming { flex-wrap: wrap; }
+.commodore-theaters-confirm { flex: 1 1 100%; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.commodore-theaters-confirm > span:first-child { flex: 1; min-width: 0; }
 .commodore-theaters-add { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 0; color: var(--brass-ink); background: none; border: 0; font: inherit; font-size: var(--t-sm); text-align: start; cursor: pointer; }
 .commodore-theaters-add:hover:not(:disabled) > span:last-child { text-decoration: underline; text-underline-offset: 3px; }
 .commodore-theaters-add:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }

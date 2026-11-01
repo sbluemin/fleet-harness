@@ -122,7 +122,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
         {state.kind === "ok" && !pending && <span className="history-files-stats">{state.files.length}</span>}
       </div>
       <div className={`history-files-scroll${pending && state.kind === "ok" ? " is-stale" : ""}`} aria-busy={pending || undefined}>
-        {state.kind === "loading" && <div className="history-inspector-empty">{t("repository.common.loading")}</div>}
+        {state.kind === "loading" && <div className="history-inspector-empty" aria-hidden="true" />}
         {state.kind === "error" && <div className="history-inspector-empty history-inspector-error">{state.message === "stash_moved" ? t("repository.stash.moved") : `${t("repository.stash.showFailed")} ${readErrorSentence(t, state.message)}`}</div>}
         {state.kind === "ok" && state.files.length === 0 && <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
         {state.kind === "ok" && state.files.map((file, index) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedFile?.path} tabStop={file.path === selectedFile?.path} onNavigate={(_, direction) => { const next = state.files[index + direction]; if (!next) return; setSelectedPath(next.path); requestAnimationFrame(() => revealFocus(document.querySelector<HTMLButtonElement>(`.repository-stash-files .repository-file-row[title="${CSS.escape(next.path)}"]`))); }} onSelect={() => setSelectedPath(file.path)} t={t} />)}

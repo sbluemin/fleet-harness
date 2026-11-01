@@ -124,7 +124,7 @@ function CommitTreeFolderBody({ t, dirPath, depth, folders, expanded, commitFile
 }) {
   const state = folders.get(dirPath);
   const note = (text: string, error = false) => <div className={`repository-ftree-note${error ? " is-error" : ""}`} style={{ paddingLeft: `${TREE_BASE_PAD + depth * TREE_INDENT + 18}px` }}>{text}</div>;
-  if (!state || state.kind === "loading") return note(t("repository.filetree.loading"));
+  if (!state || state.kind === "loading") return <div className="repository-ftree-note" style={{ paddingLeft: `${TREE_BASE_PAD + depth * TREE_INDENT + 18}px` }} aria-hidden="true" />;
   if (state.kind === "error") return note(t("repository.filetree.error"), true);
   if (state.entries.length === 0) return note(t("repository.filetree.empty"));
   const guides = Array.from({ length: depth }, (_, index) => <span key={index} className="repository-ftree-guide" style={{ left: `${TREE_BASE_PAD + index * TREE_INDENT + 6}px` }} aria-hidden="true" />);
@@ -206,7 +206,7 @@ export function CommitBlobView({ ctx, repoRel, fullHash, path }: { readonly ctx:
       .finally(() => { if (!cancelled) setPending(false); });
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, fullHash, path, repoRel]);
-  if (state.kind === "loading") return <div className="repository-hunk-loading">{t("repository.common.loading")}</div>;
+  if (state.kind === "loading") return <div className="repository-hunk-loading" aria-hidden="true" />;
   if (state.kind === "binary") return <div className="repository-hunk-loading">{t("repository.filetree.binary")}</div>;
   if (state.kind === "error") return <div className="repository-hunk-error">{t(state.code === "file_not_found" ? "repository.filetree.fileMissing" : "repository.filetree.contentError")}</div>;
   return <div className={`repository-hunk-wrap${pending ? " is-stale" : ""}`} aria-busy={pending || undefined}>

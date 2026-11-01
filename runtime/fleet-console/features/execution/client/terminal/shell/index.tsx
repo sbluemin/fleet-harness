@@ -12,16 +12,20 @@ import { useBrowserEngine } from "../../../../browser/client/browser-panel-store
 import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { TerminalSurface, type TerminalCarryOver, type TerminalExitInfo } from "../shared/index.js";
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
-import { DEFAULT_SHELL_KEY, endShellSession, getShellSessionSnapshot, readShellSession, useShellSession } from "./shell-session-store.js";
-import { requestShellOpenAt, requestShellRestartAt } from "../../../../workspace/client/navigation-events.js";
+import { DEFAULT_SHELL_KEY, endShellSession, getShellSessionSnapshot, readShellSession, subscribeShellSnapshots } from "./shell-session-store.js";
+import { parseToolShellKey, toolShellKey } from "../../../shared/shell-key.js";
+import { registerCommodoreShellStatusProvider, shellBusyForRemoval, stableShellStatus } from "../../../../workspace/client/theater-tools/shell-status.js";
+import { useCommodoreToolTheater } from "../../../../workspace/client/theater-tools/store.js";
+import { CommodoreToolsEmptyState } from "../../../../workspace/client/theater-tools/empty.js";
 import "./shell.css";
 
 /**
- * Shell은 Objective이 아니라 사령관과 그 목표·구성원 화면이 공유하는 Console 표면이다.
+ * Shell은 Objective 대화가 아니라 (사령관, Theater)마다 하나씩 사는 Console 표면이다.
  *
- * 그래서 durable state에 남지 않고 캡션도 없다 — 칸 머리가 이름을 말하고 닫기를 준다. 어느 Shell 인지는 칸이 받은
- * 도구 키(`ctx.conversation.key`)가 정하고, 대화가 없는 자리(폰 배치)는 Console 기본 Shell 을 쓴다. PTY 세션 키는 서버가
- * 그 키에서 짓는다 — 클라이언트는 식별자를 지어내지 않는다.
+ * 그래서 durable state에 남지 않고 캡션도 없다 — 칸 머리가 이름을 말하고 닫기를 준다. 어느 Shell 인지는
+ * 패널이 받은 도구 Theater가 정하고(`tool-shell:commodore:<사령관>:theater:<Theater>`), 그 문맥이 없는
+ * 자리(문맥 없이 열리는 폰 배치·옛 호출)는 Console 기본 Shell 을 쓴다. PTY 세션 키는 서버가 그 키에서
+ * 짓는다 — 키의 앞부분만 입장 허가가 읽는다.
  */
 const SHELL_SURFACE_ID = "shell";
 const SHELL_TICKET_PATH = "/api/v1/shell/ticket";
@@ -29,13 +33,11 @@ const SHELL_WS_PATH = "/api/v1/terminal/ws";
 /** 셀 실측 전의 80열 예산. 마운트 뒤에는 TerminalSurface의 실제 셀 폭으로 갱신한다. */
 const SHELL_MIN_PANE_WIDTH = 660;
 
-interface ShellMountState {
+export interface ShellMountState {
   readonly key: string;
   /** 칸이 대화에 놓여 있는가 — 그때만 칸을 닫는 것이 Shell 을 끝낸다(폰의 도구 시트는 치우기만 한다). */
   readonly conversationScoped: boolean;
   readonly cwdHint?: ShellCwdHint;
-  /** 이 Shell 이 처음 선 작업 위치(Theater 상대). 대화의 작업 위치가 이것과 달라지면 칸이 한 줄로 알린다. */
-  readonly launchedAt: string | null;
   readonly target: HTMLElement | null;
   readonly context: ExpandedSurfaceContext;
 }
@@ -64,8 +66,25 @@ export function connectShellLaunchContext(state: ClientConsoleStateCapability, v
 }
 
 function shellKeyOf(context: ExpandedSurfaceContext): string {
+  // 사령관 전용 도구 패널은 (사령관, Theater)의 Shell을 쓴다 — Theater를 옮기면 그 Theater의
+  // 세션이 보이고, 돌아오면 먼저 쓰던 세션이 그대로 있다. 문맥이 없으면 Console 기본 Shell이다.
+  if (typeof context.commodoreId === "string" && context.commodoreId !== "" && typeof context.theaterId === "string" && context.theaterId !== "") {
+    return toolShellKey(context.commodoreId, context.theaterId) ?? DEFAULT_SHELL_KEY;
+  }
   return context.conversation?.key ?? DEFAULT_SHELL_KEY;
 }
+
+/** 헤드 메뉴의 초록 점과 설정의 해제 확인이 읽는 Theater별 Shell 상태 — 미션 4의 틀에 답을 단다. */
+registerCommodoreShellStatusProvider({
+  query: (commodoreId, theaterId) => {
+    const key = toolShellKey(commodoreId, theaterId);
+    const state = key === null ? null : getShellSessionSnapshot(key);
+    if (!state) return stableShellStatus(false, false);
+    // 프롬프트가 아니면(모르면 포함) 실행 중으로 보고 먼저 묻는다.
+    return stableShellStatus(state.open, shellBusyForRemoval(state));
+  },
+  subscribe: subscribeShellSnapshots,
+});
 
 function publishShellMount(key: string, next: ShellMountState | null): void {
   const current = shellMounts.get(key) ?? null;
@@ -119,8 +138,15 @@ function surfaceCommodoreId(context: ExpandedSurfaceContext): string | undefined
   return undefined;
 }
 
-/** 이 칸이 처음 Shell 을 세울 자리 — 대화의 작업 위치, 대화가 없으면 표면 params·마지막으로 본 Theater 의 루트. */
+/**
+ * 이 칸이 처음 Shell 을 세울 자리 — 도구 Shell은 패널의 Theater 루트에서 못 박는다.
+ * 대화의 작업 위치(보는 Theater)는 이제 Shell의 자리를 정하지 않는다: Theater를 옮기는 일은
+ * 그 Theater의 세션으로 갈아타는 일이지, 살아 있는 Shell을 옮기는 일이 아니다.
+ * 대화가 없는 자리는 예전처럼 표면 params·마지막으로 본 Theater의 루트를 쓴다.
+ */
 function launchHintOf(context: ExpandedSurfaceContext): ShellCwdHint | undefined {
+  const tool = parseToolShellKey(shellKeyOf(context));
+  if (tool) return { theaterId: tool.theaterId, commodoreId: tool.commodoreId };
   const ownerId = surfaceCommodoreId(context);
   const owner = ownerId ? { commodoreId: ownerId } : {};
   const location = context.conversation?.location;
@@ -148,10 +174,20 @@ function attachShellMount(target: HTMLElement, context: ExpandedSurfaceContext):
     key,
     conversationScoped: context.conversation !== undefined,
     ...(hint ? { cwdHint: hint } : {}),
-    launchedAt: current ? current.launchedAt : context.conversation?.location.relative ?? null,
     target,
     context,
   });
+}
+
+/**
+ * 해제된 Theater의 상주를 거둔다 — 아직 보이는 칸이면 건드리지 않는다. 해제 확인 뒤
+ * 서버 세션을 끝낸 호출자가 함께 부른다. 주차된 상주라 다시 열 때 새로 만든다.
+ */
+export function dropEndedShellMount(key: string): void {
+  const mount = shellMounts.get(key);
+  if (!mount || mount.target !== null) return;
+  publishShellMount(key, null);
+  disposeShellHost(key);
 }
 
 function updateShellMount(target: HTMLElement, context: ExpandedSurfaceContext): void {
@@ -180,8 +216,22 @@ function detachShellMount(target: HTMLElement, context: ExpandedSurfaceContext):
 
 /** 칸 인스턴스 id → 그 칸의 Shell. 닫힘 통보는 대화 문맥 없이 오므로 여기서 찾는다. */
 function mountOfInstance(instanceId: string): ShellMountState | null {
-  for (const mount of shellMounts.values()) if (mount.context.instanceId === instanceId) return mount;
-  return null;
+  return resolveInstanceMount(shellMounts, instanceId);
+}
+
+/**
+ * 같은 칸이 Theater를 옮기면 옛 상주(주차됨)와 새 상주(붙음)가 같은 인스턴스 id를 나눈다.
+ * 닫기·닫기 확인은 지금 붙은 쪽을 가리켜야지 먼저 들어간 쪽을 가리키면 안 된다 —
+ * 안 그러면 보이는 칸의 확인 없이 감춰진 Theater의 Shell이 끝난다.
+ */
+export function resolveInstanceMount(mounts: ReadonlyMap<string, ShellMountState>, instanceId: string): ShellMountState | null {
+  let parked: ShellMountState | null = null;
+  for (const mount of mounts.values()) {
+    if (mount.context.instanceId !== instanceId) continue;
+    if (mount.target !== null) return mount;
+    parked ??= mount;
+  }
+  return parked;
 }
 
 /**
@@ -192,7 +242,7 @@ export const shellSurface: ExpandedSurfaceDescriptor = {
   id: SHELL_SURFACE_ID,
   title: (ctx) => getT(ctx.language ?? "en")("terminal.kind.shell"),
   minPaneWidth: SHELL_MIN_PANE_WIDTH,
-  render: (ctx) => React.createElement(ShellSurfaceBody, { ctx }),
+  render: (ctx) => React.createElement(ShellSurfaceWithTheater, { ctx }),
   // 명령이 돌고 있는지는 닫는 그 순간 서버에 묻는다 — 서버는 어느 길(키·붙여넣기·IME·프로그램 입력)로 들어간 줄이든 실행된 것을
   // 알고, 프롬프트로 돌아올 때만 알리므로 브라우저의 스냅숏은 늦을 수 있다. 읽지 못하면 모르는 것이니 한 번 묻는다.
   confirmClose: async (closed) => {
@@ -212,22 +262,50 @@ export const shellSurface: ExpandedSurfaceDescriptor = {
 };
 
 /**
+ * 사령관 전용 도구는 (사령관, 도구)의 Theater를 따로 가진다 — 어느 호스트(칸·전체 표면)에서
+ * 열어도 타일 머리의 선택기와 같은 값을 읽는다. 세션 키·시작 위치를 Theater마다 갖는 일은
+ * 미션 8이 맡고, 여기서는 본문이 보는 Theater와 빈 상태만 맞춘다.
+ */
+function ShellSurfaceWithTheater({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
+  const toolTheater = useCommodoreToolTheater(ctx.commodoreId ?? null, "global-shell");
+  const theaterId = toolTheater.active && toolTheater.resolution !== null && toolTheater.resolution.kind !== "none"
+    ? toolTheater.resolution.theaterId
+    : ctx.theaterId;
+  const bodyCtx = React.useMemo(() => (theaterId === ctx.theaterId ? ctx : { ...ctx, theaterId }), [ctx, theaterId]);
+  if (toolTheater.active && toolTheater.resolution?.kind === "none" && ctx.commodoreId) {
+    return (
+      <div className="global-shell-surface">
+        <CommodoreToolsEmptyState commodoreId={ctx.commodoreId} />
+      </div>
+    );
+  }
+  return React.createElement(ShellSurfaceBody, { ctx: bodyCtx });
+}
+
+/**
  * Shell 본문은 터미널을 직접 소유하지 않고 상주 호스트가 들어설 자리만 내준다.
  * 칸이 사라져도 상주 호스트의 portal container는 주차장으로 이동할 뿐 unmount되지 않는다.
+ * 패널의 Theater가 바뀌면 키가 바뀌어 그 Theater의 상주로 갈아탄다 — 먼저 쓰던 상주는
+ * 주차장에 남아 돌아오면 이어서 보인다.
  */
 function ShellSurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
   const targetRef = React.useRef<HTMLDivElement>(null);
-  // 이 칸의 Shell 은 처음 선 대화의 것이다 — 주차·되돌림은 늘 그 키로 한다(대화가 바뀌는 렌더에서 문맥이 먼저 바뀌어도 새지 않게).
+  // 이 칸의 Shell 은 처음 선 Theater의 것이다 — 주차·되돌림은 늘 그 키로 한다(문맥이 먼저 바뀌는 렌더에서 새지 않게).
+  // Theater가 바뀌면 키가 바뀌므로 아래 effect가 옛 상주를 주차하고 새 상주를 붙인다.
   const mountedCtxRef = React.useRef(ctx);
+  const latestCtxRef = React.useRef(ctx);
+  latestCtxRef.current = ctx;
+  const shellKey = shellKeyOf(ctx);
 
   React.useLayoutEffect(() => {
     const target = targetRef.current;
     if (!target) return;
-    attachShellMount(target, mountedCtxRef.current);
+    attachShellMount(target, latestCtxRef.current);
+    mountedCtxRef.current = latestCtxRef.current;
     return () => detachShellMount(target, mountedCtxRef.current);
-    // target DOM의 수명만 소유한다. ctx 갱신은 아래 effect가 같은 target에 따로 흘린다.
+    // target DOM과 키의 수명만 소유한다. 같은 키의 ctx 갱신은 아래 effect가 같은 target에 따로 흘린다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [shellKey]);
 
   React.useLayoutEffect(() => {
     const target = targetRef.current;
@@ -238,54 +316,7 @@ function ShellSurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
 
   return (
     <div className="global-shell-surface">
-      <ShellLocationNotice ctx={ctx} />
       <div ref={targetRef} className="global-shell-mount" />
-    </div>
-  );
-}
-
-/**
- * 대화의 작업 위치가 이 Shell 이 선 자리와 달라졌을 때의 한 줄 — 이미 연 Shell 은 그대로 두고(반쯤 친 명령이 다른 저장소에서
- * 돌지 않게) 사람이 고르면 새 위치로 옮긴다. 프롬프트가 비어 있으면 `cd`, 명령이 돌고 있으면 그 Shell 을 끝내고 새로 연다
- * (한 번 더 눌러 확인).
- */
-function ShellLocationNotice({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
-  const t = getT(ctx.language ?? "en");
-  const key = shellKeyOf(ctx);
-  const mount = React.useSyncExternalStore(subscribeShellMount, () => shellMounts.get(key) ?? null, () => null);
-  const session = useShellSession(key);
-  const [confirming, setConfirming] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const location = ctx.conversation?.location ?? null;
-  if (location === null || mount === null || mount.launchedAt === null || !session?.open) return null;
-  if (mount.launchedAt === location.relative) return null;
-  const ownerId = surfaceCommodoreId(ctx);
-  const paramsOwner = ownerId ? { commodoreId: ownerId } : {};
-  const target = location.relative === "" ? { theaterId: location.theaterId, ...paramsOwner } : { theaterId: location.theaterId, path: location.relative, ...paramsOwner };
-  const settle = () => {
-    const current = shellMounts.get(key);
-    if (current) publishShellMount(key, { ...current, launchedAt: location.relative, cwdHint: target });
-    setConfirming(false);
-  };
-  const move = async (restart: boolean) => {
-    setBusy(true);
-    try {
-      const result = await (restart ? requestShellRestartAt(target, { shell: key }) : requestShellOpenAt(target, { shell: key }));
-      if (result.ok) settle();
-      else if (!restart && (result.reason === "busy" || result.reason === "input_pending")) setConfirming(true);
-    } catch {
-      // 옮기지 못해도 Shell 은 그대로다. 줄은 남아 다시 누를 수 있다.
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="global-shell-location-notice" role="status">
-      <span>{confirming ? t("terminal.shell.locationBusy") : t("terminal.shell.locationChanged")}</span>
-      <button type="button" disabled={busy} onClick={() => { void move(confirming); }}>
-        {confirming ? t("terminal.shell.locationRestart") : t("terminal.shell.locationOpen")}
-      </button>
-      {confirming ? <button type="button" disabled={busy} onClick={() => setConfirming(false)}>{t("terminal.shell.locationCancel")}</button> : null}
     </div>
   );
 }
