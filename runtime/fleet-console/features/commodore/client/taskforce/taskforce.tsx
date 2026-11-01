@@ -24,6 +24,8 @@ import { openReferencedObjective } from "../commodore-reference-input.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../../shared/contracts/attachment-budget.js";
 import { CONVERSATION_REFERENCE_MARK } from "../../../execution/shared/conversation/references.js";
 import { MentionChip } from "../../../execution/client/composer-primitives/mention-chip.js";
+import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
+import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { taskforceT } from "./i18n.js";
 import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, readTaskforceExperiment, readTaskforces, subscribeTaskforces, useTaskforce, useTaskforceExperiment, useTaskforces, wasTaskforceRemoved } from "./state.js";
 import "./taskforce.css";
@@ -215,7 +217,7 @@ export function TaskforceHost() {
     emit();
   }, [experiment.known, experiment.enabled, selection]);
   if (!experiment.enabled && experiment.known) return null;
-  return <>{request ? <CreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{deleting ? <DeleteDialog key={deleting} id={deleting} language={language} onClose={() => { deleteRequest = null; emit(); }} /> : null}{mobile ? <div className="taskforce-mobile-screen"><header><button type="button" className="fc-btn fc-btn--secondary" onClick={() => { mobileId = null; emit(); }}>{taskforceT(language)("taskforce.closeDialog")}</button><strong>{readTaskforce(mobile).state?.name}</strong></header><TaskforceBody key={mobile} id={mobile} language={language} /><TaskforceDetails id={mobile} tab="overview" language={language} /></div> : null}</>;
+  return <>{request ? <CreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{deleting ? <DeleteDialog key={deleting} id={deleting} language={language} onClose={() => { deleteRequest = null; emit(); }} /> : null}{mobile ? <TaskforceMobileScreen id={mobile} language={language} onClose={() => { mobileId = null; emit(); }} /> : null}</>;
 }
 
 function TaskforceActions({ actions, commodoreId, language }: { readonly actions: readonly TaskforceAction[]; readonly commodoreId?: string; readonly language: string }) {
@@ -240,6 +242,21 @@ function MentionText({ entry, language, speaker }: { readonly entry: TaskforceLe
     text = text.slice(match.at + match.token.length);
   }
   return <span className="taskforce-message-text">{parts}</span>;
+}
+
+// 폰 화면: 대화가 화면 전체를 쓰고, 머리(‹ · 제목 알약 · ⓘ)는 위에 떠 있으며, 개요·멤버 같은 상세는 ⓘ 시트가 연다.
+function TaskforceMobileScreen({ id, language, onClose }: { readonly id: string; readonly language: "ko" | "en"; readonly onClose: () => void }) {
+  const t = taskforceT(language);
+  const [details, setDetails] = useState(false);
+  return <div className="taskforce-mobile-screen">
+    <header>
+      <button type="button" className="mobile-bar-button" aria-label={t("taskforce.closeDialog")} onClick={onClose}><MobileIcon name="back" /></button>
+      <div className="mobile-conv-pill"><span className="mobile-conv-pill-copy"><strong>{readTaskforce(id).state?.name}</strong></span></div>
+      <button type="button" className="mobile-bar-button" aria-label={t("taskforce.overview")} aria-haspopup="dialog" onClick={() => setDetails(true)}><MobileIcon name="info" /></button>
+    </header>
+    <TaskforceBody key={id} id={id} language={language} />
+    {details ? <MobileSheet title={t("taskforce.overview")} onClose={() => setDetails(false)}><TaskforceDetails id={id} tab="overview" language={language} /></MobileSheet> : null}
+  </div>;
 }
 
 function TaskforceBody({ id, language }: { readonly id: string; readonly language: "ko" | "en" }) {

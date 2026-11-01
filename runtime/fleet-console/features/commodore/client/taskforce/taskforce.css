@@ -70,17 +70,15 @@
 .taskforce-action { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .taskforce-action-kind { flex-shrink: 0; color: var(--text-secondary); font-size: var(--t-xs); }
 .taskforce-muted { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
-.taskforce-mobile-screen { --m-chrome-top: calc(56px + var(--m-safe-top, 0px)); position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; flex-direction: column; overflow: auto; background: var(--m-bg, var(--surface-panel)); }
-/* 머리는 화면 위에 떠 있다 — 대화는 화면 맨 위부터 시작하고 그룹 대화 로그가 --m-chrome-top 만큼 위를 비운다. 배경은 공통 위 끝 페이드이고,
-   Close·제목은 자기 면(--m-surface·--m-hairline-strong·--m-shadow)을 가진 알약이다. */
-.taskforce-mobile-screen > header { position: sticky; top: 0; z-index: 2; display: flex; flex: none; align-items: center; gap: 8px; box-sizing: border-box; height: var(--m-chrome-top); margin-bottom: calc(-1 * var(--m-chrome-top)); padding: var(--m-safe-top, 0px) 12px 0; background: var(--m-fade-top, var(--m-fade-down, var(--m-bg))); pointer-events: none; }
+/* 폰 화면 — 대화가 화면 전체를 쓰고(위로 머리 뒤, 아래로 입력 독 뒤까지) 머리는 위에 떠 있다. 로그·독은 그룹 대화의 폰 규칙(--m-chrome-top, --m-dock-h, --m-safe-bottom)이 그대로 맡는다. */
+.taskforce-mobile-screen { --m-chrome-top: calc(60px + var(--m-safe-top, 0px)); position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; flex-direction: column; overflow: hidden; background: var(--m-bg, var(--surface-panel)); }
+/* 머리 상자는 --m-fade-top 곡선(safe-top + 80px)이 끝까지 그려질 높이다 — 알약 줄(60px)보다 아래로 길어, 곡선이 알약 줄 끝에서 잘려 가로선이 되지 않는다. 단추·알약만 눌린다. */
+.taskforce-mobile-screen > header { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; align-items: flex-start; gap: 8px; box-sizing: border-box; height: calc(80px + var(--m-safe-top, 0px)); padding: calc(var(--m-safe-top, 0px) + 7px) 14px 0; background: var(--m-fade-top, var(--m-fade-down, var(--m-bg))); pointer-events: none; }
 .taskforce-mobile-screen > header > * { pointer-events: auto; }
-.taskforce-mobile-screen > header > button { flex: none; height: 40px; padding: 0 16px; border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); }
-.taskforce-mobile-screen > header > strong { display: block; min-width: 0; max-width: 100%; overflow: hidden; padding: 0 16px; border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-size: var(--m-fs-secondary); line-height: 38px; text-overflow: ellipsis; white-space: nowrap; }
-.taskforce-mobile-screen .taskforce-conversation { padding-top: 0; flex: 1 0 65vh; }
-.taskforce-mobile-screen .group-chat-dock { padding-bottom: 0; }
-.taskforce-mobile-screen .taskforce-details { padding: 16px 16px calc(16px + var(--m-safe-bottom, 0px)); }
-.taskforce-mobile-screen::after { content: ""; position: sticky; bottom: 0; z-index: 2; display: block; flex: none; height: var(--m-safe-bottom, 0px); margin-top: calc(-1 * var(--m-safe-bottom, 0px)); background: var(--m-fade-up, var(--m-bg)); pointer-events: none; }
+.taskforce-mobile-screen > header .mobile-bar-button { background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: 50%; color: var(--m-text); }
+.taskforce-mobile-screen > header .mobile-conv-pill { padding-left: 16px; }
+.taskforce-mobile-screen .taskforce-conversation { flex: 1; height: auto; padding-top: 0; }
+.taskforce-mobile-screen .taskforce-details { padding: 0 16px 16px; }
 .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible { box-shadow: var(--field-focus-edge); outline: none; }
 @media (max-width: 760px) { .taskforce-paused { flex-wrap: wrap; } .taskforce-paused > span:last-child { margin-left: 22px; } .taskforce-dialog footer { flex-wrap: wrap; } }
