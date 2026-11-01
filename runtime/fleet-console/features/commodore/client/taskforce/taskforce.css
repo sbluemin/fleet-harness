@@ -43,6 +43,8 @@
 .conversation-panel-identity-mark.is-surface > .taskforce-stack[data-count="1"] > svg { width: 50%; height: 50%; }
 .taskforce-conversation > .group-chat { flex: 1; min-height: 0; }
 .taskforce-foot { width: 100%; padding: 8px clamp(16px, 4cqi, 48px) 16px; }
+/* 사령관 1:1과 같이 입력 캡슐이 대화 열 너비를 다 쓴다. */
+.taskforce-foot .objectives-commodore-composer { width: 100%; max-width: none; box-sizing: border-box; }
 .taskforce-paused { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid color-mix(in oklch, var(--warn) 35%, transparent); border-radius: 12px; background: color-mix(in oklch, var(--warn) 9%, var(--surface-panel)); color: var(--text-primary); font-size: var(--t-md); }
 .taskforce-paused > div { flex: 1; }
 .taskforce-paused strong { font-weight: var(--weight-medium); }
