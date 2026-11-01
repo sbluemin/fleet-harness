@@ -300,6 +300,14 @@
    쉬는 행은 표식 칸 아래까지 쓰는 기존 배치 그대로다. */
 .commander-tab--card .side-bar-cluster-row:is(:hover, :focus-within, .is-open) .side-bar-cluster-row-line { grid-column: 1; }
 .commander-tab--card .side-bar-cluster-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 글리프가 보이는 동안만 게이지가 문구보다 먼저 줄어든다 — 늘릴 때는 canary처럼 56px에 머물고,
+   줄일 때는 문구보다 네 배 먼저 양보해 문구가 몇 글자는 남는다. 하한 0, 더 좁으면 기존 @container 규칙이 걷는다.
+   쉬는 행에는 닿지 않아 고정 56px·32px·숨김 단계가 그대로 이긴다. */
+.commander-tab--card .side-bar-cluster-row:is(:hover, :focus-within, .is-open) .side-bar-cluster-row-gauge {
+  flex: 0 4 56px;
+  width: auto;
+  min-width: 0;
+}
 /* 위임 토글을 행 끝으로 — 진행 중 행에만. 시작 전·완료 한 줄 행은 이전 크기와 높이를 그대로 둔다. */
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) { grid-template-columns: 30px 1fr auto; }
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):has(.side-bar-cluster-row-mark-toggle) { padding-right: 10px; }
