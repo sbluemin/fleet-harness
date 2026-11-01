@@ -33,7 +33,7 @@ const SHELL_WS_PATH = "/api/v1/terminal/ws";
 /** 셀 실측 전의 80열 예산. 마운트 뒤에는 TerminalSurface의 실제 셀 폭으로 갱신한다. */
 const SHELL_MIN_PANE_WIDTH = 660;
 
-interface ShellMountState {
+export interface ShellMountState {
   readonly key: string;
   /** 칸이 대화에 놓여 있는가 — 그때만 칸을 닫는 것이 Shell 을 끝낸다(폰의 도구 시트는 치우기만 한다). */
   readonly conversationScoped: boolean;
@@ -216,8 +216,22 @@ function detachShellMount(target: HTMLElement, context: ExpandedSurfaceContext):
 
 /** 칸 인스턴스 id → 그 칸의 Shell. 닫힘 통보는 대화 문맥 없이 오므로 여기서 찾는다. */
 function mountOfInstance(instanceId: string): ShellMountState | null {
-  for (const mount of shellMounts.values()) if (mount.context.instanceId === instanceId) return mount;
-  return null;
+  return resolveInstanceMount(shellMounts, instanceId);
+}
+
+/**
+ * 같은 칸이 Theater를 옮기면 옛 상주(주차됨)와 새 상주(붙음)가 같은 인스턴스 id를 나눈다.
+ * 닫기·닫기 확인은 지금 붙은 쪽을 가리켜야지 먼저 들어간 쪽을 가리키면 안 된다 —
+ * 안 그러면 보이는 칸의 확인 없이 감춰진 Theater의 Shell이 끝난다.
+ */
+export function resolveInstanceMount(mounts: ReadonlyMap<string, ShellMountState>, instanceId: string): ShellMountState | null {
+  let parked: ShellMountState | null = null;
+  for (const mount of mounts.values()) {
+    if (mount.context.instanceId !== instanceId) continue;
+    if (mount.target !== null) return mount;
+    parked ??= mount;
+  }
+  return parked;
 }
 
 /**
