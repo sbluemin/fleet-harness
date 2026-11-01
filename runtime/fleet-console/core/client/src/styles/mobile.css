@@ -33,6 +33,39 @@
   background: var(--m-bg);
 }
 
+/* 엣지투엣지 공통 토큰·규칙 (계약 §3·§5, 미션 2 정의 — 화면 적용은 미션 4·5에서).
+   --m-safe-*: 셸 인셋 변수 → env() → 0 순서. 셸이 :root에 --fleet-shell-inset-*를 쓰면
+   그것을 쓰고, 없으면(옛 앱·브라우저) env(safe-area-inset-*)로 떨어진다. 모든 모바일 CSS는
+   env(safe-area-inset-*)를 직접 쓰지 말고 이 토큰을 쓴다.
+   --m-chrome-top: 프레임 헤드의 테두리 상자 측정값이라 헤드 padding-top에 --m-safe-top을
+   더하는 순간(미션 4) 셸 인셋을 포함한다. 떠 있는 줄(.group-ledger-head·.fexp-m-tabs 등)은
+   calc(var(--m-chrome-top, 0px) + …) 그대로 두면 된다 — safe를 덧씌우지 않는다.
+   --m-dock-h: 독의 테두리 상자 측정값이라 독 padding-bottom에 --m-safe-bottom을 더하는
+   순간(미션 4·5) 셸 인셋을 포함한다. 로그의 m-dock-behind 한 벌도 덧씌우지 않는다.
+   --m-toast-bottom: 토스트 하단 고정값. objectives·file-explorer의 150px 하드코딩을 대신한다. */
+:root {
+  --m-safe-top: var(--fleet-shell-inset-top, env(safe-area-inset-top, 0px));
+  --m-safe-right: var(--fleet-shell-inset-right, env(safe-area-inset-right, 0px));
+  --m-safe-bottom: var(--fleet-shell-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --m-safe-left: var(--fleet-shell-inset-left, env(safe-area-inset-left, 0px));
+  --m-toast-bottom: calc(150px + var(--m-safe-bottom, 0px));
+}
+
+/* 떠 있는 줄의 가장자리 페이드 하나 — m-edge (상단·하단용). 기존 --m-fade-up·--m-fade-down
+   모바일 토큰과 라이트·다크 표면색을 그대로 쓴다. 틀 밖 고정 겹침에서는 토큰이 없어
+   --m-bg 단색으로 떨어진다. 화면은 새로 만들지 말고 이 둘을 쓴다. */
+.m-edge-top { background: var(--m-fade-down, var(--m-bg)); }
+.m-edge-bottom { background: var(--m-fade-up, var(--m-bg)); }
+
+/* 아래 독 뒤로 본문을 늘리는 한 벌 — m-dock-behind. 로그(스크롤 영역)가 독 높이만큼
+   상자를 아래로 늘리고 같은 몫을 안쪽 여백으로 되돌린다. 스크롤 범위와 독 위 줄은 그대로,
+   끝의 첫·마지막 줄만 독·막대에 가려지지 않는다. 대상: .group-chat-dock·.objectives-cm-dock
+   앞의 로그, 릴레이 닫기(.group-relay-foot) 앞의 로그(미션 5에서 --m-dock-h 측정과 함께 적용).
+   <base>는 화면의 기존 아래 안쪽 여백(8px·16px 등)이다.
+   margin-bottom: calc(-1 * var(--m-dock-h, 0px));
+   padding-bottom: calc(<base> + var(--m-dock-h, 0px));
+   scroll-padding-bottom: var(--m-dock-h, 0px); */
+
 .mobile-shell-content,
 .mobile-session-view,
 .mobile-session-body,
