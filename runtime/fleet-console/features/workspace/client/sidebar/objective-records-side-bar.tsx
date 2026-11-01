@@ -120,6 +120,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   /** 그 사령관의 지휘관 목록을 접거나 펼친다 — 지금 보이는 대로 뒤집는다. */
   readonly onToggleFold: () => void;
   readonly showStatusLiveTick: boolean;
+  readonly liveOverride?: boolean;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
   readonly dragOffsetY: number;
@@ -472,7 +473,8 @@ export function ObjectiveRecordsSideBar({
                   clampAlias={clampAlias}
                   onStartAliasEdit={() => {}}
                   onFinishAliasEdit={() => {}}
-                  showStatusLiveTick={face.row.judging.length > 0}
+                  showStatusLiveTick={false}
+                  liveOverride={face.row.judging.length > 0}
                   dragging={isTheaterDragging}
                   dropTarget={theaterDropBefore}
                   dragOffsetY={theaterDragOffsetY}
@@ -483,7 +485,6 @@ export function ObjectiveRecordsSideBar({
                   avatarOverride={
                     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
                       <TaskforceStack members={face.row.members} judging={face.row.judging} />
-                      {face.row.judging.length > 0 ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
                     </span>
                   }
                 />
@@ -682,6 +683,7 @@ function TheaterSectionHeader({
   editingAlias,
   clampAlias,
   showStatusLiveTick,
+  liveOverride,
   dragging,
   dropTarget,
   dragOffsetY,
@@ -702,7 +704,8 @@ function TheaterSectionHeader({
   const contributedMark = useTheaterContributionMark(contributionSummary);
   // 자기 아바타를 가진 행(TaskForce)은 사령관 표식을 받지 않는다 — 표식이 TF id를 사령관으로 그리지 않게 한다.
   const mark = avatarOverride ? null : contributedMark;
-  const live = useTheaterHeaderLive(theater.id);
+  const contributedLive = useTheaterHeaderLive(theater.id);
+  const live = liveOverride ?? contributedLive;
   const selected = useTheaterHeaderSelected(theater.id);
   // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
   const wasEditingRef = useRef(editingAlias);
