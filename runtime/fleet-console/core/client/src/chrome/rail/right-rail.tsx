@@ -655,8 +655,9 @@ function standsWithoutTheater(entry: RailEntryDescriptor): boolean {
 
 function RailIcon({ entry, context, language, isActive, text = false }: RailIconProps) {
   const withoutTheater = standsWithoutTheater(entry);
+  const commodoreToolsHere = useCommodoreToolsConversation();
   // 사령관 전용 도구는 사령관 대화에서 Theater 없이도 열린다 — 빈 상태가 그 자리에서 안내한다.
-  const gatedHere = entry.commodoreConversationOnly === true && useCommodoreToolsConversation();
+  const gatedHere = entry.commodoreConversationOnly === true && commodoreToolsHere;
   const disabled = !withoutTheater && context.theaterId === null && !gatedHere;
   const handleClick = useCallback(() => {
     if (disabled) return;
