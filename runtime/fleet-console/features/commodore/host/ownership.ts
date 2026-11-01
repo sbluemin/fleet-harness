@@ -46,9 +46,6 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     if (ids.length === 1) return ids[0]!;
     throw new CommodoreStoreError("theater_unavailable");
   };
-  const knowledge = {
-    root: (id: string) => { const dir = deleting.has(id) ? null : entities.dirOf(id); return dir ? path.join(dir, "knowledge") : null; },
-  };
   const objectiveDirectory = (id: string): string => {
     const dir = entities.dirOf(id);
     assertWritable(id);
@@ -59,7 +56,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     return cwd;
   };
   return {
-    entities, legacyOwners, theaterIds, theaterPath, knowledge, issueForAlias, blocked,
+    entities, legacyOwners, theaterIds, theaterPath, issueForAlias, blocked,
     assertWritable,
     isDeleting: (id: string) => deleting.has(id),
     beginDeletion(id: string) { assertWritable(id); deleting.add(id); },

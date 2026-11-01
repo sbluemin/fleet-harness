@@ -17,7 +17,7 @@ interface ComposerDraft {
   readonly revision: number;
   readonly attachments: readonly ComposerAttachmentRecord[];
   readonly attachmentNotice: ComposerAttachmentNotice | null;
-  /** 다른 표면(Codex 문서 등)이 붙인 인용 칩. 보낼 때 프롬프트 끝에 합성된다. */
+  /** 다른 표면(파일 문서 등)이 붙인 인용 칩. 보낼 때 프롬프트 끝에 합성된다. */
   readonly quotes: readonly ComposerQuoteItem[];
   readonly sending: boolean;
   readonly sentEpoch: number;

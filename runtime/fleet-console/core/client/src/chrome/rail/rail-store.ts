@@ -67,7 +67,7 @@ function useRailStoreField<K extends keyof RailStore>(key: K): RailStore[K] {
 }
 
 /**
- * 레일 엔트리 가운데 **도구**(파일·Codex·스킬처럼 대화 옆에서 쓰는 것)를 대신 여는 호스트 — 데스크톱 대화 칸의 도구 작업대다.
+ * 레일 엔트리 가운데 **도구**(파일·스킬처럼 대화 옆에서 쓰는 것)를 대신 여는 호스트 — 데스크톱 대화 칸의 도구 작업대다.
  * 묶여 있는 동안 그 호스트가 `owns`라고 답한 엔트리는 오른쪽 사이드바 슬롯이 아니라 지금 대화의 도구 칸으로 열리고 닫힌다.
  * 오른쪽 사이드바 자체(대상의 탭·설정)는 그대로 이 슬롯의 몫이다. 폰 배치처럼 호스트가 없으면 지금처럼 슬롯이 연다.
  */
@@ -272,7 +272,7 @@ function readStoredActivePanelId(): string | null {
 }
 
 /* 단일 활성 슬롯 1기 시절 값 정규화 — diff/history는 repository 패널로 흡수됐고(history는
-   Repository 소스 시드 유지), alerts 패널은 퇴역했다. 스택 시절 값은 현대 id라 그대로 통과한다. */
+   Repository 소스 시드 유지), alerts·codex 패널은 퇴역했다. 스택 시절 값은 현대 id라 그대로 통과한다. */
 function normalizeStoredPanelId(stored: string): string | null {
   if (stored === "") return null;
   if (stored === "diff" || stored === "history") {
@@ -281,7 +281,7 @@ function normalizeStoredPanelId(stored: string): string | null {
     } catch { /* best-effort migration */ }
     return "repository";
   }
-  if (stored === "alerts") return null;
+  if (stored === "alerts" || stored === "codex") return null;
   return stored;
 }
 

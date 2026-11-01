@@ -610,7 +610,7 @@ function entryIcon(binding: RailEntryBinding | null): ReactNode {
   return typeof icon === "function" ? icon() : icon ?? null;
 }
 
-/** 레일 엔트리의 페인 묶음(파일·Codex 등) — 오른쪽 사이드바가 쓰던 같은 표면 렌더러를 칸 안에 세운다. */
+/** 레일 엔트리의 페인 묶음(파일 등) — 오른쪽 사이드바가 쓰던 같은 표면 렌더러를 칸 안에 세운다. */
 function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<WorkbenchTile, { kind: "entry" }> }) {
   const t = useT();
   const { binding, toolContext, language } = props;
@@ -641,7 +641,7 @@ function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Work
 
 const NO_MINIMUM = () => undefined;
 
-/** 확대 표면 서술자 하나(저장소·Shell·Codex 정독 등) — 옛 가운데 덮개가 쓰던 같은 서술자를 칸 안에 그린다. */
+/** 확대 표면 서술자 하나(저장소·Shell 등) — 옛 가운데 덮개가 쓰던 같은 서술자를 칸 안에 그린다. */
 function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<WorkbenchTile, { kind: "surface" }> }) {
   const { tile, entry, focused, toolContext, state, language, binding } = props;
   const descriptors = useExpandedSurfaceDescriptors();

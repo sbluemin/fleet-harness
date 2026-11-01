@@ -57,7 +57,6 @@ export interface CommodoreRouteHooks {
   /** 전역 설치 목록이 바뀌었다 — 모든 사령관의 다음 턴이 새 세션으로 이어지고 `global-plugins` 사건이 난다. */
   readonly globalPluginsChanged?: (plugins: readonly string[]) => void;
   readonly deletion?: ReturnType<typeof import("./deletion.js").createCommodoreDeletion>;
-  readonly knowledgeFolder?: ReturnType<typeof import("./knowledge-folder.js").createKnowledgeFolderAction>;
   readonly assertWritable?: (commodoreId: string) => void;
   readonly create?: (alias: string) => string;
   readonly list?: () => readonly ConsoleCommodoreSummary[];
@@ -188,10 +187,6 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   };
 
   return [
-    { name: "commodore/knowledge-folder", method: "POST", summary: "Open existing Commodore documents on the host, or show their location in the mobile layout.", handler: json(commodoreRef.extend({ action: z.enum(["display", "open"]) }).strict(), ({ commodoreId, action }) => {
-      if (!hooks.knowledgeFolder) throw new CommodoreStoreError("commodore_unavailable");
-      return hooks.knowledgeFolder(commodoreId, action);
-    }, false) },
     { name: "commodore/delete-preview", method: "POST", summary: "Preview the impact of permanently deleting a Commodore; Theaters are preserved.", handler: json(commodoreRef.strict(), ({ commodoreId, language }) => {
       if (!hooks.deletion) throw new CommodoreStoreError("commodore_unavailable");
       return hooks.deletion.preview(commodoreId, language);

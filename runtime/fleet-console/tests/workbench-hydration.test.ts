@@ -50,7 +50,7 @@ it("applies startup edits to the saved workbench before persisting, including a 
   const api = server();
   workbench.setWorkbenchConversation(key);
   workbench.loadWorkbenchLayouts();
-  workbench.openWorkbenchEntry("codex");
+  workbench.openWorkbenchEntry("commodore");
   workbench.setWorkbenchSplitRatio(0.7);
   const shell = workbench.openWorkbenchSurface({ surfaceId: "shell", params: { tab: "linked" } });
   workbench.replaceWorkbenchTileParams(shell, { tab: "updated" });
@@ -71,7 +71,7 @@ it("applies startup edits to the saved workbench before persisting, including a 
     stored.columns[0]!.tiles[0],
     { ...stored.columns[0]!.tiles[1], params: { tab: "updated" } },
     stored.columns[0]!.tiles[2],
-    expect.objectContaining({ kind: "entry", entryId: "codex" }),
+    expect.objectContaining({ kind: "entry", entryId: "commodore" }),
   ]);
   expect(layout.columns[0]!.weights).toEqual([2, 1, 3]);
   expect(layout.splitRatio).toBe(0.7);
@@ -81,10 +81,10 @@ it("applies startup edits to the saved workbench before persisting, including a 
   workbench.resetWorkbenchForTest();
   workbench.setWorkbenchConversation(key);
   workbench.loadWorkbenchLayouts();
-  workbench.openWorkbenchEntry("codex");
+  workbench.openWorkbenchEntry("commodore");
   await api.hydrate();
   expect(workbench.getWorkbenchLayout()).toEqual(layout);
-  expect(workbench.getWorkbenchFocusedTileId()).toBe(workbenchTiles(layout).find((tile) => tile.kind === "entry" && tile.entryId === "codex")!.id);
+  expect(workbench.getWorkbenchFocusedTileId()).toBe(workbenchTiles(layout).find((tile) => tile.kind === "entry" && tile.entryId === "commodore")!.id);
 });
 
 it("does not overwrite an unread layout after a failed load and retries the pending edits", async () => {
@@ -92,7 +92,7 @@ it("does not overwrite an unread layout after a failed load and retries the pend
   const api = server();
   workbench.setWorkbenchConversation(key);
   workbench.loadWorkbenchLayouts();
-  workbench.openWorkbenchEntry("codex");
+  workbench.openWorkbenchEntry("commodore");
   await api.hydrate(false);
   await vi.advanceTimersByTimeAsync(1_000);
   workbench.flushWorkbenchSaves();
@@ -103,6 +103,6 @@ it("does not overwrite an unread layout after a failed load and retries the pend
   workbench.flushWorkbenchSaves();
   expect(workbenchTiles(api.writes[0]!.layout!)).toEqual([
     ...workbenchTiles(stored),
-    expect.objectContaining({ kind: "entry", entryId: "codex" }),
+    expect.objectContaining({ kind: "entry", entryId: "commodore" }),
   ]);
 });

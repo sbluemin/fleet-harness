@@ -11,7 +11,6 @@ import { commodoreMarketplaceSettingsSection, GlobalPluginsHost, GlobalPluginsEn
 import { installGlobalPlugins } from "./global-plugins.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
-import { knowledgeFolderEntry, knowledgeFolderPane } from "./knowledge-folder.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
 import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, commodoreTabOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
@@ -95,8 +94,8 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
   const plugin: ClientFeatureDescriptor = {
     id: "commodore",
 
-    railEntries: [knowledgeFolderEntry, commodoreEntry],
-    panes: [commodoreMobilePane, knowledgeFolderPane],
+    railEntries: [commodoreEntry],
+    panes: [commodoreMobilePane],
     theaterContributions: [commodoreTheaterContribution],
     mentionTargets: commodoreMentionTargets,
     subscribeMentionTargets: subscribeCommodoreMentions,

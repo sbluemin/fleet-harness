@@ -282,7 +282,7 @@
      알파 44~62% 대역으로 눕는다. 틴트 알파를 더 낮추려면 겹친 콘텐츠 위 판독 대비를 재실측할 것. */
   --glass-on-underlay: transparent;
   --glass-on-tint-strong: oklch(24% 0.02 245 / 50%);
-  /* 확장 표면·Codex 리딩 시트 재질 — 읽는 시트라 --float-underlay(불투명) 위에 얹히고,
+  /* 확장 표면 재질 — 읽는 시트라 --float-underlay(불투명) 위에 얹히고,
      strong 틴트와 같은 색·알파라 그대로 별칭한다. */
   --glass-on-tint-expanded: var(--glass-on-tint-strong);
   /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해

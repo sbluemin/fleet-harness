@@ -185,7 +185,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
   // 아레나 계산의 원료 — 레일이 가운데 칸 위에서 점유하는 실측 폭을 스토어로 보고한다.
   // 대화 칸과 플러그인 지도 인셋이 이 값으로 열린 카드를 피한다.
   // 슬롯 총폭(카드+extra)도 예산으로 캡한다 — 카드 상한만 사이드바를 빼면 MIN 바닥(240)과
-  // 가산 extra(예: Codex 리더 360)가 상한을 도로 뚫어 좁은 창에서 두 카드가 겹친다
+  // 가산 extra(예: 리더 360)가 상한을 도로 뚫어 좁은 창에서 두 카드가 겹친다
   // (Codex 리뷰 확정). extra는 best-effort다: 페인 본문은 컨테이너 쿼리로 스스로 열화한다.
   const slotWidth = hasPanel
     ? Math.max(MIN_PANEL_WIDTH, Math.min(overlayInRail ? Math.max(cardWidth, requestedExtraWidth) : cardWidth + extraWidth, Math.max(MIN_PANEL_WIDTH, widthBudget)))
@@ -358,7 +358,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
           // key 재마운트가 패널 교체의 수명 계약이다: 떠나는 표면은 자기 언마운트 cleanup에서
           // 비-keepAlive detail을 닫는다(RailSurface의 departing sweep). React가 물러나는
           // 트리의 passive cleanup을 도착 트리의 mount effect보다 먼저 돌리므로, 도착 본문이
-          // 마운트에서 여는 detail(파일 문서 열·Codex 리더)은 정리에 걸리지 않는다. 인스턴스를
+          // 마운트에서 여는 detail(파일 문서 열 등)은 정리에 걸리지 않는다. 인스턴스를
           // 재사용하면 그 정리가 수동 effect로 밀려 도착 마운트 **뒤에** 돌아, 방금 연 열을
           // 쓸어 내거나(Codex 3차 P1) 확장 폭 소유권이 새 패널로 샌다(Codex 2차 P2).
           <RailSection
@@ -550,7 +550,7 @@ interface RailPanelBodyProps {
   readonly language: ConsoleLocale;
 }
 
-// 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 폭·알파와 무관한
+// 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff)를 렌더한다. 폭·알파와 무관한
 // props만 받는 memo 경계로 리사이즈/알파 드래그 중 본문 재렌더를 건너뛴다. 본문 렌더는
 // pane 계약의 RailSurface가 소유한다(#957) — 이 껍데기는 stale 덮개와 포커스 복원만 진다.
 const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, connectionLostAt, language, overlayDetails }: RailPanelBodyProps) {
@@ -656,7 +656,7 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
   const t = useT();
   const withoutTheater = standsWithoutTheater(entry);
   const paused = entry.paused === true;
-  const disabled = (!withoutTheater && context.theaterId === null) || (entry.requiresCommodore === true && !context.commodoreId);
+  const disabled = !withoutTheater && context.theaterId === null;
   const handleClick = useCallback(() => {
     // 잠시 닫아 둔 도구는 누름을 받지 않는다. disabled 대신 aria-disabled 로 닫아야 겨눔이 살아 말풍선이 까닭을 말한다.
     if (paused || disabled) return;
@@ -699,8 +699,7 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
       disabled={!paused && disabled}
       aria-disabled={paused || undefined}
       // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키도 같은 말풍선에 싣는다. 닫아 둔 도구는 그 까닭을 말한다.
-      data-tip={entry.tooltip ? resolveLocalizedText(entry.tooltip.title, language) : paused ? `${title} · ${t("rail.paused.commodoreRevamp")}` : shortcut ? `${named} (${shortcut})` : named}
-      data-tip-body={entry.tooltip ? resolveLocalizedText(entry.tooltip.body, language) : undefined}
+      data-tip={paused ? `${title} · ${t("rail.paused.commodoreRevamp")}` : shortcut ? `${named} (${shortcut})` : named}
       // 선언한 도구만 활성 해제 가드를 넘는다(active-objective-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.
       data-keep-objective-active={entry.keepsObjectiveActive ? "" : undefined}
       onClick={handleClick}

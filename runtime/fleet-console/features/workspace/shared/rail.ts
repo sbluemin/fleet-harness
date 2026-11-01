@@ -120,10 +120,6 @@ export type RailPanelDescriptor = RailContributionBase & ({
  * `activate`가 직접 무언가를 연다(Shell처럼 확대 표면을 바로 여는 경우).
  */
 export interface RailEntryDescriptor {
-  /** 이름만으로 동작을 설명할 수 없을 때 도구 말풍선에 덧붙이는 안내. */
-  readonly tooltip?: { readonly title: LocalizedText; readonly body: LocalizedText };
-  /** Theater 없이도 쓸 수 있지만 사령관 소유 문맥은 필요한 동작. */
-  readonly requiresCommodore?: boolean;
   readonly handles?: {
     readonly openFile?: (request: OpenFileRequest, host: ConsoleClientCapabilities) => PaneTarget | OpenResult | Promise<PaneTarget | OpenResult>;
   };
@@ -278,7 +274,6 @@ export interface RailEntryMobile {
     readonly trailing?: RailEntryDestinationTrailing;
     /**
      * 칩과 화면 제목에 쓸 짧은 이름(`title`과 같은 현지화 문자열 — 로케일 함수도 된다). 생략하면 엔트리의 `title`을 쓴다.
-     * 데스크톱 레일 제목이 「Codex — 사령관 위키」처럼 길어도 모바일 칩에는 「위키」가 서게 한다.
      */
     readonly label?: LocalizedText;
     /**
