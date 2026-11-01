@@ -9,7 +9,7 @@
 | `cli/` | Published `fleet` entry: Console lifecycle, updates, and interactive gateway configuration |
 | `core/host/` | Bootstrap, transport, feature composition, and native-shell composition |
 | `core/client/` | Application composition, global chrome, and feature integration |
-| `features/` | Vertical product owners: execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Commodore, Objectives, File Explorer, Repository, Quota, Scuttlebutt |
+| `features/` | Vertical product owners: execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Onboarding, Commodore, Objectives, File Explorer, Repository, Quota, Scuttlebutt |
 | `foundation/` | Agent runtime, process/infra primitives, process lifecycle contract IO, i18n, generic React UI helpers, Markdown, and Font Picker |
 | `protocol/` | Shared remote-access and Console-Desktop protocol contracts |
 | `tests/` | Service, security, state, and integration contracts |

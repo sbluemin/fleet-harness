@@ -115,7 +115,7 @@ Before reproducing a user-reported defect, record the user's installed Fleet ver
 
 ### First-load commissioning state
 
-A fresh slot shows the commissioning card, and it can race the scenario's first input. (Feature tours and entry hints are removed.) Prepare that state **before the first navigation** instead of dismissing the layer mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
+A fresh slot shows the commissioning card, followed automatically by the "Fleet at a glance" popup once the card is dismissed, and they can race the scenario's first input. (Feature tours and entry hints are removed.) Prepare that state **before the first navigation** instead of dismissing the layers mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$E2E_DIR" --bin pnpm \
@@ -125,7 +125,7 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$
 ```
 
 - It derives every key from the current source and merges them into `seenFeatureTours` through the origin-gated `PUT /api/v1/settings/global`, then reads them back and fails when one is missing. The sources are the commissioning key and the first-run keys in the seen-store (the effort-confirm tip and the "Fleet at a glance" popup). `--dry-run` only lists the keys. Commissioning also opens only while no Theater is registered.
-- When the claim concerns commissioning or the "Fleet at a glance" popup, do not seed or dismiss the layer under test: pass `--keep <key>` for it, which also clears that key on a reused slot, and install diagnostics before the first navigation so its appearance and race stay observable.
+- When the claim concerns commissioning or the "Fleet at a glance" popup, do not seed or dismiss the layers under test: pass `--keep <key>` for each one, which also clears that key on a reused slot, and install diagnostics before the first navigation so their appearance and race stay observable.
 - Confirm the first screenshot shows no unseeded first-run layer before acting.
 
 The same run can lay down a common fixture, opt-in and read back before the script reports success:

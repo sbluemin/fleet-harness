@@ -32,7 +32,7 @@ Opened in this Objective's Fleet Browser.
 Stop it with PID <pid> when you are done.
 ```
 
-Say which dialogs greet a fresh runtime directory (the commissioning guide) and that `Escape` clears them, or the user's first impression of the change is a modal.
+Say which dialogs greet a fresh runtime directory (the commissioning guide, then the "Fleet at a glance" popup) and that `Escape` clears them, or the user's first impression of the change is a modal.
 
 ## Gotchas
 
