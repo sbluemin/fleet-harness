@@ -3921,6 +3921,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   color: currentColor;
 }
 
+/* 위험 항목의 글리프 — 이름과 같은 coral 잉크로 따른다(기본 popover-icon-ink가 덮지 않게). */
+.group-context-menu-item--danger .group-context-menu-item__glyph {
+  color: currentColor;
+}
+
 .group-context-menu-item__glyph svg {
   display: block;
   width: 100%;

@@ -10,6 +10,7 @@ import { useAvatarBook, resolveMongleLook, useMongleLook } from "../../../worksp
 import { useConversationSurface } from "../../../workspace/client/conversation/conversation-surface-store.js";
 import { GroupContextMenu } from "../../../workspace/client/sidebar/group-context-menu.js";
 import { CommodoreSectionMoveMenu, useCommodoreSidebarSections } from "../../../workspace/client/sidebar/commodore-sidebar-sections.js";
+import { TrashIcon } from "../../../workspace/client/sidebar/sidebar-menu-icons.js";
 import { useContextMenuKeyboard } from "../../../workspace/client/sidebar/context-menu-keyboard.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../commodore-avatar.js";
@@ -116,7 +117,7 @@ export function TaskforceRowMenu({ id, anchor, focusFirst, returnFocus, onClose 
   returnFocusRef.current = returnFocus ?? null;
   useContextMenuKeyboard({ open: true, menuSelector: '.group-context-menu-card[role="menu"]', returnFocusRef, focusFirst, onEscape: onClose });
   if (!name) return null;
-  return <GroupContextMenu kind="actions" anchor={anchor} label={name} items={[]} footer={<><CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} /><div className="group-context-menu-divider" role="separator" /><button type="button" role="menuitem" className="group-context-menu-item group-context-menu-item--danger" onClick={() => { onClose(); requestTaskforceDelete(id); }}><span className="group-context-menu-item__name">{t("taskforce.delete")}</span></button></>} onClose={onClose} />;
+  return <GroupContextMenu kind="actions" anchor={anchor} label={name} items={[]} footer={<><CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} /><div className="group-context-menu-divider" role="separator" /><button type="button" role="menuitem" className="group-context-menu-item group-context-menu-item--danger" onClick={() => { onClose(); requestTaskforceDelete(id); }}><span className="group-context-menu-item__glyph" aria-hidden="true"><TrashIcon /></span><span className="group-context-menu-item__name">{t("taskforce.delete")}</span></button></>} onClose={onClose} />;
 }
 
 function DeleteDialog({ id, language, onClose }: { readonly id: string; readonly language: "ko" | "en"; readonly onClose: () => void }) {
