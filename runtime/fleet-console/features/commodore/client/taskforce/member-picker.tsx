@@ -108,6 +108,8 @@ export function MemberPicker({ anchor, candidates, searchPlaceholder, emptyText,
     else if (event.key === "ArrowUp") { event.preventDefault(); setActive(filtered.length ? (clamped - 1 + filtered.length) % filtered.length : 0); }
     else if (event.key === "Enter") { event.preventDefault(); const row = filtered[clamped]; if (row) choose(row.id); }
     else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close.current(); if (anchor.isConnected) anchor.focus({ preventScroll: true }); }
+    // portal이라 Tab이 소유 팝업의 포커스 가둠에 닿지 않는다 — 닫고 트리거로 돌려 기본 Tab 이동이 트리거에서 이어지게 한다.
+    else if (event.key === "Tab") { close.current(); if (anchor.isConnected) anchor.focus({ preventScroll: true }); }
   };
   return createPortal(
     <div
@@ -133,7 +135,7 @@ export function MemberPicker({ anchor, candidates, searchPlaceholder, emptyText,
         onChange={(event) => { setQuery(event.target.value); setActive(0); }}
         onKeyDown={onInputKeyDown}
       />
-      <div id={listId} className="taskforce-picker-list" role="listbox" aria-label={listLabel}>
+      <div id={listId} className="taskforce-picker-list" role="listbox" aria-label={listLabel} tabIndex={-1}>
         {filtered.length ? filtered.map((row, index) => (
           <button
             key={row.id}
