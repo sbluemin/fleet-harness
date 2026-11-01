@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
+import { toolShellKey } from "../../../execution/shared/shell-key.js";
+import { getShellSessionSnapshot, readShellSession } from "../../../execution/client/terminal/shell/shell-session-store.js";
 import type { CommodoreToolId } from "../../shared/commodore-tool-theater.js";
 import { useCommodoreToolTheater } from "./store.js";
 import { useCommodoreShellStatus } from "./shell-status.js";
@@ -79,6 +81,20 @@ export function CommodoreToolHead({ icon, title, commodoreId, tool }: {
     wasOpenRef.current = menuOpen;
   }, [menuOpen]);
 
+  const availableTheaters = useMemo(
+    () => (state.active && state.resolution !== null ? state.theaters.filter((theater) => !theater.missing) : []),
+    [state],
+  );
+  // 메뉴를 열 때 아직 모르는 Theater의 호스트 상태를 읽어 둔다 — 마운트하지 않은 채 살아 있는
+  // Shell의 초록 점이 새로고침 뒤에도 서게. 아는 값은 SSE가 갱신하므로 다시 묻지 않는다.
+  useEffect(() => {
+    if (!menuOpen) return;
+    for (const theater of availableTheaters) {
+      const key = toolShellKey(commodoreId, theater.theaterId);
+      if (key !== null && getShellSessionSnapshot(key) === null) void readShellSession(key);
+    }
+  }, [menuOpen, commodoreId, availableTheaters]);
+
   if (!state.active || state.resolution === null || state.resolution.kind === "none") {
     return (
       <span className="ctt-head">
@@ -87,7 +103,7 @@ export function CommodoreToolHead({ icon, title, commodoreId, tool }: {
       </span>
     );
   }
-  const choices = state.theaters.filter((theater) => !theater.missing);
+  const choices = availableTheaters;
   const resolution = state.resolution;
   const currentLabel = resolution !== null && resolution.kind === "resolved"
     ? (state.theaters.find((theater) => theater.theaterId === resolution.theaterId)?.label ?? resolution.theaterId)

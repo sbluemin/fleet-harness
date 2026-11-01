@@ -28,6 +28,15 @@ export function stableShellStatus(live: boolean, busy: boolean): CommodoreShellT
   return busy ? LIVE_BUSY : LIVE_AT_PROMPT;
 }
 
+/**
+ * 해제 확인의 바쁨 판정 — 호스트가 말한 세션 상태를 그대로 읽는다. 상태를 모르면(읽기 실패)
+ * 바쁘다고 보고 먼저 묻는다. 파괴 확인은 모르는 쪽으로 기울지 않는다.
+ */
+export function shellBusyForRemoval(state: { readonly open: boolean; readonly atPrompt: boolean } | null): boolean {
+  if (state === null) return true;
+  return state.open && !state.atPrompt;
+}
+
 const idleProvider: CommodoreShellStatusProvider = {
   query: () => IDLE,
   subscribe: () => () => undefined,

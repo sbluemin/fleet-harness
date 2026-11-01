@@ -7,9 +7,9 @@ import { pushMobileSheet } from "../../../core/client/src/chrome/mobile/mobile-s
 import { describeTheaterRegistrationError } from "../../../core/client/src/integration/failure-notices.js";
 import { addCommodoreTheaterFromPath, removeCommodoreTheater } from "./theaters-api.js";
 import { toolShellKey } from "../../execution/shared/shell-key.js";
-import { endShellSession } from "../../execution/client/terminal/shell/shell-session-store.js";
+import { endShellSession, readShellSession } from "../../execution/client/terminal/shell/shell-session-store.js";
 import { dropEndedShellMount } from "../../execution/client/terminal/shell/index.js";
-import { queryCommodoreShellStatus } from "../../workspace/client/theater-tools/shell-status.js";
+import { shellBusyForRemoval } from "../../workspace/client/theater-tools/shell-status.js";
 import { refreshCommodoreList, useCommodoreList } from "./commodore-list.js";
 
 /**
@@ -24,7 +24,10 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
   const [busy, setBusy] = useState(false);
   const [failureMessage, setFailureMessage] = useState<string | null>(null);
   // 바쁜 Shell이 있는 Theater의 해제 확인 — 실행 중인 명령이 있을 때만 한 번 묻는다.
+  // 판정은 누르는 순간의 호스트 상태로 한다. 스냅샷이 비어 있어도(새로고침 직후) 바쁜 Shell을
+  // 놓치지 않고, 읽지 못하면 묻는다. 파괴 확인은 모르는 쪽으로 기울지 않는다.
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
   const theaters = commodore?.theaters ?? [];
 
   const run = (work: () => Promise<void>) => {
@@ -33,11 +36,7 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
     setFailureMessage(null);
     void work().catch((error) => setFailureMessage(describeTheaterRegistrationError(error, t))).finally(() => setBusy(false));
   };
-  const remove = (theaterId: string) => {
-    if (confirming !== theaterId && queryCommodoreShellStatus(commodoreId, theaterId).busy) {
-      setConfirming(theaterId);
-      return;
-    }
+  const doRemove = (theaterId: string) => {
     setConfirming(null);
     void run(async () => {
       await removeCommodoreTheater({ commodoreId, theaterId });
@@ -48,6 +47,24 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
       if (key !== null) {
         if (await endShellSession(key)) dropEndedShellMount(key);
       }
+    });
+  };
+  const remove = (theaterId: string) => {
+    if (busy || checking !== null) return;
+    if (confirming === theaterId) {
+      doRemove(theaterId);
+      return;
+    }
+    const key = toolShellKey(commodoreId, theaterId);
+    if (key === null) {
+      doRemove(theaterId);
+      return;
+    }
+    setChecking(theaterId);
+    void readShellSession(key).catch(() => null).then((state) => {
+      setChecking(null);
+      if (shellBusyForRemoval(state)) setConfirming(theaterId);
+      else doRemove(theaterId);
     });
   };
   const addFolder = (path: string) => run(async () => {
@@ -74,11 +91,11 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
               {confirming === theater.theaterId ? (
                 <>
                   <span className="objectives-cm-secnote">{t("theaterInbox.theaters.confirmBusy")}</span>
-                  <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.confirmRemove")}</button>
-                  <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={busy} onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
+                  <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={busy || checking !== null} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.confirmRemove")}</button>
+                  <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={busy || checking !== null} onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
                 </>
               ) : (
-                <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
+                <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy || checking !== null} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
               )}
             </div>
           ))}
@@ -105,11 +122,11 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
               {confirming === theater.theaterId ? (
                 <>
                   <span className="objectives-commodore-hint">{t("theaterInbox.theaters.confirmBusy")}</span>
-                  <button type="button" className="objectives-commodore-text-button" disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.confirmRemove")}</button>
-                  <button type="button" className="objectives-commodore-text-button" disabled={busy} onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
+                  <button type="button" className="objectives-commodore-text-button" disabled={busy || checking !== null} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.confirmRemove")}</button>
+                  <button type="button" className="objectives-commodore-text-button" disabled={busy || checking !== null} onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
                 </>
               ) : (
-                <button type="button" className="objectives-commodore-text-button" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
+                <button type="button" className="objectives-commodore-text-button" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy || checking !== null} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
               )}
             </li>
           ))}

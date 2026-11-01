@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 
 import type { ClientConsoleEventsCapability } from "../../../../workspace/shared/navigation-ports.js";
-import { queryCommodoreShellStatus } from "../../../../workspace/client/theater-tools/shell-status.js";
+import { queryCommodoreShellStatus, shellBusyForRemoval } from "../../../../workspace/client/theater-tools/shell-status.js";
 import { toolShellKey } from "../../../shared/shell-key.js";
 import { connectShellSession } from "./shell-session-store.js";
 
@@ -38,4 +38,11 @@ it("returns referentially stable status for the registered shell provider", asyn
   const unknownFirst = queryCommodoreShellStatus("c1", "nope");
   expect(unknownFirst).toEqual({ live: false, busy: false });
   expect(queryCommodoreShellStatus("c1", "nope")).toBe(unknownFirst);
+});
+
+it("asks the removal confirm when the host state is busy or unreadable", () => {
+  expect(shellBusyForRemoval({ open: true, atPrompt: false })).toBe(true);
+  expect(shellBusyForRemoval({ open: true, atPrompt: true })).toBe(false);
+  expect(shellBusyForRemoval({ open: false, atPrompt: false })).toBe(false);
+  expect(shellBusyForRemoval(null)).toBe(true);
 });
