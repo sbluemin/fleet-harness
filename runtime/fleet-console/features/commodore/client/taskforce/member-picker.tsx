@@ -9,7 +9,7 @@ export interface MemberPickerCandidate {
 
 /**
  * 태스크포스 멤버 고르기 — '+ 멤버 추가' 트리거 아래에 뜨는 둥근 검색 드롭다운이다.
- * 멤버 탭과 새 태스크포스 화면이 같은 것을 쓴다. portal + fixed라
+ * 세부 정보의 멤버 섹션과 새 태스크포스 화면이 같은 것을 쓴다. portal + fixed라
  * `.taskforce-dialog`의 `overflow: auto` 안에 잘리지 않고 아래 내용을 덮는다.
  */
 export function MemberPicker({ anchor, candidates, searchPlaceholder, emptyText, listLabel, onPick, onClose }: {

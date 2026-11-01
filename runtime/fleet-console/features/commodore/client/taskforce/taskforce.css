@@ -70,6 +70,15 @@
 .taskforce-details { display: grid; gap: 16px; align-content: start; color: var(--text-primary); font-size: var(--t-md); }
 /* 참고 앱처럼 태스크포스의 '멤버 추가'는 오버 밑줄 없이 둔다. 공용 .commodore-theaters-add의 다른 화면은 그대로다. */
 .taskforce-details .commodore-theaters-add:hover:not(:disabled) > span:last-child, .taskforce-dialog .commodore-theaters-add:hover:not(:disabled) > span:last-child { text-decoration: none; }
+/* 「세부 정보」 탭 — 주제와 멤버 두 섹션을 사령관 정보 탭처럼 선 하나로 나눈다. 첫 섹션은 탭 줄 바로 아래에 붙인다. */
+.taskforce-overview { display: grid; min-width: 0; }
+.taskforce-overview > .objectives-commodore-panel-section:first-child { padding-top: 0; }
+/* 멤버 행은 참고 앱처럼 촘촘하게 — 아바타 사이가 행 높이의 절반을 넘지 않는다. */
+.taskforce-member-list { display: grid; gap: 6px; min-width: 0; }
+/* 사이드바의 '멤버 추가'는 오버 때 멤버 행과 같은 높이·모서리의 면으로 밝아진다. + 칸은 아바타 칸, 글자는 이름 줄에 맞춘다. */
+.taskforce-details .commodore-theaters-add { gap: 8px; min-height: 36px; padding: 4px; border-radius: 8px; }
+.taskforce-details .commodore-theaters-add > .objectives-plus { width: 28px; }
+.taskforce-details .commodore-theaters-add:hover:not(:disabled) { background: var(--wash-hover); }
 .taskforce-member { display: flex; gap: 8px; align-items: center; padding-right: 6px; border-radius: 8px; }
 .taskforce-member:hover, .taskforce-member:focus-within { background: var(--wash-hover); }
 .taskforce-member-open, .taskforce-member-picked { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
