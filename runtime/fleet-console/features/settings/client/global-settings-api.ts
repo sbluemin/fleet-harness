@@ -184,6 +184,8 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     sideBarDoubleClickOpen: payload.sideBarDoubleClickOpen === true,
     reduceMotion: payload.reduceMotion === true,
     calmAvatars: payload.calmAvatars === true,
+    // 구서버 응답에는 없다 — 왼쪽이 기본이므로 부재를 포함한 모든 비-우측 값을 왼쪽으로 정규화한다.
+    commanderPlacement: payload.commanderPlacement === "right" ? "right" : "left",
     lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
     uiFont: normalizeUiFont(payload.uiFont),
     fonts: readFontSettings(payload.fonts) ?? DEFAULT_FONTS,
