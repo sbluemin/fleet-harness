@@ -58,9 +58,10 @@ export function MemberPicker({ anchor, candidates, searchPlaceholder, emptyText,
     setStyle({ left, top: Math.round(top) });
   }, [anchor, filtered.length]);
 
+  // 첫 렌더는 숨김 자리(style 미정)라 focus가 무시된다 — 위치가 정해져 보이게 된 뒤에 둔다.
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (style) inputRef.current?.focus({ preventScroll: true });
+  }, [style]);
 
   // 활성 행이 목록 스크롤 밖에 있으면 따라간다.
   useEffect(() => {
