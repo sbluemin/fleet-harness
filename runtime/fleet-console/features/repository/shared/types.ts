@@ -24,18 +24,6 @@ export interface DiffHunkResult {
   readonly truncated?: boolean;
 }
 
-export interface RepoCandidate {
-  readonly relPath: string;
-  readonly name: string;
-  readonly branch: string;
-  readonly kind: "root" | "nested";
-}
-
-export interface ReposResult {
-  readonly repos: readonly RepoCandidate[];
-  readonly truncated?: boolean;
-}
-
 export interface WorktreeCandidate {
   readonly relPath: string;
   readonly name: string;

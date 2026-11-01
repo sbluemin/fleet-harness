@@ -15,7 +15,6 @@ import { handleRepositoryFetch } from "./fetch.js";
 import { handleRepositoryLog } from "./log.js";
 import { handleRepositoryPull, handleRepositoryPush } from "./remote.js";
 import { handleRepositoryRefs } from "./refs.js";
-import { handleRepositoryRepos } from "./repos.js";
 import { handleRepositorySearch } from "./search.js";
 import { handleRepositoryDiscard, handleRepositoryStage, handleRepositoryUnstage } from "./stage.js";
 import { handleRepositoryStash } from "./stash.js";
@@ -34,10 +33,6 @@ export function createRepositoryFeature(deps: RepositoryFeatureDeps) {
     const path = `/api/v1/repository/${name}`;
     routes.push({ path, handler, catalog: [{ ...catalog, path: path + catalog.path }] });
   };
-  addRoute("repos", async ({ req, res }) => {
-    await handleRepositoryRepos(req, res, ctx);
-    return true;
-  }, { method: "POST", path: "", summary: "List repositories in a Theater.", category: "Repository", gate: "origin-write", transport: "http" });
   addRoute("worktrees", async ({ req, res }) => {
     await handleRepositoryWorktrees(req, res, ctx);
     return true;
