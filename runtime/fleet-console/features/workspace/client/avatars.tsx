@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+
+import { useViewportFit } from "@fleet-console/ui/react";
 
 import { commodoreAvatarKey, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "./avatar-events.js";
@@ -208,7 +210,7 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   readonly activityObjectiveId?: string | null;
   readonly size: number;
   readonly label: string;
-  /** stack: 아바타 아래에 편집기가 뜬다(패널 머리). inline: 줄 아래로 펼친다(구성원 탭). */
+  /** stack: 아바타 아래에 떠 있는 판으로 편집기가 뜬다(패널 머리). inline: 아바타 왼쪽 끝에 맞춘 같은 판으로 뜬다(구성원 탭). */
   readonly layout?: "stack" | "inline";
   /** inline 일 때 아바타 오른쪽에 서는 줄 본문. */
   readonly children?: ReactNode;
@@ -225,11 +227,53 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const pickerWrapRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
   // 다른 대상으로 옮겨 가면 고르던 것은 버린다.
   useEffect(() => { setDraft(null); setUndo(null); }, [avatarKey]);
 
   const open = draft !== null;
+  // 떠 있는 판 — DOM 자리는 .avatar-editor 안에 그대로 두고 좌표만 아바타 단추에 맞춘다. 레일 칸이
+  // overflow: hidden 이라 absolute 는 잘리므로, 같은 머리의 「더보기」 메뉴처럼 position: fixed 로 띄운다.
+  // 세로: 단추 아래 --space-2(8px) 간격. 가로: stack 은 아바타 가운데, inline 은 아바타 왼쪽 끝. 창 밖으로
+  // 나가는 몫은 뒤이은 useViewportFit 이 밀어 넣는다(같은 컴포넌트의 layout effect 는 선언 순서로 돈다).
+  useLayoutEffect(() => {
+    const panel = pickerWrapRef.current;
+    const anchor = triggerRef.current;
+    if (!open || !panel || !anchor) return;
+    const place = () => {
+      const rect = anchor.getBoundingClientRect();
+      panel.style.top = `${Math.round(rect.bottom + 8)}px`;
+      if (layout === "inline") {
+        panel.style.left = `${Math.round(rect.left)}px`;
+      } else {
+        panel.style.left = `${Math.round(rect.left + rect.width / 2)}px`;
+      }
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, layout]);
+  useViewportFit(pickerWrapRef, open);
+  // 바깥 누름 — 판과 아바타 단추 밖을 pointerdown 하면 고르던 것을 버리고 닫는다. 닫은 뒤 포커스는
+  // 끌어오지 않는다(누른 곳의 동작을 방해하지 않게). Esc·취소는 기존 close 가 단추로 포커스를 돌린다.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target !== null) {
+        if (triggerRef.current?.contains(target)) return;
+        if (pickerWrapRef.current?.contains(target)) return;
+      }
+      setDraft(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [open]);
   const shown = draft ?? { base: look.base, tone: look.tone };
   const toggle = () => setDraft(open ? null : { base: look.base, tone: look.tone, dirty: false, previewState: state === "running" || state === "awaiting" || state === "unseen" || state === "ended" ? state : "idle" });
   const close = () => { setDraft(null); triggerRef.current?.focus(); };
@@ -281,24 +325,26 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
         </div>
       ) : null}
       {draft ? (
-        <MongleAvatarPicker
-          className="avatar-editor-picker"
-          role={role}
-          base={draft.base}
-          tone={draft.tone}
-          previewState={draft.previewState}
-          locale={locale}
-          labels={labels}
-          dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone)}
-          busy={busy}
-          onBase={(base) => setDraft({ ...draft, base, dirty: true })}
-          onTone={(tone) => setDraft({ ...draft, tone, dirty: true })}
-          onPreviewState={(previewState) => setDraft({ ...draft, previewState })}
-          onReroll={() => setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, dirty: true })}
-          onReset={() => setDraft({ ...draft, base: look.origin, tone: null, dirty: true })}
-          onCancel={close}
-          onApply={() => { void apply(); }}
-        />
+        <div ref={pickerWrapRef} className={`avatar-editor-popover is-${layout}`} role="dialog" aria-label={labels.heading}>
+          <MongleAvatarPicker
+            className="avatar-editor-picker"
+            role={role}
+            base={draft.base}
+            tone={draft.tone}
+            previewState={draft.previewState}
+            locale={locale}
+            labels={labels}
+            dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone)}
+            busy={busy}
+            onBase={(base) => setDraft({ ...draft, base, dirty: true })}
+            onTone={(tone) => setDraft({ ...draft, tone, dirty: true })}
+            onPreviewState={(previewState) => setDraft({ ...draft, previewState })}
+            onReroll={() => setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, dirty: true })}
+            onReset={() => setDraft({ ...draft, base: look.origin, tone: null, dirty: true })}
+            onCancel={close}
+            onApply={() => { void apply(); }}
+          />
+        </div>
       ) : null}
     </div>
   );
