@@ -219,7 +219,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     await expect(resolve(root, {
       cliId: "claude",
-      model: "codex--gpt-6-sol",
+      model: "codex--gpt-6.1-sol",
       sessionId: "gateway-stale-model",
     })).rejects.toMatchObject({
       name: "GatewayLaunchOptionError",
@@ -240,12 +240,12 @@ describe("createDefaultTerminalLaunchResolver", () => {
       infraServices: createFakeInfraServices() as never,
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
       resolveProfile: resolveProfile as never,
-      readAiGatewaySettings: () => ({ version: 1, models: [{ id: "codex--gpt-6-sol" }] }),
+      readAiGatewaySettings: () => ({ version: 1, models: [{ id: "codex--gpt-6.1-sol" }] }),
     });
 
-    await resolve("/work/project", { sessionId: "gateway-roster-model", cliId: "claude", model: "claude-gateway--codex--gpt-6-sol" });
+    await resolve("/work/project", { sessionId: "gateway-roster-model", cliId: "claude", model: "claude-gateway--codex--gpt-6.1-sol" });
 
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--codex--gpt-6-sol" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--codex--gpt-6.1-sol" }));
   });
 
   it("launches the user's shell without Agent CLI injection for shell sessions", async () => {

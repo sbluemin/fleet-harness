@@ -57,7 +57,7 @@ describe("gateway harness profile seam", () => {
 
     // A bare catalog id and a credential with no `sk-ant-` prefix are both accepted.
     const res = response();
-    await router.handle(ctx({ res, token: "grok-local-key", model: "codex--gpt-6-sol" }));
+    await router.handle(ctx({ res, token: "grok-local-key", model: "codex--gpt-6.1-sol" }));
     expect(res.status).toBe(200);
 
     // 221k of a 272k window reaches the client as 221k, not rescaled onto a 200k coordinate.
@@ -267,7 +267,7 @@ function ctx(options: {
   readonly model?: string;
 }): GatewayHttpHandlerContext {
   const payload = JSON.stringify({
-    model: options.model ?? "codex--gpt-6-sol",
+    model: options.model ?? "codex--gpt-6.1-sol",
     messages: [{ role: "user", content: "Hello" }],
     max_tokens: 128,
     stream: true,
