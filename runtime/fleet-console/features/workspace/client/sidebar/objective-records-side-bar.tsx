@@ -1,5 +1,5 @@
 import { ChevronGlyph } from "@fleet-console/ui/react";
-import { FolderIcon, PencilIcon, PlusIcon, TrashIcon } from "./sidebar-menu-icons.js";
+import { FolderIcon, PencilIcon, PlusIcon, TaskforceIcon, TrashIcon } from "./sidebar-menu-icons.js";
 import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
 
 /**
@@ -976,7 +976,7 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
           <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
         </button>
         {taskforceEnabled ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(theater.id); }}>
-          <span className="theater-menu-check" aria-hidden="true">⧉</span>
+          <span className="theater-menu-check" aria-hidden="true"><TaskforceIcon /></span>
           <span className="theater-menu-label">{tf("taskforce.fromCommodore")}</span>
         </button> : null}
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onAddTheater}>
