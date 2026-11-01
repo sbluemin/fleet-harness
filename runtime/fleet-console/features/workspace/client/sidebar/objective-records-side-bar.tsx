@@ -120,6 +120,8 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly onToggleFold: () => void;
   readonly showStatusLiveTick: boolean;
   readonly liveOverride?: boolean;
+  /** TF 행은 TF 화면 열림으로 `is-current` 를 안다 — 사령관 기여(사령관 대화만 응답)는 TF id 에 늘 false 다. */
+  readonly selectedOverride?: boolean;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
   readonly dragOffsetY: number;
@@ -474,6 +476,7 @@ export function ObjectiveRecordsSideBar({
                   onFinishAliasEdit={() => {}}
                   showStatusLiveTick={false}
                   liveOverride={face.row.judging.length > 0}
+                  selectedOverride={selected}
                   dragging={isTheaterDragging}
                   dropTarget={theaterDropBefore}
                   dragOffsetY={theaterDragOffsetY}
@@ -677,6 +680,7 @@ function TheaterSectionHeader({
   clampAlias,
   showStatusLiveTick,
   liveOverride,
+  selectedOverride,
   dragging,
   dropTarget,
   dragOffsetY,
@@ -699,7 +703,8 @@ function TheaterSectionHeader({
   const mark = avatarOverride ? null : contributedMark;
   const contributedLive = useTheaterHeaderLive(theater.id);
   const live = liveOverride ?? contributedLive;
-  const selected = useTheaterHeaderSelected(theater.id);
+  const contributedSelected = useTheaterHeaderSelected(theater.id);
+  const selected = selectedOverride ?? contributedSelected;
   // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
   const wasEditingRef = useRef(editingAlias);
   const keyFinishRef = useRef(false);
