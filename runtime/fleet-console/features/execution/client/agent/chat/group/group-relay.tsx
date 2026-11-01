@@ -6,6 +6,7 @@ import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { AgentGlyph } from "../../agent-glyphs.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
+import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import { pluginOriginIdentity } from "../origin-mark.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { LedgerTargetContext, SpeakerMark, speakerKey } from "./speaker-mark.js";
@@ -436,6 +437,8 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
                 <span className="group-relay-mark"><PartyMark party={from} size="lg" /></span>
                 <div className="group-relay-box">
                   <div className="group-chat-bubble is-agent is-markdown group-relay-bubble">
+                    {/* 첨부는 말풍선 본문 앞 — 사람·사령관 말풍선과 같은 문법이다. 사본 없는 자리는 숨긴다(전언에만). */}
+                    {"attachments" in message && message.attachments?.length ? <ChatDispatchAttachments attachments={message.attachments} language={language ?? "en"} hideLapsed /> : null}
                     <StreamedMarkdown text={message.text} streaming={false} className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />
                   </div>
                   {failure !== null ? <span className="group-relay-failure">{failure ? `${t("group.delegation.failed")} · ${failure}` : t("group.delegation.failed")}</span> : null}

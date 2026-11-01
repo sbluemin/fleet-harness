@@ -14,14 +14,17 @@ const PREVIEW_PREFIXES = ["/api/v1/objectives/attachment/file?", "/api/v1/commod
  *
  * 브라우저가 쥔 것은 미리보기 좌표뿐이고 호스트 경로는 서버에 남는다. 바이트가 이미 회수됐으면
  * (세션이 닫혔거나 지난 프로세스의 재생이면) 자리만 남긴다 — 첨부가 있었다는 사실은 깨진 이미지
- * 아이콘이 아니라 말로 말한다.
+ * 아이콘이 아니라 말로 말한다. `hideLapsed` 를 주면 그 자리 말도 세우지 않는다 — 전언 화면의
+ * delegation 처럼 할 수 있는 행동이 없는 곳에서만 쓴다.
  */
 export function ChatDispatchAttachments({
   attachments,
   language,
+  hideLapsed,
 }: {
   readonly attachments: readonly AgentChatAttachment[];
   readonly language: "en" | "ko";
+  readonly hideLapsed?: boolean;
 }) {
   const t = getT(language);
   const ct = composerT(language);
@@ -39,6 +42,8 @@ export function ChatDispatchAttachments({
   // 인용은 바이트가 없는 글 첨부라 거둬질 일이 없다 — 입력창 칩과 같은 칩으로 선다.
   const quotes = attachments.flatMap((attachment) => ("quote" in attachment ? [attachment.quote] : []));
   const lapsedCount = attachments.length - live.length - references.length - quotes.length;
+  // 숨김 자리에서는 그릴 것이 하나도 없으면 껍질도 세우지 않는다 — 빈 간격이 말풍선에 남지 않게.
+  if (hideLapsed && live.length === 0 && references.length === 0 && quotes.length === 0) return null;
   return (
     <div className="agent-chat-dispatch-attachments">
       <ComposerQuoteList quotes={quotes} t={ct} />
@@ -62,7 +67,7 @@ export function ChatDispatchAttachments({
         <span className="agent-chat-dispatch-attachment-lapsed-box" aria-hidden="true" />
         {t("terminal.chat.attachmentReference", { count: String(references.length) })}
       </span> : null}
-      {lapsedCount > 0 ? (
+      {!hideLapsed && lapsedCount > 0 ? (
         <span className="agent-chat-dispatch-attachment-lapsed">
           <span className="agent-chat-dispatch-attachment-lapsed-box" aria-hidden="true" />
           {t("terminal.chat.attachmentLapsed", { count: String(lapsedCount) })}
