@@ -1147,7 +1147,7 @@ function readStoredNotificationPreferences(): NotificationPreferences {
   }
 }
 
-function readStoredCommissioningSeen(): boolean {
+export function readStoredCommissioningSeen(): boolean {
   if (typeof window === "undefined") return false;
   try {
     return window.localStorage.getItem(COMMISSIONING_SEEN_STORAGE_KEY) === "1";

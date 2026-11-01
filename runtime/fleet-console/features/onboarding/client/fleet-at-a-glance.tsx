@@ -5,7 +5,12 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
-import { closeFleetAtAGlance, openFleetAtAGlance } from "../../../core/client/src/integration/store.js";
+import {
+  closeFleetAtAGlance,
+  COMMISSIONING_SEEN_KEY,
+  openFleetAtAGlance,
+  readStoredCommissioningSeen,
+} from "../../../core/client/src/integration/store.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { FLEET_AT_A_GLANCE_SEEN_KEY, rememberSeen } from "./seen-store.js";
@@ -99,6 +104,9 @@ const ellPoint = (cx: number, cy: number, rx: number, ry: number, ang: number): 
 function readGlancePalette(): GlancePalette {
   const cs = getComputedStyle(document.documentElement);
   const v = (name: string): string => cs.getPropertyValue(name).trim();
+  // '사람' 주황은 승인 시안 값 그대로 쓴다 — 맞는 Console 토큰이 없고, 채도가 높아
+  // 디자인 게이트가 CSS 리터럴을 막으므로(유채색 한도 0.03) Canvas 색 문자열로 둔다.
+  const light = cs.getPropertyValue("color-scheme").includes("light");
   return {
     ink: v("--text-primary"),
     ink2: v("--text-secondary"),
@@ -108,7 +116,7 @@ function readGlancePalette(): GlancePalette {
     flow: v("--aurora"),
     result: v("--positive"),
     loop: v("--apex"),
-    warm: v("--warn"),
+    warm: light ? "oklch(66% 0.13 60)" : "oklch(82% 0.11 75)",
     font: v("--font-ui"),
   };
 }
@@ -1285,11 +1293,29 @@ export function FleetAtAGlanceHost(): React.JSX.Element | null {
   // 모바일 레이아웃에는 도움말 메뉴가 없어 닫으면 다시 열 길이 없다 — 최초 설정 가이드·투어와
   // 같은 규칙으로 자동 열림을 데스크톱에만 둔다. 이미 열린 팝업은 레이아웃이 바뀌어도 그대로 둔다.
   const mobileLayout = useViewMode().effective === "mobile";
+  // 새 사용자·기존 사용자 판정은 세션에서 설정을 처음 ready로 읽은 그 틱에 한 번만 한다.
+  const classifiedRef = useRef<"fresh" | "returning" | null>(null);
 
   useEffect(() => {
     if (mobileLayout) return;
     if (!state.bootstrapped) return;
     if (settings.loadStatus !== "ready" || !settings.state) return;
+    if (classifiedRef.current === null) {
+      // 전역 설정을 처음 읽은 시점에 최초 설정 가이드를 이미 본 기록(서버 seenFeatureTours의
+      // 승격 전 legacy localStorage 포함)이 있으면 기존 사용자다. main.tsx가 렌더 전에 이관을
+      // 기다리지만, 저장이 막힌 환경에서는 legacy 표식이 남을 수 있어 둘 다 본다.
+      const returning = settings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)
+        || readStoredCommissioningSeen();
+      classifiedRef.current = returning ? "returning" : "fresh";
+      if (returning) {
+        // 기존 사용자에게는 자동으로 띄우지 않고 본 기록만 조용히 남긴다 — 메뉴로는 언제든 열린다.
+        if (!settings.state.seenFeatureTours.includes(FLEET_AT_A_GLANCE_SEEN_KEY)) {
+          rememberSeen([FLEET_AT_A_GLANCE_SEEN_KEY]);
+        }
+        return;
+      }
+    }
+    if (classifiedRef.current === "returning") return;
     if (settings.state.seenFeatureTours.includes(FLEET_AT_A_GLANCE_SEEN_KEY)) return;
     // 최초 설정 가이드·새 소식이 떠 있는 동안은 기다린다 — 겹쳐 뜨지 않고 그것이 닫힌 뒤에 열린다.
     if (state.onboardingOpen || state.whatsNewOpen) return;
