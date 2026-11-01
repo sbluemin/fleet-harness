@@ -175,9 +175,17 @@ export function commodoreCompactAt(contextWindow: number): number {
   return Math.round(contextWindow * COMMODORE_COMPACT_RATIO);
 }
 
+/**
+ * 사령관 턴 안에서 지금 하는 일의 계열 — 실행 기능의 `AgentWorkStep`과 같은 값이다. 호스트가 지휘관과 같은 표로
+ * 도구·글자 흐름에서 정해 `run.step`에 싣고, 턴이 끝나면 지운다. 기록을 열지 않는 표면(사이드바 머리 표식)도 이 값으로 연기한다.
+ */
+export type CommodoreRunStep = "think" | "read" | "edit" | "run" | "fetch" | "delegate" | "text" | "compact";
+
 export interface CommodoreRunStatus {
   readonly phase: "off" | "idle" | "turn" | "retrying" | "error";
   readonly reason?: string;
+  /** 도는 턴 안에서 지금 하는 일의 계열 — 지휘관 세션 스냅샷의 `step`과 같은 표·같은 의미다. 턴이 아니면 없다. */
+  readonly step?: CommodoreRunStep;
   /** 다음 깨움(루틴 또는 재시도)의 예정 시각(ms). */
   readonly nextWakeAt?: number;
   /** 감독자가 계산한 지역 시간대와 루틴별 다음 실행. 원격 화면은 자기 시간대로 다시 계산하지 않는다. */

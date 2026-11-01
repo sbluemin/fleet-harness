@@ -1,6 +1,8 @@
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { mergePluginEnv, type ResolvedPlugin } from "./plugins.js";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
+import type { AgentWorkStep } from "../../execution/host/agent/types.js";
+import { createChatStepReporter, type ChatStepReporter } from "../../execution/host/agent/chat-step.js";
 import type { CommodoreToolTheater } from "./tools.js";
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
 import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
@@ -44,6 +46,11 @@ export interface CommodoreSessionOptions {
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
   readonly onLive?: (event: CommodoreLiveEvent) => void;
+  /**
+   * 도는 턴 안에서 지금 하는 일의 계열 — 지휘관과 같은 표·같은 의미(생각 공백·턴 종료 초기화)다.
+   * 감독자가 `run.step`에 실어 기록을 열지 않는 표면까지 방송한다. 없으면 세지 않는다.
+   */
+  readonly onStep?: (step: AgentWorkStep | null) => void;
   /** 다음 깨움에만 실을 진단 — 공개 사건·원장이 아닌 호스트 내부 전달이다. */
   readonly onOpenUIFeedback?: (note: string | null) => void;
   /** `steer` 로 건넨 말의 행방 — 도는 턴이 집었다(started) 또는 모델에 닿지 못했다(cancelled). id 는 건넬 때 준 그대로다. */
@@ -138,6 +145,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let turnActions = 0;
   let turnResult: CommodoreTurnOutcome | null = null;
   let compactionFailed = false;
+  // 지휘관과 같은 계열 reporter — 도구 이름→계열 표를 복제하지 않고 그대로 쓴다. 턴 경계도 같다.
+  const stepReporter: ChatStepReporter | null = options.onStep ? createChatStepReporter(options.onStep) : null;
 
   const record = (entry: CommodoreTranscriptInput) => {
     try { options.store.transcriptAppend(options.commodoreId, entry); }
@@ -208,19 +217,23 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const onEvent = (event: AgentEvent) => {
     if (disposed) return;
     switch (event.kind) {
-      case "text": textBuffer += event.text; if (event.text) options.onLive?.({ kind: "text-delta", text: event.text }); return;
+      case "text": textBuffer += event.text; if (event.text) options.onLive?.({ kind: "text-delta", text: event.text }); stepReporter?.observe({ kind: "text-delta", text: event.text }); return;
       case "thinking": thinkingBuffer += event.text; return;
       case "tool-start":
         flushText();
         if (event.id) pendingTools.set(event.id, { name: event.name, input: event.input });
         else recordTool(event.name, event.input, undefined);
         options.onLive?.({ kind: "tool-start", name: event.name.replace(MCP_PREFIX, "") });
+        // 계열 판정은 원시 이름으로 — 바깥 도구(`mcp__…`)는 그 접두로 안다. id가 없으면 완성줄 형태로 본다.
+        if (event.id !== undefined) stepReporter?.observe({ kind: "tool-start", id: event.id, name: event.name });
+        else stepReporter?.observe({ kind: "tool", name: event.name, detail: "" });
         return;
       case "tool-end": {
         flushText();
         const pending = event.id ? pendingTools.get(event.id) : undefined;
         if (event.id) pendingTools.delete(event.id);
         recordTool(pending?.name ?? event.name ?? "tool", pending?.input, !event.isError, event.id);
+        if (event.id !== undefined) stepReporter?.observe({ kind: "tool-result", id: event.id, ok: !event.isError, summary: "" });
         return;
       }
       case "result": {
@@ -236,6 +249,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       case "compacted":
         compactionFailed = false;
         flushText();
+        stepReporter?.observe({ kind: "command-progress", phase: "compacting" });
         record({ kind: "compacted", trigger: event.trigger, preTokens: Math.round(event.preTokens), ...(event.postTokens !== undefined ? { postTokens: Math.round(event.postTokens) } : {}) });
         return;
       case "cancelled":
@@ -345,12 +359,13 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
           : [{ type: "text", text: messageNote([message.text]) }, ...message.images]),
       ] : [note, ...(input.messages?.length ? [messageNote(input.messages.map((message) => typeof message === "string" ? message : message.text))] : [])].join("\n\n");
       turnActive = true;
+      stepReporter?.turnOpened();
       try { await session.send(prompt); }
       catch (error) {
         flushText(); flushTools();
         const code = failureCode(error);
         if (!turnResult) { turnResult = { outcome: "error", error: code, actions: turnActions }; record({ kind: "result", outcome: "error", error: code }); }
-      } finally { turnActive = false; }
+      } finally { turnActive = false; stepReporter?.turnClosed(); }
       const result: CommodoreTurnOutcome = turnResult ?? { outcome: "error", error: "no_result", actions: turnActions };
       if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });
       try { options.store.addRunTotals(options.commodoreId, { ...(result.usage?.costUsd ? { costUsd: result.usage.costUsd } : {}), ...(result.actions ? { actions: result.actions } : {}) }); }
@@ -362,6 +377,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     cancel() { if (turnActive) session?.cancel(); },
     async dispose() {
       disposed = true;
+      stepReporter?.dispose();
       await starting?.catch(() => undefined);
       await session?.dispose();
       session = null;
