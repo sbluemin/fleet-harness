@@ -6,6 +6,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { closeFleetAtAGlance, openFleetAtAGlance } from "../../../core/client/src/integration/store.js";
+import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { FLEET_AT_A_GLANCE_SEEN_KEY, rememberSeen } from "./seen-store.js";
 import {
@@ -1281,8 +1282,12 @@ function FleetAtAGlanceDialog({ onClose }: { readonly onClose: () => void }): Re
 export function FleetAtAGlanceHost(): React.JSX.Element | null {
   const state = useConsoleState();
   const settings = useGlobalSettingsStore();
+  // 모바일 레이아웃에는 도움말 메뉴가 없어 닫으면 다시 열 길이 없다 — 최초 설정 가이드·투어와
+  // 같은 규칙으로 자동 열림을 데스크톱에만 둔다. 이미 열린 팝업은 레이아웃이 바뀌어도 그대로 둔다.
+  const mobileLayout = useViewMode().effective === "mobile";
 
   useEffect(() => {
+    if (mobileLayout) return;
     if (!state.bootstrapped) return;
     if (settings.loadStatus !== "ready" || !settings.state) return;
     if (settings.state.seenFeatureTours.includes(FLEET_AT_A_GLANCE_SEEN_KEY)) return;
@@ -1293,6 +1298,7 @@ export function FleetAtAGlanceHost(): React.JSX.Element | null {
     // 닫으면 다시 뜨지 않는다 — 본 기록은 같은 seenFeatureTours 필드에 쌓인다.
     rememberSeen([FLEET_AT_A_GLANCE_SEEN_KEY]);
   }, [
+    mobileLayout,
     state.bootstrapped,
     state.onboardingOpen,
     state.whatsNewOpen,
