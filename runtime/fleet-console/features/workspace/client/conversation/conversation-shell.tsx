@@ -1405,8 +1405,20 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const bindings = useDesktopRailEntries();
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
+  const previousSurface = useRef<{ id: string; group: string | undefined; tabs: readonly string[] } | null>(null);
+  const activeBeforeTransition = getRailStoreSnapshot().activePanelId;
   useEffect(() => {
+    const previous = previousSurface.current;
+    previousSurface.current = { id: descriptor.id, group: descriptor.railContinuityGroup, tabs: tabIdsRef.current };
     if (descriptor.defaultTab === undefined && descriptor.resolveDefaultTab === undefined) return;
+    if (previous && previous.id !== descriptor.id && previous.group !== undefined && previous.group === descriptor.railContinuityGroup) {
+      // 앞 탭의 등록이 걷히기 전 렌더에서 읽은 열림을 잇는다. 다른 도구 패널은 그대로 둔다.
+      if (activeBeforeTransition !== null && previous.tabs.includes(activeBeforeTransition)) {
+        const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
+        if (fallback !== undefined) openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
+      }
+      return;
+    }
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && !tabIdsRef.current.includes(active)) {
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
@@ -1416,7 +1428,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
     if (fallback === undefined) return;
     openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
-  }, [descriptor.defaultTab, descriptor.resolveDefaultTab, descriptor.id, selection.nonce]);
+  }, [descriptor.defaultTab, descriptor.resolveDefaultTab, descriptor.railContinuityGroup, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Objective 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.

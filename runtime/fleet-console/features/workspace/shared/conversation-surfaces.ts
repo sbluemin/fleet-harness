@@ -74,6 +74,8 @@ export interface ConversationSurfaceDescriptor {
   readonly tabs?: readonly ConversationSurfaceTab[];
   /** 열 때 오른쪽 패널이 닫혀 있으면 연다 — 이 대화에서 마지막으로 선 탭이 있으면 그 탭을, 없으면 이 탭을 연다. */
   readonly defaultTab?: string;
+  /** 같은 그룹의 대화끼리 직접 전환할 때 오른쪽 패널의 현재 열림을 잇는다. */
+  readonly railContinuityGroup?: string;
   /**
    * 기본 탭을 문맥에 따라 고른다 — 두면 defaultTab 대신 쓴다(예: 사령관 대화는 목록 배치에 따라 작업·정보를 가른다).
    * 패널이 저절로 열 때 한 번만 읽는다. 사람이 고른 탭 기억이 있으면 그 기억이 먼저다.
