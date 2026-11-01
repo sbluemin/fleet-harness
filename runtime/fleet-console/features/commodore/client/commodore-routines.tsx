@@ -24,7 +24,7 @@ function scheduleWord(routine: CommodoreRoutine, language: "en" | "ko", t: T, ti
 }
 
 // 끄기·켜기 글리프 — 사이드바 메뉴 글리프(sidebar-menu-icons)와 같은 16칸·1.3 선이다. 삭제는 그쪽 휴지통을 그대로 쓴다.
-const PauseIcon = () => <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4v8M10 4v8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+const PauseIcon = () => <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.2v9.6M10.5 3.2v9.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
 const PlayIcon = () => <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.8v8.4L12 8z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>;
 
 /** 메뉴와 길게 누르기는 이 feature 내부에서 소유한다. 글리프만 사이드바 메뉴의 그림을 함께 쓴다. */
