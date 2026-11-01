@@ -102,23 +102,28 @@
   display: block;
 }
 
+/* 캡션 묶음 — 10장을 같은 칸에 겹쳐 칸이 가장 긴 캡션 높이가 된다.
+   낮은 창에서는 묶음이 줄며 안에서 스크롤하므로 대화 상자가 잘리지 않는다. */
+.glance-caption-stack {
+  display: grid;
+  min-height: 0;
+  overflow: auto;
+}
+
+.glance-caption-stack > .glance-caption {
+  grid-area: 1 / 1;
+  min-height: 0;
+}
+
+.glance-caption-stack > .glance-caption[aria-hidden="true"] {
+  visibility: hidden;
+}
+
 .glance-caption {
   padding: 14px 20px 4px;
   display: grid;
   gap: 6px;
   align-content: start;
-  /* 모든 장의 대화 상자 높이를 같게 가장 긴 장(영어 3줄 본문+태그 2줄)에 맞춘 고정 높이.
-     내용이 넘치면 캡션 안에서 스크롤한다. */
-  height: 220px;
-  max-height: 100%;
-  overflow: auto;
-}
-
-@media (max-height: 700px) {
-  /* 낮은 창에서는 대화 상자가 잘리지 않게 캡션을 함께 낮춘다 — 장마다 높이는 여전히 같다. */
-  .glance-caption {
-    height: 180px;
-  }
 }
 
 .glance-caption h3,

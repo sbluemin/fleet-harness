@@ -1199,22 +1199,33 @@ function FleetAtAGlanceDialog({ onClose }: { readonly onClose: () => void }): Re
         <div ref={stageRef} className="glance-stage">
           {draw ? <canvas ref={canvasRef} aria-hidden="true" /> : <GlanceSummaryTiles locale={locale} />}
         </div>
-        <div className="glance-caption" aria-live="polite">
-          <div className="glance-eyebrow">
-            <b>{scene.chapter}</b>
-            {scene.tech ? <span>· {scene.tech}</span> : null}
-          </div>
-          <h3>{scene.title}</h3>
-          <p>{scene.body}</p>
-          {scene.tags.length > 0 ? (
-            <div className="glance-tags">
-              {scene.tags.map((tag) => (
-                <span className="glance-tag" key={tag}>
-                  {tag}
-                </span>
-              ))}
+        {/* 캡션은 10장을 같은 칸에 겹쳐 둔다 — 칸이 저절로 그 언어에서 가장 긴 캡션 높이가 돼
+            장이 바뀌어도 대화 상자 높이가 그대로다. 보이는 장만 읽히고 나머지는 가려진다. */}
+        <div className="glance-caption-stack">
+          {scenes.map((s, n) => (
+            <div
+              className="glance-caption"
+              key={n}
+              aria-hidden={n === index ? undefined : true}
+              aria-live={n === index ? "polite" : undefined}
+            >
+              <div className="glance-eyebrow">
+                <b>{s.chapter}</b>
+                {s.tech ? <span>· {s.tech}</span> : null}
+              </div>
+              <h3>{s.title}</h3>
+              <p>{s.body}</p>
+              {s.tags.length > 0 ? (
+                <div className="glance-tags">
+                  {s.tags.map((tag) => (
+                    <span className="glance-tag" key={tag}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          ))}
         </div>
         <div className="glance-foot">
           <div className="glance-seg-wrap">
