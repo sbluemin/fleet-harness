@@ -911,8 +911,9 @@ interface DetailProps {
 const ZoomGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" /></svg>;
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
 
-/** 편성 확대본 — body 포털의 고정 오버레이. Esc·바깥 누름·닫기 글리프로 닫히고, 열릴 때 카드가 포커스를 받는다. */
-function LineupZoom({ t, title, width, onClose, children }: { readonly t: Translate<ObjectiveMessageKey>; readonly title: string; readonly width?: number | null; readonly onClose: () => void; readonly children: ReactNode }) {
+/** 편성 확대본 — body 포털의 고정 오버레이. Esc·바깥 누름·닫기 글리프로 닫히고, 열릴 때 카드가 포커스를 받는다.
+ * 완료·상태 셈은 제목 줄(닫기 앞)에 선다 — 카드 안에 「임무」 머리를 한 번 더 세우지 않아 그 높이만큼 그래프가 넓어진다. */
+function LineupZoom({ t, title, width, tools, onClose, children }: { readonly t: Translate<ObjectiveMessageKey>; readonly title: string; readonly width?: number | null; readonly tools?: ReactNode; readonly onClose: () => void; readonly children: ReactNode }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   // 최초 한 번만 카드로 초점을 옮긴다 — 부모가 다시 그려도(항목 사건 갱신) 사용자가 옮겨 둔 초점을 되돌리지 않는다.
   useEffect(() => { cardRef.current?.focus(); }, []);
@@ -945,6 +946,7 @@ function LineupZoom({ t, title, width, onClose, children }: { readonly t: Transl
       <div ref={cardRef} className="objectives-zoom" style={width ? { width: `min(${width}px, 100%)` } : undefined} role="dialog" aria-modal="true" aria-label={`${t("objectives.missions.title")} · ${title}`} tabIndex={-1}>
         <div className="objectives-zoom-head">
           <span className="objectives-zoom-title">{t("objectives.missions.title")}<span className="objectives-zoom-item">{title}</span></span>
+          {tools ? <span className="objectives-zoom-tools">{tools}</span> : null}
           <button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={onClose}><CloseGlyph /></button>
         </div>
         {children}
@@ -1744,7 +1746,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
       {...(objective.missions.length ? { actions: graphTools } : {})} />
     {missionAttention}
     <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} suspended={zoomOpen && !verticalGraph} /> : null}{missionAdd}</div>
-    {zoomOpen && !verticalGraph && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}><SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} />{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} />{missionAdd}</LineupZoom>, document.body) : null}
+    {zoomOpen && !verticalGraph && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}>{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} />{missionAdd}</LineupZoom>, document.body) : null}
   </div>;
   // 결정 섹션 — 목표 탭 맨 아래, 결정 내역만. 지금 답할 결정 요청은 가운데 대화의 결정 카드가 받고, 목표 탭에는 점만 선다.
   // 답이 없으면 서지 않는다(목표 탭 맨 아래의 빈 문구는 소음이다).

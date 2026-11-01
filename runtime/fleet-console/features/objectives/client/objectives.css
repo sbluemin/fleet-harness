@@ -396,6 +396,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .objectives-zoom-title { display: inline-flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--t-base); font-weight: var(--weight-bold); color: var(--text-primary); }
 .objectives-zoom-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
+.objectives-zoom-tools { display: inline-flex; flex: none; align-items: center; gap: 12px; margin-left: auto; }
+.objectives-zoom-tools .objectives-graph-counts { margin-left: 0; }
 
 /* 메모 — 테두리 없는 글판(MS 의 「메모 추가」) */
 /* 높이는 스크립트가 잰다 — 쉴 때 3줄(넘치면 「더 보기」), 쓰는 동안이나 펼치면 360px 까지, 비어 있으면 「브리핑 추가」 한 줄. */
