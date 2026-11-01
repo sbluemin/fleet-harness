@@ -47,19 +47,28 @@ function writeCache(next: CommanderPlacement): void {
   }
 }
 
-/** 서버가 마지막으로 확정해 준 값. 아직 받은 적 없으면 null이다. */
-function readServerPlacement(): CommanderPlacement | null {
+/** 서버가 마지막으로 확정해 준 값. loaded가 거짓이면 아직 받은 적 없다. 값 null은 키 없음(한 번도 저장된 적 없음)이다. */
+interface ServerPlacement {
+  readonly loaded: boolean;
+  readonly value: CommanderPlacement | null;
+}
+
+function readServerPlacement(): ServerPlacement {
   try {
-    const value = getGlobalSettingsStoreState().state?.commanderPlacement;
-    return value === "left" || value === "right" ? value : null;
+    const state = getGlobalSettingsStoreState().state;
+    if (state === null || state === undefined) return { loaded: false, value: null };
+    const value = state.commanderPlacement;
+    return { loaded: true, value: value === "left" || value === "right" ? value : null };
   } catch {
-    return null;
+    return { loaded: false, value: null };
   }
 }
 
 const initialServer = readServerPlacement();
-let placement: CommanderPlacement = initialServer ?? readCache();
-let serverSynced = initialServer !== null;
+let placement: CommanderPlacement = initialServer.loaded && initialServer.value !== null ? initialServer.value : readCache();
+let serverSynced = initialServer.loaded;
+/** 세션당 1회 이관이 나갔는지. 서버에 값이 없던 때의 캐시 저장은 한 번뿐이다. */
+let migrated = false;
 /** 서버에 아직 확정되지 않은 최근 의도. 실패해도 화면 값은 유지하고 서버 되돌림은 무시한다. */
 let pending: CommanderPlacement | null = null;
 let inflight = false;
@@ -101,30 +110,33 @@ function syncFromServer(): void {
   const server = readServerPlacement();
   // 저장 중인 동안의 스토어 변화(낙관 반영·성공 확정·실패 되돌림)는 이 저장의 메아리다.
   // 여기서 pending을 걷으면 실패 되돌림이 화면 값을 덮어버리므로, 확정은 finishPersist가 맡는다.
-  if (server === null || inflight) return;
+  if (!server.loaded || inflight) return;
   if (!serverSynced) {
     serverSynced = true;
     if (pending !== null) {
       // 서버 값이 오기 전에 사람이 이미 골랐다 — 그 의도가 먼저다.
-      if (server === pending) pending = null;
+      if (server.value === pending) pending = null;
       return;
     }
-    if (placement === "right" && server === "left") {
-      // 서버에 값이 없다(구 settings.json) — 이 origin의 캐시를 한 번 저장한다.
-      // 동적 포트 사용자는 옛 origin 값이 안 보여 이관이 일어나지 않는 게 정상이다.
+    if (server.value === null && !migrated && placement === "right") {
+      // 서버에 한 번도 저장된 적 없음 — 이 origin의 캐시를 1회 이관한다.
+      // 명시 저장 "left"는 value가 "left"라 여기로 오지 않는다 — 덮어쓰지 않는다.
+      migrated = true;
       pending = placement;
       persist();
       return;
     }
   } else if (pending !== null) {
-    if (server === pending) pending = null;
+    if (server.value === pending) pending = null;
     else return;
   }
-  if (server !== placement) {
-    placement = server;
-    writeCache(server);
+  if (server.value !== null && server.value !== placement) {
+    // 서버가 값을 가진 뒤에는 캐시가 서버를 따른다.
+    placement = server.value;
+    writeCache(server.value);
     emit();
   }
+  // 서버 값이 null인 채(키 소실 등) 들어오면 화면 값을 유지한다.
 }
 
 try {

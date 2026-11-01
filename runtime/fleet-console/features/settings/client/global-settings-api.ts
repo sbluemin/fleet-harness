@@ -184,8 +184,8 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     sideBarDoubleClickOpen: payload.sideBarDoubleClickOpen === true,
     reduceMotion: payload.reduceMotion === true,
     calmAvatars: payload.calmAvatars === true,
-    // 구서버 응답에는 없다 — 왼쪽이 기본이므로 부재를 포함한 모든 비-우측 값을 왼쪽으로 정규화한다.
-    commanderPlacement: payload.commanderPlacement === "right" ? "right" : "left",
+    // 키 없음·손상값은 null이다 — 구서버 응답을 포함한 "저장된 적 없음"과 명시 "left"를 구분한다.
+    commanderPlacement: payload.commanderPlacement === "right" ? "right" : payload.commanderPlacement === "left" ? "left" : null,
     lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
     uiFont: normalizeUiFont(payload.uiFont),
     fonts: readFontSettings(payload.fonts) ?? DEFAULT_FONTS,

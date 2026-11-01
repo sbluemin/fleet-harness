@@ -315,8 +315,8 @@ export interface GlobalSettingsState {
   readonly reduceMotion: boolean;
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태만 움직인다. 기본은 꺼짐(몽글). */
   readonly calmAvatars: boolean;
-  /** 지휘관 목록이 서는 사이드바. 구응답의 누락을 포함한 모든 비-우측 값은 왼쪽으로 읽는다. */
-  readonly commanderPlacement: "left" | "right";
+  /** 지휘관 목록이 서는 사이드바. null은 settings.json에 키 없음(한 번도 저장된 적 없음)이다. */
+  readonly commanderPlacement: "left" | "right" | null;
   readonly lowerUnfocusedFrameRate: boolean;
   readonly uiFont: UiFontSettings;
   readonly fonts: ConsoleFontSettings;

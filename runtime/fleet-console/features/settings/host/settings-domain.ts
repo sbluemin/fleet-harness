@@ -91,7 +91,7 @@ export interface ConsoleGeneralSettings {
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태(답을 기다림·결정 요청·오류)만 움직인다. 부재는 꺼짐(몽글)이다. */
   readonly calmAvatars?: boolean;
   /**
-   * 지휘관 목록이 서는 사이드바. 왼쪽이 기본이다.
+   * 지휘관 목록이 서는 사이드바. 왼쪽이 기본이다. 부재는 한 번도 저장된 적 없음이다.
    * localStorage 키(`fleet-console.commanderList.place`)는 같은 origin의 첫 그리기용 캐시로만 쓰고,
    * 원천은 이 값이다 — Console 포트가 바뀌면 origin이 바뀌어 캐시가 사라지기 때문이다.
    */
@@ -780,8 +780,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
     reduceMotion: general.reduceMotion ?? false,
     calmAvatars: general.calmAvatars ?? false,
-    // 구저장·손상 값은 모두 왼쪽이다. 쓰기 경로가 left|right 외를 거부하므로 저장된 값은 항상 유효하다.
-    commanderPlacement: general.commanderPlacement === "right" ? "right" : "left",
+    // 키 없음·손상 값은 null이다 — "한 번도 저장된 적 없음"과 명시 저장 "left"를 구분한다.
+    commanderPlacement: general.commanderPlacement === "right" ? "right" : general.commanderPlacement === "left" ? "left" : null,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     fonts: resolveConsoleFonts(data),
