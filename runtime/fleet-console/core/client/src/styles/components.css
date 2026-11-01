@@ -8331,12 +8331,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .command-band-system-menu .command-band-version-row-main {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--popover-row-gap);
   flex: 1;
   min-width: 0;
   min-height: var(--popover-row);
-  padding: 0 4px 0 12px;
-  border-radius: var(--radius-md);
+  padding: 0 4px 0 var(--popover-row-inline);
+  border-radius: var(--popover-row-radius);
   color: inherit;
   text-decoration: none;
 }
@@ -8356,10 +8356,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .command-band-system-menu .command-band-version-row-chip--action:hover:not(:disabled) { background: var(--wash-hover); }
 
-/* 나뉜 행은 패딩을 안쪽 링크에 넘겼으므로, 오른쪽 끝에 서는 ↻·결과 문구는 정적 행과 같은
-   12px 들여쓰기를 직접 갖는다 — 그래야 Console 행의 「최신」과 세로로 맞는다. */
+/* 나뉜 행은 패딩을 안쪽 링크에 넘겼으므로, 링크와 오른쪽 끝의 ↻·결과 문구가 정적 행과 같은
+   행 토큰을 직접 갖는다 — 고정값을 두면 토큰이 바뀔 때 Console 행과 세로줄이 어긋난다. */
 .command-band-system-menu .command-band-version-row--split .command-band-version-row-refresh,
-.command-band-system-menu .command-band-version-row--split .command-band-version-row-result { margin-right: 12px; }
+.command-band-system-menu .command-band-version-row--split .command-band-version-row-result { margin-right: var(--popover-row-inline); }
 
 .command-band-version-row--static { cursor: default; }
 .command-band-version-row-version { color: var(--text-primary); }
