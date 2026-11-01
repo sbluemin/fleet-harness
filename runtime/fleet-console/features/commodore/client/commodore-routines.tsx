@@ -4,6 +4,7 @@ import { SettingsToggle } from "../../settings/client/preferences-context.js";
 import type { CommodoreRoutine } from "../shared/contracts/types.js";
 import { removeCommodoreRoutine, toggleCommodoreRoutine, useCommodore, useCommodoreOnline } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
+import { TrashIcon } from "../../workspace/client/sidebar/sidebar-menu-icons.js";
 import "./commodore-routines.css";
 
 type T = ReturnType<typeof getT>;
@@ -22,7 +23,11 @@ function scheduleWord(routine: CommodoreRoutine, language: "en" | "ko", t: T, ti
   return t("commodore.routines.dailyAt", { days: label, time });
 }
 
-/** 메뉴와 길게 누르기는 이 feature 내부에서 소유한다. 다른 feature의 비공개 UI 구현은 가져오지 않는다. */
+// 끄기·켜기 글리프 — 사이드바 메뉴 글리프(sidebar-menu-icons)와 같은 16칸·1.3 선이다. 삭제는 그쪽 휴지통을 그대로 쓴다.
+const PauseIcon = () => <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4v8M10 4v8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+const PlayIcon = () => <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.8v8.4L12 8z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>;
+
+/** 메뉴와 길게 누르기는 이 feature 내부에서 소유한다. 글리프만 사이드바 메뉴의 그림을 함께 쓴다. */
 export function CommodoreRoutines({ commodoreId, language, phone = false }: { readonly commodoreId: string; readonly language: "en" | "ko"; readonly phone?: boolean }) {
   const t = getT(language);
   const { view } = useCommodore(commodoreId);
@@ -119,18 +124,19 @@ export function CommodoreRoutines({ commodoreId, language, phone = false }: { re
     {failure ? <p role="alert" className="commodore-routines-error">{failure}</p> : null}
     {menu && selected ? createPortal(<div className={phone ? "commodore-routines-scrim" : "commodore-routines-menu-host"}>
       <div ref={menuRef} className={`commodore-routines-menu${phone ? " is-sheet" : ""}`} role={phone ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.name} onKeyDown={onMenuKey}>
-        <div className="commodore-routines-menu-head">
+        {/* 데스크톱 우클릭 메뉴는 사령관 메뉴처럼 머리 없이 항목만 선다. 휴대폰 시트는 줄이 가려지므로 대상 머리를 남긴다. */}
+        {phone ? <div className="commodore-routines-menu-head">
           <div className="commodore-routines-menu-title">{selected.name}</div>
           <div className="commodore-routines-menu-meta">{scheduleWord(selected, language, t, view?.run.routineTimeZone)} · {t("commodore.routines.next")} {selected.enabled ? timeWord(view?.run.routineNextRuns?.[selected.id]) : t("commodore.routines.off")}</div>
           <p className="commodore-routines-menu-task">{selected.task}</p>
           {selected.lastRunAt ? <div className="commodore-routines-menu-meta">{t("commodore.routines.last")} {timeWord(selected.lastRunAt)}</div> : null}
-        </div>
-        <button type="button" role={phone ? undefined : "menuitem"} disabled={!online || busy} onClick={() => toggle(selected)}>{t(selected.enabled ? "commodore.routines.turnOff" : "commodore.routines.turnOn")}</button>
+        </div> : null}
+        <button type="button" role={phone ? undefined : "menuitem"} disabled={!online || busy} onClick={() => toggle(selected)}><span className="commodore-routines-menu-glyph" aria-hidden="true">{selected.enabled ? <PauseIcon /> : <PlayIcon />}</span><span>{t(selected.enabled ? "commodore.routines.turnOff" : "commodore.routines.turnOn")}</span></button>
         <div className="commodore-routines-separator" role="separator" />
         <button type="button" role={phone ? undefined : "menuitem"} className={`is-danger${armed ? " is-armed" : ""}`} disabled={!online || busy} onClick={() => {
           if (!armed) { setArmed(true); return; }
           void act(() => removeCommodoreRoutine(commodoreId, selected.id), t("commodore.routines.removed"));
-        }}>{t(armed ? "commodore.routines.confirmRemove" : "commodore.routines.remove")}</button>
+        }}><span className="commodore-routines-menu-glyph" aria-hidden="true"><TrashIcon /></span><span>{t(armed ? "commodore.routines.confirmRemove" : "commodore.routines.remove")}</span></button>
       </div>
     </div>, document.body) : null}
   </div>;
