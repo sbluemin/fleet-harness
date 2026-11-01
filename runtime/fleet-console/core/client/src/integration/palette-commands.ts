@@ -214,7 +214,9 @@ export function buildPaletteCommands(
       glyph: "theater",
     });
   }
-  push({ commandId: "new-taskforce", label: taskforceT(language)("taskforce.new"), aliasLabel: taskforceT(language === "ko" ? "en" : "ko")("taskforce.new"), action: { kind: "new-taskforce" }, group: "console", glyph: "objective-new", shortcut: "console.new-taskforce" });
+  if (getGlobalSettingsStoreState().state?.experiments.taskforce === true) {
+    push({ commandId: "new-taskforce", label: taskforceT(language)("taskforce.new"), aliasLabel: taskforceT(language === "ko" ? "en" : "ko")("taskforce.new"), action: { kind: "new-taskforce" }, group: "console", glyph: "objective-new", shortcut: "console.new-taskforce" });
+  }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {
     push({ commandId: "new-objectiveRecord", label: t("palette.newObjective", { label: activeTheater.label }), aliasLabel: alias("palette.newObjective", { label: activeTheater.label }), action: { kind: "new-objectiveRecord" }, group: "theater", glyph: "objective-new", shortcut: "console.new-session" });

@@ -7,6 +7,7 @@ import { addCommodoreTheaterFromPath } from "../../../../../features/commodore/c
 import { describeTheaterRegistrationError } from "../../integration/failure-notices.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { requestTaskforceCreate } from "../../../../../features/commodore/client/taskforce/taskforce.js";
+import { useTaskforceExperiment } from "../../../../../features/commodore/client/taskforce/state.js";
 import { taskforceT } from "../../../../../features/commodore/client/taskforce/i18n.js";
 import { CommodoreDeleteFlow } from "../../../../../features/commodore/client/commodore-delete-body.js";
 import { announceCommodoreDeletion, subscribeCommodoreLifecycle, wasCommodoreRemoved } from "../../../../../features/commodore/client/commodore-delete-events.js";
@@ -353,6 +354,8 @@ export function runAfterSheetRelease(action: () => void): void {
  */
 function TaskforceCreateSheetRow() {
   const t = taskforceT(useConsoleLocale());
+  const { enabled } = useTaskforceExperiment();
+  if (!enabled) return null;
   return <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(() => requestTaskforceCreate())}>
     <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
     <span className="mobile-sheet-row-copy"><strong>{t("taskforce.new")}</strong></span>

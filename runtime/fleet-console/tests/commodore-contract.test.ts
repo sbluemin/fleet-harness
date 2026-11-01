@@ -187,6 +187,7 @@ it("keeps one sidebar row order for Commodores and TaskForces", async () => {
   let result: { status: number; value: any };
   const authorized = true;
   const events: CommodoreEvent[] = [];
+  let taskforceEnabled = true;
   const create = () => createCommodoreFeature({
     paths: { fleetDataDir: dir, consoleDataDir: dir, resolveCommodoreTheaterPath: () => null, resolveObjectiveOwner: () => null, listCommodoreTheaters: () => [], workspaceHash,
       canonicalizeTheaterPath: (cwd) => fs.realpathSync.native(cwd),
@@ -199,7 +200,7 @@ it("keeps one sidebar row order for Commodores and TaskForces", async () => {
     http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value }; } } as never,
     security: { isTerminalAuthorized: () => authorized } as never,
     agent: { baseUrl: () => "http://127.0.0.1", resolveExecutablePath: async () => { throw new Error("unexpected_agent_launch"); } } as never,
-    experiments: undefined, models: undefined, attachments: undefined,
+    experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, taskforce: taskforceEnabled }) }, models: undefined, attachments: undefined,
   });
   let feature = create();
   const call = async (name: string, input: unknown = {}) => {
@@ -239,6 +240,16 @@ it("keeps one sidebar row order for Commodores and TaskForces", async () => {
     expect(settings.load().commodoreOrder).toEqual([stale, b, a]);
     expect((await call("commodore/list")).value.order).toEqual([b, a]);
     expect((await call("commodore/list")).value.sidebarLayout.membership).toEqual({ [a]: section });
+    // 실험을 끄면 TF 경로는 거절되지만 데이터는 남고, 다시 켜면 이어진다.
+    const tf2 = (await call("taskforce/create", { name: "TF2", topic: "topic", members: [a, b] })).value.taskforce.id as string;
+    taskforceEnabled = false;
+    expect((await call("taskforce/list")).status).toBe(404);
+    expect((await call("taskforce/list")).value).toEqual({ error: "taskforce_unavailable" });
+    expect((await call("taskforce/read", { taskforceId: tf2 })).status).toBe(404);
+    expect((await call("taskforce/post", { taskforceId: tf2, text: "hi" })).status).toBe(404);
+    taskforceEnabled = true;
+    expect((await call("taskforce/read", { taskforceId: tf2 })).status).toBe(200);
+    expect((await call("taskforce/post", { taskforceId: tf2, text: "hi again" })).status).toBe(200);
   } finally { await feature.dispose(); }
 });
 

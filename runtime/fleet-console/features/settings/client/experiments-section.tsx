@@ -31,6 +31,15 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
         <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
       </h3>
       <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
+      <SettingsRow label={t("settings.taskforce.title")} hint={t("settings.taskforce.help")} disabled={saving || !experiments.commodore}>
+        <SettingsToggle
+          checked={experiments.taskforce}
+          busy={saving}
+          disabled={saving || !experiments.commodore}
+          ariaLabel={t("settings.taskforce.title")}
+          onChange={(next) => save({ ...experiments, taskforce: next })}
+        />
+      </SettingsRow>
     </section>
     </>
   );
@@ -90,6 +99,15 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
           disabled={saving || computerUse.working}
           label={t("settings.computerUse.backend")}
           onChange={(next) => { if (isComputerUseBackendId(next) && next !== backend) saveExperiments({ ...experiments, computerUseBackend: next, computerUse: false }); }}
+        />
+      </SettingsRow>
+      <SettingsRow label={t("settings.taskforce.title")} hint={t("settings.taskforce.help")} icon={<MobileIcon name="layout" />} disabled={!experiments.commodore}>
+        <SettingsToggle
+          checked={experiments.taskforce}
+          busy={saving}
+          disabled={saving || !experiments.commodore}
+          ariaLabel={t("settings.taskforce.title")}
+          onChange={(next) => saveExperiments({ ...experiments, taskforce: next })}
         />
       </SettingsRow>
     </SettingsCard>

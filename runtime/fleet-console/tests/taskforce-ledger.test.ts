@@ -170,7 +170,7 @@ function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
     agent,
     theaterIds: () => [],
     cwd: (id) => (id === a || id === b ? theaterRoot : null),
-    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true, taskforce: true }),
     theater: () => ({ label: "x", root: theaterRoot }),
     board: () => board,
     taskforce,

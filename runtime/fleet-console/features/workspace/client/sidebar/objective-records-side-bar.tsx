@@ -11,6 +11,7 @@ type SideBarHead = TheaterInfo & { readonly commodore?: { readonly id: string; r
 type SideBarFace =
   | { readonly kind: "commodore"; readonly id: string; readonly section: SidebarCommodore }
   | { readonly kind: "taskforce"; readonly id: string; readonly row: TaskforceSummary };
+const EMPTY_TASKFORCE_SUMMARIES: readonly TaskforceSummary[] = [];
 export { theaterInitials } from "./theater-initials.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -19,7 +20,7 @@ import type { ObjectiveRuntimeState } from "../../../execution/shared/client-con
 
 import { useT, useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { requestTaskforceCreate, TASKFORCE_SURFACE_ID, TaskforceRowMenu, TaskforceStack, openTaskforce } from "../../../commodore/client/taskforce/taskforce.js";
-import { loadTaskforce, readTaskforce, useTaskforces } from "../../../commodore/client/taskforce/state.js";
+import { loadTaskforce, readTaskforce, useTaskforceExperiment, useTaskforces } from "../../../commodore/client/taskforce/state.js";
 import type { TaskforceSummary } from "../../../commodore/shared/contracts/taskforce.js";
 import { taskforceT } from "../../../commodore/client/taskforce/i18n.js";
 import type { ObjectiveRecord, TheaterInfo } from "../../../../core/client/src/integration/types.js";
@@ -213,7 +214,10 @@ export function ObjectiveRecordsSideBar({
   // 순위에 없는 행(저장 전 새 행)은 뒤에 붙는다. TF 미리보기가 비었으면 원장을 읽어 채운다.
   const commodoreSections = useSidebarCommodores(objectiveRecords, groups, t("sidebar.commodore.fallback"));
   const commodoresLoaded = useCommodoreListLoaded();
-  const tfSummaries = useTaskforces();
+  const taskforceExperiment = useTaskforceExperiment();
+  const allTaskforces = useTaskforces();
+  // 실험이 꺼져 있으면 TF 행을 그리지 않는다 — 순서·소속 저장은 그대로 두어 다시 켜면 돌아온다.
+  const tfSummaries = taskforceExperiment.enabled ? allTaskforces : EMPTY_TASKFORCE_SUMMARIES;
   const sidebarOrder = useSidebarOrder();
   useEffect(() => {
     for (const row of tfSummaries) {
@@ -908,6 +912,7 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
 function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onOpenZone, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
   const t = useT();
   const tf = taskforceT(useConsoleLocale());
+  const { enabled: taskforceEnabled } = useTaskforceExperiment();
   const menuRef = useRef<HTMLDivElement | null>(null);
   // 사이드바 하단 행에서 anchor.bottom+6 고정 배치가 뷰포트 아래로 밀리면 스크롤로 닫혀
   // Forget/New group에 도달할 수 없다(Codex P2) — 실측 크기로 상단을 클램프한다. 커서 자리 메뉴는 아래가 모자라면
@@ -983,10 +988,10 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
           <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
           <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
         </button>
-        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(theater.id); }}>
+        {taskforceEnabled ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(theater.id); }}>
           <span className="theater-menu-check" aria-hidden="true">⧉</span>
           <span className="theater-menu-label">{tf("taskforce.fromCommodore")}</span>
-        </button>
+        </button> : null}
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenZone}>
           <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
           <span className="theater-menu-label">{t("sidebar.commodore.zone")}</span>
