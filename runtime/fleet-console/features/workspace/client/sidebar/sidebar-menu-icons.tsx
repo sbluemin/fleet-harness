@@ -48,3 +48,9 @@ export function TaskforceIcon() {
     </svg>
   );
 }
+
+export function CommodoreIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 9.4 6.6 13.5 8 9.4 9.4 8 13.5 6.6 9.4 2.5 8 6.6 6.6Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
+  );
+}
