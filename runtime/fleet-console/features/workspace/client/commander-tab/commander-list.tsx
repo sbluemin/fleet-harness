@@ -56,6 +56,45 @@ function ExpandedCommanderPanel({ item, tab, panelId, renderPanel }: {
     </li>
   );
 }
+/** 접힌 settled 머리의 접근 이름 — 0인 상태는 빼고 시작 전·완료를 나눠 읽는다. */
+function settledToggleLabel(t: ReturnType<typeof useT>, collapsed: boolean, fresh: number, done: number): string {
+  const parts: string[] = [];
+  if (fresh > 0) parts.push(t("commanderTab.settledFresh", { n: fresh }));
+  if (done > 0) parts.push(t("commanderTab.settledDone", { n: done }));
+  return t(collapsed ? "commanderTab.settledExpand" : "commanderTab.settledCollapse", { parts: parts.join(" · ") });
+}
+
+/**
+ * 접힌 settled 머리의 분리 개수 — 행 글리프와 같은 뜻의 작은 표시 + 숫자라 좁은 사이드바에 들어간다.
+ * 시작 전(기한 없는 줄의 점선 빈 원) 먼저, 완료(꽉 찬 원 체크) 다음. 0인 상태는 자리를 차지하지 않는다.
+ * 버튼의 접근 이름이 뜻을 말하므로 장식이다.
+ */
+function SettledCounts({ fresh, done, maskId }: { readonly fresh: number; readonly done: number; readonly maskId: string }) {
+  const doneMaskId = maskId.replace(/:/g, "");
+  return (
+    <span className="commander-tab-settled-count" aria-hidden="true">
+      {fresh > 0 ? (
+        <span className="commander-tab-settled-part">
+          <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" /></svg>
+          {fresh}
+        </span>
+      ) : null}
+      {done > 0 ? (
+        <span className="commander-tab-settled-part">
+          <svg viewBox="0 0 16">
+            <mask id={doneMaskId}>
+              <circle cx="8" cy="8" r="5.6" fill="white" />
+              <path d="M5.3 8.1l1.8 1.8 3.6-3.8" fill="none" stroke="black" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </mask>
+            <circle cx="8" cy="8" r="5.6" fill="currentColor" mask={`url(#${doneMaskId})`} />
+          </svg>
+          {done}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, heading, expansion }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
@@ -96,10 +135,10 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
             return <section key={group.id}>
             {group.settled === true
               ? <button type="button" className="commander-tab-settled-head" aria-expanded={!collapsed} aria-controls={listId}
-                  aria-label={t(collapsed ? "commanderTab.settledExpand" : "commanderTab.settledCollapse", { n: group.rows.length })}
+                  aria-label={settledToggleLabel(t, collapsed, group.freshCount ?? 0, group.doneCount ?? 0)}
                   onClick={() => { if (foldId !== null) toggleFold(foldId); }}>
                   <span className="commander-tab-settled-rule" aria-hidden="true" />
-                  {collapsed ? <span className="commander-tab-settled-count" aria-hidden="true">{group.rows.length}</span> : null}
+                  {collapsed ? <SettledCounts fresh={group.freshCount ?? 0} done={group.doneCount ?? 0} maskId={`${listId}-done`} /> : null}
                   <ChevronGlyph direction={collapsed ? "right" : "down"} />
                 </button>
               : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
