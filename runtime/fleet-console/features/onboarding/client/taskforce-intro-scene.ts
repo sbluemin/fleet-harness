@@ -44,7 +44,8 @@ export function drawTaskforceIntro(
   k.orb(cx, cy, 16 * at0, c.flow, at0 * (1 - goal));
   k.orb(cx, cy, 16 * at0, c.result, at0 * goal);
   k.text(L.topic, cx, cy + 32, { a: at0 * (1 - goal) });
-  k.text(L.goal, cx, cy + 32, { a: goal, color: c.result, weight: 700 });
+  // 목표 라벨은 진행 고리(반지름 26)의 아래쪽과 겹치므로 한참 아래에 둔다.
+  k.text(L.goal, cx, cy + 44, { a: goal, color: c.result, weight: 700 });
   if (goal > 0) {
     // 진행 고리: 목표가 선 뒤 차오른다
     const p = reduced ? 0.66 : clamp01((t - INTRO_GOAL - 0.6) / 4.5);

@@ -33,10 +33,22 @@ function useTaskforceRowFlash(): boolean {
   const [flash, setFlash] = useState(false);
   useEffect(() => {
     if (highlight === 0) return;
-    takeTaskforceRowHighlight();
-    setFlash(true);
-    const timer = window.setTimeout(() => setFlash(false), TASKFORCE_FLASH_MS);
-    return () => window.clearTimeout(timer);
+    // 새 요청이 겹치면 클래스를 뗐다 붙여 애니메이션을 처음부터 다시 돌린다.
+    setFlash(false);
+    let timer = 0;
+    const raf = requestAnimationFrame(() => {
+      setFlash(true);
+      timer = window.setTimeout(() => {
+        // 토큰은 반짝임이 끝난 뒤에 소비한다 — 시작할 때 지우면 토큰 변화가
+        // effect를 다시 돌려 cleanup이 타이머를 지워 버린다.
+        takeTaskforceRowHighlight();
+        setFlash(false);
+      }, TASKFORCE_FLASH_MS);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
   }, [highlight]);
   return flash;
 }
