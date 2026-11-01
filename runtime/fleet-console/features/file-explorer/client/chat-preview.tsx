@@ -13,9 +13,15 @@ import { ImageViewer } from "./viewer/image.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import "./explorer.css";
 
+interface PreviewFocusOrigin {
+  readonly link: HTMLElement | null;
+  readonly messageArea: HTMLElement | null;
+}
+
 interface PreviewRequest {
   readonly id: string;
   readonly request: OpenFileRequest;
+  readonly focusOrigin: PreviewFocusOrigin;
 }
 
 // 파일 기능의 요청과 상시 렌더만 잇는다. 도구의 Theater·탭·문서 캐시와는 독립이다.
@@ -27,7 +33,12 @@ function closePreview() { preview = null; for (const listener of listeners) list
 
 export function openChatFilePreview(request: OpenFileRequest): OpenResult {
   if (!parseFileLocation(request.path)) return { ok: false, reason: "unsupported" };
-  preview = { id: crypto.randomUUID(), request };
+  // autoFocus보다 먼저 잡는다. 미리보기 안의 파일 링크를 따라가도 원래 대화로 돌아간다.
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const focusOrigin = active?.closest(".fexp-chat-preview") && preview
+    ? preview.focusOrigin
+    : { link: active, messageArea: active?.closest<HTMLElement>('[role="log"]') ?? null };
+  preview = { id: crypto.randomUUID(), request, focusOrigin };
   for (const listener of listeners) listener();
   return { ok: true };
 }
@@ -35,7 +46,7 @@ export function openChatFilePreview(request: OpenFileRequest): OpenResult {
 export function FileExplorerChatPreview({ language }: { readonly language?: ConsoleLocale }) {
   const current = useSyncExternalStore(subscribe, snapshot, () => null);
   if (!current) return null;
-  return createPortal(<ChatPreview key={current.id} request={current.request} language={language} />, document.body);
+  return createPortal(<ChatPreview key={current.id} request={current.request} focusOrigin={current.focusOrigin} language={language} />, document.body);
 }
 
 type PreviewState =
@@ -45,7 +56,7 @@ type PreviewState =
   | { readonly kind: "binary"; readonly path: string }
   | { readonly kind: "error"; readonly message: string };
 
-function ChatPreview({ request, language }: { readonly request: OpenFileRequest; readonly language?: ConsoleLocale }) {
+function ChatPreview({ request, focusOrigin, language }: { readonly request: OpenFileRequest; readonly focusOrigin: PreviewFocusOrigin; readonly language?: ConsoleLocale }) {
   const t = getT(language);
   const dialog = useRef<HTMLDialogElement>(null);
   const [state, setState] = useState<PreviewState>({ kind: "loading" });
@@ -55,10 +66,18 @@ function ChatPreview({ request, language }: { readonly request: OpenFileRequest;
   const name = nameOfPath(path);
 
   useLayoutEffect(() => {
-    const previous = document.activeElement;
-    dialog.current?.showModal();
-    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
-  }, []);
+    const modal = dialog.current;
+    modal?.showModal();
+    return () => {
+      // 바깥 대화가 inert인 동안에는 포커스를 돌릴 수 없다. 먼저 top layer에서 내린다.
+      modal?.close();
+      if (preview !== null) return;
+      const target = focusOrigin.link?.isConnected ? focusOrigin.link : focusOrigin.messageArea;
+      if (!target?.isConnected) return;
+      if (target === focusOrigin.messageArea && !target.hasAttribute("tabindex")) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+    };
+  }, [focusOrigin]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -118,7 +137,7 @@ function ChatPreview({ request, language }: { readonly request: OpenFileRequest;
       onClick={(event) => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closePreview(); } }}>
       <header className="fexp-chat-preview-head">
         <FileIcon name={name} />
-        <div className="fexp-chat-preview-address"><strong>{name}</strong><span>{path}</span></div>
+        <div className="fexp-chat-preview-address"><strong>{name}</strong>{path.includes("/") && <span>{path}</span>}</div>
         <button type="button" autoFocus aria-label={t("fileExplorer.peek.close")} onClick={closePreview}>✕</button>
       </header>
       <div className="fexp-chat-preview-body">

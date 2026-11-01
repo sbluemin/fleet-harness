@@ -105,7 +105,9 @@ describe("보관한 문서의 다시 읽기", () => {
 describe("대화 파일 미리보기의 격리", () => {
   it("목표 소유권을 유지하며 실패를 재시도하고 도구의 문서·Theater를 바꾸지 않는다", async () => {
     const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+    const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
     Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value(this: HTMLDialogElement) { this.open = true; } });
+    Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value(this: HTMLDialogElement) { this.open = false; } });
     try {
       const host = createClientCapabilities();
       const openRail = vi.spyOn(host.rail, "open");
@@ -145,6 +147,8 @@ describe("대화 파일 미리보기의 격리", () => {
     } finally {
       if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal);
       else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+      if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose);
+      else Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
       vi.restoreAllMocks();
     }
   });
