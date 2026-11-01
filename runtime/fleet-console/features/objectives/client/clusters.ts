@@ -123,20 +123,23 @@ function ageOf(at: number, now: number): { readonly unit: "now" } | { readonly u
  */
 function provenanceOf(objective: Objective, board: CommodoreBoard, now: number): ObjectiveClusterRowProvenance[] {
   const out: ObjectiveClusterRowProvenance[] = [];
+  // 출처 줄의 사령관 이름 — 별칭이 있으면 별칭을, 없으면 지금처럼 역할 이름(「사령관」)을 쓴다.
+  const alias = commodoreAliasOf(objective.commodoreId);
   const added = objective.addedBy;
   if (added && !objective.origin) {
     if (!("kind" in added)) out.push({ text: (locale) => { const t = getT(locale); return t("objectives.prov.addedBy", { who: added.title ?? t("objectives.actor.agent") }); } });
-    else if (!board.enabled || objective.operator !== "commodore") out.push({ text: (locale) => getT(locale)("objectives.prov.addedByCommodore"), tone: "accent" });
+    else if (!board.enabled || objective.operator !== "commodore") out.push({ text: (locale) => { const t = getT(locale); return alias ? t("objectives.prov.addedBy", { who: alias }) : t("objectives.prov.addedByCommodore"); }, tone: "accent" });
   }
   const last = lastAct(objective);
   if (last) {
+    const lastByCommodore = actorKind(last.by) === "commodore";
     const age = ageOf(last.at, now);
     out.push({
       text: (locale) => {
         const t = getT(locale);
-        return t("objectives.prov.recent", { who: actorName(t, last.by), act: t(`objectives.prov.act.${last.act}`), age: age.unit === "now" ? t("objectives.prov.age.now") : t(`objectives.prov.age.${age.unit}`, { n: age.n }) });
+        return t("objectives.prov.recent", { who: lastByCommodore && alias ? alias : actorName(t, last.by), act: t(`objectives.prov.act.${last.act}`), age: age.unit === "now" ? t("objectives.prov.age.now") : t(`objectives.prov.age.${age.unit}`, { n: age.n }) });
       },
-      ...(actorKind(last.by) === "commodore" ? { tone: "accent" as const } : {}),
+      ...(lastByCommodore ? { tone: "accent" as const } : {}),
     });
   }
   return out;
