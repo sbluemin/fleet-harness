@@ -5,7 +5,7 @@
  * (최대 2칸), 대화와 분할 영역의 폭 비율, 아래 줄의 높이 비율, 펼친 칸. 오른쪽 사이드바(세부 정보)의 열림은 여기 없다 — 그것은
  * 지금처럼 Console 전체에 하나다.
  *
- * 칸이 담는 것은 세 가지다: 레일 엔트리가 세우는 페인 묶음(`entry`: 파일·Codex·스킬 등), 확대 표면 서술자 하나(`surface`: 저장소·Shell
+ * 칸이 담는 것은 세 가지다: 레일 엔트리가 세우는 페인 묶음(`entry`: 파일·스킬 등), 확대 표면 서술자 하나(`surface`: 저장소·Shell
  * 등 — params 를 함께 든다), 그 대화의 Session 브라우저(`browser`). 무엇을 어디서 여는지(작업 위치 컨텍스트)는 이 모델의 몫이 아니라
  * 그리는 쪽이 소유 사령관에서 파생한다. 브라우저 자원만 지금 대화의 세션을 따른다.
  *
@@ -116,11 +116,14 @@ export function sanitizeWorkbenchParams(value: unknown): Readonly<Record<string,
   return params;
 }
 
+/** 퇴역한 레일 엔트리 — 저장된 배치에서 걷어낸다(rail-store의 퇴역 id 정규화와 같은 취지). */
+const RETIRED_WORKBENCH_ENTRY_IDS: ReadonlySet<string> = new Set(["codex"]);
+
 function sanitizeTile(value: unknown, seen: Set<string>): WorkbenchTile | null {
   if (!isRecord(value) || !validId(value.id) || seen.has(value.id)) return null;
   const id = value.id;
   let tile: WorkbenchTile | null = null;
-  if (value.kind === "entry" && validId(value.entryId)) tile = { id, kind: "entry", entryId: value.entryId };
+  if (value.kind === "entry" && validId(value.entryId) && !RETIRED_WORKBENCH_ENTRY_IDS.has(value.entryId)) tile = { id, kind: "entry", entryId: value.entryId };
   else if (value.kind === "surface" && validId(value.surfaceId)) tile = { id, kind: "surface", surfaceId: value.surfaceId, params: sanitizeWorkbenchParams(value.params) };
   else if (value.kind === "browser") tile = { id, kind: "browser" };
   if (tile !== null) seen.add(id);

@@ -8,7 +8,7 @@ import { getViewedCommodoreId } from "../../../core/client/src/integration/viewe
  */
 export function resolveTheaterOwner(theaterId: string, preferredCommodoreId: string | null = getViewedCommodoreId()): string | null {
   const commodores = readCommodoreList();
-  // 사령관 UUID 자체가 들어오면(Codex 리더 주소 등) 그 사령관이다.
+  // 사령관 UUID 자체가 들어오면(사령관 세션 목록이 여는 목적지 등) 그 사령관이다.
   if (commodores.some((row) => row.commodoreId === theaterId)) return theaterId;
   if (preferredCommodoreId) {
     const preferred = commodores.find((row) => row.commodoreId === preferredCommodoreId);

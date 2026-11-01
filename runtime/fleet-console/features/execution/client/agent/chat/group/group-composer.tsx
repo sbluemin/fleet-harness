@@ -163,7 +163,7 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
     if (!claimComposerKeyboardFocus(rootObjectiveId)) return;
     inputRef.current?.focus();
   }, [focusRequestId, rootObjectiveId]);
-  // 다른 표면(Codex 문서)이 인용을 붙이면 커서가 이 입력창으로 온다. 처음 서는 순간의 기존 칩은 초점을 가져가지 않는다.
+  // 다른 표면(파일 문서)이 인용을 붙이면 커서가 이 입력창으로 온다. 처음 서는 순간의 기존 칩은 초점을 가져가지 않는다.
   const quoteCount = React.useRef(quotes.length);
   React.useEffect(() => {
     if (quotes.length > quoteCount.current) inputRef.current?.focus({ preventScroll: true });

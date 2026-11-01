@@ -688,7 +688,7 @@ function createCommodoreDraft(port?: ComposerAttachmentPort, limits?: ComposerAt
   const listeners = new Set<() => void>();
   return {
     attachments,
-    /** 다른 표면(Codex 문서)이 붙인 인용 칩 — 보낼 때 문면 끝 줄로 합성된다. */
+    /** 다른 표면(파일 문서)이 붙인 인용 칩 — 보낼 때 문면 끝 줄로 합성된다. */
     quotes: createComposerQuotes(),
     read: () => current,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },

@@ -159,7 +159,7 @@ function messageImages(theaterId: string, entry: Extract<CommodoreTranscriptEntr
     : { reference: id }) ?? [];
 }
 
-/** 다른 표면(Codex 문서)이 입력창에 붙여 보낸 인용은 문면 끝 줄로 실려 있다 — 말풍선 문면에서 떼어 인용 칩으로 세운다. */
+/** 다른 표면(파일 문서)이 입력창에 붙여 보낸 인용은 문면 끝 줄로 실려 있다 — 말풍선 문면에서 떼어 인용 칩으로 세운다. */
 function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>) {
   const words = messageWords(entry);
   const split = splitQuotedPrompt(words.text);

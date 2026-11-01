@@ -5,7 +5,6 @@ import os from "node:os";
 import { openClaudeMcpControl } from "@fleet-console/agent-runtime/claude";
 import { createCommodorePluginAuth } from "./plugin-auth.js";
 import { stripConsoleInternalEnv } from "../../execution/host/terminal/launch-env.js";
-import { createKnowledgeFolderAction } from "./knowledge-folder.js";
 import type { FolderGrantStore } from "../../workspace/host/theaters/theater-domain.js";
 import { ClaudeTrustError, trustClaudeTheater } from "../../workspace/host/theaters/claude-trust.js";
 import { createCommodoreDeletion, type CommodoreDeletionHost } from "./deletion.js";
@@ -59,8 +58,6 @@ export interface CommodoreFeatureDeps {
   readonly http: HttpPort;
   readonly security: HttpSecurityPort;
   readonly agent: ConsoleResidentAgentDeps;
-  /** 파일 탐색기 실행은 호스트가 주입한다. 클라이언트가 보낸 경로는 받지 않는다. */
-  readonly openKnowledgeDirectory?: (directory: string) => Promise<void>;
   /** 마켓플레이스 받기·설치에 쓰는 `claude` CLI 를 Console 수명에 묶어 띄운다. */
   readonly processes?: OwnedProcessPort;
 }
@@ -71,7 +68,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   let restored = false;
   let disposed = false;
   const ownership = deps.ownership ?? createCommodoreOwnership(deps.paths);
-  const { entities, theaterIds, knowledge } = ownership;
+  const { entities, theaterIds } = ownership;
   const releaseChannel = deps.events.registerSseChannel(COMMODORE_CHANNEL);
   const releaseSidebarChannel = deps.events.registerSseChannel(COMMODORE_SIDEBAR_CHANNEL);
   const agent = createConsoleResidentAgentHost(deps.agent);
@@ -256,7 +253,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   });
   const commodoreRoutes = createCommodoreRoutes(context, store, {
     sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, deletion, assertWritable: ownership.assertWritable,
-    knowledgeFolder: createKnowledgeFolderAction({ root: knowledge.root, ...(deps.openKnowledgeDirectory ? { openDirectory: deps.openKnowledgeDirectory } : {}) }),
     theaterIds, summary, list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map(summary),
     order: orderedIds,
     setOrder: (requested) => {
@@ -315,7 +311,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const routes = [...commodoreRoutes, ...taskforce.routes];
   return {
     host,
-    knowledge,
     routes,
     /** TaskForce 저장소 — 판단·깨움 런타임과 TF 화면이 쓰는 TF 원장의 주인이다. */
     taskforce: taskforce.store,

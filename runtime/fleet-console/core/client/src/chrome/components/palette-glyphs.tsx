@@ -53,7 +53,7 @@ export function PaletteSectionGlyph({ section }: { readonly section: "recent" | 
   return <span className="objective-search-section-glyph" aria-hidden="true">{SECTION_GLYPHS[section]}</span>;
 }
 
-/** 패널 검색 결과(파일·Codex 문서) 행의 선행 글리프 — 그 패널을 여는 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
+/** 패널 검색 결과(파일 문서) 행의 선행 글리프 — 그 패널을 여는 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
 export function PaletteRailIcon({ icon }: { readonly icon: ReactNode | (() => ReactNode) | undefined }) {
   const node = typeof icon === "function" ? icon() : icon;
   return <span className="objective-search-command-glyph objective-search-rail-icon" aria-hidden="true">{node ?? LINE_GLYPHS["console-rail"]}</span>;

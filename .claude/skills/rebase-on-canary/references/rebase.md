@@ -54,7 +54,7 @@ The file-list intersection identifies verification candidates, not certain confl
 
 In `stop` mode, report `status` and `diff --diff-filter=U`, then stop. In default `auto-resolve`, read each hunk and applicable child instructions, preserving incoming and topic intent together.
 
-Never hand-merge counts/indexes in derived files such as `.fleet/knowledge/**`. Select one coherent whole side required by the owning tool and regenerate. Verify ours/theirs semantics during rebase before applying `git checkout --ours <file>` or `--theirs` to a specific generated file. If regeneration is unavailable, report the conflict and stop.
+Never hand-merge counts/indexes in derived files. Select one coherent whole side required by the owning tool and regenerate. Verify ours/theirs semantics during rebase before applying `git checkout --ours <file>` or `--theirs` to a specific generated file. If regeneration is unavailable, report the conflict and stop.
 
 ```bash
 git -C <worktree_path> add <resolved-files>

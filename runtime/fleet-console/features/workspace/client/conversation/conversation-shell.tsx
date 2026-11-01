@@ -138,7 +138,7 @@ function useToggleDetails(objectiveRecordConversation: boolean): () => void {
       presentRailPanel(lead.entry.id);
       return;
     }
-    // 도구(파일·Codex·스킬 등)는 오른쪽 사이드바가 아니라 대화 옆 도구 칸에 열린다 — 사이드바가 여는 것은 대상의 탭과 대화 탭(목표)뿐이다.
+    // 도구(파일·스킬 등)는 오른쪽 사이드바가 아니라 대화 옆 도구 칸에 열린다 — 사이드바가 여는 것은 대상의 탭과 대화 탭(목표)뿐이다.
     const panes = bindings.filter((binding) => binding.panes.length > 0 && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && binding.entry.visible?.() !== false && !isWorkbenchToolBinding(binding));
     const last = readLastPanel();
     const target = panes.find((binding) => binding.entry.id === last) ?? panes.find((binding) => binding.core) ?? panes[0];

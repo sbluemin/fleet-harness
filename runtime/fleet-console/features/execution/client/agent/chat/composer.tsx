@@ -468,7 +468,7 @@ export function AgentChatComposer({
     return subscribeComposerInbox(context.objectiveId, take);
   }, [context.objectiveId, addFiles]);
 
-  // 다른 표면(Codex 문서)이 인용을 붙이면 커서가 이 입력창으로 온다 — 다음 할 일은 지시를 쓰는 것이다. 처음 서는 순간의
+  // 다른 표면(파일 문서)이 인용을 붙이면 커서가 이 입력창으로 온다 — 다음 할 일은 지시를 쓰는 것이다. 처음 서는 순간의
   // 이미 있던 칩은 초점을 가져가지 않는다.
   const quoteCount = React.useRef(quotes.length);
   React.useEffect(() => {

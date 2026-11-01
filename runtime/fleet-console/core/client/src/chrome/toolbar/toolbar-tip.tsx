@@ -35,7 +35,6 @@ type Placement = "below" | "above";
 interface TipState {
   readonly target: HTMLElement;
   readonly text: string;
-  readonly body: string;
   readonly placement: Placement;
 }
 
@@ -147,10 +146,10 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
       targetObserver = new MutationObserver(() => {
         if (shownFor !== item) return;
         if (item.getAttribute("aria-expanded") === "true" || !item.isConnected) { hide(); return; }
-        setTip((current) => current?.target === item ? { ...current, text: tipTextOf(item), body: item.dataset.tipBody ?? "" } : current);
+        setTip((current) => current?.target === item ? { ...current, text: tipTextOf(item) } : current);
       });
-      targetObserver.observe(item, { attributes: true, attributeFilter: ["data-tip", "data-tip-body", STASHED_TITLE, "aria-label", "aria-expanded"] });
-      setTip({ target: item, text, body: item.dataset.tipBody ?? "", placement: "below" });
+      targetObserver.observe(item, { attributes: true, attributeFilter: ["data-tip", STASHED_TITLE, "aria-label", "aria-expanded"] });
+      setTip({ target: item, text, placement: "below" });
       setVisible(true);
     };
     const request = (item: HTMLElement) => {
@@ -262,7 +261,6 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
       aria-hidden={!visible || undefined}
     >
       {tip?.text}
-      {tip?.body ? <span className="console-toolbar-tip-body">{tip.body}</span> : null}
     </span>,
     document.body,
   );
