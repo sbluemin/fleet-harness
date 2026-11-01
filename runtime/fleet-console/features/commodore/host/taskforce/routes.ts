@@ -43,6 +43,8 @@ export interface TaskforceRouteContext {
 export interface TaskforceRouteHooks {
   /** 아는 사령관인가 — 성원 검증이 여기에 기대어 선다. 없으면 모양만 검사한다. */
   readonly isKnownCommodore?: (commodoreId: string) => boolean;
+  /** TF가 지워진 뒤 부르는 조합의 뒷정리 — 사이드바 순서·섹션 소속에서 id를 뺀다. */
+  readonly onDeleted?: (taskforceId: string) => void;
 }
 
 export function createTaskforceRoutes(
@@ -166,6 +168,8 @@ export function createTaskforceRoutes(
     { name: TASKFORCE_ROUTE_NAMES.delete, method: "POST", summary: "Permanently delete a TaskForce and its ledger.", handler: json(taskforceIdOnlySchema, ({ taskforceId }) => {
       read(taskforceId);
       store.delete(taskforceId);
+      try { hooks.onDeleted?.(taskforceId); }
+      catch (error) { console.warn(`[objectives] taskforce sidebar cleanup failed: ${error instanceof Error ? error.message : String(error)}`); }
       return { deleted: taskforceId };
     }) },
     { name: TASKFORCE_ROUTE_NAMES.image, method: "GET", summary: "Read a preserved TaskForce ledger image by TaskForce, entry seq and image id.", handler: image },

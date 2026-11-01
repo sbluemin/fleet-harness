@@ -9,6 +9,7 @@ import { mongleBase } from "../../../workspace/shared/avatars.js";
 import { useAvatarBook, resolveMongleLook, useMongleLook } from "../../../workspace/client/avatar-events.js";
 import { useConversationSurface } from "../../../workspace/client/conversation/conversation-surface-store.js";
 import { GroupContextMenu } from "../../../workspace/client/sidebar/group-context-menu.js";
+import { CommodoreSectionMoveMenu, useCommodoreSidebarSections } from "../../../workspace/client/sidebar/commodore-sidebar-sections.js";
 import { useContextMenuKeyboard } from "../../../workspace/client/sidebar/context-menu-keyboard.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../commodore-avatar.js";
@@ -23,6 +24,8 @@ import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, re
 import "./taskforce.css";
 
 const SURFACE = "taskforce";
+/** 좌측 목록이 TF 행을 사령관 행과 같은 자리에 세울 때 쓰는 표면 id. */
+export const TASKFORCE_SURFACE_ID = SURFACE;
 let conversation: ClientConversationCapability | undefined;
 let createRequest: { readonly preselected?: string } | null = null;
 let mobileId: string | null = null;
@@ -48,39 +51,41 @@ export function TaskforceStack({ members, judging = [] }: { readonly members: re
   return <span className="taskforce-stack" aria-hidden="true">{members.slice(0, 3).map((id) => <CommodoreAvatar key={id} commodoreId={id} state={judging.includes(id) ? "running" : "idle"} size={22} label="" decorative />)}</span>;
 }
 
-export function TaskforceSidebarGroup() {
+/**
+ * TF 행의 우클릭 메뉴 — 사령관 행과 같은 자리에 서고, 마치기/재개·삭제에 더해 사용자 섹션
+ * 소속(섹션 사이 이동·새 섹션)도 같은 섹션 메뉴로 바꾼다. 행 자체는 사이드바가 그린다.
+ */
+export function TaskforceRowMenu({ id, anchor, focusFirst, returnFocus, onClose, onError }: {
+  readonly id: string;
+  readonly anchor: DOMRect;
+  readonly focusFirst?: boolean;
+  readonly returnFocus?: HTMLElement | null;
+  readonly onClose: () => void;
+  readonly onError: () => void;
+}) {
   const language = useConsoleLocale();
   const t = taskforceT(language);
-  const rows = useTaskforces();
-  const selected = useConversationSurface();
-  const [menu, setMenu] = useState<{ id: string; anchor: DOMRect; focusFirst: boolean } | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const snapshot = useTaskforce(id);
+  const state = snapshot.state;
+  const sections = useCommodoreSidebarSections();
+  const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false);
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const closeMenu = () => { setMenu(null); if (document.hasFocus()) returnFocus.current?.focus(); };
-  useContextMenuKeyboard({ open: menu !== null, menuSelector: '.group-context-menu-card[role="menu"]', returnFocusRef: returnFocus, focusFirst: menu?.focusFirst, onEscape: closeMenu });
-  const run = async (id: string, route: "close" | "reopen" | "delete") => {
+  const returnFocusRef = useRef(returnFocus ?? null);
+  returnFocusRef.current = returnFocus ?? null;
+  useContextMenuKeyboard({ open: true, menuSelector: '.group-context-menu-card[role="menu"]', returnFocusRef, focusFirst, onEscape: onClose });
+  if (!state) return null;
+  const run = async (route: "close" | "reopen" | "delete") => {
     if (busy) return; setBusy(true); setFailed(false);
-    try { await mutateTaskforce(route, { taskforceId: id }); setDeleting(null); }
-    catch { setFailed(true); } finally { setBusy(false); }
+    try { await mutateTaskforce(route, { taskforceId: id }); setDeleting(false); if (route === "delete") onClose(); }
+    catch { setFailed(true); onError(); } finally { setBusy(false); }
   };
-  useEffect(() => {
-    for (const row of rows) {
-      const snapshot = readTaskforce(row.id);
-      if (!snapshot.loaded && !snapshot.error && row.preview && (!row.preview.text.trim() || row.preview.speaker.kind === "system" && row.preview.speaker.code !== "created")) void loadTaskforce(row.id);
-    }
-  }, [rows]);
-  if (!rows.length) return null;
-  return <li className="taskforce-sidebar" data-taskforce-group="">
-    <ul>{rows.map((row) => <li key={row.id}><button type="button" className={`taskforce-sidebar-row${selected?.surfaceId === SURFACE && selected.params.taskforceId === row.id ? " is-selected" : ""}${row.status === "closed" ? " is-closed" : ""}`} onClick={() => openTaskforce(row.id)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); returnFocus.current = event.currentTarget; setMenu({ id: row.id, anchor: new DOMRect(event.clientX, event.clientY, 0, 0), focusFirst: false }); }} onKeyDown={(event) => { if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return; event.preventDefault(); returnFocus.current = event.currentTarget; setMenu({ id: row.id, anchor: event.currentTarget.getBoundingClientRect(), focusFirst: true }); }} aria-haspopup="menu">
-      <TaskforceStack members={row.members} judging={row.judging} />
-      <span className="taskforce-sidebar-copy"><strong>{row.name}</strong><small>{row.preview?.text || row.topic}</small></span>
-      {row.judging.length ? <span className="taskforce-live-dot" aria-label={t("taskforce.memberJudging")} /> : null}
-    </button></li>)}</ul>
-    {menu && rows.find((row) => row.id === menu.id) ? <GroupContextMenu kind="actions" anchor={menu.anchor} label={t("taskforce.title")} items={[{ label: t(rows.find((row) => row.id === menu.id)?.status === "closed" ? "taskforce.reopen" : "taskforce.close"), action: () => void run(menu.id, rows.find((row) => row.id === menu.id)?.status === "closed" ? "reopen" : "close") }, { label: t("taskforce.delete"), danger: true, action: () => { setFailed(false); setDeleting(menu.id); } }]} onClose={closeMenu} /> : null}
-    {deleting ? <Dialog title={t("taskforce.deleteTitle")} onClose={() => { if (!busy) setDeleting(null); }}><div className="taskforce-dialog-body"><p>{t("taskforce.deleteWarning", { name: rows.find((row) => row.id === deleting)?.name ?? "" })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => setDeleting(null)}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn taskforce-danger" disabled={busy} onClick={() => void run(deleting, "delete")}>{t("taskforce.deleteConfirm")}</button></footer></Dialog> : null}
-    {failed && !deleting ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}
-  </li>;
+  return <>
+    <GroupContextMenu kind="actions" anchor={anchor} label={state.name} items={[
+      { label: t(state.status === "closed" ? "taskforce.reopen" : "taskforce.close"), action: () => void run(state.status === "closed" ? "reopen" : "close") },
+      { label: t("taskforce.delete"), danger: true, action: () => { setFailed(false); setDeleting(true); } },
+    ]} footer={<CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} />} onClose={onClose} />
+    {deleting ? <Dialog title={t("taskforce.deleteTitle")} onClose={() => { if (!busy) setDeleting(false); }}><div className="taskforce-dialog-body"><p>{t("taskforce.deleteWarning", { name: state.name })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => setDeleting(false)}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn taskforce-danger" disabled={busy} onClick={() => void run("delete")}>{t("taskforce.deleteConfirm")}</button></footer></Dialog> : null}
+  </>;
 }
 
 function Dialog({ title, onClose, children }: { readonly title: string; readonly onClose: () => void; readonly children: ReactNode }) {

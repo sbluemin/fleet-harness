@@ -3,16 +3,10 @@
 .taskforce-stack > :nth-child(1) { position: absolute; left: 0; top: 0; }
 .taskforce-stack > :nth-child(2) { position: absolute; left: 14px; top: 2px; }
 .taskforce-stack > :nth-child(3) { position: absolute; left: 7px; top: 12px; }
-.taskforce-sidebar { margin: 0 0 10px; list-style: none; }
-.taskforce-sidebar ul { padding: 0; margin: 0; list-style: none; }
-.taskforce-sidebar-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 9px 10px; border: 0; border-radius: 10px; color: var(--text-primary); background: transparent; text-align: left; font: inherit; cursor: pointer; }
-.taskforce-sidebar-row:hover { background: var(--wash-hover); }
-.taskforce-sidebar-row.is-selected { background: var(--surface-row-selected); }
-.taskforce-sidebar-row.is-closed { opacity: .55; }
-.taskforce-sidebar-copy { min-width: 0; flex: 1; display: grid; gap: 2px; }
-.taskforce-sidebar-copy strong { font-size: var(--t-md); font-weight: var(--weight-medium); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.taskforce-sidebar-copy small { color: var(--text-tertiary); font-size: var(--t-xs); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.taskforce-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); animation: taskforce-pulse 1.4s ease-in-out infinite; }
+/* 사령관 행과 같은 카드에 서는 TF 묶음 — 32px 칸에 맞춘다. */
+.side-bar-theater-anchor > .taskforce-stack { width: 32px; height: 32px; transform: scale(0.89); transform-origin: left center; }
+/* 마친 TF 행은 사령관 행과 같은 카드로 서되 흐리게 남는다. */
+.side-bar-theater-section.is-closed { opacity: .55; }
 .taskforce-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 5); display: grid; place-items: center; padding: 16px; background: var(--dialog-scrim); }
 .taskforce-dialog { width: min(480px, 100%); max-height: 100%; overflow: auto; border: 0; border-radius: var(--dialog-radius); color: var(--text-primary); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); font-size: var(--t-md); }
 .taskforce-dialog > header { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px 16px 22px; border-bottom: 1px solid var(--hairline); }
@@ -92,9 +86,9 @@
 .taskforce-mobile-screen > header { display: flex; align-items: center; gap: 12px; padding: 12px; }
 .taskforce-mobile-screen .taskforce-conversation { padding-top: 0; flex: 1 0 65vh; }
 .taskforce-mobile-screen .taskforce-details { padding: 16px; }
-.taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { box-shadow: var(--field-focus-edge); outline: none; }
 @keyframes taskforce-pulse { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .taskforce-live-dot, .taskforce-typing { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .taskforce-typing { animation: none; } }
 @media (max-width: 760px) { .taskforce-paused { flex-wrap: wrap; } .taskforce-paused > span:last-child { margin-left: 22px; } .taskforce-dialog footer { flex-wrap: wrap; } }
-@media (forced-colors: active) { .taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { outline: 1px solid Highlight; } }
+@media (forced-colors: active) { .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { outline: 1px solid Highlight; } }

@@ -14,7 +14,7 @@ export function useCommodoreSidebarSections() {
   const commands = useCommodoreSidebarCommands();
   const [editing, setEditing] = useState<string | null>(null);
   const t = useT();
-  const create = async (input: { commodoreId?: string; afterId?: string }) => {
+  const create = async (input: { rowId?: string; afterId?: string }) => {
     const result = await commands.run({ op: "create", name: t("sidebar.commodoreSection.defaultName"), ...input });
     if (result?.createdSectionId) setEditing(result.createdSectionId);
   };
@@ -132,7 +132,7 @@ function SectionMenu({ anchor, opener, focusFirst, label, children, onClose }: {
   </div>, document.body);
 }
 
-export function CommodoreSectionMoveMenu({ commodoreId, controller, onClose }: { readonly commodoreId: string; readonly controller: SidebarSectionsController; readonly onClose: () => void }) {
+export function CommodoreSectionMoveMenu({ rowId, controller, onClose }: { readonly rowId: string; readonly controller: SidebarSectionsController; readonly onClose: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [focusFirst, setFocusFirst] = useState(false);
@@ -146,8 +146,8 @@ export function CommodoreSectionMoveMenu({ commodoreId, controller, onClose }: {
     const anchor = trigger.current!.getBoundingClientRect(), rect = menu.current!.getBoundingClientRect();
     setPosition({ left: Math.max(8, anchor.right + rect.width + 8 > window.innerWidth ? anchor.left - rect.width : anchor.right), top: Math.max(8, Math.min(anchor.top, window.innerHeight - rect.height - 8)) });
   }, [open, controller.layout.sections.length]);
-  const move = (sectionId: string | null) => { onClose(); void controller.run({ op: "move", commodoreId, sectionId }); };
-  const current = controller.layout.membership[commodoreId] ?? null;
+  const move = (sectionId: string | null) => { onClose(); void controller.run({ op: "move", rowId, sectionId }); };
+  const current = controller.layout.membership[rowId] ?? null;
   return <div className="workspace-commodore-section-move" onPointerEnter={() => { setFocusFirst(false); setOpen(true); }} onPointerLeave={() => setOpen(false)}>
     <button ref={trigger} type="button" role="menuitem" className="theater-menu-item" aria-haspopup="menu" aria-expanded={open} disabled={controller.busy}
       onClick={(event) => { setFocusFirst(event.detail === 0); setOpen(true); }} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); event.stopPropagation(); setFocusFirst(true); setOpen(true); } }}>
@@ -160,7 +160,7 @@ export function CommodoreSectionMoveMenu({ commodoreId, controller, onClose }: {
         <span className="theater-menu-check" aria-hidden="true">{current === section.id ? "✓" : ""}</span><span className="theater-menu-label">{section.name}</span>
       </button>)}
       <div className="theater-menu-divider" role="separator" />
-      <MenuItem icon={<PlusIcon />} onClick={() => { onClose(); void controller.create({ commodoreId }); }}>{t("sidebar.commodoreSection.create")}</MenuItem>
+      <MenuItem icon={<PlusIcon />} onClick={() => { onClose(); void controller.create({ rowId }); }}>{t("sidebar.commodoreSection.create")}</MenuItem>
     </div> : null}
   </div>;
 }

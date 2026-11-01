@@ -34,27 +34,27 @@ export function createCommodoreSidebar(deps: {
       if (command.op === "create") {
         if (sections.length >= MAX_SIDEBAR_SECTIONS) throw new CommodoreStoreError("invalid_request");
         const index = command.afterId ? requireSection(command.afterId) + 1 : 0;
-        if (command.commodoreId) deps.assertWritable(command.commodoreId);
+        if (command.rowId) deps.assertWritable(command.rowId);
         createdSectionId = randomUUID();
         sections.splice(index, 0, { id: createdSectionId, name: command.name, collapsed: false });
-        if (command.commodoreId) membership[command.commodoreId] = createdSectionId;
+        if (command.rowId) membership[command.rowId] = createdSectionId;
       } else if (command.op === "collapse" && command.sectionId === null) {
         unsectionedCollapsed = command.collapsed;
       } else if (command.op === "move") {
-        deps.assertWritable(command.commodoreId);
+        deps.assertWritable(command.rowId);
         if (command.sectionId !== null) requireSection(command.sectionId);
         if (command.targetId) {
           deps.assertWritable(command.targetId);
           if ((membership[command.targetId] ?? null) !== command.sectionId) throw new CommodoreStoreError("invalid_request");
         }
-        if (command.sectionId === null) delete membership[command.commodoreId];
-        else membership[command.commodoreId] = command.sectionId;
-        if (command.targetId !== command.commodoreId) {
-          order = deps.order().filter((id) => id !== command.commodoreId);
+        if (command.sectionId === null) delete membership[command.rowId];
+        else membership[command.rowId] = command.sectionId;
+        if (command.targetId !== command.rowId) {
+          order = deps.order().filter((id) => id !== command.rowId);
           const last = order.filter((id) => (membership[id] ?? null) === command.sectionId).at(-1);
           const anchor = command.targetId ?? last;
           const index = anchor ? order.indexOf(anchor) + (command.targetId ? Number(command.after === true) : 1) : order.length;
-          order.splice(index, 0, command.commodoreId);
+          order.splice(index, 0, command.rowId);
         }
       } else {
         const index = requireSection(command.sectionId!);

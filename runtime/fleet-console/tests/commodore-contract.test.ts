@@ -145,9 +145,9 @@ it("persists UUID section order through the public route without rewriting entit
     await route("order", { commodoreIds: [stale, c, a] });
     expect(settings.load().commodoreOrder).toEqual([c, a]);
     expect((await route("list")).value.sidebarLayout.membership).toEqual({});
-    const section = (await route("sidebar", { op: "create", name: "Review", commodoreId: a })).value.createdSectionId;
+    const section = (await route("sidebar", { op: "create", name: "Review", rowId: a })).value.createdSectionId;
     expect(await ids()).toEqual([c, a, b]);
-    await route("sidebar", { op: "move", commodoreId: b, sectionId: section, targetId: a });
+    await route("sidebar", { op: "move", rowId: b, sectionId: section, targetId: a });
     expect(await ids()).toEqual([c, b, a]);
     await route("sidebar", { op: "collapse", sectionId: section, collapsed: true });
     await route("sidebar", { op: "collapse", sectionId: null, collapsed: true });
@@ -161,8 +161,8 @@ it("persists UUID section order through the public route without rewriting entit
     expect(sidebarEvents).toHaveLength(notifications);
     expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(layoutBytes);
     expect((await route("sidebar", { op: "delete", sectionId: section })).status).toBe(400);
-    expect((await route("sidebar", { op: "move", commodoreId: stale, sectionId: section })).status).toBe(404);
-    expect((await route("sidebar", { op: "move", commodoreId: a, sectionId: stale })).status).toBe(400);
+    expect((await route("sidebar", { op: "move", rowId: stale, sectionId: section })).status).toBe(404);
+    expect((await route("sidebar", { op: "move", rowId: a, sectionId: stale })).status).toBe(400);
     expect(settings.load().commodoreSidebar).toEqual(savedLayout);
     settings.update((current) => ({ ...current, commodoreSidebar: { ...savedLayout, membership: { ...savedLayout.membership, [stale]: section } } }));
     await feature.dispose(); settings = createConsoleSettingsStore({ paths }); feature = create();
@@ -171,6 +171,74 @@ it("persists UUID section order through the public route without rewriting entit
     expect((await route("list")).value.sidebarLayout).toEqual({ sections: [{ id: emptySection, name: "Work", collapsed: false }], membership: {}, unsectionedCollapsed: true });
     expect(await ids()).toEqual([c, b, a]);
     expect(entityFiles.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
+  } finally { await feature.dispose(); }
+});
+
+it("keeps one sidebar row order for Commodores and TaskForces", async () => {
+  // 좌측 목록 한 줄의 순서 모델 — 사령관과 TF가 한 order·membership에 산다.
+  // 기존 저장(사령관만)은 마이그레이션 없이 그대로 읽히고, 알 수 없는 id는 읽을 때 버리며,
+  // TF 삭제는 순서와 소속에서 빠진다.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-unified-order-"));
+  dirs.push(dir);
+  const paths = { dir, settingsFile: path.join(dir, "settings.json"), stateFile: path.join(dir, "state.json") };
+  let settings = createConsoleSettingsStore({ paths });
+  settings.load();
+  let body: unknown;
+  let result: { status: number; value: any };
+  const authorized = true;
+  const events: CommodoreEvent[] = [];
+  const create = () => createCommodoreFeature({
+    paths: { fleetDataDir: dir, consoleDataDir: dir, resolveCommodoreTheaterPath: () => null, resolveObjectiveOwner: () => null, listCommodoreTheaters: () => [], workspaceHash,
+      canonicalizeTheaterPath: (cwd) => fs.realpathSync.native(cwd),
+      ensureWorkspaceDirectory: () => { throw new Error("unexpected_workspace_creation"); },
+      withDirectoryLock: (_lock, run) => run(),
+    },
+    order: { read: () => settings.load().commodoreOrder ?? [], write: (ids) => { settings.update((current) => ({ ...current, commodoreOrder: [...ids] })); } },
+    sidebar: { read: () => settings.load().commodoreSidebar, write: (layout, order) => { settings.update((current) => ({ ...current, commodoreSidebar: layout, ...(order ? { commodoreOrder: order } : {}) })); } },
+    events: { registerSseChannel: () => () => {}, subscribe: () => () => {}, publish: (channel, value) => { if (channel !== "commodore-sidebar") events.push(value as CommodoreEvent); } },
+    http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value }; } } as never,
+    security: { isTerminalAuthorized: () => authorized } as never,
+    agent: { baseUrl: () => "http://127.0.0.1", resolveExecutablePath: async () => { throw new Error("unexpected_agent_launch"); } } as never,
+    experiments: undefined, models: undefined, attachments: undefined,
+  });
+  let feature = create();
+  const call = async (name: string, input: unknown = {}) => {
+    body = input;
+    const target = feature.routes.find((candidate) => candidate.name === name)!;
+    await target.handler({ req: { method: target.method } as never, res: {} as never, pathname: `/api/v1/${target.name}` });
+    return result!;
+  };
+  try {
+    const a = (await call("commodore/create", { alias: "A" })).value.commodoreId as string;
+    const b = (await call("commodore/create", { alias: "B" })).value.commodoreId as string;
+    const tf = (await call("taskforce/create", { name: "TF", topic: "topic", members: [a, b] })).value.taskforce.id as string;
+    // 저장 전부터 한 목록이다 — 새 TF는 사령관 뒤에 붙는다.
+    expect((await call("commodore/list")).value.order).toEqual([a, b, tf]);
+    // 순서는 두 종류의 id를 함께 든다.
+    expect((await call("commodore/order", { commodoreIds: [tf, a, b] })).status).toBe(200);
+    expect(settings.load().commodoreOrder).toEqual([tf, a, b]);
+    expect((await call("commodore/list")).value.order).toEqual([tf, a, b]);
+    expect((await call("commodore/list")).value.commodores.map((row: { commodoreId: string }) => row.commodoreId)).toEqual([a, b]);
+    // 섹션 소속도 함께 든다.
+    const section = (await call("commodore/sidebar", { op: "create", name: "Work" })).value.createdSectionId as string;
+    expect((await call("commodore/sidebar", { op: "move", rowId: tf, sectionId: section })).status).toBe(200);
+    expect((await call("commodore/list")).value.sidebarLayout.membership).toEqual({ [tf]: section });
+    // 합류 전 저장(사령관만)은 그대로 읽히고, TF는 뒤에 붙는다.
+    settings.update((current) => ({ ...current, commodoreOrder: [b, a], commodoreSidebar: { sections: [{ id: section, name: "Work", collapsed: false }], membership: { [a]: section }, unsectionedCollapsed: false } }));
+    await feature.dispose(); settings = createConsoleSettingsStore({ paths }); feature = create();
+    expect((await call("commodore/list")).value.order).toEqual([b, a, tf]);
+    expect((await call("commodore/list")).value.sidebarLayout.membership).toEqual({ [a]: section });
+    // 알 수 없는 id는 읽을 때 버린다.
+    const stale = "00000000-0000-4000-8000-000000000099";
+    settings.update((current) => ({ ...current, commodoreOrder: [stale, b, a, tf], commodoreSidebar: { sections: [{ id: section, name: "Work", collapsed: false }], membership: { [stale]: section, [a]: section, [tf]: section }, unsectionedCollapsed: false } }));
+    await feature.dispose(); settings = createConsoleSettingsStore({ paths }); feature = create();
+    expect((await call("commodore/list")).value.order).toEqual([b, a, tf]);
+    expect((await call("commodore/list")).value.sidebarLayout.membership).toEqual({ [a]: section, [tf]: section });
+    // TF 삭제는 순서와 소속에서 빠진다. 알 수 없는 id는 저장에 남고 읽을 때 버린다.
+    expect((await call("taskforce/delete", { taskforceId: tf })).status).toBe(200);
+    expect(settings.load().commodoreOrder).toEqual([stale, b, a]);
+    expect((await call("commodore/list")).value.order).toEqual([b, a]);
+    expect((await call("commodore/list")).value.sidebarLayout.membership).toEqual({ [a]: section });
   } finally { await feature.dispose(); }
 });
 

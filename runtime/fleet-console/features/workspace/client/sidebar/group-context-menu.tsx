@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { AccentToneList } from "../components/accent-tone-list.js";
@@ -47,6 +47,8 @@ type GroupContextMenuProps =
       readonly align?: GroupContextMenuAlign;
       readonly label: string;
       readonly items: readonly { readonly label: string; readonly action: () => void; readonly danger?: boolean }[];
+      /** 항목 아래에 그리는 부가 행 — TF 메뉴의 섹션 이동 같은 하위 메뉴 자리다. */
+      readonly footer?: ReactNode;
       readonly onClose: () => void;
     }
   | {
@@ -136,7 +138,7 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
         style={style ?? { position: "fixed", left: 0, top: 0, visibility: "hidden" }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {props.kind === "actions" ? props.items.map((item) => <button key={item.label} type="button" role="menuitem" className={`group-context-menu-item${item.danger ? " group-context-menu-item--danger" : ""}`} onClick={() => { onClose(); item.action(); }}><span className="group-context-menu-item__name">{item.label}</span></button>) : props.kind === "chip" ? (
+        {props.kind === "actions" ? <>{props.items.map((item) => <button key={item.label} type="button" role="menuitem" className={`group-context-menu-item${item.danger ? " group-context-menu-item--danger" : ""}`} onClick={() => { onClose(); item.action(); }}><span className="group-context-menu-item__name">{item.label}</span></button>)}{props.footer}</> : props.kind === "chip" ? (
           <ChipMenuContent {...props} />
         ) : props.kind === "row" ? (
           <RowMenuContent actions={props.actions} onClose={onClose} />

@@ -26,6 +26,16 @@ export function replaceCommodoreSidebarLayout(next: CommodoreSidebarLayout): voi
   sidebarLayout = next;
   emit();
 }
+/** 좌측 목록 한 줄의 전체 순서(사령관 + TF id). 목록 응답이 함께 내린다. */
+let sidebarOrder: readonly string[] = [];
+const readSidebarOrder = () => sidebarOrder;
+export function useSidebarOrder(): readonly string[] {
+  return useSyncExternalStore(subscribeCommodoreList, readSidebarOrder, readSidebarOrder);
+}
+export function replaceSidebarOrder(next: readonly string[]): void {
+  sidebarOrder = next;
+  emit();
+}
 let zoneCommodoreId: string | null = null;
 const MOBILE_COMMODORE_KEY = "fleet.mobile.commodore";
 let mobileCommodoreId: string | null = readSavedMobileCommodore();
@@ -132,6 +142,7 @@ export function refreshCommodoreList(): Promise<void> {
         const result = await fetchCommodores();
         commodores = result.commodores.filter((row) => !wasCommodoreRemoved(row.commodoreId));
         sidebarLayout = result.sidebarLayout ?? EMPTY_SIDEBAR_LAYOUT;
+        sidebarOrder = result.order ?? [];
         forgetMissingMobileCommodore();
       } catch {
         // 목록이 비어도 기록의 commodoreId 로 섹션은 남는다.
@@ -156,6 +167,8 @@ export function installCommodoreList(events: ClientConsoleEventsCapability): () 
       emit();
       void refreshCommodoreList();
     }
+    // TF 삭제는 호스트가 순서·소속에서 id를 걷는다 — 목록 응답의 order를 다시 읽는다.
+    if ((event as { readonly op?: string } | null)?.op === "taskforce-removed") void refreshCommodoreList();
     if (event?.op === "state" || event?.op === "run") void refreshCommodoreList();
     // 대화의 마지막 말은 목록을 다시 읽지 않고 그 행만 갈아 끼운다 — 기록 줄은 턴마다 여럿 온다.
     if (event?.op === "transcript") noteLastMessage(event.commodoreId, commodoreLastMessage(event.entry));

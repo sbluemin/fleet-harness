@@ -18,6 +18,8 @@ export interface TaskforceFeatureDeps {
   readonly security: HttpSecurityPort;
   /** 아는 사령관인가 — TF 성원 검증이 여기에 기대어 선다. */
   readonly isKnownCommodore?: (commodoreId: string) => boolean;
+  /** TF가 지워진 뒤 사이드바 한 줄을 걷는 조합의 뒷정리 — 순서·섹션 소속에서 id를 뺀다. */
+  readonly onDeleted?: (taskforceId: string) => void;
 }
 
 /**
@@ -36,7 +38,7 @@ export function createTaskforceFeature(deps: TaskforceFeatureDeps): {
   const routes = createTaskforceRoutes(
     { host: { http: deps.http, security: deps.security } },
     store,
-    deps.isKnownCommodore ? { isKnownCommodore: deps.isKnownCommodore } : {},
+    { ...(deps.isKnownCommodore ? { isKnownCommodore: deps.isKnownCommodore } : {}), ...(deps.onDeleted ? { onDeleted: deps.onDeleted } : {}) },
   );
   return { store, routes };
 }
