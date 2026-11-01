@@ -20,6 +20,7 @@ import { useObjectiveTheater } from "../../../commodore/client/board.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { toggleFold, useCommanderFolds } from "./commander-folds.js";
+import { CommanderRowGlyphs, TAB_LABEL_KEY, type CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { dismissCommanderPlacementNotice, notifyCommanderPlacementMoved, setCommanderPlacement, useCommanderPlacement, useCommanderPlacementNotice, type CommanderPlacement } from "./commander-placement.js";
 import { Toast, ToastHost } from "../../../../core/client/src/chrome/components/toast.js";
@@ -27,25 +28,31 @@ import { toggleCommanderSectionCollapsed } from "../sidebar/commander-section-fo
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
-/** 우측 작업 탭 카드의 행 아래 펼침 — 펼친 행 id와 그 아래 그릴 패널. 다른 목록(좌측·팝오버·폰)은 두지 않는다. */
+/**
+ * 우측 작업 탭 카드의 행 아래 펼침 — 한 번에 한 행, 그 행의 글리프(목표·구성원·라이브러리)가 고른 내용.
+ * 다른 목록(좌측·팝오버·폰)은 두지 않는다. 제목을 누르면 채팅만 옮기고 펼침은 그대로 둔다.
+ */
 export interface CommanderListExpansion {
-  readonly expandedId: string | null;
-  readonly renderPanel: (item: SideBarRowItem, titleId: string) => ReactNode;
+  readonly expanded: { readonly objectiveId: string; readonly tab: CommanderRowGlyphTab } | null;
+  readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab) => void;
+  readonly renderPanel: (item: SideBarRowItem, tab: CommanderRowGlyphTab) => ReactNode;
 }
 
 /** 펼친 행 아래 패널 — 그 지휘관의 accent를 다시 씌운다. 카드 밖(사령관 머리·탭)은 사령관 색 그대로다. */
-function ExpandedCommanderPanel({ item, titleId, renderPanel }: {
+function ExpandedCommanderPanel({ item, tab, panelId, renderPanel }: {
   readonly item: SideBarRowItem;
-  readonly titleId: string;
-  readonly renderPanel: (item: SideBarRowItem, titleId: string) => ReactNode;
+  readonly tab: CommanderRowGlyphTab;
+  readonly panelId: string;
+  readonly renderPanel: (item: SideBarRowItem, tab: CommanderRowGlyphTab) => ReactNode;
 }) {
+  const t = useT();
   const objectiveId = commanderObjectiveId(item.layout.cluster);
   // 시작 전(기록 없음) 지휘관도 행 아바타와 같은 열쇠를 쓴다 — avatarObjectiveId에서 온 id다.
   const accent = useAvatarAccent(objectiveId === null ? null : objectiveRecordAvatarKey(objectiveId));
   if (objectiveId === null) return null;
   return (
-    <li className="commander-row-panel workspace-avatar-panel" role="region" aria-labelledby={titleId} style={accent}>
-      {renderPanel(item, titleId)}
+    <li id={panelId} className="commander-row-panel workspace-avatar-panel" role="region" aria-label={t("commanderTab.rowGlyph.panel", { tab: t(TAB_LABEL_KEY[tab]), title: item.layout.cluster.title })} style={accent}>
+      {renderPanel(item, tab)}
     </li>
   );
 }
@@ -100,15 +107,20 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
                 const selected = objectiveId !== null && selectedId === objectiveId;
-                const expanded = expansion !== undefined && objectiveId !== null && expansion.expandedId === objectiveId;
+                // 글리프 펼침은 제목 선택과 무관하다 — 펼친 행의 글리프만이 그 행의 펼침을 연다.
+                const openTab = expansion !== undefined && objectiveId !== null && expansion.expanded?.objectiveId === objectiveId ? expansion.expanded.tab : null;
                 const titleId = `${listId}-${item.layout.cluster.id}-title`;
+                const panelId = `${listId}-${item.layout.cluster.id}-panel`;
                 return <Fragment key={item.layout.cluster.id}>
                 <SideBarClusterRow item={item} selected={selected} settled={group.settled === true}
-                  titleId={titleId} ariaExpanded={expansion === undefined ? undefined : expanded}
+                  titleId={titleId} expanded={openTab !== null}
+                  rowGlyphs={expansion !== undefined && objectiveId !== null ? (
+                    <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={objectiveId} title={item.layout.cluster.title} expandedTab={openTab} panelId={panelId} onGlyphTab={expansion.onGlyphTab} />
+                  ) : undefined}
                   onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
                   onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />
-                {expanded && expansion !== undefined ? (
-                  <ExpandedCommanderPanel item={item} titleId={titleId} renderPanel={expansion.renderPanel} />
+                {openTab !== null && expansion !== undefined ? (
+                  <ExpandedCommanderPanel item={item} tab={openTab} panelId={panelId} renderPanel={expansion.renderPanel} />
                 ) : null}
                 </Fragment>;
               })}

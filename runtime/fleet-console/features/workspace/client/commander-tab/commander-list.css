@@ -270,6 +270,49 @@
 /* 카드 면과 같은 다크 켜짐 면은 카드에서 보이지 않는다 — 선택 워시로 구분한다. */
 :root[data-view-mode="desktop"]:not([data-theme="light"]) .commander-tab--card .commander-row-panel-tabs .right-rail-ico.is-text.is-active { background: var(--wash-selected); }
 .commander-row-panel-empty { margin: 0; padding: 8px 4px; color: var(--text-tertiary); font-size: var(--t-sm); text-align: center; }
+
+/* 행 글리프(우측 카드) — B안: 쉬는 행에서는 세 글리프를 모두 숨기고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만
+   늘 같은 자리에 함께 나타난다. 점 있는 글리프만 쉬는 행에 남기면 가리킬 때 나머지가 끼어들며 그 글리프 자리가 밀리므로,
+   쉬는 행의 점은 ★ 옆 작은 점(.commander-row-pips)으로 둔다. */
+.commander-tab--card .commander-row-glyphs { display: none; align-items: center; gap: 1px; }
+.commander-tab--card .side-bar-cluster-row:hover .commander-row-glyphs,
+.commander-tab--card .side-bar-cluster-row:focus-within .commander-row-glyphs,
+.commander-tab--card .side-bar-cluster-row.is-open .commander-row-glyphs { display: inline-flex; }
+.commander-row-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.commander-row-glyph svg { width: 15px; height: 15px; }
+.commander-row-glyph:hover { background: var(--wash-hover); color: var(--text-primary); }
+.commander-row-glyph[aria-expanded="true"] { background: var(--wash-selected); color: var(--text-primary); }
+.commander-row-glyph:focus-visible { box-shadow: var(--focus-face); }
+/* 글리프 위의 점 — 탭 줄의 점과 같은 뜻·색이다: 결정 요청(aurora), 안 읽은 기록(brass). */
+.commander-row-glyph-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--surface-panel); }
+.commander-row-glyph-dot.is-attention { background: var(--aurora); }
+.commander-row-glyph-dot.is-unseen { background: var(--brass); }
+/* 쉬는 행의 점 — 글리프가 나타나면 해당 글리프 위의 점으로 옮겨 가므로 쉬는 행에서만 보인다. */
+.commander-tab--card .commander-row-pips { display: none; align-items: center; gap: 3px; padding: 0 3px; }
+.commander-tab--card .side-bar-cluster-row:not(:hover):not(:focus-within):not(.is-open) .commander-row-pips { display: inline-flex; }
+.commander-row-pips i { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--aurora); }
+.commander-row-pips i.is-unseen { background: var(--brass); }
+
+/* 글리프 펼침의 「오늘까지·기한」 — 목표 내용 맨 위에 중앙 정렬로 둔다. 단추는 지금 모양(글리프+글자) 그대로다. */
+.commander-row-panel-schedule { display: flex; justify-content: center; margin: 2px 0 6px; }
+
+/* 진행 중 행을 가리켜 글리프가 나타나 폭이 줄어도 상태 줄은 줄바꿈하지 않고 진행 막대가 줄어든다. */
+.commander-tab--card .side-bar-cluster-row-line { flex-wrap: nowrap; white-space: nowrap; }
+.commander-tab--card .side-bar-cluster-row-swap { flex: 1 1 auto; }
+.commander-tab--card .side-bar-cluster-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commander-tab--card .side-bar-cluster-row-gauge { flex: 1 1 56px; width: auto; min-width: 18px; }
 /* 위임 토글을 행 끝으로 — 진행 중 행에만. 시작 전·완료 한 줄 행은 이전 크기와 높이를 그대로 둔다. */
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) { grid-template-columns: 30px 1fr auto; }
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):has(.side-bar-cluster-row-mark-toggle) { padding-right: 10px; }
