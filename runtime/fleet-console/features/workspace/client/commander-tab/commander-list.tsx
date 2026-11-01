@@ -7,6 +7,7 @@ import { useViewMode } from "../../../../core/client/src/integration/view-mode-s
 import { openCommanderConversation } from "./commander-navigation.js";
 import { openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
 import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
+import { SettledDoneGlyph, SettledFreshGlyph } from "../sidebar/side-bar-cluster-row.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { SideBarClusterRow } from "../sidebar/side-bar-cluster-row.js";
 import { objectiveRecordAvatarKey } from "../../shared/avatars.js";
@@ -65,29 +66,21 @@ function settledToggleLabel(t: ReturnType<typeof useT>, collapsed: boolean, fres
 }
 
 /**
- * 접힌 settled 머리의 분리 개수 — 행 글리프와 같은 뜻의 작은 표시 + 숫자라 좁은 사이드바에 들어간다.
- * 시작 전(기한 없는 줄의 점선 빈 원) 먼저, 완료(꽉 찬 원 체크) 다음. 0인 상태는 자리를 차지하지 않는다.
- * 버튼의 접근 이름이 뜻을 말하므로 장식이다.
+ * 접힌 settled 머리의 분리 개수 — 행 글리프와 같은 표시(SettledFreshGlyph·SettledDoneGlyph) + 숫자라 좁은 사이드바에 들어간다.
+ * 시작 전 먼저, 완료 다음. 0인 상태는 자리를 차지하지 않는다. 버튼의 접근 이름이 뜻을 말하므로 장식이다.
  */
-function SettledCounts({ fresh, done, maskId }: { readonly fresh: number; readonly done: number; readonly maskId: string }) {
-  const doneMaskId = maskId.replace(/:/g, "");
+function SettledCounts({ fresh, done }: { readonly fresh: number; readonly done: number }) {
   return (
     <span className="commander-tab-settled-count" aria-hidden="true">
       {fresh > 0 ? (
         <span className="commander-tab-settled-part">
-          <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" /></svg>
+          <SettledFreshGlyph />
           {fresh}
         </span>
       ) : null}
       {done > 0 ? (
         <span className="commander-tab-settled-part">
-          <svg viewBox="0 0 16">
-            <mask id={doneMaskId}>
-              <circle cx="8" cy="8" r="5.6" fill="white" />
-              <path d="M5.3 8.1l1.8 1.8 3.6-3.8" fill="none" stroke="black" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </mask>
-            <circle cx="8" cy="8" r="5.6" fill="currentColor" mask={`url(#${doneMaskId})`} />
-          </svg>
+          <SettledDoneGlyph />
           {done}
         </span>
       ) : null}
@@ -138,7 +131,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
                   aria-label={settledToggleLabel(t, collapsed, group.freshCount ?? 0, group.doneCount ?? 0)}
                   onClick={() => { if (foldId !== null) toggleFold(foldId); }}>
                   <span className="commander-tab-settled-rule" aria-hidden="true" />
-                  {collapsed ? <SettledCounts fresh={group.freshCount ?? 0} done={group.doneCount ?? 0} maskId={`${listId}-done`} /> : null}
+                  {collapsed ? <SettledCounts fresh={group.freshCount ?? 0} done={group.doneCount ?? 0} /> : null}
                   <ChevronGlyph direction={collapsed ? "right" : "down"} />
                 </button>
               : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
