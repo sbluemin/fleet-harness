@@ -60,7 +60,9 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
       renderPanel: (item, tab) => {
         const objectiveId = commanderObjectiveId(item.layout.cluster);
         if (objectiveId === null) return null;
-        return <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={(next) => handleGlyphTab(objectiveId, next)} onOpenObjective={(id) => openCommanderConversation(commodoreId, id)} />;
+        // 펼침 안의 길(임무·결정·결과물로 가기)은 그 탭을 고르기만 한다 — 이미 열린 탭으로 가도 접지 않는다.
+        // 다시 눌러 접기는 행 글리프만의 동작이다.
+        return <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={(next) => setExpanded({ objectiveId, tab: next })} onOpenObjective={(id) => openCommanderConversation(commodoreId, id)} />;
       },
     } : undefined}
   />;
