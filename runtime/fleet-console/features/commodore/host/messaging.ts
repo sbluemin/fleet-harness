@@ -71,6 +71,11 @@ export function createCommodoreMessenger(deps: {
       deps.store.transcriptAppend(from, { kind: "sent", ...body, to, ok: false, error });
       throw new Error(error);
     }
+    // 수신자별 전달 대기 총량 — 보관 상한을 넘으면 이미지 저장·수신 기록 전에 거절한다(고아·성공 기록 없음).
+    if (images.length && imageBytes !== undefined && !deps.store.images.admit(input.to, imageBytes)) {
+      deps.store.transcriptAppend(from, { kind: "sent", ...body, to, ok: false, error: "attachment_budget_exceeded" });
+      throw new Error("attachment_budget_exceeded");
+    }
     // 사본을 먼저 저장한다. 대상 검증 뒤이므로 실패한 송신이 고아를 남기지 않게, 기록 실패 때는 거둔다.
     let saved = false;
     if (images.length) {

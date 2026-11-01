@@ -516,6 +516,77 @@ it("delivers later mail when an earlier mail image expired", async () => {
   } finally { await supervisor.dispose(); vi.useRealTimers(); }
 });
 
+it("rejects mail when pending images would exceed the retained budget and trims after delivery", async () => {
+  // 수신자별 전달 대기 총량 대표 — 상한을 넘으면 저장·수신 기록 없이 거절하고, 처리 뒤에는 상한 안으로 회수한다.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-pending-budget-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {}, maxRetainedImageBytes: 10 });
+  const firstId = "99999999-9999-4999-8999-999999999999";
+  const secondId = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x08]);
+  const firstImage = { id: firstId, mime: "image/png" as const, bytes: png };
+  const secondImage = { id: secondId, mime: "image/png" as const, bytes: png };
+  const prompts: unknown[] = [];
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  const turnFor = (image: { id: string; mime: "image/png"; bytes: Buffer }) => ({
+    readAttachments: () => [image],
+    readBriefImages: () => { throw new Error("attachment_not_available"); },
+  });
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    const first = send(from, { to, text: "첫 이미지", attachmentIds: [firstId] }, turnFor(firstImage));
+    expect(store.pendingReceived(to)).toHaveLength(1);
+    expect(store.images.bytes(to)).toBe(png.byteLength);
+    const before = store.transcriptRead(to).entries.length;
+    expect(() => send(from, { to, text: "둘째 이미지", attachmentIds: [secondId] }, turnFor(secondImage))).toThrow("attachment_budget_exceeded");
+    expect(store.pendingReceived(to)).toHaveLength(1);
+    expect(store.images.bytes(to)).toBe(png.byteLength);
+    expect(store.transcriptRead(to).entries).toHaveLength(before);
+    expect(store.transcriptRead(from).entries.at(-1)).toMatchObject({ kind: "sent", ok: false, error: "attachment_budget_exceeded" });
+    // 첫 mail을 처리하면 대기·진행 보호가 풀린 사본이 상한 안으로 회수된다.
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.pendingReceived(to)).toHaveLength(0);
+    expect(store.images.bytes(to)).toBeLessThanOrEqual(10);
+    // 송신 수락을 우회한 초과분도 받은 처리 뒤에는 상한 안으로 돌아온다.
+    const thirdId = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
+    const fourthId = "cccccccc-cccc-4ccc-cccc-cccccccccccc";
+    const thirdMessageId = "dddddddd-dddd-4ddd-dddd-dddddddddddd";
+    const fourthMessageId = "eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee";
+    const thirdImage = { id: thirdId, mime: "image/png" as const, bytes: png };
+    const fourthImage = { id: fourthId, mime: "image/png" as const, bytes: png };
+    store.transcriptAppend(to, { kind: "received", messageId: thirdMessageId, from: { id: from, alias: "Sender" }, text: "추가 1", attachments: [{ id: thirdId }], imageBytes: png.byteLength });
+    expect(store.images.save(to, thirdMessageId, [thirdImage])).toBe(true);
+    store.transcriptAppend(to, { kind: "received", messageId: fourthMessageId, from: { id: from, alias: "Sender" }, text: "추가 2", attachments: [{ id: fourthId }], imageBytes: png.byteLength });
+    expect(store.images.save(to, fourthMessageId, [fourthImage])).toBe(true);
+    expect(store.images.bytes(to)).toBeGreaterThan(10);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.pendingReceived(to)).toHaveLength(0);
+    expect(store.images.bytes(to)).toBeLessThanOrEqual(10);
+    await supervisor.dispose();
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
 it("creates a Commodore with owned Theaters and selected context atomically, rolling back initialization failures", async () => {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-create-"))); dirs.push(dir);
   const theater = path.join(dir, "project"); fs.mkdirSync(theater);

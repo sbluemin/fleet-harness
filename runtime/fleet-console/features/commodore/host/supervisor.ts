@@ -895,6 +895,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       } finally { runner.turnMessages = []; runner.turnMail = []; runner.turnPersonRoutine = false; }
       if (outcome.outcome === "ok") {
         for (let at = 0; at < mail.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "received-read", seqs: mail.slice(at, at + MAX_TRANSCRIPT_PAGE).map((entry) => entry.seq) });
+        // 받은 처리 확정 뒤 명시적 회수 — 보호가 풀린 사본의 초과분을 다음 저장까지 남기지 않는다.
+        if (mail.length) { try { deps.store.images.trim(runner.commodoreId); } catch { /* 다음 정리에 다시 거둔다. */ } }
       } else runner.mail.unshift(...mail);
       if (outcome.outcome === "ok") {
         releaseMessages(runner, messages);
@@ -1123,6 +1125,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       record(runner, { kind: "session", event: "stopped", reason });
       await runner.session?.dispose();
       runner.session = null;
+      // 정지·종료 뒤에도 대기·진행 중 보호는 유지한 채 초과분을 회수한다.
+      try { deps.store.images.trim(commodoreId); } catch { /* 다음 정리에 다시 거둔다. */ }
       setPhase(runner, "off", reason);
     })().finally(() => {
       if (runners.get(commodoreId) === runner) runners.delete(commodoreId);

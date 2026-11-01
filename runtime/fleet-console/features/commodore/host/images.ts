@@ -50,7 +50,7 @@ export function createCommodoreImages(
     if (!ID.test(messageId)) throw new Error("attachment_not_available");
     return contained(root(commodoreId), messageId);
   };
-  const trim = (commodoreId: string, newestId: string) => {
+  const listMessages = (commodoreId: string) => {
     const base = root(commodoreId);
     if (!fs.lstatSync(base).isDirectory()) throw new Error("attachment_not_available");
     const messages: { id: string; bytes: number; mtime: number }[] = [];
@@ -68,6 +68,13 @@ export function createCommodoreImages(
       }
       messages.push({ id: entry.name, bytes, mtime: stat.mtimeMs });
     }
+    return { base, messages };
+  };
+  const trimInternal = (commodoreId: string, newestId?: string) => {
+    let listed: { base: string; messages: { id: string; bytes: number; mtime: number }[] };
+    try { listed = listMessages(commodoreId); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+    const { base, messages } = listed;
     let total = messages.reduce((sum, message) => sum + message.bytes, 0);
     if (total <= maxBytes) return;
     let sheltered: ReadonlySet<string> = new Set();
@@ -101,10 +108,23 @@ export function createCommodoreImages(
         if (dir) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 다음 정리 때 다시 거둔다. */ } }
         return false;
       }
-      try { trim(commodoreId, messageId); }
+      try { trimInternal(commodoreId, messageId); }
       catch { console.warn("[objectives] commodore image budget cleanup failed; retained copies will be retried on the next cleanup"); }
       return true;
     },
+    /** 보관 총량 — 없으면 0. 송신 수락(admit)과 점검에만 쓴다. */
+    bytes(commodoreId: string): number {
+      try { return listMessages(commodoreId).messages.reduce((sum, message) => sum + message.bytes, 0); }
+      catch { return 0; }
+    },
+    /** 새 사본을 더해도 보관 상한을 넘지 않는가 — 넘으면 송신 단계에서 거절한다. */
+    admit(commodoreId: string, newBytes: number): boolean {
+      if (!Number.isFinite(newBytes) || newBytes < 0) return false;
+      try { return listMessages(commodoreId).messages.reduce((sum, message) => sum + message.bytes, 0) + newBytes <= maxBytes; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return newBytes <= maxBytes; return true; }
+    },
+    /** 받은 처리·정지 뒤 명시적 회수 — 대기·진행 중 보호는 유지한다. */
+    trim(commodoreId: string) { trimInternal(commodoreId); },
     read(commodoreId: string, messageId: string, attachmentId: string): Image | null {
       if (!ID.test(messageId) || !ID.test(attachmentId)) return null;
       try {
