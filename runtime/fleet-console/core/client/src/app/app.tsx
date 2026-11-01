@@ -20,6 +20,7 @@ import { ApiError, undoObjectiveArchive } from "../../../../features/execution/c
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
 import { FleetAtAGlanceHost } from "../../../../features/onboarding/client/fleet-at-a-glance.js";
+import { TaskforceIntroHost } from "../../../../features/onboarding/client/taskforce-intro.js";
 import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
@@ -606,6 +607,7 @@ function ConnectedApp() {
         <WhatsNewModal state={state} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
           <FleetAtAGlanceHost />
+          <TaskforceIntroHost />
         <ControlCurtain />
         <ToastHost>
           <CommodoreDeletionHost />

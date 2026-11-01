@@ -20,6 +20,12 @@ export const EFFORT_CONFIRM_TIP_SEEN_KEY = "effort-confirm-tip";
  */
 export const FLEET_AT_A_GLANCE_SEEN_KEY = "fleet-at-a-glance";
 
+/**
+ * 태스크포스 소개 카드의 본 기록 키 — 실험 기능을 켜지 않은 기존 사용자에게 데스크톱 콘솔 시작 시 한 번 뜨는 팝업이다.
+ * 한 번 배포한 키는 바꾸지 않는다. 바꾸면 이미 본 사람에게 같은 안내가 다시 선다.
+ */
+export const TASKFORCE_INTRO_SEEN_KEY = "taskforce-intro";
+
 export function appendSeen(seen: readonly string[], key: string): readonly string[] {
   return seen.includes(key) ? seen : [...seen, key].slice(-SEEN_LIMIT);
 }

@@ -1,0 +1,159 @@
+/* 태스크포스 소개 카드 — 승인 시안 v2를 Console 토큰으로 옮긴 것이다.
+   면은 대화상자 토큰(--dialog-face), 글자는 텍스트 3티어, 모션 색은
+   flow→--aurora · result→--positive다. 1차 버튼은 최초 설정 가이드와 같은
+   중립 컨트롤 면 + brass-ink 문장이다. */
+
+.tfi-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+}
+
+.tfi-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: var(--dialog-scrim);
+  cursor: default;
+}
+
+.tfi-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(600px, 100%);
+  max-height: min(680px, calc(100vh - 48px));
+  max-height: min(680px, calc(100dvh - 48px));
+  overflow-y: auto;
+  border: 0;
+  border-radius: var(--dialog-radius);
+  background: var(--dialog-face);
+  box-shadow: var(--dialog-surface-shadow);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.tfi-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 22px 0;
+}
+
+.tfi-eyebrow {
+  color: var(--aurora);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.tfi-chip {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.tfi-title {
+  margin: 6px 22px 0;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
+  line-height: 1.35;
+  text-wrap: balance;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.tfi-stage {
+  position: relative;
+  margin: 14px 16px 0;
+  aspect-ratio: 640 / 300;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  /* 무대 바닥 — 맞는 Console 토큰이 없어 시안 값을 그대로 둔다(차가운 푸른 기운).
+     채도가 낮아 디자인 게이트의 유채색 리터럴 금지(0.03)에 걸리지 않는다. */
+  background: linear-gradient(180deg, oklch(21% 0.012 250), oklch(16.5% 0.012 250));
+}
+
+:root[data-theme="light"] .tfi-stage {
+  background: linear-gradient(180deg, oklch(98.5% 0.004 245), oklch(94.5% 0.008 245));
+}
+
+.tfi-stage canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tfi-body {
+  margin: 14px 22px 0;
+  max-width: 60ch;
+  color: var(--text-secondary);
+  font-size: var(--t-base);
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.tfi-body strong {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.tfi-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px 20px;
+}
+
+.tfi-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--aurora);
+  font-family: var(--font-ui);
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.tfi-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.tfi-primary {
+  min-width: 96px;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  color: var(--brass-ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tfi-primary:hover:not(:disabled) {
+  background: var(--control-rest-hover);
+}
