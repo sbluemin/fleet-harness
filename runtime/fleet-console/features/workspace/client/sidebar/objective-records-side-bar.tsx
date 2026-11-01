@@ -717,7 +717,7 @@ function TheaterSectionHeader({
     wasEditingRef.current = editingAlias;
   }, [editingAlias]);
   const displayName = theater.commodore?.alias ?? theater.label;
-  const summaryText = live ? t("sidebar.commodore.responding") : lastResponse ?? t("sidebar.commodore.noConversation");
+  const summaryText = lastResponse ?? t("sidebar.commodore.noConversation");
   const headerClassName = [
     "side-bar-theater-header",
     active ? "is-active" : "",
@@ -836,7 +836,7 @@ function TheaterSectionHeader({
           {mark === null ? avatarOverride ?? avatarAnchor(true) : null}
           <span className="side-bar-theater-text">
             <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
-            <span className={`side-bar-theater-sub${live ? " is-responding" : ""}`}>{summaryText}</span>
+            <span className="side-bar-theater-sub">{summaryText}</span>
           </span>
         </button>
       )}
