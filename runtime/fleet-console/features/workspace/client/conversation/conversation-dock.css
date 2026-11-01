@@ -6,22 +6,22 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 17px 18px 17px 17px;
+  padding: 14px 18px 14px 17px;
   min-width: 0;
 }
 .conversation-dock-host { position: relative; flex: none; }
-.conversation-dock-popover-anchor { position: absolute; top: 17px; left: 17px; width: 0; height: 0; pointer-events: none; }
+.conversation-dock-popover-anchor { position: absolute; top: 14px; left: 17px; width: 0; height: 0; pointer-events: none; }
 .conversation-dock-avatar {
   position: relative;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border: 0;
   border-radius: 50%;
   background: var(--surface-round-control);
   color: var(--text-secondary);
-  font: var(--weight-medium) var(--t-base)/1 var(--font-ui);
+  font: var(--weight-medium) var(--t-md)/1 var(--font-ui);
   cursor: pointer;
 }
 .conversation-dock-avatar:hover,
