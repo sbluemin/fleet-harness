@@ -325,8 +325,9 @@
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .commander-row-glyphs {
   position: absolute;
   right: 0;
-  /* 아래 2px: 줄 안쪽 아래 여백(6px) 기준 — 24px 글리프의 가운데가 상태 줄(11px·1.4) 가운데에 온다. */
-  bottom: 2px;
+  /* -4px: aside 아래 끝(상태 줄 아래 끝과 같음) 기준 — 24px 버튼의 가운데가 상태 줄(11px·1.4) 중심에 온다.
+     버튼 아래 끝이 행 아래 경계 안쪽에 남는다. */
+  bottom: -4px;
 }
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-aside:has(.side-bar-cluster-row-mark-toggle) .commander-row-glyphs {
   /* 위임 토글(30px) + 칸 간격(6px) — ★ 왼쪽에 붙는다. */
