@@ -22,6 +22,7 @@ import { commodoreConversationRenderer } from "../commodore-state.js";
 import { openReferencedObjective } from "../commodore-reference-input.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../../shared/contracts/attachment-budget.js";
 import { CONVERSATION_REFERENCE_MARK } from "../../../execution/shared/conversation/references.js";
+import { MentionChip } from "../../../execution/client/composer-primitives/mention-chip.js";
 import { taskforceT } from "./i18n.js";
 import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, readTaskforceExperiment, readTaskforces, subscribeTaskforces, useTaskforce, useTaskforceExperiment, useTaskforces, wasTaskforceRemoved } from "./state.js";
 import "./taskforce.css";
@@ -115,9 +116,7 @@ export function TaskforceRowMenu({ id, anchor, focusFirst, returnFocus, onClose 
   returnFocusRef.current = returnFocus ?? null;
   useContextMenuKeyboard({ open: true, menuSelector: '.group-context-menu-card[role="menu"]', returnFocusRef, focusFirst, onEscape: onClose });
   if (!name) return null;
-  return <GroupContextMenu kind="actions" anchor={anchor} label={name} items={[
-    { label: t("taskforce.delete"), danger: true, action: () => requestTaskforceDelete(id) },
-  ]} footer={<CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} />} onClose={onClose} />;
+  return <GroupContextMenu kind="actions" anchor={anchor} label={name} items={[]} footer={<><CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} /><div className="group-context-menu-divider" role="separator" /><button type="button" role="menuitem" className="group-context-menu-item group-context-menu-item--danger" onClick={() => { onClose(); requestTaskforceDelete(id); }}><span className="group-context-menu-item__name">{t("taskforce.delete")}</span></button></>} onClose={onClose} />;
 }
 
 function DeleteDialog({ id, language, onClose }: { readonly id: string; readonly language: "ko" | "en"; readonly onClose: () => void }) {
@@ -222,20 +221,24 @@ function TaskforceActions({ actions, commodoreId, language }: { readonly actions
   return <div className="taskforce-action-list">{actions.map((action, index) => <div key={`${action.objectiveId}:${index}`} className="taskforce-action"><span className="taskforce-action-kind">{actionWord(getCommodoreT(language === "ko" ? "ko" : "en"), action.kind)}</span><button type="button" className="taskforce-link" onClick={() => { if (commodoreId) openReferencedObjective(commodoreId, action.objectiveId); }} disabled={!commodoreId}>{action.title || action.objectiveId}</button></div>)}</div>;
 }
 
-function MentionText({ entry, language }: { readonly entry: TaskforceLedgerEntry; readonly language: string }) {
-  const remaining = [...entry.mentions];
-  const pattern = remaining.map((id) => ({ id, token: `@${memberName(id, language)}` })).sort((a, b) => b.token.length - a.token.length);
+/**
+ * 본문 속 지목 — 사령관 1:1 말풍선의 참조 토큰과 같은 표시(공용 MentionChip)다. 중립 면이라
+ * 사람 말풍선(분홍)에서도 본문색을 이어받고, 문장 흐름 안에 인라인으로 선다. 짝 없는
+ * 지목(원문에 `@이름`이 없는 것)은 1:1과 같이 그리지 않는다.
+ */
+function MentionText({ entry, language, speaker }: { readonly entry: TaskforceLedgerEntry; readonly language: string; readonly speaker: (id: string) => ConversationSpeaker }) {
+  const pattern = entry.mentions.map((id) => ({ id, token: `@${memberName(id, language)}` })).sort((a, b) => b.token.length - a.token.length);
   const parts: ReactNode[] = [];
   let text = entry.text;
   while (text) {
     let match: { id: string; token: string; at: number } | undefined;
     for (const member of pattern) { const at = text.indexOf(member.token); if (at >= 0 && (!match || at < match.at)) match = { ...member, at }; }
     if (!match) { parts.push(text); break; }
-    parts.push(text.slice(0, match.at), <MemberChip key={parts.length} id={match.id} language={language} />);
-    const index = remaining.indexOf(match.id); if (index >= 0) remaining.splice(index, 1);
+    const person = speaker(match.id);
+    parts.push(text.slice(0, match.at), <MentionChip key={parts.length} label={memberName(match.id, language)} mark={<CommodoreAvatar commodoreId={match.id} state="idle" size={16} label="" decorative />} tone={person.mark?.tone ?? null} />);
     text = text.slice(match.at + match.token.length);
   }
-  return <span className="taskforce-message-text">{remaining.length ? <span className="taskforce-message-mentions">{remaining.map((id) => <MemberChip key={id} id={id} language={language} />)}</span> : null}{parts}</span>;
+  return <span className="taskforce-message-text">{parts}</span>;
 }
 
 function TaskforceBody({ id, language }: { readonly id: string; readonly language: "ko" | "en" }) {
@@ -269,15 +272,17 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
     const entry = bySeq.get(Number(message.id)); if (!entry) return;
     const actions = [...(entry.actions ?? []), ...(actionsByReply.get(entry.seq) ?? [])];
     const owner = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
-    return { ...(entry.mentions.length ? { body: <MentionText entry={entry} language={language} /> } : {}), ...(actions.length ? { footer: <TaskforceActions actions={actions} {...(owner ? { commodoreId: owner } : {})} language={language} /> } : {}) };
+    return { ...(entry.mentions.length ? { body: <MentionText entry={entry} language={language} speaker={speaker} /> } : {}), ...(actions.length ? { footer: <TaskforceActions actions={actions} {...(owner ? { commodoreId: owner } : {})} language={language} /> } : {}) };
   };
   const cards = <>{state && state.chain.paused ? <div className="taskforce-paused"><span aria-hidden="true">Ⅱ</span><div><strong>{t("taskforce.paused", { n: state.chain.count })}</strong><small>{t("taskforce.pausedHint")}</small></div><span><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("continue")}>{t("taskforce.continue")}</button></span></div> : null}</>;
   // 판단 중 표시는 사령관 1:1 채팅과 같은 자리·형태(대화 독의 working 줄)로 낸다. 별도 cards 줄을 세우지 않는다.
   const working = useMemo(() => judging.map((member) => speaker(member)), [judging, book, language, state?.members]);
   const port = useMemo(() => taskforceAttachmentPort(), [id]);
   const composerT = getCommodoreT(language);
+  // 자리표는 사령관 입력과 같은 성격(상태·대상 정보, 사용법 설명 없음) — 판단할 성원 이름을 " · "로 잇는다.
+  const composerPlaceholder = state ? state.members.map((id) => memberName(id, language)).join(" · ") : "";
   const composer = <div className="taskforce-foot">{failure || snapshot.error ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} {snapshot.error ? <button type="button" className="taskforce-link" onClick={() => void loadTaskforce(id)}>{t("taskforce.retry")}</button> : null}</p> : null}
-    {state ? <CommodoreComposer t={composerT} theaterId={state.id} active placeholder={t("taskforce.placeholder")} ariaLabel={t("taskforce.aria.composer")} allowedCommodoreIds={state.members} attachmentPort={port} attachmentLimits={{ max: MAX_TASKFORCE_IMAGES, bytes: MAX_TASKFORCE_IMAGE_BYTES }} sender={async ({ text, attachmentIds, references }) => {
+    {state ? <CommodoreComposer t={composerT} theaterId={state.id} active placeholder={composerPlaceholder} ariaLabel={t("taskforce.aria.composer")} allowedCommodoreIds={state.members} attachmentPort={port} attachmentLimits={{ max: MAX_TASKFORCE_IMAGES, bytes: MAX_TASKFORCE_IMAGE_BYTES }} sender={async ({ text, attachmentIds, references }) => {
       const mentions = references.flatMap((reference) => typeof reference === "string" ? [] : reference.kind === "commodore" && state.members.includes(reference.id) ? [reference.id] : []);
       const images = attachmentIds.flatMap((imageId) => {
         const payload = taskforceImagePayloads.get(imageId);
