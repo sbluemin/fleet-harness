@@ -167,19 +167,22 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     }
   }
 
-  /** System-bar padding drops only after opt-in. The keyboard inset always stays on the view. */
+  /** Top and bottom padding drop only after opt-in. Left, right, and the keyboard inset always stay. */
   private fun applyEdgePadding() {
-    if (edgeToEdge) setPadding(0, 0, 0, imeInsets.bottom)
+    if (edgeToEdge) setPadding(chromeInsets.left, 0, chromeInsets.right, imeInsets.bottom)
     else setPadding(chromeInsets.left, chromeInsets.top, chromeInsets.right, maxOf(chromeInsets.bottom, imeInsets.bottom))
     layoutWebViews()
     post(::layoutWebViews)
   }
 
-  /** CSS px. While the keyboard is up, bottom is 0 — the native padding still covers the keyboard. */
+  /**
+   * CSS px. While the keyboard is up, bottom is 0 — the native padding still covers the keyboard.
+   * Left and right stay 0 because this view keeps that padding in both modes.
+   */
   private fun advertisedInsets(): AppearanceInsets {
     val density = resources.displayMetrics.density.toDouble().let { if (it.isFinite() && it > 0.0) it else 1.0 }
     val bottom = if (imeInsets.bottom > 0) 0.0 else chromeInsets.bottom / density
-    return AppearanceInsets.of(chromeInsets.top / density, chromeInsets.right / density, bottom, chromeInsets.left / density)
+    return AppearanceInsets.of(chromeInsets.top / density, 0.0, bottom, 0.0)
   }
 
   private fun enterEdgeToEdge() {

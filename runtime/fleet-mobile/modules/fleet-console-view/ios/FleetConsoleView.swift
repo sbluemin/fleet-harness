@@ -130,12 +130,13 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   /// CSS px. 키보드가 떠 있는 동안 bottom은 0 — 키보드 높이 자체는 프레임이 계속 담당한다.
+  /// 좌우는 항상 0이다. 컷아웃과 측면 바는 프레임 패딩이 맡으므로 웹이 다시 밀지 않는다.
   private func advertisedInsets() -> AppearanceInsets {
     AppearanceInsets(
       top: Double(lastChromeInsets.top),
-      right: Double(lastChromeInsets.right),
+      right: 0,
       bottom: keyboardInset > 0 ? 0 : Double(lastChromeInsets.bottom),
-      left: Double(lastChromeInsets.left))
+      left: 0)
   }
 
   private func enterEdgeToEdge() {
@@ -172,10 +173,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func layoutWebViews() {
     let chrome = safeAreaInsets
-    // opt-in 뒤에만 시스템 바 아래로 펼친다. 키보드 하단은 항상 비워 둔다.
+    // opt-in 뒤에는 상단만 펼친다. 좌우 패딩과 키보드 하단은 항상 비워 둔다.
     let top: CGFloat = edgeToEdge ? 0 : chrome.top
-    let left: CGFloat = edgeToEdge ? 0 : chrome.left
-    let right: CGFloat = edgeToEdge ? 0 : chrome.right
+    let left = chrome.left
+    let right = chrome.right
     let bottom = edgeToEdge ? keyboardInset : max(chrome.bottom, keyboardInset)
     let frame = CGRect(
       x: left, y: top,
