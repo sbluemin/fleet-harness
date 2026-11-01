@@ -359,6 +359,7 @@
  */
 /* 칸을 화면 크기로 못박는다 — 암묵 auto 칸이면 보기의 height: 100% 가 내용 높이로 풀려 긴 문서가 화면 밖으로 늘어나고 본문이 스크롤되지 않는다. */
 :root[data-view-mode="mobile"] .objectives-zoom-backdrop { grid-template: minmax(0, 1fr) / minmax(0, 1fr); padding: 0; background: var(--m-scrim); font-family: var(--m-sans); }
+:root[data-view-mode="mobile"] .objectives-zoom { padding: calc(12px + var(--m-safe-top, 0px)) calc(16px + var(--m-safe-right, 0px)) calc(16px + var(--m-safe-bottom, 0px)) calc(16px + var(--m-safe-left, 0px)); border-radius: 0; }
 :root[data-view-mode="mobile"] .objectives-att-view-step { width: 44px; height: 44px; border: 0; background: var(--m-chip); color: var(--m-text); }
 /* 텍스트 증거 본문 — 전체 화면 창 안에서 스크롤한다. */
 :root[data-view-mode="mobile"] .objectives-result-markdown.markdown-body { max-height: none; height: 100%; padding: 16px 16px calc(var(--m-safe-bottom, 0px) + 24px); border-radius: 0; background: var(--m-bg); color: var(--m-text); font-size: var(--m-fs-secondary); line-height: 1.6; overscroll-behavior: contain; }

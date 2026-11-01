@@ -33,6 +33,12 @@ interface CompletedTour {
  * blocked는 엔진의 앞 단계(엔트리 힌트)가 아직 남았다는 뜻이다. 막혀 있는 동안에는 새 투어를 시작하지 않고,
  * 이미 재생 중인 투어는 끊지 않는다.
  */
+// 셸이 광고한 시스템 바 인셋(px). 광고가 없으면 0 — 패딩된 WebView는 인셋 밖에 선다.
+function shellInset(side: "top" | "bottom"): number {
+  const value = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue(`--fleet-shell-inset-${side}`));
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 export function TourOverlay({ tours, language, blocked, suspended = false }: {
   readonly tours: readonly OnboardingTour[];
   readonly language: ConsoleLocale;
@@ -170,6 +176,8 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
       cardHeight: card?.offsetHeight ?? 180,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
+      insetTop: shellInset("top"),
+      insetBottom: shellInset("bottom"),
     }));
     return () => anchor.classList.remove("is-feature-tour-anchor");
   }, [anchor, currentStep, domRevision]);
