@@ -141,9 +141,17 @@
 /* 원격 접속 섹션은 묶음(소제목 + 카드) 여럿이 이어 서는 범주 페이지다 — 묶음 사이 숨은 다른 카드 사이와 같다. */
 .settings-pane .global-settings-card.remote-section { gap: 22px; }
 /* 태스크포스 소개 카드의 링크가 가리킨 행 — 두 번 반짝이고 그친다.
-   빛은 행 안쪽에만 둔다: 바깥 glow는 그룹 카드와 이웃 행 경계 밖으로 번지고 모서리가 각져 보인다. */
+   빛은 행 가장자리에서 4px 안쪽의 둥근 사각형에만 둔다: 행·카드 경계에 기대지 않는다. */
 .settings-pane .global-settings-row.is-taskforce-target {
-  border-color: var(--aurora);
+  position: relative;
+}
+.settings-pane .global-settings-row.is-taskforce-target::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid var(--aurora);
+  border-radius: var(--radius-md);
+  pointer-events: none;
   animation: taskforce-target-pulse 1.2s ease-out 2;
 }
 @keyframes taskforce-target-pulse {
@@ -151,5 +159,5 @@
   100% { box-shadow: inset 0 0 0 6px color-mix(in oklch, var(--aurora) 0%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .settings-pane .global-settings-row.is-taskforce-target { animation: none; }
+  .settings-pane .global-settings-row.is-taskforce-target::after { animation: none; }
 }
