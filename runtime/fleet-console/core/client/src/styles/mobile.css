@@ -56,6 +56,7 @@
 :root[data-view-mode="mobile"] {
   --m-fade-down: linear-gradient(to bottom, var(--m-bg), color-mix(in srgb, var(--m-bg) 86%, transparent) 50%, color-mix(in srgb, var(--m-bg) 0%, transparent));
   --m-fade-up: linear-gradient(to top, var(--m-bg) 40%, color-mix(in srgb, var(--m-bg) 86%, transparent) 70%, color-mix(in srgb, var(--m-bg) 0%, transparent));
+  --m-fade-top: linear-gradient(to bottom, var(--m-bg) 0, var(--m-bg) var(--m-safe-top, 0px), color-mix(in srgb, var(--m-bg) 86%, transparent) calc(var(--m-safe-top, 0px) + 40px), color-mix(in srgb, var(--m-bg) 0%, transparent) calc(var(--m-safe-top, 0px) + 80px));
 }
 .m-edge-top { background: var(--m-fade-down, var(--m-bg)); }
 .m-edge-bottom { background: var(--m-fade-up, var(--m-bg)); }
@@ -1083,7 +1084,7 @@
 /* 상단 막대와 연결·상태 띠가 한 덩어리로 화면 위에 떠 있다 — 띠나 경계선 없이, 바탕색에서 투명으로 옅어지는 페이드 하나가 그 자리를 말한다
    (데스크톱 대화 화면의 투명 맨 위 줄과 같은 문법). 본문은 그 뒤로 흐르고, 화면의 스크롤 영역이 이 묶음의 높이(--m-chrome-top)만큼 위를 비워
    맨 위 항목이 막대에 가리지 않는다. 막대를 숨긴 화면(홈·검색)에서 이 묶음은 띠가 없으면 높이 0이다. */
-.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; padding-top: var(--m-safe-top, 0px); pointer-events: none; background: var(--m-fade-down); }
+.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; padding-top: var(--m-safe-top, 0px); pointer-events: none; background: var(--m-fade-top); }
 .mobile-frame-head .console-shell-bars { display: flex; flex-direction: column; pointer-events: auto; }
 /* 시트·선택 팝업은 화면이 아니라 겹침이다 — 그 안에 서는 화면 부품(프로필 시트의 설정 목록·도구 시트의 플러그인 본문)은 막대 몫을 비우지 않는다. */
 .mobile-sheet, .mobile-choice-scrim { --m-chrome-top: 0px; }
