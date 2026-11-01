@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+/**
+ * 사령관 사이드바 섹션 배치 — 좌측 목록 한 줄(사령관 또는 TaskForce)의 소속을 기억한다.
+ * `membership` 키와 `move`·`create` 명령의 행 id는 사령관 UUID와 TF UUID를 함께 받는다
+ * (둘 다 UUID 모양이라 판정은 같다). 알 수 없는 id는 읽을 때 정리된다.
+ */
 export const COMMODORE_SIDEBAR_CHANNEL = "commodore-sidebar";
 export const MAX_SIDEBAR_SECTIONS = 100;
 export const MAX_SIDEBAR_SECTION_NAME = 80;
@@ -34,12 +39,14 @@ export function withoutSidebarCommodore(layout: CommodoreSidebarLayout, commodor
 }
 
 export const commodoreSidebarCommandSchema = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("create"), name: sectionName, afterId: uuid.optional(), commodoreId: uuid.optional() }).strict(),
+  z.object({ op: z.literal("create"), name: sectionName, afterId: uuid.optional(), rowId: uuid.optional() }).strict(),
   z.object({ op: z.literal("rename"), sectionId: uuid, name: sectionName }).strict(),
   z.object({ op: z.literal("reorder"), sectionId: uuid, direction: z.enum(["up", "down"]) }).strict(),
   z.object({ op: z.literal("collapse"), sectionId: uuid.nullable(), collapsed: z.boolean() }).strict(),
   z.object({ op: z.literal("delete"), sectionId: uuid, confirm: z.literal(true) }).strict(),
   // 행 드롭은 이웃을, 제목 드롭은 섹션 끝을 지정한다. 다른 창의 전체 순서를 덮어쓰지 않는다.
-  z.object({ op: z.literal("move"), commodoreId: uuid, sectionId: uuid.nullable(), targetId: uuid.optional(), after: z.boolean().optional() }).strict(),
+  // rowId/targetId 자리에는 사령관 또는 TF의 행 id가 든다. 라우터의 사령관 판정과 헷갈리지 않게
+  // 이름이 다르다 — 행 판정은 호스트의 sidebar assert가 맡는다.
+  z.object({ op: z.literal("move"), rowId: uuid, sectionId: uuid.nullable(), targetId: uuid.optional(), after: z.boolean().optional() }).strict(),
 ]);
 export type CommodoreSidebarCommand = z.infer<typeof commodoreSidebarCommandSchema>;

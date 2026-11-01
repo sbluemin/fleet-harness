@@ -63,6 +63,8 @@ export interface CommodoreRouteHooks {
   readonly list?: () => readonly ConsoleCommodoreSummary[];
   readonly sidebar?: ReturnType<typeof createCommodoreSidebar>;
   readonly setOrder?: (commodoreIds: readonly string[]) => void;
+  /** 좌측 목록 한 줄의 전체 순서(사령관 + TF). 목록·순서·섹션 응답이 함께 내린다. */
+  readonly order?: () => readonly string[];
   readonly summary?: (id: string) => ConsoleCommodoreSummary;
   readonly addTheater?: (id: string, folderGrantId: string, claudeTrustConsent: boolean) => Promise<string>;
   readonly removeTheater?: (id: string, theaterId: string) => void;
@@ -199,16 +201,16 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       return hooks.deletion.remove(commodoreId, alias, language);
     }, false) },
     { name: "commodore/alias", method: "POST", summary: "Set or clear a Commodore alias by UUID, independently of autonomous work.", handler: json(commodoreRef.extend({ alias: z.union([z.string(), z.null()]).transform(normalizeCommodoreAlias).pipe(z.string().nullable()) }).strict(), ({ commodoreId, alias }) => { read(commodoreId); return view(commodoreId, store.setAlias(commodoreId, alias)); }) },
-    { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [], sidebarLayout: hooks.sidebar?.read() })) },
+    { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [], order: hooks.order?.() ?? [], sidebarLayout: hooks.sidebar?.read() })) },
     { name: "commodore/sidebar", method: "POST", summary: "Manage shared sidebar sections without changing Commodore ownership.", handler: json(commodoreSidebarCommandSchema, (command) => {
       if (!hooks.sidebar) throw new CommodoreStoreError("commodore_unavailable");
       const result = hooks.sidebar.update(command);
-      return { ...result, commodores: hooks.list?.() ?? [], sidebarLayout: hooks.sidebar.read() };
+      return { ...result, commodores: hooks.list?.() ?? [], order: hooks.order?.() ?? [], sidebarLayout: hooks.sidebar.read() };
     }, false) },
-    { name: "commodore/order", method: "POST", summary: "Save the display order of Commodore sections.", handler: json(z.object({ commodoreIds: z.array(ids) }).strict(), ({ commodoreIds }) => {
+    { name: "commodore/order", method: "POST", summary: "Save the display order of sidebar rows (Commodores and TaskForces).", handler: json(z.object({ commodoreIds: z.array(ids) }).strict(), ({ commodoreIds }) => {
       if (!hooks.setOrder || !hooks.list) throw new CommodoreStoreError("commodore_unavailable");
       hooks.setOrder(commodoreIds);
-      return { commodores: hooks.list() };
+      return { commodores: hooks.list(), order: hooks.order?.() ?? [] };
     }) },
     { name: "commodore/create", method: "POST", summary: "Create a Commodore with no Theaters.", handler: json(z.object({ alias: z.string().transform(normalizeCommodoreAlias).pipe(z.string().min(1)) }).strict(), ({ alias }) => {
       if (!hooks.create || !hooks.summary) throw new CommodoreStoreError("commodore_unavailable");

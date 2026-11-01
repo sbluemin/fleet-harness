@@ -24,8 +24,14 @@ export interface ConsoleCommodoreSummary {
   /** Latest commodore reply, independent of the person’s most recent message. */
   readonly lastResponse?: CommodoreLastMessage;
 }
-export interface CommodoreListResponse { readonly commodores: readonly ConsoleCommodoreSummary[]; readonly sidebarLayout?: CommodoreSidebarLayout }
+export interface CommodoreListResponse {
+  readonly commodores: readonly ConsoleCommodoreSummary[];
+  /** 좌측 목록 한 줄의 전체 순서 — 사령관과 TF id를 함께 든다. 두 목록을 이 순서로 섞어 그린다. */
+  readonly order: readonly string[];
+  readonly sidebarLayout?: CommodoreSidebarLayout;
+}
 export interface CommodoreSidebarResponse extends CommodoreListResponse { readonly createdSectionId?: string }
+/** 좌측 목록 한 줄 전체의 저장 순서 — 사령관과 TF id를 함께 든다. 키 이름은 기존 저장과 호환을 위해 둔다. */
 export interface CommodoreOrderInput { readonly commodoreIds: readonly string[] }
 export type CommodoreOrderResponse = CommodoreListResponse;
 export interface CommodoreCreateInput { readonly alias: string }
