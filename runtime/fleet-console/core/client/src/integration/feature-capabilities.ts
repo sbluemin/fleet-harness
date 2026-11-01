@@ -21,6 +21,7 @@ import { SETTINGS_PANE_ID } from "../../../../features/settings/client/settings-
 import { openSettingsSurface } from "../../../../features/settings/client/settings-door.js";
 import { createClientCapabilities } from "./http-capabilities.js";
 import { toolShellKey } from "../../../../features/execution/shared/shell-key.js";
+import { selectCommodoreToolTheater } from "../../../../features/workspace/client/theater-tools/store.js";
 import type { ShellOpenAtRequest, ShellOpenAtResult } from "../../../../features/workspace/shared/navigation.js";
 
 import { loadModelRoster, readModelRoster, refreshModelRoster, rosterModelOptions, subscribeModelRoster } from "../../../../features/ai-gateway/client/model-roster-store.js";
@@ -207,6 +208,13 @@ function shellKeyForRequest(request: ShellOpenAtRequest): string {
   return getActiveShellKey();
 }
 
+/** 명시적 Shell 열기·재시작은 Shell 패널의 Theater 선택도 그 Theater로 옮긴다. */
+function selectShellPanelTheater(request: ShellOpenAtRequest): void {
+  if (request.commodoreId && request.theaterId) {
+    selectCommodoreToolTheater(request.commodoreId, "global-shell", request.theaterId);
+  }
+}
+
 function revealShellOnSuccess(result: ShellOpenAtResult): ShellOpenAtResult {
   if (result.ok) {
     navigateConsoleRoute("/objectives");
@@ -338,9 +346,16 @@ export function createHostCapabilities(
     shell: {
       // Theater를 아는 요청은 그 (사령관, Theater)의 Shell을 곧장 겨냥한다 — 지금 대화의 키를
       // 쓰면 대화 키 세션이 다시 생겨 Theater별 세션이 둘로 갈라진다. 목표 문맥만 있는 요청은
-      // 예전처럼 지금 대화의 Shell로 간다.
-      openAt: async (request) => revealShellOnSuccess(await requestShellOpenAt(request, { shell: shellKeyForRequest(request) })),
-      restartAt: async (request) => revealShellOnSuccess(await requestShellRestartAt(request, { shell: shellKeyForRequest(request) })),
+      // 예전처럼 지금 대화의 Shell로 간다. 명시적 열기는 Shell 패널의 선택도 그 Theater로
+      // 옮긴다(파일 링크와 같은 규칙) — 그래야 보이는 칸과 열리는 세션이 어긋나지 않는다.
+      openAt: async (request) => {
+        selectShellPanelTheater(request);
+        return revealShellOnSuccess(await requestShellOpenAt(request, { shell: shellKeyForRequest(request) }));
+      },
+      restartAt: async (request) => {
+        selectShellPanelTheater(request);
+        return revealShellOnSuccess(await requestShellRestartAt(request, { shell: shellKeyForRequest(request) }));
+      },
     },
     navigation: {
       getSearchParam: (key) => new URLSearchParams(window.location.search).get(key),
