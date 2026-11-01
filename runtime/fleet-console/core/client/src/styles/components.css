@@ -3185,7 +3185,7 @@
 }
 
 /* 운영자(사령관)가 턴을 도는 동안 — Theater 이름 위로 채팅 라이브 줄(.fc-live-line__sweep)과 같은 명도 물결이 흐른다. 물결은
-   명도 채널이라 신호·위치 색을 빌리지 않고, 표식은 움직이지 않는다. 동작 줄이기에서는 물결이 멈추고 표식 툴팁이 상태를 말한다. */
+   명도 채널이라 신호·위치 색을 빌리지 않고, 표식은 움직이지 않는다. 동작 줄이기에서는 물결이 멈추므로 이름이 강조색으로 바뀌어 상태를 말한다. */
 .side-bar-theater-name.is-live {
   background-image: linear-gradient(100deg, var(--live-sweep-trough) 0%, var(--live-sweep-trough) 34%, var(--live-sweep-crest) 50%, var(--live-sweep-trough) 66%, var(--live-sweep-trough) 100%);
   background-size: 200% 100%;
@@ -3209,7 +3209,7 @@
   .side-bar-theater-name.is-live,
   .side-bar-theater-header.is-active .side-bar-theater-name.is-live {
     background-image: none;
-    color: var(--text-primary);
+    color: var(--aurora);
   }
 }
 
