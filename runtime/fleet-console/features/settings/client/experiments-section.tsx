@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ExperimentalBadge, SettingsCard, SettingsRow, SettingsToggle } from "./preferences-context.js";
 import { takeTaskforceRowHighlight, useTaskforceRowHighlight } from "./taskforce-highlight.js";
@@ -31,24 +31,23 @@ const TASKFORCE_FLASH_MS = 2600;
 function useTaskforceRowFlash(): boolean {
   const highlight = useTaskforceRowHighlight();
   const [flash, setFlash] = useState(false);
+  // 타이머는 ref에 둔다 — 토큰 소비가 일으키는 highlight=0 재실행의 cleanup이
+  // 펄스를 지우지 않게 하고, 타이머는 새 요청이나 언마운트 때만 지운다.
+  const timerRef = useRef(0);
+  useEffect(() => () => {
+    window.clearTimeout(timerRef.current);
+  }, []);
   useEffect(() => {
     if (highlight === 0) return;
+    takeTaskforceRowHighlight();
+    window.clearTimeout(timerRef.current);
     // 새 요청이 겹치면 클래스를 뗐다 붙여 애니메이션을 처음부터 다시 돌린다.
     setFlash(false);
-    let timer = 0;
     const raf = requestAnimationFrame(() => {
       setFlash(true);
-      timer = window.setTimeout(() => {
-        // 토큰은 반짝임이 끝난 뒤에 소비한다 — 시작할 때 지우면 토큰 변화가
-        // effect를 다시 돌려 cleanup이 타이머를 지워 버린다.
-        takeTaskforceRowHighlight();
-        setFlash(false);
-      }, TASKFORCE_FLASH_MS);
+      timerRef.current = window.setTimeout(() => setFlash(false), TASKFORCE_FLASH_MS);
     });
-    return () => {
-      cancelAnimationFrame(raf);
-      window.clearTimeout(timer);
-    };
+    return () => cancelAnimationFrame(raf);
   }, [highlight]);
   return flash;
 }
