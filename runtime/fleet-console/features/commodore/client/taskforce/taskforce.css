@@ -71,8 +71,7 @@
 .taskforce-member:hover .taskforce-text-button, .taskforce-member:focus-within .taskforce-text-button { visibility: visible; }
 .taskforce-member .taskforce-member-remove { padding: 4px 10px; border-radius: var(--radius-pill); color: var(--coral); background: color-mix(in oklch, var(--coral) 12%, transparent); }
 .taskforce-link { padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; text-decoration: underline; text-underline-offset: 2px; font: inherit; font-size: var(--t-sm); cursor: pointer; text-align: left; }
-.taskforce-text-button, .taskforce-danger { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
-.taskforce-danger { color: var(--coral); }
+.taskforce-text-button { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
 .taskforce-action-list { display: grid; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: .5px solid var(--hairline); }
 .taskforce-action { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .taskforce-action-kind { flex-shrink: 0; color: var(--text-secondary); font-size: var(--t-xs); }

@@ -67,6 +67,80 @@
 .fc-btn:focus-visible {
   box-shadow: var(--focus-face);
 }
+
+/* Shared confirm dialog — 제목·X·구분선 없는 질문 한 문장과 같은 너비의 둥근 알약 두 개.
+   파괴적 실행은 coral 채움(coral remains danger-only), 비파괴는 기존 primary(brass)다. */
+/* [doctrine] 알약 단추의 hover는 채움 단추 문법(fc-btn--primary)을 따른다 — 중립 워시 오버레이는
+   채움 위에서 색을 바꾸지 않고, 밝기만 바꾸는 color-mix가 두 테마에서 같은 관계를 잇는다. */
+.fc-confirm-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-overlay) + 5);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--dialog-scrim);
+}
+.fc-confirm {
+  width: min(400px, 100%);
+  border: 0;
+  border-radius: var(--dialog-radius);
+  color: var(--text-primary);
+  background: var(--dialog-face);
+  box-shadow: var(--dialog-surface-shadow);
+  padding: var(--space-6);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+}
+/* 카드는 진행 중에 포커스를 대신 받는 자리다 — 링을 그리지 않는다. */
+.fc-confirm:focus { outline: none; }
+.fc-confirm__question { margin: 0; }
+.fc-confirm__error { margin: var(--space-3) 0 0; color: var(--coral-ink); font-size: var(--t-sm); }
+.fc-confirm__actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
+.fc-confirm__button {
+  flex: 1;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast),
+    transform var(--duration-fast) var(--ease-spring);
+}
+.fc-confirm__button:active:not(:disabled) { transform: translateY(1px); }
+.fc-confirm__button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); transform: none; }
+.fc-confirm__button:focus-visible { box-shadow: var(--focus-face); }
+.fc-confirm__button--cancel {
+  background: color-mix(in oklch, var(--text-primary) 12%, transparent);
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+.fc-confirm__button--cancel:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--text-primary) 18%, transparent);
+}
+.fc-confirm__button--action {
+  background: var(--brass);
+  color: var(--text-on-brass);
+  font-weight: var(--weight-bold);
+}
+.fc-confirm__button--action:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--brass) 86%, var(--text-primary));
+}
+.fc-confirm__button--danger {
+  background: var(--coral);
+  color: var(--text-on-coral);
+  font-weight: var(--weight-bold);
+}
+.fc-confirm__button--danger:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--coral) 86%, var(--text-primary));
+}
+@media (forced-colors: active) {
+  .fc-confirm__button:focus-visible { outline: 2px solid Highlight; }
+}
 /* ===== Global Settings — 전역 옵션(시스템 프롬프트 주입 + 메타포) 표면 ===== */
 /* 이름으로 바로 가는 길. 약 150개 컨트롤을 가로지르는 입력이 하나도 없어, 특정 항목을 찾으려면
    여섯 섹션을 눈으로 훑어야 했다. 검색은 목록과 같은 항목을 본다 — 목록에만 있고 검색이

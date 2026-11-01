@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { MenuCheckGlyph, ChevronGlyph } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, ChevronGlyph, ConfirmDialog } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { useCommodoreSidebarCommands } from "../../../commodore/client/sidebar-sections.js";
 import { MAX_SIDEBAR_SECTION_NAME, type CommodoreSidebarCommand, type CommodoreSidebarSection } from "../../../commodore/shared/contracts/sidebar-layout.js";
@@ -78,7 +78,7 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
       <div className="theater-menu-divider" role="separator" />
       <MenuItem icon={<TrashIcon />} danger onClick={() => { setMenu(null); setDeleting(true); }}>{t("sidebar.commodoreSection.deleteMenu")}</MenuItem>
     </SectionMenu> : null}
-    {deleting && section ? <SectionDeleteDialog section={section} count={count} controller={controller} onClose={() => {
+    {deleting && section ? <SectionDeleteDialog section={section} controller={controller} onClose={() => {
       setDeleting(false);
       requestAnimationFrame(() => {
         const target = header.current ?? document.querySelector<HTMLElement>(".objective-records-side-bar :is(.workspace-commodore-section-head, .side-bar-theater-activate)");
@@ -165,18 +165,7 @@ export function CommodoreSectionMoveMenu({ rowId, controller, onClose }: { reado
   </div>;
 }
 
-function SectionDeleteDialog({ section, count, controller, onClose }: { readonly section: CommodoreSidebarSection; readonly count: number; readonly controller: SidebarSectionsController; readonly onClose: () => void }) {
+function SectionDeleteDialog({ section, controller, onClose }: { readonly section: CommodoreSidebarSection; readonly controller: SidebarSectionsController; readonly onClose: () => void }) {
   const t = useT();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
-  const titleId = useId(), bodyId = useId();
-  useLayoutEffect(() => { dialog.current?.showModal(); cancel.current?.focus(); }, []);
-  return createPortal(<dialog ref={dialog} className="workspace-commodore-section-dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={bodyId}
-    onCancel={(event) => { event.preventDefault(); if (!controller.busy) onClose(); }}>
-    <h2 id={titleId}>{t("sidebar.commodoreSection.deleteTitle", { name: section.name })}</h2>
-    <p id={bodyId}>{t("sidebar.commodoreSection.deleteBody", { count })}</p>
-    {controller.error ? <p role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
-    <footer><button ref={cancel} type="button" disabled={controller.busy} onClick={onClose}>{t("sidebar.commodore.cancel")}</button>
-      <button type="button" className="workspace-commodore-section-delete" disabled={controller.busy} onClick={() => { void controller.run({ op: "delete", sectionId: section.id, confirm: true }).then((result) => { if (result) onClose(); }); }}>{t("sidebar.commodoreSection.delete")}</button></footer>
-  </dialog>, document.body);
+  return <ConfirmDialog question={t("sidebar.commodoreSection.deleteQuestion", { name: section.name })} cancelLabel={t("sidebar.commodore.cancel")} confirmLabel={t("sidebar.commodoreSection.delete")} danger busy={controller.busy} error={controller.error ? t("sidebar.commodoreSection.error") : null} onCancel={() => { if (!controller.busy) onClose(); }} onConfirm={() => { void controller.run({ op: "delete", sectionId: section.id, confirm: true }).then((result) => { if (result) onClose(); }); }} />;
 }

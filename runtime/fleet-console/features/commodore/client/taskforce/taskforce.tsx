@@ -24,6 +24,7 @@ import { openReferencedObjective } from "../commodore-reference-input.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../../shared/contracts/attachment-budget.js";
 import { CONVERSATION_REFERENCE_MARK } from "../../../execution/shared/conversation/references.js";
 import { MentionChip } from "../../../execution/client/composer-primitives/mention-chip.js";
+import { ConfirmDialog } from "@fleet-console/ui/react";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
@@ -136,7 +137,7 @@ function DeleteDialog({ id, language, onClose }: { readonly id: string; readonly
     try { await mutateTaskforce("delete", { taskforceId: id }); onClose(); }
     catch { setFailed(true); } finally { setBusy(false); }
   };
-  return <Dialog title={t("taskforce.deleteTitle")} onClose={() => { if (!busy) onClose(); }}><div className="taskforce-dialog-body"><p>{t("taskforce.deleteWarning", { name })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={onClose}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn taskforce-danger" disabled={busy} onClick={() => void remove()}>{t("taskforce.deleteConfirm")}</button></footer></Dialog>;
+  return <ConfirmDialog question={t("taskforce.deleteQuestion", { name })} cancelLabel={t("taskforce.cancel")} confirmLabel={t("taskforce.deleteConfirm")} danger busy={busy} error={failed ? t("taskforce.failed") : null} onCancel={() => { if (!busy) onClose(); }} onConfirm={() => void remove()} />;
 }
 
 function Dialog({ title, onClose, children }: { readonly title: string; readonly onClose: () => void; readonly children: ReactNode }) {
@@ -192,7 +193,7 @@ function CreateDialog({ preselected, onClose }: { readonly preselected?: string;
       </fieldset>
       <label>{t("taskforce.name")}<input required maxLength={MAX_TASKFORCE_NAME} value={name} placeholder={t("taskforce.namePlaceholder")} onChange={(event) => { setEditedName(true); setName(event.target.value); }} /></label>
       {failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}
-    </div><footer><span /><span><button type="button" className="fc-btn fc-btn--secondary" onClick={onClose} disabled={busy}>{t("taskforce.cancel")}</button><span className="taskforce-create-tip" tabIndex={reason ? 0 : undefined} aria-describedby={reason ? "taskforce-create-reason" : undefined}><button type="submit" className="fc-btn fc-btn--primary" disabled={busy || reason !== null}>{t("taskforce.create")}</button>{reason ? <span id="taskforce-create-reason" role="tooltip">{reason}</span> : null}</span></span></footer>
+    </div><footer><span /><span><button type="button" className="fc-confirm__button fc-confirm__button--cancel" onClick={onClose} disabled={busy}>{t("taskforce.cancel")}</button><span className="taskforce-create-tip" tabIndex={reason ? 0 : undefined} aria-describedby={reason ? "taskforce-create-reason" : undefined}><button type="submit" className="fc-confirm__button fc-confirm__button--action" disabled={busy || reason !== null}>{t("taskforce.create")}</button>{reason ? <span id="taskforce-create-reason" role="tooltip">{reason}</span> : null}</span></span></footer>
   </form></Dialog>;
 }
 
@@ -356,7 +357,7 @@ function TaskforceDetails({ id, tab, language }: { readonly id: string; readonly
     {tab === "actions" ? <>{snapshot.actionsLoading ? <p className="taskforce-muted" role="status">{t("taskforce.loading")}</p> : null}{snapshot.actionsError ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} <button type="button" className="taskforce-link" onClick={() => void loadTaskforceActions(id)}>{t("taskforce.retry")}</button></p> : null}{actions.map(({ action, commodoreId }, index) => <TaskforceActions key={index} actions={[action]} {...(commodoreId ? { commodoreId } : {})} language={language} />)}{snapshot.actionsLoaded && !actions.length ? <p className="taskforce-muted">{t("taskforce.noActions")}</p> : null}</> : null}
     {tab !== "actions" && snapshot.hasMore ? <button type="button" className="taskforce-link" disabled={busy} onClick={() => { setBusy(true); void loadTaskforce(id, true).finally(() => setBusy(false)); }}>{t("taskforce.older")}</button> : null}
     {failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}
-    {removing ? <Dialog title={t("taskforce.members")} onClose={() => { if (!busy) setRemoving(null); }}><div className="taskforce-dialog-body"><p>{t("taskforce.removeConfirm", { name: memberName(removing, language) })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => setRemoving(null)}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("removeMembers", { commodoreId: removing })}>{t("taskforce.remove")}</button></footer></Dialog> : null}
+    {removing ? <ConfirmDialog question={t("taskforce.removeConfirm", { name: memberName(removing, language) })} cancelLabel={t("taskforce.cancel")} confirmLabel={t("taskforce.remove")} danger busy={busy} error={failed ? t("taskforce.failed") : null} onCancel={() => { if (!busy) setRemoving(null); }} onConfirm={() => void run("removeMembers", { commodoreId: removing })} /> : null}
   </div>;
 }
 
