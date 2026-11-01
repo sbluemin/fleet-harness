@@ -1003,6 +1003,8 @@
   position: relative;
   z-index: 2;
 }
+/* 편집기가 열린 동안만 머리를 한 단 올린다 — 팝오버가 머리 쌓임 맥락에 갇혀 폭 조절 손잡이 아래에 깔린다. */
+.right-rail-panel-header:has(.avatar-editor.is-open) { z-index: 3; }
 
 /* ── 오른쪽 패널 본문 틀(ConversationPanelFrame) ─────────────────────────────────
    머리가 슬롯 전폭에 서므로 본문 외곽도 이 칸의 가용 폭을 채운다. 판정은 창이 아니라 이 칸의 폭이다 — 패널 폭은
@@ -1241,7 +1243,32 @@
 /* 하위 탭을 내는 도구(목표)의 도구 줄 — 섹션 줄과 같은 자리·간격이고 단추 모양은 플러그인이 진다. 그릴 것이 없으면 줄을 남기지 않는다. */
 .conversation-panel-sections.is-tools:empty { display: none; }
 
-/* 몽글 아바타 편집 — 아바타 단추 자체는 껍데기가 없고, 머무르면 오른쪽 아래에 연필이 선다. 편집기는 패널 머리 아래로 펼쳐진다. */
+/* 몽글 아바타 편집 — 아바타 단추 자체는 껍데기가 없고, 머무르면 오른쪽 아래에 연필이 선다. 편집기 판은 흐름 밖의
+   떠 있는 팝오버다(DOM 자리는 .avatar-editor 안에 그대로 두고 좌표만 단추에 맞춘다 — 「더보기」 메뉴와 같은 방식).
+   판이 패널 왼쪽 경계를 넘어 가운데 칸 위에 걸치는 것은 허용(잘리지 않고 위에 뜸). */
+.avatar-editor-popover {
+  position: fixed;
+  z-index: 40;
+  width: min(300px, 100vw - 16px);
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+  text-align: left;
+}
+/* stack(패널 머리)은 아바타 가운데 맞춤 — 왼쪽 좌표가 가운데이므로 판 너비의 절반만큼 당긴다. */
+.avatar-editor-popover.is-stack { transform: translateX(-50%); }
+/* 피커의 기존 카드 낱개와 이중 테두리가 되지 않게 한 장의 카드로 보인다 — 피커 자체 스타일은 바꾸지 않고 이 범위에서만 덮는다. */
+.avatar-editor-popover .mongle-picker {
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  box-shadow: none;
+}
+.avatar-editor-picker {
+  width: 100%;
+  max-width: 300px;
+  text-align: left;
+}
 .avatar-editor {
   display: grid;
   justify-items: center;
@@ -1287,12 +1314,6 @@
 .avatar-editor-trigger:hover .avatar-editor-pen,
 .avatar-editor-trigger:focus-visible .avatar-editor-pen,
 .avatar-editor-trigger[aria-expanded="true"] .avatar-editor-pen { opacity: 1; }
-.avatar-editor-picker {
-  width: 100%;
-  max-width: 300px;
-  text-align: left;
-}
-.avatar-editor.is-inline .avatar-editor-picker { max-width: none; }
 .avatar-editor-undo {
   display: flex;
   align-items: baseline;

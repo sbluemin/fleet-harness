@@ -694,7 +694,6 @@ button.group-members-main { cursor: pointer; }
 .group-members-main.has-avatar { grid-template-columns: minmax(0, 1fr) auto; }
 .group-members-row .avatar-editor-row { padding-left: var(--space-2); }
 .group-members-row .avatar-editor-row > .group-members-main { flex: 1; min-width: 0; padding-left: 0; }
-.group-members-row .avatar-editor.is-inline .avatar-editor-picker { margin: 0 var(--space-2) var(--space-2); width: auto; }
 button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-members-text { display: flex; flex-direction: column; min-width: 0; }
 .group-members-name { font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
