@@ -11035,7 +11035,11 @@ kbd { font-variant-numeric: tabular-nums; }
 }
 :root:not([data-view-mode="mobile"]) :is(
   .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
-  .new-session-row, .new-session-menu-item, .new-session-chip
+  .new-session-row, .new-session-menu-item, .new-session-chip,
+  /* 사령관·TF 머리도 지휘관 행과 같은 눌림을 쓴다 — 머리 고유의 box-shadow 전이를 지키려고
+     위 transition 목록이 아니라 눌림·동작 줄이기 규칙에만 든다. 드래그 중에는 눌림이
+     translateY+scale(1.015) 을 덮지 않게 빠진다. */
+  .side-bar-theater-header:not(.side-bar-theater-header--dragging)
 ):active:not(:disabled) {
   transform: scale(0.985);
   transition-duration: var(--motion-tap);
@@ -11046,7 +11050,8 @@ kbd { font-variant-numeric: tabular-nums; }
     .conversation-round, .fc-composer-circle,
     .new-session-send,
     .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
-    .new-session-row, .new-session-menu-item, .new-session-chip
+    .new-session-row, .new-session-menu-item, .new-session-chip,
+    .side-bar-theater-header:not(.side-bar-theater-header--dragging)
   ):active:not(:disabled) {
     /* 눌림 규칙과 같은 명시도여야 이긴다 — :not(:disabled) 가 빠지면 동작 줄이기에서도 축소가 남는다. */
     transform: none;
