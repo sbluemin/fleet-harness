@@ -296,6 +296,9 @@
 
 /* 진행 중 행을 가리켜 글리프가 나타나 폭이 줄어도 상태 줄은 줄바꿈하지 않고 진행 막대가 줄어든다. */
 .commander-tab--card .side-bar-cluster-row-line { flex-wrap: nowrap; white-space: nowrap; }
+/* 글리프가 보이는 동안만 상태 줄을 표식 칸 앞에서 멈춘다 — 넓어진 aside(글리프+★) 아래에 막대·분수가 깔리지 않게.
+   쉬는 행은 표식 칸 아래까지 쓰는 기존 배치 그대로다. */
+.commander-tab--card .side-bar-cluster-row:is(:hover, :focus-within, .is-open) .side-bar-cluster-row-line { grid-column: 1; }
 .commander-tab--card .side-bar-cluster-row-swap { flex: 1 1 auto; }
 .commander-tab--card .side-bar-cluster-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commander-tab--card .side-bar-cluster-row-gauge { flex: 1 1 56px; width: auto; min-width: 18px; }
