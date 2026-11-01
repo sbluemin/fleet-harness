@@ -4,11 +4,9 @@
 .taskforce-stack > :nth-child(2) { position: absolute; left: 14px; top: 2px; }
 .taskforce-stack > :nth-child(3) { position: absolute; left: 7px; top: 12px; }
 .taskforce-sidebar { margin: 0 0 10px; list-style: none; }
-.taskforce-sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 4px; color: var(--text-tertiary); font-size: var(--t-xs); }
-.taskforce-sidebar-head button { border: 0; border-radius: 50%; background: transparent; color: inherit; width: 24px; height: 24px; font-size: var(--t-lg); cursor: pointer; }
 .taskforce-sidebar ul { padding: 0; margin: 0; list-style: none; }
 .taskforce-sidebar-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 9px 10px; border: 0; border-radius: 10px; color: var(--text-primary); background: transparent; text-align: left; font: inherit; cursor: pointer; }
-.taskforce-sidebar-row:hover, .taskforce-sidebar-head button:hover { background: var(--wash-hover); }
+.taskforce-sidebar-row:hover { background: var(--wash-hover); }
 .taskforce-sidebar-row.is-selected { background: var(--surface-row-selected); }
 .taskforce-sidebar-row.is-closed { opacity: .55; }
 .taskforce-sidebar-copy { min-width: 0; flex: 1; display: grid; gap: 2px; }
@@ -28,6 +26,9 @@
 .taskforce-dialog small { color: var(--text-tertiary); font-size: var(--t-sm); }
 .taskforce-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px 12px 22px; border-top: 1px solid var(--hairline); }
 .taskforce-dialog footer > span { display: flex; gap: 8px; }
+.taskforce-create-tip { position: relative; display: inline-flex; }
+.taskforce-create-tip [role="tooltip"] { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); width: max-content; max-width: 240px; padding: 8px 10px; border-radius: var(--popover-radius); color: var(--text-primary); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); font-size: var(--t-sm); z-index: 1; }
+.taskforce-create-tip:hover [role="tooltip"], .taskforce-create-tip:focus-visible [role="tooltip"] { display: block; }
 .taskforce-picks { display: flex; flex-wrap: wrap; gap: 8px; }
 .taskforce-member-chip, .taskforce-mention { --taskforce-member-ink: var(--text-primary); --taskforce-member-face: var(--text-primary); }
 .taskforce-member-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px 4px 4px; border: 0; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--taskforce-member-ink); background: var(--surface-panel); font: inherit; font-size: var(--t-md); cursor: pointer; }
@@ -75,12 +76,11 @@
 .taskforce-details dd { margin: 0; overflow-wrap: anywhere; }
 .taskforce-member { display: flex; gap: 8px; align-items: center; }
 .taskforce-member-open { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.taskforce-member-open:hover, .taskforce-member-add:hover { background: var(--wash-hover); }
+.taskforce-member-open:hover { background: var(--wash-hover); }
 .taskforce-member strong { font-weight: var(--weight-medium); }
 .taskforce-member .taskforce-text-button { visibility: hidden; }
 .taskforce-member:hover .taskforce-text-button, .taskforce-member:focus-within .taskforce-text-button { visibility: visible; }
-.taskforce-member-add { padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; cursor: pointer; }
-.taskforce-member-add:disabled { opacity: .5; cursor: default; }
+.taskforce-member-remove { padding: 4px 10px; border-radius: var(--radius-pill); color: var(--coral); background: color-mix(in oklch, var(--coral) 12%, transparent); }
 .taskforce-link { padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; text-decoration: underline; text-underline-offset: 2px; font: inherit; font-size: var(--t-sm); cursor: pointer; text-align: left; }
 .taskforce-text-button, .taskforce-danger { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
 .taskforce-danger { color: var(--coral); }
@@ -88,17 +88,13 @@
 .taskforce-action { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .taskforce-action-kind { flex-shrink: 0; color: var(--text-secondary); font-size: var(--t-xs); }
 .taskforce-muted { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
-.taskforce-notices { display: grid; justify-items: center; gap: 4px; padding: var(--conversation-overlay-top, 56px) 12px 0; }
-.objectives-commodore-conversation:has(> .taskforce-notices) > .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
-.taskforce-notice { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 4px 12px; border: 1px dashed var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font-size: var(--t-sm); }
-.taskforce-notices + .objectives-commodore-conversation-log { padding-top: 0; }
 .taskforce-mobile-screen { position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; flex-direction: column; overflow: auto; background: var(--surface-panel); }
 .taskforce-mobile-screen > header { display: flex; align-items: center; gap: 12px; padding: 12px; }
 .taskforce-mobile-screen .taskforce-conversation { padding-top: 0; flex: 1 0 65vh; }
 .taskforce-mobile-screen .taskforce-details { padding: 16px; }
-.taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-notice button:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { box-shadow: var(--field-focus-edge); outline: none; }
 @keyframes taskforce-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .taskforce-live-dot, .taskforce-typing { animation: none; } }
 @media (max-width: 760px) { .taskforce-paused { flex-wrap: wrap; } .taskforce-paused > span:last-child { margin-left: 22px; } .taskforce-dialog footer { flex-wrap: wrap; } }
-@media (forced-colors: active) { .taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-notice button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { outline: 1px solid Highlight; } }
+@media (forced-colors: active) { .taskforce-sidebar button:focus-visible, .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-field textarea:focus-visible { outline: 1px solid Highlight; } }

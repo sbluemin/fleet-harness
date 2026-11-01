@@ -42,6 +42,14 @@ export type GroupContextMenuAlign = "start" | "end";
 
 type GroupContextMenuProps =
   | {
+      readonly kind: "actions";
+      readonly anchor: DOMRect;
+      readonly align?: GroupContextMenuAlign;
+      readonly label: string;
+      readonly items: readonly { readonly label: string; readonly action: () => void; readonly danger?: boolean }[];
+      readonly onClose: () => void;
+    }
+  | {
       readonly kind: "chip";
       readonly objectiveRecord: ObjectiveRecord;
       readonly groups: readonly ObjectiveGroup[];
@@ -124,11 +132,11 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
         ref={cardRef}
         className="group-context-menu-card"
         role="menu"
-        aria-label={props.kind === "group-header" ? t("sidebar.groupMenu.groupOptions", { name: props.group.name }) : t("sidebar.groupMenu.objectiveRecordOptions")}
+        aria-label={props.kind === "actions" ? props.label : props.kind === "group-header" ? t("sidebar.groupMenu.groupOptions", { name: props.group.name }) : t("sidebar.groupMenu.objectiveRecordOptions")}
         style={style ?? { position: "fixed", left: 0, top: 0, visibility: "hidden" }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {props.kind === "chip" ? (
+        {props.kind === "actions" ? props.items.map((item) => <button key={item.label} type="button" role="menuitem" className={`group-context-menu-item${item.danger ? " group-context-menu-item--danger" : ""}`} onClick={() => { onClose(); item.action(); }}><span className="group-context-menu-item__name">{item.label}</span></button>) : props.kind === "chip" ? (
           <ChipMenuContent {...props} />
         ) : props.kind === "row" ? (
           <RowMenuContent actions={props.actions} onClose={onClose} />

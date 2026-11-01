@@ -8,6 +8,8 @@ import { commodoreAvatarKey } from "../../../workspace/shared/avatars.js";
 import { mongleBase } from "../../../workspace/shared/avatars.js";
 import { useAvatarBook, resolveMongleLook, useMongleLook } from "../../../workspace/client/avatar-events.js";
 import { useConversationSurface } from "../../../workspace/client/conversation/conversation-surface-store.js";
+import { GroupContextMenu } from "../../../workspace/client/sidebar/group-context-menu.js";
+import { useContextMenuKeyboard } from "../../../workspace/client/sidebar/context-menu-keyboard.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../commodore-avatar.js";
 import { actionWord } from "../commodore-chat.js";
@@ -51,6 +53,17 @@ export function TaskforceSidebarGroup() {
   const t = taskforceT(language);
   const rows = useTaskforces();
   const selected = useConversationSurface();
+  const [menu, setMenu] = useState<{ id: string; anchor: DOMRect; focusFirst: boolean } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const closeMenu = () => { setMenu(null); if (document.hasFocus()) returnFocus.current?.focus(); };
+  useContextMenuKeyboard({ open: menu !== null, menuSelector: '.group-context-menu-card[role="menu"]', returnFocusRef: returnFocus, focusFirst: menu?.focusFirst, onEscape: closeMenu });
+  const run = async (id: string, route: "close" | "reopen" | "delete") => {
+    if (busy) return; setBusy(true); setFailed(false);
+    try { await mutateTaskforce(route, { taskforceId: id }); setDeleting(null); }
+    catch { setFailed(true); } finally { setBusy(false); }
+  };
   useEffect(() => {
     for (const row of rows) {
       const snapshot = readTaskforce(row.id);
@@ -59,12 +72,14 @@ export function TaskforceSidebarGroup() {
   }, [rows]);
   if (!rows.length) return null;
   return <li className="taskforce-sidebar" data-taskforce-group="">
-    <div className="taskforce-sidebar-head"><span>{t("taskforce.title")}</span><button type="button" onClick={() => requestTaskforceCreate()} aria-label={t("taskforce.new")}>+</button></div>
-    <ul>{rows.map((row) => <li key={row.id}><button type="button" className={`taskforce-sidebar-row${selected?.surfaceId === SURFACE && selected.params.taskforceId === row.id ? " is-selected" : ""}${row.status === "closed" ? " is-closed" : ""}`} onClick={() => openTaskforce(row.id)}>
+    <ul>{rows.map((row) => <li key={row.id}><button type="button" className={`taskforce-sidebar-row${selected?.surfaceId === SURFACE && selected.params.taskforceId === row.id ? " is-selected" : ""}${row.status === "closed" ? " is-closed" : ""}`} onClick={() => openTaskforce(row.id)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); returnFocus.current = event.currentTarget; setMenu({ id: row.id, anchor: new DOMRect(event.clientX, event.clientY, 0, 0), focusFirst: false }); }} onKeyDown={(event) => { if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return; event.preventDefault(); returnFocus.current = event.currentTarget; setMenu({ id: row.id, anchor: event.currentTarget.getBoundingClientRect(), focusFirst: true }); }} aria-haspopup="menu">
       <TaskforceStack members={row.members} judging={row.judging} />
       <span className="taskforce-sidebar-copy"><strong>{row.name}</strong><small>{row.preview?.text || row.topic}</small></span>
       {row.judging.length ? <span className="taskforce-live-dot" aria-label={t("taskforce.memberJudging")} /> : null}
     </button></li>)}</ul>
+    {menu && rows.find((row) => row.id === menu.id) ? <GroupContextMenu kind="actions" anchor={menu.anchor} label={t("taskforce.title")} items={[{ label: t(rows.find((row) => row.id === menu.id)?.status === "closed" ? "taskforce.reopen" : "taskforce.close"), action: () => void run(menu.id, rows.find((row) => row.id === menu.id)?.status === "closed" ? "reopen" : "close") }, { label: t("taskforce.delete"), danger: true, action: () => { setFailed(false); setDeleting(menu.id); } }]} onClose={closeMenu} /> : null}
+    {deleting ? <Dialog title={t("taskforce.deleteTitle")} onClose={() => { if (!busy) setDeleting(null); }}><div className="taskforce-dialog-body"><p>{t("taskforce.deleteWarning", { name: rows.find((row) => row.id === deleting)?.name ?? "" })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => setDeleting(null)}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn taskforce-danger" disabled={busy} onClick={() => void run(deleting, "delete")}>{t("taskforce.deleteConfirm")}</button></footer></Dialog> : null}
+    {failed && !deleting ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}
   </li>;
 }
 
@@ -108,6 +123,7 @@ function CreateDialog({ preselected, onClose }: { readonly preselected?: string;
   const [members, setMembers] = useState<readonly string[]>(preselected ? [preselected] : []);
   const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false);
   const currentMembers = members.filter((id) => commodores.some((row) => row.commodoreId === id));
+  const reason = !topic.trim() ? t("taskforce.topicRequired") : !name.trim() ? t("taskforce.nameRequired") : currentMembers.length < 2 ? t("taskforce.minimum") : null;
   const submit = async () => {
     if (busy || !topic.trim() || !name.trim() || currentMembers.length < 2) return;
     setBusy(true); setFailed(false);
@@ -119,10 +135,10 @@ function CreateDialog({ preselected, onClose }: { readonly preselected?: string;
   return <Dialog title={t("taskforce.createTitle")} onClose={() => { if (!busy) onClose(); }}><form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <div className="taskforce-dialog-body">
       <label>{t("taskforce.topic")}<textarea required maxLength={MAX_TASKFORCE_TOPIC} rows={3} value={topic} placeholder={t("taskforce.topicPlaceholder")} onChange={(event) => { const value = event.target.value; setTopic(value); if (!editedName) setName(value.trim().split("\n")[0]!.slice(0, MAX_TASKFORCE_NAME)); }} /></label>
-      <fieldset><legend>{t("taskforce.members")}</legend><div className="taskforce-picks">{commodores.map((row) => <MemberChip key={row.commodoreId} id={row.commodoreId} language={language} selected={currentMembers.includes(row.commodoreId)} onClick={() => setMembers(currentMembers.includes(row.commodoreId) ? currentMembers.filter((id) => id !== row.commodoreId) : currentMembers.length < MAX_TASKFORCE_MEMBERS ? [...currentMembers, row.commodoreId] : currentMembers)} />)}</div>{currentMembers.length < 2 ? <small>{t("taskforce.minimum")}</small> : null}</fieldset>
+      <fieldset><legend>{t("taskforce.members")}</legend><div className="taskforce-picks">{commodores.map((row) => <MemberChip key={row.commodoreId} id={row.commodoreId} language={language} selected={currentMembers.includes(row.commodoreId)} onClick={() => setMembers(currentMembers.includes(row.commodoreId) ? currentMembers.filter((id) => id !== row.commodoreId) : currentMembers.length < MAX_TASKFORCE_MEMBERS ? [...currentMembers, row.commodoreId] : currentMembers)} />)}</div></fieldset>
       <label>{t("taskforce.name")}<input required maxLength={MAX_TASKFORCE_NAME} value={name} placeholder={t("taskforce.namePlaceholder")} onChange={(event) => { setEditedName(true); setName(event.target.value); }} /></label>
       {failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}
-    </div><footer><small>{t("taskforce.judgements", { n: currentMembers.length })}</small><span><button type="button" className="fc-btn fc-btn--secondary" onClick={onClose} disabled={busy}>{t("taskforce.cancel")}</button><button type="submit" className="fc-btn fc-btn--primary" disabled={busy || !topic.trim() || !name.trim() || currentMembers.length < 2}>{t("taskforce.create")}</button></span></footer>
+    </div><footer><span /><span><button type="button" className="fc-btn fc-btn--secondary" onClick={onClose} disabled={busy}>{t("taskforce.cancel")}</button><span className="taskforce-create-tip" tabIndex={reason ? 0 : undefined} aria-describedby={reason ? "taskforce-create-reason" : undefined}><button type="submit" className="fc-btn fc-btn--primary" disabled={busy || reason !== null}>{t("taskforce.create")}</button>{reason ? <span id="taskforce-create-reason" role="tooltip">{reason}</span> : null}</span></span></footer>
   </form></Dialog>;
 }
 
@@ -218,32 +234,25 @@ function TaskforceComposer({ state, language }: { readonly state: TaskforceState
 type Tab = "overview" | "members" | "actions";
 function TaskforceDetails({ id, tab, language }: { readonly id: string; readonly tab: Tab; readonly language: "ko" | "en" }) {
   const t = taskforceT(language); const snapshot = useTaskforce(id); const { state, judging } = snapshot;
-  const commodores = useCommodoreList(); const [topic, setTopic] = useState(""); const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false); const [deleting, setDeleting] = useState(false); const [removing, setRemoving] = useState<string | null>(null); const [adding, setAdding] = useState(false);
+  const commodores = useCommodoreList(); const [topic, setTopic] = useState(""); const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false); const [removing, setRemoving] = useState<string | null>(null); const [adding, setAdding] = useState(false);
   useEffect(() => { void loadTaskforce(id); }, [id]);
   useEffect(() => setTopic(state?.topic ?? ""), [state?.topic]);
   useEffect(() => { if (tab === "actions") void loadTaskforceActions(id); }, [id, tab]);
-  const run = async (route: "update" | "close" | "reopen" | "delete" | "addMembers" | "removeMembers", body: object = {}) => {
+  const run = async (route: "update" | "addMembers" | "removeMembers", body: object = {}) => {
     if (busy) return; setBusy(true); setFailed(false);
-    try { await mutateTaskforce(route, { taskforceId: id, ...body }); if (route === "delete") { conversation?.close(SURFACE); if (mobileId === id) { mobileId = null; emit(); } } setDeleting(false); setRemoving(null); }
+    try { await mutateTaskforce(route, { taskforceId: id, ...body }); setRemoving(null); }
     catch { setFailed(true); } finally { setBusy(false); }
   };
   if (!state) return <p>{t("taskforce.loading")}</p>;
   const actions = snapshot.actionEntries.flatMap((entry) => (entry.actions ?? []).map((action) => ({ action, commodoreId: entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined })));
   return <div className="taskforce-details">
-    {tab === "overview" ? <><label className="taskforce-field">{t("taskforce.topic")}<textarea rows={4} maxLength={MAX_TASKFORCE_TOPIC} value={topic} onChange={(event) => setTopic(event.target.value)} /></label>{topic !== state.topic ? <button type="button" className="fc-btn fc-btn--secondary" disabled={busy || !topic.trim()} onClick={() => void run("update", { topic: topic.trim() })}>{t("taskforce.save")}</button> : null}<dl><dt>{t("taskforce.status")}</dt><dd>{t(state.status === "open" ? "taskforce.open" : "taskforce.closed")}</dd><dt>{t("taskforce.createdAt")}</dt><dd>{time(state.createdAt, language)}</dd><dt>{t("taskforce.utterances")}</dt><dd>{t("taskforce.utteranceCounts", { n: state.counts.person + state.counts.commodore, person: state.counts.person, commodore: state.counts.commodore })}</dd><dt>{t("taskforce.chain")}</dt><dd>{state.chain.count}/{state.chain.limit}</dd><dt>{t("taskforce.retention")}</dt><dd>{t("taskforce.keepAll")}</dd></dl><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => void run(state.status === "open" ? "close" : "reopen")}>{t(state.status === "open" ? "taskforce.close" : "taskforce.reopen")}</button><button type="button" className="taskforce-danger" onClick={() => setDeleting(true)}>{t("taskforce.delete")}</button></> : null}
-    {tab === "members" ? <>{state.members.map((member) => <div className="taskforce-member" key={member}><button type="button" className="taskforce-member-open" onClick={() => { if (!openCommodoreConversation(member)) return; if (mobileId) { mobileId = null; emit(); } }}><CommodoreAvatar commodoreId={member} state={judging.includes(member) ? "running" : "idle"} size={28} label="" decorative /><strong>{memberName(member, language)}</strong></button><button type="button" className="taskforce-text-button" disabled={busy} onClick={() => setRemoving(member)}>{t("taskforce.remove")}</button></div>)}<button type="button" className="taskforce-member-add" disabled={busy || state.members.length >= MAX_TASKFORCE_MEMBERS} aria-expanded={adding} onClick={() => setAdding(!adding)}>+ {t("taskforce.add")}</button>{adding ? <div className="taskforce-picks">{commodores.filter((row) => !state.members.includes(row.commodoreId)).map((row) => <MemberChip key={row.commodoreId} id={row.commodoreId} language={language} onClick={busy || state.members.length >= MAX_TASKFORCE_MEMBERS ? undefined : () => void run("addMembers", { commodoreIds: [row.commodoreId] })} />)}</div> : null}</> : null}
+    {tab === "overview" ? <><label className="taskforce-field">{t("taskforce.topic")}<textarea rows={4} maxLength={MAX_TASKFORCE_TOPIC} value={topic} onChange={(event) => setTopic(event.target.value)} /></label>{topic !== state.topic ? <button type="button" className="fc-btn fc-btn--secondary" disabled={busy || !topic.trim()} onClick={() => void run("update", { topic: topic.trim() })}>{t("taskforce.save")}</button> : null}<dl><dt>{t("taskforce.status")}</dt><dd>{t(state.status === "open" ? "taskforce.open" : "taskforce.closed")}</dd><dt>{t("taskforce.createdAt")}</dt><dd>{time(state.createdAt, language)}</dd><dt>{t("taskforce.utterances")}</dt><dd>{t("taskforce.utteranceCounts", { n: state.counts.person + state.counts.commodore, person: state.counts.person, commodore: state.counts.commodore })}</dd><dt>{t("taskforce.chain")}</dt><dd>{state.chain.count}/{state.chain.limit}</dd><dt>{t("taskforce.retention")}</dt><dd>{t("taskforce.keepAll")}</dd></dl></> : null}
+    {tab === "members" ? <>{state.members.map((member) => <div className="taskforce-member" key={member}><button type="button" className="taskforce-member-open" onClick={() => { if (!openCommodoreConversation(member)) return; if (mobileId) { mobileId = null; emit(); } }}><CommodoreAvatar commodoreId={member} state={judging.includes(member) ? "running" : "idle"} size={28} label="" decorative /><strong>{memberName(member, language)}</strong></button><button type="button" className="taskforce-text-button taskforce-member-remove" disabled={busy} onClick={() => setRemoving(member)}>{t("taskforce.remove")}</button></div>)}<button type="button" className="commodore-theaters-add" disabled={busy || state.members.length >= MAX_TASKFORCE_MEMBERS} aria-expanded={adding} onClick={() => setAdding(!adding)}><span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span><span>{t("taskforce.add")}</span></button>{adding ? <div className="taskforce-picks">{commodores.filter((row) => !state.members.includes(row.commodoreId)).map((row) => <MemberChip key={row.commodoreId} id={row.commodoreId} language={language} onClick={busy || state.members.length >= MAX_TASKFORCE_MEMBERS ? undefined : () => void run("addMembers", { commodoreIds: [row.commodoreId] })} />)}</div> : null}</> : null}
     {tab === "actions" ? <>{snapshot.actionsLoading ? <p className="taskforce-muted" role="status">{t("taskforce.loading")}</p> : null}{snapshot.actionsError ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} <button type="button" className="taskforce-link" onClick={() => void loadTaskforceActions(id)}>{t("taskforce.retry")}</button></p> : null}{actions.map(({ action, commodoreId }, index) => <TaskforceActions key={index} actions={[action]} {...(commodoreId ? { commodoreId } : {})} language={language} />)}{snapshot.actionsLoaded && !actions.length ? <p className="taskforce-muted">{t("taskforce.noActions")}</p> : null}</> : null}
     {tab !== "actions" && snapshot.hasMore ? <button type="button" className="taskforce-link" disabled={busy} onClick={() => { setBusy(true); void loadTaskforce(id, true).finally(() => setBusy(false)); }}>{t("taskforce.older")}</button> : null}
     {failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}
-    {deleting ? <Dialog title={t("taskforce.deleteTitle")} onClose={() => { if (!busy) setDeleting(false); }}><div className="taskforce-dialog-body"><p>{t("taskforce.deleteWarning", { name: state.name })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => setDeleting(false)}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn taskforce-danger" disabled={busy} onClick={() => void run("delete")}>{t("taskforce.deleteConfirm")}</button></footer></Dialog> : null}
     {removing ? <Dialog title={t("taskforce.members")} onClose={() => { if (!busy) setRemoving(null); }}><div className="taskforce-dialog-body"><p>{t("taskforce.removeConfirm", { name: memberName(removing, language) })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => setRemoving(null)}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("removeMembers", { commodoreId: removing })}>{t("taskforce.remove")}</button></footer></Dialog> : null}
   </div>;
-}
-
-export function TaskforceNotice({ commodoreId, language }: { readonly commodoreId: string; readonly language: string }) {
-  const taskforces = useTaskforces().filter((row) => row.members.includes(commodoreId)); const t = taskforceT(language);
-  if (!taskforces.length) return null;
-  return <div className="taskforce-notices">{taskforces.map((row) => <div className="taskforce-notice" key={row.id}><span>{t("taskforce.notice", { name: row.name })}</span><span aria-hidden="true">·</span><button type="button" className="taskforce-link" onClick={() => openTaskforce(row.id)}>{t("taskforce.openNotice")}</button></div>)}</div>;
 }
 
 function CurrentStack() { const surface = useConversationSurface(); const id = typeof surface?.params.taskforceId === "string" ? surface.params.taskforceId : ""; const snapshot = useTaskforce(id); return <TaskforceStack members={snapshot.state?.members ?? []} judging={snapshot.judging} />; }

@@ -7,7 +7,6 @@ type Snapshot = {
   readonly state?: TaskforceState;
   readonly entries: readonly TaskforceLedgerEntry[];
   readonly judging: readonly string[];
-  readonly outcomes: NonNullable<TaskforceJudgingStatus["outcomes"]>;
   readonly judgingAt: number;
   readonly hasMore: boolean;
   readonly loaded: boolean;
@@ -17,7 +16,7 @@ type Snapshot = {
   readonly actionsLoading: boolean;
   readonly actionsError: boolean;
 };
-const EMPTY: Snapshot = { entries: [], judging: [], outcomes: {}, judgingAt: -1, hasMore: false, loaded: false, error: false, actionEntries: [], actionsLoaded: false, actionsLoading: false, actionsError: false };
+const EMPTY: Snapshot = { entries: [], judging: [], judgingAt: -1, hasMore: false, loaded: false, error: false, actionEntries: [], actionsLoaded: false, actionsLoading: false, actionsError: false };
 type ReadResult = TaskforceLedgerPage & { readonly taskforce: TaskforceState; readonly judging: TaskforceJudgingStatus };
 const snapshots = new Map<string, Snapshot>();
 const removed = new Set<string>();
@@ -67,7 +66,7 @@ function rememberJudging(status: TaskforceJudgingStatus): void {
   if (removed.has(status.taskforceId)) return;
   const previous = readTaskforce(status.taskforceId);
   if (previous.judgingAt > status.at) return;
-  snapshots.set(status.taskforceId, { ...previous, judging: status.judging, outcomes: status.outcomes ?? {}, judgingAt: status.at });
+  snapshots.set(status.taskforceId, { ...previous, judging: status.judging, judgingAt: status.at });
   summaries = summaries.map((row) => row.id === status.taskforceId ? { ...row, judging: status.judging } : row);
 }
 
@@ -181,7 +180,7 @@ export function installTaskforces(next: CommodoreClientDeps): () => void {
   });
   const offReconnect = next.consoleEvents.onReconnect?.(() => {
     for (const [id, snapshot] of snapshots) {
-      snapshots.set(id, { ...snapshot, judging: [], outcomes: {}, judgingAt: -1 });
+      snapshots.set(id, { ...snapshot, judging: [], judgingAt: -1 });
       if (snapshot.loaded) void loadTaskforce(id);
     }
     emit();
