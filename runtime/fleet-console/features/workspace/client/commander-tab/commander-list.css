@@ -264,6 +264,22 @@
 .commander-tab--card .side-bar-cluster-row:hover .commander-row-glyphs,
 .commander-tab--card .side-bar-cluster-row:focus-within .commander-row-glyphs,
 .commander-tab--card .side-bar-cluster-row.is-open .commander-row-glyphs { display: inline-flex; }
+/* 두 줄 행에서 글리프가 드러나면 상태 줄 높이·★ 왼쪽에 겹쳐 둔다 — 흐름에서 빠져 aside가 ★ 폭으로 좁아지므로
+   제목 줄은 쉬는 상태와 같은 폭(★ 앞까지)을 그대로 쓴다. ★ 자리는 그대로 둔다. */
+.commander-tab--card .side-bar-cluster-row--conversation:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-aside { align-self: stretch; }
+.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .commander-row-glyphs {
+  position: absolute;
+  right: 0;
+  /* 아래 2px: 줄 안쪽 아래 여백(6px) 기준 — 24px 글리프의 가운데가 상태 줄(11px·1.4) 가운데에 온다. */
+  bottom: 2px;
+}
+.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-aside:has(.side-bar-cluster-row-mark-toggle) .commander-row-glyphs {
+  /* 위임 토글(30px) + 칸 간격(6px) — ★ 왼쪽에 붙는다. */
+  right: 36px;
+}
+/* 한 줄 행(시작 전·완료)은 둘째 줄이 없어 글리프를 흐름에 두고 작게 그려 잃는 폭을 줄인다(최소 20px). */
+.commander-tab--card .side-bar-cluster-row--settled .commander-row-glyphs { gap: 0; }
+.commander-tab--card .side-bar-cluster-row--settled .commander-row-glyph { width: 22px; height: 22px; }
 .commander-row-glyph {
   position: relative;
   display: grid;
@@ -277,12 +293,13 @@
   color: var(--text-tertiary);
   cursor: pointer;
 }
-.commander-row-glyph svg { width: 15px; height: 15px; }
+.commander-row-glyph svg { width: 14px; height: 14px; }
 .commander-row-glyph:hover { background: var(--wash-hover); color: var(--text-primary); }
 .commander-row-glyph[aria-expanded="true"] { background: var(--wash-selected); color: var(--text-primary); }
 .commander-row-glyph:focus-visible { box-shadow: var(--focus-face); }
-/* 글리프 위의 점 — 탭 줄의 점과 같은 뜻·색이다: 결정 요청(aurora), 안 읽은 기록(brass). */
-.commander-row-glyph-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--surface-panel); }
+/* 글리프 위의 점 — 탭 줄의 점과 같은 뜻·색이다: 결정 요청(aurora), 안 읽은 기록(brass).
+   아이콘 획과 겹치지 않게 버튼 모서리에 두고 카드 배경 테두리를 두른다. */
+.commander-row-glyph-dot { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--surface-panel); }
 .commander-row-glyph-dot.is-attention { background: var(--aurora); }
 .commander-row-glyph-dot.is-unseen { background: var(--brass); }
 /* 쉬는 행의 점 — 글리프가 나타나면 해당 글리프 위의 점으로 옮겨 가므로 쉬는 행에서만 보인다. */
@@ -300,14 +317,10 @@
    쉬는 행은 표식 칸 아래까지 쓰는 기존 배치 그대로다. */
 .commander-tab--card .side-bar-cluster-row:is(:hover, :focus-within, .is-open) .side-bar-cluster-row-line { grid-column: 1; }
 .commander-tab--card .side-bar-cluster-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 글리프가 보이는 동안만 게이지가 문구보다 먼저 줄어든다 — 늘릴 때는 canary처럼 56px에 머물고,
-   줄일 때는 문구보다 네 배 먼저 양보해 문구가 몇 글자는 남는다. 하한 0, 더 좁으면 기존 @container 규칙이 걷는다.
-   쉬는 행에는 닿지 않아 고정 56px·32px·숨김 단계가 그대로 이긴다. */
-.commander-tab--card .side-bar-cluster-row:is(:hover, :focus-within, .is-open) .side-bar-cluster-row-gauge {
-  flex: 0 4 56px;
-  width: auto;
-  min-width: 0;
-}
+/* 드러난 두 줄 행에서는 게이지·분수를 숨기고 상태 문구만 글리프 앞에서 말줄임한다 — 1px 막대 부스러기와 몇 px짜리
+   문구 조각이 남지 않게. 말줄임은 통째 글자 단위라 조각 획이 생기지 않는다. 쉬는 행에는 닿지 않는다. */
+.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-gauge,
+.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-fraction { display: none; }
 /* 위임 토글을 행 끝으로 — 진행 중 행에만. 시작 전·완료 한 줄 행은 이전 크기와 높이를 그대로 둔다. */
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) { grid-template-columns: 30px 1fr auto; }
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):has(.side-bar-cluster-row-mark-toggle) { padding-right: 10px; }
