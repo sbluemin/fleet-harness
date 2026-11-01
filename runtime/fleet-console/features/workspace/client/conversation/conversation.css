@@ -1003,6 +1003,8 @@
   position: relative;
   z-index: 2;
 }
+/* 편집기가 열린 동안만 머리를 한 단 올린다 — 팝오버가 머리 쌓임 맥락에 갇혀 폭 조절 손잡이 아래에 깔린다. */
+.right-rail-panel-header:has(.avatar-editor.is-open) { z-index: 3; }
 
 /* ── 오른쪽 패널 본문 틀(ConversationPanelFrame) ─────────────────────────────────
    머리가 슬롯 전폭에 서므로 본문 외곽도 이 칸의 가용 폭을 채운다. 판정은 창이 아니라 이 칸의 폭이다 — 패널 폭은
