@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import { ChevronGlyph } from "@fleet-console/ui/react";
 import type { SharedFolderEntry, SharedFolderList } from "../shared/shared-folder.js";
 import type { Objective } from "../shared/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { absolute, bytesLabel, relative, useNow } from "./result-content.js";
+import { absolute, bytesLabel, groupSharedFolderEntries, relative, sharedFolderPreviewable, useNow } from "./result-content.js";
 import { openSharedFolderWindow } from "./result-window.js";
 import { sharedFileUrl, sharedListUrl } from "./shared-folder-url.js";
 
@@ -35,22 +36,25 @@ export function useSharedFolder(objective: Objective, open: boolean): { readonly
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const folderOf = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
 
-/** 평면 목록 몸통 — 증거 텍스트 행 문법(`.objectives-result-row`)을 그대로 쓴다. */
+/** 형식별 목록 — 증거 묶음의 접기·행 문법을 데스크톱과 폰에서 함께 쓴다. */
 export function SharedFolderRows({ objective, t, language, state }: {
   readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale;
   readonly state: { readonly list: SharedFolderList | null; readonly failed: boolean };
 }) {
   const now = useNow();
+  const bodyId = useId();
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [imagesAll, setImagesAll] = useState(false);
   const { list, failed } = state;
   if (failed) return <p className="objectives-shared-note" role="status">{t("objectives.shared.failed")}</p>;
   if (!list) return <p className="objectives-shared-note" role="status">{t("objectives.shared.loading")}</p>;
   if (list.entries.length === 0) return <p className="objectives-shared-note" role="status">{t("objectives.shared.empty")}</p>;
-  const view = (entry: SharedFolderEntry, opener: HTMLElement | null) => openSharedFolderWindow(objective.id, entry, opener);
-  return <>
-    {list.entries.map((entry) => {
+  const groups = groupSharedFolderEntries(list.entries);
+  const view = (entry: SharedFolderEntry, opener: HTMLElement | null) => openSharedFolderWindow(objective.id, list.entries, entry.path, opener);
+  const row = (entry: SharedFolderEntry) => {
       const name = basename(entry.path);
       const folder = folderOf(entry.path);
-      const previewable = entry.kind !== "file";
+      const previewable = sharedFolderPreviewable(entry);
       return <div key={entry.path} className={`objectives-result-row${previewable ? " is-button" : ""}`} onClick={previewable ? (event) => {
         if (event.target instanceof Element && event.target.closest("a, button") || window.getSelection()?.toString()) return;
         view(entry, event.currentTarget.querySelector<HTMLElement>("button.objectives-result-open"));
@@ -64,9 +68,39 @@ export function SharedFolderRows({ objective, t, language, state }: {
           ? <button type="button" className="objectives-result-open" aria-label={t("objectives.shared.openAria", { name: entry.path })} onClick={(event) => view(entry, event.currentTarget)}>{t("objectives.shared.open")}</button>
           : <a className="objectives-result-open" href={sharedFileUrl(objective.id, entry.path, true)} download aria-label={t("objectives.shared.downloadAria", { name: entry.path })}>{t("objectives.shared.download")}</a>}
       </div>;
+  };
+  return <div className="objectives-results objectives-shared-groups">
+    {groups.map((group) => {
+      const open = !collapsed.has(group.id);
+      const id = `${bodyId}-${group.id}`;
+      return <section key={group.id} className="objectives-result-group">
+        <div className="objectives-result-group-bar"><button type="button" className="objectives-result-group-head" aria-expanded={open} aria-controls={id} onClick={() => setCollapsed((current) => {
+          const next = new Set(current);
+          if (next.has(group.id)) next.delete(group.id); else next.add(group.id);
+          return next;
+        })}>
+          <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph direction="right" /></span>
+          <span className="objectives-result-mission-title">{t(`objectives.shared.group.${group.id}`)}</span>
+          <span className="objectives-result-group-count">{group.entries.length}</span>
+        </button></div>
+        <div id={id} hidden={!open}>
+          {open ? <div className="objectives-result-group-body">
+            {group.id === "image" ? <>
+              <div className="objectives-shared-grid">{group.entries.slice(0, imagesAll ? undefined : 6).map((entry) => <div key={entry.path} className="objectives-result-thumb" title={entry.path}>
+                {sharedFolderPreviewable(entry)
+                  ? <button type="button" className="objectives-result-thumb-hit" aria-label={t("objectives.shared.openAria", { name: entry.path })} onClick={(event) => view(entry, event.currentTarget)}><span className="objectives-result-img">{entry.kind === "image" ? <img src={sharedFileUrl(objective.id, entry.path)} alt="" loading="lazy" draggable={false} /> : <DocGlyph />}</span></button>
+                  : <a className="objectives-result-thumb-hit" href={sharedFileUrl(objective.id, entry.path, true)} download aria-label={t("objectives.shared.downloadAria", { name: entry.path })}><span className="objectives-result-img"><FileGlyph /></span></a>}
+                <span className="objectives-result-name">{basename(entry.path)}</span>
+                {folderOf(entry.path) ? <span className="objectives-result-sub objectives-shared-dir">{folderOf(entry.path)}</span> : null}
+              </div>)}</div>
+              {group.entries.length > 6 ? <button type="button" className="objectives-shared-more" aria-expanded={imagesAll} onClick={() => setImagesAll((current) => !current)}>{imagesAll ? t("objectives.shared.showLess") : t("objectives.shared.showMore", { count: group.entries.length - 6 })}</button> : null}
+            </> : group.entries.map(row)}
+          </div> : null}
+        </div>
+      </section>;
     })}
     {list.truncated ? <p className="objectives-shared-note" role="status">{t("objectives.shared.truncated")}</p> : null}
-  </>;
+  </div>;
 }
 
 /** 폰 — 섹션 제목을 눌러 접고 펴는 머리 + 카드. 기본 접힘, 머리에는 개수·배지를 두지 않는다. */
@@ -82,7 +116,7 @@ export function MobileSharedFolder({ objective, t, language }: { readonly object
       </button>
     </h2>
     <div id={bodyId} hidden={!open}>
-      {open ? <div className="objectives-m-results objectives-m-shared"><div className="objectives-results"><section className="objectives-result-group"><div className="objectives-result-group-body"><SharedFolderRows objective={objective} t={t} language={language} state={state} /></div></section></div></div> : null}
+      {open ? <div className="objectives-m-results objectives-m-shared"><SharedFolderRows key={objective.id} objective={objective} t={t} language={language} state={state} /></div> : null}
     </div>
   </>;
 }

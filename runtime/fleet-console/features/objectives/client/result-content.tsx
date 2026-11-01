@@ -4,6 +4,7 @@ import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import type { ObjectiveResult, PrObservation } from "../shared/types.js";
+import type { SharedFolderEntry } from "../shared/shared-folder.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 
@@ -65,6 +66,32 @@ export function bytesLabel(bytes: number): string {
 }
 
 const extension = (name: string) => name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+
+const SHARED_FOLDER_GROUPS = [
+  { id: "image", extensions: ["png", "jpg", "jpeg", "webp", "gif"] },
+  { id: "doc", extensions: ["md", "txt"] },
+  { id: "data", extensions: ["json", "csv"] },
+  { id: "log", extensions: ["log"] },
+  { id: "code", extensions: ["js", "ts", "mjs", "cjs", "jsx", "tsx", "sh", "bash", "py"] },
+  { id: "other", extensions: [] },
+] as const;
+
+function sharedFolderGroupId(entry: SharedFolderEntry): typeof SHARED_FOLDER_GROUPS[number]["id"] {
+  const name = entry.path.split("/").at(-1) ?? "";
+  const ext = name.includes(".") ? extension(name) : "";
+  return SHARED_FOLDER_GROUPS.find((group) => (group.extensions as readonly string[]).includes(ext))?.id ?? "other";
+}
+
+/** 라이브러리와 창의 띠·이전/다음이 같은 형식 순서와 묶음 안 최신순을 쓴다. */
+export function groupSharedFolderEntries(entries: readonly SharedFolderEntry[]) {
+  const sorted = [...entries].sort((a, b) => b.modifiedAt - a.modifiedAt);
+  return SHARED_FOLDER_GROUPS.map((group) => ({ id: group.id, entries: sorted.filter((entry) => sharedFolderGroupId(entry) === group.id) })).filter((group) => group.entries.length > 0);
+}
+
+/** 확장자는 분류만 맡는다. 미리보기는 서버 판정을 따르고, 기타는 내려받기만 허용한다. */
+export function sharedFolderPreviewable(entry: SharedFolderEntry): boolean {
+  return entry.kind !== "file" && sharedFolderGroupId(entry) !== "other";
+}
 
 export function PrRow({ result, t, language, now, missionTag, onView }: { readonly result: PrResult; readonly t: T; readonly language: ConsoleLocale; readonly now: number; readonly missionTag: string; readonly onView?: (opener: HTMLButtonElement) => void }) {
   const observation = result.observation;
@@ -147,7 +174,7 @@ function fencedJson(text: string): string {
   return `${fence}json\n${text}\n${fence}`;
 }
 
-/** `plain` 은 확장자와 무관하게 글자 그대로만 보인다 — 사람이 아닌 쪽이 쓴 공유 폴더 파일을 Markdown 으로 해석하지 않는다. */
+/** `plain` 은 확장자와 무관하게 글자 그대로만 보인다. 서식 보기는 출처와 무관하게 같은 무력화 규칙을 거친다. */
 export function EvidenceTextContent({ t, src, name, plain = false }: { readonly t: T; readonly src: string; readonly name: string; readonly plain?: boolean }) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [loaded, setLoaded] = useState<{ readonly text: string } | { readonly error: string } | null>(null);
