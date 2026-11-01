@@ -23,9 +23,13 @@
 .commodore-routines-menu-meta { color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-routines-menu-meta.is-mono { font-family: var(--font-code); }
 .commodore-routines-menu-task { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; white-space: pre-wrap; user-select: text; }
-.commodore-routines-menu button { display: flex; justify-content: space-between; align-items: baseline; gap: var(--popover-row-gap); width: 100%; border: 0; border-radius: var(--popover-row-radius); padding: 0 var(--popover-row-inline); background: none; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; min-height: var(--popover-row); font-size: var(--popover-font-size); line-height: var(--popover-line-height); letter-spacing: 0; }
+.commodore-routines-menu button { display: flex; align-items: center; gap: var(--popover-row-gap); width: 100%; border: 0; border-radius: var(--popover-row-radius); padding: 0 var(--popover-row-inline); background: none; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; min-height: var(--popover-row); font-size: var(--popover-font-size); line-height: var(--popover-line-height); letter-spacing: 0; }
 .commodore-routines-menu button:hover, .commodore-routines-menu button:focus-visible { background: var(--wash-hover); box-shadow: none; }
 .commodore-routines-menu button.is-danger { color: var(--coral-ink); }
+/* 항목 글리프 — 사령관 우클릭 메뉴(.theater-menu-check)와 같은 16px 칸·popover 잉크. 위험 항목은 이름과 같은 coral(무장 시 반전 글자색)을 따른다. */
+.commodore-routines-menu-glyph { display: grid; place-items: center; flex: none; width: 16px; height: 16px; color: var(--popover-icon-ink); }
+.commodore-routines-menu-glyph svg { display: block; width: 16px; height: 16px; }
+.commodore-routines-menu button.is-danger .commodore-routines-menu-glyph { color: currentColor; }
 .commodore-routines-menu button.is-armed { background: var(--coral); color: var(--surface-panel); }
 .commodore-routines-menu button:disabled { opacity: .5; cursor: default; }
 .commodore-routines-separator { height: var(--popover-divider-width); margin: var(--popover-divider-space); background: var(--popover-divider); flex: none; }
