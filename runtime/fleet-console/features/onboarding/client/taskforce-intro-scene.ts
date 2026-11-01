@@ -135,5 +135,4 @@ export function drawTaskforceIntro(
   k.text(L.step1, 22, 24, stepStyle(1, s1));
   k.text(L.step2, 22, 44, stepStyle(2, s2));
   k.text(L.step3, 22, 64, stepStyle(3, s3));
-  k.tag(L.lab, 590, 22, { size: 10.5, color: c.ink2, a: atTime(t, 0.4) });
 }

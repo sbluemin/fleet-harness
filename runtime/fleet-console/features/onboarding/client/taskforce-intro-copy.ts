@@ -24,7 +24,6 @@ export interface TaskforceIntroCanvasCopy {
   readonly b: string;
   readonly c: string;
   readonly d: string;
-  readonly lab: string;
   readonly step1: string;
   readonly step2: string;
   readonly step3: string;
@@ -69,7 +68,6 @@ const canvasKo: TaskforceIntroCanvasCopy = {
   b: "사령관 B",
   c: "사령관 C",
   d: "사령관 D",
-  lab: "실험 기능",
   step1: "① 주제 하나에 모여",
   step2: "② 함께 판단하고",
   step3: "③ 목표를 세워 진행해요",
@@ -82,7 +80,6 @@ const canvasEn: TaskforceIntroCanvasCopy = {
   b: "Commodore B",
   c: "Commodore C",
   d: "Commodore D",
-  lab: "Experimental",
   step1: "① Gather on one topic",
   step2: "② Judge together",
   step3: "③ Set the objective and proceed",
