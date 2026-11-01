@@ -255,20 +255,6 @@
   border-top: 1px solid var(--hairline);
 }
 .commander-tab--card .commander-row-panel + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
-/* 펼침 머리 한 줄 — 왼쪽 오늘·기한, 세로 구분선, 오른쪽 글자 탭. 줄 폭이 좁으면 켜지지 않은 일정 단추는 아이콘만 남기고,
-   그래도 모자라면 탭 글자가 줄임표로 줄어든다. 질의 기준은 이 줄이라 아래 본문의 폭 규칙은 그대로다. */
-.commander-row-panel-bar { container-type: inline-size; display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; }
-.commander-row-panel-tools { display: flex; flex: none; min-width: 0; }
-.commander-row-panel-bar .objectives-tab-glyph { padding-inline: 7px; }
-.commander-row-panel-divider { flex: none; width: 1px; height: 14px; background: var(--hairline); }
-.commander-row-panel-tabs { display: flex; gap: 2px; min-width: 0; }
-.commander-row-panel-bar .commander-row-panel-tabs .right-rail-ico.is-text { flex-shrink: 1; min-width: 0; padding-inline: 9px; }
-@container (max-width: 300px) {
-  .commander-row-panel-bar .objectives-tab-glyph:not(.is-on) > span { display: none; }
-}
-.commander-tab--card .commander-row-panel-tabs .right-rail-ico-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 카드 면과 같은 다크 켜짐 면은 카드에서 보이지 않는다 — 선택 워시로 구분한다. */
-:root[data-view-mode="desktop"]:not([data-theme="light"]) .commander-tab--card .commander-row-panel-tabs .right-rail-ico.is-text.is-active { background: var(--wash-selected); }
 .commander-row-panel-empty { margin: 0; padding: 8px 4px; color: var(--text-tertiary); font-size: var(--t-sm); text-align: center; }
 
 /* 행 글리프(우측 카드) — B안: 쉬는 행에서는 세 글리프를 모두 숨기고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만

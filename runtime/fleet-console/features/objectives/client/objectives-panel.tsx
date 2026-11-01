@@ -163,29 +163,25 @@ export function ObjectiveScheduleRow({ objective, language }: { readonly objecti
 
 /**
  * 우측 작업 탭의 행 아래 펼침 패널 — 행의 글리프(목표·구성원·라이브러리)가 고른 내용 하나만 그린다.
- * 글리프 모드(`tab` 지정)에서는 탭 줄을 두지 않고, 「오늘까지·기한」은 목표 내용 맨 위에 중앙 정렬로 둔다.
- * 기한 날짜는 행 왼쪽에 그대로 있다. `tab`을 주지 않으면 기존 탭 줄 모드로 그린다.
+ * 탭 줄은 두지 않고, 「오늘까지·기한」은 목표 내용 맨 위에 중앙 정렬로 둔다. 기한 날짜는 행 왼쪽에 그대로 있다.
+ * 행이 탭 상태를 쥐고, 펼침 안의 길(결정·임무·결과물로 가기)도 그 행 글리프를 바꾼다.
  */
-export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab: glyphTab, onGlyphTab }: {
+export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab, onGlyphTab }: {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly language: "en" | "ko";
   /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 있는 항목만 연다. */
   readonly onOpenObjective: (objectiveId: string) => void;
-  /** 행 글리프가 고른 내용 — 주면 탭 줄 없이 그 내용만 그린다. */
-  readonly tab?: DetailTab;
+  /** 행 글리프가 고른 내용. */
+  readonly tab: DetailTab;
   /** 내용 안의 길(결정·임무·결과물로 가기)이 탭을 바꿀 때 행 글리프에 알린다. */
-  readonly onGlyphTab?: (tab: DetailTab) => void;
+  readonly onGlyphTab: (tab: DetailTab) => void;
 }) {
   const t = getT(language);
   const board = useObjectiveBoard(commodoreId);
   const objectiveRecords = useObjectiveSummaries();
   const api = objectivesApi();
   useEffect(() => { if (api !== null) void loadBoard(api, commodoreId); }, [api, commodoreId]);
-  const [localTab, setLocalTab] = useState<DetailTab>("goal");
-  // 글리프 모드에서는 행이 탭 상태를 쥐고, 펼침 안의 길도 그 행 글리프를 바꾼다.
-  const tab = glyphTab ?? localTab;
-  const setTab = onGlyphTab ?? setLocalTab;
   const [collapsed, setCollapsed] = useState<Readonly<Record<string, boolean>>>({});
   const [groupCollapsed, setGroupCollapsed] = useState<Readonly<Record<string, boolean>>>({});
   const detailRef = useRef<HTMLElement | null>(null);
@@ -218,10 +214,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
   if (objective === null) return <p className="commander-row-panel-empty" role="status">{t("objectives.results.window.empty")}</p>;
   // 지휘관이 일하는 동안 카드는 잠긴다 — 편집 대신 「중단」 하나만 남긴다(서버도 같은 기준으로 거절한다).
   const busy = !objective.done && WORKING.has(objectiveRecordState(objective.id));
-  const decision = !!objective.decisionRequest && !objective.done;
-  const unseen = objective.missions.some((mission) => unseenRecords(mission) > 0);
-  // 글리프 모드 — 탭 줄 없이 고른 내용만. 「오늘까지·기한」은 목표 내용 맨 위에 중앙 정렬로 둔다.
-  if (glyphTab !== undefined) return <>
+  return <>
     {tab === "goal" ? <div className="commander-row-panel-schedule"><ObjectiveScheduleRow objective={objective} language={language} /></div> : null}
     <ObjectiveDetail
       objective={objective}
@@ -237,53 +230,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
       busy={busy}
       request={request}
       tab={tab}
-      onTab={setTab}
-      sectionOpen={(key) => key in collapsed ? !collapsed[key] : false}
-      onToggleSection={(key) => setCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
-      groupOpen={(key) => key in groupCollapsed ? !groupCollapsed[key] : false}
-      onToggleGroup={(key) => setGroupCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
-      onOpenGroup={(key) => setGroupCollapsed((current) => ({ ...current, [key]: false }))}
-      highlightMission={null}
-      detailRef={detailRef}
-      onToggleEdge={(from, to, linked) => toggleEdge(objective, from, to, linked)}
-      onOpenObjective={onOpenObjective}
-    />
-  </>;
-  return <>
-    {/* 오늘·기한과 글자 탭을 한 줄에 둔다 — 따로 한 행을 차지하지 않게 왼쪽에 일정, 구분선, 오른쪽에 탭이다. */}
-    <div className="commander-row-panel-bar">
-    <div className="commander-row-panel-tools"><ObjectiveScheduleRow objective={objective} language={language} /></div>
-    <span className="commander-row-panel-divider" aria-hidden="true" />
-    <div className="commander-row-panel-tabs" role="tablist" aria-label={t("objectives.panel.title")}>
-      {DETAIL_TABS.map((id) => {
-        const dot = id === "goal" && decision ? { tone: "attention", label: t("objectives.tabs.decisionDot") }
-          : id === "crew" && unseen ? { tone: "unseen", label: t("objectives.tabs.unseenDot") } : null;
-        const title = t(`objectives.tabs.${id}` as Parameters<typeof t>[0]);
-        return (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} aria-label={dot ? `${title} · ${dot.label}` : title}
-            className={`right-rail-ico is-text${tab === id ? " is-active" : ""}`} onClick={() => setTab(id)}>
-            <span className="right-rail-ico-label">{title}</span>
-            {dot ? <span className={`right-rail-ico-dot is-${dot.tone}`} aria-hidden="true" /> : null}
-          </button>
-        );
-      })}
-    </div>
-    </div>
-    <ObjectiveDetail
-      objective={objective}
-      t={t}
-      language={language}
-      call={call}
-      toast={toast}
-      modeLabel={modeLabel}
-      stateLabel={stateLabel}
-      objectiveRecordTitle={objectiveRecordTitle}
-      objectiveRecordState={objectiveRecordState}
-      objectiveRecordOwnState={objectiveRecordOwnState}
-      busy={busy}
-      request={request}
-      tab={tab}
-      onTab={setTab}
+      onTab={onGlyphTab}
       sectionOpen={(key) => key in collapsed ? !collapsed[key] : false}
       onToggleSection={(key) => setCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
       groupOpen={(key) => key in groupCollapsed ? !groupCollapsed[key] : false}
