@@ -4,7 +4,6 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 
 
 import { takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
-import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
 import { fetchGroups, fetchObjectiveRecords, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
 import { afterBootLane, bootLanePending, openBootLane, startBootSnapshots } from "../integration/boot-schedule.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
@@ -20,9 +19,7 @@ import type { ArchiveOutcome } from "../integration/objective-actions.js";
 import { ApiError, undoObjectiveArchive } from "../../../../features/execution/client/objective-records.js";
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
-import { OnboardingHost } from "../../../../features/onboarding/client/onboarding-host.js";
 import { FleetAtAGlanceHost } from "../../../../features/onboarding/client/fleet-at-a-glance.js";
-import { CORE_ONBOARDING } from "../integration/onboarding.js";
 import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
@@ -73,13 +70,6 @@ const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 const UNDO_WINDOW_MS = 8_000;
 const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
 
-// 온보딩 엔진이 코어 크롬에 닿는 창구 — 레일 진입점 버튼(RailIcon이 세우는 #rail-tab-<id>)과 단축키 표기.
-const ONBOARDING_PORTS = {
-  railEntryElement: (railEntryId: string) => document.getElementById(`rail-tab-${railEntryId}`),
-  railEntryHintAnchor: () => null,
-  railEntryHintDoor: (element: HTMLElement) => element,
-  shortcutLabel: (commandId: string) => shortcutCommandLabel(commandId),
-} as const;
 
 export function App() {
   const settings = useGlobalSettingsStore();
@@ -134,18 +124,6 @@ function ConnectedApp() {
     document.documentElement.lang = consoleLocale;
   }, [consoleLocale]);
 
-  const [terminalFocused, setTerminalFocused] = useState(false);
-  useEffect(() => {
-    const update = () => setTerminalFocused(Boolean(document.activeElement?.closest(".terminal-stage")));
-    const afterFocus = () => queueMicrotask(update);
-    update();
-    document.addEventListener("focusin", update);
-    document.addEventListener("focusout", afterFocus);
-    return () => {
-      document.removeEventListener("focusin", update);
-      document.removeEventListener("focusout", afterFocus);
-    };
-  }, []);
   // 테마 극성(다크↔라이트) 전환 1회성 전역 안내 — 이전에는 터미널 패널마다 힌트가 떠서 전환 한 번에
   // 패널 수만큼 닫아야 했다. 실행 중 CLI의 내부 테마는 콘솔이 강제할 수 없으므로 안내는 유지하되,
   // 콘솔 chrome이 단 하나의 토스트로 발화한다. 기준선은 마운트 첫 실행에 심는다 — main.tsx가 주입/저장
@@ -623,14 +601,7 @@ function ConnectedApp() {
         <TheaterInboxHost />
         <WhatsNewModal state={state} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
-        <FleetAtAGlanceHost />
-        <OnboardingHost
-          toursSuspended={terminalFocused || mobileLayout || state.fleetAtAGlanceOpen}
-          core={CORE_ONBOARDING}
-          plugins={registry.onboarding}
-          language={consoleLocale}
-          ports={ONBOARDING_PORTS}
-        />
+          <FleetAtAGlanceHost />
         <ControlCurtain />
         <ToastHost>
           <CommodoreDeletionHost />

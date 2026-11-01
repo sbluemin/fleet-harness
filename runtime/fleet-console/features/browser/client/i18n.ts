@@ -108,9 +108,6 @@ export const browserEn = {
   "terminal.browser.import.cookiesOnly": "Imported {count} cookies, but history could not be read. Close Chrome and try again.",
   "terminal.browser.import.chromeRequired": "Google Chrome must be installed on this computer to import from it.",
   "terminal.browser.import.noProfiles": "No Google Chrome profile was found on this computer.",
-  "terminal.browser.onboarding.tour.step1Title": "The globe opens the Fleet Browser",
-  "terminal.browser.onboarding.tour.step1Body": "Open it here or with Alt+B. The agent drives the same tabs you see, so you can watch it work, take over, annotate a page and paste the screenshot into this Session.",
-  "terminal.browser.onboarding.tour.step1Example": "Open Hacker News in the Fleet Browser and tell me the top three stories.",
   "terminal.chooser.noObjective": "This chat has no Fleet Browser",
   "terminal.chooser.sessionNotStarted": "This chat's session hasn't started yet",
 };
@@ -221,9 +218,6 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.import.cookiesOnly": "쿠키 {count}개를 가져왔지만 방문 기록은 읽지 못했어요. Chrome을 닫고 다시 시도해 주세요.",
   "terminal.browser.import.chromeRequired": "이 컴퓨터에 Google Chrome이 설치돼 있어야 가져올 수 있어요.",
   "terminal.browser.import.noProfiles": "이 컴퓨터에서 Google Chrome 프로필을 찾지 못했어요.",
-  "terminal.browser.onboarding.tour.step1Title": "이 지구본으로 플릿 브라우저를 열어요",
-  "terminal.browser.onboarding.tour.step1Body": "여기를 누르거나 Alt+B를 눌러 열어요. 에이전트가 같은 탭을 조작해서 작업을 지켜보거나 직접 이어받을 수 있고, 페이지에 주석을 달아 스크린샷을 이 Session에 붙여넣을 수도 있어요.",
-  "terminal.browser.onboarding.tour.step1Example": "플릿 브라우저로 Hacker News를 열고 상위 글 3개만 알려줘",
   "terminal.chooser.noObjective": "이 채팅에는 플릿 브라우저가 없어요",
   "terminal.chooser.sessionNotStarted": "이 채팅의 세션이 아직 시작되지 않았어요",
 };

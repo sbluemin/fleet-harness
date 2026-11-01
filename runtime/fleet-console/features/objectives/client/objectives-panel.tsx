@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { MenuCheckGlyph, useViewportFit } from "@fleet-console/ui/react";
-import { onboardingBoundary } from "../../onboarding/shared/anchors.js";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
@@ -438,7 +437,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           <span className="objectives-pick-label">{t("objectives.pick.label")}</span>
           {switcher}
         </div>
-        <div className="objectives-pick" data-objectives-tour="pick">
+        <div className="objectives-pick">
           <h5>{t("objectives.none.title")}</h5>
           <p>{t("objectives.none.body")}</p>
           <div className="objectives-pick-shortcuts">
@@ -454,7 +453,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           <span className="objectives-pick-label">{t("objectives.pick.label")}</span>
           {switcher}
         </div>
-        <div className="objectives-pick" data-objectives-tour="pick">
+        <div className="objectives-pick">
           <h5>{t("objectives.pick.title")}</h5>
           {/* 트리가 사이드바에 없으면 「사이드바에서 고르라」는 말이 틀린다 — 목록을 여는 입구를 둔다. */}
           <p>{switcher
@@ -501,10 +500,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     );
   }
   return (
-    // 온보딩 경계(SDK 계약) — 투어 카드가 패널을 가리지 않고 패널 옆, 짚는 구획 높이에 선다(레일이든 넓은 화면이든
-    // 자리가 없으면 앵커 기준 배치로 돌아간다).
     <ObjectiveLinkOpenProvider value={ctx.openLink ?? null}>
-    <div className="objectives-container" {...onboardingBoundary("anchor")} onPointerDownCapture={(event) => {
+    <div className="objectives-container" onPointerDownCapture={(event) => {
       if (highlightMission && !(event.target as Element).closest(`[data-mission-id="${CSS.escape(highlightMission)}"]`)) {
         if (highlightTimer.current) clearTimeout(highlightTimer.current);
         highlightTimer.current = null;
@@ -1357,7 +1354,6 @@ function BriefSection({ objective, t, language, touchable, call, origin }: { obj
           메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다 — 끌어오는 동안은 자리를 밀지 않는 겹판이 선다. */}
       <div
         className="objectives-group objectives-note-group"
-        data-objectives-tour="brief"
         onFocus={() => setBriefActive(true)}
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setBriefActive(false); }}
         onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
@@ -1615,7 +1611,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
           (추가는 끝에 새 줄) 사람이 줄마다 승인·거절하거나 어노테이션을 달아 다시 구상하게 한다. 제안이 남아 있으면 개시·스티어링은 잠긴다.
           마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께 충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져
           「미확인」으로 돌아간다. 모든 임무와 기준이 끝나면 저절로 검토 대기다. */}
-      <div className="objectives-group objectives-criteria-group" data-objectives-tour="criteria">
+      <div className="objectives-group objectives-criteria-group">
         <div className="objectives-criteria-head" ref={criteriaHeadRef}>
           <SectionHead
             glyph={<CriteriaGlyph />}
@@ -1743,7 +1739,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   // 임무 섹션 — 구성원 탭 맨 아래. 섹션 머리(글리프 · 「임무」 · 안 읽은 점 · 상태 셈 | 형상 스위치 · 크게 보기), 허용 대기 줄, 그래프,
   // 그 아래 「+ 임무 추가」. 임무 목록은 없다 — 조작은 그래프 팝업이 맡으므로 머리는 접히지 않는다.
   const unseenAny = objective.missions.some((mission) => unseenRecords(mission) > 0);
-  const sMissions = <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
+  const sMissions = <div className="objectives-group objectives-missions-group">
     <SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.tabs.unseenDot")} /> : null}{renderCounts()}</>}
       {...(objective.missions.length ? { actions: graphTools } : {})} />
     {missionAttention}

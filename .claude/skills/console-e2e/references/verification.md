@@ -125,13 +125,13 @@ Report which of these inputs ran and which remain unverified. Promote one into t
 
 ## Fresh-window chrome preflight
 
-Use this before a chrome-changing scenario in a fresh isolated Console, unless the onboarding interaction itself is under test:
+Use this before a chrome-changing scenario in a fresh isolated Console, unless the commissioning interaction itself is under test:
 
 1. Finish browser/context setup, including video recording, before establishing the scenario baseline. `agent-browser record start` can recreate the page and drop page instrumentation. After recording setup or a reload, re-establish and verify pre-navigation diagnostics and take a fresh snapshot; do not reuse the earlier dismissal or refs. If the driver cannot restore diagnostics, use a fresh instrumented session without recording and disclose the recording limitation.
-2. Seed onboarding before the first navigation through the [setup onboarding seed](setup.md#first-load-onboarding-state); do not dismiss seeded layers through the UI. Assert no visible `[aria-modal="true"]`, `[data-feature-tour-id]`, or `.onboarding-hint-close` remains, and recheck after opening panels.
-3. A layer that still appears after seeding is a finding: record which one and its key gap before dismissing it through its real control (**Skip**, **Dismiss this hint**, or Escape where supported).
+2. Seed commissioning before the first navigation through the [setup commissioning seed](setup.md#first-load-commissioning-state); do not dismiss the seeded layer through the UI. Assert no visible `[aria-modal="true"]` remains, and recheck after opening panels.
+3. A layer that still appears after seeding is a finding: record which one and its key gap before dismissing it through its real control (**Skip**, or Escape where supported).
 4. Establish only the Objective presentation the scenario needs. Open the relevant Objectives from the sidebar or the new session screen, then confirm the conversation stage shows that Objective. API-created records alone are not an open conversation.
-5. With the route/layout settled and no visible onboarding layer, capture the baseline, refresh the target ref, and click once. CLI click completion is not transition completion. Then inspect for a newly triggered tour before continuing. Verify the inverse with the same state/transition checks.
+5. With the route/layout settled and no visible first-run layer, capture the baseline, refresh the target ref, and click once. CLI click completion is not transition completion. Then inspect for a newly triggered dialog before continuing. Verify the inverse with the same state/transition checks.
 
 If the click still does not apply, preserve the before/after snapshot, visible overlays, actual pointer target/event sequence, Objective presentation, and transition state before changing them. Report a reproduced product defect separately; do not turn an unproven guard or swallowed click into a required workaround. A clean control or a recording-induced reload does not establish the cause of an earlier, uninstrumented failure.
 

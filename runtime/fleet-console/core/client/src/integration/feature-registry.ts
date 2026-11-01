@@ -9,7 +9,6 @@ import { openMobileNewSession } from "./store.js";
 import type { CommodoreClientHost } from "../../../../features/commodore/shared/contracts/client.js";
 import { consoleExecution, installConsoleExecution } from "./execution.js";
 import { createContext, useContext, useMemo } from "react";
-import type { OnboardingContribution } from "../../../../features/onboarding/shared/types.js";
 import type { ExpandedSurfaceDescriptor } from "../../../../features/workspace/shared/expanded-surface.js";
 import type { FloatingWidgetDescriptor } from "../../../../features/workspace/shared/floating.js";
 import type { NotificationKindDescriptor } from "../../../../features/execution/shared/notifications.js";
@@ -78,8 +77,6 @@ export interface FeatureRegistry {
   readonly objectiveRecordClusters: ObjectiveClusterSource;
   /** 보관함 시트의 플러그인 칸 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly archiveSections: readonly ArchiveSectionDescriptor[];
-  /** 플러그인의 온보딩 기여 — 엔진은 코어 기능의 온보딩 다음 순서로 보인다. */
-  readonly onboarding: readonly OnboardingContribution[];
 }
 
 // 모듈 평가 때 createFeatureRegistry 가 돈다 — 그 안에서 읽는 상수는 이 줄보다 위에 있어야 한다(TDZ).
@@ -166,7 +163,6 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
     providers,
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),
     conversationSurfaces: providers.flatMap((plugin) => (plugin.conversationSurfaces ?? []).map((descriptor) => ({ ...descriptor, pluginId: plugin.id ?? undefined }))),
-    onboarding: providers.flatMap((plugin) => (plugin.onboarding ? [plugin.onboarding] : [])),
     objectiveRecordKinds: providers.flatMap((plugin) => plugin.objectiveRecordKinds ?? []),
     settingsSections: providers.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: providers.flatMap((plugin) => plugin.notificationKinds ?? []),

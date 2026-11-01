@@ -428,9 +428,6 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   const { terminalPending } = useViewSwitchState(context.objectiveId);
   const chatMode = context.objectiveRecord.chatMode === true;
   const groupConversation = useHasGroupConversation(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
-  // 투어 앵커는 사용자가 이 마운트에서 직접 채팅 뷰로 넘어온 뒤에만 선다 — 본문의 판정과 같다.
-  const wasChatModeAtMountRef = React.useRef(chatMode);
-  const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
 
   const openTerminal = React.useCallback(async () => {
     setTerminalHandoff(context.objectiveId, { pending: true, error: "none" });
@@ -461,7 +458,6 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
       pressed={browserOpen}
       disabled={engineMissing}
       agent={using.browser}
-      {...(engineMissing ? {} : { tourAnchor: "browser" })}
       onClick={() => { toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
     >
       <CaptionBrowserUseGlyph />
@@ -477,7 +473,6 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
       label={terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminalAria")}
       disabled={terminalPending}
       pending={terminalPending}
-      {...(chatOpenedHere ? { tourAnchor: "terminal" } : {})}
       onClick={() => { void openTerminal(); }}
     >
       <CaptionTerminalGlyph />
@@ -699,11 +694,6 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
     // 언마운트-폐기와 등가).
     if (sessionStatus === "dormant" || chatMode) setChatPromptOpen(context.objectiveId, false);
   }, [context.objectiveId, sessionStatus, chatMode]);
-  // 피처 투어 앵커는 이 마운트에서 사용자가 직접 채팅 뷰로 전환한 뒤에만 세운다 — chatMode는
-  // payload에 영속되므로 마운트 시점부터 앵커를 세우면 리로드 직후 캔버스에서 투어가 먼저
-  // 떠버린다. "직접 연 순간에만"이 이 투어의 판정이다.
-  const wasChatModeAtMountRef = React.useRef(chatMode);
-  const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
   // 주소를 누르면 어디서 열지 먼저 묻는다 — CLI(터미널이 찾아낸 링크)와 채팅(마크다운 앵커)이 같은 카드를 쓴다.
   // 수식 없는 왼클릭은 3행 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다.
   // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통). 가운데 칸의 그룹 대화도 같은 길을 쓴다(objective-links).
@@ -724,7 +714,7 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
 
   if (chatMode) {
     const chatView = (
-      <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} tourAnchors={chatOpenedHere} fileLinkError={fileLinkFailure === null ? null
+      <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} fileLinkError={fileLinkFailure === null ? null
         : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} /></OpenUINavigationContext.Provider>
     );
     return (

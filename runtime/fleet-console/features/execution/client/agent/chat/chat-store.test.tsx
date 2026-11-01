@@ -283,7 +283,7 @@ describe("AgentChatView history auto-fold", () => {
     const context = { objectiveId: "op-fold", language: "en", bodyLive: true, objectiveRecord: { id: "op-fold", payload: {} }, runtimeState: null } as never;
     act(() => {
       root!.render(createElement(Fragment, null,
-        createElement(AgentChatView, { context, tourAnchors: false }),
+        createElement(AgentChatView, { context }),
         createElement(HistoryFoldButton, { language: "en", caption: true }),
       ));
     });

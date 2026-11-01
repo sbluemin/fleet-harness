@@ -1,24 +1,23 @@
-// Mark first-load onboarding as seen in an owned isolated Console before the first navigation, and optionally
-// lay down the deputy fixtures a scenario needs.
+// Mark the first-run layers as seen in an owned isolated Console before the first navigation,
+// and optionally lay down the deputy fixtures a scenario needs. (Feature tours and entry hints are removed;
+// the commissioning card and the "Fleet at a glance" first-run popup are the layers left.)
 //
-// Keys come from the current source, not a copied list: the core contributions, the feature registry's
-// contributions (read from the registry the Console itself composes), the seen-store key rules, and the seen keys
-// that live outside any contribution. Run it with the Console package's tsx so the TypeScript sources resolve:
+// Keys come from the current source, not a copied list: COMMISSIONING_SEEN_KEY in core's store, plus the
+// first-run keys in features/onboarding/client/seen-store.ts. Run it
+// with the Console package's tsx so the TypeScript sources resolve:
 //
 //   pnpm --dir <worktree>/runtime/fleet-console exec tsx \
 //     <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts \
 //     --console-dir "$E2E_DIR/console" [--keep <key> ...] \
 //     [--deputy <id> ...] [--dry-run]
 //
-// --keep leaves a key (or every key with that prefix, e.g. `objectives.`) unseeded, removing it if already stored, when that layer is under test.
+// --keep leaves a key (or every key with that prefix) unseeded, removing it if already stored, when that layer is under test.
 // --deputy turns on a scuttlebutt deputy and marks the deputy introduction as shown, through the Scuttlebutt settings route.
 // Only loopback writes go to the owned Console named by its lock; no token is read or printed.
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire, register } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-import type { OnboardingContribution } from "../../../../runtime/fleet-console/features/onboarding/shared/types.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const consoleSrc = join(root, "runtime/fleet-console");
@@ -35,50 +34,22 @@ const keep = repeated("--keep");
 const deputies = repeated("--deputy");
 const consoleDir = option("--console-dir");
 if (args.some((arg) => ["--wiki", "--theater", "--commodore"].includes(arg))) throw new Error("Wiki fixtures have been retired.");
-const dryRun = args.includes("--dry-run");
+const dryRun = args.some((arg) => arg === "--dry-run");
 if (!consoleDir && !dryRun) throw new Error("Pass --console-dir <owned FLEET_CONSOLE_DATA_DIR> or --dry-run.");
 
-// Feature client modules import their stylesheets and some compile JSX in classic mode under tsx; neither
-// matters for reading their exports, so stylesheets resolve to an empty module and React is made global.
+// Core client modules import stylesheets; that matters for reading their exports under tsx,
+// so stylesheets resolve to an empty module and React is made global.
 register(`data:text/javascript,${encodeURIComponent(`export async function resolve(specifier, context, next) {
   return /\\.css(\\?.*)?$/.test(specifier) ? { url: "data:text/javascript,export default {}", shortCircuit: true } : next(specifier, context);
 }`)}`);
 (globalThis as { React?: unknown }).React ??= (await load(createRequire(join(consoleSrc, "package.json")).resolve("react"))).default;
 
-const { CORE_ONBOARDING } = await load(join(consoleSrc, "core/client/src/integration/onboarding.ts"));
-const { EFFORT_CONFIRM_TIP_SEEN_KEY, FLEET_AT_A_GLANCE_SEEN_KEY, hintSeenKey, tourSeenKey } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
 const { COMMISSIONING_SEEN_KEY } = await load(join(consoleSrc, "core/client/src/integration/store.ts"));
+const { EFFORT_CONFIRM_TIP_SEEN_KEY, FLEET_AT_A_GLANCE_SEEN_KEY } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
 
-// The app passes CORE_ONBOARDING and the feature registry's `onboarding` (core/client/src/app/app.tsx). The registry
-// module itself pulls browser-only libraries (xterm), so read every `export const <name>: OnboardingContribution`
-// under features/*/client instead; contributions CORE_ONBOARDING already holds are not added twice.
-const contributions: OnboardingContribution[] = [...CORE_ONBOARDING];
-const declaration = /export const (\w+): OnboardingContribution\b/g;
-const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-  entry.isDirectory() ? walk(join(dir, entry.name)) : /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [join(dir, entry.name)] : []);
-for (const feature of readdirSync(featuresDir)) {
-  const clientDir = join(featuresDir, feature, "client");
-  if (!existsSync(clientDir)) continue;
-  for (const file of walk(clientDir)) {
-    const names = [...readFileSync(file, "utf8").matchAll(declaration)].map((match) => match[1]!);
-    if (names.length === 0) continue;
-    const module = await load(file) as Record<string, OnboardingContribution | undefined>;
-    for (const name of names) {
-      const contribution = module[name];
-      if (!contribution) throw new Error(`${file} declares ${name} but does not export it.`);
-      if (!contributions.includes(contribution)) contributions.push(contribution);
-    }
-  }
-}
-
-// Seen keys stored outside any contribution: first-run commissioning, the retired effort-confirm tip, and the
-// "Fleet at a glance" first-run popup. A new key stored outside a contribution needs adding here; --dry-run shows what is covered.
+// First-run seen keys: the commissioning card, the retired effort-confirm tip, and the
+// "Fleet at a glance" first-run popup. A new first-run key needs adding here; --dry-run shows what is covered.
 const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string, FLEET_AT_A_GLANCE_SEEN_KEY as string];
-for (const contribution of contributions) {
-  const hint = hintSeenKey(contribution);
-  if (hint) derived.push(hint);
-  for (const tour of contribution.tours ?? []) derived.push(tourSeenKey(tour.id, "spotlight"), tourSeenKey(tour.id, "walkthrough"));
-}
 const kept = (key: string) => keep.some((entry) => key === entry || (entry.endsWith(".") && key.startsWith(entry)));
 const keys = [...new Set(derived)].filter((key) => !kept(key));
 

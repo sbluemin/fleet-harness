@@ -54,7 +54,6 @@ const QUOTA_PANEL_PATH = new URL("../features/quota/client/quota-panel.tsx", imp
 const FILE_EXPLORER_CSS_PATH = new URL("../features/file-explorer/client/explorer.css", import.meta.url);
 const REPOSITORY_CSS_PATH = new URL("../features/repository/client/repository.css", import.meta.url);
 const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
-const ONBOARDING_CSS_PATH = new URL("../features/onboarding/client/onboarding.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../features/workspace/shared/rail.ts", import.meta.url);
 const SDK_CAPTION_ACTIONS_PATH = new URL("../features/workspace/client/components/caption-actions.tsx", import.meta.url);
 const OWNED_SOURCES = [
@@ -1386,9 +1385,6 @@ describe("Console core design contract", () => {
       ".directory-browser-card",
       ".add-host-card",
     ]) paintsPopoverFace(components, selector, "--dialog-face");
-    // 온보딩 엔진의 두 표면(엔트리 힌트·투어 카드)은 엔진 시트가 소유하고 같은 채널 계약을 진다.
-    const onboardingCss = externalSource(ONBOARDING_CSS_PATH);
-    for (const selector of [".onboarding-hint", ".feature-tour-card"]) paintsPopoverFace(onboardingCss, selector);
     // 브레드크럼 스위처 메뉴는 브레드크럼·밴드와 함께 퇴역했다.
     expect(layout).not.toContain(".command-band-menu");
     // Activity Rail의 설정 메뉴는 해체됐다 — 레일에는 포털 팝업 재질이 더는 없다.

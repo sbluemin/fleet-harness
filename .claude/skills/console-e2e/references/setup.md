@@ -54,7 +54,7 @@ The wrapper gives the host and every child it starts `$E2E_DIR/home` as `HOME`, 
 
 ### Keep the real home out
 
-The Console Shell surface (the toolbar **Shell** button) starts the host's `$SHELL` with the host's `HOME`. A host that inherits the real home therefore writes the user's shell history and reads their startup files. The same holds for measurement commands such as `zsh -i` or a shell startup timing. Earlier runs mixed test commands into the real `~/.zsh_history` this way. Run every owned host, every pnpm or `tsx` helper (such as the onboarding seed below, because pnpm and `tsx` keep caches and state under `HOME`), and every command that starts a shell or an agent CLI through [`scripts/isolated-env.mjs`](../scripts/isolated-env.mjs), with the same `--run-dir`. The exceptions bullet below lists the helpers that run outside it.
+The Console Shell surface (the toolbar **Shell** button) starts the host's `$SHELL` with the host's `HOME`. A host that inherits the real home therefore writes the user's shell history and reads their startup files. The same holds for measurement commands such as `zsh -i` or a shell startup timing. Earlier runs mixed test commands into the real `~/.zsh_history` this way. Run every owned host, every pnpm or `tsx` helper (such as the commissioning seed below, because pnpm and `tsx` keep caches and state under `HOME`), and every command that starts a shell or an agent CLI through [`scripts/isolated-env.mjs`](../scripts/isolated-env.mjs), with the same `--run-dir`. The exceptions bullet below lists the helpers that run outside it.
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$E2E_DIR" \
@@ -113,9 +113,9 @@ Use this route only when the claim needs a model turn that only the user's own l
 
 Before reproducing a user-reported defect, record the user's installed Fleet version or reported surface, the target SHA, and the served asset name. A local `canary` can lag or lead the user's build with a different UI; when they differ, reproduce on a detached [baseline](../../git-worktree/references/baseline.md) at the user's revision rather than assuming the newest checkout shows the same behavior. While measuring, do not let another build write the same `dist/` the owned server serves: use a separate checkout or output, and report a rebuild that landed mid-measurement as a contaminated run.
 
-### First-load onboarding state
+### First-load commissioning state
 
-A fresh slot shows commissioning, entry hints, and feature tours, and they can race the scenario's first input. Prepare that state **before the first navigation** instead of dismissing layers mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
+A fresh slot shows the commissioning card, and it can race the scenario's first input. (Feature tours and entry hints are removed.) Prepare that state **before the first navigation** instead of dismissing the layer mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$E2E_DIR" --bin pnpm \
@@ -124,9 +124,9 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$
   --console-dir "$E2E_DIR/console"
 ```
 
-- It derives every key from the current source and merges them into `seenFeatureTours` through the origin-gated `PUT /api/v1/settings/global`, then reads them back and fails when one is missing. The sources are the core contributions, every `OnboardingContribution` a feature's client exports (the ones the feature registry passes to the app), the seen-store key rules, and the keys stored outside any contribution (commissioning, the effort-confirm tip, and the "Fleet at a glance" first-run popup). `--dry-run` only lists the keys. Commissioning also opens only while no Theater is registered.
-- When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, which also clears that key on a reused slot, and install diagnostics before the first navigation so its appearance and race stay observable.
-- Confirm the first screenshot shows no unseeded onboarding layer before acting.
+- It derives every key from the current source and merges them into `seenFeatureTours` through the origin-gated `PUT /api/v1/settings/global`, then reads them back and fails when one is missing. The sources are the commissioning key and the first-run keys in the seen-store (the effort-confirm tip and the "Fleet at a glance" popup). `--dry-run` only lists the keys. Commissioning also opens only while no Theater is registered.
+- When the claim concerns commissioning or the "Fleet at a glance" popup, do not seed or dismiss the layer under test: pass `--keep <key>` for it, which also clears that key on a reused slot, and install diagnostics before the first navigation so its appearance and race stay observable.
+- Confirm the first screenshot shows no unseeded first-run layer before acting.
 
 The same run can lay down a common fixture, opt-in and read back before the script reports success:
 
