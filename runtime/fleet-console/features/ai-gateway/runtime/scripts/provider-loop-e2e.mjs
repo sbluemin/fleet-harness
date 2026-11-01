@@ -29,7 +29,7 @@ Options:
   --help                   Show this help before loading build artifacts or credentials
 
 Example:
-  pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--codex--gpt-6-sol' --auth-path <console-dir>/auth.json --operations 3 --trials 5 --confirm-live-provider
+  pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--codex--gpt-6.1-sol' --auth-path <console-dir>/auth.json --operations 3 --trials 5 --confirm-live-provider
 
 Antigravity reads its vendor CLI credential, so it needs no --auth-path.
 
