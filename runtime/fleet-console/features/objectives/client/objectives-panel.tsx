@@ -162,22 +162,26 @@ export function ObjectiveScheduleRow({ objective, language }: { readonly objecti
 }
 
 /**
- * 우측 작업 탭의 행 아래 펼침 패널 — 오늘·기한과 목표·구성원·라이브러리 글자 탭을 한 줄에, 그 아래 ObjectiveDetail 본문.
- * 행이 머리이므로 아바타·이름을 두지 않는다. 탭·구획 접힘은 화면 메모리로만 둔다. workspace 목록이 행 아래에 그린다.
+ * 우측 작업 탭의 행 아래 펼침 패널 — 행의 글리프(목표·구성원·라이브러리)가 고른 내용 하나만 그린다.
+ * 탭 줄은 두지 않고, 「오늘까지·기한」은 목표 내용 맨 위에 중앙 정렬로 둔다. 기한 날짜는 행 왼쪽에 그대로 있다.
+ * 행이 탭 상태를 쥐고, 펼침 안의 길(결정·임무·결과물로 가기)도 그 행 글리프를 바꾼다.
  */
-export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective }: {
+export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab, onGlyphTab }: {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly language: "en" | "ko";
   /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 있는 항목만 연다. */
   readonly onOpenObjective: (objectiveId: string) => void;
+  /** 행 글리프가 고른 내용. */
+  readonly tab: DetailTab;
+  /** 내용 안의 길(결정·임무·결과물로 가기)이 탭을 바꿀 때 행 글리프에 알린다. */
+  readonly onGlyphTab: (tab: DetailTab) => void;
 }) {
   const t = getT(language);
   const board = useObjectiveBoard(commodoreId);
   const objectiveRecords = useObjectiveSummaries();
   const api = objectivesApi();
   useEffect(() => { if (api !== null) void loadBoard(api, commodoreId); }, [api, commodoreId]);
-  const [tab, setTab] = useState<DetailTab>("goal");
   const [collapsed, setCollapsed] = useState<Readonly<Record<string, boolean>>>({});
   const [groupCollapsed, setGroupCollapsed] = useState<Readonly<Record<string, boolean>>>({});
   const detailRef = useRef<HTMLElement | null>(null);
@@ -210,28 +214,8 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
   if (objective === null) return <p className="commander-row-panel-empty" role="status">{t("objectives.results.window.empty")}</p>;
   // 지휘관이 일하는 동안 카드는 잠긴다 — 편집 대신 「중단」 하나만 남긴다(서버도 같은 기준으로 거절한다).
   const busy = !objective.done && WORKING.has(objectiveRecordState(objective.id));
-  const decision = !!objective.decisionRequest && !objective.done;
-  const unseen = objective.missions.some((mission) => unseenRecords(mission) > 0);
   return <>
-    {/* 오늘·기한과 글자 탭을 한 줄에 둔다 — 따로 한 행을 차지하지 않게 왼쪽에 일정, 구분선, 오른쪽에 탭이다. */}
-    <div className="commander-row-panel-bar">
-    <div className="commander-row-panel-tools"><ObjectiveScheduleRow objective={objective} language={language} /></div>
-    <span className="commander-row-panel-divider" aria-hidden="true" />
-    <div className="commander-row-panel-tabs" role="tablist" aria-label={t("objectives.panel.title")}>
-      {DETAIL_TABS.map((id) => {
-        const dot = id === "goal" && decision ? { tone: "attention", label: t("objectives.tabs.decisionDot") }
-          : id === "crew" && unseen ? { tone: "unseen", label: t("objectives.tabs.unseenDot") } : null;
-        const title = t(`objectives.tabs.${id}` as Parameters<typeof t>[0]);
-        return (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} aria-label={dot ? `${title} · ${dot.label}` : title}
-            className={`right-rail-ico is-text${tab === id ? " is-active" : ""}`} onClick={() => setTab(id)}>
-            <span className="right-rail-ico-label">{title}</span>
-            {dot ? <span className={`right-rail-ico-dot is-${dot.tone}`} aria-hidden="true" /> : null}
-          </button>
-        );
-      })}
-    </div>
-    </div>
+    {tab === "goal" ? <div className="commander-row-panel-schedule"><ObjectiveScheduleRow objective={objective} language={language} /></div> : null}
     <ObjectiveDetail
       objective={objective}
       t={t}
@@ -246,7 +230,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
       busy={busy}
       request={request}
       tab={tab}
-      onTab={setTab}
+      onTab={onGlyphTab}
       sectionOpen={(key) => key in collapsed ? !collapsed[key] : false}
       onToggleSection={(key) => setCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
       groupOpen={(key) => key in groupCollapsed ? !groupCollapsed[key] : false}
