@@ -49,6 +49,7 @@
     }
   },
   "dependencies": {
+    "@fleet-console/ui": "workspace:*",
     "@openuidev/lang-core": "1.0.1",
     "@openuidev/react-lang": "1.0.1",
     "dompurify": "^3.2.7",

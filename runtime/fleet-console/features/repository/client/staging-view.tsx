@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Icon } from "./icons.js";
@@ -367,7 +368,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
         좁은 폭에서 세로로 쌓는 컨테이너 쿼리를 이겨, 실측에서 본 목록 82px·파일명 폭 0px 붕괴를
         되살린다(독이 이미 같은 이유로 변수를 쓴다). */}
     {clean && !amend ? <div className="repository-staging-empty">
-      <span className="repository-staging-clean-mark" aria-hidden="true">✓</span>
+      <span className="repository-staging-clean-mark" aria-hidden="true"><MenuCheckGlyph /></span>
       <strong>{t("repository.staging.cleanTitle")}</strong>
       <p>{t("repository.staging.cleanHint")}</p>
       <button type="button" className="repository-refresh-btn" onClick={onReturnToHistory}>{t("repository.staging.viewHistory")}</button>

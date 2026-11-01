@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import * as React from "react";
 import type { ObjectiveRenderContext } from "../../execution/shared/client-contract.js";
 import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
@@ -1309,7 +1310,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
                     onChange={(event) => setDraftText(event.target.value)}
                     onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); confirmPin(); } else if (event.key === "Escape") { event.preventDefault(); cancelPin(); } }}
                   />
-                  <button type="button" className="op-browser__comment-ok" aria-label={t("terminal.browser.commentAdd")} title={t("terminal.browser.commentAdd")} disabled={!draftText.trim()} onClick={confirmPin}>✓</button>
+                  <button type="button" className="op-browser__comment-ok" aria-label={t("terminal.browser.commentAdd")} title={t("terminal.browser.commentAdd")} disabled={!draftText.trim()} onClick={confirmPin}><MenuCheckGlyph /></button>
                 </div>
               </>
             ) : null}

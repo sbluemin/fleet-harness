@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -169,7 +170,7 @@ export function isInspectorDismissKey(key: string): boolean { return key === "Es
 export function aggregateWip(files: readonly DiffFileEntry[]): { files: number; additions: number; deletions: number } { return files.reduce((sum, file) => ({ files: sum.files + 1, additions: sum.additions + file.additions, deletions: sum.deletions + file.deletions }), { files: 0, additions: 0, deletions: 0 }); }
 export function shouldShowWip(wip: { readonly files: number }, filterText: string, refFilter: string | null): boolean { return wip.files > 0 && !filterText && !refFilter; }
 
-function CheckoutIcon({ current }: { readonly current: boolean }) { return current ? <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2L5 8.7L9.5 3.5" stroke="currentColor" strokeWidth="1.5" /></svg> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" /></svg>; }
+function CheckoutIcon({ current }: { readonly current: boolean }) { return current ? <MenuCheckGlyph className="history-badge-icon" /> : <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.5 3.4h3l1 1.1h5v5.1a.9.9 0 01-.9.9H2.4a.9.9 0 01-.9-.9V4.3a.9.9 0 01.9-.9z" stroke="currentColor" strokeWidth="1.2" /></svg>; }
 function BranchIcon() { return <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M3.6 3.9v4.2M3.6 8.1h3.1a1.7 1.7 0 001.7-1.7V4.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><circle cx="3.6" cy="2.6" r="1.3" stroke="currentColor" strokeWidth="1.2" /><circle cx="8.4" cy="3.3" r="1.3" stroke="currentColor" strokeWidth="1.2" /></svg>; }
 function TagIcon() { return <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><path d="M1.9 5.6V2.4a.6.6 0 01.6-.6h3.2L10.4 6a.8.8 0 010 1.1L7.1 10.4a.8.8 0 01-1.1 0z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><circle cx="4.1" cy="4.1" r=".85" fill="currentColor" /></svg>; }
 function RemoteIcon() { return <svg className="history-badge-icon" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.2" /><path d="M1.7 6h8.6M6 1.7c1.1 1.2 1.7 2.7 1.7 4.3S7.1 9.1 6 10.3C4.9 9.1 4.3 7.6 4.3 6S4.9 2.9 6 1.7z" stroke="currentColor" strokeWidth="1.1" /></svg>; }

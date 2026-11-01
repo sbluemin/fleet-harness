@@ -2411,7 +2411,6 @@ describe("Console core design contract", () => {
     // 팝업은 공통 팝업 표면이고, 고른 행은 중립 워시 + 본문색 체크다(금색은 포커스 링에만).
     expect(selectBlock).toContain("background: var(--popover-face);");
     expect(selectBlock).toContain(".fc-select__option[aria-selected=\"true\"] { background: var(--wash-selected); }");
-    expect(selectBlock).toContain('content: "✓";');
     expect(selectBlock).toContain("font-style: italic;");
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
     // compact 트리거는 칩 문법의 모노 티어(11px)를 쓴다 — 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.

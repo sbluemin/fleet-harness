@@ -619,9 +619,9 @@ export function useViewportFit(target: React.RefObject<HTMLElement | null>, open
 }
 
 
-/** 메뉴 행의 고른 표식 — 글자 「✓」 대신 팝오버 아이콘 칸(16px)에 서는 선 체크. 색은 행 잉크를 따른다. */
-export function MenuCheckGlyph(): React.ReactElement {
-  return <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>;
+/** 공용 선 체크 — 기본 1em, 메뉴는 14px. 자리의 CSS가 크기를 덮고 색은 행 잉크를 따른다. */
+export function MenuCheckGlyph({ size = "1em", strokeWidth = 1.5, ...props }: Omit<React.SVGProps<SVGSVGElement>, "children" | "viewBox"> & { size?: number | string }): React.ReactElement {
+  return <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...props} viewBox="0 0 16 16"><path d="M2.5 8.35 7.15 12 13.5 4.9" /></svg>;
 }
 
 export type ChevronDirection = "down" | "up" | "left" | "right";

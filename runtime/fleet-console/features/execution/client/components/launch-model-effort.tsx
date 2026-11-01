@@ -265,7 +265,7 @@ function ModelRow({ row, selectedModel, onPick }: {
       >
         <span className="launch-variant-label">{row.label}</span>
         {row.starred ? <span className="launch-variant-star" aria-hidden="true">★</span> : null}
-        {rowModel === selectedModel ? <span className="launch-pop-check" aria-hidden="true"><MenuCheckGlyph /></span> : null}
+        <span className="launch-pop-check" aria-hidden="true"><MenuCheckGlyph size={14} /></span>
       </button>
     </div>
   );

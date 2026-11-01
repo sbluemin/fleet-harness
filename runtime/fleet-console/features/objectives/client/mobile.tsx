@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -54,7 +55,7 @@ const Icon = ({ children, size = 20 }: { readonly children: ReactNode; readonly 
 );
 const Chevron = ({ open, size }: { readonly open: boolean; readonly size?: number }) => <Icon size={size ?? 22}><path d={open ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6"} /></Icon>;
 const MessageIcon = () => <Icon><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /><path d="M12 7.5v6M9 10.5h6" /></Icon>;
-const CheckIcon = ({ size }: { readonly size?: number }) => <Icon size={size ?? 20}><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>;
+const CheckIcon = ({ size }: { readonly size?: number }) => <MenuCheckGlyph size={size ?? 20} strokeWidth={1.7 / 1.5} />;
 const SendIcon = () => <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
 /** 호스트 모바일 ⋮의 보관·이름 변경 아이콘과 같은 모양. */
 const ArchiveIcon = () => <Icon><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></Icon>;

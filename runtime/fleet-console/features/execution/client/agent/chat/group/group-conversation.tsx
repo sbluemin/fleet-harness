@@ -1,7 +1,7 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import * as React from "react";
-import { ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
 import { useAvatarAccent } from "../../../../../workspace/client/avatar-accent.js";
 import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
@@ -969,7 +969,7 @@ function DecisionAnswerLine({ entry, asker, language }: {
           <span className="group-chat-line-sep" aria-hidden="true">·</span>
         </> : null}
         <span className="group-chat-via">{t("group.decision.answered")}</span>
-        <span className="group-card-settled-mark" aria-hidden="true">✓</span>
+        <span className="group-card-settled-mark" aria-hidden="true"><MenuCheckGlyph /></span>
       </span>
       <div className="group-chat-bubble is-human group-card-settled-body">
         {entry.answers.map((answer, at) => (

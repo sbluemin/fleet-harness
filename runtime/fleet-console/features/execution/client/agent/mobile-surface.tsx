@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import type { MobileBarMenuItem } from "../../../workspace/shared/pane.js";
 import type { ClientMobileObjectiveCapability } from "../../../workspace/shared/mobile.js";
 import type { ObjectiveRenderContext } from "../../shared/client-contract.js";
@@ -52,9 +53,8 @@ export function useMobileMenuItems(mobile: MobileObjectiveLike | null, items: re
 /** 시안 아이콘(impl-spec §A, 시안의 P 객체와 같은 경로) — 24 viewBox, 선 1.7, 둥근 끝. 모바일 본문 크롬 전용. */
 export type MobileGlyphName = "swap" | "check" | "copy" | "retry" | "plus" | "send" | "stop" | "kbd" | "info";
 
-const MOBILE_GLYPH_PATHS: Record<MobileGlyphName, React.ReactNode> = {
+const MOBILE_GLYPH_PATHS: Record<Exclude<MobileGlyphName, "check">, React.ReactNode> = {
   swap: <path d="M4 8h13l-3-3M20 16H7l3 3" />,
-  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M5 16V6a2 2 0 0 1 2-2h9" /></>,
   retry: <path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5" />,
   plus: <path d="M12 5v14M5 12h14" />,
@@ -65,6 +65,7 @@ const MOBILE_GLYPH_PATHS: Record<MobileGlyphName, React.ReactNode> = {
 };
 
 export function MobileGlyph({ name, size = 20, strokeWidth = 1.7 }: { readonly name: MobileGlyphName; readonly size?: number; readonly strokeWidth?: number }) {
+  if (name === "check") return <MenuCheckGlyph className="agent-mobile-glyph" size={size} strokeWidth={strokeWidth / 1.5} />;
   return (
     <svg className="agent-mobile-glyph" viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {MOBILE_GLYPH_PATHS[name]}

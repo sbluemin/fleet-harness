@@ -800,7 +800,7 @@ function TheaterMenu({ theaters, current, onPick, onAdd, onClose }: {
         <button key={theater.id} type="button" role="menuitemradio" aria-checked={theater.id === current} className="new-session-menu-item" onClick={() => onPick(theater.id)}>
           <TheaterGlyph size={16} />
           <span className="new-session-row-label">{theater.label}</span>
-          {theater.id === current ? <span className="new-session-menu-check" aria-hidden="true"><MenuCheckGlyph /></span> : null}
+          <span className="new-session-menu-check" aria-hidden="true"><MenuCheckGlyph size={14} /></span>
         </button>
       ))}
       <div className="new-session-menu-divider" role="separator" />

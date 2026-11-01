@@ -249,7 +249,7 @@ function SortMenu({ preference, nameOnly }: { readonly preference: SortPreferenc
           const selected = sort.key === preference.key;
           return <div key={sort.key} className="commander-tab-menu-row" data-sort-row="">
             <button type="button" role="menuitemradio" data-sort-column="name" aria-checked={selected} className="commander-tab-menu-item" onClick={() => pick(sort.key, sort.direction)}>
-              <span className="commander-tab-menu-check" aria-hidden="true">{selected ? <MenuCheckGlyph /> : null}</span>{label}
+              <span className="commander-tab-menu-check" aria-hidden="true">{selected ? <MenuCheckGlyph size={14} /> : null}</span>{label}
             </button>
             {(["asc", "desc"] as const).map((direction) => (
               <button key={direction} type="button" role="menuitemradio" data-sort-column={direction} className="commander-tab-menu-direction" aria-checked={selected && preference.direction === direction} aria-label={t("commanderTab.sort.toward", { label, direction: t(direction === "asc" ? "commanderTab.sort.asc" : "commanderTab.sort.desc") })} title={t(direction === "asc" ? "commanderTab.sort.asc" : "commanderTab.sort.desc")} onClick={() => pick(sort.key, direction)}>
@@ -262,10 +262,10 @@ function SortMenu({ preference, nameOnly }: { readonly preference: SortPreferenc
         })}
         <span className="commander-tab-menu-rule" role="separator" />
         <button type="button" role="menuitemcheckbox" aria-checked={preference.answerFirst} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, answerFirst: !preference.answerFirst })}>
-          <span className="commander-tab-menu-check" aria-hidden="true">{preference.answerFirst ? <MenuCheckGlyph /> : null}</span>{t("commanderTab.sort.answerFirst")}
+          <span className="commander-tab-menu-check" aria-hidden="true">{preference.answerFirst ? <MenuCheckGlyph size={14} /> : null}</span>{t("commanderTab.sort.answerFirst")}
         </button>
         <button type="button" role="menuitemcheckbox" aria-checked={preference.grouped} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, grouped: !preference.grouped })}>
-          <span className="commander-tab-menu-check" aria-hidden="true">{preference.grouped ? <MenuCheckGlyph /> : null}</span>{t("commanderTab.sort.grouped")}
+          <span className="commander-tab-menu-check" aria-hidden="true">{preference.grouped ? <MenuCheckGlyph size={14} /> : null}</span>{t("commanderTab.sort.grouped")}
         </button>
       </div> : null}
     </span>

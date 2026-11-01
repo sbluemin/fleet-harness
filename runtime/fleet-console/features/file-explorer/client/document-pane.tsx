@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import {
   useCallback,
   useEffect,
@@ -538,9 +539,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
             onClick={handleCopyPath}
           >
             {copied ? (
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="m3.5 8.5 3 3 6-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <MenuCheckGlyph size={13} />
             ) : (
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.4" />

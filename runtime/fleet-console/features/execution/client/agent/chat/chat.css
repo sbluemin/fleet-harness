@@ -685,6 +685,10 @@
   color: var(--positive);
 }
 
+.agent-chat-continuity-mark > svg,
+.agent-chat-step-mark > svg,
+.agent-chat-job-mark > svg { width: 9px; height: 9px; }
+
 .agent-chat-tally.is-continuity.is-fail .agent-chat-continuity-mark {
   color: var(--coral);
 }

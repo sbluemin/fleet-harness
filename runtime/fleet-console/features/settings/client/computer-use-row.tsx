@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useSelect, ChevronGlyph } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, useSelect, ChevronGlyph } from "@fleet-console/ui/react";
 import type { ComputerUseBackendId } from "../shared/experiments.js";
 import { isComputerUseBackendId } from "../shared/experiments.js";
 import { SettingsToggle, widenModelPickerPopup } from "./preferences-context.js";
@@ -128,7 +128,7 @@ export function ComputerUseRow({ enabled, backend, saving, onChange, onBackendCh
             <ChevronGlyph direction="down" className="fc-select__caret" />
           </button>
           {select.isOpen && createPortal(<ul {...select.listboxProps} className={`${select.listboxProps.className} fc-model-picker__popup`} style={widenModelPickerPopup(select.listboxProps.style, popupWidth)} aria-label={t("settings.computerUse.backend")}>
-            {BACKENDS.map((option, index) => <li key={option.value} {...select.getOptionProps(index)} className="fc-select__option fc-model-picker__option"><span className="fc-model-picker__glyph fc-model-picker__glyph--mark" aria-hidden="true"><ComputerUseGlyph backend={option.value as ComputerUseBackendId} /></span><span className="fc-model-picker__name">{option.label}</span></li>)}
+            {BACKENDS.map((option, index) => <li key={option.value} {...select.getOptionProps(index)} className="fc-select__option fc-model-picker__option"><span className="fc-model-picker__glyph fc-model-picker__glyph--mark" aria-hidden="true"><ComputerUseGlyph backend={option.value as ComputerUseBackendId} /></span><span className="fc-model-picker__name">{option.label}</span><MenuCheckGlyph className="fc-select__check" size={14} /></li>)}
           </ul>, document.body)}
         </div>
         </div>

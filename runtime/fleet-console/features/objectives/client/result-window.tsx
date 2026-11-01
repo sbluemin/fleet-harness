@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { ChevronGlyph, useSelect, usePointerDrag, type SelectOption } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, ChevronGlyph, useSelect, usePointerDrag, type SelectOption } from "@fleet-console/ui/react";
 import { focusFloatingWindow, useFloatingWindowZ } from "@fleet-console/ui/store";
 import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
@@ -278,7 +278,7 @@ function MissionSwitcher({ label, value, options, onChange }: { readonly label: 
   const select = useSelect({ value, options, onChange });
   return <div {...select.rootProps} className={`${select.rootProps.className} objectives-rw-switch`}>
     <button {...select.triggerProps} className="fc-select__trigger" aria-label={label}><span className="fc-select__value">{options.find((item) => item.value === value)?.label}</span><ChevronGlyph direction="down" className="fc-select__caret" /></button>
-    {select.isOpen ? createPortal(<ul {...select.listboxProps} className={`${select.listboxProps.className} objectives-rw-menu`} aria-label={label}>{options.map((item, index) => <li key={item.value} {...select.getOptionProps(index)} className="fc-select__option">{item.label}</li>)}</ul>, document.body) : null}
+    {select.isOpen ? createPortal(<ul {...select.listboxProps} className={`${select.listboxProps.className} objectives-rw-menu`} aria-label={label}>{options.map((item, index) => <li key={item.value} {...select.getOptionProps(index)} className="fc-select__option">{item.label}<MenuCheckGlyph className="fc-select__check" size={14} /></li>)}</ul>, document.body) : null}
   </div>;
 }
 

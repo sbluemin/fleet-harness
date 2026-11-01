@@ -9343,7 +9343,8 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"]) { background: var(--wash-hover); }
 .fc-select__option[aria-selected="true"] { background: var(--wash-selected); }
 .fc-select__option[aria-selected="true"][data-active="true"] { background: var(--wash-selected); }
-.fc-select__option[aria-selected="true"]::after { content: "✓"; font-size: var(--t-sm); color: var(--text-primary); }
+.fc-select__check { flex: none; visibility: hidden; color: var(--text-primary); }
+.fc-select__option[aria-selected="true"] > .fc-select__check { visibility: visible; }
 .fc-select__option[aria-disabled="true"] { color: var(--text-tertiary); cursor: not-allowed; font-style: italic; opacity: var(--control-disabled-opacity); }
 .fc-select__option[aria-disabled="true"][data-active="true"] { background: transparent; color: var(--text-tertiary); }
 /* 키보드와 포인터 모두 워시 한 겹으로 표시한다. 실제 포커스는 트리거에 남고 aria-activedescendant가 행을 가리킨다. */
@@ -9690,9 +9691,12 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 }
 
 .launch-pop-check {
+  flex: none;
+  width: 14px;
   color: var(--text-primary);
   font-size: var(--t-sm);
 }
+.launch-variant-name[aria-checked="false"] .launch-pop-check { visibility: hidden; }
 
 /* 공급자 밴드는 공통 팝업의 구역 머리다 — 12px 보조색 문장형. */
 .launch-pop-band {

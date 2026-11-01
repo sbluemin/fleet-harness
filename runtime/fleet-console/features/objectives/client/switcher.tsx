@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { ChevronGlyph } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, ChevronGlyph } from "@fleet-console/ui/react";
 
 import type { Translate } from "@fleet-console/i18n";
 import type { StatusGlyphState } from "./components/status-glyph.js";
@@ -133,7 +133,7 @@ export function ObjectiveSwitcher({ t, language, commodoreId, objectives, groups
     // 사이드바 줄 메모와 같은 판정·같은 낱말 — 확인하지 않은 구성원 실패가 남은 동안만 선다.
     const failureNote = memberFailureNote(objective);
     if (failureNote) meta.push({ key: "failed", text: t(failureNote), tone: "warn" });
-    if (objective.missions.length) meta.push({ key: "progress", text: `✓ ${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}` });
+    if (objective.missions.length) meta.push({ key: "progress", text: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}` });
     // 사이드바 줄의 상태 문구와 같은 판정·같은 말·같은 명도 물결 — 단계 바로 뒤에 선다.
     if (handling(objective)) meta.push({ key: "answering", text: t("objectives.autonomy.note.answering"), tone: "handling" });
     if (objective.dueDate) meta.push({ key: "due", text: day.format(new Date(`${objective.dueDate}T00:00:00`)), ...(overdueOf(objective) ? { tone: "late" } : {}) });
@@ -148,7 +148,7 @@ export function ObjectiveSwitcher({ t, language, commodoreId, objectives, groups
           <ObjectiveAvatar objectiveId={objective.id} role="commander" state={commanderMongleState(objective, activityOfGlyph(glyph.state))} />
           <span className="objectives-pop-body" aria-hidden="true">
             <span className="objectives-pop-title">{objective.title}</span>
-            {meta.length ? <span className="objectives-pop-meta">{meta.map((part) => <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{part.text}</span>)}</span> : null}
+            {meta.length ? <span className="objectives-pop-meta">{meta.map((part) => <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{part.key === "progress" ? <><MenuCheckGlyph /> </> : null}{part.text}</span>)}</span> : null}
           </span>
           {group ? <span className="objectives-pop-dot" style={{ "--grp-color": `var(--id-${group.color}, var(--text-tertiary))` } as CSSProperties} title={group.name} aria-hidden="true" /> : <span aria-hidden="true" />}
         </button>

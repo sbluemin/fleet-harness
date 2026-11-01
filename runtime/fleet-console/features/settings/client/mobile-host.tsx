@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useSelect, type SelectProps, ChevronGlyph } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, useSelect, type SelectProps, ChevronGlyph } from "@fleet-console/ui/react";
 import * as React from "react";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 /**
@@ -212,7 +212,7 @@ export function Select({
             <ul {...select.listboxProps} {...sharedLabelProps}>
               {options.map((option, index) => (
                 <li key={option.value} {...select.getOptionProps(index)}>
-                  {option.label}
+                  {option.label}<MenuCheckGlyph className="fc-select__check" size={14} />
                 </li>
               ))}
             </ul>,

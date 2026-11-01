@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, GroupBoardRunResult, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "../../../../shared/conversation/types.js";
 import { AttachImageIcon } from "../../../composer-primitives/icons.js";
 import { ComposerAttachmentTray, ComposerMenu, ComposerMenuHeading, ComposerMenuItem, ComposerMenuSeparator, ComposerNotice, ComposerPlusButton, ComposerSendButton } from "../../../composer-primitives/attachment-surface.js";
@@ -77,7 +78,7 @@ const BOARD_GLYPHS: Readonly<Record<GroupBoardActionGlyph, React.ReactNode>> = {
   plan: glyphPath("M3 13l7-7M10 3l.6 1.6L12.2 5l-1.6.6L10 7.2 9.4 5.6 7.8 5l1.6-.6zM13 9l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z"),
   start: glyphPath("M4.5 3.5l8 4.5-8 4.5z"),
   steer: glyphPath("M2.5 11.5c2-4 5-6 11-6M10.5 2.5l3 3-3 3"),
-  complete: glyphPath("M3.5 8.5 6.5 11.5 12.5 4.5"),
+  complete: <MenuCheckGlyph />,
   handOff: glyphPath("M2.5 8h8M7.5 4.5 11 8l-3.5 3.5M13.5 3v10"),
 };
 const LockGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg>;
