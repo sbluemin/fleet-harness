@@ -49,13 +49,13 @@
 .taskforce-paused small { display: block; color: var(--text-secondary); margin-top: 2px; font-size: var(--t-sm); }
 .taskforce-paused > span:last-child { display: flex; gap: 6px; flex-wrap: wrap; }
 .taskforce-details { display: grid; gap: 16px; align-content: start; color: var(--text-primary); font-size: var(--t-md); }
-.taskforce-member { display: flex; gap: 8px; align-items: center; }
+.taskforce-member { display: flex; gap: 8px; align-items: center; padding-right: 6px; border-radius: 8px; }
+.taskforce-member:hover, .taskforce-member:focus-within { background: var(--wash-hover); }
 .taskforce-member-open { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.taskforce-member-open:hover { background: var(--wash-hover); }
 .taskforce-member strong { font-weight: var(--weight-medium); }
 .taskforce-member .taskforce-text-button { visibility: hidden; }
 .taskforce-member:hover .taskforce-text-button, .taskforce-member:focus-within .taskforce-text-button { visibility: visible; }
-.taskforce-member-remove { padding: 4px 10px; border-radius: var(--radius-pill); color: var(--coral); background: color-mix(in oklch, var(--coral) 12%, transparent); }
+.taskforce-member .taskforce-member-remove { padding: 4px 10px; border-radius: var(--radius-pill); color: var(--coral); background: color-mix(in oklch, var(--coral) 12%, transparent); }
 .taskforce-link { padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; text-decoration: underline; text-underline-offset: 2px; font: inherit; font-size: var(--t-sm); cursor: pointer; text-align: left; }
 .taskforce-text-button, .taskforce-danger { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
 .taskforce-danger { color: var(--coral); }
