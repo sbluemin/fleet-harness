@@ -454,7 +454,8 @@ function ConnectedApp() {
         if (outcome === "suppress" || entry === undefined) return false;
         // 사령관 전용 도구는 사령관 대화에서만 단축키로 열린다 — 다른 대화에서는 키를 삼켜 터미널 입력으로 새지 않게 한다.
         if (entry.commodoreConversationOnly === true && !isCommodoreToolsConversationSelected()) return true;
-        if (getViewedTheaterId() === null) {
+        // 사령관 전용 도구는 보는 Theater가 없어도 열린다 — 빈 상태가 그 자리에서 안내한다.
+        if (getViewedTheaterId() === null && !(entry.commodoreConversationOnly === true && isCommodoreToolsConversationSelected())) {
           // fleet 범위는 Theater 없이도 선다 — 아래 공통 activate 경로로 떨어진다.
           if (entry.scope !== "fleet" || entry.activate === undefined) return false;
         }
