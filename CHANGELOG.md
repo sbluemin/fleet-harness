@@ -5,6 +5,50 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.276.0] - 2026-11-01
+
+### fleet-console
+
+#### Added
+- The Commodore's mongle avatar now acts out what it is doing mid-turn (reading, editing, running, searching and more), just like a commander's.
+- Show images sent and received between Commodores as thumbnails in the delegation view; selecting one opens the full preview.
+- Forward images between Commodores with a message; the recipient can keep them on an objective without asking the person to resend.
+- Files, Repository, and Shell are back in the Commodore conversation, each with its own Theater picker next to the panel title, so panels can look at different Theaters side by side.
+- Clicking a file link in a Commander, member, or objective chat now opens a read-only preview above the chat instead of a tool panel.
+- Learn how Fleet works from the Help menu: "Fleet at a glance" walks through the structure and AI techniques with short motion scenes.
+- Meet TaskForce with a one-time intro card: see how Commodores judge together and turn it into an objective, then jump to Settings to try it.
+
+#### Changed
+- Wherever the Console said the Commodore is answering, it now uses the Commodore's alias ("Nova answering"), and board headers and board lines use the alias too.
+- Messages the Commodore sends to the board now appear on the right as outlined bubbles in the commander's color, so they no longer look like the commander's own replies.
+- In the right sidebar's commander list, each row has Objective, Members, and Library glyphs left of the delegate button: a glyph expands only that section below the row without moving the chat, and clicking the row title moves only the chat.
+- An expanded row no longer shows a tab bar; Today and Due sit centered at the top of the Objective section in their current style.
+- In the right sidebar's Tasks tab, clicking the selected objective again returns the chat to the Commodore, so you can switch between an objective and its Commodore with one row.
+- File, Repository, and Shell tools no longer appear in Commander, member, or ordinary objective conversations.
+- Each Shell now belongs to one of the Commodore's Theaters and stays alive when you switch panels; removing a Theater ends its Shell, asking first only while a command is running.
+- Browse shared files by type in the Library and move between shared files or mission results without closing the viewer.
+- TaskForce is now an experiment: turn it on in Settings > Experiments to see TaskForces and create new ones. Your existing TaskForces are kept and come back when you turn it on.
+- TaskForce chats now use the same composer as Commodore chats, so you can mention members with @ and attach images, and the Quota summary appears above it.
+- TaskForces sit in the Commodore list like Commodores: drag them into order or into your sections, right-click to delete, and see members as a compact avatar grid.
+- The TaskForce side panel is simpler: its Details tab shows the topic, which you edit like a Commodore description, with the members below it; clicking a member opens their 1:1 chat.
+- The right sidebar stays open or closed as you move between Commodore chats, TaskForces, and the New Objective screen, which now shows its Commodore's tabs.
+- TaskForce member adding now opens a search dropdown under '+ Add members': type to filter Commodores and pick one, instead of listing every Commodore as pills.
+- Confirmation dialogs now ask a single question with two equal-sized pill buttons, so destructive choices look the same everywhere.
+
+#### Fixed
+- TaskForce members now see what other members said, even when they were answering at the same time, so they can build on each other's replies.
+
+#### Removed
+- The retired Codex button is gone from the top toolbar, and the Wiki shortcut is gone from the mobile shortcuts. Your existing documents stay on your computer untouched.
+- Removed "Show the screen guide" from the Help menu; the motion guide above replaces it and opens once on a fresh install's first launch.
+- TaskForces no longer have a finished state or a finish/reopen action; delete a TaskForce when you are done. Previously finished TaskForces reopen as ordinary ones.
+- Stop showing feature tours and rail entry hints. The first-run commissioning guide still appears for new consoles.
+
+### fleet-mobile
+
+#### Added
+- Screens now use the status-bar and gesture-bar areas, with content fading out behind controls that stay clear of them.
+
 ## [1.275.0] - 2026-10-31
 
 ### fleet-console
