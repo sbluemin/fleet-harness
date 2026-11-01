@@ -161,7 +161,12 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   const title = shared ? sharedName : result ? result.kind === "evidence" ? result.label ?? result.name : result.kind === "pr" ? result.label ?? result.observation.title ?? `${result.owner}/${result.repo} #${result.number}` : result.label ?? t("objectives.results.artifact.untitled") : t("objectives.results.title");
   useEffect(() => { rootRef.current?.focus({ preventScroll: true }); }, [opened.opener, opened.objectiveId]);
   useEffect(() => {
-    rootRef.current?.querySelector(".objectives-rw-strip [aria-current=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const strip = rootRef.current?.querySelector<HTMLElement>(".objectives-rw-strip");
+    const current = strip?.querySelector<HTMLElement>("[aria-current=true]");
+    if (!strip || !current) return;
+    const stripRect = strip.getBoundingClientRect(), currentRect = current.getBoundingClientRect();
+    // 줄만 즉시 가로로 움직인다. 선택 칸을 가운데에 두되 양 끝에서는 스크롤 범위 안에 남긴다.
+    strip.scrollLeft = clamp(strip.scrollLeft + currentRect.left - stripRect.left - strip.clientLeft - (strip.clientWidth - currentRect.width) / 2, 0, strip.scrollWidth - strip.clientWidth);
   }, [opened.objectiveId, result?.id, attachment?.id, shared?.path]);
   useEffect(() => {
     const resize = () => setRect((current) => fit(current));
