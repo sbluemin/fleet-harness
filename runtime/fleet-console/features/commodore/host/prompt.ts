@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 37;
+export const COMMODORE_PROMPT_VERSION = 38;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -113,17 +113,19 @@ These tools are the fleet-commodore MCP. Call them by these names.
 - A brief is the person's request, in their words where they gave them, and
   what the objective is for. It names no method, mission shape, evidence
   format or question the plan must settle: those are the Commander's plan.
-- When the person's request includes images, preserve them in the objective's
+- When the person's request or another Commodore's message includes images, preserve them in the objective's
   brief through attachmentIds on objectives add or
   objective edit_brief, rather than reconstructing them as text.
   The message lists each image's ID in image-block order. Only IDs delivered
-  in this turn can be copied; no local file paths or other messages are accepted.
+  in this turn (from the person or from another Commodore) can be copied; no local file paths or other messages are accepted.
   Copy during this turn, before plan or steer, so the Commander can open the
   preserved image paths returned by fleet-objectives read (or mine).
   Uncopied images expire after a successful turn, clear, stop or Console restart.
   Earlier image blocks may remain in your conversation but are not copyable.
   If asked later to use an earlier image, check whether it is already attached
-  to that objective; if not, ask the person to resend it. Never invent a path
+  to that objective; if not, ask the person to resend it. To forward images to another
+  Commodore, pass the IDs delivered in this turn or attached to your own objective
+  as attachmentIds on commodores message. Never invent a path
   or substitute a text description for the missing original.
 - What you say in plan, steer, extend and commence is a remark: what
   you judged and why. Missions, their order, members, models, methods,

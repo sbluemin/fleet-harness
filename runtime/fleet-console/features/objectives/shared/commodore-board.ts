@@ -14,6 +14,8 @@ export interface CommodoreWakeScope {
 
 export interface CommodoreTurnBindings {
   readonly readAttachments: CommodoreAttachmentReader;
+  /** 보내는 사령관이 자기 목표에 붙인 이미지 — 이번 턴 첨부와 같은 ID 공간으로 복사한다. 남의 목표는 읽지 않는다. */
+  readonly readBriefImages: CommodoreAttachmentReader;
   readonly hasPersonMessage: CommodorePersonMessageReader;
   /** 이번 턴을 사람이 요청한 루틴(사람 메시지가 실린 턴에서 등록·수정된 루틴)이 깨웠는지. 완료 목표 보관만 이것을 사람의 요청으로 받는다. */
   readonly hasPersonRoutine: () => boolean;
@@ -52,6 +54,8 @@ export interface CommodoreBoardAdapter {
   watch(commodoreId: string, sink: CommodoreWakeSink): CommodoreBoardWatch;
   objective(commodoreId: string, id: string): { readonly id: string; readonly commodoreId: string; readonly title: string; readonly removed?: true } | null;
   language?(commodoreId: string): "en" | "ko" | null;
+  /** 보내는 사령관의 자기 목표 이미지 — 남의 목표·임의 경로는 읽지 않는다. */
+  briefImages?(commodoreId: string): CommodoreAttachmentReader;
 }
 
 export interface CommodoreBoardHost {

@@ -163,7 +163,16 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     return dir;
   }, {
     maxBytes: options.maxRetainedImageBytes,
-    messageSeqs: (commodoreId) => new Map(readTranscriptFile(path.join(dirFor(commodoreId), TRANSCRIPT_FILE)).flatMap((entry) => entry.kind === "message" && entry.messageId ? [[entry.messageId, entry.seq] as const] : [])),
+    messageSeqs: (commodoreId) => new Map(readTranscriptFile(path.join(dirFor(commodoreId), TRANSCRIPT_FILE)).flatMap((entry) => (entry.kind === "message" || entry.kind === "received") && entry.messageId ? [[entry.messageId, entry.seq] as const] : [])),
+    // 미처리 수신(mail)은 전달 원본이므로 trim에서 지우지 않는다 — 받은 처리가 끝나면 보호가 풀려 다음 정리에 거둔다.
+    protectedMessageIds: (commodoreId) => {
+      const pending = new Map<number, string>();
+      for (const entry of readTranscriptFile(path.join(dirFor(commodoreId), TRANSCRIPT_FILE))) {
+        if (entry.kind === "received" && entry.messageId) pending.set(entry.seq, entry.messageId);
+        else if (entry.kind === "received-read") for (const seq of entry.seqs) pending.delete(seq);
+      }
+      return new Set(pending.values());
+    },
   });
   const pruneImages = (commodoreId: string, kept?: ReadonlySet<string>) => {
     try { images.prune(commodoreId, kept); }
@@ -222,7 +231,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     if (last) lastMessages.set(commodoreId, last);
     if (last?.from === "commodore") lastResponses.set(commodoreId, last);
     const kept = compactIfLarge(file);
-    if (kept) pruneImages(commodoreId, new Set(kept.flatMap((entry) => entry.kind === "message" && entry.messageId ? [entry.messageId] : [])));
+    if (kept) pruneImages(commodoreId, new Set(kept.flatMap((entry) => (entry.kind === "message" || entry.kind === "received") && entry.messageId ? [entry.messageId] : [])));
     broadcast({ op: "transcript", commodoreId, theaterIds: options.theaterIdsOf(commodoreId), entry: parsed.data });
     return parsed.data;
   };

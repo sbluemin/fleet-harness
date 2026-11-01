@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { createLaunchAttachmentStore } from "../features/execution/host/agent/launch-attachments.js";
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_TURN_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
 import type { AgentEvent, AgentInput } from "../features/execution/shared/agent.js";
 import { CONVERSATION_REFERENCE_MARK as MARK } from "../features/execution/shared/conversation/references.js";
 import { resolveRosterCoordinate, type ModelCoordinate } from "../features/ai-gateway/shared/models.js";
@@ -319,6 +319,278 @@ it("delivers peer messages to a resting Commodore without person authority and r
     supervisor = make(); supervisor.sync("restart");
     await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
     expect(prompts).toHaveLength(2);
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
+it("forwards turn and objective images through commodore messages into the recipient's turn attachments", async () => {
+  // 사령관 간 이미지 전달의 대표 계약 — 송신(턴 첨부+자기 목표) → 수신 턴 이미지 블록+ID → 같은 턴에 attachmentIds로 복사, 남의 이미지는 거부.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-message-images-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  store.setAlias(from, "Sender"); store.setAlias(to, "Receiver");
+  const turnImageId = "11111111-1111-4111-8111-111111111111";
+  const briefImageId = "22222222-2222-4222-8222-222222222222";
+  const foreignId = "33333333-3333-4333-8333-333333333333";
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02]);
+  const turnImage = { id: turnImageId, mime: "image/png" as const, bytes: png };
+  const briefImage = { id: briefImageId, mime: "image/png" as const, bytes: png };
+  const senderTurn = {
+    readAttachments: (ids: readonly string[]) => {
+      if (ids.length === 1 && ids[0] === turnImageId) return [turnImage];
+      throw new Error("attachment_not_available");
+    },
+    readBriefImages: (ids: readonly string[]) => {
+      if (ids.length === 1 && ids[0] === briefImageId) return [briefImage];
+      throw new Error("attachment_not_available");
+    },
+  };
+  let capturedTurn: CommodoreTurnBindings | undefined;
+  const prompts: unknown[] = [];
+  let copyResult: readonly { id: string }[] | undefined;
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      // 수신 턴 도중 같은 턴 첨부로 복사할 수 있어야 한다 — 보드 add/edit_brief가 쓰는 경로다.
+      try { copyResult = capturedTurn?.readAttachments([turnImageId, briefImageId])?.map(({ id }) => ({ id })); }
+      catch { copyResult = undefined; }
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: (_id, turn) => { capturedTurn = turn; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  const tool = createCommodoreManagementTools({ hasPersonMessage: () => false, stopping: () => false, list: entities.ids, create: () => { throw new Error("unexpected_create"); }, message: (input) => send(from, input, senderTurn) })[0]!;
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toEqual([]);
+    const ok = await tool.execute({ action: "message", to, text: "설계안 이미지 전달", attachmentIds: [turnImageId, briefImageId] }, { cwd: dir }) as { isError: boolean; structuredContent: { delivered?: boolean } };
+    expect(ok).toMatchObject({ isError: false, structuredContent: { delivered: true } });
+    const sent = store.transcriptRead(from).entries.at(-1)!;
+    expect(sent).toMatchObject({ kind: "sent", to: { id: to }, ok: true });
+    const received = store.transcriptRead(to).entries.at(-1)!;
+    expect(received).toMatchObject({ kind: "received", from: { id: from }, attachments: [{ id: turnImageId }, { id: briefImageId }] });
+    const messageId = (received as { messageId: string }).messageId;
+    expect(store.images.read(to, messageId, turnImageId)?.bytes).toEqual(png);
+    expect(store.images.read(to, messageId, briefImageId)?.bytes).toEqual(png);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    const prompt = prompts[0];
+    const blocks = Array.isArray(prompt) ? prompt as { type: string; text?: string; source?: { data: string } }[] : [];
+    expect(blocks.some((block) => block.type === "text" && block.text?.includes("Messages from other Commodores"))).toBe(true);
+    expect(blocks.some((block) => block.type === "text" && block.text?.includes(turnImageId) && block.text?.includes(briefImageId))).toBe(true);
+    expect(blocks.filter((block) => block.type === "image")).toHaveLength(2);
+    // 같은 턴에 브리핑 복사로 쓸 수 있다.
+    expect(copyResult).toEqual([{ id: turnImageId }, { id: briefImageId }]);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.transcriptRead(to).entries).toContainEqual(expect.objectContaining({ kind: "received-read" }));
+    // 남의 이미지는 거부하고 고아도 성공 기록도 남기지 않는다.
+    const before = store.transcriptRead(to).entries.length;
+    const refused = await tool.execute({ action: "message", to, text: "남의 이미지", attachmentIds: [foreignId] }, { cwd: dir }) as { isError: boolean; structuredContent: { error?: string } };
+    expect(refused).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    expect(store.transcriptRead(to).entries).toHaveLength(before);
+    expect(store.transcriptRead(from).entries.at(-1)).toMatchObject({ kind: "sent", ok: false, error: "attachment_not_available" });
+    await supervisor.dispose();
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
+it("shares the turn image budget across human and commodore mail", async () => {
+  // 혼합 예산 대표 — 사람 5MiB + mail 5MiB는 한 턴 8MiB를 넘으므로 두 턴에 나눈다. 각 턴 raw·세션 한도 안.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-mixed-budget-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  const humanBytes = Buffer.alloc(5 * 1024 * 1024, 2);
+  const peerBytes = Buffer.alloc(5 * 1024 * 1024, 3);
+  const humanId = "44444444-4444-4444-8444-444444444444";
+  const peerId = "55555555-5555-4555-8555-555555555555";
+  const humanMessageId = "66666666-6666-4666-8666-666666666666";
+  const humanImage = { id: humanId, mime: "image/png" as const, bytes: humanBytes };
+  const peerImage = { id: peerId, mime: "image/png" as const, bytes: peerBytes };
+  const prompts: unknown[] = [];
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    attachments: { read: () => [humanImage], release: () => {}, claim: () => 0, rollbackClaim: () => {} } as never,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    store.transcriptAppend(to, { kind: "message", text: "사람 첨부", messageId: humanMessageId, attachments: [{ id: humanId }], imageBytes: humanBytes.byteLength });
+    send(from, { to, text: "사령관 첨부", attachmentIds: [peerId] }, { readAttachments: () => [peerImage], readBriefImages: () => { throw new Error("attachment_not_available"); } });
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    const rawOf = (prompt: unknown) => (Array.isArray(prompt) ? prompt : []).filter((block: { type: string }) => block.type === "image").reduce((sum: number, block: { source: { data: string } }) => sum + Buffer.from(block.source.data, "base64").byteLength, 0);
+    const firstRaw = rawOf(prompts[0]);
+    expect(firstRaw).toBeLessThanOrEqual(MAX_COMMODORE_TURN_IMAGE_BYTES);
+    expect(firstRaw).toBeLessThanOrEqual(MAX_COMMODORE_SESSION_IMAGE_BYTES);
+    const firstImages = (Array.isArray(prompts[0]) ? prompts[0] as { type: string }[] : []).filter((block) => block.type === "image");
+    expect(firstImages).toHaveLength(1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(2);
+    const secondRaw = rawOf(prompts[1]);
+    expect(secondRaw).toBeLessThanOrEqual(MAX_COMMODORE_TURN_IMAGE_BYTES);
+    const secondImages = (Array.isArray(prompts[1]) ? prompts[1] as { type: string }[] : []).filter((block) => block.type === "image");
+    expect(secondImages).toHaveLength(1);
+    expect(firstRaw + secondRaw).toBe(humanBytes.byteLength + peerBytes.byteLength);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.transcriptRead(to).entries.filter((entry) => entry.kind === "received-read")).toHaveLength(1);
+    await supervisor.dispose();
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
+it("delivers later mail when an earlier mail image expired", async () => {
+  // 원본 상실 대표 — 먼저 온 mail 사본이 지워져도 그 mail은 텍스트+만료 표시로 처리하고 확정해, 다음 mail이 막히지 않는다.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-mail-expiry-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x07]);
+  const firstId = "77777777-7777-4777-8777-777777777777";
+  const secondId = "88888888-8888-4888-8888-888888888888";
+  const firstImage = { id: firstId, mime: "image/png" as const, bytes: png };
+  const secondImage = { id: secondId, mime: "image/png" as const, bytes: png };
+  let capturedTurn: CommodoreTurnBindings | undefined;
+  const prompts: unknown[] = [];
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: (_id, turn) => { capturedTurn = turn; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    const first = send(from, { to, text: "첫 이미지", attachmentIds: [firstId] }, { readAttachments: () => [firstImage], readBriefImages: () => { throw new Error("attachment_not_available"); } });
+    send(from, { to, text: "둘째 이미지", attachmentIds: [secondId] }, { readAttachments: () => [secondImage], readBriefImages: () => { throw new Error("attachment_not_available"); } });
+    // 첫 mail 원본을 전달 전에 잃는다 — trim·삭제·손상과 같은 자리다.
+    store.images.remove(to, first.messageId);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    const blocks = Array.isArray(prompts[0]) ? prompts[0] as { type: string; text?: string }[] : [];
+    expect(blocks.filter((block) => block.type === "image")).toHaveLength(1);
+    expect(blocks.map((block) => block.text ?? "").join("\n")).toContain("original expired before delivery");
+    // 만료된 첫 mail은 복사할 수 없지만, 둘째 mail은 같은 턴에 복사할 수 있다.
+    expect(() => capturedTurn?.readAttachments([firstId])).toThrow("attachment_not_available");
+    expect(capturedTurn?.readAttachments([secondId]).map(({ id }) => id)).toEqual([secondId]);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(supervisor.status(to)?.phase).toBe("idle");
+    expect(store.pendingReceived(to)).toHaveLength(0);
+    const reads = store.transcriptRead(to).entries.filter((entry) => entry.kind === "received-read");
+    expect(reads.flatMap((entry) => (entry as { seqs: readonly number[] }).seqs)).toHaveLength(2);
+    await supervisor.dispose();
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
+it("rejects mail when pending images would exceed the retained budget and trims after delivery", async () => {
+  // 수신자별 전달 대기 총량 대표 — 상한을 넘으면 저장·수신 기록 없이 거절하고, 처리 뒤에는 상한 안으로 회수한다.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-pending-budget-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {}, maxRetainedImageBytes: 10 });
+  const firstId = "99999999-9999-4999-8999-999999999999";
+  const secondId = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x08]);
+  const firstImage = { id: firstId, mime: "image/png" as const, bytes: png };
+  const secondImage = { id: secondId, mime: "image/png" as const, bytes: png };
+  const prompts: unknown[] = [];
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  const turnFor = (image: { id: string; mime: "image/png"; bytes: Buffer }) => ({
+    readAttachments: () => [image],
+    readBriefImages: () => { throw new Error("attachment_not_available"); },
+  });
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    const first = send(from, { to, text: "첫 이미지", attachmentIds: [firstId] }, turnFor(firstImage));
+    expect(store.pendingReceived(to)).toHaveLength(1);
+    expect(store.images.bytes(to)).toBe(png.byteLength);
+    const before = store.transcriptRead(to).entries.length;
+    expect(() => send(from, { to, text: "둘째 이미지", attachmentIds: [secondId] }, turnFor(secondImage))).toThrow("attachment_budget_exceeded");
+    expect(store.pendingReceived(to)).toHaveLength(1);
+    expect(store.images.bytes(to)).toBe(png.byteLength);
+    expect(store.transcriptRead(to).entries).toHaveLength(before);
+    expect(store.transcriptRead(from).entries.at(-1)).toMatchObject({ kind: "sent", ok: false, error: "attachment_budget_exceeded" });
+    // 첫 mail을 처리하면 대기·진행 보호가 풀린 사본이 상한 안으로 회수된다.
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.pendingReceived(to)).toHaveLength(0);
+    expect(store.images.bytes(to)).toBeLessThanOrEqual(10);
+    // 보호되지 않은 오래된 사본으로 상한이 차 있어도 새 이미지 mail은 수락되고, 저장 후 총량 ≤ cap.
+    const accepted = send(from, { to, text: "보호되지 않은 사본이 있어도 수락", attachmentIds: [secondId] }, turnFor(secondImage));
+    expect(accepted.delivered).toBe(true);
+    expect(store.images.bytes(to)).toBeLessThanOrEqual(10);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.pendingReceived(to)).toHaveLength(0);
+    // 송신 수락을 우회한 초과분도 받은 처리 뒤에는 상한 안으로 돌아온다.
+    const thirdId = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
+    const fourthId = "cccccccc-cccc-4ccc-cccc-cccccccccccc";
+    const thirdMessageId = "dddddddd-dddd-4ddd-dddd-dddddddddddd";
+    const fourthMessageId = "eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee";
+    const thirdImage = { id: thirdId, mime: "image/png" as const, bytes: png };
+    const fourthImage = { id: fourthId, mime: "image/png" as const, bytes: png };
+    store.transcriptAppend(to, { kind: "received", messageId: thirdMessageId, from: { id: from, alias: "Sender" }, text: "추가 1", attachments: [{ id: thirdId }], imageBytes: png.byteLength });
+    expect(store.images.save(to, thirdMessageId, [thirdImage])).toBe(true);
+    store.transcriptAppend(to, { kind: "received", messageId: fourthMessageId, from: { id: from, alias: "Sender" }, text: "추가 2", attachments: [{ id: fourthId }], imageBytes: png.byteLength });
+    expect(store.images.save(to, fourthMessageId, [fourthImage])).toBe(true);
+    expect(store.images.bytes(to)).toBeGreaterThan(10);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.pendingReceived(to)).toHaveLength(0);
+    expect(store.images.bytes(to)).toBeLessThanOrEqual(10);
+    await supervisor.dispose();
   } finally { await supervisor.dispose(); vi.useRealTimers(); }
 });
 
