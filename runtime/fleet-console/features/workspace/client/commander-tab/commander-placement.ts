@@ -69,7 +69,7 @@ let placement: CommanderPlacement = initialServer.loaded && initialServer.value 
 let serverSynced = initialServer.loaded;
 /** 세션당 1회 이관이 나갔는지. 서버에 값이 없던 때의 캐시 저장은 한 번뿐이다. */
 let migrated = false;
-/** 서버에 아직 확정되지 않은 최근 의도. 실패해도 화면 값은 유지하고 서버 되돌림은 무시한다. */
+/** 서버에 아직 확정되지 않은 최근 의도. 비행 중에만 선다. */
 let pending: CommanderPlacement | null = null;
 let inflight = false;
 const listeners = new Set<() => void>();
@@ -85,10 +85,23 @@ function finishPersist(target: CommanderPlacement, ok: boolean): void {
     persist();
     return;
   }
-  if (ok) pending = null;
-  // 실패하면 pending을 남긴다 — 화면 값을 유지하고, 그 사이 들어오는 서버 되돌림을 무시한다.
-  // 재시도는 사람이 같은 값을 다시 고를 때(set의 early-return 경로) 일어난다. 여기서 곧장
-  // 다시 보내면 서버 장애 때 PUT을 무한히 쏘는 고리가 된다.
+  pending = null;
+  if (ok) return;
+  // 실패하면 화면을 서버의 마지막 값으로 되돌린다 — 저장되지 않은 배치를 보여 주지 않는다.
+  // 자동 재전송은 하지 않는다(서버 장애 때 PUT 고리가 된다). 사람이 다시 누르면 일반 경로로 새 저장이 나간다.
+  const server = readServerPlacement();
+  if (!server.loaded) {
+    // 서버 값을 한 번도 받은 적 없으면 되돌릴 값이 없다 — 화면 값을 유지한다.
+    return;
+  }
+  // 실패한 이동의 알림이 남아 있으면 거둔다 — 화면은 이미 돌아갔다.
+  dismissCommanderPlacementNotice();
+  const back = server.value ?? "left";
+  if (placement !== back) {
+    placement = back;
+    writeCache(back);
+    emit();
+  }
 }
 
 function persist(): void {
@@ -151,11 +164,7 @@ export function readCommanderPlacement(): CommanderPlacement {
 }
 
 export function setCommanderPlacement(next: CommanderPlacement): void {
-  if (placement === next) {
-    // 같은 값을 다시 고른 건 저장 재시도다 — 실패로 남았던 의도를 다시 보낸다.
-    if (pending !== null) persist();
-    return;
-  }
+  if (placement === next) return;
   placement = next;
   writeCache(next);
   emit();
