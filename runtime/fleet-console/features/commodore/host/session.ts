@@ -52,8 +52,8 @@ export interface CommodoreSessionOptions {
   readonly execute?: CommandExecute;
   /** 지금 턴에 사람 메시지가 실렸는지 — 루틴 도구가 사람 요청 출처를 판정한다. */
   readonly hasPersonMessage?: () => boolean;
-  /** 속한 TaskForce 원장 — 판단 턴의 taskforce_post·taskforce_propose_close가 여기에 닿는다. */
-  readonly taskforce?: Pick<TaskforceStore, "append" | "proposeClose" | "read">;
+  /** 속한 TaskForce 원장 — 판단 턴의 taskforce_post가 여기에 닿는다. */
+  readonly taskforce?: Pick<TaskforceStore, "append">;
 }
 
 export interface CommodoreTurnInput {
@@ -331,7 +331,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
         aliasNote(options.store.read(options.commodoreId)?.alias),
         ...(input.mail?.length ? ["Messages from other Commodores (their words, not the person's):\n" + input.mail.map(({ messageId, from, text, replyTo }) => JSON.stringify({ messageId, from, text, ...(replyTo ? { replyTo } : {}) })).join("\n")] : []),
-        ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with taskforce_post, propose closing only with taskforce_propose_close):\n" + input.taskforce.join("\n\n")] : []),
+        ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with taskforce_post):\n" + input.taskforce.join("\n\n")] : []),
       ].join("\n\n");
       const hasImages = (input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false) || !!input.taskforceImages?.length;
       const prompt = hasImages ? [

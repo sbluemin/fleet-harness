@@ -25,8 +25,7 @@ import type { TaskforceStore } from "./store.js";
  * 주이고 이미지 사본 읽기만 GET이며, 같은 origin의 Console만 지난다. 화면은 응답이
  * 아니라 `commodore` 채널의 `taskforce-*` 사건으로 갱신되므로 응답은 확인용이다.
  *
- * 닫힌 TF의 말(post)은 기록에 남기기 전에 거절한다 — 조용히 잃지 않는다.
- * system 항목(종료·재열기·퇴장)은 닫힌 TF에도 남는다.
+ * TF는 삭제할 때까지 대화할 수 있다. 연쇄 제한의 멈춤·계속은 별도로 다룬다.
  */
 
 export interface TaskforceRoute {
@@ -66,7 +65,6 @@ export function createTaskforceRoutes(
     if (error instanceof TaskforceStoreError) {
       const status = error.code === "unknown_taskforce" ? 404
         : error.code === "invalid_request" ? 400
-        : error.code === "taskforce_closed" ? 409
         : 500;
       ctx.host.http.writeJson(res, status, error.details ? { error: error.code, details: error.details } : { error: error.code });
       return;
@@ -111,7 +109,7 @@ export function createTaskforceRoutes(
       const taskforce = read(taskforceId);
       return { taskforce, judging: judgingOf(taskforce), ...store.readLedger(taskforceId, { ...(limit !== undefined ? { limit } : {}), ...(before !== undefined ? { before } : {}) }) };
     }) },
-    { name: TASKFORCE_ROUTE_NAMES.post, method: "POST", summary: "Post the person's utterance to an open TaskForce.", handler: json(taskforcePostSchema, ({ taskforceId, text, mentions = [], replyTo, images = [] }) => {
+    { name: TASKFORCE_ROUTE_NAMES.post, method: "POST", summary: "Post the person's utterance to a TaskForce.", handler: json(taskforcePostSchema, ({ taskforceId, text, mentions = [], replyTo, images = [] }) => {
       read(taskforceId);
       for (const member of mentions) known(member);
       const decoded = images.map((image) => {
@@ -154,14 +152,6 @@ export function createTaskforceRoutes(
     { name: TASKFORCE_ROUTE_NAMES.continue, method: "POST", summary: "Reset the commodore chain and unpause the TaskForce.", handler: json(taskforceIdOnlySchema, ({ taskforceId }) => {
       read(taskforceId);
       return { taskforce: store.continue(taskforceId) };
-    }) },
-    { name: TASKFORCE_ROUTE_NAMES.close, method: "POST", summary: "Close a TaskForce; closed TaskForces reject new utterances until reopened.", handler: json(taskforceIdOnlySchema, ({ taskforceId }) => {
-      read(taskforceId);
-      return { taskforce: store.close(taskforceId) };
-    }) },
-    { name: TASKFORCE_ROUTE_NAMES.reopen, method: "POST", summary: "Reopen a closed TaskForce.", handler: json(taskforceIdOnlySchema, ({ taskforceId }) => {
-      read(taskforceId);
-      return { taskforce: store.reopen(taskforceId) };
     }) },
     { name: TASKFORCE_ROUTE_NAMES.delete, method: "POST", summary: "Permanently delete a TaskForce and its ledger.", handler: json(taskforceIdOnlySchema, ({ taskforceId }) => {
       read(taskforceId);

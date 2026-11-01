@@ -232,7 +232,7 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
       ...(entry.images?.length ? { attachments: entry.images.map((image) => ({ preview: { id: image.id, url: `/api/v1/${TASKFORCE_ROUTE_NAMES.image}?${new URLSearchParams({ taskforceId: id, seq: String(entry.seq), imageId: image.id })}` } })) } : {}) }];
   }), [entries, id, language, book, commodores, bySeq]);
   const participants: readonly ConversationParticipant[] = [...new Set([...(state?.members ?? []), ...entries.flatMap((entry) => entry.speaker.kind === "commodore" ? [entry.speaker.commodoreId] : [])])].map((id) => ({ speaker: speaker(id), activity: judging.includes(id) ? "running" : "idle" }));
-  const run = async (route: "continue" | "close" | "reopen") => { if (busy) return; setBusy(true); setFailure(false); try { await mutateTaskforce(route, { taskforceId: id }); } catch { setFailure(true); } finally { setBusy(false); } };
+  const run = async (route: "continue") => { if (busy) return; setBusy(true); setFailure(false); try { await mutateTaskforce(route, { taskforceId: id }); } catch { setFailure(true); } finally { setBusy(false); } };
   const Conversation = commodoreConversationRenderer();
   const messageContent: AgentConversationProps["messageContent"] = (message) => {
     const entry = bySeq.get(Number(message.id)); if (!entry) return;
@@ -240,13 +240,13 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
     const owner = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
     return { ...(entry.mentions.length ? { body: <MentionText entry={entry} language={language} /> } : {}), ...(actions.length ? { footer: <TaskforceActions actions={actions} {...(owner ? { commodoreId: owner } : {})} language={language} /> } : {}) };
   };
-  const cards = <>{state?.status === "open" && state.chain.paused ? <div className="taskforce-paused"><span aria-hidden="true">Ⅱ</span><div><strong>{t("taskforce.paused", { n: state.chain.count })}</strong><small>{t("taskforce.pausedHint")}</small></div><span><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("continue")}>{t("taskforce.continue")}</button><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => void run("close")}>{t("taskforce.close")}</button></span></div> : null}</>;
+  const cards = <>{state && state.chain.paused ? <div className="taskforce-paused"><span aria-hidden="true">Ⅱ</span><div><strong>{t("taskforce.paused", { n: state.chain.count })}</strong><small>{t("taskforce.pausedHint")}</small></div><span><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("continue")}>{t("taskforce.continue")}</button></span></div> : null}</>;
   // 판단 중 표시는 사령관 1:1 채팅과 같은 자리·형태(대화 독의 working 줄)로 낸다. 별도 cards 줄을 세우지 않는다.
   const working = useMemo(() => judging.map((member) => speaker(member)), [judging, book, language, state?.members]);
   const port = useMemo(() => taskforceAttachmentPort(), [id]);
   const composerT = getCommodoreT(language);
   const composer = <div className="taskforce-foot">{failure || snapshot.error ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} {snapshot.error ? <button type="button" className="taskforce-link" onClick={() => void loadTaskforce(id)}>{t("taskforce.retry")}</button> : null}</p> : null}
-    {state?.status === "closed" ? <div className="taskforce-closed"><span>{t("taskforce.closedNote")}</span><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => void run("reopen")}>{t("taskforce.reopen")}</button></div> : state ? <CommodoreComposer t={composerT} theaterId={state.id} active={state.status === "open"} placeholder={t("taskforce.placeholder")} allowedCommodoreIds={state.members} attachmentPort={port} attachmentLimits={{ max: MAX_TASKFORCE_IMAGES, bytes: MAX_TASKFORCE_IMAGE_BYTES }} sender={async ({ text, attachmentIds, references }) => {
+    {state ? <CommodoreComposer t={composerT} theaterId={state.id} active placeholder={t("taskforce.placeholder")} allowedCommodoreIds={state.members} attachmentPort={port} attachmentLimits={{ max: MAX_TASKFORCE_IMAGES, bytes: MAX_TASKFORCE_IMAGE_BYTES }} sender={async ({ text, attachmentIds, references }) => {
       const mentions = references.flatMap((reference) => typeof reference === "string" ? [] : reference.kind === "commodore" && state.members.includes(reference.id) ? [reference.id] : []);
       const images = attachmentIds.flatMap((imageId) => {
         const payload = taskforceImagePayloads.get(imageId);
