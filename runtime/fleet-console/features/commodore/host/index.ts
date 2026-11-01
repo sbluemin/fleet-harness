@@ -131,7 +131,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping,
       list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map((id) => ({ commodoreId: id, alias: store.read(id)?.alias, theaters: entities.theatersOf(id) })),
       create: (input) => createFromCommodore(commodoreId, input),
-      message: (input) => messageFromCommodore(commodoreId, input),
+      message: (input) => messageFromCommodore(commodoreId, input, turn),
     }),
     plugins: (ids) => plugins.resolve(effectiveCommodorePlugins(plugins.listGlobal(), ids).effective),
     emit,

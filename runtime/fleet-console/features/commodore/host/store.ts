@@ -222,7 +222,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     if (last) lastMessages.set(commodoreId, last);
     if (last?.from === "commodore") lastResponses.set(commodoreId, last);
     const kept = compactIfLarge(file);
-    if (kept) pruneImages(commodoreId, new Set(kept.flatMap((entry) => entry.kind === "message" && entry.messageId ? [entry.messageId] : [])));
+    if (kept) pruneImages(commodoreId, new Set(kept.flatMap((entry) => (entry.kind === "message" || entry.kind === "received") && entry.messageId ? [entry.messageId] : [])));
     broadcast({ op: "transcript", commodoreId, theaterIds: options.theaterIdsOf(commodoreId), entry: parsed.data });
     return parsed.data;
   };

@@ -237,8 +237,8 @@ export type CommodoreTranscriptEntry =
   /** 세션이 대화를 요약해 같은 세션으로 이어 갔다 — 압축 전후의 문맥 토큰(실행기가 말한 그대로). */
   | CommodoreTranscriptBase & { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number }
   | CommodoreTranscriptBase & { readonly kind: "message"; readonly text: string; readonly messageId?: string; readonly attachments?: readonly { readonly id: string; readonly preview?: true }[]; readonly imageBytes?: number; readonly objective?: { readonly id: string; readonly title: string }; readonly references?: readonly CommodoreMessageReference[] }
-  | CommodoreTranscriptBase & { readonly kind: "sent"; readonly messageId: string; readonly to: CommodorePeer; readonly text: string; readonly replyTo?: string; readonly ok: boolean; readonly error?: string }
-  | CommodoreTranscriptBase & { readonly kind: "received"; readonly messageId: string; readonly from: CommodorePeer; readonly text: string; readonly replyTo?: string }
+  | CommodoreTranscriptBase & { readonly kind: "sent"; readonly messageId: string; readonly to: CommodorePeer; readonly text: string; readonly replyTo?: string; readonly ok: boolean; readonly error?: string; readonly attachments?: readonly { readonly id: string; readonly preview?: true }[]; readonly imageBytes?: number }
+  | CommodoreTranscriptBase & { readonly kind: "received"; readonly messageId: string; readonly from: CommodorePeer; readonly text: string; readonly replyTo?: string; readonly attachments?: readonly { readonly id: string; readonly preview?: true }[]; readonly imageBytes?: number }
   /** 받은 사령관 연락을 성공한 턴이 처리했다. 재시작 때 이 줄이 없는 연락만 다시 싣는다. */
   | CommodoreTranscriptBase & { readonly kind: "received-read"; readonly seqs: readonly number[] }
   /** 사람의 멘션을 처리한 턴의 결과. 빈 목록은 그 턴에서 모두 전했다는 뜻이다. */
@@ -306,8 +306,8 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional(),
     // 본문 속 참조 — 이 낱말을 모르는 옛 판은 이 줄을 깨진 줄처럼 건너뛴다.
     references: z.array(z.object({ id: ids, title: z.string().max(200), kind: z.literal("commodore").optional() }).strict()).min(1).max(MAX_COMMODORE_REFERENCES).optional() }).strict(),
-  z.object({ ...transcriptBase, kind: z.literal("sent"), messageId: ids, to: peer, text, replyTo: ids.optional(), ok: z.boolean(), error: z.string().max(64).optional() }).strict(),
-  z.object({ ...transcriptBase, kind: z.literal("received"), messageId: ids, from: peer, text, replyTo: ids.optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("sent"), messageId: ids, to: peer, text, replyTo: ids.optional(), ok: z.boolean(), error: z.string().max(64).optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("received"), messageId: ids, from: peer, text, replyTo: ids.optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("received-read"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("mention-result"), messageSeq: z.number().int().nonnegative(), unrelayed: z.array(peer).max(MAX_COMMODORE_REFERENCES) }).strict(),
   // 기록은 덧붙이기만 한다 — 지난 message 줄을 고쳐 쓰지 않고 이 줄이 가리킨다. 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.

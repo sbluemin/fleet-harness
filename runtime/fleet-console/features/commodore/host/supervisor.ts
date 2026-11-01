@@ -204,6 +204,8 @@ interface Runner {
   hosted: Map<string, QueuedMessage>;
   /** 이번 턴에 실은 메시지만 보드 도구가 복사할 수 있다. 대기·과거 메시지는 권한이 아니다. */
   turnMessages: readonly QueuedMessage[];
+  /** 이번 턴에 실은 사령관 연락 — 사람 메시지와 같은 ID 공간으로 복사한다. */
+  turnMail: readonly ReceivedMessage[];
   /** 이번 턴을 사람 요청 출처의 루틴이 깨웠는지 — 완료 목표 보관만 이것을 사람의 요청으로 받는다. */
   turnPersonRoutine: boolean;
   sessionImageBytes: number;
@@ -248,19 +250,43 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   };
   const turnAttachments = (runner: Runner): CommodoreAttachmentReader => (ids) => {
     const unavailable = () => new CommodoreStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it." });
-    if (!deps.attachments || runner.stopping || disposed || !runner.turnMessages.length) throw unavailable();
+    if (runner.stopping || disposed || (!runner.turnMessages.length && !runner.turnMail.length)) throw unavailable();
     const selected = ids.map((id) => {
-      const message = runner.turnMessages.find((entry) => entry.messageId && entry.attachments?.some((image) => image.id === id));
-      if (!message?.messageId) throw unavailable();
-      return { id, messageId: message.messageId };
+      const human = runner.turnMessages.find((entry) => entry.messageId && entry.attachments?.some((image) => image.id === id));
+      if (human?.messageId) return { id, messageId: human.messageId, kind: "human" as const };
+      const peer = runner.turnMail.find((entry) => entry.messageId && entry.attachments?.some((image) => image.id === id));
+      if (peer?.messageId) return { id, messageId: peer.messageId, kind: "mail" as const };
+      throw unavailable();
     });
-    const messages = new Map<string, ReturnType<AttachmentHost["read"]>>();
-    for (const { messageId } of selected) if (!messages.has(messageId)) {
-      try { messages.set(messageId, deps.attachments.read(runner.commodoreId, messageId)); }
-      catch { throw unavailable(); }
+    const humanMessages = new Map<string, ReturnType<AttachmentHost["read"]>>();
+    const mailImages = new Map<string, { id: string; mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; bytes: Uint8Array }>();
+    for (const { messageId, kind } of selected) {
+      if (kind === "human") {
+        if (!deps.attachments || humanMessages.has(messageId)) continue;
+        try { humanMessages.set(messageId, deps.attachments.read(runner.commodoreId, messageId)); }
+        catch { throw unavailable(); }
+      } else if (!mailImages.has(messageId)) {
+        try {
+          const entry = runner.turnMail.find((mail) => mail.messageId === messageId);
+          const images = (entry?.attachments ?? []).map((attachment) => {
+            const image = deps.store.images.read(runner.commodoreId, messageId, attachment.id);
+            if (!image) throw unavailable();
+            return image;
+          });
+          for (const image of images) mailImages.set(`${messageId}:${image.id}`, image);
+        } catch (error) {
+          if (error instanceof CommodoreStoreError) throw error;
+          throw unavailable();
+        }
+      }
     }
-    return selected.map(({ id, messageId }) => {
-      const image = messages.get(messageId)!.find((entry) => entry.id === id);
+    return selected.map(({ id, messageId, kind }) => {
+      if (kind === "human") {
+        const image = humanMessages.get(messageId)!.find((entry) => entry.id === id);
+        if (!image) throw unavailable();
+        return image;
+      }
+      const image = mailImages.get(`${messageId}:${id}`);
       if (!image) throw unavailable();
       return image;
     });
@@ -270,6 +296,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const boardTools = (runner: Runner): readonly ConsoleMcpTool[] => {
     const turn: CommodoreTurnBindings = {
       readAttachments: turnAttachments(runner),
+      readBriefImages: (ids) => {
+        const board = deps.board();
+        const reader = board?.briefImages?.(runner.commodoreId);
+        if (!reader) throw new CommodoreStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it." });
+        return reader(ids);
+      },
       hasPersonMessage: hasPersonMessage(runner),
       hasPersonRoutine: () => inTurn(runner) && runner.turnPersonRoutine,
       stopping: () => disposed || runner.stopping,
@@ -717,15 +749,21 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       }
       // 배치의 글자 상한은 문맥 크기 방어다. 남은 말은 다음 턴에 싣는다.
       let mailChars = 0;
+      let mailBytes = 0;
       let mailCount = 0;
       for (const entry of runner.mail) {
-        if (mailChars + entry.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
+        const bytes = entry.imageBytes ?? 0;
+        if (mailChars + entry.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS || mailBytes + bytes > MAX_COMMODORE_TURN_IMAGE_BYTES) break;
         mailChars += entry.text.length;
+        mailBytes += bytes;
         mailCount += 1;
       }
       let taskforceInput: ReturnType<typeof prepareTaskforceTurn>;
       const selected = runner.messages.slice(0, batchCount);
       let preparedMessages: (string | { text: string; images: Extract<AgentInputBlock, { type: "image" }>[] })[] = [];
+      let preparedMail: readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[] = [];
+      let mailImages: readonly { readonly messageId: string; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] }[] = [];
+      let mailBase64Bytes = 0;
       let session = runner.session;
       try {
         // 교대 — 좌표·언어가 바뀌었거나 이미지 예산을 넘었거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
@@ -738,6 +776,25 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           return { text: `${message.text}\n\nAttached images for this turn (copy with attachmentIds in add or edit_brief before the turn ends; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
+        // 사령관 연락의 이미지 — 사람 메시지와 같은 턴·세션 예산에 센다. 사본은 수신 때 저장소에서 받았다.
+        const mailSelected = runner.mail.slice(0, mailCount);
+        const loadedMail = mailSelected.map((entry) => {
+          if (!entry.attachments?.length) return { entry, images: [] as Extract<AgentInputBlock, { type: "image" }>[] };
+          if (!entry.messageId) throw new Error("attachment_not_found");
+          const stored = entry.attachments.map((attachment) => {
+            const image = deps.store.images.read(runner.commodoreId, entry.messageId!, attachment.id);
+            if (!image || image.id !== attachment.id) throw new Error("attachment_not_found");
+            return image;
+          });
+          if (stored.length !== entry.attachments.length) throw new Error("attachment_not_found");
+          const blocks = stored.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } }));
+          return { entry, images: blocks };
+        });
+        preparedMail = loadedMail.map(({ entry }) => entry);
+        mailImages = loadedMail.filter(({ images }) => images.length).map(({ entry, images }) => ({ messageId: entry.messageId!, images }));
+        mailBase64Bytes = loadedMail.reduce((total, { images }) => total + images.reduce((bytes, image) => bytes + image.source.data.length, 0), 0);
+        batchBytes += mailBytes;
+        batchBase64Bytes += mailBase64Bytes;
         taskforceInput = prepareTaskforceTurn(runner.commodoreId, mailChars, batchBytes);
         batchBytes += taskforceInput.tfImageBytes;
         batchBase64Bytes += taskforceInput.tfImageBase64Bytes;
@@ -806,6 +863,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.sessionImageBase64Bytes += batchBase64Bytes;
       const mail = runner.mail.splice(0, mailCount);
       runner.turnMessages = messages;
+      runner.turnMail = preparedMail;
       runner.turnPersonRoutine = pending.some(([code, reason]) => code === "routine" && (reason.routines ?? []).some((attempt) => attempt.requested));
       runner.turnSent.clear();
       runner.tfPosts = [];
@@ -825,10 +883,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const openUIFeedback = runner.openUIFeedback;
         runner.openUIFeedback = undefined;
         runner.sessionFirstTurn = false;
-        outcome = await session.turn({ reasons, sentences, ...(openUIFeedback ? { openUIFeedback } : {}), ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}), ...(tfPrompt.length ? { taskforce: tfPrompt } : {}), ...(tfImages.length ? { taskforceImages: tfImages } : {}), ...(quiet ? { quietText: true as const } : {}) });
+        outcome = await session.turn({ reasons, sentences, ...(openUIFeedback ? { openUIFeedback } : {}), ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail: preparedMail } : {}), ...(mailImages.length ? { mailImages } : {}), ...(tfPrompt.length ? { taskforce: tfPrompt } : {}), ...(tfImages.length ? { taskforceImages: tfImages } : {}), ...(quiet ? { quietText: true as const } : {}) });
         // 실패·취소된 시도는 다시 실릴 수 있다. 전하지 않았다는 판정은 성공한 턴에서만 확정한다.
         if (outcome.outcome === "ok") for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
-      } finally { runner.turnMessages = []; runner.turnPersonRoutine = false; }
+      } finally { runner.turnMessages = []; runner.turnMail = []; runner.turnPersonRoutine = false; }
       if (outcome.outcome === "ok") {
         for (let at = 0; at < mail.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "received-read", seqs: mail.slice(at, at + MAX_TRANSCRIPT_PAGE).map((entry) => entry.seq) });
       } else runner.mail.unshift(...mail);
@@ -965,7 +1023,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnPersonRoutine: false, sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], turnPersonRoutine: false, sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),

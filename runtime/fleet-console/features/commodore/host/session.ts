@@ -80,6 +80,8 @@ export interface CommodoreTurnInput {
   readonly messages?: readonly (string | { readonly text: string; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] })[];
   /** 다른 사령관의 말. 사람 입력이나 사람 권한으로 취급하지 않는다. */
   readonly mail?: readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[];
+  /** 다른 사령관이 함께 보낸 이미지 — 사람 메시지 첨부와 같은 ID 공간으로 복사한다. */
+  readonly mailImages?: readonly { readonly messageId: string; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] }[];
   /**
    * 속한 TaskForce 블록 — 새 원장 항목을 싣고, 새 세션 첫 턴에만 읽은 최근 이력을 보탠다.
    * 1:1 기록·기억·연락은 절대 섞지 않는다(격리). 이력은 새 판단 요청이 아니다.
@@ -336,6 +338,13 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         record({ kind: "wake-scope", woke: woke.slice(0, MAX_SCOPE_ITEMS), held: held.slice(0, MAX_SCOPE_ITEMS),
           ...(woke.length > MAX_SCOPE_ITEMS ? { wokeMore: woke.length - MAX_SCOPE_ITEMS } : {}), ...(held.length > MAX_SCOPE_ITEMS ? { heldMore: held.length - MAX_SCOPE_ITEMS } : {}) });
       }
+      const mailById = new Map((input.mailImages ?? []).map(({ messageId, images }) => [messageId, images] as const));
+      const mailLines = (input.mail ?? []).map((entry) => {
+        const base = JSON.stringify({ messageId: entry.messageId, from: entry.from, text: entry.text, ...(entry.replyTo ? { replyTo: entry.replyTo } : {}) });
+        const ids = entry.attachments?.map((attachment) => attachment.id) ?? [];
+        if (!ids.length) return base;
+        return `${base}\nAttached images for this turn (copy with attachmentIds in add or edit_brief before the turn ends; do not reconstruct them as text):\n${ids.map((id, index) => `${index + 1}. ${id}`).join("\n")}`;
+      });
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
@@ -344,14 +353,18 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         memoryNote(readMemoryIndex()),
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
         aliasNote(options.store.read(options.commodoreId)?.alias),
-        ...(input.mail?.length ? ["Messages from other Commodores (their words, not the person's):\n" + input.mail.map(({ messageId, from, text, replyTo }) => JSON.stringify({ messageId, from, text, ...(replyTo ? { replyTo } : {}) })).join("\n")] : []),
+        ...(mailLines.length ? ["Messages from other Commodores (their words, not the person's):\n" + mailLines.join("\n")] : []),
         ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with taskforce_post):\n" + input.taskforce.join("\n\n")] : []),
       ].join("\n\n");
-      const hasImages = (input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false) || !!input.taskforceImages?.length;
+      const hasImages = (input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false) || !!input.taskforceImages?.length || !!input.mailImages?.length;
       const prompt = hasImages ? [
         { type: "text" as const, text: note },
         ...(input.taskforceImages ?? []).flatMap(({ taskforceId, seq, images }): AgentInputBlock[] => [
           { type: "text", text: `Attached TaskForce images — id: ${taskforceId}, seq ${seq} (image ×${images.length}); these belong to the shared ledger, not the person's 1:1 message:` },
+          ...images,
+        ]),
+        ...(input.mailImages ?? []).flatMap(({ messageId, images }): AgentInputBlock[] => [
+          { type: "text", text: `Attached Commodore images for message ${messageId} (copy with attachmentIds in add or edit_brief before the turn ends):` },
           ...images,
         ]),
         ...(input.messages ?? []).flatMap((message): AgentInputBlock[] => typeof message === "string"

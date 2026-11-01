@@ -322,6 +322,87 @@ it("delivers peer messages to a resting Commodore without person authority and r
   } finally { await supervisor.dispose(); vi.useRealTimers(); }
 });
 
+it("forwards turn and objective images through commodore messages into the recipient's turn attachments", async () => {
+  // 사령관 간 이미지 전달의 대표 계약 — 송신(턴 첨부+자기 목표) → 수신 턴 이미지 블록+ID → 같은 턴에 attachmentIds로 복사, 남의 이미지는 거부.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-message-images-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  store.setAlias(from, "Sender"); store.setAlias(to, "Receiver");
+  const turnImageId = "11111111-1111-4111-8111-111111111111";
+  const briefImageId = "22222222-2222-4222-8222-222222222222";
+  const foreignId = "33333333-3333-4333-8333-333333333333";
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02]);
+  const turnImage = { id: turnImageId, mime: "image/png" as const, bytes: png };
+  const briefImage = { id: briefImageId, mime: "image/png" as const, bytes: png };
+  const senderTurn = {
+    readAttachments: (ids: readonly string[]) => {
+      if (ids.length === 1 && ids[0] === turnImageId) return [turnImage];
+      throw new Error("attachment_not_available");
+    },
+    readBriefImages: (ids: readonly string[]) => {
+      if (ids.length === 1 && ids[0] === briefImageId) return [briefImage];
+      throw new Error("attachment_not_available");
+    },
+  };
+  let capturedTurn: CommodoreTurnBindings | undefined;
+  const prompts: unknown[] = [];
+  let copyResult: readonly { id: string }[] | undefined;
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      // 수신 턴 도중 같은 턴 첨부로 복사할 수 있어야 한다 — 보드 add/edit_brief가 쓰는 경로다.
+      try { copyResult = capturedTurn?.readAttachments([turnImageId, briefImageId])?.map(({ id }) => ({ id })); }
+      catch { copyResult = undefined; }
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: (_id, turn) => { capturedTurn = turn; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  const tool = createCommodoreManagementTools({ hasPersonMessage: () => false, stopping: () => false, list: entities.ids, create: () => { throw new Error("unexpected_create"); }, message: (input) => send(from, input, senderTurn) })[0]!;
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toEqual([]);
+    const ok = await tool.execute({ action: "message", to, text: "설계안 이미지 전달", attachmentIds: [turnImageId, briefImageId] }, { cwd: dir }) as { isError: boolean; structuredContent: { delivered?: boolean } };
+    expect(ok).toMatchObject({ isError: false, structuredContent: { delivered: true } });
+    const sent = store.transcriptRead(from).entries.at(-1)!;
+    expect(sent).toMatchObject({ kind: "sent", to: { id: to }, ok: true });
+    const received = store.transcriptRead(to).entries.at(-1)!;
+    expect(received).toMatchObject({ kind: "received", from: { id: from }, attachments: [{ id: turnImageId }, { id: briefImageId }] });
+    const messageId = (received as { messageId: string }).messageId;
+    expect(store.images.read(to, messageId, turnImageId)?.bytes).toEqual(png);
+    expect(store.images.read(to, messageId, briefImageId)?.bytes).toEqual(png);
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    const prompt = prompts[0];
+    const blocks = Array.isArray(prompt) ? prompt as { type: string; text?: string; source?: { data: string } }[] : [];
+    expect(blocks.some((block) => block.type === "text" && block.text?.includes("Messages from other Commodores"))).toBe(true);
+    expect(blocks.some((block) => block.type === "text" && block.text?.includes(turnImageId) && block.text?.includes(briefImageId))).toBe(true);
+    expect(blocks.filter((block) => block.type === "image")).toHaveLength(2);
+    // 같은 턴에 브리핑 복사로 쓸 수 있다.
+    expect(copyResult).toEqual([{ id: turnImageId }, { id: briefImageId }]);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.transcriptRead(to).entries).toContainEqual(expect.objectContaining({ kind: "received-read" }));
+    // 남의 이미지는 거부하고 고아도 성공 기록도 남기지 않는다.
+    const before = store.transcriptRead(to).entries.length;
+    const refused = await tool.execute({ action: "message", to, text: "남의 이미지", attachmentIds: [foreignId] }, { cwd: dir }) as { isError: boolean; structuredContent: { error?: string } };
+    expect(refused).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    expect(store.transcriptRead(to).entries).toHaveLength(before);
+    expect(store.transcriptRead(from).entries.at(-1)).toMatchObject({ kind: "sent", ok: false, error: "attachment_not_available" });
+    await supervisor.dispose();
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
 it("creates a Commodore with owned Theaters and selected context atomically, rolling back initialization failures", async () => {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-create-"))); dirs.push(dir);
   const theater = path.join(dir, "project"); fs.mkdirSync(theater);

@@ -10,6 +10,8 @@ import { createObjectiveMcpTools } from "./objective-tools.js";
 import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./pr-status.js";
 import { createObjectiveRoutes } from "./routes.js";
 import { createObjectiveStore } from "./store.js";
+import { ObjectiveStoreError } from "./store.js";
+import fs from "node:fs";
 import { OBJECTIVE_CHANNEL, type ObjectiveEvent } from "../shared/types.js";
 import { RESULT_LIMITS } from "../shared/results.js";
 
@@ -145,6 +147,32 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       language: (commodoreId) => {
         const latest = deps.objectiveRecords.list().filter((node) => node.commodoreId === commodoreId && (node.objectiveLanguage === "ko" || node.objectiveLanguage === "en")).sort((a, b) => b.ts.updatedAt - a.ts.updatedAt)[0];
         return latest?.objectiveLanguage === "ko" ? "ko" : "en";
+      },
+      // 보내는 사령관의 자기 목표 이미지 — 남의 목표·임의 경로는 읽지 않는다.
+      briefImages: (commodoreId) => (ids) => {
+        const unavailable = (detail?: string) => new ObjectiveStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it.", ...(detail ? { detail } : {}) });
+        if (!ids.length || new Set(ids).size !== ids.length) throw unavailable();
+        const own = new Map(store.list(commodoreId).flatMap((objective) => (objective.attachments ?? []).map((attachment) => [attachment.id, { objective, attachment }] as const)));
+        return ids.map((id) => {
+          const found = own.get(id);
+          if (!found) throw unavailable();
+          let file: string;
+          try { file = store.attachmentPath(found.objective, found.attachment); }
+          catch { throw unavailable(); }
+          let fd: number;
+          try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }
+          catch { throw unavailable(); }
+          try {
+            const stat = fs.fstatSync(fd);
+            if (!stat.isFile()) throw unavailable();
+            const data = fs.readFileSync(fd);
+            if (data.byteLength !== found.attachment.bytes) throw unavailable();
+            return { id, mime: found.attachment.type, bytes: data };
+          } catch (error) {
+            if (error instanceof ObjectiveStoreError) throw error;
+            throw unavailable();
+          } finally { try { fs.closeSync(fd); } catch { /* 닫기 실패는 무시 */ } }
+        });
       },
     };
 
