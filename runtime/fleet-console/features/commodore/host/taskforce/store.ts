@@ -87,7 +87,7 @@ export interface TaskforceStore {
   /** 성원 commodore가 아직 읽지 않은 항목 — 판단 턴이 싣는다. */
   pending(taskforceId: string, commodoreId: string): readonly TaskforceLedgerEntry[];
   create(input: TaskforceCreateInput): { readonly state: TaskforceState; readonly entry: TaskforceLedgerEntry };
-  /** 사람·사령관의 말 — 닫힌 TF는 `taskforce_closed` 로 거절한다. */
+  /** 사람·사령관의 말 — 원장에 덧붙이고 성원에게 알린다. */
   append(taskforceId: string, input: TaskforceAppendInput): { readonly state: TaskforceState; readonly entry: TaskforceLedgerEntry };
   /** 판단 턴이 성공한 뒤 부른다 — 읽은 위치를 전진시킨다. */
   advanceReadSeq(taskforceId: string, commodoreId: string, through: number): TaskforceState;
@@ -107,10 +107,6 @@ export interface TaskforceStore {
   appendActions(taskforceId: string, commodoreId: string, input: { readonly actions: readonly TaskforceAction[]; readonly replyTo: number }): { readonly state: TaskforceState; readonly entry: TaskforceLedgerEntry } | null;
   /** chain을 돌리고 연다 — 멈췄거나 쌓인 수가 있을 때만 chain-resumed 항목을 남긴다. */
   continue(taskforceId: string): TaskforceState;
-  close(taskforceId: string): TaskforceState;
-  reopen(taskforceId: string): TaskforceState;
-  /** 닫기 제안 — system 항목(`close-proposed`, 본문=사유, mentions=제안자)으로 남긴다. */
-  proposeClose(taskforceId: string, commodoreId: string, reason: string): { readonly state: TaskforceState; readonly entry: TaskforceLedgerEntry };
   /** TF 디렉터리째 지운다 — 되돌릴 수 없는 삭제의 커밋점이다. */
   delete(taskforceId: string): void;
   saveImages(taskforceId: string, seq: number, images: readonly TaskforceImageUpload[]): readonly TaskforceLedgerImage[];
@@ -179,10 +175,21 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
     }
-    try {
-      const parsed = taskforceStateSchema.safeParse(JSON.parse(raw));
-      if (parsed.success && parsed.data.id === taskforceId) return parsed.data;
-    } catch { /* 아래에서 치운다 */ }
+    let decoded: unknown;
+    try { decoded = JSON.parse(raw); } catch { /* 아래에서 치운다 */ }
+    if (decoded && typeof decoded === "object" && !Array.isArray(decoded)) {
+      const { status, closedAt, ...current } = decoded as Record<string, unknown>;
+      const parsed = taskforceStateSchema.safeParse(current);
+      if (parsed.success && parsed.data.id === taskforceId) {
+        // 이전에 마친 TF도 일반 TF다. 과거 항목으로 갑자기 깨우지 않도록 성원의 읽음을 끝에 맞춘다.
+        const state = status === "closed"
+          ? { ...parsed.data, readSeq: { ...parsed.data.readSeq, ...Object.fromEntries(parsed.data.members.map((member) => [member, parsed.data.lastSeq])) } }
+          : parsed.data;
+        // 이관 쓰기 실패는 손상이 아니다 — 파일을 치우지 않고 호출자에게 실패를 전한다.
+        if (status !== undefined || closedAt !== undefined) writeFileAtomic(stateFile(taskforceId), JSON.stringify(state));
+        return state;
+      }
+    }
     console.warn(`[objectives] taskforce state unreadable, set aside: ${taskforceId}`);
     try { fs.renameSync(stateFile(taskforceId), `${stateFile(taskforceId)}.broken-${Date.now()}-${randomUUID()}`); } catch { /* 치우지 못해도 빈자리로 간다 */ }
     return null;
@@ -242,12 +249,10 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
 
   /**
    * 원장 append — seq를 찍어 덧붙이고 lastSeq·chain을 전진시킨 뒤
-   * 원장 사건과 상태 사건(`ledger`)을 순서대로 낸다. 닫힌 TF의 말은 system 항목만
-   * 다는 내부 경로(`appendSystem`)로 남긴다.
+   * 원장 사건과 상태 사건(`ledger`)을 순서대로 낸다.
    */
-  const appendEntry = (taskforceId: string, input: TaskforceAppendInput, { closedOk = false }: { readonly closedOk?: boolean } = {}): { state: TaskforceState; entry: TaskforceLedgerEntry } => {
+  const appendEntry = (taskforceId: string, input: TaskforceAppendInput): { state: TaskforceState; entry: TaskforceLedgerEntry } => {
     const current = load(taskforceId);
-    if (!closedOk && current.status !== "open") throw new TaskforceStoreError("taskforce_closed");
     if (input.speaker.kind === "commodore" && !current.members.includes(input.speaker.commodoreId)) throw new TaskforceStoreError("invalid_request");
     if ((input.images ?? []).reduce((bytes, image) => bytes + image.size, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new TaskforceStoreError("invalid_request");
     const mentions = [...new Set(input.mentions ?? [])];
@@ -284,19 +289,18 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     return { state: validated, entry: parsed.data };
   };
 
-  /** system 항목 — 닫힌 TF에도 남는다(종료·재열기·퇴장 자체가 system 항목이다). */
+  /** 참여·연쇄 제한 같은 system 항목도 같은 원장에 남긴다. */
   const appendSystem = (taskforceId: string, code: TaskforceSystemCode, text: string, mentions: readonly string[] = []): { state: TaskforceState; entry: TaskforceLedgerEntry } =>
-    appendEntry(taskforceId, { speaker: { kind: "system", code }, text, mentions }, { closedOk: true });
+    appendEntry(taskforceId, { speaker: { kind: "system", code }, text, mentions });
 
   const summaryOf = (state: TaskforceState): TaskforceSummary => {
     const preview = lastEntries.get(state.id) ?? readLedgerFile(state.id).at(-1) ?? null;
     if (preview !== undefined && preview !== null) lastEntries.set(state.id, preview);
     return {
       id: state.id, name: state.name, topic: state.topic, members: [...state.members],
-      status: state.status, lastSeq: state.lastSeq, createdAt: state.createdAt,
+      lastSeq: state.lastSeq, createdAt: state.createdAt,
       counts: { ...(state.counts ?? { person: 0, commodore: 0 }) },
       judging: [...(state.judging?.judging ?? [])],
-      ...(state.closedAt !== undefined ? { closedAt: state.closedAt } : {}),
       ...(preview ? { preview: { seq: preview.seq, at: preview.at, text: preview.text, speaker: preview.speaker } } : {}),
     };
   };
@@ -351,7 +355,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
       const dir = path.join(base, id);
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       const state: TaskforceState = {
-        id, name, topic, members, status: "open", createdAt: now(),
+        id, name, topic, members, createdAt: now(),
         readSeq: Object.fromEntries(members.map((member) => [member, 0])),
         chain: { count: 0, limit: TASKFORCE_CHAIN_LIMIT, paused: false },
         lastSeq: 0,
@@ -431,7 +435,6 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
       return validated;
     },
     pauseChain(taskforceId) {      const current = load(taskforceId);
-      if (current.status !== "open") throw new TaskforceStoreError("taskforce_closed");
       if (current.chain.paused) return current;
       commit(taskforceId, { ...current, chain: { ...current.chain, paused: true } }, "ledger");
       appendSystem(taskforceId, "chain-paused", "");
@@ -439,8 +442,6 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     },
     appendActions(taskforceId, commodoreId, input) {
       const current = load(taskforceId);
-      // 턴이 끝나기 전에 TF가 닫혔으면 묶음을 버린다 — 말 자체는 이미 원장에 있다.
-      if (current.status !== "open") return null;
       if (!current.members.includes(commodoreId) || !input.actions.length) throw new TaskforceStoreError("invalid_request");
       if (input.replyTo < 1 || input.replyTo > current.lastSeq) throw new TaskforceStoreError("invalid_request");
       const entry = { speaker: { kind: "commodore", commodoreId } as const, text: "", mentions: [] as string[], actions: [...input.actions], replyTo: input.replyTo, seq: seqOf(taskforceId) + 1, at: now() };
@@ -462,34 +463,10 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     },
     continue(taskforceId) {
       const current = load(taskforceId);
-      if (current.status !== "open") throw new TaskforceStoreError("taskforce_closed");
       if (!current.chain.paused && current.chain.count === 0) return current;
       commit(taskforceId, { ...current, chain: { count: 0, limit: TASKFORCE_CHAIN_LIMIT, paused: false } }, "continued");
       appendSystem(taskforceId, "chain-resumed", "");
       return load(taskforceId);
-    },
-    close(taskforceId) {
-      const current = load(taskforceId);
-      if (current.status === "closed") return current;
-      commit(taskforceId, { ...current, status: "closed", closedAt: now() }, "closed");
-      appendSystem(taskforceId, "closed", "");
-      return load(taskforceId);
-    },
-    reopen(taskforceId) {
-      const current = load(taskforceId);
-      if (current.status === "open") return current;
-      const { closedAt: _closedAt, ...rest } = current;
-      commit(taskforceId, { ...rest, status: "open" }, "reopened");
-      appendSystem(taskforceId, "reopened", "");
-      return load(taskforceId);
-    },
-    proposeClose(taskforceId, commodoreId, reason) {
-      const current = load(taskforceId);
-      if (current.status !== "open") throw new TaskforceStoreError("taskforce_closed");
-      if (!current.members.includes(commodoreId)) throw new TaskforceStoreError("invalid_request");
-      const text = reason.trim();
-      if (!text) throw new TaskforceStoreError("invalid_request");
-      return appendSystem(taskforceId, "close-proposed", text, [commodoreId]);
     },
     delete(taskforceId) {
       load(taskforceId);

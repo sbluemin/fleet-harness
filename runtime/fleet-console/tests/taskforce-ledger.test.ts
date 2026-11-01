@@ -61,11 +61,6 @@ describe("taskforce ledger", () => {
     const taskforceId = (created.value.taskforce as { id: string }).id;
     expect((created.value.entry as { seq: number }).seq).toBe(1);
 
-    // 닫힌 TF의 말은 기록에 남기기 전에 거절한다.
-    expect((await h.route("taskforce/close", { taskforceId })).status).toBe(200);
-    expect((await h.route("taskforce/post", { taskforceId, text: "닫힌 뒤의 말" })).status).toBe(409);
-    expect((await h.route("taskforce/reopen", { taskforceId })).status).toBe(200);
-
     const first = await h.route("taskforce/post", { taskforceId, text: "사람의 말", mentions: [members[0]] });
     expect(first.status).toBe(200);
     const second = h.store.append(taskforceId, { speaker: { kind: "commodore", commodoreId: members[0]! }, text: "사령관의 말" });
@@ -186,6 +181,45 @@ function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
 }
 
 describe("taskforce runtime", () => {
+  it("migrates a previously closed TF without waking its members or changing its ledger", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const { state } = h.taskforce.create({ name: "이전 TF", topic: "보존할 대화", members: [a, b] });
+      const taskforceId = state.id;
+      for (const code of ["close-proposed", "reopened", "closed"] as const) h.taskforce.append(taskforceId, { speaker: { kind: "system", code }, text: "이전 기록" });
+      const previous = h.taskforce.read(taskforceId)!;
+      const tfDir = path.join(h.consoleDataDir, "taskforce", taskforceId);
+      const ledger = fs.readFileSync(path.join(tfDir, "ledger.jsonl"), "utf8");
+      fs.writeFileSync(path.join(tfDir, "state.json"), JSON.stringify({ ...previous, status: "closed", closedAt: Date.now() }));
+      h.taskforce.forget(taskforceId);
+      h.supervisor.sync("started");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(h.sessions).toHaveLength(0);
+      const migrated = h.taskforce.read(taskforceId)!;
+      expect(migrated).not.toHaveProperty("status");
+      expect(migrated).not.toHaveProperty("closedAt");
+      expect(migrated.readSeq).toEqual({ [a]: previous.lastSeq, [b]: previous.lastSeq });
+      const persisted = JSON.parse(fs.readFileSync(path.join(tfDir, "state.json"), "utf8"));
+      expect(persisted).not.toHaveProperty("status");
+      expect(persisted).not.toHaveProperty("closedAt");
+      expect(fs.readFileSync(path.join(tfDir, "ledger.jsonl"), "utf8")).toBe(ledger);
+      const restored = createTaskforceStore({ root: path.join(h.consoleDataDir, "taskforce"), emit: () => undefined });
+      expect(restored.read(taskforceId)?.readSeq).toEqual(migrated.readSeq);
+      expect(restored.pending(taskforceId, a)).toEqual([]);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "다시 나누는 말" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(h.sessions).toHaveLength(2);
+      for (const session of h.sessions) {
+        expect(session.sent[0]).toContain("다시 나누는 말");
+        session.finish();
+      }
+      await vi.advanceTimersByTimeAsync(10);
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("delivers simultaneous members' posts once on their next turn and reminds them of recent conversation without self-waking", async () => {
     vi.useFakeTimers();
     try {

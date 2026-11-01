@@ -493,10 +493,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     catch (error) { console.warn(`[objectives] taskforce judging persist failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
 
-  /** 속한 열린 TF — 판단 블록과 재기동 재실음의 범위다. 닫힌 TF는 깨우지도 싣지도 않는다. */
+  /** 속한 TF — 판단 블록과 재기동 재실음의 범위다. */
   const memberTaskforces = (commodoreId: string): readonly { readonly id: string; readonly name: string; readonly topic: string; readonly members: readonly string[] }[] => {
     if (!deps.taskforce) return [];
-    try { return deps.taskforce.list().filter((tf) => tf.status === "open" && tf.members.includes(commodoreId)); }
+    try { return deps.taskforce.list().filter((tf) => tf.members.includes(commodoreId)); }
     catch { return []; }
   };
 
@@ -542,8 +542,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   /** 자기 발언·렌더용 보드 묶음만으로는 깨우지 않는다. 읽음 커서는 성공한 턴만 전진시킨다. */
   const tfNeedsJudgment = (entry: TaskforceLedgerEntry, commodoreId: string): boolean =>
     !(entry.speaker.kind === "commodore" && entry.speaker.commodoreId === commodoreId)
-    && !(entry.actions?.length && !entry.text)
-    && !(entry.speaker.kind === "system" && entry.speaker.code === "close-proposed" && entry.mentions[0] === commodoreId);
+    && !(entry.actions?.length && !entry.text);
 
   /** 재기동 재실음 — 읽지 않은 TF 원장이 있으면 판단으로 깨운다. 기록 위치(readSeq)가 남아 판단은 겹치지 않는다. */
   const requeueTaskforce = (runner: Runner) => {
@@ -553,21 +552,21 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       let state: TaskforceState | null = null;
       let left = 0;
       try { state = deps.taskforce.read(tf.id); left = deps.taskforce.pending(tf.id, runner.commodoreId).filter((entry) => tfNeedsJudgment(entry, runner.commodoreId)).length; } catch { continue; }
-      // 멈춤·닫힘 TF의 남은 말은 깨우지 않는다 — 사람의 말·continue가 열 때까지 판단하지 않는다.
-      if (!state || state.status !== "open" || state.chain.paused || !left) continue;
+      // 연쇄 제한으로 멈춘 TF의 남은 말은 깨우지 않는다 — 사람의 말·continue가 열 때까지 판단하지 않는다.
+      if (!state || state.chain.paused || !left) continue;
       judgingAdd(tf.id, runner.commodoreId);
       wakeable = true;
     }
     if (wakeable) wake(runner, "taskforce");
   };
 
-  /** 판단으로 깨울 TF — 열려 있고 멈추지 않았으며 읽지 않은 원장이 있다. */
+  /** 판단으로 깨울 TF — 연쇄 제한으로 멈추지 않았으며 읽지 않은 원장이 있다. */
   const tfWakeable = (commodoreId: string): boolean => {
     if (!deps.taskforce) return false;
     for (const tf of memberTaskforces(commodoreId)) {
       try {
         const state = deps.taskforce.read(tf.id);
-        if (!state || state.status !== "open" || state.chain.paused) continue;
+        if (!state || state.chain.paused) continue;
         if (deps.taskforce.pending(tf.id, commodoreId).some((entry) => tfNeedsJudgment(entry, commodoreId))) return true;
       } catch { continue; }
     }
@@ -592,7 +591,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       for (const tf of memberTaskforces(commodoreId)) {
         let state: TaskforceState | null = null;
         try { state = deps.taskforce.read(tf.id); } catch { continue; }
-        if (!state || state.status !== "open") continue;
+        if (!state) continue;
         const watermark = state.readSeq[commodoreId] ?? 0;
         tfWatermark.set(tf.id, watermark);
         const history: string[] = [];
@@ -823,7 +822,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
             }
             if (!posted.has(tfId) && ((tfTakeSeqs.get(tfId)?.length ?? 0) + (tfContextSeqs.get(tfId)?.length ?? 0) > 0)) recordTfOutcome(tfId, runner.commodoreId, "silent");
           }
-          // 같은 턴에 말하고 보드도 쓴 성원의 묶음 — 그 말 아래에 덧붙인다. 닫혔으면 버린다.
+          // 같은 턴에 말하고 보드도 쓴 성원의 묶음 — 그 말 아래에 덧붙인다.
           const writes = collectTurnBoardWrites(runner.commodoreId, turnStartSeq);
           if (writes.length && runner.tfPosts.length) {
             for (let at = 0; at < writes.length; at += 8) {
@@ -873,7 +872,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       }
       if (runner.messages.length) wake(runner, "message");
       if (runner.mail.length) wake(runner, "mail");
-      // TF 초과분(글자 상한에 잘린 말)은 다음 턴에 싣는다. 멈춤·닫힘 TF의 남은 말은 깨우지 않는다.
+      // TF 초과분(글자 상한에 잘린 말)은 다음 턴에 싣는다. 연쇄 제한으로 멈춘 TF의 남은 말은 깨우지 않는다.
       if (tfWakeable(runner.commodoreId)) wake(runner, "taskforce");
       runner.retryAttempt = 0;
       setPhase(runner, "idle");
@@ -1113,7 +1112,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   }));
 
   // TaskForce 원장 사건 — Console이 유일한 쓰는 쪽이라 잠금 없이 읽는다. 도는 턴에는 절대
-  // steer하지 않고 다음 턴 이유에만 모은다. 닫힌 TF는 깨우지 않고, 멈춤 TF도 깨우지 않는다.
+  // steer하지 않고 다음 턴 이유에만 모은다. 연쇄 제한으로 멈춘 TF는 깨우지 않는다.
   if (deps.taskforce) cleanups.push(deps.taskforce.subscribe((event) => {
     if (disposed) return;
     const taskforce = deps.taskforce!;
@@ -1124,10 +1123,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (entry.actions?.length && !entry.text) return;
     let state: TaskforceState | null = null;
     try { state = taskforce.read(event.taskforceId); } catch { return; }
-    if (!state || state.status !== "open") return;
-    // 말한 성원은 판단이 끝났다. 닫기 제안자도 마찬가지다.
-    const speaker = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId
-      : entry.speaker.kind === "system" && entry.speaker.code === "close-proposed" ? entry.mentions[0] : undefined;
+    if (!state) return;
+    // 말한 성원은 판단이 끝났다.
+    const speaker = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
     if (speaker) recordTfOutcome(event.taskforceId, speaker, "spoke");
     // chain 상한 — 12번째 사령관 발언이 닿으면 멈추고 system 항목을 남긴다. 사람 말이 열 때까지 깨우지 않는다.
     if (entry.speaker.kind === "commodore") {
@@ -1140,8 +1138,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (entry.speaker.kind === "person") { for (const member of state.members) targets.add(member); }
     else if (entry.speaker.kind === "commodore") { if (!paused) for (const member of state.members) if (member !== speaker) targets.add(member); }
     else if (entry.speaker.code === "created") { for (const member of state.members) targets.add(member); }
-    else if (entry.speaker.code === "close-proposed") { const proposer = entry.mentions[0]; for (const member of state.members) if (member !== proposer) targets.add(member); }
-    // 그 외 system 항목(입장·퇴장·멈춤·계속·종료·재열기)은 깨우지 않는다 — 다음 판단에 함께 실린다.
+    // 그 외 system 항목은 깨우지 않는다 — 다음 판단에 함께 실린다.
     for (const member of targets) {
       judgingAdd(event.taskforceId, member);
       const runner = runners.get(member);
