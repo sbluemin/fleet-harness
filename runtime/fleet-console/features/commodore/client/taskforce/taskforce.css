@@ -33,6 +33,8 @@
    감싸 같은 상자에서 같은 너비를 나눈다. */
 .taskforce-create-foot > span { flex: 1 1 0; min-width: 0; }
 .taskforce-create-foot .fc-confirm__button { width: 100%; min-width: 0; }
+/* 만들기의 실행 단추만 굵게 둔다 — 확인 팝업의 실행 단추는 보통 굵기다. */
+.taskforce-create-foot .fc-confirm__button--action { font-weight: var(--weight-bold); }
 .taskforce-create-tip { position: relative; display: inline-flex; }
 .taskforce-create-tip [role="tooltip"] { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); width: max-content; max-width: 240px; padding: 8px 10px; border-radius: var(--popover-radius); color: var(--text-primary); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); font-size: var(--t-sm); z-index: 1; }
 .taskforce-create-tip:hover [role="tooltip"], .taskforce-create-tip:focus-visible [role="tooltip"] { display: block; }

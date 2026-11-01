@@ -127,7 +127,6 @@
 .fc-confirm__button--action {
   background: var(--brass);
   color: var(--text-on-brass);
-  font-weight: var(--weight-bold);
 }
 .fc-confirm__button--action:hover:not(:disabled) {
   background: color-mix(in oklch, var(--brass) 86%, var(--text-primary));
@@ -135,7 +134,6 @@
 .fc-confirm__button--danger {
   background: var(--danger-fill);
   color: var(--text-on-coral);
-  font-weight: var(--weight-bold);
 }
 .fc-confirm__button--danger:hover:not(:disabled) {
   background: color-mix(in oklch, var(--danger-fill) 86%, var(--text-primary));
