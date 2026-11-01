@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../../workspace/client/components/caption-actions.js";
 import { HistoryBand, useHistoryReveal } from "../../execution/client/components/history-band.js";
 import { LiveFold, LiveLine, LiveStep } from "./components/live-line.js";
@@ -502,9 +503,7 @@ export function MenuRow({ id, item, name, hint, glyph, checked, onToggle }: {
       >
         <span className="scuttlebutt-menu-glyph" aria-hidden="true">{glyph}</span>
         <span className="scuttlebutt-menu-name">{name}</span>
-        <svg viewBox="0 0 12 12" className="scuttlebutt-menu-check" aria-hidden="true">
-          <path d="M2 6l3 3 5-5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <MenuCheckGlyph className="scuttlebutt-menu-check" />
       </button>
       {createPortal(
         <span

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { useViewportFit } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, useViewportFit } from "@fleet-console/ui/react";
 import { onboardingBoundary } from "../../onboarding/shared/anchors.js";
 import { createPortal } from "react-dom";
 
@@ -1242,7 +1242,7 @@ function ProposalRow({ proposal, target, n, extension, objectiveId, t, call, tou
       </div>
       {touchable ? (
         <div className="objectives-proposal-acts">
-          <button type="button" className="objectives-btn is-small is-approve" onClick={() => decide("/criterion/approve")}><span aria-hidden="true">✓</span>{t("objectives.proposal.approve")}</button>
+          <button type="button" className="objectives-btn is-small is-approve" onClick={() => decide("/criterion/approve")}><span aria-hidden="true"><MenuCheckGlyph /></span>{t("objectives.proposal.approve")}</button>
           <button type="button" className="objectives-btn is-small is-reject" onClick={() => decide("/criterion/reject")}><span aria-hidden="true">✕</span>{t("objectives.proposal.reject")}</button>
           <button
             ref={toggleRef}

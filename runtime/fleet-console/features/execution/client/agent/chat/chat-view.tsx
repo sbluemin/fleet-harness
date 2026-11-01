@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
 import { UseRequestCards } from "../use-request-card.js";
 import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
 import { ChatReferenceLinks, ChatReferenceText, referenceLabelText } from "./chat-reference.js";
@@ -1967,7 +1967,7 @@ function ContinuityTally({
   return (
     <div className={`agent-chat-tally is-continuity is-${item.state ?? "done"}`} role="status" aria-atomic="true">
       {/* 도는 동안은 빈 9px다. 완료 마크와 같은 폭이라 동사 좌표가 안 튄다. 진행은 물결·동사가 말한다. */}
-      <span className="agent-chat-continuity-mark" aria-hidden="true">{running ? null : failed ? "✕" : "✓"}</span>
+      <span className="agent-chat-continuity-mark" aria-hidden="true">{running ? null : failed ? "✕" : <MenuCheckGlyph />}</span>
       <span className={`agent-chat-tally-text${running ? " agent-chat-live-text" : ""}`}>
         <span className="agent-chat-tally-clause">
           <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name="run" /></span>
@@ -2177,7 +2177,7 @@ function JobAnchor({
       onClick={() => onOpenJob(job.id)}
     >
       {/* 도는 동안은 빈 9px다. 결말 마크와 같은 폭이라 제목 좌표가 안 튄다. 진행은 밑줄·결말 칩이 말한다. */}
-      <span className="agent-chat-job-mark" aria-hidden="true">{job.open ? null : job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>
+      <span className="agent-chat-job-mark" aria-hidden="true">{job.open ? null : job.status === "failed" ? "✕" : job.status === "completed" ? <MenuCheckGlyph /> : "·"}</span>
       <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
       {/* 카드가 제목 자리에 쓰던 값 그대로다. subagent_type(`who`)만 남기면 위임 여러 건이
           "general-purpose"로 똑같아져, 어느 것이 무엇인지 열어 봐야만 알 수 있다 —
@@ -2547,7 +2547,7 @@ function AskSettled({
     <>
       {rows.map((row, index) => (
         <div key={index} className={`agent-chat-ask-settled${settled ? "" : " is-open"}`}>
-          <span className="agent-chat-ask-settled-mark" aria-hidden="true">{settled ? "✓" : "✕"}</span>
+          <span className="agent-chat-ask-settled-mark" aria-hidden="true">{settled ? <MenuCheckGlyph /> : "✕"}</span>
           <span className="agent-chat-ask-settled-head">{row.header}</span>
           <span aria-hidden="true">→</span>
           <span className="agent-chat-ask-settled-value">{row.value}</span>
@@ -2611,7 +2611,7 @@ function Step({
       {/* 도는 동안은 빈 9px다. 완료 마크와 같은 폭이라 동사 좌표가 안 튄다. 진행은 물결·동사가
           말한다. 이 칸에 13px 글리프나 궤도 링을 넣으면 완료되는 순간 동사가 밀리고, 닫힌
           details 안의 링은 화면 밖에서도 합성이 끝나지 않는다. */}
-      <span className="agent-chat-step-mark" aria-hidden="true">{running ? null : failed ? "✕" : unconfirmed ? "·" : "✓"}</span>
+      <span className="agent-chat-step-mark" aria-hidden="true">{running ? null : failed ? "✕" : unconfirmed ? "·" : <MenuCheckGlyph />}</span>
       {/* 잎의 계열 글자. 마크 칸은 결말만 지므로, 도는 동안에도 같은 글자를 세워 동사 좌표를 지킨다. */}
       {folded ? (
         <span className="agent-chat-step-family" aria-hidden="true"><AgentGlyph name={agentChatToolFamily(name)} /></span>
@@ -2838,7 +2838,7 @@ function JobRow({
       <span className="agent-chat-job-line">
         {job.open
           ? <span className="agent-chat-step-orbit" aria-hidden="true" />
-          : <span className="agent-chat-job-mark" aria-hidden="true">{job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>}
+          : <span className="agent-chat-job-mark" aria-hidden="true">{job.status === "failed" ? "✕" : job.status === "completed" ? <MenuCheckGlyph /> : "·"}</span>}
         <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
         <span className="agent-chat-job-title">{job.title}</span>
         <span className="agent-chat-job-tail">
@@ -3266,7 +3266,7 @@ function JobExtra({
             // 원장의 스텝과 같은 클래스를 쓴다 — 서브에이전트가 한 일이 이 세션이 한 일과 같은
             // 문법으로 읽혀야, 중첩된 것이 새 화면이 아니라 같은 화면의 한 겹으로 보인다.
             <div key={index} className={`agent-chat-step is-${step.failed === true ? "fail" : "ok"}${live ? " is-live" : ""}`}>
-              <span className="agent-chat-step-mark" aria-hidden="true">{live ? null : step.failed === true ? "✕" : "✓"}</span>
+              <span className="agent-chat-step-mark" aria-hidden="true">{live ? null : step.failed === true ? "✕" : <MenuCheckGlyph />}</span>
               <span className="agent-chat-step-verb">{step.name}</span>
               {step.detail !== undefined ? <span className="agent-chat-step-object">{step.detail}</span> : null}
               {step.outcome !== undefined ? (
@@ -3425,7 +3425,7 @@ function Stage({
         {stage.agents.map((agent, index) => (
           <div className={`agent-chat-stage-row${agent.state === "done" ? "" : " is-pending"}`} role="row" key={index}>
             <span role="cell" className="is-mark" aria-hidden="true">
-              {agent.state === "done" ? "✓" : agent.state === "running" ? "◐" : "·"}
+              {agent.state === "done" ? <MenuCheckGlyph /> : agent.state === "running" ? "◐" : "·"}
             </span>
             <span role="cell" className="is-name" title={agent.result ?? agent.label}>{agent.label}</span>
             <span role="cell" className="is-model" title={agent.model}>{agent.model !== undefined ? modelLabel(agent.model) : "—"}</span>

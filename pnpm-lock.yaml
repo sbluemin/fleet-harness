@@ -362,6 +362,9 @@ importers:
 
   runtime/fleet-console/foundation/markdown:
     dependencies:
+      '@fleet-console/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@openuidev/lang-core':
         specifier: 1.0.1
         version: 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)

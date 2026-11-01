@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { useId, useMemo, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
@@ -142,7 +143,7 @@ function TrailGlyph({ family }: { readonly family: CommodoreTrailFamily }) {
     case "progress":
       return <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1 L9 5 L2 9 Z" fill="currentColor" /></svg>;
     case "done":
-      return <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.2 5.2 L4 8 L8.8 2" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+      return <MenuCheckGlyph />;
     case "back":
       return (
         <svg viewBox="0 0 10 10" aria-hidden="true">

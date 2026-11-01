@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type CompositionEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
@@ -704,7 +705,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
                       // 시작 전 묶음의 행은 머리가 이미 「시작 전」이라 그 낱말을 다시 적지 않고 임무 수만 둔다.
                       aux={bare ? null : (
                         <span className="objectives-commodore-ref-sub">
-                          {isTaken ? <span>{`✓ ${t("commodore.reference.taken")}`}</span> : <>
+                          {isTaken ? <span><MenuCheckGlyph /> {t("commodore.reference.taken")}</span> : <>
                             {candidate.status === "commodore" ? <span>{candidate.description}</span> : group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`commodore.reference.status.${candidate.status}`)}</span>}
                             {missions ? <span>{t("commodore.reference.missions", { done: doneMissions, total: missions })}</span> : null}
                           </>}

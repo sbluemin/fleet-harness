@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronGlyph } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, ChevronGlyph } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { useCommodoreSidebarCommands } from "../../../commodore/client/sidebar-sections.js";
 import { MAX_SIDEBAR_SECTION_NAME, type CommodoreSidebarCommand, type CommodoreSidebarSection } from "../../../commodore/shared/contracts/sidebar-layout.js";
@@ -157,7 +157,7 @@ export function CommodoreSectionMoveMenu({ rowId, controller, onClose }: { reado
     {open ? <div ref={menu} data-section-submenu={id} className="theater-menu workspace-commodore-section-submenu" role="menu" aria-label={t("sidebar.commodoreSection.move")} style={{ position: "fixed", ...position }}
       onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); event.stopPropagation(); setOpen(false); trigger.current?.focus(); } }}>
       {[...controller.layout.sections, { id: null, name: t("sidebar.commodoreSection.none") }].map((section) => <button type="button" role="menuitemradio" aria-checked={current === section.id} key={section.id ?? "none"} className="theater-menu-item" onClick={() => move(section.id)}>
-        <span className="theater-menu-check" aria-hidden="true">{current === section.id ? "✓" : ""}</span><span className="theater-menu-label">{section.name}</span>
+        <span className="theater-menu-check" aria-hidden="true">{current === section.id ? <MenuCheckGlyph /> : null}</span><span className="theater-menu-label">{section.name}</span>
       </button>)}
       <div className="theater-menu-divider" role="separator" />
       <MenuItem icon={<PlusIcon />} onClick={() => { onClose(); void controller.create({ rowId }); }}>{t("sidebar.commodoreSection.create")}</MenuItem>

@@ -8,7 +8,7 @@ import "@fleet-console/font-picker/styles.css";
 import { SystemFontsFetchError, fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
-import { FeatureErrorBoundary, SegmentedThumb } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, FeatureErrorBoundary, SegmentedThumb } from "@fleet-console/ui/react";
 import type { SettingsSectionDescriptor, SettingsSectionGroup, SettingsSectionMobile } from "../shared/types.js";
 import { SettingsGroup, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle } from "./preferences-context.js";
 import { useMobileSettingsHost } from "./mobile-host.js";
@@ -852,9 +852,5 @@ export function SearchIcon() {
 }
 
 function CheckIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3.5 8.5 6.5 11.5 12.5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <MenuCheckGlyph />;
 }

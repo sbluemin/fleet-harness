@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from "react-dom";
 
 import { AccentToneList } from "../components/accent-tone-list.js";
-import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { findAgentObjectiveKind } from "../../../execution/shared/objective-kind.js";
 import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
@@ -421,9 +421,5 @@ function PlusMark() {
 }
 
 function CheckMark() {
-  return (
-    <svg viewBox="0 0 12 12" className="group-context-menu-item__check" aria-hidden="true">
-      <path d="M2 6l3 3 5-5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <MenuCheckGlyph className="group-context-menu-item__check" />;
 }

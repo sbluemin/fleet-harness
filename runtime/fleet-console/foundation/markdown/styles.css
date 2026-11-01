@@ -888,7 +888,7 @@ code.hljs {
 .openui-button:disabled, .openui-button[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
 .openui-button.is-primary { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); }
 .openui-button[aria-pressed="true"] { opacity: 1; border-color: var(--brass); background: var(--quiet-choice-fill); color: var(--brass-ink); }
-.openui-button[aria-pressed="true"]::before { content: "✓" / ""; }
+.openui-button-check { flex: none; }
 .openui-button-tail { font-weight: var(--weight-regular); color: var(--openui-muted); font-size: 0.92em; }
 .openui-button-tail::after { content: " ↗" / ""; }
 .openui-button-tail.is-internal::after { content: none; }

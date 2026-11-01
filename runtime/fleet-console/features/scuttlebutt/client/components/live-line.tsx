@@ -1,4 +1,4 @@
-import { ChevronGlyph } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, ChevronGlyph } from "@fleet-console/ui/react";
 import React from "react";
 
 /**
@@ -82,7 +82,7 @@ export function LiveStep({ mark, label, detail }: LiveStepProps) {
     <div className={`fc-live-step is-${mark}`}>
       {mark === "running"
         ? <span className="fc-live-line__orbit" aria-hidden="true" />
-        : <span className="fc-live-step__mark" aria-hidden="true">{mark === "fail" ? "✕" : "✓"}</span>}
+        : <span className="fc-live-step__mark" aria-hidden="true">{mark === "fail" ? "✕" : <MenuCheckGlyph />}</span>}
       <span className="fc-live-step__label">{label}</span>
       {detail ? <span className="fc-live-step__detail">{detail}</span> : null}
     </div>

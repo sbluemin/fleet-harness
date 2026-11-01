@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import type { ReactElement, SVGProps } from "react";
 
 /**
@@ -12,9 +13,8 @@ export type RepositoryIconName =
 
 const STROKE = { fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
-const SHAPES: Record<RepositoryIconName, ReactElement> = {
+const SHAPES: Record<Exclude<RepositoryIconName, "check">, ReactElement> = {
   branch: <g {...STROKE}><circle cx="4" cy="3.25" r="1.75" /><circle cx="4" cy="12.75" r="1.75" /><circle cx="12" cy="4.75" r="1.75" /><path d="M4 5v6M12 6.5C12 9.5 8.5 10.2 4 11" /></g>,
-  check: <path {...STROKE} strokeWidth={1.75} d="M3.5 8.5l3 3 6-7" />,
   folder: <path {...STROKE} d="M2 4.5A1.5 1.5 0 013.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0114 6v6a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12z" />,
   repo: <g {...STROKE}><path d="M3 3.5A1.5 1.5 0 014.5 2H13v10.5H4.5A1.5 1.5 0 003 14V3.5z" /><path d="M3 12A1.5 1.5 0 014.5 10.5H13M6 5h4" /></g>,
   cloud: <path {...STROKE} d="M4.75 12.5A2.75 2.75 0 014.4 7a3.75 3.75 0 017.25.9 2.35 2.35 0 01-.4 4.6z" />,
@@ -46,7 +46,9 @@ const SHAPES: Record<RepositoryIconName, ReactElement> = {
 };
 
 export function Icon({ name, size = 14, className, ...rest }: { readonly name: RepositoryIconName; readonly size?: number } & Omit<SVGProps<SVGSVGElement>, "name">) {
-  return <svg className={className ? `repository-icon ${className}` : "repository-icon"} width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" focusable="false" {...rest}>{SHAPES[name]}</svg>;
+  const glyphClass = className ? `repository-icon ${className}` : "repository-icon";
+  if (name === "check") return <MenuCheckGlyph className={glyphClass} size={size} {...rest} />;
+  return <svg className={glyphClass} width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" focusable="false" {...rest}>{SHAPES[name]}</svg>;
 }
 
 /** 원격 호스트 → 마크. github.com만 상표 마크를 쓰고 그 외는 cloud. */

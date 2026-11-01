@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import type { ReactNode } from "react";
 
 /**
@@ -27,7 +28,6 @@ const PATHS = {
   pencil: <path d="M4 20h4L19 9l-4-4L4 16z" />,
   swap: <path d="M4 8h13l-3-3M20 16H7l3 3" />,
   copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M5 16V6a2 2 0 0 1 2-2h9" /></>,
-  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   minus: <path d="M6 12h12" />,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" /></>,
   monitor: <><rect x="3" y="4" width="18" height="12" rx="1.5" /><path d="M9 20h6M12 16v4" /></>,
@@ -46,9 +46,10 @@ const PATHS = {
   commanders: <><circle cx="9" cy="8" r="2.2" /><path d="M4.2 18.2v-.6a3.4 3.4 0 0 1 3.4-3.4h2.8a3.4 3.4 0 0 1 3.4 3.4v.6" /><circle cx="16.2" cy="9" r="1.8" /><path d="M15.2 14.2a3.2 3.2 0 0 1 3.1 2.4" /></>,
 } satisfies Record<string, ReactNode>;
 
-export type MobileIconName = keyof typeof PATHS;
+export type MobileIconName = keyof typeof PATHS | "check";
 
 export function MobileIcon({ name, size = 22, className }: { readonly name: MobileIconName; readonly size?: number; readonly className?: string }) {
+  if (name === "check") return <MenuCheckGlyph className={className} size={size} strokeWidth={1.7 / 1.5} />;
   return (
     <svg className={className} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {PATHS[name]}

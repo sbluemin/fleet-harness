@@ -681,9 +681,15 @@
 .agent-chat-continuity-mark {
   width: 9px;
   flex: none;
+  display: inline-flex;
+  justify-content: center;
   text-align: center;
   color: var(--positive);
 }
+
+.agent-chat-continuity-mark > svg,
+.agent-chat-step-mark > svg,
+.agent-chat-job-mark > svg { flex: none; width: 1em; height: 1em; }
 
 .agent-chat-tally.is-continuity.is-fail .agent-chat-continuity-mark {
   color: var(--coral);
@@ -885,7 +891,7 @@
 }
 
 /* 도는 줄도 완료 줄도 이 9px다. 비어 있든 ✓/✕/·이든 칸 폭이 같아야 동사 시작 x가 같다.
-   13px 글리프를 이 칸에 넣으면 완료되는 순간 4px가 줄고, 잎은 계열 글자까지 뒤에 붙어 더 밀린다. */
+   체크는 1em으로 그리되 칸은 늘리지 않고 가운데로 넘친다 — 글리프 폭이 동사를 밀면 안 된다. */
 .agent-chat-step-mark {
   flex: none;
   display: inline-flex;
@@ -2981,7 +2987,7 @@
   font-size: var(--t-sm);
 }
 
-.agent-chat-job-mark { flex: none; width: 9px; text-align: center; color: var(--text-tertiary); }
+.agent-chat-job-mark { flex: none; display: inline-flex; justify-content: center; width: 9px; text-align: center; color: var(--text-tertiary); }
 .agent-chat-job-row.is-done .agent-chat-job-mark { color: var(--positive); }
 .agent-chat-job-row.is-fail .agent-chat-job-mark { color: var(--coral); }
 

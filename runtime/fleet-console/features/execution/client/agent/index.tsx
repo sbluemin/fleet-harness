@@ -13,7 +13,7 @@ import { defineNotificationKind } from "../notifications.js";
 import type { ClientFeatureDescriptor } from "../../../workspace/shared/feature-surfaces.js";
 import type { ObjectiveMenuContext, ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
-import { SegmentedThumb } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, SegmentedThumb } from "@fleet-console/ui/react";
 import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
@@ -836,11 +836,7 @@ function AgentObjectiveMarks({ context }: { readonly context: ObjectiveMenuConte
 }
 
 function SwitchCheckMark() {
-  return (
-    <svg viewBox="0 0 12 12" className="group-context-menu-item__check" aria-hidden="true">
-      <path d="M2 6l3 3 5-5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <MenuCheckGlyph className="group-context-menu-item__check" />;
 }
 
 /**

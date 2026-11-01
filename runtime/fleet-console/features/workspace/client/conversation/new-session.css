@@ -134,7 +134,8 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 }
 .new-session-menu-item:hover,
 .new-session-menu-item:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
-.new-session-menu-check { color: var(--brass-ink); font-size: var(--t-sm); }
+.new-session-menu-check { flex: none; width: 14px; color: var(--brass-ink); font-size: var(--t-sm); }
+.new-session-menu-item[aria-checked="false"] .new-session-menu-check { visibility: hidden; }
 .new-session-menu-divider { height: var(--popover-divider-width); margin: var(--popover-divider-space); background: var(--popover-divider); flex: none; }
 
 /* 컴포저 — 대화 입력 캡슐과 같은 면·테두리·포커스 링. */

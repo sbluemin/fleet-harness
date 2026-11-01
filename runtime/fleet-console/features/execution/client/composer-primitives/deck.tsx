@@ -1,3 +1,4 @@
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 /**
@@ -226,7 +227,7 @@ export function ComposerDeckRow({ id, active, disabled = false, lead, name, valu
       <span className="fc-composer-deck-meta">
         {meta ?? null}
         {token ? <span className="fc-composer-deck-token" aria-hidden="true">{token}</span> : null}
-        {checked ? <span className="fc-composer-deck-check" aria-hidden="true">✓</span> : null}
+        {checked ? <span className="fc-composer-deck-check" aria-hidden="true"><MenuCheckGlyph /></span> : null}
       </span>
     </button>
   );

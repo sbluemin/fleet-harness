@@ -10,6 +10,7 @@ import { composeDraft, parseOpenUIOpenTarget, sendableReply, sendableText, type 
 import { formReady, isNode, list, prune, SPECS, sourceAction, STATES, TONES, type Node, type SafeAction, type Verdict } from "./openui-prune.js";
 export { composeDraft, sendableDraft, sendableReply } from "./openui-actions.js";
 import * as React from "react";
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { z } from "zod";
 
 export type OpenUIState = "todo" | "running" | "waiting" | "done" | "blocked";
@@ -247,7 +248,7 @@ function ActionButton({ label, action }: { label: string; action: unknown }) {
   if (target && !block.open?.accepts(target)) return <span className="openui-inert is-inert" title={safe.type === "open" ? safe.url : undefined}>{contents}</span>;
   return <button type="button" className="openui-button" aria-pressed={block.sent === key ? true : undefined} title={safe.type === "open" ? safe.url : safe.message}
     disabled={!block.final || (safe.type === "send" && block.sent !== null)} aria-disabled={safe.type === "send" && !block.send ? true : undefined}
-    onClick={(event) => block.activate(event, safe, key, trigger)}>{contents}</button>;
+    onClick={(event) => block.activate(event, safe, key, trigger)}>{block.sent === key ? <MenuCheckGlyph className="openui-button-check" /> : null}{contents}</button>;
 }
 const Button = defineComponent({
   ...SPECS.Button,
@@ -272,7 +273,7 @@ function FormFields({ props }: { props: Record<string, unknown> }) {
       ? <input className="openui-input" type="text" maxLength={80} autoComplete="off" spellCheck={false} disabled={disabled} value={values.get(name) ?? ""} onChange={(e) => update(name, e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} />
       : <select className="openui-select" disabled={disabled} value={String(list(field.props.options).indexOf(values.get(name)))} onChange={(e) => { const option = list(field.props.options)[Number(e.currentTarget.value)]; if (typeof option === "string") update(name, option); }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>{list(field.props.options).map((option, i) => <option key={i} value={String(i)}>{String(option)}</option>)}</select>}</label>;
   })}<div className="openui-form-actions"><button type="button" className="openui-button is-primary" aria-pressed={block.sent === key ? true : undefined} title={String(props.template)} disabled={disabled || !complete || !draft}
-    onClick={(event) => { if (complete && draft) block.activate(event, { type: "send", message: draft, max: 480 }, key, trigger); }}>{String(props.submit)}</button></div></div>;
+    onClick={(event) => { if (complete && draft) block.activate(event, { type: "send", message: draft, max: 480 }, key, trigger); }}>{block.sent === key ? <MenuCheckGlyph className="openui-button-check" /> : null}{String(props.submit)}</button></div></div>;
 }
 const Form = defineComponent({
   ...SPECS.Form,

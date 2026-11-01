@@ -2584,7 +2584,7 @@ function TreeOptionsMenu({ sortMode, showHidden, t, triggerRef, onSelectSort, on
               onFocus={() => setActiveIndex(index)}
             >
               <span>{label}</span>
-              {checked !== undefined && <span className="fexp-sort-menu-check" aria-hidden="true"><MenuCheckGlyph /></span>}
+              {checked !== undefined && <span className="fexp-sort-menu-check" aria-hidden="true"><MenuCheckGlyph size={14} /></span>}
             </button>
           </div>
         );

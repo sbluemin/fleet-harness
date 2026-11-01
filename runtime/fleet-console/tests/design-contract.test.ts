@@ -2411,7 +2411,6 @@ describe("Console core design contract", () => {
     // 팝업은 공통 팝업 표면이고, 고른 행은 중립 워시 + 본문색 체크다(금색은 포커스 링에만).
     expect(selectBlock).toContain("background: var(--popover-face);");
     expect(selectBlock).toContain(".fc-select__option[aria-selected=\"true\"] { background: var(--wash-selected); }");
-    expect(selectBlock).toContain('content: "✓";');
     expect(selectBlock).toContain("font-style: italic;");
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
     // compact 트리거는 칩 문법의 모노 티어(11px)를 쓴다 — 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
@@ -2421,7 +2420,8 @@ describe("Console core design contract", () => {
     // 호출부가 트리거 글자색을 자기 채널로 넘겨받는 유일한 통로 — 미설정이면 기본 티어를 그대로 쓴다.
     expect(selectBlock).toContain("color: var(--fc-select-compact-tone, var(--text-secondary));");
     expect(selectBlock).toContain("padding: 7px 16px 7px 10px;");
-    expect(selectBlock).toContain(".fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }");
+    expect(selectBlock).toContain("min-width: fit-content;");
+    expect(selectBlock).toContain(".fc-select__popup--compact > .fc-select__option { min-width: calc(min(160px, calc(100vw - 16px)) - 2 * var(--popover-pad)); }");
     expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
 
     expect(selectBlock).not.toMatch(/#[0-9a-f]{3,8}\b/i);
