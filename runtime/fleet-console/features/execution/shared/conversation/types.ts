@@ -163,6 +163,11 @@ export interface ObjectiveClusterConversation {
   readonly objectiveId: string;
   /** 플러그인이 기록한 목표의 대화일 때만 true다. 일반 Objective의 빈 보드·명부·동작으로 추정하지 않는다. */
   readonly recordedObjective?: boolean;
+  /**
+   * 이 보드를 연 사령관의 별칭 — 그룹 대화가 사령관 발화자의 역할 이름(「Commodore」)을 이 별칭으로 읽는다.
+   * 없으면 역할 이름을 화면 언어로 읽는다. 보드를 공급하는 쪽(objectives)이 호스트 창구로 읽어 싣는다.
+   */
+  readonly commodoreAlias?: string | null;
   readonly members: readonly ConversationMember[];
   /** 지휘관 줄의 보드 사실 — 보드가 지휘관 행에 보이는 것만 싣는다. */
   readonly commander?: ConversationMemberProfile;

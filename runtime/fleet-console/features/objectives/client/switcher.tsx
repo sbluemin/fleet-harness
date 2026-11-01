@@ -6,7 +6,7 @@ import type { StatusGlyphState } from "./components/status-glyph.js";
 
 import type { Objective } from "../shared/types.js";
 import { memberFailureNote, originTitleOf } from "./clusters.js";
-import { decisionTurn, livePersonHolds, personTurnAt, useCommodoreBoard } from "./board-commodore.js";
+import { answeringText, commodoreAliasOf, decisionTurn, livePersonHolds, personTurnAt, useCommodoreBoard } from "./board-commodore.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import type { ObjectiveGroup } from "./objectives-state.js";
@@ -135,7 +135,7 @@ export function ObjectiveSwitcher({ t, language, commodoreId, objectives, groups
     if (failureNote) meta.push({ key: "failed", text: t(failureNote), tone: "warn" });
     if (objective.missions.length) meta.push({ key: "progress", text: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}` });
     // 사이드바 줄의 상태 문구와 같은 판정·같은 말·같은 명도 물결 — 단계 바로 뒤에 선다.
-    if (handling(objective)) meta.push({ key: "answering", text: t("objectives.autonomy.note.answering"), tone: "handling" });
+    if (handling(objective)) meta.push({ key: "answering", text: answeringText(commodoreAliasOf(objective.commodoreId), t), tone: "handling" });
     if (objective.dueDate) meta.push({ key: "due", text: day.format(new Date(`${objective.dueDate}T00:00:00`)), ...(overdueOf(objective) ? { tone: "late" } : {}) });
     const originTitle = from ? originTitleOf(objective, byId) : undefined;
     if (originTitle !== undefined) meta.push({ key: "from", text: originTitle ? t("objectives.switch.followupOf", { title: originTitle }) : t("objectives.switch.followup"), tone: "from" });

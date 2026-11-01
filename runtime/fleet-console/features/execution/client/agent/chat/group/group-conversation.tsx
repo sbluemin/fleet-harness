@@ -861,6 +861,37 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
       {t("group.report.tag", { name: report.recipients[0]?.name ?? t("group.commander") })}
     </button>
   ) : null;
+  // 사령관이 보드로 보낸 말 — 사람 쪽(오른쪽) 윤곽 말풍선으로 선다. 사람 말(채움)과 달리 테두리+옅은 틴트라
+  // 길게 쌓인 대화에서도 갈라 보이고, 글자는 본문색이다. 머리줄은 왼쪽 머리줄과 같은 낱말·순서다.
+  // 사령관에 원장은 없으므로(`ledgerOf` 가 null) 이름은 단추가 아닌 글자로 선다.
+  if (speaker.kind === "commodore") {
+    return (
+      <div className="group-chat-commodore" data-entry-id={entry.id}>
+        {continued ? null : via && entry.recipient ? (
+          <span className="group-chat-commodore-head">
+            <SpeakerMark speaker={speaker} size="sm" />
+            <SpeakerName speaker={speaker} />
+            <span className="group-chat-line-arrow" aria-hidden="true">→</span>
+            <SpeakerName speaker={entry.recipient} />
+            {via}
+          </span>
+        ) : (
+          <span className="group-chat-commodore-head">
+            <SpeakerMark speaker={speaker} size="sm" />
+            <SpeakerName speaker={speaker} />
+          </span>
+        )}
+        <div className="group-chat-bubble is-commodore is-markdown">
+          {/* 본문 칸 — 사람·지휘관 말풍선과 같은 자리(첨부 앞·마크다운 본문·바깥 OpenUI 답)다. */}
+          {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
+          {content?.body ?? (entry.text.trim().length === 0
+            ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
+            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks openui={openui} {...(openui && reply ? { onOpenUISend: reply } : {})} />)}
+          {content?.footer}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id}>
       {showMark ? (

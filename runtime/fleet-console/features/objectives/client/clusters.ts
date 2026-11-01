@@ -13,7 +13,7 @@ import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation, openCommodoreLog } from "./board-commodore.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./board-commodore.js";
-import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskOwners, personTurnAt, readCommodore, subscribeCommodore } from "./board-commodore.js";
+import { answeringText, askObjectiveTitle, commodoreAliasOf, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskOwners, personTurnAt, readCommodore, subscribeCommodore } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
@@ -96,8 +96,8 @@ export const memberFailureNote = (objective: Objective): MemberFailureNoteKey | 
   const [only] = reasons;
   return reasons.size === 1 && only ? FAILURE_NOTE_TEXT[only] : "objectives.note.memberFailed";
 };
-/** 사령관이 결정 요청에 답하는 동안 둘째 줄의 상태 문구 자리에 서는 말 — 모듈 상수라 줄 서명이 바뀌지 않는다. */
-const STATUS_ANSWERING = (locale: "en" | "ko") => getT(locale)("objectives.autonomy.note.answering");
+/** 사령관이 결정 요청에 답하는 동안 둘째 줄의 상태 문구 자리에 서는 말 — 별칭이 있으면 「{별칭}{이|가} 답하는 중」이다. */
+const answeringStatus = (objective: Objective) => (locale: "en" | "ko") => answeringText(commodoreAliasOf(objective.commodoreId), getT(locale));
 
 /**
  * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),
@@ -198,7 +198,7 @@ function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<Objec
   const handed = livePersonHolds(objective).length > 0;
   return {
     ...(at !== null ? { decisionRequestedAt: at, ...(turn === "person" && request ? { decisionQuestions: request.questions.length } : {}), ...(handed ? { decisionNote: HANDED_NOTE } : {}) } : {}),
-    ...(turn === "commodore" && request ? { delegated: { questions: request.questions.length, status: STATUS_ANSWERING } } : {}),
+    ...(turn === "commodore" && request ? { delegated: { questions: request.questions.length, status: answeringStatus(objective) } } : {}),
   };
 }
 
@@ -387,7 +387,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
   return out;
 }
 
-const rowSignature = (row: ObjectiveClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.decisionNote ? resolveText(row.decisionNote) : "", row.commodore === true, row.delegated ? row.delegated.questions : null, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
+const rowSignature = (row: ObjectiveClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.decisionNote ? resolveText(row.decisionNote) : "", row.commodore === true, row.delegated ? [row.delegated.questions, resolveText(row.delegated.status)] : null, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
 /** 화면 활동 — 보드와 같게 턴 뒤 백그라운드 작업은 작업 중으로 접는다. */

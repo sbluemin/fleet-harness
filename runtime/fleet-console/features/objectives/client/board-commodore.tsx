@@ -1,10 +1,12 @@
 import { useEffect, useSyncExternalStore } from "react";
+import type { Translate } from "@fleet-console/i18n";
 import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot } from "../shared/commodore-board-client.js";
 import type { CommodoreClientHost } from "../../commodore/shared/contracts/client.js";
 export { askObjectiveTitle } from "../../commodore/shared/contracts/client-helpers.js";
 import { followupsJudgeable, livePersonHold, reasonAwaits } from "../shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../shared/types.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
+import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { goToObjective } from "./fresh-conversation.js";
 import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
 
@@ -26,6 +28,30 @@ export function decisionTurn(objective: Objective, commodoreActive: boolean): "p
 export function livePersonHolds(objective: Objective): readonly ObjectivePersonHold[] {
   if (objective.removed) return [];
   return PERSON_HOLD_TARGETS.flatMap((target) => livePersonHold(objective, target) ?? []);
+}
+
+/**
+ * 줄이 읽는 사령관 별칭 — 호스트가 준 스냅샷의 사령관 UUID 속성이다. 없거나 아직 읽지 않았으면 null.
+ * 사이드바 줄·전환 목록·폰·결정 카드의 「답하는 중」과 말풍선 머리가 이 하나로 별칭을 읽는다.
+ */
+export function commodoreAliasOf(commodoreId: string): string | null {
+  return commodoreBoardOf(commodoreId).view?.state.alias ?? null;
+}
+
+/**
+ * 별칭 끝 글자의 조사 — 한글 음절이면 받침 유무로 「이」/「가」, 한글이 아니면 조사 없이 별칭만 둔다.
+ * 시안 1-A 규칙과 같다(받침 판정은 완성형 한글 범위 U+AC00–U+D7A3).
+ */
+export function answeringParticle(alias: string): string {
+  const tail = alias.charCodeAt(alias.length - 1);
+  if (Number.isNaN(tail) || tail < 0xac00 || tail > 0xd7a3) return "";
+  return (tail - 0xac00) % 28 !== 0 ? "이" : "가";
+}
+
+/** 「답하는 중」 — 별칭이 있으면 「{별칭}{이|가} 답하는 중」, 없으면 지금 그대로 「사령관이 답하는 중」이다. */
+export function answeringText(alias: string | null, t: Translate<ObjectiveMessageKey>): string {
+  if (!alias) return t("objectives.autonomy.note.answering");
+  return t("objectives.autonomy.note.answeringNamed", { alias, particle: answeringParticle(alias) });
 }
 
 /**
