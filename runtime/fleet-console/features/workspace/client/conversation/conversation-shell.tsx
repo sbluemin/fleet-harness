@@ -412,6 +412,17 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const [overflow, setOverflow] = useState<readonly OverflowTab[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  // 레일 칸(.right-rail-panel-slot)은 overflow: hidden 이라 단추 아래 absolute 로 열면 레일 왼쪽 경계 밖이 잘린다.
+  // 메뉴는 DOM 자리(Tab 순서·바깥 누름 판정)를 그대로 두고 단추에 맞춘 fixed 로 띄운다 — 레일은 창 오른쪽에 붙으므로 오른쪽 끝을 창 기준으로 잰다.
+  // 창 밖으로 나가는 몫은 뒤이은 useViewportFit 이 밀어 넣는다(같은 컴포넌트의 layout effect 는 선언 순서로 돈다).
+  useLayoutEffect(() => {
+    const menu = moreMenuRef.current;
+    const anchor = moreRef.current;
+    if (!menuOpen || !menu || !anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    menu.style.top = `${Math.round(rect.bottom)}px`;
+    menu.style.right = `${Math.round(document.documentElement.clientWidth - rect.right)}px`;
+  }, [menuOpen]);
   useViewportFit(moreMenuRef, menuOpen);
   // 탭은 한 줄이다 — 넘치는 탭은 줄에서 걷고 「더보기」 메뉴에 모은다. 탭 단추는 RailToolIcons 의 것 그대로이고(켜짐·순서·배지),
   // 이 머리는 어느 단추가 줄에 들어가는지만 잰다. 메뉴의 항목은 걷힌 단추를 대신 누른다.
