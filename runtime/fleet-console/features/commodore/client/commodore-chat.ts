@@ -155,7 +155,7 @@ function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message"
 /** 사령관 연락의 첨부 — 사본은 받는 사령관 보관소에만 둔다(`host/messaging.ts` 가 `save(input.to, …)`).
  * 보낸 쪽은 받는 쪽 보관소(`to.id`)를, 받은 쪽은 자기 보관소(보는 Theater)를 같은 messageId 로 가리킨다.
  * 첨부 경로 권한은 터미널 인가만 보므로(소유 검사 없음) 보낸 쪽이 받는 쪽 사본을 읽을 수 있다.
- * 사본이 없으면(옛 기록·trim·전송 실패) 그 자리는 404 — `ChatDispatchAttachments` 가 깨진 그림 대신 거둬진 자리로 말한다. */
+ * 사본이 없으면(옛 기록·trim·전송 실패) 그 자리는 404 — 전언 화면은 `hideLapsed` 로 그리지 않는다. */
 function delegationImages(ownerCommodoreId: string, entry: Extract<CommodoreTranscriptEntry, { kind: "sent" } | { kind: "received" }>): readonly { readonly preview: { readonly id: string; readonly url: string } }[] | undefined {
   if (!entry.attachments?.length) return undefined;
   return entry.attachments.map(({ id }) => ({ preview: { id, url: `/api/v1/commodore/attachment?${new URLSearchParams({ commodoreId: ownerCommodoreId, messageId: entry.messageId, attachmentId: id })}` } }));
