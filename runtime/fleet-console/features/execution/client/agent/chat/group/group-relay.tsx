@@ -2,6 +2,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "../../../../shared/conversation/types.js";
 import type { AgentConversationEntry } from "../../../../shared/chat-renderer.js";
 import * as React from "react";
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { AgentGlyph } from "../../agent-glyphs.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
@@ -213,6 +214,9 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   const t = getGroupT(language);
   const ledgerOf = React.useContext(LedgerTargetContext);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  // 닫기 줄은 기록 위에 떠 있는 독이다 — 높이(--m-dock-h)를 재서 기록이 그 뒤까지 흐르게 한다(폰 배치 CSS가 읽는다).
+  const footRef = React.useRef<HTMLDivElement | null>(null);
+  useChromeHeightProperty(footRef, rootRef, "--m-dock-h");
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = React.useState(reducedMotion);
   const closing = React.useRef(false);
@@ -441,7 +445,7 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
           );
         })}
       </div>
-      <div className="group-relay-foot">
+      <div ref={footRef} className="group-relay-foot">
         <button type="button" className="group-relay-close" onClick={close}>{t("group.relay.close")}</button>
       </div>
     </div>

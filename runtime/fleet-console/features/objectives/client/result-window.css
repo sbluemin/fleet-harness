@@ -61,8 +61,8 @@
 }
 
 /* 폰은 기존 전체 화면 읽기를 유지하고 임무 칩을 더한다. 데스크톱의 기하 기억은 건드리지 않는다. */
-.objectives-result-window.is-mobile { inset: 0; z-index: 60; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
-.objectives-result-window.is-mobile .objectives-rw-head { height: 56px; padding: 0 12px 0 16px; border: 0; cursor: default; touch-action: auto; }
+.objectives-result-window.is-mobile { inset: 0; z-index: 60; border: 0; border-radius: 0; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
+.objectives-result-window.is-mobile .objectives-rw-head { box-sizing: content-box; height: 56px; padding: var(--m-safe-top, 0px) 12px 0 16px; background: var(--m-fade-down, var(--m-bg)); border: 0; cursor: default; touch-action: auto; }
 .objectives-result-window.is-mobile .objectives-rw-close { width: 40px; height: 40px; border-radius: 50%; background: var(--m-chip); color: var(--m-text); }
 .objectives-result-window.is-mobile .objectives-rw-body { display: flex; flex-direction: column; border-radius: 0; }
 .objectives-result-window.is-mobile .objectives-rw-missions { display: flex; flex: none; gap: 6px; padding: 4px 12px 10px; overflow-x: auto; border: 0; }
@@ -71,7 +71,7 @@
 .objectives-result-window.is-mobile .objectives-rw-missions .objectives-rw-mission-title { color: inherit; }
 .objectives-result-window.is-mobile .objectives-rw-main { flex: 1; }
 .objectives-result-window.is-mobile .objectives-rw-mission-head { display: none; }
-.objectives-result-window.is-mobile .objectives-rw-strip { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+.objectives-result-window.is-mobile .objectives-rw-strip { padding-bottom: calc(var(--m-safe-bottom, 0px) + 16px); background: var(--m-fade-up, var(--m-bg)); }
 .objectives-result-window.is-mobile .objectives-rw-strip button { width: 60px; height: 44px; }
 .objectives-result-window.is-mobile .objectives-rw-stage { margin: 0 10px; }
 .objectives-result-window.is-mobile .objectives-rw-stage .objectives-result-markdown { padding: 16px; }
@@ -86,4 +86,4 @@
 .objectives-rw-caption > .is-mono { font-family: var(--font-mono, monospace); }
 .objectives-rw-download { align-self: flex-start; padding-bottom: 12px; color: var(--text-secondary); font-size: var(--t-xs); text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
 .objectives-rw-download:hover { color: var(--text-primary); text-decoration-color: currentColor; }
-.objectives-result-window.is-mobile .objectives-rw-download { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); color: var(--m-text-muted); }
+.objectives-result-window.is-mobile .objectives-rw-download { padding-bottom: calc(var(--m-safe-bottom, 0px) + 16px); color: var(--m-text-muted); }

@@ -216,7 +216,7 @@
 /* 하단 시트 — 스크림 + 위 모서리 28 판. 손잡이에서 끌어내려 닫는다. */
 .objectives-m-sheet-layer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; justify-content: flex-end; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 .objectives-m-scrim { position: absolute; inset: 0; background: var(--m-scrim); animation: objectives-m-fade .2s ease-out; }
-.objectives-m-sheet { position: relative; display: flex; flex-direction: column; max-height: calc(100% - 56px); padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: 28px 28px 0 0; background: var(--popover-face); animation: objectives-m-sheet-in .3s cubic-bezier(.05,.7,.1,1); transition: transform .2s cubic-bezier(.05,.7,.1,1); border: 0; box-shadow: var(--popover-surface-shadow); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
+.objectives-m-sheet { position: relative; display: flex; flex-direction: column; max-height: calc(100% - 56px); padding-bottom: calc(18px + var(--m-safe-bottom, 0px)); border-radius: 28px 28px 0 0; background: var(--popover-face); animation: objectives-m-sheet-in .3s cubic-bezier(.05,.7,.1,1); transition: transform .2s cubic-bezier(.05,.7,.1,1); border: 0; box-shadow: var(--popover-surface-shadow); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
 .objectives-m-sheet.is-dragging { transition: none; }
 .objectives-m-sheet-layer.is-closing .objectives-m-scrim { opacity: 0; transition: opacity .2s; }
 .objectives-m-sheet-layer.is-closing .objectives-m-sheet { transform: translateY(100%); transition: transform .22s cubic-bezier(.3,0,.8,.15); }
@@ -361,7 +361,7 @@
 :root[data-view-mode="mobile"] .objectives-zoom-backdrop { grid-template: minmax(0, 1fr) / minmax(0, 1fr); padding: 0; background: var(--m-scrim); font-family: var(--m-sans); }
 :root[data-view-mode="mobile"] .objectives-att-view-step { width: 44px; height: 44px; border: 0; background: var(--m-chip); color: var(--m-text); }
 /* 텍스트 증거 본문 — 전체 화면 창 안에서 스크롤한다. */
-:root[data-view-mode="mobile"] .objectives-result-markdown.markdown-body { max-height: none; height: 100%; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 24px); border-radius: 0; background: var(--m-bg); color: var(--m-text); font-size: var(--m-fs-secondary); line-height: 1.6; overscroll-behavior: contain; }
+:root[data-view-mode="mobile"] .objectives-result-markdown.markdown-body { max-height: none; height: 100%; padding: 16px 16px calc(var(--m-safe-bottom, 0px) + 24px); border-radius: 0; background: var(--m-bg); color: var(--m-text); font-size: var(--m-fs-secondary); line-height: 1.6; overscroll-behavior: contain; }
 :root[data-view-mode="mobile"] .objectives-result-markdown :is(h1, h2, h3, h4, h5, h6, p, li, td) { color: var(--m-text); }
 :root[data-view-mode="mobile"] .objectives-result-markdown table :is(th, td) { padding: 8px 12px; border-bottom-color: var(--m-hairline); }
 :root[data-view-mode="mobile"] .objectives-result-plain { font-family: var(--m-mono); font-size: var(--m-fs-mono); color: var(--m-text); }
@@ -369,7 +369,7 @@
 :root[data-view-mode="mobile"] .objectives-result-textstate.is-error { color: var(--m-danger); }
 
 /* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
-.objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: objectives-m-fade .2s ease-out; }
+.objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: var(--m-toast-bottom); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: objectives-m-fade .2s ease-out; }
 html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m-hairline); }
 
 @keyframes objectives-m-fade { from { opacity: 0; } }
