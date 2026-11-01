@@ -9362,6 +9362,8 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   line-height: 1;
   font-family: var(--font-ui); color: var(--fc-select-compact-tone, var(--text-secondary)); padding: 7px 16px 7px 10px;
 }
+/* 바깥의 내용 폭 하한과 함께 지킨다 — 팝업 양쪽 패딩을 뺀 옵션 폭이 기존 compact 최소 폭을 만든다. */
+.fc-select__popup--compact > .fc-select__option { min-width: calc(min(160px, calc(100vw - 16px)) - 2 * var(--popover-pad)); }
 
 /* ── ModelPicker — 설정에서 모델 하나를 고르는 단일 문법 ───────────────────────────
    fc-select의 트리거·팝업 레시피 위에 글리프·메타·프로바이더 밴드를 얹고, 강도는 세그먼트가 이어
@@ -10386,6 +10388,8 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   width: 9px;
   color: var(--positive);
 }
+
+.fc-live-step__mark > svg { flex: none; width: 1em; height: 1em; }
 
 .fc-live-step.is-fail .fc-live-step__mark { color: var(--coral); }
 

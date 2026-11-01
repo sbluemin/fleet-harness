@@ -2421,6 +2421,7 @@ describe("Console core design contract", () => {
     expect(selectBlock).toContain("color: var(--fc-select-compact-tone, var(--text-secondary));");
     expect(selectBlock).toContain("padding: 7px 16px 7px 10px;");
     expect(selectBlock).toContain("min-width: max-content;");
+    expect(selectBlock).toContain(".fc-select__popup--compact > .fc-select__option { min-width: calc(min(160px, calc(100vw - 16px)) - 2 * var(--popover-pad)); }");
     expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
 
     expect(selectBlock).not.toMatch(/#[0-9a-f]{3,8}\b/i);
