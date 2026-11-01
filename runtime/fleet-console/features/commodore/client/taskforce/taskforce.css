@@ -30,6 +30,8 @@
 /* 만들기 footer — 확인 팝업과 같은 반반 알약 두 개. 좌우 여백은 본문(22px)과 맞춘다. */
 .taskforce-create-foot { padding: 12px 22px; }
 .taskforce-create-foot > .fc-confirm__button, .taskforce-create-foot > .taskforce-create-tip { flex: 1 1 0; min-width: 0; }
+/* 래퍼 안 단추는 래퍼 폭을 그대로 채운다 — flex만으로는 내용 폭으로 줄어드는 엔진이 있다. */
+.taskforce-create-foot .taskforce-create-tip > .fc-confirm__button { width: 100%; min-width: 0; }
 .taskforce-create-tip { position: relative; display: inline-flex; }
 .taskforce-create-tip [role="tooltip"] { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); width: max-content; max-width: 240px; padding: 8px 10px; border-radius: var(--popover-radius); color: var(--text-primary); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); font-size: var(--t-sm); z-index: 1; }
 .taskforce-create-tip:hover [role="tooltip"], .taskforce-create-tip:focus-visible [role="tooltip"] { display: block; }

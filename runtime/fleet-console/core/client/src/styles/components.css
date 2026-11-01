@@ -94,7 +94,7 @@
 }
 /* 카드는 진행 중에 포커스를 대신 받는 자리다 — 링을 그리지 않는다. */
 .fc-confirm:focus { outline: none; }
-.fc-confirm__question { margin: 0; }
+.fc-confirm__question { margin: 0; font-weight: var(--weight-bold); }
 .fc-confirm__error { margin: var(--space-3) 0 0; color: var(--coral-ink); font-size: var(--t-sm); }
 .fc-confirm__actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
 .fc-confirm__button {
@@ -131,12 +131,12 @@
   background: color-mix(in oklch, var(--brass) 86%, var(--text-primary));
 }
 .fc-confirm__button--danger {
-  background: var(--coral);
+  background: var(--danger-fill);
   color: var(--text-on-coral);
   font-weight: var(--weight-bold);
 }
 .fc-confirm__button--danger:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--coral) 86%, var(--text-primary));
+  background: color-mix(in oklch, var(--danger-fill) 86%, var(--text-primary));
 }
 @media (forced-colors: active) {
   .fc-confirm__button:focus-visible { outline: 2px solid Highlight; }
