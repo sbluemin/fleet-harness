@@ -6,6 +6,7 @@ import { commanderObjectiveId } from "../objective-clusters.js";
 import { isCommanderObjective } from "./commander-rows.js";
 import { CommodoreCommanderList } from "./commander-list.js";
 import { openCommanderConversation } from "./commander-navigation.js";
+import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { CommanderRowPanel } from "../../../objectives/client/objectives-panel.js";
 import { readCommanderPlacement, useCommanderPlacement } from "./commander-placement.js";
 import { useConversationStandIn, useConversationSubject } from "../conversation/conversation-slots.js";
@@ -32,8 +33,8 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
 
   const handleSelect = (item: SideBarRowItem) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
-    // 펼쳐진 행을 다시 누르면 접히고, 가운데는 그대로 둔다.
-    if (objectiveId !== null && expandedId === objectiveId) { setExpandedId(null); return; }
+    // 펼쳐진 행을 다시 누르면 접히고, 가운데는 그 사령관 대화로 돌아간다 — 목표 대화와 사령관 대화를 한 행으로 오간다.
+    if (objectiveId !== null && expandedId === objectiveId) { setExpandedId(null); openCommodoreConversation(commodoreId); return; }
     if (objectiveId !== null) setExpandedId(objectiveId);
     if (onSelect) {
       onSelect({

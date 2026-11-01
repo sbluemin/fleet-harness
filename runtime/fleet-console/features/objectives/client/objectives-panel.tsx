@@ -162,7 +162,7 @@ export function ObjectiveScheduleRow({ objective, language }: { readonly objecti
 }
 
 /**
- * 우측 작업 탭의 행 아래 펼침 패널 — 오늘·기한 줄, 목표·구성원·라이브러리 글자 탭, ObjectiveDetail 본문.
+ * 우측 작업 탭의 행 아래 펼침 패널 — 오늘·기한과 목표·구성원·라이브러리 글자 탭을 한 줄에, 그 아래 ObjectiveDetail 본문.
  * 행이 머리이므로 아바타·이름을 두지 않는다. 탭·구획 접힘은 화면 메모리로만 둔다. workspace 목록이 행 아래에 그린다.
  */
 export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective }: {
@@ -213,7 +213,10 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
   const decision = !!objective.decisionRequest && !objective.done;
   const unseen = objective.missions.some((mission) => unseenRecords(mission) > 0);
   return <>
+    {/* 오늘·기한과 글자 탭을 한 줄에 둔다 — 따로 한 행을 차지하지 않게 왼쪽에 일정, 구분선, 오른쪽에 탭이다. */}
+    <div className="commander-row-panel-bar">
     <div className="commander-row-panel-tools"><ObjectiveScheduleRow objective={objective} language={language} /></div>
+    <span className="commander-row-panel-divider" aria-hidden="true" />
     <div className="commander-row-panel-tabs" role="tablist" aria-label={t("objectives.panel.title")}>
       {DETAIL_TABS.map((id) => {
         const dot = id === "goal" && decision ? { tone: "attention", label: t("objectives.tabs.decisionDot") }
@@ -227,6 +230,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
           </button>
         );
       })}
+    </div>
     </div>
     <ObjectiveDetail
       objective={objective}
