@@ -193,7 +193,7 @@ function CreateDialog({ preselected, onClose }: { readonly preselected?: string;
       </fieldset>
       <label>{t("taskforce.name")}<input required maxLength={MAX_TASKFORCE_NAME} value={name} placeholder={t("taskforce.namePlaceholder")} onChange={(event) => { setEditedName(true); setName(event.target.value); }} /></label>
       {failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}
-    </div><footer className="taskforce-create-foot"><button type="button" className="fc-confirm__button fc-confirm__button--cancel" onClick={onClose} disabled={busy}>{t("taskforce.cancel")}</button><span className="taskforce-create-tip" tabIndex={reason ? 0 : undefined} aria-describedby={reason ? "taskforce-create-reason" : undefined}><button type="submit" className="fc-confirm__button fc-confirm__button--action" disabled={busy || reason !== null}>{t("taskforce.create")}</button>{reason ? <span id="taskforce-create-reason" role="tooltip">{reason}</span> : null}</span></footer>
+    </div><footer className="taskforce-create-foot"><span className="taskforce-create-half"><button type="button" className="fc-confirm__button fc-confirm__button--cancel" onClick={onClose} disabled={busy}>{t("taskforce.cancel")}</button></span><span className="taskforce-create-tip" tabIndex={reason ? 0 : undefined} aria-describedby={reason ? "taskforce-create-reason" : undefined}><button type="submit" className="fc-confirm__button fc-confirm__button--action" disabled={busy || reason !== null}>{t("taskforce.create")}</button>{reason ? <span id="taskforce-create-reason" role="tooltip">{reason}</span> : null}</span></footer>
   </form></Dialog>;
 }
 

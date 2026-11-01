@@ -103,6 +103,7 @@
   padding: 8px 14px;
   border: 0;
   border-radius: var(--radius-pill);
+  box-sizing: border-box;
   font-family: var(--font-ui);
   font-size: var(--t-md);
   cursor: pointer;
