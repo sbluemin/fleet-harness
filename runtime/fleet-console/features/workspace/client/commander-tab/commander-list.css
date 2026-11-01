@@ -206,7 +206,7 @@
 }
 :root[data-view-mode="mobile"] .commander-compact-popover { display: none; }
 
-/* 목록 막대 앞의 섹션 머리 — 정보·설정 탭의 섹션 제목과 같은 모양이다. 개수는 3차 글자로 읽는다. */
+/* 목록 막대 앞의 섹션 머리 — 정보·설정 탭의 섹션 제목과 같은 모양이다. */
 .commander-tab-heading {
   margin: 0 auto 0 0;
   color: var(--text-primary);
@@ -216,7 +216,6 @@
   letter-spacing: -0.01em;
   white-space: nowrap;
 }
-.commander-tab-heading > span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 
 /* 좁은 자리(작업 탭 카드·얼굴 열 팝오버)의 정렬 칩은 사이드바처럼 현재 이름만 한 줄로 보인다. 폰은 접두어를 유지한다. */
 .commander-tab--card .commander-tab-bar,

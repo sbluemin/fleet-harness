@@ -71,7 +71,7 @@ export interface CommodoreTasksListSelection {
 export interface CommodoreTasksListProps {
   readonly commodoreId: string;
   readonly selectedId: string | null;
-  readonly heading: (count: number) => ReactNode;
+  readonly heading: ReactNode;
   readonly onSelect?: ((selection: CommodoreTasksListSelection) => void) | undefined;
 }
 export interface CommodoreTasksList {

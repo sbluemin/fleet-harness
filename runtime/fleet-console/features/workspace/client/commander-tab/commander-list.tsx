@@ -67,7 +67,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   /** 루틴 목록과 같은 테두리 카드 안에 행이 선다(작업 탭 목표 섹션). */
   readonly card?: boolean;
   /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
-  readonly heading?: ((count: number) => ReactNode) | undefined;
+  readonly heading?: ReactNode;
   readonly expansion?: CommanderListExpansion | undefined;
 }) {
   const t = useT();
@@ -79,7 +79,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   return (
     <section className={["commander-tab", card ? "commander-tab--card" : ""].filter(Boolean).join(" ")} aria-label={t("commanderTab.aria")}>
       <div className="commander-tab-bar">
-        {heading ? <span className="commander-tab-heading">{heading(sorted.length)}</span> : null}
+        {heading ? <span className="commander-tab-heading">{heading}</span> : null}
         <SortMenu preference={preference} nameOnly={sortNameOnly} />
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
