@@ -13,6 +13,7 @@ import {
 } from "../../../core/client/src/integration/store.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
+import { readCommodoreList } from "../../commodore/client/commodore-list.js";
 import { FLEET_AT_A_GLANCE_SEEN_KEY, rememberSeen } from "./seen-store.js";
 import {
   fleetGlanceChrome,
@@ -1308,10 +1309,14 @@ export function FleetAtAGlanceHost(): React.JSX.Element | null {
     if (settings.loadStatus !== "ready" || !settings.state) return;
     if (classifiedRef.current === null) {
       // 전역 설정을 처음 읽은 시점에 최초 설정 가이드를 이미 본 기록(서버 seenFeatureTours의
-      // 승격 전 legacy localStorage 포함)이 있으면 기존 사용자다. main.tsx가 렌더 전에 이관을
-      // 기다리지만, 저장이 막힌 환경에서는 legacy 표식이 남을 수 있어 둘 다 본다.
+      // 승격 전 legacy localStorage 포함)이 있거나 사령관이 이미 있으면 기존 사용자다.
+      // 사령관 목록은 bootstrapped가 서기 전에(이 효과가 도는 조건) 읽혀 있으므로, 분류 시점에
+      // 이미 차 있다 — resolveOnboardingOnBootstrap이 목록을 기다렸다가 bootstrapped를 세운다.
+      // main.tsx가 렌더 전에 이관을 기다리지만, 저장이 막힌 환경에서는 legacy 표식이 남을 수 있어
+      // seen과 legacy를 둘 다 본다.
       const returning = settings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)
-        || readStoredCommissioningSeen();
+        || readStoredCommissioningSeen()
+        || readCommodoreList().length > 0;
       classifiedRef.current = returning ? "returning" : "fresh";
       if (returning) {
         // 기존 사용자에게는 자동으로 띄우지 않고 본 기록만 조용히 남긴다 — 메뉴로는 언제든 열린다.
