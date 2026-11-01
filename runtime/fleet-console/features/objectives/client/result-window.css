@@ -58,7 +58,7 @@
 .objectives-result-window.is-narrow :is(.objectives-rw-missions, .objectives-rw-heading, .objectives-rw-objective, .objectives-rw-mission-head > b) { display: none; }
 
 @container objectives-result (width < 400px) {
-  .objectives-rw-mission-head > span, .objectives-rw-caption > span:not(:last-child) { display: none; }
+  .objectives-rw-mission-head > span, .objectives-rw-caption > span:not(:last-of-type) { display: none; }
   .objectives-rw-strip button { width: 44px; height: 32px; }
 }
 
