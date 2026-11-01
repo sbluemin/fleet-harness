@@ -193,9 +193,15 @@ export function installTaskforces(next: CommodoreClientDeps): () => void {
     const was = taskforceEnabledSnapshot;
     taskforceEnabledSnapshot = enabled;
     taskforceExperimentsKnown = known;
-    // 다시 켜면 저장된 TF가 그대로 이어진다 — 목록을 다시 읽는다.
-    if (!was && enabled) void refreshTaskforces().catch(() => {});
     emit();
+    // 다시 켜면 저장된 TF가 그대로 이어진다 — 목록을 다시 읽는다. 설정 저장이 서버에 닿기 전에 읽으면
+    // 아직 꺼진 것으로 거절되므로, 켜져 있는 동안은 몇 번 간격을 두고 다시 읽는다.
+    if (!was && enabled) {
+      const retry = (attempt: number) => void refreshTaskforces().catch(() => {
+        if (deps === next && taskforceEnabledSnapshot && attempt < 5) setTimeout(() => retry(attempt + 1), 300 * (attempt + 1));
+      });
+      retry(0);
+    }
   });
   const off = next.consoleEvents.subscribe("commodore", (payload) => {
     const event = payload as TaskforceEvent | null;
