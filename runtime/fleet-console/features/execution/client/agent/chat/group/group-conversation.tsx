@@ -861,6 +861,32 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
       {t("group.report.tag", { name: report.recipients[0]?.name ?? t("group.commander") })}
     </button>
   ) : null;
+  // 사령관이 보드로 보낸 말(via — 보드 행위에 덧붙인 말)에만 오른쪽 윤곽 말풍선을 쓴다.
+  // 1:1 사령관 대화의 답이나 태스크포스 말(via 없음)은 왼쪽 경로를 그대로 지난다(원장 이름 단추·표식 포함).
+  // via 머리줄의 이름은 왼쪽과 같이 단추가 아닌 글자로 선다.
+  if (speaker.kind === "commodore" && entry.via && entry.recipient) {
+    return (
+      <div className="group-chat-commodore" data-entry-id={entry.id}>
+        {continued ? null : (
+          <span className="group-chat-commodore-head">
+            <SpeakerMark speaker={speaker} size="sm" />
+            <SpeakerName speaker={speaker} />
+            <span className="group-chat-line-arrow" aria-hidden="true">→</span>
+            <SpeakerName speaker={entry.recipient} />
+            {via}
+          </span>
+        )}
+        <div className="group-chat-bubble is-commodore is-markdown">
+          {/* 본문 칸 — 사람·지휘관 말풍선과 같은 자리(첨부 앞·마크다운 본문·바깥 OpenUI 답)다. */}
+          {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
+          {content?.body ?? (entry.text.trim().length === 0
+            ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
+            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks openui={openui} {...(openui && reply ? { onOpenUISend: reply } : {})} />)}
+          {content?.footer}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id}>
       {showMark ? (

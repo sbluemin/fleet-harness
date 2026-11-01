@@ -12,7 +12,7 @@ import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, unseenRecords, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
-import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
+import { answeringText, commodoreAliasOf, commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
@@ -1396,7 +1396,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
           const indicator = `objectives-m-ind${question.multiSelect ? " is-check" : ""}`;
           return (
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
-              <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} objectiveRecords={objectiveRecords} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.autonomy.note.answering")}</span> : null}</div>
+              <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} objectiveRecords={objectiveRecords} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{answeringText(commodoreAliasOf(objective.commodoreId), t)}</span> : null}</div>
               {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.autonomy.decisionHint")}</p> : null}
               {index === 0 && handed ? <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={handed.reason} /></p> : null}
               {question.header ? <span className="objectives-m-qchip">{question.header}</span> : null}

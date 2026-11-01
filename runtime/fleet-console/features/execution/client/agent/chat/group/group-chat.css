@@ -152,6 +152,19 @@
 .group-chat-human-mentions .fc-mention-chip { margin-right: 2px; }
 .group-chat-human-mentions .group-chat-via { margin-left: 2px; }
 
+/* 사령관 보드 말 — 사람 쪽(오른쪽) 윤곽 말풍선. 지휘관 아바타 톤에서 출발한다: 바탕은 톤 15% 틴트,
+   테두리는 1.5px 톤 80% 윤곽, 글자는 본문색(사람 말의 흰 글자가 아님). 모서리·여백·글자 크기·최대 폭은
+   사람 말풍선과 같다. 톤이 없는 표면(키 없음)은 중립으로 떨어진다. */
+.group-chat-commodore { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.group-chat-commodore-head { display: inline-flex; align-items: center; gap: var(--space-1); padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
+/* 머리줄의 받는 이(화살표 뒤 이름)는 왼쪽 머리줄(`.group-chat-agent-via`)과 같이 보조 굵기·색으로 —
+   보내는 이(별칭)는 본문 굵기 그대로 둔다. 첫 자식이 표식이라 화살표 뒤 이름만 잡는다. */
+.group-chat-commodore-head .group-chat-line-arrow + .group-chat-name { font-weight: var(--weight-medium); color: var(--text-secondary); }
+.group-chat-bubble.is-commodore {
+  background: color-mix(in oklab, var(--conversation-accent-body, var(--hairline-strong)) 15%, transparent);
+  border: 1.5px solid color-mix(in oklab, var(--conversation-accent-body, var(--hairline-strong)) 80%, transparent);
+}
+
 .group-chat-agent {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
@@ -247,7 +260,7 @@
 .group-chat-older { align-self: center; }
 .group-chat-older:disabled { color: var(--text-tertiary); cursor: default; }
 /* 다른 표면에서 가리킨 줄 — 위치를 말하는 brass 가 잠깐 둘레에 섰다 물러난다(말풍선이면 말풍선이, 가운데 줄이면 줄이). */
-:is(.group-chat-human, .group-chat-agent).is-revealed .group-chat-bubble,
+:is(.group-chat-human, .group-chat-agent, .group-chat-commodore).is-revealed .group-chat-bubble,
 .group-chat-line.is-revealed { animation: group-chat-reveal 1.4s ease-out; }
 .group-chat-line.is-revealed { border-radius: var(--radius-md); }
 @keyframes group-chat-reveal {
@@ -255,7 +268,7 @@
   100% { box-shadow: 0 0 0 6px transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
-  :is(.group-chat-human, .group-chat-agent).is-revealed .group-chat-bubble,
+  :is(.group-chat-human, .group-chat-agent, .group-chat-commodore).is-revealed .group-chat-bubble,
   .group-chat-line.is-revealed { animation: none; box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 40%, transparent); }
 }
 .group-chat-line-status.is-failed { color: var(--coral-ink); }
@@ -1361,6 +1374,8 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-capped > .group-chat-bubble-body { padding: 10px 15px; }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent { border-color: transparent; background: var(--m-chip); color: var(--m-text); --group-chat-bubble-face: var(--m-chip); }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-human { max-width: calc(100% - 48px); border-color: transparent; background: var(--conversation-bubble-fill, var(--m-inverse)); color: var(--conversation-human-ink, var(--m-on-inverse)); }
+/* 모바일 사령관 말풍선도 사람 말풍선과 같은 최대 폭으로 — 전체 폭이면 오른쪽에 선 것으로 보이지 않는다. */
+:root[data-view-mode="mobile"] .group-chat-bubble.is-commodore { max-width: calc(100% - 48px); }
 /* 말풍선 안 본문 — 읽기 서체 변수를 이 상자 안에서만 고딕으로 다시 잡는다(루트의 모바일 대입은 그대로). */
 :root[data-view-mode="mobile"] .group-chat-bubble :is(.markdown-body, .agent-chat-dispatch-md, .agent-chat-dispatch-text) {
   --font-content: var(--m-sans);

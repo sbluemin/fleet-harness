@@ -1,7 +1,7 @@
 import type { ExecutionClientDeps } from "../../deps.js";
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 import { createConversationStream } from "../../../shared/conversation/stream.js";
-import { type ConversationParticipant, type ConversationPreview, type ConversationSpeaker, type GroupTimelineSnapshot, type ObjectiveClusterConversation } from "../../../shared/conversation/types.js";
+import { type ConversationParticipant, type ConversationPreview, type ConversationSpeaker, type GroupTimelineEntry, type GroupTimelineSnapshot, type ObjectiveClusterConversation } from "../../../shared/conversation/types.js";
 import type { ObjectiveClusterSource } from "../../../../objectives/shared/objective-clusters.js";
 import { getState, ownObjectiveRuntime, subscribe as subscribeConsole } from "../../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../../core/client/src/hooks/use-store.js";
@@ -10,6 +10,7 @@ import { getAgentState, subscribe as subscribeAgent } from "../store.js";
 import { readChatJournalEvent } from "./chat-events.js";
 import { createChatSocketSession } from "./chat-store.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationJournal } from "./group-timeline.js";
+import { commodoreDisplayName } from "./group/speaker-mark.js";
 
 const EMPTY_CLUSTERS: ReturnType<ObjectiveClusterSource["get"]> = [];
 const emptyClusterSource: ObjectiveClusterSource = { get: () => EMPTY_CLUSTERS, subscribe: () => () => {} };
@@ -267,7 +268,57 @@ function snapshot(rootObjectiveId: string | null, board: ObjectiveClusterConvers
     historical.push({ speaker: event.speaker, activity: "ended" });
   }
   const composed = composeGroupTimeline({ rootObjectiveId, participants: [...participants, ...historical], journals, board, loading, unavailableObjectiveIds: unavailable });
-  return { ...composed, participants, working: composed.working, ...(root || board ? {} : { loading: false }) };
+  // 보드가 실은 사령관 별칭 — 사령관 발화자의 역할 이름(「Commodore」)을 별칭으로 읽는다. 별칭이 이미 있거나
+  // 보드가 없으면(플러그인 대화) 그대로 둔다. 바뀌지 않은 줄은 같은 객체를 돌려줘 말풍선 메모를 지킨다.
+  // 말풍선 머리·보드 행위 줄·진행 줄·미리보기가 같은 이름을 쓴다.
+  const renamed = renameCommodoreSpeakers(composed, board?.commodoreAlias ?? null);
+  const renamedParticipants = participants.map((participant) => {
+    const speaker = renameCommodoreSpeaker(participant.speaker, board?.commodoreAlias ?? null);
+    return speaker === participant.speaker ? participant : { ...participant, speaker };
+  });
+  return { ...renamed, participants: renamedParticipants, working: renamed.working, ...(root || board ? {} : { loading: false }) };
+}
+
+/** 사령관 발화자 하나를 별칭으로 읽는다 — 역할 이름이 아니면(별칭이 이미 있으면) 그대로 둔다. */
+function renameCommodoreSpeaker(speaker: ConversationSpeaker, alias: string | null): ConversationSpeaker {
+  if (!alias || speaker.kind !== "commodore") return speaker;
+  const name = commodoreDisplayName(speaker.name, alias);
+  return name === speaker.name ? speaker : { ...speaker, name };
+}
+
+/** 스냅샷 안의 사령관 발화자를 모두 별칭으로 읽는다. 별칭이 없으면 스냅샷을 그대로 돌려준다. */
+function renameCommodoreSpeakers(snapshot: GroupTimelineSnapshot, alias: string | null): GroupTimelineSnapshot {
+  if (!alias) return snapshot;
+  const speaker = (candidate: ConversationSpeaker): ConversationSpeaker => renameCommodoreSpeaker(candidate, alias);
+  const entry = (item: GroupTimelineEntry): GroupTimelineEntry => {
+    switch (item.kind) {
+      case "message": {
+        const nextSpeaker = speaker(item.speaker);
+        const nextRecipient = item.recipient ? speaker(item.recipient) : item.recipient;
+        return nextSpeaker === item.speaker && nextRecipient === item.recipient ? item : { ...item, speaker: nextSpeaker, ...(nextRecipient ? { recipient: nextRecipient } : {}) };
+      }
+      case "delegation": {
+        const sender = speaker(item.sender);
+        const recipients = item.recipients.map(speaker);
+        return sender === item.sender && recipients.every((recipient, index) => recipient === item.recipients[index]) ? item : { ...item, sender, recipients };
+      }
+      case "plugin-notice": {
+        const recipient = speaker(item.recipient);
+        return recipient === item.recipient ? item : { ...item, recipient };
+      }
+      case "member-joined":
+      case "member-left":
+      case "board-action": {
+        const nextSpeaker = speaker(item.speaker);
+        return nextSpeaker === item.speaker ? item : { ...item, speaker: nextSpeaker };
+      }
+      default: return item;
+    }
+  };
+  const entries = snapshot.entries.map(entry);
+  const working = snapshot.working.map(speaker);
+  const preview = snapshot.preview?.speaker ? { ...snapshot.preview, speaker: speaker(snapshot.preview.speaker) } : snapshot.preview;
+  return { ...snapshot, entries, working, preview };
 }
 
 export function useGroupTimeline(rootObjectiveId: string | null): GroupTimelineSnapshot {
