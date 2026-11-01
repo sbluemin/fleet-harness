@@ -173,7 +173,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func layoutWebViews() {
     let chrome = safeAreaInsets
-    // opt-in 뒤에는 상단만 펼친다. 좌우 패딩과 키보드 하단은 항상 비워 둔다.
+    // opt-in 뒤에는 상단·하단 시스템 바 아래로 펼친다. 좌우 패딩과 키보드 하단은 항상 비워 둔다.
     let top: CGFloat = edgeToEdge ? 0 : chrome.top
     let left = chrome.left
     let right = chrome.right
