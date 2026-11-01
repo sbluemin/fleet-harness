@@ -220,7 +220,7 @@ describe("taskforce runtime", () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it("delivers simultaneous members' posts once on their next turn and reminds them of recent conversation without self-waking", async () => {
+  it("delivers simultaneous posts once and adds history only to a new session's first turn without self-waking", async () => {
     vi.useFakeTimers();
     try {
       const h = runtimeHarness();
@@ -228,7 +228,7 @@ describe("taskforce runtime", () => {
       const { state } = h.taskforce.create({ name: "동시 판단 TF", topic: "공유 대화", members: [a, b] });
       const taskforceId = state.id;
       h.supervisor.sync("started");
-      // 긴 사람 발언도 새 말일 때는 원문으로 싣고, 다음 턴의 리마인드만 자른다.
+      // 긴 사람 발언도 새 말일 때는 원문으로 싣고, 교대한 세션의 이력에서만 자른다.
       const personText = "함께 답해 주세요: " + "가".repeat(15_900);
       const imageBytes = Buffer.from("TF image payload");
       const images = h.taskforce.saveImages(taskforceId, 2, [{ name: "group.png", mime: "image/png", bytes: imageBytes }]);
@@ -262,30 +262,49 @@ describe("taskforce runtime", () => {
         const prompt = session.sent[1]!;
         expect(prompt.split(`[seq ${peer.seq}]`)).toHaveLength(2);
         expect(prompt).toContain(`${alias === "Alpha" ? "Beta" : "Alpha"}: ${peer.text}`);
-        const history = prompt.split("Recent conversation reminder (already read; not new utterances):\n")[1]!.split("New ledger entries")[0]!;
-        expect(history.length).toBeLessThanOrEqual(8001);
-        expect(history).toContain("person: 함께 답해 주세요");
-        expect(history).toContain("[seq 2] (image ×1)");
-        expect(history).toContain("[history truncated]");
+        expect(prompt).not.toContain("Recent conversation reminder");
+        expect(prompt).not.toContain("person: 함께 답해 주세요");
+        expect(prompt).not.toContain("[seq 2]");
         session.finish();
       }
       await vi.advanceTimersByTimeAsync(60_000);
       expect(sessionOf("Alpha").sent).toHaveLength(2);
       expect(sessionOf("Beta").sent).toHaveLength(2);
-      // 다음 사람 발언에는 읽은 동료 발언이 새 요청이 아닌 리마인드로 한 번씩 실린다.
+      // 교대한 Alpha의 첫 턴에만 읽은 이력을 붙인다. 같은 세션의 Beta는 새 말만 받는다.
+      const oldAlpha = sessionOf("Alpha");
+      h.supervisor.replaceSessionNext(a);
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "서로의 응답을 확인해 주세요" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       for (const alias of ["Alpha", "Beta"]) {
         const session = sessionOf(alias);
-        const prompt = session.sent[2]!;
-        const [history, unread] = prompt.split("New ledger entries");
-        for (const entry of [alpha, beta]) {
-          expect(history).toContain(entry.text);
-          expect(prompt.split(`[seq ${entry.seq}]`)).toHaveLength(2);
-          expect(unread).not.toContain(entry.text);
+        const prompt = session.sent.at(-1)!;
+        expect(session.images.at(-1)).toEqual([]);
+        expect(prompt).toContain("서로의 응답을 확인해 주세요");
+        if (alias === "Alpha") {
+          expect(session).not.toBe(oldAlpha);
+          expect(session.sent).toHaveLength(1);
+          const history = prompt.split("Recent conversation reminder (already read; not new utterances):\n")[1]!.split("New ledger entries")[0]!;
+          expect(history.length).toBeLessThanOrEqual(8001);
+          expect(history).toContain("person: 함께 답해 주세요");
+          expect(history).toContain("[seq 2] (image ×1)");
+          expect(history).toContain("[history truncated]");
+          for (const entry of [alpha, beta]) {
+            expect(history).toContain(entry.text);
+            expect(prompt.split(`[seq ${entry.seq}]`)).toHaveLength(2);
+          }
+        } else {
+          expect(prompt).not.toContain("Recent conversation reminder");
+          for (const entry of [alpha, beta]) expect(prompt).not.toContain(`[seq ${entry.seq}]`);
         }
         session.finish();
       }
+      await vi.advanceTimersByTimeAsync(10);
+      // 다음 1:1 턴도 새 세션이 아니므로 TF 이력을 반복하지 않는다.
+      h.store.transcriptAppend(a, { kind: "message", text: "개인 대화" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessionOf("Alpha").sent.at(-1)).not.toContain("Recent conversation reminder");
+      expect(sessionOf("Alpha").sent.at(-1)).not.toContain(`(id: ${taskforceId})`);
+      sessionOf("Alpha").finish();
       await vi.advanceTimersByTimeAsync(10);
       // 두 이미지 발언은 각각 한 턴에 들어간다. 합계가 턴 예산을 넘으면 두 번째 발언 전체를 남긴다.
       const largeImage = Buffer.alloc(MAX_COMMODORE_MESSAGE_IMAGE_BYTES, 1);

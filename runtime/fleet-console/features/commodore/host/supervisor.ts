@@ -183,6 +183,8 @@ type ReceivedMessage = Extract<CommodoreTranscriptEntry, { kind: "received" }>;
 interface Runner {
   readonly commodoreId: string;
   session: CommodoreSession | null;
+  /** 막 연 세션의 첫 실제 턴에만 TF 이력을 보탠다. 빈 깨움은 이 표시를 소비하지 않는다. */
+  sessionFirstTurn: boolean;
   phase: Phase;
   reason?: string;
   nextWakeAt?: number;
@@ -414,6 +416,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     });
     await session.start();
     runner.session = session;
+    runner.sessionFirstTurn = true;
     runner.replacementSummary = runner.recentActions.length ? runner.recentActions.slice(-RECENT_ACTIONS) : undefined;
     runner.coordinates = coordinates;
     runner.language = language;
@@ -576,13 +579,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   /** TF 입력을 세션 교체 전에 준비한다 — 이미지도 1:1 메시지와 같은 턴·세션 예산에 센다. */
   const prepareTaskforceTurn = (commodoreId: string, mailChars: number, messageImageBytes: number) => {
     // 새 말은 mail과 같은 글자 예산으로 순서대로 싣고 초과분은 다음 턴에 남긴다.
-    // 읽은 이력은 TF별 최근 20항목, 턴 전체 8,000자. 오래된 쪽부터 버리고 경계 항목의
-    // 뒷부분만 자른다. 새 말은 자르지 않고, 읽은 이력의 이미지는 다시 보내지 않는다.
+    // 이미지 예산으로 세션 교체가 정해진 뒤, 새 세션 첫 턴에만 읽은 이력을 덧붙인다.
+    // 새 말은 자르지 않고, 읽은 이력의 이미지는 다시 보내지 않는다.
     let tfChars = mailChars;
-    let tfHistoryChars = 0;
     let tfImageBytes = 0;
     let tfImageBase64Bytes = 0;
-    const tfPrompt: string[] = [];
+    const blocks: { readonly id: string; readonly head: string; readonly watermark: number; readonly lines: readonly string[] }[] = [];
     const tfImages: NonNullable<CommodoreTurnInput["taskforceImages"]>[number][] = [];
     const tfWatermark = new Map<string, number>();
     const tfTakeSeqs = new Map<string, number[]>();
@@ -594,23 +596,6 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (!state) continue;
         const watermark = state.readSeq[commodoreId] ?? 0;
         tfWatermark.set(tf.id, watermark);
-        const history: string[] = [];
-        const historySeqs: number[] = [];
-        try {
-          const page = deps.taskforce.readLedger(tf.id, { limit: 20, before: watermark + 1 });
-          for (const entry of [...page.entries].reverse()) {
-            const remaining = 8000 - tfHistoryChars;
-            const marker = " …[history truncated]";
-            if (remaining <= marker.length + 1) break;
-            const line = tfEntryLine(entry);
-            const clipped = line.length + 1 > remaining;
-            const shown = clipped ? line.slice(0, remaining - marker.length - 1) + marker : line;
-            history.unshift(shown);
-            historySeqs.unshift(entry.seq);
-            tfHistoryChars += shown.length + 1;
-            if (clipped) break;
-          }
-        } catch { /* 읽은 이력이 없어도 새 말은 싣는다. */ }
         const take: { readonly seq: number; readonly line: string }[] = [];
         // 멈춤 TF는 읽은 이력만 보여 준다 — 사람의 말·continue가 열 때까지 새 판단은 하지 않는다.
         if (!state.chain.paused) {
@@ -646,17 +631,40 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
             if (images.length) tfImages.push({ taskforceId: tf.id, seq: entry.seq, images });
           }
         }
-        if (!history.length && !take.length) continue;
-        tfPrompt.push([
-          tfHeadLine(tf, state.chain.paused ? "chain paused; reminder only, do not speak" : undefined),
-          ...(history.length ? ["Recent conversation reminder (already read; not new utterances):", ...history] : []),
-          ...(take.length ? ["New ledger entries (judge once; your own entries are context only):", ...take.map((entry) => entry.line)] : []),
-        ].join("\n"));
-        tfContextSeqs.set(tf.id, historySeqs);
+        blocks.push({ id: tf.id, head: tfHeadLine(tf, state.chain.paused ? "chain paused; reminder only, do not speak" : undefined), watermark, lines: take.map((entry) => entry.line) });
         tfTakeSeqs.set(tf.id, take.map((entry) => entry.seq));
       }
     }
-    return { tfPrompt, tfImages, tfWatermark, tfTakeSeqs, tfContextSeqs, tfImageBytes, tfImageBase64Bytes };
+    const formatPrompt = (freshSession: boolean): string[] => {
+      let historyChars = 0;
+      return blocks.flatMap(({ id, head, watermark, lines }) => {
+        const history: string[] = [];
+        const historySeqs: number[] = [];
+        // 새 세션만 TF별 최근 20항목, 턴 전체 8,000자. 오래된 쪽부터 버리고 경계 항목을 자른다.
+        if (freshSession) try {
+          const page = deps.taskforce!.readLedger(id, { limit: 20, before: watermark + 1 });
+          for (const entry of [...page.entries].reverse()) {
+            const remaining = 8000 - historyChars;
+            const marker = " …[history truncated]";
+            if (remaining <= marker.length + 1) break;
+            const line = tfEntryLine(entry);
+            const clipped = line.length + 1 > remaining;
+            const shown = clipped ? line.slice(0, remaining - marker.length - 1) + marker : line;
+            history.unshift(shown);
+            historySeqs.unshift(entry.seq);
+            historyChars += shown.length + 1;
+            if (clipped) break;
+          }
+        } catch { /* 읽은 이력이 없어도 새 말은 싣는다. */ }
+        tfContextSeqs.set(id, historySeqs);
+        return history.length || lines.length ? [[
+          head,
+          ...(history.length ? ["Recent conversation reminder (already read; not new utterances):", ...history] : []),
+          ...(lines.length ? ["New ledger entries (judge once; your own entries are context only):", ...lines] : []),
+        ].join("\n")] : [];
+      });
+    };
+    return { formatPrompt, tfImages, tfWatermark, tfTakeSeqs, tfContextSeqs, tfImageBytes, tfImageBase64Bytes };
   };
 
   const runTurn = async (runner: Runner): Promise<void> => {
@@ -729,7 +737,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       }
       // 여는 동안 꺼졌다 — 막 연 세션은 stop() 이 거둔다. 턴도 상태 방송도 하지 않는다.
       if (runner.stopping) return;
-      const { tfPrompt, tfImages, tfWatermark, tfTakeSeqs, tfContextSeqs } = taskforceInput;
+      const { tfImages, tfWatermark, tfTakeSeqs, tfContextSeqs } = taskforceInput;
+      const tfPrompt = taskforceInput.formatPrompt(runner.sessionFirstTurn);
       // 이유는 세션이 열린 뒤에 거둔다 — 열지 못하면 그대로 남아 재시도 턴에 실린다. 보드 대기 상태의 수는 지금 보드에서 다시 센다
       // (모인 동안 사령관 자신이 완료한 목표는 빠진다); 그새 사라진 대기 상태는 이유에서 내린다.
       const digest = runner.board?.recount() ?? new Map();
@@ -796,6 +805,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       try {
         const openUIFeedback = runner.openUIFeedback;
         runner.openUIFeedback = undefined;
+        runner.sessionFirstTurn = false;
         outcome = await session.turn({ reasons, sentences, ...(openUIFeedback ? { openUIFeedback } : {}), ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}), ...(tfPrompt.length ? { taskforce: tfPrompt } : {}), ...(tfImages.length ? { taskforceImages: tfImages } : {}), ...(quiet ? { quietText: true as const } : {}) });
         // 실패·취소된 시도는 다시 실릴 수 있다. 전하지 않았다는 판정은 성공한 턴에서만 확정한다.
         if (outcome.outcome === "ok") for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
@@ -936,7 +946,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnPersonRoutine: false, sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, session: null, sessionFirstTurn: false, phase: "idle", pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnPersonRoutine: false, sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),

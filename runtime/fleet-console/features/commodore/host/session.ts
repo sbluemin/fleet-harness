@@ -74,8 +74,8 @@ export interface CommodoreTurnInput {
   /** 다른 사령관의 말. 사람 입력이나 사람 권한으로 취급하지 않는다. */
   readonly mail?: readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[];
   /**
-   * 속한 TaskForce 블록 — 이름·주제·성원과 새 원장 항목, 읽은 최근 이력의 리마인드를 싣는다.
-   * 1:1 기록·기억·연락은 절대 섞지 않는다(격리). 리마인드는 새 판단 요청이 아니다.
+   * 속한 TaskForce 블록 — 새 원장 항목을 싣고, 새 세션 첫 턴에만 읽은 최근 이력을 보탠다.
+   * 1:1 기록·기억·연락은 절대 섞지 않는다(격리). 이력은 새 판단 요청이 아니다.
    */
   readonly taskforce?: readonly string[];
   /** 새 TF 항목의 이미지 — 읽은 이력에는 다시 싣지 않고 1:1 메시지와도 구분한다. */
