@@ -398,7 +398,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       boardTools: boardTools(runner), hasPersonMessage: hasPersonMessage(runner), now,
       onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
-      ...(tfEnabled() ? { taskforce: deps.taskforce! } : {}),
+      // 실험 상태는 세션을 연 뒤에도 바뀐다 — 도구 실행 때마다 확인해, 켠 뒤에는 열린 세션도 말할 수 있고 끈 뒤에는 막힌다.
+      ...(deps.taskforce ? { taskforce: { append: (...args: Parameters<TaskforceStore["append"]>) => {
+        if (!tfEnabled()) throw new Error("taskforce_unavailable");
+        return deps.taskforce!.append(...args);
+      } } } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },
       onLive: (live) => deps.emit({ op: "live", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), live }),
       onInput: ({ id, state }) => {

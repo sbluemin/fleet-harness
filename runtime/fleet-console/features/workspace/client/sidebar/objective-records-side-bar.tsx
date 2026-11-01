@@ -188,7 +188,6 @@ export function ObjectiveRecordsSideBar({
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
-  const [tfMenuError, setTfMenuError] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
   const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
   const surfaceOwner = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
@@ -332,7 +331,6 @@ export function ObjectiveRecordsSideBar({
   // 그 누름이 세워 둔 끌기 대기를 거둔다 — 메뉴가 열린 뒤 손가락이 미끄러져도 사령관이 옮겨지지 않는다.
   const openTheaterMenu = (theaterId: string, anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean, focusFirst = false) => {
     if (dragRef.current && !dragRef.current.dragging) updateDrag(null);
-    setTfMenuError(false);
     setActiveContextMenu({ theaterId, anchor, returnFocus, atCursor, focusFirst });
   };
 
@@ -438,7 +436,6 @@ export function ObjectiveRecordsSideBar({
       {addFailure ? <p className="side-bar-theater-error" role="alert">{addFailure}</p> : null}
       {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
-      {tfMenuError ? <p className="side-bar-theater-error" role="alert">{taskforceT(useConsoleLocale())("taskforce.failed")}</p> : null}
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
         {sidebarBuckets.map((bucket) => {
@@ -659,7 +656,6 @@ export function ObjectiveRecordsSideBar({
           focusFirst={activeContextMenu.focusFirst}
           returnFocus={activeContextMenu.returnFocus ?? null}
           onClose={closeActiveContextMenu}
-          onError={() => setTfMenuError(true)}
         />
       ) : null}
       <DirectoryBrowserModal open={browserOpen} onCancel={cancelTheaterBrowser} onConfirm={confirmTheaterBrowser} />

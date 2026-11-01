@@ -31,6 +31,8 @@ const SURFACE = "taskforce";
 export const TASKFORCE_SURFACE_ID = SURFACE;
 let conversation: ClientConversationCapability | undefined;
 let createRequest: { readonly preselected?: string } | null = null;
+/** 삭제 확인 — 우클릭 메뉴는 항목을 누르면 먼저 닫히므로 확인 대화상자는 메뉴 밖 호스트가 띄운다. */
+let deleteRequest: string | null = null;
 let mobileId: string | null = null;
 const listeners = new Set<() => void>();
 const emit = () => { for (const listener of listeners) listener(); };
@@ -45,6 +47,7 @@ export function requestTaskforceCreate(preselected?: string): void {
   if (experiment.known && !experiment.enabled) return;
   createRequest = { ...(preselected ? { preselected } : {}) }; emit();
 }
+export function requestTaskforceDelete(id: string): void { deleteRequest = id; emit(); }
 export function openTaskforce(id: string): void {
   if (!conversation?.open(SURFACE, { taskforceId: id })) { mobileId = id; emit(); }
   void loadTaskforce(id);
@@ -94,36 +97,41 @@ export function TaskforceStack({ members }: { readonly members: readonly string[
  * TF 행의 우클릭 메뉴 — 사령관 행과 같은 자리에 서고, 삭제에 더해 사용자 섹션
  * 소속(섹션 사이 이동·새 섹션)도 같은 섹션 메뉴로 바꾼다. 행 자체는 사이드바가 그린다.
  */
-export function TaskforceRowMenu({ id, anchor, focusFirst, returnFocus, onClose, onError }: {
+export function TaskforceRowMenu({ id, anchor, focusFirst, returnFocus, onClose }: {
   readonly id: string;
   readonly anchor: DOMRect;
   readonly focusFirst?: boolean;
   readonly returnFocus?: HTMLElement | null;
   readonly onClose: () => void;
-  readonly onError: () => void;
 }) {
   const language = useConsoleLocale();
   const t = taskforceT(language);
   const snapshot = useTaskforce(id);
-  const state = snapshot.state;
+  // 원장을 아직 읽지 않은 행도 메뉴가 서도록 목록 요약의 이름을 쓴다(삭제·섹션 이동에 원장은 필요 없다).
+  const summary = useTaskforces().find((row) => row.id === id);
+  const name = snapshot.state?.name ?? summary?.name;
   const sections = useCommodoreSidebarSections();
-  const [deleting, setDeleting] = useState(false);
-  const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false);
   const returnFocusRef = useRef(returnFocus ?? null);
   returnFocusRef.current = returnFocus ?? null;
   useContextMenuKeyboard({ open: true, menuSelector: '.group-context-menu-card[role="menu"]', returnFocusRef, focusFirst, onEscape: onClose });
-  if (!state) return null;
-  const run = async (route: "delete") => {
+  if (!name) return null;
+  return <GroupContextMenu kind="actions" anchor={anchor} label={name} items={[
+    { label: t("taskforce.delete"), danger: true, action: () => requestTaskforceDelete(id) },
+  ]} footer={<CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} />} onClose={onClose} />;
+}
+
+function DeleteDialog({ id, language, onClose }: { readonly id: string; readonly language: "ko" | "en"; readonly onClose: () => void }) {
+  const t = taskforceT(language);
+  const snapshot = useTaskforce(id);
+  const rows = useTaskforces();
+  const name = snapshot.state?.name ?? rows.find((row) => row.id === id)?.name ?? "";
+  const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false);
+  const remove = async () => {
     if (busy) return; setBusy(true); setFailed(false);
-    try { await mutateTaskforce(route, { taskforceId: id }); setDeleting(false); if (route === "delete") onClose(); }
-    catch { setFailed(true); onError(); } finally { setBusy(false); }
+    try { await mutateTaskforce("delete", { taskforceId: id }); onClose(); }
+    catch { setFailed(true); } finally { setBusy(false); }
   };
-  return <>
-    <GroupContextMenu kind="actions" anchor={anchor} label={state.name} items={[
-      { label: t("taskforce.delete"), danger: true, action: () => { setFailed(false); setDeleting(true); } },
-    ]} footer={<CommodoreSectionMoveMenu rowId={id} controller={sections} onClose={onClose} />} onClose={onClose} />
-    {deleting ? <Dialog title={t("taskforce.deleteTitle")} onClose={() => { if (!busy) setDeleting(false); }}><div className="taskforce-dialog-body"><p>{t("taskforce.deleteWarning", { name: state.name })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => setDeleting(false)}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn taskforce-danger" disabled={busy} onClick={() => void run("delete")}>{t("taskforce.deleteConfirm")}</button></footer></Dialog> : null}
-  </>;
+  return <Dialog title={t("taskforce.deleteTitle")} onClose={() => { if (!busy) onClose(); }}><div className="taskforce-dialog-body"><p>{t("taskforce.deleteWarning", { name })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</div><footer><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={onClose}>{t("taskforce.cancel")}</button><button type="button" className="fc-btn taskforce-danger" disabled={busy} onClick={() => void remove()}>{t("taskforce.deleteConfirm")}</button></footer></Dialog>;
 }
 
 function Dialog({ title, onClose, children }: { readonly title: string; readonly onClose: () => void; readonly children: ReactNode }) {
@@ -187,6 +195,7 @@ function CreateDialog({ preselected, onClose }: { readonly preselected?: string;
 
 export function TaskforceHost() {
   const request = useSyncExternalStore(subscribe, () => createRequest);
+  const deleting = useSyncExternalStore(subscribe, () => deleteRequest);
   const mobile = useSyncExternalStore(subscribe, () => mobileId);
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const rows = useTaskforces();
@@ -200,12 +209,13 @@ export function TaskforceHost() {
   useEffect(() => {
     if (!experiment.known || experiment.enabled) return;
     createRequest = null;
+    deleteRequest = null;
     if (selection?.surfaceId === SURFACE) conversation?.close(SURFACE);
     if (mobileId) { mobileId = null; }
     emit();
   }, [experiment.known, experiment.enabled, selection]);
   if (!experiment.enabled && experiment.known) return null;
-  return <>{request ? <CreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{mobile ? <div className="taskforce-mobile-screen"><header><button type="button" className="fc-btn fc-btn--secondary" onClick={() => { mobileId = null; emit(); }}>{taskforceT(language)("taskforce.closeDialog")}</button><strong>{readTaskforce(mobile).state?.name}</strong></header><TaskforceBody key={mobile} id={mobile} language={language} /><TaskforceDetails id={mobile} tab="overview" language={language} /></div> : null}</>;
+  return <>{request ? <CreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{deleting ? <DeleteDialog key={deleting} id={deleting} language={language} onClose={() => { deleteRequest = null; emit(); }} /> : null}{mobile ? <div className="taskforce-mobile-screen"><header><button type="button" className="fc-btn fc-btn--secondary" onClick={() => { mobileId = null; emit(); }}>{taskforceT(language)("taskforce.closeDialog")}</button><strong>{readTaskforce(mobile).state?.name}</strong></header><TaskforceBody key={mobile} id={mobile} language={language} /><TaskforceDetails id={mobile} tab="overview" language={language} /></div> : null}</>;
 }
 
 function TaskforceActions({ actions, commodoreId, language }: { readonly actions: readonly TaskforceAction[]; readonly commodoreId?: string; readonly language: string }) {
