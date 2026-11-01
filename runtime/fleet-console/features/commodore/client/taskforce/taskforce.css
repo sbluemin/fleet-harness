@@ -30,12 +30,17 @@
 .taskforce-create-tip { position: relative; display: inline-flex; }
 .taskforce-create-tip [role="tooltip"] { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); width: max-content; max-width: 240px; padding: 8px 10px; border-radius: var(--popover-radius); color: var(--text-primary); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); font-size: var(--t-sm); z-index: 1; }
 .taskforce-create-tip:hover [role="tooltip"], .taskforce-create-tip:focus-visible [role="tooltip"] { display: block; }
-.taskforce-picks { display: flex; flex-wrap: wrap; gap: 8px; }
-.taskforce-member-chip, .taskforce-mention { --taskforce-member-ink: var(--text-primary); --taskforce-member-face: var(--text-primary); }
-.taskforce-member-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px 4px 4px; border: 0; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--taskforce-member-ink); background: var(--surface-panel); font: inherit; font-size: var(--t-md); cursor: pointer; }
-.taskforce-member-chip[aria-pressed="true"] { background: var(--wash-selected); box-shadow: inset 0 0 0 1.5px var(--text-primary); }
-.taskforce-member-chip:hover, .taskforce-close:hover { background: var(--wash-hover); }
-.taskforce-mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; color: var(--taskforce-member-ink); font-size: inherit; font-weight: var(--weight-medium); }
+.taskforce-picked { display: grid; gap: 4px; margin-bottom: 8px; }
+.taskforce-picker { position: fixed; z-index: calc(var(--z-overlay) + 6); overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: 16px; color: var(--text-primary); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); font-size: var(--t-md); }
+.taskforce-picker:focus-within { box-shadow: var(--popover-surface-shadow), var(--field-focus-edge); }
+.taskforce-picker-search { width: 100%; height: 35px; border: 0; border-bottom: 1px solid var(--hairline); background: transparent; padding: 0 12px; color: inherit; font: inherit; }
+.taskforce-picker-search::placeholder { color: var(--text-tertiary); }
+.taskforce-picker-search:focus-visible { outline: none; }
+.taskforce-picker-list { max-height: 194px; overflow-y: auto; padding: 5px; }
+.taskforce-picker-option { display: flex; width: 100%; min-height: 46px; align-items: center; gap: 12px; padding: 4px 12px 4px 11px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.taskforce-picker-option[data-active="true"], .taskforce-picker-option:hover { background: var(--wash-hover); }
+.taskforce-picker-empty { display: flex; min-height: 46px; align-items: center; margin: 0; padding: 4px 11px; color: var(--text-tertiary); font-size: var(--t-sm); }
+.taskforce-close:hover { background: var(--wash-hover); }
 .taskforce-message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 말풍선 속 지목은 공용 MentionChip(1:1과 같은 면)이라 이 파일에 자리를 두지 않는다. 사람 말풍선에서는 말풍선색을 이어받는다. */
 /* 다크 피드의 저채도 이름 잉크에 같은 사령관의 아바타 톤을 더한다. 라이트는 대비를 지키는 기본 identity ink를 쓴다. */
@@ -58,7 +63,8 @@
 .taskforce-details { display: grid; gap: 16px; align-content: start; color: var(--text-primary); font-size: var(--t-md); }
 .taskforce-member { display: flex; gap: 8px; align-items: center; padding-right: 6px; border-radius: 8px; }
 .taskforce-member:hover, .taskforce-member:focus-within { background: var(--wash-hover); }
-.taskforce-member-open { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.taskforce-member-open, .taskforce-member-picked { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.taskforce-member-picked { cursor: default; }
 .taskforce-member strong { font-weight: var(--weight-medium); }
 .taskforce-member .taskforce-text-button { visibility: hidden; }
 .taskforce-member:hover .taskforce-text-button, .taskforce-member:focus-within .taskforce-text-button { visibility: visible; }
@@ -79,7 +85,7 @@
 .taskforce-mobile-screen > header .mobile-conv-pill { padding-left: 16px; }
 .taskforce-mobile-screen .taskforce-conversation { flex: 1; height: auto; padding-top: 0; }
 .taskforce-mobile-screen .taskforce-details { padding: 0 16px 16px; }
-.taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-picker button:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible { box-shadow: var(--field-focus-edge); outline: none; }
 @media (max-width: 760px) { .taskforce-paused { flex-wrap: wrap; } .taskforce-paused > span:last-child { margin-left: 22px; } .taskforce-dialog footer { flex-wrap: wrap; } }
-@media (forced-colors: active) { .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible { outline: 1px solid Highlight; } }
+@media (forced-colors: active) { .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible, .taskforce-picker button:focus-visible, .taskforce-dialog input:focus-visible, .taskforce-dialog textarea:focus-visible, .taskforce-picker-search:focus-visible { outline: 1px solid Highlight; } }
