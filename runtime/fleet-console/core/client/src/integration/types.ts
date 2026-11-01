@@ -358,6 +358,8 @@ export interface ConsoleState {
   /** 새 세션 화면·모바일 시트가 소비하는 거절. */
   readonly newSessionRejection: NewSessionRejection | null;
   readonly keyboardShortcutsOpen: boolean;
+  /** 도움말 › 플릿 한눈에 보기 모션 팝업이 열려 있는가. */
+  readonly fleetAtAGlanceOpen: boolean;
   readonly objectiveRecordNotifications: Readonly<Record<string, ObjectiveNotification>>;
   readonly notificationPreferences: NotificationPreferences;
 }
