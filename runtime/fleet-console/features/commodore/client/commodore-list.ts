@@ -156,11 +156,27 @@ export function refreshCommodoreList(): Promise<void> {
   return refreshFlight;
 }
 
+/** 사령관마다 마지막으로 받은 `run` — 계열(`step`)과 나머지를 따로 둔다. */
+const lastRuns = new Map<string, { readonly rest: string; readonly step: string | null }>();
+
+/**
+ * 계열만 바뀐 `run` 사건인지 — 턴 중 도구가 바뀔 때마다 오는 사건이라 목록 전체를 다시 읽지 않는다. 아바타는 상태 상점의
+ * `run.step`을 읽으므로 목록이 몰라도 된다. 그 밖의 값이 하나라도 바뀌었거나 처음 받은 사건이면 예전처럼 다시 읽는다.
+ */
+function isStepOnlyRun(event: Extract<CommodoreEvent, { readonly op: "run" }>): boolean {
+  const { step = null, ...rest } = event.run;
+  const next = { rest: JSON.stringify(rest), step };
+  const previous = lastRuns.get(event.commodoreId);
+  lastRuns.set(event.commodoreId, next);
+  return previous !== undefined && previous.rest === next.rest && previous.step !== next.step;
+}
+
 export function installCommodoreList(events: ClientConsoleEventsCapability): () => void {
   void refreshCommodoreList();
   const off = events.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
     if (event?.op === "removed") {
+      lastRuns.delete(event.commodoreId);
       commodores = commodores.filter((row) => row.commodoreId !== event.commodoreId);
       if (zoneCommodoreId === event.commodoreId) zoneCommodoreId = null;
       if (mobileCommodoreId === event.commodoreId) saveMobileCommodore(null);
@@ -169,7 +185,7 @@ export function installCommodoreList(events: ClientConsoleEventsCapability): () 
     }
     // TF 삭제는 호스트가 순서·소속에서 id를 걷는다 — 목록 응답의 order를 다시 읽는다.
     if ((event as { readonly op?: string } | null)?.op === "taskforce-removed") void refreshCommodoreList();
-    if (event?.op === "state" || event?.op === "run") void refreshCommodoreList();
+    if (event?.op === "state" || (event?.op === "run" && !isStepOnlyRun(event))) void refreshCommodoreList();
     // 대화의 마지막 말은 목록을 다시 읽지 않고 그 행만 갈아 끼운다 — 기록 줄은 턴마다 여럿 온다.
     if (event?.op === "transcript") noteLastMessage(event.commodoreId, commodoreLastMessage(event.entry));
   });
