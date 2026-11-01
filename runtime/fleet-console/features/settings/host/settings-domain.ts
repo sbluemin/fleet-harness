@@ -90,6 +90,12 @@ export interface ConsoleGeneralSettings {
   readonly reduceMotion?: boolean;
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태(답을 기다림·결정 요청·오류)만 움직인다. 부재는 꺼짐(몽글)이다. */
   readonly calmAvatars?: boolean;
+  /**
+   * 지휘관 목록이 서는 사이드바. 왼쪽이 기본이다. 부재는 한 번도 저장된 적 없음이다.
+   * localStorage 키(`fleet-console.commanderList.place`)는 같은 origin의 첫 그리기용 캐시로만 쓰고,
+   * 원천은 이 값이다 — Console 포트가 바뀌면 origin이 바뀌어 캐시가 사라지기 때문이다.
+   */
+  readonly commanderPlacement?: "left" | "right";
   /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
   readonly lowerUnfocusedFrameRate?: boolean;
   readonly uiFont?: UiFontSettings;
@@ -348,6 +354,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
   const reduceMotion = typeof value.reduceMotion === "boolean" ? value.reduceMotion : undefined;
   const calmAvatars = typeof value.calmAvatars === "boolean" ? value.calmAvatars : undefined;
+  const commanderPlacement = value.commanderPlacement === "left" || value.commanderPlacement === "right" ? value.commanderPlacement : undefined;
   const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
@@ -364,6 +371,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(sideBarDoubleClickOpen !== undefined ? { sideBarDoubleClickOpen } : {}),
     ...(reduceMotion !== undefined ? { reduceMotion } : {}),
     ...(calmAvatars !== undefined ? { calmAvatars } : {}),
+    ...(commanderPlacement !== undefined ? { commanderPlacement } : {}),
     ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
     ...(fonts ? { fonts } : {}),
@@ -499,6 +507,7 @@ interface GlobalSettingsBody {
   readonly sideBarDoubleClickOpen?: unknown;
   readonly reduceMotion?: unknown;
   readonly calmAvatars?: unknown;
+  readonly commanderPlacement?: unknown;
   readonly lowerUnfocusedFrameRate?: unknown;
   readonly uiFont?: unknown;
   readonly fonts?: unknown;
@@ -634,6 +643,11 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_calm_avatars" });
     return;
   }
+  // 구서버 응답·손상 값은 모두 왼쪽으로 읽지만, 쓰기는 잘못된 값을 조용히 기본값으로 접지 않는다.
+  if (body.commanderPlacement !== undefined && body.commanderPlacement !== "left" && body.commanderPlacement !== "right") {
+    deps.writeJson(res, 400, { error: "invalid_commander_placement" });
+    return;
+  }
   if (body.lowerUnfocusedFrameRate !== undefined && typeof body.lowerUnfocusedFrameRate !== "boolean") {
     deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
     return;
@@ -692,6 +706,7 @@ async function mutateGlobalSettings(
       ...(typeof body.sideBarDoubleClickOpen === "boolean" ? { sideBarDoubleClickOpen: body.sideBarDoubleClickOpen } : {}),
       ...(typeof body.reduceMotion === "boolean" ? { reduceMotion: body.reduceMotion } : {}),
       ...(typeof body.calmAvatars === "boolean" ? { calmAvatars: body.calmAvatars } : {}),
+      ...(body.commanderPlacement === "left" || body.commanderPlacement === "right" ? { commanderPlacement: body.commanderPlacement } : {}),
       ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
       // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
       ...(body.fonts !== undefined ? { fonts: readFontSettings(body.fonts)! } : {}),
@@ -765,6 +780,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
     reduceMotion: general.reduceMotion ?? false,
     calmAvatars: general.calmAvatars ?? false,
+    // 키 없음·손상 값은 null이다 — "한 번도 저장된 적 없음"과 명시 저장 "left"를 구분한다.
+    commanderPlacement: general.commanderPlacement === "right" ? "right" : general.commanderPlacement === "left" ? "left" : null,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     fonts: resolveConsoleFonts(data),

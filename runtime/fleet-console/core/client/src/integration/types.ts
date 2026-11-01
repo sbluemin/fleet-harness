@@ -228,6 +228,8 @@ export interface GlobalSettingsState {
   readonly reduceMotion: boolean;
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태만 움직인다. 구서버 응답에는 없고, 그때는 꺼짐이다. */
   readonly calmAvatars: boolean;
+  /** 지휘관 목록이 서는 사이드바. null은 settings.json에 키 없음(구서버 응답 포함)이다. */
+  readonly commanderPlacement: "left" | "right" | null;
   readonly lowerUnfocusedFrameRate: boolean;
   readonly uiFont: UiFontSettings;
   readonly fonts: ConsoleFontSettings;

@@ -25,6 +25,7 @@ const BASE: GlobalSettingsState = {
   sideBarDoubleClickOpen: false,
   reduceMotion: false,
   calmAvatars: false,
+  commanderPlacement: "left",
   lowerUnfocusedFrameRate: true,
   shortcuts: {},
   fonts: DEFAULT_FONTS,
