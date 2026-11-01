@@ -4,7 +4,7 @@ branch: feat/taskforce-followup
 
 ### fleet-console
 #### Changed
-- TaskForce is now an experiment: turn it on in Settings › Experiments to see TaskForces and create new ones. Your existing TaskForces are kept and come back when you turn it on.
+- TaskForce is now an experiment: turn it on in Settings > Experiments to see TaskForces and create new ones. Your existing TaskForces are kept and come back when you turn it on.
   ko: TaskForce는 이제 실험 기능입니다. 설정 › 실험 기능에서 켜면 TaskForce가 보이고 새로 만들 수 있으며, 기존 TaskForce는 그대로 남아 켜면 다시 나타납니다.
 - TaskForce chats now use the same composer as Commodore chats, so you can mention members with @ and attach images, and the Quota summary appears above it.
   ko: TaskForce 대화도 사령관 대화와 같은 입력창을 써서 @로 멤버를 지목하고 이미지를 첨부할 수 있으며, 그 위에 Quota 요약이 보입니다.
