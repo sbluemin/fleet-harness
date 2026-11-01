@@ -40,11 +40,12 @@ export function TrashIcon() {
   );
 }
 
-export function TaskforceIcon() {
+/** 태스크포스 글리프(겹친 두 네모) — 사이드바 메뉴와 ⌘K 팔레트가 같은 모양을 쓴다. 선 굵기만 부르는 쪽이 정한다. */
+export function TaskforceIcon({ strokeWidth = 1.3 }: { readonly strokeWidth?: number }) {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="2.5" y="5.5" width="8" height="8" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M5.5 5.5V3.7a1.2 1.2 0 0 1 1.2-1.2h5.6a1.2 1.2 0 0 1 1.2 1.2v5.6a1.2 1.2 0 0 1-1.2 1.2H10.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="2.5" y="5.5" width="8" height="8" rx="1.2" fill="none" stroke="currentColor" strokeWidth={strokeWidth} />
+      <path d="M5.5 5.5V3.7a1.2 1.2 0 0 1 1.2-1.2h5.6a1.2 1.2 0 0 1 1.2 1.2v5.6a1.2 1.2 0 0 1-1.2 1.2H10.5" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

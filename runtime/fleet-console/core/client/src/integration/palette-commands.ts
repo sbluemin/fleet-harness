@@ -50,7 +50,7 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
  * 패널 행은 레일 엔트리의 등록 아이콘(`rail-entry`)을 쓰므로 여기서는 종류만 가린다.
  */
 export type PaletteGlyphId =
-  | "theater" | "theater-add" | "objective-new"
+  | "theater" | "theater-add" | "objective-new" | "taskforce-new"
   | "objective-open" | "objective-resume" | "objective-archive" | "objective-rename" | "objective-group" | "objective-accent"
   | "view-status-axis"
   | "rail-entry" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
@@ -215,7 +215,7 @@ export function buildPaletteCommands(
     });
   }
   if (getGlobalSettingsStoreState().state?.experiments.taskforce === true) {
-    push({ commandId: "new-taskforce", label: taskforceT(language)("taskforce.new"), aliasLabel: taskforceT(language === "ko" ? "en" : "ko")("taskforce.new"), action: { kind: "new-taskforce" }, group: "console", glyph: "objective-new", shortcut: "console.new-taskforce" });
+    push({ commandId: "new-taskforce", label: taskforceT(language)("taskforce.new"), aliasLabel: taskforceT(language === "ko" ? "en" : "ko")("taskforce.new"), action: { kind: "new-taskforce" }, group: "console", glyph: "taskforce-new", shortcut: "console.new-taskforce" });
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {

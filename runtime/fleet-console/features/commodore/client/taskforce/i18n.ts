@@ -90,7 +90,7 @@ const ko: Record<keyof typeof en, string> = {
   "taskforce.deleteWarning": "「{name}」의 모든 발언과 이미지를 삭제할까요? 되돌릴 수 없어요. 사령관과 1:1 대화는 그대로 남아요.",
   "taskforce.deleteConfirm": "영구 삭제",
   "taskforce.remove": "제거",
-  "taskforce.removeConfirm": "「{name}」을 이 태스크포스에서 뺄까요? 지난 발언은 그대로 남아요.",
+  "taskforce.removeConfirm": "이 태스크포스에서 「{name}」 사령관을 뺄까요? 지난 발언은 그대로 남아요.",
   "taskforce.add": "멤버 추가",
   "taskforce.noActions": "아직 일으킨 행동이 없어요.",
   "taskforce.openNotice": "열기",

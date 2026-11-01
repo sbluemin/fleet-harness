@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { ArchiveGlyph } from "../../../../../features/workspace/client/components/archive-glyph.js";
 import type { PaletteCommandEntry, PaletteCommandGroup, PaletteGlyphId } from "../../integration/palette-commands.js";
 import { TheaterGlyph } from "../../../../../features/workspace/client/components/theater-glyph.js";
+import { TaskforceIcon } from "../../../../../features/workspace/client/sidebar/sidebar-menu-icons.js";
 
 /**
  * 팔레트 행·구역 글리프 한 벌. 16px 상자, 1.5px 선, 둥근 끝 — 시작 화면·상태 아이콘과 같은 굵기다.
@@ -21,6 +22,7 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "rail-entry">, ReactN
   theater: <TheaterGlyph />,
   "theater-add": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" /><path d="M8 5.5v5M5.5 8h5" /></Glyph>,
   "objective-new": <Glyph><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3" /><path d="M4.5 4.5l1.6 1.6M9.9 9.9l1.6 1.6M4.5 11.5l1.6-1.6M9.9 6.1l1.6-1.6" /></Glyph>,
+  "taskforce-new": <TaskforceIcon strokeWidth={1.5} />,
   "objective-open": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M6 10l4-4M6.5 6H10v3.5" /></Glyph>,
   "objective-resume": <Glyph><path d="M5 3.5v9l7.5-4.5z" /></Glyph>,
   "objective-archive": <ArchiveGlyph strokeWidth={1.125} />,
