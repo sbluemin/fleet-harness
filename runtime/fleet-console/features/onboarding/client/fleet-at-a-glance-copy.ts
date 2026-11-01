@@ -80,8 +80,8 @@ const scenesKo: readonly FleetGlanceSceneCopy[] = [
     canvas: {
       brand: "Fleet Console",
       you: "사람",
-      orbit: "사령관 ×N",
-      goal: "목표",
+      legend0: "사령관 ×N",
+      legend1: "목표 ×N",
       inside: "목표 하나 안",
       commander: "지휘관",
       members: "구성원 ×0~N · 미션 수행",
@@ -263,8 +263,8 @@ const scenesEn: readonly FleetGlanceSceneCopy[] = [
     canvas: {
       brand: "Fleet Console",
       you: "You",
-      orbit: "Commodores ×N",
-      goal: "Objective",
+      legend0: "Commodores ×N",
+      legend1: "Objectives ×N",
       inside: "Inside one objective",
       commander: "Commander",
       members: "Members ×0–N",

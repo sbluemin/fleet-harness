@@ -238,7 +238,17 @@ function drawStructureOrbit(k: GlanceKit, c: GlancePalette, t: number, reduced: 
   k.text(L.you ?? "", cx, cy + 28, { a: a0 });
   const aC = atTime(t, 0.5, 0.8);
   k.ring(cx, cy, 118, 72, c.hair, aC);
-  k.text(L.orbit ?? "", cx, cy - 86, { color: c.ink2, size: 11, a: aC });
+  // 움직이는 물체를 따라다니는 라벨 대신 왼쪽 아래 고정 범례 — 궤도·위성·연결선·확대 원과
+  // 어느 프레임에서도 겹치지 않는다.
+  const la = atTime(t, 1.0, 0.8);
+  k.ctx.save();
+  k.ctx.font = `600 11.5px ${c.font}`;
+  const legend0Width = k.ctx.measureText(L.legend0 ?? "").width;
+  k.ctx.restore();
+  k.dot(26, 284, 4, c.ink, la);
+  k.text(L.legend0 ?? "", 38, 284, { align: "left", size: 11.5, a: la });
+  k.dot(38 + legend0Width + 14, 284, 4, c.loop, la);
+  k.text(L.legend1 ?? "", 38 + legend0Width + 26, 284, { align: "left", size: 11.5, a: la });
   let focus: [number, number] | null = null;
   for (let i = 0; i < 3; i += 1) {
     const ai = atTime(t, 0.6 + i * 0.25, 0.6);
@@ -254,7 +264,6 @@ function drawStructureOrbit(k: GlanceKit, c: GlancePalette, t: number, reduced: 
       if (i === 0 && m === 0) focus = [mx, my];
     }
   }
-  if (focus) k.text(L.goal ?? "", focus[0] + 12, focus[1] - 10, { color: c.loop, size: 11, a: atTime(t, 1.6), align: "left" });
   // 목표 하나를 확대해 보는 창
   const z = atTime(t, 2.3, 0.9);
   if (z > 0 && focus) {
