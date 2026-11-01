@@ -1583,7 +1583,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.side-bar-theater-sub.is-responding { color: var(--aurora); }
 .side-bar-theater-alias-input {
   width: 100%;
   min-width: 0;
