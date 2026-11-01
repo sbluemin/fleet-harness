@@ -9,6 +9,7 @@ import type { ConsoleRuntimeContext } from "../../features/execution/host/contex
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 import { GLOBAL_SHELL_SESSION_ID, registerShellRoutes } from "../../features/execution/host/terminal/shell.js";
+import { toolShellKey } from "../../features/execution/shared/shell-key.js";
 import type { TerminalLaunchResolver, TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";
 
 /**
@@ -60,6 +61,30 @@ describe("conversation Shell sessions", () => {
     expect(issued).toHaveLength(count);
     await call({});
     expect(issued.at(-1)!.sessionId).toBe(GLOBAL_SHELL_SESSION_ID);
+  });
+
+  /**
+   * 도구 Shell 키는 주인과 Theater를 싣는다 — 본문이 다른 Theater를 가리켜도 키의 Theater에 못 박는다.
+   * 그래야 Theater 해제가 그 Theater의 Shell을 끝낸다는 말이 지켜진다. 옮기기(open-at)도 키의
+   * Theater를 벗어나지 않는다(경로는 살린다).
+   */
+  it("binds a tool shell key to its own theater, ignoring a mismatched hint", async () => {
+    const fixture = makeTheaterFixture();
+    try {
+      const { call, openAt, responses, issued } = mount({ resolveFolder: (id) => (id === "theater-a" ? fixture.root : process.cwd()) });
+      const key = toolShellKey("c1", "theater-a")!;
+
+      await call({ shell: key, cwd: { theaterId: "theater-b", commodoreId: "evil" } });
+      expect(responses.at(-1)).toMatchObject({ status: 200 });
+      expect(issued.at(-1)!.cwd).toBe(fixture.root);
+
+      await openAt({ shell: key, theaterId: "theater-b", path: "src" });
+      expect(responses.at(-1)).toMatchObject({ status: 200, body: { ok: true, action: "pinned" } });
+      await call({ shell: key });
+      expect(issued.at(-1)!.cwd).toBe(path.join(fixture.root, "src"));
+    } finally {
+      fixture.dispose();
+    }
   });
 
   it("Theater 힌트가 없으면 사용자 홈에서 전역 Shell을 연다", async () => {

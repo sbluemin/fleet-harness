@@ -5,41 +5,8 @@ import {
   shouldSuppressCommodoreToolFileOpen,
 } from "../features/workspace/shared/commodore-tool-theater.js";
 
-// (사령관, 도구)의 Theater 판정 — 다른 Theater의 파일·Shell을 건드리는 일은 이 판정에서 막는다.
-// 등록에 없는 값은 절대 돌려주지 않는다.
-
-it("returns none when no Theater is registered", () => {
-  expect(resolveCommodoreToolTheater(null, [])).toEqual({ kind: "none" });
-  expect(resolveCommodoreToolTheater("t1", [])).toEqual({ kind: "none" });
-});
-
-it("returns none when every registered Theater is missing", () => {
-  expect(resolveCommodoreToolTheater(null, [
-    { theaterId: "t1", status: "missing" },
-    { theaterId: "t2", status: "missing" },
-  ])).toEqual({ kind: "none" });
-});
-
-it("keeps the stored Theater while it is still available", () => {
-  expect(resolveCommodoreToolTheater("t2", [
-    { theaterId: "t1", status: "available" },
-    { theaterId: "t2", status: "available" },
-  ])).toEqual({ kind: "resolved", theaterId: "t2" });
-});
-
-it("falls back to the first available Theater on first open", () => {
-  expect(resolveCommodoreToolTheater(null, [
-    { theaterId: "t1", status: "available" },
-    { theaterId: "t2", status: "available" },
-  ])).toEqual({ kind: "resolved", theaterId: "t1" });
-});
-
-it("skips missing Theaters when falling back", () => {
-  expect(resolveCommodoreToolTheater(null, [
-    { theaterId: "t1", status: "missing" },
-    { theaterId: "t2", status: "available" },
-  ])).toEqual({ kind: "resolved", theaterId: "t2" });
-});
+// 사령관 전용 도구의 Theater 판정 — 영속 스위트에 남기는 것은 실측된 막다른 길(등록 Theater를
+// 해제해도 도구가 열리지 않던 일)의 계약뿐이다. 그 밖의 분기는 도우미의 옮겨 적기가 된다.
 
 it("falls back to the first remaining Theater when the stored one was removed", () => {
   expect(resolveCommodoreToolTheater("gone", [
@@ -48,18 +15,9 @@ it("falls back to the first remaining Theater when the stored one was removed", 
   ])).toEqual({ kind: "resolved", theaterId: "t1" });
 });
 
-it("asks to choose when the stored Theater vanished but stays registered", () => {
-  expect(resolveCommodoreToolTheater("t1", [
-    { theaterId: "t1", status: "missing" },
-    { theaterId: "t2", status: "available" },
-  ])).toEqual({ kind: "choose", theaterId: "t1" });
-});
-
-it("never resolves to an unregistered Theater", () => {
-  const resolution = resolveCommodoreToolTheater("attacker-theater", [
-    { theaterId: "t1", status: "available" },
-  ]);
-  expect(resolution).toEqual({ kind: "resolved", theaterId: "t1" });
+it("reports no Theater when the last one was removed", () => {
+  expect(resolveCommodoreToolTheater("gone", [])).toEqual({ kind: "none" });
+  expect(resolveCommodoreToolTheater(null, [])).toEqual({ kind: "none" });
 });
 
 it("suppresses only chat file links from objective conversations", () => {
