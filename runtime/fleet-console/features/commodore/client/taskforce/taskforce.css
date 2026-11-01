@@ -46,7 +46,7 @@
 .taskforce-conversation { display: flex; flex: 1; height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
 .conversation-pill-surface-mark:has(> .taskforce-stack) { width: 36px; height: 36px; flex: none; }
 .conversation-panel-identity-mark:has(> .taskforce-stack) { width: 64px; height: 64px; background: transparent; }
-.conversation-panel-identity-mark > .taskforce-stack { flex-basis: 64px; width: 64px; height: 64px; }
+.conversation-panel-identity-mark > .taskforce-stack { flex-basis: 64px; width: 64px; height: 64px; transform: none; }
 .conversation-panel-identity-mark.is-surface > .taskforce-stack > svg { width: 100%; height: 100%; }
 .conversation-panel-identity-mark.is-surface > .taskforce-stack[data-count="1"] > svg { width: 50%; height: 50%; }
 .taskforce-conversation > .group-chat { flex: 1; min-height: 0; }
