@@ -24,6 +24,7 @@ import {
   type TaskforceSystemCode,
 } from "../../shared/contracts/taskforce.js";
 import { TaskforceStoreError } from "./errors.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../../shared/contracts/attachment-budget.js";
 
 /**
  * TaskForce 저장소 — Console 데이터의 `taskforce/<TF UUID>/` 하나.
@@ -248,6 +249,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     const current = load(taskforceId);
     if (!closedOk && current.status !== "open") throw new TaskforceStoreError("taskforce_closed");
     if (input.speaker.kind === "commodore" && !current.members.includes(input.speaker.commodoreId)) throw new TaskforceStoreError("invalid_request");
+    if ((input.images ?? []).reduce((bytes, image) => bytes + image.size, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new TaskforceStoreError("invalid_request");
     const mentions = [...new Set(input.mentions ?? [])];
     if (mentions.some((id) => !current.members.includes(id))) throw new TaskforceStoreError("invalid_request");
     if (input.replyTo !== undefined && (input.replyTo < 1 || input.replyTo > current.lastSeq)) throw new TaskforceStoreError("invalid_request");
@@ -499,7 +501,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     },
     saveImages(taskforceId, seq, images) {
       load(taskforceId);
-      if (!images.length || images.length > 4) throw new TaskforceStoreError("invalid_request");
+      if (!images.length || images.length > 4 || images.reduce((bytes, image) => bytes + image.bytes.byteLength, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new TaskforceStoreError("invalid_request");
       const seen = new Set<string>();
       const dir = contained(path.join(base, taskforceId), `images/${seq}`);
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
