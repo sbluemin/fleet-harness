@@ -140,7 +140,7 @@ export type GroupTimelineEntry = EntryCoordinate & (
    */
   | { readonly kind: "plugin-notice"; readonly objectiveId: string; readonly pluginId: string; readonly recipient: ConversationSpeaker; readonly text: string; readonly format?: "markdown" }
   /** `turn` — 보낸 쪽 원장에서 이 전언을 낸 턴(메시지의 `turn` 과 같은 좌표). 받은 쪽 원장만 본 전언에는 없다. */
-  | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean; readonly turn?: string }
+  | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean; readonly turn?: string; readonly attachments?: readonly ({ readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote })[] }
   | { readonly kind: "member-joined" | "member-left"; readonly speaker: ConversationSpeaker }
   /**
    * `target` — 여러 목표를 오가는 기록(사령관 대화)에서 이 줄이 가리키는 목표. 있으면 줄은 그 이름(`label`)과 지휘관 얼굴을 싣고,
