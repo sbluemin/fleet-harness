@@ -6,6 +6,9 @@ import { MobileFolderSheet } from "../../../core/client/src/chrome/mobile/mobile
 import { pushMobileSheet } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { describeTheaterRegistrationError } from "../../../core/client/src/integration/failure-notices.js";
 import { addCommodoreTheaterFromPath, removeCommodoreTheater } from "./theaters-api.js";
+import { toolShellKey } from "../../execution/shared/shell-key.js";
+import { endShellSession } from "../../execution/client/terminal/shell/shell-session-store.js";
+import { dropEndedShellMount } from "../../execution/client/terminal/shell/index.js";
 import { queryCommodoreShellStatus } from "../../workspace/client/theater-tools/shell-status.js";
 import { refreshCommodoreList, useCommodoreList } from "./commodore-list.js";
 
@@ -39,6 +42,12 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
     void run(async () => {
       await removeCommodoreTheater({ commodoreId, theaterId });
       await refreshCommodoreList();
+      // 해제된 Theater의 Shell 세션을 끝낸다 — 바쁠 때의 확인은 위에서 받았다. 타일은
+      // 남은 첫 Theater로 넘어가 그 Theater의 세션을 보여 준다.
+      const key = toolShellKey(commodoreId, theaterId);
+      if (key !== null) {
+        if (await endShellSession(key)) dropEndedShellMount(key);
+      }
     });
   };
   const addFolder = (path: string) => run(async () => {
