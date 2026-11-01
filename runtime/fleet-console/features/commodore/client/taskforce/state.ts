@@ -32,8 +32,12 @@ let taskforceEnabledSnapshot = false;
 let taskforceExperimentsKnown = false;
 const readTaskforceEnabled = () => deps?.experiments.read()?.taskforce === true;
 const readTaskforceExperimentsKnown = () => (deps?.experiments.read() ?? null) !== null;
+// useSyncExternalStore 스냅숏은 같은 상태에 같은 객체여야 한다 — 매번 새 객체를 내면 렌더가 끝없이 되풀이된다.
+const EXPERIMENT_UNKNOWN = { known: false, enabled: false } as const;
+const EXPERIMENT_OFF = { known: true, enabled: false } as const;
+const EXPERIMENT_ON = { known: true, enabled: true } as const;
 export function readTaskforceExperiment(): { readonly known: boolean; readonly enabled: boolean } {
-  return !taskforceExperimentsKnown ? { known: false, enabled: false } : { known: true, enabled: taskforceEnabledSnapshot };
+  return !taskforceExperimentsKnown ? EXPERIMENT_UNKNOWN : taskforceEnabledSnapshot ? EXPERIMENT_ON : EXPERIMENT_OFF;
 }
 /** TF가 켜져 있는가 — 꺼져 있으면 사이드바 행·만들기 입구가 숨고 판단이 멈춘다. */
 export function useTaskforceExperiment(): { readonly known: boolean; readonly enabled: boolean } {
