@@ -6,6 +6,7 @@
 .objectives-result-window .objectives-result-resize { z-index: 3; }
 .objectives-rw-head { display: flex; flex: none; align-items: center; gap: 8px; height: 38px; min-width: 0; padding: 0 8px 0 12px; border-bottom: 1px solid var(--hairline); border-radius: inherit; border-bottom-left-radius: 0; border-bottom-right-radius: 0; touch-action: none; cursor: grab; }
 .objectives-result-window.is-dragging .objectives-rw-head { cursor: grabbing; }
+.objectives-rw-titles { display: contents; }
 .objectives-rw-heading { flex: none; font-weight: var(--weight-bold); }
 .objectives-rw-objective { flex: 1; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objectives-rw-head button { display: grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; }
@@ -30,6 +31,7 @@
 .objectives-rw-stage { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; margin: 0 12px; overflow: hidden; border-radius: var(--radius-md); background: var(--canvas-abyss); }
 .objectives-rw-image { display: block; width: 100%; height: 100%; object-fit: contain; padding: 8px; box-sizing: border-box; }
 .objectives-rw-stage .objectives-result-markdown.markdown-body { max-height: none; height: 100%; overscroll-behavior: contain; }
+.objectives-rw-foot { display: contents; }
 .objectives-rw-caption { flex: none; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 14px 0; font-size: var(--t-xs); }
 .objectives-rw-caption > :is(b, span) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objectives-rw-caption > b { font-weight: var(--weight-medium); }
@@ -61,20 +63,27 @@
 }
 
 /* 폰은 기존 전체 화면 읽기를 유지하고 임무 칩을 더한다. 데스크톱의 기하 기억은 건드리지 않는다. */
-.objectives-result-window.is-mobile { inset: 0; z-index: 60; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
-.objectives-result-window.is-mobile .objectives-rw-head { height: 56px; padding: 0 12px 0 16px; border: 0; cursor: default; touch-action: auto; }
-.objectives-result-window.is-mobile .objectives-rw-close { width: 40px; height: 40px; border-radius: 50%; background: var(--m-chip); color: var(--m-text); }
+.objectives-result-window.is-mobile { inset: 0; z-index: 60; border: 0; border-radius: 0; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
+.objectives-result-window.is-mobile { --rw-head-h: calc(56px + var(--m-safe-top, 0px)); --rw-top-pad: var(--rw-top-h, var(--rw-head-h)); }
+.objectives-result-window.is-mobile .objectives-rw-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; box-sizing: border-box; height: var(--rw-head-h); padding: var(--m-safe-top, 0px) 12px 0 16px; background: var(--m-fade-top, var(--m-fade-down, var(--m-bg))); border: 0; cursor: default; touch-action: auto; }
+.objectives-result-window.is-mobile .objectives-rw-close { width: 40px; height: 40px; border: 1px solid var(--m-hairline-strong); border-radius: 50%; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); }
 .objectives-result-window.is-mobile .objectives-rw-body { display: flex; flex-direction: column; border-radius: 0; }
-.objectives-result-window.is-mobile .objectives-rw-missions { display: flex; flex: none; gap: 6px; padding: 4px 12px 10px; overflow-x: auto; border: 0; }
-.objectives-result-window.is-mobile .objectives-rw-missions button { display: flex; width: auto; max-width: 220px; flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--m-hairline); border-radius: var(--radius-pill); background: var(--m-chip); color: var(--m-text-muted); }
+.objectives-result-window.is-mobile .objectives-rw-missions { position: relative; z-index: 1; display: flex; flex: none; gap: 6px; padding: calc(var(--rw-head-h) + 4px) 12px 10px; background: var(--m-fade-down, var(--m-bg)); overflow-x: auto; border: 0; }
+.objectives-result-window.is-mobile .objectives-rw-missions button { display: flex; width: auto; max-width: 220px; flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--m-hairline); border-radius: var(--radius-pill); background: var(--m-surface); color: var(--m-text-muted); }
 .objectives-result-window.is-mobile .objectives-rw-missions button[aria-pressed=true] { background: var(--m-text); color: var(--m-bg); }
 .objectives-result-window.is-mobile .objectives-rw-missions .objectives-rw-mission-title { color: inherit; }
-.objectives-result-window.is-mobile .objectives-rw-main { flex: 1; }
+.objectives-result-window.is-mobile .objectives-rw-main { flex: 1; margin-top: calc(-1 * var(--rw-top-h, 0px)); }
+/* 머리는 대화 화면과 같이 화면 위 끝 페이드 위에 서고, 제목은 자기 면이 있는 알약(대화 헤더 알약과 같은 표면·테두리·그림자)이다. 캡션 줄은 불투명 --m-bg 면이고 공통 페이드는 그 줄 바깥 24px에서 본문으로 이어진다. */
+.objectives-result-window.is-mobile .objectives-rw-titles { display: flex; align-items: center; gap: 8px; min-width: 0; height: 40px; margin-right: auto; padding: 0 16px; border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); background: var(--m-surface); box-shadow: var(--m-shadow); }
+.objectives-result-window.is-mobile .objectives-rw-foot::before { content: ""; position: absolute; right: 0; bottom: 100%; left: 0; height: 24px; pointer-events: none; background: var(--m-fade-up, var(--m-bg)); }
+.objectives-result-window.is-mobile .objectives-rw-foot { position: relative; z-index: 1; display: flex; flex: none; flex-direction: column; background: var(--m-bg); }
 .objectives-result-window.is-mobile .objectives-rw-mission-head { display: none; }
-.objectives-result-window.is-mobile .objectives-rw-strip { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+.objectives-result-window.is-mobile .objectives-rw-strip { padding-bottom: calc(var(--m-safe-bottom, 0px) + 16px); }
 .objectives-result-window.is-mobile .objectives-rw-strip button { width: 60px; height: 44px; }
-.objectives-result-window.is-mobile .objectives-rw-stage { margin: 0 10px; }
-.objectives-result-window.is-mobile .objectives-rw-stage .objectives-result-markdown { padding: 16px; }
+.objectives-result-window.is-mobile .objectives-rw-stage { margin: 0 10px calc(-1 * var(--m-dock-h, 0px)); }
+:root .objectives-result-window.is-mobile .objectives-rw-stage .objectives-result-markdown { padding: calc(16px + var(--rw-top-pad)) 16px calc(16px + var(--m-dock-h, 0px)); scroll-padding-block: var(--rw-top-pad) var(--m-dock-h, 0px); }
+.objectives-result-window.is-mobile .objectives-rw-stage .objectives-rw-image { padding: calc(8px + var(--rw-top-pad)) 8px calc(8px + var(--m-dock-h, 0px)); }
+.objectives-result-window.is-mobile .objectives-rw-stage :is(.objectives-rw-link-card, .objectives-result-textstate) { padding-top: calc(16px + var(--rw-top-pad)); padding-bottom: calc(16px + var(--m-dock-h, 0px)); }
 
 /* 공유 폴더 파일 — 임무 목록·띠 없이 한 파일만 보인다. */
 .objectives-result-window.is-shared .objectives-rw-body { grid-template-columns: minmax(0, 1fr); }
@@ -86,4 +95,4 @@
 .objectives-rw-caption > .is-mono { font-family: var(--font-mono, monospace); }
 .objectives-rw-download { align-self: flex-start; padding-bottom: 12px; color: var(--text-secondary); font-size: var(--t-xs); text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
 .objectives-rw-download:hover { color: var(--text-primary); text-decoration-color: currentColor; }
-.objectives-result-window.is-mobile .objectives-rw-download { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); color: var(--m-text-muted); }
+.objectives-result-window.is-mobile .objectives-rw-download { padding-bottom: calc(var(--m-safe-bottom, 0px) + 16px); color: var(--m-text-muted); }

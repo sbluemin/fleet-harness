@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { MenuCheckGlyph, ChevronGlyph, useSelect, usePointerDrag, type SelectOption } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, ChevronGlyph, useChromeHeightProperty, useSelect, usePointerDrag, type SelectOption } from "@fleet-console/ui/react";
 import { focusFloatingWindow, useFloatingWindowZ } from "@fleet-console/ui/store";
 import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
@@ -106,6 +106,11 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   const t = getT(language);
   const now = useNow();
   const rootRef = useRef<HTMLDivElement>(null);
+  // 폰: 아래 줄(캡션·띠)과 위 임무 칩은 본문 위에 떠 있다 — 높이를 재서 본문이 그 뒤까지 흐르게 한다(CSS가 --m-dock-h, --rw-top-h를 읽는다).
+  const footRef = useRef<HTMLDivElement>(null);
+  const missionsRef = useRef<HTMLElement>(null);
+  useChromeHeightProperty(footRef, rootRef, "--m-dock-h");
+  useChromeHeightProperty(missionsRef, rootRef, "--rw-top-h");
   const [rect, setRect] = useState(initialRect);
   const [dragging, setDragging] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(false);
@@ -221,15 +226,15 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   return <div ref={rootRef} className={`objectives-result-window${shared ? " is-shared" : ""}${attachmentMode ? " is-attachment" : ""}${mobile ? " is-mobile" : ""}${narrow ? " is-narrow" : ""}${dragging ? " is-dragging" : ""}`} role="dialog" aria-modal={mobile} aria-label={`${heading} · ${objective?.title ?? ""}`} tabIndex={-1} onPointerDownCapture={() => focusFloatingWindow(RESULT_WINDOW_ID)} style={mobile ? undefined : { left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex }}>
     <header className="objectives-rw-head" onPointerDown={(event) => start(event)}>
       {!shared && !attachmentMode && !mobile && rect.w >= 520 ? <button type="button" aria-label={t("objectives.results.window.missions")} title={t("objectives.results.window.missions")} aria-pressed={!railCollapsed} onClick={() => setRailCollapsed((current) => !current)}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M6 2.5v11" /></svg></button> : null}
-      <span className="objectives-rw-heading">{heading}</span>
-      <span className="objectives-rw-objective" title={objective?.title}>{objective?.title}</span>
+      <span className="objectives-rw-titles"><span className="objectives-rw-heading">{heading}</span>
+      <span className="objectives-rw-objective" title={objective?.title}>{objective?.title}</span></span>
       {narrow ? <span className="objectives-rw-grip" aria-hidden="true" title={objective?.title}>⠿</span> : null}
       {narrow && group ? <MissionSwitcher label={t("objectives.missions.title")} value={group.id} options={groups.map((item) => ({ value: item.id, label: `${label(item)} (${item.results.length})` }))} onChange={chooseGroup} /> : null}
       {!mobile ? <button type="button" className="objectives-rw-reset" aria-label={t("objectives.results.window.reset")} title={t("objectives.results.window.reset")} onClick={() => { const next = defaultRect(); setRect(next); saveRect(next); }}>↺</button> : null}
       <button type="button" className="objectives-rw-close" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={closeWindow}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>
     </header>
     <div className="objectives-rw-body">
-      {shared || attachmentMode ? null : <nav className="objectives-rw-missions" aria-label={t("objectives.missions.title")}>
+      {shared || attachmentMode ? null : <nav ref={missionsRef} className="objectives-rw-missions" aria-label={t("objectives.missions.title")}>
         {groups.map((item) => <button key={item.id} type="button" aria-pressed={item.id === group?.id} title={label(item)} onClick={() => chooseGroup(item.id)}><span>{item.n || "—"}</span><span className="objectives-rw-mission-title">{item.title}</span><span>{item.results.length}</span></button>)}
       </nav>}
       <div className="objectives-rw-main">
@@ -257,6 +262,7 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
             <button type="button" className="objectives-att-view-step is-next" aria-label={t("objectives.results.window.next")} disabled={index >= ordered.length - 1} onClick={() => { const next = ordered[index + 1]; if (next) choose(next.id); }}><ChevronGlyph direction="right" /></button>
           </> : null}
         </div>
+        <div ref={footRef} className="objectives-rw-foot">
         {attachmentMode
           ? attachment ? <div className="objectives-rw-caption" aria-live="polite"><b>{attachmentLabel}</b><span>{t("objectives.att.position", { n: shownAttachmentAt + 1, count: attachments.length })}{` · ${attachment.name}`}{attachment.width && attachment.height ? ` · ${attachment.width}×${attachment.height}` : ""}</span></div> : null
           : shared ? <div className="objectives-rw-caption"><b>{sharedName}</b>{shared.path !== sharedName ? <span className="is-mono">{shared.path}</span> : null}<span>{bytesLabel(shared.bytes)} · {absolute(shared.modifiedAt, language)}</span><a className="objectives-rw-download" href={sharedFileUrl(opened.objectiveId, shared.path, true)} download>{t("objectives.shared.download")}</a></div>
@@ -268,6 +274,7 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
           : shared ? null : <nav className="objectives-rw-strip" aria-label={t("objectives.results.title")}>
           {groups.map((item) => <div key={item.id} className="objectives-rw-strip-group"><span className="objectives-rw-strip-n" title={label(item)}>{item.n || "—"}</span>{item.results.map((entry) => <button key={entry.id} type="button" aria-current={entry.id === result?.id} aria-label={`${label(item)} · ${resultLabel(entry, t("objectives.results.artifact.untitled"))}`} title={resultLabel(entry, t("objectives.results.artifact.untitled"))} onClick={() => choose(entry.id)}>{entry.kind === "evidence" && entry.mediaType !== "text/plain" ? <img src={resultFileUrl(opened.objectiveId, entry)} alt="" loading="lazy" draggable={false} /> : <span>{entry.kind === "evidence" ? entry.name.split(".").at(-1)?.toUpperCase().slice(0, 5) ?? "TXT" : entry.kind === "pr" ? "PR" : "↗"}</span>}</button>)}</div>)}
         </nav>}
+        </div>
       </div>
     </div>
     {!mobile ? DIRECTIONS.map((direction) => <span key={direction} className={`objectives-result-resize is-${direction}`} aria-hidden="true" onPointerDown={(event) => start(event, direction)} />) : null}

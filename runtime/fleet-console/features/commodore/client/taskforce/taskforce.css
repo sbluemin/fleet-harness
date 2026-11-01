@@ -71,7 +71,8 @@
 .taskforce-action-kind { flex-shrink: 0; color: var(--text-secondary); font-size: var(--t-xs); }
 .taskforce-muted { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
 .taskforce-mobile-screen { position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; flex-direction: column; overflow: auto; background: var(--surface-panel); }
-.taskforce-mobile-screen > header { display: flex; align-items: center; gap: 12px; padding: 12px; }
+.taskforce-mobile-screen { padding-bottom: var(--m-safe-bottom, 0px); }
+.taskforce-mobile-screen > header { display: flex; align-items: center; gap: 12px; padding: calc(12px + var(--m-safe-top, 0px)) 12px 12px; }
 .taskforce-mobile-screen .taskforce-conversation { padding-top: 0; flex: 1 0 65vh; }
 .taskforce-mobile-screen .taskforce-details { padding: 16px; }
 .taskforce-dialog button:focus-visible, .taskforce-conversation button:focus-visible, .taskforce-details button:focus-visible { box-shadow: var(--focus-face); outline: none; }

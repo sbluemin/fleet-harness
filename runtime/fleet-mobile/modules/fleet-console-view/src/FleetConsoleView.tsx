@@ -4,7 +4,7 @@ import type { ComponentType, RefAttributes } from "react";
 import type { NativeSyntheticEvent, ViewProps } from "react-native";
 
 export interface FleetConsoleEvent {
-  readonly type: "waiting" | "connecting" | "connected" | "error" | "insets" | "appearance" | "chrome" | "consoles";
+  readonly type: "waiting" | "connecting" | "connected" | "error" | "insets" | "appearance" | "chrome" | "edge" | "consoles";
   readonly code?: string;
   /** 표시할 Console 이름. 링크 파싱 오류에는 대상이 없으므로 생략한다. */
   readonly label?: string;
@@ -25,6 +25,8 @@ export interface FleetConsoleEvent {
   /** On "chrome": which mobile surface the page shows against the status bar and the gesture bar. */
   readonly top?: "bg" | "bg-deep" | "scrim";
   readonly bottom?: "bg" | "bg-deep" | "surface" | "scrim";
+  /** On "edge": the committed page opted into drawing under the system bars. Cleared on the next document. */
+  readonly on?: boolean;
 }
 
 export type ColorMode = "system" | "dark" | "light";

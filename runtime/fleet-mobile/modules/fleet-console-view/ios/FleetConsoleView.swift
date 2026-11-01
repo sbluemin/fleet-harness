@@ -99,6 +99,9 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private var lastChromeInsets: UIEdgeInsets = .zero
   private var keyboardInset: CGFloat = 0
+  /// 커밋된 페이지가 opt-in한 뒤에만 참. 새 메인 프레임 문서가 커밋되면 끈다.
+  private var edgeToEdge = false
+  private var publishedInsets: AppearanceInsets?
 
   @objc private func keyboardChanged(_ note: Notification) {
     var inset: CGFloat = 0
@@ -119,6 +122,36 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     // 키보드는 네이티브가 흡수(하단 패딩), 크롬 인셋만 JS로.
     layoutWebViews()
     if chromeChanged { emitInsets(chrome) }
+    let next = advertisedInsets()
+    if next != publishedInsets {
+      publishedInsets = next
+      republishAppearance()
+    }
+  }
+
+  /// CSS px. 키보드가 떠 있는 동안 bottom은 0 — 키보드 높이 자체는 프레임이 계속 담당한다.
+  /// 좌우는 항상 0이다. 컷아웃과 측면 바는 프레임 패딩이 맡으므로 웹이 다시 밀지 않는다.
+  private func advertisedInsets() -> AppearanceInsets {
+    AppearanceInsets(
+      top: Double(lastChromeInsets.top),
+      right: 0,
+      bottom: keyboardInset > 0 ? 0 : Double(lastChromeInsets.bottom),
+      left: 0)
+  }
+
+  private func enterEdgeToEdge() {
+    guard !edgeToEdge else { return }
+    edgeToEdge = true
+    layoutWebViews()
+    emitPayload(["type": "edge", "on": true])
+  }
+
+  /// 새 메인 프레임 문서(새로고침, 다른 Console, 오류 페이지)는 아직 opt-in하지 않았다.
+  private func leaveEdgeToEdge() {
+    guard edgeToEdge else { return }
+    edgeToEdge = false
+    layoutWebViews()
+    emitPayload(["type": "edge", "on": false])
   }
 
   private func emitInsets(_ chrome: UIEdgeInsets) {
@@ -140,11 +173,15 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func layoutWebViews() {
     let chrome = safeAreaInsets
-    let bottom = max(chrome.bottom, keyboardInset)
+    // opt-in 뒤에는 상단·하단 시스템 바 아래로 펼친다. 좌우 패딩과 키보드 하단은 항상 비워 둔다.
+    let top: CGFloat = edgeToEdge ? 0 : chrome.top
+    let left = chrome.left
+    let right = chrome.right
+    let bottom = edgeToEdge ? keyboardInset : max(chrome.bottom, keyboardInset)
     let frame = CGRect(
-      x: chrome.left, y: chrome.top,
-      width: max(0, bounds.width - chrome.left - chrome.right),
-      height: max(0, bounds.height - chrome.top - bottom))
+      x: left, y: top,
+      width: max(0, bounds.width - left - right),
+      height: max(0, bounds.height - top - bottom))
     for sub in subviews where sub is WKWebView { sub.frame = frame }
   }
 
@@ -372,6 +409,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     webView.uiDelegate = self
     webView.isOpaque = true
     webView.scrollView.bounces = false
+    webView.scrollView.contentInsetAdjustmentBehavior = .never
     webView.scrollView.pinchGestureRecognizer?.isEnabled = false // 터미널은 핀치를 리사이즈로 읽는다
     webView.allowsBackForwardNavigationGestures = false
     webView.customUserAgent = (webView.value(forKey: "userAgent") as? String).map { "\($0) \(Self.userAgentProduct)" } ?? Self.userAgentProduct
@@ -492,11 +530,19 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     }
   }
 
+  public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    // 스테이징 중인 첫 문서는 아직 커밋된 뷰가 아니다. 화면에 올라온 뒤의 새 문서만 패딩으로 되돌린다.
+    guard navigation != nil, webView === activeView else { return }
+    leaveEdgeToEdge()
+  }
+
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     guard let staged = contextFor(webView), let url = webView.url, isAllowedLocalMainFrame(url, staged.gateway) else {
       if let staged = contextFor(webView) { failStaged(staged, "navigation_denied") }
       return
     }
+    // 문서가 자리에 앉은 뒤 다시 알려, didCommit에서 패딩으로 돌아간 페이지가 opt-in할 수 있게 한다.
+    if webView === activeView { republishAppearance() }
     if !staged.localCertificateObserved { failStaged(staged, "remote_link_pin_not_observed"); return }
     if staged.readinessRequested { return }
     staged.readinessRequested = true
@@ -566,7 +612,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   private func appearanceScript(for target: PersistedTarget) -> String {
-    AppearanceBridge.script(appearance, systemDark: systemDark, console: ConsolePresentation.of(label: target.label, origin: target.origin, hostname: target.hostname, port: target.port), appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+    AppearanceBridge.script(appearance, systemDark: systemDark, console: ConsolePresentation.of(label: target.label, origin: target.origin, hostname: target.hostname, port: target.port), appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String, insets: advertisedInsets())
   }
 
   private func appearanceUserScript(for target: PersistedTarget) -> WKUserScript {
@@ -574,7 +620,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   /// 살아 있는 페이지마다 다시 알린다: 다음 로드는 문서 시작 스크립트로, 열린 페이지는 지금 바로.
-  private func refreshAppearance() {
+  private func republishAppearance() {
     if let staged = staging {
       let content = staged.view.configuration.userContentController
       content.removeAllUserScripts()
@@ -586,6 +632,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       content.addUserScript(appearanceUserScript(for: target))
       view.evaluateJavaScript(appearanceScript(for: target), completionHandler: nil)
     }
+  }
+
+  private func refreshAppearance() {
+    republishAppearance()
     emitPayload(["type": "appearance", "colorMode": appearance.colorMode.rawValue, "fontScale": appearance.fontScale.rawValue])
   }
 
@@ -600,6 +650,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       refreshAppearance()
     case .chrome(let top, let bottom):
       emitPayload(["type": "chrome", "top": top, "bottom": bottom])
+    case .edge:
+      enterEdgeToEdge()
     case .consoles:
       emitPayload(["type": "consoles"])
     }
@@ -640,6 +692,9 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     activeView = staged.view
     activeLoad = staged
     staging = nil
+    // 새 문서는 아직 opt-in하지 않았다. 보이기 전에 패딩으로 되돌리고 능력을 다시 알린다.
+    leaveEdgeToEdge()
+    republishAppearance()
     staged.view.isHidden = false
     layoutWebViews()
     if let previousView, previousView !== staged.view { previousView.removeFromSuperview(); previousView.destroySafely() }

@@ -4339,6 +4339,7 @@
   position: relative;
   z-index: 1;
   border-top: 0;
+  padding-bottom: var(--m-safe-bottom, 0px);
   background: var(--m-fade-up, var(--m-bg));
 }
 
@@ -4347,7 +4348,7 @@
 [data-mobile-surface] .agent-chat-composer {
   position: relative;
   z-index: 1;
-  padding: 8px 16px 12px;
+  padding: 8px 16px calc(12px + var(--m-safe-bottom, 0px));
   background: var(--m-fade-up, var(--m-bg));
 }
 

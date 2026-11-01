@@ -27,12 +27,17 @@ export function resolveTourCardPosition(options: {
   readonly cardHeight: number;
   readonly viewportWidth: number;
   readonly viewportHeight: number;
+  /** 시스템 바(상태바·제스처바) 몫 — 카드가 그 아래로 들어가지 않는다. 없으면 0. */
+  readonly insetTop?: number;
+  readonly insetBottom?: number;
 }): TourCardPosition {
-  const { anchor, boundary, alignToAnchor = false, cardWidth, cardHeight, viewportWidth, viewportHeight } = options;
+  const { anchor, boundary, alignToAnchor = false, cardWidth, cardHeight, insetTop = 0, insetBottom = 0 } = options;
+  const viewportWidth = options.viewportWidth;
+  const viewportHeight = options.viewportHeight - insetBottom;
   const gap = 12;
   const margin = 12;
   const clampLeft = (left: number) => Math.min(viewportWidth - cardWidth - margin, Math.max(margin, left));
-  const clampTop = (top: number) => Math.min(viewportHeight - cardHeight - margin, Math.max(margin, top));
+  const clampTop = (top: number) => Math.min(viewportHeight - cardHeight - margin, Math.max(margin + insetTop, top));
   if (boundary) {
     const besideTop = alignToAnchor
       ? clampTop(Math.max(anchor.top, boundary.top) - 8)
@@ -48,13 +53,13 @@ export function resolveTourCardPosition(options: {
     if (boundary.bottom + gap + cardHeight <= viewportHeight - margin) {
       return { left: centeredLeft, top: boundary.bottom + gap, centered: false };
     }
-    return { left: centeredLeft, top: Math.max(margin, boundary.top - cardHeight - gap), centered: false };
+    return { left: centeredLeft, top: Math.max(margin + insetTop, boundary.top - cardHeight - gap), centered: false };
   }
   const centeredLeft = clampLeft(anchor.left + anchor.width / 2 - cardWidth / 2);
   const below = anchor.bottom + gap;
   if (below + cardHeight <= viewportHeight - margin) return { left: centeredLeft, top: below, centered: false };
   const above = anchor.top - gap - cardHeight;
-  if (above >= margin) return { left: centeredLeft, top: above, centered: false };
+  if (above >= margin + insetTop) return { left: centeredLeft, top: above, centered: false };
   const besideTop = clampTop(anchor.top - 8);
   if (anchor.right + gap + cardWidth <= viewportWidth - margin) return { left: anchor.right + gap, top: besideTop, centered: false };
   if (anchor.left - gap - cardWidth >= margin) return { left: anchor.left - gap - cardWidth, top: besideTop, centered: false };

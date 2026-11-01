@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { commodoreListLoaded, subscribeCommodoreList, useMobileCommodoreSelection } from "../../../../../features/commodore/client/commodore-list.js";
 
 import { useConsoleState } from "../../hooks/use-store.js";
-import { forgetReportedMobileChrome } from "../../integration/mobile-appearance-store.js";
+import { forgetReportedMobileChrome, forgetReportedMobileEdge, reportMobileEdge } from "../../integration/mobile-appearance-store.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { focusObjective } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -113,15 +113,18 @@ export function MobileFrame({ state, bands, children }: { readonly state: Consol
   const reportChrome = reportShellChrome;
   const reportChromeRef = useRef(reportChrome);
   reportChromeRef.current = reportChrome;
-  useEffect(() => { reportChrome(); }, [sheetOpen, choiceOpen]);
+  // 엣지투엣지 opt-in도 같은 흐름으로: 첫 마운트·겹침 변화에 보내고, 재연결·페이지 복귀에 다시 보낸다(계약 §2).
+  const reportFrameChrome = () => { reportChromeRef.current(); reportMobileEdge(); };
+  const forgetFrameChrome = () => { forgetReportedMobileChrome(); forgetReportedMobileEdge(); };
+  useEffect(() => { reportFrameChrome(); }, [sheetOpen, choiceOpen]);
   // 재연결·페이지 복귀 뒤에는 지금 겹침 상태를 앱에 다시 알린다(NV-7) — 앱이 상태 바를 되돌려 놓았을 수 있다.
   useEffect(() => {
     if (connection !== "live") return;
-    forgetReportedMobileChrome();
-    reportChromeRef.current();
+    forgetFrameChrome();
+    reportFrameChrome();
   }, [connection]);
   useEffect(() => {
-    const resend = () => { if (document.visibilityState === "hidden") return; forgetReportedMobileChrome(); reportChromeRef.current(); };
+    const resend = () => { if (document.visibilityState === "hidden") return; forgetFrameChrome(); reportFrameChrome(); };
     window.addEventListener("pageshow", resend);
     document.addEventListener("visibilitychange", resend);
     return () => { window.removeEventListener("pageshow", resend); document.removeEventListener("visibilitychange", resend); };

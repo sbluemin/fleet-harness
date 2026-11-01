@@ -74,7 +74,7 @@
  * 썸네일)만 둔다. 지휘관 참조 목록은 입력 위 시트이고 행은 엄지 높이(46px)다. 고른 행은 면으로만 말한다(왼쪽 띠 없음). 결정 요청·검토
  * 대기는 「사람을 기다림」 신호 하나로 말한다.
  */
-.objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 12px; }
+.objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px calc(12px + var(--m-safe-bottom, 0px)); }
 /* 기록 탭의 독도 기록 위에 떠 있다 — 대화 화면의 독(호스트 대화 화면이 진다)과 같은 페이드이고, 기록이 독 높이(--m-dock-h, 기록 탭이 잰다)만큼
    독 뒤로 늘어나 같은 몫을 아래 여백으로 되돌린다. */
 .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-dock { position: relative; z-index: 1; background: var(--m-fade-up, var(--m-bg)); }

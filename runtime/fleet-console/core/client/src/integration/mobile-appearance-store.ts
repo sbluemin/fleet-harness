@@ -18,21 +18,15 @@ import type { MobileScheme } from "../../../../features/settings/shared/mobile-s
 
 export type MobileColorMode = "system" | "dark" | "light";
 export type MobileFontScale = "small" | "default" | "large";
-/** `scrim`은 브리지 v1.5 — 지금 모드의 bg 위에 스크림을 합성한 면. 앱이 `chrome.scrim`으로 알린 때만 보낸다. */
-export type MobileChromeTop = "bg" | "bg-deep" | "scrim";
-export type MobileChromeBottom = "bg" | "bg-deep" | "surface" | "scrim";
-
-export type MobileIdentityTone = "crimson" | "amber" | "moss" | "teal" | "cerulean" | "indigo" | "plum" | "rose";
-
-/** 앱이 알려 주는 "지금 연결된 이 Console" 표시값(v1.1) — 다른 Console 정보는 웹에 오지 않는다. */
-export type MobileConsoleIdentity = {
-  readonly label: string;
-  readonly monogram: string | null;
-  readonly tone: MobileIdentityTone | null;
-  /** v1.3 — 앱이 아는 이 Console의 주소(표시용). 없으면 주소 줄을 숨긴다(루프백 주소를 대신 보이지 않는다). */
-  readonly address: string | null;
+/** 셸이 알린 시스템 바·컷아웃 인셋 — CSS px(dp/pt), 유한한 0 이상 수. 키보드(IME)가 떠 있는 동안 bottom은 0이다. */
+export type MobileInsets = {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
 };
 
+/** v1.6 — 엣지투엣지. 셸이 `chrome.edge`로 펼침 광고를, `insets`로 시스템 바·컷아웃 값을 알린다(계약 §1). */
 export type MobileAppearanceSnapshot = {
   readonly colorMode: MobileColorMode;
   readonly fontScale: MobileFontScale;
@@ -46,7 +40,26 @@ export type MobileAppearanceSnapshot = {
   readonly appVersion: string | null;
   /** v1.5 — 앱이 chrome 신호의 `scrim` 토큰을 아는가. 아니면(구버전 셸·브라우저) 웹은 `bg-deep`으로 대신한다. */
   readonly chromeScrim: boolean;
+  /** v1.6 — 셸이 WebView를 시스템 바 아래까지 펼칠 수 있는가(`chrome.edge`). 없으면 false. */
+  readonly edge: boolean;
+  /** v1.6 — 셸이 알린 인셋. 광고에 insets가 없으면 null(그때는 :root 변수도 쓰지 않는다). */
+  readonly insets: MobileInsets | null;
 };
+
+export type MobileIdentityTone = "crimson" | "amber" | "moss" | "teal" | "cerulean" | "indigo" | "plum" | "rose";
+
+/** 앱이 알려 주는 "지금 연결된 이 Console" 표시값(v1.1) — 다른 Console 정보는 웹에 오지 않는다. */
+export type MobileConsoleIdentity = {
+  readonly label: string;
+  readonly monogram: string | null;
+  readonly tone: MobileIdentityTone | null;
+  /** v1.3 — 앱이 아는 이 Console의 주소(표시용). 없으면 주소 줄을 숨긴다(루프백 주소를 대신 보이지 않는다). */
+  readonly address: string | null;
+};
+
+/** `scrim`은 브리지 v1.5 — 지금 모드의 bg 위에 스크림을 합성한 면. 앱이 `chrome.scrim`으로 알린 때만 보낸다. */
+export type MobileChromeTop = "bg" | "bg-deep" | "scrim";
+export type MobileChromeBottom = "bg" | "bg-deep" | "surface" | "scrim";
 
 const COLOR_MODE_KEY = "fleet-console.mobile-color-mode";
 const FONT_SCALE_KEY = "fleet-console.mobile-font-scale";
@@ -61,6 +74,8 @@ type NativeAppearance = {
   readonly console: MobileConsoleIdentity | null;
   readonly appVersion: string | null;
   readonly chromeScrim: boolean;
+  readonly edge: boolean;
+  readonly insets: MobileInsets | null;
 };
 
 const IDENTITY_TONES: ReadonlySet<string> = new Set(["crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose"]);
@@ -93,7 +108,22 @@ function parseNativeAppearance(value: unknown): NativeAppearance | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
   if (record.v !== 1 || !isColorMode(record.colorMode) || !isScheme(record.systemScheme) || !isFontScale(record.fontScale)) return null;
-  return { colorMode: record.colorMode, systemScheme: record.systemScheme, fontScale: record.fontScale, console: parseConsoleIdentity(record.console), appVersion: parseAppVersion(record.app), chromeScrim: parseChromeScrim(record.chrome) };
+  return { colorMode: record.colorMode, systemScheme: record.systemScheme, fontScale: record.fontScale, console: parseConsoleIdentity(record.console), appVersion: parseAppVersion(record.app), chromeScrim: parseChromeScrim(record.chrome), edge: parseEdge(record.chrome), insets: parseInsets(record.insets) };
+}
+
+/** v1.6 선택 필드 — `chrome: { edge: true }`일 때만 참. 광고가 없으면 펼치지 않는다. */
+function parseEdge(value: unknown): boolean {
+  return typeof value === "object" && value !== null && (value as Record<string, unknown>).edge === true;
+}
+
+/** v1.6 선택 필드 — `insets: { top, right, bottom, left }`. CSS px 단위, 유한한 0 이상 수. 하나라도 틀리면 전체를 없는 것으로 본다. */
+function parseInsets(value: unknown): MobileInsets | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const sides = (["top", "right", "bottom", "left"] as const).map((side) => record[side]);
+  if (!sides.every((side) => typeof side === "number" && Number.isFinite(side) && side >= 0)) return null;
+  const [top, right, bottom, left] = sides as [number, number, number, number];
+  return { top, right, bottom, left };
 }
 
 /** v1.5 선택 필드 — `chrome: { scrim: true }`일 때만 참. 그 밖의 모양은 모르는 앱으로 본다. */
@@ -154,28 +184,43 @@ function resolveScheme(colorMode: MobileColorMode, system: MobileScheme): Mobile
 }
 
 function fromNative(native: NativeAppearance): MobileAppearanceSnapshot {
-  return { colorMode: native.colorMode, fontScale: native.fontScale, scheme: resolveScheme(native.colorMode, native.systemScheme), nativeOwned: true, console: native.console, appVersion: native.appVersion, chromeScrim: native.chromeScrim };
+  return { colorMode: native.colorMode, fontScale: native.fontScale, scheme: resolveScheme(native.colorMode, native.systemScheme), nativeOwned: true, console: native.console, appVersion: native.appVersion, chromeScrim: native.chromeScrim, edge: native.edge, insets: native.insets };
 }
 
 function initialSnapshot(): MobileAppearanceSnapshot {
   const native = readNativeAppearance();
   if (native) return fromNative(native);
   const colorMode = readStored(COLOR_MODE_KEY, isColorMode, "system");
-  return { colorMode, fontScale: readStored(FONT_SCALE_KEY, isFontScale, "default"), scheme: resolveScheme(colorMode, systemScheme()), nativeOwned: false, console: null, appVersion: null, chromeScrim: false };
+  return { colorMode, fontScale: readStored(FONT_SCALE_KEY, isFontScale, "default"), scheme: resolveScheme(colorMode, systemScheme()), nativeOwned: false, console: null, appVersion: null, chromeScrim: false, edge: false, insets: null };
 }
+
+const SHELL_INSET_PROPERTIES = ["--fleet-shell-inset-top", "--fleet-shell-inset-right", "--fleet-shell-inset-bottom", "--fleet-shell-inset-left"] as const;
 
 function applyToDocument(next: MobileAppearanceSnapshot): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.setAttribute("data-mobile-scheme", next.scheme);
   root.setAttribute("data-mobile-font-scale", next.fontScale);
+  // 엣지투엣지(계약 §3) — 광고의 insets를 :root에 px로 쓴다. 광고에 insets가 없으면 쓰지 않고,
+  // 예전에 쓴 값이 남아 있으면 지운다(낡은 인셋으로 화면이 밀리지 않게). 없으면 --m-safe-*가 env()로 떨어진다.
+  if (next.insets) {
+    const { top, right, bottom, left } = next.insets;
+    root.style.setProperty("--fleet-shell-inset-top", `${top}px`);
+    root.style.setProperty("--fleet-shell-inset-right", `${right}px`);
+    root.style.setProperty("--fleet-shell-inset-bottom", `${bottom}px`);
+    root.style.setProperty("--fleet-shell-inset-left", `${left}px`);
+  } else {
+    for (const property of SHELL_INSET_PROPERTIES) root.style.removeProperty(property);
+  }
 }
 
 function setSnapshot(next: MobileAppearanceSnapshot): void {
   const same = next.colorMode === snapshot.colorMode && next.fontScale === snapshot.fontScale
     && next.scheme === snapshot.scheme && next.nativeOwned === snapshot.nativeOwned
     && next.console?.label === snapshot.console?.label && next.console?.monogram === snapshot.console?.monogram
-    && next.console?.tone === snapshot.console?.tone && next.console?.address === snapshot.console?.address && next.appVersion === snapshot.appVersion && next.chromeScrim === snapshot.chromeScrim;
+    && next.console?.tone === snapshot.console?.tone && next.console?.address === snapshot.console?.address && next.appVersion === snapshot.appVersion && next.chromeScrim === snapshot.chromeScrim
+    && next.edge === snapshot.edge && next.insets?.top === snapshot.insets?.top && next.insets?.right === snapshot.insets?.right
+    && next.insets?.bottom === snapshot.insets?.bottom && next.insets?.left === snapshot.insets?.left;
   applyToDocument(next);
   if (same) return;
   snapshot = next;
@@ -194,7 +239,7 @@ function nativeMessageTarget(): NativeMessageTarget | null {
   return null;
 }
 
-function postToNative(body: Record<string, string | number>): boolean {
+function postToNative(body: Record<string, string | number | boolean>): boolean {
   const target = nativeMessageTarget();
   if (!target) return false;
   try {
@@ -293,6 +338,27 @@ export function reportMobileChrome(requestedTop: MobileChromeTop, requestedBotto
 /** 연결이 다시 선 뒤·페이지가 다시 보일 때 — 같은 값이라도 앱이 한 번 더 받도록 마지막 보고를 잊는다(NV-7). */
 export function forgetReportedMobileChrome(): void {
   lastChrome = "";
+}
+
+let lastEdge = "";
+
+/**
+ * 엣지투엣지 opt-in(계약 §2) — 광고에 `chrome.edge === true`가 있을 때만
+ * `{ v: 1, type: "edge", on: true }`를 기존 fleetAppearance 채널로 보낸다(키 집합 정확히 v,type,on).
+ * 광고가 없으면 보내지 않는다. 셸은 이 메시지를 받은 뒤에만 WebView를 시스템 바 아래까지 펼친다.
+ * 문서마다 한 번이 원칙이다(새 문서를 셸이 패딩 모드로 시작하므로 첫 보고가 그 문서의 opt-in이다).
+ * 재연결·페이지 복귀 뒤에는 forgetReportedMobileEdge + 이 함수로 다시 보낸다.
+ */
+export function reportMobileEdge(): void {
+  if (!snapshot.nativeOwned || !snapshot.edge) return;
+  if (lastEdge !== "") return;
+  lastEdge = "on";
+  postToNative({ v: 1, type: "edge", on: true });
+}
+
+/** 연결이 다시 선 뒤·페이지가 다시 보일 때 — 같은 문서라도 셸이 패딩 모드로 돌아갔을 수 있어 opt-in을 다시 보낸다. */
+export function forgetReportedMobileEdge(): void {
+  lastEdge = "";
 }
 
 /**

@@ -7,8 +7,6 @@
    (hints, queued lines) under the input, so its fade stays solid through the lower part. */
 .mobile-frame {
   --m-chrome-top: 0px;
-  --m-fade-down: linear-gradient(to bottom, var(--m-bg), color-mix(in srgb, var(--m-bg) 86%, transparent) 50%, color-mix(in srgb, var(--m-bg) 0%, transparent));
-  --m-fade-up: linear-gradient(to top, var(--m-bg) 40%, color-mix(in srgb, var(--m-bg) 86%, transparent) 70%, color-mix(in srgb, var(--m-bg) 0%, transparent));
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -32,6 +30,45 @@
   color: var(--text-primary);
   background: var(--m-bg);
 }
+
+/* 엣지투엣지 공통 토큰·규칙 (계약 §3·§5, 미션 2 정의 — 화면 적용은 미션 4·5에서).
+   --m-safe-*: 셸 인셋 변수 → env() → 0 순서. 셸이 :root에 --fleet-shell-inset-*를 쓰면
+   그것을 쓰고, 없으면(옛 앱·브라우저) env(safe-area-inset-*)로 떨어진다. 모든 모바일 CSS는
+   env(safe-area-inset-*)를 직접 쓰지 말고 이 토큰을 쓴다.
+   --m-chrome-top: 프레임 헤드의 테두리 상자 측정값이라 헤드 padding-top에 --m-safe-top을
+   더하는 순간(미션 4) 셸 인셋을 포함한다. 떠 있는 줄(.group-ledger-head·.fexp-m-tabs 등)은
+   calc(var(--m-chrome-top, 0px) + …) 그대로 두면 된다 — safe를 덧씌우지 않는다.
+   --m-dock-h: 독의 테두리 상자 측정값이라 독 padding-bottom에 --m-safe-bottom을 더하는
+   순간(미션 4·5) 셸 인셋을 포함한다. 로그의 m-dock-behind 한 벌도 덧씌우지 않는다.
+   --m-toast-bottom: 토스트 하단 고정값. objectives·file-explorer의 150px 하드코딩을 대신한다. */
+:root {
+  --m-safe-top: var(--fleet-shell-inset-top, env(safe-area-inset-top, 0px));
+  --m-safe-right: var(--fleet-shell-inset-right, env(safe-area-inset-right, 0px));
+  --m-safe-bottom: var(--fleet-shell-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --m-safe-left: var(--fleet-shell-inset-left, env(safe-area-inset-left, 0px));
+  --m-toast-bottom: calc(150px + var(--m-safe-bottom, 0px));
+}
+
+/* 떠 있는 줄의 가장자리 페이드 하나 — m-edge (상단·하단용). 기존 --m-fade-up·--m-fade-down
+   모바일 토큰과 라이트·다크 표면색을 그대로 쓴다. :root에 두어 document.body 포털 화면에서도
+   같은 값이 된다. 안의 var(--m-bg)는 쓰는 요소에서 계산되므로 라이트·다크가 그대로 갈린다.
+   화면은 새로 만들지 말고 이 둘을 쓴다. */
+:root[data-view-mode="mobile"] {
+  --m-fade-down: linear-gradient(to bottom, var(--m-bg), color-mix(in srgb, var(--m-bg) 86%, transparent) 50%, color-mix(in srgb, var(--m-bg) 0%, transparent));
+  --m-fade-up: linear-gradient(to top, var(--m-bg) 40%, color-mix(in srgb, var(--m-bg) 86%, transparent) 70%, color-mix(in srgb, var(--m-bg) 0%, transparent));
+  --m-fade-top: linear-gradient(to bottom, var(--m-bg) 0, var(--m-bg) var(--m-safe-top, 0px), color-mix(in srgb, var(--m-bg) 86%, transparent) calc(var(--m-safe-top, 0px) + 40px), color-mix(in srgb, var(--m-bg) 0%, transparent) calc(var(--m-safe-top, 0px) + 80px));
+}
+.m-edge-top { background: var(--m-fade-down, var(--m-bg)); }
+.m-edge-bottom { background: var(--m-fade-up, var(--m-bg)); }
+
+/* 아래 독 뒤로 본문을 늘리는 한 벌 — m-dock-behind. 로그(스크롤 영역)가 독 높이만큼
+   상자를 아래로 늘리고 같은 몫을 안쪽 여백으로 되돌린다. 스크롤 범위와 독 위 줄은 그대로,
+   끝의 첫·마지막 줄만 독·막대에 가려지지 않는다. 대상: .group-chat-dock·.objectives-cm-dock
+   앞의 로그, 릴레이 닫기(.group-relay-foot) 앞의 로그(미션 5에서 --m-dock-h 측정과 함께 적용).
+   <base>는 화면의 기존 아래 안쪽 여백(8px·16px 등)이다.
+   margin-bottom: calc(-1 * var(--m-dock-h, 0px));
+   padding-bottom: calc(<base> + var(--m-dock-h, 0px));
+   scroll-padding-bottom: var(--m-dock-h, 0px); */
 
 .mobile-shell-content,
 .mobile-session-view,
@@ -502,7 +539,7 @@
     align-content: start;
     gap: var(--space-1);
     width: 76px;
-    padding: var(--space-2) max(var(--space-1), env(safe-area-inset-right)) max(var(--space-2), env(safe-area-inset-bottom)) var(--space-1);
+    padding: var(--space-2) calc(var(--space-1) + var(--m-safe-right, 0px)) calc(var(--space-2) + var(--m-safe-bottom, 0px)) var(--space-1);
     border-top: 0;
     border-left: 1px solid var(--hairline);
   }
@@ -630,7 +667,7 @@
 
 .mobile-menu {
   position: absolute;
-  top: 52px;
+  top: calc(52px + var(--m-safe-top, 0px));
   right: 8px;
   z-index: 45;
   width: 228px;
@@ -772,7 +809,7 @@
 /* AI Gateway 모델 추가 — 폰에서는 팔레트가 대화의 모델 시트(.mobile-sheet)와 같은 바텀시트로 선다: 덮개 + 위가 둥근 면.
    목록은 남은 높이를 다 쓰고, 터치에는 없는 방향키 힌트와 크기 손잡이는 서지 않는다. */
 :root[data-view-mode="mobile"] .ai-gateway-palette-scrim { position: fixed; inset: 0; z-index: 50; display: block; background: var(--m-scrim); animation: mobile-fade-in 200ms; }
-:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: max(18px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--popover-face); color: var(--m-text); box-shadow: var(--popover-surface-shadow); animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
+:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: calc(18px + var(--m-safe-bottom, 0px)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--popover-face); color: var(--m-text); box-shadow: var(--popover-surface-shadow); animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); --focus-face: inset 0 0 0 100vmax var(--wash-hover); }
 :root[data-view-mode="mobile"] .ai-gateway-palette-list { flex: 1 1 auto; height: auto; min-height: 0; padding: 0 8px 8px; }
 :root[data-view-mode="mobile"] :is(.ai-gateway-palette-resize, .ai-gateway-palette-kbd) { display: none; }
 :root[data-view-mode="mobile"] .ai-gateway-palette-search { min-height: 44px; margin: 16px 16px 8px; background: var(--m-chip); }
@@ -904,7 +941,7 @@
   display: flex;
   flex-direction: column;
   max-height: calc(100% - 56px);
-  padding-bottom: max(18px, env(safe-area-inset-bottom));
+  padding-bottom: calc(18px + var(--m-safe-bottom, 0px));
   color: var(--m-text);
   background: var(--popover-face);
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
@@ -914,7 +951,7 @@
   box-shadow: var(--popover-surface-shadow);
   --focus-face: inset 0 0 0 100vmax var(--wash-hover);
 }
-.mobile-sheet.is-full { top: 8px; max-height: none; }
+.mobile-sheet.is-full { top: calc(8px + var(--m-safe-top, 0px)); max-height: none; }
 .mobile-sheet.is-leaving { animation: mobile-sheet-out 220ms cubic-bezier(0.3, 0, 0.8, 0.15) forwards; }
 .mobile-sheet.is-dragging { animation: none; }
 
@@ -1047,7 +1084,7 @@
 /* 상단 막대와 연결·상태 띠가 한 덩어리로 화면 위에 떠 있다 — 띠나 경계선 없이, 바탕색에서 투명으로 옅어지는 페이드 하나가 그 자리를 말한다
    (데스크톱 대화 화면의 투명 맨 위 줄과 같은 문법). 본문은 그 뒤로 흐르고, 화면의 스크롤 영역이 이 묶음의 높이(--m-chrome-top)만큼 위를 비워
    맨 위 항목이 막대에 가리지 않는다. 막대를 숨긴 화면(홈·검색)에서 이 묶음은 띠가 없으면 높이 0이다. */
-.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; pointer-events: none; background: var(--m-fade-down); }
+.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; padding-top: var(--m-safe-top, 0px); pointer-events: none; background: var(--m-fade-top); }
 .mobile-frame-head .console-shell-bars { display: flex; flex-direction: column; pointer-events: auto; }
 /* 시트·선택 팝업은 화면이 아니라 겹침이다 — 그 안에 서는 화면 부품(프로필 시트의 설정 목록·도구 시트의 플러그인 본문)은 막대 몫을 비우지 않는다. */
 .mobile-sheet, .mobile-choice-scrim { --m-chrome-top: 0px; }
@@ -1086,7 +1123,7 @@
 /* 위에서 내려오는 알림(S-32) */
 .mobile-request-banner {
   position: absolute;
-  top: 64px;
+  top: calc(64px + var(--m-safe-top, 0px));
   right: 12px;
   left: 12px;
   z-index: 48;
@@ -1175,7 +1212,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-folder-locked { color: var(--m-text-faint); font-size: var(--t-sm); }
 
 /* 모바일 토스트 호스트 — 앱 루트 호스트와 같은 자리·같은 문법 */
-.mobile-toast-host { position: fixed; right: 16px; bottom: 150px; left: 16px; z-index: 47; display: flex; flex-direction: column; gap: 8px; }
+.mobile-toast-host { position: fixed; right: 16px; bottom: var(--m-toast-bottom, 150px); left: 16px; z-index: 47; display: flex; flex-direction: column; gap: 8px; }
 .mobile-toast-host .app-toast { display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; color: var(--m-text); font-size: var(--t-md); background: var(--m-surface); border: 0; border-radius: 14px; box-shadow: var(--m-shadow); animation: mobile-fade-in 200ms; }
 .mobile-toast-host .app-toast-body { flex: 1; }
 .mobile-toast-host .app-toast-title { margin: 0; font-size: var(--t-md); font-weight: var(--weight-regular); }
@@ -1320,7 +1357,7 @@ html[data-view-mode="mobile"] .app-toast-action {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 0 36px;
+  padding: var(--m-safe-top, 0px) 36px var(--m-safe-bottom, 0px);
   color: var(--m-text);
   background: var(--m-bg);
 }
@@ -1329,7 +1366,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-update-track { width: 220px; margin-top: 6px; }
 .mobile-update-screen .update-recovery { width: min(360px, 100%); }
 /* 복구 안내가 붙으면 묶음이 화면보다 길어질 수 있다 — 가운데 정렬 대신 위에서부터 흘려 스크롤되게 한다. */
-.mobile-update-screen:has(.update-recovery) { justify-content: flex-start; padding-top: 48px; padding-bottom: 24px; overflow-y: auto; }
+.mobile-update-screen:has(.update-recovery) { justify-content: flex-start; padding-top: calc(48px + var(--m-safe-top, 0px)); padding-bottom: calc(24px + var(--m-safe-bottom, 0px)); overflow-y: auto; }
 
 /* 확대 표면 본문(Shell)이 목적지 화면을 채운다 — 도구 시트의 표면 규칙과 같다. */
 .mobile-surface-screen-body { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
@@ -1463,8 +1500,8 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-home-section-empty { margin: 0; padding: 0 18px 12px; color: var(--m-text-faint); font-size: var(--m-fs-meta); }
 .mobile-home-section-error { margin: 0; padding: 12px 18px; color: var(--m-danger); font-size: var(--m-fs-meta); }
 /* 홈 아래 떠 있는 줄 — 왼쪽 바로가기 단추와 검색 입력(누르면 검색 화면). 목록은 그 높이만큼 아래를 비운다. */
-.mobile-home .mobile-conv-scroll { padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
-.mobile-home-dock { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 18px 14px calc(14px + env(safe-area-inset-bottom, 0px)); pointer-events: none; background: var(--m-fade-up); }
+.mobile-home .mobile-conv-scroll { padding-bottom: calc(88px + var(--m-safe-bottom, 0px)); }
+.mobile-home-dock { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 18px 14px calc(14px + var(--m-safe-bottom, 0px)); pointer-events: none; background: var(--m-fade-up); }
 .mobile-home-dock > * { pointer-events: auto; }
 .mobile-home-search { position: relative; font: inherit; text-align: left; --pr-r: var(--radius-pill); }
 .mobile-home-search span { flex: 1; min-width: 0; color: var(--m-text-faint); font-size: var(--m-fs-list); }

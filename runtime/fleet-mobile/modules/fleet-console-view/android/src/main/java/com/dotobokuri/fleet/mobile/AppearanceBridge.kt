@@ -64,9 +64,28 @@ internal data class ConsolePresentation(val label: String, val monogram: String,
   }
 }
 
+/** System bars and display cutout in CSS px. Finite and at least 0; the keyboard is never included. */
+internal data class AppearanceInsets private constructor(
+  val top: Double,
+  val right: Double,
+  val bottom: Double,
+  val left: Double,
+) {
+  companion object {
+    val ZERO: AppearanceInsets = of(0.0, 0.0, 0.0, 0.0)
+
+    fun of(top: Double, right: Double, bottom: Double, left: Double) = AppearanceInsets(
+      finite(top), finite(right), finite(bottom), finite(left),
+    )
+
+    private fun finite(value: Double) = if (value.isFinite() && value > 0.0) value else 0.0
+  }
+}
+
 internal sealed interface AppearanceMessage {
   data class Set(val appearance: Appearance) : AppearanceMessage
   data class Chrome(val top: String, val bottom: String) : AppearanceMessage
+  data object Edge : AppearanceMessage
   data object Consoles : AppearanceMessage
 }
 
@@ -98,6 +117,12 @@ internal object AppearanceBridge {
         if (top !in CHROME_TOP || bottom !in CHROME_BOTTOM) return null
         AppearanceMessage.Chrome(top, bottom)
       }
+      // Edge opt-in is only the boolean `on: true`. The shell returns to padding on the next document, not via a message.
+      "edge" -> {
+        if (keys != setOf("v", "type", "on")) return null
+        if (json.opt("on") != true) return null
+        AppearanceMessage.Edge
+      }
       "consoles" -> if (keys == setOf("v", "type")) AppearanceMessage.Consoles else null
       else -> null
     }
@@ -108,7 +133,13 @@ internal object AppearanceBridge {
    * the value it was told about. Every value passes through the JSON encoder and is quoted once
    * more as a JavaScript string; nothing is concatenated into code.
    */
-  fun script(appearance: Appearance, systemDark: Boolean, console: ConsolePresentation?, appVersion: String? = null): String {
+  fun script(
+    appearance: Appearance,
+    systemDark: Boolean,
+    console: ConsolePresentation?,
+    appVersion: String? = null,
+    insets: AppearanceInsets = AppearanceInsets.ZERO,
+  ): String {
     val value = JSONObject()
       .put("v", 1)
       .put("colorMode", appearance.colorMode.wire)
@@ -123,7 +154,12 @@ internal object AppearanceBridge {
     // The shell's own version, for the page's version row (v1.4). Read from the package, still quoted.
     appVersion?.takeIf { it.isNotBlank() }?.let { value.put("app", JSONObject().put("version", it.take(64))) }
     // What this shell's chrome channel accepts beyond v1 (v1.5): the page sends "scrim" only when this says so.
-    value.put("chrome", JSONObject().put("scrim", true))
+    // `edge` (edge-to-edge contract): the page may opt in, and only then, by the fleetAppearance "edge" message.
+    value.put("chrome", JSONObject().put("scrim", true).put("edge", true))
+    value.put(
+      "insets",
+      JSONObject().put("top", insets.top).put("right", insets.right).put("bottom", insets.bottom).put("left", insets.left),
+    )
     val literal = JSONObject.quote(value.toString())
     return "(() => { const v = JSON.parse($literal); if (v.console) Object.freeze(v.console); if (v.chrome) Object.freeze(v.chrome); Object.freeze(v); " +
       "Object.defineProperty(window, \"__fleetMobileAppearance\", { value: v, configurable: true, enumerable: false, writable: false }); " +
