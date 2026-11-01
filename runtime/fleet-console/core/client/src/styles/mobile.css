@@ -1201,7 +1201,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-confirm-question { margin: 0; padding: 0 4px; color: var(--m-text); font-size: var(--t-md); font-weight: var(--weight-bold); line-height: 22px; word-break: keep-all; overflow-wrap: anywhere; }
 .mobile-confirm-actions { display: flex; gap: 8px; width: 100%; }
 .mobile-confirm-actions .mobile-pill-secondary { flex: 1 1 0; min-width: 0; min-height: 44px; justify-content: center; text-align: center; border: 1px solid transparent; font-weight: var(--weight-regular); }
-.mobile-pill-secondary.is-danger-fill { color: var(--text-on-coral); font-weight: var(--weight-bold); background: var(--danger-fill); }
+.mobile-pill-secondary.is-danger-fill { color: var(--text-on-coral); background: var(--danger-fill); }
 .mobile-confirm-actions .mobile-confirm-cancel { background: var(--dialog-cancel-face); border-color: var(--hairline-strong); }
 .mobile-folder-path { margin: 0; padding: 0 4px; color: var(--m-text-faint); font-family: var(--m-mono); font-size: var(--t-sm); word-break: break-all; }
 /* 경로 칩 — 칩 상자가 곧 누를 자리라 44×44 이상으로 둔다. 칩 사이 틈은 두지 않고 좌우 패딩 7씩으로 글자 간격 14를 지켜
