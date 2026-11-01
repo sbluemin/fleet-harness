@@ -19,6 +19,9 @@ export interface CommanderSection {
   readonly fold: CommanderFold | null;
   /** 데스크톱 명단의 시작 전·완료 통합 목록 — 구분 머리(접기 단추) 아래 한 줄짜리 행으로 선다. */
   readonly settled?: true;
+  /** settled 통합 목록의 시작 전·완료 개수 — 접힌 머리의 분리 개수가 행 분류와 어긋나지 않게 같은 분류에서 싣는다. */
+  readonly freshCount?: number;
+  readonly doneCount?: number;
 }
 
 /**
@@ -94,7 +97,7 @@ export function useCommanderRows(commodoreId: string, selectedId: string | null)
   const settled = settledOrder(fresh, done);
   const listSections: CommanderSection[] = [
     ...activeSections,
-    ...(settled.length > 0 ? [{ id: "settled", title: null, rows: settled, fold: "settled" as const, settled: true as const }] : []),
+    ...(settled.length > 0 ? [{ id: "settled", title: null, rows: settled, fold: "settled" as const, settled: true as const, freshCount: fresh.length, doneCount: done.length }] : []),
   ];
   // 이 사령관의 기록이 아직 오지 않았거나, 기록은 있는데 줄이 아직 서지 않았으면(묶음 원천 설치 전) 빈 상태가 아니다.
   const settledEmpty = sorted.length === 0 && state.objectiveRecordsHydrated

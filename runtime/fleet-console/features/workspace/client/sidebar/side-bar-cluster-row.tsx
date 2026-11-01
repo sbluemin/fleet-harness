@@ -155,26 +155,45 @@ export function clusterRowDateLabel(row: ObjectiveClusterRow, locale: ConsoleLoc
 const monthFormats = new Map<ConsoleLocale, Intl.DateTimeFormat>();
 
 /**
+ * 시작 전·완료 통합 목록의 작은 상태 표시 — 행 날짜 자리(ClusterRowDate)와 접힌 settled 머리(개수 옆)가 같은 도형을 쓴다.
+ * 시작 전은 기한 없는 줄의 점선 빈 원이다. 크기는 쓰는 쪽의 CSS가 정하므로 여기서는 정하지 않는다.
+ */
+export function SettledFreshGlyph() {
+  return (
+    <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" /></svg>
+  );
+}
+
+/**
+ * 시작 전·완료 통합 목록의 완료 표시 — doneAt 유무와 관계없이 항상 꽉 찬 원에 체크를 투명으로 뚫은 글리프.
+ * 줄 hover·active 배경이 바뀌어도 맞도록 체크는 mask 로 뚫는다(배경색 하드코딩 없음). mask id는 안에서 만든다.
+ */
+export function SettledDoneGlyph() {
+  const rawId = useId();
+  const maskId = `settled-done-glyph-${rawId.replace(/:/g, "")}`;
+  return (
+    <svg viewBox="0 0 16 16">
+      <mask id={maskId}>
+        <circle cx="8" cy="8" r="5.6" fill="white" />
+        <path d="M5.3 8.1l1.8 1.8 3.6-3.8" fill="none" stroke="black" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </mask>
+      <circle cx="8" cy="8" r="5.6" fill="currentColor" mask={`url(#${maskId})`} />
+    </svg>
+  );
+}
+
+/**
  * 시작 전·완료 통합 목록에서 아바타 자리에 서는 날짜·글리프 — 시작 전은 기한 두 줄 날짜(지나면 숫자만 경고색),
  * 기한이 없으면 점선 빈 원, 완료는 doneAt 유무와 관계없이 항상 꽉 찬 원에 체크를 투명으로 뚫은 글리프.
  * 접근 이름은 행이 말하므로 장식이다.
  */
 export function ClusterRowDate({ item }: { readonly item: SideBarRowItem }) {
   const locale = useConsoleLocale();
-  const rawId = useId();
   const { row } = item;
   if (row.glyph === "done") {
-    // 점선 빈 원과 대비되는 꽉 찬 원 — 줄 hover·active 배경이 바뀌어도 맞도록 체크는 mask 로 뚫는다(배경색 하드코딩 없음).
-    const maskId = `done-glyph-${rawId.replace(/:/g, "")}`;
     return (
       <span className="side-bar-cluster-row-date is-glyph is-done" aria-hidden="true">
-        <svg viewBox="0 0 16 16">
-          <mask id={maskId}>
-            <circle cx="8" cy="8" r="5.6" fill="white" />
-            <path d="M5.3 8.1l1.8 1.8 3.6-3.8" fill="none" stroke="black" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-          </mask>
-          <circle cx="8" cy="8" r="5.6" fill="currentColor" mask={`url(#${maskId})`} />
-        </svg>
+        <SettledDoneGlyph />
       </span>
     );
   }
@@ -183,7 +202,7 @@ export function ClusterRowDate({ item }: { readonly item: SideBarRowItem }) {
   if (!day || Number.isNaN(day.getTime())) {
     return (
       <span className="side-bar-cluster-row-date is-glyph" aria-hidden="true">
-        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.2 2.2" /></svg>
+        <SettledFreshGlyph />
       </span>
     );
   }

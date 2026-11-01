@@ -402,8 +402,10 @@
 .commander-tab-settled-head:hover { color: var(--text-primary); }
 .commander-tab-settled-head:focus-visible { box-shadow: var(--focus-face); }
 .commander-tab-settled-head .commander-tab-settled-rule { flex: 1; min-width: 0; margin: 0; }
-/* 접힌 동안만 보이는 숨은 개수 — 펼치면 글리프만 남는다. */
-.commander-tab-settled-count { color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+/* 접힌 동안만 보이는 분리 개수 — 행 글리프와 같은 뜻의 작은 표시 + 숫자라 좁은 사이드바에 들어간다. 펼치면 글리프만 남는다. */
+.commander-tab-settled-count { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.commander-tab-settled-part { display: inline-flex; align-items: center; gap: 3px; }
+.commander-tab-settled-part > svg { width: 12px; height: 12px; }
 /* ol이 줄 컨테이너(display: flex)라 hidden만으로는 숨지 않는다. */
 .commander-tab-list[hidden] { display: none; }
 .side-bar-cluster-row--conversation.side-bar-cluster-row--settled { min-height: 36px; padding-block: 6px; }
