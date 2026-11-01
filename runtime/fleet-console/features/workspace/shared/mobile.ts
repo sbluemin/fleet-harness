@@ -12,8 +12,9 @@ export interface ClientMobileObjectiveCapability {
 
 
 export interface MobileConfirmSpec {
-  readonly title: string;
-  readonly body: string;
+  readonly question: string;
   readonly cancelLabel: string;
   readonly confirmLabel: string;
+  /** 파괴적이면 coral 채움, 아니면 primary 격인 inverse 채움이다. */
+  readonly danger?: boolean;
 }

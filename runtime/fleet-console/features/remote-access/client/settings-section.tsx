@@ -201,7 +201,7 @@ function MobileRemoteAccess({ remote, saving }: { readonly remote: RemoteAccessS
     if (!listening) { save({ ...remote, enabled: false }); return; }
     pushMobileSheet({
       kind: "confirm",
-      spec: { title: t("settings.remote.stop.title"), body: t("settings.remote.stop.body"), cancelLabel: t("settings.remote.cancel"), confirmLabel: t("settings.remote.action.stop") },
+      spec: { question: t("settings.remote.stop.question"), cancelLabel: t("settings.remote.cancel"), confirmLabel: t("settings.remote.action.stop"), danger: true },
       resolve: (confirmed) => { if (confirmed) save({ ...remote, enabled: false }); },
     });
   };

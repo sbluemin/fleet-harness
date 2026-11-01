@@ -24,6 +24,14 @@
      라이트는 페이지 배경보다 밝은 자체 리터럴로 AA 4.5:1을 보장한다(abyss에 얹혀 타면
      페이지 배경 조정이 버튼 대비를 함께 끌어내리는 결합이 재발한다). */
   --text-on-brass: var(--ink-abyss);
+  /* coral 채움 위 텍스트 전용 티어 — 파괴적 확인 단추가 --danger-fill 위에서 쓰는 면이다.
+     신호 coral(다크 L68)은 흰 글자 2.9:1로 AA에 못 미치므로 채움은 danger-fill이 따로 진다. */
+  --text-on-coral: oklch(99% 0 0);
+  /* 파괴적 확인 단추의 채움 — 신호 coral과 달리 흰 글자 AA 4.5:1을 지키는 깊은 빨강이다.
+     실측 5.24:1이라 다크·라이트가 같은 값을 쓴다. coral 토큰 자체는 다른 표면이 쓰므로 바꾸지 않는다. */
+  --danger-fill: oklch(55% 0.16 27);
+  /* 확인 팝업 취소 단추의 채움 — 카드(--dialog-face)보다 명도 3% 밝은(다크) 면이다. */
+  --dialog-cancel-face: oklch(27% 0 0);
 
   /* 라이브 명도 물결의 두 끝 — 채팅 원장(.agent-chat-live-text)과 공용 상태줄이
      한 벌로 쓴다. 물결은 색 채널을 하나도 빌리지 않는 순수 명도 스윕이므로 두 끝은 잉크 티어다.
@@ -700,6 +708,7 @@
   --shadow-soft: 0 1px 0 0 oklch(99.5% 0 0 / 70%) inset, 0 18px 38px -22px oklch(30% 0 0 / 26%);
   --shadow-floating: 0 1px 0 0 oklch(99.5% 0 0 / 80%) inset, 0 32px 60px -28px oklch(28% 0 0 / 30%);
   --popover-face: oklch(100% 0 0);
+  --dialog-cancel-face: oklch(96% 0 0);
   --popover-rim: rgb(28 28 28 / 12%);
   --popover-icon-ink: rgb(28 28 28 / 66%);
   --wash-hover: rgb(28 28 28 / 6%);
@@ -1176,6 +1185,7 @@
   --m-bg-deep: #111111;
   --m-bg: #151515;
   --m-surface: #1f1f1f;
+  --dialog-cancel-face: oklch(27% 0 0);
   --m-chip: rgb(245 245 245 / 6%);
   --m-selected: rgb(245 245 245 / 8%);
   --m-hairline: rgb(245 245 245 / 10%);
@@ -1235,6 +1245,7 @@
   --m-bg-deep: #f5f5f5;
   --m-bg: #fcfcfc;
   --m-surface: #ffffff;
+  --dialog-cancel-face: oklch(96% 0 0);
   --m-chip: rgb(28 28 28 / 6%);
   --m-selected: rgb(28 28 28 / 8%);
   --m-hairline: rgb(28 28 28 / 12%);

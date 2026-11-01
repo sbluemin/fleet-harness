@@ -27,6 +27,14 @@
 .taskforce-dialog small { color: var(--text-tertiary); font-size: var(--t-sm); }
 .taskforce-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px 12px 22px; border-top: 1px solid var(--hairline); }
 .taskforce-dialog footer > span { display: flex; gap: 8px; }
+/* 만들기 footer — 확인 팝업과 같은 반반 알약 두 개. 좌우 여백은 본문(22px)과 맞춘다. */
+.taskforce-create-foot { padding: 12px 22px; }
+/* 직접 자식인 단추는 basis에 자기 padding이 들어가 반쪽이 넓어진다 — 두 반 모두 span으로
+   감싸 같은 상자에서 같은 너비를 나눈다. */
+.taskforce-create-foot > span { flex: 1 1 0; min-width: 0; }
+.taskforce-create-foot .fc-confirm__button { width: 100%; min-width: 0; }
+/* 만들기의 실행 단추만 굵게 둔다 — 확인 팝업의 실행 단추는 보통 굵기다. */
+.taskforce-create-foot .fc-confirm__button--action { font-weight: var(--weight-bold); }
 .taskforce-create-tip { position: relative; display: inline-flex; }
 .taskforce-create-tip [role="tooltip"] { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); width: max-content; max-width: 240px; padding: 8px 10px; border-radius: var(--popover-radius); color: var(--text-primary); background: var(--popover-face); box-shadow: var(--popover-surface-shadow); font-size: var(--t-sm); z-index: 1; }
 .taskforce-create-tip:hover [role="tooltip"], .taskforce-create-tip:focus-visible [role="tooltip"] { display: block; }
@@ -71,8 +79,7 @@
 .taskforce-member:hover .taskforce-text-button, .taskforce-member:focus-within .taskforce-text-button { visibility: visible; }
 .taskforce-member .taskforce-member-remove { padding: 4px 10px; border-radius: var(--radius-pill); color: var(--coral); background: color-mix(in oklch, var(--coral) 12%, transparent); }
 .taskforce-link { padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; text-decoration: underline; text-underline-offset: 2px; font: inherit; font-size: var(--t-sm); cursor: pointer; text-align: left; }
-.taskforce-text-button, .taskforce-danger { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
-.taskforce-danger { color: var(--coral); }
+.taskforce-text-button { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
 .taskforce-action-list { display: grid; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: .5px solid var(--hairline); }
 .taskforce-action { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .taskforce-action-kind { flex-shrink: 0; color: var(--text-secondary); font-size: var(--t-xs); }

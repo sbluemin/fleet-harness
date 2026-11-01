@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 export interface FeatureErrorBoundaryProps {
   readonly children: React.ReactNode;
   readonly fallback?: React.ReactNode;
@@ -711,4 +712,70 @@ export function usePointerDrag() {
     catch { cancel(); return; }
     callbacks.onStart();
   };
+}
+
+
+export interface ConfirmDialogProps {
+  readonly question: React.ReactNode;
+  readonly cancelLabel: string;
+  readonly confirmLabel: string;
+  /** 파괴적이면 coral 채움, 아니면 primary 채움이다. */
+  readonly danger?: boolean;
+  readonly busy?: boolean;
+  readonly error?: string | null;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}
+
+
+/**
+ * 공용 확인 팝업 — 제목·닫기·구분선 없이 질문 한 문장과 같은 너비의 알약 단추 두 개만 둔다.
+ * Esc·바깥 클릭은 취소, 첫 포커스는 취소 단추, Tab은 카드 안에 갇힌다. 라벨은 호출하는 쪽이 넘긴다.
+ * 키 처리는 document에서 가로채서, 진행 중에 단추가 비활성화돼 포커스가 빠져도 Esc·Tab이
+ * 계속 동작한다(진행 중에는 닫히지 않는다).
+ */
+export function ConfirmDialog({ question, cancelLabel, confirmLabel, danger = false, busy = false, error, onCancel, onConfirm }: ConfirmDialogProps): React.ReactElement {
+  const questionId = React.useId();
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  const cancelRef = React.useRef<HTMLButtonElement>(null);
+  const live = React.useRef({ onCancel, busy });
+  live.current = { onCancel, busy };
+  React.useEffect(() => {
+    const previous = document.activeElement;
+    cancelRef.current?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!live.current.busy) live.current.onCancel(); return; }
+      if (event.key !== "Tab") return;
+      const root = cardRef.current;
+      if (!root) return;
+      const nodes = [...root.querySelectorAll<HTMLElement>("button:not(:disabled)")];
+      const first = nodes[0]; const last = nodes.at(-1);
+      if (!first || !last) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", keydown, true);
+    return () => { document.removeEventListener("keydown", keydown, true); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, []);
+  // 진행 중에는 카드 안 단추가 전부 비활성화다 — 포커스가 어디에 있든 카드로 둔다.
+  // 비활성화 직후에는 브라우저가 아직 blur 전이라 카드 안에 있어도 카드로 옮긴다.
+  React.useEffect(() => {
+    const root = cardRef.current;
+    if (!root) return;
+    if (busy) { if (document.activeElement !== root) root.focus(); }
+    else cancelRef.current?.focus();
+  }, [busy]);
+  return createPortal(
+    <div className="fc-confirm-scrim" role="presentation" onPointerDown={() => { if (!busy) onCancel(); }}>
+      <div ref={cardRef} className="fc-confirm" role={danger ? "alertdialog" : "dialog"} aria-modal="true" aria-labelledby={questionId} tabIndex={-1} onPointerDown={(event) => event.stopPropagation()}>
+        <p id={questionId} className="fc-confirm__question">{question}</p>
+        {error ? <p className="fc-confirm__error" role="alert">{error}</p> : null}
+        <div className="fc-confirm__actions">
+          <button ref={cancelRef} type="button" className="fc-confirm__button fc-confirm__button--cancel" disabled={busy} onClick={onCancel}>{cancelLabel}</button>
+          <button type="button" className={`fc-confirm__button ${danger ? "fc-confirm__button--danger" : "fc-confirm__button--action"}`} disabled={busy} onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }

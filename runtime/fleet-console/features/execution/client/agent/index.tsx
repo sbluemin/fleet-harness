@@ -13,7 +13,7 @@ import { defineNotificationKind } from "../notifications.js";
 import type { ClientFeatureDescriptor } from "../../../workspace/shared/feature-surfaces.js";
 import type { ObjectiveMenuContext, ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
-import { MenuCheckGlyph, SegmentedThumb } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, SegmentedThumb, ConfirmDialog } from "@fleet-console/ui/react";
 import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
@@ -630,8 +630,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRende
   };
   const toChat = async () => {
     const confirmed = await mobile.confirm({
-      title: t("terminal.mobile.toChatTitle"),
-      body: t("terminal.mobile.toChatBody"),
+      question: t("terminal.chat.confirmQuestion"),
       cancelLabel: t("terminal.chat.confirmKeep"),
       confirmLabel: t("terminal.mobile.toChatTitle"),
     });
@@ -837,13 +836,12 @@ function chatConvertBusyKey(reason: string | null): "terminal.chat.convertBusy" 
   return reason === "starting" ? "terminal.chat.convertBusyStarting" : "terminal.chat.convertBusy";
 }
 
-/** Chat view 전환 확인 오버레이 — 칩은 뷰 칩 줄이 소유하고, 여기는 확인과 서버 전환만 진다. */
+/** Chat view 전환 확인 — 칩은 뷰 칩 줄이 소유하고, 여기는 확인과 서버 전환만 진다. */
 function ChatModeInterstitial({ context, onClose }: { readonly context: ObjectiveRenderContext; readonly onClose: () => void }) {
   const t = getT(context.language ?? "en");
   const [state, setState] = React.useState<"idle" | "converting" | "busy" | "error">("idle");
   // 무엇이 끝나야 전환되는지 — 서버가 구분해 보내 준 사유. 알 수 없으면 뭉뚱그린 문구로 내려간다.
   const [busyReason, setBusyReason] = React.useState<string | null>(null);
-  const titleId = `agent-chat-inter-${context.objectiveId}`;
   const convert = React.useCallback(async () => {
     setState("converting");
     try {
@@ -856,40 +854,8 @@ function ChatModeInterstitial({ context, onClose }: { readonly context: Objectiv
       setState(busy ? "busy" : "error");
     }
   }, [context.objectiveId, onClose]);
-  return (
-    <div className="agent-chat-interstitial" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
-          <div className="agent-chat-inter-card" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-            <h4 id={titleId}>{t("terminal.chat.confirmTitle")}</h4>
-            <p>{t("terminal.chat.confirmBody")}</p>
-            <p className="agent-chat-inter-fine">{t("terminal.chat.confirmFine")}</p>
-            {state === "busy" ? (
-              <p className="agent-chat-inter-error" role="alert">
-                <span className="agent-chat-inter-error-mark" aria-hidden="true">⚠</span>
-                <span>{t(chatConvertBusyKey(busyReason))}</span>
-              </p>
-            ) : null}
-            {state === "error" ? (
-              <p className="agent-chat-inter-error" role="alert">
-                <span className="agent-chat-inter-error-mark" aria-hidden="true">✕</span>
-                <span>{t("terminal.chat.convertFailed")}</span>
-              </p>
-            ) : null}
-            <div className="agent-chat-inter-actions">
-              <button type="button" className="agent-chat-inter-button" autoFocus onClick={onClose}>
-                {t("terminal.chat.confirmKeep")}
-              </button>
-              <button
-                type="button"
-                className="agent-chat-inter-button agent-chat-inter-button--primary"
-                disabled={state === "converting"}
-                onClick={() => { void convert(); }}
-              >
-                {t("terminal.chat.confirmSwitch")}
-              </button>
-            </div>
-          </div>
-    </div>
-  );
+  const error = state === "busy" ? t(chatConvertBusyKey(busyReason)) : state === "error" ? t("terminal.chat.convertFailed") : null;
+  return <ConfirmDialog question={t("terminal.chat.confirmQuestion")} cancelLabel={t("terminal.chat.confirmKeep")} confirmLabel={t("terminal.chat.confirmSwitch")} busy={state === "converting"} error={error} onCancel={onClose} onConfirm={() => { void convert(); }} />;
 }
 
 /** 휴면 카드 위의 chat 진입 고스트 — 죽일 PTY조차 없는 가장 안전한 전환 경로다. */

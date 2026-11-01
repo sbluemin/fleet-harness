@@ -57,7 +57,6 @@
 
 /* 조상 커서를 auto로 되돌렸으므로 채팅의 인터랙티브 요소는 pointer를 직접 진다. */
 .agent-chat-to-term:not(:disabled),
-.agent-chat-inter-button,
 .agent-chat-follow,
 .agent-chat-dormant-open:not(:disabled) {
   cursor: pointer;
@@ -2681,89 +2680,6 @@
   /* 폭 글리프는 좌표(모델 칩)보다 먼저 자리를 내준다 — 이 폭에서는 세 단이 전부 같은 폭으로
      접혀 고를 것이 없고, 좌표는 유일한 실행 표시라 끝까지 남는다. */
   .agent-chat-composer-width { display: none; }
-}
-
-/* 전환 확인 — 패널 내부 오버레이. */
-.agent-chat-interstitial {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--dialog-scrim);
-}
-
-.agent-chat-inter-card {
-  width: min(420px, calc(100% - 48px));
-  background: var(--dialog-face);
-  border: 0;
-  border-radius: var(--dialog-radius);
-  box-shadow: var(--dialog-surface-shadow);
-  padding: var(--space-5) var(--space-6);
-}
-
-.agent-chat-inter-card h4 {
-  margin: 0 0 var(--space-2);
-  color: var(--text-primary);
-  font-size: var(--t-lg);
-  font-weight: var(--weight-bold);
-}
-
-.agent-chat-inter-card p {
-  margin: 0 0 var(--space-2);
-  font-size: var(--t-md);
-  color: var(--text-secondary);
-}
-
-.agent-chat-inter-fine {
-  font-size: var(--t-sm);
-  color: var(--text-tertiary);
-}
-
-.agent-chat-inter-error {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  font-size: var(--t-sm);
-  color: var(--coral-ink);
-}
-
-/* 막힌 이유는 본문과 같은 무게로 흐르면 읽히지 않는다 — 글머리 표식이 그 줄을 결과로 만든다. */
-.agent-chat-inter-error-mark {
-  flex: 0 0 auto;
-  font-weight: var(--weight-medium);
-}
-
-.agent-chat-inter-actions {
-  display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
-  justify-content: flex-end;
-}
-
-.agent-chat-inter-button {
-  font-size: var(--t-md);
-  font-weight: var(--weight-medium);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--hairline-strong);
-  color: var(--text-secondary);
-}
-
-.agent-chat-inter-button:hover {
-  color: var(--text-primary);
-  border-color: var(--brass);
-}
-
-.agent-chat-inter-button--primary {
-  background: var(--brass);
-  border-color: var(--brass);
-  color: var(--text-on-brass);
-}
-
-.agent-chat-inter-button--primary:hover {
-  color: var(--text-on-brass);
 }
 
 /* 휴면 카드 아래의 chat 진입 고스트 — Console 소유 dormant 카드 위 오버레이로 얹는다. */
