@@ -115,7 +115,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     isEnabled: () => { try { return deps.experiments?.read().taskforce === true; } catch { return false; } },
   });
   selectedPlugins = () => entities.ids().flatMap((id) => store.read(id)?.plugins ?? []);
-  const createFromCommodore = createCommodoreCreator({ ownership, store, ...(deps.created ? { created: deps.created } : {}) });
+  const createFromCommodore = createCommodoreCreator({ ownership, store, ...(deps.models ? { models: deps.models } : {}), ...(deps.created ? { created: deps.created } : {}) });
   const supervisor = createCommodoreSupervisor({
     store, agent, board: () => board, theaterIds, cwd: entities.dirOf, isDeleting: ownership.isDeleting,
     ...(deps.attachments ? { attachments: deps.attachments } : {}),

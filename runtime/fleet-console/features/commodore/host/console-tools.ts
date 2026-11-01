@@ -9,6 +9,7 @@ import { MAX_MEMORY_ENTRIES, memoryRefSchema } from "./memory.js";
 import type { CommodoreCreateInput } from "./creation.js";
 import { commodoreSessionToolName } from "../shared/tool-names.js";
 import { refuse, text } from "./tool-results.js";
+import { CommodoreStoreError } from "./errors.js";
 
 const commodores = defineConsoleTool({
   name: "console_commodores",
@@ -28,9 +29,9 @@ const commodores = defineConsoleTool({
       intel: z.array(z.string().trim().min(1).max(MAX_INTEL_TEXT)).max(MAX_INTEL_ITEMS).describe("Context to hand over as information, attributed to you rather than to the person; [] for none."),
       memoryRefs: z.array(memoryRefSchema).max(MAX_MEMORY_ENTRIES).optional().describe("Selected refs from your fleet-memory; copies keep source and verification dates, not unselected links."),
       model: z.string().refine(isExperimentModelId, "invalid_model").optional().describe("The new Commodore's own model, only when the person named one; omitted means Opus."),
-      effort: z.enum(COMMODORE_EFFORTS).optional().describe("The new Commodore's own effort; omitted means high."),
+      effort: z.enum(COMMODORE_EFFORTS).optional().describe("The new Commodore's effort on that model's ladder; omitted means high or the nearest supported rung."),
       commanderModel: z.string().trim().min(1).max(128).optional().describe("Commander model for objectives the new Commodore creates, only when the person named one; omitted means Opus."),
-      commanderEffort: z.string().trim().min(1).max(32).optional().describe("Commander effort for those objectives; omitted means medium."),
+      commanderEffort: z.string().trim().min(1).max(32).optional().describe("Commander effort on that model's ladder; omitted means medium or the nearest supported rung."),
     }) },
   },
 });
@@ -56,7 +57,9 @@ export function createCommodoreManagementTools(options: {
         return text(options.create(call));
       } catch (error) {
         const code = error instanceof Error ? error.message : "commodore_failed";
-        return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed");
+        // 모델·강도 거절은 고칠 수 있게 후보 강도까지 돌려준다.
+        const details = error instanceof CommodoreStoreError && (code === "invalid_effort" || code === "model_not_in_roster") ? error.details ?? {} : {};
+        return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed", details);
       }
     },
   }, { caller: "commodore" });
