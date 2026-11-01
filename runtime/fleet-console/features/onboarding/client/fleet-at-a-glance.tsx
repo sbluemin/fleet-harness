@@ -23,8 +23,8 @@ import {
 import "./fleet-at-a-glance.css";
 
 // 도움말 › 플릿 한눈에 보기 — 승인 시안의 모션 팝업을 Console로 옮긴 것이다.
-// 색은 시안의 임시 토큰 대신 Console 테마 토큰(flow→--aurora, result→--positive,
-// loop→--apex, warm→--warn)에서 읽고, 테마가 바뀌면 다음 프레임에 다시 읽는다.
+// 색은 Console 테마 토큰(flow→--aurora, result→--positive,
+// loop→--apex, 사람→--glance-person)에서 읽고, 테마가 바뀌면 다음 프레임에 다시 읽는다.
 
 const GLANCE_WIDTH = 640;
 const GLANCE_HEIGHT = 300;
@@ -104,9 +104,6 @@ const ellPoint = (cx: number, cy: number, rx: number, ry: number, ang: number): 
 function readGlancePalette(): GlancePalette {
   const cs = getComputedStyle(document.documentElement);
   const v = (name: string): string => cs.getPropertyValue(name).trim();
-  // '사람' 주황은 승인 시안 값 그대로 쓴다 — 맞는 Console 토큰이 없고, 채도가 높아
-  // 디자인 게이트가 CSS 리터럴을 막으므로(유채색 한도 0.03) Canvas 색 문자열로 둔다.
-  const light = cs.getPropertyValue("color-scheme").includes("light");
   return {
     ink: v("--text-primary"),
     ink2: v("--text-secondary"),
@@ -116,7 +113,7 @@ function readGlancePalette(): GlancePalette {
     flow: v("--aurora"),
     result: v("--positive"),
     loop: v("--apex"),
-    warm: light ? "oklch(66% 0.13 60)" : "oklch(82% 0.11 75)",
+    warm: v("--glance-person"),
     font: v("--font-ui"),
   };
 }

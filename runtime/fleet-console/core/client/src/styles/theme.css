@@ -70,6 +70,8 @@
   --coral-glow: oklch(68% 0.12 25 / 12%);
   --warn: oklch(75% 0.08 88);
   --warn-glow: oklch(75% 0.08 88 / 12%);
+  /* 도움말 '플릿 한눈에 보기' 무대의 사람 점 — 승인 시안의 주황. 다른 신호 대신 쓰지 않는다. */
+  --glance-person: oklch(82% 0.11 75);
   --positive: oklch(76% 0.095 160);
   --positive-glow: oklch(76% 0.095 160 / 12%);
   /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이다 — 신호가 아니라 티어를 말한다.
@@ -590,6 +592,8 @@
   --coral-glow: oklch(52% 0.16 25 / 15%);
   --warn: oklch(55% 0.11 82);
   --warn-glow: oklch(55% 0.11 82 / 16%);
+  /* 도움말 '플릿 한눈에 보기' 무대의 사람 점 — 승인 시안의 주황. 다른 신호 대신 쓰지 않는다. */
+  --glance-person: oklch(66% 0.13 60);
   --positive: oklch(50% 0.12 160);
   --positive-glow: oklch(50% 0.12 160 / 15%);
 
@@ -777,6 +781,8 @@
   --coral-glow: oklch(69% 0.12 25 / 12%);
   --warn: oklch(77% 0.085 80);
   --warn-glow: oklch(77% 0.085 80 / 12%);
+  /* 도움말 '플릿 한눈에 보기' 무대의 사람 점 — 승인 시안의 주황. 다른 신호 대신 쓰지 않는다. */
+  --glance-person: oklch(82% 0.11 75);
   --positive: oklch(77% 0.095 158);
   --positive-glow: oklch(77% 0.095 158 / 12%);
 
@@ -1048,6 +1054,8 @@
   --coral-glow: var(--m-danger-glow);
   --apex-ink: var(--apex);
   --crest-ink: var(--crest);
+  /* 모바일에서는 이 팝업을 열지 않지만, Console 테마 값이 새지 않게 덮는다. */
+  --glance-person: var(--m-running);
 
   /* 계기 — 채움은 읽기 단계 회색(시안의 진행 막대), 손잡이는 면, 경고 단만 신호를 빌린다. */
   --gauge-face: var(--m-surface);
