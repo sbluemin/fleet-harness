@@ -94,7 +94,7 @@ export const workspaceEn = {
   "sidebar.commodore.aliasFailed": "Could not save the name.",
   "sidebar.commodore.orderFailed": "Could not save the section order.",
   "sidebar.commodore.fallback": "Commodore",
-  "sidebar.commodore.newSession": "New objective",
+  "sidebar.commodore.newSession": "New Objective",
   "sidebar.commodore.noConversation": "No conversation yet",
   "sidebar.commodore.addTheater": "Add Theater",
   "sidebar.commodore.rename": "Rename",

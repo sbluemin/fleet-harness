@@ -241,7 +241,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         title,
         ...(pillStatus ? { subtitle: pillStatus } : {}),
         depth: 0,
-        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(새 세션·Theater·삭제)는 깊이 1에 그대로 둔다.
+        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(새 목표·Theater·삭제)는 깊이 1에 그대로 둔다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
         ...(actions && commodoreId ? { actions: [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] } : {}),
       });
