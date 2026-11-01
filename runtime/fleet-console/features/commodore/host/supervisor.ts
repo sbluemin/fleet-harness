@@ -1,6 +1,7 @@
 import { nextRoutineAt } from "../shared/routines.js";
 import { BOARD_WRITE_TOOL_NAMES } from "../shared/tool-names.js";
 import type { ConsoleResidentAgentHost } from "../../execution/host/agent/console-resident.js";
+import type { AgentWorkStep } from "../../execution/host/agent/types.js";
 import { Buffer } from "node:buffer";
 import type { AgentInputBlock, AttachmentHost } from "../../execution/shared/agent.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
@@ -188,6 +189,8 @@ interface Runner {
   phase: Phase;
   reason?: string;
   nextWakeAt?: number;
+  /** 도는 턴 안에서 지금 하는 일의 계열 — `run.step`으로 방송된다. 턴이 아니면 null. */
+  step: AgentWorkStep | null;
   /** 다음 턴에 실을 이유 — 코드마다 하나, 순서 보존. */
   pending: Map<WakeCode, PendingReason>;
   /** 사람의 메시지 — 다음 턴에 그대로 실린다. seq 는 기록의 그 줄이다(끌 때 싣지 못한 것을 「전달되지 않음」으로 가리킨다). */
@@ -302,13 +305,15 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, routineTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, routineNextRuns: Object.fromEntries([...runner.routineTimes].map(([id, value]) => [id, value.at])), ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.step ? { step: runner.step } : {}), routineTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, routineNextRuns: Object.fromEntries([...runner.routineTimes].map(([id, value]) => [id, value.at])), ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.commodoreId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), run: { ...statusOf(runner), totals } });
   };
   const setPhase = (runner: Runner, phase: Phase, reason?: string) => {
     runner.phase = phase;
+    // 계열은 도는 턴의 것 — 턴을 벗어나면 지우고 쉼으로 방송한다.
+    runner.step = null;
     runner.reason = reason;
     publish(runner);
   };
@@ -405,6 +410,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       } } } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },
       onLive: (live) => deps.emit({ op: "live", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), live }),
+      onStep: (step) => {
+        // 도는 턴의 계열만 `run`에 싣는다 — 늦게 닿은 보고가 쉼을 덮지 않게. 바뀌었을 때만 방송한다.
+        if (runner.phase !== "turn" || runner.step === step) return;
+        runner.step = step;
+        publish(runner);
+      },
       onInput: ({ id, state }) => {
         const message = runner.hosted.get(id);
         if (!message) return;
@@ -954,7 +965,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, session: null, sessionFirstTurn: false, phase: "idle", pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnPersonRoutine: false, sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnPersonRoutine: false, sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),

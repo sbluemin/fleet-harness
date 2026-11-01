@@ -125,6 +125,13 @@ export function commodoreAvatarKey(commodoreId: string): string {
   return `theater:commodore:${commodoreId}`;
 }
 
+/** 사령관 얼굴 키에서 사령관 UUID를 꺼낸다 — 키만 아는 표면이 턴의 계열을 구독한다. 사령관 키가 아니면 null. */
+export function commodoreIdOfAvatarKey(key: string): string | null {
+  const prefix = "theater:commodore:";
+  if (!key.startsWith(prefix) || key.length === prefix.length) return null;
+  return key.slice(prefix.length);
+}
+
 export function objectiveRecordAvatarKey(objectiveId: string): string {
   return `objective:${objectiveId}`;
 }

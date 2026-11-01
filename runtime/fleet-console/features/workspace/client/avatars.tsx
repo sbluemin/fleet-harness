@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 
 import { useViewportFit } from "@fleet-console/ui/react";
 
-import { commodoreAvatarKey, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
+import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "./avatar-events.js";
 import { MongleAvatar } from "./components/mongle-avatar.js";
 import type { ObjectiveCluster } from "../../objectives/shared/objective-clusters.js";
@@ -15,6 +15,7 @@ import type { ConsoleState, ObjectiveRecord } from "../../../core/client/src/int
 import { resolveObjectiveActivity, type ObjectiveMarkVisual } from "../../execution/client/objective-activity.js";
 import { useObjectiveMongleActivity } from "../../execution/client/avatar-activity.js";
 import { readCommodoreList, useCommodoreList } from "../../commodore/client/commodore-list.js";
+import { useCommodoreMongleActivity } from "../../commodore/client/commodore-avatar.js";
 
 /**
  * 몽글 아바타의 Console 쪽 — 누구에게 어떤 역할이 붙는지, 처음 배정을 누가 맡는지, 대화 중심 화면의 편집기.
@@ -163,8 +164,10 @@ export function KeyedAvatar({ avatarKey, role, state, activityObjectiveId, size,
   readonly className?: string;
 }) {
   const look = useMongleLook(avatarKey);
-  const activity = useObjectiveMongleActivity(state === "running" ? activityObjectiveId : null);
-  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
+  const objectiveActivity = useObjectiveMongleActivity(state === "running" ? activityObjectiveId : null);
+  // 사령관은 Objective이 아니라 키에서 UUID를 꺼내 턴의 계열을 읽는다 — `CommodoreAvatar`와 같은 연기다.
+  const commodoreActivity = useCommodoreMongleActivity(state === "running" && role === "commodore" ? commodoreIdOfAvatarKey(avatarKey) : null);
+  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={objectiveActivity ?? commodoreActivity} size={size} label={label} decorative={decorative} className={className} />;
 }
 
 function usePickerLabels(): MongleAvatarPickerLabels {
@@ -222,7 +225,10 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   const book = useAvatarBook();
   const look = resolveMongleLook(book, avatarKey);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const activity = useObjectiveMongleActivity(state === "running" && draft === null ? activityObjectiveId : null);
+  const objectiveActivity = useObjectiveMongleActivity(state === "running" && draft === null ? activityObjectiveId : null);
+  // 사령관은 Objective이 아니라 키에서 UUID를 꺼내 턴의 계열을 읽는다 — `CommodoreAvatar`와 같은 연기다.
+  const commodoreActivity = useCommodoreMongleActivity(state === "running" && draft === null && role === "commodore" ? commodoreIdOfAvatarKey(avatarKey) : null);
+  const activity = objectiveActivity ?? commodoreActivity;
   const [busy, setBusy] = useState(false);
   const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
