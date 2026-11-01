@@ -470,7 +470,7 @@ export interface CommodoreObjectiveIndex {
  * 되돌릴 수 있다) 지웠다고 단정하지 않는다. 아직 못 읽었으면 id 를 둔다.
  * 목표 id 가 없는 줄(추가·정리·병합)은 기록의 제목만 글자로 선다.
  */
-function objectiveTarget(t: T, index: CommodoreObjectiveIndex, objectiveId: string | undefined, title: string | undefined): { readonly id?: string; readonly label?: string } {
+export function objectiveTarget(t: T, index: CommodoreObjectiveIndex, objectiveId: string | undefined, title: string | undefined): { readonly id?: string; readonly label?: string } {
   if (!objectiveId) return title ? { label: title } : {};
   const objective = index.live.find((candidate) => candidate.id === objectiveId) ?? index.finished?.find((candidate) => candidate.id === objectiveId);
   if (objective) return objective.removed ? { label: objective.title } : { id: objective.id, label: objective.title };
