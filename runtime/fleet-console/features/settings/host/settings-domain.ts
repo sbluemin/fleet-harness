@@ -36,6 +36,23 @@ export type UiFontSettings =
   | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
   | { readonly source: "system"; readonly familyName: string; readonly size: number };
 
+/** 지휘관 목록 정렬 키 — commander-tab의 SORTS와 같은 집합이다. */
+export type CommanderSortKey = "activity" | "progress" | "remaining" | "due" | "created" | "name" | "manual";
+
+export interface CommanderSortPreference {
+  readonly key: CommanderSortKey;
+  readonly direction: "asc" | "desc";
+  /** 사람의 답을 기다리는 줄을 정렬과 상관없이 맨 위에 둔다. */
+  readonly answerFirst: boolean;
+  readonly grouped: boolean;
+}
+
+export interface CommanderFolds {
+  readonly fresh: boolean;
+  readonly done: boolean;
+  readonly settled: boolean;
+}
+
 export const REMOTE_AUTO_PORT_MIN = 49152;
 export const REMOTE_AUTO_PORT_MAX = 65535;
 export const REMOTE_AUTO_PORT_ATTEMPTS = 12;
@@ -96,6 +113,17 @@ export interface ConsoleGeneralSettings {
    * 원천은 이 값이다 — Console 포트가 바뀌면 origin이 바뀌어 캐시가 사라지기 때문이다.
    */
   readonly commanderPlacement?: "left" | "right";
+  /**
+   * 지휘관 목록 정렬. 부재는 한 번도 저장된 적 없음이다.
+   * localStorage 키(`fleet-console.commanderTab.sort`)는 같은 origin의 첫 그리기용 캐시로만 쓰고,
+   * 원천은 이 값이다 — Console 포트가 바뀌면 origin이 바뀌어 캐시가 사라지기 때문이다.
+   */
+  readonly commanderSort?: CommanderSortPreference;
+  /**
+   * 시작 전·완료 구역의 접힘. 부재는 한 번도 저장된 적 없음이다.
+   * localStorage 키(`fleet-console.commanderTab.folds`)는 같은 origin의 첫 그리기용 캐시로만 쓴다.
+   */
+  readonly commanderFolds?: CommanderFolds;
   /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
   readonly lowerUnfocusedFrameRate?: boolean;
   readonly uiFont?: UiFontSettings;
@@ -355,6 +383,8 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const reduceMotion = typeof value.reduceMotion === "boolean" ? value.reduceMotion : undefined;
   const calmAvatars = typeof value.calmAvatars === "boolean" ? value.calmAvatars : undefined;
   const commanderPlacement = value.commanderPlacement === "left" || value.commanderPlacement === "right" ? value.commanderPlacement : undefined;
+  const commanderSort = readCommanderSortPreference(value.commanderSort);
+  const commanderFolds = readCommanderFolds(value.commanderFolds);
   const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
@@ -372,6 +402,8 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(reduceMotion !== undefined ? { reduceMotion } : {}),
     ...(calmAvatars !== undefined ? { calmAvatars } : {}),
     ...(commanderPlacement !== undefined ? { commanderPlacement } : {}),
+    ...(commanderSort !== undefined ? { commanderSort } : {}),
+    ...(commanderFolds !== undefined ? { commanderFolds } : {}),
     ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
     ...(fonts ? { fonts } : {}),
@@ -379,6 +411,23 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(shortcuts !== undefined ? { shortcuts } : {}),
     ...(archiveRetentionDays !== undefined ? { archiveRetentionDays } : {}),
   };
+}
+
+const COMMANDER_SORT_KEYS: readonly string[] = ["activity", "progress", "remaining", "due", "created", "name", "manual"];
+
+/** 정렬·접힘 읽기와 PUT 검증이 같은 규칙을 쓴다. 형태가 틀리면 undefined(키 없음과 같다)이다. */
+function readCommanderSortPreference(value: unknown): CommanderSortPreference | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.key !== "string" || !COMMANDER_SORT_KEYS.includes(value.key)) return undefined;
+  if (value.direction !== "asc" && value.direction !== "desc") return undefined;
+  if (typeof value.answerFirst !== "boolean" || typeof value.grouped !== "boolean") return undefined;
+  return { key: value.key as CommanderSortKey, direction: value.direction, answerFirst: value.answerFirst, grouped: value.grouped };
+}
+
+function readCommanderFolds(value: unknown): CommanderFolds | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.fresh !== "boolean" || typeof value.done !== "boolean" || typeof value.settled !== "boolean") return undefined;
+  return { fresh: value.fresh, done: value.done, settled: value.settled };
 }
 
 /**
@@ -508,6 +557,8 @@ interface GlobalSettingsBody {
   readonly reduceMotion?: unknown;
   readonly calmAvatars?: unknown;
   readonly commanderPlacement?: unknown;
+  readonly commanderSort?: unknown;
+  readonly commanderFolds?: unknown;
   readonly lowerUnfocusedFrameRate?: unknown;
   readonly uiFont?: unknown;
   readonly fonts?: unknown;
@@ -648,6 +699,17 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_commander_placement" });
     return;
   }
+  // 정렬·접힘도 잘못된 값을 조용히 기본값으로 접지 않는다 — 형태가 틀리면 400이다.
+  const commanderSort = body.commanderSort === undefined ? undefined : readCommanderSortPreference(body.commanderSort);
+  if (body.commanderSort !== undefined && commanderSort === undefined) {
+    deps.writeJson(res, 400, { error: "invalid_commander_sort" });
+    return;
+  }
+  const commanderFolds = body.commanderFolds === undefined ? undefined : readCommanderFolds(body.commanderFolds);
+  if (body.commanderFolds !== undefined && commanderFolds === undefined) {
+    deps.writeJson(res, 400, { error: "invalid_commander_folds" });
+    return;
+  }
   if (body.lowerUnfocusedFrameRate !== undefined && typeof body.lowerUnfocusedFrameRate !== "boolean") {
     deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
     return;
@@ -707,6 +769,8 @@ async function mutateGlobalSettings(
       ...(typeof body.reduceMotion === "boolean" ? { reduceMotion: body.reduceMotion } : {}),
       ...(typeof body.calmAvatars === "boolean" ? { calmAvatars: body.calmAvatars } : {}),
       ...(body.commanderPlacement === "left" || body.commanderPlacement === "right" ? { commanderPlacement: body.commanderPlacement } : {}),
+      ...(commanderSort !== undefined ? { commanderSort } : {}),
+      ...(commanderFolds !== undefined ? { commanderFolds } : {}),
       ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
       // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
       ...(body.fonts !== undefined ? { fonts: readFontSettings(body.fonts)! } : {}),
@@ -782,6 +846,9 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     calmAvatars: general.calmAvatars ?? false,
     // 키 없음·손상 값은 null이다 — "한 번도 저장된 적 없음"과 명시 저장 "left"를 구분한다.
     commanderPlacement: general.commanderPlacement === "right" ? "right" : general.commanderPlacement === "left" ? "left" : null,
+    // 키 없음·손상 값은 null이다 — "한 번도 저장된 적 없음"과 명시 저장을 구분한다.
+    commanderSort: readCommanderSortPreference(general.commanderSort) ?? null,
+    commanderFolds: readCommanderFolds(general.commanderFolds) ?? null,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     fonts: resolveConsoleFonts(data),

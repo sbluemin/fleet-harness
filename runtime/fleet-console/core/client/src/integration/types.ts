@@ -216,6 +216,22 @@ export { REMOTE_AUTO_PORT_MIN, REMOTE_AUTO_PORT_MAX, REMOTE_PORT_MIN, REMOTE_POR
 export type { RemoteAccessPort, RemoteAccessAcknowledgment, RemoteAccessState, RemoteAccessClass, RemoteAccessLinkSummary, RemoteAccessPairedDevice, RemoteAccessInterface, RemoteAccessStatus, RemoteAccessErrorCode, RemoteEndpointRequirement, RemoteEndpointImpact, RemoteForwardRule, RemoteEndpointPresentation, RemoteAccessLink } from "../../../../features/remote-access/client/contracts.js";
 import type { RemoteAccessState } from "../../../../features/remote-access/client/contracts.js";
 
+export type CommanderSortKey = "activity" | "progress" | "remaining" | "due" | "created" | "name" | "manual";
+
+export interface CommanderSortPreference {
+  readonly key: CommanderSortKey;
+  readonly direction: "asc" | "desc";
+  /** 사람의 답을 기다리는 줄을 정렬과 상관없이 맨 위에 둔다. */
+  readonly answerFirst: boolean;
+  readonly grouped: boolean;
+}
+
+export interface CommanderFolds {
+  readonly fresh: boolean;
+  readonly done: boolean;
+  readonly settled: boolean;
+}
+
 export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
@@ -230,6 +246,10 @@ export interface GlobalSettingsState {
   readonly calmAvatars: boolean;
   /** 지휘관 목록이 서는 사이드바. null은 settings.json에 키 없음(구서버 응답 포함)이다. */
   readonly commanderPlacement: "left" | "right" | null;
+  /** 지휘관 목록 정렬. null은 settings.json에 키 없음(구서버 응답 포함)이다. */
+  readonly commanderSort: CommanderSortPreference | null;
+  /** 시작 전·완료 구역의 접힘. null은 settings.json에 키 없음(구서버 응답 포함)이다. */
+  readonly commanderFolds: CommanderFolds | null;
   readonly lowerUnfocusedFrameRate: boolean;
   readonly uiFont: UiFontSettings;
   readonly fonts: ConsoleFontSettings;

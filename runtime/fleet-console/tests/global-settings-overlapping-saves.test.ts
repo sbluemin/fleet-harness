@@ -26,6 +26,8 @@ const BASE: GlobalSettingsState = {
   reduceMotion: false,
   calmAvatars: false,
   commanderPlacement: "left",
+  commanderSort: null,
+  commanderFolds: null,
   lowerUnfocusedFrameRate: true,
   shortcuts: {},
   fonts: DEFAULT_FONTS,
