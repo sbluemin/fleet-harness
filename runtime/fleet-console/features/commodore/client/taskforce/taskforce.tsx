@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../../workspace/shared/conversation-surfaces.js";
 import type { ConversationParticipant, ConversationSpeaker } from "../../../execution/shared/conversation/types.js";
 import type { AgentConversationEntry, AgentConversationProps } from "../../../execution/shared/chat-renderer.js";
-import { MAX_TASKFORCE_MEMBERS, MAX_TASKFORCE_NAME, MAX_TASKFORCE_TEXT, MAX_TASKFORCE_TOPIC, TASKFORCE_ROUTE_NAMES, type TaskforceAction, type TaskforceLedgerEntry, type TaskforceState } from "../../shared/contracts/taskforce.js";
+import { MAX_TASKFORCE_MEMBERS, MAX_TASKFORCE_NAME, MAX_TASKFORCE_TOPIC, MAX_TASKFORCE_IMAGES, MAX_TASKFORCE_IMAGE_BYTES, TASKFORCE_ROUTE_NAMES, type TaskforceAction, type TaskforceLedgerEntry } from "../../shared/contracts/taskforce.js";
 import { commodoreAvatarKey } from "../../../workspace/shared/avatars.js";
 import { mongleBase } from "../../../workspace/shared/avatars.js";
 import { useAvatarBook, resolveMongleLook, useMongleLook } from "../../../workspace/client/avatar-events.js";
@@ -14,6 +14,7 @@ import { actionWord } from "../commodore-chat.js";
 import { getT as getCommodoreT } from "../i18n/index.js";
 import { commodoreSectionLabel, readCommodoreList, subscribeCommodoreList, useCommodoreList } from "../commodore-list.js";
 import { openCommodoreConversation } from "../commodore-conversation.js";
+import { attachToCommodoreComposer, CommodoreComposer } from "../commodore-inbox-section.js";
 import { commodoreConversationRenderer } from "../commodore-state.js";
 import { openReferencedObjective } from "../commodore-reference-input.js";
 import { taskforceT } from "./i18n.js";
@@ -36,6 +37,37 @@ export function openTaskforce(id: string): void {
   if (!conversation?.open(SURFACE, { taskforceId: id })) { mobileId = id; emit(); }
   void loadTaskforce(id);
 }
+/**
+ * 공용 컴포저(사령관 입력창)의 TF 첨부 포트 — 사령관 채팅과 같은 붙여넣기·드롭·첨부 버튼 길로 들어와 post 때 base64로 실린다.
+ * 저장 위치·크기 제한은 사령관 채팅의 기존 규칙을 재사용한다: 한 번에 4장, 장당 8 MiB, png/jpeg/gif/webp.
+ */
+const TF_ALLOWED_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const taskforceImagePayloads = new Map<string, { readonly name: string; readonly mime: string; readonly dataBase64: string }>();
+const fileToBase64 = (file: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const url = typeof reader.result === "string" ? reader.result : "";
+    const comma = url.indexOf(",");
+    if (!comma) { reject(new Error("attachment_failed")); return; }
+    resolve(url.slice(comma + 1));
+  };
+  reader.onerror = () => reject(new Error("attachment_failed"));
+  reader.readAsDataURL(file);
+});
+const taskforceAttachmentPort = () => ({
+  upload: async (file: Blob) => {
+    const mime = file.type;
+    if (!TF_ALLOWED_MIMES.has(mime)) throw new Error("attachment_unsupported");
+    if (file.size > MAX_TASKFORCE_IMAGE_BYTES) throw new Error("attachment_too_large");
+    const dataBase64 = await fileToBase64(file);
+    if (dataBase64.length > 16 * 1024 * 1024) throw new Error("attachment_too_large");
+    const id = crypto.randomUUID();
+    const name = file instanceof File && file.name.trim() ? file.name : "pasted image";
+    taskforceImagePayloads.set(id, { name, mime, dataBase64 });
+    return { id };
+  },
+  discard: async (id: string) => { taskforceImagePayloads.delete(id); },
+});
 const memberName = (id: string, language: string) => {
   const row = readCommodoreList().find((row) => row.commodoreId === id);
   return row ? commodoreSectionLabel(row, language === "ko" ? "사령관" : "Commodore") : language === "ko" ? "사령관" : "Commodore";
@@ -192,27 +224,24 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
     const owner = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
     return { ...(entry.mentions.length ? { body: <MentionText entry={entry} language={language} /> } : {}), ...(actions.length ? { footer: <TaskforceActions actions={actions} {...(owner ? { commodoreId: owner } : {})} language={language} /> } : {}) };
   };
-  const cards = <>{state?.status === "open" && judging.length ? <div className="taskforce-judging" role="status"><span className="taskforce-judging-avatars">{judging.map((id) => <CommodoreAvatar key={id} commodoreId={id} state="running" size={22} label="" decorative />)}</span><span>{t("taskforce.judging", { names: judging.map((id) => memberName(id, language)).join("·") })}</span><span className="taskforce-typing" aria-hidden="true">•••</span></div> : null}
-    {state?.status === "open" && state.chain.paused ? <div className="taskforce-paused"><span aria-hidden="true">Ⅱ</span><div><strong>{t("taskforce.paused", { n: state.chain.count })}</strong><small>{t("taskforce.pausedHint")}</small></div><span><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("continue")}>{t("taskforce.continue")}</button><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => void run("close")}>{t("taskforce.close")}</button></span></div> : null}</>;
+  const cards = <>{state?.status === "open" && state.chain.paused ? <div className="taskforce-paused"><span aria-hidden="true">Ⅱ</span><div><strong>{t("taskforce.paused", { n: state.chain.count })}</strong><small>{t("taskforce.pausedHint")}</small></div><span><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("continue")}>{t("taskforce.continue")}</button><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => void run("close")}>{t("taskforce.close")}</button></span></div> : null}</>;
+  // 판단 중 표시는 사령관 1:1 채팅과 같은 자리·형태(대화 독의 working 줄)로 낸다. 별도 cards 줄을 세우지 않는다.
+  const working = useMemo(() => judging.map((member) => speaker(member)), [judging, book, language, state?.members]);
+  const port = useMemo(() => taskforceAttachmentPort(), [id]);
+  const composerT = getCommodoreT(language);
   const composer = <div className="taskforce-foot">{failure || snapshot.error ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} {snapshot.error ? <button type="button" className="taskforce-link" onClick={() => void loadTaskforce(id)}>{t("taskforce.retry")}</button> : null}</p> : null}
-    {state?.status === "closed" ? <div className="taskforce-closed"><span>{t("taskforce.closedNote")}</span><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => void run("reopen")}>{t("taskforce.reopen")}</button></div> : state ? <TaskforceComposer key={id} state={state} language={language} /> : null}</div>;
-  return <div className="taskforce-conversation">{Conversation ? <Conversation entries={items} participants={participants} working={[]} language={language} accessibleNames={{ log: t("taskforce.aria.log"), composer: t("taskforce.aria.composer") }} loading={!snapshot.loaded && !snapshot.error} empty={snapshot.error ? t("taskforce.failed") : t("taskforce.empty")} messageContent={messageContent} openBoardAction={{ label: t("taskforce.openNotice"), open: (entry) => { if (entry.speaker.commodoreId) openReferencedObjective(entry.speaker.commodoreId, entry.objectiveId); } }} older={snapshot.hasMore ? { label: t("taskforce.older"), loading: older, load: () => { setOlder(true); void loadTaskforce(id, true).finally(() => setOlder(false)); } } : null} cards={cards} composer={composer} /> : <>{t("taskforce.loading")}{composer}</>}</div>;
-}
-
-function TaskforceComposer({ state, language }: { readonly state: TaskforceState; readonly language: string }) {
-  const t = taskforceT(language);
-  const [text, setText] = useState(""); const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false); const [picking, setPicking] = useState(false);
-  const input = useRef<HTMLTextAreaElement>(null);
-  const submit = async () => {
-    if (busy || !text.trim()) return;
-    const sent = text; setBusy(true); setFailed(false);
-    const mentions = state.members.filter((id) => sent.includes(`@${memberName(id, language)}`));
-    try { await mutateTaskforce("post", { taskforceId: state.id, text: sent.trim(), mentions }); setText((current) => current === sent ? "" : current); }
-    catch { setFailed(true); } finally { setBusy(false); input.current?.focus(); }
-  };
-  return <><div className="taskforce-composer-wrap">{picking ? <div className="taskforce-mention-picker">{state.members.map((id) => <MemberChip key={id} id={id} language={language} onClick={() => { setText((text) => `${text}${text && !/\s$/.test(text) ? " " : ""}@${memberName(id, language)} `); setPicking(false); input.current?.focus(); }} />)}</div> : null}<form className="taskforce-composer" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-    <button type="button" className="taskforce-mention-button" aria-label={t("taskforce.mention")} aria-expanded={picking} onClick={() => setPicking(!picking)}>@</button><textarea ref={input} rows={1} maxLength={MAX_TASKFORCE_TEXT} value={text} placeholder={t("taskforce.placeholder")} aria-label={t("taskforce.aria.composer")} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } if (event.key === "Escape") setPicking(false); }} /><button type="submit" className="taskforce-send" aria-label={t("taskforce.send")} disabled={busy || !text.trim()}>↑</button>
-  </form></div><p className="taskforce-hint">{t("taskforce.judgements", { n: state.members.length })}</p>{failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}</>;
+    {state?.status === "closed" ? <div className="taskforce-closed"><span>{t("taskforce.closedNote")}</span><button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => void run("reopen")}>{t("taskforce.reopen")}</button></div> : state ? <CommodoreComposer t={composerT} theaterId={state.id} active={state.status === "open"} placeholder={t("taskforce.placeholder")} allowedCommodoreIds={state.members} attachmentPort={port} attachmentLimits={{ max: MAX_TASKFORCE_IMAGES, bytes: MAX_TASKFORCE_IMAGE_BYTES }} sender={async ({ text, attachmentIds, references }) => {
+      const mentions = references.flatMap((reference) => typeof reference === "string" ? [] : reference.kind === "commodore" && state.members.includes(reference.id) ? [reference.id] : []);
+      const images = attachmentIds.flatMap((imageId) => {
+        const payload = taskforceImagePayloads.get(imageId);
+        return payload ? [{ name: payload.name, mime: payload.mime as "image/png" | "image/jpeg" | "image/gif" | "image/webp", dataBase64: payload.dataBase64 }] : [];
+      });
+      try {
+        await mutateTaskforce("post", { taskforceId: state.id, text, ...(mentions.length ? { mentions } : {}), ...(images.length ? { images } : {}) });
+        for (const imageId of attachmentIds) taskforceImagePayloads.delete(imageId);
+      } catch (error) { throw error; }
+    }} onFail={() => setFailure(true)} onClear={() => setFailure(false)} /> : null}</div>;
+  return <div className="taskforce-conversation">{Conversation ? <Conversation entries={items} participants={participants} working={working} language={language} accessibleNames={{ log: t("taskforce.aria.log"), composer: t("taskforce.aria.composer") }} loading={!snapshot.loaded && !snapshot.error} empty={snapshot.error ? t("taskforce.failed") : t("taskforce.empty")} messageContent={messageContent} openBoardAction={{ label: t("taskforce.openNotice"), open: (entry) => { if (entry.speaker.commodoreId) openReferencedObjective(entry.speaker.commodoreId, entry.objectiveId); } }} older={snapshot.hasMore ? { label: t("taskforce.older"), loading: older, load: () => { setOlder(true); void loadTaskforce(id, true).finally(() => setOlder(false)); } } : null} cards={cards} composer={composer} composerTopEntries /> : <>{t("taskforce.loading")}{composer}</>}</div>;
 }
 
 type Tab = "overview" | "members" | "actions";
@@ -257,6 +286,12 @@ export const taskforceConversationSurface: ConversationSurfaceDescriptor = {
   rename: (ctx) => (name) => { void mutateTaskforce("update", { taskforceId: idOf(ctx.params), name: name.slice(0, MAX_TASKFORCE_NAME) }).catch(() => {}); },
   render: (ctx) => <TaskforceBody key={idOf(ctx.params)} id={idOf(ctx.params)} language={ctx.language} />,
   opensWithoutTheater: true,
+  // 플릿 브라우저의 주석·스크린샷은 이 TF의 공용 입력창에 붙는다 — 사령관 대화와 같은 수신함 길이다.
+  sessionBrowser: (ctx) => {
+    const taskforceId = idOf(ctx.params);
+    if (!taskforceId) return null;
+    return { scopeId: `taskforce:${taskforceId}`, attach: (files: readonly File[]) => attachToCommodoreComposer(taskforceId, files) };
+  },
   tabs: (["overview", "members", "actions"] as const).map((tab) => ({ id: `taskforce-${tab}`, title: (language: "ko" | "en") => taskforceT(language)(`taskforce.${tab}`), defaultWidth: 310, render: (ctx) => <TaskforceDetails key={idOf(ctx.params)} id={idOf(ctx.params)} tab={tab} language={ctx.language} /> })),
   defaultTab: "taskforce-overview",
 };

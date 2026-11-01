@@ -11,7 +11,7 @@ import { ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerNotice,
 import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "../../execution/client/composer-primitives/quote-tray.js";
 import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes } from "../../execution/client/composer-primitives/quotes.js";
 import { composerAttachmentNoticeText, composerT } from "../../execution/client/composer-primitives/messages.js";
-import { createComposerAttachments } from "../../execution/client/composer-primitives/attachment-store.js";
+import { createComposerAttachments, type ComposerAttachmentLimits, type ComposerAttachmentPort } from "../../execution/client/composer-primitives/attachment-store.js";
 import { isComposerAttachmentCandidate } from "../../execution/client/composer-primitives/attachments.js";
 import { useComposerAttachmentSnapshot } from "../../execution/client/composer-primitives/attachment-input.js";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
@@ -679,11 +679,11 @@ interface CommodoreComposerDraft {
 
 /** 플러그인 내부 페이지 메모리 — Inbox 시트와 대화 화면은 Theater별 사령관 초안 하나를 읽는다. */
 const commodoreDrafts = new Map<string, ReturnType<typeof createCommodoreDraft>>();
-function createCommodoreDraft() {
+function createCommodoreDraft(port?: ComposerAttachmentPort, limits?: ComposerAttachmentLimits) {
   const attachments = createComposerAttachments({
-    upload: (file) => uploadCommodoreAttachment(file),
-    discard: (id) => discardCommodoreAttachment(id),
-  });
+    upload: (file) => (port ? port.upload(file) : uploadCommodoreAttachment(file)),
+    discard: (id) => (port ? port.discard(id) : discardCommodoreAttachment(id)),
+  }, limits);
   let current: CommodoreComposerDraft = { text: "", references: [], textRevision: 0, sending: false, budgetNotice: null };
   const listeners = new Set<() => void>();
   return {
@@ -698,9 +698,9 @@ function createCommodoreDraft() {
     },
   };
 }
-function commodoreDraft(theaterId: string) {
+function commodoreDraft(theaterId: string, port?: ComposerAttachmentPort, limits?: ComposerAttachmentLimits) {
   let draft = commodoreDrafts.get(theaterId);
-  if (!draft) { draft = createCommodoreDraft(); commodoreDrafts.set(theaterId, draft); }
+  if (!draft) { draft = createCommodoreDraft(port, limits); commodoreDrafts.set(theaterId, draft); }
   return draft;
 }
 
@@ -755,6 +755,11 @@ interface CommodoreComposerProps {
   readonly placeholder?: string;
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
+  /** TaskForce 등 사령관 1:1이 아닌 표면이 공용 캡슐을 그대로 쓸 때의 확장점. 없으면 기존 사령관 길이다. */
+  readonly allowedCommodoreIds?: readonly string[];
+  readonly attachmentPort?: ComposerAttachmentPort;
+  readonly attachmentLimits?: ComposerAttachmentLimits;
+  readonly sender?: (input: { readonly text: string; readonly attachmentIds: readonly string[]; readonly references: readonly (string | { readonly kind: "commodore"; readonly id: string })[] }) => Promise<void>;
 }
 
 /** 터치 기기의 화면 키보드에서는 Enter 가 줄바꿈이다 — 보내기는 원으로 한다. 하드웨어 키보드(정밀 포인터)는 Enter 로 보낸다. */
@@ -770,10 +775,10 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender }: CommodoreComposerProps) {
   const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
-  const draft = commodoreDraft(theaterId);
+  const draft = commodoreDraft(theaterId, attachmentPort, attachmentLimits);
   const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;
@@ -876,8 +881,10 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
       images: sentItems.map((item) => ({ key: item.key, name: item.name, url: item.previewUrl })),
     });
     const ids = draft.attachments.ids();
+    const references = sent.references.map((reference) => reference.kind === "commodore" ? { kind: "commodore" as const, id: reference.id } : reference.id);
     // 실패하면 쓴 말과 이미지는 남는다 — 입력창 위 안내 줄이 이유를 말한다. 만료만 칩을 걷는다.
-    void messageCommodore(theaterId, message, ids, sent.references.map((reference) => reference.kind === "commodore" ? { kind: "commodore" as const, id: reference.id } : reference.id)).then(() => finishSentDraft(sentKeys, sent.textRevision, false, sentQuotes.map((quote) => quote.key))).catch((error) => {
+    const deliver = sender ? sender({ text: message, attachmentIds: ids, references }) : messageCommodore(theaterId, message, ids, references);
+    void deliver.then(() => finishSentDraft(sentKeys, sent.textRevision, false, sentQuotes.map((quote) => quote.key))).catch((error) => {
       if (draft.attachments.noteSendFailure(error, ids) === "expired") return;
       if (error instanceof Error && error.message === "attachment_budget_exceeded") setBudgetNotice(ct("composer.attach.commodoreBudget"));
       else if (mounted.current) onFail(error);
@@ -912,6 +919,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
         t={t}
         theaterId={theaterId}
         {...(phone ? { phone: true } : {})}
+        {...(allowedCommodoreIds ? { allowedCommodoreIds } : {})}
         className="fc-composer-input objectives-commodore-composer-input"
         value={value}
         disabled={clear.busy || sending || (phone ? !usable : false)}
