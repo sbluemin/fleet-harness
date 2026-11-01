@@ -971,7 +971,7 @@
 
 .mobile-sheet-body { display: flex; flex: 1; flex-direction: column; gap: 10px; min-height: 0; padding: 0 16px; overflow-y: auto; scrollbar-width: none; }
 .mobile-sheet-body::-webkit-scrollbar { display: none; }
-.mobile-sheet-foot { display: flex; flex: none; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 16px var(--m-safe-bottom, 0px); }
+.mobile-sheet-foot { display: flex; flex: none; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 16px 0; }
 
 .mobile-sheet-row {
   display: flex;
