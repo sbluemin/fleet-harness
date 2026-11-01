@@ -2420,7 +2420,7 @@ describe("Console core design contract", () => {
     // 호출부가 트리거 글자색을 자기 채널로 넘겨받는 유일한 통로 — 미설정이면 기본 티어를 그대로 쓴다.
     expect(selectBlock).toContain("color: var(--fc-select-compact-tone, var(--text-secondary));");
     expect(selectBlock).toContain("padding: 7px 16px 7px 10px;");
-    expect(selectBlock).toContain("min-width: max-content;");
+    expect(selectBlock).toContain("min-width: fit-content;");
     expect(selectBlock).toContain(".fc-select__popup--compact > .fc-select__option { min-width: calc(min(160px, calc(100vw - 16px)) - 2 * var(--popover-pad)); }");
     expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
 

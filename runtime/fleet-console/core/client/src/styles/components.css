@@ -9318,14 +9318,14 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-select__trigger[aria-expanded="true"] .fc-select__caret { transform: rotate(180deg); }
 .fc-select__popup {
   position: absolute; z-index: var(--z-select-popover); inset-inline: 0; top: calc(100% + 6px);
-  margin: 0; padding: var(--popover-pad);
+  margin: 0; margin-right: var(--space-2); padding: var(--popover-pad);
   --focus-face: inset 0 0 0 100vmax var(--wash-hover); list-style: none;
   display: flex; flex-direction: column; gap: var(--popover-list-gap);
   /* 공통 팝업 표면(theme.css --popover-*). 행은 목록형 32px, 고른 행은 중립 워시 + 본문색 체크다. */
   background: var(--popover-face);
   border: 0; border-radius: var(--popover-radius);
   box-shadow: var(--popover-surface-shadow);
-  min-width: max-content;
+  min-width: fit-content;
   max-height: 244px; overflow-y: auto;
   opacity: 0; transform: translateY(-4px); pointer-events: none;
   transition: opacity var(--duration-fast) var(--ease-glide), transform var(--duration-fast) var(--ease-glide);
@@ -9336,7 +9336,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   display: flex; align-items: center; justify-content: space-between; gap: var(--popover-row-gap);
   min-height: var(--popover-row); padding: 0 var(--popover-row-inline); border-radius: var(--popover-row-radius);
   color: var(--text-primary); font-weight: var(--weight-regular); font-size: var(--popover-font-size);
-  line-height: var(--popover-line-height); white-space: nowrap;
+  line-height: var(--popover-line-height);
   letter-spacing: 0;  font-family: var(--font-ui); cursor: pointer;
   transition: background var(--duration-fast) var(--ease-glide);
 }
