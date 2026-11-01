@@ -965,7 +965,7 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
       >
         <CommodoreSectionMoveMenu rowId={theater.id} controller={sections} onClose={onClose} />
         <div className="theater-menu-divider" aria-hidden="true" />
-        {/* 사령관 별칭 — 머리 자리에서 바로 편집한다(F2·이름 더블클릭도 같다). 원래 이름은 머리 둘째 줄에 남는다. */}
+        {/* 사령관 별칭 — 사이드바 줄 자리에서 바로 편집한다(F2·이름 더블클릭도 같다). */}
         <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={onEditAlias}>
           <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
           <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
