@@ -42,7 +42,8 @@ const GLANCE_FOCUSABLE_SELECTOR = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
-interface GlancePalette {
+// 태스크포스 소개 카드가 같은 무대 문법을 쓴다 — 복제하지 않고 이 키트·팔레트를 공유한다.
+export interface GlancePalette {
   readonly ink: string;
   readonly ink2: string;
   readonly ink3: string;
@@ -71,7 +72,7 @@ interface GlanceTagStyle {
   readonly line?: string;
 }
 
-interface GlanceKit {
+export interface GlanceKit {
   readonly ctx: CanvasRenderingContext2D;
   glow(x: number, y: number, r: number, color: string, a?: number): void;
   dot(x: number, y: number, r: number, color: string, a?: number): void;
@@ -102,7 +103,7 @@ const ellPoint = (cx: number, cy: number, rx: number, ry: number, ang: number): 
   cy + ry * Math.sin(ang),
 ];
 
-function readGlancePalette(): GlancePalette {
+export function readGlancePalette(): GlancePalette {
   const cs = getComputedStyle(document.documentElement);
   const v = (name: string): string => cs.getPropertyValue(name).trim();
   return {
@@ -119,7 +120,7 @@ function readGlancePalette(): GlancePalette {
   };
 }
 
-function makeGlanceKit(ctx: CanvasRenderingContext2D, c: GlancePalette): GlanceKit {
+export function makeGlanceKit(ctx: CanvasRenderingContext2D, c: GlancePalette): GlanceKit {
   const W = GLANCE_WIDTH;
   const H = GLANCE_HEIGHT;
   return {
