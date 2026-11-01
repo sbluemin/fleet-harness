@@ -23,7 +23,7 @@ import { openReferencedObjective } from "../commodore-reference-input.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../../shared/contracts/attachment-budget.js";
 import { CONVERSATION_REFERENCE_MARK } from "../../../execution/shared/conversation/references.js";
 import { taskforceT } from "./i18n.js";
-import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, readTaskforces, subscribeTaskforces, useTaskforce, useTaskforces, wasTaskforceRemoved } from "./state.js";
+import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, readTaskforceExperiment, readTaskforces, subscribeTaskforces, useTaskforce, useTaskforceExperiment, useTaskforces, wasTaskforceRemoved } from "./state.js";
 import "./taskforce.css";
 
 const SURFACE = "taskforce";
@@ -39,7 +39,12 @@ export function connectTaskforceConversation(port: ClientConversationCapability 
   conversation = port;
   return () => { if (conversation === port) conversation = undefined; };
 }
-export function requestTaskforceCreate(preselected?: string): void { createRequest = { ...(preselected ? { preselected } : {}) }; emit(); }
+export function requestTaskforceCreate(preselected?: string): void {
+  // 실험이 꺼져 있으면 만들지 않는다 — 보이는 입구는 숨고, 남은 요청 경로는 여기서 막힌다.
+  const experiment = readTaskforceExperiment();
+  if (experiment.known && !experiment.enabled) return;
+  createRequest = { ...(preselected ? { preselected } : {}) }; emit();
+}
 export function openTaskforce(id: string): void {
   if (!conversation?.open(SURFACE, { taskforceId: id })) { mobileId = id; emit(); }
   void loadTaskforce(id);
@@ -186,10 +191,20 @@ export function TaskforceHost() {
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const rows = useTaskforces();
   const selection = useConversationSurface();
+  const experiment = useTaskforceExperiment();
   useEffect(() => {
     if (selection?.surfaceId === SURFACE && wasTaskforceRemoved(idOf(selection.params))) conversation?.close(SURFACE);
     if (mobile && wasTaskforceRemoved(mobile)) { mobileId = null; emit(); }
   }, [rows, selection, mobile]);
+  // 실험이 꺼지면 열려 있던 TF 대화·화면을 닫는다. 저장된 TF와 읽음 커서는 그대로 둔다.
+  useEffect(() => {
+    if (!experiment.known || experiment.enabled) return;
+    createRequest = null;
+    if (selection?.surfaceId === SURFACE) conversation?.close(SURFACE);
+    if (mobileId) { mobileId = null; }
+    emit();
+  }, [experiment.known, experiment.enabled, selection]);
+  if (!experiment.enabled && experiment.known) return null;
   return <>{request ? <CreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{mobile ? <div className="taskforce-mobile-screen"><header><button type="button" className="fc-btn fc-btn--secondary" onClick={() => { mobileId = null; emit(); }}>{taskforceT(language)("taskforce.closeDialog")}</button><strong>{readTaskforce(mobile).state?.name}</strong></header><TaskforceBody key={mobile} id={mobile} language={language} /><TaskforceDetails id={mobile} tab="overview" language={language} /></div> : null}</>;
 }
 
@@ -308,7 +323,8 @@ export const taskforceConversationSurface: ConversationSurfaceDescriptor = {
   mark: () => <CurrentStack />,
   subscribe: (listener) => { const off = subscribeTaskforces(listener); const offList = subscribeCommodoreList(listener); return () => { off(); offList(); }; },
   rename: (ctx) => (name) => { void mutateTaskforce("update", { taskforceId: idOf(ctx.params), name: name.slice(0, MAX_TASKFORCE_NAME) }).catch(() => {}); },
-  render: (ctx) => <TaskforceBody key={idOf(ctx.params)} id={idOf(ctx.params)} language={ctx.language} />,
+  // 실험이 꺼져 있으면 대화 본문을 세우지 않는다 — 열려 있던 대화는 TaskforceHost가 닫는다.
+  render: (ctx) => { const experiment = readTaskforceExperiment(); if (experiment.known && !experiment.enabled) return null; return <TaskforceBody key={idOf(ctx.params)} id={idOf(ctx.params)} language={ctx.language} />; },
   opensWithoutTheater: true,
   // 플릿 브라우저의 주석·스크린샷은 이 TF의 공용 입력창에 붙는다 — 사령관 대화와 같은 수신함 길이다.
   sessionBrowser: (ctx) => {

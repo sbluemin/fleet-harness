@@ -114,6 +114,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     consoleDataDir: deps.paths.consoleDataDir, events: deps.events, http: deps.http, security: deps.security,
     isKnownCommodore: (id) => entities.ids().includes(id),
     onDeleted: forgetTaskforceRow,
+    // TF는 옵트인 실험이다 — 꺼져 있으면 경로가 거절되고 깨움·판단·도구가 쉰다(데이터는 보존).
+    isEnabled: () => { try { return deps.experiments?.read().taskforce === true; } catch { return false; } },
   });
   selectedPlugins = () => entities.ids().flatMap((id) => store.read(id)?.plugins ?? []);
   const createFromCommodore = createCommodoreCreator({ ownership, store, ...(deps.created ? { created: deps.created } : {}) });

@@ -27,6 +27,18 @@ let refreshFlight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 const flights = new Map<string, Promise<void>>();
 const emit = () => { version += 1; for (const listener of listeners) listener(); };
+/** TF 실험 — 사령관 실험 위에서 돌아가는 옵트인이다. 읽기 전에는 꺼져 있는 것으로 다룬다. */
+let taskforceEnabledSnapshot = false;
+let taskforceExperimentsKnown = false;
+const readTaskforceEnabled = () => deps?.experiments.read()?.taskforce === true;
+const readTaskforceExperimentsKnown = () => (deps?.experiments.read() ?? null) !== null;
+export function readTaskforceExperiment(): { readonly known: boolean; readonly enabled: boolean } {
+  return !taskforceExperimentsKnown ? { known: false, enabled: false } : { known: true, enabled: taskforceEnabledSnapshot };
+}
+/** TF가 켜져 있는가 — 꺼져 있으면 사이드바 행·만들기 입구가 숨고 판단이 멈춘다. */
+export function useTaskforceExperiment(): { readonly known: boolean; readonly enabled: boolean } {
+  return useSyncExternalStore(subscribeTaskforces, readTaskforceExperiment, readTaskforceExperiment);
+}
 export const subscribeTaskforces = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const readTaskforces = () => summaries;
 export const wasTaskforceRemoved = (id: string) => removed.has(id);
@@ -167,7 +179,20 @@ function forgetTaskforce(id: string): void {
 
 export function installTaskforces(next: CommodoreClientDeps): () => void {
   deps = next;
+  taskforceEnabledSnapshot = readTaskforceEnabled();
+  taskforceExperimentsKnown = readTaskforceExperimentsKnown();
   void refreshTaskforces().catch(() => {});
+  const offExperiments = next.experiments.subscribe(() => {
+    const enabled = readTaskforceEnabled();
+    const known = readTaskforceExperimentsKnown();
+    if (enabled === taskforceEnabledSnapshot && known === taskforceExperimentsKnown) return;
+    const was = taskforceEnabledSnapshot;
+    taskforceEnabledSnapshot = enabled;
+    taskforceExperimentsKnown = known;
+    // 다시 켜면 저장된 TF가 그대로 이어진다 — 목록을 다시 읽는다.
+    if (!was && enabled) void refreshTaskforces().catch(() => {});
+    emit();
+  });
   const off = next.consoleEvents.subscribe("commodore", (payload) => {
     const event = payload as TaskforceEvent | null;
     if (!event?.op?.startsWith("taskforce-")) return;
@@ -186,5 +211,5 @@ export function installTaskforces(next: CommodoreClientDeps): () => void {
     emit();
     void refreshTaskforces().catch(() => {});
   });
-  return () => { off(); offReconnect?.(); if (deps === next) deps = null; snapshots.clear(); summaries = []; removed.clear(); flights.clear(); refreshFlight = null; emit(); };
+  return () => { off(); offReconnect?.(); offExperiments(); if (deps === next) deps = null; snapshots.clear(); summaries = []; removed.clear(); flights.clear(); refreshFlight = null; taskforceEnabledSnapshot = false; taskforceExperimentsKnown = false; emit(); };
 }

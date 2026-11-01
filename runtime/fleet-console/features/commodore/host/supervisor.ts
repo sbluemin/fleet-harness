@@ -283,6 +283,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return messages.map((message) => message.seq);
   };
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
+  /** TF 실험이 켜져 있는가 — 꺼져 있으면 TF 깨움·판단 블록·도구를 쉬고 데이터는 그대로 둔다. */
+  const tfEnabled = () => deps.taskforce !== undefined && settings().taskforce === true;
   const canRun = (commodoreId: string) => !deps.isDeleting?.(commodoreId) && settings().commodore && deps.store.read(commodoreId) !== null && deps.cwd(commodoreId) !== null && deps.board() !== null;
   const resolveLanguage = (commodoreId: string): "en" | "ko" => deps.store.read(commodoreId)?.language ?? deps.board()?.language?.(commodoreId) ?? "en";
   /** 실행 좌표 — Theater 좌표, 없으면 고정 기본값(Opus/High)을 로스터(`agent` 대상)에 대조한다. 턴마다 다시 푼다. */
@@ -396,7 +398,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       boardTools: boardTools(runner), hasPersonMessage: hasPersonMessage(runner), now,
       onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
-      ...(deps.taskforce ? { taskforce: deps.taskforce } : {}),
+      ...(tfEnabled() ? { taskforce: deps.taskforce! } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },
       onLive: (live) => deps.emit({ op: "live", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), live }),
       onInput: ({ id, state }) => {
@@ -498,8 +500,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   /** 속한 TF — 판단 블록과 재기동 재실음의 범위다. */
   const memberTaskforces = (commodoreId: string): readonly { readonly id: string; readonly name: string; readonly topic: string; readonly members: readonly string[] }[] => {
-    if (!deps.taskforce) return [];
-    try { return deps.taskforce.list().filter((tf) => tf.members.includes(commodoreId)); }
+    if (!tfEnabled()) return [];
+    try { return deps.taskforce!.list().filter((tf) => tf.members.includes(commodoreId)); }
     catch { return []; }
   };
 
@@ -589,10 +591,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const tfWatermark = new Map<string, number>();
     const tfTakeSeqs = new Map<string, number[]>();
     const tfContextSeqs = new Map<string, number[]>();
-    if (deps.taskforce) {
+    const taskforce = tfEnabled() ? deps.taskforce : undefined;
+    if (taskforce) {
       for (const tf of memberTaskforces(commodoreId)) {
         let state: TaskforceState | null = null;
-        try { state = deps.taskforce.read(tf.id); } catch { continue; }
+        try { state = taskforce.read(tf.id); } catch { continue; }
         if (!state) continue;
         const watermark = state.readSeq[commodoreId] ?? 0;
         tfWatermark.set(tf.id, watermark);
@@ -600,7 +603,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         // 멈춤 TF는 읽은 이력만 보여 준다 — 사람의 말·continue가 열 때까지 새 판단은 하지 않는다.
         if (!state.chain.paused) {
           let pendingEntries: readonly TaskforceLedgerEntry[] = [];
-          try { pendingEntries = deps.taskforce.pending(tf.id, commodoreId); } catch { continue; }
+          try { pendingEntries = taskforce.pending(tf.id, commodoreId); } catch { continue; }
           for (const entry of pendingEntries) {
             let line = tfEntryLine(entry);
             if (tfChars + line.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
@@ -610,7 +613,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
             if (entryBytes <= MAX_COMMODORE_MESSAGE_IMAGE_BYTES) {
               if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) break;
               const loaded = (entry.images ?? []).map((image) => {
-                const found = deps.taskforce!.readImage(tf.id, entry.seq, image.id);
+                const found = taskforce.readImage(tf.id, entry.seq, image.id);
                 if (!found) throw new Error("attachment_not_found");
                 return found;
               });
@@ -641,8 +644,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const history: string[] = [];
         const historySeqs: number[] = [];
         // 새 세션만 TF별 최근 20항목, 턴 전체 8,000자. 오래된 쪽부터 버리고 경계 항목을 자른다.
-        if (freshSession) try {
-          const page = deps.taskforce!.readLedger(id, { limit: 20, before: watermark + 1 });
+        // 블록이 있을 때만 돈다 — 실험이 꺼져 있으면 블록이 비어 여기는 닿지 않는다.
+        if (freshSession && deps.taskforce) try {
+          const page = deps.taskforce.readLedger(id, { limit: 20, before: watermark + 1 });
           for (const entry of [...page.entries].reverse()) {
             const remaining = 8000 - historyChars;
             const marker = " …[history truncated]";

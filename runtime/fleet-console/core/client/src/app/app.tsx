@@ -26,7 +26,7 @@ import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
 import { bindExpandedSurfaceCloseNotifier, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
-import { useGlobalSettingsStore } from "../../../../features/settings/client/global-settings-store.js";
+import { getGlobalSettingsStoreState, useGlobalSettingsStore } from "../../../../features/settings/client/global-settings-store.js";
 import { hydrateUpdateProgress, useUpdateProgress } from "../../../../features/updates/client/update-progress-store.js";
 import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "../integration/global-shortcuts.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -461,6 +461,7 @@ function ConnectedApp() {
         return true;
       },
       openTaskforce: () => {
+        if (getGlobalSettingsStoreState().state?.experiments.taskforce !== true) return false;
         if (!objectiveRecordsViewVisibleRef.current) navigate("/objectives");
         requestTaskforceCreate();
         return true;

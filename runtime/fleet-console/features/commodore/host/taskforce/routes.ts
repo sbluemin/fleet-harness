@@ -44,6 +44,8 @@ export interface TaskforceRouteHooks {
   readonly isKnownCommodore?: (commodoreId: string) => boolean;
   /** TF가 지워진 뒤 부르는 조합의 뒷정리 — 사이드바 순서·섹션 소속에서 id를 뺀다. */
   readonly onDeleted?: (taskforceId: string) => void;
+  /** TF 실험이 켜져 있는가 — 꺼져 있으면 모든 TF 경로를 거절한다(데이터는 지우지 않는다). */
+  readonly isEnabled?: () => boolean;
 }
 
 export function createTaskforceRoutes(
@@ -54,6 +56,7 @@ export function createTaskforceRoutes(
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (hooks.isEnabled && !hooks.isEnabled()) { ctx.host.http.writeJson(res, 404, { error: "taskforce_unavailable" }); return true; }
     const body = await ctx.host.http.readJsonBody<unknown>(req);
     const parsed = schema.safeParse(body ?? {});
     if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
@@ -90,6 +93,7 @@ export function createTaskforceRoutes(
   const image: RouteHandler = ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (hooks.isEnabled && !hooks.isEnabled()) { ctx.host.http.writeJson(res, 404, { error: "taskforce_unavailable" }); return true; }
     const parsed = taskforceImageQuerySchema.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
     if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     const { taskforceId, seq, imageId } = parsed.data;

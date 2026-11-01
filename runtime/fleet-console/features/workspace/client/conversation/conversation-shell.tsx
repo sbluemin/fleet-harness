@@ -54,6 +54,8 @@ import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
 import { TaskforceCreateMenu } from "../../../commodore/client/taskforce/create-menu.js";
+import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
+import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
@@ -235,17 +237,19 @@ const PlusGlyph = () => (
 
 /**
  * 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 만들기 메뉴. 「+」에서 새 사령관과 새 TaskForce를 고른다.
+ * TF 실험이 꺼져 있으면 메뉴 없이 바로 사령관 만들기로 간다(TF 도입 전 동작).
  * 새 Theater는 새 세션 화면의 「Theater 추가…」와 팔레트(⌘K)에 있다.
  */
 export function ConversationSideBarActions() {
   const t = useT();
+  const { enabled } = useTaskforceExperiment();
   return (
     <span className="conversation-side-actions">
       <span className="remote-console-anchor" data-remote-console-anchor />
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      <TaskforceCreateMenu><PlusGlyph /></TaskforceCreateMenu>
+      {enabled ? <TaskforceCreateMenu><PlusGlyph /></TaskforceCreateMenu> : <button type="button" className="conversation-round" onClick={() => requestCommodoreCreate()} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")}><PlusGlyph /></button>}
     </span>
   );
 }
