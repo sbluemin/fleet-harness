@@ -66,6 +66,8 @@ export default function App(): React.JSX.Element {
   const [permission, requestPermission] = useCameraPermissions();
   const [appearance, setAppearance] = useState<FleetAppearance>({ colorMode: "system", fontScale: "default" });
   const [chrome, setChrome] = useState<Chrome>(PLAIN_CHROME);
+  // Set only after the page opts in. While it is on, chrome tokens pick icon contrast and nothing else.
+  const [edge, setEdge] = useState(false);
   const [consolesOpen, setConsolesOpen] = useState(false);
   // Shown over a page that native reloaded after its web content process died.
   const [pageRecovered, setPageRecovered] = useState(false);
@@ -150,6 +152,10 @@ export default function App(): React.JSX.Element {
     }
     if (nativeEvent.type === "chrome") {
       setChrome({ top: nativeEvent.top ?? "bg", bottom: nativeEvent.bottom ?? "bg" });
+      return;
+    }
+    if (nativeEvent.type === "edge") {
+      setEdge(nativeEvent.on === true);
       return;
     }
     if (nativeEvent.type === "consoles") {
@@ -410,7 +416,8 @@ export default function App(): React.JSX.Element {
     <View style={[styles.root, { backgroundColor: surfaceColor }]}>
       <StatusBar
         barStyle={scanning || palette.scheme === "dark" || topDimmed ? "light-content" : "dark-content"}
-        backgroundColor={surfaceColor}
+        backgroundColor="transparent"
+        translucent
       />
       <View
         style={styles.console}
@@ -420,7 +427,7 @@ export default function App(): React.JSX.Element {
       >
         <FleetConsoleView ref={consoleRef} style={styles.console} onFleetEvent={onFleetEvent} />
       </View>
-      {pageShown ? (
+      {pageShown && !edge ? (
         <>
           <View pointerEvents="none" style={[styles.band, { top: 0, height: insets.top, backgroundColor: palette[CHROME_FILL[chrome.top]] }]} />
           <View pointerEvents="none" style={[styles.band, { bottom: 0, height: insets.bottom, backgroundColor: palette[CHROME_FILL[chrome.bottom]] }]} />
@@ -437,6 +444,7 @@ export default function App(): React.JSX.Element {
         </Pressable>
       ) : null}
       {connectionOverlayVisible ? (
+        // The cover fill already reaches the system bars; the padding keeps the controls inside them.
         <View style={[styles.cover, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={styles.center} accessible={state !== "error"} accessibilityRole="summary">
             {overlayName ? (
@@ -471,14 +479,10 @@ export default function App(): React.JSX.Element {
         </View>
       ) : null}
       {screen === "landing" ? (
-        <View style={[styles.cover, { paddingTop: insets.top }]}>
-          <View style={styles.landingHead}>
-            <Text accessibilityRole="header" style={styles.wordmark}>{strings.wordmark}</Text>
-            <Text style={styles.landingSub}>{strings.landingSub}</Text>
-          </View>
+        <View style={styles.cover}>
           <ScrollView
             style={styles.deck}
-            contentContainerStyle={[styles.deckContent, { paddingBottom: 100 + insets.bottom }]}
+            contentContainerStyle={[styles.deckContent, { paddingTop: insets.top + 116, paddingBottom: 112 + insets.bottom }]}
             showsVerticalScrollIndicator={false}
           >
             {targets.length === 0 ? <Text style={styles.empty}>{strings.empty}</Text> : (
@@ -503,6 +507,12 @@ export default function App(): React.JSX.Element {
               </View>
             )}
           </ScrollView>
+          <EdgeWash color={palette.bg} edge="top" height={insets.top + 108} />
+          <View pointerEvents="none" style={[styles.landingHead, { paddingTop: insets.top + 20 }]}>
+            <Text accessibilityRole="header" style={styles.wordmark}>{strings.wordmark}</Text>
+            <Text style={styles.landingSub}>{strings.landingSub}</Text>
+          </View>
+          <EdgeWash color={palette.bg} edge="bottom" height={insets.bottom + 96} />
           <Pill
             palette={palette}
             label={strings.addConsole}
@@ -513,7 +523,7 @@ export default function App(): React.JSX.Element {
         </View>
       ) : null}
       {scanning ? (
-        <View style={[styles.scanner, { paddingTop: insets.top }]}>
+        <View style={styles.scanner}>
           {permission?.granted === true ? (
             <CameraView
               style={StyleSheet.absoluteFill}
@@ -522,8 +532,9 @@ export default function App(): React.JSX.Element {
               onBarcodeScanned={onBarcodeScanned}
             />
           ) : null}
+          <EdgeWash color={SCANNER.bg} edge="top" height={insets.top + 72} />
           {/* Without camera access the viewfinder keeps its place but draws nothing (impl-spec S-24). */}
-          <View style={styles.viewfinder}>
+          <View style={[styles.viewfinder, { marginTop: insets.top + 190 }]}>
             {permission?.granted === true ? (
               <>
                 <View style={[styles.corner, styles.cornerTopLeft]} />
@@ -539,6 +550,7 @@ export default function App(): React.JSX.Element {
               : permission?.canAskAgain === false ? strings.cameraOff(Platform.OS === "ios") : strings.cameraAsk}
           </Text>
           {scanError ? <Text style={styles.scanError}>{scanError}</Text> : null}
+          <EdgeWash color={SCANNER.bg} edge="bottom" height={insets.bottom + 120} />
           <View style={[styles.scanBar, { bottom: 28 + insets.bottom }]}>
             {permission?.granted === true ? (
               <>
@@ -802,6 +814,37 @@ function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, pal
   );
 }
 
+/** Softens a shell screen into the system bars. The colour is an existing palette token, fading to clear. */
+function EdgeWash({ color, edge, height }: {
+  readonly color: string;
+  readonly edge: "top" | "bottom";
+  readonly height: number;
+}): React.JSX.Element {
+  const clear = color.length === 7 ? `${color}00` : "transparent";
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        height,
+        ...(edge === "top" ? { top: 0 } : { bottom: 0 }),
+        experimental_backgroundImage: [
+          {
+            type: "linear-gradient",
+            direction: edge === "top" ? "to bottom" : "to top",
+            colorStops: [
+              { color, positions: ["0%"] },
+              { color: clear, positions: ["100%"] },
+            ],
+          },
+        ],
+      }}
+    />
+  );
+}
+
 function paint(p: Palette) {
   return StyleSheet.create({
     root: { flex: 1 },
@@ -814,7 +857,7 @@ function paint(p: Palette) {
     textButton: { paddingHorizontal: 14, paddingVertical: 8 },
     textButtonShape: { borderRadius: 16 },
     textButtonLabel: { color: p.textMuted, fontSize: 15, fontWeight: "500" },
-    landingHead: { paddingTop: 28, paddingHorizontal: 28, paddingBottom: 10 },
+    landingHead: { position: "absolute", top: 0, left: 0, right: 0, paddingHorizontal: 28 },
     wordmark: { color: p.text, fontFamily: WORDMARK_FONT, fontSize: 30, lineHeight: 36, fontWeight: "500", letterSpacing: -0.3 },
     landingSub: { color: p.textMuted, fontSize: 15, lineHeight: 21, marginTop: 4 },
     deck: { flex: 1 },
@@ -872,7 +915,7 @@ function paint(p: Palette) {
       paddingVertical: 12,
     },
     scanner: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: SCANNER.bg, alignItems: "center" },
-    viewfinder: { width: 240, height: 240, marginTop: 190 },
+    viewfinder: { width: 240, height: 240 },
     corner: { position: "absolute", width: 36, height: 36, borderColor: SCANNER.ink },
     cornerTopLeft: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 24 },
     cornerTopRight: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 24 },

@@ -51,9 +51,31 @@ public struct ConsolePresentation: Equatable {
   }
 }
 
+/// 시스템 바 + 디스플레이 컷아웃, CSS px. 유한하고 0 이상이며 키보드는 넣지 않는다.
+public struct AppearanceInsets: Equatable {
+  public let top: Double
+  public let right: Double
+  public let bottom: Double
+  public let left: Double
+
+  public init(top: Double, right: Double, bottom: Double, left: Double) {
+    self.top = Self.finite(top)
+    self.right = Self.finite(right)
+    self.bottom = Self.finite(bottom)
+    self.left = Self.finite(left)
+  }
+
+  public static let zero = AppearanceInsets(top: 0, right: 0, bottom: 0, left: 0)
+
+  private static func finite(_ value: Double) -> Double {
+    value.isFinite && value > 0 ? value : 0
+  }
+}
+
 public enum AppearanceMessage: Equatable {
   case set(Appearance)
   case chrome(top: String, bottom: String)
+  case edge
   case consoles
 }
 
@@ -84,6 +106,11 @@ public enum AppearanceBridge {
             let top = json["top"] as? String, chromeTop.contains(top),
             let bottom = json["bottom"] as? String, chromeBottom.contains(bottom) else { return nil }
       return .chrome(top: top, bottom: bottom)
+    // 엣지 opt-in은 불리언 `on: true`만. 패딩으로의 복귀는 메시지가 아니라 다음 문서 커밋이 한다.
+    case "edge":
+      guard keys == ["v", "type", "on"],
+            let on = json["on"] as? NSNumber, CFGetTypeID(on) == CFBooleanGetTypeID(), on.boolValue else { return nil }
+      return .edge
     case "consoles":
       return keys == ["v", "type"] ? .consoles : nil
     default:
@@ -93,7 +120,7 @@ public enum AppearanceBridge {
 
   /// 문서 시작과 실시간 갱신이 같은 스크립트를 쓴다. 값은 JSON 인코더를 거친 뒤 한 번 더
   /// JavaScript 문자열로 인용된다 — 코드에 이어 붙이는 값은 없다.
-  public static func script(_ appearance: Appearance, systemDark: Bool, console: ConsolePresentation?, appVersion: String? = nil) -> String {
+  public static func script(_ appearance: Appearance, systemDark: Bool, console: ConsolePresentation?, appVersion: String? = nil, insets: AppearanceInsets = .zero) -> String {
     var value: [String: Any] = [
       "v": 1,
       "colorMode": appearance.colorMode.rawValue,
@@ -106,7 +133,9 @@ public enum AppearanceBridge {
     // 셸 자신의 버전(v1.4) — 페이지의 버전 행이 쓴다. 번들에서 읽은 값이지만 그래도 인용한다.
     if let appVersion, !appVersion.isEmpty { value["app"] = ["version": String(appVersion.prefix(64))] }
     // v1 너머로 이 셸의 chrome 통로가 받는 것(v1.5) — 페이지는 이것이 있을 때만 "scrim"을 보낸다.
-    value["chrome"] = ["scrim": true]
+    // `edge`(엣지투엣지 계약) — 페이지는 이것이 있을 때만 fleetAppearance "edge"로 opt-in한다.
+    value["chrome"] = ["scrim": true, "edge": true]
+    value["insets"] = ["top": insets.top, "right": insets.right, "bottom": insets.bottom, "left": insets.left]
     let json = (try? JSONSerialization.data(withJSONObject: value)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     let literal = (try? JSONEncoder().encode(json)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"{}\""
     return "(() => { const v = JSON.parse(\(literal)); if (v.console) Object.freeze(v.console); if (v.chrome) Object.freeze(v.chrome); Object.freeze(v); "

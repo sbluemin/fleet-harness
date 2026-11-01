@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -107,14 +108,18 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private var detached = false
   private var chromeInsets: Insets = Insets.NONE
   private var imeInsets: Insets = Insets.NONE
+  // True only after the committed page opts in. A new main-frame document clears it.
+  private var edgeToEdge = false
+  private var publishedInsets: AppearanceInsets? = null
 
   init {
     WebView.setWebContentsDebuggingEnabled(false)
     CookieManager.getInstance().setAcceptCookie(true)
     // A cold-start link outranks the persisted reconnect: it starts the only attempt.
     val linkDelivered = FleetLinkInbox.attach(linkReceiver)
-    // Android 15+ forces edge-to-edge for this targetSdk, so this view owns its own insets: the
-    // WebView shrinks under status bar, cutout, and keyboard, and JS gets the chrome insets in dp.
+    // Android 15+ forces edge-to-edge for this targetSdk, so this view owns its own insets. Until the
+    // committed page opts in, the WebView shrinks under the status bar, cutout, and keyboard. JS gets
+    // the chrome insets in dp, and again inside the appearance value.
     ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
       applyWindowInsets(
         insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()),
@@ -132,7 +137,20 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
+    clearSystemBarScrim()
     ViewCompat.requestApplyInsets(this)
+  }
+
+  /** The system bars stay clear so shell screens and an opted-in page paint through them. Icon contrast is separate. */
+  private fun clearSystemBarScrim() {
+    val window = appContext.currentActivity?.window ?: return
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+    window.statusBarColor = Color.TRANSPARENT
+    window.navigationBarColor = Color.TRANSPARENT
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      window.isStatusBarContrastEnforced = false
+      window.isNavigationBarContrastEnforced = false
+    }
   }
 
   private fun applyWindowInsets(chrome: Insets, ime: Insets) {
@@ -140,10 +158,43 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     val chromeChanged = chrome != chromeInsets
     chromeInsets = chrome
     imeInsets = ime
-    setPadding(chrome.left, chrome.top, chrome.right, maxOf(chrome.bottom, ime.bottom))
+    applyEdgePadding()
+    if (chromeChanged) emitInsets(chrome)
+    val next = advertisedInsets()
+    if (next != publishedInsets) {
+      publishedInsets = next
+      republishAppearance()
+    }
+  }
+
+  /** System-bar padding drops only after opt-in. The keyboard inset always stays on the view. */
+  private fun applyEdgePadding() {
+    if (edgeToEdge) setPadding(0, 0, 0, imeInsets.bottom)
+    else setPadding(chromeInsets.left, chromeInsets.top, chromeInsets.right, maxOf(chromeInsets.bottom, imeInsets.bottom))
     layoutWebViews()
     post(::layoutWebViews)
-    if (chromeChanged) emitInsets(chrome)
+  }
+
+  /** CSS px. While the keyboard is up, bottom is 0 — the native padding still covers the keyboard. */
+  private fun advertisedInsets(): AppearanceInsets {
+    val density = resources.displayMetrics.density.toDouble().let { if (it.isFinite() && it > 0.0) it else 1.0 }
+    val bottom = if (imeInsets.bottom > 0) 0.0 else chromeInsets.bottom / density
+    return AppearanceInsets.of(chromeInsets.top / density, chromeInsets.right / density, bottom, chromeInsets.left / density)
+  }
+
+  private fun enterEdgeToEdge() {
+    if (edgeToEdge) return
+    edgeToEdge = true
+    applyEdgePadding()
+    emitPayload(mapOf("type" to "edge", "on" to true))
+  }
+
+  /** A new main-frame document (refresh, another Console, an error page) has not opted in yet. */
+  private fun leaveEdgeToEdge() {
+    if (!edgeToEdge) return
+    edgeToEdge = false
+    applyEdgePadding()
+    emitPayload(mapOf("type" to "edge", "on" to false))
   }
 
   /** JS overlays draw over the whole window and pad themselves; the keyboard inset stays native. */
@@ -576,6 +627,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
           failStaged(staged, "navigation_denied")
           return
         }
+        if (view === activeView) leaveEdgeToEdge()
         super.onPageStarted(view, url, favicon)
       }
 
@@ -592,6 +644,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
           failStaged(staged, "navigation_denied")
           return
         }
+        // After the document is in place, advertise again so a page that loads past onPageStarted can opt in.
+        if (view === activeView) republishAppearance()
         if (!staged.localCertificateObserved) {
           failStaged(staged, "remote_link_pin_not_observed")
           return
@@ -650,6 +704,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   /** The shell paints its own screens; only it knows when a dark camera covers a light mode. */
   fun setNavigationBarStyle(dark: Boolean) {
     main.post {
+      clearSystemBarScrim()
       val window = appContext.currentActivity?.window ?: return@post
       WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = !dark
     }
@@ -667,7 +722,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
   private fun appearanceScriptFor(target: PersistedTarget): String =
-    AppearanceBridge.script(appearance, systemDark, ConsolePresentation.of(target), appVersion)
+    AppearanceBridge.script(appearance, systemDark, ConsolePresentation.of(target), appVersion, advertisedInsets())
 
   private fun installAppearanceScript(webView: WebView, gateway: LoopbackGateway, target: PersistedTarget) {
     if (!documentStartSupported) return
@@ -680,20 +735,24 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   }
 
   /** Tell every live page again: the next load through its document-start script, the open page right now. */
-  private fun refreshAppearance() {
-    val background = AppearanceBridge.backgroundColor(appearance.dark(systemDark))
+  private fun republishAppearance() {
     staging?.takeIf { !it.released }?.let { staged ->
-      staged.view.setBackgroundColor(background)
       installAppearanceScript(staged.view, staged.gateway, staged.target)
     }
     val view = activeView
     val gateway = activeGateway
     val target = activeTarget
     if (view != null && gateway != null && target != null) {
-      view.setBackgroundColor(background)
       installAppearanceScript(view, gateway, target)
       view.evaluateJavascript(appearanceScriptFor(target), null)
     }
+  }
+
+  private fun refreshAppearance() {
+    val background = AppearanceBridge.backgroundColor(appearance.dark(systemDark))
+    staging?.takeIf { !it.released }?.view?.setBackgroundColor(background)
+    activeView?.setBackgroundColor(background)
+    republishAppearance()
     emitPayload(mapOf("type" to "appearance", "colorMode" to appearance.colorMode.wire, "fontScale" to appearance.fontScale.wire))
   }
 
@@ -708,6 +767,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
         refreshAppearance()
       }
       is AppearanceMessage.Chrome -> emitPayload(mapOf("type" to "chrome", "top" to message.top, "bottom" to message.bottom))
+      AppearanceMessage.Edge -> enterEdgeToEdge()
       AppearanceMessage.Consoles -> emitPayload(mapOf("type" to "consoles"))
     }
   }
@@ -747,6 +807,9 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     activeGateway = staged.gateway
     activeView = staged.view
     staging = null
+    // The new document has not opted in. Padding is restored before the view is shown, then it is told again.
+    leaveEdgeToEdge()
+    republishAppearance()
     staged.view.visibility = VISIBLE
     staged.view.requestFocus()
     layoutWebViews()
