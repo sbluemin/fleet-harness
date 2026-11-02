@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.278.1] - 2026-11-02
+
+### fleet-console
+
+#### Fixed
+- Global plugins now show available updates and can be updated from their menu or the plugin manager.
+
 ## [1.278.0] - 2026-11-02
 
 ### fleet-console

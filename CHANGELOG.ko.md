@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.278.1] - 2026-11-02
+
+### fleet-console
+
+#### Fixed
+- 전역 플러그인도 새 버전을 확인하고 항목 메뉴나 플러그인 관리 화면에서 업데이트할 수 있습니다.
+
 ## [1.278.0] - 2026-11-02
 
 ### fleet-console
