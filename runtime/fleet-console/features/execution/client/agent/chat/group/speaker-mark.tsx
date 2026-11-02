@@ -1,12 +1,13 @@
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { commodoreAvatarKey, mongleStateOf, objectiveRecordAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
+import { commodoreAvatarKey, mongleBase, mongleStateOf, objectiveRecordAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
 import type { ObjectiveCluster } from "../../../../../objectives/shared/objective-clusters.js";
 import * as React from "react";
 
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import type { ConsoleState } from "../../../../../../core/client/src/integration/types.js";
 import { KeyedAvatar, objectiveRecordMongleState } from "../../../../../workspace/client/avatars.js";
+import { resolveMongleLook, useAvatarBook } from "../../../../../workspace/client/avatar-events.js";
 import { useConversationClusters, useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { getGroupT } from "./group-chat-i18n.js";
 
@@ -117,11 +118,17 @@ export function LiveSpeakerMark({ speaker, participants }: { readonly speaker: C
   return <SpeakerMark speaker={speaker} state={participantMongleState(speaker, activity, state, clusters)} />;
 }
 
-/** 발화자 이름 — 구성원은 표식과 같은 톤의 잉크로, 그 밖은 중립 잉크로 선다. */
-export function SpeakerName({ speaker, className = "" }: { readonly speaker: ConversationSpeaker; readonly className?: string }) {
-  const tone = speakerTone(speaker);
+/** 발화자 이름 — 말풍선 머리의 사령관·지휘관만 자기 아바타 톤을 읽고, TF·구성원의 명시된 톤은 보존한다. */
+export function SpeakerName({ speaker, className = "", avatarTone = false }: { readonly speaker: ConversationSpeaker; readonly className?: string; readonly avatarTone?: boolean }) {
+  const book = useAvatarBook();
+  const commodoreKey = useCommodoreSpeakerKey();
+  const key = !avatarTone || speaker.mark?.tone ? null
+    : speaker.kind === "commodore" ? (speaker.commodoreId ? commodoreAvatarKey(speaker.commodoreId) : commodoreKey)
+      : speaker.kind === "commander" && speaker.objectiveId ? objectiveRecordAvatarKey(speaker.objectiveId) : null;
+  const look = key ? resolveMongleLook(book, key) : null;
+  const tone = look ? look.tone ?? mongleBase(look.base).tone : speakerTone(speaker);
   const style = tone ? { "--speaker-name-ink": `var(--id-${tone})`, "--speaker-name-face": `var(--mongle-${tone})` } as React.CSSProperties : undefined;
-  return <span className={`group-chat-name${tone ? ` is-tone-${tone}` : ` is-${speaker.kind}`}${className ? ` ${className}` : ""}`} style={style}>{speaker.name}</span>;
+  return <span className={`group-chat-name${tone ? ` is-tone-${tone}` : ` is-${speaker.kind}`}${look ? " is-avatar-tone" : ""}${className ? ` ${className}` : ""}`} style={style}>{speaker.name}</span>;
 }
 
 /**

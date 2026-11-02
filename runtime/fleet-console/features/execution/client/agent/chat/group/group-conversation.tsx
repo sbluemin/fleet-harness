@@ -853,8 +853,8 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   const mark = !tail ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />;
   // 보드 행위 줄(via)의 발화자는 사람·사령관뿐이라 원장 대상이 아니다 — 단추는 일반 머리 이름에만 선다.
   const name = open
-    ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" data-ledger-speaker={speaker.kind} aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} /></button>
-    : <SpeakerName speaker={speaker} className="group-chat-agent-name" />;
+    ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" data-ledger-speaker={speaker.kind} aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} avatarTone /></button>
+    : <SpeakerName speaker={speaker} className="group-chat-agent-name" avatarTone />;
   // 보고 꼬리표 — 은은한 보조 낱말. 말풍선과 문면이 다를 수 있으므로 누르면 보낸 보고 전문이 그 아래에 펼쳐진다.
   const reportTag = report ? (
     <button type="button" className="group-chat-report-tag" aria-expanded={reportOpen} aria-controls={reportOpen ? reportId : undefined} onClick={() => setReportOpen((current) => !current)}>
