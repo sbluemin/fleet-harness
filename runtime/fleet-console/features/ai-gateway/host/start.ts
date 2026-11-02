@@ -313,7 +313,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const claudeNativeModels = resolveClaudeExecutable
     ? createClaudeNativeModelSync({
       resolveExecutable: resolveClaudeExecutable,
-      readSupportedModels: (executable) => readClaudeSupportedModels(executable === undefined ? {} : { executablePath: executable }),
+      // 질의 자식도 Console 소유 그룹에서 띄운다 — Console이 끝나면 함께 끝난다.
+      readSupportedModels: (executable) => readClaudeSupportedModels({ ...(executable === undefined ? {} : { executablePath: executable }), spawnProcess: ctx.spawnAgentProcess }),
       onChanged: () => { for (const listener of claudeNativeListeners) listener(); },
     })
     : undefined;

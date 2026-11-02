@@ -7,6 +7,7 @@
  * 그것이 이 패키지가 막으려는 바로 그 상태다.
  */
 import { assertClaudeGatewayInput } from "./input.js";
+import { toVendorProcessSpawner } from "./process-spawn.js";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 
@@ -659,6 +660,7 @@ export async function readVendorSupportedModels(
     options: withResolvedExecutable({
       ...(options.executablePath === undefined ? {} : { pathToClaudeCodeExecutable: options.executablePath }),
       ...(options.env === undefined ? {} : { env: { ...options.env } }),
+      ...(options.spawnProcess === undefined ? {} : { spawnClaudeCodeProcess: toVendorProcessSpawner(options.spawnProcess) }),
       settingSources: ["user"],
       persistSession: false,
     }),
