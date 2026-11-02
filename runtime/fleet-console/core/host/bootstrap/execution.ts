@@ -78,6 +78,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     ...(commodorePluginEnv ? { commodorePluginEnv } : {}),
     isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
+    // 지휘관 채팅은 사령관과 같은 별칭 고정을 쓴다.
+    ...(models.pinClaudeVersion ? { pinClaudeVersion: models.pinClaudeVersion } : {}),
     aiGateway: {
       routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,
       origin: () => ctx.host.server.origin(),
