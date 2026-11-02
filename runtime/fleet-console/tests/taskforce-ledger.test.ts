@@ -123,8 +123,8 @@ describe("taskforce ledger", () => {
 });
 
 /**
- * TaskForce 판단 런타임의 필수 계약 — chain이 12에 닿으면 멈추고 `chain-paused`를
- * 남기며 깨우지 않는다. 자신의 말에는 스스로 깨지 않고, TF 말은 1:1 기록에 닿지 않는다.
+ * TaskForce 판단 런타임의 필수 계약 — chain이 TF가 고른 상한에 닿으면 멈추고 `chain-paused`를
+ * 남기며 깨우지 않는다. 제한 안 함이면 멈추지 않는다. 자신의 말에는 스스로 깨지 않고, TF 말은 1:1 기록에 닿지 않는다.
  * 가짜 호스트·타이머 경로만 쓰고 실제 모델 호출은 없다.
  */
 
@@ -789,13 +789,16 @@ describe("taskforce runtime", () => {
     expect(third.nextScan).toBeUndefined();
   });
 
-  it("pauses the chain at 12, never self-wakes, and keeps TF traffic out of 1:1 transcripts", async () => {
+  it("pauses the chain at the chosen limit, never with no limit, never self-wakes, and keeps TF traffic out of 1:1 transcripts", async () => {
     vi.useFakeTimers();
     try {
       const h = runtimeHarness();
       const { a, b } = h.ids;
       const { state: created } = h.taskforce.create({ name: "출격 TF", topic: "오늘의 주제", members: [a, b] });
       const taskforceId = created.id;
+      expect(created.chain.limit).toBe(15);
+      // 제한 안 함 — 아래에서 사령관 발언이 15개 쌓여도 멈추지 않는다.
+      h.taskforce.update(taskforceId, { chainLimit: null });
       h.supervisor.sync("started");
       // 사람의 말 — 두 성원이 판단 대상이다. Alpha는 세션을 먼저 교체한다.
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 말" });
@@ -847,21 +850,26 @@ describe("taskforce runtime", () => {
       const wakeReasons = alphaEntries.flatMap((entry) => (entry.kind === "wake" ? [entry.reasons] : []));
       expect(wakeReasons.some((reasons) => reasons.includes("taskforce") && reasons.includes("rotated"))).toBe(true);
 
-      // chain을 12까지 쌓는다 — Beta부터 번갈아 말한다.
-      const speakers = ["Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta"];
-      for (const [index, alias] of speakers.entries()) {
+      // chain을 15까지 쌓는다 — Beta부터 번갈아 말한다. 제한 안 함이라 멈추지 않는다.
+      const speakers = ["Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha"];
+      const speak = async (alias: string, text: string) => {
         await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-        await post(alias, `${alias}의 말 ${index}`);
+        await post(alias, text);
         sessionOf(alias).finish();
         await vi.advanceTimersByTimeAsync(10);
-      }
+      };
+      for (const [index, alias] of speakers.entries()) await speak(alias, `${alias}의 말 ${index}`);
+      expect(h.taskforce.read(taskforceId)!.chain).toEqual({ count: 15, limit: null, paused: false });
+      // 상한을 15로 고르면 이미 넘긴 chain은 다음 사령관 발언에서 멈춘다.
+      h.taskforce.update(taskforceId, { chainLimit: 15 });
+      await speak("Beta", "Beta의 마지막 말");
       const final = h.taskforce.read(taskforceId)!;
-      expect(final.counts).toEqual({ person: 2, commodore: 12 });
-      expect(final.chain.count).toBe(12);
+      expect(final.counts).toEqual({ person: 2, commodore: 16 });
+      expect(final.chain.count).toBe(16);
       expect(final.chain.paused).toBe(true);
       const codes = h.taskforce.readLedger(taskforceId).entries.flatMap((entry) => (entry.speaker.kind === "system" ? [entry.speaker.code] : []));
       expect(codes).toContain("chain-paused");
-      // 멈춘 뒤에는 깨우지 않는다 — 12번째 말을 한 Beta도, 듣는 Alpha도 새 턴이 서지 않는다.
+      // 멈춘 뒤에는 깨우지 않는다 — 마지막 말을 한 Beta도, 듣는 Alpha도 새 턴이 서지 않는다.
       const betaSends = sendsOf("Beta").length;
       const alphaSends = sendsOf("Alpha").length;
       await vi.advanceTimersByTimeAsync(60_000);
@@ -904,11 +912,18 @@ describe("taskforce runtime", () => {
       expect(snapshot?.outcomes?.[a]?.outcome).toBe("spoke");
       expect(snapshot?.outcomes?.[b]?.outcome).toBe("silent");
       const listed = h.taskforce.list().find((row) => row.id === taskforceId)!;
-      expect(listed.counts).toEqual({ person: 2, commodore: 12 });
+      expect(listed.counts).toEqual({ person: 2, commodore: 16 });
       expect(listed.judging).toEqual([]);
-      // 재기동 복원 — 말 수와 판단 스냅샷이 함께 돌아온다.
-      const restored = createTaskforceStore({ root: path.join(h.consoleDataDir, "taskforce"), emit: () => undefined });
-      expect(restored.read(taskforceId)?.counts).toEqual({ person: 2, commodore: 12 });
+      // 재기동 복원 — 말 수와 판단 스냅샷, 고른 상한이 함께 돌아온다.
+      const root = path.join(h.consoleDataDir, "taskforce");
+      expect(createTaskforceStore({ root, emit: () => undefined }).read(taskforceId)?.chain.limit).toBe(15);
+      // 고정 12 시절의 state.json은 버려지지 않고 기본 상한 15로 읽힌다.
+      const stateFile = path.join(root, taskforceId, "state.json");
+      const stored = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      fs.writeFileSync(stateFile, JSON.stringify({ ...stored, chain: { ...stored.chain, limit: 12 } }));
+      const restored = createTaskforceStore({ root, emit: () => undefined });
+      expect(restored.read(taskforceId)?.chain.limit).toBe(15);
+      expect(restored.read(taskforceId)?.counts).toEqual({ person: 2, commodore: 16 });
       expect(restored.read(taskforceId)?.judging?.outcomes?.[a]?.outcome).toBe("spoke");
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
