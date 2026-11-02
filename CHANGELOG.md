@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.279.0] - 2026-11-02
+
+### fleet-console
+
+#### Changed
+- Group TaskForce activity by objective, with expandable logs showing who acted and when.
+- Match speaker names to their avatar colors in Commodore and Commander chats, as in TaskForce rooms.
+- Answer delegated objectives' decisions directly in the Commodore chat when the Commodore hands them to you, without opening each objective.
+
+#### Fixed
+- Find TaskForce groups by name with Cmd+K and start typing without another click after switching to a TaskForce or Commodore conversation.
+
 ## [1.278.1] - 2026-11-02
 
 ### fleet-console
