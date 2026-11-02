@@ -691,24 +691,35 @@ describe("taskforce runtime", () => {
     h.store.transcriptAppend(a, { kind: "text", text: "SHARED_NEEDLE in own" });
     h.store.transcriptAppend(a, { kind: "text", text: "ordinary own" });
     for (let seq = 2; seq <= 2500; seq += 1) {
-      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 2400 ? "SHARED_NEEDLE in tf-new" : seq === 100 ? "SHARED_NEEDLE in tf-old" : `tf filler ${seq}` });
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 2400 ? "SHARED_NEEDLE in tf-new" : seq >= 2 && seq <= 31 ? "SHARED_NEEDLE in tf-old" : `tf filler ${seq}` });
     }
     const first = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 50 })).structuredContent as {
-      results: { seq: number; source: { kind: string } }[]; nextScan?: string;
+      results: { seq: number; source: { kind: string } }[]; nextScan?: string; nextCursor?: string; hasMore: boolean;
     };
     expect(first.results.map((item) => item.seq)).toEqual([2400, 1]);
     expect(first.results.map((item) => item.source.kind)).toEqual(["taskforce", "own"]);
+    expect(first.hasMore).toBe(false);
     expect(typeof first.nextScan).toBe("string");
-    const second = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 50, scan: first.nextScan })).structuredContent as {
-      results: { seq: number; source: { kind: string } }[]; nextScan?: string; scanContinued?: boolean;
+    expect(first.nextCursor).toBeUndefined();
+    const second = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 20, scan: first.nextScan })).structuredContent as {
+      results: { seq: number; source: { kind: string } }[]; nextScan?: string; nextCursor?: string; hasMore: boolean; scanContinued?: boolean;
       sources: { source: { kind: string } }[];
     };
     expect(second.scanContinued).toBe(true);
     // 끝난 본인 기록은 다시 읽지 않아 중복이 없다 — 이어진 TF 범위만 새로 본다.
-    expect(second.results.map((item) => item.seq)).toEqual([100]);
+    expect(second.results.map((item) => item.seq)).toEqual(Array.from({ length: 20 }, (_, i) => 31 - i));
     expect(second.results.every((item) => item.source.kind === "taskforce")).toBe(true);
     expect(second.sources.every((entry) => entry.source.kind === "taskforce")).toBe(true);
+    expect(second.hasMore).toBe(true);
     expect(second.nextScan).toBeUndefined();
+    // cursor는 자신이 나온 스캔(TF만)을 재현한다 — 끝난 본인 결과가 다시 나타나지 않는다.
+    const third = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 20, cursor: second.nextCursor })).structuredContent as {
+      results: { seq: number; source: { kind: string }; text: string }[]; hasMore: boolean; nextCursor?: string; nextScan?: string;
+    };
+    expect(third.results.map((item) => item.seq)).toEqual(Array.from({ length: 10 }, (_, i) => 11 - i));
+    expect(third.results.every((item) => item.source.kind === "taskforce")).toBe(true);
+    expect(third.hasMore).toBe(false);
+    expect(third.nextScan).toBeUndefined();
   });
 
   it("pauses the chain at 12, never self-wakes, and keeps TF traffic out of 1:1 transcripts", async () => {
