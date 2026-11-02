@@ -628,6 +628,89 @@ describe("taskforce runtime", () => {
     expect(res.sources).toMatchObject([{ status: "partial", participationUncertain: true }]);
   });
 
+  it("judges anchor context with transitions outside the window", async () => {
+    // anchor window에는 없지만 권한을 정하는 전이(탈퇴·재합류)도 walk에 싣는다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "틈 TF", topic: "주제", members: [a, b] });
+    const taskforceId = state.id;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    h.taskforce.removeMember(taskforceId, a);
+    const outside = h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "WHILE_ABSENT" }).entry;
+    h.taskforce.addMembers(taskforceId, [a]);
+    h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "AFTER_REJOIN" });
+    const res = (await call(a, { anchor: { source: taskforceId, seq: outside.seq }, before: 0, after: 0 })).structuredContent as {
+      anchorFound: boolean; items: { seq: number; readable: boolean; reason?: string }[];
+    };
+    expect(res.anchorFound).toBe(true);
+    expect(res.items).toMatchObject([{ seq: outside.seq, readable: false, reason: "outside_participation" }]);
+    expect(res.items[0]).not.toHaveProperty("text");
+    expect(res.items[0]).not.toHaveProperty("at");
+    expect(JSON.stringify(res)).not.toContain("WHILE_ABSENT");
+  });
+
+  it("rejects swapped TaskForce directories instead of reading through them", async () => {
+    // 같은 TF root의 미참여 TF 디렉터리로 바꿔치기해도 다른 원장이 새지 않는다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const outsider = randomUUID();
+    const tf1 = h.taskforce.create({ name: "owned", topic: "topic", members: [a, b] }).state.id;
+    h.taskforce.append(tf1, { speaker: { kind: "person" }, text: "own words" });
+    const tf2 = h.taskforce.create({ name: "not-joined", topic: "private-topic", members: [b, outsider] }).state.id;
+    h.taskforce.append(tf2, { speaker: { kind: "person" }, text: "OTHER_TF_DIRECTORY_SECRET" });
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    // 바꿔치기 전에는 a의 정상 참여 기록이 보인다.
+    expect(((await call(a, { target: "taskforce", taskforceId: tf1 })).structuredContent as { results: unknown[] }).results).not.toEqual([]);
+    const ownedDir = path.join(h.consoleDataDir, "taskforce", tf1);
+    fs.renameSync(ownedDir, `${ownedDir}.backup`);
+    fs.symlinkSync(path.join(h.consoleDataDir, "taskforce", tf2), ownedDir);
+    const leaked = await call(a, { target: "taskforce", taskforceId: tf1, query: "OTHER_TF_DIRECTORY_SECRET" });
+    expect(leaked.structuredContent).toMatchObject({ error: "unknown_taskforce" });
+    expect(JSON.stringify(leaked)).not.toContain("OTHER_TF_DIRECTORY_SECRET");
+    // 목록에도 바꿔치기된 자리가 올라오지 않는다.
+    expect(h.taskforce.list().some((entry) => entry.id === tf1)).toBe(false);
+    expect(() => h.taskforce.readLedger(tf1)).toThrow("unknown_taskforce");
+  });
+
+  it("skips finished sources when continuing into older ledger pages", async () => {
+    // all+scan: 끝난 원장은 다시 읽지 않아 중복·낭비가 없다. 새로고침해야 새 원장이 보인다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "깊은 TF", topic: "주제", members: [a, b] });
+    const taskforceId = state.id;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    h.store.transcriptAppend(a, { kind: "text", text: "SHARED_NEEDLE in own" });
+    h.store.transcriptAppend(a, { kind: "text", text: "ordinary own" });
+    for (let seq = 2; seq <= 2500; seq += 1) {
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 2400 ? "SHARED_NEEDLE in tf-new" : seq === 100 ? "SHARED_NEEDLE in tf-old" : `tf filler ${seq}` });
+    }
+    const first = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 50 })).structuredContent as {
+      results: { seq: number; source: { kind: string } }[]; nextScan?: string;
+    };
+    expect(first.results.map((item) => item.seq)).toEqual([2400, 1]);
+    expect(first.results.map((item) => item.source.kind)).toEqual(["taskforce", "own"]);
+    expect(typeof first.nextScan).toBe("string");
+    const second = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 50, scan: first.nextScan })).structuredContent as {
+      results: { seq: number; source: { kind: string } }[]; nextScan?: string; scanContinued?: boolean;
+      sources: { source: { kind: string } }[];
+    };
+    expect(second.scanContinued).toBe(true);
+    // 끝난 본인 기록은 다시 읽지 않아 중복이 없다 — 이어진 TF 범위만 새로 본다.
+    expect(second.results.map((item) => item.seq)).toEqual([100]);
+    expect(second.results.every((item) => item.source.kind === "taskforce")).toBe(true);
+    expect(second.sources.every((entry) => entry.source.kind === "taskforce")).toBe(true);
+    expect(second.nextScan).toBeUndefined();
+  });
+
   it("pauses the chain at 12, never self-wakes, and keeps TF traffic out of 1:1 transcripts", async () => {
     vi.useFakeTimers();
     try {

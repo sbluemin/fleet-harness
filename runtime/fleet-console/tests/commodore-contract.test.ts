@@ -1717,6 +1717,33 @@ describe("commodore fleet-memory", () => {
     expect(second.partial).toBe(false);
     expect(second.nextScan).toBeUndefined();
   });
+
+  it("pages scan results with a cursor that keeps its scan position", async () => {
+    // cursor는 자신이 나온 스캔 범위를 재현한다 — 다음 페이지를 넘겨도 최신 구간으로 돌아가지 않는다.
+    const h = harness();
+    const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
+    const search = async (args: Record<string, unknown>) =>
+      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    for (let i = 0; i < 2100; i += 1) h.store.transcriptAppend("t1", { kind: "text", text: i < 100 ? "OLD_MATCH" : "ordinary" });
+    const first = (await search({ target: "own", query: "OLD_MATCH" })).structuredContent as {
+      results: unknown[]; hasMore: boolean; partial: boolean; nextScan?: string;
+    };
+    expect(first.results).toEqual([]);
+    expect(first.hasMore).toBe(false);
+    expect(first.partial).toBe(true);
+    const second = (await search({ target: "own", query: "OLD_MATCH", scan: first.nextScan })).structuredContent as {
+      results: { seq: number }[]; hasMore: boolean; nextCursor?: string; nextScan?: string;
+    };
+    expect(second.results.map((item) => item.seq)).toEqual(Array.from({ length: 20 }, (_, i) => 100 - i));
+    expect(second.hasMore).toBe(true);
+    expect(second.nextScan).toBeUndefined();
+    const third = (await search({ target: "own", query: "OLD_MATCH", cursor: second.nextCursor })).structuredContent as {
+      results: { seq: number }[]; hasMore: boolean; nextScan?: string;
+    };
+    expect(third.results.map((item) => item.seq)).toEqual(Array.from({ length: 20 }, (_, i) => 80 - i));
+    expect(third.hasMore).toBe(true);
+    expect(third.nextScan).toBeUndefined();
+  });
 });
 
 describe("commodore session", () => {
