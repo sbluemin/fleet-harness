@@ -9,6 +9,7 @@ import { createTaskforceRoutes, type TaskforceRouteContext } from "../features/c
 import { createTaskforceStore, type TaskforceStore } from "../features/commodore/host/taskforce/store.js";
 import type { TaskforceEvent } from "../features/commodore/shared/contracts/taskforce.js";
 import { createCommodoreStore, type CommodoreStore } from "../features/commodore/host/store.js";
+import { createCommodoreTools } from "../features/commodore/host/tools.js";
 import { COALESCE_MS, createCommodoreSupervisor } from "../features/commodore/host/supervisor.js";
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
 import type { AgentEvent, AgentInputBlock } from "../features/execution/shared/agent.js";
@@ -379,6 +380,90 @@ describe("taskforce runtime", () => {
       }
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       for (const id of [a, b]) expect(h.taskforce.read(taskforceId)?.readSeq[id]).toBe(legacy.seq + 1);
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("searches only the participation intervals of each TaskForce with the same tool", async () => {
+    // 단일 원장 검색의 TF 대표 계약 — 현재·과거 참여 구간만 보이고, 구간 밖은
+    // 가려지며, 참여한 적 없는 호출자에게는 없는 TF와 같이 거절된다.
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const c = randomUUID();
+      const outsider = randomUUID();
+      const { state } = h.taskforce.create({ name: "검색 TF", topic: "공유 주제", members: [a, b] });
+      const taskforceId = state.id;
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 첫 말" });
+      h.taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: a }, text: "Alpha의 말" });
+      h.taskforce.addMembers(taskforceId, [c]);
+      h.taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: c }, text: "Charlie의 말" });
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 둘째 말" });
+      h.taskforce.removeMember(taskforceId, b);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 셋째 말" });
+      h.taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: a }, text: "Alpha의 끝말" });
+
+      h.supervisor.sync("started");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
+      const callSession = (alias: string, args: Record<string, unknown>) =>
+        sessionOf(alias).tools.get("memory_search")!.execute(args, { cwd: h.theaterRoot, toolCallId: alias } as never) as Promise<{ isError: boolean; structuredContent: Record<string, any> }>;
+      const direct = (callerId: string) =>
+        Object.fromEntries(createCommodoreTools({
+          commodoreId: callerId, theaterRoot: h.theaterRoot,
+          // 늦게 든 성원(c)도 부르는 쪽에 서게 같은 Console 땅의 넓은 저장소로 본다.
+          store: createCommodoreStore({
+            dirOf: (id) => (id === a || id === b || id === c || id === outsider ? path.join(h.consoleDataDir, "commodore", id) : null),
+            theatersOf: () => [], theaterIdsOf: () => [], emit: () => {},
+          }),
+          taskforce: h.taskforce,
+        }).map((tool) => [tool.name, tool])).memory_search!;
+      const callDirect = async (callerId: string, args: Record<string, unknown>) =>
+        await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+
+      // 현재 성원(a)은 전체를 본다 — 세션 도구의 전체 경로.
+      const full = (await callSession("Alpha", { target: "taskforce", taskforceId })).structuredContent;
+      expect(full.callerCommodoreId).toBe(a);
+      expect(full.results.map((item: { seq: number }) => item.seq)).toEqual([9, 8, 7, 6, 5, 4, 3, 2, 1]);
+      expect(full.partial).toBe(false);
+      expect(full.sources).toMatchObject([{ source: { kind: "taskforce", id: taskforceId, name: "검색 TF" }, status: "complete" }]);
+      const bySeq = Object.fromEntries((full.results as { seq: number; speaker: object }[]).map((item) => [item.seq, item]));
+      expect(bySeq[3]!.speaker).toMatchObject({ role: "self", kind: "commodore", commodoreId: a, alias: "Alpha" });
+      expect(bySeq[5]!.speaker).toMatchObject({ role: "other", kind: "commodore", commodoreId: c });
+      expect(bySeq[2]!.speaker).toMatchObject({ role: "person", kind: "person" });
+      expect(bySeq[1]!.speaker).toMatchObject({ role: "system", kind: "system" });
+
+      // 나간 성원(b)은 나간 때까지만, 늦게 든 성원(c)은 든 뒤만 본다.
+      const past = (await callDirect(b, { target: "taskforce", taskforceId })).structuredContent;
+      expect(past.results.map((item: { seq: number }) => item.seq)).toEqual([7, 6, 5, 4, 3, 2, 1]);
+      expect(past.sources).toMatchObject([{ source: { id: taskforceId }, status: "complete" }]);
+      const late = (await callDirect(c, { target: "taskforce", taskforceId })).structuredContent;
+      expect(late.results.map((item: { seq: number }) => item.seq)).toEqual([9, 8, 7, 6, 5, 4]);
+      // 참여한 적 없는 호출자는 없는 TF와 같이 거절된다.
+      expect((await callDirect(outsider, { target: "taskforce", taskforceId })).structuredContent).toMatchObject({ error: "unknown_taskforce" });
+      expect((await callSession("Alpha", { target: "taskforce", taskforceId: randomUUID() })).structuredContent).toMatchObject({ error: "unknown_taskforce" });
+
+      // anchor로 구간 밖을 읽으면 자리는 보여주고 내용은 가린다.
+      const outside = (await callDirect(b, { anchor: { source: taskforceId, seq: 8 }, before: 1, after: 1 })).structuredContent as {
+        anchorFound: boolean; items: { seq: number; readable: boolean; reason?: string }[]; partial: boolean;
+      };
+      expect(outside.anchorFound).toBe(true);
+      expect(outside.partial).toBe(false);
+      expect(outside.items).toMatchObject([
+        { seq: 7, readable: true },
+        { seq: 8, readable: false, reason: "outside_participation" },
+        { seq: 9, readable: false, reason: "outside_participation" },
+      ]);
+      // all은 참여한 TF를 같은 응답에서 발견한다.
+      const discovered = (await callDirect(b, { target: "all", query: "Alpha" })).structuredContent as {
+        sources: { source: { kind: string; id: string } }[]; results: { seq: number }[];
+      };
+      expect(discovered.sources.map((entry) => entry.source.id).sort()).toEqual([b, taskforceId].sort());
+      expect(discovered.results.map((item) => item.seq)).toEqual([3]);
+
+      for (const session of h.sessions) session.finish();
+      await vi.advanceTimersByTimeAsync(10);
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });

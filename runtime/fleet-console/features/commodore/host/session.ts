@@ -11,9 +11,8 @@ import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
 import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
-import type { TaskforceStore } from "./taskforce/store.js";
 import { COMMODORES_TOOL_NAMES, FLEET_COMMODORE_TOOL_GROUP } from "../shared/tool-names.js";
-import { createCommodoreTools, type CommandExecute } from "./tools.js";
+import { createCommodoreTools, type CommandExecute, type CommodoreTaskforceLedger } from "./tools.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /** 사령관 세션 — Console 내부 상주 자식을 매번 새 대화로 연다. 제품 기록·기억만 다음 세션으로 이어진다. */
@@ -57,8 +56,8 @@ export interface CommodoreSessionOptions {
   readonly onInput?: (event: { readonly id: string; readonly state: "started" | "cancelled" }) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
-  /** 속한 TaskForce 원장 — 판단 턴의 taskforce_post가 여기에 닿는다. */
-  readonly taskforce?: Pick<TaskforceStore, "append">;
+  /** 속한 TaskForce 원장 — 판단 턴의 taskforce_post 말하기와 memory_search 읽기에 닿는다. */
+  readonly taskforce?: CommodoreTaskforceLedger;
 }
 
 export interface CommodoreTurnInput {
@@ -423,6 +422,7 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
     case "intel": return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false };
     case "routine_add": case "routine_update": case "routine_remove": return { name, summary: [str("name") ?? str("routineId"), str("reason")].filter(Boolean).join(" · "), counts: false };
     case "issue_list": return { name, summary: str("sourceId"), counts: false };
+    case "memory_search": return { name, summary: str("query") ?? str("target"), counts: false };
     // 내장 도구의 경로·명령은 절대 경로를 담을 수 있다 — 기록(브라우저에 보이는)에는 경로를 싣지 않는다.
     // Read는 도구명·성공 여부만, Bash는 모델이 쓴 한 줄 설명만, Glob·Grep은 패턴만, Skill은 스킬 이름만 남긴다.
     case "Read": return { name, counts: false };
