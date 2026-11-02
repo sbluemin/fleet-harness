@@ -38,7 +38,7 @@
 .objectives-row.is-on .objectives-row-ic { color: var(--brass-ink); }
 .objectives-row-ic { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; color: var(--text-tertiary); }
 .objectives-row-ic svg { width: 17px; height: 17px; }
-.objectives-row-ic.objectives-plus { color: var(--brass-ink); font-size: var(--t-xl); line-height: 1; }
+.objectives-row-ic.objectives-plus { color: var(--brass-ink); line-height: 1; }
 .objectives-menu {
   position: fixed;
   z-index: 60;
@@ -468,7 +468,9 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 /* 「+ 정보 추가」 — 「+ 임무 추가」와 같은 한 줄(+ 글리프, 테두리 없는 입력, 이름 대신 자리표). 정보는 여러 줄일 수 있어 입력이
    내용만큼 자라고, 글이 있는 동안만 아래에 키 안내가 선다. */
-.objectives-commodore-intel-add { display: flex; align-items: flex-start; gap: 10px; padding-block: 10px; }
+.objectives-commodore-intel-add { display: flex; align-items: flex-start; gap: 10px; padding: 9px 4px; border-radius: 8px; }
+/* 빈 추가 행만 동작 면을 밝힌다. 편집 중에는 텍스트 필드의 배경을 그대로 둔다. */
+.objectives-commodore-intel-add:hover:not(:focus-within):has(textarea:placeholder-shown:not(:disabled):not([readonly])) { background: var(--wash-hover); }
 .objectives-commodore-intel-add-body { flex: 1; min-width: 0; display: grid; gap: 6px; }
 .objectives-commodore-intel-add textarea { box-sizing: border-box; width: 100%; max-height: 240px; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; field-sizing: content; }
 .objectives-commodore-intel-add textarea::placeholder { color: var(--brass-ink); opacity: 1; }
@@ -780,9 +782,9 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-theaters-list li.is-confirming { flex-wrap: wrap; }
 .commodore-theaters-confirm { flex: 1 1 100%; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .commodore-theaters-confirm > span:first-child { flex: 1; min-width: 0; }
-.commodore-theaters-add { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 0; color: var(--brass-ink); background: none; border: 0; font: inherit; font-size: var(--t-sm); text-align: start; cursor: pointer; }
-.commodore-theaters-add:hover:not(:disabled) > span:last-child { text-decoration: underline; text-underline-offset: 3px; }
-.commodore-theaters-add:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
+.commodore-theaters-add { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 4px; border-radius: 8px; color: var(--brass-ink); background: none; border: 0; font: inherit; font-size: var(--t-sm); text-align: start; cursor: pointer; }
+.commodore-theaters-add:hover:not(:disabled) { background: var(--wash-hover); }
+.commodore-theaters-add:focus-visible { box-shadow: var(--focus-face); }
 .commodore-theaters-add:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-hint.is-error { color: var(--coral-ink); }
 
@@ -935,7 +937,8 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-market-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--hairline); }
 .commodore-market-card-status { flex: 1 1 auto; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
 .commodore-marketplaces-add { display: grid; gap: 6px; padding-top: 10px; }
-.commodore-marketplaces-add-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.commodore-marketplaces-add-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px; border-radius: 8px; }
+.commodore-marketplaces-add-line:hover:not(:focus-within):has(> input:not(.is-ref):placeholder-shown:not([readonly])) { background: var(--wash-hover); }
 .commodore-marketplaces-add-hint { margin: 0 0 0 26px; color: var(--text-tertiary); font-size: var(--t-xs); }
 .commodore-plugins-field { flex: 1 1 220px; min-width: 0; padding: 6px 10px; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: var(--control-field); color: var(--text-primary); font-family: var(--font-code); font-size: var(--t-xs); outline: none; }
 .commodore-plugins-field.is-ref { flex: 0 1 160px; }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PlusGlyph } from "@fleet-console/ui/react";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { DirectoryBrowserModal } from "../../../core/client/src/chrome/components/directory-browser-modal.js";
@@ -100,7 +101,7 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
             </div>
           ))}
           <button type="button" data-press="r1" className="objectives-cm-gr commodore-theaters-phone-add" disabled={busy} onClick={pickFolder}>
-            <span className="objectives-cm-intel-plus" aria-hidden="true">+</span>
+            <span className="objectives-cm-intel-plus" aria-hidden="true"><PlusGlyph /></span>
             <span className="objectives-cm-gr-tx">{t("theaterInbox.theaters.add")}</span>
           </button>
         </div>
@@ -133,7 +134,7 @@ export function CommodoreTheaters({ commodoreId, phone = false }: { readonly com
         </ul>
       ) : null}
       <button type="button" className="commodore-theaters-add" disabled={busy} onClick={pickFolder}>
-        <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+        <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
         <span>{t("theaterInbox.theaters.add")}</span>
       </button>
       {failure}

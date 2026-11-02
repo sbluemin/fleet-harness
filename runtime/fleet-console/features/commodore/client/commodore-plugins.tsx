@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type HTMLAttributes, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from "react";
+import { PlusGlyph } from "@fleet-console/ui/react";
 import { isFleetMobileShell, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
@@ -550,7 +551,7 @@ function MarketplaceAdd({ t }: { readonly t: T }) {
   return (
     <form className="commodore-marketplaces-add" onSubmit={submit} noValidate>
       <div className="commodore-marketplaces-add-line">
-        <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+        <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
         <input
           className="commodore-plugins-field"
           value={source}
@@ -969,7 +970,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
             </Fragment>
           ))}
           <button ref={addRef} type="button" data-press="r1" className="objectives-cm-gr commodore-theaters-phone-add" onClick={() => setPalette(true)}>
-            <span className="objectives-cm-intel-plus" aria-hidden="true">+</span>
+            <span className="objectives-cm-intel-plus" aria-hidden="true"><PlusGlyph /></span>
             <span className="objectives-cm-gr-tx">{t("commodore.plugins.add")}</span>
           </button>
         </div>
@@ -1001,7 +1002,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
         </ul>
       ) : null}
       <button ref={addRef} type="button" className="commodore-theaters-add" onClick={() => setPalette(true)}>
-        <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+        <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
         <span>{t("commodore.plugins.add")}</span>
       </button>
       {failureLine}

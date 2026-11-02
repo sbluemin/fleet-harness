@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { MenuCheckGlyph, useViewportFit } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, PlusGlyph, useViewportFit } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
@@ -850,7 +850,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
     })}
     {touchable ? (
       <div className="objectives-row objectives-mission-add">
-        <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+        <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
         <input aria-label={t("objectives.members.add")} placeholder={t("objectives.members.add")} maxLength={40} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const role = target.value.trim(); target.value = ""; void call("/member/add", { objectiveId: objective.id, member: { role } }); } }} />
       </div>
     ) : null}
@@ -1652,7 +1652,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
           {proposals.filter((proposal) => proposal.kind === "add").map((proposal) => <ProposalRow key={proposal.id} proposal={proposal} target={null} n={0} extension={extension?.n} {...proposalProps} />)}
           {touchable ? (
             <div className="objectives-row objectives-mission-add">
-              <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+              <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
               <input aria-label={t("objectives.criteria.add")} placeholder={t("objectives.criteria.add")} maxLength={300} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const text = target.value.trim(); target.value = ""; void call("/criterion/add", { objectiveId: objective.id, criterion: { text } }); } }} />
             </div>
           ) : null}
@@ -1730,7 +1730,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     return member ? <MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} /> : null;
   };
   const graphProps = { objective, t, states: missionStates, ownerMark, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: closePopupRecords, onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal, orientation };
-  const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {
+  const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {
     if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget, value = target.value; void call("/mission/add", { objectiveId: objective.id, mission: { text: value.trim() } }).then(result => { if (result && target.value === value) target.value = ""; }); }
   }} /></div> : null;
   // 형상 스위치(켜면 세로) 옆의 크게 보기는 가로에서만 선다 — 세로는 높이가 자라 상세가 스크롤하므로 확대할 것이 없다.

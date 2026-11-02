@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PlusGlyph } from "@fleet-console/ui/react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { openCommodoreTheaterSettings } from "../../../commodore/client/commodore-conversation.js";
@@ -14,7 +15,7 @@ export function CommodoreToolsEmptyState({ commodoreId }: { readonly commodoreId
     <div className="ctt-empty">
       <p className="ctt-empty-body">{t("theaterTools.empty.body")}</p>
       <button type="button" className="ctt-empty-add" onClick={() => openCommodoreTheaterSettings(commodoreId)}>
-        <span className="ctt-empty-plus" aria-hidden="true">+</span>
+        <span className="ctt-empty-plus" aria-hidden="true"><PlusGlyph /></span>
         <span>{t("theaterTools.empty.add")}</span>
       </button>
     </div>

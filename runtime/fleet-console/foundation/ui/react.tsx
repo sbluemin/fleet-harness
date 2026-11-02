@@ -625,6 +625,11 @@ export function MenuCheckGlyph({ size = "1em", strokeWidth = 1.5, ...props }: Om
   return <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...props} viewBox="0 0 16 16"><path d="M2.5 8.35 7.15 12 13.5 4.9" /></svg>;
 }
 
+/** 추가 행의 선 십자 — 글꼴의 + 기준선 대신 아이콘 상자 가운데에 선다. */
+export function PlusGlyph(): React.ReactElement {
+  return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" focusable="false"><path d="M8 2.5v11M2.5 8h11" /></svg>;
+}
+
 export type ChevronDirection = "down" | "up" | "left" | "right";
 
 /* 좌측 사이드바 아코디언의 선 꺾쇠 하나를 네 방향으로 둔다. 회전 변환 없이 방향마다 path를 따로 두어, 쓰는 곳의 transform(접힘 회전 등)과 겹치지 않는다. */
