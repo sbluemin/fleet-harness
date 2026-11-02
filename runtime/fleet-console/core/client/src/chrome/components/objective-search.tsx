@@ -6,7 +6,12 @@ import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
 import { getViewedCommodoreId, getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
-import { requestTaskforceCreate } from "../../../../../features/commodore/client/taskforce/taskforce.js";
+import { openTaskforce, requestTaskforceCreate, TaskforceStack } from "../../../../../features/commodore/client/taskforce/taskforce.js";
+import { useTaskforceExperiment, useTaskforces } from "../../../../../features/commodore/client/taskforce/state.js";
+import type { TaskforceSummary } from "../../../../../features/commodore/shared/contracts/taskforce.js";
+import { taskforceT } from "../../../../../features/commodore/client/taskforce/i18n.js";
+import { openCommodoreConversation } from "../../../../../features/commodore/client/commodore-conversation.js";
+import { fuzzyMatchPaletteLabel } from "../../integration/palette-match.js";
 import { useCommodoreList, setZoneCommodore, selectMobileCommodore, useZoneCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
@@ -209,14 +214,23 @@ export function ObjectiveSearch({
     () => state.objectiveRecordSearchOpen && desktopView ? buildTheaterSectionSearchEntries(ownedTheaters, theaterSections, language) : [],
     [state.objectiveRecordSearchOpen, ownedTheaters, theaterSections, language, desktopView, sectionVersion], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  const taskforces = useTaskforces();
+  const taskforceExperiment = useTaskforceExperiment();
+  const taskforceRows = useMemo(() => !taskforceExperiment.enabled ? [] : taskforces
+    .flatMap((taskforce) => {
+      const match = text.trim() ? fuzzyMatchPaletteLabel(taskforce.name, text) : { exactTokens: 0, score: 0 };
+      return match ? [{ taskforce, match, key: `taskforce:${taskforce.id}` }] : [];
+    })
+    .sort((left, right) => right.match.exactTokens - left.match.exactTokens || right.match.score - left.match.score),
+  [taskforces, taskforceExperiment.enabled, text]);
   // 이동 모드 주 목록의 렌더 순서 — 선택·키보드·스크롤이 모두 이 배열의 index를 쓴다.
   const primaryRows = useMemo<readonly PrimaryRow[]>(
-    () => commodoreGroups.flatMap((group) => group.rows.map((row): PrimaryRow => {
+    () => [...commodoreGroups.flatMap((group) => group.rows.map((row): PrimaryRow => {
       if (row.kind === "commodore") return { kind: "commodore", group, context: row.context, key: `commodore:${row.commodoreId}` };
       if (row.kind === "member") return { kind: "member", record: row.record, key: `member:${row.record.id}` };
       return { kind: "objective", entry: row.entry, context: row.context, key: objectiveRecordResultKey(row.entry.objectiveId) };
-    })),
-    [commodoreGroups],
+    })), ...taskforceRows.map(({ taskforce, key }): PrimaryRow => ({ kind: "taskforce", taskforce, key }))],
+    [commodoreGroups, taskforceRows],
   );
   const primaryIndexByKey = useMemo(() => new Map(primaryRows.map((row, index) => [row.key, index])), [primaryRows]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.objectiveRecordSearchOpen, canUndoLastClose]);
@@ -345,7 +359,7 @@ export function ObjectiveSearch({
   const defaultPrimaryIndex = useMemo(() => {
     const hasQuery = searchTokens(text).length > 0;
     const first = hasQuery
-      ? primaryRows.findIndex((row) => row.kind === "member" || (row.kind === "objective" && !row.context) || (row.kind === "commodore" && !row.context))
+      ? primaryRows.findIndex((row) => row.kind === "taskforce" || row.kind === "member" || (row.kind === "objective" && !row.context) || (row.kind === "commodore" && !row.context))
       : primaryRows.findIndex((row) => row.kind === "objective" || row.kind === "member");
     return first === -1 ? 0 : first;
   }, [text, primaryRows]);
@@ -431,9 +445,8 @@ export function ObjectiveSearch({
           setMobileDestination({ kind: "plugin", entryId: "commodore", params: { commodoreId: action.commodoreId } });
           break;
         }
-        closeConversationSurface();
-        // 사령관 홈은 Theater가 아니라 사령관 UUID 주소의 Inbox다(사이드바 사령관 머리 표식과 같은 주소).
-        openTheaterInbox({ theaterId: action.commodoreId, sectionId: "commodore:commodore", pageId: "log", returnFocus: null });
+        // 입력 가능한 대화로 바로 간다. Inbox 상세 패널이 아니라 컴포저가 포커스를 받는다.
+        openCommodoreConversation(action.commodoreId, { focusComposer: true });
         if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
         break;
       }
@@ -548,6 +561,13 @@ export function ObjectiveSearch({
     closeObjectiveSearch();
   };
 
+  const selectTaskforce = (taskforceId: string) => {
+    previousFocusRef.current = null;
+    openTaskforce(taskforceId, { focusComposer: true });
+    if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
+    closeObjectiveSearch();
+  };
+
   const selectCommodore = (commodoreId: string) => {
     runAction({ kind: "switch-commodore", commodoreId }, false);
   };
@@ -579,6 +599,10 @@ export function ObjectiveSearch({
   const activateSelected = () => {
     if (selectedPrimaryRow) {
       const row = selectedPrimaryRow;
+      if (row.kind === "taskforce") {
+        selectTaskforce(row.taskforce.id);
+        return;
+      }
       if (row.kind === "commodore") {
         selectCommodore(row.group.commodoreId);
         return;
@@ -928,6 +952,28 @@ export function ObjectiveSearch({
                   })}
                 </div>
               ))}
+              {taskforceRows.map(({ taskforce, key }) => {
+                const index = exactCount + (primaryIndexByKey.get(key) ?? 0);
+                const active = index === clampedSelectedIndex;
+                return <button
+                  id={resultOptionId(key)}
+                  key={key}
+                  ref={(node) => {
+                    if (node) resultRefs.current.set(key, node);
+                    else resultRefs.current.delete(key);
+                  }}
+                  type="button"
+                  className={`objective-search-result${active ? " is-active" : ""}`}
+                  role="option"
+                  aria-selected={active}
+                  data-palette-index={index}
+                  onClick={() => selectTaskforce(taskforce.id)}
+                >
+                  <TaskforceStack members={taskforce.members} />
+                  <span className="objective-search-result-text"><strong>{highlightText(taskforce.name, tokens)}</strong></span>
+                  <span className="objective-search-status">{taskforceT(language)("taskforce.title")}</span>
+                </button>;
+              })}
               {renderRailGroups(false)}
               {/* 명령은 결과 뒤에 한 목록으로 잇는다 — 섹션 제목 없이, 각 묶음 안의 점수 순서 그대로. */}
               {commandRows.map((row, position) => {
@@ -971,6 +1017,7 @@ export function ObjectiveSearch({
 }
 
 type PrimaryRow =
+  | { readonly kind: "taskforce"; readonly taskforce: TaskforceSummary; readonly key: string }
   | { readonly kind: "commodore"; readonly group: CommodorePaletteGroup; readonly context: boolean; readonly key: string }
   | { readonly kind: "objective"; readonly entry: ObjectiveSearchEntry; readonly context: boolean; readonly key: string }
   | { readonly kind: "member"; readonly record: ObjectiveRecord; readonly key: string };
