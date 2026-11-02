@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.280.0] - 2026-11-02
+
+### fleet-console
+
+#### Added
+- Choose how many turns Commodores may discuss in a row in each TaskForce: 15, 25, or no limit. TaskForces start at 15, replacing the fixed 12.
+
 ## [1.279.0] - 2026-11-02
 
 ### fleet-console

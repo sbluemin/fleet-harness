@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.280.0] - 2026-11-02
+
+### fleet-console
+
+#### Added
+- 태스크포스마다 사령관이 이어서 논의할 수 있는 턴 수를 15, 25, 제한 안 함 중에서 고를 수 있습니다. 태스크포스는 기존 고정값 12 대신 15로 시작합니다.
+
 ## [1.279.0] - 2026-11-02
 
 ### fleet-console
