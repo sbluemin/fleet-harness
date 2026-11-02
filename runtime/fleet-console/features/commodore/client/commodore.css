@@ -312,6 +312,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-trail-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s cubic-bezier(.2, .7, .2, 1); }
 .objectives-commodore-trail-fold.is-open { grid-template-rows: 1fr; }
 .objectives-commodore-trail-fold-body { min-height: 0; overflow: hidden; padding-left: 14px; }
+.objectives-commodore-trail-full-title { margin: 4px 6px 8px; color: var(--text-secondary); font-size: var(--t-xs); overflow-wrap: anywhere; }
+.objectives-commodore-trail-row-open:disabled { cursor: default; }
 .objectives-commodore-trail-fold.is-open .objectives-commodore-trail-fold-body { padding-bottom: 8px; }
 .objectives-commodore-trail-row-open {
   display: inline-block; margin-top: 2px; padding: 3px 6px; border: 0; border-radius: var(--radius-xs); background: transparent; cursor: pointer;
