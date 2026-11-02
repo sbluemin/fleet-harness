@@ -27,15 +27,17 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
     return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
   };
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels } = startAiGateway({
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged } = startAiGateway({
     ...ctx,
     host: { ...ctx.host, storage: quotaStorage },
     // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다.
     resolveClaudeExecutable,
   });
   // 모든 모델 선택지가 읽는 로스터 — 같은 Gateway 설정 파일의 투영이다. 저장 직후 열린 화면 전부에 다시 읽으라고 알린다.
-  const models = createModelRosterHost({ readSettings: aiGatewayStore.read });
+  // Claude 별칭의 버전 이름도 같은 CLI 표에서 온다. 표가 바뀌면(어느 경로가 물었든) 열린 화면이 다시 읽는다.
+  const models = createModelRosterHost({ readSettings: aiGatewayStore.read, ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}) });
   const modelRoster = registerModelRosterRoutes(ctx, models);
+  ctx.host.lifecycle.registerCleanup(onClaudeNativeModelsChanged(modelRoster.notify));
   registerTerminalSettingsRoutes(ctx, {
     commodoreSystemPrompts,
     aiGatewayStore,

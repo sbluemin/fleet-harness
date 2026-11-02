@@ -4,7 +4,7 @@ import { isAgentEffort, type ModelRosterTarget } from "../../ai-gateway/shared/m
 
 import { useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
-import { DEFAULT_LAUNCH } from "./defaults.js";
+import { COMMANDER_PRESET } from "../../objectives/shared/types.js";
 
 /**
  * 사령관 설정의 값과 선택기 — 데스크톱 Theater Inbox 의 사령관 「설정」 칸과 폰 사령관 화면이 함께 쓴다.
@@ -74,13 +74,13 @@ export function commodoreCoordinates(state: CommodoreStateFields, defaults: Comm
   return { model, effort };
 }
 
-/** 지휘관 좌표의 저장값 — 비어 있으면 선택기가 보드 기본값(DEFAULT_LAUNCH)을 보인다. */
+/** 지휘관 좌표의 저장값 — 비어 있으면 선택기가 보드 기본값(COMMANDER_PRESET)을 보인다. */
 export function commanderValue(state: CommodoreStateFields): ModelCoordinateValue {
   return state.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : {};
 }
 
 export function commanderCoordinates(state: CommodoreStateFields, next: { readonly model?: string; readonly effort?: string }) {
-  const model = next.model ?? state.commanderModel ?? DEFAULT_LAUNCH.model;
+  const model = next.model ?? state.commanderModel ?? COMMANDER_PRESET.model;
   const effort = next.effort ?? (next.model ? undefined : state.commanderEffort);
   return { model, ...(effort ? { effort } : {}) };
 }

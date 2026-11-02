@@ -13,6 +13,11 @@ export interface ModelRosterHost {
    * 고르는 통로다. Claude 별칭이 아니거나 아직 못 풀었으면 받은 값을 그대로 돌려주고, 실패하지 않는다.
    */
   pinClaudeVersion?(wireModel: string): Promise<string>;
+  /**
+   * 설치된 Claude Code에게 별칭이 가리키는 버전을 묻기 시작한다(기다리지 않는다). 표가 바뀌면 로스터 변경 알림이 나가
+   * 열린 선택기가 버전 이름(`Opus 5.5`)으로 다시 읽는다. 처음 읽는 목록이 가족 이름(`Opus`)으로 굳지 않게 하는 통로다.
+   */
+  warmClaudeVersions?(): void;
   /** 로스터가 바뀐 직후 울린다. 요청마다 읽지 않는 상주 작업이 쓰는 통로다. */
   subscribe?(listener: () => void): () => void;
 }

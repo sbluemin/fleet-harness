@@ -9,7 +9,7 @@ import type { ClientModelsCapability } from "../../ai-gateway/shared/model-ports
 import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 
 import { memberFailureReason } from "../shared/signals.js";
-import type { Objective, ObjectiveMember } from "../shared/types.js";
+import { COMMANDER_PRESET, type Objective, type ObjectiveMember } from "../shared/types.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
@@ -17,7 +17,8 @@ import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
  * 메뉴가 뜬다. 이 파일은 Objectives 고유 부분(시작 뷰·서브에이전트·실행 낱말·라우팅 사유)만 갖는 어댑터다.
  */
 
-export const DEFAULT_LAUNCH = { model: "opus[1m]", effort: "high" } as const;
+/** 지휘관 기본 좌표 — 사령관 설정의 지휘관 선택기와 같은 원천(COMMANDER_PRESET)이다. */
+const DEFAULT_LAUNCH = COMMANDER_PRESET;
 
 export interface LaunchGroup { readonly provider: LaunchProviderGlyphId | null; readonly caption: string; readonly rows: readonly ObjectiveLaunchVariantRow[] }
 

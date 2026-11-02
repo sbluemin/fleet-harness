@@ -309,12 +309,19 @@ export function startAiGateway(ctx: GatewayStartContext) {
   }, [{ method: "POST", path: "", summary: "Assign a model and reasoning effort to each of several tasks in one routing decision.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
   const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
   // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
+  const claudeNativeListeners = new Set<() => void>();
   const claudeNativeModels = resolveClaudeExecutable
     ? createClaudeNativeModelSync({
       resolveExecutable: resolveClaudeExecutable,
       readSupportedModels: (executable) => readClaudeSupportedModels(executable === undefined ? {} : { executablePath: executable }),
+      onChanged: () => { for (const listener of claudeNativeListeners) listener(); },
     })
     : undefined;
+  /** CLI가 알려 준 Claude 별칭 표로 카탈로그가 바뀐 직후 울린다. */
+  const onClaudeNativeModelsChanged = (listener: () => void): (() => void) => {
+    claudeNativeListeners.add(listener);
+    return () => { claudeNativeListeners.delete(listener); };
+  };
   const ensureClaudeNativeModels = claudeNativeModels?.ensure;
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
@@ -327,7 +334,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels };
+  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged };
 }
 
 const ROUTING_ASSIGN_MAX_ITEMS = 20;
