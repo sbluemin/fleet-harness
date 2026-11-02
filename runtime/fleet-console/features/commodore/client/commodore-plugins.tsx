@@ -733,7 +733,8 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const [menu, setMenu] = useState<{ readonly pluginId: string; readonly x: number; readonly y: number; readonly trigger: HTMLElement; readonly anchored: boolean; readonly global: boolean } | null>(null);
   const [armed, setArmed] = useState(false);
   const { updates, trust, setTrust, update: applyUpdate } = usePluginUpdates();
-  const [authRevision, setAuthRevision] = useState(0);
+  // 관리 팔레트에서 바뀐 MCP 구성도 열린 설정에 반영한다 — 상세와 같은 플러그인 내용 세대를 구독한다.
+  const authRevision = useDetailGeneration();
   const [form, setForm] = useState<InlineForm | null>(null);
   /** 모바일 셸에서 받은 인증 주소 — 셸은 누름 없이 연 창을 OS 브라우저로 넘기지 않아, 행에서 한 번 누르게 한다. */
   const [ready, setReady] = useState<{ readonly pluginId: string; readonly server: string; readonly url: string } | null>(null);
@@ -821,7 +822,6 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     if (busy) return;
     setBusy(pluginId);
     void applyUpdate(pluginId, reviewed).then((outcome) => {
-      if (outcome === "done") setAuthRevision((revision) => revision + 1);
       // 신뢰 확인은 같은 메뉴에서 이어 가고, 그 밖의 결과는 행에 표시한다.
       if ((outcome === "done" || outcome === "failed") && menuRef.current?.dataset.pluginId === pluginId) closeMenu();
     }).finally(() => setBusy(null));
