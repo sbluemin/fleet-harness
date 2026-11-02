@@ -123,7 +123,8 @@ export function withoutReplayMetadata<T extends object>(item: T): WithoutReplayM
 export interface CanonicalFunctionCallOutput {
   type: "function_call_output";
   call_id: string;
-  output: string;
+  /** Tool results preserve the same text/image parts as input messages. */
+  output: CanonicalInputMessage["content"];
   /** Client tool failures remain successful bridge replies with an error-marked result payload. */
   is_error?: boolean;
   /** Tool names selected by a client-side discovery tool for use on the following turn. */

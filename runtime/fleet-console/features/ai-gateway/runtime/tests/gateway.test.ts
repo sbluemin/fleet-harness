@@ -201,6 +201,51 @@ describe("model catalog", () => {
 
 describe("OpenAI Responses adapter", () => {
 
+  it("delivers mixed image tool results to the provider without losing their call linkage", async () => {
+    let sent: any;
+    const adapter = new OpenAIResponsesAdapter({
+      fetch: async (_url, init) => {
+        sent = JSON.parse(String(init?.body));
+        return sseResponse(frame("response.completed", {
+          type: "response.completed",
+          response: { id: "image_reply", model: "gpt-6.1-sol", output: [] },
+        }));
+      },
+    });
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      messages: [
+        { role: "user", content: "Inspect both captures." },
+        { role: "assistant", content: [
+          { type: "tool_use", id: "read_1", name: "Read", input: {} },
+          { type: "tool_use", id: "shot_1", name: "Screenshot", input: {} },
+        ] },
+        { role: "user", content: [
+          { type: "tool_result", tool_use_id: "read_1", content: [
+            { type: "text", text: "first" },
+            { type: "image", source: { type: "base64", media_type: "image/png", data: "YWJj" } },
+            { type: "text", text: "last" },
+          ] },
+          { type: "tool_result", tool_use_id: "shot_1", content: [
+            { type: "image", source: { type: "base64", media_type: "image/png", data: "ZGVm" } },
+          ] },
+        ] },
+      ],
+    };
+    const response = await new AnthropicMessagesGateway(adapter).stream(request, { apiKey: "key" });
+    await collectBody(response.body);
+    expect(sent.input.filter((item: any) => item.type === "function_call_output")).toEqual([
+      { type: "function_call_output", call_id: "read_1", output: [
+        { type: "input_text", text: "first" },
+        { type: "input_image", image_url: "data:image/png;base64,YWJj", detail: "auto" },
+        { type: "input_text", text: "last" },
+      ] },
+      { type: "function_call_output", call_id: "shot_1", output: [
+        { type: "input_image", image_url: "data:image/png;base64,ZGVm", detail: "auto" },
+      ] },
+    ]);
+  });
+
   it("bounds the total upstream stream body size", async () => {
     const adapter = new OpenAIResponsesAdapter({
       fetch: async () => sseResponse(frame("response.created", {

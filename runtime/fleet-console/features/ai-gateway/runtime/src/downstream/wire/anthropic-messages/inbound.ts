@@ -227,7 +227,7 @@ function estimateCanonicalRequestTokens(
     } else if (item.type === "function_call") {
       parts.push(item.name, item.arguments);
     } else {
-      parts.push(item.output);
+      parts.push(canonicalMessageText(item.output));
     }
 
   }

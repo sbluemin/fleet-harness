@@ -21,6 +21,7 @@ import {
   resolveAntigravityModelSelection,
   sanitizeGeminiSchema,
   translateAntigravityStream,
+  translateAnthropicRequest,
 } from "../../src/index.js";
 import type {
   AntigravityFrame,
@@ -94,6 +95,38 @@ async function collect(events: AsyncIterable<CanonicalResponseEvent>): Promise<C
 
 // A real blob: 436 base64 characters were observed on the live wire.
 const SIGNATURE = "EsMCCsAC".padEnd(120, "AbC+/9=");
+
+describe("antigravity image tool results", () => {
+  it("keeps image bytes next to the named function response across a tool-result batch", () => {
+    const canonical = translateAnthropicRequest({
+      model: "claude-gateway--antigravity--gemini-3.8-flash",
+      max_tokens: 128,
+      messages: [
+        { role: "user", content: "Inspect both captures." },
+        { role: "assistant", content: [
+          { type: "tool_use", id: "read_1", name: "Read", input: {} },
+          { type: "tool_use", id: "shot_1", name: "Screenshot", input: {} },
+        ] },
+        { role: "user", content: [
+          { type: "tool_result", tool_use_id: "read_1", content: [
+            { type: "text", text: "first capture" },
+            { type: "image", source: { type: "base64", media_type: "image/png", data: "YWJj" } },
+          ] },
+          { type: "tool_result", tool_use_id: "shot_1", content: [
+            { type: "image", source: { type: "base64", media_type: "image/png", data: "ZGVm" } },
+          ] },
+        ] },
+      ],
+    });
+    const envelope = envelopeFor({ ...canonical, model: "gemini-3.8-flash" });
+    expect(envelope.request.contents.at(-1)).toEqual({ role: "user", parts: [
+      { functionResponse: { name: "Read", id: "read_1", response: { result: "first capture" } } },
+      { inline_data: { mime_type: "image/png", data: "YWJj" } },
+      { functionResponse: { name: "Screenshot", id: "shot_1", response: { result: "" } } },
+      { inline_data: { mime_type: "image/png", data: "ZGVm" } },
+    ] });
+  });
+});
 
 describe("antigravity quota", () => {
   it("does not read credentials on Windows without an Antigravity footprint", async () => {
