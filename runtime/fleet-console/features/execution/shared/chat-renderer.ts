@@ -113,6 +113,11 @@ export interface AgentConversationProps {
   readonly entries: readonly AgentConversationEntry[];
   /** Who takes part and what they are doing now — the latest bubble mark of each speaker shows that face. */
   readonly participants: readonly ConversationParticipant[];
+  /**
+   * Marks (avatars) beside agent bubbles. Omitted, they show once more than one agent takes part. Pass `false` when only one
+   * agent ever speaks in bubbles and the other participants appear only in relay lines, as in a one-to-one Commodore chat.
+   */
+  readonly speakerMarks?: boolean;
   /** Speakers working right now — the working line above the composer. */
   readonly working: readonly ConversationSpeaker[];
   readonly language: "en" | "ko";

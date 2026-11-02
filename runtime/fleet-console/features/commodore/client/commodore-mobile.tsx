@@ -487,6 +487,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
         <Conversation
           entries={items}
           participants={participants}
+          speakerMarks={false}
           working={working}
           language={language}
           commodoreId={commodoreId}

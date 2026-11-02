@@ -454,6 +454,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
           <Conversation
             entries={items}
             participants={participants}
+            speakerMarks={false}
             working={working}
             language={language}
             commodoreId={commodoreId}
