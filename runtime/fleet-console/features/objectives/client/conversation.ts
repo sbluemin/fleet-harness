@@ -1,10 +1,10 @@
 import { objectiveOpenUIPort } from "./openui-ports.js";
-import type { ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
+import type { ConversationDecision, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
-import { answeringText, commodoreAliasOf, decisionTurn } from "./board-commodore.js";
+import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { openObjectiveFromCluster, patchOwnerView, returnPersonHold, revealObjective } from "./objectives-state.js";
 import { followupPickable } from "./board-actions.js";
@@ -68,17 +68,22 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     answered.set(decision.requestId, entry ? { ...entry, answers: [...entry.answers, answer] } : { kind: "decision-answer", id: `decision:${objective.id}:${decision.requestId}`, at: decision.at, answers: [answer] });
   }
   events.push(...answered.values());
-  const request = !objective.done ? objective.decisionRequest : null;
-  // 결정 카드의 차례 — 사령관이 넘긴 요청이면 넘긴 이유와 돌려주기, 사령관이 맡은 요청이면 「답하는 중」. 답이 갈 곳은 늘 한 줄.
-  const handedHold = request ? livePersonHold(objective, "decision") : null;
-  const handler = request && decisionTurn(objective, commodoreActive) === "commodore";
   const truncated = (objective.memberHistory?.length ?? 0) >= MAX_OBJECTIVE_ACTIONS || Object.values(objective.actionCounts ?? {}).reduce((sum, count) => sum + count, 0) > (objective.actions?.length ?? 0);
   // 사령관 행위 줄 → 그 시각의 사령관 기록(읽기 전용). 줄 id 로 시각을 찾는다 — 모르는 줄이면 아무 일도 없다.
   const openBoardAction = openRecord ? (entryId: string) => {
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: conversationHolds(objective), members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
+  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: conversationHolds(objective), members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: decisionInCommodoreConversation(objective) ? null : objectiveDecision(objective, open, actions, commodoreActive) };
+}
+
+/** 두 대화 표면이 같은 요청·응답 경로를 쓴다. 표시 위치만 바꾸며 질문이나 결정을 복제하지 않는다. */
+export function objectiveDecision(objective: Objective, open?: () => void, actions?: GroupConversationActions, commodoreActive = false): ConversationDecision | null {
+  const request = !objective.done && !objective.removed ? objective.decisionRequest : null;
+  const handedHold = request ? livePersonHold(objective, "decision") : null;
+  const handler = request && decisionTurn(objective, commodoreActive) === "commodore";
+  const alias = commodoreAliasOf(objective.commodoreId);
+  return request ? {
     id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
     questions: request.questions.map((question) => ({ id: question.id, ...(question.header ? { header: question.header } : {}), text: question.text, multiSelect: question.multiSelect, options: question.options })),
     answerMaxLength: MAX_DECISION_ANSWER_INPUT, open,
@@ -91,7 +96,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
       giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => returnPersonHold(objective.id, "decision") },
     } } : {}),
     route: localized((t) => t(handedHold ? "objectives.decision.routeHanded" : "objectives.decision.route")),
-  } : null };
+  } : null;
 }
 
 const CRITERIA_VERDICTS: ReadonlySet<ObjectiveActionKind> = new Set(["criteria-approved", "criteria-rejected"]);

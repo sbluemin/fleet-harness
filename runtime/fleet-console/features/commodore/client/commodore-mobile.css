@@ -174,6 +174,9 @@
 
 /* 사령관의 질문 — 그룹 대화와 같은 본문 끝 자리다. 카드 안이 아니라 대화 전체가 함께 스크롤한다. */
 .objectives-cm-asks { flex: none; display: flex; flex-direction: column; gap: 8px; }
+/* 넘긴 결정의 돌려주기·닫기·답하기가 안내 문구를 밀어내지 않게 각 줄에 자리를 준다. */
+.objectives-cm-asks .group-card-foot { flex-wrap: wrap; justify-content: flex-end; }
+.objectives-cm-asks .group-card-foot > :first-child:is(span) { flex-basis: 100%; }
 
 /* 기억 탭 — 폰 갈래 트리와 읽기 전용 항목 화면. */
 /* 검색 — 손가락 높이 44, 둥근 면. 항목이 하나라도 있을 때만 선다. */

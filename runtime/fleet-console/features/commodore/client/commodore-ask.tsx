@@ -24,7 +24,8 @@ export const ENDED_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "a
  * 보내기 곁 한 줄, 목표에 매인 질문이면 그 목표로 가는 열기. 보내는 길은 사령관 질문 답하기 하나다. 보내거나 사령관이 거두면
  * 질문이 끝나 카드가 내려가고, 기록에는 「사람에게 물음」·「사람이 답함」 줄이 남는다.
  *
- * `onEnded` — 질문이 이미 끝났다는 거절을 카드 밖에 남기는 기록 칸의 실패 경로.
+ * 위임 목표의 넘긴 결정도 같은 칸에 서되 목표 이름을 머리에 싣고, 보드가 제공한 원래 결정 응답·돌려주기 경로를 그대로 쓴다.
+ * `onEnded` — 사령관의 직접 질문이 이미 끝났다는 거절을 카드 밖에 남기는 기록 칸의 실패 경로.
  */
 export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, language, phone = false, leave, onEnded }: {
   readonly theaterId: string;
@@ -47,10 +48,29 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, languag
   const asker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const Card = commodoreDecisionCardRenderer();
   const shown = asks.filter((ask) => !answered.includes(ask.id));
-  if (!Card || shown.length === 0) return null;
+  const handed = board.objectives.flatMap((objective) => {
+    const decision = objective.handedDecision;
+    return decision && !answered.includes(decision.id) ? [{ objective, decision }] : [];
+  });
+  if (!Card || (shown.length === 0 && handed.length === 0)) return null;
   const titleOf = (objectiveId: string) => askObjectiveTitle(board, view?.asks?.objectives, objectiveId);
   return (
     <div className={phone ? "objectives-cm-asks" : "objectives-asks"}>
+      {handed.map(({ objective, decision }) => (
+        <Card
+          key={`${objective.id}:${decision.id}`}
+          decision={{ ...decision, open: () => {
+            if (phone) { const open = () => openObjectiveOnPhone(objective.id, objective.theaterId); if (leave) leave(open); else open(); return; }
+            revealObjective({ objectiveId: objective.id });
+            openObjectiveFromCluster(objective.theaterId, objective.id);
+          } }}
+          asker={{ kind: "commander", name: objective.title, objectiveId: objective.id }}
+          language={language}
+          commodoreId={theaterId}
+          mobile={phone}
+          onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
+        />
+      ))}
       {shown.map((ask) => (
         <Card
           key={ask.id}

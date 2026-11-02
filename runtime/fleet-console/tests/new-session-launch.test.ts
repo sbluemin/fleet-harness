@@ -126,7 +126,7 @@ it("opens a registry goal as a full conversation before and after its session ar
   const registry = { ...await loadFeatureRegistry(), objectiveRecordClusters: clusters, conversationSurfaces: [{
     id: "test-commodore", title: () => "Owner conversation", render: () => h("p", null, "Owner conversation"), commodoreId: () => owner,
   }, freshConversationSurface] };
-  const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false }] };
+  const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false, handedDecision: null }] };
   const offBoard = installCommodoreBoard({
     read: () => board, subscribe: () => () => {}, subscribeFinished: () => () => {}, railEntryIds: [],
     finished: () => [], finishedLoaded: () => true, findFinished: () => null, serverReached() {}, loadFinished() {},
@@ -376,7 +376,7 @@ describe("kept tabs across a fresh center", () => {
       origin: null, requestSource: null, decisionRequest: null, decisionRequestRevision: 0, decisionDelivery: null, decisions: [], personHolds: [],
       commenced: false, operator: "human", removed: null, merged: [],
     };
-    const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false }] };
+    const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false, handedDecision: null }] };
     // 시작 화면의 findObjective가 사령관을 읽도록 보드를 채운다 — 실앱의 로드된 보드와 같다.
     const boardApi = { fetch: async () => new Response(JSON.stringify({ objectives: board.objectives, groups: [], launch: { available: false } }), { status: 200, headers: { "Content-Type": "application/json" } }) } as unknown as BoardApi;
     await act(async () => { await loadBoard(boardApi, owner); });
