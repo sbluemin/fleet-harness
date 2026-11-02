@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.278.0] - 2026-11-02
+
+### fleet-console
+
+#### Added
+- 사령관이 보관된 자기 대화와 참여한 TaskForce 기록을 검색해 새 세션에서도 이전 요청과 결정을 이어가고, 다른 사령관의 발언은 분명히 구분할 수 있습니다.
+- 목표에 요청이 시작된 TF 대화를 보존해, 진행 상황을 자동 전달하지 않고도 사령관이 나중에 응답할 맥락을 확인할 수 있습니다.
+
 ## [1.277.1] - 2026-11-02
 
 ### fleet-console

@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.278.0] - 2026-11-02
+
+### fleet-console
+
+#### Added
+- Commodores can search their retained conversations and TaskForce discussions they participated in to continue earlier requests and decisions after a fresh session, while keeping other Commodores' words clearly attributed.
+- Objectives can retain the TaskForce conversation that prompted them, giving the Commodore context for later replies without automatically forwarding updates.
+
 ## [1.277.1] - 2026-11-02
 
 ### fleet-console
