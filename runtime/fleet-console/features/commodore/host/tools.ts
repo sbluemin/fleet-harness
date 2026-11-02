@@ -196,7 +196,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     }),
     // TaskForce — 판단 턴의 말하기는 이 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
     // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
-    tool("taskforce_post", "Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit. Use the TaskForce id and member ids exactly as shown in this turn's TaskForce block (the id: line and the Members line); never guess or shorten them.", z.object({
+    tool("taskforce_post", "Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit. Use exact TaskForce and member ids from the TaskForce context or tools; never guess or shorten them.", z.object({
       taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
       text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT),
       mentions: z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).max(32).optional(),
@@ -207,9 +207,9 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
         const { entry } = taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text, ...(mentions ? { mentions } : {}) });
         return { taskforceId, seq: entry.seq };
       } catch (error) {
-        // 같은 턴에 바로잡을 수 있게 거절 사유를 돌려준다 — id는 추측하지 말고 이번 턴의 TaskForce 블록을 그대로 쓴다.
-        if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Use the TaskForce id exactly as shown in this turn's TaskForce block (the id: line); do not guess or shorten it, then call again in this turn." });
-        if (error instanceof TaskforceStoreError && error.code === "invalid_request") throw new TaskforceStoreError(error.code, undefined, { hint: "mentions must be member ids from this turn's TaskForce block Members line." });
+        // 원래 TF 깨움이 아닌 목표 후속 턴도 같은 도구를 쓴다 — 좌표를 확인하되 현재 권한 검사를 우회하지 않는다.
+        if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Check the exact TaskForce id against the TaskForce context or tools; never guess or shorten it." });
+        if (error instanceof TaskforceStoreError && error.code === "invalid_request") throw new TaskforceStoreError(error.code, undefined, { hint: "mentions must be exact member ids from the TaskForce context or tools." });
         throw error;
       }
     }),

@@ -1,6 +1,14 @@
 import { MAX_DECISION_QUESTIONS, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_LABEL, MAX_DECISION_DESCRIPTION, MAX_DECISION_ANSWER, MAX_SHORT_INPUT, MAX_DECISION_QUESTION_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, decisionQuestionSchema, type DecisionQuestionInput, decisionAnswersSchema, type DecisionAnswersInput, storedDecisionHeader, ownAnswer } from "../../commodore/shared/contracts/questions.js";
 export { MAX_DECISION_QUESTIONS, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_LABEL, MAX_DECISION_DESCRIPTION, MAX_DECISION_ANSWER, MAX_SHORT_INPUT, MAX_DECISION_QUESTION_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, decisionQuestionSchema, type DecisionQuestionInput, decisionAnswersSchema, type DecisionAnswersInput, storedDecisionHeader, ownAnswer } from "../../commodore/shared/contracts/questions.js";
 import { z } from "zod";
+import { taskforceIdSchema } from "../../commodore/shared/contracts/taskforce.js";
+
+/** 요청이 시작된 대화의 좌표 — 생성자·후속 파생 관계·현재 발언 권한과는 별개다. */
+export const objectiveRequestSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("direct") }).strict(),
+  z.object({ kind: z.literal("taskforce"), taskforceId: taskforceIdSchema, seq: z.number().int().positive().safe().optional() }).strict(),
+]);
+export type ObjectiveRequestSource = z.output<typeof objectiveRequestSourceSchema>;
 import type { ConsoleCoordinatesFailureCause, ConsoleTurnFailure } from "../../console-use/shared/control.js";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 
@@ -609,6 +617,8 @@ export interface StoredObjective {
   readonly today?: true;
   /** 에이전트가 도구로 더한 목표 — 기존 Objective ID 또는 Theater의 사령관. 사람이 만든 목표에는 없다. */
   readonly addedBy?: string | Extract<ObjectiveActor, { kind: "commodore" }>;
+  /** 없으면 출처 미상인 기존 목표다. 읽으면서 추정하거나 채우지 않는다. */
+  readonly requestSource?: ObjectiveRequestSource;
   /** 마지막으로 개시한 손 — 행위 기록이 접혀도 남는다. 개시 출처를 기록하기 전의 옛 레코드에는 없다(누가 개시했는지 모른다). */
   readonly commencedBy?: ObjectiveActor;
   /**
@@ -805,6 +815,7 @@ export interface Objective {
   readonly dueDate: string | null;
   readonly today: boolean;
   readonly addedBy: { readonly objectiveId: string; readonly title: string | null } | Extract<ObjectiveActor, { kind: "commodore" }> | null;
+  readonly requestSource: ObjectiveRequestSource | null;
   readonly done: ObjectiveCompletion | null;
   /** 인계 대기 — 끝나지 않은 목표의 모든 임무와 모든 달성 기준이 끝났고 인계 기록이 없다. 계산한 값이다. */
   readonly awaitingHandoff: boolean;

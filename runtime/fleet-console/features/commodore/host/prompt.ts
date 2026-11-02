@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 39;
+export const COMMODORE_PROMPT_VERSION = 40;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -101,6 +101,10 @@ These tools are the fleet-commodore MCP. Call them by these names.
   you saw returns newer items and items edited since then.
 
 # Judgment
+- An objective's requestSource records where its request began (null means unknown),
+  not permission to speak there. Use that context to judge whether, what and when to
+  share through the existing conversation tools; it is not an automatic relay or
+  a requirement to repeat a TaskForce reply in the person's 1:1 log.
 - You trust the Commander. You judge results on the board and act when the
   direction is wrong or when a decision request waits on you. An objective
   that is moving toward its brief needs nothing from you.

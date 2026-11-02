@@ -18,7 +18,7 @@ import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import { deriveFailedOutcome } from "./views.js";
 import {
   MAX_CRITERIA,
-  MAX_OBJECTIVE_ACTIONS, objectiveActorSchema, objectiveActionSchema, objectiveMemberHistorySchema,
+  MAX_OBJECTIVE_ACTIONS, objectiveActorSchema, objectiveActionSchema, objectiveMemberHistorySchema, objectiveRequestSourceSchema,
   type ObjectiveActor, type ObjectiveReviewer, type ObjectiveAction,
   MAX_CRITERION_TEXT,
   MAX_FOLLOWUPS,
@@ -148,6 +148,7 @@ export interface ObjectiveInit {
   readonly criteria?: readonly string[];
   readonly by?: ObjectiveActor;
   readonly addedBy?: StoredObjective["addedBy"];
+  readonly requestSource?: StoredObjective["requestSource"];
   /** 후속으로 태어난 목표 — 원본 목표·후보·배치와 근거. */
   readonly origin?: StoredOrigin;
 }
@@ -494,6 +495,7 @@ function readObjective(dir: string, segment: string, commodoreId: string, suppli
       if (parsed.stoppedAt !== undefined && (typeof parsed.stoppedAt !== "number" || !Number.isFinite(parsed.stoppedAt) || parsed.stoppedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (Array.isArray(parsed.missions) && parsed.missions.some((mission) => { const row = mission as { assignmentTs?: unknown; quietWokenFor?: unknown }; const bad = (at: unknown) => at !== undefined && (typeof at !== "number" || !Number.isFinite(at) || at < 0); return bad(row.assignmentTs) || bad(row.quietWokenFor); })) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (parsed.addedBy !== undefined && typeof parsed.addedBy !== "string" && (parsed.addedBy?.kind !== "commodore" || !objectiveActorSchema.safeParse(parsed.addedBy).success)) throw new ObjectiveStoreError("invalid_stored_actor");
+      if (parsed.requestSource !== undefined && !objectiveRequestSourceSchema.safeParse(parsed.requestSource).success) throw new ObjectiveStoreError("invalid_stored_request_source");
       // "archive"는 완료가 보관하던 옛 버전이 디스크에 남긴 의도다 — 로드는 받아 주고, 적용 없이 승인만 한다(launch.applyObjectiveIntent).
       const intent = parsed.lifecycleIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_objectiveRecord_intent");
@@ -835,6 +837,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       dueDate: stored.dueDate ?? null,
       today: stored.today === true,
       addedBy,
+      requestSource: stored.requestSource ?? null,
       done: stored.done ? { ...stored.done, by: stored.done.by ?? "human" } : null,
       actions: stored.actions ?? [],
       memberHistory: stored.memberHistory ?? [],
@@ -1280,6 +1283,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.dueDate ? { dueDate: init.dueDate } : {}),
         ...(init.today ? { today: true as const } : {}),
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
+        requestSource: objectiveRequestSourceSchema.parse(init.requestSource ?? { kind: "direct" }),
         ...(init.origin ? { origin: init.origin } : {}),
         // 사령관이 고른 후속은 태어날 때 사람 운영(false)으로 적는다 — 원본이 영구 삭제되면 대체 판정(원본의 배치)을 더는 읽을 수 없으므로 생략하지 않는다.
         ...(init.origin && typeof init.by === "object" && init.by.kind === "commodore" ? { commodoreOperated: false } : {}),

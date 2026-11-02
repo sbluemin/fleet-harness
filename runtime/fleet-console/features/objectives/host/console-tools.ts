@@ -13,7 +13,7 @@ import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
+import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS } from "./console-views.js";
 import { searchInputShape, searchObjectives } from "./search.js";
@@ -77,7 +77,7 @@ const listTool = defineConsoleTool({
     models: { kind: "read", input: z.object(scope) },
     // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관의 fleet-objectives search 와 같은 핵심·같은 입력이다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
-    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
+    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
@@ -281,11 +281,11 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         const inherited = caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId : undefined;
         const specified = call.theaterId !== undefined;
         const objective = await launch.create({
-          commodoreId, theaterId: call.theaterId ?? inherited ?? "", theaterIdSpecified: specified, groupId, title: call.title, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
+          commodoreId, theaterId: call.theaterId ?? inherited ?? "", theaterIdSpecified: specified, groupId, title: call.title, requestSource: call.requestSource, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
           ...(caller?.kind === "objectiveRecord" ? { addedBy: caller.objectiveId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
-        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
+        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, requestSource: kept.requestSource, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
         return refuse("objectives_failed");

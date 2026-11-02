@@ -107,7 +107,7 @@ it("opens a registry goal as a full conversation before and after its session ar
     addedBy: { kind: "commodore", commodoreId: owner, why: "Keep the goal beside its owner" },
     done: null, awaitingHandoff: false, awaitingReview: false, handoff: null, extensions: [], extensionActive: false,
     criteria: [], criteriaProposals: [], members: [], missions: [], followups: [], followupBatches: [], followupHistory: null,
-    origin: null, decisionRequest: null, decisionRequestRevision: 0, decisionDelivery: null, decisions: [], personHolds: [],
+    origin: null, requestSource: null, decisionRequest: null, decisionRequestRevision: 0, decisionDelivery: null, decisions: [], personHolds: [],
     commenced: false, operator: "human", removed: null, merged: [],
   };
   const openQuestion = vi.fn();
@@ -373,7 +373,7 @@ describe("kept tabs across a fresh center", () => {
       addedBy: { kind: "commodore", commodoreId: owner, why: "" },
       done: null, awaitingHandoff: false, awaitingReview: false, handoff: null, extensions: [], extensionActive: false,
       criteria: [], criteriaProposals: [], members: [], missions: [], followups: [], followupBatches: [], followupHistory: null,
-      origin: null, decisionRequest: null, decisionRequestRevision: 0, decisionDelivery: null, decisions: [], personHolds: [],
+      origin: null, requestSource: null, decisionRequest: null, decisionRequestRevision: 0, decisionDelivery: null, decisions: [], personHolds: [],
       commenced: false, operator: "human", removed: null, merged: [],
     };
     const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false }] };
