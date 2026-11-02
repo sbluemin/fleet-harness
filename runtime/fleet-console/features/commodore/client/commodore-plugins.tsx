@@ -265,12 +265,13 @@ function ReplacementHint({ t, replacement, id }: { readonly t: T; readonly repla
   return <><span ref={anchor} hidden />{createPortal(<span id={id} role="tooltip" className="commodore-plugins-replacement-tip" hidden={!rect} style={rect ? { left: Math.max(12, Math.min(rect.left, window.innerWidth - 272)), top: rect.top - 8 } : undefined}>{t(replacement.reason === "same-id" ? "commodore.plugins.global.sameId" : "commodore.plugins.global.sameName", { marketplace: splitPluginId(replacement.by).marketplace })}</span>, document.body)}</>;
 }
 
-function GlobalPluginGroup({ t, plugins, entries, phone, authOf, getRowHandlers, renderInline }: {
+function GlobalPluginGroup({ t, plugins, entries, phone, authOf, updateMark, getRowHandlers, renderInline }: {
   readonly t: T;
   readonly plugins: readonly string[];
   readonly entries: ReadonlyMap<string, PluginCatalogEntry>;
   readonly phone: boolean;
   readonly authOf: ReadonlyMap<string, readonly ServerAuth[]>;
+  readonly updateMark: (entry: PluginCatalogEntry | undefined, pluginId: string) => ReactNode;
   readonly getRowHandlers: (pluginId: string) => HTMLAttributes<HTMLElement>;
   readonly renderInline: (pluginId: string, title: string) => ReactNode;
 }) {
@@ -287,7 +288,7 @@ function GlobalPluginGroup({ t, plugins, entries, phone, authOf, getRowHandlers,
           <span className="commodore-global-tile"><PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size={phone ? "phone" : "row"} /><span className="commodore-global-badge"><GlobalPluginMark /></span></span>
           <span className="commodore-plugins-name">{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
           <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
-          <span className="commodore-plugins-meta">{authMark(t, authOf.get(pluginId))}<Components t={t} components={entry?.components} /></span>
+          <span className="commodore-plugins-meta">{updateMark(entry, pluginId)}{authMark(t, authOf.get(pluginId))}<Components t={t} components={entry?.components} /></span>
           {renderInline(pluginId, title)}
         </li>;
       })}
@@ -664,6 +665,54 @@ function updateTrustOf(error: unknown, pluginId: string): UpdateTrust | null {
     run !== null && typeof run === "object" && (run.kind === "hook" || run.kind === "mcp") && typeof run.label === "string" && typeof run.command === "string");
   return runs.length === details.runs.length ? { pluginId, version: details.version, runs } : null;
 }
+/** 목록과 전역 팔레트가 같은 업데이트·신뢰 절차를 쓴다. 설치 범위의 선택 목록은 바꾸지 않는다. */
+function usePluginUpdates() {
+  const [updates, setUpdates] = useState<Readonly<Record<string, PluginUpdateState>>>({});
+  const [trust, setTrust] = useState<UpdateTrust | null>(null);
+  const pending = useRef(false);
+  const update = async (pluginId: string, reviewed?: UpdateTrust): Promise<"done" | "trust" | "failed" | "busy"> => {
+    if (pending.current) return "busy";
+    pending.current = true;
+    setTrust(null);
+    setUpdates((current) => ({ ...current, [pluginId]: { kind: "updating" } }));
+    try {
+      const { view } = await postCommodorePlugins<{ readonly view: PluginCatalogView }>("/commodore/plugins/update", { pluginId, ...(reviewed ? { trusted: true, version: reviewed.version, runs: reviewed.runs } : {}) });
+      invalidatePluginDetails();
+      setCatalog({ view, error: null });
+      setUpdates((current) => ({ ...current, [pluginId]: { kind: "done" } }));
+      return "done";
+    } catch (error) {
+      setUpdates((current) => ({ ...current, [pluginId]: { kind: "failed", code: codeOf(error) } }));
+      const required = updateTrustOf(error, pluginId);
+      setTrust(required);
+      return required ? "trust" : "failed";
+    } finally {
+      pending.current = false;
+    }
+  };
+  return { updates, trust, setTrust, update, busy: Object.values(updates).some((state) => state.kind === "updating") };
+}
+
+function PluginUpdateMark({ t, entry, state }: { readonly t: T; readonly entry: PluginCatalogEntry | undefined; readonly state: PluginUpdateState | undefined }) {
+  if (state?.kind === "updating") return <span className="commodore-plugins-state is-syncing" role="status">{t("commodore.plugins.update.pending")}</span>;
+  if (state?.kind === "failed") { const reason = updateReason(t, state.code); return <span className="commodore-plugins-state is-failed" role="alert">{reason ? t("commodore.plugins.update.failed", { reason }) : t("commodore.plugins.update.failedPlain")}</span>; }
+  if (entry?.latestVersion) return <span className="commodore-plugins-state is-update">{isCommitVersion(entry.latestVersion) ? t("commodore.plugins.update.available") : t("commodore.plugins.update.version", { version: entry.latestVersion })}</span>;
+  return state?.kind === "done" ? <span className="commodore-plugins-state is-done" role="status">{t("commodore.plugins.update.done")}</span> : null;
+}
+
+function PluginUpdateTrust({ t, trust, busy, onCancel, onUpdate }: { readonly t: T; readonly trust: UpdateTrust; readonly busy: boolean; readonly onCancel: () => void; readonly onUpdate: () => void }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { cancelRef.current?.focus({ preventScroll: false }); }, [trust]);
+  return <div className="commodore-plugins-update-trust" role="group" aria-label={t("commodore.plugins.trust.title")}>
+    <p>{t("commodore.plugins.update.commands", { version: isCommitVersion(trust.version) ? menuVersion(t, trust.version) : trust.version })}</p>
+    <ul>{trust.runs.map((run, index) => <li key={index}><span>{t(run.kind === "hook" ? "commodore.plugins.trust.hook" : "commodore.plugins.trust.mcp", { label: run.label })}</span><code>{run.command}</code></li>)}</ul>
+    <div className="commodore-plugins-update-actions">
+      <button ref={cancelRef} type="button" onClick={onCancel}>{t("commodore.plugins.trust.cancel")}</button>
+      <button type="button" className="is-go" disabled={busy} onClick={onUpdate}>{t("commodore.plugins.update.trust")}</button>
+    </div>
+  </div>;
+}
+
 type InlineForm = ({ readonly pluginId: string; readonly kind: "key"; readonly names: readonly string[] } | { readonly pluginId: string; readonly kind: "callback"; readonly server: string }) & { readonly global: boolean };
 
 /**
@@ -683,8 +732,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const [failure, setFailure] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ readonly pluginId: string; readonly x: number; readonly y: number; readonly trigger: HTMLElement; readonly anchored: boolean; readonly global: boolean } | null>(null);
   const [armed, setArmed] = useState(false);
-  const [updates, setUpdates] = useState<Readonly<Record<string, PluginUpdateState>>>({});
-  const [trust, setTrust] = useState<UpdateTrust | null>(null);
+  const { updates, trust, setTrust, update: applyUpdate } = usePluginUpdates();
   const [authRevision, setAuthRevision] = useState(0);
   const [form, setForm] = useState<InlineForm | null>(null);
   /** 모바일 셸에서 받은 인증 주소 — 셸은 누름 없이 연 창을 OS 브라우저로 넘기지 않아, 행에서 한 번 누르게 한다. */
@@ -769,32 +817,16 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     setForm(null);
   });
   /** reviewed 는 사람이 확인 화면에서 본 버전과 명령이다 — 서버는 받은 것이 그와 같을 때만 신뢰한다. */
-  const update = (pluginId: string, reviewed?: { readonly version: string; readonly runs: UpdateTrust["runs"] }) => {
+  const update = (pluginId: string, reviewed?: UpdateTrust) => {
     if (busy) return;
-    setBusy(pluginId); setTrust(null);
-    setUpdates((current) => ({ ...current, [pluginId]: { kind: "updating" } }));
-    void postCommodorePlugins<{ readonly outcome: "updated" | "up_to_date"; readonly oldVersion: string; readonly newVersion: string; readonly view: PluginCatalogView }>("/commodore/plugins/update", { pluginId, ...(reviewed ? { trusted: true, version: reviewed.version, runs: reviewed.runs } : {}) })
-      .then(({ view: next }) => {
-        invalidatePluginDetails();
-        setCatalog({ view: next, error: null });
-        setAuthRevision((revision) => revision + 1);
-        setUpdates((current) => ({ ...current, [pluginId]: { kind: "done" } }));
-        if (menuRef.current?.dataset.pluginId === pluginId) closeMenu();
-      }, (error) => {
-        setUpdates((current) => ({ ...current, [pluginId]: { kind: "failed", code: codeOf(error) } }));
-        const required = updateTrustOf(error, pluginId);
-        // 신뢰 확인은 같은 메뉴에서 이어 가고, 그 밖의 실패는 메뉴를 닫아 행의 실패 글자가 보이게 한다.
-        if (required) setTrust(required);
-        else if (menuRef.current?.dataset.pluginId === pluginId) closeMenu();
-      }).finally(() => setBusy(null));
+    setBusy(pluginId);
+    void applyUpdate(pluginId, reviewed).then((outcome) => {
+      if (outcome === "done") setAuthRevision((revision) => revision + 1);
+      // 신뢰 확인은 같은 메뉴에서 이어 가고, 그 밖의 결과는 행에 표시한다.
+      if ((outcome === "done" || outcome === "failed") && menuRef.current?.dataset.pluginId === pluginId) closeMenu();
+    }).finally(() => setBusy(null));
   };
-  const updateMark = (entry: PluginCatalogEntry | undefined, pluginId: string) => {
-    const state = updates[pluginId];
-    if (state?.kind === "updating") return <span className="commodore-plugins-state is-syncing" role="status">{t("commodore.plugins.update.pending")}</span>;
-    if (state?.kind === "failed") { const reason = updateReason(t, state.code); return <span className="commodore-plugins-state is-failed" role="alert">{reason ? t("commodore.plugins.update.failed", { reason }) : t("commodore.plugins.update.failedPlain")}</span>; }
-    if (state?.kind === "done") return <span className="commodore-plugins-state is-done" role="status">{t("commodore.plugins.update.done")}</span>;
-    return entry?.latestVersion ? <span className="commodore-plugins-state is-update">{isCommitVersion(entry.latestVersion) ? t("commodore.plugins.update.available") : t("commodore.plugins.update.version", { version: entry.latestVersion })}</span> : null;
-  };
+  const updateMark = (entry: PluginCatalogEntry | undefined, pluginId: string) => <PluginUpdateMark t={t} entry={entry} state={updates[pluginId]} />;
   /** 상태별 항목. 서버가 여럿이면 서버 이름을 붙인다. 원격 기기에서 진행 중이면 돌아온 주소를 옮겨 붙일 수 있다. */
   const itemsOf = (pluginId: string, global = false): MenuItem[] => {
     const servers = authOf.get(pluginId) ?? [];
@@ -802,7 +834,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     const named = oauth.length > 1;
     const items: MenuItem[] = [];
     const entry = entries.get(pluginId);
-    if (!global && (entry?.latestVersion || updates[pluginId]?.kind === "failed")) {
+    if (entry?.latestVersion || updates[pluginId]?.kind === "failed") {
       const version = entry?.latestVersion;
       const runs = entry?.latestRuns;
       items.push({ id: "update", label: t(updates[pluginId]?.kind === "failed" ? "commodore.plugins.update.retry" : runs?.length ? "commodore.plugins.update.review" : "commodore.plugins.update.action"), ...(version ? { version: isCommitVersion(version) ? menuVersion(t, version) : version } : {}), run: () => {
@@ -881,12 +913,12 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
       ? <KeyForm key={`key:${pluginId}`} t={t} plugin={title} names={form.names} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(values) => setKeys(pluginId, values)} />
       : <CallbackForm key={`callback:${pluginId}:${form.server}`} t={t} server={form.server} busy={busy !== null} phone={phone} onCancel={() => setForm(null)} onSave={(url) => submitCallback(pluginId, form.server, url)} />
     : null;
-  const globalGroup = <GlobalPluginGroup t={t} plugins={global.view?.plugins ?? []} entries={entries} phone={phone} authOf={authOf} getRowHandlers={(pluginId) => itemsOf(pluginId, true).length ? rowHandlers(pluginId, true) : {}} renderInline={(pluginId, title) => inline(pluginId, title, true)} />;
+  const globalGroup = <GlobalPluginGroup t={t} plugins={global.view?.plugins ?? []} entries={entries} phone={phone} authOf={authOf} updateMark={updateMark} getRowHandlers={(pluginId) => itemsOf(pluginId, true).length ? rowHandlers(pluginId, true) : {}} renderInline={(pluginId, title) => inline(pluginId, title, true)} />;
   const selectedId = menu && (menu.global ? global.view?.plugins : installed)?.includes(menu.pluginId) ? menu.pluginId : undefined;
   const selectedEntry = selectedId ? entries.get(selectedId) : undefined;
   const selected = selectedId ? { pluginId: selectedId, title: titleOf(selectedEntry, splitPluginId(selectedId).plugin), marketplace: splitPluginId(selectedId).marketplace, entry: selectedEntry } : undefined;
   const menuItems = selected ? itemsOf(selected.pluginId, menu?.global) : [];
-  const selectedTrust = !menu?.global && selected?.pluginId === trust?.pluginId ? trust : null;
+  const selectedTrust = selected?.pluginId === trust?.pluginId ? trust : null;
   const failureLine = failure ? <p className={phone ? "objectives-cm-note" : "objectives-commodore-hint is-error"} role="alert">{failure}</p> : null;
   const dialog = palette ? <PluginPalette t={t} commodoreId={commodoreId} installed={installed} phone={phone} onClose={close} /> : null;
   const itemRole = phone ? undefined : "menuitem";
@@ -903,16 +935,9 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
     <div ref={menuRef} tabIndex={-1} data-plugin-id={selected.pluginId} className={`commodore-routines-menu${phone ? " is-sheet" : ""}`} role={phone || selectedTrust ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.title} onKeyDown={onMenuKey}>
       <div className="commodore-routines-menu-head">
         <div className="commodore-routines-menu-title">{selected.title}</div>
-        <div className="commodore-routines-menu-meta is-mono">{[menuVersion(t, selected.entry?.version), `@${selected.marketplace}`].filter(Boolean).join(" · ")}{!menu.global && selected.entry?.latestVersion ? ` → ${isCommitVersion(selected.entry.latestVersion) ? menuVersion(t, selected.entry.latestVersion) : selected.entry.latestVersion}` : ""}</div>
+        <div className="commodore-routines-menu-meta is-mono">{[menuVersion(t, selected.entry?.version), `@${selected.marketplace}`].filter(Boolean).join(" · ")}{selected.entry?.latestVersion ? ` → ${isCommitVersion(selected.entry.latestVersion) ? menuVersion(t, selected.entry.latestVersion) : selected.entry.latestVersion}` : ""}</div>
       </div>
-      {selectedTrust ? <div className="commodore-plugins-update-trust">
-        <p>{t("commodore.plugins.update.commands", { version: isCommitVersion(selectedTrust.version) ? menuVersion(t, selectedTrust.version) : selectedTrust.version })}</p>
-        <ul>{selectedTrust.runs.map((run, index) => <li key={index}><span>{t(run.kind === "hook" ? "commodore.plugins.trust.hook" : "commodore.plugins.trust.mcp", { label: run.label })}</span><code>{run.command}</code></li>)}</ul>
-        <div className="commodore-plugins-update-actions">
-          <button type="button" onClick={() => setTrust(null)}>{t("commodore.plugins.trust.cancel")}</button>
-          <button type="button" className="is-go" disabled={busy !== null} onClick={() => update(selected.pluginId, selectedTrust)}>{t("commodore.plugins.update.trust")}</button>
-        </div>
-      </div> : <>
+      {selectedTrust ? <PluginUpdateTrust t={t} trust={selectedTrust} busy={busy !== null} onCancel={() => setTrust(null)} onUpdate={() => update(selected.pluginId, selectedTrust)} /> : <>
         {menuItems.map((item) => <button key={item.id} type="button" role={itemRole} disabled={busy !== null} onClick={() => { if (item.id !== "update") closeMenu(); item.run(); }}>{item.label}{item.version ? <small className="commodore-plugins-menu-version">{item.version}</small> : null}</button>)}
         {!menu.global ? <>
           {menuItems.length ? <div className="commodore-routines-separator" role="separator" /> : null}
@@ -1043,6 +1068,8 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
   const [row, setRow] = useState<RowState | null>(null);
+  const pluginUpdates = usePluginUpdates();
+  const busy = pluginUpdates.busy || row?.phase === "checking" || row?.phase === "saving";
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -1120,7 +1147,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
     });
   };
   const install = (entry: PluginCatalogEntry) => {
-    if (!global.view || row && (row.phase === "checking" || row.phase === "saving")) return;
+    if (!global.view || busy) return;
     if (!globalScope && global.view.plugins.includes(entry.id)) return;
     setRow({ pluginId: entry.id, phase: "checking" });
     void inspectPlugin(entry.id).then((fresh) => {
@@ -1129,7 +1156,8 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
     }, (reason) => setRow({ pluginId: entry.id, phase: "failed", code: codeOf(reason) }));
   };
   const removeInstalled = (pluginId: string) => {
-    if (row && (row.phase === "checking" || row.phase === "saving")) return;
+    if (busy) return;
+    pluginUpdates.setTrust(null);
     setRow({ pluginId, phase: "saving" });
     void mutate(pluginId, false).then(() => { setArmed(null); setRow(null); }, (reason) => setRow({ pluginId, phase: "failed", code: codeOf(reason) }));
   };
@@ -1140,15 +1168,35 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
       event.preventDefault();
       event.stopPropagation();
       if (dismissConfirm.current()) return;
+      if (pluginUpdates.trust) { pluginUpdates.setTrust(null); return; }
       if (row?.phase === "trust") { setRow(null); return; }
       if (openedId) { backToList(); return; }
       onClose();
     };
     document.addEventListener("keydown", onEscape, true);
     return () => document.removeEventListener("keydown", onEscape, true);
-  }, [onClose, openedId, row]);
+  }, [onClose, openedId, row, pluginUpdates.trust, pluginUpdates.setTrust]);
   const opened = openedId ? view?.plugins.find((entry) => entry.id === openedId) ?? (installedSet.has(openedId) ? { id: openedId, name: splitPluginId(openedId).plugin, marketplace: splitPluginId(openedId).marketplace } : null) : null;
   const openedDetail = openedId ? detailCache.get(openedId) : undefined;
+  const renderUpdate = (entry: PluginCatalogEntry, visible: boolean): ReactNode => {
+    if (!globalScope || !installedSet.has(entry.id)) return null;
+    const state = pluginUpdates.updates[entry.id];
+    const trust = visible && pluginUpdates.trust?.pluginId === entry.id ? pluginUpdates.trust : null;
+    const available = Boolean(entry.latestVersion || state?.kind === "failed");
+    if (!available && !state) return null;
+    return <>
+      <div className="commodore-palette-update">
+        <PluginUpdateMark t={t} entry={entry} state={state} />
+        {available && !trust ? <button type="button" className="fc-btn fc-btn--secondary" disabled={busy} onClick={() => {
+          if (busy) return;
+          setArmed(null); setRow(null);
+          if (entry.latestVersion && entry.latestRuns?.length) pluginUpdates.setTrust({ pluginId: entry.id, version: entry.latestVersion, runs: entry.latestRuns });
+          else void pluginUpdates.update(entry.id);
+        }}>{t(state?.kind === "failed" ? "commodore.plugins.update.retry" : "commodore.plugins.update.action")}</button> : null}
+      </div>
+      {trust ? <PluginUpdateTrust t={t} trust={trust} busy={busy} onCancel={() => pluginUpdates.setTrust(null)} onUpdate={() => { if (!busy) void pluginUpdates.update(entry.id, trust); }} /> : null}
+    </>;
+  };
 
   const body = !view ? <p className="commodore-plugins-empty" role={error ? "alert" : "status"}>{error ? errorWord(t, error) : t("commodore.plugins.loading")}</p>
     : enabled.length === 0 ? <p className="commodore-plugins-empty">{t("commodore.plugins.palette.none")}</p>
@@ -1161,7 +1209,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
               <span>{browsing ? t("commodore.marketplaces.count", { n: marketplace.pluginCount }) : t("commodore.plugins.palette.found", { n: items.length })}</span>
             </p>
             <div className="commodore-palette-rows">
-              {items.map((entry) => <PaletteRow key={entry.id} t={t} entry={entry} installed={installedSet.has(entry.id)} installedGlobally={!globalScope && Boolean(global.view?.plugins.includes(entry.id))} globalScope={globalScope} disabled={!global.view || row?.phase === "checking" || row?.phase === "saving"} hint={globalScope && !installedSet.has(entry.id) && global.view?.installedBy[entry.id]?.length ? t("commodore.plugins.global.alreadyOwn", { name: global.view.installedBy[entry.id]!.map((owner) => owner.alias || commodoreName(owner.commodoreId, t)).join(", ") }) : undefined} row={row?.pluginId === entry.id ? row : null} showTrust={openedId === null} onOpen={() => openDetail(entry.id)} onInstall={() => install(entry)} onTrust={(fresh) => save(entry.id, true, fresh)} onCancel={() => setRow(null)} />)}
+              {items.map((entry) => <PaletteRow key={entry.id} t={t} entry={entry} installed={installedSet.has(entry.id)} installedGlobally={!globalScope && Boolean(global.view?.plugins.includes(entry.id))} globalScope={globalScope} disabled={!global.view || busy} hint={globalScope && !installedSet.has(entry.id) && global.view?.installedBy[entry.id]?.length ? t("commodore.plugins.global.alreadyOwn", { name: global.view.installedBy[entry.id]!.map((owner) => owner.alias || commodoreName(owner.commodoreId, t)).join(", ") }) : undefined} row={row?.pluginId === entry.id ? row : null} showTrust={openedId === null} onOpen={() => openDetail(entry.id)} onInstall={() => install(entry)} onTrust={(fresh) => save(entry.id, true, fresh)} onCancel={() => setRow(null)} />)}
             </div>
           </section>
         ));
@@ -1187,8 +1235,9 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
             installed={installedSet.has(opened.id)}
             installedGlobally={!globalScope && Boolean(global.view?.plugins.includes(opened.id))}
             globalScope={globalScope}
-            disabled={!global.view || row?.phase === "checking" || row?.phase === "saving"}
+            disabled={!global.view || busy}
             row={row?.pluginId === opened.id ? row : null}
+            update={renderUpdate(opened, true)}
             dismissConfirm={dismissConfirm}
             onFocusFallback={holdFocus}
             onBack={backToList}
@@ -1232,7 +1281,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
             {global.view ? installed.length ? <div className="commodore-palette-rows">{installed.map((pluginId) => {
               const parts = splitPluginId(pluginId);
               const entry = view?.plugins.find((plugin) => plugin.id === pluginId) ?? { id: pluginId, name: parts.plugin, marketplace: parts.marketplace };
-              return <PaletteRow key={pluginId} t={t} entry={entry} installed globalScope showMarketplace disabled={row?.phase === "checking" || row?.phase === "saving"} row={row?.pluginId === pluginId ? row : null} showTrust onOpen={() => openDetail(pluginId)} onInstall={() => {}} onTrust={(fresh) => save(pluginId, true, fresh)} onCancel={() => setRow(null)} onRemove={() => { if (armed === pluginId) removeInstalled(pluginId); else setArmed(pluginId); }} removeArmed={armed === pluginId} />;
+              return <PaletteRow key={pluginId} t={t} entry={entry} installed globalScope showMarketplace disabled={busy} update={renderUpdate(entry, openedId === null)} row={row?.pluginId === pluginId ? row : null} showTrust onOpen={() => openDetail(pluginId)} onInstall={() => {}} onTrust={(fresh) => save(pluginId, true, fresh)} onCancel={() => setRow(null)} onRemove={() => { if (armed === pluginId) removeInstalled(pluginId); else setArmed(pluginId); }} removeArmed={armed === pluginId} />;
             })}</div> : <p className="commodore-plugins-empty">{t("commodore.plugins.empty")}</p> : <p className="commodore-plugins-empty" role="status">{t("commodore.plugins.loading")}</p>}
           </section> : null}
           {body}
@@ -1277,7 +1326,7 @@ function TrustPanel({ t, entry, onTrust, onCancel, trustRef }: {
  * 팔레트 행 — 마켓플레이스 묶음의 둥근 카드 안에 한 줄씩 선다. 설치 단추를 제외한 행은 상세를 연다. Enter 는 그 단추의 기본 동작이다.
  * 둘째 줄은 설명 한 줄(없으면 버전·만든 이)이고, 나머지 사실은 상세의 정보 카드가 맡는다. 신뢰 확인이 필요하면 행 아래로 펼친다.
  */
-function PaletteRow({ t, entry, installed, installedGlobally = false, globalScope = false, disabled = false, hint, showMarketplace = false, onRemove, removeArmed = false, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
+function PaletteRow({ t, entry, installed, installedGlobally = false, globalScope = false, disabled = false, hint, showMarketplace = false, onRemove, removeArmed = false, update, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
   readonly t: T;
   readonly entry: PluginCatalogEntry;
   readonly installed: boolean;
@@ -1286,6 +1335,7 @@ function PaletteRow({ t, entry, installed, installedGlobally = false, globalScop
   readonly disabled?: boolean;
   readonly hint?: string | undefined;
   readonly showMarketplace?: boolean;
+  readonly update?: ReactNode;
   readonly row: RowState | null;
   readonly showTrust: boolean;
   readonly onRemove?: () => void;
@@ -1319,6 +1369,7 @@ function PaletteRow({ t, entry, installed, installedGlobally = false, globalScop
             : row?.phase === "trust" ? null
               : <button type="button" className="fc-btn fc-btn--secondary commodore-palette-install" disabled={working || disabled} aria-label={t(globalScope ? "commodore.plugins.global.installAria" : "commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>}
       </span>
+      {update}
       {row?.phase === "failed" && showTrust ? <span className="commodore-plugins-state is-failed" role="alert">{errorWord(t, row.code ?? "failed")}</span> : null}
       {trusting ? <TrustPanel t={t} entry={shown} onTrust={onTrust} onCancel={onCancel} trustRef={trustRef} /> : null}
     </article>
@@ -1422,7 +1473,7 @@ const linkText = (url: string): string => url.replace(/^https?:\/\//, "").replac
  * 팔레트 안의 상세. 카탈로그 필드는 바로 보이고, 구성 이름·실행 명령·README 는 상세 응답이 오면 채워진다.
  * 조회가 실패해도 카탈로그 필드는 남는다. README 는 정화된 markdown 이다 — 그 표현은 공용 markdown 스타일이 맡고 여기서는 자리만 둔다.
  */
-function PluginDetailView({ t, titleId, entry, detail, loading, error, installed, installedGlobally = false, globalScope = false, disabled = false, row, dismissConfirm, onFocusFallback, onBack, onClose, onInstall, onRemove, onRetry, onTrust, onCancel }: {
+function PluginDetailView({ t, titleId, entry, detail, loading, error, installed, installedGlobally = false, globalScope = false, disabled = false, update, row, dismissConfirm, onFocusFallback, onBack, onClose, onInstall, onRemove, onRetry, onTrust, onCancel }: {
   readonly t: T;
   readonly titleId: string;
   readonly entry: PluginCatalogEntry;
@@ -1433,6 +1484,7 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
   readonly installedGlobally?: boolean;
   readonly globalScope?: boolean;
   readonly disabled?: boolean;
+  readonly update?: ReactNode;
   readonly row: RowState | null;
   readonly dismissConfirm: { current: () => boolean };
   readonly onFocusFallback: () => void;
@@ -1519,6 +1571,7 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
           </span>
         </header>
         {shown.description ? <p className="commodore-plugin-detail-desc">{shown.description}</p> : null}
+        {confirmRemove ? null : update}
         {confirmRemove ? (
           <div className="commodore-plugin-detail-notice" role="alert">
             <p>{t(globalScope ? "commodore.plugins.global.removeConfirm" : "commodore.plugins.removeConfirm", { plugin: title })}</p>
