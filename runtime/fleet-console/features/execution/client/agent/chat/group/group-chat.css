@@ -1369,6 +1369,11 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-chat-agent-mark .group-chat-mark { width: 28px; height: 28px; }
 :root[data-view-mode="mobile"] .group-chat-agent-name,
 :root[data-view-mode="mobile"] .group-chat-agent-name .group-chat-name { color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); }
+/* 사령관·지휘관 이름표만 TF와 같은 잉크를 쓴다. 사람·구성원과 말풍선 면은 바꾸지 않는다. */
+:root :is(.group-chat, .agent-chat) .group-chat-name.is-avatar-tone { --speaker-name-ink: var(--text-primary); --speaker-name-face: var(--text-primary); color: var(--speaker-name-ink); }
+:root:not([data-theme="light"]):not([data-view-mode="mobile"]) :is(.group-chat, .agent-chat) .group-chat-name.is-avatar-tone,
+:root[data-view-mode="mobile"]:not([data-mobile-scheme="light"]) :is(.group-chat, .agent-chat) .group-chat-name.is-avatar-tone { color: color-mix(in oklch, var(--speaker-name-ink) 25%, var(--speaker-name-face)); }
+:root[data-view-mode="mobile"][data-mobile-scheme="light"] :is(.group-chat, .agent-chat) .group-chat-name.is-avatar-tone { color: var(--speaker-name-ink); }
 :root[data-view-mode="mobile"] .group-chat-bubble { max-width: 100%; padding: 10px 15px; border-radius: 20px; font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 24px; }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-capped { padding: 0; }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-capped > .group-chat-bubble-body { padding: 10px 15px; }

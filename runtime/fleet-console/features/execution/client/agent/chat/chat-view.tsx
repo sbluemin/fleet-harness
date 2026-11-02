@@ -51,7 +51,7 @@ import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, 
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
-import { LiveSpeakerMark, SpeakerMark } from "./group/speaker-mark.js";
+import { LiveSpeakerMark, SpeakerMark, SpeakerName } from "./group/speaker-mark.js";
 import { getGroupT } from "./group/group-chat-i18n.js";
 import { isGroupConversationRoot, subscribeGroupClusters } from "./group-timeline-store.js";
 import { getState as getConsoleState, subscribe as subscribeConsoleState } from "../../../../../core/client/src/integration/store.js";
@@ -1480,7 +1480,7 @@ function SpeakerRow({ speaker, live, named, children }: {
         {live ? <LiveSpeakerMark speaker={speaker.speaker} participants={[]} /> : <SpeakerMark speaker={speaker.speaker} />}
       </span>
       <div className="agent-chat-speaker-box">
-        {speaker.named && named ? <span className="agent-chat-speaker-name">{speaker.speaker.name}</span> : null}
+        {speaker.named && named ? <SpeakerName speaker={speaker.speaker} className="agent-chat-speaker-name" avatarTone /> : null}
         {children}
       </div>
     </div>
