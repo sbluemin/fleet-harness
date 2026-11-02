@@ -497,13 +497,20 @@ export function geminiContents(
       continue;
     }
     if (item.type === "function_call_output") {
-      push("user", [{
+      const parts: GeminiPart[] = [{
         functionResponse: {
           name: codec.toWire(item.call_id),
-          response: { result: item.output },
+          response: { result: canonicalMessageText(item.output) },
           id: item.call_id,
         },
-      }]);
+      }];
+      // Keep each result's images adjacent to its linked function response.
+      for (const image of canonicalMessageImages(item.output)) {
+        const part = imagePart(image.image_url);
+        if (!part) throw new Error("Antigravity tool result images require base64 data URLs.");
+        parts.push(part);
+      }
+      push("user", parts);
       continue;
     }
     // `developer` carries system-shaped text the wire has no third role for; the

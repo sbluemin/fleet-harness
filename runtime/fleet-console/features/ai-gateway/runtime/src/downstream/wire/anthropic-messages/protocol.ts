@@ -531,7 +531,7 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
         }
         break;
       case "image":
-        parts.push(translateImageBlock(block));
+        parts.push(translateImageBlock(block.source));
         break;
       case "tool_use":
         flushParts(false);
@@ -586,8 +586,7 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
   return items;
 }
 
-function translateImageBlock(block: AnthropicImageBlock): CanonicalInputContentPart {
-  const source: unknown = block.source;
+function translateImageBlock(source: unknown): CanonicalInputContentPart {
   if (!isRecord(source) || typeof source.type !== "string") {
     throw new UnsupportedAnthropicContentError("image");
   }
@@ -624,7 +623,7 @@ function canonicalRole(role: AnthropicMessage["role"]): CanonicalInputMessage["r
 }
 
 interface TranslatedToolResult {
-  readonly output: string;
+  readonly output: CanonicalInputMessage["content"];
   readonly toolReferences?: string[];
 }
 
@@ -636,27 +635,25 @@ function translateToolResult(content: AnthropicToolResultBlock["content"]): Tran
     return { output: content };
   }
   const toolReferences: string[] = [];
-  const output = content
-    .map((block) => {
-      if (block.type === "text" && typeof block.text === "string") {
-        return block.text;
-      }
-      if (block.type === "image") {
-        return "[image]";
-      }
-      if (
-        block.type === "tool_reference"
-        && typeof block.tool_name === "string"
-        && block.tool_name.length > 0
-        && !toolReferences.includes(block.tool_name)
-      ) {
-        toolReferences.push(block.tool_name);
-      }
-      return JSON.stringify(block) ?? "";
-    })
-    .join("");
+  const parts = content.map((block): CanonicalInputContentPart => {
+    if (block.type === "text" && typeof block.text === "string") {
+      return { type: "input_text", text: block.text };
+    }
+    if (block.type === "image") {
+      return translateImageBlock(block.source);
+    }
+    if (
+      block.type === "tool_reference"
+      && typeof block.tool_name === "string"
+      && block.tool_name.length > 0
+      && !toolReferences.includes(block.tool_name)
+    ) {
+      toolReferences.push(block.tool_name);
+    }
+    return { type: "input_text", text: JSON.stringify(block) ?? "" };
+  });
   return {
-    output,
+    output: normalizeCanonicalMessageContent(parts),
     ...(toolReferences.length === 0 ? {} : { toolReferences }),
   };
 }
