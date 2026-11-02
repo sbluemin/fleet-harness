@@ -142,9 +142,9 @@ export function createTaskforceRoutes(
         throw error;
       }
     }) },
-    { name: TASKFORCE_ROUTE_NAMES.update, method: "POST", summary: "Rename a TaskForce or rewrite its topic.", handler: json(taskforceUpdateSchema, ({ taskforceId, name, topic }) => {
+    { name: TASKFORCE_ROUTE_NAMES.update, method: "POST", summary: "Rename a TaskForce, rewrite its topic, or set its discussion turn limit (15, 25, or null for no limit).", handler: json(taskforceUpdateSchema, ({ taskforceId, name, topic, chainLimit }) => {
       read(taskforceId);
-      return { taskforce: store.update(taskforceId, { ...(name !== undefined ? { name } : {}), ...(topic !== undefined ? { topic } : {}) }) };
+      return { taskforce: store.update(taskforceId, { ...(name !== undefined ? { name } : {}), ...(topic !== undefined ? { topic } : {}), ...(chainLimit !== undefined ? { chainLimit } : {}) }) };
     }) },
     { name: TASKFORCE_ROUTE_NAMES.addMembers, method: "POST", summary: "Add Commodores to a TaskForce; a member-added system entry is appended.", handler: json(taskforceMembersAddSchema, ({ taskforceId, commodoreIds }) => {
       read(taskforceId);

@@ -7,12 +7,13 @@ import {
   DEFAULT_TASKFORCE_LEDGER_PAGE,
   MAX_TASKFORCE_LEDGER_PAGE,
   MAX_TASKFORCE_IMAGE_BYTES,
-  TASKFORCE_CHAIN_LIMIT,
+  DEFAULT_TASKFORCE_CHAIN_LIMIT,
   TASKFORCE_ID,
   taskforceLedgerEntrySchema,
   taskforceJudgingSnapshotSchema,
   taskforceStateSchema,
   type TaskforceAction,
+  type TaskforceChainLimit,
   type TaskforceEvent,
   type TaskforceJudgingSnapshot,
   type TaskforceLedgerEntry,
@@ -91,12 +92,12 @@ export interface TaskforceStore {
   append(taskforceId: string, input: TaskforceAppendInput): { readonly state: TaskforceState; readonly entry: TaskforceLedgerEntry };
   /** 판단 턴이 성공한 뒤 부른다 — 읽은 위치를 전진시킨다. */
   advanceReadSeq(taskforceId: string, commodoreId: string, through: number): TaskforceState;
-  update(taskforceId: string, input: { readonly name?: string; readonly topic?: string }): TaskforceState;
+  update(taskforceId: string, input: { readonly name?: string; readonly topic?: string; readonly chainLimit?: TaskforceChainLimit }): TaskforceState;
   addMembers(taskforceId: string, commodoreIds: readonly string[]): TaskforceState;
   removeMember(taskforceId: string, commodoreId: string): TaskforceState;
   /** 사령관 삭제가 부른다 — 속한 모든 TF에서 빼고 system 항목을 남긴다. */
   removeCommodoreFromAll(commodoreId: string): readonly string[];
-  /** chain을 멈춘다 — 12번째 사령관 발언을 본 런타임이 `chain-paused` 항목과 함께 잠근다. */
+  /** chain을 멈춘다 — 상한에 닿은 사령관 발언을 본 런타임이 `chain-paused` 항목과 함께 잠근다. */
   pauseChain(taskforceId: string): TaskforceState;
   /** 판단 스냅샷을 조용히 영속한다 — 읽을 때의 모습이다. 판단 사건 방송은 런타임이 따로 낸다. */
   saveJudging(taskforceId: string, snapshot: { readonly judging: readonly string[]; readonly outcomes: Readonly<Record<string, { readonly outcome: "spoke" | "silent" | "failed"; readonly at: number }>>; readonly at: number }): TaskforceState;
@@ -301,9 +302,9 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     lastSeqs.set(taskforceId, parsed.data.seq);
     lastEntries.set(taskforceId, parsed.data);
     const chain = input.speaker.kind === "person"
-      ? { count: 0, limit: TASKFORCE_CHAIN_LIMIT, paused: false }
+      ? { ...current.chain, count: 0, paused: false }
       : input.speaker.kind === "commodore"
-        ? { count: current.chain.count + 1, limit: TASKFORCE_CHAIN_LIMIT, paused: current.chain.paused }
+        ? { ...current.chain, count: current.chain.count + 1 }
         : current.chain;
     // 발언은 읽음 확인이 아니다 — 동시 판단 중 들어온 다른 성원의 말을 건너뛰지 않는다.
     const readSeq = current.readSeq;
@@ -396,7 +397,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
       const state: TaskforceState = {
         id, name, topic, members, createdAt: now(),
         readSeq: Object.fromEntries(members.map((member) => [member, 0])),
-        chain: { count: 0, limit: TASKFORCE_CHAIN_LIMIT, paused: false },
+        chain: { count: 0, limit: DEFAULT_TASKFORCE_CHAIN_LIMIT, paused: false },
         lastSeq: 0,
         counts: { person: 0, commodore: 0 },
       };
@@ -420,8 +421,10 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
         ...current,
         ...(name !== undefined && name !== current.name ? { name } : {}),
         ...(topic !== undefined && topic !== current.topic ? { topic } : {}),
+        // 상한만 바꾼다 — 쌓인 수와 멈춤은 그대로다. 낮춘 상한은 다음 사령관 발언에서 멈춘다.
+        ...(input.chainLimit !== undefined && input.chainLimit !== current.chain.limit ? { chain: { ...current.chain, limit: input.chainLimit } } : {}),
       };
-      if (next.name === current.name && next.topic === current.topic) return current;
+      if (next.name === current.name && next.topic === current.topic && next.chain === current.chain) return current;
       return commit(taskforceId, next, "updated");
     },
     addMembers(taskforceId, commodoreIds) {
@@ -503,7 +506,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     continue(taskforceId) {
       const current = load(taskforceId);
       if (!current.chain.paused && current.chain.count === 0) return current;
-      commit(taskforceId, { ...current, chain: { count: 0, limit: TASKFORCE_CHAIN_LIMIT, paused: false } }, "continued");
+      commit(taskforceId, { ...current, chain: { ...current.chain, count: 0, paused: false } }, "continued");
       appendSystem(taskforceId, "chain-resumed", "");
       return load(taskforceId);
     },

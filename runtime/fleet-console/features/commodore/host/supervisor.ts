@@ -18,7 +18,6 @@ import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
 import { undeliveredMessageSeqs, unheardWakes, type CommodoreUnheardWakes } from "../shared/contracts/delivery.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/contracts/attachment-budget.js";
-import { TASKFORCE_CHAIN_LIMIT } from "../shared/contracts/taskforce.js";
 import type { TaskforceAction, TaskforceEvent, TaskforceJudgingStatus, TaskforceLedgerEntry, TaskforceState } from "../shared/contracts/taskforce.js";
 import type { TaskforceStore } from "./taskforce/store.js";
 import { commodoreCompactAt, EMPTY_RUN_TOTALS, MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_PAGE, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "../shared/contracts/types.js";
@@ -1236,10 +1235,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // 말한 성원은 판단이 끝났다.
     const speaker = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
     if (speaker) recordTfOutcome(event.taskforceId, speaker, "spoke");
-    // chain 상한 — 12번째 사령관 발언이 닿으면 멈추고 system 항목을 남긴다. 사람 말이 열 때까지 깨우지 않는다.
+    // chain 상한 — TF가 고른 상한에 사령관 발언이 닿으면 멈추고 system 항목을 남긴다. 사람 말이 열 때까지 깨우지 않는다.
+    // 상한이 없으면(제한 안 함) 멈추지 않는다.
     if (entry.speaker.kind === "commodore") {
       try {
-        if (state.chain.count >= TASKFORCE_CHAIN_LIMIT && !state.chain.paused) state = taskforce.pauseChain(event.taskforceId);
+        const { limit } = state.chain;
+        if (limit !== null && state.chain.count >= limit && !state.chain.paused) state = taskforce.pauseChain(event.taskforceId);
       } catch (error) { console.warn(`[objectives] taskforce chain pause failed: ${error instanceof Error ? error.message : String(error)}`); return; }
     }
     const paused = state.chain.paused;

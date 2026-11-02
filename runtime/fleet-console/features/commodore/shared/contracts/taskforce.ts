@@ -11,8 +11,19 @@ import { z } from "zod";
 export const TASKFORCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const taskforceIdSchema = z.string().regex(TASKFORCE_ID, "invalid_taskforce");
 
-/** 사령관 발언 수 상한 — 마지막 사람 발언 이후의 사령관 발언이 이 수에 닿으면 체인이 멈춘다. */
-export const TASKFORCE_CHAIN_LIMIT = 12;
+/**
+ * 논의 턴 상한 — 마지막 사람 발언 이후의 사령관 발언이 이 수에 닿으면 체인이 멈춘다.
+ * 사람이 TF마다 15·25·제한 안 함(`null`) 중에서 고른다. 새 TF는 15로 시작한다.
+ */
+export const TASKFORCE_CHAIN_LIMITS = [15, 25, null] as const;
+export type TaskforceChainLimit = (typeof TASKFORCE_CHAIN_LIMITS)[number];
+export const DEFAULT_TASKFORCE_CHAIN_LIMIT: TaskforceChainLimit = 15;
+export const taskforceChainLimitSchema = z.union([z.literal(15), z.literal(25), z.null()]);
+/** 저장된 상한 — 고를 수 없는 옛 값(고정 12 시절)이나 빠진 값은 기본값으로 읽는다. */
+const storedChainLimitSchema = z.preprocess(
+  (value) => (TASKFORCE_CHAIN_LIMITS as readonly unknown[]).includes(value) ? value : DEFAULT_TASKFORCE_CHAIN_LIMIT,
+  taskforceChainLimitSchema,
+);
 
 export const MAX_TASKFORCE_NAME = 40;
 export const MAX_TASKFORCE_TOPIC = 4000;
@@ -112,7 +123,7 @@ export const taskforceStateSchema = z.object({
   readSeq: z.record(z.string(), z.number().int().nonnegative()),
   chain: z.object({
     count: z.number().int().nonnegative(),
-    limit: z.number().int().positive(),
+    limit: storedChainLimitSchema,
     paused: z.boolean(),
   }).strict(),
   lastSeq: z.number().int().nonnegative(),
@@ -237,7 +248,8 @@ export const taskforceUpdateSchema = z.object({
   taskforceId: taskforceIdSchema,
   name: z.string().trim().min(1).max(MAX_TASKFORCE_NAME).optional(),
   topic: z.string().trim().min(1).max(MAX_TASKFORCE_TOPIC).optional(),
-}).strict().refine((value) => value.name !== undefined || value.topic !== undefined, "empty_update");
+  chainLimit: taskforceChainLimitSchema.optional(),
+}).strict().refine((value) => value.name !== undefined || value.topic !== undefined || value.chainLimit !== undefined, "empty_update");
 export type TaskforceUpdateInput = z.output<typeof taskforceUpdateSchema>;
 
 export const taskforceMembersAddSchema = z.object({
