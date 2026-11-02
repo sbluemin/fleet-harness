@@ -34,6 +34,9 @@ export interface CommodoreTrailGroup {
   readonly done: boolean;
   readonly latest: number;
   readonly entries: readonly CommodoreTrailEntry[];
+  /** 좁은 요약 행에서 잘린 제목을 펼침 안에서는 온전히 읽는다. */
+  readonly expandedTitle?: string;
+  readonly openDisabled?: boolean;
 }
 
 /** 한 목표에서 보이는 줄 수 — 그보다 오랜 것은 목표를 열어 본다. */
@@ -314,6 +317,9 @@ function TrailSectionRow({ t, language, group, open, onToggle, onReveal, onOpenO
   readonly style?: CSSProperties;
 }) {
   const foldId = useId();
+  const [allEntries, setAllEntries] = useState(false);
+  const hiddenEntries = Math.max(0, group.entries.length - ENTRIES_PER_OBJECTIVE);
+  const entries = allEntries ? group.entries : group.entries.slice(-ENTRIES_PER_OBJECTIVE);
   const last = group.entries[group.entries.length - 1]!;
   return (
     <li className={`objectives-commodore-trail-row-item${group.done ? " is-done" : ""}${style ? " is-revealed" : ""}`} style={style}>
@@ -325,8 +331,10 @@ function TrailSectionRow({ t, language, group, open, onToggle, onReveal, onOpenO
       </button>
       <div id={foldId} className={`objectives-commodore-trail-fold${open ? " is-open" : ""}`} inert={!open}>
         <div className="objectives-commodore-trail-fold-body">
+          {group.expandedTitle ? <p className="objectives-commodore-trail-full-title">{group.expandedTitle}</p> : null}
+          {hiddenEntries > 0 ? <button type="button" className="objectives-commodore-trail-row-open" aria-expanded={allEntries} onClick={() => setAllEntries(!allEntries)}>{allEntries ? t("commodore.trail.less") : t("commodore.trail.earlier", { n: hiddenEntries })}</button> : null}
           <ul className="objectives-commodore-trail-entries">
-            {group.entries.map((entry) => {
+            {entries.map((entry) => {
               const body = (
                 <>
                   <span className="objectives-commodore-trail-glyph" aria-hidden="true"><TrailGlyph family={entry.family} /></span>
@@ -349,7 +357,7 @@ function TrailSectionRow({ t, language, group, open, onToggle, onReveal, onOpenO
               );
             })}
           </ul>
-          <button type="button" className="objectives-commodore-trail-row-open" onClick={() => { if (onOpenObjective) onOpenObjective(group.objectiveId); else revealObjective({ objectiveId: group.objectiveId }); }}>{t("commodore.trail.open")}</button>
+          <button type="button" className="objectives-commodore-trail-row-open" disabled={group.openDisabled} onClick={() => { if (onOpenObjective) onOpenObjective(group.objectiveId); else revealObjective({ objectiveId: group.objectiveId }); }}>{t("commodore.trail.open")}</button>
         </div>
       </div>
     </li>
@@ -371,6 +379,19 @@ export function CommodoreTrailSection({ t, language, theaterId, phone = false, o
 }) {
   const { objectives } = useObjectiveTheater(theaterId);
   const groups = useMemo(() => [...commodoreTrail(t, theaterId, objectives)].reverse(), [t, theaterId, objectives]);
+  return <ObjectiveTrailSection t={t} language={language} groups={groups} phone={phone} onReveal={onReveal} onOpenObjective={onOpenObjective} />;
+}
+
+/** 사령관 정보와 TaskForce 활동이 공유하는 목표별 로그. 원천 데이터와 목표 이동은 호출자가 소유한다. */
+export function ObjectiveTrailSection({ t, language, groups, phone = false, onReveal, onOpenObjective, emptyMessage }: {
+  readonly t: T;
+  readonly language: "en" | "ko";
+  readonly groups: readonly CommodoreTrailGroup[];
+  readonly phone?: boolean;
+  readonly onReveal?: (at: number) => void;
+  readonly onOpenObjective?: (objectiveId: string) => void;
+  readonly emptyMessage?: string;
+}) {
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [all, setAll] = useState(false);
   const [revealFrom, setRevealFrom] = useState<number | null>(null);
@@ -431,7 +452,7 @@ export function CommodoreTrailSection({ t, language, theaterId, phone = false, o
         <h3 className="objectives-commodore-panel-title">{t("commodore.trail.section")}</h3>
         {groups.length > 0 ? <span className="objectives-commodore-panel-meta">{t("commodore.trail.count", { n: groups.length })}</span> : null}
       </div>
-      {groups.length === 0 ? <p className="objectives-commodore-trail-empty">{t("commodore.trail.empty")}</p> : (
+      {groups.length === 0 ? <p className="objectives-commodore-trail-empty">{emptyMessage ?? t("commodore.trail.empty")}</p> : (
         <>
           <div ref={boxRef} className="objectives-commodore-trail-box">
             <ul ref={listRef} className="objectives-commodore-trail-rows">

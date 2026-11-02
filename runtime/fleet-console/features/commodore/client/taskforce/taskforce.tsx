@@ -16,6 +16,7 @@ import { useContextMenuKeyboard } from "../../../workspace/client/sidebar/contex
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../commodore-avatar.js";
 import { actionWord, objectiveTarget, type CommodoreObjectiveIndex } from "../commodore-chat.js";
+import { ObjectiveTrailSection, trailFamily, type CommodoreTrailEntry, type CommodoreTrailGroup } from "../commodore-trail.js";
 import { finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, readTheater, subscribeFinishedObjectivesStore, subscribeObjective } from "../board.js";
 import { getT as getCommodoreT } from "../i18n/index.js";
 import { commodoreSectionLabel, readCommodoreList, subscribeCommodoreList, useCommodoreList } from "../commodore-list.js";
@@ -365,6 +366,49 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
   return <div className="taskforce-conversation">{Conversation ? <Conversation entries={items} participants={participants} working={working} language={language} accessibleNames={{ log: t("taskforce.aria.log"), composer: t("taskforce.aria.composer") }} loading={!snapshot.loaded && !snapshot.error} empty={snapshot.error ? t("taskforce.failed") : t("taskforce.empty")} messageContent={messageContent} openBoardAction={{ label: t("taskforce.openNotice"), open: (entry) => { if (entry.speaker.commodoreId) openReferencedObjective(entry.speaker.commodoreId, entry.objectiveId); } }} older={snapshot.hasMore ? { label: t("taskforce.older"), loading: older, load: () => { setOlder(true); void loadTaskforce(id, true).finally(() => setOlder(false)); } } : null} cards={cards} composer={composer} composerTopEntries /> : <>{t("taskforce.loading")}{composer}</>}</div>;
 }
 
+// TF 원장의 도구 action 이름을 정보 탭의 보드 행위 분류에 맞춘다. 모르는 행위는 중립 편집으로 남는다.
+const ACTION_TRAIL_KINDS: Readonly<Record<string, string>> = { add: "added", answer: "decision", hand_off: "hand-off", criteria_approve: "criteria-approved", criteria_reject: "criteria-rejected", followup_discard: "followup-discarded" };
+
+/** 원장의 전체 활동을 사령관·목표별로 묶는다. 대화의 paging 범위나 기록 자체는 바꾸지 않는다. */
+function TaskforceActivityLog({ entries, language }: { readonly entries: readonly TaskforceLedgerEntry[]; readonly language: "ko" | "en" }) {
+  const commodores = useCommodoreList();
+  const targetOf = useActionTargets(entries.flatMap((entry) => entry.speaker.kind === "commodore" ? [entry.speaker.commodoreId] : []), language);
+  const t = getCommodoreT(language);
+  const { groups, destinations } = useMemo(() => {
+    const byObjective = new Map<string, { owner: string | undefined; action: TaskforceAction; entries: CommodoreTrailEntry[] }>();
+    for (const entry of entries) {
+      const owner = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
+      const actor = owner ? memberName(owner, language) : entry.speaker.kind === "person" ? t("commodore.log.you") : taskforceT(language)("taskforce.title");
+      for (const [index, action] of (entry.actions ?? []).entries()) {
+        const key = JSON.stringify([owner ?? null, action.objectiveId]);
+        let group = byObjective.get(key);
+        if (!group) { group = { owner, action, entries: [] }; byObjective.set(key, group); }
+        // 최신 행위에 제목이 없더라도 앞선 원장의 마지막 제목은 남겨 둔다.
+        if (action.title) group.action = action;
+        const word = actionWord(t, action.kind);
+        group.entries.push({ key: `${entry.seq}:${index}`, at: entry.at, family: trailFamily(ACTION_TRAIL_KINDS[action.kind] ?? action.kind), word, label: actor, title: `${word} · ${actor}` });
+      }
+    }
+    const destinations = new Map<string, { owner: string; objectiveId: string }>();
+    const groups: CommodoreTrailGroup[] = [];
+    for (const [key, record] of byObjective) {
+      const target = targetOf(record.owner, record.action);
+      const title = target.label ?? record.action.objectiveId;
+      const objective = record.owner ? readTheater(record.owner).objectives.find((item) => item.id === record.action.objectiveId)
+        ?? finishedObjectives(record.owner).find((item) => item.id === record.action.objectiveId) : undefined;
+      if (record.owner && target.id) destinations.set(key, { owner: record.owner, objectiveId: target.id });
+      record.entries.sort((a, b) => a.at - b.at);
+      groups.push({ objectiveId: key, title, expandedTitle: title, done: !!objective?.done, latest: record.entries.at(-1)!.at, entries: record.entries, openDisabled: !destinations.has(key) });
+    }
+    groups.sort((a, b) => b.latest - a.latest);
+    return { groups, destinations };
+  }, [entries, language, commodores, targetOf, t]);
+  return <ObjectiveTrailSection t={t} language={language} groups={groups} emptyMessage={taskforceT(language)("taskforce.noActions")} onOpenObjective={(key) => {
+    const target = destinations.get(key);
+    if (target) openReferencedObjective(target.owner, target.objectiveId);
+  }} />;
+}
+
 type Tab = "overview" | "actions";
 function TaskforceDetails({ id, tab, language }: { readonly id: string; readonly tab: Tab; readonly language: "ko" | "en" }) {
   const t = taskforceT(language); const snapshot = useTaskforce(id); const { state, judging } = snapshot;
@@ -381,10 +425,9 @@ function TaskforceDetails({ id, tab, language }: { readonly id: string; readonly
     catch { setFailed(true); } finally { setBusy(false); }
   };
   if (!state) return <p>{t("taskforce.loading")}</p>;
-  const actions = snapshot.actionEntries.flatMap((entry) => (entry.actions ?? []).map((action) => ({ action, commodoreId: entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined })));
   return <div className="taskforce-details">
     {tab === "overview" ? <div className="taskforce-overview"><section className="objectives-commodore-section objectives-commodore-panel-section"><div className="objectives-commodore-panel-head"><h3 className="objectives-commodore-panel-title">{t("taskforce.topic")}</h3></div>{editingTopic ? <><textarea autoFocus className="objectives-commodore-input is-tall" aria-label={t("taskforce.topic")} maxLength={MAX_TASKFORCE_TOPIC} value={topic} readOnly={busy} onChange={(event) => setTopic(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) { event.preventDefault(); event.stopPropagation(); setTopic(state.topic); closeTopic(); setFailed(false); } }} /><div className="objectives-commodore-description-actions"><button type="button" className="objectives-btn" disabled={busy} onClick={() => { setTopic(state.topic); closeTopic(); setFailed(false); }}>{t("taskforce.cancel")}</button><button type="button" className="objectives-btn" disabled={busy || !topic.trim() || topic === state.topic} onClick={() => void run("update", { topic: topic.trim() })}>{t("taskforce.save")}</button></div></> : <button ref={topicPreview} type="button" className={state.topic ? "objectives-commodore-description-preview" : "commodore-theaters-add"} title={state.topic ? t("taskforce.editTopic") : undefined} onClick={() => { setTopic(state.topic); setFailed(false); setEditingTopic(true); }}>{state.topic || <><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><span>{t("taskforce.addTopic")}</span></>}</button>}</section><section className="objectives-commodore-section objectives-commodore-panel-section taskforce-members-section" aria-label={t("taskforce.members")}><div className="objectives-commodore-panel-head"><h3 className="objectives-commodore-panel-title">{t("taskforce.members")}</h3></div><div className="taskforce-member-list">{state.members.map((member) => <div className="taskforce-member" key={member}><button type="button" className="taskforce-member-open" onClick={() => { if (!openCommodoreConversation(member)) return; if (mobileId) { mobileId = null; emit(); } }}><CommodoreAvatar commodoreId={member} state={judging.includes(member) ? "running" : "idle"} size={28} label="" decorative /><strong>{memberName(member, language)}</strong></button><button type="button" className="taskforce-text-button taskforce-member-remove" disabled={busy} onClick={() => setRemoving(member)}>{t("taskforce.remove")}</button></div>)}</div><button ref={addRef} type="button" className="commodore-theaters-add" disabled={busy || state.members.length >= MAX_TASKFORCE_MEMBERS} aria-expanded={adding} onClick={() => setAdding(!adding)}><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><span>{t("taskforce.add")}</span></button>{adding ? <MemberPicker anchor={addRef.current} candidates={commodores.filter((row) => !state.members.includes(row.commodoreId)).map((row) => ({ id: row.commodoreId, name: memberName(row.commodoreId, language) }))} searchPlaceholder={t("taskforce.searchCommodores")} emptyText={t("taskforce.noMatchingCommodores")} listLabel={t("taskforce.members")} onPick={(id) => { if (busy || state.members.length >= MAX_TASKFORCE_MEMBERS) return; void run("addMembers", { commodoreIds: [id] }).finally(() => { window.requestAnimationFrame(() => { if (addRef.current?.isConnected) addRef.current.focus({ preventScroll: true }); }); }); }} onClose={() => setAdding(false)} /> : null}</section></div> : null}
-    {tab === "actions" ? <>{snapshot.actionsLoading ? <p className="taskforce-muted" role="status">{t("taskforce.loading")}</p> : null}{snapshot.actionsError ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} <button type="button" className="taskforce-link" onClick={() => void loadTaskforceActions(id)}>{t("taskforce.retry")}</button></p> : null}{actions.map(({ action, commodoreId }, index) => <TaskforceActions key={index} actions={[action]} {...(commodoreId ? { commodoreId } : {})} language={language} />)}{snapshot.actionsLoaded && !actions.length ? <p className="taskforce-muted">{t("taskforce.noActions")}</p> : null}</> : null}
+    {tab === "actions" ? <>{snapshot.actionsLoading ? <p className="taskforce-muted" role="status">{t("taskforce.loading")}</p> : null}{snapshot.actionsError ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} <button type="button" className="taskforce-link" onClick={() => void loadTaskforceActions(id)}>{t("taskforce.retry")}</button></p> : null}{snapshot.actionEntries.length > 0 || snapshot.actionsLoaded ? <TaskforceActivityLog entries={snapshot.actionEntries} language={language} /> : null}</> : null}
     {tab !== "actions" && snapshot.hasMore ? <button type="button" className="taskforce-link" disabled={busy} onClick={() => { setBusy(true); void loadTaskforce(id, true).finally(() => setBusy(false)); }}>{t("taskforce.older")}</button> : null}
     {failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}
     {removing ? <ConfirmDialog question={t("taskforce.removeConfirm", { name: memberName(removing, language) })} cancelLabel={t("taskforce.cancel")} confirmLabel={t("taskforce.remove")} danger busy={busy} error={failed ? t("taskforce.failed") : null} onCancel={() => { if (!busy) setRemoving(null); }} onConfirm={() => void run("removeMembers", { commodoreId: removing })} /> : null}
