@@ -160,6 +160,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
       edited: objective.edited, actions: objective.actions, actionCounts: objective.actionCounts,
       removed: objective.removed, merged: objective.merged,
     }),
+    requestSource: objective.requestSource,
     graph: graph(objective),
     ...withoutEmpty({
       // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
@@ -191,7 +192,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
    * 브리핑은 앞부분만 싣고, 잘렸으면 briefTruncated 로 알린다. 전문은 목표 하나를 읽는다.
    */
   const rowView = (objective: Objective) => ({
-    id: objective.id, groupId: objective.groupId, title: objective.title,
+    id: objective.id, groupId: objective.groupId, title: objective.title, requestSource: objective.requestSource,
     objectiveRecord: objective.hasSession ?? !store.pending(objective.id), archived: objective.archived === true,
     done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy && "objectiveId" in objective.addedBy ? objective.addedBy.objectiveId : objective.addedBy,
     operator: objective.operator,

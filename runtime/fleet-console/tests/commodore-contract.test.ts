@@ -1,6 +1,7 @@
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import type { CommodoreRouteContext } from "../features/commodore/host/routes.js";
 import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import fs from "node:fs";
@@ -2574,7 +2575,8 @@ describe("commodore supervisor", () => {
       const settleWait = SETTLE_MS + SETTLE_CHECK_MS + COALESCE_MS + 10;
       const turnsBeforeBoard = sessions[0]!.sent.length;
       commanderActivity.set("o1", "running");
-      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: false, planning: true, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [{ id: "c1" }], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
+      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", requestSource, createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: false, planning: true, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [{ id: "c1" }], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard);
@@ -2583,7 +2585,7 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["decision:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain("inbox: 1 decision request");
-      expect(sessions[0]!.sent.at(-1)).toContain('Board at wake:\n- o1 "Remote pairing"\n  status: planning · missions 0/1 done\n  waits on you: criteria proposal, decision request\n  group: commander running · no members\n  since your last turn: new → planning');
+      expect(sessions[0]!.sent.at(-1)).toContain(`Board at wake:\n- o1 "Remote pairing"\n  requestSource: ${JSON.stringify(requestSource)}\n  status: planning · missions 0/1 done\n  waits on you: criteria proposal, decision request\n  group: commander running · no members\n  since your last turn: new → planning`);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 1);
       commanderActivity.delete("o1");
       await vi.advanceTimersByTimeAsync(settleWait * 2);
@@ -2597,7 +2599,7 @@ describe("commodore supervisor", () => {
       commanderActivity.delete("o1");
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(tokens().at(-1)).toEqual(["settled:1"]);
-      expect(sessions[0]!.sent.at(-1)).toContain('1 objective group went idle: "Remote pairing".\n\nBoard at wake:\n- o1 "Remote pairing"\n  status: planning · missions 0/1 done\n  waits on you: criteria proposal, decision request\n  group: idle 0 min · commander idle · no members');
+      expect(sessions[0]!.sent.at(-1)).toContain(`1 objective group went idle: "Remote pairing".\n\nBoard at wake:\n- o1 "Remote pairing"\n  requestSource: ${JSON.stringify(requestSource)}\n  status: planning · missions 0/1 done\n  waits on you: criteria proposal, decision request\n  group: idle 0 min · commander idle · no members`);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 2);
       // 지휘관이 다시 일하는 동안의 개시는 objective_busy 로 거절된다 — 그 일이 끝나 대기 중이 되면 보드가 그대로여도 다시 깨운다.
       const board = sessions[0]!.options.tools!.custom!.find((group) => group.tools.some((tool) => tool.name === "console_objectives_detail"))!.tools.find((tool) => tool.name === "console_objectives_detail")!;
@@ -2635,8 +2637,8 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["returned:1"]);
       const returned = sessions[0]!.sent.at(-1)!;
-      expect(returned).toContain('- o1 "Remote pairing"\n  status: awaiting review · missions 0/1 done\n  waits on you: awaiting review\n  group: idle 0 min · commander idle · no members\n  since your last turn: in progress → awaiting review');
-      expect(returned).toContain('Other objectives moved since your last turn:\n- "Lineup": new → lineup ready; lineup ready → in progress');
+      expect(returned).toContain(`- o1 "Remote pairing"\n  requestSource: ${JSON.stringify(requestSource)}\n  status: awaiting review · missions 0/1 done\n  waits on you: awaiting review\n  group: idle 0 min · commander idle · no members\n  since your last turn: in progress → awaiting review`);
+      expect(returned).toContain('Other objectives moved since your last turn:\n- o2 "Lineup": new → lineup ready; lineup ready → in progress\n  requestSource: null');
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 5);
 
@@ -2684,7 +2686,7 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent).toHaveLength(beforeBlocked);
       await vi.advanceTimersByTimeAsync(5_000 + 2 * SETTLE_CHECK_MS + COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["criteria:1"]);
-      expect(sessions[0]!.sent.at(-1)).toContain('- o1 "Remote pairing"\n  status: in progress · missions 0/1 done\n  waits on you: criteria proposal\n  group: commander idle · members: implementer running');
+      expect(sessions[0]!.sent.at(-1)).toContain(`- o1 "Remote pairing"\n  requestSource: ${JSON.stringify(requestSource)}\n  status: in progress · missions 0/1 done\n  waits on you: criteria proposal\n  group: commander idle · members: implementer running`);
       expect(sessions[0]!.sent).toHaveLength(beforeBlocked + 1);
       // 마지막 제안이 승인된 뒤 다음 점검 전에 새 제안이 서도 새 항목이다 — 지휘관이 계속 쉬면 다시 한 번 깨운다.
       Object.assign(objectives[0]!, { criteriaProposals: [], boardUpdatedAt: Date.now() });

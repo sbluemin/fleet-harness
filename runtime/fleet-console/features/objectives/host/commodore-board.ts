@@ -282,6 +282,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       const mine = reasons.filter((reason) => !heldForPerson(objective, reason)).map((reason) => REASON_WORDS[reason]);
       const theirs = reasons.filter((reason) => heldForPerson(objective, reason)).map((reason) => REASON_WORDS[reason]);
       lines.push(`- ${objective.id} "${objective.title}"`);
+      lines.push(`  requestSource: ${JSON.stringify(objective.requestSource ?? null)}`);
       lines.push(`  status: ${STATUS_WORDS[objectiveStatus(objective)]}${objective.missions.length ? ` · missions ${done}/${objective.missions.length} done` : " · no missions"}`);
       if (mine.length) lines.push(`  waits on you: ${mine.join(", ")}`);
       if (theirs.length) lines.push(`  waits on the person: ${theirs.join(", ")}`);
@@ -294,7 +295,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
     if (woke.length > BRIEF_OBJECTIVES) { lines.push(`- and ${woke.length - BRIEF_OBJECTIVES} more (read the board)`); for (const id of woke.slice(BRIEF_OBJECTIVES)) runner.moves.delete(id); }
     const others = [...runner.moves].filter(([, moves]) => moves.length);
     runner.moves.clear();
-    const otherLines = others.slice(0, BRIEF_OBJECTIVES).map(([id, moves]) => `- ${byId.has(id) ? `"${byId.get(id)!.title}"` : id}: ${moves.join("; ")}`);
+    const otherLines = others.slice(0, BRIEF_OBJECTIVES).map(([id, moves]) => `- ${id}${byId.has(id) ? ` "${byId.get(id)!.title}"` : ""}: ${moves.join("; ")}\n  requestSource: ${JSON.stringify(byId.get(id)?.requestSource ?? null)}`);
     if (others.length > BRIEF_OBJECTIVES) otherLines.push(`- and ${others.length - BRIEF_OBJECTIVES} more`);
     if (!lines.length && !otherLines.length) return null;
     return [...(lines.length ? ["Board at wake:", ...lines] : []), ...(otherLines.length ? ["Other objectives moved since your last turn:", ...otherLines] : [])].join("\n");
