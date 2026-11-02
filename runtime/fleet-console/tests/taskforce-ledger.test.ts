@@ -678,6 +678,73 @@ describe("taskforce runtime", () => {
     expect(() => h.taskforce.readLedger(tf1)).toThrow("unknown_taskforce");
   });
 
+  it("recognizes anchor coverage that reaches the ledger start", async () => {
+    // 2항목 원장의 anchor는 걷기가 시작점에 닿아 미확인이 아니라 원문이 보인다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "short", topic: "original topic", members: [a, b] });
+    const taskforceId = state.id;
+    h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "early person request" });
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const res = (await direct(a).execute({ anchor: { source: taskforceId, seq: 2 } }, { cwd: h.theaterRoot }) as { structuredContent: {
+      anchorFound: boolean; items: { seq: number; readable: boolean; text?: string }[]; partial: boolean;
+      sources: { status: string; participationUncertain?: boolean }[];
+    } }).structuredContent;
+    expect(res.anchorFound).toBe(true);
+    expect(res.partial).toBe(false);
+    expect(res.items).toMatchObject([
+      { seq: 1, readable: true },
+      { seq: 2, readable: true, text: "early person request" },
+    ]);
+    expect(res.sources).toMatchObject([{ status: "complete" }]);
+    expect(res.sources[0]).not.toHaveProperty("participationUncertain");
+  });
+
+  it("accepts long cursors from many-source scans", async () => {
+    // 32개 TF 이어읽기에서 나온 긴 cursor도 스키마를 통과해 다음 페이지를 잇는다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    const ids: string[] = [];
+    for (let k = 0; k < 32; k += 1) {
+      const state = h.taskforce.create({ name: `tf-${k}`, topic: "topic", members: [a, b] }).state;
+      ids.push(state.id);
+      const dir = path.join(h.consoleDataDir, "taskforce", state.id);
+      const rows = Array.from({ length: 2100 }, (_, i) => ({ seq: i + 1, at: 1700000000000 + i, speaker: { kind: "person" }, text: i < 100 ? "NEEDLE" : "ordinary", mentions: [] as string[] }));
+      fs.writeFileSync(path.join(dir, "ledger.jsonl"), rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
+      fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ ...state, lastSeq: 2100 }));
+      h.taskforce.forget(state.id);
+    }
+    const first = (await call(a, { target: "taskforce", query: "NEEDLE" })).structuredContent as { results: unknown[]; nextScan?: string };
+    expect(first.results).toEqual([]);
+    expect(typeof first.nextScan).toBe("string");
+    const second = (await call(a, { target: "taskforce", query: "NEEDLE", scan: first.nextScan })).structuredContent as {
+      results: { seq: number; source: { kind: string; id: string } }[]; hasMore: boolean; nextCursor?: string;
+    };
+    expect(second.results).toHaveLength(20);
+    expect(second.hasMore).toBe(true);
+    expect(typeof second.nextCursor).toBe("string");
+    expect(second.nextCursor!.length).toBeGreaterThan(2048);
+    expect(second.nextCursor!.length).toBeLessThanOrEqual(8192);
+    const third = (await call(a, { target: "taskforce", query: "NEEDLE", cursor: second.nextCursor })).structuredContent as {
+      isError?: boolean; results: { seq: number; source: { kind: string; id: string } }[]; hasMore: boolean; error?: string;
+    };
+    expect(third.error).toBeUndefined();
+    expect(third.results).toHaveLength(20);
+    // 페이지는 겹치지 않고 같은 스캔 범위 안에서 이어진다.
+    const seen = new Set(second.results.map((item) => `${item.source.id}:${item.seq}`));
+    expect(third.hasMore).toBe(true);
+    for (const item of third.results) {
+      expect(seen.has(`${item.source.id}:${item.seq}`)).toBe(false);
+      seen.add(`${item.source.id}:${item.seq}`);
+    }
+    expect(seen.size).toBe(40);
+  });
+
   it("skips finished sources when continuing into older ledger pages", async () => {
     // all+scan: 끝난 원장은 다시 읽지 않아 중복·낭비가 없다. 새로고침해야 새 원장이 보인다.
     const h = runtimeHarness();
