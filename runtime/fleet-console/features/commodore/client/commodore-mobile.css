@@ -150,7 +150,12 @@
 .objectives-cm-intel-field[readonly] { opacity: .6; }
 /* 「+ 정보 추가」 — 정보 묶음 맨 아래 줄. 테두리 없는 입력의 자리표가 이름을 대신하고, 입력은 내용만큼 자란다. */
 .objectives-cm-gr.objectives-cm-intel-add { align-items: flex-start; min-height: 52px; padding-block: 14px; }
-.objectives-cm-intel-plus { flex: none; color: var(--m-text-nav); font-size: var(--m-fs-heading); line-height: 1; }
+.objectives-cm-intel-plus { display: inline-grid; place-items: center; flex: none; width: 18px; height: 1.45em; color: var(--m-text-nav); font-size: var(--m-fs-list); line-height: 1; }
+.objectives-cm-intel-plus svg { display: block; width: 18px; height: 18px; }
+.objectives-cm-gr.commodore-theaters-phone-add { align-items: center; }
+.objectives-cm-gr.commodore-theaters-phone-add:hover:not(:disabled) { background: var(--wash-hover); }
+/* 빈 추가 행의 호버만 밝힌다. 편집 중인 텍스트 필드는 배경을 유지한다. */
+.objectives-cm-gr.objectives-cm-intel-add:hover:not(:focus-within):has(textarea:placeholder-shown:not(:disabled):not([readonly])) { background: var(--wash-hover); }
 .objectives-cm-intel-add textarea { flex: 1; min-width: 0; max-height: 280px; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.45; field-sizing: content; user-select: text; }
 .objectives-cm-intel-add textarea::placeholder { color: var(--m-text-nav); }
 .objectives-cm-intel-add:focus-within textarea::placeholder { color: var(--m-text-muted); }

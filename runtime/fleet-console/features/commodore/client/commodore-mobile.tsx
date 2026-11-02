@@ -1,3 +1,4 @@
+import { PlusGlyph } from "@fleet-console/ui/react";
 import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
 import { openOwnedObjectiveOnPhone } from "./board.js";
@@ -713,7 +714,7 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
         })}
         {/* 「+ 정보 추가」 — 목록 맨 아래 같은 묶음의 한 줄. 화면 키보드의 Enter 는 줄바꿈이라 글이 있으면 곁에 「추가」가 선다. */}
         <div className="objectives-cm-gr objectives-cm-intel-add">
-          <span className="objectives-cm-intel-plus" aria-hidden="true">+</span>
+          <span className="objectives-cm-intel-plus" aria-hidden="true"><PlusGlyph /></span>
           <textarea {...adder.field} readOnly={adder.adding || !online} aria-label={t("commodore.intel.add")} placeholder={t("commodore.intel.add")} />
           {adder.draft.trim() ? <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={adder.adding || !online} onClick={adder.add}>{t("commodore.intel.addShort")}</button> : null}
         </div>

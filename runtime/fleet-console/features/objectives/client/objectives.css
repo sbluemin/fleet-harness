@@ -204,7 +204,7 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row-main { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; min-height: 44px; margin: 0 -20px 0 -22px; padding: 0 20px 0 22px; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .objectives-row-ic { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; color: var(--text-tertiary); }
 .objectives-row-ic svg { width: 17px; height: 17px; }
-.objectives-row-ic.objectives-plus { color: var(--brass-ink); font-size: var(--t-xl); line-height: 1; }
+.objectives-row-ic.objectives-plus { color: var(--brass-ink); line-height: 1; }
 .objectives-row-lab { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
 
 .objectives-row-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
@@ -227,7 +227,9 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-record-meta .is-new { color: var(--brass-ink); }
 .objectives-record-head { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-record-line { color: var(--text-secondary); }
-.objectives-row.objectives-mission-add { min-height: 40px; }
+/* 빈 추가 행은 편집 전의 동작 면이다. 입력 중에는 면을 바꾸지 않고 기존 필드 포커스를 유지한다. */
+.objectives-row.objectives-mission-add { min-height: 40px; border-radius: 8px; }
+.objectives-row.objectives-mission-add:hover:not(:focus-within):has(input:placeholder-shown:not(:disabled):not([readonly])) { background: var(--wash-hover); }
 .objectives-row.objectives-mission-add::before { display: none; }
 .objectives-mission-add input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 0; outline: none; }
 .objectives-mission-add input::placeholder { color: var(--brass-ink); opacity: 0.9; }

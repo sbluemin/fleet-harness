@@ -1,4 +1,4 @@
-import { ChevronGlyph } from "@fleet-console/ui/react";
+import { ChevronGlyph, PlusGlyph } from "@fleet-console/ui/react";
 import { commodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
@@ -1056,7 +1056,7 @@ export function CommodoreDescription({ t, commodoreId, description, onFail, onCl
     void saveCommodoreDescription(commodoreId, draft).then(close).catch(onFail).finally(() => setSaving(false));
   };
   const preview = <button ref={previewRef} type="button" className={description.text ? "objectives-commodore-description-preview" : phone ? "objectives-cm-gr objectives-cm-intel-add commodore-theaters-phone-add" : "commodore-theaters-add"} title={description.text ? t("commodore.description.edit") : undefined} disabled={!online} onClick={() => { onClear(); setEditing(true); }}>
-    {description.text || <><span className={phone ? "objectives-cm-intel-plus" : "objectives-row-ic objectives-plus"} aria-hidden="true">+</span><span className={phone ? "objectives-cm-gr-tx" : undefined}>{t("commodore.description.add")}</span></>}
+    {description.text || <><span className={phone ? "objectives-cm-intel-plus" : "objectives-row-ic objectives-plus"} aria-hidden="true"><PlusGlyph /></span><span className={phone ? "objectives-cm-gr-tx" : undefined}>{t("commodore.description.add")}</span></>}
   </button>;
   return (
     <section className="objectives-commodore-section objectives-commodore-panel-section">
@@ -1195,7 +1195,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
       )}
       {/* 「+ 임무 추가」와 같은 한 줄 — 테두리 없는 입력의 자리표가 이름을 대신하고, 글이 길면 줄이 내용만큼 자란다. */}
       <div className="objectives-commodore-intel-add">
-        <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+        <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
         <div className="objectives-commodore-intel-add-body">
           <textarea
             {...adder.field}
