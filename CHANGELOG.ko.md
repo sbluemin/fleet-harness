@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.277.1] - 2026-11-02
+
+### fleet-console
+
+#### Changed
+- 사령관이 사람의 메시지를 기다리지 않고 완료된 목표를 보관할 수 있어요. 루틴이 깨운 턴에서도 마찬가지예요.
+
 ## [1.277.0] - 2026-11-01
 
 ### fleet-console

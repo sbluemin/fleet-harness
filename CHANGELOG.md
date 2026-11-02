@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.277.1] - 2026-11-02
+
+### fleet-console
+
+#### Changed
+- Commodores can archive completed objectives without waiting for your message, including turns woken by routines.
+
 ## [1.277.0] - 2026-11-01
 
 ### fleet-console
