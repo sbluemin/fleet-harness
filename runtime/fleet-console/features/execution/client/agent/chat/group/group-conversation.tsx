@@ -89,6 +89,8 @@ export interface GroupConversationProps {
    * 포트 없는 읽기 전용 대화는 정적 칩이다.
    */
   readonly onOpenUISend?: (reply: string, speaker: ConversationSpeaker) => void;
+  /** 말풍선 옆 표식 — 주지 않으면 명부의 에이전트 수로 정한다. 전언 줄에만 서는 상대가 명부에 있는 1:1 대화는 false 를 준다. */
+  readonly speakerMarks?: boolean;
 }
 
 /** 사령관 기록을 그 행위의 자리로 여는 요청 — 임무 14의 `BoardActionRecordRequest` 와 같은 필드. */
@@ -103,7 +105,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, onOpenUISend }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -269,7 +271,8 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
   const breaks = React.useMemo(() => timeBreaks(anchors), [anchors]);
   const runTails = React.useMemo(() => bubbleRunTails(flow, breaks), [flow, breaks]);
   // 상대가 하나뿐이면(사령관 채팅, 구성원 없는 지휘관) 말풍선 옆 아바타를 두지 않는다. 구성원이 명부에 서면 다시 붙는다.
-  const showMark = showsSpeakerMarks(snapshot.participants);
+  // 사령관 채팅은 전언 상대가 명부에 서도 말풍선의 화자는 하나라 대화가 직접 끈다.
+  const showMark = speakerMarks ?? showsSpeakerMarks(snapshot.participants);
   const now = Date.now();
 
   const unavailableNames = snapshot.unavailableObjectiveIds
