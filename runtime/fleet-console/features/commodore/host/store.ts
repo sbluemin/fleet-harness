@@ -496,7 +496,38 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   };
 }
 
-/** 없는 파일은 빈 상태, 깨진 파일은 옆으로 치우고 빈 상태 — 한 Theater 의 깨진 파일이 플러그인 전체를 세우지 않는다. */
+/**
+ * 원장·상태 읽기의 실경로 경계 — 파일이 정규 파일이 아니거나(링크 등) dir 실경로
+ * 밖을 가리키면 없는 것으로 본다(깨진 줄 건너뛰기와 같은 fail-closed). 없으면 null.
+ */
+function readContainedFile(dir: string, file: string, label: string): string | null {
+  let stat: fs.Stats;
+  try { stat = fs.lstatSync(file); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    console.warn(`[objectives] commodore ${label} is not a regular file, ignored: ${file}`);
+    return null;
+  }
+  try {
+    const realDir = fs.realpathSync(dir);
+    const realFile = fs.realpathSync(file);
+    const relative = path.relative(realDir, realFile);
+    if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("outside");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    console.warn(`[objectives] commodore ${label} escapes its directory, ignored: ${file}`);
+    return null;
+  }
+  try { return fs.readFileSync(file, "utf8"); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 function foldCommodoreModels(state: CommodoreState): CommodoreState {
   const model = state.model ? canonicalModelId(state.model) : state.model;
   const commanderModel = state.commanderModel ? canonicalModelId(state.commanderModel) : state.commanderModel;
@@ -505,12 +536,8 @@ function foldCommodoreModels(state: CommodoreState): CommodoreState {
 }
 
 function readStateFile(file: string): CommodoreState {
-  let raw: string;
-  try { raw = fs.readFileSync(file, "utf8"); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return EMPTY_COMMODORE_STATE;
-    throw error;
-  }
+  const raw = readContainedFile(path.dirname(file), file, "state");
+  if (raw === null) return EMPTY_COMMODORE_STATE;
   try {
     const { theaters: _theaters, ...state } = JSON.parse(raw);
     const parsed = commodoreStateSchema.safeParse(migrateCommodoreState(state));
@@ -523,12 +550,8 @@ function readStateFile(file: string): CommodoreState {
 
 /** 깨진 줄은 건너뛴다 — 기록은 보여 주는 것이지 상태가 아니라 한 줄의 손상이 전체를 막지 않는다. */
 function readTranscriptFile(file: string): CommodoreTranscriptEntry[] {
-  let raw: string;
-  try { raw = fs.readFileSync(file, "utf8"); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
+  const raw = readContainedFile(path.dirname(file), file, "transcript");
+  if (raw === null) return [];
   const entries: CommodoreTranscriptEntry[] = [];
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;

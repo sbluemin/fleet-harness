@@ -8,7 +8,9 @@ import { z } from "zod";
 import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "../shared/contracts/questions.js";
 import { refuse, text } from "./tool-results.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
-import type { TaskforceStore } from "./taskforce/store.js";
+import { MEMORY_SEARCH_DESCRIPTION, memorySearchInputSchema, searchCommodoreLedger, type MemorySearchTaskforce } from "./memory-search.js";
+
+export type { MemorySearchTaskforce as CommodoreTaskforceLedger };
 import { TaskforceStoreError } from "./taskforce/errors.js";
 import { MAX_TASKFORCE_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
@@ -48,10 +50,10 @@ export interface CommodoreToolsOptions {
   readonly now?: () => number;
   readonly execute?: CommandExecute;
   /**
-   * 속한 TaskForce 원장 — 판단 턴의 말하기가 여기에 닿는다. 없으면 TF 도구를
-   * 거절한다(판단 런타임이 없는 호스트).
+   * 속한 TaskForce 원장 — 판단 턴의 말하기와 memory_search의 읽기에 닿는다.
+   * 없으면 TF 도구를 거절한다(판단 런타임이 없는 호스트).
    */
-  readonly taskforce?: Pick<TaskforceStore, "append">;
+  readonly taskforce?: MemorySearchTaskforce;
 }
 
 export function createCommodoreTools(options: CommodoreToolsOptions): readonly ConsoleMcpTool[] {
@@ -177,6 +179,11 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       options.store.memory.remove(options.commodoreId, ref);
       return { ref, deleted: true };
     }),
+    tool("memory_search", MEMORY_SEARCH_DESCRIPTION, memorySearchInputSchema, (args) =>
+      searchCommodoreLedger(options.commodoreId, state().alias ?? null, args, {
+        store: options.store,
+        ...(options.taskforce ? { taskforce: options.taskforce } : {}),
+      })),
     tool("issue_list", "List issues of a github-issues intel source (by its source id from intel): number, title, state, labels, updated date and url. Sources of kind url are read with WebFetch instead.", z.object({ sourceId: z.string().min(1).max(128), state: z.enum(["open", "closed", "all"]).optional(), limit: z.number().int().min(1).max(MAX_ISSUES).optional() }).strict(), async ({ sourceId, state: issueState, limit }, context) => {
       const source = state().sources.find((entry) => entry.id === sourceId);
       if (!source) throw new Error("unknown_source");

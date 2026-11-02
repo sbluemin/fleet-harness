@@ -30,6 +30,7 @@ import { effectiveCommodorePlugins, MAX_PLUGIN_README_BYTES } from "../features/
 import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
+import { createCommodoreTools } from "../features/commodore/host/tools.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { COALESCE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
@@ -1534,6 +1535,215 @@ describe("commodore fleet-memory", () => {
     expect(fs.readFileSync(path.join(root, "MEMORY.md"), "utf8")).toBe("");
     expect(h.events.flatMap((event) => (event.op === "memory" ? [event.change] : []))).toEqual(["save", "save", "delete", "verify", "delete"]);
   });
+
+  it("searches the retained 1:1 ledger with caller-bound attribution, deterministic pages and a clear boundary", async () => {
+    // 단일 원장 검색의 1:1 대표 계약 — 실제 화자 귀속, 비공개 thinking 제외,
+    // 리터럴 검색·결정적 페이지·cursor 권한 재확인·clear 경계·anchor 문맥을 한 도구가 맡는다.
+    let now = 1_000_000;
+    const h = harness(() => now);
+    const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
+    const search = async (args: Record<string, unknown>) =>
+      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    const tick = () => { now += 1_000; };
+
+    h.store.transcriptAppend("t1", { kind: "message", text: "사람이 Decorator 패턴을 물었다" }); tick();
+    h.store.transcriptAppend("t1", { kind: "thinking", text: "비밀스러운 내부 생각: 토큰 xyz" }); tick();
+    h.store.transcriptAppend("t1", { kind: "text", text: "내가 Decorator로 답했다" }); tick();
+    h.store.transcriptAppend("t1", { kind: "sent", messageId: "m1", to: { id: "other-id", alias: "Other" }, text: "다른 사령관에게 보낸 말", ok: true }); tick();
+    h.store.transcriptAppend("t1", { kind: "received", messageId: "m2", from: { id: "other-id", alias: "Other" }, text: "다른 사령관의 답" }); tick();
+    h.store.transcriptAppend("t1", { kind: "ask", askId: "a1", reason: "물어볼 이유", questions: [{ text: "진행할까?", options: ["예", "아니오"], multiSelect: false }] }); tick();
+    h.store.transcriptAppend("t1", { kind: "ask-answered", askId: "a1", answers: [{ question: "진행할까?", selected: ["예"], text: "직접 쓴 말" }] }); tick();
+    h.store.transcriptAppend("t1", { kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o1", title: "T", ok: true });
+
+    // 전체 — 최신이 앞, thinking은 어디에도 없다.
+    const all = (await search({ target: "own" })).structuredContent;
+    expect(all.callerCommodoreId).toBe("t1");
+    expect(all.partial).toBe(false);
+    expect(all.hasMore).toBe(false);
+    // TF 호스트가 없으면 all은 본인 기록만 보고 표시한다.
+    const degraded = (await search({})).structuredContent;
+    expect(degraded.partial).toBe(true);
+    expect(degraded.notes).toContain("taskforce_unavailable");
+    expect(degraded.results).toEqual(all.results);
+    expect(all.results.map((item: { kind: string }) => item.kind)).toEqual(
+      ["tool", "ask-answered", "ask", "received", "sent", "text", "message"]);
+    expect(all.results.map((item: { speaker: { role: string } }) => item.speaker.role)).toEqual(
+      ["system", "person", "self", "other", "self", "self", "person"]);
+    expect((all.results.find((item: { kind: string }) => item.kind === "received") as { speaker: object }).speaker)
+      .toMatchObject({ role: "other", commodoreId: "other-id", alias: "Other" });
+    // 보낸 mail의 speaker는 발신자(호출자), 수신자는 별도 to다.
+    const sent = all.results.find((item: { kind: string }) => item.kind === "sent") as { speaker: object; to: object };
+    expect(sent.speaker).toMatchObject({ role: "self", commodoreId: "t1" });
+    expect(sent.speaker).not.toMatchObject({ commodoreId: "other-id" });
+    expect(sent.to).toMatchObject({ id: "other-id", alias: "Other" });
+    expect(JSON.stringify(all)).not.toContain("토큰 xyz");
+    // 비공개 thinking은 검색어로도 건드릴 수 없다.
+    expect(((await search({ query: "토큰" })).structuredContent as { results: unknown[] }).results).toEqual([]);
+    // 검색어는 리터럴이다 — 정규식으로 해석하지 않는다.
+    expect(((await search({ query: ".*" })).structuredContent as { results: unknown[] }).results).toEqual([]);
+    expect(((await search({ query: "Decorator" })).structuredContent as { results: { kind: string }[] }).results.map((item) => item.kind))
+      .toEqual(["text", "message"]);
+    // 실제 화자·시간 필터.
+    expect(((await search({ speaker: "other" })).structuredContent as { results: { kind: string }[] }).results.map((item) => item.kind))
+      .toEqual(["received"]);
+    const sentAt = (all.results.find((item: { kind: string }) => item.kind === "sent") as { at: string }).at;
+    const since = Date.parse(sentAt);
+    expect(((await search({ since })).structuredContent as { results: { kind: string }[] }).results.map((item) => item.kind))
+      .toEqual(["tool", "ask-answered", "ask", "received", "sent"]);
+
+    // 결정적 페이지 — cursor는 위치만 옮기고 권한을 대신하지 않는다.
+    const first = (await search({ limit: 2 })).structuredContent as { results: { seq: number }[]; nextCursor: string; hasMore: boolean };
+    expect(first.hasMore).toBe(true);
+    const second = (await search({ limit: 2, cursor: first.nextCursor })).structuredContent as { results: { seq: number }[]; nextCursor: string; hasMore: boolean };
+    const rest = (await search({ limit: 10, cursor: second.nextCursor })).structuredContent as { results: { seq: number }[]; hasMore: boolean; nextCursor?: string };
+    expect([...first.results, ...second.results, ...rest.results].map((item) => item.seq)).toEqual(
+      (all.results as { seq: number }[]).map((item) => item.seq));
+    expect(rest.hasMore).toBe(false);
+    expect(rest.nextCursor).toBeUndefined();
+    expect((await search({ limit: 2, cursor: `${first.nextCursor.slice(0, -2)}AA` })).structuredContent).toMatchObject({ error: "invalid_cursor" });
+    expect((await search({ limit: 2, query: "Decorator", cursor: first.nextCursor })).structuredContent).toMatchObject({ error: "invalid_cursor" });
+    // 조합 오류는 거절된다.
+    expect((await search({ target: "own", taskforceId: "00000000-0000-4000-8000-000000000001" })).structuredContent).toMatchObject({ error: "invalid_request" });
+    expect((await search({ anchor: { source: "own", seq: 3 }, cursor: first.nextCursor })).structuredContent).toMatchObject({ error: "invalid_request" });
+    expect((await search({ before: 2 })).structuredContent).toMatchObject({ error: "invalid_request" });
+    // TF 호스트가 없으면 TF 지정 검색은 거절, all은 본인만 보고 표시한다.
+    expect((await search({ target: "taskforce", taskforceId: "00000000-0000-4000-8000-000000000001" })).structuredContent).toMatchObject({ error: "taskforce_unavailable" });
+    // TF 호스트가 닫혀도(실험 OFF) all은 본인 결과를 살린다.
+    const gate = {
+      append() { throw new Error("taskforce_unavailable"); },
+      list() { throw new Error("taskforce_unavailable"); },
+      read() { throw new Error("taskforce_unavailable"); },
+      readLedger() { throw new Error("taskforce_unavailable"); },
+    };
+    const gated = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store, taskforce: gate }).map((tool) => [tool.name, tool]));
+    const gatedSearch = async (args: Record<string, unknown>) =>
+      await gated.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    const kept = (await gatedSearch({ query: "Decorator" })).structuredContent;
+    expect(kept.results.map((item: { kind: string }) => item.kind)).toEqual(["text", "message"]);
+    expect(kept.partial).toBe(true);
+    expect(kept.notes).toContain("taskforce_unavailable");
+    expect((await gatedSearch({ target: "taskforce", taskforceId: "00000000-0000-4000-8000-000000000001" })).structuredContent).toMatchObject({ error: "taskforce_unavailable" });
+
+    // anchor 문맥 — 앞뒤 일치 여부와 잘린 thinking 자리를 함께 본다.
+    const around = (await search({ anchor: { source: "own", seq: 3 }, before: 2, after: 1, query: "Decorator" })).structuredContent as {
+      anchorFound: boolean; items: { seq: number; readable: boolean; matched?: boolean; reason?: string }[]; partial: boolean;
+    };
+    expect(around.anchorFound).toBe(true);
+    expect(around.items.map((item) => item.seq)).toEqual([1, 2, 3, 4]);
+    const withheld = around.items.find((item) => item.seq === 2)!;
+    expect(withheld).toMatchObject({ readable: false, reason: "withheld" });
+    expect(withheld).not.toHaveProperty("at");
+    expect(withheld).not.toHaveProperty("text");
+    expect(around.items.find((item) => item.seq === 3)).toMatchObject({ readable: true, matched: true });
+    expect(around.items.find((item) => item.seq === 4)).toMatchObject({ readable: true, matched: false });
+    expect(((await search({ anchor: { source: "own", seq: 9999 } })).structuredContent as { anchorFound: boolean }).anchorFound).toBe(false);
+
+    // 긴 본문은 잘랐다고 표시하고 anchor로 원문을 읽는다.
+    h.store.transcriptAppend("t1", { kind: "text", text: `긴 기록 ${"가".repeat(3_000)}` });
+    const clipped = (await search({ query: "긴 기록" })).structuredContent as { results: { truncated?: boolean; text: string }[] };
+    expect(clipped.results).toHaveLength(1);
+    expect(clipped.results[0]!.truncated).toBe(true);
+    expect(clipped.results[0]!.text.length).toBeLessThan(3_000);
+    const full = (await search({ anchor: { source: "own", seq: 9 } })).structuredContent as { items: { seq: number; text?: string }[] };
+    expect(full.items.find((item) => item.seq === 9)?.text).toContain("가".repeat(3_000));
+
+    // clear 경계 — 지워진 기록은 없는 것이고, 경계를 함께 알린다.
+    h.store.transcriptClear("t1");
+    const cleared = (await search({ target: "own" })).structuredContent as { results: unknown[]; partial: boolean; sources: { clearedThrough: number }[] };
+    expect(cleared.results).toEqual([]);
+    expect(cleared.partial).toBe(false);
+    expect(cleared.sources[0]!.clearedThrough).toBeGreaterThan(0);
+  });
+
+  it("ignores commodore files that escape their directories", async () => {
+    // 원장·상태 읽기의 실경로 경계 — 밖을 가리키는 링크는 없는 것으로 본다.
+    const h = harness();
+    const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
+    const search = async (args: Record<string, unknown>) =>
+      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    h.store.setDescription("t1", "Real description");
+    h.store.transcriptAppend("t1", { kind: "text", text: "안에 있는 말" });
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-outside-"));
+    dirs.push(outsideDir);
+    const outside = path.join(outsideDir, "other-ledger.jsonl");
+    fs.writeFileSync(outside, `${JSON.stringify({ seq: 100, at: Date.now(), kind: "text", text: "OUTSIDE_PRIVATE_LEDGER" })}\n`);
+    const transcript = path.join(h.objectivesDir, "transcript.jsonl");
+    fs.renameSync(transcript, path.join(h.objectivesDir, "saved-transcript.jsonl"));
+    fs.symlinkSync(outside, transcript);
+    try {
+      expect(h.store.transcriptRead("t1").entries).toEqual([]);
+      const leaked = (await search({ target: "own", query: "OUTSIDE" })).structuredContent;
+      expect(leaked.results).toEqual([]);
+      expect(JSON.stringify(leaked)).not.toContain("OUTSIDE_PRIVATE_LEDGER");
+    } finally {
+      fs.unlinkSync(transcript);
+      fs.renameSync(path.join(h.objectivesDir, "saved-transcript.jsonl"), transcript);
+    }
+    expect(((await search({ target: "own", query: "안에 있는 말" })).structuredContent as { results: unknown[] }).results).toHaveLength(1);
+    // 상태가 밖을 가리키면 빈 상태로 본다 — 밖의 별칭·지시가 들어오지 않는다.
+    const stateFile = path.join(h.objectivesDir, "state.json");
+    const outsideState = path.join(outsideDir, "other-state.json");
+    fs.writeFileSync(outsideState, JSON.stringify({ description: { text: "", rev: 0, updatedAt: 0 }, intel: [], sources: [], alias: "Planted" }));
+    fs.renameSync(stateFile, path.join(h.objectivesDir, "saved-state.json"));
+    fs.symlinkSync(outsideState, stateFile);
+    try {
+      expect(h.store.read("t1")?.alias).toBeUndefined();
+    } finally {
+      fs.unlinkSync(stateFile);
+      fs.renameSync(path.join(h.objectivesDir, "saved-state.json"), stateFile);
+    }
+    expect(h.store.read("t1")).not.toHaveProperty("alias");
+  });
+
+  it("continues into older retained records with scan", async () => {
+    // 스캔 상한에 가린 오래된 기록은 nextScan으로 이어 읽는다.
+    const h = harness();
+    const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
+    const search = async (args: Record<string, unknown>) =>
+      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    for (let i = 0; i < 2001; i += 1) h.store.transcriptAppend("t1", { kind: "text", text: i === 0 ? "OLD_RETAINED_NEEDLE" : "ordinary" });
+    const first = (await search({ target: "own", query: "OLD_RETAINED_NEEDLE" })).structuredContent as {
+      results: { seq: number }[]; hasMore: boolean; partial: boolean; nextScan?: string;
+    };
+    expect(first.results).toEqual([]);
+    expect(first.hasMore).toBe(false);
+    expect(first.partial).toBe(true);
+    expect(typeof first.nextScan).toBe("string");
+    const second = (await search({ target: "own", query: "OLD_RETAINED_NEEDLE", scan: first.nextScan })).structuredContent as {
+      results: { seq: number }[]; partial: boolean; nextScan?: string; scanContinued?: boolean;
+    };
+    expect(second.scanContinued).toBe(true);
+    expect(second.results.map((item) => item.seq)).toEqual([1]);
+    expect(second.partial).toBe(false);
+    expect(second.nextScan).toBeUndefined();
+  });
+
+  it("pages scan results with a cursor that keeps its scan position", async () => {
+    // cursor는 자신이 나온 스캔 범위를 재현한다 — 다음 페이지를 넘겨도 최신 구간으로 돌아가지 않는다.
+    const h = harness();
+    const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
+    const search = async (args: Record<string, unknown>) =>
+      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    for (let i = 0; i < 2100; i += 1) h.store.transcriptAppend("t1", { kind: "text", text: i < 100 ? "OLD_MATCH" : "ordinary" });
+    const first = (await search({ target: "own", query: "OLD_MATCH" })).structuredContent as {
+      results: unknown[]; hasMore: boolean; partial: boolean; nextScan?: string;
+    };
+    expect(first.results).toEqual([]);
+    expect(first.hasMore).toBe(false);
+    expect(first.partial).toBe(true);
+    const second = (await search({ target: "own", query: "OLD_MATCH", scan: first.nextScan })).structuredContent as {
+      results: { seq: number }[]; hasMore: boolean; nextCursor?: string; nextScan?: string;
+    };
+    expect(second.results.map((item) => item.seq)).toEqual(Array.from({ length: 20 }, (_, i) => 100 - i));
+    expect(second.hasMore).toBe(true);
+    expect(second.nextScan).toBeUndefined();
+    const third = (await search({ target: "own", query: "OLD_MATCH", cursor: second.nextCursor })).structuredContent as {
+      results: { seq: number }[]; hasMore: boolean; nextScan?: string;
+    };
+    expect(third.results.map((item) => item.seq)).toEqual(Array.from({ length: 20 }, (_, i) => 80 - i));
+    expect(third.hasMore).toBe(true);
+    expect(third.nextScan).toBeUndefined();
+  });
 });
 
 describe("commodore session", () => {
@@ -1614,7 +1824,7 @@ describe("commodore session", () => {
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();
     expect(options.tools!.consoleUse).toBeUndefined();
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["fleet-commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list", "taskforce_post", "console_objectives", "console_objectives_detail"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["fleet-commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "memory_search", "issue_list", "taskforce_post", "console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] description changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]\n\nCurrent alias: none\. You have no alias for this turn\.$/);
     expect(stub.sent[0]).not.toContain("newest");

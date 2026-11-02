@@ -9,6 +9,7 @@ import { createTaskforceRoutes, type TaskforceRouteContext } from "../features/c
 import { createTaskforceStore, type TaskforceStore } from "../features/commodore/host/taskforce/store.js";
 import type { TaskforceEvent } from "../features/commodore/shared/contracts/taskforce.js";
 import { createCommodoreStore, type CommodoreStore } from "../features/commodore/host/store.js";
+import { createCommodoreTools } from "../features/commodore/host/tools.js";
 import { COALESCE_MS, createCommodoreSupervisor } from "../features/commodore/host/supervisor.js";
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
 import type { AgentEvent, AgentInputBlock } from "../features/execution/shared/agent.js";
@@ -381,6 +382,411 @@ describe("taskforce runtime", () => {
       for (const id of [a, b]) expect(h.taskforce.read(taskforceId)?.readSeq[id]).toBe(legacy.seq + 1);
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
+  });
+
+  it("searches only the participation intervals of each TaskForce with the same tool", async () => {
+    // 단일 원장 검색의 TF 대표 계약 — 현재·과거 참여 구간만 보이고, 구간 밖은
+    // 가려지며, 참여한 적 없는 호출자에게는 없는 TF와 같이 거절된다.
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const c = randomUUID();
+      const outsider = randomUUID();
+      const { state } = h.taskforce.create({ name: "검색 TF", topic: "공유 주제", members: [a, b] });
+      const taskforceId = state.id;
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 첫 말" });
+      h.taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: a }, text: "Alpha의 말" });
+      h.taskforce.addMembers(taskforceId, [c]);
+      h.taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: c }, text: "Charlie의 말" });
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 둘째 말" });
+      h.taskforce.removeMember(taskforceId, b);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 셋째 말" });
+      h.taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: a }, text: "Alpha의 끝말" });
+
+      h.supervisor.sync("started");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
+      const callSession = (alias: string, args: Record<string, unknown>) =>
+        sessionOf(alias).tools.get("memory_search")!.execute(args, { cwd: h.theaterRoot, toolCallId: alias } as never) as Promise<{ isError: boolean; structuredContent: Record<string, any> }>;
+      const direct = (callerId: string) =>
+        Object.fromEntries(createCommodoreTools({
+          commodoreId: callerId, theaterRoot: h.theaterRoot,
+          // 늦게 든 성원(c)도 부르는 쪽에 서게 같은 Console 땅의 넓은 저장소로 본다.
+          store: createCommodoreStore({
+            dirOf: (id) => (id === a || id === b || id === c || id === outsider ? path.join(h.consoleDataDir, "commodore", id) : null),
+            theatersOf: () => [], theaterIdsOf: () => [], emit: () => {},
+          }),
+          taskforce: h.taskforce,
+        }).map((tool) => [tool.name, tool])).memory_search!;
+      const callDirect = async (callerId: string, args: Record<string, unknown>) =>
+        await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+
+      // 현재 성원(a)은 전체를 본다 — 세션 도구의 전체 경로.
+      const full = (await callSession("Alpha", { target: "taskforce", taskforceId })).structuredContent;
+      expect(full.callerCommodoreId).toBe(a);
+      expect(full.results.map((item: { seq: number }) => item.seq)).toEqual([9, 8, 7, 6, 5, 4, 3, 2, 1]);
+      expect(full.partial).toBe(false);
+      expect(full.sources).toMatchObject([{ source: { kind: "taskforce", id: taskforceId, name: "검색 TF" }, status: "complete" }]);
+      const bySeq = Object.fromEntries((full.results as { seq: number; speaker: object }[]).map((item) => [item.seq, item]));
+      expect(bySeq[3]!.speaker).toMatchObject({ role: "self", kind: "commodore", commodoreId: a, alias: "Alpha" });
+      expect(bySeq[5]!.speaker).toMatchObject({ role: "other", kind: "commodore", commodoreId: c });
+      expect(bySeq[2]!.speaker).toMatchObject({ role: "person", kind: "person" });
+      expect(bySeq[1]!.speaker).toMatchObject({ role: "system", kind: "system" });
+
+      // 나간 성원(b)은 나간 때까지만, 늦게 든 성원(c)은 든 뒤만 본다.
+      const past = (await callDirect(b, { target: "taskforce", taskforceId })).structuredContent;
+      expect(past.results.map((item: { seq: number }) => item.seq)).toEqual([7, 6, 5, 4, 3, 2, 1]);
+      expect(past.sources).toMatchObject([{ source: { id: taskforceId }, status: "complete" }]);
+      const late = (await callDirect(c, { target: "taskforce", taskforceId })).structuredContent;
+      expect(late.results.map((item: { seq: number }) => item.seq)).toEqual([9, 8, 7, 6, 5, 4]);
+      // 참여한 적 없는 호출자는 없는 TF와 같이 거절된다.
+      expect((await callDirect(outsider, { target: "taskforce", taskforceId })).structuredContent).toMatchObject({ error: "unknown_taskforce" });
+      expect((await callSession("Alpha", { target: "taskforce", taskforceId: randomUUID() })).structuredContent).toMatchObject({ error: "unknown_taskforce" });
+
+      // anchor로 구간 밖을 읽으면 자리는 보여주고 내용은 가린다.
+      const outside = (await callDirect(b, { anchor: { source: taskforceId, seq: 8 }, before: 1, after: 1 })).structuredContent as {
+        anchorFound: boolean; items: { seq: number; readable: boolean; reason?: string }[]; partial: boolean;
+      };
+      expect(outside.anchorFound).toBe(true);
+      expect(outside.partial).toBe(false);
+      expect(outside.items).toMatchObject([
+        { seq: 7, readable: true },
+        { seq: 8, readable: false, reason: "outside_participation" },
+        { seq: 9, readable: false, reason: "outside_participation" },
+      ]);
+      // 구간 밖 자리에는 시각·원문 등 metadata를 싣지 않는다.
+      const hidden = outside.items.filter((item) => !item.readable);
+      expect(hidden).toHaveLength(2);
+      expect(hidden.every((item) => !("at" in item) && !("text" in item) && !("kind" in item))).toBe(true);
+      // 참여 증거 전에 읽기가 깨지면 source 메타데이터 없이 거절된다.
+      const boomState = h.taskforce.read(taskforceId)!;
+      const boom = {
+        list: () => h.taskforce.list().filter((entry) => entry.id === taskforceId),
+        read: () => boomState,
+        readLedger: () => { throw new Error("boom"); },
+      };
+      const boomTool = Object.fromEntries(createCommodoreTools({ commodoreId: b, theaterRoot: h.theaterRoot, store: h.store, taskforce: boom as never }).map((tool) => [tool.name, tool])).memory_search!;
+      const boomCall = async (args: Record<string, unknown>) =>
+        await boomTool.execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      expect((await boomCall({ target: "taskforce", taskforceId })).structuredContent).toMatchObject({ error: "unknown_taskforce" });
+      const boomAll = (await boomCall({ target: "all" })).structuredContent as { partial: boolean; sources: { source: { id: string } }[] };
+      expect(boomAll.partial).toBe(true);
+      expect(boomAll.sources.every((entry) => entry.source.id !== taskforceId)).toBe(true);
+      // all은 참여한 TF를 같은 응답에서 발견한다.
+      const discovered = (await callDirect(b, { target: "all", query: "Alpha" })).structuredContent as {
+        sources: { source: { kind: string; id: string } }[]; results: { seq: number }[];
+      };
+      expect(discovered.sources.map((entry) => entry.source.id).sort()).toEqual([b, taskforceId].sort());
+      expect(discovered.results.map((item) => item.seq)).toEqual([3]);
+
+      for (const session of h.sessions) session.finish();
+      await vi.advanceTimersByTimeAsync(10);
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("ignores TaskForce files that escape their directories", async () => {
+    // 원장·상태 읽기의 실경로 경계 — 밖을 가리키는 링크는 없는 것으로 본다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "울타리 TF", topic: "주제", members: [a, b] });
+    const taskforceId = state.id;
+    h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "안에 있는 말" });
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    const tfDir = path.join(h.consoleDataDir, "taskforce", taskforceId);
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-tf-outside-"));
+    dirs.push(outsideDir);
+    const ledger = path.join(tfDir, "ledger.jsonl");
+    fs.renameSync(ledger, path.join(tfDir, "saved-ledger.jsonl"));
+    const outside = path.join(outsideDir, "other.jsonl");
+    fs.writeFileSync(outside, `${JSON.stringify({ seq: 1, at: Date.now(), speaker: { kind: "person" }, text: "OUTSIDE_TF_LEDGER", mentions: [] })}\n`);
+    fs.symlinkSync(outside, ledger);
+    try {
+      expect(h.taskforce.readLedger(taskforceId).entries).toEqual([]);
+      const leaked = (await call(a, { target: "taskforce", taskforceId })).structuredContent;
+      expect(leaked.results).toEqual([]);
+      expect(JSON.stringify(leaked)).not.toContain("OUTSIDE_TF_LEDGER");
+    } finally {
+      fs.unlinkSync(ledger);
+      fs.renameSync(path.join(tfDir, "saved-ledger.jsonl"), ledger);
+    }
+    // 상태가 밖을 가리키면 TF 자체가 없는 것으로 보인다.
+    const stateFile = path.join(tfDir, "state.json");
+    fs.writeFileSync(path.join(outsideDir, "other-state.json"), JSON.stringify({ ...h.taskforce.read(taskforceId), name: "Planted" }));
+    fs.renameSync(stateFile, path.join(tfDir, "saved-state.json"));
+    fs.symlinkSync(path.join(outsideDir, "other-state.json"), stateFile);
+    try {
+      h.taskforce.forget(taskforceId);
+      expect(h.taskforce.read(taskforceId)).toBeNull();
+      const gone = (await call(a, { target: "taskforce", taskforceId })).structuredContent;
+      expect(gone).toMatchObject({ error: "unknown_taskforce" });
+      expect(JSON.stringify(gone)).not.toContain("Planted");
+    } finally {
+      fs.unlinkSync(stateFile);
+      fs.renameSync(path.join(tfDir, "saved-state.json"), stateFile);
+    }
+  });
+
+  it("verifies participation backward from the latest state instead of inferring from absence", async () => {
+    // 탈퇴 뒤 재합류 사이의 비참여 구간은 읽었다는 이유만으로 보이지 않는다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "출입 TF", topic: "주제", members: [a, b] });
+    const taskforceId = state.id;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    for (let i = 0; i < 18; i += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: `앞 말 ${i}` });
+    h.taskforce.removeMember(taskforceId, a);
+    for (let i = 0; i < 79; i += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: i === 30 ? "GAP_NEEDLE" : `틈 말 ${i}` });
+    h.taskforce.addMembers(taskforceId, [a]);
+    h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "COVERED_NEEDLE" });
+    for (let i = 0; i < 19; i += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: `뒷 말 ${i}` });
+    const res = (await call(a, { target: "taskforce", taskforceId, limit: 50 })).structuredContent as {
+      results: { seq: number }[]; hasMore: boolean; partial: boolean; nextScan?: string;
+    };
+    const seqs = res.results.map((item) => item.seq);
+    expect(seqs.every((seq) => seq <= 20 || seq >= 100)).toBe(true);
+    expect(seqs).not.toContain(51);
+    expect(JSON.stringify(res)).not.toContain("GAP_NEEDLE");
+    expect(JSON.stringify(res)).toContain("COVERED_NEEDLE");
+    expect(res.hasMore).toBe(false);
+    expect(res.partial).toBe(false);
+    expect(res.nextScan).toBeUndefined();
+  });
+
+  it("continues into older ledger pages with scan without widening permission", async () => {
+    // 6000개 원장의 깊은 기록 — 이어읽기 토큰은 위치만 옮기고 권한은 매번 다시 가린다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "깊은 TF", topic: "주제", members: [a, b] });
+    const taskforceId = state.id;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    for (let seq = 2; seq <= 99; seq += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 50 ? "COVERED_NEEDLE" : `앞 말 ${seq}` });
+    h.taskforce.removeMember(taskforceId, a);
+    for (let seq = 101; seq <= 2999; seq += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 150 ? "GAP_NEEDLE" : `틈 말 ${seq}` });
+    h.taskforce.addMembers(taskforceId, [a]);
+    for (let seq = 3001; seq <= 6000; seq += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 5900 ? "NEW_NEEDLE" : `뒷 말 ${seq}` });
+    const first = (await call(a, { target: "taskforce", taskforceId, query: "NEEDLE", limit: 50 })).structuredContent as {
+      results: { seq: number }[]; hasMore: boolean; partial: boolean; nextScan?: string;
+      sources: { status: string; participationUncertain?: boolean }[];
+    };
+    expect(first.results.map((item) => item.seq)).toEqual([5900]);
+    expect(first.hasMore).toBe(false);
+    expect(first.partial).toBe(true);
+    expect(typeof first.nextScan).toBe("string");
+    expect(first.sources).toMatchObject([{ status: "partial", participationUncertain: true }]);
+    // cursor와 scan은 섞지 않는다.
+    expect((await call(a, { target: "taskforce", taskforceId, cursor: "x", scan: first.nextScan })).structuredContent).toMatchObject({ error: "invalid_request" });
+    // 남의 토큰은 호출자가 바뀌면 무효다(권한이 아니라 위치만 담아도 지문으로 묶는다).
+    expect((await call(b, { target: "taskforce", taskforceId, query: "NEEDLE", scan: first.nextScan })).structuredContent).toMatchObject({ error: "invalid_scan" });
+    const second = (await call(a, { target: "taskforce", taskforceId, query: "NEEDLE", scan: first.nextScan })).structuredContent as {
+      results: { seq: number }[]; partial: boolean; nextScan?: string; scanContinued?: boolean;
+    };
+    expect(second.scanContinued).toBe(true);
+    expect(second.results).toEqual([]);
+    expect(typeof second.nextScan).toBe("string");
+    const third = (await call(a, { target: "taskforce", taskforceId, query: "NEEDLE", scan: second.nextScan })).structuredContent as {
+      results: { seq: number }[]; partial: boolean; nextScan?: string; sources: { status: string }[];
+    };
+    expect(third.results.map((item) => item.seq)).toEqual([50]);
+    expect(JSON.stringify(third)).not.toContain("GAP_NEEDLE");
+    expect(third.partial).toBe(false);
+    expect(third.nextScan).toBeUndefined();
+    expect(third.sources).toMatchObject([{ status: "complete" }]);
+  });
+
+  it("withholds unverified anchor context when the walk cannot reach it", async () => {
+    // 7000개 원장의 깊은 anchor — 6000 예산으로 최신부터 거슬러 닿지 못하면 미확인이다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "먼 TF", topic: "주제", members: [a, b] });
+    const taskforceId = state.id;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    for (let seq = 2; seq <= 7000; seq += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: `먼 말 ${seq}` });
+    const res = (await call(a, { anchor: { source: taskforceId, seq: 150 }, before: 5, after: 5 })).structuredContent as {
+      anchorFound: boolean; partial: boolean;
+      items: { seq: number; readable: boolean; reason?: string }[];
+      sources: { status: string; participationUncertain?: boolean }[];
+    };
+    expect(res.anchorFound).toBe(false);
+    expect(res.partial).toBe(true);
+    expect(res.items).toHaveLength(11);
+    expect(res.items.every((item) => !item.readable && item.reason === "unverified")).toBe(true);
+    expect(res.items.every((item) => !("at" in item) && !("text" in item))).toBe(true);
+    expect(res.sources).toMatchObject([{ status: "partial", participationUncertain: true }]);
+  });
+
+  it("judges anchor context with transitions outside the window", async () => {
+    // anchor window에는 없지만 권한을 정하는 전이(탈퇴·재합류)도 walk에 싣는다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "틈 TF", topic: "주제", members: [a, b] });
+    const taskforceId = state.id;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    h.taskforce.removeMember(taskforceId, a);
+    const outside = h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "WHILE_ABSENT" }).entry;
+    h.taskforce.addMembers(taskforceId, [a]);
+    h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "AFTER_REJOIN" });
+    const res = (await call(a, { anchor: { source: taskforceId, seq: outside.seq }, before: 0, after: 0 })).structuredContent as {
+      anchorFound: boolean; items: { seq: number; readable: boolean; reason?: string }[];
+    };
+    expect(res.anchorFound).toBe(true);
+    expect(res.items).toMatchObject([{ seq: outside.seq, readable: false, reason: "outside_participation" }]);
+    expect(res.items[0]).not.toHaveProperty("text");
+    expect(res.items[0]).not.toHaveProperty("at");
+    expect(JSON.stringify(res)).not.toContain("WHILE_ABSENT");
+  });
+
+  it("rejects swapped TaskForce directories instead of reading through them", async () => {
+    // 같은 TF root의 미참여 TF 디렉터리로 바꿔치기해도 다른 원장이 새지 않는다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const outsider = randomUUID();
+    const tf1 = h.taskforce.create({ name: "owned", topic: "topic", members: [a, b] }).state.id;
+    h.taskforce.append(tf1, { speaker: { kind: "person" }, text: "own words" });
+    const tf2 = h.taskforce.create({ name: "not-joined", topic: "private-topic", members: [b, outsider] }).state.id;
+    h.taskforce.append(tf2, { speaker: { kind: "person" }, text: "OTHER_TF_DIRECTORY_SECRET" });
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    // 바꿔치기 전에는 a의 정상 참여 기록이 보인다.
+    expect(((await call(a, { target: "taskforce", taskforceId: tf1 })).structuredContent as { results: unknown[] }).results).not.toEqual([]);
+    const ownedDir = path.join(h.consoleDataDir, "taskforce", tf1);
+    fs.renameSync(ownedDir, `${ownedDir}.backup`);
+    fs.symlinkSync(path.join(h.consoleDataDir, "taskforce", tf2), ownedDir);
+    const leaked = await call(a, { target: "taskforce", taskforceId: tf1, query: "OTHER_TF_DIRECTORY_SECRET" });
+    expect(leaked.structuredContent).toMatchObject({ error: "unknown_taskforce" });
+    expect(JSON.stringify(leaked)).not.toContain("OTHER_TF_DIRECTORY_SECRET");
+    // 목록에도 바꿔치기된 자리가 올라오지 않는다.
+    expect(h.taskforce.list().some((entry) => entry.id === tf1)).toBe(false);
+    expect(() => h.taskforce.readLedger(tf1)).toThrow("unknown_taskforce");
+  });
+
+  it("recognizes anchor coverage that reaches the ledger start", async () => {
+    // 2항목 원장의 anchor는 걷기가 시작점에 닿아 미확인이 아니라 원문이 보인다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "short", topic: "original topic", members: [a, b] });
+    const taskforceId = state.id;
+    h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "early person request" });
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const res = (await direct(a).execute({ anchor: { source: taskforceId, seq: 2 } }, { cwd: h.theaterRoot }) as { structuredContent: {
+      anchorFound: boolean; items: { seq: number; readable: boolean; text?: string }[]; partial: boolean;
+      sources: { status: string; participationUncertain?: boolean }[];
+    } }).structuredContent;
+    expect(res.anchorFound).toBe(true);
+    expect(res.partial).toBe(false);
+    expect(res.items).toMatchObject([
+      { seq: 1, readable: true },
+      { seq: 2, readable: true, text: "early person request" },
+    ]);
+    expect(res.sources).toMatchObject([{ status: "complete" }]);
+    expect(res.sources[0]).not.toHaveProperty("participationUncertain");
+  });
+
+  it("accepts long cursors from many-source scans", async () => {
+    // 32개 TF 이어읽기에서 나온 긴 cursor도 스키마를 통과해 다음 페이지를 잇는다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    const ids: string[] = [];
+    for (let k = 0; k < 32; k += 1) {
+      const state = h.taskforce.create({ name: `tf-${k}`, topic: "topic", members: [a, b] }).state;
+      ids.push(state.id);
+      const dir = path.join(h.consoleDataDir, "taskforce", state.id);
+      const rows = Array.from({ length: 2100 }, (_, i) => ({ seq: i + 1, at: 1700000000000 + i, speaker: { kind: "person" }, text: i < 100 ? "NEEDLE" : "ordinary", mentions: [] as string[] }));
+      fs.writeFileSync(path.join(dir, "ledger.jsonl"), rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
+      fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ ...state, lastSeq: 2100 }));
+      h.taskforce.forget(state.id);
+    }
+    const first = (await call(a, { target: "taskforce", query: "NEEDLE" })).structuredContent as { results: unknown[]; nextScan?: string };
+    expect(first.results).toEqual([]);
+    expect(typeof first.nextScan).toBe("string");
+    const second = (await call(a, { target: "taskforce", query: "NEEDLE", scan: first.nextScan })).structuredContent as {
+      results: { seq: number; source: { kind: string; id: string } }[]; hasMore: boolean; nextCursor?: string;
+    };
+    expect(second.results).toHaveLength(20);
+    expect(second.hasMore).toBe(true);
+    expect(typeof second.nextCursor).toBe("string");
+    expect(second.nextCursor!.length).toBeGreaterThan(2048);
+    expect(second.nextCursor!.length).toBeLessThanOrEqual(8192);
+    const third = (await call(a, { target: "taskforce", query: "NEEDLE", cursor: second.nextCursor })).structuredContent as {
+      isError?: boolean; results: { seq: number; source: { kind: string; id: string } }[]; hasMore: boolean; error?: string;
+    };
+    expect(third.error).toBeUndefined();
+    expect(third.results).toHaveLength(20);
+    // 페이지는 겹치지 않고 같은 스캔 범위 안에서 이어진다.
+    const seen = new Set(second.results.map((item) => `${item.source.id}:${item.seq}`));
+    expect(third.hasMore).toBe(true);
+    for (const item of third.results) {
+      expect(seen.has(`${item.source.id}:${item.seq}`)).toBe(false);
+      seen.add(`${item.source.id}:${item.seq}`);
+    }
+    expect(seen.size).toBe(40);
+  });
+
+  it("skips finished sources when continuing into older ledger pages", async () => {
+    // all+scan: 끝난 원장은 다시 읽지 않아 중복·낭비가 없다. 새로고침해야 새 원장이 보인다.
+    const h = runtimeHarness();
+    const { a, b } = h.ids;
+    const { state } = h.taskforce.create({ name: "깊은 TF", topic: "주제", members: [a, b] });
+    const taskforceId = state.id;
+    const direct = (callerId: string) =>
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+    const call = async (callerId: string, args: Record<string, unknown>) =>
+      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+    h.store.transcriptAppend(a, { kind: "text", text: "SHARED_NEEDLE in own" });
+    h.store.transcriptAppend(a, { kind: "text", text: "ordinary own" });
+    for (let seq = 2; seq <= 2500; seq += 1) {
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 2400 ? "SHARED_NEEDLE in tf-new" : seq >= 2 && seq <= 31 ? "SHARED_NEEDLE in tf-old" : `tf filler ${seq}` });
+    }
+    const first = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 50 })).structuredContent as {
+      results: { seq: number; source: { kind: string } }[]; nextScan?: string; nextCursor?: string; hasMore: boolean;
+    };
+    expect(first.results.map((item) => item.seq)).toEqual([2400, 1]);
+    expect(first.results.map((item) => item.source.kind)).toEqual(["taskforce", "own"]);
+    expect(first.hasMore).toBe(false);
+    expect(typeof first.nextScan).toBe("string");
+    expect(first.nextCursor).toBeUndefined();
+    const second = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 20, scan: first.nextScan })).structuredContent as {
+      results: { seq: number; source: { kind: string } }[]; nextScan?: string; nextCursor?: string; hasMore: boolean; scanContinued?: boolean;
+      sources: { source: { kind: string } }[];
+    };
+    expect(second.scanContinued).toBe(true);
+    // 끝난 본인 기록은 다시 읽지 않아 중복이 없다 — 이어진 TF 범위만 새로 본다.
+    expect(second.results.map((item) => item.seq)).toEqual(Array.from({ length: 20 }, (_, i) => 31 - i));
+    expect(second.results.every((item) => item.source.kind === "taskforce")).toBe(true);
+    expect(second.sources.every((entry) => entry.source.kind === "taskforce")).toBe(true);
+    expect(second.hasMore).toBe(true);
+    expect(second.nextScan).toBeUndefined();
+    // cursor는 자신이 나온 스캔(TF만)을 재현한다 — 끝난 본인 결과가 다시 나타나지 않는다.
+    const third = (await call(a, { target: "all", query: "SHARED_NEEDLE", limit: 20, cursor: second.nextCursor })).structuredContent as {
+      results: { seq: number; source: { kind: string }; text: string }[]; hasMore: boolean; nextCursor?: string; nextScan?: string;
+    };
+    expect(third.results.map((item) => item.seq)).toEqual(Array.from({ length: 10 }, (_, i) => 11 - i));
+    expect(third.results.every((item) => item.source.kind === "taskforce")).toBe(true);
+    expect(third.hasMore).toBe(false);
+    expect(third.nextScan).toBeUndefined();
   });
 
   it("pauses the chain at 12, never self-wakes, and keeps TF traffic out of 1:1 transcripts", async () => {

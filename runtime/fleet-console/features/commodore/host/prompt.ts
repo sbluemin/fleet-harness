@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 38;
+export const COMMODORE_PROMPT_VERSION = 39;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -70,8 +70,8 @@ These tools are the fleet-commodore MCP. Call them by these names.
   never to the person's 1:1 log, and a turn woken only by a TaskForce shows them
   nothing of yours. Only the person can delete a TaskForce.
 - description, intel, routines, routine_add, routine_update, routine_remove, your fleet-memory (memory_view,
-  memory_save, memory_update, memory_delete), and issue_list for intel
-  sources. WebSearch and WebFetch.
+  memory_save, memory_update, memory_delete), memory_search to reread retained conversation records,
+  and issue_list for intel sources. WebSearch and WebFetch.
 - Bash, Glob, Grep, Read and Skill: the Agent SDK's built-in tools, with no path
   restriction. The added Theaters are your additional directories; each turn
   lists their roots. Explore a Theater, its history and evidence files,

@@ -165,16 +165,50 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
       return dir;
     } catch { return null; }
   };
+  /**
+   * 매 읽기마다 TF 자신의 디렉터리를 재검증한다 — leaf 파일 검사·base containment만으로는
+   * 디렉터리째 바꾼 경우를 막지 못하고, 캐시된 상태가 파일 권한 경계를 대신하지 않는다.
+   * 검증에 실패하면 없는 TF와 같이 다룬다(fail-closed).
+   */
+  const verifyDir = (taskforceId: string): void => {
+    if (dirOf(taskforceId) === null) throw new TaskforceStoreError("unknown_taskforce");
+  };
   const stateFile = (taskforceId: string): string => path.join(base, taskforceId, STATE_FILE);
   const ledgerFile = (taskforceId: string): string => path.join(base, taskforceId, LEDGER_FILE);
 
-  const readStateFile = (taskforceId: string): TaskforceState | null => {
-    let raw: string;
-    try { raw = fs.readFileSync(stateFile(taskforceId), "utf8"); }
+  /**
+   * 원장·상태 읽기의 실경로 경계 — 파일이 정규 파일이 아니거나(링크 등) 보관소
+   * 실경로 밖을 가리키면 없는 것으로 본다(깨진 줄 건너뛰기와 같은 fail-closed).
+   */
+  const readContainedFile = (file: string, label: string): string | null => {
+    let stat: fs.Stats;
+    try { stat = fs.lstatSync(file); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
     }
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      console.warn(`[objectives] taskforce ${label} is not a regular file, ignored: ${file}`);
+      return null;
+    }
+    try {
+      const relative = path.relative(base, fs.realpathSync(file));
+      if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("outside");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      console.warn(`[objectives] taskforce ${label} escapes its directory, ignored: ${file}`);
+      return null;
+    }
+    try { return fs.readFileSync(file, "utf8"); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  };
+
+  const readStateFile = (taskforceId: string): TaskforceState | null => {
+    const raw = readContainedFile(stateFile(taskforceId), "state");
+    if (raw === null) return null;
     let decoded: unknown;
     try { decoded = JSON.parse(raw); } catch { /* 아래에서 치운다 */ }
     if (decoded && typeof decoded === "object" && !Array.isArray(decoded)) {
@@ -197,12 +231,8 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
 
   /** 깨진 줄은 건너뛴다 — 원장은 보여 주는 것이지 상태가 아니라 한 줄의 손상이 전체를 막지 않는다. */
   const readLedgerFile = (taskforceId: string): TaskforceLedgerEntry[] => {
-    let raw: string;
-    try { raw = fs.readFileSync(ledgerFile(taskforceId), "utf8"); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw error;
-    }
+    const raw = readContainedFile(ledgerFile(taskforceId), "ledger");
+    if (raw === null) return [];
     const entries: TaskforceLedgerEntry[] = [];
     for (const line of raw.split("\n")) {
       if (!line.trim()) continue;
@@ -239,6 +269,8 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
   };
 
   const load = (taskforceId: string): TaskforceState => {
+    // 캐시를 읽기 전에 디렉터리를 재검증한다 — 바꿔치기된 디렉터리의 옛 상태·원장을 읽지 않는다.
+    verifyDir(taskforceId);
     const cached = states.get(taskforceId);
     if (cached) return cached;
     const state = readStateFile(taskforceId);
@@ -310,7 +342,13 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     let names: string[];
     try { names = fs.readdirSync(base); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
-    return names.filter((name) => TASKFORCE_ID.test(name) && readStateFile(name) !== null).sort();
+    return names.filter((name) => {
+      if (!TASKFORCE_ID.test(name)) return false;
+      // 목록도 디렉터리 검증을 먼저 거친다 — 바꿔치기된 자리의 state를 읽고 치우지 않는다.
+      try { verifyDir(name); }
+      catch { return false; }
+      return readStateFile(name) !== null;
+    }).sort();
   };
   const forget = (taskforceId: string) => { states.delete(taskforceId); lastSeqs.delete(taskforceId); lastEntries.delete(taskforceId); };
 
