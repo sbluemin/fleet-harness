@@ -992,6 +992,10 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-action { position: absolute; top: 0; right: 14px; z-index: 1; display: inline-flex; flex: none; align-items: center; height: 56px; pointer-events: none; }
 .commodore-palette-action > * { pointer-events: auto; }
 .commodore-palette-install { padding: 3px 12px; font-size: var(--t-xs); }
+.commodore-palette-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 14px 12px; }
+.commodore-palette-update > .fc-btn { padding: 3px 12px; font-size: var(--t-xs); }
+.commodore-palette-row > .commodore-plugins-update-trust { margin: 0 14px 12px; }
+.commodore-plugin-detail-scroll > .commodore-palette-update { margin: 14px 0; }
 .commodore-palette-row > .commodore-plugins-state,
 .commodore-palette-row > .commodore-palette-trust { margin: 0 14px 12px; }
 .commodore-palette-trust { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); border-radius: var(--radius-md); background: color-mix(in oklab, var(--warn) 7%, transparent); color: var(--text-secondary); font-size: var(--t-xs); }
