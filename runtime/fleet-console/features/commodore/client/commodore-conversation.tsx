@@ -63,6 +63,8 @@ export function connectCommodoreConversation(next: ClientConversationCapability 
 export interface CommodoreConversationOptions {
   /** 이 시각을 덮는 턴을 드러낸다(행위 곁 칸·목표 대화의 사령관 행위 줄). */
   readonly revealAt?: number;
+  /** 팔레트 이동은 열린 대화의 컴포저로 키보드 포커스를 넘긴다. */
+  readonly focusComposer?: boolean;
   /** 목표 대화에서 행위 기록을 보러 온 것 — 입력 대신 돌아가기만 선다. */
   readonly readOnly?: boolean;
   readonly objectiveId?: string;

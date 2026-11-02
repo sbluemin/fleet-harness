@@ -59,8 +59,8 @@ export function requestTaskforceCreate(preselected?: string): void {
   createRequest = { ...(preselected ? { preselected } : {}) }; emit();
 }
 export function requestTaskforceDelete(id: string): void { deleteRequest = id; emit(); }
-export function openTaskforce(id: string): void {
-  if (!conversation?.open(SURFACE, { taskforceId: id })) { mobileId = id; emit(); }
+export function openTaskforce(id: string, options: { readonly focusComposer?: boolean } = {}): void {
+  if (!conversation?.open(SURFACE, { taskforceId: id, ...options })) { mobileId = id; emit(); }
   void loadTaskforce(id);
 }
 /**

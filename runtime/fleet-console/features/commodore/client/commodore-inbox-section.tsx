@@ -4,6 +4,7 @@ import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 
 import { CaptionTipHost } from "../../workspace/client/components/caption-actions.js";
+import { useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { useAvatarAccent } from "../../workspace/client/avatar-accent.js";
 import { commodoreAvatarKey } from "../../workspace/shared/avatars.js";
 import { AttachImageIcon } from "../../execution/client/composer-primitives/icons.js";
@@ -803,6 +804,18 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
   const menuId = `commodore-composer-menu-${theaterId}`;
   // 폰은 연결이 끊기면 잠근다. 데스크톱은 /clear와 초안 편집을 위해 입력을 열어 둔다.
   const usable = active && (phone ? phone.online : true);
+  const surface = useConversationSurface();
+  const handledFocus = useRef(0);
+  const focusRequest = surface?.params.focusComposer === true && (
+    (surface.surfaceId === "commodore" && surface.params.commodoreId === theaterId && !surface.params.readOnly)
+    || (surface.surfaceId === "taskforce" && surface.params.taskforceId === theaterId)
+  ) ? surface.nonce : 0;
+  // 데이터가 늦게 와서 컴포저가 뒤늦게 서도 선택 요청을 소비한다. 같은 요청으로 초안을 다시 그릴 때는 포커스를 빼앗지 않는다.
+  useLayoutEffect(() => {
+    if (phone || !focusRequest || handledFocus.current === focusRequest || sending || clear.busy || !inputRef.current) return;
+    inputRef.current.focus({ preventScroll: true });
+    handledFocus.current = focusRequest;
+  }, [focusRequest, phone, sending, clear.busy]);
   const finishSentDraft = (sentKeys: readonly string[], sentRevision: number, discardSent: boolean, sentQuoteKeys: readonly string[] = []) => {
     const current = draft.read();
     draft.attachments.releaseSent(sentKeys, discardSent);
