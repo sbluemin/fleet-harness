@@ -321,7 +321,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
  * 압축 지점은 `창 − 33k`다(2.1.293 바이너리 판독, 2.1.296 실측: 창 100k에서 67k). 출력 상한이 20k보다
  * 작은 모델만 그 차이만큼 늦게 압축한다.
  */
-const CLAUDE_AUTO_COMPACT_RESERVE = 33_000;
+export const CLAUDE_AUTO_COMPACT_RESERVE = 33_000;
 /** Claude Code가 받는 자동 압축 창의 범위. 밖의 값은 자식이 이 끝으로 clamp한다. */
 const CLAUDE_AUTO_COMPACT_WINDOW_MIN = 100_000;
 const CLAUDE_AUTO_COMPACT_WINDOW_MAX = 1_000_000;

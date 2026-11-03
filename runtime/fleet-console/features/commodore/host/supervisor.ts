@@ -2,6 +2,7 @@ import { nextRoutineAt } from "../shared/routines.js";
 import { BOARD_WRITE_TOOL_NAMES } from "../shared/tool-names.js";
 import type { ConsoleResidentAgentHost } from "../../execution/host/agent/console-resident.js";
 import type { AgentWorkStep } from "../../execution/host/agent/types.js";
+import { CLAUDE_AUTO_COMPACT_RESERVE } from "../../execution/host/agent/agent-session.js";
 import { Buffer } from "node:buffer";
 import type { AgentInputBlock, AttachmentHost } from "../../execution/shared/agent.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
@@ -525,7 +526,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.coordinates = coordinates;
     runner.language = language;
     runner.contextWindow = coordinates.contextWindow;
-    runner.compactAt = compactAt;
+    // 미터 표시 — 덮지 않은 창(null)은 모델 기본 지점(창 − 33k)을 보여준다. Gateway 모델은 첫 턴 사용량이 실제 지점으로 바로잡는다.
+    runner.compactAt = compactAt ?? coordinates.contextWindow - CLAUDE_AUTO_COMPACT_RESERVE;
     runner.lastInputTokens = 0;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;

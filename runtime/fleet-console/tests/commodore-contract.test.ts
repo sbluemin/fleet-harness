@@ -2538,6 +2538,7 @@ describe("commodore supervisor", () => {
     });
     try {
       // 경계 — 상한 이하의 창은 지점을 덮지 않고 모델 기본 정책을 따른다. 상한을 넘는 창만 상한 지점을 받는다.
+      // 미터에는 모델 기본 지점(창 − 33k)을 보여준다.
       expect(commodoreCompactAt(200_000)).toBeNull();
       expect(commodoreCompactAt(500_000)).toBeNull();
       expect(commodoreCompactAt(1_000_000)).toBe(500_000);
@@ -2546,8 +2547,7 @@ describe("commodore supervisor", () => {
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.options.compactAt).toBeUndefined();
       expect(sessions[0]!.sent).toHaveLength(1);
-      expect(supervisor.status("t1")).toMatchObject({ phase: "idle", context: { window: 200_000, inputTokens: 1_000 } });
-      expect(supervisor.status("t1")!.context).not.toHaveProperty("compactAt");
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle", context: { window: 200_000, inputTokens: 1_000, compactAt: 167_000 } });
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
 
