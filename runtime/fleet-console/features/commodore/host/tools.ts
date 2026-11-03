@@ -12,7 +12,7 @@ import { MEMORY_SEARCH_DESCRIPTION, memorySearchInputSchema, searchCommodoreLedg
 
 export type { MemorySearchTaskforce as CommodoreTaskforceLedger };
 import { TaskforceStoreError } from "./taskforce/errors.js";
-import { MAX_TASKFORCE_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
+import { MAX_TASKFORCE_POST_TEXT, MAX_TASKFORCE_TEXT, RECOMMENDED_TASKFORCE_POST_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
 import { MAX_ASK_REASON, routineInputSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
@@ -196,13 +196,14 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     }),
     // TaskForce — 판단 턴의 말하기는 이 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
     // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
-    tool("taskforce_post", "Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit. Use exact TaskForce and member ids from the TaskForce context or tools; never guess or shorten them.", z.object({
+    tool("taskforce_post", `Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Keep it short (about ${RECOMMENDED_TASKFORCE_POST_TEXT} characters): the conclusion and only what the others must judge; put long reasoning in the objective brief or a document and point to it. Over ${MAX_TASKFORCE_POST_TEXT} characters is rejected. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit. Use exact TaskForce and member ids from the TaskForce context or tools; never guess or shorten them.`, z.object({
       taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
       text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT),
       mentions: z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).max(32).optional(),
     }).strict(), ({ taskforceId, text, mentions }) => {
       const taskforce = options.taskforce;
       if (!taskforce) throw new Error("taskforce_unavailable");
+      if (text.length > MAX_TASKFORCE_POST_TEXT) throw new Error(`taskforce_post_too_long: ${text.length} characters exceeds the ${MAX_TASKFORCE_POST_TEXT} limit. Shorten to the conclusion and what the others must judge (about ${RECOMMENDED_TASKFORCE_POST_TEXT}); move long reasoning to the objective brief or a document and link it.`);
       try {
         const { entry } = taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text, ...(mentions ? { mentions } : {}) });
         return { taskforceId, seq: entry.seq };

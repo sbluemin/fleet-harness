@@ -28,6 +28,10 @@ const storedChainLimitSchema = z.preprocess(
 export const MAX_TASKFORCE_NAME = 40;
 export const MAX_TASKFORCE_TOPIC = 4000;
 export const MAX_TASKFORCE_TEXT = 16_000;
+/** 사령관이 taskforce_post 로 한 번에 말할 수 있는 상한 — 넘으면 도구가 거절하고 줄이라 안내한다. 사람 발언 경로에는 적용하지 않는다. */
+export const MAX_TASKFORCE_POST_TEXT = 2_000;
+/** 프롬프트가 권하는 발언 길이 — 강제가 아닌 안내다. */
+export const RECOMMENDED_TASKFORCE_POST_TEXT = 800;
 export const MAX_TASKFORCE_MEMBERS = 32;
 export const MAX_TASKFORCE_ACTIONS = 8;
 export const MAX_TASKFORCE_IMAGES = 4;
