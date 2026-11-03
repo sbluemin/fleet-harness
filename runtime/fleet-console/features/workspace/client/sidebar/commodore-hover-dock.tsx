@@ -9,8 +9,8 @@ import { setCommanderKeepExpanded, useCommanderKeepExpanded } from "./commander-
 import "./commodore-hover-dock.css";
 
 /**
- * 사령관 머리의 호버 독 — 머리에 호버하거나 초점이 오면 오른쪽 끝에 ⋯ 글리프가 나오고, 글리프에 호버하거나 누르면
- * 가로 리스트박스가 왼쪽으로 펼쳐져 새 목표 · 정렬 · 목록 위치 · 펼침 유지를 고른다.
+ * 사령관 머리의 호버 독 — 머리에 호버하거나 초점이 오면 오른쪽 끝에 ⋯ 글리프가 나오고, 글리프를 눌러야
+ * 가로 리스트박스가 왼쪽으로 펼쳐져 새 목표 · 정렬 · 목록 위치 · 펼침 유지를 고른다. 글리프에 호버만 해서는 열리지 않는다.
  * 새 목표만 이 사령관의 것이고, 나머지는 모든 사령관에 적용되는 글로벌 설정이다.
  */
 export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId: string; readonly name: string }) {
@@ -22,7 +22,7 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
   const [sortOpen, setSortOpen] = useState(false);
   const dockRef = useRef<HTMLSpanElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  // 글리프를 눌러 연 독은 마우스가 벗어나도 남는다 — 호버로 열린 독만 마우스를 따라 닫힌다.
+  // 글리프를 눌러 연 독은 마우스가 벗어나도 남는다 — ⋯를 다시 누르거나 바깥을 누르면 닫힌다.
   const pinnedRef = useRef(false);
   // 키보드(Enter·Space)로 연 독 — 마우스를 어디에 두었든 초점이 독 밖으로 나가면 닫힌다.
   const keyboardRef = useRef(false);
@@ -101,7 +101,6 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
         aria-controls={toolbarId}
         aria-label={t("sidebar.commodoreDock.open", { theater: name })}
         title={t("sidebar.commodoreDock.open", { theater: name })}
-        onMouseEnter={() => setOpen(true)}
         onClick={(event) => {
           if (open && pinnedRef.current) { shut(); return; }
           pinnedRef.current = true;

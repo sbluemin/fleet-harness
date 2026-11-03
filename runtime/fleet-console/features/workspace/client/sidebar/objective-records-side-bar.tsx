@@ -542,7 +542,8 @@ export function ObjectiveRecordsSideBar({
                 theater={theater}
                 active={theater.id === owningCommodoreId}
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
-                dock
+                // ⋯ 호버 독은 왼쪽 배치일 때만 단다 — 우측 배치에서는 좌측 사령관 행에 ⋯가 나오지 않는다. 목록 위치는 우측 막대의 글리프에서 옮긴다.
+                dock={placement === "left"}
                 onReselect={() => reselectActiveCommodore(theater.id)}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
