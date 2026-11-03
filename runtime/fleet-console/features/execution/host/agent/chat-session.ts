@@ -44,6 +44,7 @@ import {
   overlayWorkflowActualModels,
   readChatCommandLaneName,
   readJobKind,
+  isSessionNameShaped,
   sessionMessageRefusal,
   tagChatOrigin,
   type AgentChatCatalog,
@@ -1344,7 +1345,11 @@ class AgentChatSession {
       const attachments = hosted.attachments.length > 0 ? { attachments: hosted.attachments } : {};
       const by = hosted.by ? { by: hosted.by } : {};
       const format = hosted.format ? { format: hosted.format } : {};
-      if (this.turnOpen) {
+      if (hosted.by?.kind === "objectiveRecord" && hosted.by.roster === true) {
+        // 로스터 전달은 사용자 말풍선이 아니다. 받은 메시지 줄로 서고, 턴이 닫혀 있었으면 그 다음 답이 그 줄에 잇는다.
+        this.pushRosterReceived(hosted.by, hosted.display, this.turnOpen);
+        if (!this.turnOpen) this.openTurn({ dispatched: true });
+      } else if (this.turnOpen) {
         this.push({ kind: "turn-inject", text: hosted.display, ...format, ...attachments, at: Date.now(), ...by });
       } else {
         // 건네는 사이 턴이 닫혔다. 자식은 이 말로 제 턴을 세우므로 원장도 그렇게 선다.
@@ -2953,6 +2958,16 @@ class AgentChatSession {
    * 본문과 출처는 **둘 다** 같은 문(`maskChatText`)을 지난다. 런치 이름도 사람이 짓는 값이라 경로나
    * 자격증명 모양이 섞일 수 있고, 브라우저로 나가는 값에 masking 없는 자리를 하나라도 두지 않는다.
    */
+  /**
+   * 로스터 전달을 받은 메시지 줄로 세운다. `from` 은 역할(지휘관은 `Commander`)이고 세션 이름은 버린다.
+   * 말풍선(`dispatch`)을 함께 세우지 않는다 — 그러면 받는 이 원장에 사용자 말이 다시 선다.
+   */
+  private pushRosterReceived(by: Extract<ChatOrigin, { kind: "objectiveRecord" }>, display: string, inTurn: boolean): void {
+    const from = by.title.trim();
+    if (from.length === 0 || isSessionNameShaped(from) || display.length === 0) return;
+    this.push({ kind: "received", id: randomUUID(), from, senderObjectiveId: by.objectiveId, text: display, inTurn, at: Date.now() });
+  }
+
   noteReceived(entry: { readonly id: string; readonly from: string; readonly senderObjectiveId?: string; readonly text: string }): void {
     if (this.disposed) return;
     if (entry.id.length === 0 || entry.from.length === 0) return;
@@ -3370,7 +3385,9 @@ class AgentChatSession {
     if (lane === null) {
       // 원장에 서는 것은 사람이 쓴 문면과 첨부 좌표뿐이다 — 자식에게 갈 `text`에는 첨부의 호스트
       // 절대 경로가 붙어 있고, 그 경로는 브라우저 DTO에 오르지 않는다(예약 칩과 같은 계약).
-      this.push({
+      // 로스터 전달은 그 말풍선 대신 받은 메시지 줄이다. 모델 문면의 머리(보낸 이·messageId)는 화면에 없다.
+      if (by?.kind === "objectiveRecord" && by.roster === true) this.pushRosterReceived(by, presentation.display, false);
+      else this.push({
         kind: "dispatch",
         text: presentation.display,
         ...(presentation.format ? { format: presentation.format } : {}),

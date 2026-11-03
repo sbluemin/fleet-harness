@@ -34,11 +34,11 @@ export type AgentChatAskForm = "question" | "plan";
 export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
 
 /** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Objective. 제목만 온다. */
-export type AgentChatOrigin = { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly label?: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
+export type AgentChatOrigin = { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string; readonly roster?: true } | { readonly kind: "plugin"; readonly pluginId: string; readonly label?: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
 export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
-  if (record.kind === "objectiveRecord" && typeof record.objectiveId === "string") return { kind: "objectiveRecord", objectiveId: record.objectiveId, title: typeof record.title === "string" ? record.title : record.objectiveId };
+  if (record.kind === "objectiveRecord" && typeof record.objectiveId === "string") return { kind: "objectiveRecord", objectiveId: record.objectiveId, title: typeof record.title === "string" ? record.title : record.objectiveId, ...(record.roster === true ? { roster: true as const } : {}) };
   if (record.kind === "plugin" && typeof record.pluginId === "string") {
     const input = record.humanInput as ConsoleActionInput["humanInput"];
     const valid = input && typeof input.id === "string" && /^[0-9a-f-]{36}$/i.test(input.id)
@@ -1622,7 +1622,59 @@ export function agentChatToolLabel(name: string | undefined): string {
   return agentChatMcpCall(name)?.tool ?? name ?? "";
 }
 
+/** 목표 message 도구. 계열은 send — 원장 동사는 「메시지 보냄」이고, 그룹 대화는 이 줄을 전언으로 읽는다. */
+export const OBJECTIVE_MESSAGE_TOOL = "mcp__fleet-objectives__message";
+
+/**
+ * 기동 세션 이름(`objective-xxxxxx-cmdr`, `objective-xxxxxx-member-N`).
+ * 주소로 쓰면 받는 이를 비운다 — 세션 이름은 화면에 올리지 않는다.
+ */
+const SESSION_NAME_SHAPED = /^objective-[0-9a-f]{6}-(?:cmdr|member-\d+)$/i;
+const ROSTER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isSessionNameShaped(value: string): boolean {
+  return SESSION_NAME_SHAPED.test(value);
+}
+
+export type RosterAddress =
+  | { readonly kind: "commander" }
+  | { readonly kind: "id"; readonly id: string }
+  | { readonly kind: "role"; readonly role: string };
+
+/** 메시지 도구의 `to`. 세션 이름 모양이면 null이다. */
+export function rosterAddress(token: string): RosterAddress | null {
+  const value = token.trim();
+  if (value.length === 0 || isSessionNameShaped(value)) return null;
+  if (value === "commander") return { kind: "commander" };
+  if (ROSTER_ID.test(value)) return { kind: "id", id: value };
+  return { kind: "role", role: value };
+}
+
+/**
+ * 메시지 도구 원장 한 줄(`→ …`). 세션 이름과 로스터 id 는 비우고, 주소 `commander` 는 화면 언어의 지휘관이다.
+ * 역할 문자열은 로스터에 적힌 그대로다.
+ */
+export function objectiveMessageLedgerDetail(detail: string, language: "en" | "ko"): string {
+  const match = /^→ (\S+)$/.exec(detail.trim());
+  if (!match) return detail;
+  const address = rosterAddress(match[1]!);
+  if (address === null) return "";
+  if (address.kind === "id") return "";
+  if (address.kind === "commander") return language === "ko" ? "→ 지휘관" : "→ Commander";
+  return `→ ${address.role}`;
+}
+
+/** 받은 메시지 줄의 보낸 이. 호스트가 싣는 지휘관 역할 이름만 화면 언어로 바꾼다. 세션 이름과 id 는 비운다. */
+export function rosterSenderLabel(from: string, language: "en" | "ko"): string {
+  if (isSessionNameShaped(from) || ROSTER_ID.test(from)) return "";
+  if (from === "Commander") return language === "ko" ? "지휘관" : "Commander";
+  return from;
+}
+
 export function agentChatToolFamily(name: string | undefined): string {
+  // 목표 message 도구는 MCP 접두를 달고 오지만 계열은 메시지 전달이다. 서버 절로 접으면
+  // 「메시지 보냄」이 아니라 도구 이름이 선다.
+  if (name === OBJECTIVE_MESSAGE_TOOL) return "send";
   // MCP 도구는 이름이 곧 식별자라 표에 실을 수 없다. 대신 계열을 하나 두고, 집계는 그 안에서
   // 서버별로 갈린다 — 도구마다 절이 서면 서버 하나가 절 다섯 개로 흩어져 줄의 자리를 다 쓴다.
   if (agentChatMcpCall(name) !== undefined) return "mcp";
