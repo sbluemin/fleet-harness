@@ -3,9 +3,10 @@ import { ChevronGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/i18n";
+import { ComposerImageEditor, type ComposerImageEditorHandle } from "./attachment-editor.js";
 import { useComposerAttachmentSnapshot } from "./attachment-input.js";
-import type { ComposerAttachments } from "./attachment-store.js";
-import type { ComposerMessageKey } from "./messages.js";
+import type { ComposerAttachmentEditResult, ComposerAttachments } from "./attachment-store.js";
+import { composerAttachmentNoticeText, type ComposerMessageKey } from "./messages.js";
 
 /**
  * 캡슐 컴포저의 첨부 줄 · 안내 줄 · 「+」 메뉴 — 그룹 대화 입력창과 사령관 입력창이 같은 부품을 쓴다.
@@ -51,6 +52,7 @@ export function ComposerAttachmentViewer({
   nextLabel,
   onImageError,
   returnFocusRef,
+  edit,
 }: {
   readonly images: readonly ComposerAttachmentViewImage[];
   readonly index: number;
@@ -62,15 +64,51 @@ export function ComposerAttachmentViewer({
   readonly onImageError?: (key: string) => void;
   /** 포인터로 눌러도 포커스를 받지 않는 브라우저를 위해 연 썸네일을 직접 넘긴다. */
   readonly returnFocusRef?: RefObject<HTMLElement | null>;
+  /** 보내기 전 첨부만 넘긴다. 없으면 연필이 없고 보기만 한다. */
+  readonly edit?: {
+    readonly edited: boolean;
+    readonly notice: string | null;
+    readonly commit: (file: Blob) => Promise<ComposerAttachmentEditResult>;
+    readonly revert: () => Promise<ComposerAttachmentEditResult>;
+    readonly t: Translate<ComposerMessageKey>;
+  };
 }) {
   const image = images[index] ?? null;
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const keepRef = useRef<HTMLButtonElement | null>(null);
+  const editorRef = useRef<ComposerImageEditorHandle | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [confirmAfter, setConfirmAfter] = useState<"edit" | "close" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const imageKey = image?.key ?? null;
+  useEffect(() => {
+    setEditing(false);
+    setDirty(false);
+    setConfirmAfter(null);
+    setSaving(false);
+  }, [imageKey]);
+  const requestLeave = (after: "edit" | "close") => {
+    if (saving) return;
+    if (editing && dirty) { setConfirmAfter(after); return; }
+    setConfirmAfter(null);
+    if (after === "close" || !editing) onClose();
+    else setEditing(false);
+  };
+  const discardEdit = () => {
+    const after = confirmAfter;
+    setDirty(false);
+    setConfirmAfter(null);
+    setEditing(false);
+    if (after === "close") onClose();
+  };
   useLayoutEffect(() => {
     const returnTo = returnFocusRef?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     closeRef.current?.focus({ preventScroll: true });
     return () => { if (returnTo?.isConnected) returnTo.focus({ preventScroll: true }); };
   }, [returnFocusRef]);
+  useEffect(() => { if (confirmAfter) keepRef.current?.focus({ preventScroll: true }); }, [confirmAfter]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Tab") {
@@ -83,13 +121,23 @@ export function ComposerAttachmentViewer({
         buttons[next]?.focus({ preventScroll: true });
         return;
       }
+      if (editing) {
+        const handled = editorRef.current?.keydown(event) ?? "none";
+        if (handled !== "none") {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
+        if (confirmAfter) { setConfirmAfter(null); return; }
+        if (editing) { requestLeave("edit"); return; }
         onClose();
         return;
       }
-      if (images.length < 2) return;
+      if (editing || saving || images.length < 2) return;
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
         event.stopPropagation();
@@ -99,19 +147,59 @@ export function ComposerAttachmentViewer({
     };
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [images.length, index, onClose, onIndex]);
+  }, [confirmAfter, dirty, editing, images.length, index, onClose, onIndex, saving]);
   if (image === null || typeof document === "undefined") return null;
+  const save = (blob: Blob) => {
+    if (!edit || saving) return;
+    setSaving(true);
+    void edit.commit(blob).then((result) => {
+      setSaving(false);
+      if (result === "ok") onClose();
+    });
+  };
+  const revert = () => {
+    if (!edit || saving) return;
+    setSaving(true);
+    void edit.revert().then(() => setSaving(false));
+  };
+  const showNav = images.length > 1 && !editing;
   return createPortal(
-    <div ref={viewerRef} className="fc-composer-viewer" role="dialog" aria-modal="true" aria-label={image.name} onMouseDown={onClose}>
-      <div className="fc-composer-viewer__frame" onMouseDown={(event) => event.stopPropagation()}>
-        {images.length > 1 ? (
+    <div ref={viewerRef} className="fc-composer-viewer" role="dialog" aria-modal="true" aria-label={image.name} onMouseDown={() => requestLeave("close")}>
+      <div className={`fc-composer-viewer__frame${editing ? " is-editing" : ""}`} onMouseDown={(event) => event.stopPropagation()}>
+        {showNav ? (
           <button type="button" className="fc-composer-viewer__nav is-prev" aria-label={previousLabel} onClick={() => onIndex((index - 1 + images.length) % images.length)}><ChevronGlyph direction="left" /></button>
         ) : null}
-        <img src={image.src} alt={image.name} onError={() => onImageError?.(image.key)} />
-        {images.length > 1 ? (
+        {editing && edit ? (
+          <ComposerImageEditor
+            key={image.src}
+            ref={editorRef}
+            src={image.src}
+            edited={edit.edited}
+            saving={saving}
+            notice={edit.notice}
+            t={edit.t}
+            onDirty={setDirty}
+            onSave={save}
+            onRevert={revert}
+            onExit={() => requestLeave("edit")}
+          />
+        ) : (
+          <img src={image.src} alt={image.name} onError={() => onImageError?.(image.key)} />
+        )}
+        {showNav ? (
           <button type="button" className="fc-composer-viewer__nav is-next" aria-label={nextLabel} onClick={() => onIndex((index + 1) % images.length)}><ChevronGlyph direction="right" /></button>
         ) : null}
-        <button ref={closeRef} type="button" className="fc-composer-viewer__close" onClick={onClose} aria-label={closeLabel}>✕</button>
+        <button ref={closeRef} type="button" className="fc-composer-viewer__close" onClick={() => requestLeave("close")} aria-label={closeLabel}>✕</button>
+        {edit && !editing ? (
+          <button type="button" className="fc-composer-viewer__edit" aria-label={edit.t("composer.attach.edit", { name: image.name })} onClick={() => setEditing(true)}>✎</button>
+        ) : null}
+        {confirmAfter && edit ? (
+          <div className="fc-composer-editor__confirm">
+            <span>{edit.t("composer.attach.unsaved")}</span>
+            <button type="button" onClick={discardEdit}>{edit.t("composer.attach.discard")}</button>
+            <button ref={keepRef} type="button" className="is-primary" onClick={() => setConfirmAfter(null)}>{edit.t("composer.attach.keep")}</button>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body,
@@ -120,11 +208,12 @@ export function ComposerAttachmentViewer({
 
 /** 붙인 이미지 줄 — 썸네일은 단추이고, 누르면 확대 보기가 같이 온다. 비어 있으면 그리지 않는다. */
 export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerAttachmentTrayProps) {
-  const { items } = useComposerAttachmentSnapshot(store);
+  const { items, notice } = useComposerAttachmentSnapshot(store);
   const [index, setIndex] = useState<number | null>(null);
   const originRef = useRef<HTMLButtonElement | null>(null);
   if (items.length === 0) return null;
   const openAt = index !== null && index >= 0 && index < items.length ? index : null;
+  const openItem = openAt !== null ? items[openAt] : null;
   return (
     <div className="fc-composer-attachments" role="group" aria-label={t("composer.attach.list")}>
       {items.map((item, at) => (
@@ -133,12 +222,13 @@ export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerA
             type="button"
             className="fc-composer-attachment__open"
             disabled={item.uploading}
-            aria-label={t("composer.attach.open", { name: item.name })}
-            title={t("composer.attach.open", { name: item.name })}
+            aria-label={item.edited ? t("composer.attach.openEdited", { name: item.name }) : t("composer.attach.open", { name: item.name })}
+            title={item.edited ? t("composer.attach.openEdited", { name: item.name }) : t("composer.attach.open", { name: item.name })}
             onClick={(event) => { originRef.current = event.currentTarget; setIndex(at); }}
           >
             <img src={item.previewUrl} alt="" />
           </button>
+          {item.edited ? <span className="fc-composer-attachment__edited" title={t("composer.attach.edited")} aria-hidden="true">✎</span> : null}
           <button
             type="button"
             className="fc-composer-attachment__remove"
@@ -151,16 +241,23 @@ export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerA
           </button>
         </span>
       ))}
-      {openAt !== null ? (
+      {openItem ? (
         <ComposerAttachmentViewer
           images={items.map((item) => ({ key: item.key, src: item.previewUrl, name: item.name }))}
-          index={openAt}
+          index={openAt ?? 0}
           returnFocusRef={originRef}
           onIndex={setIndex}
           onClose={() => setIndex(null)}
           closeLabel={t("composer.attach.close")}
           previousLabel={t("composer.attach.previous")}
           nextLabel={t("composer.attach.next")}
+          edit={{
+            edited: openItem.edited,
+            notice: composerAttachmentNoticeText(notice, t),
+            commit: (blob) => store.commitEdit(openItem.key, blob),
+            revert: () => store.revertEdit(openItem.key),
+            t,
+          }}
         />
       ) : null}
     </div>

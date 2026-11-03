@@ -16,7 +16,7 @@ import type { LaunchDraftAttachment } from "../../../../core/client/src/integrat
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
 import { resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
-import { findVariantLaunchKind, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
+import { findVariantLaunchKind, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, launchErrorValues, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { MobileNewSessionSheet } from "./mobile-new-session-sheet.js";
 import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-session-entry.js";
 import { isMentionSelectable, mentionErrorMessageKey, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget, type MentionToken } from "./new-session-mention.js";
@@ -347,10 +347,10 @@ export function MobileNewSession() {
   type Key = Parameters<typeof t>[0];
   // 상태 줄의 우선순위 — 상한 초과 · 첨부 · 멘션 전달 · 실행 거절.
   const message = overLimit ? t("chrome.launch.tooLong", { over: String(text.length - LAUNCH_PROMPT_MAX_CHARS) })
-    : attachmentErrorKey ? t(attachmentErrorKey as Key)
+    : attachmentErrorKey ? t(attachmentErrorKey as Key, launchErrorValues(attachmentErrorKey, null))
     : attachmentNoticeText ? attachmentNoticeText
-    : mentionErrorKey ? t(mentionErrorKey as Key)
-    : rejectionKey ? t(rejectionKey as Key, rejection?.shortenBy == null ? undefined : { over: String(rejection.shortenBy) })
+    : mentionErrorKey ? t(mentionErrorKey as Key, launchErrorValues(mentionErrorKey, null))
+    : rejectionKey ? t(rejectionKey as Key, launchErrorValues(rejectionKey, rejection?.shortenBy ?? null))
     : null;
 
   return (

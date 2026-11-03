@@ -9014,6 +9014,177 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-viewer__nav:hover,
 .fc-composer-viewer__close:focus-visible,
 .fc-composer-viewer__nav:focus-visible { color: var(--text-primary); }
+/* 보내기 전 첨부만 — 연필은 닫기 바로 아래, 편집 중에는 뷰어가 버튼을 그리지 않는다. */
+.fc-composer-viewer__edit {
+  position: absolute;
+  top: calc(var(--space-2) * -1 + 22px);
+  right: calc(var(--space-2) * -1 - 10px);
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 50%;
+  background: var(--glass-tint-panel);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+.fc-composer-viewer__edit:hover,
+.fc-composer-viewer__edit:focus-visible { color: var(--text-primary); }
+.fc-composer-viewer__frame.is-editing {
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 100%;
+}
+.fc-composer-viewer__frame.is-editing .fc-composer-viewer__canvas {
+  max-height: calc(100dvh - 220px);
+}
+.fc-composer-editor { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; }
+.fc-composer-editor__stage { position: relative; max-width: 100%; }
+.fc-composer-viewer__canvas {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - var(--space-6) * 2 - var(--space-2) * 2);
+  object-fit: contain;
+  border-radius: var(--radius-xs);
+  touch-action: none;
+  cursor: crosshair;
+}
+.fc-composer-editor__text {
+  position: absolute;
+  min-width: 4em;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 600 16px sans-serif;
+  line-height: 1.2;
+}
+.fc-composer-editor__text:focus { outline: none; }
+.fc-composer-editor__tools {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  max-width: min(760px, 92vw);
+  padding: 5px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--glass-tint-panel);
+}
+.fc-composer-editor__tool {
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+.fc-composer-editor__tool[aria-pressed="true"] { background: var(--control-wash-hover); color: var(--text-primary); }
+.fc-composer-editor__tool:hover:not(:disabled),
+.fc-composer-editor__tool:focus-visible { color: var(--text-primary); }
+.fc-composer-editor__tool:disabled { opacity: 0.35; cursor: default; }
+.fc-composer-editor__tool.is-save {
+  padding: 0 14px;
+  background: var(--text-primary);
+  color: var(--surface-panel);
+  font-weight: var(--weight-medium);
+}
+.fc-composer-editor__tool.is-save:disabled { background: var(--control-wash-hover); color: var(--text-tertiary); opacity: 1; }
+.fc-composer-editor__sep { width: 1px; height: 20px; margin: 0 4px; background: var(--surface-rim-strong); }
+.fc-composer-editor__swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 50%;
+}
+.fc-composer-editor__slot { position: relative; }
+.fc-composer-editor__menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 140px;
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+}
+.fc-composer-editor__menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.fc-composer-editor__menu button[aria-checked="true"],
+.fc-composer-editor__menu button:hover,
+.fc-composer-editor__menu button:focus-visible { background: var(--control-wash-hover); }
+.fc-composer-editor__notice,
+.fc-composer-editor__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--t-xs);
+  color: var(--warn-ink);
+}
+.fc-composer-editor__confirm button {
+  padding: 4px 12px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+.fc-composer-editor__confirm button.is-primary {
+  border-color: transparent;
+  background: var(--text-primary);
+  color: var(--surface-panel);
+}
+.fc-composer-attachment__edited {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 50%;
+  background: var(--glass-tint-panel);
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1;
+  pointer-events: none;
+}
 
 /* 「+」 메뉴 — 위로 뜨는 상자. 자리는 표면이 정한다. */
 .fc-composer-menu {

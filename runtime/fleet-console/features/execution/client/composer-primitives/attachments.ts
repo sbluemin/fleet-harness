@@ -10,7 +10,7 @@
  */
 
 export const COMPOSER_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
-export const COMPOSER_MAX_ATTACHMENTS = 4;
+export const COMPOSER_MAX_ATTACHMENTS = 15;
 
 /** 호스트 API 주입만 받는 무상태 helper — 플러그인이 실행 feature를 import하지 않는다. */
 export async function uploadComposerAttachment(file: Blob, request: (path: string, init: RequestInit) => Promise<Response>): Promise<{ readonly id: string }> {

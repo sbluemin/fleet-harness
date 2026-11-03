@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { AttachmentHost } from "../../execution/shared/agent.js";
 
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_RETAINED_IMAGE_BYTES } from "../shared/contracts/attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_MESSAGE_IMAGES, MAX_COMMODORE_RETAINED_IMAGE_BYTES } from "../shared/contracts/attachment-budget.js";
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EXTENSIONS = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" } as const;
@@ -102,7 +102,7 @@ export function createCommodoreImages(
     save(commodoreId: string, messageId: string, images: readonly Image[]): boolean {
       let dir: string | undefined;
       try {
-        if (!images.length || images.length > 4 || new Set(images.map((image) => image.id)).size !== images.length
+        if (!images.length || images.length > MAX_COMMODORE_MESSAGE_IMAGES || new Set(images.map((image) => image.id)).size !== images.length
           || images.some((image) => !ID.test(image.id) || !(image.mime in EXTENSIONS))
           || images.reduce((sum, image) => sum + image.bytes.byteLength, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) return false;
         const target = messageDir(commodoreId, messageId);

@@ -68,7 +68,7 @@ export function openTaskforce(id: string, options: { readonly focusComposer?: bo
 }
 /**
  * 공용 컴포저(사령관 입력창)의 TF 첨부 포트 — 사령관 채팅과 같은 붙여넣기·드롭·첨부 버튼 길로 들어와 post 때 base64로 실린다.
- * 저장 위치·크기 제한은 사령관 채팅의 기존 규칙을 재사용한다: 한 번에 4장, 장당 8 MiB, png/jpeg/gif/webp.
+ * 저장 위치·크기 제한은 사령관 채팅의 기존 규칙을 재사용한다: 한 번에 15장, 장당 8 MiB, png/jpeg/gif/webp.
  */
 const TF_ALLOWED_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const taskforceImagePayloads = new Map<string, { readonly name: string; readonly mime: string; readonly dataBase64: string }>();

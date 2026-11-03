@@ -7,6 +7,7 @@ import {
   DEFAULT_TASKFORCE_LEDGER_PAGE,
   MAX_TASKFORCE_LEDGER_PAGE,
   MAX_TASKFORCE_IMAGE_BYTES,
+  MAX_TASKFORCE_IMAGES,
   DEFAULT_TASKFORCE_CHAIN_LIMIT,
   TASKFORCE_ID,
   taskforceLedgerEntrySchema,
@@ -520,7 +521,7 @@ export function createTaskforceStore(options: TaskforceStoreOptions): TaskforceS
     },
     saveImages(taskforceId, seq, images) {
       load(taskforceId);
-      if (!images.length || images.length > 4 || images.reduce((bytes, image) => bytes + image.bytes.byteLength, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new TaskforceStoreError("invalid_request");
+      if (!images.length || images.length > MAX_TASKFORCE_IMAGES || images.reduce((bytes, image) => bytes + image.bytes.byteLength, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) throw new TaskforceStoreError("invalid_request");
       const seen = new Set<string>();
       const dir = contained(path.join(base, taskforceId), `images/${seq}`);
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
