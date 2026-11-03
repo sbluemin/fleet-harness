@@ -9061,10 +9061,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   padding: 0;
   border: 0;
   background: transparent;
-  font-weight: var(--weight-medium);
-  font-size: var(--t-lg);
-  font-family: var(--font-ui);
-  line-height: 1.2;
+  line-height: 1;
 }
 .fc-composer-editor__text:focus { outline: none; }
 .fc-composer-editor__tools {
@@ -9100,12 +9097,10 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-editor__tool:hover:not(:disabled),
 .fc-composer-editor__tool:focus-visible { color: var(--text-primary); }
 .fc-composer-editor__tool:disabled { opacity: 0.35; cursor: default; }
-/* 도형·굵기 글자가 바뀌어도 이웃 단추가 밀리지 않게 폭을 고정한다. 영어 "Extra thick"가 가장 길다. */
-.fc-composer-editor__tool.is-choice {
-  box-sizing: border-box;
-  width: 11em;
-  justify-content: center;
-}
+/* 지금 언어의 가장 긴 항목 이름만큼만 자리를 잡고, 고른 이름이 바뀌어도 폭은 그대로다. */
+.fc-composer-editor__choice { display: inline-grid; justify-items: center; }
+.fc-composer-editor__choice > span { grid-area: 1 / 1; }
+.fc-composer-editor__choice-sizer { visibility: hidden; }
 .fc-composer-editor__tool svg { display: block; width: 16px; height: 16px; }
 .fc-composer-editor__tool svg.is-flip { transform: scaleX(-1); }
 .fc-composer-editor__tool.is-save {

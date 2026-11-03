@@ -59,11 +59,17 @@ type Mark =
 interface TextDraft {
   readonly left: number;
   readonly top: number;
+  readonly fontPx: number;
   readonly x: number;
   readonly y: number;
   readonly color: string;
   readonly width: number;
   readonly value: string;
+}
+
+/** 확정된 글자의 캔버스 픽셀 크기. 입력칸은 여기에 화면 배율을 곱한다. */
+function annotationFontPx(strokeWidth: number): number {
+  return 16 + strokeWidth * 2;
 }
 
 export interface ComposerImageEditorHandle {
@@ -130,7 +136,7 @@ function paint(g: CanvasRenderingContext2D, mark: Mark, src: HTMLCanvasElement):
     g.textBaseline = "middle";
     g.fillText(String(mark.n), mark.x0, mark.y0 + 1);
   } else if (mark.kind === "text") {
-    g.font = `600 ${16 + mark.width * 2}px sans-serif`;
+    g.font = `600 ${annotationFontPx(mark.width)}px sans-serif`;
     g.textBaseline = "top";
     g.lineWidth = 3;
     g.strokeStyle = "rgba(0,0,0,.55)";
@@ -326,10 +332,15 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
       // 막지 않으면 빈 칸이 blur로 바로 닫힌다. 터치·펜도 같은 pointerdown을 쓴다.
       event.preventDefault();
       commitText();
+      const canvas = canvasRef.current;
       const stage = stageRef.current?.getBoundingClientRect();
+      const box = canvas.getBoundingClientRect();
+      const scaleX = canvas.width > 0 ? box.width / canvas.width : 1;
+      const scaleY = canvas.height > 0 ? box.height / canvas.height : 1;
       setTextDraft({
-        left: stage ? event.clientX - stage.left : 0,
-        top: stage ? event.clientY - stage.top : 0,
+        left: (stage ? box.left - stage.left : 0) + x * scaleX,
+        top: (stage ? box.top - stage.top : 0) + y * scaleY,
+        fontPx: annotationFontPx(width) * scaleX,
         x, y, color, width, value: "",
       });
       return;
@@ -409,7 +420,16 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
           <input
             ref={textRef}
             className="fc-composer-editor__text"
-            style={{ left: textDraft.left, top: textDraft.top, color: textDraft.color }}
+            style={{
+              left: textDraft.left,
+              top: textDraft.top,
+              color: textDraft.color,
+              fontSize: `${textDraft.fontPx}px`,
+              lineHeight: 1,
+              height: `${textDraft.fontPx}px`,
+              fontFamily: "sans-serif",
+              fontWeight: 600,
+            }}
             value={textDraft.value}
             aria-label={t("composer.attach.textInput")}
             onChange={(event) => setTextDraft({ ...textDraft, value: event.target.value })}
@@ -423,7 +443,7 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
       <div ref={toolsRef} className="fc-composer-editor__tools" role="toolbar" aria-label={t("composer.attach.tools")}>
         <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "pen"} disabled={locked} onClick={() => chooseTool("pen")}>{t("composer.attach.pen")}</button>
         <span className="fc-composer-editor__slot">
-          <button type="button" className="fc-composer-editor__tool is-choice" aria-pressed={tool === "shape"} aria-expanded={menu === "shape"} disabled={locked} onClick={() => toggleMenu("shape", "shape")}>{shapeLabel} ▾</button>
+          <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "shape"} aria-expanded={menu === "shape"} disabled={locked} onClick={() => toggleMenu("shape", "shape")}><ChoiceLabel labels={SHAPES.map((item) => t(item.label))} current={shapeLabel} /></button>
           {menu === "shape" ? <InkMenu label={t("composer.attach.shape")} items={SHAPES.map((item) => ({ id: item.id, label: t(item.label), checked: item.id === shape }))} onPick={(id) => { rememberedShape = id as Shape; setShape(id as Shape); setMenu(null); }} /> : null}
         </span>
         <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "text"} disabled={locked} onClick={() => chooseTool("text")}>{t("composer.attach.textTool")}</button>
@@ -437,7 +457,7 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
           {menu === "color" ? <InkMenu label={t("composer.attach.color")} items={INK.map((item) => ({ id: item.value, label: t(item.label), checked: item.value === color, swatch: item.value }))} onPick={(id) => { rememberedColor = id; setColor(id); setMenu(null); }} /> : null}
         </span>
         <span className="fc-composer-editor__slot">
-          <button type="button" className="fc-composer-editor__tool is-choice" aria-label={t("composer.attach.width")} aria-expanded={menu === "width"} disabled={locked} onClick={() => toggleMenu("width")}>{widthLabel} ▾</button>
+          <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.width")} aria-expanded={menu === "width"} disabled={locked} onClick={() => toggleMenu("width")}><ChoiceLabel labels={THICKNESS.map((item) => t(item.label))} current={widthLabel} /></button>
           {menu === "width" ? <InkMenu label={t("composer.attach.width")} items={THICKNESS.map((item) => ({ id: String(item.value), label: t(item.label), checked: item.value === width }))} onPick={(id) => { rememberedWidth = Number(id); setWidth(Number(id)); setMenu(null); }} /> : null}
         </span>
         <span className="fc-composer-editor__sep" aria-hidden="true" />
@@ -453,6 +473,15 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
     </div>
   );
 });
+
+function ChoiceLabel({ labels, current }: { readonly labels: readonly string[]; readonly current: string }) {
+  return (
+    <span className="fc-composer-editor__choice">
+      {labels.map((label) => <span key={label} className="fc-composer-editor__choice-sizer" aria-hidden="true">{label} ▾</span>)}
+      <span className="fc-composer-editor__choice-face">{current} ▾</span>
+    </span>
+  );
+}
 
 function HistoryGlyph({ flip = false }: { readonly flip?: boolean }) {
   return (
