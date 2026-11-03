@@ -164,19 +164,13 @@ export const EMPTY_RUN_TOTALS: CommodoreRunTotals = Object.freeze({ session: 0, 
  */
 /**
  * 사령관 세션이 대화를 요약해 이어 가는 지점 — 모델 창에 대한 비율. 사령관은 이 지점에서 세션을 바꾸지 않고 같은 세션을 압축한다.
- * 0.75 는 이전의 교대 지점이다: 작은 창 모델은 이 비율 그대로 압축한다.
+ * 0.75 는 이전의 교대 지점이다: 한 세션이 쌓는 문맥과 턴마다 다시 읽는 비용이 교대 시절과 크게 달라지지 않게 같은 자리에 둔다.
  */
 export const COMMODORE_COMPACT_RATIO = 0.75;
 
-/**
- * 압축 지점의 상한(토큰) — 1M 창처럼 큰 창은 비율 지점(750k)이 아니라 여기서 압축해 압축 전 대화를 턴마다 다시 읽는 비용을
- * 줄인다. Gateway 카탈로그 모델은 Gateway 압축 정책을 따르므로 이 상한이 적용되지 않는다.
- */
-export const COMMODORE_COMPACT_MAX = 500_000;
-
-/** 모델 창(토큰)에서 압축 지점(토큰)을 낸다 — 비율 지점과 상한 중 작은 쪽. 호스트가 이 값을 실행기의 자동 압축 창으로 옮긴다(Agent SDK `compactAt`). */
+/** 모델 창(토큰)에서 압축 지점(토큰)을 낸다. 호스트가 이 값을 실행기의 자동 압축 창으로 옮긴다(Agent SDK `compactAt`). */
 export function commodoreCompactAt(contextWindow: number): number {
-  return Math.min(Math.round(contextWindow * COMMODORE_COMPACT_RATIO), COMMODORE_COMPACT_MAX);
+  return Math.round(contextWindow * COMMODORE_COMPACT_RATIO);
 }
 
 /**
