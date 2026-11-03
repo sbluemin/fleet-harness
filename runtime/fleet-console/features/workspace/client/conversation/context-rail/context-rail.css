@@ -257,3 +257,8 @@
 /* 레일이 없는 화면(Inbox 시트)의 칩 — 입력창 위 오른쪽 끝에 서고, 카드는 위로 뜬다. */
 .context-rail-inline { position: relative; display: flex; justify-content: flex-end; padding-bottom: var(--space-2); }
 .context-rail-fly.is-inline { top: auto; bottom: calc(100% - var(--space-2)); right: 0; width: 260px; max-height: 60vh; }
+
+/* 머리 칩 단계 — 제목 pill 은 칸 왼쪽부터 남는 폭을 쓴다(가운데에 묶이면 왼쪽이 비는데도 제목이 잘린다). 도구 몫은 오른쪽에 그대로 비운다. */
+.conversation-column[data-rail-head] > .conversation-pill-row { justify-content: flex-start; padding-left: var(--space-3); }
+.conversation-column[data-rail-head] > .conversation-pill-row > .conversation-pill { max-width: 100%; }
+.conversation-pill[data-rail-sub-hidden] .conversation-pill-sub { display: none; }

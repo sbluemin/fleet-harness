@@ -197,6 +197,33 @@ const TITLE_MIN = 110;
 function useTitleYield(probe: React.RefObject<HTMLElement | null>, active: boolean, width: number, sessions: number): 0 | 1 | 2 {
   const [level, setLevel] = React.useState<0 | 1 | 2>(0);
   React.useLayoutEffect(() => { setLevel(0); }, [active, width, sessions]);
+  // 머리 칩 단계에서는 제목 pill 이 가운데에 묶이지 않고 칸 왼쪽부터 남는 폭을 쓴다(CSS 가 이 표식을 읽는다). 제목이 잘려야 하면
+  // 보조 글자(「· 구성원 1」)는 조각으로 남기지 않고 통째로 숨긴다 — 숨긴 뒤에는 폭이 바뀔 때까지 그대로 둔다(깜빡임 방지).
+  React.useLayoutEffect(() => {
+    if (!active) return;
+    const column = probe.current?.closest<HTMLElement>(".conversation-column");
+    const pill = column?.querySelector<HTMLElement>(":scope > .conversation-pill-row > .conversation-pill");
+    if (!column || !pill) return;
+    column.setAttribute("data-rail-head", "");
+    pill.removeAttribute("data-rail-sub-hidden");
+    let subWidth = 0;
+    const check = () => {
+      const title = pill.querySelector<HTMLElement>(".conversation-pill-title");
+      const sub = pill.querySelector<HTMLElement>(".conversation-pill-sub");
+      if (title === null) return;
+      if (!pill.hasAttribute("data-rail-sub-hidden")) {
+        if (title.scrollWidth > title.clientWidth + 1) { subWidth = sub?.offsetWidth ?? 0; pill.setAttribute("data-rail-sub-hidden", ""); }
+        return;
+      }
+      // 숨긴 뒤에도 남는 자리가 보조 글자 폭보다 넉넉하면(순간적인 측정으로 숨겼을 수 있다) 다시 보인다. 여유를 둬서 오가지 않게 한다.
+      const tools = document.querySelector<HTMLElement>(".conversation-pill-tools");
+      if (subWidth > 0 && tools !== null && title.scrollWidth <= title.clientWidth + 1 && tools.getBoundingClientRect().left - pill.getBoundingClientRect().right > subWidth + 24) pill.removeAttribute("data-rail-sub-hidden");
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(pill);
+    return () => { observer.disconnect(); column.removeAttribute("data-rail-head"); pill.removeAttribute("data-rail-sub-hidden"); };
+  }, [probe, active, width, sessions]);
   React.useLayoutEffect(() => {
     if (!active || level === 2) return;
     // 제목 pill 은 이 대화 칸 머리 줄에 있다(도구 캡슐은 칸 밖 띠로 포털되므로 칸에서 찾는다).
@@ -239,8 +266,9 @@ function HeadChips({ sessions, shown: shownCount, flyout, t }: { readonly sessio
             title={label}
             onClick={() => setContextFlyout(flyout === session.id ? null : session.id)}
           >
-            {/* 이름은 이름표(aria·title)가 지고 칩은 원호만 선다 — 대화 머리는 제목 pill 이 먼저 자리를 얻는다. */}
             <ContextArc ratio={ratioOf(session.measure)} size={14} />
+            {/* 짧은 이름 — 자리가 모자라면 칩이 먼저 합쳐지고(+N) 이름째 물러난다. */}
+            <span>{Array.from(session.name).slice(0, 2).join("")}</span>
           </button>
         );
       })}
