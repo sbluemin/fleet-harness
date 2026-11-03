@@ -3096,6 +3096,44 @@ describe("Objectives contract", () => {
     }
   });
 
+  it("retries one held message after restart while the recipient stays dormant, and does not deliver it twice when delivery outlasts the watch tick", async () => {
+    const h = harness();
+    const { store, launch, call, ctx, sent, activity, surfaces, restart } = h;
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Held once", groupId: null });
+    const id = objective.id;
+    await launch.requestPlan(id);
+    activity.set(id, "idle");
+    expect((await call("enlist", { members: [{ role: "worker" }] }, id)).isError).toBe(false);
+    const memberId = store.find(id)!.members[0]!.id;
+    surfaces.set(memberId, "terminal");
+    activity.set(memberId, "dormant");
+    const records = ctx.objectiveRecords as { isTransitioning?: (sessionId: string) => boolean };
+    records.isTransitioning = (sessionId) => sessionId === memberId;
+    try {
+      const first = await call("message", { to: memberId, text: "Hold this." }, id);
+      expect(first.isError).toBe(false);
+      expect(first.structuredContent.delivery).toBe("held");
+      expect(store.messages(id).filter((message) => message.delivery === "held")).toHaveLength(1);
+      expect(sent.filter((entry) => entry.text.includes("Hold this."))).toHaveLength(0);
+      records.isTransitioning = () => false;
+      vi.useFakeTimers();
+      launch.dispose();
+      const real = ctx.consoleControl!.request.bind(ctx.consoleControl);
+      ctx.consoleControl!.request = ((input: { kind: string }) => {
+        const pending = real(input as never);
+        return input.kind === "send" ? pending.then((value) => new Promise((resolve) => setTimeout(() => resolve(value), 1_500))) : pending;
+      }) as typeof ctx.consoleControl.request;
+      const after = restart();
+      after.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(sent.filter((entry) => entry.objectiveId === memberId && entry.text.includes("Hold this."))).toHaveLength(1);
+      expect(after.store.messages(id).some((message) => message.text === "Hold this." && message.delivery === "held")).toBe(false);
+    } finally {
+      launch.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   // shared/ 읽기 전용 경로 — 목록은 링크를 빼고 시각 내림차순, 파일은 바이트로 다시 판정한다.
   // 경로 탈출("..", 절대경로, 바깥 링크 경유)은 막고 응답에 바깥 표식을 남기지 않는다.
   it("serves an objective's shared folder read-only without following links or leaking outside paths", async () => {

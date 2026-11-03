@@ -1406,6 +1406,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (before.activity === "running" || before.activity === "background") return "steered";
     return "next_turn";
   };
+  const delivering = new Set<string>();
   const flushHeld = async (sessionId: string): Promise<void> => {
     const owner = store.find(sessionId) ?? store.findMember(sessionId)?.objective;
     if (!owner) return;
@@ -1413,11 +1414,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const to = message.to;
       const from = message.from;
       const target = to.kind === "commander" ? owner.id : to.memberId;
-      if (target !== sessionId) continue;
+      if (target !== sessionId || delivering.has(message.messageId)) continue;
+      delivering.add(message.messageId);
       const speakerId = from.kind === "commander" ? owner.id : from.memberId;
       const role = from.kind === "commander" ? "Commander" : owner.members.find((member) => member.id === speakerId)?.role ?? "member";
-      const delivery = await pushToSession(owner.id, target, to.kind === "member" ? to.memberId : null, message, { objectiveId: speakerId, title: role }, message.attachments?.map((attachment) => attachment.id));
-      if (delivery !== "held") store.setMessageDelivery(owner.id, message.messageId, delivery);
+      try {
+        const delivery = await pushToSession(owner.id, target, to.kind === "member" ? to.memberId : null, message, { objectiveId: speakerId, title: role }, message.attachments?.map((attachment) => attachment.id));
+        if (delivery !== "held") store.setMessageDelivery(owner.id, message.messageId, delivery);
+      } finally {
+        delivering.delete(message.messageId);
+      }
     }
   };
   // 보류 재시도는 live 턴 감시와 따로다. 재시작 뒤 휴면인 수신은 outcomeWatched 에 들어가지 않아, 그 루프만 믿으면 기록이 영원히 held 로 남는다.
@@ -2114,13 +2120,18 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (target.kind === "member") store.recordDispatch(target.memberId, at);
         if (from.kind === "member") store.setMemberDelivered(from.memberId, at);
         let delivery: ObjectiveMessageDelivery = "held";
+        delivering.add(messageId);
         try {
-          delivery = await pushToSession(current.id, targetId, target.kind === "member" ? target.memberId : null, { messageId, text, ...(options?.replyTo ? { replyTo: options.replyTo } : {}), from }, speaker, attachmentIds);
-        } catch (error) {
-          if (!holdableDelivery(error)) throw error;
+          try {
+            delivery = await pushToSession(current.id, targetId, target.kind === "member" ? target.memberId : null, { messageId, text, ...(options?.replyTo ? { replyTo: options.replyTo } : {}), from }, speaker, attachmentIds);
+          } catch (error) {
+            if (!holdableDelivery(error)) throw error;
+          }
+          if (delivery !== "held") store.setMessageDelivery(current.id, messageId, delivery);
+          else armHeldWatch();
+        } finally {
+          delivering.delete(messageId);
         }
-        if (delivery !== "held") store.setMessageDelivery(current.id, messageId, delivery);
-        else armHeldWatch();
         return { messageId, to: target.kind === "commander" ? "commander" : target.memberId, delivery };
       });
     },
