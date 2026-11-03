@@ -1640,8 +1640,8 @@ function detailExcerpt(raw: string, lines: number, bytes: number, tail = false, 
   return { kind: "result", text, ...(safe !== normalized ? { masked: true as const } : {}), ...(all.length > selected.length || sliced.length > bytes ? { truncated: true, totalLines: all.length } : {}) };
 }
 
-/** 목표 message 도구. 원장 동사와 그룹 전언이 이 이름을 본다. */
-const OBJECTIVE_MESSAGE_TOOL = "mcp__fleet-objectives__message";
+/** 목표 message 도구. 원장 동사, 그룹 전언, 휴면 이력 필터가 이 이름을 본다. */
+export const OBJECTIVE_MESSAGE_TOOL = "mcp__fleet-objectives__message";
 /** `launch.ts` 의 세션 이름. 원장 한 줄에는 올리지 않는다. */
 const SESSION_NAME_SHAPED = /^objective-[0-9a-f]{6}-(?:cmdr|member-\d+)$/i;
 const ROSTER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

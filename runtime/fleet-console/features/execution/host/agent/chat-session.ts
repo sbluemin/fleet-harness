@@ -45,6 +45,7 @@ import {
   readChatCommandLaneName,
   readJobKind,
   isSessionNameShaped,
+  OBJECTIVE_MESSAGE_TOOL,
   sessionMessageRefusal,
   tagChatOrigin,
   type AgentChatCatalog,
@@ -575,7 +576,7 @@ export function createTranscriptReplayer(
   };
 }
 
-/** 그룹 대화 리듀서가 읽는 저널 종류. 도구는 세션 간 메시지(`SESSION_MESSAGE_TOOL`)와 그 결과만 남는다. */
+/** 그룹 대화 리듀서가 읽는 저널 종류. 도구는 세션 간 메시지와 목표 message 도구, 그리고 그 결과만 남는다. */
 const HISTORY_EVENT_KINDS: ReadonlySet<string> = new Set(["dispatch", "turn-inject", "text", "turn-end"]);
 
 /** 재생의 신원 보정은 읽기 전용이다 — 라이브 발신 관측·수신 전달·턴 발신 기록을 건드리지 않는다. */
@@ -642,7 +643,7 @@ export async function readTranscriptHistory(
   const keep = (raw: AgentChatStreamEvent, at: number | undefined): void => {
     const event = withReplayRecipient(raw, recipients);
     if (event.kind === "tool") {
-      if (event.name !== SESSION_MESSAGE_TOOL || event.id === undefined) return;
+      if ((event.name !== SESSION_MESSAGE_TOOL && event.name !== OBJECTIVE_MESSAGE_TOOL) || event.id === undefined) return;
       toolNames.set(event.id, event.name);
     } else if (event.kind === "tool-result") {
       if (!toolNames.has(event.id)) return;
