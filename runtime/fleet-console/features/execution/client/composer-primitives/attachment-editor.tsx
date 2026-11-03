@@ -322,6 +322,9 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
     setMenu(null);
     const [x, y] = pointer(event, canvasRef.current);
     if (tool === "text") {
+      // pointerdown의 기본 동작은 이어지는 mousedown으로 방금 연 입력칸의 포커스를 캔버스에 넘긴다.
+      // 막지 않으면 빈 칸이 blur로 바로 닫힌다. 터치·펜도 같은 pointerdown을 쓴다.
+      event.preventDefault();
       commitText();
       const stage = stageRef.current?.getBoundingClientRect();
       setTextDraft({
@@ -420,7 +423,7 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
       <div ref={toolsRef} className="fc-composer-editor__tools" role="toolbar" aria-label={t("composer.attach.tools")}>
         <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "pen"} disabled={locked} onClick={() => chooseTool("pen")}>{t("composer.attach.pen")}</button>
         <span className="fc-composer-editor__slot">
-          <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "shape"} aria-expanded={menu === "shape"} disabled={locked} onClick={() => toggleMenu("shape", "shape")}>{shapeLabel} ▾</button>
+          <button type="button" className="fc-composer-editor__tool is-choice" aria-pressed={tool === "shape"} aria-expanded={menu === "shape"} disabled={locked} onClick={() => toggleMenu("shape", "shape")}>{shapeLabel} ▾</button>
           {menu === "shape" ? <InkMenu label={t("composer.attach.shape")} items={SHAPES.map((item) => ({ id: item.id, label: t(item.label), checked: item.id === shape }))} onPick={(id) => { rememberedShape = id as Shape; setShape(id as Shape); setMenu(null); }} /> : null}
         </span>
         <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "text"} disabled={locked} onClick={() => chooseTool("text")}>{t("composer.attach.textTool")}</button>
@@ -434,12 +437,12 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
           {menu === "color" ? <InkMenu label={t("composer.attach.color")} items={INK.map((item) => ({ id: item.value, label: t(item.label), checked: item.value === color, swatch: item.value }))} onPick={(id) => { rememberedColor = id; setColor(id); setMenu(null); }} /> : null}
         </span>
         <span className="fc-composer-editor__slot">
-          <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.width")} aria-expanded={menu === "width"} disabled={locked} onClick={() => toggleMenu("width")}>{widthLabel} ▾</button>
+          <button type="button" className="fc-composer-editor__tool is-choice" aria-label={t("composer.attach.width")} aria-expanded={menu === "width"} disabled={locked} onClick={() => toggleMenu("width")}>{widthLabel} ▾</button>
           {menu === "width" ? <InkMenu label={t("composer.attach.width")} items={THICKNESS.map((item) => ({ id: String(item.value), label: t(item.label), checked: item.value === width }))} onPick={(id) => { rememberedWidth = Number(id); setWidth(Number(id)); setMenu(null); }} /> : null}
         </span>
         <span className="fc-composer-editor__sep" aria-hidden="true" />
-        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.undo")} title={t("composer.attach.undo")} disabled={locked || ops.length === 0} onClick={undo}>↶</button>
-        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.redo")} title={t("composer.attach.redo")} disabled={locked || redo.length === 0} onClick={redoMark}>↷</button>
+        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.undo")} title={t("composer.attach.undo")} disabled={locked || ops.length === 0} onClick={undo}><HistoryGlyph /></button>
+        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.redo")} title={t("composer.attach.redo")} disabled={locked || redo.length === 0} onClick={redoMark}><HistoryGlyph flip /></button>
         <button type="button" className="fc-composer-editor__tool" disabled={locked || ops.length === 0} onClick={clear}>{t("composer.attach.clear")}</button>
         {edited ? <button type="button" className="fc-composer-editor__tool" disabled={locked} onClick={onRevert}>{t("composer.attach.revert")}</button> : null}
         <span className="fc-composer-editor__sep" aria-hidden="true" />
@@ -450,6 +453,15 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
     </div>
   );
 });
+
+function HistoryGlyph({ flip = false }: { readonly flip?: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className={flip ? "is-flip" : undefined}>
+      <path d="M6.1 3.6 3.1 6.5l3 2.9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.4 6.5h5.2a3.2 3.2 0 1 1 0 6.4H8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 function InkMenu({ label, items, onPick }: {
   readonly label: string;

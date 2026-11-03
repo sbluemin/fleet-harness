@@ -9100,6 +9100,14 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-editor__tool:hover:not(:disabled),
 .fc-composer-editor__tool:focus-visible { color: var(--text-primary); }
 .fc-composer-editor__tool:disabled { opacity: 0.35; cursor: default; }
+/* 도형·굵기 글자가 바뀌어도 이웃 단추가 밀리지 않게 폭을 고정한다. 영어 "Extra thick"가 가장 길다. */
+.fc-composer-editor__tool.is-choice {
+  box-sizing: border-box;
+  width: 11em;
+  justify-content: center;
+}
+.fc-composer-editor__tool svg { display: block; width: 16px; height: 16px; }
+.fc-composer-editor__tool svg.is-flip { transform: scaleX(-1); }
 .fc-composer-editor__tool.is-save {
   padding: 0 14px;
   background: var(--text-primary);
