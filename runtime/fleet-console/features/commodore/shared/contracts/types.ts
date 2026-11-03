@@ -199,7 +199,7 @@ export interface CommodoreRunStatus {
   readonly stalled?: readonly string[];
   /**
    * 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰), 그 세션의 창, 대화를 요약할 지점(토큰) — 셋은 같은 단위다. 한 턴도 끝나기 전에는 없다.
-   * Gateway 모델(비-Claude)은 호스트가 알려 준 실제 공급자 단위의 창과 Gateway 압축 지점이고, 호스트도 지점을 모르면 `compactAt` 이 없다.
+   * Gateway 모델(비-Claude)은 호스트가 알려 준 실제 공급자 단위의 창과 실제 압축 지점이고, 호스트도 지점을 모르면 `compactAt` 이 없다.
    */
   readonly context?: { readonly window: number; readonly inputTokens: number; readonly compactAt?: number };
   /** 지금 열린 세션이 실제로 도는 모델·강도(로스터 폴백까지 푼 좌표). 설정을 바꿔도 다음 교대 전까지는 이 값이다. 열린 세션이 없으면 없다. */

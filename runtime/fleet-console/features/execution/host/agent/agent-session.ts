@@ -1,4 +1,4 @@
-import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
+import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, projectClaudeContextInputTokens, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
@@ -130,7 +130,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       if (closed || (cancelled && event.kind !== "input-cancelled" && event.kind !== "input-started")) return;
       // 좌표를 바꾸는 것은 압축과 사용량을 실은 결과뿐이다 — 스트림 delta마다 Gateway 설정을 읽지 않는다.
       const reframes = event.kind === "compacted" || (event.kind === "result" && event.usage !== undefined);
-      const framed = gateway === undefined || !reframes ? event : inGatewayFrame(event, gateway, deps.compactCeiling?.() ?? null);
+      const framed = gateway === undefined || !reframes ? event : inGatewayFrame(event, gateway, deps.compactCeiling?.() ?? null, options.compactAt);
       options.onEvent?.(redact(framed) as typeof framed);
     };
     const createSdk = async () => {
@@ -138,7 +138,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       delete env.FLEET_CONSOLE_SESSION_ID;
       const executablePath = await deps.resolveExecutablePath?.();
       if (resources.resident && (typeof executablePath !== "string" || !executablePath.trim())) throw new Error("agent_cli_unavailable");
-      const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt);
+      const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt, deps.compactCeiling?.() ?? null);
       return (deps.createSdk ?? createClaudeGatewaySdk)({
         baseUrl, models: [options.model], env, modelPolicy: claudeGatewayModelPolicy,
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.
@@ -327,26 +327,33 @@ const CLAUDE_AUTO_COMPACT_WINDOW_MIN = 100_000;
 const CLAUDE_AUTO_COMPACT_WINDOW_MAX = 1_000_000;
 
 /**
- * 플러그인이 고른 압축 지점(문맥 토큰)을 자식의 자동 압축 창으로 옮긴다. 네이티브 Claude 모델만 옮긴다.
+ * 플러그인이 고른 압축 지점(문맥 토큰)을 자식의 자동 압축 창으로 옮긴다. 네이티브 Claude 모델은 지점에 출력 예약을
+ * 더해 그대로 옮긴다.
  *
- * Gateway 카탈로그 모델(discovery 항목이 있는 비-Claude)은 Gateway가 사용량을 공급자 창에서 Claude 좌표(200k/1M)로
- * 비례 투영하고, 자기 compact 정책(공급자 창 − 16k 또는 compact-ceiling)이 압축 시점이 되도록 맞춘다. 거기에 창을 덮으면
- * 투영된 좌표 위에서 판정이 바뀌어 실제 압축 지점이 어긋난다 — 128k 모델은 64k(50%)에서 압축하고, 200k를 넘는 모델은 좌표에
- * 막혀 아무것도 바뀌지 않는다. 그래서 그 모델들은 Gateway 정책을 그대로 따른다.
+ * Gateway 카탈로그 모델(discovery 항목이 있는 비-Claude)은 자식이 Claude 좌표(200k/1M)로 투영된 사용량을 보므로,
+ * 요청 지점을 Gateway가 투영할 때 쓰는 같은 자(카탈로그 창·ceiling)로 투영해 옮긴다 — 변환 없이 덮으면 투영된 좌표
+ * 위에서 판정이 바뀌어 실제 압축 지점이 어긋난다. 라우팅 별칭의 턴별 축소는 여기가 알 수 없어 카탈로그 창을 쓴다.
+ * Gateway 기본 지점이 이미 요청 안이면 덮지 않고 그 정책을 따른다(상한 의미). 창을 모르면 투영할 자가 없으므로
+ * Gateway 정책을 따른다.
  */
-function claudeAutoCompactWindow(model: string, compactAt: number): number | undefined {
+function claudeAutoCompactWindow(model: string, compactAt: number, ceiling: CompactCeiling | null): number | undefined {
   let catalog: boolean;
   try { catalog = claudeGatewayModelPolicy.resolve(model).discovery !== undefined; }
   catch { return undefined; }
-  if (catalog) return undefined;
-  return Math.min(CLAUDE_AUTO_COMPACT_WINDOW_MAX, Math.max(CLAUDE_AUTO_COMPACT_WINDOW_MIN, compactAt + CLAUDE_AUTO_COMPACT_RESERVE));
+  if (!catalog) return Math.min(CLAUDE_AUTO_COMPACT_WINDOW_MAX, Math.max(CLAUDE_AUTO_COMPACT_WINDOW_MIN, compactAt + CLAUDE_AUTO_COMPACT_RESERVE));
+  const window = findGatewayModel(model)?.contextWindow;
+  if (typeof window !== "number" || !Number.isFinite(window) || window <= 0) return undefined;
+  const providerThreshold = compactThresholdTokens(window, ceiling);
+  if (providerThreshold <= compactAt) return undefined;
+  const projected = projectClaudeContextInputTokens(compactAt, window, window, ceiling);
+  return Math.min(CLAUDE_AUTO_COMPACT_WINDOW_MAX, Math.max(CLAUDE_AUTO_COMPACT_WINDOW_MIN, projected + CLAUDE_AUTO_COMPACT_RESERVE));
 }
 
 /**
  * Gateway 카탈로그 모델(비-Claude)이면 그 실제 창(모르면 `null`), 아니면 `undefined`.
  *
- * 그런 세션의 자식은 Gateway가 공급자 창에서 Claude 좌표(200k, 1M 이상이면 1M)로 비례 투영한 사용량을 말하고, Gateway의 compact
- * 정책 지점에서 압축한다(`compactAt`은 적용되지 않는다). 창은 Gateway가 투영할 때 읽는 그 카탈로그 조회다.
+ * 그런 세션의 자식은 Gateway가 공급자 창에서 Claude 좌표(200k, 1M 이상이면 1M)로 비례 투영한 사용량을 말하고, 세션이
+ * 요청한 지점과 Gateway compact 정책 지점 중 이른 쪽에서 압축한다. 창은 Gateway가 투영할 때 읽는 그 카탈로그 조회다.
  */
 function gatewayModelWindow(model: string): number | null | undefined {
   try { if (claudeGatewayModelPolicy.resolve(model).discovery === undefined) return undefined; }
@@ -357,10 +364,11 @@ function gatewayModelWindow(model: string): number | null | undefined {
 
 /**
  * Gateway 모델 세션의 사건을 호출자의 좌표로 옮긴다 — 문맥 토큰은 실제 공급자 토큰으로 되돌리고, 그 단위의 창과 실제 압축 지점을
- * `usage.context`로 싣는다. 창을 모르면 되돌릴 자가 없으므로 토큰은 그대로 두고 지점은 모른다(`null`)고 말한다.
+ * `usage.context`로 싣는다. 세션이 지점을 요청했으면 Gateway 기본 지점과 요청 중 이른 쪽이 실제 지점이다(자식 창도 그쪽으로
+ * 실린다). 창을 모르면 되돌릴 자가 없으므로 토큰은 그대로 두고 지점은 모른다(`null`)고 말한다.
  * 역투영은 Chat의 문맥 표시와 같은 함수·같은 정책 값이다.
  */
-function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: CompactCeiling | null): AgentEvent {
+function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: CompactCeiling | null, compactAt?: number): AgentEvent {
   if (window === null) {
     return event.kind === "result" && event.usage ? { ...event, usage: { ...event.usage, context: { window: null, compactAt: null } } } : event;
   }
@@ -371,7 +379,8 @@ function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: Compa
   }
   if (event.kind === "result" && event.usage) {
     const { contextTokens } = event.usage;
-    return { ...event, usage: { ...event.usage, ...(contextTokens === undefined ? {} : { contextTokens: real(contextTokens) }), context: { window, compactAt: compactThresholdTokens(window, ceiling) } } };
+    const threshold = compactThresholdTokens(window, ceiling);
+    return { ...event, usage: { ...event.usage, ...(contextTokens === undefined ? {} : { contextTokens: real(contextTokens) }), context: { window, compactAt: compactAt === undefined ? threshold : Math.min(compactAt, threshold) } } };
   }
   return event;
 }

@@ -1051,7 +1051,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.lastTurnAt = now();
     // 대화 크기는 마지막 호출의 입력이다 — 턴 합계는 도구를 쓴 만큼 부풀고 압축으로 줄어든 대화를 말하지 못한다.
     if (outcome.usage) runner.lastInputTokens = outcome.usage.contextTokens ?? outcome.usage.inputTokens;
-    // Gateway 모델 세션은 압축 지점을 Gateway 가 정한다 — 호스트가 그 지점과 창을 토큰과 같은 단위로 알려 주면 그것을 쓴다.
+    // Gateway 모델 세션의 압축 지점(Gateway 정책과 요청 상한 중 이른 쪽)은 호스트가 토큰과 같은 단위로 알려 주면 그것을 쓴다.
     const context = outcome.usage?.context;
     if (context) {
       if (context.window !== null) runner.contextWindow = context.window;
