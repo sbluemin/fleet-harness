@@ -2,7 +2,7 @@ import * as React from "react";
 import { highlightCodeSnippet } from "@fleet-console/markdown/core";
 import { diffSnippetLines, type SnippetDiffLine } from "@fleet-console/markdown/diff";
 import { StreamedMarkdown } from "../streamed-markdown.js";
-import type { AgentChatToolDetail } from "./chat-events.js";
+import { OBJECTIVE_MESSAGE_TOOL, objectiveMessageLedgerDetail, type AgentChatToolDetail } from "./chat-events.js";
 
 type Section = AgentChatToolDetail["sections"][number];
 type DiffRow = SnippetDiffLine;
@@ -94,12 +94,17 @@ export function ToolDetail({ detail, name, path, state, language }: { readonly d
       const shown = section.kind === "write" && content.endsWith("\n") ? content.slice(0, -1)
         : isFailure && (section.kind === "result" || section.kind === "output") ? visibleError(content) : content;
       const recipientLine = section.kind === "message" && section.text.startsWith("→ ") ? section.text.indexOf("\n") : -1;
+      const messageBody = recipientLine > 0 ? section.text.slice(recipientLine + 1) : section.text;
+      const messageRecipient = recipientLine > 0
+        ? (name === OBJECTIVE_MESSAGE_TOOL ? objectiveMessageLedgerDetail(section.text.slice(0, recipientLine), language) : section.text.slice(0, recipientLine))
+        : "";
+      const messageCopy = messageRecipient ? `${messageRecipient}\n${messageBody}` : messageBody;
       const lang = codeLanguage(path, section.kind, content);
       return <section className="agent-chat-tool-section" key={index}>
-        <div className="agent-chat-tool-heading"><strong>{title}</strong><span className="agent-chat-tool-origin">{origin}</span><span className="agent-chat-tool-spacer"/><CopyButton text={content} language={language}/></div>
+        <div className="agent-chat-tool-heading"><strong>{title}</strong><span className="agent-chat-tool-origin">{origin}</span><span className="agent-chat-tool-spacer"/><CopyButton text={section.kind === "message" && name === OBJECTIVE_MESSAGE_TOOL ? messageCopy : content} language={language}/></div>
         {section.kind === "message" ? <>
-          {recipientLine > 0 ? <div className="agent-chat-tool-recipient">{section.text.slice(0, recipientLine)}</div> : null}
-          <StreamedMarkdown text={recipientLine > 0 ? section.text.slice(recipientLine + 1) : section.text} streaming={false} className="agent-chat-tool-message markdown-body" language={language} />
+          {messageRecipient ? <div className="agent-chat-tool-recipient">{messageRecipient}</div> : null}
+          <StreamedMarkdown text={messageBody} streaming={false} className="agent-chat-tool-message markdown-body" language={language} />
         </>
           : isPair && next ? <CodeRows rows={editRows(section.text, next.text)} language={lang} diff localLabel={t.local}/>
             : name === "ListAgents" && section.kind === "result" && /This session is|Peer sessions/.test(section.text)

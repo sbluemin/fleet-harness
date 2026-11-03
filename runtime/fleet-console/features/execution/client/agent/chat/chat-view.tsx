@@ -44,6 +44,9 @@ import {
   type AgentChatTurnItem,
   chatOriginLabel,
   isPersonQueueEntry,
+  OBJECTIVE_MESSAGE_TOOL,
+  objectiveMessageLedgerDetail,
+  rosterSenderLabel,
   type AgentChatQueueEntry,
 } from "./chat-events.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
@@ -1793,7 +1796,7 @@ function ReceivedLine({
         <span>{t("terminal.chat.received")}</span>
       </span>
       <span className="agent-chat-tally-sep" aria-hidden="true">·</span>
-      <span className="agent-chat-tally-name" title={item.from ?? ""}>{item.from ?? ""}</span>
+      <span className="agent-chat-tally-name" title={rosterSenderLabel(item.from ?? "", language)}>{rosterSenderLabel(item.from ?? "", language)}</span>
       {preview ? <><span className="agent-chat-tally-sep agent-chat-received-preview" aria-hidden="true">·</span><span className="agent-chat-received-preview agent-chat-received-excerpt">{preview}</span></> : null}
     </span>
   );
@@ -2087,17 +2090,20 @@ function Tally({
         {alive ? (
           // 라이브 리전은 이 묶음 하나다 — 절마다 걸면 배치 하나가 N번 낭독된다.
           <span className="agent-chat-tally-running" role="status">
-            {running.map((item, index) => (
+            {running.map((item, index) => {
+              const detail = shownToolDetail(item.name, item.detail, language);
+              return (
               <React.Fragment key={index}>
                 {index > 0 || clauses.length > 0
                   ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span>
                   : null}
                 <span className="agent-chat-tally-clause">
                   <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={agentChatToolFamily(item.name)} /></span>
-                  <span>{`${runningVerb(item.name ?? "", language)}${item.detail !== undefined && item.detail.length > 0 ? ` ${item.references?.length ? referenceLabelText(item.detail, item.references) : item.detail}` : ""}`}</span>
+                  <span>{`${runningVerb(item.name ?? "", language)}${detail ? ` ${detail}` : ""}`}</span>
                 </span>
               </React.Fragment>
-            ))}
+              );
+            })}
             {thinking && running.length === 0 ? (
               <>
                 {clauses.length > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
@@ -2583,6 +2589,7 @@ function Step({
   // 확인되지 않은 스텝은 시제를 얻지 못하므로 이름이 곧 동사 자리다 — 그 이름도 줄에 세우는
   // 표시형(MCP는 서버 접두를 벗은 도구 이름)을 쓴다.
   const verb = running ? runningVerb(name, language) : unconfirmed ? agentChatToolLabel(name) : pastVerb(name, language);
+  const stepObject = shownToolDetail(name, item.detail, language);
   // 결과 칩은 변경 장부가 있으면 줄 수를, 없으면 도구가 돌려준 한 줄 요약을 보인다.
   // 실패는 언제나 요약이 이긴다 — 무엇이 잘못됐는지가 얼마나 썼는지보다 먼저다.
   const outcome = failed
@@ -2614,10 +2621,10 @@ function Step({
       >
         {verb}
       </span>
-      {item.detail ? (
+      {stepObject ? (
         item.references?.length
-          ? <span className="agent-chat-step-object has-ref" title={referenceLabelText(item.detail, item.references)}><ChatReferenceLinks text={item.detail} references={item.references} /></span>
-          : <span className="agent-chat-step-object" title={item.detail}>{item.detail}</span>
+          ? <span className="agent-chat-step-object has-ref" title={referenceLabelText(stepObject, item.references)}><ChatReferenceLinks text={stepObject} references={item.references} /></span>
+          : <span className="agent-chat-step-object" title={stepObject}>{stepObject}</span>
       ) : null}
       {peerCount !== undefined ? <span className="agent-chat-step-object">· {t("terminal.chat.peerSessions", { count: peerCount })}</span> : null}
       {item.outside ? (
@@ -3447,6 +3454,13 @@ function formatCount(value: number): string {
   if (value < 1_000) return String(value);
   if (value < 1_000_000) return `${(value / 1_000).toFixed(1)}k`;
   return `${(value / 1_000_000).toFixed(1)}M`;
+}
+
+/** 메시지 도구의 `→ commander` 만 화면 언어로 바꾸고, 세션 이름·id 는 줄에서 뺀다. 다른 도구의 좌표는 그대로다. */
+function shownToolDetail(name: string | undefined, detail: string | undefined, language: "en" | "ko"): string {
+  if (!detail) return "";
+  const shown = name === OBJECTIVE_MESSAGE_TOOL ? objectiveMessageLedgerDetail(detail, language) : detail;
+  return shown.trim();
 }
 
 /** 동사는 계열이 정한다 — 집계 줄과 스텝 줄이 같은 어휘를 쓰도록 한 축에서 온다. */

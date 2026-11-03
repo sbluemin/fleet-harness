@@ -17,7 +17,7 @@ import { splitLaunchAttachmentInstructions } from "./launch-attachments.js";
 
 /** 쓰기 계열 도구가 남긴 파일 변경 — 도구 입력에서 접는다(원문 본문은 싣지 않는다). */
 /** 사람이 아닌 발화자 — 브라우저 DTO 에 실리며 제목만 싣고 경로·세션 신원은 없다. */
-export type ChatOrigin = { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
+export type ChatOrigin = { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string; readonly roster?: true } | { readonly kind: "plugin"; readonly pluginId: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
 
 /**
  * 사용자가 함께 보낸 이미지 하나. 브라우저에 가는 것은 미리보기 라우트의 좌표(id)뿐이고 호스트
@@ -663,6 +663,10 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     if (results.length > 0) return results;
     const text = readUserText(line.message?.content);
     if (text === null) return [];
+    // 목표 전달은 사람이 친 말이 아니다. 재생하면 받은 메시지 줄로 서고, 머리의 모델 문면은 말풍선이 되지 않는다.
+    const relay = objectiveRelayReceipt(text);
+    // 새 턴을 여는 전달이다. received 만 내면 재생기가 턴을 세지 못하고 앞 턴의 소요 시간에 붙는다. 말풍선(dispatch)은 세우지 않는다.
+    if (relay) return [{ kind: "turn-start", ...atField }, { kind: "received", id: relay.id, from: relay.from, text: relay.body, inTurn: true, ...atField }];
     // 호스트가 붙인 출처 표식은 운반체 판정보다 먼저 읽는다 — SDK로 보낸 줄에 CLI가 어떤 출처를
     // 달든, 이 줄은 플러그인이 보낸 지시이고 라이브에서 그렇게 섰다.
     const tagged = isInjectedOrigin(line.origin) ? null : readChatOriginTag(text, options);
@@ -689,9 +693,12 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     return compactEndFromTranscript(line.compactMetadata);
   }
   // 도는 턴이 도중에 집어간 말. 표식 없는 것은 전처럼 재생하지 않는다 — 사람의 말과 다른 세션의
-  // 전언이 같은 모양으로 오고, 이 자리에서 둘을 가를 근거가 없다.
-  if (line.type === "attachment" && line.attachment?.type === "queued_command" && line.attachment.commandMode === "prompt" && !isInjectedOrigin(line.attachment.origin)) {
+  // 전언이 같은 모양으로 오고, 이 자리에서 둘을 가를 근거가 없다. 목표 전달 첫 줄만은 예외다.
+  if (line.type === "attachment" && line.attachment?.type === "queued_command" && line.attachment.commandMode === "prompt") {
     const text = readUserText(line.attachment.prompt);
+    const relay = text === null ? null : objectiveRelayReceipt(text);
+    if (relay) return [{ kind: "received", id: relay.id, from: relay.from, text: relay.body, inTurn: true, ...atField }];
+    if (isInjectedOrigin(line.attachment.origin)) return [];
     const tagged = text === null ? null : readChatOriginTag(text, options);
     if (tagged) return [{ kind: "turn-inject", ...tagged, ...atField }];
   }
@@ -1376,7 +1383,7 @@ function eventsFromAssistantContent(content: unknown, options: ChatEventMapOptio
       events.push({
         kind: "tool",
         name: block.name,
-        detail: summarizeToolInput(block.input, options),
+        detail: summarizeToolInput(block.input, options, block.name),
         ...(toolDetail ? { toolDetail } : {}),
         ...(typeof block.id === "string" && block.id.length > 0 ? { id: block.id } : {}),
         ...(pathIsOutsideCwd(block.input, options.cwd) ? { outside: true } : {}),
@@ -1634,6 +1641,63 @@ function detailExcerpt(raw: string, lines: number, bytes: number, tail = false, 
   return { kind: "result", text, ...(safe !== normalized ? { masked: true as const } : {}), ...(all.length > selected.length || sliced.length > bytes ? { truncated: true, totalLines: all.length } : {}) };
 }
 
+/** 목표 message 도구. 원장 동사, 그룹 전언, 휴면 이력 필터가 이 이름을 본다. */
+export const OBJECTIVE_MESSAGE_TOOL = "mcp__fleet-objectives__message";
+/** `launch.ts` 의 세션 이름. 원장 한 줄에는 올리지 않는다. */
+const SESSION_NAME_SHAPED = /^objective-[0-9a-f]{6}-(?:cmdr|member-\d+)$/i;
+const ROSTER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isSessionNameShaped(value: string): boolean {
+  return SESSION_NAME_SHAPED.test(value);
+}
+
+/** 원장 한 줄. 세션 이름과 로스터 id 는 비운다. `commander` 와 역할은 클라이언트가 화면 언어로 읽는다. */
+function objectiveMessageLedgerLine(to: string): string {
+  const token = to.trim();
+  if (token.length === 0 || isSessionNameShaped(token) || ROSTER_ID.test(token)) return "";
+  return `→ ${token}`;
+}
+
+/**
+ * 재생 문면의 첫 줄. `launch.ts` `relayModelText` 와 `auto-name.ts` 의 표식과 같다.
+ * 힌트 접미(` — …`)는 있어도 된다 — 답장 안내 커밋이 첫 줄을 늘려도 말풍선으로 되살지 않게.
+ */
+const OBJECTIVE_RELAY_HEAD = /^\[message from (the Commander|member (.+?) \(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)))(?: — [^\]]*)?\]$/i;
+/** `launch.ts` `channelNotice`. execution 이 objectives 를 import 하지 않으므로 문면을 여기 둔다. */
+const OBJECTIVE_CHANNEL_NOTICES = [
+  "이 목표에서 SendMessage와 ListAgents는 없다. fleet-objectives의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
+  "SendMessage and ListAgents are no longer available in this objective. The fleet-objectives message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
+];
+
+/**
+ * 목표 전달 문면을 받은 메시지 줄로. 본문은 화면 문면(`display`)만 — 채널 안내와 머리 줄은 뺀다.
+ * 보낸 이는 역할이다. 지휘관은 `Commander`(화면이 언어로 바꾼다). 세션 이름은 없다.
+ */
+function objectiveRelayReceipt(text: string): { readonly id: string; readonly from: string; readonly body: string } | null {
+  const lines = text.split(/\r?\n/);
+  const firstIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstIndex < 0) return null;
+  const match = OBJECTIVE_RELAY_HEAD.exec(lines[firstIndex]!.trim());
+  if (!match) return null;
+  const named = match[1]!.toLowerCase() === "the commander" ? "Commander" : (match[2] ?? "member").trim() || "member";
+  const from = isSessionNameShaped(named) ? "" : named;
+  let cursor = firstIndex + 1;
+  let id = "";
+  while (cursor < lines.length && lines[cursor]!.trim().length > 0) {
+    const messageId = /^messageId:\s*(\S+)/.exec(lines[cursor]!.trim());
+    if (messageId) id = messageId[1]!;
+    cursor += 1;
+  }
+  while (cursor < lines.length && lines[cursor]!.trim().length === 0) cursor += 1;
+  let body = lines.slice(cursor).join("\n");
+  for (const notice of OBJECTIVE_CHANNEL_NOTICES) {
+    if (!body.startsWith(notice)) continue;
+    body = body.slice(notice.length).replace(/^\r?\n\r?\n?/, "");
+    break;
+  }
+  return { id: id.length > 0 ? id : `relay:${from}:${body.slice(0, 80)}`, from, body };
+}
+
 function toolInputDetail(name: string, input: unknown, options: ChatEventMapOptions): AgentChatToolDetail | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const row = input as Record<string, unknown>;
@@ -1664,6 +1728,11 @@ function toolInputDetail(name: string, input: unknown, options: ChatEventMapOpti
   } else if (name === "SendMessage") {
     // 수신자와 본문은 제공자 세션 신원이 아니다. 둘 다 사용자 텍스트로 취급해 가린다.
     add("message", typeof row.to === "string" ? `→ ${row.to}\n${typeof row.message === "string" ? row.message : ""}` : row.message, 200, TOOL_DETAIL_SIDE_BYTES);
+  } else if (name === OBJECTIVE_MESSAGE_TOOL) {
+    // 그룹 전언이 이 구간에서 `to` 를 읽는다. 세션 이름도 여기 남기되, 원장 한 줄과 펼친 표시는 클라이언트에서 지운다.
+    const to = typeof row.to === "string" ? row.to : "";
+    const body = typeof row.text === "string" ? row.text : "";
+    add("message", to.length > 0 ? `→ ${to}\n${body}` : body, 200, TOOL_DETAIL_SIDE_BYTES);
   }
   return sections.length > 0 ? { sections } : null;
 }
@@ -1694,9 +1763,10 @@ function toolResultDetail(name: string | undefined, content: unknown, options: C
  * 전체 입력(파일 본문·프롬프트)은 싣지 않는다. 경로 필드는 브라우저로 나가는 스트림이므로
  * raw 절대 경로 대신 표시형으로 옮긴다(Console 보안 계약).
  */
-export function summarizeToolInput(input: unknown, options: ChatEventMapOptions = {}): string {
+export function summarizeToolInput(input: unknown, options: ChatEventMapOptions = {}, name?: string): string {
   if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   const record = input as Record<string, unknown>;
+  if (name === OBJECTIVE_MESSAGE_TOOL && typeof record.to === "string") return objectiveMessageLedgerLine(record.to);
   for (const key of PATH_KEYS.concat(["to", "command", "pattern", "url", "query", "description", "prompt", "subject"])) {
     const value = record[key];
     if (typeof value === "string" && value.trim().length > 0) {

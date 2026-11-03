@@ -691,7 +691,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       };
       assertDeliveryCurrent();
       const origin = input.rosterSpeaker
-        ? { kind: "objectiveRecord" as const, objectiveId: input.rosterSpeaker.objectiveId, title: input.rosterSpeaker.title }
+        ? { kind: "objectiveRecord" as const, objectiveId: input.rosterSpeaker.objectiveId, title: input.rosterSpeaker.title, roster: true as const }
         : chatOrigin(caller);
       const authored = origin?.kind === "plugin" && input.humanInput ? { ...origin, humanInput: input.humanInput } : origin;
       await deliverMessage(objectiveId, input.text!, input.attachmentIds ?? [], reply, assertDeliveryCurrent, settled, authored, input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);

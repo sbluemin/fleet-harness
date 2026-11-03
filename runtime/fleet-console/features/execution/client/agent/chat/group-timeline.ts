@@ -1,5 +1,5 @@
 import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot, ObjectiveClusterConversation } from "../../../shared/conversation/types.js";
-import { isPersonQueueEntry, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
+import { isPersonQueueEntry, OBJECTIVE_MESSAGE_TOOL, rosterAddress, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
 
 const ENTRY_CAP = 600;
 const TEXT_CAP = 60_000;
@@ -62,9 +62,9 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
           : { kind: "human", name: "Human" };
       // 보드 행위에 덧붙인 말은 프롬프트 속 인용 그대로 표시 문면이 된다 — 다시 연 뒤에도 같은 구간이 서도록 인용은 호스트에 두고 여기서 걷는다.
       const text = via ? unquote(event.text) : event.text;
-      // 로스터 발화(message 도구)는 받는 쪽 원장에만 선다. 그 원장의 참여자가 받는 사람이다.
-      const rosterTurn = origin?.kind === "objectiveRecord" && origin.objectiveId !== objectiveId;
-      const recipient = human?.targetObjectiveId ? objectiveRecordSpeaker(human.targetObjectiveId) : via ? speaker : rosterTurn ? speaker : undefined;
+      // 로스터가 넣은 말은 그룹 말풍선이 아니다. 전언은 보낸 쪽 message 도구 줄이 지고, 받는 쪽 원장은 「받은 메시지」로 읽는다.
+      if (origin?.kind === "objectiveRecord" && origin.roster === true && origin.objectiveId !== objectiveId) break;
+      const recipient = human?.targetObjectiveId ? objectiveRecordSpeaker(human.targetObjectiveId) : via ? speaker : undefined;
       entries.push({ kind: "message", id: human ? `human:${human.id}` : id, at, objectiveId, speaker: by, text,
         ...((event.format || by.kind !== "human") && !via ? { format: "markdown" as const } : {}),
         ...(event.attachments?.length ? { attachments: event.attachments } : {}), streaming: false,
@@ -87,6 +87,35 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       if (draft?.kind === "message") entries = entries.map((entry) => entry === draft ? { ...draft, text: event.text, streaming: false } : entry);
       else entries.push({ kind: "message", id, at, objectiveId, speaker, text: event.text, format: "markdown", streaming: false, turn: turnOf() });
       draftId = null;
+      break;
+    }
+    case "tool": {
+      // 그룹 전언은 보낸 쪽 원장의 message 도구 줄뿐이다. SendMessage 와 받은 줄은 전언이 아니다.
+      if (event.name !== OBJECTIVE_MESSAGE_TOOL || !event.id) return state;
+      const message = event.toolDetail?.sections.find((section) => section.kind === "message")?.text ?? "";
+      const split = message.indexOf("\n");
+      const hasRecipient = message.startsWith("→ ");
+      const token = hasRecipient ? message.slice(2, split < 0 ? undefined : split).trim() : "";
+      const address = rosterAddress(token);
+      const recipients: ConversationSpeaker[] = address?.kind === "id"
+        ? [{ kind: "objectiveRecord", objectiveId: address.id, name: address.id }]
+        : address?.kind === "commander"
+          ? [{ kind: "commander", name: "commander" }]
+          : address?.kind === "role"
+            ? [{ kind: "objectiveRecord", name: address.role }]
+            : [];
+      entries.push({
+        kind: "delegation", id: `delegation:${objectiveId}:${event.id}`, at, sender: speaker, recipients,
+        text: hasRecipient ? (split < 0 ? "" : message.slice(split + 1)) : message,
+        result: "", received: false, turn: turnOf(),
+      });
+      break;
+    }
+    case "tool-result": {
+      const target = `delegation:${objectiveId}:${event.id}`;
+      if (!entries.some((entry) => entry.kind === "delegation" && entry.id === target)) return state;
+      const result = event.toolDetail?.sections.filter((section) => section.kind === "result").map((section) => section.text).join("\n") || event.summary;
+      entries = entries.map((entry) => entry.kind === "delegation" && entry.id === target ? { ...entry, result, ok: event.ok } : entry);
       break;
     }
     case "turn-start":
@@ -171,6 +200,17 @@ function resolvedEntry(item: GroupTimelineEntry, speakers: readonly Conversation
   return entry;
 }
 
+/**
+ * 메시지 도구가 남긴 받는 이 힌트를 로스터 발화자로 푼다.
+ * 지휘관은 종류로, 로스터 id 는 참여자 id 로, 역할은 이름이 하나일 때만. 세션 이름과 못 찾는 힌트는 없다.
+ */
+function resolveRosterRecipient(hint: ConversationSpeaker, speakers: ReadonlyMap<string, ConversationSpeaker>, participants: readonly ConversationParticipant[]): ConversationSpeaker | null {
+  if (hint.kind === "commander" || hint.name === "commander") return participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
+  if (hint.objectiveId && speakers.has(hint.objectiveId)) return speakers.get(hint.objectiveId)!;
+  const named = participants.filter((participant) => participant.speaker.name === hint.name);
+  return named.length === 1 ? named[0]!.speaker : null;
+}
+
 export function composeGroupTimeline(input: {
   readonly rootObjectiveId: string | null;
   readonly participants: readonly ConversationParticipant[];
@@ -202,7 +242,17 @@ export function composeGroupTimeline(input: {
       if (item.kind === "plugin-notice") {
         const recipient = resolve(item.recipient);
         entries.set(item.id, resolvedEntry(item, [recipient], () => ({ ...item, recipient })));
+        continue;
       }
+      if (item.kind !== "delegation") continue;
+      // 보낸 이는 원장 id 접두의 참여자다. 받는 이는 로스터의 역할·지휘관만 — 풀리지 않는 힌트는 비운다.
+      const senderId = [...speakers.keys()].sort((a, b) => b.length - a.length).find((id) => item.id.startsWith(`delegation:${id}:`));
+      const sender = senderId ? speakers.get(senderId)! : resolve(item.sender);
+      const resolvedRecipients = item.recipients.flatMap((hint) => {
+        const recipient = resolveRosterRecipient(hint, speakers, input.participants);
+        return recipient ? [recipient] : [];
+      });
+      entries.set(item.id, resolvedEntry(item, [sender, ...resolvedRecipients], () => ({ ...item, sender, recipients: resolvedRecipients })));
     }
   }
   // 대기 말은 확정 말 뒤에 얹는다. 같은 사람 발송 id 의 확정 말이 이미 있으면 그 말이 이긴다(중복으로 세우지 않는다).

@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
-import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
+import { chatReplayFromTranscriptLine } from "../../features/execution/host/agent/chat-events.js";
+import { AgentChatRegistry, createTranscriptReplayer, readTranscriptHistory, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
 import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
 import { initialAgentChatLogState, reduceAgentChatLog, splitAgentChatTurn } from "../../features/execution/client/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
@@ -1362,6 +1363,43 @@ describe("AgentChatRegistry — stopping a turn", () => {
       expect(turns.at(-1)).toMatchObject({ state: "done", answer: "after" });
     }
     await registry.disposeAll();
+  });
+});
+
+describe("dormant transcript history", () => {
+  it("keeps an objective message tool and its result, and drops other tools", async () => {
+    const dir = tempDir("chat-history-");
+    const file = path.join(dir, "t.jsonl");
+    const lines = [
+      { type: "assistant", timestamp: "2026-11-04T00:00:00.000Z", message: { role: "assistant", content: [{ type: "tool_use", id: "send-1", name: "mcp__fleet-objectives__message", input: { to: "Verifier", text: "Review this" } }] } },
+      { type: "user", timestamp: "2026-11-04T00:00:01.000Z", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "send-1", content: "delivered" }] } },
+      { type: "assistant", timestamp: "2026-11-04T00:00:02.000Z", message: { role: "assistant", content: [{ type: "tool_use", id: "bash-1", name: "Bash", input: { command: "ls" } }] } },
+      { type: "user", timestamp: "2026-11-04T00:00:03.000Z", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "bash-1", content: "x" }] } },
+    ];
+    writeFileSync(file, lines.map((line) => JSON.stringify(line)).join("\n"));
+    const history = await readTranscriptHistory(file, { limit: 50, maxBytes: 1_000_000 });
+    const names = history?.entries.map((entry) => entry.event.kind === "tool" ? `tool:${entry.event.name}` : entry.event.kind) ?? [];
+    expect(names).toEqual(["tool:mcp__fleet-objectives__message", "tool-result"]);
+  });
+
+  it("opens a replay turn for a roster delivery without a user bubble", () => {
+    const member = "11111111-2222-3333-4444-555555555555";
+    const relay = (id: string) => `[message from member Verifier (${member}) — reply with the fleet-objectives message tool, to: "${member}"]\nmessageId: ${id}\n\nReview this`;
+    const lines = [
+      { type: "user", timestamp: "2026-11-04T00:00:00.000Z", message: { role: "user", content: relay("m-1") } },
+      { type: "assistant", timestamp: "2026-11-04T00:00:05.000Z", message: { role: "assistant", content: [{ type: "text", text: "Done" }] } },
+      { type: "user", timestamp: "2026-11-04T00:01:00.000Z", message: { role: "user", content: relay("m-2") } },
+      { type: "assistant", timestamp: "2026-11-04T00:01:04.000Z", message: { role: "assistant", content: [{ type: "text", text: "Again" }] } },
+    ];
+    const emitted: string[] = [];
+    const replayer = createTranscriptReplayer((raw) => chatReplayFromTranscriptLine(raw), (event) => {
+      emitted.push(event.kind === "turn-end" && "durationMs" in event ? `turn-end:${event.durationMs}` : event.kind);
+    });
+    for (const line of lines) replayer.line(JSON.stringify(line));
+    replayer.end();
+    expect(replayer.turns()).toBe(2);
+    expect(emitted).toEqual(["turn-start", "received", "text", "turn-end:5000", "turn-start", "received", "text", "turn-end:4000"]);
+    expect(emitted).not.toContain("dispatch");
   });
 });
 

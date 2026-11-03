@@ -382,26 +382,31 @@ it("keeps independent group journals alive across view closure, merges only conf
       source.open(); target.open();
       emit(source, 1, { kind: "dispatch", text: "Start the review" });
       emit(source, 2, { kind: "text", text: "I will delegate." });
+      emit(source, 3, { kind: "tool", id: "send-1", name: "mcp__fleet-objectives__message", detail: "→ Verifier", toolDetail: { sections: [{ kind: "message", text: "→ Verifier\nReview this" }] } });
+      emit(source, 4, { kind: "tool-result", id: "send-1", ok: true, summary: "Delivered" });
       emit(source, 5, { kind: "snapshot-end", turns: 1 });
     });
+    expect(group!.entries.find((entry) => entry.kind === "delegation")).toMatchObject({
+      received: false, ok: true, text: "Review this", recipients: [{ objectiveId: "member", name: "Verifier", mark: { number: 1, tone: "teal" } }],
+    });
     act(() => {
-      emit(target, 5, { kind: "dispatch", text: "Review this", by: { kind: "objectiveRecord", objectiveId: "root", title: "Commander" } });
+      emit(target, 5, { kind: "dispatch", text: "Review this", by: { kind: "objectiveRecord", objectiveId: "root", title: "Commander", roster: true } });
       emit(target, 6, { kind: "text", text: "Review complete" });
       emit(source, 7, { kind: "snapshot-end", turns: 1 });
       emit(target, 8, { kind: "snapshot-end", turns: 1 });
     });
-    expect(group!.entries.filter((entry) => entry.kind === "delegation")).toHaveLength(0);
-    expect(group!.entries.find((entry) => entry.kind === "message" && entry.text === "Review this")).toMatchObject({
-      speaker: { objectiveId: "root", kind: "commander" }, recipient: { objectiveId: "member", name: "Verifier", mark: { number: 1, tone: "teal" } },
-    });
+    expect(group!.entries.filter((entry) => entry.kind === "delegation")).toHaveLength(1);
+    expect(group!.entries.find((entry) => entry.kind === "message" && entry.text === "Review this")).toBeUndefined();
     expect(group!.working.map((speaker) => speaker.objectiveId)).toEqual(["root", "member"]);
     expect(group!.preview).toMatchObject({ text: "Review complete", speaker: { objectiveId: "member" } });
     act(() => {
-      emit(source, 9, { kind: "turn-inject", text: "Report", by: { kind: "objectiveRecord", objectiveId: "member", title: "Verifier" } });
+      emit(target, 9, { kind: "tool", id: "reply", name: "mcp__fleet-objectives__message", detail: "→ commander", toolDetail: { sections: [{ kind: "message", text: "→ commander\nReport" }] } });
+      emit(target, 10, { kind: "tool-result", id: "reply", ok: true, summary: "Delivered" });
+      emit(source, 8, { kind: "tool", id: "sess", name: "mcp__fleet-objectives__message", detail: "", toolDetail: { sections: [{ kind: "message", text: "→ objective-abc123-member-1\nHidden" }] } });
     });
-    expect(group!.entries.find((entry) => entry.kind === "message" && entry.text === "Report")).toMatchObject({
-      speaker: { objectiveId: "member", name: "Verifier" }, recipient: { objectiveId: "root", kind: "commander" },
-    });
+    expect(group!.entries.find((entry) => entry.id === "delegation:member:reply")).toMatchObject({ received: false, recipients: [{ objectiveId: "root", kind: "commander" }] });
+    expect(group!.entries.find((entry) => entry.id === "delegation:root:sess")).toMatchObject({ recipients: [] });
+    expect(group!.entries.find((entry) => entry.kind === "message" && entry.text === "Report")).toBeUndefined();
     // 휴면 참여자: ticket·소켓 없이 지난 대화가 읽기 전용으로 선다.
     expect(ticketFetches.some(({ body }) => ["archived", "waking"].includes((body as { objectiveId?: string } | null)?.objectiveId ?? ""))).toBe(false);
     expect([...histories.keys()].sort()).toEqual(["archived", "waking"]);
@@ -423,7 +428,7 @@ it("keeps independent group journals alive across view closure, merges only conf
     expect(source.closed || target.closed).toBe(false);
     act(() => { emit(target, 11, { kind: "received", id: "root:different-call", from: "Commander", text: "Review this", inTurn: false }); });
     render();
-    expect(group!.entries.filter((entry) => entry.kind === "delegation")).toHaveLength(0);
+    expect(group!.entries.filter((entry) => entry.kind === "delegation")).toHaveLength(3);
     act(() => { emit(source, 10, { kind: "cleared" }); });
     expect(group!.entries.some((entry) => entry.kind === "message" && entry.objectiveId === "root")).toBe(false);
     expect(group!.preview?.text).toBe("Review complete");

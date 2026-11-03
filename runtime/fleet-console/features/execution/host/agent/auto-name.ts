@@ -25,7 +25,7 @@ const SECRET_CHARSET_PATTERN = /^[A-Za-z0-9_\-+/=.]+$/;
  * 목표 message 도구가 모델 문면 맨 앞에 붙이는 한 줄(`features/objectives/host/launch.ts`).
  * 이 줄로 시작하는 프롬프트는 사람이 붙인 이름이 아니다.
  */
-const OBJECTIVE_RELAY_LINE = /^\[message from (?:the Commander|member [^\]\n]+ \([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\))\]$/i;
+const OBJECTIVE_RELAY_LINE = /^\[message from (?:the Commander|member [^\]\n]+ \([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\))(?: — [^\]]*)?\]$/i;
 
 function isObjectiveRelayPrompt(prompt: string): boolean {
   const first = prompt.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim() ?? "";
