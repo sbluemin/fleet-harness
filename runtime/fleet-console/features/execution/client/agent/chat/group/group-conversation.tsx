@@ -438,6 +438,16 @@ function sameSpeaker(entry: AgentConversationEntry | undefined, speaker: Convers
   return entry?.kind === "message" && speakerKey(entry.speaker) === speakerKey(speaker);
 }
 
+/** 받는 사람이 바뀌면 같은 발화자여도 새 묶음이다. 없는 수신과 있는 수신도 다르다. */
+function sameRecipient(previous: AgentConversationEntry | undefined, entry: AgentConversationEntry): boolean {
+  if (previous?.kind !== "message" || entry.kind !== "message") return false;
+  const before = previous.recipient;
+  const after = entry.recipient;
+  if (!before && !after) return true;
+  if (!before || !after) return false;
+  return speakerKey(before) === speakerKey(after);
+}
+
 /** 말풍선이 서는 말인가 — 문면이 없는 말은 흐르는 중일 때만 「쓰는 중」으로 선다(`MessageBubble` 과 같은 규칙). */
 const bubbleShown = (entry: Extract<GroupTimelineEntry, { kind: "message" }>): boolean =>
   entry.streaming || entry.text.trim().length > 0 || !!entry.attachments?.length;
@@ -465,7 +475,8 @@ function bubbleRunTails(entries: readonly (AgentConversationEntry | null)[], bre
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
     if (entry?.kind !== "message" || entry.speaker.kind === "human") { if (tail) tails.add(tail); tail = null; continue; }
-    if (!sameSpeaker(entries[index - 1] ?? undefined, entry.speaker) || breaks.has(entry.id)) { if (tail) tails.add(tail); tail = null; }
+    const previous = entries[index - 1] ?? undefined;
+    if (!sameSpeaker(previous, entry.speaker) || !sameRecipient(previous, entry) || breaks.has(entry.id)) { if (tail) tails.add(tail); tail = null; }
     if (bubbleShown(entry)) tail = entry.id;
   }
   if (tail) tails.add(tail);
@@ -727,7 +738,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly onOpenUISend?: GroupConversationProps["onOpenUISend"];
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && sameRecipient(previous, entry) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
     case "delegation": return <RelayLine entry={entry} language={language} onOpen={onOpenRelay} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -747,6 +758,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   if (after.entry.kind !== "message") return true;
   const speaker = after.entry.speaker;
   if (sameSpeaker(before.previous, speaker) !== sameSpeaker(after.previous, speaker)) return false;
+  if (sameRecipient(before.previous, after.entry) !== sameRecipient(after.previous, after.entry)) return false;
   // 최신 표식만 참여자 활동을 읽는다. 다른 참여자의 델타 때문에 지난 말까지 다시 그리지 않는다.
   const activity = (participants: readonly ConversationParticipant[]) => participants.find((participant) => speakerKey(participant.speaker) === speakerKey(speaker))?.activity;
   return !after.live || activity(before.participants) === activity(after.participants);
