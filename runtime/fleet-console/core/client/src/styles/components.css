@@ -9154,11 +9154,11 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-editor__menu {
   position: absolute;
   left: 0;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 14px);
   z-index: 1;
   display: grid;
   gap: 2px;
-  min-width: 140px;
+  width: max-content;
   padding: var(--space-1);
   border-radius: var(--radius-md);
   background: var(--popover-face);
@@ -9168,15 +9168,25 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 6px 10px;
+  min-height: 32px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-primary);
   font: inherit;
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
+  white-space: nowrap;
   text-align: left;
   cursor: pointer;
+}
+.fc-composer-editor__menu svg { width: 16px; height: 16px; flex: none; }
+.fc-composer-editor__width-sample {
+  display: block;
+  width: 24px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: currentColor;
 }
 .fc-composer-editor__menu button[aria-checked="true"],
 .fc-composer-editor__menu button:hover,

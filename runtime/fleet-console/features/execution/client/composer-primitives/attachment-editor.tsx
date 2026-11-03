@@ -403,6 +403,12 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
   const coverLabel = t(COVERS.find((item) => item.id === cover)?.label ?? "composer.attach.mosaic");
   const widthLabel = t(THICKNESS.find((item) => item.value === width)?.label ?? "composer.attach.width.medium");
   const locked = saving || !base;
+  const shownScale = (() => {
+    const canvas = canvasRef.current;
+    if (!canvas || canvas.width === 0) return 1;
+    const box = canvas.getBoundingClientRect();
+    return box.width > 0 ? box.width / canvas.width : 1;
+  })();
 
   return (
     <div className="fc-composer-editor">
@@ -463,7 +469,7 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
         )}
         <span className="fc-composer-editor__slot">
           <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.width")} title={widthLabel} aria-expanded={menu === "width"} disabled={locked} onClick={() => toggleMenu("width")}><WidthGlyph value={width} /><CaretGlyph /></button>
-          {menu === "width" ? <InkMenu label={t("composer.attach.width")} items={THICKNESS.map((item) => ({ id: String(item.value), label: t(item.label), checked: item.value === width, glyph: <WidthGlyph value={item.value} /> }))} onPick={(id) => { rememberedWidth = Number(id); setWidth(Number(id)); setMenu(null); }} /> : null}
+          {menu === "width" ? <InkMenu label={t("composer.attach.width")} items={THICKNESS.map((item) => ({ id: String(item.value), label: t(item.label), checked: item.value === width, glyph: <WidthSample value={item.value} scale={shownScale} /> }))} onPick={(id) => { rememberedWidth = Number(id); setWidth(Number(id)); setMenu(null); }} /> : null}
         </span>
         {ops.length > 0 || redo.length > 0 ? (
           <>
@@ -507,8 +513,13 @@ function TrashGlyph() {
 }
 
 function WidthGlyph({ value }: { readonly value: number }) {
-  const stroke = value <= 2 ? 1.4 : value <= 4 ? 2.2 : value <= 8 ? 3.4 : 5;
+  const stroke = value <= 2 ? 1.5 : value <= 4 ? 2.6 : value <= 8 ? 4 : 6.5;
   return <Glyph><path d="M2 8h12" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" /></Glyph>;
+}
+
+function WidthSample({ value, scale }: { readonly value: number; readonly scale: number }) {
+  const thickness = Math.min(16, Math.max(1, value * scale));
+  return <span className="fc-composer-editor__width-sample" style={{ height: `${thickness}px` }} />;
 }
 
 function CoverStyleGlyph({ kind }: { readonly kind: Cover }) {
@@ -523,7 +534,7 @@ function MarkGlyph({ kind }: { readonly kind: Shape | "cover" }) {
   if (kind === "rect") return <Glyph><rect x="3" y="3.5" width="10" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="1.6" /></Glyph>;
   if (kind === "ellipse") return <Glyph><ellipse cx="8" cy="8" rx="5.2" ry="4" fill="none" stroke="currentColor" strokeWidth="1.6" /></Glyph>;
   if (kind === "step") return <Glyph><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="8" cy="8" r="1.3" fill="currentColor" /></Glyph>;
-  return <Glyph><path d="M3.2 11.5c1.6-3 2.2-3 3.4-1.2 1.1 1.6 1.6 1.6 2.6-.2 1-1.8 1.6-1.8 3.6.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Glyph>;
+  return <Glyph><path d="M2.2 8s2.2-3.4 5.8-3.4 5.8 3.4 5.8 3.4-2.2 3.4-5.8 3.4S2.2 8 2.2 8z" fill="none" stroke="currentColor" strokeWidth="1.4" /><circle cx="8" cy="8" r="1.5" fill="currentColor" /><path d="M3.4 3.4 12.6 12.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></Glyph>;
 }
 
 function HistoryGlyph({ flip = false }: { readonly flip?: boolean }) {
