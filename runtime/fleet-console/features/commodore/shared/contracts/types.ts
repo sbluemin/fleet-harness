@@ -5,6 +5,7 @@ import { normalizeCommodoreAlias } from "../alias.js";
 import { commodorePluginsSchema } from "./plugins.js";
 
 import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS, storedDecisionHeader } from "./questions.js";
+import { MAX_COMMODORE_MESSAGE_IMAGES } from "./attachment-budget.js";
 
 /**
  * 사령관(Commodore) — UUID마다 하나, Console feature가 소유하는 자율 운영 상태의 브라우저 투영.
@@ -319,11 +320,11 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "resumed", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional(), model: z.string().min(1).max(200).optional(), effort: z.string().min(1).max(32).optional() }).strict(),
   // 압축 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("compacted"), trigger: z.enum(["auto", "manual"]), preTokens: z.number().int().nonnegative(), postTokens: z.number().int().nonnegative().optional() }).strict(),
-  z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional(),
+  z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(MAX_COMMODORE_MESSAGE_IMAGES).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional(),
     // 본문 속 참조 — 이 낱말을 모르는 옛 판은 이 줄을 깨진 줄처럼 건너뛴다.
     references: z.array(z.object({ id: ids, title: z.string().max(200), kind: z.literal("commodore").optional() }).strict()).min(1).max(MAX_COMMODORE_REFERENCES).optional() }).strict(),
-  z.object({ ...transcriptBase, kind: z.literal("sent"), messageId: ids, to: peer, text, replyTo: ids.optional(), ok: z.boolean(), error: z.string().max(64).optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional() }).strict(),
-  z.object({ ...transcriptBase, kind: z.literal("received"), messageId: ids, from: peer, text, replyTo: ids.optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("sent"), messageId: ids, to: peer, text, replyTo: ids.optional(), ok: z.boolean(), error: z.string().max(64).optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(MAX_COMMODORE_MESSAGE_IMAGES).optional(), imageBytes: z.number().int().nonnegative().optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("received"), messageId: ids, from: peer, text, replyTo: ids.optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(MAX_COMMODORE_MESSAGE_IMAGES).optional(), imageBytes: z.number().int().nonnegative().optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("received-read"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("mention-result"), messageSeq: z.number().int().nonnegative(), unrelayed: z.array(peer).max(MAX_COMMODORE_REFERENCES) }).strict(),
   // 기록은 덧붙이기만 한다 — 지난 message 줄을 고쳐 쓰지 않고 이 줄이 가리킨다. 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.

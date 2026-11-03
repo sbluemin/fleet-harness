@@ -4,6 +4,7 @@ import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 import type { CommodoreMessageInput } from "./messaging.js";
 import { COMMODORE_EFFORTS, MAX_DESCRIPTION, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_TRANSCRIPT_TEXT } from "../shared/contracts/types.js";
+import { MAX_COMMODORE_MESSAGE_IMAGES } from "../shared/contracts/attachment-budget.js";
 import { isExperimentModelId } from "../../settings/shared/experiments.js";
 import { MAX_MEMORY_ENTRIES, memoryRefSchema } from "./memory.js";
 import type { CommodoreCreateInput } from "./creation.js";
@@ -20,7 +21,7 @@ const commodores = defineConsoleTool({
       to: z.string().uuid().describe("Recipient Commodore id from list."),
       text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT),
       replyTo: z.string().min(1).max(128).optional().describe("Message id this replies to, if any."),
-      attachmentIds: z.array(z.string().uuid()).min(1).max(4).optional().describe("This turn's or your own objective's image IDs to forward; the recipient gets them as turn attachments."),
+      attachmentIds: z.array(z.string().uuid()).min(1).max(MAX_COMMODORE_MESSAGE_IMAGES).optional().describe("This turn's or your own objective's image IDs to forward; the recipient gets them as turn attachments."),
     }) },
     create: { kind: "write", callers: ["commodore"], input: z.object({
       alias: z.string().trim().refine((value) => !!value && normalizeCommodoreAlias(value) === value),

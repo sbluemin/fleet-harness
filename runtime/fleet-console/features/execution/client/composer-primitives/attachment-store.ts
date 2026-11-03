@@ -93,8 +93,8 @@ export interface ComposerAttachments {
    */
   noteSendFailure(error: unknown, submittedIds: readonly string[]): "expired" | "other";
   /**
-   * 편집본을 새로 올리고 지금 업로드에는 삭제 요청을 보낸다. 첫 저장 때 미리보기의 바이트를 원본으로 잡아 둔다.
-   * 실패하면 칩은 그대로다. 업로드 도중 칩을 빼면 옛 id와 새 id를 모두 거둔다.
+   * 편집본을 새로 올리고 지금 업로드에는 삭제 요청을 보낸다. 원본 바이트는 첨부 때 받은 File이라
+   * blob: URL을 다시 읽지 않는다. 실패하면 칩은 그대로다. 업로드 도중 칩을 빼면 옛 id와 새 id를 모두 거둔다.
    */
   commitEdit(key: string, file: Blob): Promise<ComposerAttachmentEditResult>;
   /** 잡아 둔 원본을 다시 올리고 편집본 업로드에 삭제 요청을 보낸다. 원본 바이트는 보낼 때까지 남긴다. */
@@ -200,7 +200,7 @@ export function createComposerAttachments(
         const previewUrl = URL.createObjectURL(file);
         const named = (nameFor?.(file) ?? "").trim();
         const name = named.length > 0 ? named : file.name.trim().length > 0 ? file.name : "pasted image";
-        items.push({ key, id: null, name, previewUrl, uploading: true, edited: false, source: null });
+        items.push({ key, id: null, name, previewUrl, uploading: true, edited: false, source: file });
         void port.upload(file).then(({ id }) => {
           if (disposed || canceled.delete(key) || !stillThere(key)) {
             revoke(previewUrl);
@@ -342,24 +342,12 @@ export function createComposerAttachments(
         emit();
         return "tooLarge";
       }
-      let source = found.source;
-      if (source === null) {
-        try {
-          const response = await fetch(found.previewUrl);
-          if (!response.ok) throw new Error("attachment_upload_failed");
-          source = await response.blob();
-        } catch {
-          if (disposed || !stillThere(key)) return "missing";
-          notice = { kind: "failed" };
-          emit();
-          return "failed";
-        }
-      }
+      // 원본은 첨부 때 보관한다. blob: 미리보기를 fetch하면 CSP connect-src가 막는다.
+      const source = found.source;
       const current = items.find((item) => item.key === key);
       if (!current || disposed || current.uploading || current.id === null) return "missing";
       const previousId = current.id;
       current.uploading = true;
-      notice = null;
       emit();
       try {
         const { id } = await port.upload(file);
@@ -381,6 +369,7 @@ export function createComposerAttachments(
         next.uploading = false;
         next.edited = true;
         next.source = source;
+        if (notice?.kind === "failed" || notice?.kind === "tooLarge") notice = null;
         emit();
         if (previousPreview !== previewUrl) revoke(previousPreview);
         discard(previousId);
@@ -403,7 +392,6 @@ export function createComposerAttachments(
       const source = found.source;
       const previousId = found.id;
       found.uploading = true;
-      notice = null;
       emit();
       try {
         const { id } = await port.upload(source);
@@ -425,6 +413,7 @@ export function createComposerAttachments(
         next.uploading = false;
         next.edited = false;
         next.source = source;
+        if (notice?.kind === "failed" || notice?.kind === "tooLarge") notice = null;
         emit();
         if (previousPreview !== previewUrl) revoke(previousPreview);
         discard(previousId);

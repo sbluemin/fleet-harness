@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { createObjectiveActions } from "./actions.js";
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
+import { MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH } from "../../execution/host/agent/launch-attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
@@ -390,7 +391,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     { name: "decision/answer", method: "POST", summary: "Answer the Commander's current decision request: every question at once. The answers reach the same Commander conversation (starting an SDK child only when needed); once delivered they stay as decisions and the request clears.", handler: json(decisionAnswersSchema.extend({ objectiveId: ids, language }), actions.answer) },
     // 「결정 안 함」 닫기 — 요청 전체를 선택·입력 없이 닫는다. 답과 같은 전달·잠금·중복 규칙을 쓰고, 결정에는 질문마다 「결정 안 함」 표시가 남는다.
     { name: "decision/decline", method: "POST", summary: "Close the Commander's current decision request without deciding: no option chosen, nothing handed to the Commander, nothing deferred. Recorded per question as declined and the request clears.", handler: json(objectiveRef.extend({ requestId: ids }), actions.decline) },
-    { name: "commander/message", method: "POST", summary: "Send the person's words verbatim to the Commander or one member session, with the images the person attached (attachmentIds from the Console attachment upload) riding only that one session; text may be empty only when attachmentIds are present; a member message is also quoted to the Commander in one line.", handler: json(objectiveRef.extend({ memberId: ids.nullable().optional(), text: z.string().trim().max(MAX_CONTEXT), attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(4).optional() })
+    { name: "commander/message", method: "POST", summary: "Send the person's words verbatim to the Commander or one member session, with the images the person attached (attachmentIds from the Console attachment upload) riding only that one session; text may be empty only when attachmentIds are present; a member message is also quoted to the Commander in one line.", handler: json(objectiveRef.extend({ memberId: ids.nullable().optional(), text: z.string().trim().max(MAX_CONTEXT), attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH).optional() })
       // 문면이 비어도 첨부가 있으면 보낼 말이다 — 둘 다 없으면 문면 길이 위반으로 거절한다.
       .superRefine((body, issue) => {
         if (!body.text && !body.attachmentIds?.length) issue.addIssue({ code: "too_small", origin: "string", minimum: 1, inclusive: true, path: ["text"], message: "text is required without attachmentIds" });

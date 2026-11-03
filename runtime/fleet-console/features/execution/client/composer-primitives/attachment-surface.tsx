@@ -67,7 +67,6 @@ export function ComposerAttachmentViewer({
   /** 보내기 전 첨부만 넘긴다. 없으면 연필이 없고 보기만 한다. */
   readonly edit?: {
     readonly edited: boolean;
-    readonly notice: string | null;
     readonly commit: (file: Blob) => Promise<ComposerAttachmentEditResult>;
     readonly revert: () => Promise<ComposerAttachmentEditResult>;
     readonly t: Translate<ComposerMessageKey>;
@@ -82,12 +81,14 @@ export function ComposerAttachmentViewer({
   const [dirty, setDirty] = useState(false);
   const [confirmAfter, setConfirmAfter] = useState<"edit" | "close" | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editNotice, setEditNotice] = useState<string | null>(null);
   const imageKey = image?.key ?? null;
   useEffect(() => {
     setEditing(false);
     setDirty(false);
     setConfirmAfter(null);
     setSaving(false);
+    setEditNotice(null);
   }, [imageKey]);
   const requestLeave = (after: "edit" | "close") => {
     if (saving) return;
@@ -155,12 +156,16 @@ export function ComposerAttachmentViewer({
     void edit.commit(blob).then((result) => {
       setSaving(false);
       if (result === "ok") onClose();
+      else setEditNotice(result === "tooLarge" || result === "failed" ? composerAttachmentNoticeText({ kind: result }, edit.t) : null);
     });
   };
   const revert = () => {
     if (!edit || saving) return;
     setSaving(true);
-    void edit.revert().then(() => setSaving(false));
+    void edit.revert().then((result) => {
+      setSaving(false);
+      setEditNotice(result === "tooLarge" || result === "failed" ? composerAttachmentNoticeText({ kind: result }, edit.t) : null);
+    });
   };
   const showNav = images.length > 1 && !editing;
   return createPortal(
@@ -176,7 +181,7 @@ export function ComposerAttachmentViewer({
             src={image.src}
             edited={edit.edited}
             saving={saving}
-            notice={edit.notice}
+            notice={editNotice}
             t={edit.t}
             onDirty={setDirty}
             onSave={save}
@@ -208,7 +213,7 @@ export function ComposerAttachmentViewer({
 
 /** 붙인 이미지 줄 — 썸네일은 단추이고, 누르면 확대 보기가 같이 온다. 비어 있으면 그리지 않는다. */
 export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerAttachmentTrayProps) {
-  const { items, notice } = useComposerAttachmentSnapshot(store);
+  const { items } = useComposerAttachmentSnapshot(store);
   const [index, setIndex] = useState<number | null>(null);
   const originRef = useRef<HTMLButtonElement | null>(null);
   if (items.length === 0) return null;
@@ -253,7 +258,6 @@ export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerA
           nextLabel={t("composer.attach.next")}
           edit={{
             edited: openItem.edited,
-            notice: composerAttachmentNoticeText(notice, t),
             commit: (blob) => store.commitEdit(openItem.key, blob),
             revert: () => store.revertEdit(openItem.key),
             t,

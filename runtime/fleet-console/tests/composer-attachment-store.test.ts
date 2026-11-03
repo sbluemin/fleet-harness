@@ -42,7 +42,8 @@ describe("composer attachment expiry", () => {
     vi.stubGlobal("URL", { createObjectURL: () => `blob:${++urls}`, revokeObjectURL: revoke });
     const original = new Blob([Uint8Array.from([1, 2, 3])], { type: "image/png" });
     const edited = new Blob([Uint8Array.from([9, 9])], { type: "image/png" });
-    vi.stubGlobal("fetch", async () => new Response(original));
+    const fetchSpy = vi.fn(() => { throw new Error("csp"); });
+    vi.stubGlobal("fetch", fetchSpy);
     const uploaded: Blob[] = [];
     const discarded: string[] = [];
     let seq = 0;
@@ -67,7 +68,8 @@ describe("composer attachment expiry", () => {
     expect(store.read().items[0]?.edited).toBe(false);
     const handed = store.handoff();
     expect(handed.map((item) => item.id)).toEqual(["id-3"]);
-    // fetch가 원본 바이트의 새 Blob을 돌려준다. 되돌리기와 발사 초안은 그 바이트를 잃지 않는다.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // 원본은 첨부 때 받은 File이다. blob URL을 다시 읽지 않아도 되돌리기와 발사 초안이 그 바이트를 가진다.
     const bytes = async (blob: Blob | undefined) => {
       if (!blob) throw new Error("missing blob");
       return [...new Uint8Array(await blob.arrayBuffer())];
