@@ -116,6 +116,8 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly lastResponse: string | undefined;
   /** 사령관 머리에 호버 독(⋯ → 새 목표·정렬·목록 위치·펼침 유지)이 선다. TaskForce 행에는 서지 않는다. */
   readonly dock: boolean;
+  /** 표식(아바타) 단추가 직접 대화를 열 때도 「활성 사령관을 다시 골랐다」를 알린다 — 이름 쪽 활성화는 `onOpenInbox` 가 알린다. */
+  readonly onReselect?: () => void;
   readonly showStatusLiveTick: boolean;
   /**
    * 사람이 답할 차례인 결정 요청이 이 사령관에 있다 — 접힌 머리라도 아바타에 결정 상태를 남긴다.
@@ -391,12 +393,17 @@ export function ObjectiveRecordsSideBar({
     onEscape: closeActiveContextMenu,
   });
 
+  // 활성 사령관을 한 번 더 골랐다 — 머리의 이름 쪽이든 아바타(표식) 쪽이든 같은 규칙이다. 펼침 유지가 켜져 있으면 그 목록만 접고,
+  // 꺼져 있으면 바뀌지 않는다. 목록이 오른쪽이면 사이드바에 접을 목록이 없다.
+  const reselectActiveCommodore = (commodoreId: string) => {
+    if (commodoreId === owningCommodoreId && placement === "left") reselectCommander(commodoreId, readCommanderKeepExpanded());
+  };
+
   // 사령관 머리 — 그 사령관의 대화. 대화를 세울 수 없으면 첫 칸은 기여가 정한다(예: 자율 운영이 켜졌으면 사령관 기록). 아무도
   // 정하지 않으면 사령관 기록 칸이다.
   const openTheaterHeaderInbox = (theater: SideBarHead, returnFocus: HTMLElement | null) => {
     setActiveContextMenu(null);
-    // 활성 사령관을 한 번 더 눌렀다 — 펼침 유지가 켜져 있으면 그 목록만 접는다. 목록이 오른쪽이면 사이드바에 접을 목록이 없다.
-    if (theater.id === owningCommodoreId && placement === "left") reselectCommander(theater.id, readCommanderKeepExpanded());
+    reselectActiveCommodore(theater.id);
     setZoneCommodore(theater.id);
     if (openCommodoreConversation(theater.id)) return;
     const landing = resolveTheaterInboxLanding(registry.theaterContributions, theater.id);
@@ -536,6 +543,7 @@ export function ObjectiveRecordsSideBar({
                 active={theater.id === owningCommodoreId}
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
                 dock
+                onReselect={() => reselectActiveCommodore(theater.id)}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
                 hasPersonDecision={personDecisionOwners.has(theater.id)}
@@ -672,6 +680,7 @@ function TheaterSectionHeader({
   active,
   lastResponse,
   dock,
+  onReselect,
   editingAlias,
   clampAlias,
   showStatusLiveTick,
@@ -766,6 +775,11 @@ function TheaterSectionHeader({
     if (dragging) suppressClickRef.current = true;
   };
 
+  // 표식 단추는 자기 클릭을 끝까지 처리하고 버블을 멈춘다 — 활성 사령관 재선택은 캡처 단계에서 먼저 알린다.
+  const markClickCapture = (event: MouseEvent<HTMLSpanElement>) => {
+    if (event.target instanceof Element && event.target.closest("button")) onReselect?.();
+  };
+
   // 이름은 사령관의 대화를 연다.
   const select = () => {
     if (suppressClickRef.current) {
@@ -802,6 +816,7 @@ function TheaterSectionHeader({
         // 머리를 누른 것과 같다.
         <span
           className="side-bar-theater-anchor side-bar-theater-mark"
+          onClickCapture={markClickCapture}
           onClick={(event) => { if (!(event.target instanceof Element && event.target.closest("button"))) select(); }}
         >
           {mark}

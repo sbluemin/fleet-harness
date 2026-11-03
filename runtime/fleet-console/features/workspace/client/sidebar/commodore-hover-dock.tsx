@@ -67,11 +67,13 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
 
   const newObjective = () => { close(false); openCommodoreNewSession(commodoreId); };
   const keepHint = t("sidebar.commodoreDock.keepExpandedHint");
+  // 정렬 메뉴가 열려 있는 동안은 독도 열린 채다 — 닫히면 메뉴가 든 줄이 inert가 되어 항목이 눌리지 않는다.
+  const shown = open || sortOpen;
 
   return (
     // 머리의 드래그·활성 Objective 해제에서 빠진다 — 이 단추들은 목록·설정만 다룬다.
-    <span ref={dockRef} className="commodore-dock" data-open={open ? "true" : "false"} data-keep-objective-active="" onMouseLeave={onMouseLeave} onKeyDown={onKeyDown}>
-      <span className="commodore-dock-strip" role="toolbar" aria-orientation="horizontal" aria-label={t("sidebar.commodoreDock.group", { theater: name })} inert={!open}>
+    <span ref={dockRef} className="commodore-dock" data-open={shown ? "true" : "false"} data-keep-objective-active="" onMouseLeave={onMouseLeave} onKeyDown={onKeyDown}>
+      <span className="commodore-dock-strip" role="toolbar" aria-orientation="horizontal" aria-label={t("sidebar.commodoreDock.group", { theater: name })} inert={!shown}>
         <button type="button" className="commodore-dock-button" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={newObjective}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
@@ -91,7 +93,7 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
         ref={triggerRef}
         type="button"
         className="commodore-dock-trigger"
-        aria-expanded={open}
+        aria-expanded={shown}
         aria-label={t("sidebar.commodoreDock.open", { theater: name })}
         title={t("sidebar.commodoreDock.open", { theater: name })}
         onMouseEnter={() => setOpen(true)}
