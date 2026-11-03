@@ -203,7 +203,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     }).strict(), ({ taskforceId, text, mentions }) => {
       const taskforce = options.taskforce;
       if (!taskforce) throw new Error("taskforce_unavailable");
-      if (text.length > MAX_TASKFORCE_POST_TEXT) throw new Error(`taskforce_post_too_long: ${text.length} characters exceeds the ${MAX_TASKFORCE_POST_TEXT} limit. Shorten to the conclusion and what the others must judge (about ${RECOMMENDED_TASKFORCE_POST_TEXT}); move long reasoning to the objective brief or a document and link it.`);
+      if (text.length > MAX_TASKFORCE_POST_TEXT) throw new TaskforceStoreError("taskforce_post_too_long", undefined, { limit: MAX_TASKFORCE_POST_TEXT, length: text.length, hint: `Shorten to the conclusion and what the others must judge (about ${RECOMMENDED_TASKFORCE_POST_TEXT} characters); move long reasoning to the objective brief or a document and link it.` });
       try {
         const { entry } = taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text, ...(mentions ? { mentions } : {}) });
         return { taskforceId, seq: entry.seq };
