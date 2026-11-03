@@ -10,7 +10,7 @@ import { createTaskforceStore, type TaskforceStore } from "../features/commodore
 import type { TaskforceEvent } from "../features/commodore/shared/contracts/taskforce.js";
 import { createCommodoreStore, type CommodoreStore } from "../features/commodore/host/store.js";
 import { createCommodoreTools } from "../features/commodore/host/tools.js";
-import { TF_PERSON_QUIET_MS, createCommodoreSupervisor } from "../features/commodore/host/supervisor.js";
+import { COALESCE_MS, TF_PERSON_QUIET_MS, createCommodoreSupervisor } from "../features/commodore/host/supervisor.js";
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
 import type { AgentEvent, AgentInputBlock } from "../features/execution/shared/agent.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
@@ -998,6 +998,40 @@ describe("taskforce runtime board actions", () => {
       // 1:1 기록의 tool 줄에도 결과의 objectiveId가 남았다.
       const toolEntry = h.store.transcriptRead(a).entries.find((entry) => entry.kind === "tool" && entry.name === "objectives");
       expect(toolEntry).toMatchObject({ action: "add", objectiveId: "o1", title: "온보딩 결제 단계 분리", ok: true });
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("taskforce mention wake", () => {
+  it("does not re-wake an unmentioned member after a mention overlapping its turn, and carries it into its next wake", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const { state } = h.taskforce.create({ name: "지목 TF", topic: "지목", members: [a, b] });
+      h.supervisor.sync("started");
+      const finishAll = async () => { for (const session of h.sessions) session.finish(); await vi.advanceTimersByTimeAsync(100); };
+      const sentOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).flatMap((session) => session.sent);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await finishAll();
+      h.taskforce.append(state.id, { speaker: { kind: "person" }, text: "첫 말" });
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
+      // 두 성원의 턴이 도는 중에 Alpha만 지목한다.
+      h.taskforce.append(state.id, { speaker: { kind: "person" }, text: "알파만", mentions: [a] });
+      await finishAll();
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
+      await finishAll();
+      const betaBefore = sentOf("Beta").length;
+      expect(sentOf("Alpha").join("\n")).toContain("알파만");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(sentOf("Beta")).toHaveLength(betaBefore);
+      h.taskforce.append(state.id, { speaker: { kind: "person" }, text: "모두에게" });
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
+      const carried = sentOf("Beta").slice(betaBefore).join("\n");
+      expect(carried).toContain("알파만");
+      expect(carried).toContain("모두에게");
+      await finishAll();
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });

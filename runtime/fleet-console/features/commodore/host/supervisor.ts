@@ -642,10 +642,17 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return writes.reverse();
   };
 
-  /** 자기 발언·렌더용 보드 묶음만으로는 깨우지 않는다. 읽음 커서는 성공한 턴만 전진시킨다. */
-  const tfNeedsJudgment = (entry: TaskforceLedgerEntry, commodoreId: string): boolean =>
-    !(entry.speaker.kind === "commodore" && entry.speaker.commodoreId === commodoreId)
-    && !(entry.actions?.length && !entry.text);
+  /**
+   * 자기 발언·렌더용 보드 묶음만으로는 깨우지 않는다. 다른 성원만 지목한 말도 나를 깨우지 않는다 — 다음 깨움에 함께 실린다
+   * (구독부의 지목 규칙과 같다: 발언자 자신만 지목한 말은 지목 없음으로 본다). 읽음 커서는 성공한 턴만 전진시킨다.
+   */
+  const tfNeedsJudgment = (entry: TaskforceLedgerEntry, commodoreId: string): boolean => {
+    const speakerId = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
+    if (speakerId === commodoreId) return false;
+    if (entry.actions?.length && !entry.text) return false;
+    const mentioned = entry.mentions.filter((id) => id !== speakerId);
+    return !mentioned.length || mentioned.includes(commodoreId);
+  };
 
   /** 재기동 재실음 — 읽지 않은 TF 원장이 있으면 판단으로 깨운다. 기록 위치(readSeq)가 남아 판단은 겹치지 않는다. */
   const requeueTaskforce = (runner: Runner) => {
