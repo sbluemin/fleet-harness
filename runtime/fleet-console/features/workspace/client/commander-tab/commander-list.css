@@ -62,26 +62,6 @@
 }
 .side-bar-commander-list .commander-tab { min-height: 0; padding: 0 10px 0; gap: 2px; }
 .side-bar-commander-list .commander-tab-groups { min-height: 0; }
-/* 기본·최소 폭 280px에서는 "정렬 · 최근 활동"이 띄어쓰기에서 두 줄이 된다. 한 줄로 말줄임한다. */
-.side-bar-commander-list .commander-tab-bar,
-.side-bar-commander-list .commander-tab-sort { min-width: 0; }
-.side-bar-commander-list .commander-tab-sort { position: static; flex: 0 1 auto; }
-.side-bar-commander-list .commander-tab-direction,
-.side-bar-commander-list .commander-place { flex: none; }
-.side-bar-commander-list .commander-tab-sort-button {
-  display: flex;
-  min-width: 0;
-  max-width: 100%;
-  /* 사이드바에서는 이 라벨이 섹션 이름 자리다 — 위 섹션 머리와 같은 잉크로 읽힌다. */
-  color: var(--text-secondary);
-}
-.side-bar-commander-list .commander-tab-sort-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* 메뉴는 칩이 아니라 막대 너비에 맞춘다. 칩에 맞추면 280px에서 왼쪽으로 잘린다. */
-.side-bar-commander-list .commander-tab-menu { left: 0; right: 0; width: auto; min-width: 0; }
 .commander-tab-direction svg { width: 15px; height: 15px; }
 
 .commander-tab-sort-button:hover,
@@ -244,10 +224,10 @@
   background: var(--surface-panel);
   overflow: clip;
 }
-.commander-tab--card .commander-tab-list { gap: 0; }
-/* 우측 작업 탭의 행 아래 펼침 — 행과 같은 배경 위에 hairline으로만 나뉜다. 펼친 행·패널 사이와 패널·다음 행 사이가 각각 한 줄이다. */
-.commander-tab--card .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
-.commander-tab--card .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
+.commander-tab--card .commander-tab-groups .commander-tab-list { gap: 0; }
+/* 우측 작업 탭의 행 아래 펼침 — 카드 안 행과 같은 배경 위에 hairline으로만 나뉜다. 카드 밖 시작 전·완료에는 적용하지 않는다. */
+.commander-tab--card .commander-tab-groups .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
+.commander-tab--card .commander-tab-groups .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
 .commander-tab--card .commander-row-panel {
   min-width: 0;
   padding: 4px 8px 10px;
@@ -333,29 +313,35 @@
 .commander-tab-list.side-bar-group-chips { gap: 2px; }
 .commander-tab-group-title { display: flex; gap: 6px; align-items: baseline; margin: 0; padding: 8px 8px 2px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-secondary); }
 .commander-tab-group-title > span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-/* 시작 전·완료는 이름과 수만 있는 줄이다. 셰브런은 쓰지 않는다 — 목표 글리프(.objectives-tab-glyph)와 API 색인 줄(.backend-api-group-toggle)처럼. */
-.commander-tab-fold {
+/* 우측 작업 탭 카드 밖 — 시작 전·완료 구역. 머리 전체가 토글이고, › 는 펼치면 90° 돈다. */
+.commander-tab--card .commander-tab-outside { margin-top: 10px; }
+.commander-tab-outside-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 8px;
-  width: calc(100% - 8px);
-  margin: 6px 4px 2px;
-  padding: 4px 8px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 4px;
   border: 0;
   border-radius: var(--radius-md);
   background: none;
   color: var(--text-tertiary);
-  font-family: var(--font-ui);
+  font: inherit;
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   text-align: left;
   cursor: pointer;
 }
-.commander-tab-fold-count { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.commander-tab-fold[aria-expanded="true"] { color: var(--text-secondary); }
-.commander-tab-fold:hover { background: var(--wash-hover); color: var(--text-primary); }
-.commander-tab-fold:focus-visible { box-shadow: var(--focus-face); }
+.commander-tab-outside-head:hover { color: var(--text-primary); }
+.commander-tab-outside-head:focus-visible { box-shadow: var(--focus-face); }
+.commander-tab-outside-count { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.commander-tab-outside-rule { flex: 1; min-width: 12px; height: 1px; background: var(--hairline); }
+.commander-tab-outside-chev { flex: none; transition: transform var(--duration-fast) ease; }
+.commander-tab-outside-head[aria-expanded="true"] .commander-tab-outside-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  .commander-tab-outside-chev { transition: none; }
+}
 .commander-list-owner { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 8px; border: 0; border-radius: var(--radius-lg); background: none; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
 .commander-list-owner:hover, .commander-list-owner[aria-current="true"] { background: var(--wash-hover); }
 .commander-list-owner:focus-visible { box-shadow: var(--focus-face); }

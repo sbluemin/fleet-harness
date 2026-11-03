@@ -1,4 +1,3 @@
-import { ChevronGlyph } from "@fleet-console/ui/react";
 import { FolderIcon, PencilIcon, PlusIcon, TaskforceIcon, TrashIcon } from "./sidebar-menu-icons.js";
 import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
 
@@ -56,15 +55,16 @@ import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
 import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
 import { commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
-import { isCommanderSectionExpanded, toggleCommanderSectionCollapsed, useCommanderSectionFolds } from "./commander-section-folds.js";
+import { noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded } from "./commander-expansion.js";
+import { CommodoreHoverDock } from "./commodore-hover-dock.js";
 import type { SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 /*
  * 왼쪽 사이드바 — 사령관 목록이다. 사령관마다 머리(아바타·이름·마지막 응답) 하나가 선다.
- * 왼쪽 배치일 때만 사령관 섹션마다 지휘관 목록이 접기 글리프로 접거나 펼쳐진다. 아직 정하지 않은
- * 사령관은 활성일 때만 펼쳐 보인다. 오른쪽 배치이면 머리만 남고 목록은 오른쪽 사이드바(작업 탭)가 맡는다.
+ * 왼쪽 배치일 때만 펼친 사령관 밑에 지휘관 목록이 선다. 펼침은 사령관을 옮길 때 정해지고(commander-expansion.ts),
+ * 새 목표·정렬·목록 위치는 머리의 호버 독이 맡는다. 오른쪽 배치이면 머리만 남고 목록은 오른쪽 사이드바(작업 탭)가 맡는다.
  */
 
 interface ObjectiveRecordsSideBarProps {
@@ -114,11 +114,10 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly theater: SideBarHead;
   readonly active: boolean;
   readonly lastResponse: string | undefined;
-  /** 지휘관 목록이 왼쪽 배치일 때만 접기 글리프가 선다 — 오른쪽 배치의 머리에는 글리프가 없다. */
-  readonly foldable: boolean;
-  readonly expanded: boolean;
-  /** 그 사령관의 지휘관 목록을 접거나 펼친다 — 지금 보이는 대로 뒤집는다. */
-  readonly onToggleFold: () => void;
+  /** 사령관 머리에 호버 독(⋯ → 새 목표·정렬·목록 위치·펼침 유지)이 선다. TaskForce 행에는 서지 않는다. */
+  readonly dock: boolean;
+  /** 표식(아바타) 단추가 직접 대화를 열 때도 「활성 사령관을 다시 골랐다」를 알린다 — 이름 쪽 활성화는 `onOpenInbox` 가 알린다. */
+  readonly onReselect?: () => void;
   readonly showStatusLiveTick: boolean;
   /**
    * 사람이 답할 차례인 결정 요청이 이 사령관에 있다 — 접힌 머리라도 아바타에 결정 상태를 남긴다.
@@ -179,7 +178,7 @@ export function ObjectiveRecordsSideBar({
   const width = compact ? sideBar.compactWidth : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const surface = useConversationSurface();
   const placement = useCommanderPlacement();
-  const sectionFolds = useCommanderSectionFolds();
+  const expandedCommanders = useCommanderExpanded();
   const sidebarSections = useCommodoreSidebarSections();
   const sidebarSectionsRef = useRef(sidebarSections);
   const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
@@ -205,14 +204,11 @@ export function ObjectiveRecordsSideBar({
   // 활성 Objective 만으로 목록을 매달면, 목록을 누르는 pointerdown 이 그 활성을 푸는 순간 목록이 사라졌다가 되살아난다.
   const owningCommodoreId = newSession !== null ? newSession.commodoreId ?? null
     : surface ? surfaceOwner ?? subjectOwner : subjectOwner ?? objectiveOwner;
-  // 현재 활성 구간에서 사람이 직접 접어 임시 펼침을 걷은 사령관 하나 — 걷을 수 있는 건 활성인 사령관뿐이라 하나로 충분하다.
-  // 활성 전환 때 비운다(렌더 중 이전 값 비교로 조정 — effect·저장 쓰기·모듈 notify 없이 전환 경로에 얹히지 않는다).
-  const [dismissedCommodoreId, setDismissedCommodoreId] = useState<string | null>(null);
-  const [foldActiveOwner, setFoldActiveOwner] = useState<string | null>(owningCommodoreId);
-  if (foldActiveOwner !== owningCommodoreId) {
-    setFoldActiveOwner(owningCommodoreId);
-    if (dismissedCommodoreId !== null) setDismissedCommodoreId(null);
-  }
+  // 사령관을 옮길 때마다(활성 소유자가 바뀔 때마다) 펼침 묶음이 정해진다 — 헤더를 누른 이동뿐 아니라 팔레트·링크 이동도 같다.
+  // 그리기 전에 반영해 옮긴 사령관의 목록이 접힌 채 한 프레임 비치지 않게 한다.
+  useLayoutEffect(() => {
+    if (owningCommodoreId !== null) noteCommanderNavigated(owningCommodoreId, readCommanderKeepExpanded());
+  }, [owningCommodoreId]);
   // 몽글 아바타 처음 배정 — 사이드바 한 곳이 사령관·Objective 이 처음 보일 때 묶음째 뽑아 저장한다.
   useAvatarClaims();
   const registry = useFeatureRegistry();
@@ -397,10 +393,17 @@ export function ObjectiveRecordsSideBar({
     onEscape: closeActiveContextMenu,
   });
 
+  // 활성 사령관을 한 번 더 골랐다 — 머리의 이름 쪽이든 아바타(표식) 쪽이든 같은 규칙이다. 펼침 유지가 켜져 있으면 그 목록만 접고,
+  // 꺼져 있으면 바뀌지 않는다. 목록이 오른쪽이면 사이드바에 접을 목록이 없다.
+  const reselectActiveCommodore = (commodoreId: string) => {
+    if (commodoreId === owningCommodoreId && placement === "left") reselectCommander(commodoreId, readCommanderKeepExpanded());
+  };
+
   // 사령관 머리 — 그 사령관의 대화. 대화를 세울 수 없으면 첫 칸은 기여가 정한다(예: 자율 운영이 켜졌으면 사령관 기록). 아무도
   // 정하지 않으면 사령관 기록 칸이다.
   const openTheaterHeaderInbox = (theater: SideBarHead, returnFocus: HTMLElement | null) => {
     setActiveContextMenu(null);
+    reselectActiveCommodore(theater.id);
     setZoneCommodore(theater.id);
     if (openCommodoreConversation(theater.id)) return;
     const landing = resolveTheaterInboxLanding(registry.theaterContributions, theater.id);
@@ -483,9 +486,7 @@ export function ObjectiveRecordsSideBar({
                   theater={{ id: face.id, label: face.row.name, createdAt: "", lastOpenedAt: "", activeAdmiralCount: 0 }}
                   active={selected}
                   lastResponse={face.row.preview?.text || face.row.topic}
-                  foldable={false}
-                  expanded={false}
-                  onToggleFold={() => {}}
+                  dock={false}
                   editingAlias={false}
                   clampAlias={clampAlias}
                   onStartAliasEdit={() => {}}
@@ -519,20 +520,8 @@ export function ObjectiveRecordsSideBar({
           };
           const commanderRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theater.id);
           const waitingCount = countAwaitingObjectiveRecords(commanderRecords, objectiveRecordRuntime);
-          // 사령관 섹션의 지휘관 목록 펼침 — 왼쪽 배치일 때만 그린다. 저장값을 바꾸지 않는 파생값이다. 접힌 섹션은 마운트하지 않는다.
-          const sectionExpanded = placement === "left"
-            && isCommanderSectionExpanded(sectionFolds.folds, dismissedCommodoreId, theater.id, owningCommodoreId);
-          // 글리프 토글 — 지금 보이는 대로 뒤집는다. 활성인 섹션을 접으면 그 활성 구간 동안만 임시 펼침을 걷고,
-          // 펼치면 걷기를 푼다. 저장은 접힘·펼침만 기억한다.
-          const toggleSectionFold = () => {
-            if (sectionExpanded) {
-              toggleCommanderSectionCollapsed(theater.id, true);
-              if (theater.id === owningCommodoreId) setDismissedCommodoreId(theater.id);
-            } else {
-              toggleCommanderSectionCollapsed(theater.id, false);
-              if (dismissedCommodoreId === theater.id) setDismissedCommodoreId(null);
-            }
-          };
+          // 사령관 섹션의 지휘관 목록 펼침 — 왼쪽 배치일 때만 그린다. 펼침 묶음은 사령관을 옮길 때 정해진다. 접힌 섹션은 마운트하지 않는다.
+          const sectionExpanded = placement === "left" && expandedCommanders.has(theater.id);
           // 가운데 채팅이 가리키는 지휘관 — 왼쪽 목록·좁은 창 팝오버가 같은 선택을 말한다.
           const selectedCommanderId =
             typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === theater.id
@@ -553,9 +542,8 @@ export function ObjectiveRecordsSideBar({
                 theater={theater}
                 active={theater.id === owningCommodoreId}
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
-                foldable={placement === "left"}
-                expanded={sectionExpanded}
-                onToggleFold={toggleSectionFold}
+                dock
+                onReselect={() => reselectActiveCommodore(theater.id)}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
                 hasPersonDecision={personDecisionOwners.has(theater.id)}
@@ -571,6 +559,7 @@ export function ObjectiveRecordsSideBar({
                 <div className="side-bar-commander-list" data-keep-objective-active="">
                   <CommodoreCommanderList
                     sortNameOnly
+                    showBar={false}
                     commodoreId={theater.id}
                     selectedId={selectedCommanderId}
                   />
@@ -690,9 +679,8 @@ function TheaterSectionHeader({
   theater,
   active,
   lastResponse,
-  foldable,
-  expanded,
-  onToggleFold,
+  dock,
+  onReselect,
   editingAlias,
   clampAlias,
   showStatusLiveTick,
@@ -745,7 +733,7 @@ function TheaterSectionHeader({
   const headerStyle = dragging ? ({ "--drag-dy": `${Math.round(dragOffsetY)}px` } as CSSProperties) : undefined;
 
   // Theater 동작(별칭·시스템 프롬프트·플러그인 항목·새 그룹·Theater 잊기)은 머리에서 연다 — 우클릭은 커서 자리에, 키(ContextMenu·
-  // Shift+F10)와 터치·펜 길게 누르기는 머리 아래에. 두 배치(기존·대화 중심) 모두 같다. 별도 「⋯」 단추는 두지 않는다.
+  // Shift+F10)와 터치·펜 길게 누르기는 머리 아래에. 두 배치(기존·대화 중심) 모두 같다. 머리 오른쪽 끝의 ⋯ 호버 독은 이 메뉴가 아니라 새 목표·정렬·목록 위치·펼침 유지만 연다.
   const longPress = useLongPress<HTMLDivElement>((header) => {
     onContextMenu(header.getBoundingClientRect(), activateRef.current, false);
   });
@@ -774,10 +762,10 @@ function TheaterSectionHeader({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // 표식 안의 단추(자율 운영 끄기)와 별칭 입력·접기 글리프에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
+    // 표식 안의 단추(자율 운영 끄기)와 별칭 입력·호버 독에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
     // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
     // 길게 누르기도 같은 자리만 받는다 — 단추 위 길게 누르기는 그 단추의 것이다.
-    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input") || event.target.closest(".side-bar-theater-fold-btn"))) return;
+    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input") || event.target.closest(".commodore-dock"))) return;
     longPress.onPointerDown(event);
     onPointerDragStart(event, theater.id);
   };
@@ -785,6 +773,11 @@ function TheaterSectionHeader({
   const handlePointerUp = () => {
     longPress.onPointerUp();
     if (dragging) suppressClickRef.current = true;
+  };
+
+  // 표식 단추는 자기 클릭을 끝까지 처리하고 버블을 멈춘다 — 활성 사령관 재선택은 캡처 단계에서 먼저 알린다.
+  const markClickCapture = (event: MouseEvent<HTMLSpanElement>) => {
+    if (event.target instanceof Element && event.target.closest("button")) onReselect?.();
   };
 
   // 이름은 사령관의 대화를 연다.
@@ -823,6 +816,7 @@ function TheaterSectionHeader({
         // 머리를 누른 것과 같다.
         <span
           className="side-bar-theater-anchor side-bar-theater-mark"
+          onClickCapture={markClickCapture}
           onClick={(event) => { if (!(event.target instanceof Element && event.target.closest("button"))) select(); }}
         >
           {mark}
@@ -855,23 +849,8 @@ function TheaterSectionHeader({
           </span>
         </button>
       )}
-      {/* 접기 글리프 — 그 사령관의 지휘관 목록만 접거나 펼친다. 머리를 누르는 활성화와는 따로 논다. */}
-      {foldable ? (
-        <button
-          type="button"
-          className="side-bar-theater-fold-btn"
-          // 접기는 목록을 보이고 숨길 뿐이다 — 문서 캡처 단계의 pointerdown 이 활성 Objective 를 풀지 않게 한다.
-          data-keep-objective-active=""
-          aria-expanded={expanded}
-          aria-label={expanded ? t("sidebar.commanderSection.collapse", { theater: displayName }) : t("sidebar.commanderSection.expand", { theater: displayName })}
-          title={expanded ? t("sidebar.commanderSection.collapse", { theater: displayName }) : t("sidebar.commanderSection.expand", { theater: displayName })}
-          onClick={(event) => { event.stopPropagation(); onToggleFold(); }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <ChevronGlyph direction="down" className={`side-bar-theater-chevron${expanded ? "" : " is-collapsed"}`} />
-        </button>
-      ) : null}
-
+      {/* 호버 독 — 머리에 호버하거나 초점이 오면 ⋯ 글리프가 나오고, 거기서 새 목표·정렬·목록 위치·펼침 유지가 펼쳐진다. 머리를 누르는 활성화와는 따로 논다. */}
+      {dock ? <CommodoreHoverDock commodoreId={theater.id} name={displayName} /> : null}
     </div>
   );
 }

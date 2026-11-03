@@ -172,6 +172,14 @@ export function setCommanderPlacement(next: CommanderPlacement): void {
   persist();
 }
 
+/** 사람이 목록을 반대쪽으로 옮긴다 — 저장하고, 알림·되돌리기를 띄운다. 이미 그쪽이면 아무것도 하지 않는다. */
+export function moveCommanderPlacement(commodoreId: string, next: CommanderPlacement): void {
+  const prev = placement;
+  if (next === prev) return;
+  setCommanderPlacement(next);
+  notifyCommanderPlacementMoved(commodoreId, next, prev);
+}
+
 export function useCommanderPlacement(): CommanderPlacement {
   return useSyncExternalStore(
     (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
