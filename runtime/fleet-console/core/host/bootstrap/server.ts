@@ -1212,7 +1212,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     observe: (objectiveId) => consoleControl.observe(objectiveId),
     subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
-    subscribeSessionMessages: (listener) => consoleControl.subscribeSessionMessages({ kind: "plugin", pluginId }, listener),
     sleep: async (objectiveId, options) => {
       if (!objectiveRecords.get(objectiveId)) return { ok: false, error: "unknown_objectiveRecord" };
       const observation = consoleControl.observe(objectiveId);

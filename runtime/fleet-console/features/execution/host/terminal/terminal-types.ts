@@ -36,6 +36,8 @@ export interface TerminalLaunchContext {
   readonly disableSubagents?: boolean;
   /** auto-memory 끄기 — `--settings`의 `autoMemoryEnabled: false`. spawn 인자로만 나간다. */
   readonly disableAutoMemory?: boolean;
+  /** 목표 세션 — SendMessage·ListAgents를 deny 한다. spawn 인자로만 나간다. */
+  readonly objectiveMessaging?: boolean;
   /** 콘솔 테마 극성 힌트 — spawn env COLORFGBG로만 소비된다. PTY는 최초 spawn 시점 값에 고정된다. */
   readonly colorScheme?: "light" | "dark";
 }
@@ -67,6 +69,7 @@ export interface TerminalTicketContext {
   readonly sessionName?: string;
   readonly disableSubagents?: boolean;
   readonly disableAutoMemory?: boolean;
+  readonly objectiveMessaging?: boolean;
   readonly colorScheme?: "light" | "dark";
   /**
    * 이 티켓이 여는 소켓의 역할. 생략하면 `control`이다 — 지금까지 발급된 모든 티켓이 그것이었고,

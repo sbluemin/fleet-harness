@@ -113,6 +113,7 @@ claude_call() {  # $1=before|after, $2=회차 태그
 ```
 
 - `--tools`는 장면의 도구 줄과 같은 목록으로 제한한다. 기본 도구 집합(23개)에는 `SendMessage`·`ListAgents`·`Workflow`·`Cron*`·`WebFetch` 등이 들어 있다. `--allowedTools`는 권한 확인만 건너뛰게 하며 **트리 밖 쓰기를 막지 못한다**(허가를 모두 열면 트리 밖 쓰기가 성공했다). `dontAsk`에서 허가 없는 쓰기는 트리 안이어도 거부된다. 그래서 OS 샌드박스의 쓰기 제한이 필수다.
+- 이 문서의 `SendMessage` 장면(도구 줄과 아래 "실패 직후 재개" 변형)은 목표 구성원이 Claude Code `SendMessage`로 보고하던 때의 사건 재현이다. 지금 목표 세션은 `SendMessage`·`ListAgents` 없이 fleet-objectives `message` 도구(MCP)로 보고하므로, 현재 보고 행동을 재는 장면은 도구 줄과 스텁 계획을 그 도구로 맞춘다.
 - `--setting-sources project`로 프로젝트 `CLAUDE.md` 자동 탐색을 유지하고 사용자·로컬 설정을 제외하며, `--disable-slash-commands`·`--strict-mcp-config`·훅 끄기로 스킬·MCP·훅 혼입을 막는다. `--setting-sources ''`와 `--restricted`는 필요한 자동 지침 문맥을 제외하므로 쓰지 않는다. 프로젝트 설정이 provider·환경·plugin·별도 agent를 활성화하거나 조건을 설명할 수 없으면, 또는 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
 - `perl alarm`은 너무 좁은 쓰기 프로파일에서 CLI가 멈출 때의 상한이다.
 

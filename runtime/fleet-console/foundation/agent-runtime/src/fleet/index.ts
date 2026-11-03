@@ -102,7 +102,7 @@ export {
   buildDisabledSkillOverrides,
   type ClaudeSkillOverride,
 } from "./agent-cli/gateway-skills.js";
-export { ALL_SUBAGENTS, buildClaudeAgentDenyRules } from "./agent-cli/claude-agent-rules.js";
+export { ALL_SUBAGENTS, OBJECTIVE_PEER_TOOLS, buildClaudeAgentDenyRules } from "./agent-cli/claude-agent-rules.js";
 
 // Fleet 에이전트 in-process MCP 런타임 라이프사이클
 export {

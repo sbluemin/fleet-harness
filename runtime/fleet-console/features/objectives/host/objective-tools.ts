@@ -12,7 +12,7 @@ import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "../sh
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { searchInputShape, searchObjectives } from "./search.js";
-import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TITLE, missionTitleSchema, MAX_SHORT_INPUT, decisionQuestionSchema, followupBodySchema, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
+import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TITLE, missionTitleSchema, MAX_SHORT_INPUT, decisionQuestionSchema, followupBodySchema, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, MAX_OBJECTIVE_MESSAGE_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
@@ -42,8 +42,6 @@ const MODEL_FACT = "A member may select a model and effort from models (gateway_
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
 const PLANNING_ONLY = "The objective is in planning: its lineup can change, but missions are not carried out and members are not launched until the person commences.";
 const BOARD_CHANGED = "The person edited the objective after your last read.";
-/** 이름 없는 지휘관 — 주소를 지어내지 않고, 이미 지원되는 회신 경로(받은 메시지의 from)만 사실로 알린다. */
-const NO_FIXED_NAME = "No fixed session name. The from address on the Commander's latest message reaches that live session.";
 /** read·mine 설명의 한 줄 — 결정 요청과 결정이 보드에 있다는 사실. */
 const DECISIONS_ON_BOARD = "Console sessions have no tool for asking the person directly; decisions for the person go through the board. The person may not be watching the Commander's panel text. The board holds the current decisionRequest and decisionRequestRevision, and decisions: the person's recorded answers, each with the question, the chosen option labels (selected), any words written (text), and own: true when the person discarded every option for their own answer. A request the person closed without deciding is recorded with declined: true on each of its decisions (no selected options, no text); it chose none of the options, handed nothing to the Commander, and deferred nothing. Only the person's board submissions create decisions, and they survive reruns; reading clears no request and changes no decision.";
 const DECISION_DELIVERING = "The person's answers have been accepted, but delivery and recording are not yet finalized. The current request cannot be replaced or withdrawn.";
@@ -180,7 +178,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       const objective = boundObjective(caller);
       if (!objective) return refuse("not_participant");
       const role = roleIn(objective, caller);
-      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board and seal evidence, but only the Commander changes the board. Reports, sealed evidenceIds and decisions to make reach the Commander by SendMessage to its session.", commander: { session: objective.commander.sessionName, ...(objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
+      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board, seal evidence, and message the Commander with the message tool (to: \"commander\"). Only the Commander changes the board." });
       if (!role) return refuse("not_participant");
       return run(args, objective, caller!, context);
     });
@@ -197,14 +195,12 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
   });
 
   return [
-    tool("mine", `Your role in this session's objective (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board — planning, mustering members, completing missions, marking criteria — through the fleet-objectives tools. Members read it, can seal evidence from the objective's evidence directory, and report to the Commander by SendMessage to commander.session; when that is null, the from address on the Commander's latest message reaches it while that session is live. Members do not ask the person: a decision a member needs goes to the Commander the same way, and so does a directive that reads as reversed in meaning or unreadable, before it is carried out. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. At hand-off the Commander asks members for a retrospective and the resources they created for this objective. ${DECISIONS_ON_BOARD}`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in this session's objective (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board — planning, mustering members, completing missions, marking criteria — through the fleet-objectives tools. Members read it, can seal evidence from the objective's evidence directory, and report to the Commander with the message tool (to: "commander"). Members do not ask the person: a decision a member needs goes to the Commander the same way, and so does a directive that reads as reversed in meaning or unreadable, before it is carried out. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. At hand-off the Commander asks members for a retrospective and the resources they created for this objective. ${DECISIONS_ON_BOARD}`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "objectiveRecord") return refuse("not_participant");
       const assigned = store.findMember(caller.objectiveId);
       if (assigned) {
         const member = assigned.objective.members.find((candidate) => candidate.id === assigned.memberId)!;
         return text({ role: "member", access: "read-only", objectiveId: assigned.objective.id,
-          // 구성원이 보고·판단 요청을 보낼 주소 — 지휘관 세션 이름. 모르면 null 이다(따로 만든 Objective 이 지휘관인 목표).
-          commander: { session: assigned.objective.commander.sessionName, ...(assigned.objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) },
           member: { id: member.id, role: member.role, subagents: member.subagents, ...(member.brief ? { brief: member.brief } : {}) },
           missions: assigned.objective.missions.flatMap((mission, index) => mission.member === member.id ? [{ n: index + 1, missionId: mission.id, ...(mission.title ? { title: mission.title } : {}), text: mission.text, done: mission.done, ...(mission.done ? {} : { ready: missionReady(assigned.objective.missions, mission) }) }] : []),
           objective: objectiveView(assigned.objective) });
@@ -349,7 +345,20 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         if (!loadout) return refuse("gateway_models_unavailable");
         return text(loadout);
       }),
-    commanderTool("muster", "Prepare every roster member for SendMessage and ListAgents: absent members launch waiting for a first message, chat members get their SDK address prepared, and dormant terminal members resume their own session. Chats stay live and become idle between turns; they never need resume. Preparation starts no model turn. A member knows only what it has been sent and what it has read, and keeps that across missions. Its results reach the board only when it reports them to the Commander by SendMessage and the Commander completes the mission, so the first message to each member says so. A member whose launch, preparation or terminal resume the host refuses comes back as state failed with its error code; the others proceed.",
+    tool("message", `Send one message to the Commander (to: "commander") or, for the Commander, to a roster member by id or role. The record is kept before delivery. A running turn is steered; an idle session gets a new turn; a dormant or absent session is woken; a session that is relaunching or waiting on a permission prompt holds the message until it can be delivered. Nothing is dropped. SendMessage and ListAgents are not a channel. Addresses are roster ids and roles, not session names.`,
+      z.object({
+        to: memberReference,
+        text: z.string().trim().min(1).max(MAX_OBJECTIVE_MESSAGE_TEXT),
+        replyTo: z.string().uuid().optional(),
+      }).strict(),
+      async (args, caller) => {
+        if (caller?.kind !== "objectiveRecord") return refuse("not_participant");
+        const objective = boundObjective(caller);
+        if (!objective || !roleIn(objective, caller)) return refuse("not_participant");
+        const sent = await launch.relay(caller.objectiveId, args.to, args.text, { ...(args.replyTo ? { replyTo: args.replyTo } : {}) });
+        return text({ messageId: sent.messageId, to: sent.to, delivery: sent.delivery });
+      }),
+    commanderTool("muster", "Prepare every roster member: absent members launch waiting for a first message, chat members get their session prepared, and dormant terminal members resume their own session. Chats stay live and become idle between turns; they never need resume. Preparation starts no model turn. A member knows only what it has been sent and what it has read, and keeps that across missions. Its results reach the board only when it reports them with the message tool and the Commander completes the mission, so the first message to each member says so. A member whose launch, preparation or terminal resume the host refuses comes back as state failed with its error code; the others proceed.",
       z.object({}).strict(),
       async (_args, objective) => {
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });
@@ -449,7 +458,7 @@ export function handoffPrompt(objective: Objective): string {
     "Every mission is done and every criterion is met: the objective awaits hand-off, and it reaches the person's review only through hand_off.",
     `Only follow-up candidates carry beyond this objective; mission records and messages end with it, so a finding that is not a candidate reaches no later objective. ${handoffInventory(objective)} A hand-off with no follow-up candidates is valid.`,
     members
-      ? "The hand-off step: the Commander requests each member's retrospective by SendMessage, gathers them, and synthesizes them with its own into the retrospective that hand_off carries. Members also report the worktrees, branches and isolated processes they created for this objective and whether they are still in use. Before hand_off, the Commander removes those it has confirmed as this objective's that no session still uses, except one holding unmerged work the person has not authorized discarding; it records why each kept one stays. One only its creator may remove goes back to that member. Resources of other sessions or objectives, or of uncertain ownership, stay untouched. SendMessage needs a prepared SDK address; muster prepares chat members and resumes dormant terminal members."
+      ? "The hand-off step: the Commander requests each member's retrospective with the message tool, gathers them, and synthesizes them with its own into the retrospective that hand_off carries. Members also report the worktrees, branches and isolated processes they created for this objective and whether they are still in use. Before hand_off, the Commander removes those it has confirmed as this objective's that no session still uses, except one holding unmerged work the person has not authorized discarding; it records why each kept one stays. One only its creator may remove goes back to that member. Resources of other sessions or objectives, or of uncertain ownership, stay untouched. muster prepares chat members and resumes dormant terminal members."
       : "The hand-off step: the Commander writes the retrospective that hand_off carries.",
   ].join("\n\n");
 }

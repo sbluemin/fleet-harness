@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleObjectiveObservation } from "../../console-use/shared/control.js";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
-import { readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPreset, type ObjectiveGroupedEvent } from "../shared/records/types.js";
+import { messageChannelKnown, readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPreset, type ObjectiveGroupedEvent } from "../shared/records/types.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
@@ -11,7 +11,7 @@ import { commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memb
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
-import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
+import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
 import { deriveFailedOutcome } from "./views.js";
 
 /**
@@ -157,6 +157,11 @@ export interface LaunchService {
    */
   /** `attachmentIds` 는 사람이 입력창에서 올린 이미지 — 사람 입력(`actor: "human"`)일 때만 받는 세션 한 곳에 실린다. 지휘관 사본에는 싣지 않는다. */
   message(objectiveId: string, memberId: string | null, text: string, options?: LaunchOptions, attachmentIds?: readonly string[]): Promise<{ readonly objective: Objective; readonly notified: boolean | null }>;
+  /**
+   * 지휘관·구성원 메시지. 기록을 먼저 남기고, 도는 턴이면 스티어링, 쉬면 새 턴, 잠들면 깨운 뒤 전달한다.
+   * 재기동·권한 대기·PTY 없음이면 held 로 남기고 나중에 다시 넣는다. 버리지 않는다.
+   */
+  relay(fromSessionId: string, to: string, text: string, options?: { readonly replyTo?: string }): Promise<{ readonly messageId: string; readonly to: string; readonly delivery: ObjectiveMessageDelivery }>;
   /** 사람의 방송 — live 대상만 동시에 보내고, 휴면·미관측은 깨우지 않는다. */
   broadcast(objectiveId: string, text: string, options?: LaunchOptions): Promise<import("../../execution/shared/conversation/types.js").GroupWriteResult>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Objective 에 인터럽트를 보낸다. */
@@ -391,6 +396,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       ...(input.newObjectiveId ? { newObjectiveId: input.newObjectiveId } : {}),
     });
     touchLive(result.objectiveId);
+    // 이 빌드가 세운 세션은 message 도구를 이미 안다. 이주 문장은 예전 빌드가 띄운 세션에만 한 번 붙인다.
+    store.markChannelTold(input.objectiveId, result.objectiveId);
     return result.objectiveId;
   };
 
@@ -863,7 +870,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 좌표를 실행값으로 되돌리고 "busy" 로 답한다(그새 턴이 시작돼 재울 수 없을 때와 같다). 호스트가 상한 안에 옛 프로세스의 종료를 보지 못해
    * objectiveRecord_busy 로 거절했고 여전히 잠들어 있으면 좌표를 그대로 두고 "applied" 로 답한다 — 잠든 구성원은 좌표를 고친 것이 곧 적용이고
    * 다음 깨움이 그 값으로 선다. 그 밖에 깨우기가 거절되면(그새 노출이 꺼진 모델 등) 실행값으로 되돌려 다시 깨우고 그 코드로 던진다.
-   * 감수한 비용: 터미널 입력줄에 쓰다 만 글은 사라지고, 다시 뜨는 몇 초 동안 다른 세션의 SendMessage 는 이 세션에 닿지 않는다. 터미널의
+   * 감수한 비용: 터미널 입력줄에 쓰다 만 글은 사라지고, 다시 뜨는 몇 초 동안 넣은 메시지는 보관됐다가 세션이 선 뒤에 전달된다. 터미널의
    * 문맥이 새 모델의 창보다 큰지는 플러그인이 알 수 없다(채팅만 호스트가 막는다).
    */
   const switchLive = async (sessionId: string, goal: MemberPreset, running: MemberPreset): Promise<"applied" | "busy"> => {
@@ -1120,7 +1127,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const sameTurn = (a: { readonly generation?: string; readonly revision: number } | undefined, b: { readonly generation?: string; readonly revision: number }) =>
     !!a && a.generation === b.generation && a.revision === b.revision;
   let unsubscribeTurnEnds: (() => void) | null = null;
-  let unsubscribeSessionMessages: (() => void) | null = null;
   const outcomeWatched = new Map<string, string>();
   let outcomeTimer: ReturnType<typeof setTimeout> | null = null;
   const dropOutcome = (sessionId: string) => {
@@ -1128,7 +1134,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     outcomeWatched.delete(sessionId);
     turnSends.delete(sessionId);
     settledAt.delete(sessionId);
-    if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; unsubscribeSessionMessages?.(); unsubscribeSessionMessages = null; }
+    if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; }
   };
   const forgetOutcome = (sessionId: string) => {
     store.settleMemberFailure(sessionId, null);
@@ -1185,14 +1191,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         // 사람의 말 표식은 결과와 상관없이 그 말이 연 턴이 정산될 때 거둔다 — 실패로 닫힌 턴 뒤의 조용한 정지를 사람에게 답한 턴으로 잘못 읽지 않게.
         const personPrompted = personPrompts.delete(sessionId);
         const personTurn = !!report && (report.byPerson || personPrompted);
-        const sentAt = turnSends.get(sessionId);
-        turnSends.delete(sessionId);
         settledAt.set(sessionId, quietNow());
-        if (report && report.sentTo.length > 0) store.setMemberDelivered(sessionId, sentAt ?? quietNow());
         const assignedAt = Math.max(-1, ...current.missions.flatMap((mission) => mission.member === member.id && !mission.done ? [mission.assignmentTs ?? 0] : []));
         const expectedAt = assignedAt < 0 ? -1 : Math.max(assignedAt, store.memberDispatch(sessionId)?.at ?? -1);
-        const silent = !!report && !personTurn && !report.pendingWork && report.sentTo.length === 0 && objectiveUnderway(current)
-          && expectedAt >= 0 && (store.memberDelivered(sessionId) ?? -1) < expectedAt && expectsReport(current.stoppedAt, expectedAt);
+        const reported = (store.memberDelivered(sessionId) ?? -1) >= expectedAt && expectedAt >= 0;
+        const silent = !!report && !personTurn && !report.pendingWork && !reported && objectiveUnderway(current)
+          && expectedAt >= 0 && expectsReport(current.stoppedAt, expectedAt);
         if (silent && store.unreportedNoticeFor(sessionId) === expectedAt && member.unreported) {
           // 이미 알린 같은 빚의 다음 조용한 턴 — 표시는 두고 다시 알리지 않는다. 새 발주·새 배정이 기대를 옮기면 다시 울린다.
         } else if (silent) {
@@ -1208,11 +1212,21 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             store.refresh(objectiveId);
           });
           changed = true;
-        } else if (member.unreported && report && (!personTurn || report.sentTo.length > 0)) {
+        } else if (member.unreported && report && (!personTurn || reported)) {
           // 사람에게 답만 한 턴은 그 빚을 갚지 않는다 — 표시는 보고·외부 대기·빚 해소 때만 거둔다. 사람이 연 턴이라도 보고가 닿았으면 빚을 갚았으니 거둔다.
           // 보고를 관측하지 않는 턴(터미널·실패로 닫힌 턴)은 갚았다는 증거가 아니다 — 표시를 두고, 같은 빚을 다시 알리지도 않는다.
           store.settleMemberUnreported(sessionId, null);
           changed = true;
+        }
+        const dispatchAt = store.memberDispatch(sessionId)?.at ?? -1;
+        const repliedAt = store.memberDelivered(sessionId) ?? -1;
+        const idleKey = `${dispatchAt}:${generation ?? ""}:${revision}`;
+        if (outcome !== "failed" && !silent && dispatchAt >= 0 && repliedAt < dispatchAt && idleNotified.get(sessionId) !== idleKey) {
+          idleNotified.set(sessionId, idleKey);
+          const idle = language === "ko"
+            ? `구성원 「${member.role}」(${member.id})의 턴이 ${outcome}으로 끝났고, 그 발주 이후 지휘관에게 온 메시지는 없다.`
+            : `Member "${member.role}" (${member.id}) ended its turn (${outcome}) without a message to the Commander since that dispatch.`;
+          void requestSend(objectiveId, idle, idle).catch(() => undefined);
         }
         if (outcome === "failed") {
           const failure = store.settleMemberFailure(sessionId, observation.output.failure ?? { error: "unknown" })!;
@@ -1248,22 +1262,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
   const armOutcomeWatch = () => {
     if (disposed || outcomeWatched.size === 0) return;
-    // 발주 — 지휘관의 세션 간 메시지가 그 목표의 구성원에게 닿았다(호스트가 보낸·받은 Objective 과 시각만 건넨다).
-    if (!unsubscribeSessionMessages) unsubscribeSessionMessages = ctx.consoleControl?.subscribeSessionMessages?.((event) => {
-      if (disposed) return;
-      // 구성원이 보낸 말 — 보낸 시각을 그 턴의 보고 시각 후보로 둔다. 지난 턴의 늦은 관측(받는 쪽 트랜스크립트)은 지난 턴 몫이라 버린다.
-      const sender = store.findMember(event.fromObjectiveId);
-      if (sender && !sender.objective.done && event.at > (settledAt.get(event.fromObjectiveId) ?? -1)) {
-        turnSends.set(event.fromObjectiveId, Math.max(turnSends.get(event.fromObjectiveId) ?? -1, event.at));
-      }
-      const owner = store.findMember(event.toObjectiveId)?.objective;
-      if (!owner || owner.done || owner.id !== event.fromObjectiveId) return;
-      // 한 통은 보낸 쪽(채팅 지휘관의 SendMessage 성공)과 받는 쪽(구성원 트랜스크립트의 peer 도착)에서 두 번 보일 수 있다. 둘 다 「받는 세션에
-      // 닿음」이므로 발주 시각은 앞으로만 옮긴다 — 같은 말의 늦은 관측은 겹쳐 쓰지 않고, 터미널 지휘관은 받는 쪽 관측만으로 선다.
-      const previous = store.memberDispatch(event.toObjectiveId);
-      if (previous && event.at <= previous.at) return;
-      store.recordDispatch(event.toObjectiveId, event.at);
-    }) ?? null;
     if (!unsubscribeTurnEnds) unsubscribeTurnEnds = ctx.consoleControl?.subscribeTurnEnds?.((event) => {
       if (disposed) return;
       const current = outcomeOwner(event.objectiveId);
@@ -1322,6 +1320,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     for (const objectiveId of changed) store.refresh(objectiveId);
     armOutcomeWatch();
+    armHeldWatch();
   };
 
   /**
@@ -1331,6 +1330,148 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    */
   const reportQuietMs = serviceOptions.reportQuietMs ?? REPORT_QUIET_MS;
   const quietNow = serviceOptions.now ?? (() => Date.now());
+  const idleNotified = new Map<string, string>();
+  const channelNotice = (language: PromptLanguage): string => language === "ko"
+    ? "이 목표에서 SendMessage와 ListAgents는 없다. fleet-objectives의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다."
+    : "SendMessage and ListAgents are no longer available in this objective. The fleet-objectives message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.";
+  /**
+   * 모델이 읽는 문면. 화면 말풍선(`display`)은 본문만 남긴다.
+   * 첫 줄은 자동 작명이 이 프롬프트를 제목으로 삼지 않게 하는 표식이기도 하다(`auto-name.ts`).
+   */
+  const relayModelText = (from: ObjectiveMessageParty, role: string, messageId: string, replyTo: string | undefined, body: string, notice: string | null): string => {
+    const safeRole = role.replace(/[\r\n\]]/g, " ").replace(/\s+/g, " ").trim() || "member";
+    const who = from.kind === "commander" ? "the Commander" : `member ${safeRole} (${from.memberId})`;
+    const head = [`[message from ${who}]`, `messageId: ${messageId}`, ...(replyTo ? [`replyTo: ${replyTo}`] : [])].join("\n");
+    return notice ? `${head}\n\n${notice}\n\n${body}` : `${head}\n\n${body}`;
+  };
+  const partyId = (party: ObjectiveMessageParty): string | null => party.kind === "member" ? party.memberId : null;
+  const sameParty = (a: ObjectiveMessageParty, b: ObjectiveMessageParty): boolean => a.kind === b.kind && partyId(a) === partyId(b);
+  /** 권한·입력 대기 중에는 PTY Enter가 선택지를 확정하므로 넣지 않는다. */
+  const attentionBlocks = (sessionId: string): boolean => {
+    const kind = ctx.consoleControl?.observe(sessionId)?.attention?.kind;
+    return kind === "input" || kind === "permission" || kind === "failure";
+  };
+  const holdableDelivery = (error: unknown): boolean => {
+    const code = failureCode(error);
+    return code === "objectiveRecord_busy" || code === "session_awaiting_input" || code === "objective_busy" || code === "terminal_unavailable" || code === "request_timeout" || code === "slot_taken" || code === "capability_unavailable" || code === "not_dormant";
+  };
+  /**
+   * 받는 세션에 한 통을 넣는다. 기록이 이미 있을 때 부른다. 못 넣으면 held.
+   * 잠든 터미널은 재개하고, 아직 없는 구성원은 muster로 세운 뒤 넣는다.
+   */
+  const pushToSession = async (objectiveId: string, targetId: string, memberId: string | null, message: { readonly messageId: string; readonly text: string; readonly replyTo?: string; readonly from: ObjectiveMessageParty }, speaker: { readonly objectiveId: string; readonly title: string }): Promise<ObjectiveMessageDelivery> => {
+    if (ctx.objectiveRecords.isTransitioning?.(targetId) || attentionBlocks(targetId)) return "held";
+    const observation = ctx.consoleControl?.observe(targetId);
+    const node = referenceNode(targetId);
+    if (!node && !observation) {
+      try {
+        if (memberId === null) {
+          await ensureCommander(objectiveId);
+          if (ctx.consoleControl?.observe(targetId)?.lifecycle === "dormant") await control().request({ kind: "resume", objectiveId: targetId });
+        } else {
+          await muster(objectiveId, undefined, () => new Set([memberId]));
+        }
+      } catch (error) {
+        if (holdableDelivery(error)) return "held";
+        throw error;
+      }
+      if (!referenceNode(targetId) && ctx.consoleControl?.observe(targetId)?.lifecycle !== "live") return "held";
+    }
+    const before = ctx.consoleControl?.observe(targetId);
+    const dormant = before?.lifecycle === "dormant" || (!before && !!node);
+    if (dormant) {
+      try { await control().request({ kind: "resume", objectiveId: targetId }); }
+      catch (error) {
+        if (holdableDelivery(error)) return "held";
+        throw error;
+      }
+    }
+    if (attentionBlocks(targetId) || ctx.objectiveRecords.isTransitioning?.(targetId)) return "held";
+    // 레코드 표식은 이 빌드의 create/createChild 전부(UI 런처·채팅·터미널·구성원)에 있다. channelTold 는 그 표식이 없는 예전 세션에 안내를 한 번 보낸 뒤의 기록이다.
+    const told = store.channelTold(objectiveId, targetId) || messageChannelKnown(ctx.objectiveRecords.get(targetId));
+    const body = message.text;
+    const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en"));
+    try {
+      await control().request({
+        kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : text, display: body, displayFormat: "markdown",
+        rosterSpeaker: speaker,
+      });
+    } catch (error) {
+      if (holdableDelivery(error)) return "held";
+      throw error;
+    }
+    if (!told) store.markChannelTold(objectiveId, targetId);
+    touchLive(targetId);
+    if (dormant || !before) return "woke";
+    if (before.activity === "running" || before.activity === "background") return "steered";
+    return "next_turn";
+  };
+  /**
+   * 다시 넣을 수 있는 보류만 센다. 구성원이 로스터에서 빠졌거나 목표가 끝난 뒤의 구성원 행은 기록으로 남기되 다시 넣지 않는다.
+   * 지휘관 행은 끝난 목표에도 relay 가 허용하는 것과 같이 재시도한다.
+   */
+  const canRetry = (current: Objective, message: { readonly to: ObjectiveMessageParty }): boolean => {
+    if (current.archived || current.removed) return false;
+    const to = message.to;
+    if (to.kind === "commander") return true;
+    return !current.done && current.members.some((member) => member.id === to.memberId);
+  };
+  // 수신 세션마다 한 줄. relay 의 첫 시도와 flush 가 같은 줄을 써서, 느린 전달 중에 다음 틱이 같은 말을 다시 넣지 않는다.
+  const targetChain = new Map<string, Promise<void>>();
+  const enqueueTarget = (targetId: string, run: () => Promise<void>): Promise<void> => {
+    const previous = targetChain.get(targetId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => disposed ? undefined : run());
+    const tracked = next.finally(() => { if (targetChain.get(targetId) === tracked) targetChain.delete(targetId); });
+    targetChain.set(targetId, tracked);
+    return next;
+  };
+  const flushTarget = async (sessionId: string): Promise<void> => {
+    const owner = store.find(sessionId) ?? store.findMember(sessionId)?.objective;
+    if (!owner) return;
+    const queued = store.heldMessages(owner.id)
+      .filter((message) => (message.to.kind === "commander" ? owner.id : message.to.memberId) === sessionId && canRetry(owner, message))
+      .sort((a, b) => a.at - b.at || a.messageId.localeCompare(b.messageId));
+    for (const message of queued) {
+      if (disposed) return;
+      const freshOwner = store.find(owner.id);
+      const fresh = store.messages(owner.id).find((entry) => entry.messageId === message.messageId);
+      if (!freshOwner || !fresh || fresh.delivery !== "held" || !canRetry(freshOwner, fresh)) continue;
+      const speakerId = fresh.from.kind === "commander" ? freshOwner.id : fresh.from.memberId;
+      const role = fresh.from.kind === "commander" ? "Commander" : freshOwner.members.find((member) => member.id === speakerId)?.role ?? "member";
+      try {
+        const delivery = await pushToSession(owner.id, sessionId, fresh.to.kind === "member" ? fresh.to.memberId : null, fresh, { objectiveId: speakerId, title: role });
+        if (delivery !== "held") store.setMessageDelivery(owner.id, fresh.messageId, delivery);
+        else return;
+      } catch {
+        // 다시 넣을 수 없는 거절은 이 틱을 여기서 끊는다. 기록은 held 로 남고, 뒤 메시지가 앞으로 새지 않는다.
+        return;
+      }
+    }
+  };
+  // 보류 재시도는 live 턴 감시와 따로다. 재시작 뒤 휴면인 수신은 outcomeWatched 에 들어가지 않아, 그 루프만 믿으면 기록이 영원히 held 로 남는다.
+  let heldTimer: ReturnType<typeof setTimeout> | null = null;
+  const hasHeld = (): boolean => store.all().some((current) => store.heldMessages(current.id).some((message) => canRetry(current, message)));
+  const sweepHeld = () => {
+    if (disposed) return;
+    const pending: Promise<void>[] = [];
+    for (const current of store.all()) {
+      if (current.archived || current.removed) continue;
+      const targets = new Set<string>();
+      for (const message of store.heldMessages(current.id)) if (canRetry(current, message)) targets.add(message.to.kind === "commander" ? current.id : message.to.memberId);
+      for (const target of targets) pending.push(enqueueTarget(target, () => flushTarget(target)));
+    }
+    void Promise.all(pending).catch(() => undefined);
+  };
+  const armHeldWatch = () => {
+    if (disposed || heldTimer || !hasHeld()) return;
+    heldTimer = setTimeout(() => {
+      heldTimer = null;
+      try { sweepHeld(); }
+      catch { /* 다음 틱이 다시 읽는다. */ }
+      armHeldWatch();
+    }, WATCH_MS);
+    heldTimer.unref?.();
+  };
   let quietTimer: ReturnType<typeof setTimeout> | null = null;
   const quietTargets = (): boolean => store.all().some((current) => !current.archived && !current.done && !current.removed && current.missions.some((mission) => !mission.done && mission.member !== null && mission.assignmentTs != null));
   const sweepQuiet = async () => {
@@ -1961,6 +2102,63 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return { objective: objective(objectiveId), notified };
     }),
 
+    relay: (fromSessionId, to, rawText, options) => {
+      const owned = store.find(fromSessionId) ?? store.findMember(fromSessionId)?.objective ?? null;
+      if (!owned) throw new ObjectiveStoreError("not_participant");
+      return orderedObjectiveRequest(owned.id, async () => {
+        const text = rawText.trim();
+        if (!text || text.length > 16_000) throw new ObjectiveStoreError("invalid_request");
+        const current = store.find(owned.id);
+        if (!current) throw new ObjectiveStoreError("unknown_objective");
+        const fromMember = current.members.find((member) => member.id === fromSessionId);
+        const from: ObjectiveMessageParty = fromMember ? { kind: "member", memberId: fromMember.id } : fromSessionId === current.id ? { kind: "commander" } : (() => { throw new ObjectiveStoreError("not_participant"); })();
+        let target: ObjectiveMessageParty;
+        let targetId: string;
+        if (to === "commander") { target = { kind: "commander" }; targetId = current.id; }
+        else {
+          if (from.kind === "member") throw new ObjectiveStoreError("forbidden_target");
+          const byId = current.members.find((member) => member.id === to);
+          const byRole = current.members.filter((member) => member.role === to);
+          const member = byId ?? (byRole.length === 1 ? byRole[0] : undefined);
+          if (byRole.length > 1 && !byId) throw new ObjectiveStoreError("ambiguous_member");
+          if (!member) throw new ObjectiveStoreError("unknown_member");
+          target = { kind: "member", memberId: member.id };
+          targetId = member.id;
+        }
+        if (sameParty(from, target)) throw new ObjectiveStoreError("self_target");
+        if (current.done && target.kind === "member") throw new ObjectiveStoreError("objective_done");
+        if (current.removed) throw new ObjectiveStoreError("objective_removed");
+        if (options?.replyTo && !store.messages(current.id).some((entry) => entry.messageId === options.replyTo)) throw new ObjectiveStoreError("unknown_message");
+        const at = quietNow();
+        const messageId = randomUUID();
+        const speaker = { objectiveId: fromSessionId, title: from.kind === "commander" ? "Commander" : fromMember!.role };
+        store.appendMessage(current.id, {
+          messageId, at, from, to: target, text,
+          ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
+          delivery: "held",
+        });
+        if (target.kind === "member") store.recordDispatch(target.memberId, at);
+        if (from.kind === "member") store.setMemberDelivered(from.memberId, at);
+        let delivery: ObjectiveMessageDelivery = "held";
+        await enqueueTarget(targetId, async () => {
+          const owner = store.find(current.id);
+          const still = store.messages(current.id).find((entry) => entry.messageId === messageId);
+          if (!owner || !still || still.delivery !== "held" || !canRetry(owner, still)) {
+            delivery = still?.delivery ?? "held";
+            return;
+          }
+          try {
+            delivery = await pushToSession(current.id, targetId, target.kind === "member" ? target.memberId : null, { messageId, text, ...(options?.replyTo ? { replyTo: options.replyTo } : {}), from }, speaker);
+          } catch (error) {
+            if (!holdableDelivery(error)) throw error;
+          }
+          if (delivery !== "held") store.setMessageDelivery(current.id, messageId, delivery);
+          else armHeldWatch();
+        });
+        return { messageId, to: target.kind === "commander" ? "commander" : target.memberId, delivery };
+      });
+    },
+
     broadcast: (objectiveId, text) => orderedObjectiveRequest(objectiveId, async () => {
       if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
       const current = editableObjective(objectiveId);
@@ -2089,9 +2287,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (outcomeTimer) clearTimeout(outcomeTimer);
       outcomeTimer = null;
       outcomeWatched.clear();
+      if (heldTimer) clearTimeout(heldTimer);
+      heldTimer = null;
       lastOutcomes.clear();
       unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null;
-      unsubscribeSessionMessages?.(); unsubscribeSessionMessages = null;
       // 구성원 실패·무보고·정산 좌표는 보드 사실이다 — 플러그인이 내려가도 지우지 않는다(다음 기동이 그대로 이어 읽는다).
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = null;

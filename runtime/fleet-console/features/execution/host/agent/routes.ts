@@ -690,7 +690,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         if (input.liveOnly && ctx.consoleControl?.observe(objectiveId)?.lifecycle !== "live") throw new ConsoleControlError("session_not_live");
       };
       assertDeliveryCurrent();
-      const origin = chatOrigin(caller);
+      const origin = input.rosterSpeaker
+        ? { kind: "objectiveRecord" as const, objectiveId: input.rosterSpeaker.objectiveId, title: input.rosterSpeaker.title }
+        : chatOrigin(caller);
       const authored = origin?.kind === "plugin" && input.humanInput ? { ...origin, humanInput: input.humanInput } : origin;
       await deliverMessage(objectiveId, input.text!, input.attachmentIds ?? [], reply, assertDeliveryCurrent, settled, authored, input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
@@ -1285,6 +1287,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
           ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
           ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
+          ...(launchOptions.parentObjectiveId || ctx.isCommanderSession?.(sessionId) ? { objectiveMessaging: true as const } : {}),
         });
         // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
         // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
@@ -1459,6 +1462,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
         ...(blockSubagents ? { disableSubagents: true } : {}),
         ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
+        ...(node.parentObjectiveId || ctx.isCommanderSession?.(sessionId) ? { objectiveMessaging: true as const } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.id }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
@@ -2281,26 +2285,16 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 프로세스가 만든 것)는 null이고, 그 자리는 바이트 없는 첨부로 선다.
         resolveAttachmentId: (filePath: string) => launchAttachments.idForPath(filePath),
         /**
-         * 보낸 쪽이 관측한 세션 간 메시지를 받는 쪽 원장에 옮긴다. `--name`은 Objective의
-         * sessionName과 정확히 대조하고, uds 주소는 같은 Claude 홈의 live 등록과 실제 provider
-         * 신원을 거쳐 푼다. 0개(이 Console 밖 세션·서브에이전트·main)나 2개 이상이면 해석하지 않는다.
-         * 보낸 이름도 본문 대신 서버 값을 쓰고, 이미 열려 있는 채팅 세션에만 건넨다.
-         * 여기서 `ensure`를 부르면 말 한 통이 잠든 Objective의 자식을 깨우게 된다.
+         * 성공한 SendMessage를 받는 쪽 원장에 옮긴다. `--name`은 Objective의 sessionName과 대조하고,
+         * uds 주소는 같은 Claude 홈의 live 등록으로 푼다. 0개나 2개 이상이면 해석하지 않는다.
+         * 이미 열려 있는 채팅 세션에만 건넨다. `ensure`를 부르면 잠든 Objective의 자식을 깨운다.
          */
-        // 받는 쪽 관측 — 보낸 쪽이 터미널이어도 이 세션의 트랜스크립트가 말한 보낸 이름을 등록으로 풀어 같은 도착 사실을 알린다.
-        onPeerMessageReceived: ({ fromName, at }) => {
-          void resolveRecipient(fromName).then((senderId) => {
-            if (senderId) ctx.consoleControl?.reportSessionMessage(senderId, node.id, at);
-          }).catch(() => {});
-        },
         resolveSessionMessageRecipient: resolveRecipient,
         onSessionMessageSent: ({ recipientObjectiveId, text, toolUseId }) => {
           const sender = ctx.host.objectiveRecords.get(node.id);
           if (!recipientObjectiveId || !sender || !ctx.host.objectiveRecords.get(recipientObjectiveId)) return;
-          // 본문 없이 도착 사실만 Console 제어에 알린다 — 받는 쪽이 터미널·휴면이어도 성공한 발신의 대상 좌표는 확정된다.
-          ctx.consoleControl?.reportSessionMessage(node.id, recipientObjectiveId, Date.now());
           const from = readAgentSession(sender)?.sessionName || sender.title || node.id;
-          // 지휘관에게 --name이 없어도 발신 Objective은 확실하다. 이미 있는 원장에만 전달하고 잠든 세션은 깨우지 않는다.
+          // 이미 있는 원장에만 전달하고 잠든 세션은 깨우지 않는다.
           chatRegistry.get(recipientObjectiveId)?.noteReceived({ id: `${node.id}:${toolUseId}`, from, senderObjectiveId: node.id, text });
         },
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },
@@ -2316,6 +2310,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
           ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
+          ...(node.parentObjectiveId || ctx.isCommanderSession?.(node.id) ? { objectiveMessaging: true as const } : {}),
           ...(node.commodoreId && deps.commodorePluginDirs ? { pluginDirs: deps.commodorePluginDirs(node.commodoreId) } : {}),
           ...(node.commodoreId && deps.commodorePluginEnv ? { pluginEnv: deps.commodorePluginEnv(node.commodoreId) } : {}),
           origin: sessionOrigin.kind === "resume"

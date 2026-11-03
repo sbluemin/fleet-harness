@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { resolvePathBinary } from "@fleet-console/process";
 import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@fleet-console/ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@fleet-console/ai-gateway";
-import { ALL_SUBAGENTS, createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle, type LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
+import { ALL_SUBAGENTS, OBJECTIVE_PEER_TOOLS, createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle, type LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
 
@@ -128,6 +128,7 @@ export async function prepareChatClaudeSession(
     readonly claudeCodeCustomSystemPrompt?: string;
     readonly claudeCodeDisabledAgents?: readonly string[];
     readonly disableAutoMemory?: boolean;
+    readonly objectiveMessaging?: boolean;
     readonly pluginDirs?: readonly string[];
     readonly pluginEnv?: Readonly<Record<string, string>>;
   },
@@ -146,7 +147,7 @@ export async function prepareChatClaudeSession(
     ...(deps.claudeCodeCustomSystemPrompt ? { claudeCodeCustomSystemPrompt: deps.claudeCodeCustomSystemPrompt } : {}),
     ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
     ...(deps.disableAutoMemory ? { disableAutoMemory: true } : {}),
-    claudeCodeDisabledTools: CONSOLE_DISABLED_TOOLS,
+    claudeCodeDisabledTools: consoleDisabledTools(deps.objectiveMessaging),
     workspaceHookExec: buildConsoleWorkspaceHookCommand(buildConsoleHookEntry(deps)),
     ...(gatewaySelection
       ? {
@@ -161,6 +162,10 @@ const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude";
  * 두 표면 모두 이 이름들을 deny 목록에 싣는다. 진입만 남기면 승인 없이 계획 모드를 빠져나올 수 없으므로 함께 뺀다.
  */
 export const CONSOLE_DISABLED_TOOLS: readonly string[] = ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"];
+/** 목표 세션만 피어 도구를 더 뺀다. 그 밖은 기존 목록 그대로다. */
+export function consoleDisabledTools(objectiveMessaging: boolean | undefined): readonly string[] {
+  return objectiveMessaging ? [...CONSOLE_DISABLED_TOOLS, ...OBJECTIVE_PEER_TOOLS] : CONSOLE_DISABLED_TOOLS;
+}
 
 export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDeps): TerminalLaunchResolver {
   const baseCwd = deps.cwd ?? process.cwd();
@@ -237,6 +242,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       sessionName: context?.sessionName,
       ...(context?.disableSubagents ? { disableSubagents: true } : {}),
       ...(context?.disableAutoMemory ? { disableAutoMemory: true } : {}),
+      ...(context?.objectiveMessaging ? { objectiveMessaging: true } : {}),
       sessionId,
     });
   };
@@ -279,6 +285,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly disableSubagents?: boolean;
   /** auto-memory 끄기 — Chat 표면과 같은 설정 키(`autoMemoryEnabled: false`)로 실린다. */
   readonly disableAutoMemory?: boolean;
+  /** 목표 세션이면 SendMessage·ListAgents를 deny 목록에 더한다. */
+  readonly objectiveMessaging?: boolean;
   readonly sessionId: string;
 }): Promise<TerminalLaunchSpec> {
   const cleanupStack: Array<() => void | Promise<void>> = [];
@@ -371,7 +379,8 @@ async function createAgentCliLaunchSpec(options: {
       ...(options.disableSubagents ? { claudeCodeDisabledAgents: [ALL_SUBAGENTS] } : {}),
       ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
       // 사람에게 묻는 도구와 계획 모드 도구는 늘 뺀다 — 서브에이전트 규칙과 합쳐 같은 deny 목록으로 실린다.
-      claudeCodeDisabledTools: CONSOLE_DISABLED_TOOLS,
+      // 목표 세션은 여기에 SendMessage·ListAgents를 더한다.
+      claudeCodeDisabledTools: consoleDisabledTools(options.objectiveMessaging),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.
       origin: options.resumeSessionId
         ? { kind: "resume", sessionId: options.resumeSessionId }

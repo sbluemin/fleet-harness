@@ -115,7 +115,6 @@ ts: child.ts};
   const outcomes = new Map<string, "running" | "succeeded" | "completed" | "failed" | "interrupted" | "unknown">();
   const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("../../console-use/shared/control.js").ConsoleTurnReport }>();
   const turnEndListeners = new Set<(event: import("../../console-use/shared/control.js").ConsoleTurnEnd) => void>();
-  const sessionMessageListeners = new Set<(event: import("../../console-use/shared/control.js").ConsoleSessionMessage) => void>();
   // 떠 있는 세션이 init 에서 광고한 도구 — 없으면 호스트가 아직 모른다(null).
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
@@ -245,7 +244,6 @@ title: input.title});
       transcript: async (objectiveId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${objectiveId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
       observe: observeSession,
       subscribeTurnEnds: (listener: (event: import("../../console-use/shared/control.js").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
-      subscribeSessionMessages: (listener: (event: import("../../console-use/shared/control.js").ConsoleSessionMessage) => void) => { sessionMessageListeners.add(listener); return () => { sessionMessageListeners.delete(listener); }; },
       // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
       sleep: async (objectiveId: string) => {
         if (surfaceOf(objectiveId) === "chat") return { ok: false, error: "chat_sleep_unsupported" };
@@ -332,9 +330,7 @@ title: input.title});
   return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, objectiveRecords, archivedObjectiveRecords, archiveCalls, accessCalls, objectiveRecordsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ objectiveId: id, output });
-  }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; },
-    // 호스트처럼 본문 없이 보낸·받은 Objective 과 시각만 건넨다.
-    emitSessionMessage: (fromObjectiveId: string, toObjectiveId: string, at = clock) => { for (const listener of sessionMessageListeners) listener({ fromObjectiveId, toObjectiveId, at }); } };
+  }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; } };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -1366,7 +1362,10 @@ describe("Objectives contract", () => {
     const helper = store.memberAdd("sidebar", { role: "helper" }, "human").members.at(-1)!;
     await launch.muster("sidebar");
     const helperObjective = helper.id;
-    expect((await call("mine", {}, helperObjective)).structuredContent).toMatchObject({ role: "member", commander: { session: null } });
+    const helperMine = (await call("mine", {}, helperObjective)).structuredContent;
+    expect(helperMine).toMatchObject({ role: "member" });
+    expect(helperMine).not.toHaveProperty("commander");
+    expect(JSON.stringify(helperMine)).not.toMatch(/-cmdr|sessionName/);
   });
 
   it("keeps the group on the parent without adding group metadata to children", async () => {
@@ -1424,7 +1423,7 @@ describe("Objectives contract", () => {
     expect(addedMission.structuredContent.stored).toEqual({ title: "Build", text: "padded" });
     // 구성원은 제 역할과 맡은 임무를 읽지만 쓰지 못한다.
     // 구성원은 보고·판단 요청을 보낼 지휘관의 세션 주소를 함께 받는다.
-    expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
+    expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
     expect(store.find(objective.id)!.commander.sessionName).toMatch(/-cmdr$/);
     expect((await call("read", { objectiveId: objective.id }, member.id)).isError).toBe(false);
     expect((await call("read", {}, member.id)).structuredContent.objective).toHaveProperty("id", objective.id);
@@ -2754,7 +2753,9 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(5_000);
       expect(restartedMember()).not.toHaveProperty("failure");
       expect(await restartedRows()).toEqual([]);
-      expect(notifications()).toHaveLength(afterReissue + 2);
+      // 발주 뒤 메시지 없이 닫힌 성공 턴은 지휘관에게 idle 알림을 한 번 더 보낸다.
+      expect(notifications()).toHaveLength(afterReissue + 3);
+      expect(notifications().some((entry) => entry.text.includes("without a message to the Commander"))).toBe(true);
 
       outcomes.set(id, "failed");
       await vi.advanceTimersByTimeAsync(1_000);
@@ -2881,18 +2882,19 @@ describe("Objectives contract", () => {
       advertised.set(memberId, ["Bash", "Read"]);
       expect(await memberView()).toMatchObject({ noReportTool: true });
       h.advanceClock(1_000);
-      h.emitSessionMessage(id, memberId);
+      await launch.message(id, memberId, "Dispatch again.", { actor: "commander" });
       turn(9, "succeeded", { sentTo: [], byPerson: false, answer: "No way to report." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(2);
       expect(await memberView()).toMatchObject({ unreported: { lastMessage: "No way to report.", reason: { code: "no_report_tool" } } });
-      advertised.set(memberId, ["Bash", "SendMessage"]);
+      advertised.set(memberId, ["Bash", "mcp__fleet-objectives__message"]);
       expect(await memberView()).not.toHaveProperty("noReportTool");
       advertised.delete(memberId);
       expect(await memberView()).not.toHaveProperty("noReportTool");
       // ④ 보고가 닿은 턴은 표시를 거둔다 — 보드를 거친 사람의 말이 연 턴이라도 빚을 갚았다.
       await launch.message(id, memberId, "Please report to the commander.");
-      turn(10, "succeeded", { sentTo: [`objective-${id.slice(0, 6)}-cmdr`], byPerson: false, answer: "Reported." });
+      expect((await call("message", { to: "commander", text: "Reported." }, memberId)).isError).toBe(false);
+      turn(10, "succeeded", { sentTo: [], byPerson: false, answer: "Reported." });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(await memberView()).not.toHaveProperty("unreported");
       // ⑤ 발주 뒤 이미 보고한 구성원이 지휘관의 참고 메시지에 답 없이 닫은 턴은 보고 빚이 없다.
@@ -2902,13 +2904,13 @@ describe("Objectives contract", () => {
       expect(await memberView()).not.toHaveProperty("unreported");
       // 보고는 보낸 시각으로 센다 — 보고 뒤 같은 턴이 닫히기 전에 들어온 새 발주는 그 보고로 갚아지지 않아, 다음의 조용한 정지를 알린다.
       h.advanceClock(1_000);
-      h.emitSessionMessage(memberId, id);
+      expect((await call("message", { to: "commander", text: "Reported before the next dispatch." }, memberId)).isError).toBe(false);
       h.advanceClock(1_000);
-      h.emitSessionMessage(id, memberId);
+      expect((await call("message", { to: memberId, text: "More work." }, id)).isError).toBe(false);
       h.advanceClock(1_000);
-      turn(12, "succeeded", { sentTo: [`objective-${id.slice(0, 6)}-cmdr`], byPerson: false, answer: "Reported; more work arrived." });
+      turn(12, "succeeded", { sentTo: [], byPerson: false, answer: "Reported; more work arrived." });
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(notices()).toHaveLength(2);
+      expect(notices()).toHaveLength(3);
       turn(13, "succeeded", { sentTo: [], byPerson: false, answer: "Stopped after the new dispatch." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(3);
@@ -2938,8 +2940,9 @@ describe("Objectives contract", () => {
       const restartedMember = () => after.store.find(id)!.members.find((member) => member.id === memberId);
       expect(restartedMember()).toMatchObject({ unreported: { lastMessage: "Stopped again.", reason: null } });
       expect(notices()).toHaveLength(5);
-      // 배정 뒤 보고한 기록도 남는다 — 재시작 직후의 조용한 턴(참고 메시지에 답 없이 닫음)은 오탐을 내지 않는다.
-      turn(17, "succeeded", { sentTo: ["commander"], byPerson: false, answer: "Reported." });
+      // 배정 뒤 보고한 기록도 남는다 — 메시지 로그의 전달 시각이 그 빚을 갚는다.
+      after.store.setMemberDelivered(memberId, Date.now());
+      turn(17, "succeeded", { sentTo: [], byPerson: false, answer: "Reported." });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(restartedMember()).not.toHaveProperty("unreported");
       after.launch.dispose();
@@ -2995,7 +2998,7 @@ describe("Objectives contract", () => {
 
   it("wakes the commander once when an assigned ready mission stays unreported and never steers", async () => {
     const reportQuietMs = 25 * 60_000;
-    const { store, launch, call, sent, activity, advanceClock, restart, emitSessionMessage } = harness(() => null, { reportQuietMs });
+    const { store, launch, call, sent, activity, advanceClock, restart } = harness(() => null, { reportQuietMs });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -3028,7 +3031,7 @@ describe("Objectives contract", () => {
       launch.watchLiveOutcomes();
       const dispatchOf = (from = store) => from.find(objective.id)!.missions.find((entry) => entry.id === mission!.id)?.dispatch;
       expect(dispatchOf()).toBeUndefined();
-      emitSessionMessage(commander, memberId);
+      expect((await call("message", { to: memberId, text: "Start the mission." }, commander)).isError).toBe(false);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(dispatchOf()).toEqual({ at: expect.any(Number), receivedAt: null });
       const dispatchedAt = dispatchOf()!.at;
@@ -3040,11 +3043,8 @@ describe("Objectives contract", () => {
       // 지휘관·사령관이 읽는 보드에도 같은 흔적이 시각만으로 선다.
       const board = (await call("read", { objectiveId: objective.id }, commander)).structuredContent.objective as { graph: { missions: { missionId: string; dispatch?: unknown }[] } };
       expect(board.graph.missions.find((entry) => entry.missionId === mission!.id)?.dispatch).toEqual({ sentAt: new Date(dispatchedAt).toISOString(), receivedAt: new Date(dispatchOf()!.receivedAt!).toISOString() });
-      // 한 통은 보낸 쪽과 받는 쪽에서 두 번 보일 수 있다 — 같은 말의 이른 관측은 발주 시각을 되돌리지 않는다.
-      emitSessionMessage(commander, memberId, dispatchedAt - 1);
-      expect(dispatchOf()!.at).toBe(dispatchedAt);
-      // 구성원이 지휘관에게 보낸 말은 발주가 아니다.
-      emitSessionMessage(memberId, commander);
+      // 구성원이 지휘관에게 보낸 말은 발주가 아니다. 기록의 시각은 뒤로 가지 않는다.
+      expect((await call("message", { to: "commander", text: "ack" }, memberId)).isError).toBe(false);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(dispatchOf()!.at).toBe(dispatchedAt);
       activity.set(memberId, "idle");
@@ -3091,6 +3091,80 @@ describe("Objectives contract", () => {
       expect(quietSends()).toHaveLength(3);
       after.launch.dispose();
     } finally {
+      launch.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries held messages once in order after restart, and does not keep retrying one that can no longer be delivered", async () => {
+    const h = harness();
+    const { store, launch, call, ctx, sent, activity, surfaces, restart, hostFault } = h;
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Held once", groupId: null });
+    const id = objective.id;
+    await launch.requestPlan(id);
+    activity.set(id, "idle");
+    expect((await call("enlist", { members: [{ role: "worker" }] }, id)).isError).toBe(false);
+    const memberId = store.find(id)!.members[0]!.id;
+    surfaces.set(memberId, "terminal");
+    activity.set(memberId, "dormant");
+    const records = ctx.objectiveRecords as { isTransitioning?: (sessionId: string) => boolean };
+    records.isTransitioning = (sessionId) => sessionId === memberId;
+    let restarted: ReturnType<typeof restart> | null = null;
+    try {
+      expect((await call("message", { to: memberId, text: "Hold this." }, id)).structuredContent.delivery).toBe("held");
+      expect((await call("message", { to: memberId, text: "Then this." }, id)).structuredContent.delivery).toBe("held");
+      expect(sent.filter((entry) => entry.objectiveId === memberId)).toHaveLength(0);
+      records.isTransitioning = () => false;
+      vi.useFakeTimers();
+      launch.dispose();
+      const control = ctx.consoleControl!;
+      const real = control.request.bind(control);
+      let sendN = 0;
+      control.request = ((input: { kind: string }) => {
+        const pending = real(input as never);
+        if (input.kind !== "send") return pending;
+        sendN += 1;
+        const delay = sendN === 1 ? 2_500 : 100;
+        return pending.then((value) => new Promise((resolve) => setTimeout(() => resolve(value), delay)));
+      }) as typeof control.request;
+      restarted = restart();
+      restarted.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(5_000);
+      const labels = sent.filter((entry) => entry.objectiveId === memberId).map((entry) => entry.text.includes("Then this.") ? "second" : entry.text.includes("Hold this.") ? "first" : entry.text);
+      expect(labels).toEqual(["first", "second"]);
+      expect(restarted.store.messages(id).some((message) => message.delivery === "held")).toBe(false);
+
+      records.isTransitioning = (sessionId) => sessionId === memberId;
+      expect((await restarted.launch.relay(id, memberId, "Stay held.")).delivery).toBe("held");
+      await restarted.launch.memberRemoved(id, memberId);
+      activity.delete(id);
+      activity.delete(memberId);
+      restarted.launch.dispose();
+      restarted = restart();
+      const timersBefore = vi.getTimerCount();
+      restarted.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sent.filter((entry) => entry.text.includes("Stay held."))).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(timersBefore);
+
+      activity.set(id, "idle");
+      const enlisted = restarted.store.memberAdd(id, { role: "worker" }, "human");
+      const nextMember = enlisted.members.at(-1)!.id;
+      surfaces.set(nextMember, "terminal");
+      activity.set(nextMember, "dormant");
+      records.isTransitioning = (sessionId) => sessionId === nextMember;
+      expect((await restarted.launch.relay(id, nextMember, "Boom held.")).delivery).toBe("held");
+      records.isTransitioning = () => false;
+      hostFault.sendError = "explode";
+      restarted.launch.dispose();
+      restarted = restart();
+      const seen = sent.length;
+      restarted.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(sent.length).toBe(seen);
+      expect(restarted.store.messages(id).some((message) => message.text === "Boom held." && message.delivery === "held")).toBe(true);
+    } finally {
+      restarted?.launch.dispose();
       launch.dispose();
       vi.useRealTimers();
     }

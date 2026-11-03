@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
 import { sanitizeLaunchPrompt } from "@fleet-console/agent-runtime/fleet";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
-import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnEnd } from "../shared/control.js";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "../shared/control.js";
 import { z } from "zod";
 
 const callerSchema = z.discriminatedUnion("kind", [
@@ -26,6 +26,7 @@ const actionObjectSchema = z.object({
   // send 전용 — 사람이 올린 첨부 id(실행 기능의 런치 첨부). 입력창 상한(4)보다 넉넉한 입력 경계만 둔다; 해석·소유 검사는 전달이 한다.
   attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(16).optional(),
   display: z.string().max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
+  rosterSpeaker: z.object({ objectiveId: z.string().min(1).max(128), title: z.string().trim().min(1).max(80) }).strict().optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
   disableSubagents: z.boolean().optional(), disableAutoMemory: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
@@ -37,7 +38,7 @@ export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.objectiveId : !value.objectiveId || value.theaterId || (value.kind === "send" && value.text === undefined)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
   if (value.kind !== "launch" && (value.commodoreId || value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentObjectiveId !== undefined || value.childSessionId !== undefined || value.newObjectiveId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
-  if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
+  if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined || value.rosterSpeaker !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
   if ((value.parentObjectiveId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.childSessionId && (value.newObjectiveId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
@@ -114,7 +115,6 @@ interface InFlight {
 export function createConsoleControl(deps: ConsoleControlDeps) {
   const now = deps.now ?? Date.now;
   const turnEndListeners = new Set<{ caller: ConsoleCaller; listener: (event: ConsoleTurnEnd) => void }>();
-  const sessionMessageListeners = new Set<{ caller: ConsoleCaller; listener: (event: ConsoleSessionMessage) => void }>();
   const stamp = () => new Date(now()).toISOString();
   const file = path.join(deps.directory, "state.json");
   let state: SavedState = { version: 3, automations: [] };
@@ -455,22 +455,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 턴 정산을 막지 않는다. */ }
       }
     },
-    /** 세션 간 메시지 도착 — 보낸 쪽과 받는 쪽이 모두 그 플러그인이 띄운 Objective(또는 그 자식)일 때만 건넨다. 본문은 없다. */
-    subscribeSessionMessages(caller: ConsoleCaller, listener: (event: ConsoleSessionMessage) => void) {
-      const entry = { caller, listener };
-      sessionMessageListeners.add(entry);
-      return () => { sessionMessageListeners.delete(entry); };
-    },
-    reportSessionMessage(fromObjectiveId: string, toObjectiveId: string, at: number) {
-      if (disposed) return;
-      const from = node(fromObjectiveId), to = node(toObjectiveId);
-      if (!from || !to) return;
-      const event: ConsoleSessionMessage = { fromObjectiveId, toObjectiveId, at };
-      for (const entry of sessionMessageListeners) {
-        if (!launchedByPlugin(entry.caller, from) || !launchedByPlugin(entry.caller, to)) continue;
-        try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 전달을 막지 않는다. */ }
-      }
-    },
     coordinates, transcript,
     async unstartedPreset(caller: ConsoleCaller, objectiveId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
       const op = node(objectiveId);
@@ -508,7 +492,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       }
       return updateAutomation(id, { status: "active", ...(item.input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + item.input.trigger.minutes * 60_000).toISOString() } : {}) });
     },
-    dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); turnEndListeners.clear(); sessionMessageListeners.clear(); adapter = null; },
+    dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); turnEndListeners.clear(); adapter = null; },
   };
 }
 export type ConsoleControl = ReturnType<typeof createConsoleControl>;

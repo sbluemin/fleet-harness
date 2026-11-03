@@ -21,8 +21,24 @@ const LOW_SIGNAL_PATTERN = /^(continue|계속|진행|다음|next|ok|okay|go|run|
 const SECRET_PREFIX_PATTERN = /^(ghp_|gho_|ghs_|ghu_|ghr_|github_pat_|sk-|sk_live_|sk_test_|pk-|rk-|xox[baprs]-|AKIA|ASIA|AIza|ya29\.|glpat-|eyJ)/;
 const SECRET_CHARSET_PATTERN = /^[A-Za-z0-9_\-+/=.]+$/;
 
+/**
+ * 목표 message 도구가 모델 문면 맨 앞에 붙이는 한 줄(`features/objectives/host/launch.ts`).
+ * 이 줄로 시작하는 프롬프트는 사람이 붙인 이름이 아니다.
+ */
+const OBJECTIVE_RELAY_LINE = /^\[message from (?:the Commander|member [^\]\n]+ \([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\))\]$/i;
+
+function isObjectiveRelayPrompt(prompt: string): boolean {
+  const first = prompt.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim() ?? "";
+  return OBJECTIVE_RELAY_LINE.test(first);
+}
+
 export function deriveObjectiveLabel(prompt: unknown): string | null {
   if (typeof prompt !== "string" || prompt.length === 0) return null;
+  // 전달된 목표 메시지는 제목이 아니다. UserPromptSubmit이 이 문면을 첫 프롬프트로 보면
+  // (자동 작명 처리 여부는 인메모리라 재개·표면 전환 뒤 다시 비어 있다) 채널 안내나 본문이
+  // 세션 라벨이 되고, 부모가 없는 지휘관은 objective title 까지 그 문자열로 덮인다.
+  // null 은 작명 슬롯을 소모하지 않는다 — 다음 사람 프롬프트는 그대로 이름을 붙일 수 있다.
+  if (isObjectiveRelayPrompt(prompt)) return null;
   const lines = prompt.split(/\r?\n/);
   let examined = 0;
   let inFence = false;

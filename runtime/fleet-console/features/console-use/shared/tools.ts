@@ -1,7 +1,7 @@
 import type { ConsoleCaller } from "./control.js";
 import type { ConsoleActionSchema } from "./actions.js";
 import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
-import type { ConsoleActionInput, ConsoleActionKind, ConsoleHumanInput, ConsoleHumanInputAct, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesFailureCause, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnFailure, ConsoleTurnEnd, ConsoleTurnReport } from "./control.js";
+import type { ConsoleActionInput, ConsoleActionKind, ConsoleHumanInput, ConsoleHumanInputAct, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesFailureCause, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleTurnFailure, ConsoleTurnEnd, ConsoleTurnReport } from "./control.js";
 export const FLEET_CONSOLE_USE_MCP_SERVER = "fleet-console-use";
 
 
@@ -34,7 +34,7 @@ export function inputIssues(issues: readonly ArgumentIssue[]): { path: readonly 
 }
 
 
-export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleHumanInput, ConsoleHumanInputAct, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesFailureCause, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnFailure, ConsoleTurnEnd, ConsoleTurnReport } from "./control.js";
+export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleHumanInput, ConsoleHumanInputAct, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesFailureCause, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleTurnFailure, ConsoleTurnEnd, ConsoleTurnReport } from "./control.js";
 
 
 /**

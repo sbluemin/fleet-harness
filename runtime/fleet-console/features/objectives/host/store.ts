@@ -44,6 +44,8 @@ import {
   type ObjectiveAttachment,
   type ObjectiveEditKind,
   type Objective,
+  type ObjectiveMessage,
+  type ObjectiveMessageDelivery,
   type ObjectiveMemberFailure,
   type ObjectiveMemberUnreported,
   type SettledTurn,
@@ -227,6 +229,16 @@ export interface ObjectiveStore {
   setMemberDelivered(memberId: string, at: number): void;
   /** 지휘관의 세션 간 메시지가 이 구성원에게 닿았다(본문 없음). */
   recordDispatch(memberId: string, at: number): void;
+  /** 메시지 로그에 한 통을 남긴다. 전달을 시도하기 전에 부른다. */
+  appendMessage(objectiveId: string, message: ObjectiveMessage): ObjectiveMessage;
+  /** 같은 messageId 의 전달 상태만 고친다. 없으면 그대로 둔다. */
+  setMessageDelivery(objectiveId: string, messageId: string, delivery: ObjectiveMessageDelivery): void;
+  /** 아직 닿지 않은 메시지. */
+  heldMessages(objectiveId: string): readonly ObjectiveMessage[];
+  messages(objectiveId: string): readonly ObjectiveMessage[];
+  /** 이 세션에 채널 안내를 이미 실었는가. */
+  channelTold(objectiveId: string, sessionId: string): boolean;
+  markChannelTold(objectiveId: string, sessionId: string): void;
   /** 그 구성원의 마지막 발주와 수신 — 발주가 없으면 null. */
   memberDispatch(memberId: string): { readonly at: number; readonly receivedAt: number | null } | null;
   recordReceipt(memberId: string, at: number): void;
@@ -572,12 +584,12 @@ function storedFailure(value: StoredMember["failure"]): ObjectiveMemberFailure |
 function storedUnreported(value: StoredMember["unreported"]): ObjectiveMemberUnreported | undefined {
   return value && typeof value === "object" && Number.isFinite(value.at) && (value.reason === null || typeof value.reason === "object") ? value : undefined;
 }
-/** 보고 경로 없음 — 광고 목록을 알고, 그 목록에 보고 도구(SendMessage)가 없을 때만. 목록을 모르면(미기동·init 전) 판정하지 않는다. */
+/** 보고 경로 없음 — 광고 목록을 알고, 그 목록에 보고 도구(fleet-objectives message)가 없을 때만. 목록을 모르면(미기동·init 전) 판정하지 않는다. */
 export function lacksReportTool(tools: readonly string[] | null): boolean {
   return tools !== null && !tools.includes(REPORT_TOOL);
 }
-/** 구성원이 지휘관에게 보고하는 도구 — 하네스가 광고하는 이름. */
-export const REPORT_TOOL = "SendMessage";
+/** 구성원이 지휘관에게 보고하는 도구 — MCP 도구 이름. SendMessage는 목표 세션에 광고하지 않는다. */
+export const REPORT_TOOL = "mcp__fleet-objectives__message";
 function storedTurn(value: StoredMember["settledTurn"]): SettledTurn | undefined {
   return value && typeof value === "object" && Number.isFinite(value.revision) && (value.generation === undefined || typeof value.generation === "string") ? value : undefined;
 }
@@ -611,6 +623,9 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.merged?.length) delete out.merged;
   if (!objective.actions?.length) delete out.actions;
   else out.actions = objective.actions.slice(-MAX_OBJECTIVE_ACTIONS);
+  if (!objective.messages?.length) delete out.messages;
+  else out.messages = objective.messages.slice(-400);
+  if (!objective.channelTold?.length) delete out.channelTold;
   if (!objective.followups?.length) delete out.followups;
   if (!objective.followupBatches?.length) delete out.followupBatches;
   for (const key of ["planning", "criteriaOpen", "today", "commenced"] as const) if (out[key] !== true) delete out[key];
@@ -1435,10 +1450,37 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
     memberDelivered: (memberId) => { const at = storedMemberOf(memberId)?.deliveredAt; return typeof at === "number" && Number.isFinite(at) ? at : undefined; },
     setMemberDelivered(memberId, at) {
-      updateMember(memberId, (member) => ({ ...member, deliveredAt: at }));
+      updateMember(memberId, (member) => member.deliveredAt !== undefined && at <= member.deliveredAt ? member : { ...member, deliveredAt: at });
     },
     recordDispatch(memberId, at) {
-      updateMember(memberId, (member) => ({ ...member, dispatchedAt: at }));
+      updateMember(memberId, (member) => member.dispatchedAt !== undefined && at <= member.dispatchedAt ? member : { ...member, dispatchedAt: at });
+    },
+    appendMessage(objectiveId, message) {
+      update(objectiveId, (stored) => ({ ...stored, messages: [...(stored.messages ?? []), message] }));
+      return message;
+    },
+    setMessageDelivery(objectiveId, messageId, delivery) {
+      update(objectiveId, (stored) => ({
+        ...stored,
+        messages: (stored.messages ?? []).map((entry) => entry.messageId === messageId ? { ...entry, delivery } : entry),
+      }));
+    },
+    heldMessages(objectiveId) {
+      return this.messages(objectiveId).filter((entry) => entry.delivery === "held");
+    },
+    messages(objectiveId) {
+      try { return locate(objectiveId).stored.messages ?? []; }
+      catch { return []; }
+    },
+    channelTold(objectiveId, sessionId) {
+      try { return (locate(objectiveId).stored.channelTold ?? []).includes(sessionId); }
+      catch { return false; }
+    },
+    markChannelTold(objectiveId, sessionId) {
+      update(objectiveId, (stored) => {
+        const told = stored.channelTold ?? [];
+        return told.includes(sessionId) ? stored : { ...stored, channelTold: [...told, sessionId].slice(-80) };
+      });
     },
     memberDispatch(memberId) {
       const member = storedMemberOf(memberId);

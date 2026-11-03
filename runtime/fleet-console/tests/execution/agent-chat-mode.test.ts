@@ -172,8 +172,6 @@ describe("agent chat mode routes", () => {
     const sentFrames = await harness.openChatSocket(member);
     const sentResult = (id: string) => sentFrames.map(({ raw }) => readChatJournalEvent(raw)?.event)
       .find((event) => event?.kind === "tool-result" && event.id === id);
-    const arrivalReports = vi.spyOn(harness.consoleControl, "reportSessionMessage");
-    cleanups.push(() => { arrivalReports.mockRestore(); });
     const sent = (id: string, to: string, text: string, extra: Record<string, unknown> = {}) => ({
       type: "assistant",
       message: { content: [{ type: "tool_use", id, name: "SendMessage", input: { to, message: text } }] },
@@ -198,13 +196,11 @@ describe("agent chat mode routes", () => {
     delete (harness.objectiveRecord(member)!.session as Record<string, unknown>).sessionName;
     // 같은 호출을 다시 관측해도, 실패한 호출·서브에이전트 발신·이 Console이 모르는 이름도 줄을 세우지 않는다.
     harness.emitToLatest(settled("call-1", true));
-    const reportsBeforeFailure = arrivalReports.mock.calls.length;
     const sessionsBeforeFailure = harness.openSession.mock.calls.length;
     harness.emitToLatest(sent("call-2", "dormant-member", "Rejected send."));
     harness.emitToLatest(settled("call-2", false));
     // 기존 실패 케이스를 휴면 대상에게 보낸다. 수신자는 해석해도 도착·기동은 만들지 않고, 본문의 거절은 사유를 단 실패로 선다.
     await vi.waitFor(() => expect(sentResult("call-2")).toMatchObject({ recipientObjectiveId: dormantRecipient, ok: false, summary: "no such session" }));
-    expect(arrivalReports.mock.calls).toHaveLength(reportsBeforeFailure);
     expect(frames.filter(({ event }) => event.kind === "received")).toHaveLength(1);
     expect(harness.consoleControl.observe(dormantRecipient)?.lifecycle).toBe("live");
     expect(harness.openSession.mock.calls).toHaveLength(sessionsBeforeFailure);
@@ -325,13 +321,6 @@ describe("agent chat mode routes", () => {
     expect(tail).toMatchObject({ source: "chat", nextCursor: null });
     expect("entries" in tail && tail.entries.some((entry) => entry.kind === "user" && String(entry.text).includes("Own work"))).toBe(true);
     await expect(harness.consoleControl.transcript(plugin, commander, { limit: 5, tail: true })).resolves.toEqual({ error: "forbidden" });
-    // 세션 간 메시지 도착은 보낸·받은 Objective 과 시각만 그 둘을 띄운 플러그인에 건넨다 — 본문은 없고, 남이 띄운 세션 사이의 말은 건네지 않는다.
-    const peer = (await harness.consoleControl.request(plugin, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "peer" })).objectiveId;
-    const arrivals: import("../../features/console-use/shared/control.js").ConsoleSessionMessage[] = [];
-    cleanups.push(harness.consoleControl.subscribeSessionMessages(plugin, (event) => arrivals.push(event)));
-    harness.emitToLatest(sent("call-peer", "peer", "Mission 2 is yours."));
-    harness.emitToLatest(settled("call-peer", true));
-    await vi.waitFor(() => expect(arrivals).toEqual([{ fromObjectiveId: owned, toObjectiveId: peer, at: expect.any(Number) }]));
     // 광고 도구 — 자식이 init 에서 모델에게 내놓은 목록을 그 세션을 띄운 플러그인만 읽는다. init 전·남의 세션은 null(「없다」가 아니다).
     expect(harness.consoleControl.advertisedTools(plugin, owned)).toBeNull();
     harness.emitToLatest({ type: "system", subtype: "init", tools: ["Bash", "Read", "SendMessage"] });
@@ -497,8 +486,6 @@ describe("agent chat mode routes", () => {
       (harness.objectiveRecord(verifier)!.session as Record<string, unknown>).id = registration.sessionId;
       await fs.writeFile(path.join(registry, `${process.pid}.json`), JSON.stringify(registration));
     }
-    const arrivalReports = vi.spyOn(harness.consoleControl, "reportSessionMessage");
-    cleanups.push(() => arrivalReports.mockRestore());
     harness.attachProviderSession(sessionId);
     const objectiveRecord = harness.objectiveRecord(sessionId)!;
     Object.assign(objectiveRecord, { chatMode: true, chatBorn: true, dormantBorn: true, restoredDormant: true });
@@ -533,7 +520,6 @@ describe("agent chat mode routes", () => {
     expect(response.body.entries.find(({ event }) => event.kind === "tool-result" && event.id === "send-address")?.event).not.toHaveProperty("recipientObjectiveId");
     expect(response.body.truncated).toBe(false);
     expect(response.body.entries.find(({ event }) => event.kind === "tool-result")?.event).toMatchObject({ recipientObjectiveId: verifier });
-    expect(arrivalReports).not.toHaveBeenCalled();
     expect(JSON.stringify(response.body)).not.toContain(harness.fleetDataDir);
     expect(harness.sdkOptions).toHaveLength(sdkBefore);
     expect(harness.openSession.mock.calls).toHaveLength(sessionsBefore);
@@ -543,7 +529,6 @@ describe("agent chat mode routes", () => {
     const replayed = replay.map(({ raw }) => readChatJournalEvent(raw)?.event);
     expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-1")).toMatchObject({ recipientObjectiveId: verifier });
     expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-address")).not.toHaveProperty("recipientObjectiveId");
-    expect(arrivalReports).not.toHaveBeenCalled();
     expect(harness.openSession.mock.calls).toHaveLength(sessionsBefore);
     const providerId = (harness.objectiveRecord(sessionId)!.session as { id: string }).id;
     await harness.post(sessionId, "message", { text: "Continue the same plan" });

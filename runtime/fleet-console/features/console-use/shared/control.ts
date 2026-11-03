@@ -44,6 +44,11 @@ export interface ConsoleActionInput {
   readonly display?: string;
   /** `display` 의 형식. markdown 이면 말풍선이 마크다운으로 그린다. 기본은 평문. */
   readonly displayFormat?: "markdown" | "text";
+  /**
+   * send 전용 — 채팅 원장에 세울 발화자. 소켓 세션 이름이 아니라 로스터 역할이다.
+   * 플러그인 호출자만 싣는다. 없으면 호출자 자신이 출처다.
+   */
+  readonly rosterSpeaker?: { readonly objectiveId: string; readonly title: string };
   /** launch 전용 — 태어날 때부터 속할 그룹과 이름. 같은 Theater 의 그룹이어야 한다. */
   readonly groupId?: string;
   readonly title?: string;
@@ -100,17 +105,6 @@ export interface ConsoleTurnReport {
    * 깨움 예약(`ScheduleWakeup`·`CronCreate`)이 성공했다. 외부 대기를 걸고 닫은 턴은 멈춘 턴이 아니다.
    */
   readonly pendingWork: boolean;
-}
-
-/**
- * 세션 간 메시지 한 통이 받는 쪽 Objective 에 닿았다 — 보낸 쪽 채팅 세션의 SendMessage 가 결과까지 성공했고, 받는 이름이 이 Console 의
- * Objective 하나로 풀렸다. 누가 누구에게 언제만 싣고 본문은 싣지 않는다.
- */
-export interface ConsoleSessionMessage {
-  readonly fromObjectiveId: string;
-  readonly toObjectiveId: string;
-  /** 성공을 관측한 시각(ms). */
-  readonly at: number;
 }
 
 /** 다음 턴이 관측을 덮기 전에 전달하는 종료 snapshot. 브라우저 알림 채널이 아니다. */

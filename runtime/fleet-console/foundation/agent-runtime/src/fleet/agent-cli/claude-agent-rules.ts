@@ -8,6 +8,8 @@
 
 /** 모든 서브에이전트를 끄는 표식 — 이름을 세지 않고 도구 자체(`Agent`, 옛 이름 `Task`)를 막는다. */
 export const ALL_SUBAGENTS = "*";
+/** 목표 세션(지휘관·구성원)에서 빼는 피어 도구. 목표 밖 세션은 이 목록을 받지 않는다. */
+export const OBJECTIVE_PEER_TOOLS = ["SendMessage", "ListAgents"] as const;
 
 /**
  * 서브에이전트 규칙과 호출자가 끈 도구 이름을 한 deny 목록으로 합친다. 두 표면(`permissions.deny`·`disallowedTools`)이

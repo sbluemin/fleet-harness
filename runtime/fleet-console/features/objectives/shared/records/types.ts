@@ -50,6 +50,16 @@ export function wasObjectiveBornDormant(payload: Record<string, unknown>): boole
   return payload.dormantBorn === true;
 }
 
+/**
+ * 이 빌드가 만든 Objective 레코드. 디스크에서 복원한 예전 세션에는 없다.
+ * message 도구 이주 문장은 이 표식이 없는 세션에만 한 번 붙인다.
+ */
+export const MESSAGE_CHANNEL_KNOWN_KEY = "messageChannelKnown";
+
+export function messageChannelKnown(payload: Record<string, unknown> | null | undefined): boolean {
+  return payload?.[MESSAGE_CHANNEL_KNOWN_KEY] === true;
+}
+
 export function readObjectiveLaunch(payload: Record<string, unknown>): ObjectiveLaunchInfo {
   const value = payload.session;
   const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};

@@ -4,7 +4,7 @@ function executionFields(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([key]) => EXECUTION_FIELDS.includes(key)));
 }
 import type { ObjectiveCatalogPlugin } from "../../shared/records/types.js";
-import type { ObjectiveRecordCreateInput as SdkObjectiveRecordCreateInput, ObjectiveGroupedEvent, ObjectiveGroupRemovedEvent, ObjectiveRecord as SdkObjectiveRecord, ObjectiveRecordPatchInput as SdkObjectiveRecordPatchInput, ChildSession } from "../../shared/records/types.js";
+import { MESSAGE_CHANNEL_KNOWN_KEY, type ObjectiveRecordCreateInput as SdkObjectiveRecordCreateInput, type ObjectiveGroupedEvent, type ObjectiveGroupRemovedEvent, type ObjectiveRecord as SdkObjectiveRecord, type ObjectiveRecordPatchInput as SdkObjectiveRecordPatchInput, type ChildSession } from "../../shared/records/types.js";
 
 import { isObjectiveGroupColor } from "../../../workspace/shared/identity-tones.js";
 
@@ -233,7 +233,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     if (nodes.has(input.childSessionId) || deps.isReserved?.(input.childSessionId)) throw new Error("objectiveRecord_exists");
     const at = now();
     const { parentObjectiveId: _parent, childSessionId, ...fields } = input;
-    const child: ChildSession = { ...fields, id: childSessionId, ts: { createdAt: at, updatedAt: at } };
+    const child: ChildSession = { ...fields, id: childSessionId, [MESSAGE_CHANNEL_KNOWN_KEY]: true, ts: { createdAt: at, updatedAt: at } };
     nodes.set(parent.id, { ...parent, sessions: [...(parent.sessions ?? []), child], ts: { ...parent.ts, updatedAt: at } });
     return projectChild(nodes.get(parent.id)!, child);
   }
@@ -413,7 +413,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
 
 function normalizeCreateInput(input: ObjectiveRecordCreateInput, id: string, timestamp: number): ObjectiveRecord {
   const { createdAt, sourceObjectiveId: _source, ...fields } = input;
-  return { ...fields, id, title: input.title.trim() || "Untitled Objective", ts: { createdAt: createdAt ?? timestamp, updatedAt: timestamp } };
+  return { ...fields, id, [MESSAGE_CHANNEL_KNOWN_KEY]: true, title: input.title.trim() || "Untitled Objective", ts: { createdAt: createdAt ?? timestamp, updatedAt: timestamp } };
 }
 function patchedFields<T extends { readonly id: string }>(existing: T, input: Record<string, unknown>): T & Record<string, unknown> {
   const fields = { ...existing } as T & Record<string, unknown>;
