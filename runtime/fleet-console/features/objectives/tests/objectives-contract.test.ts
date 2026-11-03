@@ -304,7 +304,8 @@ title: input.title});
   grouped.push((event) => launch.objectiveRecordGrouped(event));
   // 결정 요청은 기본으로 기다리지 않는다 — 기다림은 그 계약을 다루는 테스트가 따로 켠다.
   const tools = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 0 });
-  const call = async (name: string, args: Record<string, unknown>, objectiveId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(objectiveId ? { caller: { kind: "objectiveRecord" as const, objectiveId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
+  // fleet-objectives 는 objectiveId 입력을 받지 않는다. 호출자가 목표를 고르므로, 옛 인자로 남은 키는 도구에 넘기지 않는다.
+  const call = async (name: string, args: Record<string, unknown>, objectiveId?: string) => await tools.find((tool) => tool.name === name)!.execute(Object.fromEntries(Object.entries(args).filter(([key]) => key !== "objectiveId")), { cwd: dir, ...(objectiveId ? { caller: { kind: "objectiveRecord" as const, objectiveId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const [consoleTool, consoleDetail] = createObjectiveConsoleTools(ctx, store, launch) as [ConsoleMcpTool, ConsoleMcpTool];
   const route = async (name: string, body: Record<string, unknown>): Promise<{ status: number; value: Record<string, unknown> }> => {
     routeBody = body;
@@ -470,7 +471,7 @@ describe("Objectives contract", () => {
     const human = store.missionAdd(id, { text: "human addition" }, { unplaced: true, by: "human" }).missions.at(-1)!;
     store.missionPatch(id, human.id, { prerequisites: [original.missions[0]!.id] });
     const tools = createObjectiveMcpTools(h.ctx, store, launch);
-    const call = async (name: string, args: Record<string, unknown>) => await tools.find((tool) => tool.name === name)!.execute({ objectiveId: id, ...args }, { cwd: h.workspace, caller: { kind: "objectiveRecord", objectiveId: id } }) as { isError: boolean; structuredContent: Record<string, unknown> };
+    const call = async (name: string, args: Record<string, unknown>) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: h.workspace, caller: { kind: "objectiveRecord", objectiveId: id } }) as { isError: boolean; structuredContent: Record<string, unknown> };
     await call("read", {});
     expect((await call("mark_criterion", { n: 1, met: false })).structuredContent.error).toBe("recheck_approval_required");
     expect((await call("plan", { missions: [{ title: "human addition", text: "human addition" }] })).structuredContent.error).toBe("mission_kept");
@@ -1384,14 +1385,22 @@ describe("Objectives contract", () => {
   });
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
-    const { ctx, store, call, launch, workspace, events, add, objectiveFile, objectiveRecords, objectiveRecordsHost, objectivesDir } = harness();
+    const { ctx, store, call, launch, workspace, events, objectiveFile, objectiveRecords, objectiveRecordsHost, objectivesDir } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
     const other = (await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Other", groupId: null, note: "Pelican rollout brief" })).id;
-    // 다른 목표의 지휘관은 이 목표를 쓰지도 읽지도 못한다.
-    expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "p", text: "p" }] }, other)).structuredContent.error).toBe("not_participant");
-    expect((await call("read", { objectiveId: objective.id }, other)).structuredContent.error).toBe("not_participant");
+    // 목표는 입력으로 고르지 않는다. 지휘관·구성원 세션이 아닌 호출자는 not_participant 이고, 넘긴 objectiveId 는 다른 목표를 열지 못한다.
+    expect((await call("read", {})).structuredContent.error).toBe("not_participant");
+    expect((await call("plan", { missions: [{ title: "p", text: "p" }] })).structuredContent.error).toBe("not_participant");
+    expect((await call("read", {}, "not-a-session")).structuredContent.error).toBe("not_participant");
+    const opened = createObjectiveMcpTools(ctx, store, launch);
+    const asPlugin = { cwd: workspace, caller: { kind: "plugin" as const, pluginId: "other" } };
+    expect(((await opened.find((tool) => tool.name === "read")!.execute({}, asPlugin)) as { structuredContent: { error?: string } }).structuredContent.error).toBe("not_participant");
+    expect(((await opened.find((tool) => tool.name === "plan")!.execute({ missions: [{ title: "p", text: "p" }] }, asPlugin)) as { structuredContent: { error?: string } }).structuredContent.error).toBe("not_participant");
+    expect(((await opened.find((tool) => tool.name === "read")!.execute({ objectiveId: objective.id }, { cwd: workspace, caller: { kind: "objectiveRecord", objectiveId: other } })) as { structuredContent: { error?: string; hint?: string } }).structuredContent).toMatchObject({ error: "invalid_arguments", hint: "objectiveId is no longer accepted. Call again without it." });
+    expect((await call("read", {}, other)).structuredContent.objective).toMatchObject({ id: other });
+    expect(store.find(objective.id)!.missions.map((mission) => mission.text)).toEqual(["one", "two"]);
     // 구상 중에는 편성만 — 명단이 비었을 때만 지휘관이 구성원을 제안하고(모델은 고르지 않아 라우팅), 임무에 구성원을 표시한다.
     // 임무 수행 쓰기와 구성원 기동은 거절된다.
     store.setPlanning(objective.id, true);
@@ -1418,21 +1427,10 @@ describe("Objectives contract", () => {
     expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
     expect(store.find(objective.id)!.commander.sessionName).toMatch(/-cmdr$/);
     expect((await call("read", { objectiveId: objective.id }, member.id)).isError).toBe(false);
-    // 같은 접두어의 다른 목표는 해석 후보가 아니다 — 자기 목표만 읽고, 외부 목표의 접두어는 없는 목표와 같은 답이다.
-    const shortId = objective.id.slice(0, 8);
-    const collision = `${shortId}-foreign`;
-    add(collision);
-    store.adopt(collision, { note: "private board" });
-    expect((await call("read", { objectiveId: shortId }, member.id)).structuredContent.objective).toHaveProperty("id", objective.id);
-    const missing = (await call("read", { objectiveId: "missing-objective" }, member.id)).structuredContent;
-    expect(missing).toMatchObject({ error: "unknown_objective", hint: expect.stringContaining("mine") });
-    expect((await call("read", { objectiveId: other.slice(0, 8) }, member.id)).structuredContent).toEqual(missing);
-    expect((await call("read", { objectiveId: shortId }, other)).structuredContent).toEqual(missing);
-    expect((await call("read", { objectiveId: shortId })).structuredContent).toEqual(missing);
-    expect((await call("read", { objectiveId: collision }, member.id)).structuredContent.error).toBe("not_participant");
+    expect((await call("read", {}, member.id)).structuredContent.objective).toHaveProperty("id", objective.id);
     expect((await call("mine", {}, commander)).structuredContent).toMatchObject({ role: "commander", objectiveId: objective.id });
     // 완료 첨부도 같은 caller 경계다. sourceMissionId는 입력으로 받지 않고 대상 임무로 지정한다.
-    const completion = { objectiveId: shortId, n: 1, summary: ["Results ready"] };
+    const completion = { n: 1, summary: ["Results ready"] };
     const resultInput = { kind: "pr", url: "https://github.com/example/project/pull/1" };
     expect((await call("complete_mission", { ...completion, results: [resultInput] }, member.id)).structuredContent.error).toBe("not_commander");
     expect((await call("complete_mission", { ...completion, results: [{ ...resultInput, sourceMissionId: "foreign" }] }, commander)).structuredContent.error).toBe("invalid_arguments");
@@ -1445,7 +1443,8 @@ describe("Objectives contract", () => {
     ]);
     expect(linked.results[1]).toMatchObject({ url: "https://claude.ai/artifact/Board_1" });
     expect(linked.missions[0]).toMatchObject({ done: true, records: [expect.objectContaining({ lines: ["Results ready"] })] });
-    expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { label: "foreign" } }, other)).structuredContent.error).toBe("not_participant");
+    expect((await call("update_result", { resultId, patch: { label: "foreign" } }, other)).structuredContent.error).toBe("unknown_result");
+    expect(store.find(objective.id)!.results.find((result) => result.id === resultId)).not.toMatchObject({ label: "foreign" });
     expect((await call("detach_result", { objectiveId: objective.id, resultId })).structuredContent.error).toBe("not_participant");
     expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { path: "/private/user-file" } }, commander)).structuredContent.error).toBe("invalid_arguments");
     // 요청의 뒤 결과물이 거절돼도 앞 PR·완료·기록은 남지 않는다.
@@ -1472,7 +1471,8 @@ describe("Objectives contract", () => {
     const root = fs.realpathSync(own);
     const ownFile = path.join(root, "EVIDENCE.md"); fs.writeFileSync(ownFile, "shared evidence");
     const seal = (source: string, by = member.id) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by);
-    expect((await seal(ownFile, other)).structuredContent.error).toBe("not_participant");
+    expect((await call("seal_evidence_from_path", { path: ownFile })).structuredContent.error).toBe("not_participant");
+    expect((await seal(ownFile, other)).structuredContent.error).toBe("evidence_outside_dir");
     expect((await call("evidence_dir", { objectiveId: objective.id }, member.id)).structuredContent.root).toBe(root);
     const foreign = path.join(ctx.paths.resolveCommodoreTheaterPath(objective.commodoreId, objective.theaterId)!, "handout.md");
     fs.mkdirSync(path.dirname(foreign), { recursive: true }); fs.writeFileSync(foreign, "theater evidence");
@@ -1541,7 +1541,7 @@ describe("Objectives contract", () => {
     expect(store.find(objective.id)!.missions.find((mission) => mission.id === qa.missionId)).toMatchObject({ prerequisites: [hotfix.missionId, read.at(-1)], why: { [read.at(-1)!]: "after the rest" } });
     // 번호표는 서버 메모리에만 있다 — 재시작 뒤에는 옛 n 을 지금 편성 순으로 풀지 않고 다시 읽게 한다.
     const restarted = createObjectiveMcpTools(ctx, store, launch).find((tool) => tool.name === "complete_mission")!;
-    expect(((await restarted.execute({ objectiveId: objective.id, n: read.length, summary: ["stale"] }, { cwd: "/", caller: { kind: "objectiveRecord", objectiveId: commander } })) as { structuredContent: Record<string, unknown> }).structuredContent.error).toBe("numbering_unread");
+    expect(((await restarted.execute({ n: read.length, summary: ["stale"] }, { cwd: "/", caller: { kind: "objectiveRecord", objectiveId: commander } })) as { structuredContent: Record<string, unknown> }).structuredContent.error).toBe("numbering_unread");
     // 완료는 결론 먼저 1–3줄의 기록과 함께이고, 산문 문단은 거절된다. 구성원은 완료하지 못한다.
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["r"] }, member.id)).structuredContent.error).toBe("not_commander");
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["x".repeat(400)] }, commander)).structuredContent.error).toBe("summary_format");
@@ -1567,7 +1567,8 @@ describe("Objectives contract", () => {
     expect((await call("search", { objectiveId: objective.id, query: "PELICAN rollout" }, commander)).structuredContent).toMatchObject({ total: 1, nextCursor: null, hits: [{ objectiveId: other, status: "archived", part: "brief" }] });
     expect((await call("search", { objectiveId: objective.id, query: "shipped", parts: ["mission"], status: "done" }, commander)).structuredContent).toMatchObject({ total: 1, hits: [{ objectiveId: objective.id, part: "mission", snippet: expect.stringContaining("shipped p1"), prs: expect.arrayContaining([{ number: 2, url: "https://github.com/example/project/pull/2" }]) }] });
     expect((await call("search", { objectiveId: objective.id, query: "pelican" }, member.id)).structuredContent.error).toBe("not_commander");
-    expect((await call("search", { objectiveId: objective.id, query: "pelican" }, collision)).structuredContent.error).toBe("not_participant");
+    expect((await call("search", { query: "pelican" })).structuredContent.error).toBe("not_participant");
+    expect((await call("search", { query: "pelican" }, "not-a-session")).structuredContent.error).toBe("not_participant");
     const commodoreSearch = async (commodoreId: string) => {
       const tool = createCommodoreBoardTools(ctx, store, launch, commodoreId)[0]!;
       const parsed = tool.actionSchema!.parse({ action: "search", query: "pelican" });
@@ -1661,7 +1662,7 @@ describe("Objectives contract", () => {
     expect(reloaded.find(commander)!.decisions).toHaveLength(2);
     // 기다리는 요청 — 그 안에 온 답은 도구 응답으로 돌아가고 결정으로 남는다. 프롬프트는 보내지 않는다.
     const waiting = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 60_000 }).find((tool) => tool.name === "request_decision")!;
-    const ask = (revision: number) => waiting.execute({ objectiveId: commander, expectedRevision: revision, questions: [{ header: "Publish", text: "Publish?", options: [{ label: "Yes" }, { label: "No" }] }] }, { cwd: "/", caller: { kind: "objectiveRecord", objectiveId: commander } }) as Promise<{ structuredContent: Record<string, unknown> }>;
+    const ask = (revision: number) => waiting.execute({ expectedRevision: revision, questions: [{ header: "Publish", text: "Publish?", options: [{ label: "Yes" }, { label: "No" }] }] }, { cwd: "/", caller: { kind: "objectiveRecord", objectiveId: commander } }) as Promise<{ structuredContent: Record<string, unknown> }>;
     const pendingAsk = ask(store.find(commander)!.decisionRequestRevision);
     await vi.waitFor(() => { expect(store.find(commander)!.decisionRequest).not.toBeNull(); });
     const live = store.find(commander)!.decisionRequest!;

@@ -17,7 +17,7 @@ import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
  * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Objective 에 실리므로
- * 권한은 호스트가 넘긴 호출자(`context.caller`)로 여기서 가른다: 읽기는 그 목표의 참여자만, 쓰기는 지휘관만.
+ * 어느 목표인지는 입력으로 받지 않고 호스트가 넘긴 호출자(`context.caller`)로 고른다. 권한도 그 호출자로 가른다: 읽기는 그 목표의 참여자만, 쓰기는 지휘관만.
  * 구성원은 보드를 읽고 자기 root의 증거만 보존할 수 있다 — 결과물 연결·보드 기록은 지휘관이 한다. 화면 제스처는 없다.
  * 구상 중(「구상」을 누른 뒤 「개시」 전)에는 편성만 쓴다 — 임무 완료·기동은 거절한다.
  *
@@ -27,7 +27,7 @@ import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 const ids = z.string().min(1).max(128);
 /** 임무를 가리키는 두 길 — 변하지 않는 missionId, 또는 지휘관 번호표의 1-based 번호 n. */
-const missionRef = { objectiveId: ids, missionId: ids.optional(), n: z.number().int().min(1).optional() };
+const missionRef = { missionId: ids.optional(), n: z.number().int().min(1).optional() };
 /** 선행 한 칸 — 번호 n 이나 missionId, 그리고 이유. */
 const prerequisiteRef = z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() }).strict();
 const memberReference = z.string().trim().min(1).max(128);
@@ -47,6 +47,8 @@ const NO_FIXED_NAME = "No fixed session name. The from address on the Commander'
 /** read·mine 설명의 한 줄 — 결정 요청과 결정이 보드에 있다는 사실. */
 const DECISIONS_ON_BOARD = "Console sessions have no tool for asking the person directly; decisions for the person go through the board. The person may not be watching the Commander's panel text. The board holds the current decisionRequest and decisionRequestRevision, and decisions: the person's recorded answers, each with the question, the chosen option labels (selected), any words written (text), and own: true when the person discarded every option for their own answer. A request the person closed without deciding is recorded with declined: true on each of its decisions (no selected options, no text); it chose none of the options, handed nothing to the Commander, and deferred nothing. Only the person's board submissions create decisions, and they survive reruns; reading clears no request and changes no decision.";
 const DECISION_DELIVERING = "The person's answers have been accepted, but delivery and recording are not yet finalized. The current request cannot be replaced or withdrawn.";
+/** 진행 중 세션이 옛 objectiveId 입력을 넣었을 때 — 그 키는 더 받지 않으며, 빼고 다시 부른다. */
+const OBJECTIVE_ID_DROPPED = "objectiveId is no longer accepted. Call again without it.";
 const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS} {point, because} and fellShort: 1–${MAX_RETRO_PAIRS} {point, ifOnly}, each field one line of at most ${MAX_RETRO_TEXT} characters.`;
 
 /** request_decision 의 질문 — 공유 계약에서 예시·권고를 뺀 필드 설명만 덮는다(사령관 ask_person 은 공유 계약 그대로). */
@@ -116,11 +118,18 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     return objectiveView(read);
   };
 
-  /** 짧은 목표 이름은 인증된 참여 범위 안에서만 푼다. 정확한 id와 기존 권한 판정은 그대로 둔다. */
-  const resolveObjectiveId = (reference: string, caller: ConsoleCaller | undefined): string => {
-    if (store.find(reference) || caller?.kind !== "objectiveRecord") return reference;
-    const matches = store.all().filter((objective) => objective.id.startsWith(reference) && roleIn(objective, caller));
-    return matches.length === 1 ? matches[0]!.id : reference;
+  /**
+   * 이 세션의 목표. 구성원 세션이면 그 구성원이 속한 목표, 지휘관 세션이면 그 목표. 어느 쪽도 아니면 null.
+   * `mine` 과 같은 순서다. 입력의 objectiveId 로는 고르지 않는다.
+   */
+  const boundObjective = (caller: ConsoleCaller | undefined): Objective | null => {
+    if (caller?.kind !== "objectiveRecord") return null;
+    return store.findMember(caller.objectiveId)?.objective ?? store.find(caller.objectiveId);
+  };
+  /** 읽기·증거 — 지휘관이거나, 세션이 떠 있는 구성원. */
+  const participated = (caller: ConsoleCaller | undefined): Objective | null => {
+    const objective = boundObjective(caller);
+    return objective && roleIn(objective, caller) ? objective : null;
   };
   /**
    * followup 의 add·revise 만 additionalProperties 를 광고하지 않는다. 호스트는 광고 JSON 을 fromJSONSchema 로
@@ -139,17 +148,19 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     name, description, inputSchema: advertisedSchema(name, schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});
-      if (!parsed.success) return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues) });
+      if (!parsed.success) {
+        const droppedObjectiveId = raw !== null && typeof raw === "object" && !Array.isArray(raw) && Object.prototype.hasOwnProperty.call(raw, "objectiveId");
+        return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues), ...(droppedObjectiveId ? { hint: OBJECTIVE_ID_DROPPED } : {}) });
+      }
       try {
-        const args = parsed.data;
-        return await run(typeof args.objectiveId === "string" ? { ...args, objectiveId: resolveObjectiveId(args.objectiveId, context.caller) } : args, context.caller, context);
+        return await run(parsed.data, context.caller, context);
       }
       catch (error) {
         if (error instanceof EvidenceError) {
           const reason = error.reason ?? (error.code === "evidence_outside_dir" ? "Paths outside this objective's evidence directory, including Theater paths, are not read." : undefined);
           return refuse(error.code, reason ? { reason } : {});
         }
-        return error instanceof ObjectiveStoreError ? refuse(error.code, error.code === "decision_delivering" ? { hint: DECISION_DELIVERING } : error.code === "unknown_objective" ? { hint: "Use mine to read this session's objective and its full objectiveId." } : error.details) : refuse("objectives_failed");
+        return error instanceof ObjectiveStoreError ? refuse(error.code, error.code === "decision_delivering" ? { hint: DECISION_DELIVERING } : error.code === "unknown_objective" ? { hint: "This session's objective is not on the board." } : error.details) : refuse("objectives_failed");
       }
     },
   });
@@ -166,7 +177,8 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Objective 에게는 참여자가 아님을 말한다. */
   const commanderTool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, objective: Objective, caller: ConsoleCaller, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> | unknown) =>
     tool(name, `Commander only. ${description}`, schema, (args, caller, context) => {
-      const objective = find((args as { objectiveId: string }).objectiveId);
+      const objective = boundObjective(caller);
+      if (!objective) return refuse("not_participant");
       const role = roleIn(objective, caller);
       if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board and seal evidence, but only the Commander changes the board. Reports, sealed evidenceIds and decisions to make reach the Commander by SendMessage to its session.", commander: { session: objective.commander.sessionName, ...(objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
       if (!role) return refuse("not_participant");
@@ -175,7 +187,6 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
 
   // 임무가 있으면 편성이다. 기준만이면 임무·명단을 받지 않는다. 둘 다 없거나 명단만이면 거절한다.
   const planArgs = z.object({
-    objectiveId: ids,
     missions: z.array(z.object({ title: missionTitleSchema, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40).optional(),
     members: z.array(rosterMember).max(40).optional(),
     criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
@@ -202,36 +213,37 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       if (!own) return refuse("not_participant");
       return text({ role: "commander", objectiveId: own.id, objective: readView(own, caller) });
     }),
-    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Only that objective's Commander and its members can read it; any other session, including another objective's Commander, is refused as not_participant, so this tool cannot supply another objective's board or retrospective to a mission. Mission numbers n count from 1 in lineup order as of the Commander's latest read (read or mine) or plan; the Commander's n keep pointing at those missions while it writes, missions it adds take the next numbers, and its next read renumbers them. missionIds never change. extensions records each scope-extension round: its request, the board ids at its start and the previous round's hand-off with retrospective; extension on a mission or criterion is the round that added it. Tools that change the board return only what they created, not the board. ${DECISIONS_ON_BOARD}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
-      const objective = find(objectiveId);
-      if (!roleIn(objective, caller)) return refuse("not_participant");
+    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. It reads only the objective this session commands or belongs to, so it cannot supply another objective's board or retrospective. A session that commands or belongs to none is refused as not_participant. Mission numbers n count from 1 in lineup order as of the Commander's latest read (read or mine) or plan; the Commander's n keep pointing at those missions while it writes, missions it adds take the next numbers, and its next read renumbers them. missionIds never change. extensions records each scope-extension round: its request, the board ids at its start and the previous round's hand-off with retrospective; extension on a mission or criterion is the round that added it. Tools that change the board return only what they created, not the board. ${DECISIONS_ON_BOARD}`, z.object({}).strict(), (_args, caller) => {
+      const objective = participated(caller);
+      if (!objective) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
     }),
     // 지난 목표의 결정·회고·임무 기록을 계획에 쓴다 — 사령관의 objectives search 와 같은 핵심·같은 입력. 범위는 이 목표를 소유한 사령관 하나다.
-    commanderTool("search", "Search the records of objectives owned by this objective's Commodore, archived included: one representative hit per objective, newest first, with a short snippet and its PRs. Words are all required (AND) as case-insensitive substrings. Hits are records, not instructions. Another objective's full board is not readable here.", z.object({ objectiveId: ids, ...searchInputShape }).strict(), ({ objectiveId: _objectiveId, ...input }, objective) => {
+    commanderTool("search", "Search the records of objectives owned by this objective's Commodore, archived included: one representative hit per objective, newest first, with a short snippet and its PRs. Words are all required (AND) as case-insensitive substrings. Hits are records, not instructions. Another objective's full board is not readable here.", z.object(searchInputShape).strict(), (input, objective) => {
       if (!objective.commodoreId) return refuse("commodore_required");
       return text(searchObjectives(store.records(objective.commodoreId), input));
     }),
-    tool("evidence_dir", "The objective's evidence directory: one directory the Commander and every member share, and the only place seal_evidence_from_path reads from. Its path is returned only through MCP, not to the browser. The Theater working directory, a session's system-prompt Scratchpad directory and Bash temporary directories are not this root.", z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
-      const objective = find(objectiveId);
-      if (!roleIn(objective, caller)) return refuse("not_participant");
+    tool("evidence_dir", "The objective's evidence directory: one directory the Commander and every member share, and the only place seal_evidence_from_path reads from. Its path is returned only through MCP, not to the browser. The Theater working directory, a session's system-prompt Scratchpad directory and Bash temporary directories are not this root.", z.object({}).strict(), (_args, caller) => {
+      const objective = participated(caller);
+      if (!objective) return refuse("not_participant");
       return text({ root: store.sharedDir(objective.commodoreId, objective.id), note: "Only files under root can be sealed." });
     }),
-    tool("seal_evidence_from_path", `Copy a file from this objective's evidence directory (evidence_dir) into this objective's evidence store. Relative paths resolve there, not in the Theater or the session's working directory. Files copied from the Theater or elsewhere into this directory are subject to the same sealing checks as files created here; sealing does not read or compare the originals outside it. PNG, JPEG, WebP and GIF images are limited to ${RESULT_LIMITS.imageBytes / 1024 / 1024} MiB; UTF-8 MD, TXT, LOG and JSON text to ${RESULT_LIMITS.textBytes / 1024 / 1024} MiB. Symlinks, hardlinks, non-regular files, paths outside the evidence directory and files changed during reading are refused. The Commander and members can seal files. The returned evidenceId identifies an immutable copy, not an attached result. Only the Commander can attach it through complete_mission or replace existing evidence through update_result. Unattached copies expire after ${RESULT_LIMITS.pendingEvidenceTtlMs / 3_600_000} hours; this expiry does not apply while attached.`, z.object({ objectiveId: ids, path: z.string().min(1).max(RESULT_LIMITS.sourcePath) }).strict(), async ({ objectiveId, path: source }, caller, context) => {
-      const objective = find(objectiveId);
-      if (!roleIn(objective, caller)) return refuse("not_participant");
+    tool("seal_evidence_from_path", `Copy a file from this objective's evidence directory (evidence_dir) into this objective's evidence store. Relative paths resolve there, not in the Theater or the session's working directory. Files copied from the Theater or elsewhere into this directory are subject to the same sealing checks as files created here; sealing does not read or compare the originals outside it. PNG, JPEG, WebP and GIF images are limited to ${RESULT_LIMITS.imageBytes / 1024 / 1024} MiB; UTF-8 MD, TXT, LOG and JSON text to ${RESULT_LIMITS.textBytes / 1024 / 1024} MiB. Symlinks, hardlinks, non-regular files, paths outside the evidence directory and files changed during reading are refused. The Commander and members can seal files. The returned evidenceId identifies an immutable copy, not an attached result. Only the Commander can attach it through complete_mission or replace existing evidence through update_result. Unattached copies expire after ${RESULT_LIMITS.pendingEvidenceTtlMs / 3_600_000} hours; this expiry does not apply while attached.`, z.object({ path: z.string().min(1).max(RESULT_LIMITS.sourcePath) }).strict(), async ({ path: source }, caller, context) => {
+      const objective = participated(caller);
+      if (!objective || caller?.kind !== "objectiveRecord") return refuse("not_participant");
       const root = store.sharedDir(objective.commodoreId, objective.id);
       const bytes = await readSharedEvidence(path.isAbsolute(source) ? source : path.join(root, source), root, context.signal);
       // 읽기를 기다리는 동안 명단이 바뀌었다면 그 목표에 bytes를 남기지 않는다.
-      if (!roleIn(find(objectiveId), caller) || caller?.kind !== "objectiveRecord") return refuse("not_participant");
-      const sealed = store.evidenceSeal(objectiveId, caller.objectiveId, bytes);
+      const current = participated(caller);
+      if (!current || current.id !== objective.id) return refuse("not_participant");
+      const sealed = store.evidenceSeal(objective.id, caller.objectiveId, bytes);
       return text({ evidenceId: sealed.evidenceId, name: sealed.name, bytes: sealed.bytes, expiresAt: new Date(sealed.capturedAt + RESULT_LIMITS.pendingEvidenceTtlMs).toISOString() });
     }),
     commanderTool("update_result", "Correct an existing result without changing its resultId or kind. Omitted fields stay; null clears label, note, or sourceMissionId. PR and Artifact URLs can change within their kind; a changed PR URL resets its server observation to unchecked. Artifact links are not fetched or observed, and no content copy is kept. Replacing evidence takes an evidenceId sealed for this objective; the previous evidenceId becomes unavailable, while its source file is unchanged. Mission records are unchanged.",
-      z.object({ objectiveId: ids, resultId: ids, patch: resultPatchSchema }).strict(),
+      z.object({ resultId: ids, patch: resultPatchSchema }).strict(),
       ({ resultId, patch }, objective) => { store.resultUpdate(objective.id, resultId, patch); prStatus?.refresh(objective.id); return text({ ok: true }); }),
     commanderTool("detach_result", "Remove a result and its mission link from the objective. A detached evidenceId becomes unavailable; the source file, PR and linked Artifact, mission records and completion states are unchanged.",
-      z.object({ objectiveId: ids, resultId: ids }).strict(),
+      z.object({ resultId: ids }).strict(),
       ({ resultId }, objective) => { store.resultRemove(objective.id, resultId); return text({ ok: true }); }),
     commanderTool("plan", `Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added missions (including after placement) stay and are referenced by missionId; restating one is refused as mission_kept. A mission's title is its name on the board, at most ${MAX_MISSION_TITLE} characters, and its text is what to do. Its prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. Its member is a roster id or role; none means the Commander. By default, a lineup that changes repository files ends with merging them into the base branch via PR, review and checks; one that changes none needs no merge. members is accepted only while the roster is empty; enlist adds members later. ${MODEL_FACT} An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A person's Plan request or Steer opens success-criterion proposals; Steer does not enter planning. criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Omit missions to submit criteria only; that write changes no missions, members or met evidence. A criterion that depends on an earlier verdict or an A/B branch states that premise and the evidence that stands when it fails: put both in a {text} proposal, and propose a revise for one on the board lacking them; an unconditional criterion needs neither. In an extension round, existing met criteria are preserved; only a recheck the person approves clears one. Proposals require the person's approval and block commencement and steering until resolved. A plan made on a board the person has since edited is refused as board_changed. ${BOARD_REFERENCES}`,
       planArgs,
@@ -256,7 +268,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
           } } : {}) });
       }),
     commanderTool("add_mission", `Add a mission — its title, the name on the board, at most ${MAX_MISSION_TITLE} characters, and its text, what to do — with its prerequisites, each the n or missionId of a mission on the board, finished or not, with an optional why, and optionally its member by roster id or role; none means the Commander. A mission added without prerequisites is ready at once and stands in the lineup's first column, ahead of missions that wait on others. The returned n is its number until the Commander's next read. ${BOARD_REFERENCES}`,
-      z.object({ objectiveId: ids, title: missionTitleSchema, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
+      z.object({ title: missionTitleSchema, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
       (args, objective) => {
         const prerequisites = prerequisitesOf(objective, args.prerequisites ?? []);
         const known = numbered.get(objective.id);
@@ -278,7 +290,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         return text({ ok: true, missionId: target.id });
       }),
     commanderTool("request_decision", `Place a decision request on the Objectives surfaces the person sees: questions the person answers there, not a notice that clears when read or when a session is opened. A question without options asks for a written answer; options are concise labels, each with an optional description of what the choice means or costs, and multiSelect lets the person choose more than one. The board adds an "Answer in my own words" row to every question with options, so do not include an "Other" or "Write my own" option. The person sends every answer at once. The person may instead close the whole request without deciding: the call then returns answered: true with declined: true and no answers. That means they chose none of the options, did not hand the judgment to the Commander, and did not defer it — act on none of its options and do not proceed with work that depends on that decision; do not ask the same questions again as they were, and continue with the rest. An objective holds one current request; a different request while one is unanswered is refused as decision_pending, and asking again with exactly the same questions keeps the unanswered current request and waits on it again (reused: true). expectedRevision is the board's decisionRequestRevision. A request cleared by the person's board edits, by a referenced mission or member leaving the board, or by withdrawal becomes no decision. A request and its answers are not tool permission and do not mark criteria met. The call waits up to ${DECISION_WAIT_MS / 60_000} minutes: answers given in that time return in the result (answered: true) and are recorded as decisions; a request cleared meanwhile returns cleared: true; otherwise answered: false, and answers given later arrive in this session as input. While the call waits, messages from members arrive only after it returns. ${BOARD_REFERENCES}`,
-      z.object({ objectiveId: ids, expectedRevision: z.number().int().min(0), questions: z.array(objectiveQuestion).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
+      z.object({ expectedRevision: z.number().int().min(0), questions: z.array(objectiveQuestion).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
       async ({ expectedRevision, questions }, objective, _caller, context) => {
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         const placed = store.decisionRequest(objective.id, { expectedRevision, questions });
@@ -302,13 +314,13 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         return text({ ...head, decisionRequestRevision: revision, answered: true, answers });
       }),
     commanderTool("withdraw_decision_request", "Withdraw the current decision request named by requestId; with no current request nothing changes. A withdrawal is not the person's answer, so it leaves no decision; decisions, missions and criteria stay as they are.",
-      z.object({ objectiveId: ids, requestId: ids }).strict(),
+      z.object({ requestId: ids }).strict(),
       ({ requestId }, objective) => {
         const withdrawn = store.decisionWithdraw(objective.id, requestId);
         return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
       }),
     commanderTool("enlist", `Add members to the roster, each a role and an optional brief; plan accepts members only while the roster is empty. A new member has no session until muster brings it up. ${MODEL_FACT} Change an existing member with set_member_launch. The person's launch selections, including routing, and legacy members without ownership are protected; do not enlist a replacement to bypass that protection — use request_decision to ask the person to change that member's model chip on the board.`,
-      z.object({ objectiveId: ids, members: z.array(rosterMember).min(1).max(MAX_MISSIONS) }).strict(),
+      z.object({ members: z.array(rosterMember).min(1).max(MAX_MISSIONS) }).strict(),
       async ({ members }, before, _caller, context) => {
         // 모델 제안을 모두 확인한 뒤에 더한다 — 한 명이라도 거절되면 아무도 더하지 않는다.
         const roster = await rosterOf(members, context.signal);
@@ -321,7 +333,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         return text({ ok: true, members: current.members.filter((member) => !existing.has(member.id)).map((member) => ({ id: member.id, role: member.role, launch: member.launch })) });
       }),
     commanderTool("set_member_launch", "Change an existing member's launch setting, named by id or role. mode model takes a model and optional effort from models (gateway_models); mode route returns to AI Gateway routing and takes neither. Available while planning too. A model selection switches a chat immediately when idle, or after its running turn; without an SDK child it saves the next launch coordinates. Dormant terminal sessions keep their terminal resume behavior. Returning to routing cancels a pending switch; routing judges at a later launch, not for the current session. Host refusals keep the previous selection. A member the person added without a launch selection can be changed; the person's selection, including a same-value confirmation or a routing return, and legacy members without ownership cannot (member_launch_person_chosen).",
-      z.object({ objectiveId: ids, member: memberReference, mode: z.enum(["model", "route"]), model: rosterMember.shape.model, effort: rosterMember.shape.effort }).strict(),
+      z.object({ member: memberReference, mode: z.enum(["model", "route"]), model: rosterMember.shape.model, effort: rosterMember.shape.effort }).strict(),
       async ({ member, mode, model, effort }, before, _caller, context) => {
         if (mode === "route" && (model !== undefined || effort !== undefined)) return refuse("invalid_arguments");
         if (mode === "model" && model === undefined) return refuse("model_required");
@@ -331,21 +343,21 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         return text({ ok: true, memberId, launch: updated.members.find((entry) => entry.id === memberId)!.launch });
       }),
     commanderTool("models", "gateway_models: the candidate models, efforts, quota pools, preferences and recent assignments AI Gateway routing judges with.",
-      z.object({ objectiveId: ids }).strict(),
+      z.object({}).strict(),
       async (_args, _objective, _caller, context) => {
         const loadout = await modelCatalog.gatewayModels(context.signal);
         if (!loadout) return refuse("gateway_models_unavailable");
         return text(loadout);
       }),
     commanderTool("muster", "Prepare every roster member for SendMessage and ListAgents: absent members launch waiting for a first message, chat members get their SDK address prepared, and dormant terminal members resume their own session. Chats stay live and become idle between turns; they never need resume. Preparation starts no model turn. A member knows only what it has been sent and what it has read, and keeps that across missions. Its results reach the board only when it reports them to the Commander by SendMessage and the Commander completes the mission, so the first message to each member says so. A member whose launch, preparation or terminal resume the host refuses comes back as state failed with its error code; the others proceed.",
-      z.object({ objectiveId: ids }).strict(),
-      async ({ objectiveId }, objective) => {
+      z.object({}).strict(),
+      async (_args, objective) => {
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });
-        return text({ members: (await launch.muster(objectiveId)).map(({ objectiveId: _objectiveId, ...member }) => member) });
+        return text({ members: (await launch.muster(objective.id)).map(({ objectiveId: _objectiveId, ...member }) => member) });
       }),
     // 맡은 일 없이 남은 구성원을 지휘관이 거둔다 — 사람이 더한 구성원과 임무를 맡은(맡았던) 구성원은 사람의 몫으로 남긴다.
     commanderTool("discharge", "Remove a member that has no mission from the roster, named by id or role; its session ends. Refused for a member any mission names (member_has_missions) or one the person added (member_person_added).",
-      z.object({ objectiveId: ids, member: memberReference }).strict(),
+      z.object({ member: memberReference }).strict(),
       async ({ member }, before) => {
         const objective = find(before.id);
         const memberId = resolveMember(objective, member);
@@ -373,7 +385,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         return text({ ok: true, missionId: target.id, ...(record ? { stored: { record: record.lines.map(storedText) } } : {}), ...(resultIds.length ? { resultIds } : {}), ...(next ? { next } : {}) });
       }),
     commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add takes title, a one-line summary, userImpact (one line: what a user experiences differently), fromMission (the missionId it came from), brief and evidence; file paths are relative to the Theater root, and at least one evidence item is a file with a line or a command. revise or withdraw a candidate while it is open. At most ${MAX_FOLLOWUPS} active per objective. Candidates are judged all together at review after hand-off, where whoever completes the objective picks some and discards the rest; each picked one becomes a dormant objective with that title and brief and no missions, whose Commander receives its evidence and proposes criteria while planning. A picked candidate is frozen.`,
-      z.object({ objectiveId: ids, add: z.preprocess(withoutLegacyCriteria, followupBodySchema).optional(), revise: z.preprocess(withoutLegacyCriteria, followupReviseSchema.extend({ id: ids })).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
+      z.object({ add: z.preprocess(withoutLegacyCriteria, followupBodySchema).optional(), revise: z.preprocess(withoutLegacyCriteria, followupReviseSchema.extend({ id: ids })).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
       (args, objective) => {
         const actions = [args.add, args.revise, args.withdraw].filter((value) => value !== undefined);
         if (actions.length !== 1) return refuse("invalid_arguments", { hint: "Exactly one of add, revise or withdraw." });
@@ -384,7 +396,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       }),
     // 회고 형식이 어긋나면 invalid_arguments 대신 형식을 말하는 거절로 — 입력 스키마는 모델에게 온전한 모양을 보인다.
     { ...commanderTool("hand_off", `Hand an objective awaiting hand-off to the person's review with a retrospective: the Commander's synthesis of the members' retrospectives and its own. ${RETROSPECTIVE_FORMAT} because and ifOnly point at instructions, skills, tools or approaches; whoever maintains those reads each pair on its own, without this objective's context. The retrospective stays on the objective as a record and does not become work. A hand-off does not depend on the number of follow-up candidates. Unless the brief or the person explicitly waives it, hand off changed repository files only after their PR, review, checks and base-branch merge; an objective that changed none needs no merge. It needs every mission done, every criterion met and no earlier hand-off; otherwise not_awaiting_handoff names the open missions and unmet criteria.`,
-      z.object({ objectiveId: ids, retrospective: z.unknown() }).strict(),
+      z.object({ retrospective: z.unknown() }).strict(),
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
@@ -393,9 +405,9 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         if (!retrospective.success) return refuse("retrospective_format", { hint: RETROSPECTIVE_FORMAT });
         store.handOff(objective.id, { by: "commander", retrospective: retrospective.data });
         return text({ ok: true });
-      }), inputSchema: z.toJSONSchema(z.object({ objectiveId: ids, retrospective: retrospectiveSchema }).strict()) },
+      }), inputSchema: z.toJSONSchema(z.object({ retrospective: retrospectiveSchema }).strict()) },
     commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. The evidence line is text only and attaches nothing; results attached through complete_mission do not mark a criterion met. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions clear the earlier marks and any hand-off; in an active extension round, old criterion marks stay until its hand-off, and only a recheck the person approves clears one.",
-      z.object({ objectiveId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_SHORT_INPUT).optional() }).strict(),
+      z.object({ n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_SHORT_INPUT).optional() }).strict(),
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
