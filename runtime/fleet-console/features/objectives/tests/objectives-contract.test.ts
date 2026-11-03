@@ -3096,9 +3096,9 @@ describe("Objectives contract", () => {
     }
   });
 
-  it("retries one held message after restart while the recipient stays dormant, and does not deliver it twice when delivery outlasts the watch tick", async () => {
+  it("retries held messages once in order after restart, and does not keep retrying one that can no longer be delivered", async () => {
     const h = harness();
-    const { store, launch, call, ctx, sent, activity, surfaces, restart } = h;
+    const { store, launch, call, ctx, sent, activity, surfaces, restart, hostFault } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Held once", groupId: null });
     const id = objective.id;
     await launch.requestPlan(id);
@@ -3109,27 +3109,62 @@ describe("Objectives contract", () => {
     activity.set(memberId, "dormant");
     const records = ctx.objectiveRecords as { isTransitioning?: (sessionId: string) => boolean };
     records.isTransitioning = (sessionId) => sessionId === memberId;
+    let restarted: ReturnType<typeof restart> | null = null;
     try {
-      const first = await call("message", { to: memberId, text: "Hold this." }, id);
-      expect(first.isError).toBe(false);
-      expect(first.structuredContent.delivery).toBe("held");
-      expect(store.messages(id).filter((message) => message.delivery === "held")).toHaveLength(1);
-      expect(sent.filter((entry) => entry.text.includes("Hold this."))).toHaveLength(0);
+      expect((await call("message", { to: memberId, text: "Hold this." }, id)).structuredContent.delivery).toBe("held");
+      expect((await call("message", { to: memberId, text: "Then this." }, id)).structuredContent.delivery).toBe("held");
+      expect(sent.filter((entry) => entry.objectiveId === memberId)).toHaveLength(0);
       records.isTransitioning = () => false;
       vi.useFakeTimers();
       launch.dispose();
       const control = ctx.consoleControl!;
       const real = control.request.bind(control);
+      let sendN = 0;
       control.request = ((input: { kind: string }) => {
         const pending = real(input as never);
-        return input.kind === "send" ? pending.then((value) => new Promise((resolve) => setTimeout(() => resolve(value), 1_500))) : pending;
+        if (input.kind !== "send") return pending;
+        sendN += 1;
+        const delay = sendN === 1 ? 2_500 : 100;
+        return pending.then((value) => new Promise((resolve) => setTimeout(() => resolve(value), delay)));
       }) as typeof control.request;
-      const after = restart();
-      after.launch.watchLiveOutcomes();
-      await vi.advanceTimersByTimeAsync(4_000);
-      expect(sent.filter((entry) => entry.objectiveId === memberId && entry.text.includes("Hold this."))).toHaveLength(1);
-      expect(after.store.messages(id).some((message) => message.text === "Hold this." && message.delivery === "held")).toBe(false);
+      restarted = restart();
+      restarted.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(5_000);
+      const labels = sent.filter((entry) => entry.objectiveId === memberId).map((entry) => entry.text.includes("Then this.") ? "second" : entry.text.includes("Hold this.") ? "first" : entry.text);
+      expect(labels).toEqual(["first", "second"]);
+      expect(restarted.store.messages(id).some((message) => message.delivery === "held")).toBe(false);
+
+      records.isTransitioning = (sessionId) => sessionId === memberId;
+      expect((await restarted.launch.relay(id, memberId, "Stay held.")).delivery).toBe("held");
+      await restarted.launch.memberRemoved(id, memberId);
+      activity.delete(id);
+      activity.delete(memberId);
+      restarted.launch.dispose();
+      restarted = restart();
+      const timersBefore = vi.getTimerCount();
+      restarted.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sent.filter((entry) => entry.text.includes("Stay held."))).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(timersBefore);
+
+      activity.set(id, "idle");
+      const enlisted = restarted.store.memberAdd(id, { role: "worker" }, "human");
+      const nextMember = enlisted.members.at(-1)!.id;
+      surfaces.set(nextMember, "terminal");
+      activity.set(nextMember, "dormant");
+      records.isTransitioning = (sessionId) => sessionId === nextMember;
+      expect((await restarted.launch.relay(id, nextMember, "Boom held.")).delivery).toBe("held");
+      records.isTransitioning = () => false;
+      hostFault.sendError = "explode";
+      restarted.launch.dispose();
+      restarted = restart();
+      const seen = sent.length;
+      restarted.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(sent.length).toBe(seen);
+      expect(restarted.store.messages(id).some((message) => message.text === "Boom held." && message.delivery === "held")).toBe(true);
     } finally {
+      restarted?.launch.dispose();
       launch.dispose();
       vi.useRealTimers();
     }

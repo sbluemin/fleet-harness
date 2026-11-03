@@ -1406,37 +1406,61 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (before.activity === "running" || before.activity === "background") return "steered";
     return "next_turn";
   };
-  const delivering = new Set<string>();
-  const flushHeld = async (sessionId: string): Promise<void> => {
+  /**
+   * 다시 넣을 수 있는 보류만 센다. 구성원이 로스터에서 빠졌거나 목표가 끝난 뒤의 구성원 행은 기록으로 남기되 다시 넣지 않는다.
+   * 지휘관 행은 끝난 목표에도 relay 가 허용하는 것과 같이 재시도한다.
+   */
+  const canRetry = (current: Objective, message: { readonly to: ObjectiveMessageParty }): boolean => {
+    if (current.archived || current.removed) return false;
+    const to = message.to;
+    if (to.kind === "commander") return true;
+    return !current.done && current.members.some((member) => member.id === to.memberId);
+  };
+  // 수신 세션마다 한 줄. relay 의 첫 시도와 flush 가 같은 줄을 써서, 느린 전달 중에 다음 틱이 같은 말을 다시 넣지 않는다.
+  const targetChain = new Map<string, Promise<void>>();
+  const enqueueTarget = (targetId: string, run: () => Promise<void>): Promise<void> => {
+    const previous = targetChain.get(targetId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => disposed ? undefined : run());
+    const tracked = next.finally(() => { if (targetChain.get(targetId) === tracked) targetChain.delete(targetId); });
+    targetChain.set(targetId, tracked);
+    return next;
+  };
+  const flushTarget = async (sessionId: string): Promise<void> => {
     const owner = store.find(sessionId) ?? store.findMember(sessionId)?.objective;
     if (!owner) return;
-    for (const message of store.heldMessages(owner.id)) {
-      const to = message.to;
-      const from = message.from;
-      const target = to.kind === "commander" ? owner.id : to.memberId;
-      if (target !== sessionId || delivering.has(message.messageId)) continue;
-      delivering.add(message.messageId);
-      const speakerId = from.kind === "commander" ? owner.id : from.memberId;
-      const role = from.kind === "commander" ? "Commander" : owner.members.find((member) => member.id === speakerId)?.role ?? "member";
+    const queued = store.heldMessages(owner.id)
+      .filter((message) => (message.to.kind === "commander" ? owner.id : message.to.memberId) === sessionId && canRetry(owner, message))
+      .sort((a, b) => a.at - b.at || a.messageId.localeCompare(b.messageId));
+    for (const message of queued) {
+      if (disposed) return;
+      const freshOwner = store.find(owner.id);
+      const fresh = store.messages(owner.id).find((entry) => entry.messageId === message.messageId);
+      if (!freshOwner || !fresh || fresh.delivery !== "held" || !canRetry(freshOwner, fresh)) continue;
+      const speakerId = fresh.from.kind === "commander" ? freshOwner.id : fresh.from.memberId;
+      const role = fresh.from.kind === "commander" ? "Commander" : freshOwner.members.find((member) => member.id === speakerId)?.role ?? "member";
       try {
-        const delivery = await pushToSession(owner.id, target, to.kind === "member" ? to.memberId : null, message, { objectiveId: speakerId, title: role });
-        if (delivery !== "held") store.setMessageDelivery(owner.id, message.messageId, delivery);
-      } finally {
-        delivering.delete(message.messageId);
+        const delivery = await pushToSession(owner.id, sessionId, fresh.to.kind === "member" ? fresh.to.memberId : null, fresh, { objectiveId: speakerId, title: role });
+        if (delivery !== "held") store.setMessageDelivery(owner.id, fresh.messageId, delivery);
+        else return;
+      } catch {
+        // 다시 넣을 수 없는 거절은 이 틱을 여기서 끊는다. 기록은 held 로 남고, 뒤 메시지가 앞으로 새지 않는다.
+        return;
       }
     }
   };
   // 보류 재시도는 live 턴 감시와 따로다. 재시작 뒤 휴면인 수신은 outcomeWatched 에 들어가지 않아, 그 루프만 믿으면 기록이 영원히 held 로 남는다.
   let heldTimer: ReturnType<typeof setTimeout> | null = null;
-  const hasHeld = (): boolean => store.all().some((current) => !current.archived && !current.removed && store.heldMessages(current.id).length > 0);
+  const hasHeld = (): boolean => store.all().some((current) => store.heldMessages(current.id).some((message) => canRetry(current, message)));
   const sweepHeld = () => {
     if (disposed) return;
+    const pending: Promise<void>[] = [];
     for (const current of store.all()) {
       if (current.archived || current.removed) continue;
       const targets = new Set<string>();
-      for (const message of store.heldMessages(current.id)) targets.add(message.to.kind === "commander" ? current.id : message.to.memberId);
-      for (const target of targets) void flushHeld(target);
+      for (const message of store.heldMessages(current.id)) if (canRetry(current, message)) targets.add(message.to.kind === "commander" ? current.id : message.to.memberId);
+      for (const target of targets) pending.push(enqueueTarget(target, () => flushTarget(target)));
     }
+    void Promise.all(pending).catch(() => undefined);
   };
   const armHeldWatch = () => {
     if (disposed || heldTimer || !hasHeld()) return;
@@ -2116,8 +2140,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (target.kind === "member") store.recordDispatch(target.memberId, at);
         if (from.kind === "member") store.setMemberDelivered(from.memberId, at);
         let delivery: ObjectiveMessageDelivery = "held";
-        delivering.add(messageId);
-        try {
+        await enqueueTarget(targetId, async () => {
+          const owner = store.find(current.id);
+          const still = store.messages(current.id).find((entry) => entry.messageId === messageId);
+          if (!owner || !still || still.delivery !== "held" || !canRetry(owner, still)) {
+            delivery = still?.delivery ?? "held";
+            return;
+          }
           try {
             delivery = await pushToSession(current.id, targetId, target.kind === "member" ? target.memberId : null, { messageId, text, ...(options?.replyTo ? { replyTo: options.replyTo } : {}), from }, speaker);
           } catch (error) {
@@ -2125,9 +2154,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           }
           if (delivery !== "held") store.setMessageDelivery(current.id, messageId, delivery);
           else armHeldWatch();
-        } finally {
-          delivering.delete(messageId);
-        }
+        });
         return { messageId, to: target.kind === "commander" ? "commander" : target.memberId, delivery };
       });
     },
