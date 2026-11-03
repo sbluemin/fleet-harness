@@ -36,9 +36,6 @@
   opacity: 1;
 }
 
-/* 정렬 메뉴는 독 오른쪽 끝에 맞춘다 — 글리프 옆이 아니라 독 기준이라 좁은 사이드바에서도 왼쪽으로 잘리지 않는다. */
-.commodore-dock .commander-tab-sort { position: static; }
-.commodore-dock .commander-tab-menu { right: 0; }
 
 .commodore-dock-button,
 .commodore-dock-trigger {

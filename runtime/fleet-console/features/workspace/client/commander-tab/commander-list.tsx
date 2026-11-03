@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useViewportFit, ChevronGlyph, MenuCheckGlyph } from "@fleet-console/ui/react";
 
@@ -273,7 +273,11 @@ export function CommanderPlacementNoticeHost() {
   );
 }
 
-/** 정렬 메뉴 — `glyph`는 글자 칩 대신 아이콘 단추로 서고(사령관 머리의 호버 독), 열림·닫힘을 `onOpenChange`로 알린다. */
+/**
+ * 정렬 메뉴 — `glyph`는 글자 칩 대신 아이콘 단추로 서고(사령관 머리의 호버 독), 열림·닫힘을 `onOpenChange`로 알린다.
+ * `glyph` 메뉴는 호버로 열리고 접히는 독·스크롤하는 사이드바 목록 밖, 문서 최상위에 독의 오른쪽 아래를 닻으로 고정해 그린다 —
+ * 독의 :hover·:focus-within·넘침·전환이 항목을 누르는 중에 판을 움직이지 못하게 한다.
+ */
 export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenChange }: { readonly preference: SortPreference; readonly nameOnly?: boolean; readonly glyph?: boolean; readonly onOpenChange?: (open: boolean) => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -284,7 +288,24 @@ export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenCh
   const current = SORTS.find((sort) => sort.key === preference.key) ?? SORTS[0]!;
   const sortLabel = t("commanderTab.sort.button", { label: t(current.label) });
   const close = () => { setOpen(false); buttonRef.current?.focus(); };
+  const [anchor, setAnchor] = useState<CSSProperties | null>(null);
+  const toggle = () => {
+    if (glyph && !open) {
+      const box = (buttonRef.current?.closest(".commodore-dock") ?? buttonRef.current)?.getBoundingClientRect();
+      if (box) setAnchor({ position: "fixed", top: box.bottom + 4, right: window.innerWidth - box.right, left: "auto", zIndex: 40 });
+    }
+    setOpen((value) => !value);
+  };
   useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
+  // 문서에 고정된 판은 닻이 움직이면(창 크기·목록 스크롤) 따라가지 않고 닫는다.
+  useEffect(() => {
+    if (!open || !glyph) return;
+    const dismiss = () => setOpen(false);
+    const onScroll = (event: Event) => { if (event.target instanceof Node && event.target.contains(buttonRef.current)) setOpen(false); };
+    window.addEventListener("resize", dismiss);
+    document.addEventListener("scroll", onScroll, true);
+    return () => { window.removeEventListener("resize", dismiss); document.removeEventListener("scroll", onScroll, true); };
+  }, [open, glyph]);
   useEffect(() => {
     if (!open) return;
     menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"], [aria-pressed="true"]')?.focus({ preventScroll: true });
@@ -321,14 +342,17 @@ export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenCh
     fallback?.focus({ preventScroll: true });
   };
   const pick = (key: SortPreference["key"], direction: SortDirection) => { setSort({ ...preference, key, direction }); close(); };
+  const place = (node: ReactNode) => (glyph ? createPortal(node, document.body) : node);
   return (
     <span className="commander-tab-sort">
-      <button ref={buttonRef} type="button" className={glyph ? "commodore-dock-button" : "commander-tab-sort-button"} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={() => setOpen((value) => !value)}>
+      <button ref={buttonRef} type="button" className={glyph ? "commodore-dock-button" : "commander-tab-sort-button"} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={toggle}>
         {glyph
           ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M3 11l2 2 2-2M11 13V3M9 5l2-2 2 2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
           : <span className="commander-tab-sort-label">{nameOnly ? t(current.label) : sortLabel}</span>}
       </button>
-      {open ? <div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} onKeyDown={onMenuKeyDown}>
+      {open ? place(<div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} style={glyph ? anchor ?? undefined : undefined} onKeyDown={onMenuKeyDown}
+        // 항목을 누르는 순간 초점이 옮겨 가며 판·독이 다시 그려지지 않게 한다 — 초점은 단추에 남고 클릭만 항목으로 간다.
+        onMouseDown={glyph ? (event) => event.preventDefault() : undefined}>
         {SORTS.map((sort) => {
           const label = t(sort.label);
           const selected = sort.key === preference.key;
@@ -352,7 +376,7 @@ export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenCh
         <button type="button" role="menuitemcheckbox" aria-checked={preference.grouped} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, grouped: !preference.grouped })}>
           <span className="commander-tab-menu-check" aria-hidden="true">{preference.grouped ? <MenuCheckGlyph size={14} /> : null}</span>{t("commanderTab.sort.grouped")}
         </button>
-      </div> : null}
+      </div>) : null}
     </span>
   );
 }

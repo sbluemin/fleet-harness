@@ -30,7 +30,8 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && dockRef.current?.contains(event.target)) return;
+      // 정렬 메뉴는 문서 최상위에 그려지므로(독 밖 DOM) 따로 안쪽으로 본다.
+      if (event.target instanceof Element && (dockRef.current?.contains(event.target) || event.target.closest(".commander-tab-menu"))) return;
       pinnedRef.current = false;
       setOpen(false);
     };
