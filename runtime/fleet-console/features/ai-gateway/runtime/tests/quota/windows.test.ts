@@ -5,12 +5,18 @@ import { createQuotaService } from "../../src/quota/service.js";
 import { sanitizeProviderError } from "../../src/quota/windows.js";
 import { fetchClaudeUsage } from "../../src/upstream/anthropic/quota.js";
 
-function claudeCredentials(subscriptionType = "max"): CredentialResolverDeps {
+function claudeCredentials(subscriptionType = "max", rateLimitTier?: string): CredentialResolverDeps {
   return {
     platform: "linux",
     homedir: () => "/users/operator",
     env: {},
-    readBounded: async () => JSON.stringify({ claudeAiOauth: { accessToken: "secret", subscriptionType } }),
+    readBounded: async () => JSON.stringify({
+      claudeAiOauth: {
+        accessToken: "secret",
+        subscriptionType,
+        ...(rateLimitTier === undefined ? {} : { rateLimitTier }),
+      },
+    }),
     execFile: async () => "",
   };
 }
@@ -66,5 +72,37 @@ describe("provider response boundaries", () => {
     }
     expect(sanitizeProviderError(caught)).toBe("Provider response too large");
     expect(sanitizeProviderError(caught)).not.toContain(body);
+  });
+});
+
+describe("claude plan naming", () => {
+  // The fictional name proves the value flows from the profile API rather
+  // than a hardcoded label or the login-snapshot derivation ("Max 20x").
+  it("surfaces the profile display name verbatim", async () => {
+    const fetchImpl = (async (input: string | URL | Request) => {
+      if (String(input).includes("/api/oauth/profile")) {
+        return jsonResponse({ organization: { plan_display_name: "Nova" } });
+      }
+      return jsonResponse({ five_hour: { used_percentage: 12 } });
+    }) as typeof fetch;
+    const result = await fetchClaudeUsage({
+      credentials: claudeCredentials("max", "default_claude_max_20x"),
+      fetch: fetchImpl,
+    });
+    expect(result).toMatchObject({ status: "ok", plan: "Nova" });
+  });
+
+  it("falls back to the login-snapshot plan when the profile cannot be read", async () => {
+    const fetchImpl = (async (input: string | URL | Request) => {
+      if (String(input).includes("/api/oauth/profile")) {
+        return new Response("{}", { status: 500 });
+      }
+      return jsonResponse({ five_hour: { used_percentage: 12 } });
+    }) as typeof fetch;
+    const result = await fetchClaudeUsage({
+      credentials: claudeCredentials("max", "default_claude_max_20x"),
+      fetch: fetchImpl,
+    });
+    expect(result).toMatchObject({ status: "ok", plan: "Max 20x" });
   });
 });

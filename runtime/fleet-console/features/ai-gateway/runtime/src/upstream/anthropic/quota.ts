@@ -43,6 +43,41 @@ export function formatClaudePlan(
   return match ? titleCase(`${base} ${match[0].toLowerCase()}`) : base;
 }
 
+/**
+ * The subscription's own display name from the OAuth profile
+ * (`organization.plan_display_name`, e.g. `Ultra`). Used verbatim — never
+ * mapped through a hardcoded table — so a product rename follows without a
+ * code change. Label hygiene is the same `titleCase` rule every plan label
+ * passes before entering the DTO. Returns undefined when the profile carries
+ * no usable name, and the caller falls back to the login-snapshot derivation.
+ */
+export function parseClaudePlanDisplayName(payload: unknown): string | undefined {
+  const organization = object(object(payload)?.organization);
+  return titleCase(organization?.plan_display_name);
+}
+
+/**
+ * Profile display name first, login-snapshot derivation when the profile
+ * cannot be read. The profile only names the plan, so any failure here —
+ * including an auth rejection the usage call did not see — leaves the
+ * usage result standing on the fallback instead of failing the read.
+ */
+async function resolveClaudePlan(
+  fetchImpl: typeof fetch,
+  accessToken: string,
+  fallback: string | undefined,
+): Promise<string | undefined> {
+  try {
+    const profile = await getJson(fetchImpl, "https://api.anthropic.com/api/oauth/profile", {
+      Authorization: `Bearer ${accessToken}`,
+      "anthropic-beta": "oauth-2025-04-20",
+    });
+    return parseClaudePlanDisplayName(profile) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function firstClaudePercent(row: Record<string, unknown>): number | undefined {
   for (const key of ["percent", "used_percentage", "utilization"] as const) {
     const value = row[key];
@@ -173,10 +208,15 @@ export async function fetchClaudeUsage(deps: ProviderDeps = {}): Promise<Provide
     const parsed = parseClaudeUsage(payload);
     const fetchedAt = (deps.now ?? Date.now)();
     const credits = parseClaudeResetCredits(payload, fetchedAt);
+    const plan = await resolveClaudePlan(
+      deps.fetch ?? fetch,
+      credentials.accessToken,
+      formatClaudePlan(credentials.subscriptionType, credentials.rateLimitTier),
+    );
     return {
       status: "ok",
       method: credentials.method,
-      plan: formatClaudePlan(credentials.subscriptionType, credentials.rateLimitTier),
+      plan,
       windows: parsed.windows,
       ...(credits ? { credits } : {}),
       fetchedAt,
