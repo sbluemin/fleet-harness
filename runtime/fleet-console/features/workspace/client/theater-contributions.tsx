@@ -6,6 +6,8 @@ import type { TheaterInboxAddress } from "../shared/theater-inbox.js";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
+import { countBoardPersonDecisions } from "../../objectives/shared/objective-clusters.js";
+import { useObjectiveClusters } from "./objective-clusters.js";
 import { scopedTheaterInbox } from "./theater-inbox/scoped.js";
 
 interface TheaterContributionProps {
@@ -54,23 +56,28 @@ export function useTheaterContributionMark(theater: ConsoleTheaterSummary): Reac
   const language = useConsoleLocale();
   const marks = useMemo(() => theaterContributions.filter((contribution) => contribution.mark), [theaterContributions]);
   const subscribe = useHeaderSubscription(marks);
+  // 사령관 머리의 결정 얼굴·숫자 — 펼친 목록의 줄과 같은 묶음 판정을 호스트가 표식에 넘긴다.
+  // 사령관 질문(ask)은 세지 않는다(표식이 따로 센다). 클러스터 구독은 렌더 자체가 하므로
+  // 묶음이 바뀌면 이 머리도 다시 읽는다.
+  const clusters = useObjectiveClusters();
+  const boardPersonDecisionCount = useMemo(() => countBoardPersonDecisions(clusters, theater.id), [clusters, theater.id]);
   // 표식을 고르는 일은 구독이 깨울 때마다 다시 한다. 스냅숏은 「어느 기여가 그리는가」라는 id 하나다(같은 값이면 다시 그리지 않는다).
   const pick = useCallback(() => {
     for (const contribution of marks) {
       try {
-        if (contribution.mark?.({ theater, active: true, language, theaterInbox: scopedTheaterInbox(contribution.id) }) != null) return contribution.id;
+        if (contribution.mark?.({ theater, active: true, language, boardPersonDecisionCount, theaterInbox: scopedTheaterInbox(contribution.id) }) != null) return contribution.id;
       } catch {
         // 한 기여의 실패는 다음 기여에게 자리를 넘긴다.
       }
     }
     return null;
-  }, [marks, theater, language]);
+  }, [marks, theater, language, boardPersonDecisionCount]);
   const ownerId = useSyncExternalStore(subscribe, pick, pick);
   const owner = ownerId === null ? null : marks.find((contribution) => contribution.id === ownerId) ?? null;
   if (!owner?.mark) return null;
   return (
     <FeatureErrorBoundary fallback={<></>}>
-      {owner.mark({ theater, active: true, language, theaterInbox: scopedTheaterInbox(owner.id) })}
+      {owner.mark({ theater, active: true, language, boardPersonDecisionCount, theaterInbox: scopedTheaterInbox(owner.id) })}
     </FeatureErrorBoundary>
   );
 }

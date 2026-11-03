@@ -54,7 +54,8 @@ import { CommanderPlacementNoticeHost, CommodoreCommanderList } from "../command
 import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
 import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
-import { clusterHasPersonDecision, commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
+import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
+import { commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
 import { isCommanderSectionExpanded, toggleCommanderSectionCollapsed, useCommanderSectionFolds } from "./commander-section-folds.js";
 import type { SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";

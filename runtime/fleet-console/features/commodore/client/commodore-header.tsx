@@ -23,7 +23,6 @@ import { subscribeConversationSurface } from "../../workspace/client/conversatio
 import { getT } from "./i18n/index.js";
 import { isRunningObjective, isCommodoreWaiting, subscribeObjective, useObjectiveTheater } from "./board.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
-import { clusterHasPersonDecision, useObjectiveClusters } from "../../workspace/client/objective-clusters.js";
 
 export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 
@@ -60,7 +59,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
  * 턴을 도는 동안 몽글(이름 물결은 호스트가 함께 흘린다), 사령관이 운영하는 목표가 사람을 기다리면 부름 고리, 그 밖에는 가만히.
  * 머무는(또는 키보드로 들어온) 동안 사이드바에서 사령관의 목표 표식이 함께 밝아지고, 툴팁이 상태 문장을 말한다.
  */
-function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContributionContext) {
+function CommodoreHeaderMark({ theater, language, theaterInbox, boardPersonDecisionCount = 0 }: TheaterContributionContext) {
   const t = getT(language);
   // 사이드바 머리는 사령관 줄이다 — 머리의 id 가 곧 사령관 UUID 다.
   const commodoreId = theater.id;
@@ -76,21 +75,24 @@ function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContrib
   const warn = (view?.run.phase === "error" || view?.run.phase === "retrying");
   const name = useCommodoreName(commodoreId, t);
   const status = [`${name} · ${meta.map((part) => part.text).join(" · ")}`, routine, errorReason].filter(Boolean).join("\n");
-  // 사람이 답할 차례인 결정 요청 — 펼친 목록의 줄과 같은 묶음 판정이라, 채팅을 열어 보고 답 없이 떠나도
-  // 머리의 아바타 상태가 유지된다. 사령관이 직접 묻는 질문(`asks`)도 같은 사람 차례라 함께 읽는다.
-  const clusters = useObjectiveClusters();
-  const personDecision = clusters.some((cluster) => cluster.commodoreId === commodoreId && clusterHasPersonDecision(cluster));
+  // 사람이 답할 차례인 결정 요청 — 펼친 목록의 줄과 같은 묶음 판정을 호스트가 `boardPersonDecisionCount` 로
+  // 넘긴다. 채팅을 열어 보고 답 없이 떠나도 머리의 아바타 상태·숫자가 유지된다. 사령관이 직접 묻는
+  // 질문(`asks`)도 같은 사람 차례라 얼굴은 함께, 숫자는 합산한다.
+  const asks = openAsks(commodoreId).length;
+  const personDecision = asks > 0 || boardPersonDecisionCount > 0;
   const state = commodoreMongleState(view, board.objectives, personDecision);
   const glyph = <CommodoreAvatar commodoreId={commodoreId} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" />;
-  // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
-  const asks = openAsks(commodoreId).length;
+  // 숫자 배지 — 사령관 질문과 보드 결정을 합산한다. 답·철회로 걷히면 같은 판정이 함께 0이 되어 사라진다.
+  const total = asks + boardPersonDecisionCount;
   const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;
+  const boardWord = boardPersonDecisionCount > 0 ? t("commodore.reason.decision", { n: boardPersonDecisionCount }) : null;
+  const decisionWords = [asksWord, boardWord].filter((part) => part !== null).join(", ");
   return (
     <button
       type="button"
       className={`objectives-commodore-mark${warn ? " is-warn" : ""}`}
-      aria-label={[t("commodore.mark.open", { theater: theater.label }), asksWord].filter(Boolean).join(", ")}
-      title={[theater.label, status, asksWord, t("commodore.mark.open", { theater: theater.label })].filter(Boolean).join("\n")}
+      aria-label={[t("commodore.mark.open", { theater: theater.label }), decisionWords || null].filter((part) => part !== null && part !== "").join(", ")}
+      title={[theater.label, status, decisionWords || null, t("commodore.mark.open", { theater: theater.label })].filter((part) => part !== null && part !== "").join("\n")}
       onClick={(event) => { event.stopPropagation(); if (!commodoreId || !openCommodoreConversation(commodoreId)) theaterInbox?.open({ theaterId: theater.id, sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" }); }}
       onMouseEnter={peek(true)}
       onMouseLeave={peek(false)}
@@ -98,7 +100,7 @@ function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContrib
       onBlur={peek(false)}
     >
       {glyph}
-      {asks > 0 ? <span className="objectives-commodore-mark-badge" aria-hidden="true">{asks}</span> : null}
+      {total > 0 ? <span className="objectives-commodore-mark-badge" aria-hidden="true">{total}</span> : null}
     </button>
   );
 }
