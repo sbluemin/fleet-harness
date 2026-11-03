@@ -10,7 +10,7 @@ import { createTaskforceStore, type TaskforceStore } from "../features/commodore
 import type { TaskforceEvent } from "../features/commodore/shared/contracts/taskforce.js";
 import { createCommodoreStore, type CommodoreStore } from "../features/commodore/host/store.js";
 import { createCommodoreTools } from "../features/commodore/host/tools.js";
-import { COALESCE_MS, createCommodoreSupervisor } from "../features/commodore/host/supervisor.js";
+import { TF_PERSON_QUIET_MS, createCommodoreSupervisor } from "../features/commodore/host/supervisor.js";
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
 import type { AgentEvent, AgentInputBlock } from "../features/execution/shared/agent.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
@@ -217,7 +217,7 @@ describe("taskforce runtime", () => {
       fs.writeFileSync(path.join(tfDir, "state.json"), JSON.stringify({ ...previous, status: "closed", closedAt: Date.now() }));
       h.taskforce.forget(taskforceId);
       h.supervisor.sync("started");
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       expect(h.sessions).toHaveLength(0);
       const migrated = h.taskforce.read(taskforceId)!;
       expect(migrated).not.toHaveProperty("status");
@@ -231,7 +231,7 @@ describe("taskforce runtime", () => {
       expect(restored.read(taskforceId)?.readSeq).toEqual(migrated.readSeq);
       expect(restored.pending(taskforceId, a)).toEqual([]);
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "다시 나누는 말" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       expect(h.sessions).toHaveLength(2);
       for (const session of h.sessions) {
         expect(session.sent[0]).toContain("다시 나누는 말");
@@ -255,7 +255,7 @@ describe("taskforce runtime", () => {
       const imageBytes = Buffer.from("TF image payload");
       const images = h.taskforce.saveImages(taskforceId, 2, [{ name: "group.png", mime: "image/png", bytes: imageBytes }]);
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: personText, images });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
       expect(sessionOf("Alpha").sent[0]).toContain(personText);
       expect(sessionOf("Beta").sent[0]).toContain(personText);
@@ -276,7 +276,7 @@ describe("taskforce runtime", () => {
       expect(h.taskforce.read(taskforceId)?.readSeq).toMatchObject({ [a]: 0, [b]: 0 });
       sessionOf("Alpha").finish();
       sessionOf("Beta").finish();
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       for (const [alias, peer] of [["Alpha", beta], ["Beta", alpha]] as const) {
         const session = sessionOf(alias);
         expect(session.sent).toHaveLength(2);
@@ -296,7 +296,7 @@ describe("taskforce runtime", () => {
       const oldAlpha = sessionOf("Alpha");
       h.supervisor.replaceSessionNext(a);
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "서로의 응답을 확인해 주세요" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       for (const alias of ["Alpha", "Beta"]) {
         const session = sessionOf(alias);
         const prompt = session.sent.at(-1)!;
@@ -323,7 +323,7 @@ describe("taskforce runtime", () => {
       await vi.advanceTimersByTimeAsync(10);
       // 다음 1:1 턴도 새 세션이 아니므로 TF 이력을 반복하지 않는다.
       h.store.transcriptAppend(a, { kind: "message", text: "개인 대화" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       expect(sessionOf("Alpha").sent.at(-1)).not.toContain("Recent conversation reminder");
       expect(sessionOf("Alpha").sent.at(-1)).not.toContain(`(id: ${taskforceId})`);
       sessionOf("Alpha").finish();
@@ -335,7 +335,7 @@ describe("taskforce runtime", () => {
         const saved = h.taskforce.saveImages(taskforceId, seq, [{ name: "large.png", mime: "image/png", bytes: largeImage }]);
         return h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text, images: saved }).entry;
       });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       const previous = [sessionOf("Alpha"), sessionOf("Beta")];
       for (const session of previous) {
         expect(session.images.at(-1)).toHaveLength(1);
@@ -343,7 +343,7 @@ describe("taskforce runtime", () => {
         expect(session.sent.at(-1)).not.toContain(imageEntries[1]!.text);
         session.finish();
       }
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       // 누적 12 MiB 세션 상한을 넘기 전 교체하고, 새 세션에는 남겨 둔 두 번째 이미지만 싣는다.
       for (const [index, alias] of ["Alpha", "Beta"].entries()) {
         const session = sessionOf(alias);
@@ -357,7 +357,7 @@ describe("taskforce runtime", () => {
         expect(unread).not.toContain(imageEntries[0]!.text);
         session.finish();
       }
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       for (const id of [a, b]) {
         expect(h.taskforce.read(taskforceId)?.readSeq[id]).toBe(imageEntries[1]!.seq);
         expect(JSON.stringify(h.store.transcriptRead(id))).not.toContain("큰 이미지");
@@ -370,7 +370,7 @@ describe("taskforce runtime", () => {
       fs.writeFileSync(path.join(tfDir, "state.json"), JSON.stringify({ ...persisted, lastSeq: legacy.seq }));
       h.taskforce.forget(taskforceId);
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "계속 판단해 주세요" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       for (const alias of ["Alpha", "Beta"]) {
         const session = sessionOf(alias);
         expect(session.images.at(-1)).toEqual([]);
@@ -378,7 +378,7 @@ describe("taskforce runtime", () => {
         expect(session.sent.at(-1)).toContain("계속 판단해 주세요");
         session.finish();
       }
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       for (const id of [a, b]) expect(h.taskforce.read(taskforceId)?.readSeq[id]).toBe(legacy.seq + 1);
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
@@ -405,7 +405,7 @@ describe("taskforce runtime", () => {
       h.taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: a }, text: "Alpha의 끝말" });
 
       h.supervisor.sync("started");
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
       const callSession = (alias: string, args: Record<string, unknown>) =>
         sessionOf(alias).tools.get("memory_search")!.execute(args, { cwd: h.theaterRoot, toolCallId: alias } as never) as Promise<{ isError: boolean; structuredContent: Record<string, any> }>;
@@ -803,7 +803,7 @@ describe("taskforce runtime", () => {
       // 사람의 말 — 두 성원이 판단 대상이다. Alpha는 세션을 먼저 교체한다.
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 말" });
       h.supervisor.replaceSessionNext(a);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       const sendsOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).flatMap((session) => session.sent);
       // 세션은 교체될 때마다 새로 열린다 — 항상 마지막 세션으로 말한다.
       const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
@@ -831,7 +831,7 @@ describe("taskforce runtime", () => {
       await vi.advanceTimersByTimeAsync(10);
       // 사람의 말이 또 오면 rotated와 taskforce가 한 턴에 겹친다.
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 말 2" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       // 겹친 턴의 자유 텍스트도 1:1 기록에 남지 않는다 — 세션 수명주기는 조용함을 깨지 않는다.
       sessionOf("Alpha").emit({ kind: "text", text: "rotated chatter that must not surface" });
       await post("Alpha", "Alpha의 말");
@@ -853,7 +853,7 @@ describe("taskforce runtime", () => {
       // chain을 15까지 쌓는다 — Beta부터 번갈아 말한다. 제한 안 함이라 멈추지 않는다.
       const speakers = ["Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha", "Beta", "Alpha"];
       const speak = async (alias: string, text: string) => {
-        await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+        await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
         await post(alias, text);
         sessionOf(alias).finish();
         await vi.advanceTimersByTimeAsync(10);
@@ -895,13 +895,13 @@ describe("taskforce runtime", () => {
       }).at(-1);
       h.supervisor.replaceSessionNext(b);
       h.store.transcriptAppend(b, { kind: "message", text: "1:1 말 1" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       sessionOf("Beta").finish();
       await vi.advanceTimersByTimeAsync(10);
       const r1 = lastSilentAt();
       h.supervisor.replaceSessionNext(b);
       h.store.transcriptAppend(b, { kind: "message", text: "1:1 말 2" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       sessionOf("Beta").finish();
       await vi.advanceTimersByTimeAsync(10);
       const r2 = lastSilentAt();
@@ -943,7 +943,7 @@ describe("taskforce runtime empty wakes", () => {
       // 다른 턴이 이미 읽은 셈 친다 — 깨움만 남고 판단 항목은 없다.
       h.taskforce.advanceReadSeq(taskforceId, a, 2);
       h.taskforce.advanceReadSeq(taskforceId, b, 2);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       // 턴이 서지 않는다 — 세션도, 1:1 기록도 남지 않는다.
       expect(h.sessions).toHaveLength(0);
       expect(h.store.transcriptRead(a).entries).toHaveLength(0);
@@ -976,7 +976,7 @@ describe("taskforce runtime board actions", () => {
       const taskforceId = created.id;
       h.supervisor.sync("started");
       h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "사람의 말" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
       sessionOf("Beta").finish();
       await vi.advanceTimersByTimeAsync(10);

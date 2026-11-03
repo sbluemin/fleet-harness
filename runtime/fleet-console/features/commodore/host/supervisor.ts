@@ -31,6 +31,12 @@ export const RETRY_DELAYS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_0
 export const RETRY_STEADY_MS = 60 * 60_000;
 /** 깨움 이유를 모으는 시간. */
 export const COALESCE_MS = 3_000;
+/** TaskForce 사람 발언 묶음 — 마지막 발언 뒤 이만큼 기다리고, 처음 발언부터 최대 이만큼까지만 미룬다. */
+export const TF_PERSON_QUIET_MS = 10_000;
+export const TF_PERSON_MAX_MS = 30_000;
+/** TaskForce 사령관 발언 묶음 — 같이 깬 성원의 판단이 끝나길 기다리는 최대 시간과 확인 간격. */
+export const TF_COMMODORE_MAX_MS = 90_000;
+const TF_COMMODORE_POLL_MS = 1_000;
 const RECENT_ACTIONS = 12;
 
 export interface CommodoreSupervisorDeps {
@@ -360,10 +366,43 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner[key] = timer;
   };
 
+  /**
+   * TaskForce 깨움 묶음 — 사람 발언은 조용해질 때까지(새 발언이 재대기, 최대 30초), 사령관 발언은 같이 깬
+   * 성원의 판단이 끝날 때까지(최대 90초) 모은다. 다른 이유가 함께 있으면 기본 묶음 시간을 쓴다.
+   */
+  const tfWaits = new Map<string, { kind: "person" | "commodore"; first: number; last: number; blockers: Map<string, Set<string>> }>();
+  const coalesceDelay = (runner: Runner): number => {
+    const wait = tfWaits.get(runner.commodoreId);
+    if (!wait || runner.pending.size !== 1 || !runner.pending.has("taskforce")) return COALESCE_MS;
+    const t = now();
+    if (wait.kind === "person") return Math.max(0, Math.min(wait.last + TF_PERSON_QUIET_MS, wait.first + TF_PERSON_MAX_MS) - t);
+    const due = wait.first + TF_COMMODORE_MAX_MS - t;
+    let judging = false;
+    for (const [taskforceId, members] of wait.blockers) for (const member of members) if (tfJudging.get(taskforceId)?.has(member)) judging = true;
+    if (!judging) return Math.max(0, wait.last + COALESCE_MS - t);
+    return Math.max(0, Math.min(due, TF_COMMODORE_POLL_MS));
+  };
+  const scheduleTurn = (runner: Runner) => schedule(runner, "coalesce", coalesceDelay(runner), () => {
+    // 기다릴 이유가 남았으면(판단 중인 성원·새 사람 발언) 다시 잰다.
+    if (runner.pending.size && !runner.inflight && tfWaits.has(runner.commodoreId) && runner.pending.size === 1 && runner.pending.has("taskforce") && coalesceDelay(runner) > 0) { scheduleTurn(runner); return; }
+    void runTurn(runner);
+  });
+
   /** 이유를 모은다 — 턴이 돌고 있으면 끝난 뒤, 아니면 잠깐 뒤 한 턴. 수는 절대값이 덮고 `bump` 는 누적한다. */
-  const wake = (runner: Runner, code: WakeCode, input: { readonly count?: number; readonly bump?: boolean; readonly detail?: string } = {}) => {
+  const wake = (runner: Runner, code: WakeCode, input: { readonly count?: number; readonly bump?: boolean; readonly detail?: string; readonly tf?: { readonly kind: "person" | "commodore"; readonly taskforceId: string; readonly blockers: ReadonlySet<string> } } = {}) => {
     if (runner.stopping) return;
     if (!canRun(runner.commodoreId)) return;
+    if (input.tf) {
+      const t = now();
+      const wait = tfWaits.get(runner.commodoreId) ?? { kind: input.tf.kind, first: t, last: t, blockers: new Map<string, Set<string>>() };
+      // 사람 발언이 한 번이라도 있으면 사람 묶음이다.
+      if (input.tf.kind === "person") wait.kind = "person";
+      wait.last = t;
+      const blockers = wait.blockers.get(input.tf.taskforceId) ?? new Set<string>();
+      for (const member of input.tf.blockers) blockers.add(member);
+      wait.blockers.set(input.tf.taskforceId, blockers);
+      tfWaits.set(runner.commodoreId, wait);
+    }
     const existing = runner.pending.get(code);
     const reason: PendingReason = existing ?? { details: [] };
     if (input.bump) reason.count = (reason.count ?? 0) + 1;
@@ -373,7 +412,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner.inflight) return;
     // 새 사건도 예약 재시도에 합친다.
     if (runner.phase === "retrying" || runner.phase === "error") return;
-    schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
+    scheduleTurn(runner);
   };
 
   const scheduleRoutines = (runner: Runner) => {
@@ -735,6 +774,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!canRun(runner.commodoreId)) return;
     if (runner.inflight) return runner.inflight;
     if (!runner.pending.size) return;
+    tfWaits.delete(runner.commodoreId);
     // 읽지 않은 판단 항목 없는 taskforce 깨움은 턴을 세우지 않는다 — 이유를 걷고 판단 중에서도
     // 뺀다(빈 깨움 턴의 1:1 기록·유료 호출을 아낀다). 남은 이유가 없으면 쉰다.
     if (runner.pending.has("taskforce") && deps.taskforce && !tfWakeable(runner.commodoreId)) {
@@ -986,7 +1026,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     })().finally(() => {
       runner.inflight = null;
       // 턴 중에 온 이유는 다음 턴 하나로.
-      if (runner.pending.size && !runner.stopping && !disposed && runner.phase !== "retrying" && runner.phase !== "error") schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
+      if (runner.pending.size && !runner.stopping && !disposed && runner.phase !== "retrying" && runner.phase !== "error") scheduleTurn(runner);
     });
     return runner.inflight;
   };
@@ -1245,14 +1285,22 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
     const paused = state.chain.paused;
     const targets = new Set<string>();
-    if (entry.speaker.kind === "person") { for (const member of state.members) targets.add(member); }
-    else if (entry.speaker.kind === "commodore") { if (!paused) for (const member of state.members) if (member !== speaker) targets.add(member); }
-    else if (entry.speaker.code === "created") { for (const member of state.members) targets.add(member); }
+    // 지목이 있으면 지목된 성원만 깨운다 — 나머지는 읽지 않은 채 남아 다음 깨움에 함께 실린다.
+    const mentioned = new Set(entry.mentions.filter((id) => state!.members.includes(id) && id !== speaker));
+    const addTargets = (all: boolean) => { for (const member of state!.members) if (member !== speaker && (all || !mentioned.size || mentioned.has(member))) targets.add(member); };
+    if (entry.speaker.kind === "person") { addTargets(false); }
+    else if (entry.speaker.kind === "commodore") { if (!paused) addTargets(false); }
+    else if (entry.speaker.code === "created") { addTargets(true); }
     // 그 외 system 항목은 깨우지 않는다 — 다음 판단에 함께 실린다.
+    // 사령관 발언 묶음이 기다릴 성원 — 이 사건 전에 이미 판단 중이던 성원이다(같은 사건으로 같이 깬 성원끼리는 기다리지 않는다).
+    const judgingBefore = new Set(tfJudging.get(event.taskforceId) ?? []);
+    const tfKind = entry.speaker.kind === "person" ? "person" : entry.speaker.kind === "commodore" ? "commodore" : null;
     for (const member of targets) {
       judgingAdd(event.taskforceId, member);
       const runner = runners.get(member);
-      if (runner && !runner.stopping) wake(runner, "taskforce");
+      if (!runner || runner.stopping) continue;
+      const blockers = new Set([...judgingBefore].filter((id) => id !== member));
+      wake(runner, "taskforce", tfKind ? { tf: { kind: tfKind, taskforceId: event.taskforceId, blockers } } : {});
     }
     // 같은 턴에 말한 기록 — 성공한 턴이 보드 쓰기 묶음을 그 말 아래에 덧붙인다.
     if (entry.speaker.kind === "commodore") {
