@@ -350,13 +350,12 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         to: memberReference,
         text: z.string().trim().min(1).max(MAX_OBJECTIVE_MESSAGE_TEXT),
         replyTo: z.string().uuid().optional(),
-        attachmentIds: z.array(z.string().uuid()).max(4).optional(),
       }).strict(),
       async (args, caller) => {
         if (caller?.kind !== "objectiveRecord") return refuse("not_participant");
         const objective = boundObjective(caller);
         if (!objective || !roleIn(objective, caller)) return refuse("not_participant");
-        const sent = await launch.relay(caller.objectiveId, args.to, args.text, { ...(args.replyTo ? { replyTo: args.replyTo } : {}), ...(args.attachmentIds ? { attachmentIds: args.attachmentIds } : {}) });
+        const sent = await launch.relay(caller.objectiveId, args.to, args.text, { ...(args.replyTo ? { replyTo: args.replyTo } : {}) });
         return text({ messageId: sent.messageId, to: sent.to, delivery: sent.delivery });
       }),
     commanderTool("muster", "Prepare every roster member: absent members launch waiting for a first message, chat members get their session prepared, and dormant terminal members resume their own session. Chats stay live and become idle between turns; they never need resume. Preparation starts no model turn. A member knows only what it has been sent and what it has read, and keeps that across missions. Its results reach the board only when it reports them with the message tool and the Commander completes the mission, so the first message to each member says so. A member whose launch, preparation or terminal resume the host refuses comes back as state failed with its error code; the others proceed.",

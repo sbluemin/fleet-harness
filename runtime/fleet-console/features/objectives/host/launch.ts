@@ -161,7 +161,7 @@ export interface LaunchService {
    * 지휘관·구성원 메시지. 기록을 먼저 남기고, 도는 턴이면 스티어링, 쉬면 새 턴, 잠들면 깨운 뒤 전달한다.
    * 재기동·권한 대기·PTY 없음이면 held 로 남기고 나중에 다시 넣는다. 버리지 않는다.
    */
-  relay(fromSessionId: string, to: string, text: string, options?: { readonly replyTo?: string; readonly attachmentIds?: readonly string[] }): Promise<{ readonly messageId: string; readonly to: string; readonly delivery: ObjectiveMessageDelivery }>;
+  relay(fromSessionId: string, to: string, text: string, options?: { readonly replyTo?: string }): Promise<{ readonly messageId: string; readonly to: string; readonly delivery: ObjectiveMessageDelivery }>;
   /** 사람의 방송 — live 대상만 동시에 보내고, 휴면·미관측은 깨우지 않는다. */
   broadcast(objectiveId: string, text: string, options?: LaunchOptions): Promise<import("../../execution/shared/conversation/types.js").GroupWriteResult>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Objective 에 인터럽트를 보낸다. */
@@ -1359,7 +1359,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 받는 세션에 한 통을 넣는다. 기록이 이미 있을 때 부른다. 못 넣으면 held.
    * 잠든 터미널은 재개하고, 아직 없는 구성원은 muster로 세운 뒤 넣는다.
    */
-  const pushToSession = async (objectiveId: string, targetId: string, memberId: string | null, message: { readonly messageId: string; readonly text: string; readonly replyTo?: string; readonly from: ObjectiveMessageParty }, speaker: { readonly objectiveId: string; readonly title: string }, attachmentIds?: readonly string[]): Promise<ObjectiveMessageDelivery> => {
+  const pushToSession = async (objectiveId: string, targetId: string, memberId: string | null, message: { readonly messageId: string; readonly text: string; readonly replyTo?: string; readonly from: ObjectiveMessageParty }, speaker: { readonly objectiveId: string; readonly title: string }): Promise<ObjectiveMessageDelivery> => {
     if (ctx.objectiveRecords.isTransitioning?.(targetId) || attentionBlocks(targetId)) return "held";
     const observation = ctx.consoleControl?.observe(targetId);
     const node = referenceNode(targetId);
@@ -1394,7 +1394,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     try {
       await control().request({
         kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : text, display: body, displayFormat: "markdown",
-        rosterSpeaker: speaker, ...(attachmentIds?.length ? { attachmentIds } : {}),
+        rosterSpeaker: speaker,
       });
     } catch (error) {
       if (holdableDelivery(error)) return "held";
@@ -1419,7 +1419,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const speakerId = from.kind === "commander" ? owner.id : from.memberId;
       const role = from.kind === "commander" ? "Commander" : owner.members.find((member) => member.id === speakerId)?.role ?? "member";
       try {
-        const delivery = await pushToSession(owner.id, target, to.kind === "member" ? to.memberId : null, message, { objectiveId: speakerId, title: role }, message.attachments?.map((attachment) => attachment.id));
+        const delivery = await pushToSession(owner.id, target, to.kind === "member" ? to.memberId : null, message, { objectiveId: speakerId, title: role });
         if (delivery !== "held") store.setMessageDelivery(owner.id, message.messageId, delivery);
       } finally {
         delivering.delete(message.messageId);
@@ -2104,9 +2104,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (sameParty(from, target)) throw new ObjectiveStoreError("self_target");
         if (current.done && target.kind === "member") throw new ObjectiveStoreError("objective_done");
         if (current.removed) throw new ObjectiveStoreError("objective_removed");
-        const attachmentIds = options?.attachmentIds ?? [];
-        if (attachmentIds.length > 4) throw new ObjectiveStoreError("attachment_limit");
-        if (new Set(attachmentIds).size !== attachmentIds.length) throw new ObjectiveStoreError("duplicate_attachment");
         if (options?.replyTo && !store.messages(current.id).some((entry) => entry.messageId === options.replyTo)) throw new ObjectiveStoreError("unknown_message");
         const at = quietNow();
         const messageId = randomUUID();
@@ -2114,7 +2111,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         store.appendMessage(current.id, {
           messageId, at, from, to: target, text,
           ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
-          ...(attachmentIds.length ? { attachments: attachmentIds.map((id) => ({ id })) } : {}),
           delivery: "held",
         });
         if (target.kind === "member") store.recordDispatch(target.memberId, at);
@@ -2123,7 +2119,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         delivering.add(messageId);
         try {
           try {
-            delivery = await pushToSession(current.id, targetId, target.kind === "member" ? target.memberId : null, { messageId, text, ...(options?.replyTo ? { replyTo: options.replyTo } : {}), from }, speaker, attachmentIds);
+            delivery = await pushToSession(current.id, targetId, target.kind === "member" ? target.memberId : null, { messageId, text, ...(options?.replyTo ? { replyTo: options.replyTo } : {}), from }, speaker);
           } catch (error) {
             if (!holdableDelivery(error)) throw error;
           }
