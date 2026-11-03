@@ -69,8 +69,8 @@ export interface AgentSessionOptions {
    * `conversation` 세션이 대화를 요약해 이어 갈 문맥 토큰 수. 생략하면 실행기의 기본 지점이다.
    *
    * 호스트는 이 값을 자식의 자동 압축 창으로 옮긴다 — 네이티브 Claude 모델에서는 대화가 이 크기에 닿을 때 압축된다.
-   * Gateway 모델(비-Claude)은 Gateway가 사용량을 공급자 창으로 투영하고 자기 compact 정책으로 압축 시점을 정하므로
-   * 이 값을 적용하지 않는다.
+   * Gateway 모델(비-Claude)은 이 값을 Gateway가 사용량을 투영할 때 쓰는 같은 자로 투영해 옮기므로, 실제 압축은
+   * 이 값과 Gateway compact 정책 지점 중 이른 쪽에서 일어난다. Gateway 기본 지점이 이미 이 값 안이면 창을 덮지 않는다.
    */
   readonly compactAt?: number;
   /** 내장 Read는 요청한 세션에만 실린다. 셸·하위 Agent는 제공하지 않는다. */

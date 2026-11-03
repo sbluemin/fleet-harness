@@ -2541,6 +2541,7 @@ describe("commodore supervisor", () => {
       // 미터에는 모델 기본 지점(창 − 33k)을 보여준다.
       expect(commodoreCompactAt(200_000)).toBeNull();
       expect(commodoreCompactAt(500_000)).toBeNull();
+      expect(commodoreCompactAt(524_288)).toBe(500_000);
       expect(commodoreCompactAt(1_000_000)).toBe(500_000);
       h.store.transcriptAppend("t1", { kind: "message", text: "Hello." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
