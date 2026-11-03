@@ -163,14 +163,20 @@ export const EMPTY_RUN_TOTALS: CommodoreRunTotals = Object.freeze({ session: 0, 
  * `turn` 은 사령관이 일하는 중, `retrying` 은 턴 오류 뒤 재시도 대기(`reason`·`retryAt`), `error` 는 재시도로도 못 푼 상태.
  */
 /**
- * 사령관 세션이 대화를 요약해 이어 가는 지점 — 모델 창에 대한 비율. 사령관은 이 지점에서 세션을 바꾸지 않고 같은 세션을 압축한다.
- * 0.75 는 이전의 교대 지점이다: 한 세션이 쌓는 문맥과 턴마다 다시 읽는 비용이 교대 시절과 크게 달라지지 않게 같은 자리에 둔다.
+ * 사령관 세션이 대화를 요약해 이어 가는 지점 — 모델 창에 대한 비율(이전의 교대 자리). 상한을 넘는 창에만 쓰고, 그마저 상한에 막힌다.
  */
 export const COMMODORE_COMPACT_RATIO = 0.75;
 
-/** 모델 창(토큰)에서 압축 지점(토큰)을 낸다. 호스트가 이 값을 실행기의 자동 압축 창으로 옮긴다(Agent SDK `compactAt`). */
-export function commodoreCompactAt(contextWindow: number): number {
-  return Math.round(contextWindow * COMMODORE_COMPACT_RATIO);
+/**
+ * 사령관 압축 지점의 상한(토큰). 창이 이 이하인 모델은 지점을 덮지 않고(`null`) 그 모델의 기본 압축 정책을 따르고,
+ * 창이 이보다 큰 모델은 비율 지점과 상한 중 작은 쪽에서 압축한다(1M 창 → 500k).
+ */
+export const COMMODORE_COMPACT_MAX = 500_000;
+
+/** 모델 창(토큰)에서 압축 지점(토큰)을 낸다. 상한 이하의 창은 덮지 않는다(`null`). */
+export function commodoreCompactAt(contextWindow: number): number | null {
+  if (contextWindow <= COMMODORE_COMPACT_MAX) return null;
+  return Math.min(Math.round(contextWindow * COMMODORE_COMPACT_RATIO), COMMODORE_COMPACT_MAX);
 }
 
 /**

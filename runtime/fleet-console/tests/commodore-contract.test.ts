@@ -35,7 +35,7 @@ import { createCommodoreTools } from "../features/commodore/host/tools.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { COALESCE_MS, COMMODORE_IDLE_ROTATE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
-import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
+import { commodoreCompactAt, MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
 import type { CommodoreAttachmentReader, CommodorePersonMessageReader, CommodoreTurnBindings } from "../features/objectives/shared/commodore-board.js";
 import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
@@ -2513,6 +2513,44 @@ describe("commodore supervisor", () => {
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
 
+  it("leaves the compact point unset on 500k-or-smaller windows", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
+    const h = harness();
+    h.setExperiments({ commodore: true });
+    h.store.setCoordinates("t1", { model: "test-200k", effort: "medium" });
+    const sessions: { options: AgentSessionOptions; sent: string[]; disposed: boolean }[] = [];
+    const agent: AgentHost = { createSession: async (options) => {
+      const entry = { options, sent: [] as string[], disposed: false };
+      sessions.push(entry);
+      return {
+        send: async (text) => {
+          if (typeof text !== "string") throw new Error("Expected text-only turn");
+          entry.sent.push(text);
+          options.onEvent?.({ kind: "text", text: "ok" });
+          options.onEvent?.({ kind: "result", isError: false, source: "message", usage: { inputTokens: 1_000, outputTokens: 10, contextTokens: 1_000 } });
+        },
+        steer: () => false, cancel() {}, dispose: async () => { entry.disposed = true; },
+      };
+    } };
+    const supervisor = createHostSupervisor({ store: h.store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
+      board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
+    });
+    try {
+      // 경계 — 상한 이하의 창은 지점을 덮지 않고 모델 기본 정책을 따른다. 상한을 넘는 창만 상한 지점을 받는다.
+      expect(commodoreCompactAt(200_000)).toBeNull();
+      expect(commodoreCompactAt(500_000)).toBeNull();
+      expect(commodoreCompactAt(1_000_000)).toBe(500_000);
+      h.store.transcriptAppend("t1", { kind: "message", text: "Hello." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]!.options.compactAt).toBeUndefined();
+      expect(sessions[0]!.sent).toHaveLength(1);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle", context: { window: 200_000, inputTokens: 1_000 } });
+      expect(supervisor.status("t1")!.context).not.toHaveProperty("compactAt");
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
+  });
+
   it("restores on register, coalesces events without periodic wakes, retries failures, compacts long sessions and preserves input on shutdown", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
@@ -2821,20 +2859,20 @@ describe("commodore supervisor", () => {
       expect(tokens().at(-1)).toEqual(["intel:1", "retry"]);
       await expect(supervisor.retry("t1")).rejects.toThrow("commodore_not_retrying");
 
-      // 압축 — 문맥이 길어져도 세션을 바꾸지 않는다. 세션은 창(폴백 Sonnet 1M)의 75%를 압축 지점으로 받아 같은 세션에서
+      // 압축 — 문맥이 길어져도 세션을 바꾸지 않는다. 세션은 창(폴백 Sonnet 1M)에 500k 상한의 압축 지점을 받아 같은 세션에서
       // 대화를 요약해 이어 가고, 그 사실이 기록에 남는다. 미터는 턴 합계가 아니라 마지막 호출의 대화 크기와 그 지점을 읽는다.
-      expect(sessions[0]!.options.compactAt).toBe(750_000);
-      inputTokens = 760_000;
+      expect(sessions[0]!.options.compactAt).toBe(500_000);
+      inputTokens = 510_000;
       h.store.addIntel("t1", { text: "d" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(supervisor.status("t1")).toMatchObject({ context: { window: 1_000_000, inputTokens: 760_000, compactAt: 750_000 } });
-      compaction = { preTokens: 760_000, postTokens: 12_000 };
+      expect(supervisor.status("t1")).toMatchObject({ context: { window: 1_000_000, inputTokens: 510_000, compactAt: 500_000 } });
+      compaction = { preTokens: 510_000, postTokens: 12_000 };
       inputTokens = 14_000;
       h.store.addIntel("t1", { text: "e" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.disposed).toBe(false);
-      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "compacted")).toMatchObject({ trigger: "auto", preTokens: 760_000, postTokens: 12_000 });
+      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "compacted")).toMatchObject({ trigger: "auto", preTokens: 510_000, postTokens: 12_000 });
       expect(supervisor.status("t1")).toMatchObject({ context: { inputTokens: 14_000 } });
 
       // 교대 — 요약이 실패해 넘친 세션은 같은 세션으로 다시 시도하지 않는다. 다음 시도가 새 세션 + 최근 행위 요약으로 연다.
