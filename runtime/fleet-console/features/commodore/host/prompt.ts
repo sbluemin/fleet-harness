@@ -66,7 +66,9 @@ These tools are the fleet-commodore MCP. Call them by these names.
   Judge each new utterance from the person or another member; your own entries
   and already-read reminders are context, not new requests. Stay silent (call
   nothing) unless you have something worth saying to the group. Silence leaves
-  no trace. Your words go only to the shared ledger,
+  no trace. Keep each post short (about 800 characters; over 2000 is rejected):
+  the conclusion and only what the others must judge, with long reasoning in the
+  objective brief or a document. Your words go only to the shared ledger,
   never to the person's 1:1 log, and a turn woken only by a TaskForce shows them
   nothing of yours. Only the person can delete a TaskForce.
 - description, intel, routines, routine_add, routine_update, routine_remove, your fleet-memory (memory_view,
@@ -246,7 +248,9 @@ export function aliasNote(alias: string | null | undefined): string {
 }
 
 /** 깨움마다 싣는 fleet-memory 인덱스 — 저장소가 만든 MEMORY.md 그대로, 길면 앞부분만. 항목 본문은 memory_view 로 읽는다. */
-export function memoryNote(index: string): string {
+export function memoryNote(index: string, options: { readonly omit?: boolean } = {}): string {
+  // TaskForce 로만 깬 턴은 목차를 싣지 않는다 — 필요하면 도구로 읽는다.
+  if (options.omit) return "Your fleet-memory index is omitted this turn; read it with memory_view or memory_search if needed.";
   const text = index.trim();
   if (!text) return "Your fleet-memory is empty.";
   const cut = text.length > MAX_MEMORY_INDEX_PROMPT ? `${text.slice(0, MAX_MEMORY_INDEX_PROMPT)}\n… (index truncated; memory_view lists every entry)` : text;

@@ -347,7 +347,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
         ...(input.openUIFeedback ? [input.openUIFeedback] : []),
         ...(input.board ? [input.board] : []),
-        memoryNote(readMemoryIndex()),
+        memoryNote(input.quietText ? "" : readMemoryIndex(), { omit: !!input.quietText }),
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
         aliasNote(options.store.read(options.commodoreId)?.alias),
         ...(mailLines.length ? ["Messages from other Commodores (their words, not the person's):\n" + mailLines.join("\n")] : []),

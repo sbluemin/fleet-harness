@@ -1537,6 +1537,18 @@ describe("commodore fleet-memory", () => {
     expect(h.events.flatMap((event) => (event.op === "memory" ? [event.change] : []))).toEqual(["save", "save", "delete", "verify", "delete"]);
   });
 
+  it("refuses an over-long taskforce_post with a code and hint the model receives", async () => {
+    const h = harness(() => 1_000_000);
+    const appended: unknown[] = [];
+    const taskforce = { append(...args: unknown[]) { appended.push(args); throw new Error("must_not_append"); } };
+    const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store, taskforce: taskforce as never }).map((tool) => [tool.name, tool]));
+    const result = await tools.taskforce_post!.execute({ taskforceId: "00000000-0000-4000-8000-000000000001", text: "x".repeat(2_001) }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ error: "taskforce_post_too_long", limit: 2_000, length: 2_001 });
+    expect(result.structuredContent.hint).toEqual(expect.any(String));
+    expect(appended).toEqual([]);
+  });
+
   it("searches the retained 1:1 ledger with caller-bound attribution, deterministic pages and a clear boundary", async () => {
     // 단일 원장 검색의 1:1 대표 계약 — 실제 화자 귀속, 비공개 thinking 제외,
     // 리터럴 검색·결정적 페이지·cursor 권한 재확인·clear 경계·anchor 문맥을 한 도구가 맡는다.
