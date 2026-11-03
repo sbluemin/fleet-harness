@@ -35,7 +35,7 @@ import { createCommodoreTools } from "../features/commodore/host/tools.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { COALESCE_MS, COMMODORE_IDLE_ROTATE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
-import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
+import { commodoreCompactAt, MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
 import type { CommodoreAttachmentReader, CommodorePersonMessageReader, CommodoreTurnBindings } from "../features/objectives/shared/commodore-board.js";
 import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
@@ -2821,20 +2821,22 @@ describe("commodore supervisor", () => {
       expect(tokens().at(-1)).toEqual(["intel:1", "retry"]);
       await expect(supervisor.retry("t1")).rejects.toThrow("commodore_not_retrying");
 
-      // 압축 — 문맥이 길어져도 세션을 바꾸지 않는다. 세션은 창(폴백 Sonnet 1M)의 75%를 압축 지점으로 받아 같은 세션에서
+      // 압축 — 문맥이 길어져도 세션을 바꾸지 않는다. 세션은 창(폴백 Sonnet 1M)에 500k 상한의 압축 지점을 받아 같은 세션에서
       // 대화를 요약해 이어 가고, 그 사실이 기록에 남는다. 미터는 턴 합계가 아니라 마지막 호출의 대화 크기와 그 지점을 읽는다.
-      expect(sessions[0]!.options.compactAt).toBe(750_000);
-      inputTokens = 760_000;
+      // 작은 창은 상한에 닿지 않아 기존 비율 지점 그대로다(200k 창 → 150k).
+      expect(commodoreCompactAt(200_000)).toBe(150_000);
+      expect(sessions[0]!.options.compactAt).toBe(500_000);
+      inputTokens = 510_000;
       h.store.addIntel("t1", { text: "d" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(supervisor.status("t1")).toMatchObject({ context: { window: 1_000_000, inputTokens: 760_000, compactAt: 750_000 } });
-      compaction = { preTokens: 760_000, postTokens: 12_000 };
+      expect(supervisor.status("t1")).toMatchObject({ context: { window: 1_000_000, inputTokens: 510_000, compactAt: 500_000 } });
+      compaction = { preTokens: 510_000, postTokens: 12_000 };
       inputTokens = 14_000;
       h.store.addIntel("t1", { text: "e" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.disposed).toBe(false);
-      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "compacted")).toMatchObject({ trigger: "auto", preTokens: 760_000, postTokens: 12_000 });
+      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "compacted")).toMatchObject({ trigger: "auto", preTokens: 510_000, postTokens: 12_000 });
       expect(supervisor.status("t1")).toMatchObject({ context: { inputTokens: 14_000 } });
 
       // 교대 — 요약이 실패해 넘친 세션은 같은 세션으로 다시 시도하지 않는다. 다음 시도가 새 세션 + 최근 행위 요약으로 연다.
