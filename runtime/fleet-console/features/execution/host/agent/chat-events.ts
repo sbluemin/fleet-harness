@@ -665,7 +665,8 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     if (text === null) return [];
     // 목표 전달은 사람이 친 말이 아니다. 재생하면 받은 메시지 줄로 서고, 머리의 모델 문면은 말풍선이 되지 않는다.
     const relay = objectiveRelayReceipt(text);
-    if (relay) return [{ kind: "received", id: relay.id, from: relay.from, text: relay.body, inTurn: false, ...atField }];
+    // 새 턴을 여는 전달이다. received 만 내면 재생기가 턴을 세지 못하고 앞 턴의 소요 시간에 붙는다. 말풍선(dispatch)은 세우지 않는다.
+    if (relay) return [{ kind: "turn-start", ...atField }, { kind: "received", id: relay.id, from: relay.from, text: relay.body, inTurn: true, ...atField }];
     // 호스트가 붙인 출처 표식은 운반체 판정보다 먼저 읽는다 — SDK로 보낸 줄에 CLI가 어떤 출처를
     // 달든, 이 줄은 플러그인이 보낸 지시이고 라이브에서 그렇게 섰다.
     const tagged = isInjectedOrigin(line.origin) ? null : readChatOriginTag(text, options);
