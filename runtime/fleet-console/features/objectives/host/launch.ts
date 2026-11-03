@@ -1256,7 +1256,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         dropOutcome(sessionId);
         continue;
       }
-      void flushHeld(sessionId);
       if (syncOutcome(objectiveId, sessionId)) changed.add(objectiveId);
     }
     for (const objectiveId of changed) store.refresh(objectiveId);
@@ -1321,6 +1320,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     for (const objectiveId of changed) store.refresh(objectiveId);
     armOutcomeWatch();
+    armHeldWatch();
   };
 
   /**
@@ -1419,6 +1419,28 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const delivery = await pushToSession(owner.id, target, to.kind === "member" ? to.memberId : null, message, { objectiveId: speakerId, title: role }, message.attachments?.map((attachment) => attachment.id));
       if (delivery !== "held") store.setMessageDelivery(owner.id, message.messageId, delivery);
     }
+  };
+  // 보류 재시도는 live 턴 감시와 따로다. 재시작 뒤 휴면인 수신은 outcomeWatched 에 들어가지 않아, 그 루프만 믿으면 기록이 영원히 held 로 남는다.
+  let heldTimer: ReturnType<typeof setTimeout> | null = null;
+  const hasHeld = (): boolean => store.all().some((current) => !current.archived && !current.removed && store.heldMessages(current.id).length > 0);
+  const sweepHeld = () => {
+    if (disposed) return;
+    for (const current of store.all()) {
+      if (current.archived || current.removed) continue;
+      const targets = new Set<string>();
+      for (const message of store.heldMessages(current.id)) targets.add(message.to.kind === "commander" ? current.id : message.to.memberId);
+      for (const target of targets) void flushHeld(target);
+    }
+  };
+  const armHeldWatch = () => {
+    if (disposed || heldTimer || !hasHeld()) return;
+    heldTimer = setTimeout(() => {
+      heldTimer = null;
+      try { sweepHeld(); }
+      catch { /* 다음 틱이 다시 읽는다. */ }
+      armHeldWatch();
+    }, WATCH_MS);
+    heldTimer.unref?.();
   };
   let quietTimer: ReturnType<typeof setTimeout> | null = null;
   const quietTargets = (): boolean => store.all().some((current) => !current.archived && !current.done && !current.removed && current.missions.some((mission) => !mission.done && mission.member !== null && mission.assignmentTs != null));
@@ -2098,6 +2120,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           if (!holdableDelivery(error)) throw error;
         }
         if (delivery !== "held") store.setMessageDelivery(current.id, messageId, delivery);
+        else armHeldWatch();
         return { messageId, to: target.kind === "commander" ? "commander" : target.memberId, delivery };
       });
     },
@@ -2230,6 +2253,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (outcomeTimer) clearTimeout(outcomeTimer);
       outcomeTimer = null;
       outcomeWatched.clear();
+      if (heldTimer) clearTimeout(heldTimer);
+      heldTimer = null;
       lastOutcomes.clear();
       unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null;
       // 구성원 실패·무보고·정산 좌표는 보드 사실이다 — 플러그인이 내려가도 지우지 않는다(다음 기동이 그대로 이어 읽는다).
