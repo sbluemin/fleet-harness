@@ -350,7 +350,7 @@ export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenCh
           ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M3 11l2 2 2-2M11 13V3M9 5l2-2 2 2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
           : <span className="commander-tab-sort-label">{nameOnly ? t(current.label) : sortLabel}</span>}
       </button>
-      {open ? place(<div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} style={glyph ? anchor ?? undefined : undefined} onKeyDown={onMenuKeyDown}
+      {open ? place(<div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} data-keep-objective-active={glyph ? "" : undefined} style={glyph ? anchor ?? undefined : undefined} onKeyDown={onMenuKeyDown}
         // 항목을 누르는 순간 초점이 옮겨 가며 판·독이 다시 그려지지 않게 한다 — 초점은 단추에 남고 클릭만 항목으로 간다.
         onMouseDown={glyph ? (event) => event.preventDefault() : undefined}>
         {SORTS.map((sort) => {
