@@ -1,5 +1,7 @@
 /** Gateway 본문 32 MiB 중 이미지 이력은 base64 16 MiB 이하, 나머지는 텍스트·도구·wire 여유다. */
 export const MAX_COMMODORE_MESSAGE_IMAGE_BYTES = 8 * 1024 * 1024;
+/** 한 메시지에 실을 수 있는 장수. 컴포저·발사 첨부의 회당 상한과 같다. 바이트 합계 상한은 별도다. */
+export const MAX_COMMODORE_MESSAGE_IMAGES = 15;
 /** Theater 별 대화 기록 사본 총량 — 텍스트 기록의 압축 크기와 독립적으로 제한한다. */
 export const MAX_COMMODORE_RETAINED_IMAGE_BYTES = 256 * 1024 * 1024;
 export const MAX_COMMODORE_TURN_IMAGE_BYTES = MAX_COMMODORE_MESSAGE_IMAGE_BYTES;

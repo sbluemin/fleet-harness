@@ -28,10 +28,10 @@ const LAUNCH_ATTACHMENT_FILE_MODE = 0o600;
 const UNBOUND_LAUNCH_ATTACHMENT_TTL_MS = 30 * 60 * 1000;
 
 export const MAX_LAUNCH_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-export const MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH = 4;
+export const MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH = 15;
 /**
- * 미발사분 총량 상한. 컴포저는 회당 4장까지만 실지만 업로드 자체는 발사 없이도 쌓일 수 있어,
- * TTL(30분)이 돌기 전에 temp 디스크가 무한히 자라는 것을 여기서 끊는다.
+ * 미발사분 총량 상한. 컴포저는 회당 `MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH`장까지만 실지만
+ * 업로드 자체는 발사 없이도 쌓일 수 있어, TTL(30분)이 돌기 전에 temp 디스크가 무한히 자라는 것을 여기서 끊는다.
  */
 export const MAX_PENDING_LAUNCH_ATTACHMENTS = 32;
 export const LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX = "Read the attached image file: ";
@@ -235,7 +235,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
 
   function assertSaveCapacity(): void {
     sweepExpired();
-    // 발사 없이 쌓이는 업로드의 총량을 자른다 — 회당 상한(4장)은 컴포저 계약이고, 이것은 디스크 계약이다.
+    // 발사 없이 쌓이는 업로드의 총량을 자른다 — 회당 상한은 컴포저 계약이고, 이것은 디스크 계약이다.
     let pending = 0;
     for (const entry of entries.values()) {
       if (entry.sessionId === null) pending += 1;

@@ -7,7 +7,7 @@ import type { AttachmentHost } from "../../execution/shared/agent.js";
 import type { ExperimentsHost } from "../../settings/shared/experiment-ports.js";
 import type http from "node:http";
 import { randomUUID } from "node:crypto";
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../shared/contracts/attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_MESSAGE_IMAGES } from "../shared/contracts/attachment-budget.js";
 import { validCommodoreImageId } from "./images.js";
 
 import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation/references.js";
@@ -313,7 +313,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       read(commodoreId);
       return view(commodoreId, store.routineRemove(commodoreId, routineId, "person"));
     }) },
-    { name: "commodore/message", method: "POST", summary: "Send the person's message to this Commodore. Inline U+FFFC references name owned objectives (id strings) or ready peer Commodores ({kind: commodore, id}); the current Commodore decides what to relay. Refused while the experiment or board is unavailable.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(z.union([ids, z.object({ kind: z.literal("commodore"), id: ids }).strict()])).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ commodoreId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
+    { name: "commodore/message", method: "POST", summary: "Send the person's message to this Commodore. Inline U+FFFC references name owned objectives (id strings) or ready peer Commodores ({kind: commodore, id}); the current Commodore decides what to relay. Refused while the experiment or board is unavailable.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(z.union([ids, z.object({ kind: z.literal("commodore"), id: ids }).strict()])).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(MAX_COMMODORE_MESSAGE_IMAGES).optional() }).strict(), ({ commodoreId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
       read(commodoreId);
       // 서버가 권위다 — 종료·Clear 중이거나 보드가 없으면 기록에 남기기 전에 거절한다.
       if (!experiments().commodore) throw new CommodoreStoreError("commodore_disabled");

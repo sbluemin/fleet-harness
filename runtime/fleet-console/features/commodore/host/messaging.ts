@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MAX_TRANSCRIPT_TEXT } from "../shared/contracts/types.js";
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../shared/contracts/attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_MESSAGE_IMAGES } from "../shared/contracts/attachment-budget.js";
 import type { AttachmentHost } from "../../execution/shared/agent.js";
 import type { CommodoreStore } from "./store.js";
 
@@ -32,7 +32,7 @@ export function createCommodoreMessenger(deps: {
     if (!sender) throw new Error("unknown_commodore");
     if (!input.text.trim() || input.text.length > MAX_TRANSCRIPT_TEXT) throw new Error("invalid_request");
     const attachmentIds = input.attachmentIds ?? [];
-    if (attachmentIds.length > 4) throw new Error("attachment_limit");
+    if (attachmentIds.length > MAX_COMMODORE_MESSAGE_IMAGES) throw new Error("attachment_limit");
     if (new Set(attachmentIds).size !== attachmentIds.length) throw new Error("duplicate_attachment");
     if (attachmentIds.some((id) => !ID.test(id))) throw new Error("attachment_not_available");
     const messageId = randomUUID();

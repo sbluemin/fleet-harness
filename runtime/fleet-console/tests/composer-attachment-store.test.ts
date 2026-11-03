@@ -35,4 +35,46 @@ describe("composer attachment expiry", () => {
     expect(draftText).toBe("keep this instruction");
     expect(store.noteSendFailure(new Error("attachment_budget_exceeded"), [])).toBe("other");
   });
+
+  it("uploads the edited pixels, discards the original id, and can put the original bytes back", async () => {
+    const revoke = vi.fn();
+    let urls = 0;
+    vi.stubGlobal("URL", { createObjectURL: () => `blob:${++urls}`, revokeObjectURL: revoke });
+    const original = new Blob([Uint8Array.from([1, 2, 3])], { type: "image/png" });
+    const edited = new Blob([Uint8Array.from([9, 9])], { type: "image/png" });
+    const fetchSpy = vi.fn(() => { throw new Error("csp"); });
+    vi.stubGlobal("fetch", fetchSpy);
+    const uploaded: Blob[] = [];
+    const discarded: string[] = [];
+    let seq = 0;
+    const store = createComposerAttachments({
+      upload: async (file) => { uploaded.push(file); return { id: `id-${++seq}` }; },
+      discard: async (id) => { discarded.push(id); },
+    });
+    store.add([new File([original], "shot.png", { type: "image/png" })]);
+    await Promise.resolve();
+    await Promise.resolve();
+    const key = store.read().items[0]?.key;
+    expect(key).toBeTruthy();
+    expect(await store.commitEdit(key ?? "", edited)).toBe("ok");
+    expect(uploaded[1]).toBe(edited);
+    expect(discarded).toEqual(["id-1"]);
+    expect(store.ids()).toEqual(["id-2"]);
+    expect(store.read().items[0]?.edited).toBe(true);
+    expect(store.read().items[0]?.name).toBe("shot.png");
+    expect(await store.revertEdit(store.read().items[0]?.key ?? "")).toBe("ok");
+    expect(discarded).toEqual(["id-1", "id-2"]);
+    expect(store.ids()).toEqual(["id-3"]);
+    expect(store.read().items[0]?.edited).toBe(false);
+    const handed = store.handoff();
+    expect(handed.map((item) => item.id)).toEqual(["id-3"]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // 원본은 첨부 때 받은 File이다. blob URL을 다시 읽지 않아도 되돌리기와 발사 초안이 그 바이트를 가진다.
+    const bytes = async (blob: Blob | undefined) => {
+      if (!blob) throw new Error("missing blob");
+      return [...new Uint8Array(await blob.arrayBuffer())];
+    };
+    expect(await bytes(uploaded[2])).toEqual([1, 2, 3]);
+    expect(await bytes(handed[0]?.source)).toEqual([1, 2, 3]);
+  });
 });

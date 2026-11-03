@@ -16,7 +16,7 @@ import { createComposerAttachments } from "../../../execution/client/composer-pr
 import { useComposerAttachmentInput, useComposerAttachmentSnapshot } from "../../../execution/client/composer-primitives/attachment-input.js";
 import { launchProviderFromGroupId, launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
-import { buildEffortDeck, findVariantLaunchKind, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
+import { buildEffortDeck, findVariantLaunchKind, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, launchErrorValues, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
 import { ObjectiveNameMark } from "../../../execution/client/components/objective-name-mark.js";
 import { resolveObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
@@ -735,8 +735,8 @@ export function NewSessionColumn({ state, target, tools }: {
             </span>
             <span className="new-session-chips-trail">
               {starting ? <span className="new-session-status" role="status">{t("conversation.newSession.starting")}</span> : null}
-              {launchError ? <span className="new-session-status is-alert" role="alert">{t(launchError.key as Parameters<typeof t>[0], launchError.shortenBy === null ? undefined : { over: String(launchError.shortenBy) })}</span> : null}
-              {mentionError ? <span className="new-session-status is-alert" role="alert">{t(mentionError as Parameters<typeof t>[0])}</span> : null}
+              {launchError ? <span className="new-session-status is-alert" role="alert">{t(launchError.key as Parameters<typeof t>[0], launchErrorValues(launchError.key, launchError.shortenBy))}</span> : null}
+              {mentionError ? <span className="new-session-status is-alert" role="alert">{t(mentionError as Parameters<typeof t>[0], launchErrorValues(mentionError, null))}</span> : null}
               {tooLong ? <span className="new-session-status is-alert" role="alert">{t("chrome.launch.tooLong", { over: String(text.length - LAUNCH_PROMPT_MAX_CHARS) })}</span> : null}
               {composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <span className="new-session-status is-alert" role="alert">{composerAttachmentNoticeText(attachmentSnap.notice, ct)}</span> : null}
               {/* 모델·강도 칸 — data-objective-launch-kind 는 실행 기능 투어(「Claude, 하나의 Gateway」)의 앵커다. */}

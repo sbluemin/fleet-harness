@@ -1,5 +1,6 @@
 import type { ObjectiveCatalogPlugin, ObjectiveLaunchKind, ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../objectives/shared/records/types.js";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
+import { COMPOSER_MAX_ATTACHMENTS } from "./composer-primitives/attachments.js";
 
 /**
  * 새 세션 실행의 순수 선택 로직 — 데스크톱 새 세션 화면과 모바일 새 세션 시트가 함께 쓴다.
@@ -216,4 +217,13 @@ export function launchErrorMessageKey(code: string | null, shortenByChars: numbe
     case "attachment_limit": return "chrome.launch.errorAttachmentLimit";
     default: return "chrome.launch.errorGeneric";
   }
+}
+
+/**
+ * 거절 문구의 자리값. 장수 한도는 문자열에 박지 않고 컴포저 상한에서 읽는다.
+ * 명령줄 초과만 `{over}`를 쓰고, 그 밖은 자리값이 없다.
+ */
+export function launchErrorValues(key: string, shortenBy: number | null): Record<string, string> | undefined {
+  if (key === "chrome.launch.errorAttachmentLimit") return { count: String(COMPOSER_MAX_ATTACHMENTS) };
+  return shortenBy === null ? undefined : { over: String(shortenBy) };
 }

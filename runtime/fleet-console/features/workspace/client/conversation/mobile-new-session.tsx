@@ -12,11 +12,10 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { closeMobileNewSession, consumeNewSessionRejection, consumeNewSessionSeed, getState, requestLaunch } from "../../../../core/client/src/integration/store.js";
-import type { LaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
 import { resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
-import { findVariantLaunchKind, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
+import { findVariantLaunchKind, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, launchErrorValues, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { MobileNewSessionSheet } from "./mobile-new-session-sheet.js";
 import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-session-entry.js";
 import { isMentionSelectable, mentionErrorMessageKey, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget, type MentionToken } from "./new-session-mention.js";
@@ -321,13 +320,15 @@ export function MobileNewSession() {
     if (effort) variant.effort = effort;
     // 폰의 새 대화는 채팅으로 연다. 채팅을 선언하지 않은 종류는 키를 생략해 터미널로 간다.
     if (chatStart) variant.viewMode = "chat";
-    const launched: LaunchDraftAttachment[] = attachments.flatMap((attachment) => attachment.id !== null ? [{ id: attachment.id, name: attachment.name, previewUrl: attachment.previewUrl }] : []);
+    // 화면 스냅샷에는 원본 바이트와 편집 여부가 없다. 데스크톱 새 세션과 같이 handoff()가 돌려준 초안을 실어야
+    // 거절이 칩을 되살릴 때 원본으로 되돌릴 수 있다. 칩은 여기서 이미 넘겼으므로 닫을 때 다시 걷지 않는다.
+    const launched = attachmentStore.handoff();
     if (launched.length > 0) variant.attachments = launched.map((attachment) => attachment.id).join(",");
     writeNewSessionTheater(theaterId);
     writeNewSessionModelEffort(model, effort);
     requestLaunch({ theaterId, ...(commodoreId ? { commodoreId } : {}), pluginId: target.pluginId, kind: target.kind, variant, ...(launched.length > 0 ? { attachments: launched } : {}) });
     navigate("/objectives");
-    finishSubmission();
+    finishSubmission({ keepAttachments: true });
   };
 
   // 폴더를 이 사령관의 Theater 목록에 직접 더한 뒤 고른다.
@@ -347,10 +348,10 @@ export function MobileNewSession() {
   type Key = Parameters<typeof t>[0];
   // 상태 줄의 우선순위 — 상한 초과 · 첨부 · 멘션 전달 · 실행 거절.
   const message = overLimit ? t("chrome.launch.tooLong", { over: String(text.length - LAUNCH_PROMPT_MAX_CHARS) })
-    : attachmentErrorKey ? t(attachmentErrorKey as Key)
+    : attachmentErrorKey ? t(attachmentErrorKey as Key, launchErrorValues(attachmentErrorKey, null))
     : attachmentNoticeText ? attachmentNoticeText
-    : mentionErrorKey ? t(mentionErrorKey as Key)
-    : rejectionKey ? t(rejectionKey as Key, rejection?.shortenBy == null ? undefined : { over: String(rejection.shortenBy) })
+    : mentionErrorKey ? t(mentionErrorKey as Key, launchErrorValues(mentionErrorKey, null))
+    : rejectionKey ? t(rejectionKey as Key, launchErrorValues(rejectionKey, rejection?.shortenBy ?? null))
     : null;
 
   return (

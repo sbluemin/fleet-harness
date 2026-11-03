@@ -27,6 +27,8 @@ export interface ComposerAttachmentRecord {
   readonly name: string;
   readonly previewUrl: string;
   readonly uploading: boolean;
+  /** 저장까지 끝난 편집본. 주석은 이미지에 합쳐져 있고, 보내기 전까지만 원본으로 되돌릴 수 있다. */
+  readonly edited: boolean;
 }
 
 /** 동기 거절(상한·용량)과, 업로드가 끝난 뒤의 거절(실패·형식·보관 한도)과, 보낸 토큰이 만료된 경우. */
@@ -47,7 +49,12 @@ export interface ComposerAttachmentDraftItem {
   readonly id: string;
   readonly name: string;
   readonly previewUrl: string;
+  /** 보내기 전 되돌릴 원본 바이트. 발사 요청 객체에만 실리고 서버로는 id만 나간다. */
+  readonly source?: Blob;
+  readonly edited?: boolean;
 }
+
+export type ComposerAttachmentEditResult = "ok" | "tooLarge" | "failed" | "missing";
 
 export interface ComposerAttachments {
   read(): ComposerAttachmentsSnapshot;
@@ -85,6 +92,13 @@ export interface ComposerAttachments {
    * 서버가 이미 회수했으므로 discard는 부르지 않는다. 전송 중 새로 붙은 칩, 진행 중 칩, 초안 문면은 건드리지 않는다.
    */
   noteSendFailure(error: unknown, submittedIds: readonly string[]): "expired" | "other";
+  /**
+   * 편집본을 새로 올리고 지금 업로드에는 삭제 요청을 보낸다. 원본 바이트는 첨부 때 받은 File이라
+   * blob: URL을 다시 읽지 않는다. 실패하면 칩은 그대로다. 업로드 도중 칩을 빼면 옛 id와 새 id를 모두 거둔다.
+   */
+  commitEdit(key: string, file: Blob): Promise<ComposerAttachmentEditResult>;
+  /** 잡아 둔 원본을 다시 올리고 편집본 업로드에 삭제 요청을 보낸다. 원본 바이트는 보낼 때까지 남긴다. */
+  revertEdit(key: string): Promise<ComposerAttachmentEditResult>;
   dispose(): void;
 }
 
@@ -94,6 +108,8 @@ interface MutableItem {
   name: string;
   previewUrl: string;
   uploading: boolean;
+  edited: boolean;
+  source: Blob | null;
 }
 
 export function isComposerAttachmentExpired(error: unknown): boolean {
@@ -112,7 +128,17 @@ function uploadNotice(error: unknown): ComposerAttachmentNotice {
 
 function draftOf(item: MutableItem): ComposerAttachmentDraftItem | null {
   if (item.id === null) return null;
-  return { id: item.id, name: item.name, previewUrl: item.previewUrl };
+  return {
+    id: item.id,
+    name: item.name,
+    previewUrl: item.previewUrl,
+    ...(item.source ? { source: item.source } : {}),
+    ...(item.edited ? { edited: true } : {}),
+  };
+}
+
+function carriedSource(item: ComposerAttachmentDraftItem): Blob | null {
+  return item.source instanceof Blob ? item.source : null;
 }
 
 export function createComposerAttachments(
@@ -128,7 +154,7 @@ export function createComposerAttachments(
 
   const emit = (): void => {
     snapshot = {
-      items: items.map((item) => ({ key: item.key, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: item.uploading })),
+      items: items.map((item) => ({ key: item.key, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: item.uploading, edited: item.edited })),
       uploading: items.some((item) => item.uploading),
       notice,
     };
@@ -174,7 +200,7 @@ export function createComposerAttachments(
         const previewUrl = URL.createObjectURL(file);
         const named = (nameFor?.(file) ?? "").trim();
         const name = named.length > 0 ? named : file.name.trim().length > 0 ? file.name : "pasted image";
-        items.push({ key, id: null, name, previewUrl, uploading: true });
+        items.push({ key, id: null, name, previewUrl, uploading: true, edited: false, source: file });
         void port.upload(file).then(({ id }) => {
           if (disposed || canceled.delete(key) || !stillThere(key)) {
             revoke(previewUrl);
@@ -245,7 +271,7 @@ export function createComposerAttachments(
       for (const item of slot) {
         if (have.has(item.previewUrl)) continue;
         have.add(item.previewUrl);
-        items.push({ key: item.id, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: false });
+        items.push({ key: item.id, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: false, edited: item.edited === true, source: carriedSource(item) });
       }
       emit();
     },
@@ -274,7 +300,7 @@ export function createComposerAttachments(
         items = [];
         notice = { kind: "expired" };
       } else {
-        items = slot.map((item) => ({ key: item.id, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: false }));
+        items = slot.map((item) => ({ key: item.id, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: false, edited: item.edited === true, source: carriedSource(item) }));
         notice = null;
       }
       emit();
@@ -307,6 +333,102 @@ export function createComposerAttachments(
       }
       items = items.filter((item) => !keySet.has(item.key));
       emit();
+    },
+    commitEdit: async (key, file) => {
+      const found = items.find((item) => item.key === key);
+      if (!found || disposed || found.uploading || found.id === null) return "missing";
+      if (file.size > limits.bytes) {
+        notice = { kind: "tooLarge" };
+        emit();
+        return "tooLarge";
+      }
+      // 원본은 첨부 때 보관한다. blob: 미리보기를 fetch하면 CSP connect-src가 막는다.
+      const source = found.source;
+      const current = items.find((item) => item.key === key);
+      if (!current || disposed || current.uploading || current.id === null) return "missing";
+      const previousId = current.id;
+      current.uploading = true;
+      emit();
+      try {
+        const { id } = await port.upload(file);
+        if (disposed || canceled.delete(key) || !stillThere(key)) {
+          discard(id);
+          discard(previousId);
+          return "missing";
+        }
+        const next = items.find((item) => item.key === key);
+        if (!next) {
+          discard(id);
+          discard(previousId);
+          return "missing";
+        }
+        const previewUrl = URL.createObjectURL(file);
+        const previousPreview = next.previewUrl;
+        next.id = id;
+        next.previewUrl = previewUrl;
+        next.uploading = false;
+        next.edited = true;
+        next.source = source;
+        if (notice?.kind === "failed" || notice?.kind === "tooLarge") notice = null;
+        emit();
+        if (previousPreview !== previewUrl) revoke(previousPreview);
+        discard(previousId);
+        return "ok";
+      } catch (error) {
+        if (disposed || canceled.delete(key) || !stillThere(key)) {
+          discard(previousId);
+          return "missing";
+        }
+        const next = items.find((item) => item.key === key);
+        if (next) next.uploading = false;
+        notice = uploadNotice(error);
+        emit();
+        return notice.kind === "tooLarge" ? "tooLarge" : "failed";
+      }
+    },
+    revertEdit: async (key) => {
+      const found = items.find((item) => item.key === key);
+      if (!found || disposed || found.uploading || found.id === null || found.source === null || !found.edited) return "missing";
+      const source = found.source;
+      const previousId = found.id;
+      found.uploading = true;
+      emit();
+      try {
+        const { id } = await port.upload(source);
+        if (disposed || canceled.delete(key) || !stillThere(key)) {
+          discard(id);
+          discard(previousId);
+          return "missing";
+        }
+        const next = items.find((item) => item.key === key);
+        if (!next) {
+          discard(id);
+          discard(previousId);
+          return "missing";
+        }
+        const previewUrl = URL.createObjectURL(source);
+        const previousPreview = next.previewUrl;
+        next.id = id;
+        next.previewUrl = previewUrl;
+        next.uploading = false;
+        next.edited = false;
+        next.source = source;
+        if (notice?.kind === "failed" || notice?.kind === "tooLarge") notice = null;
+        emit();
+        if (previousPreview !== previewUrl) revoke(previousPreview);
+        discard(previousId);
+        return "ok";
+      } catch (error) {
+        if (disposed || canceled.delete(key) || !stillThere(key)) {
+          discard(previousId);
+          return "missing";
+        }
+        const next = items.find((item) => item.key === key);
+        if (next) next.uploading = false;
+        notice = uploadNotice(error);
+        emit();
+        return notice.kind === "tooLarge" ? "tooLarge" : "failed";
+      }
     },
     noteSendFailure: (error, submittedIds) => {
       if (!isComposerAttachmentExpired(error)) return "other";
