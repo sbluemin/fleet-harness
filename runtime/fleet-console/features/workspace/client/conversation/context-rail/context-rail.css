@@ -259,6 +259,9 @@
 .context-rail-fly.is-inline { top: auto; bottom: calc(100% - var(--space-2)); right: 0; width: 260px; max-height: 60vh; }
 
 /* 머리 칩 단계 — 제목 pill 은 칸 왼쪽부터 남는 폭을 쓴다(가운데에 묶이면 왼쪽이 비는데도 제목이 잘린다). 도구 몫은 오른쪽에 그대로 비운다. */
-.conversation-column[data-rail-head] > .conversation-pill-row { justify-content: flex-start; padding-left: var(--space-3); }
+.conversation-column[data-rail-head] > .conversation-pill-row { justify-content: flex-start; padding-left: var(--space-3); padding-right: max(var(--conversation-quota-space, 0px), var(--rail-head-reserve, 0px), var(--conversation-caption-reserve, 0px)); }
 .conversation-column[data-rail-head] > .conversation-pill-row > .conversation-pill { max-width: 100%; }
 .conversation-pill[data-rail-sub-hidden] .conversation-pill-sub { display: none; }
+
+/* 머리 칩의 이름 — 라틴 6자, 한글 4자 안팎까지 보이고 넘으면 말줄임이다. 전체 이름과 사용량은 title·aria-label 이 진다. */
+.context-rail-hchip-name { max-width: 4.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -206,6 +206,18 @@ function useTitleYield(probe: React.RefObject<HTMLElement | null>, active: boole
     if (!column || !pill) return;
     column.setAttribute("data-rail-head", "");
     pill.removeAttribute("data-rail-sub-hidden");
+    // 셸의 도구 예약은 「⋯」가 서기 전의 캡슐 폭으로 잴 때가 있어 칩이 붙은 캡슐 아래로 알약이 파고든다. 칩이 선 단계에서는 실제 캡슐 폭을
+    // 따로 지켜 준다 — 알약과 캡슐 사이에 최소 12px.
+    const row = pill.parentElement;
+    const tools = document.querySelector<HTMLElement>(".conversation-pill-tools");
+    const reserve = () => {
+      if (!row || !tools) return;
+      const right = Number.parseFloat(getComputedStyle(tools).right) || 0;
+      row.style.setProperty("--rail-head-reserve", `${Math.ceil(tools.getBoundingClientRect().width + right + 12)}px`);
+    };
+    reserve();
+    const toolsObserver = tools ? new ResizeObserver(reserve) : null;
+    if (tools) toolsObserver?.observe(tools);
     let subWidth = 0;
     const check = () => {
       const title = pill.querySelector<HTMLElement>(".conversation-pill-title");
@@ -222,7 +234,7 @@ function useTitleYield(probe: React.RefObject<HTMLElement | null>, active: boole
     check();
     const observer = new ResizeObserver(check);
     observer.observe(pill);
-    return () => { observer.disconnect(); column.removeAttribute("data-rail-head"); pill.removeAttribute("data-rail-sub-hidden"); };
+    return () => { observer.disconnect(); toolsObserver?.disconnect(); row?.style.removeProperty("--rail-head-reserve"); column.removeAttribute("data-rail-head"); pill.removeAttribute("data-rail-sub-hidden"); };
   }, [probe, active, width, sessions]);
   React.useLayoutEffect(() => {
     if (!active || level === 2) return;
@@ -267,8 +279,8 @@ function HeadChips({ sessions, shown: shownCount, flyout, t }: { readonly sessio
             onClick={() => setContextFlyout(flyout === session.id ? null : session.id)}
           >
             <ContextArc ratio={ratioOf(session.measure)} size={14} />
-            {/* 짧은 이름 — 자리가 모자라면 칩이 먼저 합쳐지고(+N) 이름째 물러난다. */}
-            <span>{Array.from(session.name).slice(0, 2).join("")}</span>
+            {/* 짧은 이름 — 지휘관은 정해진 짧은 말, 나머지는 이름을 폭으로 말줄임한다. 자리가 모자라면 칩이 먼저 합쳐지고(+N) 이름째 물러난다. */}
+            <span className="context-rail-hchip-name">{session.role === "commander" ? t("conversation.rail.chipCommander") : session.name}</span>
           </button>
         );
       })}
