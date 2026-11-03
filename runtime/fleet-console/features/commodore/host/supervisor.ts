@@ -2,6 +2,7 @@ import { nextRoutineAt } from "../shared/routines.js";
 import { BOARD_WRITE_TOOL_NAMES } from "../shared/tool-names.js";
 import type { ConsoleResidentAgentHost } from "../../execution/host/agent/console-resident.js";
 import type { AgentWorkStep } from "../../execution/host/agent/types.js";
+import { CLAUDE_AUTO_COMPACT_RESERVE } from "../../execution/host/agent/agent-session.js";
 import { Buffer } from "node:buffer";
 import type { AgentInputBlock, AttachmentHost } from "../../execution/shared/agent.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
@@ -466,10 +467,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // Agent SDK의 내장 CLI는 Claude 별칭을 자기 버전의 표로 푼다 — 설치된 Claude Code가 띄우는 지휘관과 다른 모델로
     // 서지 않게, 사령관은 설치 CLI가 푸는 정식 id로 연다. 회전 판정은 별칭 좌표로 한다(고정 id는 이 세션의 것이다).
     const model = await deps.models?.pinClaudeVersion?.(coordinates.model).catch(() => coordinates.model) ?? coordinates.model;
-    // 문맥이 길어져도 세션을 바꾸지 않는다 — 같은 세션이 이 지점에서 대화를 요약해 이어 간다.
+    // 문맥이 길어져도 세션을 바꾸지 않는다 — 상한을 넘는 창은 상한 지점에서, 그 이하는 모델 기본 정책으로 같은 세션이 압축해 이어 간다.
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
-      commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
+      commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), ...(compactAt === null ? {} : { compactAt }) },
       boardTools: boardTools(runner), now,
       onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
@@ -525,7 +526,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.coordinates = coordinates;
     runner.language = language;
     runner.contextWindow = coordinates.contextWindow;
-    runner.compactAt = compactAt;
+    // 미터 표시 — 덮지 않은 창(null)은 모델 기본 지점(창 − 33k)을 보여준다. Gateway 모델은 첫 턴 사용량이 실제 지점으로 바로잡는다.
+    runner.compactAt = compactAt ?? coordinates.contextWindow - CLAUDE_AUTO_COMPACT_RESERVE;
     runner.lastInputTokens = 0;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;
