@@ -438,6 +438,7 @@ function vendorServedMcpServers(
     url: server.url,
     ...(server.headers?.length ? { headers: Object.fromEntries(server.headers.map((h) => [h.name, h.value])) } : {}),
     ...(server.toolTimeoutSeconds === undefined ? {} : { timeout: Math.round(server.toolTimeoutSeconds * 1000) }),
+    ...(server.alwaysLoad === undefined ? {} : { alwaysLoad: server.alwaysLoad }),
   }]));
 }
 
