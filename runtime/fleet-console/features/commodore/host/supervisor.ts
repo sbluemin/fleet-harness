@@ -38,6 +38,8 @@ export const TF_PERSON_MAX_MS = 30_000;
 export const TF_COMMODORE_MAX_MS = 90_000;
 const TF_COMMODORE_POLL_MS = 1_000;
 const RECENT_ACTIONS = 12;
+/** 마지막 턴이 끝난 지 이 시간이 지나면 다음 깨움에 세션을 새로 연다 — 1시간 프롬프트 캐시가 만료돼 같은 세션을 이으면 대화를 통째로 다시 쓰기 때문이다. */
+export const COMMODORE_IDLE_ROTATE_MS = 60 * 60_000;
 
 export interface CommodoreSupervisorDeps {
   readonly store: CommodoreStore;
@@ -221,6 +223,8 @@ interface Runner {
   stopping: boolean;
   /** 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰). */
   lastInputTokens: number;
+  /** 마지막 턴이 끝난 시각(ms, now()) — 유휴 교대 판정용. 아직 돈 턴이 없으면 null. */
+  lastTurnAt: number | null;
   /** 지금 세션의 모델 창. 마지막 입력 토큰과 짝이다. */
   contextWindow: number;
   /** 지금 세션이 대화를 요약할 지점(토큰). 실행 경로가 정하는데 호스트도 모르면 null 이다. */
@@ -826,8 +830,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       let mailBase64Bytes = 0;
       let session = runner.session;
       try {
-        // 교대 — 좌표·언어가 바뀌었거나 이미지 예산을 넘었거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
-        // 문맥 길이는 교대 사유가 아니다 — 세션이 스스로 압축해 이어 간다.
+        // 교대 — 좌표·언어가 바뀌었거나 이미지 예산을 넘었거나 마지막 턴 뒤 1시간이 지났거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
+        // 문맥 길이는 교대 사유가 아니다 — 세션이 스스로 압축해 이어 간다. 유휴 교대는 따로 알리지 않고 원래 깨운 그 턴에 새 세션을 쓴다.
         preparedMessages = selected.map((message) => {
           if (!message.attachments?.length) return message.text;
           if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
@@ -863,13 +867,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         taskforceInput = prepareTaskforceTurn(runner.commodoreId, batchChars + mailChars, batchBytes);
         batchBytes += taskforceInput.tfImageBytes;
         batchBase64Bytes += taskforceInput.tfImageBase64Bytes;
-        const rotate = runner.rotateNext ?? (session && (coordinatesChanged(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES) ? "replaced" : null);
+        const sizedOut = session !== null && (coordinatesChanged(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES);
+        const idleExpired = session !== null && runner.lastTurnAt !== null && now() - runner.lastTurnAt > COMMODORE_IDLE_ROTATE_MS;
+        const rotate = runner.rotateNext ?? (sizedOut || idleExpired ? "replaced" : null);
+        const silentIdle = runner.rotateNext === null && !sizedOut && idleExpired;
         if (session && rotate) { await session.dispose(); session = null; runner.session = null; }
         if (!session) {
           const event = rotate ?? "opened";
           session = await openSession(runner, event);
           runner.rotateNext = null;
-          if (event === "replaced") wake(runner, "rotated");
+          if (event === "replaced" && !silentIdle) wake(runner, "rotated");
         }
       } catch (error) {
         if (runner.stopping) return;
@@ -1039,6 +1046,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   };
 
   const noteOutcome = (runner: Runner, outcome: CommodoreTurnOutcome) => {
+    runner.lastTurnAt = now();
     // 대화 크기는 마지막 호출의 입력이다 — 턴 합계는 도구를 쓴 만큼 부풀고 압축으로 줄어든 대화를 말하지 못한다.
     if (outcome.usage) runner.lastInputTokens = outcome.usage.contextTokens ?? outcome.usage.inputTokens;
     // Gateway 모델 세션은 압축 지점을 Gateway 가 정한다 — 호스트가 그 지점과 창을 토큰과 같은 단위로 알려 주면 그것을 쓴다.
@@ -1089,7 +1097,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),

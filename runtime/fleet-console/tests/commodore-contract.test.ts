@@ -33,7 +33,7 @@ import { workspaceHash } from "../features/workspace/host/theaters/theater-domai
 import { createCommodoreSession } from "../features/commodore/host/session.js";
 import { createCommodoreTools } from "../features/commodore/host/tools.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
-import { COALESCE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
+import { COALESCE_MS, COMMODORE_IDLE_ROTATE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
 import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
@@ -2466,6 +2466,51 @@ describe("commodore supervisor", () => {
       expect(disposed).toHaveBeenCalledTimes(1);
       expect(supervisor.status("t1")).toBeNull();
     } finally { release?.(); await supervisor.dispose(); vi.useRealTimers(); }
+  });
+
+  it("rotates the session silently when the next wake comes more than an hour after the last turn", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
+    const h = harness();
+    h.setExperiments({ commodore: true });
+    const sessions: { sent: string[]; disposed: boolean }[] = [];
+    const agent: AgentHost = { createSession: async (options) => {
+      const entry = { sent: [] as string[], disposed: false };
+      sessions.push(entry);
+      return {
+        send: async (text) => {
+          if (typeof text !== "string") throw new Error("Expected text-only turn");
+          entry.sent.push(text);
+          options.onEvent?.({ kind: "text", text: "ok" });
+          options.onEvent?.({ kind: "result", isError: false, source: "message", usage: { inputTokens: 2_000, outputTokens: 10, contextTokens: 1_000 } });
+        },
+        steer: () => false, cancel() {}, dispose: async () => { entry.disposed = true; },
+      };
+    } };
+    const supervisor = createHostSupervisor({ store: h.store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
+      board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
+    });
+    const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
+    const sessionEvents = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "session" ? [entry.event] : []);
+    try {
+      h.store.transcriptAppend("t1", { kind: "message", text: "First." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]!.sent).toHaveLength(1);
+      // 1시간 유휴 뒤 다음 깨움 — 새 세션으로 열되 교대 알림 턴은 세우지 않는다.
+      await vi.advanceTimersByTimeAsync(COMMODORE_IDLE_ROTATE_MS + 1);
+      h.store.transcriptAppend("t1", { kind: "message", text: "Second." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]!.disposed).toBe(true);
+      expect(sessionEvents()).toEqual(["opened", "replaced"]);
+      expect(tokens().at(-1)).toEqual(["message"]);
+      expect(tokens().flat()).not.toContain("rotated");
+      expect(sessions[0]!.sent).toHaveLength(1);
+      expect(sessions[1]!.sent).toHaveLength(1);
+      expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
 
   it("restores on register, coalesces events without periodic wakes, retries failures, compacts long sessions and preserves input on shutdown", async () => {
