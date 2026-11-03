@@ -194,6 +194,7 @@
 }
 .context-rail-fly.is-strip { top: 0; right: calc(100% + var(--space-2)); }
 .context-rail-fly.is-head { top: var(--conversation-top-row, 52px); right: var(--space-3); width: 260px; }
+.context-rail-fly.is-head.is-float { top: calc(var(--conversation-top-row, 52px) + 36px); }
 
 /* 대화 머리 오른쪽 끝의 자리 — ▥ 단추와(머리 칩 단계에서) 원호 칩. 도구 캡슐 안에 서므로 캡슐이 자리를 센다. */
 .conversation-rail-slot { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; }
@@ -237,3 +238,18 @@
 .context-rail-toggle.is-mobile { width: 36px; height: 36px; }
 .context-rail-sheet { display: grid; gap: var(--space-3); padding-bottom: var(--space-3); }
 .context-rail-sheet .context-rail-card { font-size: var(--t-sm); }
+
+/* 머리 줄에 자리가 없을 때 칩과 ▥ 단추가 내려앉는 줄 — 머리 바로 아래 오른쪽 끝에 떠 있다. */
+.context-rail-float {
+  position: absolute;
+  z-index: 5;
+  top: var(--conversation-top-row, 52px);
+  right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-capsule);
+}

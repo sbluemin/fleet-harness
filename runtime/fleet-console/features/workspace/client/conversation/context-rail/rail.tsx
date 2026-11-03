@@ -70,7 +70,13 @@ function ContextRail({ sessions, width, slot }: {
   const tier = tierOf(width);
   // 보는 세션이 맨 위에 선다. 나머지는 제공자가 준 순서(지휘관, 구성원)를 지킨다.
   const ordered = React.useMemo(() => [...sessions.filter((session) => session.focus), ...sessions.filter((session) => !session.focus)], [sessions]);
-  const shownChips = headChipCount(ordered.length);
+  // 제목 pill 이 읽힐 폭을 잃으면 칩이 먼저 양보한다 — 세션 칩들을 원호 하나로 합치고 누르면 카드가 함께 뜬다.
+  const probe = React.useRef<HTMLSpanElement | null>(null);
+  const yielded = useTitleYield(probe, state.enabled && tier === "head", width, ordered.length);
+  const merged = yielded >= 1;
+  // 합쳐도 제목이 모자라면 칩과 ▥ 단추가 머리 줄을 비우고 머리 아래 떠 있는 줄로 내려앉는다.
+  const floating = yielded >= 2;
+  const shownChips = merged ? 0 : headChipCount(ordered.length);
   // 머리 칩 단계: 칩을 누르면 그 세션의 카드가, `+n`을 누르면 칩으로 서지 못한 세션들의 카드가 뜬다.
   const flyoutCards = state.flyout === null ? [] : state.flyout === MORE_ID ? ordered.slice(shownChips) : ordered.filter((session) => session.id === state.flyout);
 
@@ -125,11 +131,12 @@ function ContextRail({ sessions, width, slot }: {
 
   return (
     <>
-      {slot ? createPortal(<>{headChips}{toggle}</>, slot) : null}
+      <span ref={probe} hidden />
+      {floating ? <div className="context-rail-float" data-context-rail-keep>{headChips}{toggle}</div> : slot ? createPortal(<>{headChips}{toggle}</>, slot) : null}
       {state.enabled && tier === "dock" ? <DockColumn sessions={ordered} state={state} t={t} /> : null}
       {state.enabled && tier === "strip" ? <StripColumn sessions={ordered} flyout={state.flyout} state={state} t={t} /> : null}
       {state.enabled && tier === "head" && flyoutCards.length > 0 ? (
-        <div className="context-rail-fly is-head" data-context-rail-keep>
+        <div className={`context-rail-fly is-head${floating ? " is-float" : ""}`} data-context-rail-keep>
           {flyoutCards.map((session) => <ContextCard key={session.id} session={session} open forced state={state} t={t} />)}
         </div>
       ) : null}
@@ -180,6 +187,36 @@ function StripColumn({ sessions, flyout, state, t }: { readonly sessions: readon
   );
 }
 
+/** 제목이 이 폭 아래로 줄면(또는 pill 이 제목을 접으면) 칩을 합치고, 그래도 모자라면 머리 줄을 비운다. */
+const TITLE_MIN = 110;
+
+/**
+ * 머리 칩이 제목을 밀어내는지 본다. 단계(폭)나 세션 수가 바뀔 때마다 풀어서 다시 재고, 밀어냈으면 합친 채로 둔다 — 합친 뒤의
+ * 제목 폭은 칩이 줄어든 결과이므로 그 값으로 다시 풀지 않는다(깜빡임 방지).
+ */
+function useTitleYield(probe: React.RefObject<HTMLElement | null>, active: boolean, width: number, sessions: number): 0 | 1 | 2 {
+  const [level, setLevel] = React.useState<0 | 1 | 2>(0);
+  React.useLayoutEffect(() => { setLevel(0); }, [active, width, sessions]);
+  React.useLayoutEffect(() => {
+    if (!active || level === 2) return;
+    // 제목 pill 은 이 대화 칸 머리 줄에 있다(도구 캡슐은 칸 밖 띠로 포털되므로 칸에서 찾는다).
+    const pill = probe.current?.closest(".conversation-column")?.querySelector<HTMLElement>(":scope > .conversation-pill-row > .conversation-pill");
+    if (!pill) return;
+    const check = () => {
+      const title = pill.querySelector<HTMLElement>(".conversation-pill-title");
+      const squeezed = pill.getAttribute("data-compact") === "true" || (title !== null && title.clientWidth < TITLE_MIN);
+      if (squeezed) setLevel((current) => current === 0 ? 1 : 2);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(pill);
+    const mutation = new MutationObserver(check);
+    mutation.observe(pill, { attributes: true, attributeFilter: ["data-compact"] });
+    return () => { observer.disconnect(); mutation.disconnect(); };
+  }, [probe, active, level, width, sessions]);
+  return level;
+}
+
 function headChipCount(total: number): number {
   return total > HEAD_CHIPS ? HEAD_CHIPS - 1 : total;
 }
@@ -213,10 +250,12 @@ function HeadChips({ sessions, shown: shownCount, flyout, t }: { readonly sessio
           className="context-rail-hchip"
           data-context-rail-keep
           aria-expanded={flyout === MORE_ID}
-          aria-label={t("conversation.rail.moreAria", { count: String(more) })}
+          aria-label={shownCount === 0 ? t("conversation.rail.title") : t("conversation.rail.moreAria", { count: String(more) })}
+          title={shownCount === 0 ? t("conversation.rail.title") : undefined}
           onClick={() => setContextFlyout(flyout === MORE_ID ? null : MORE_ID)}
         >
-          +{more}
+          {shownCount === 0 ? <ContextArc ratio={ratioOf(sessions[0]?.measure ?? null)} size={14} /> : null}
+          {shownCount === 0 ? more : `+${more}`}
         </button>
       ) : null}
     </span>
