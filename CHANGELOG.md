@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.281.0] - 2026-11-03
+
+### fleet-console
+
+#### Added
+- Mark up an image before you send it: draw, cover a region, then save. Until you send, you can put the original back.
+- Attach up to 15 images in one message, instead of 4.
+- See each session's context window in a rail beside the conversation, with the Commodore, Commander and every member on its own card; it folds into chips as the window narrows and can be switched off.
+
+#### Changed
+- Tidy the commander lists: in the right task tab, not-started and done objectives now sit in their own collapsible sections below the active ones, and in the left sidebar a hover menu on each commodore replaces the repeated sort, new-objective, and placement buttons.
+- Moving to a commodore in the left sidebar now opens its objectives automatically; turn on Keep lists expanded to keep earlier commodores open, and select the active commodore again to fold it.
+- Commanders can redirect a member while it is still working: messages between a commander and its members reach a running turn right away, and messages to a sleeping or restarting member are kept and delivered once it is back.
+
+#### Fixed
+- Objective conversations no longer show internal session names in place of the commander or member role.
+- A pending decision request now stays visible on its sidebar commodore avatar after opening the chat and leaving without answering, until it is answered or withdrawn.
+- Wake the Commodore when the group goes fully idle again after new work, even when the board itself did not change.
+
+#### Removed
+- The context arc beside the message box is gone; the rail replaces it.
+
 ## [1.280.0] - 2026-11-02
 
 ### fleet-console
