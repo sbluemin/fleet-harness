@@ -24,9 +24,9 @@ import { SORTS, setSort, type SortDirection, type SortPreference } from "./comma
 import { toggleFold, useCommanderFolds, type CommanderFold } from "./commander-folds.js";
 import { CommanderRowGlyphs, TAB_LABEL_KEY, type CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 import { useCommanderRows } from "./commander-rows.js";
-import { dismissCommanderPlacementNotice, notifyCommanderPlacementMoved, setCommanderPlacement, useCommanderPlacement, useCommanderPlacementNotice, type CommanderPlacement } from "./commander-placement.js";
+import { dismissCommanderPlacementNotice, moveCommanderPlacement, setCommanderPlacement, useCommanderPlacement, useCommanderPlacementNotice, type CommanderPlacement } from "./commander-placement.js";
 import { Toast, ToastHost } from "../../../../core/client/src/chrome/components/toast.js";
-import { toggleCommanderSectionCollapsed } from "../sidebar/commander-section-folds.js";
+import { ensureCommanderExpanded } from "../sidebar/commander-expansion.js";
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
@@ -89,7 +89,7 @@ function SettledCounts({ fresh, done }: { readonly fresh: number; readonly done:
   );
 }
 
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, heading, expansion }: {
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, showBar = true, heading, expansion }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
@@ -99,6 +99,8 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly sortNameOnly?: boolean;
   /** 루틴 목록과 같은 테두리 카드 안에 행이 선다(작업 탭 목표 섹션). */
   readonly card?: boolean;
+  /** 정렬·새 목표·위치 막대를 그린다. 사이드바는 사령관 머리의 호버 독이 같은 일을 하므로 끈다. */
+  readonly showBar?: boolean;
   /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
   readonly heading?: ReactNode;
   readonly expansion?: CommanderListExpansion | undefined;
@@ -137,14 +139,14 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
 
   return (
     <section className={["commander-tab", card ? "commander-tab--card" : ""].filter(Boolean).join(" ")} aria-label={t("commanderTab.aria")}>
-      <div className="commander-tab-bar">
+      {showBar ? <div className="commander-tab-bar">
         {heading ? <span className="commander-tab-heading">{heading}</span> : null}
         <SortMenu preference={preference} nameOnly={sortNameOnly} />
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
         <CommanderPlacementGlyphs commodoreId={commodoreId} />
-      </div>
+      </div> : null}
       {sorted.length === 0 ? (settledEmpty ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : null) : card ? (
         <>
           {listSections.some((group) => group.settled !== true) ? (
@@ -229,13 +231,8 @@ function CommanderPlacementGlyphs({ commodoreId }: { readonly commodoreId: strin
   const desktop = useViewMode().effective !== "mobile";
   const placement = useCommanderPlacement();
   if (!desktop) return null;
-  const choose = (next: CommanderPlacement) => {
-    if (next === placement) return;
-    const prev = placement;
-    setCommanderPlacement(next);
-    // 알림·되돌리기·옮겨 간 쪽 보이기는 언마운트되지 않는 호스트가 맡는다.
-    notifyCommanderPlacementMoved(commodoreId, next, prev);
-  };
+  // 알림·되돌리기·옮겨 간 쪽 보이기는 언마운트되지 않는 호스트가 맡는다.
+  const choose = (next: CommanderPlacement) => moveCommanderPlacement(commodoreId, next);
   return (
     <span className="commander-place" role="group" aria-label={t("commanderRail.place")}>
       <button type="button" className="commander-place-button" aria-pressed={placement === "left"} aria-label={t("commanderRail.placeSidebar")} title={t("commanderRail.placeSidebar")} onClick={() => choose("left")}>
@@ -257,13 +254,13 @@ export function CommanderPlacementNoticeHost() {
   const notice = useCommanderPlacementNotice();
   useEffect(() => {
     if (notice === null) return;
-    if (notice.next === "left") toggleCommanderSectionCollapsed(notice.commodoreId, false);
+    if (notice.next === "left") ensureCommanderExpanded(notice.commodoreId);
     else openCommodoreTasksPanel(notice.commodoreId);
   }, [notice]);
   if (notice === null) return null;
   const undo = () => {
     setCommanderPlacement(notice.prev);
-    if (notice.prev === "left") toggleCommanderSectionCollapsed(notice.commodoreId, false);
+    if (notice.prev === "left") ensureCommanderExpanded(notice.commodoreId);
     else openCommodoreTasksPanel(notice.commodoreId);
     dismissCommanderPlacementNotice();
   };
@@ -276,7 +273,8 @@ export function CommanderPlacementNoticeHost() {
   );
 }
 
-function SortMenu({ preference, nameOnly }: { readonly preference: SortPreference; readonly nameOnly: boolean }) {
+/** 정렬 메뉴 — `glyph`는 글자 칩 대신 아이콘 단추로 서고(사령관 머리의 호버 독), 열림·닫힘을 `onOpenChange`로 알린다. */
+export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenChange }: { readonly preference: SortPreference; readonly nameOnly?: boolean; readonly glyph?: boolean; readonly onOpenChange?: (open: boolean) => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -286,6 +284,7 @@ function SortMenu({ preference, nameOnly }: { readonly preference: SortPreferenc
   const current = SORTS.find((sort) => sort.key === preference.key) ?? SORTS[0]!;
   const sortLabel = t("commanderTab.sort.button", { label: t(current.label) });
   const close = () => { setOpen(false); buttonRef.current?.focus(); };
+  useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
   useEffect(() => {
     if (!open) return;
     menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"], [aria-pressed="true"]')?.focus({ preventScroll: true });
@@ -324,7 +323,11 @@ function SortMenu({ preference, nameOnly }: { readonly preference: SortPreferenc
   const pick = (key: SortPreference["key"], direction: SortDirection) => { setSort({ ...preference, key, direction }); close(); };
   return (
     <span className="commander-tab-sort">
-      <button ref={buttonRef} type="button" className="commander-tab-sort-button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={() => setOpen((value) => !value)}><span className="commander-tab-sort-label">{nameOnly ? t(current.label) : sortLabel}</span></button>
+      <button ref={buttonRef} type="button" className={glyph ? "commodore-dock-button" : "commander-tab-sort-button"} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={() => setOpen((value) => !value)}>
+        {glyph
+          ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M3 11l2 2 2-2M11 13V3M9 5l2-2 2 2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          : <span className="commander-tab-sort-label">{nameOnly ? t(current.label) : sortLabel}</span>}
+      </button>
       {open ? <div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} onKeyDown={onMenuKeyDown}>
         {SORTS.map((sort) => {
           const label = t(sort.label);

@@ -250,6 +250,8 @@ export interface GlobalSettingsState {
   readonly commanderSort: CommanderSortPreference | null;
   /** 시작 전·완료 구역의 접힘. null은 settings.json에 키 없음(구서버 응답 포함)이다. */
   readonly commanderFolds: CommanderFolds | null;
+  /** 사령관을 옮겨도 펼친 다른 사령관 목록을 유지하는지. null은 settings.json에 키 없음(구서버 응답 포함)이다. */
+  readonly commanderKeepExpanded: boolean | null;
   readonly lowerUnfocusedFrameRate: boolean;
   readonly uiFont: UiFontSettings;
   readonly fonts: ConsoleFontSettings;

@@ -28,6 +28,7 @@ const BASE: GlobalSettingsState = {
   commanderPlacement: "left",
   commanderSort: null,
   commanderFolds: null,
+  commanderKeepExpanded: null,
   lowerUnfocusedFrameRate: true,
   shortcuts: {},
   fonts: DEFAULT_FONTS,

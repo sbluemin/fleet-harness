@@ -1,0 +1,108 @@
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+
+import { useT } from "../../../../core/client/src/i18n/index.js";
+import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
+import { SortMenu } from "../commander-tab/commander-list.js";
+import { moveCommanderPlacement, useCommanderPlacement } from "../commander-tab/commander-placement.js";
+import { useSortPreference } from "../commander-tab/commander-sort.js";
+import { setCommanderKeepExpanded, useCommanderKeepExpanded } from "./commander-expansion.js";
+import "./commodore-hover-dock.css";
+
+/**
+ * 사령관 머리의 호버 독 — 머리에 호버하거나 초점이 오면 오른쪽 끝에 ⋯ 글리프가 나오고, 글리프에 호버하거나 누르면
+ * 가로 리스트박스가 왼쪽으로 펼쳐져 새 목표 · 정렬 · 목록 위치 · 펼침 유지를 고른다.
+ * 새 목표만 이 사령관의 것이고, 나머지는 모든 사령관에 적용되는 글로벌 설정이다.
+ */
+export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId: string; readonly name: string }) {
+  const t = useT();
+  const placement = useCommanderPlacement();
+  const keepExpanded = useCommanderKeepExpanded();
+  const sort = useSortPreference();
+  const [open, setOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const dockRef = useRef<HTMLSpanElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  // 글리프를 눌러 연 독은 마우스가 벗어나도 남는다 — 호버로 열린 독만 마우스를 따라 닫힌다.
+  const pinnedRef = useRef(false);
+  const shut = () => { pinnedRef.current = false; setOpen(false); };
+
+  // 바깥을 누르면 닫는다. 정렬 메뉴는 독 안에 그려지므로 같은 안쪽으로 본다.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && dockRef.current?.contains(event.target)) return;
+      pinnedRef.current = false;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [open]);
+
+  const close = (returnFocus: boolean) => {
+    shut();
+    if (returnFocus) triggerRef.current?.focus({ preventScroll: true });
+  };
+
+  const onMouseLeave = () => {
+    // 정렬 메뉴가 열려 있거나 키보드 초점이 독 안에 있으면 마우스가 벗어나도 닫지 않는다.
+    if (sortOpen || pinnedRef.current) return;
+    if (dockRef.current?.querySelector(":focus-visible")) return;
+    setOpen(false);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
+    if (event.key === "Escape" && open && !sortOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+      return;
+    }
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const items = Array.from(dockRef.current?.querySelectorAll<HTMLElement>(".commodore-dock-strip button") ?? []);
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (index < 0 || sortOpen) return;
+    event.preventDefault();
+    items[(index + (event.key === "ArrowRight" ? 1 : -1) + items.length) % items.length]?.focus({ preventScroll: true });
+  };
+
+  const newObjective = () => { close(false); openCommodoreNewSession(commodoreId); };
+  const keepHint = t("sidebar.commodoreDock.keepExpandedHint");
+
+  return (
+    // 머리의 드래그·활성 Objective 해제에서 빠진다 — 이 단추들은 목록·설정만 다룬다.
+    <span ref={dockRef} className="commodore-dock" data-open={open ? "true" : "false"} data-keep-objective-active="" onMouseLeave={onMouseLeave} onKeyDown={onKeyDown}>
+      <span className="commodore-dock-strip" role="toolbar" aria-orientation="horizontal" aria-label={t("sidebar.commodoreDock.group", { theater: name })} inert={!open}>
+        <button type="button" className="commodore-dock-button" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={newObjective}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+        <span className="commodore-dock-rule" role="separator" aria-orientation="vertical" />
+        <SortMenu glyph preference={sort} onOpenChange={setSortOpen} />
+        <button type="button" className="commodore-dock-button" aria-pressed={placement === "left"} aria-label={t("commanderRail.placeSidebar")} title={t("commanderRail.placeSidebar")} onClick={() => moveCommanderPlacement(commodoreId, "left")}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.4h3.1v11.2H2.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M7.6 4.6h6M7.6 8h6M7.6 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+        <button type="button" className="commodore-dock-button" aria-pressed={placement === "right"} aria-label={t("commanderRail.placeRight")} title={t("commanderRail.placeRight")} onClick={() => moveCommanderPlacement(commodoreId, "right")}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.7 2.4h3.1v11.2h-3.1z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M2.4 4.6h6M2.4 8h6M2.4 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+        <button type="button" className="commodore-dock-button" aria-pressed={keepExpanded} aria-label={t("sidebar.commodoreDock.keepExpanded")} title={`${t("sidebar.commodoreDock.keepExpanded")} · ${keepHint}`} onClick={() => setCommanderKeepExpanded(!keepExpanded)}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><path d="M11.5 10.5 13 12l2-2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      </span>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="commodore-dock-trigger"
+        aria-expanded={open}
+        aria-label={t("sidebar.commodoreDock.open", { theater: name })}
+        title={t("sidebar.commodoreDock.open", { theater: name })}
+        onMouseEnter={() => setOpen(true)}
+        onClick={() => {
+          if (open && pinnedRef.current) { shut(); return; }
+          pinnedRef.current = true;
+          setOpen(true);
+        }}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1" fill="currentColor" /><circle cx="8" cy="8" r="1" fill="currentColor" /><circle cx="12.5" cy="8" r="1" fill="currentColor" /></svg>
+      </button>
+    </span>
+  );
+}

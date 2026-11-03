@@ -189,6 +189,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     // 키 없음·손상값은 null이다 — "저장된 적 없음"과 명시 저장을 구분한다.
     commanderSort: toCommanderSortPreference(payload.commanderSort),
     commanderFolds: toCommanderFolds(payload.commanderFolds),
+    commanderKeepExpanded: typeof payload.commanderKeepExpanded === "boolean" ? payload.commanderKeepExpanded : null,
     lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
     uiFont: normalizeUiFont(payload.uiFont),
     fonts: readFontSettings(payload.fonts) ?? DEFAULT_FONTS,

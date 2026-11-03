@@ -124,6 +124,11 @@ export interface ConsoleGeneralSettings {
    * localStorage 키(`fleet-console.commanderTab.folds`)는 같은 origin의 첫 그리기용 캐시로만 쓴다.
    */
   readonly commanderFolds?: CommanderFolds;
+  /**
+   * 사이드바에서 사령관을 옮겨도 이미 펼친 다른 사령관의 지휘관 목록을 펼친 채로 둔다. 부재는 한 번도 저장된 적 없음(꺼짐)이다.
+   * localStorage 키(`fleet-console.commanderTab.keepExpanded`)는 같은 origin의 첫 그리기용 캐시로만 쓴다.
+   */
+  readonly commanderKeepExpanded?: boolean;
   /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
   readonly lowerUnfocusedFrameRate?: boolean;
   readonly uiFont?: UiFontSettings;
@@ -385,6 +390,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const commanderPlacement = value.commanderPlacement === "left" || value.commanderPlacement === "right" ? value.commanderPlacement : undefined;
   const commanderSort = readCommanderSortPreference(value.commanderSort);
   const commanderFolds = readCommanderFolds(value.commanderFolds);
+  const commanderKeepExpanded = typeof value.commanderKeepExpanded === "boolean" ? value.commanderKeepExpanded : undefined;
   const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
@@ -404,6 +410,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(commanderPlacement !== undefined ? { commanderPlacement } : {}),
     ...(commanderSort !== undefined ? { commanderSort } : {}),
     ...(commanderFolds !== undefined ? { commanderFolds } : {}),
+    ...(commanderKeepExpanded !== undefined ? { commanderKeepExpanded } : {}),
     ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
     ...(fonts ? { fonts } : {}),
@@ -559,6 +566,7 @@ interface GlobalSettingsBody {
   readonly commanderPlacement?: unknown;
   readonly commanderSort?: unknown;
   readonly commanderFolds?: unknown;
+  readonly commanderKeepExpanded?: unknown;
   readonly lowerUnfocusedFrameRate?: unknown;
   readonly uiFont?: unknown;
   readonly fonts?: unknown;
@@ -710,6 +718,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_commander_folds" });
     return;
   }
+  if (body.commanderKeepExpanded !== undefined && typeof body.commanderKeepExpanded !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_commander_keep_expanded" });
+    return;
+  }
   if (body.lowerUnfocusedFrameRate !== undefined && typeof body.lowerUnfocusedFrameRate !== "boolean") {
     deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
     return;
@@ -771,6 +783,7 @@ async function mutateGlobalSettings(
       ...(body.commanderPlacement === "left" || body.commanderPlacement === "right" ? { commanderPlacement: body.commanderPlacement } : {}),
       ...(commanderSort !== undefined ? { commanderSort } : {}),
       ...(commanderFolds !== undefined ? { commanderFolds } : {}),
+      ...(typeof body.commanderKeepExpanded === "boolean" ? { commanderKeepExpanded: body.commanderKeepExpanded } : {}),
       ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
       // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
       ...(body.fonts !== undefined ? { fonts: readFontSettings(body.fonts)! } : {}),
@@ -849,6 +862,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     // 키 없음·손상 값은 null이다 — "한 번도 저장된 적 없음"과 명시 저장을 구분한다.
     commanderSort: readCommanderSortPreference(general.commanderSort) ?? null,
     commanderFolds: readCommanderFolds(general.commanderFolds) ?? null,
+    // 키 없음·손상 값은 null이다 — 화면은 꺼짐으로 읽는다.
+    commanderKeepExpanded: typeof general.commanderKeepExpanded === "boolean" ? general.commanderKeepExpanded : null,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     fonts: resolveConsoleFonts(data),

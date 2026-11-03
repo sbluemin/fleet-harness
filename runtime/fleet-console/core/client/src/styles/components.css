@@ -3100,7 +3100,7 @@
   background: linear-gradient(var(--brass), var(--brass)) 0 4px / 2px calc(100% - 8px) no-repeat;
 }
 
-/* 행 안의 Theater 선택 버튼. 남은 자리를 채우되 아코디언은 오른쪽의 독립 버튼이 맡는다. */
+/* 행 안의 Theater 선택 버튼. 남은 자리를 채우고, 오른쪽 끝의 호버 독(commodore-hover-dock.css)은 따로 선다. */
 .side-bar-theater-activate {
   display: flex;
   align-items: center;
@@ -3127,6 +3127,7 @@
 }
 
 .side-bar-theater-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3184,39 +3185,6 @@
    활성 Theater의 컨트롤이 다른 Theater보다 눈에 띄는 역전이 생긴다. */
 .side-bar-theater-header.is-active .side-bar-theater-name {
   color: var(--text-primary);
-}
-
-/* 사령관 섹션 접기 글리프 — 그 사령관의 지휘관 목록만 접거나 펼친다. 펼침(▾)과 접힘(▸)을 말한다. */
-.side-bar-theater-fold-btn {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.side-bar-theater-fold-btn:hover {
-  background: var(--wash-hover);
-  color: var(--text-primary);
-}
-
-.side-bar-theater-fold-btn:focus-visible {
-  box-shadow: var(--focus-face);
-}
-
-.side-bar-theater-chevron {
-  width: 14px;
-  height: 14px;
-}
-
-.side-bar-theater-chevron.is-collapsed {
-  transform: rotate(-90deg);
 }
 
 .side-bar-theater-anchor {
