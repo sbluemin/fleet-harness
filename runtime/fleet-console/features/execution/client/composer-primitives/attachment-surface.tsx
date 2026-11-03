@@ -169,7 +169,7 @@ export function ComposerAttachmentViewer({
   };
   const showNav = images.length > 1 && !editing;
   return createPortal(
-    <div ref={viewerRef} className="fc-composer-viewer" role="dialog" aria-modal="true" aria-label={image.name} onMouseDown={() => requestLeave("close")}>
+    <div ref={viewerRef} className={`fc-composer-viewer${editing ? " is-editing" : ""}`} role="dialog" aria-modal="true" aria-label={image.name} onMouseDown={() => requestLeave("close")}>
       <div className={`fc-composer-viewer__frame${editing ? " is-editing" : ""}`} onMouseDown={(event) => event.stopPropagation()}>
         {showNav ? (
           <button type="button" className="fc-composer-viewer__nav is-prev" aria-label={previousLabel} onClick={() => onIndex((index - 1 + images.length) % images.length)}><ChevronGlyph direction="left" /></button>

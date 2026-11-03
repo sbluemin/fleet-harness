@@ -9035,13 +9035,16 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 }
 .fc-composer-viewer__edit:hover,
 .fc-composer-viewer__edit:focus-visible { color: var(--text-primary); }
-.fc-composer-viewer__frame.is-editing {
-  flex-direction: column;
-  gap: var(--space-2);
-  max-height: 100%;
+.fc-composer-viewer.is-editing .fc-composer-viewer__frame {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  max-width: min(960px, calc(100% - var(--space-6)));
 }
+.fc-composer-viewer.is-editing .fc-composer-viewer__close { display: none; }
 .fc-composer-viewer__frame.is-editing .fc-composer-viewer__canvas {
-  max-height: calc(100dvh - 220px);
+  max-height: calc(100dvh - 120px);
 }
 .fc-composer-editor { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; }
 .fc-composer-editor__stage { position: relative; max-width: 100%; }
@@ -9065,51 +9068,81 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 }
 .fc-composer-editor__text:focus { outline: none; }
 .fc-composer-editor__tools {
-  position: relative;
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 2;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
-  max-width: min(760px, 92vw);
-  padding: 5px;
+  gap: 2px;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  height: 44px;
+  padding: 0 6px;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background: var(--glass-tint-panel);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-floating);
 }
 .fc-composer-editor__tool {
-  min-width: 32px;
+  flex: none;
+  width: 32px;
   height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 0 8px;
+  gap: 1px;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
   cursor: pointer;
 }
-.fc-composer-editor__tool[aria-pressed="true"] { background: var(--control-wash-hover); color: var(--text-primary); }
+.fc-composer-editor__tool[aria-pressed="true"] { background: var(--wash-selected); color: var(--text-primary); }
 .fc-composer-editor__tool:hover:not(:disabled),
 .fc-composer-editor__tool:focus-visible { color: var(--text-primary); }
 .fc-composer-editor__tool:disabled { opacity: 0.35; cursor: default; }
-/* 지금 언어의 가장 긴 항목 이름만큼만 자리를 잡고, 고른 이름이 바뀌어도 폭은 그대로다. */
-.fc-composer-editor__choice { display: inline-grid; justify-items: center; }
-.fc-composer-editor__choice > span { grid-area: 1 / 1; }
-.fc-composer-editor__choice-sizer { visibility: hidden; }
 .fc-composer-editor__tool svg { display: block; width: 16px; height: 16px; }
+.fc-composer-editor__tool svg.is-caret { width: 8px; height: 8px; }
 .fc-composer-editor__tool svg.is-flip { transform: scaleX(-1); }
+.fc-composer-editor__tool.is-text {
+  width: auto;
+  padding: 0 8px;
+  font-size: var(--t-xs);
+}
 .fc-composer-editor__tool.is-save {
-  padding: 0 14px;
+  width: auto;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
   background: var(--text-primary);
   color: var(--surface-panel);
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
 }
 .fc-composer-editor__tool.is-save:disabled { background: var(--control-wash-hover); color: var(--text-tertiary); opacity: 1; }
+.fc-composer-viewer.is-editing .fc-composer-editor__confirm {
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  z-index: 2;
+  transform: translateX(-50%);
+}
+@media (max-width: 420px) {
+  .fc-composer-editor__tools { gap: 0; padding: 0 4px; bottom: 12px; }
+  .fc-composer-editor__tool { width: 28px; height: 28px; }
+  .fc-composer-editor__tool.is-save,
+  .fc-composer-editor__tool.is-text { width: auto; }
+  .fc-composer-editor__tool svg { width: 14px; height: 14px; }
+  .fc-composer-editor__tool svg.is-caret { width: 7px; height: 7px; }
+  .fc-composer-editor__sep { margin: 0 2px; }
+}
 .fc-composer-editor__sep { width: 1px; height: 20px; margin: 0 4px; background: var(--surface-rim-strong); }
 .fc-composer-editor__swatch {
   width: 12px;

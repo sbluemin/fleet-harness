@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 import type { ComposerMessageKey } from "./messages.js";
@@ -441,46 +441,89 @@ export const ComposerImageEditor = forwardRef<ComposerImageEditorHandle, Compose
         ) : null}
       </div>
       <div ref={toolsRef} className="fc-composer-editor__tools" role="toolbar" aria-label={t("composer.attach.tools")}>
-        <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "pen"} disabled={locked} onClick={() => chooseTool("pen")}>{t("composer.attach.pen")}</button>
+        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.pen")} title={t("composer.attach.pen")} aria-pressed={tool === "pen"} disabled={locked} onClick={() => chooseTool("pen")}><PenGlyph /></button>
         <span className="fc-composer-editor__slot">
-          <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "shape"} aria-expanded={menu === "shape"} disabled={locked} onClick={() => toggleMenu("shape", "shape")}><ChoiceLabel labels={SHAPES.map((item) => t(item.label))} current={shapeLabel} /></button>
-          {menu === "shape" ? <InkMenu label={t("composer.attach.shape")} items={SHAPES.map((item) => ({ id: item.id, label: t(item.label), checked: item.id === shape }))} onPick={(id) => { rememberedShape = id as Shape; setShape(id as Shape); setMenu(null); }} /> : null}
+          <button type="button" className="fc-composer-editor__tool" aria-label={tool === "cover" ? t("composer.attach.cover") : t("composer.attach.shape")} title={tool === "cover" ? t("composer.attach.cover") : shapeLabel} aria-pressed={tool === "shape" || tool === "cover"} aria-expanded={menu === "shape"} disabled={locked} onClick={() => { if (tool !== "cover") { rememberedTool = "shape"; setTool("shape"); } setMenu((current) => current === "shape" ? null : "shape"); }}>
+            <MarkGlyph kind={tool === "cover" ? "cover" : shape} /><CaretGlyph />
+          </button>
+          {menu === "shape" ? <InkMenu label={t("composer.attach.shape")} items={[...SHAPES.map((item) => ({ id: item.id, label: t(item.label), checked: tool === "shape" && item.id === shape, glyph: <MarkGlyph kind={item.id} /> })), { id: "cover", label: t("composer.attach.cover"), checked: tool === "cover", glyph: <MarkGlyph kind="cover" /> }]} onPick={(id) => { setMenu(null); if (id === "cover") { rememberedTool = "cover"; setTool("cover"); return; } rememberedShape = id as Shape; rememberedTool = "shape"; setShape(id as Shape); setTool("shape"); }} /> : null}
         </span>
-        <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "text"} disabled={locked} onClick={() => chooseTool("text")}>{t("composer.attach.textTool")}</button>
-        <span className="fc-composer-editor__slot">
-          <button type="button" className="fc-composer-editor__tool" aria-pressed={tool === "cover"} aria-expanded={menu === "cover"} disabled={locked} onClick={() => toggleMenu("cover", "cover")}>{coverLabel} ▾</button>
-          {menu === "cover" ? <InkMenu label={t("composer.attach.cover")} items={COVERS.map((item) => ({ id: item.id, label: t(item.label), checked: item.id === cover }))} onPick={(id) => { rememberedCover = id as Cover; setCover(id as Cover); setMenu(null); }} /> : null}
-        </span>
+        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.textTool")} title={t("composer.attach.textTool")} aria-pressed={tool === "text"} disabled={locked} onClick={() => chooseTool("text")}><TextGlyph /></button>
         <span className="fc-composer-editor__sep" aria-hidden="true" />
+        {tool === "cover" ? (
+          <span className="fc-composer-editor__slot">
+            <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.coverStyle")} title={coverLabel} aria-expanded={menu === "cover"} disabled={locked} onClick={() => setMenu((current) => current === "cover" ? null : "cover")}><CoverStyleGlyph kind={cover} /><CaretGlyph /></button>
+            {menu === "cover" ? <InkMenu label={t("composer.attach.coverStyle")} items={COVERS.map((item) => ({ id: item.id, label: t(item.label), checked: item.id === cover, glyph: <CoverStyleGlyph kind={item.id} /> }))} onPick={(id) => { rememberedCover = id as Cover; setCover(id as Cover); setMenu(null); }} /> : null}
+          </span>
+        ) : (
+          <span className="fc-composer-editor__slot">
+            <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.color")} title={t("composer.attach.color")} aria-expanded={menu === "color"} disabled={locked} onClick={() => toggleMenu("color")}><span className="fc-composer-editor__swatch" style={{ background: color }} /><CaretGlyph /></button>
+            {menu === "color" ? <InkMenu label={t("composer.attach.color")} items={INK.map((item) => ({ id: item.value, label: t(item.label), checked: item.value === color, swatch: item.value }))} onPick={(id) => { rememberedColor = id; setColor(id); setMenu(null); }} /> : null}
+          </span>
+        )}
         <span className="fc-composer-editor__slot">
-          <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.color")} aria-expanded={menu === "color"} disabled={locked} onClick={() => toggleMenu("color")}><span className="fc-composer-editor__swatch" style={{ background: color }} /> ▾</button>
-          {menu === "color" ? <InkMenu label={t("composer.attach.color")} items={INK.map((item) => ({ id: item.value, label: t(item.label), checked: item.value === color, swatch: item.value }))} onPick={(id) => { rememberedColor = id; setColor(id); setMenu(null); }} /> : null}
+          <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.width")} title={widthLabel} aria-expanded={menu === "width"} disabled={locked} onClick={() => toggleMenu("width")}><WidthGlyph value={width} /><CaretGlyph /></button>
+          {menu === "width" ? <InkMenu label={t("composer.attach.width")} items={THICKNESS.map((item) => ({ id: String(item.value), label: t(item.label), checked: item.value === width, glyph: <WidthGlyph value={item.value} /> }))} onPick={(id) => { rememberedWidth = Number(id); setWidth(Number(id)); setMenu(null); }} /> : null}
         </span>
-        <span className="fc-composer-editor__slot">
-          <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.width")} aria-expanded={menu === "width"} disabled={locked} onClick={() => toggleMenu("width")}><ChoiceLabel labels={THICKNESS.map((item) => t(item.label))} current={widthLabel} /></button>
-          {menu === "width" ? <InkMenu label={t("composer.attach.width")} items={THICKNESS.map((item) => ({ id: String(item.value), label: t(item.label), checked: item.value === width }))} onPick={(id) => { rememberedWidth = Number(id); setWidth(Number(id)); setMenu(null); }} /> : null}
-        </span>
-        <span className="fc-composer-editor__sep" aria-hidden="true" />
-        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.undo")} title={t("composer.attach.undo")} disabled={locked || ops.length === 0} onClick={undo}><HistoryGlyph /></button>
-        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.redo")} title={t("composer.attach.redo")} disabled={locked || redo.length === 0} onClick={redoMark}><HistoryGlyph flip /></button>
-        <button type="button" className="fc-composer-editor__tool" disabled={locked || ops.length === 0} onClick={clear}>{t("composer.attach.clear")}</button>
-        {edited ? <button type="button" className="fc-composer-editor__tool" disabled={locked} onClick={onRevert}>{t("composer.attach.revert")}</button> : null}
-        <span className="fc-composer-editor__sep" aria-hidden="true" />
+        {ops.length > 0 || redo.length > 0 ? (
+          <>
+            <span className="fc-composer-editor__sep" aria-hidden="true" />
+            <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.undo")} title={t("composer.attach.undo")} disabled={locked || ops.length === 0} onClick={undo}><HistoryGlyph /></button>
+            <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.redo")} title={t("composer.attach.redo")} disabled={locked || redo.length === 0} onClick={redoMark}><HistoryGlyph flip /></button>
+            <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.clear")} title={t("composer.attach.clear")} disabled={locked || ops.length === 0} onClick={clear}><TrashGlyph /></button>
+          </>
+        ) : null}
+        {edited ? <button type="button" className="fc-composer-editor__tool is-text" disabled={locked} onClick={onRevert}>{t("composer.attach.revert")}</button> : null}
         <button type="button" className="fc-composer-editor__tool is-save" disabled={locked || !dirty} onClick={save}>{saving ? t("composer.attach.saving") : t("composer.attach.save")}</button>
-        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.exitEdit")} title={t("composer.attach.exitEdit")} disabled={saving} onClick={onExit}>✕</button>
+        <button type="button" className="fc-composer-editor__tool" aria-label={t("composer.attach.exitEdit")} title={t("composer.attach.exitEdit")} disabled={saving} onClick={onExit}><CloseGlyph /></button>
       </div>
       {notice ? <p className="fc-composer-editor__notice" role="status">{notice}</p> : null}
     </div>
   );
 });
 
-function ChoiceLabel({ labels, current }: { readonly labels: readonly string[]; readonly current: string }) {
-  return (
-    <span className="fc-composer-editor__choice">
-      {labels.map((label) => <span key={label} className="fc-composer-editor__choice-sizer" aria-hidden="true">{label} ▾</span>)}
-      <span className="fc-composer-editor__choice-face">{current} ▾</span>
-    </span>
-  );
+function Glyph({ children, className }: { readonly children: ReactNode; readonly className?: string }) {
+  return <svg viewBox="0 0 16 16" aria-hidden="true" className={className}>{children}</svg>;
+}
+
+function PenGlyph() {
+  return <Glyph><path d="M9.2 2.6 13.4 6.8 6.2 14H2.8v-3.4z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /><path d="M8 3.8 12.2 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></Glyph>;
+}
+
+function TextGlyph() {
+  return <Glyph><path d="M3.2 3.6h9.6M8 3.6v9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Glyph>;
+}
+
+function CaretGlyph() {
+  return <svg viewBox="0 0 8 8" aria-hidden="true" className="is-caret"><path d="M1.4 2.8 4 5.4 6.6 2.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function CloseGlyph() {
+  return <Glyph><path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Glyph>;
+}
+
+function TrashGlyph() {
+  return <Glyph><path d="M3.2 4.6h9.6M6.2 4.6V3.2h3.6v1.4M4.6 4.6l.5 8h5.8l.5-8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></Glyph>;
+}
+
+function WidthGlyph({ value }: { readonly value: number }) {
+  const stroke = value <= 2 ? 1.4 : value <= 4 ? 2.2 : value <= 8 ? 3.4 : 5;
+  return <Glyph><path d="M2 8h12" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" /></Glyph>;
+}
+
+function CoverStyleGlyph({ kind }: { readonly kind: Cover }) {
+  return kind === "solid"
+    ? <Glyph><rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" /></Glyph>
+    : <Glyph><path d="M3 3h4.5v4.5H3zM8.5 3H13v4.5H8.5zM3 8.5h4.5V13H3zM8.5 8.5H13V13H8.5z" fill="currentColor" /></Glyph>;
+}
+
+function MarkGlyph({ kind }: { readonly kind: Shape | "cover" }) {
+  if (kind === "line") return <Glyph><path d="M3.2 12.6 12.8 3.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Glyph>;
+  if (kind === "arrow") return <Glyph><path d="M3.2 12.6 12.4 3.6M8.2 3.4h4.4V7.8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></Glyph>;
+  if (kind === "rect") return <Glyph><rect x="3" y="3.5" width="10" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="1.6" /></Glyph>;
+  if (kind === "ellipse") return <Glyph><ellipse cx="8" cy="8" rx="5.2" ry="4" fill="none" stroke="currentColor" strokeWidth="1.6" /></Glyph>;
+  if (kind === "step") return <Glyph><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="8" cy="8" r="1.3" fill="currentColor" /></Glyph>;
+  return <Glyph><path d="M3.2 11.5c1.6-3 2.2-3 3.4-1.2 1.1 1.6 1.6 1.6 2.6-.2 1-1.8 1.6-1.8 3.6.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Glyph>;
 }
 
 function HistoryGlyph({ flip = false }: { readonly flip?: boolean }) {
@@ -494,15 +537,15 @@ function HistoryGlyph({ flip = false }: { readonly flip?: boolean }) {
 
 function InkMenu({ label, items, onPick }: {
   readonly label: string;
-  readonly items: readonly { readonly id: string; readonly label: string; readonly checked: boolean; readonly swatch?: string }[];
+  readonly items: readonly { readonly id: string; readonly label: string; readonly checked: boolean; readonly swatch?: string; readonly glyph?: ReactNode }[];
   readonly onPick: (id: string) => void;
 }) {
   return (
     <div className="fc-composer-editor__menu" role="menu" aria-label={label}>
       {items.map((item) => (
         <button key={item.id} type="button" role="menuitemradio" aria-checked={item.checked} onClick={() => onPick(item.id)}>
-          {item.swatch ? <span className="fc-composer-editor__swatch" style={{ background: item.swatch }} /> : null}
-          {item.label}
+          {item.glyph ?? (item.swatch ? <span className="fc-composer-editor__swatch" style={{ background: item.swatch }} /> : null)}
+          <span>{item.label}</span>
         </button>
       ))}
     </div>
