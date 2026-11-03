@@ -21,7 +21,7 @@ import { undeliveredMessageSeqs, unheardWakes, type CommodoreUnheardWakes } from
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/contracts/attachment-budget.js";
 import type { TaskforceAction, TaskforceEvent, TaskforceJudgingStatus, TaskforceLedgerEntry, TaskforceState } from "../shared/contracts/taskforce.js";
 import type { TaskforceStore } from "./taskforce/store.js";
-import { commodoreCompactAt, EMPTY_RUN_TOTALS, MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_PAGE, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import { commodoreCompactAt, EMPTY_RUN_TOTALS, type CommodoreContextDetail, MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_PAGE, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 
 /**
  * 사령관별 감독자. 사건과 켜진 루틴만 깨우며 고정 주기는 없다.
@@ -230,6 +230,8 @@ interface Runner {
   contextWindow: number;
   /** 지금 세션이 대화를 요약할 지점(토큰). 실행 경로가 정하는데 호스트도 모르면 null 이다. */
   compactAt: number | null;
+  /** 마지막 턴이 끝난 뒤 세션에서 얻은 범주별 문맥 내역. 새 세션을 열면 비운다. */
+  contextDetail: CommodoreContextDetail | null;
   coordinates: CommodoreSessionCoordinates | null;
   language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
@@ -343,7 +345,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.step ? { step: runner.step } : {}), routineTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, routineNextRuns: Object.fromEntries([...runner.routineTimes].map(([id, value]) => [id, value.at])), ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.step ? { step: runner.step } : {}), routineTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, routineNextRuns: Object.fromEntries([...runner.routineTimes].map(([id, value]) => [id, value.at])), ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}), ...(runner.contextDetail ? { detail: runner.contextDetail } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.commodoreId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), run: { ...statusOf(runner), totals } });
@@ -529,6 +531,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // 미터 표시 — 덮지 않은 창(null)은 모델 기본 지점(창 − 33k)을 보여준다. Gateway 모델은 첫 턴 사용량이 실제 지점으로 바로잡는다.
     runner.compactAt = compactAt ?? coordinates.contextWindow - CLAUDE_AUTO_COMPACT_RESERVE;
     runner.lastInputTokens = 0;
+    runner.contextDetail = null;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;
     // 세션을 열 때마다 새 대화다.
@@ -998,6 +1001,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         }
       }
       noteOutcome(runner, outcome);
+      refreshContextDetail(runner);
       /** 실패·취소된 TF 턴의 항목은 다시 줄을 선다 — 말한 성원은 말할 때 이미 spoke로 남았다. */
       const markTurnTfFailed = () => {
         if (!deps.taskforce) return;
@@ -1063,6 +1067,23 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner.recentActions.length > RECENT_ACTIONS * 2) runner.recentActions.splice(0, runner.recentActions.length - RECENT_ACTIONS);
   };
 
+  /**
+   * 턴이 끝난 세션에서 범주별 문맥 내역을 다시 받아 방송한다. 응답이 느리거나(자식의 control 왕복) 못 받아도 턴은 이미 끝났다 —
+   * 그 사이 세션이 바뀌었으면 낡은 값을 싣지 않는다. 얻지 못하면 직전 내역을 그대로 둔다(없는 값을 꾸미지 않는다).
+   */
+  const refreshContextDetail = (runner: Runner) => {
+    const session = runner.session;
+    if (!session || runner.stopping || disposed) return;
+    void session.contextUsage().then((usage) => {
+      if (!usage || runner.session !== session || disposed) return;
+      runner.contextDetail = {
+        total: usage.total, max: usage.max, ...(usage.reserved !== undefined ? { reserved: usage.reserved } : {}),
+        slices: usage.slices, memoryFiles: usage.memoryFiles, mcpTools: usage.mcpTools,
+      };
+      publish(runner);
+    }, () => undefined);
+  };
+
   const coordinatesChanged = (runner: Runner) => {
     const coordinates = resolveCoordinates(runner.commodoreId);
     return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.commodoreId);
@@ -1099,7 +1120,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),

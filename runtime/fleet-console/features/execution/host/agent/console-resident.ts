@@ -1,13 +1,14 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import type { AgentInput, AgentSession } from "../../shared/agent.js";
+import type { AgentContextBreakdown, AgentInput, AgentSession } from "../../shared/agent.js";
 import { createAgentSessionHost, type AgentSessionHostDeps, type InternalSessionOptions } from "./agent-session.js";
 
 export { AGENT_RESERVED_TOOL_GROUPS, type AgentWorkspace, type WorkspaceBuiltin } from "./agent-session.js";
 
 export interface ConsoleResidentSession extends AgentSession {
   steer(input: AgentInput, id: string): boolean;
+  contextUsage?(): Promise<AgentContextBreakdown | null>;
 }
 /** 상주 대화는 작업 폴더 도구(Bash·Glob·Grep·Skill)와 `workspace`를 받는다 — Console 내부 소유자만 여는 능력이다. */
 export interface ConsoleResidentOptions extends InternalSessionOptions { readonly cwd: string }
@@ -28,7 +29,7 @@ export function createConsoleResidentAgentHost(deps: ConsoleResidentAgentDeps): 
   return {
     async createSession(options) {
       const session = await host.createSession(options);
-      return { ...session, steer: (input, id) => session.steer!(input, id) };
+      return { ...session, steer: (input, id) => session.steer!(input, id), contextUsage: () => session.contextUsage!() };
     },
     dispose: () => host.dispose(),
   };

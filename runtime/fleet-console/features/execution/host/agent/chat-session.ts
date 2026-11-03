@@ -1,3 +1,4 @@
+import { CONTEXT_RESERVED_NAME, CONTEXT_UNSPENT } from "./context-breakdown.js";
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
 import { resolveNativeClaudeModelAlias } from "@fleet-console/agent-runtime/fleet";
 import { randomUUID } from "node:crypto";
@@ -402,8 +403,6 @@ const TOOL_NAME_CAP = 500;
  * 않으며(`isDeferred`는 다른 축이다), 매칭이 어긋나면 미터가 늘 100%를 가리켜 곧바로 눈에
  * 띈다 — 조용히 틀리는 실패가 아니다.
  */
-const CONTEXT_RESERVED_NAME = "Autocompact buffer";
-const CONTEXT_UNSPENT: ReadonlySet<string> = new Set([CONTEXT_RESERVED_NAME, "Free space"]);
 /** 잡 id→종류. 상세 라우트의 첫 문이라 상한이 필요하지만, 잡은 도구 호출보다 훨씬 드물다. */
 const JOB_KIND_CAP = 200;
 /**
@@ -2356,7 +2355,8 @@ class AgentChatSession {
       ...(usage.mcpTools.length > 0
         ? {
             mcpTools: usage.mcpTools.map((tool) => ({
-              name: tool.server ? `${tool.server} · ${tool.name}` : tool.name,
+              name: tool.name,
+              ...(tool.server ? { server: tool.server } : {}),
               tokens: window ? window.unproject(tool.tokens) : tool.tokens,
             })),
           }

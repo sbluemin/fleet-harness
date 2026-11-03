@@ -1,3 +1,4 @@
+import { revealContextCard } from "../../../../workspace/client/conversation/context-rail/store.js";
 import * as React from "react";
 import type { ObjectiveRenderContext } from "../../../shared/client-contract.js";
 import { AttachImageIcon } from "../../composer-primitives/icons.js";
@@ -161,13 +162,11 @@ export function AgentChatComposer({
   context,
   coordinate,
   ledge,
-  meter,
   turnRunning,
   stopping,
   queue,
   onStop,
   onCancelQueued,
-  onOpenContextMeter,
   onOpenCoordinates,
   catalogEpoch,
 }: {
@@ -183,11 +182,6 @@ export function AgentChatComposer({
    * 자리를 빌리는 동안에는 축약해 달라고 선반에 알린다.
    */
   readonly ledge?: (compact: boolean) => React.ReactNode;
-  /**
-   * 문맥 미터 — 읽는 계기이지 컨트롤이 아니다. 발사 버튼 바로 왼쪽에 앉아, 보내기 직전에
-   * "이 창에 얼마나 남았는가"가 손이 가는 자리에서 읽힌다.
-   */
-  readonly meter: React.ReactNode;
   /** 지금 이 세션의 턴이 도는가 — 중지와 다음 지시 예약을 함께 세우는 축이다. */
   readonly turnRunning: boolean;
   readonly stopping: boolean;
@@ -199,8 +193,6 @@ export function AgentChatComposer({
   readonly onStop: () => Promise<boolean>;
   /** 아직 시작하지 않은 예약 하나를 거둔다. 실패는 사유를 갈라 돌려준다(위 타입 참조). */
   readonly onCancelQueued: (queueId: string) => Promise<AgentChatQueueCancelOutcome>;
-  /** `/context`가 가는 자리 — 같은 수를 이미 그리고 있는 컴포저 바의 문맥 계기를 연다. */
-  readonly onOpenContextMeter: () => void;
   /** `/model`·`/effort`가 가는 자리 — 컴포저 좌표의 모델·강도 메뉴를 연다. */
   readonly onOpenCoordinates: (stage: "models" | "effort") => void;
   /** 자식의 능력 목록 판본. 오르면 이 컴포저가 들고 있던 카탈로그 사본이 만료한다. */
@@ -379,7 +371,8 @@ export function AgentChatComposer({
   const runConsoleCommand = React.useCallback((command: ChatConsoleCommand): string => {
     switch (command.target) {
       case "context":
-        onOpenContextMeter();
+        // 컨텍스트 창은 대화 옆 레일이 그린다 — 이 세션의 카드를 펼친다(레일이 꺼져 있으면 켠다).
+        revealContextCard(context.objectiveId);
         return t("terminal.chat.consoleContextOpened");
       // 메뉴가 열리는 것 자체가 답이다. 알림은 좌표 자리를 빌려 서므로, 여기서 말하면 방금 연
       // 메뉴의 닻인 좌표를 알림이 가려 메뉴가 서지 못한다.
@@ -393,7 +386,7 @@ export function AgentChatComposer({
       default:
         return "";
     }
-  }, [onOpenContextMeter, onOpenCoordinates, t]);
+  }, [context.objectiveId, onOpenCoordinates, t]);
 
   // `override`는 덱이 확정한 문면이다. 상태 갱신은 배치되므로 방금 고른 항목을 `setDraft` 뒤에
   // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.
@@ -736,7 +729,6 @@ export function AgentChatComposer({
             </span>
             {mobileSurface ? null : (
             <span className="agent-chat-composer-actions">
-              {meter}
               {turnRunning ? (
                 // 중지와 다음 지시는 서로 배타적이지 않다. 현재 턴을 끊는 문과 그 뒤에 실행할 지시를
                 // 예약하는 문을 함께 세워, 포인터와 Enter가 서로 다른 일을 하면서도 그 차이를 숨기지 않는다.

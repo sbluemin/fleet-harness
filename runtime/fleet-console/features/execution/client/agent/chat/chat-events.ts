@@ -115,6 +115,8 @@ export interface AgentChatJobStage {
 export interface AgentChatContextSlice {
   readonly name: string;
   readonly tokens: number;
+  /** MCP 도구가 속한 서버 이름. 도구가 아닌 항목이나 서버를 모르는 도구에는 없다. */
+  readonly server?: string;
 }
 
 export type AgentChatStreamEvent =
@@ -657,9 +659,9 @@ function readChange(value: unknown): AgentChatChange | null {
 function readContextSlices(value: unknown): readonly AgentChatContextSlice[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((row: unknown) => {
-    const slice = row as { readonly name?: unknown; readonly tokens?: unknown };
+    const slice = row as { readonly name?: unknown; readonly tokens?: unknown; readonly server?: unknown };
     return typeof slice?.name === "string" && slice.name.length > 0 && typeof slice.tokens === "number"
-      ? [{ name: slice.name, tokens: slice.tokens }]
+      ? [{ name: slice.name, tokens: slice.tokens, ...(typeof slice.server === "string" && slice.server.length > 0 ? { server: slice.server } : {}) }]
       : [];
   });
 }
@@ -1044,6 +1046,40 @@ export const initialAgentChatLogState: AgentChatLogState = {
 };
 
 /**
+ * `context` 사건 하나를 지금 문맥에 반영한다. 턴 종료 스냅숏은 무조건 권위다 — 그 시점의 측정이므로 라이브가 더 말할 것이 없다.
+ * 턴 시작 스냅숏은 왕복 때문에 턴이 한참 돈 뒤에 도착하고(실측 20~30초), 그 값은 이 턴이 시작될 때의 것이다. 그때 라이브를
+ * 버리면 화면의 숫자가 뒤로 간다 — 이미 흐른 총량이 더 크면 그것을 지키고 내역만 받는다.
+ */
+export function reduceContextSnapshot(
+  previous: AgentChatContext | null,
+  event: Extract<AgentChatStreamEvent, { readonly kind: "context" }>,
+): AgentChatContext {
+  const live = event.asOf === "end"
+    ? undefined
+    : (previous?.liveTotal !== undefined && previous.liveTotal > event.total ? previous.liveTotal : undefined);
+  return {
+    total: event.total,
+    max: event.max,
+    ...(live === undefined ? {} : { liveTotal: live }),
+    ...(event.reserved !== undefined ? { reserved: event.reserved } : {}),
+    ...(event.compactAt !== undefined ? { compactAt: event.compactAt } : {}),
+    slices: event.slices,
+    memoryFiles: event.memoryFiles ?? [],
+    mcpTools: event.mcpTools ?? [],
+  };
+}
+
+/** 모델 호출마다 흐르는 총량 하나를 반영한다. 내역은 건드리지 않고, 아직 측정이 없으면 총량만 아는 상태로 세운다. */
+export function reduceContextLive(
+  previous: AgentChatContext | null,
+  event: { readonly total: number; readonly max: number },
+): AgentChatContext {
+  return previous
+    ? { ...previous, liveTotal: event.total }
+    : { total: 0, max: event.max, liveTotal: event.total, slices: [], memoryFiles: [], mcpTools: [] };
+}
+
+/**
  * 이벤트 하나를 로그 상태에 접는다. 재생 구간의 턴은 전부 done으로 닫고, 라이브 구간은
  * turn-start/turn-end가 상태를 옮긴다. dispatch는 항상 새 턴을 연다.
  */
@@ -1069,25 +1105,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       return { ...state, turns, replaying: false };
     }
     case "context": {
-      // 턴 종료 스냅숏은 무조건 권위다 — 그 시점의 측정이므로 라이브가 더 말할 것이 없다.
-      // 턴 시작 스냅숏은 왕복 때문에 턴이 한참 돈 뒤에 도착하고(실측 20~30초), 그 값은 이 턴이
-      // 시작될 때의 것이다. 그때 라이브를 버리면 화면의 숫자가 뒤로 간다 — 이미 흐른 총량이
-      // 더 크면 그것을 지키고 내역만 받는다.
-      const live = event.asOf === "end"
-        ? undefined
-        : (state.context?.liveTotal !== undefined && state.context.liveTotal > event.total
-          ? state.context.liveTotal
-          : undefined);
-      const context: AgentChatContext = {
-        total: event.total,
-        max: event.max,
-        ...(live === undefined ? {} : { liveTotal: live }),
-        ...(event.reserved !== undefined ? { reserved: event.reserved } : {}),
-        ...(event.compactAt !== undefined ? { compactAt: event.compactAt } : {}),
-        slices: event.slices,
-        memoryFiles: event.memoryFiles ?? [],
-        mcpTools: event.mcpTools ?? [],
-      };
+      const context = reduceContextSnapshot(state.context, event);
       // 턴별 증가분은 **시작 시점** 총량으로만 센다. 그 턴에 붙여 두면 재생에서도 같은 턴이 같은
       // 값을 지녀 증가분이 흔들리지 않는다. 종료 스냅숏은 그 자리를 건드리지 않는다 — 덮으면
       // 다음 턴과의 차이가 이 턴이 더한 몫을 두 번 세거나 아예 지운다.
@@ -1097,11 +1115,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         : withLastTurn(held, (turn) => ({ ...turn, contextBefore: event.total }));
     }
     case "context-live": {
-      // 내역은 건드리지 않는다. 아직 한 번도 측정이 오지 않았으면 총량만 아는 상태로 세운다 —
-      // 그것이 사실이고, 빈 내역은 "모른다"를 정직하게 말한다.
-      const context: AgentChatContext = state.context
-        ? { ...state.context, liveTotal: event.total }
-        : { total: 0, max: event.max, liveTotal: event.total, slices: [], memoryFiles: [], mcpTools: [] };
+      const context = reduceContextLive(state.context, event);
       return { ...state, context };
     }
     case "dispatch": {

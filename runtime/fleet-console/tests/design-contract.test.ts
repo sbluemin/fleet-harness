@@ -161,8 +161,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--ws-tree-width",
   // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
   "--ws-dock-files-width",
-  // Chat context popover TSX injects the category-stack luminance step (0–5).
-  "--agent-chat-ctx-step",
+  // Context rail TSX injects the category-stack luminance step (0–5).
+  "--context-rail-step",
 ]);
 
 function source(path: string): string {
@@ -2160,13 +2160,6 @@ describe("Console core design contract", () => {
     for (const signal of ["--aurora", "--positive", "--warn", "--coral"]) {
       expect(composerStopBlock, signal).not.toContain(signal);
     }
-    // 문맥 계기도 같은 글리프 자리를 쓴다 — 숫자는 팝오버로 가고 원호만 바에 선다. 채움은
-    // 압력을 나르는 상태 잉크를 그대로 쓰지만(압력은 상태다), 칩 자신은 알약을 두르지 않는다.
-    const ctxChipBlock = chat.match(/^\.agent-chat-ctx-chip \{[^}]*\}/m)?.[0] ?? "";
-    expect(ctxChipBlock).toContain("background: transparent;");
-    expect(ctxChipBlock).toContain("border: 0;");
-    expect(ctxChipBlock).toContain("padding: 7px;");
-    expect(chatView).not.toContain("agent-chat-ctx-pct");
     // 예약은 접수 증서이지 상태 경보가 아니다 — 중립 잉크로 사실만 남긴다. 취소만이 파괴
     // 동작이라 coral을 지되, 첨부 제거와 같이 hover/focus에서만 오른다.
     const queueItemBlock = chat.match(/^\.agent-chat-composer-queue-item \{[^}]*\}/m)?.[0] ?? "";

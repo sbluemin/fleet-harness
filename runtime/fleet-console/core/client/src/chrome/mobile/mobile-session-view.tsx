@@ -20,6 +20,7 @@ import { pushMobileSheet, setMobileDestination, setMobileObjectiveMenu, useMobil
 import { ObjectiveBodySlot, type ObjectiveBodyConfig } from "./objective-body-pool.js";
 import { ledgerObjectiveId, openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
 import { ConversationPillContext, useConversationPillHost } from "../../../../../features/workspace/client/conversation/pill-takeover.js";
+import { useMobileContextRailScope } from "../../../../../features/workspace/client/conversation/context-rail/mobile.js";
 import { openMobileCommanderSheet } from "./mobile-commander-sheet.js";
 
 /**
@@ -117,6 +118,8 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
   // 머리: ‹(대화 목록) · 아바타와 제목·상태 한 줄이 든 pill(누르면 대화 정보) · 지휘관 목록 글리프.
   // 이름 변경·보관·본문이 끼운 항목은 그 정보 화면에 이미 있다. 전언 대화가 pill 을 덮는 동안만 예전 ⋮를 그대로 둔다.
   const openCommanders = () => openMobileCommanderSheet(objectiveRecord.commodoreId);
+  // 이 화면이 보이는 동안 대화 머리의 컨텍스트 칩이 읽을 대화 — 화면의 주인(지휘관)이 뿌리이고, 구성원 원장을 보면 그 구성원이 보는 세션이다.
+  useMobileContextRailScope(covered ? null : { kind: "objective", objectiveId: objectiveRecord.parentObjectiveId ?? objectiveRecord.id, bodyObjectiveId: bodyOwner.id });
   useClaimMobileBar(covered ? null : {
     variant: "conversation",
     title: bodyOwner.title,

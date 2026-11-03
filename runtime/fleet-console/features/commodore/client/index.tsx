@@ -14,6 +14,7 @@ import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
 import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, commodoreTabOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
+import { registerCommodoreContextRail } from "./commodore-context-rail.js";
 import { CommodoreZoneHost, commodoreConversationSurface, commodoreHomeTheater, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { installCommodoreBoard } from "./board.js";
@@ -86,9 +87,10 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
       const offList = installCommodoreList(ctx.consoleEvents);
       const offGlobalPlugins = installGlobalPlugins(ctx.consoleEvents);
       const offConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
+      const offContextRail = registerCommodoreContextRail();
       const offTaskforces = installTaskforces(ctx);
       const offTaskforceConversation = connectTaskforceConversation(ctx.conversation);
-      return () => { offRemoved(); offTaskforceConversation(); offTaskforces(); offConversation(); offGlobalPlugins(); offList(); offState(); offBoard(); snapshots.clear(); };
+      return () => { offRemoved(); offContextRail(); offTaskforceConversation(); offTaskforces(); offConversation(); offGlobalPlugins(); offList(); offState(); offBoard(); snapshots.clear(); };
 
   };
   const plugin: ClientFeatureDescriptor = {

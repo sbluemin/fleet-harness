@@ -1,5 +1,5 @@
 import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot, ObjectiveClusterConversation } from "../../../shared/conversation/types.js";
-import { isPersonQueueEntry, OBJECTIVE_MESSAGE_TOOL, rosterAddress, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
+import { isPersonQueueEntry, OBJECTIVE_MESSAGE_TOOL, reduceContextLive, reduceContextSnapshot, rosterAddress, type AgentChatContext, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
 
 const ENTRY_CAP = 600;
 const TEXT_CAP = 60_000;
@@ -21,8 +21,10 @@ export interface ConversationJournal {
    * 스냅샷 시각을 통째로 다시 매기면 앞서 보낸 말이 그사이 선 다른 말 뒤로 건너뛴다. 모르면 없다.
    */
   readonly queueSeen: ReadonlyMap<string, number>;
+  /** 이 참여자의 지금 문맥 창. 한 턴도 측정되지 않았으면 없다 — 컨텍스트 레일이 읽는다. */
+  readonly context: AgentChatContext | null;
 }
-export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueSeen: new Map() };
+export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueSeen: new Map(), context: null };
 const objectiveRecordSpeaker = (id: string): ConversationSpeaker => ({ kind: "objectiveRecord", objectiveId: id, name: id });
 /** 「> 」 인용 한 겹을 걷는다 — 플러그인이 덧붙인 말을 지시 아래 인용으로 실어 보낸 모양이다. */
 const unquote = (text: string): string => text.split("\n").map((line) => line.replace(/^>\s?/, "")).join("\n").trim();
@@ -137,12 +139,14 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       });
       return { ...state, queue: event.entries, queueSeen: seen };
     }
+    case "context": return { ...state, context: reduceContextSnapshot(state.context, event) };
+    case "context-live": return { ...state, context: reduceContextLive(state.context, event) };
     default: return state;
   }
   // 수신/재생의 동일 좌표는 한 번만 세운다. 결과 갱신은 기존 자리를 유지한다.
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const unique = [...byId.values()];
-  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, queue: state.queue, queueSeen: state.queueSeen };
+  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, queue: state.queue, queueSeen: state.queueSeen, context: state.context };
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/gu, " ").trim().slice(0, 240);

@@ -63,6 +63,8 @@ import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout, workbenchLayoutKeeping } from "./workbench/workbench-store.js";
+import { ContextRailHost } from "./context-rail/rail.js";
+import type { ContextRailScope } from "../../shared/context-rail.js";
 import { setSideBarConversationCompact, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
 import { ConversationDockHost } from "./conversation-dock-height.js";
 import "./conversation.css";
@@ -973,7 +975,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
   useConversationSidebarCompact(stageElement, viewport, insets.right);
-  const tools = (lead: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} band={band} />;
+  const tools = (lead: ReactNode = null, trail: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} trail={trail} band={band} />;
 
   return (
     <>
@@ -1132,7 +1134,7 @@ function sameHiddenTools(a: readonly HiddenTool[], b: readonly HiddenTool[]): bo
  * 줄은 한 줄이다: 자리가 모자라면 오른쪽 끝 도구부터 걷어 「⋯」 메뉴에 모은다. 이름 pill 은
  * 도구가 모두 걷힌 다음에야 말줄임이 시작되고, 대화 동작은 걷히지 않는다.
  */
-function ConversationToolbar({ context, lead = null, band }: { readonly context: RailToolContext; readonly lead?: ReactNode; readonly band: HTMLDivElement | null }) {
+function ConversationToolbar({ context, lead = null, trail = null, band }: { readonly context: RailToolContext; readonly lead?: ReactNode; readonly trail?: ReactNode; readonly band: HTMLDivElement | null }) {
   const t = useT();
   const toolsRef = useRef<HTMLSpanElement | null>(null);
   const itemsRef = useRef<HTMLSpanElement | null>(null);
@@ -1345,6 +1347,7 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
           </div>
         ) : null}
       </span>
+      {trail !== null && trail !== false ? <span className="conversation-pill-tools-trail">{trail}</span> : null}
       <ToolbarTipLayer rootRef={toolsRef} />
     </span>, band
   );
@@ -1467,7 +1470,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   readonly theme: ConversationSurfaceContext["theme"];
   readonly onToggleDetails: () => void;
   /** 머리 줄 도구 캡슐. 지구본(lead)을 넘기면 캡슐 맨 앞, 「⋯」 밖이다. */
-  readonly tools: (lead?: ReactNode) => ReactNode;
+  readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
   /** 이 대화의 에이전트 세션이 쓰는 Session 브라우저(descriptor.sessionBrowser) — 있으면 pill 바로 옆에 지구본이 선다. */
   readonly sessionBrowser: SurfaceSessionBrowser | null;
   /** 오른쪽 분할 칸에 브라우저(Fleet·Session 어느 쪽이든)가 서 있는가 — 지구본이 켜짐으로 말한다. */
@@ -1569,6 +1572,8 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   const pill = useConversationPillHost(descriptor.pillOwner?.(context) ?? { kind: "surface", id: descriptor.id });
+  const [railSlot, setRailSlot] = useState<HTMLElement | null>(null);
+  const railScope = useMemo<ContextRailScope>(() => ({ kind: "surface", surfaceId: descriptor.id, params: selection.params }), [descriptor.id, selection.params]);
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
@@ -1579,11 +1584,13 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
             <span className="conversation-pill-title">{title}</span>
             {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </ConversationPill>
-        {tools(browser)}
+        {tools(browser, <span ref={setRailSlot} className="conversation-rail-slot" />)}
       </div>
-      <div className="conversation-body is-surface">
-        <ConversationPillContext.Provider value={pill.port}><FeatureErrorBoundary fallback={null}>{descriptor.render(context)}</FeatureErrorBoundary></ConversationPillContext.Provider>
-      </div>
+      <ContextRailHost scope={railScope} slot={railSlot}>
+        <div className="conversation-body is-surface">
+          <ConversationPillContext.Provider value={pill.port}><FeatureErrorBoundary fallback={null}>{descriptor.render(context)}</FeatureErrorBoundary></ConversationPillContext.Provider>
+        </div>
+      </ContextRailHost>
     </div>
   );
 }
@@ -1598,17 +1605,19 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   /** 오른쪽 분할 칸에 브라우저(Fleet·Objective 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
   readonly browserSplitOpen: boolean;
   /** 머리 줄 도구 캡슐. 지구본(lead)을 넘기면 캡슐 맨 앞, 「⋯」 밖이다. */
-  readonly tools: (lead?: ReactNode) => ReactNode;
+  readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
 }) {
   const t = useT();
   const capabilities = useHostCapabilities();
   const clusterIndex = useClusterIndex();
   const bodyRenderer = useConversationBodyRenderer();
   const pill = useConversationPillHost({ kind: "objective", id: objectiveRecord.id });
+  const [railSlot, setRailSlot] = useState<HTMLElement | null>(null);
   const clusterRoot = clusterIndex.rootOf.get(objectiveRecord.id) ?? null;
   const nested = state.nestedObjectiveRecords.filter((candidate) => candidate.parentObjectiveId === objectiveRecord.id);
   const chosen = state.nestedBodySelection[objectiveRecord.id];
   const bodyOwner = (chosen ? nested.find((candidate) => candidate.id === chosen) : undefined) ?? objectiveRecord;
+  const railScope = useMemo<ContextRailScope>(() => ({ kind: "objective", objectiveId: objectiveRecord.id, bodyObjectiveId: bodyOwner.id }), [objectiveRecord.id, bodyOwner.id]);
   const runtimeState = pluginRuntimeState(state.objectiveRecordRuntime, state.objectiveRecordRuntimeHydration, bodyOwner.id);
   const descriptor = findAgentObjectiveKind(objectiveRecordKinds);
 
@@ -1741,13 +1750,15 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
         </ConversationPill>
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
-        {tools(toolsLead)}
+        {tools(toolsLead, <span ref={setRailSlot} className="conversation-rail-slot" />)}
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
           노드 줄을 따로 세우지 않는다. */}
-      <div className="conversation-body" ref={bodyRef} onPointerDownCapture={activate}>
-        <ConversationPillContext.Provider value={pill.port}>{custom ?? defaultBody}</ConversationPillContext.Provider>
-      </div>
+      <ContextRailHost scope={railScope} slot={railSlot}>
+        <div className="conversation-body" ref={bodyRef} onPointerDownCapture={activate}>
+          <ConversationPillContext.Provider value={pill.port}>{custom ?? defaultBody}</ConversationPillContext.Provider>
+        </div>
+      </ContextRailHost>
     </div>
   );
 }

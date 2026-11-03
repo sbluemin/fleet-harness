@@ -516,6 +516,7 @@
 
 /* 도구 캡슐 맨 앞의 지구본. 측정이 걷는 .right-rail-ico 밖이라 「⋯」로 걷히지 않는다. */
 .conversation-pill-tools-lead,
+.conversation-pill-tools-trail,
 .conversation-pill-browser { display: inline-flex; flex: none; align-items: center; }
 
 /* 도구 줄의 캡션 버튼(지구본)은 이 줄의 도구 말풍선(toolbar-tip.tsx)이 이름을 말한다 — 캡션 자리의 이름표까지 서면 모양이 다른 풍선이 겹친다. */

@@ -100,6 +100,8 @@ export interface AgentChatJobStage {
 export interface AgentChatContextSlice {
   readonly name: string;
   readonly tokens: number;
+  /** MCP 도구가 속한 서버 이름. 도구가 아닌 항목이나 서버를 모르는 도구에는 없다. */
+  readonly server?: string;
 }
 
 /**

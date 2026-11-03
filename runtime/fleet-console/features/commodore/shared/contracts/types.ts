@@ -168,6 +168,17 @@ export const EMPTY_RUN_TOTALS: CommodoreRunTotals = Object.freeze({ session: 0, 
  */
 export const COMMODORE_COMPACT_MAX = 500_000;
 
+/** 사령관 세션의 문맥 창 내역 — 지휘관·구성원 원장의 문맥 표시와 같은 모양이다. */
+export interface CommodoreContextDetail {
+  /** 내역과 짝이 맞는 쓰인 몫의 합. 예약분과 남은 자리는 들어가지 않는다. */
+  readonly total: number;
+  readonly max: number;
+  readonly reserved?: number;
+  readonly slices: readonly { readonly name: string; readonly tokens: number }[];
+  readonly memoryFiles: readonly { readonly name: string; readonly tokens: number }[];
+  readonly mcpTools: readonly { readonly name: string; readonly tokens: number; readonly server?: string }[];
+}
+
 /** 모델 창(토큰)에서 압축 지점(토큰)을 낸다. 상한 이하의 창은 덮지 않는다(`null`). */
 export function commodoreCompactAt(contextWindow: number): number | null {
   if (contextWindow <= COMMODORE_COMPACT_MAX) return null;
@@ -196,7 +207,13 @@ export interface CommodoreRunStatus {
    * 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰), 그 세션의 창, 대화를 요약할 지점(토큰) — 셋은 같은 단위다. 한 턴도 끝나기 전에는 없다.
    * Gateway 모델(비-Claude)은 호스트가 알려 준 실제 공급자 단위의 창과 실제 압축 지점이고, 호스트도 지점을 모르면 `compactAt` 이 없다.
    */
-  readonly context?: { readonly window: number; readonly inputTokens: number; readonly compactAt?: number };
+  readonly context?: {
+    readonly window: number;
+    readonly inputTokens: number;
+    readonly compactAt?: number;
+    /** 마지막 턴이 끝난 뒤 세션에서 얻은 범주별 내역. 얻지 못한 세션(Gateway 모델 등)에는 없고, 그때 화면은 위 세 값만 그린다. */
+    readonly detail?: CommodoreContextDetail;
+  };
   /** 지금 열린 세션이 실제로 도는 모델·강도(로스터 폴백까지 푼 좌표). 설정을 바꿔도 다음 교대 전까지는 이 값이다. 열린 세션이 없으면 없다. */
   readonly session?: { readonly model: string; readonly effort?: string };
   readonly totals: CommodoreRunTotals;

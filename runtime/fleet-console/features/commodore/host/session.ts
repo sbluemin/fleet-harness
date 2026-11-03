@@ -4,7 +4,7 @@ import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtim
 import type { AgentWorkStep } from "../../execution/host/agent/types.js";
 import { createChatStepReporter, type ChatStepReporter } from "../../execution/host/agent/chat-step.js";
 import type { CommodoreToolTheater } from "./tools.js";
-import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
+import type { AgentContextBreakdown, AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
 import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
@@ -112,6 +112,8 @@ export interface CommodoreSession {
   turn(input: CommodoreTurnInput): Promise<CommodoreTurnOutcome>;
   /** 진행 중 턴만 멈춘다. */
   cancel(): void;
+  /** 세션이 지금 쓰는 문맥 창의 내역. 턴이 도는 동안이거나 세션이 말하지 못하면 null. */
+  contextUsage(): Promise<AgentContextBreakdown | null>;
   dispose(): Promise<void>;
 }
 
@@ -321,6 +323,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     start() {
       if (disposed) return Promise.reject(new Error("session_disposed"));
       return starting ??= open();
+    },
+    async contextUsage() {
+      if (disposed || turnActive || !session?.contextUsage) return null;
+      try { return await session.contextUsage(); } catch { return null; }
     },
     async turn(input) {
       if (disposed) throw new Error("session_disposed");
