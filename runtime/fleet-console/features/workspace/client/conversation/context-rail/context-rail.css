@@ -18,7 +18,9 @@
   padding: var(--conversation-top-row, 52px) var(--space-3) var(--space-3) 0;
   display: grid;
   align-content: start;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
+  overflow-x: hidden;
   overflow-y: auto;
   font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
@@ -37,7 +39,9 @@
 
 .context-rail-card {
   --context-rail-ink: var(--ink-fog);
+  min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--hairline);
@@ -73,7 +77,7 @@
 .context-rail-card-sum { margin-left: auto; flex: none; font-family: var(--font-code); font-size: var(--t-2xs); font-weight: normal; color: var(--context-rail-ink); }
 .context-rail-chev { flex: none; width: 10px; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .context-rail-glyph { flex: none; }
-.context-rail-card-body { display: grid; gap: var(--space-2); }
+.context-rail-card-body { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: var(--space-2); }
 .context-rail-muted { margin: 0; color: var(--text-tertiary); }
 
 .context-rail-bar {
@@ -91,7 +95,7 @@
 
 .context-rail-bar > i { display: block; height: 100%; background: var(--context-rail-fill); transition: width var(--duration-fast); }
 
-.context-rail-rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+.context-rail-rows { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
 .context-rail-rows li { display: flex; align-items: center; gap: var(--space-2); }
 .context-rail-rows.is-sub { padding-left: 14px; }
 .context-rail-swatch { width: 9px; height: 9px; flex: none; border-radius: 2px; background: var(--context-rail-fill); }
@@ -110,7 +114,7 @@
 .context-rail-rows li.is-free .context-rail-name,
 .context-rail-rows li.is-free .context-rail-tokens { color: var(--text-tertiary); }
 
-.context-rail-detail { display: grid; gap: 3px; padding-top: var(--space-2); border-top: 1px solid var(--hairline); }
+.context-rail-detail { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 3px; padding-top: var(--space-2); border-top: 1px solid var(--hairline); }
 .context-rail-detail-head {
   display: flex;
   align-items: center;
@@ -126,7 +130,7 @@
 }
 .context-rail-detail-head:hover .context-rail-name { color: var(--text-primary); }
 .context-rail-detail-head:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); outline: none; }
-.context-rail-server { display: grid; gap: 2px; padding-left: 8px; }
+.context-rail-server { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 2px; padding-left: 8px; }
 .context-rail-server-glyph {
   flex: none;
   display: grid;
@@ -199,7 +203,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 4px 6px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
   background: transparent;

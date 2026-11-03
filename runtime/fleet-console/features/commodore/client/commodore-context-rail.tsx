@@ -72,10 +72,13 @@ const getCommodoreRevision = () => commodoreRevision;
 
 /** 호스트가 알려 준 컨텍스트를 레일 카드의 측정으로. 내역을 얻지 못한 세션(Gateway 모델 등)은 총량만 그린다. */
 export function measureOf(context: CommodoreRunStatus["context"]): ContextRailMeasure | null {
-  if (!context || context.window <= 0 || context.inputTokens <= 0) return null;
+  if (!context) return null;
   const detail = context.detail;
+  // 내역이 있으면 카드의 합계와 칩·비율이 같은 수여야 한다 — 마지막 호출의 입력은 같은 창을 다른 자로 잰 값이다.
+  const occupied = detail ? detail.total : context.inputTokens;
+  if (context.window <= 0 || occupied <= 0) return null;
   return {
-    occupied: context.inputTokens,
+    occupied,
     max: context.window,
     ...(context.compactAt !== undefined ? { compactAt: context.compactAt } : {}),
     ...(detail?.reserved !== undefined ? { reserved: detail.reserved } : {}),

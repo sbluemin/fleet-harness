@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 
 import { MobileSheet } from "../../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../../core/client/src/chrome/mobile/mobile-back.js";
@@ -60,6 +61,7 @@ function MobileChip({ sessions }: { readonly sessions: readonly ContextRailSessi
   const t = useT();
   const state = useContextRailState();
   const [open, setOpen] = React.useState(false);
+  const anchor = React.useRef<HTMLButtonElement | null>(null);
   // 열린 시트는 뒤로가 가장 먼저 닫는 겹침이다.
   React.useEffect(() => (open ? pushBackLayer(() => setOpen(false)) : undefined), [open]);
   const ordered = React.useMemo(() => [...sessions.filter((session) => session.focus), ...sessions.filter((session) => !session.focus)], [sessions]);
@@ -70,6 +72,7 @@ function MobileChip({ sessions }: { readonly sessions: readonly ContextRailSessi
     <>
       {state.enabled ? (
         <button
+          ref={anchor}
           type="button"
           className={`context-rail-hchip is-mobile${lead.measure?.stale ? " is-stale" : ""}${toneOf(lead.measure)}`}
           aria-expanded={open}
@@ -91,12 +94,14 @@ function MobileChip({ sessions }: { readonly sessions: readonly ContextRailSessi
       >
         <RailGlyph />
       </button>
-      {open && state.enabled ? (
+      {open && state.enabled ? createPortal(
         <MobileSheet title={t("conversation.rail.title")} onClose={() => setOpen(false)}>
           <div className="context-rail-sheet">
             {ordered.map((session) => <ContextCard key={session.id} session={session} open forced state={state} t={t} />)}
           </div>
-        </MobileSheet>
+        </MobileSheet>,
+        // 시트는 가장 가까운 위치 기준 조상에 붙는다 — 막대 안이 아니라 화면 틀(또는 자기 머리를 그리는 TaskForce 화면)이어야 한다.
+        anchor.current?.closest<HTMLElement>(".taskforce-mobile-screen, .mobile-frame") ?? document.body,
       ) : null}
     </>
   );

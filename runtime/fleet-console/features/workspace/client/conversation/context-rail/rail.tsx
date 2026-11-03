@@ -39,13 +39,10 @@ export function ContextRailHost({ scope, slot, children }: {
     const update = () => setWidth(element.clientWidth);
     update();
     if (typeof ResizeObserver === "undefined") return;
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      if (frame !== 0) return;
-      frame = requestAnimationFrame(() => { frame = 0; update(); });
-    });
+    // rAF 로 미루지 않는다 — 가려진 탭에서는 rAF 가 멈춰 단계가 낡은 폭에 묶인다. 이 상자의 크기는 단계에 영향을 받지 않아 되먹임이 없다.
+    const observer = new ResizeObserver(update);
     observer.observe(element);
-    return () => { observer.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
+    return () => observer.disconnect();
   }, []);
   return (
     <div ref={mainRef} className="conversation-main">
@@ -205,8 +202,8 @@ function HeadChips({ sessions, shown: shownCount, flyout, t }: { readonly sessio
             title={label}
             onClick={() => setContextFlyout(flyout === session.id ? null : session.id)}
           >
-            <ContextArc ratio={ratioOf(session.measure)} size={13} />
-            <span>{session.name.slice(0, 2)}</span>
+            {/* 이름은 이름표(aria·title)가 지고 칩은 원호만 선다 — 대화 머리는 제목 pill 이 먼저 자리를 얻는다. */}
+            <ContextArc ratio={ratioOf(session.measure)} size={14} />
           </button>
         );
       })}
@@ -299,7 +296,7 @@ export function ContextCard({ session, open, forced, state, t }: {
           <span className="context-rail-chev" aria-hidden="true">{shown ? "▾" : "▸"}</span>
           <span className="context-rail-glyph" aria-hidden="true">{glyphOf(session.role)}</span>
           <span className="context-rail-card-name">{session.name}</span>
-          {shown ? null : <span className="context-rail-card-sum">{summary}</span>}
+          <span className="context-rail-card-sum">{summary}</span>
         </button>
       )}
       {shown ? (
@@ -443,7 +440,7 @@ function McpDetail({ sessionId, rows, state, t }: { readonly sessionId: string; 
               <ul className="context-rail-rows is-sub">
                 {server.tools.map((tool) => (
                   <li key={tool.name}>
-                    <span className="context-rail-name" title={tool.name}>{tool.name}</span>
+                    <span className="context-rail-name" title={tool.name}>{toolLabel(tool.name, server.name)}</span>
                     <span className="context-rail-tokens">{formatTokens(tool.tokens)}</span>
                   </li>
                 ))}
@@ -465,6 +462,14 @@ function DetailHead({ open, label, tokens, count, onToggle }: { readonly open: b
       <span className="context-rail-count">{count}</span>
     </button>
   );
+}
+
+/** 도구 이름만 — SDK 는 `mcp__<서버>__<도구>` 로 말하고, 서버는 묶음 머리가 이미 말한다. */
+function toolLabel(name: string, server: string): string {
+  const prefix = `mcp__${server.replace(/[^a-zA-Z0-9_-]/g, "_")}__`;
+  if (server !== "" && name.startsWith(prefix)) return name.slice(prefix.length);
+  const match = /^mcp__.+?__(.+)$/.exec(name);
+  return match ? match[1]! : name;
 }
 
 /** 서버를 구분하는 글리프 — 이름의 첫 글자(영숫자). 이름이 없으면 점. */
