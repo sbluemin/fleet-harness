@@ -54,7 +54,8 @@ import { CommanderPlacementNoticeHost, CommodoreCommanderList } from "../command
 import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
 import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
-import { commanderObjectiveId } from "../objective-clusters.js";
+import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
+import { commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
 import { isCommanderSectionExpanded, toggleCommanderSectionCollapsed, useCommanderSectionFolds } from "./commander-section-folds.js";
 import type { SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
@@ -119,6 +120,11 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   /** 그 사령관의 지휘관 목록을 접거나 펼친다 — 지금 보이는 대로 뒤집는다. */
   readonly onToggleFold: () => void;
   readonly showStatusLiveTick: boolean;
+  /**
+   * 사람이 답할 차례인 결정 요청이 이 사령관에 있다 — 접힌 머리라도 아바타에 결정 상태를 남긴다.
+   * 펼친 목록의 줄과 같은 묶음 판정이라, 답하기 전까지 열람으로 지워지지 않는다. TF 행에는 쓰지 않는다.
+   */
+  readonly hasPersonDecision?: boolean;
   readonly liveOverride?: boolean;
   /** TF 행은 TF 화면 열림으로 `is-current` 를 안다 — 사령관 기여(사령관 대화만 응답)는 TF id 에 늘 false 다. */
   readonly selectedOverride?: boolean;
@@ -236,6 +242,16 @@ export function ObjectiveRecordsSideBar({
   }, [commodoreSections, tfSummaries, pendingOrder, sidebarOrder]);
   const hasSections = sidebarSections.layout.sections.length > 0;
   const sidebarBuckets = commodoreSidebarBuckets(sidebarSections.layout, faces, (face) => face.id);
+  // 접힌 머리에도 남는 결정 대기 — 사람이 답할 차례인 결정 요청이 있는 사령관 UUID. 펼친 목록의 줄과 같은
+  // 묶음 판정(`clusterHasPersonDecision`)이라, 채팅을 열어 보고 답 없이 떠나도 머리의 아바타 상태가 유지된다.
+  const clusterIndex = useClusterIndex();
+  const personDecisionOwners = useMemo(() => {
+    const owners = new Set<string>();
+    for (const cluster of clusterIndex.clusters) {
+      if (cluster.commodoreId !== undefined && clusterHasPersonDecision(cluster)) owners.add(cluster.commodoreId);
+    }
+    return owners;
+  }, [clusterIndex]);
   const contextMenuFace: SideBarFace | null = activeContextMenu
     ? faces.find((face) => face.id === activeContextMenu.theaterId) ?? null
     : null;
@@ -542,6 +558,7 @@ export function ObjectiveRecordsSideBar({
                 onToggleFold={toggleSectionFold}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
+                hasPersonDecision={personDecisionOwners.has(theater.id)}
                 dragging={isTheaterDragging}
                 dropTarget={theaterDropBefore}
                 dragOffsetY={theaterDragOffsetY}
@@ -679,6 +696,7 @@ function TheaterSectionHeader({
   editingAlias,
   clampAlias,
   showStatusLiveTick,
+  hasPersonDecision = false,
   liveOverride,
   selectedOverride,
   dragging,
@@ -779,8 +797,8 @@ function TheaterSectionHeader({
   };
   const avatarAnchor = (tick: boolean) => (
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
-      {/* 플러그인 표식이 없을 때도 사령관 머리는 그 사령관(머리 id = 사령관 UUID)의 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
-      <KeyedAvatar avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state="idle" size={32} label="" decorative />
+      {/* 표식이 없을 때의 사령관 머리 — 결정 요청이 남아 있으면 답하기 전까지 결정 얼굴로 선다(열람으로 지워지지 않는다). */}
+      <KeyedAvatar avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"} size={32} label="" decorative />
       {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
           얹으면 어느 Theater인지가 지워진다. */}
       {tick && showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}

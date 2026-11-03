@@ -97,6 +97,11 @@ export interface TheaterContributionContext {
    * section reads with its canonical id. Older hosts have none.
    */
   readonly theaterInbox?: ClientTheaterInboxCapability;
+  /**
+   * 사람이 답할 차례인 보드 결정 수 — 펼친 목록의 줄과 같은 묶음 판정이다. 사령관이 직접 묻는
+   * 질문(ask)은 세지 않는다(표식이 따로 센다). 접힌 머리도 답 전까지 결정 얼굴·숫자를 남기는 근거다.
+   */
+  readonly boardPersonDecisionCount?: number;
 }
 
 
