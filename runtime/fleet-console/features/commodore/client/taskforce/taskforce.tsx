@@ -32,6 +32,7 @@ import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-ico
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
+import { MobileContextRail } from "../../../workspace/client/conversation/context-rail/mobile.js";
 import { taskforceT } from "./i18n.js";
 import { MemberPicker } from "./member-picker.js";
 import { TaskforceChainLimitRow } from "./chain-limit.js";
@@ -297,6 +298,7 @@ function TaskforceMobileScreen({ id, language, onClose }: { readonly id: string;
     <header>
       <button type="button" className="mobile-bar-button" aria-label={t("taskforce.closeDialog")} onClick={onClose}><MobileIcon name="back" /></button>
       <div className="mobile-conv-pill"><span className="mobile-conv-pill-copy"><strong>{readTaskforce(id).state?.name}</strong></span></div>
+      <MobileContextRail scope={{ kind: "surface", surfaceId: SURFACE, params: { taskforceId: id } }} />
       <button type="button" className="mobile-bar-button" aria-label={t("taskforce.overview")} aria-haspopup="dialog" onClick={() => setDetails(true)}><MobileIcon name="info" /></button>
     </header>
     <TaskforceBody key={id} id={id} language={language} />

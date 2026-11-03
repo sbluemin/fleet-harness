@@ -42,9 +42,11 @@ function useScope(): ContextRailScope | null {
   );
 }
 
-/** 모바일 상단 막대에 놓는다. 이 화면에 레일이 없으면 아무것도 그리지 않는다. */
-export function MobileContextRail(): React.ReactNode {
-  const current = useScope();
+/** 모바일 상단 막대(또는 자기 머리를 그리는 화면)에 놓는다. 이 화면에 레일이 없으면 아무것도 그리지 않는다. */
+export function MobileContextRail({ scope: given }: { readonly scope?: ContextRailScope } = {}): React.ReactNode {
+  const stored = useScope();
+  // 앱 틀의 막대 밖에서 자기 머리를 그리는 화면은 범위를 직접 건넨다.
+  const current = given ?? stored;
   const providers = useContextRailProviders();
   if (current === null) return null;
   return <>{providers.map((Provider, index) => (
