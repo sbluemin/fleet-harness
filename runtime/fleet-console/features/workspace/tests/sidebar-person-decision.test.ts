@@ -17,7 +17,7 @@ describe("clusterHasPersonDecision", () => {
   it("맡은 이가 다루는 요청(delegated)과 일반 줄은 제외한다", () => {
     expect(clusterHasPersonDecision(cluster({
       id: "c", title: "c",
-      row: { groupId: null, order: 0, fold: [], delegated: { questions: 2, status: { ko: "답변 중", en: "answering" } } },
+      row: { groupId: null, order: 0, fold: [], delegated: { questions: 2, status: "답변 중" } },
     }))).toBe(false);
     expect(clusterHasPersonDecision(cluster({ id: "d", title: "d" }))).toBe(false);
   });
@@ -35,7 +35,7 @@ describe("countBoardPersonDecisions", () => {
       // 다른 사령관 몫은 세지 않는다.
       cluster({ id: "other-1", title: "o", commodoreId: "c2", decisionRequest: true }),
       // 맡은 이 요청·일반 줄은 세지 않는다.
-      cluster({ id: "delegated-1", title: "g", commodoreId: "c1", row: { groupId: null, order: 2, fold: [], delegated: { questions: 1, status: { ko: "답변 중", en: "answering" } } } }),
+      cluster({ id: "delegated-1", title: "g", commodoreId: "c1", row: { groupId: null, order: 2, fold: [], delegated: { questions: 1, status: "답변 중" } } }),
     ];
     expect(countBoardPersonDecisions(clusters, "c1")).toBe(3);
     expect(countBoardPersonDecisions(clusters, "c2")).toBe(1);
