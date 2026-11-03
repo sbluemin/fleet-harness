@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
@@ -25,6 +25,13 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
   // 글리프를 눌러 연 독은 마우스가 벗어나도 남는다 — 호버로 열린 독만 마우스를 따라 닫힌다.
   const pinnedRef = useRef(false);
   const shut = () => { pinnedRef.current = false; setOpen(false); };
+  const toolbarId = useId();
+  // ⋯를 키보드(Enter·Space)로 열면 첫 도구로 초점이 간다. 이미 열려 있던 독에서도 일어나도록 횟수로 센다.
+  const [focusFirst, setFocusFirst] = useState(0);
+  useEffect(() => {
+    if (focusFirst === 0) return;
+    dockRef.current?.querySelector<HTMLElement>(".commodore-dock-strip button")?.focus({ preventScroll: true });
+  }, [focusFirst]);
 
   // 바깥을 누르면 닫는다. 정렬 메뉴는 독 안에 그려지므로 같은 안쪽으로 본다.
   useEffect(() => {
@@ -51,6 +58,15 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
     setOpen(false);
   };
 
+  // 키보드로 초점이 독과 ⋯ 밖으로 나가면 독이 닫힌다 — 열린 독이 아래 목표 행 위에 남지 않게. 마우스가 독 위에 있거나
+  // 정렬 메뉴(독 밖 DOM)로 가는 초점, 창 밖으로 나가는 초점(relatedTarget 없음)은 건드리지 않는다.
+  const onBlur = (event: FocusEvent<HTMLSpanElement>) => {
+    const next = event.relatedTarget;
+    if (!(next instanceof Element) || dockRef.current?.contains(next) || next.closest(".commander-tab-menu")) return;
+    if (sortOpen || dockRef.current?.matches(":hover")) return;
+    shut();
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
     if (event.key === "Escape" && open && !sortOpen) {
       event.preventDefault();
@@ -73,8 +89,28 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
 
   return (
     // 머리의 드래그·활성 Objective 해제에서 빠진다 — 이 단추들은 목록·설정만 다룬다.
-    <span ref={dockRef} className="commodore-dock" data-open={shown ? "true" : "false"} data-keep-objective-active="" onMouseLeave={onMouseLeave} onKeyDown={onKeyDown}>
-      <span className="commodore-dock-strip" role="toolbar" aria-orientation="horizontal" aria-label={t("sidebar.commodoreDock.group", { theater: name })} inert={!shown}>
+    <span ref={dockRef} className="commodore-dock" data-open={shown ? "true" : "false"} data-keep-objective-active="" onMouseLeave={onMouseLeave} onKeyDown={onKeyDown} onBlur={onBlur}>
+      {/* ⋯가 도구보다 DOM에서 앞선다 — Tab이 ⋯ → 도구 → 다음 요소로 가고 Shift+Tab이 도구에서 ⋯로 돌아온다. 화면에서는 CSS가 ⋯를 오른쪽 끝에 둔다. */}
+      <button
+        ref={triggerRef}
+        type="button"
+        className="commodore-dock-trigger"
+        aria-expanded={shown}
+        aria-controls={toolbarId}
+        aria-label={t("sidebar.commodoreDock.open", { theater: name })}
+        title={t("sidebar.commodoreDock.open", { theater: name })}
+        onMouseEnter={() => setOpen(true)}
+        onClick={(event) => {
+          if (open && pinnedRef.current) { shut(); return; }
+          pinnedRef.current = true;
+          setOpen(true);
+          // detail 0은 키보드(Enter·Space)로 눌렀다는 뜻이다.
+          if (event.detail === 0) setFocusFirst((count) => count + 1);
+        }}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1" fill="currentColor" /><circle cx="8" cy="8" r="1" fill="currentColor" /><circle cx="12.5" cy="8" r="1" fill="currentColor" /></svg>
+      </button>
+      <span id={toolbarId} className="commodore-dock-strip" role="toolbar" aria-orientation="horizontal" aria-label={t("sidebar.commodoreDock.group", { theater: name })} inert={!shown}>
         <button type="button" className="commodore-dock-button" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={newObjective}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
@@ -90,22 +126,6 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><path d="M11.5 10.5 13 12l2-2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       </span>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="commodore-dock-trigger"
-        aria-expanded={shown}
-        aria-label={t("sidebar.commodoreDock.open", { theater: name })}
-        title={t("sidebar.commodoreDock.open", { theater: name })}
-        onMouseEnter={() => setOpen(true)}
-        onClick={() => {
-          if (open && pinnedRef.current) { shut(); return; }
-          pinnedRef.current = true;
-          setOpen(true);
-        }}
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1" fill="currentColor" /><circle cx="8" cy="8" r="1" fill="currentColor" /><circle cx="12.5" cy="8" r="1" fill="currentColor" /></svg>
-      </button>
     </span>
   );
 }

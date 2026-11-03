@@ -8,6 +8,8 @@
   margin-block: auto;
   z-index: 4;
   display: flex;
+  /* ⋯가 DOM에서 먼저지만 화면에서는 도구 오른쪽 끝에 선다(Tab 순서 ⋯ → 도구). */
+  flex-direction: row-reverse;
   align-items: center;
   gap: 2px;
   padding: 2px;
