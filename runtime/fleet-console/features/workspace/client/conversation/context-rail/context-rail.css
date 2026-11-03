@@ -151,7 +151,8 @@
 .context-rail-arc-track { stroke: var(--ink-veil); }
 .context-rail-arc-fill { stroke: var(--context-rail-ink); transition: stroke-dasharray var(--duration-fast); }
 
-.context-rail-chip-wrap { position: relative; }
+/* 위치 기준이 아니다 — 떠 있는 카드의 높이 비율이 칩 감싸개(몇십 px)가 아니라 대화 칸(.conversation-main)을 기준으로 잡히게 한다. */
+.context-rail-chip-wrap { position: static; }
 .context-rail-chip {
   --context-rail-ink: var(--ink-fog);
   width: 100%;
@@ -192,7 +193,7 @@
   border-radius: var(--popover-radius);
   box-shadow: var(--popover-surface-shadow);
 }
-.context-rail-fly.is-strip { top: 0; right: calc(100% + var(--space-2)); }
+.context-rail-fly.is-strip { top: var(--conversation-top-row, 52px); right: calc(52px + var(--space-3)); max-height: calc(100% - var(--conversation-top-row, 52px) - var(--space-3)); }
 .context-rail-fly.is-head { top: var(--conversation-top-row, 52px); right: var(--space-3); width: 260px; }
 .context-rail-fly.is-head.is-float { top: calc(var(--conversation-top-row, 52px) + 36px); }
 
