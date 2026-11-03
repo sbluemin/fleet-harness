@@ -34,6 +34,8 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
     stop(): Promise<void>;
     /** 사령관에 묶어 내줄 수 있는 서버면 그 도구 — 실행은 서빙 경로와 같은 검증을 지난다. 아니면 null. */
     commodoreTools: readonly ToolRunner[] | null;
+    /** 채팅 자식이 처음부터 싣는 서버면 true — 아니면 생략과 같이 지연 로드된다. */
+    alwaysLoad: boolean;
   };
   const registrations = new Map<string, Registration>();
   const retiring = new Set<Promise<void>>();
@@ -73,7 +75,7 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
       }
       const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore });
       const manager = createExecutorSessionManager({ runtimes: [{ name, runtime: { registry, snapshotStore, server, onFailure: options.onFailure } }] });
-      const entry: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); }, commodoreTools: registration.commodoreScoped ? runners : null };
+      const entry: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); }, commodoreTools: registration.commodoreScoped ? runners : null, alwaysLoad: registration.alwaysLoad ?? false };
       registrations.set(name, entry);
       return () => {
         if (registrations.get(name) !== entry) return;
@@ -106,8 +108,10 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
       return {
         async getEndpoint() {
           if (disposed) throw new Error("Admiral MCP host is disposed");
-          const endpoints = await Promise.all([...registrations.values()].map(({ manager }) => manager.getEndpoint()));
-          return { servers: endpoints.flatMap((endpoint) => endpoint.servers) };
+          const active = [...registrations.entries()];
+          const endpoints = await Promise.all(active.map(([, { manager }]) => manager.getEndpoint()));
+          const flags = new Map(active.map(([name, { alwaysLoad }]) => [name, alwaysLoad] as const));
+          return { servers: endpoints.flatMap((endpoint) => endpoint.servers.map((server) => flags.get(server.name) ? { ...server, alwaysLoad: true } : server)) };
         },
         issueSessionToken(request) {
           if (disposed) throw new Error("Admiral MCP host is disposed");

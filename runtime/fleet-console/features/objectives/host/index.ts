@@ -180,7 +180,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     // 사령관 세션은 같은 정의를 `objectives`·`objective` 로 받아 Console Use 기여에 기대지 않는다.
     const releaseConsoleTools = deps.consoleUse.contribute?.(createObjectiveConsoleTools(deps, store, launch));
     if (releaseConsoleTools) registerCleanup(releaseConsoleTools);
-    registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, createObjectiveMcpTools(deps, store, launch, prStatus)));
+    registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, createObjectiveMcpTools(deps, store, launch, prStatus), { alwaysLoad: true }));
     return { routes, board, dispose, listAll: store.all, isCommanderSession: (sessionId: string) => store.findMember(sessionId) === null && store.find(sessionId) !== null, forgetOwner: store.forgetOwner };
   } catch (error) {
     dispose();

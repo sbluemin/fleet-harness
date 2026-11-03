@@ -23,6 +23,6 @@ export interface ObjectivesFeatureDeps {
   readonly http: HttpPort;
   readonly security: HttpSecurityPort;
   readonly consoleUse: Pick<ConsoleUseMcpHost, "contribute">;
-  readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[]) => () => void;
+  readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[], options?: { readonly alwaysLoad?: boolean }) => () => void;
   readonly commodoreCommander?: CommodoreFeature["host"]["commander"];
 }
