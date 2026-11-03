@@ -1,3 +1,4 @@
+import { contextBreakdownOf } from "./context-breakdown.js";
 import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, projectClaudeContextInputTokens, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -202,6 +203,14 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       revokeComputerUse() {
         computerConnection?.revoke();
       },
+      ...(resident ? {
+        async contextUsage() {
+          // Gateway 모델의 자식은 공급자 창을 Claude 좌표로 투영한 값을 말한다 — 채팅과 달리 이 경로는 되돌리는 정책을 싣지 않으므로 말하지 않는다.
+          if (closed || active || gateway !== undefined) return null;
+          const usage = await resident.contextUsage();
+          return usage ? contextBreakdownOf(usage) : null;
+        },
+      } : {}),
       ...(resident ? {
         steer(input: AgentInput, id: string) {
           if (closed || !active || cancelled) return false;

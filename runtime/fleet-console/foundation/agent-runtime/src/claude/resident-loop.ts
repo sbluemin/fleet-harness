@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import path from "node:path";
 
 import { assertClaudeGatewayInput } from "./input.js";
-import type { ClaudeGatewayInput, ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewaySession } from "./contracts.js";
+import type { ClaudeGatewayContextUsage, ClaudeGatewayInput, ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewaySession } from "./contracts.js";
 import { createClaudeExecutionEventDecoder, type ClaudeExecutionEvent, type ClaudeExecutionEventDecoder } from "./execution-events.js";
 import type { ClaudeExecutionTurn } from "./execution-loop.js";
 
@@ -32,6 +32,11 @@ export interface ClaudeResidentLoop {
   /** 도는 턴에 말을 건넨다. 도는 턴이 없으면 false. */
   steer(prompt: ClaudeGatewayInput, id: string): boolean;
   cancel(): void;
+  /**
+   * 살아 있는 자식의 문맥 내역. 자식이 없거나 턴이 도는 동안(control 채널이 닫힌다) 묻지 못하면 `null`이다.
+   * 묻는 것 자체는 자식을 띄우지 않는다.
+   */
+  contextUsage(): Promise<ClaudeGatewayContextUsage | null>;
   dispose(): Promise<void>;
 }
 
@@ -303,6 +308,11 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
   return {
     get resumed() { return resumed; },
     start, run, steer, cancel, dispose,
+    async contextUsage() {
+      const owner = child;
+      if (!owner || disposed) return null;
+      try { return await owner.session.getContextUsage(); } catch { return null; }
+    },
   };
 }
 

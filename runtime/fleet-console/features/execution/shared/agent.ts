@@ -94,6 +94,20 @@ export interface AgentSessionOptions {
   readonly onEvent?: (event: AgentEvent) => void;
 }
 
+/** 세션이 지금 쓰는 문맥 창의 내역 — 호스트의 화면 좌표(토큰)이며 채팅 원장의 문맥 표시와 같은 모양이다. */
+export interface AgentContextBreakdown {
+  /** 쓰인 몫의 합. 예약분과 남은 자리는 들어가지 않는다. */
+  readonly total: number;
+  readonly max: number;
+  /** 자동 압축을 위해 미리 비워 둔 자리. */
+  readonly reserved?: number;
+  /** 자동 압축이 걸리는 지점. 꺼져 있으면 없다. */
+  readonly compactAt?: number;
+  readonly slices: readonly { readonly name: string; readonly tokens: number }[];
+  readonly memoryFiles: readonly { readonly name: string; readonly tokens: number }[];
+  readonly mcpTools: readonly { readonly name: string; readonly tokens: number; readonly server?: string }[];
+}
+
 export interface AgentSession {
   /** 같은 세션의 턴은 순서대로 실행한다. */
   send(input: AgentInput): Promise<void>;
@@ -104,6 +118,11 @@ export interface AgentSession {
    * 다음 호출은 `enabled()`가 거부한다. 컴퓨터 사용을 싣지 않은 세션에서는 아무 일도 하지 않는다.
    */
   revokeComputerUse?(): void;
+  /**
+   * 지금 문맥 창의 내역. 턴이 도는 동안과 상주 세션이 아닌 경우, Gateway 모델 세션(공급자 창으로 되돌릴 근거가 이 경로에 없다)에서는
+   * 묻지 못하므로 `null`이다 — 없는 값을 꾸미지 않는다.
+   */
+  contextUsage?(): Promise<AgentContextBreakdown | null>;
   /** 생성 중·실행 중·종료 후 언제나 멱등이며 실행 자원 정리를 기다린다. */
   dispose(): Promise<void>;
 }
