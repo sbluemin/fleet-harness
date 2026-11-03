@@ -17,7 +17,7 @@ const STRIP_MIN = 620;
 const HEAD_CHIPS = 3;
 
 type Tier = "dock" | "strip" | "head";
-type Translate = ReturnType<typeof useT>;
+export type Translate = ReturnType<typeof useT>;
 
 /**
  * 대화 칸 본문과 그 옆의 컨텍스트 레일을 한 줄에 놓는다. 단계는 창 폭이 아니라 이 칸의 실제 폭으로 정한다 — 오른쪽 패널이 열려 있든
@@ -229,16 +229,16 @@ function HeadChips({ sessions, shown: shownCount, flyout, t }: { readonly sessio
 /** 머리 칩의 `+n`이 여는 카드 묶음의 자리. 세션 id와 겹치지 않는다. */
 const MORE_ID = "\u0000more";
 
-function chipLabel(session: ContextRailSession, t: Translate): string {
+export function chipLabel(session: ContextRailSession, t: Translate): string {
   if (!session.measure) return t("conversation.rail.chipUnmeasured", { name: session.name });
   return t("conversation.rail.chipAria", { name: session.name, percent: String(percentOf(session.measure)), summary: summaryOf(session.measure) });
 }
 
-function ratioOf(measure: ContextRailMeasure | null): number {
+export function ratioOf(measure: ContextRailMeasure | null): number {
   return measure && measure.max > 0 ? measure.occupied / measure.max : 0;
 }
 
-function percentOf(measure: ContextRailMeasure): number {
+export function percentOf(measure: ContextRailMeasure): number {
   return Math.round(ratioOf(measure) * 100);
 }
 
@@ -250,7 +250,7 @@ function summaryOf(measure: ContextRailMeasure): string {
  * 카드가 어느 계단에 서는지. quota 레일이 쓰는 세 단계를 그대로 물려받는다. 자동 압축이 켜져 있으면 임계선이 곧 위험선이고, 꺼져 있으면
  * 창을 다 쓰는 것 자체가 한계이므로 고정 비율로 돌아간다.
  */
-function toneOf(measure: ContextRailMeasure | null): "" | " is-warn" | " is-critical" {
+export function toneOf(measure: ContextRailMeasure | null): "" | " is-warn" | " is-critical" {
   if (!measure || measure.max <= 0) return "";
   const limit = measure.compactAt !== undefined ? measure.compactAt / measure.max : 1;
   const ratio = measure.occupied / measure.max;
@@ -271,7 +271,7 @@ function formatTokens(tokens: number): string {
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
 }
 
-function ContextCard({ session, open, forced, state, t }: {
+export function ContextCard({ session, open, forced, state, t }: {
   readonly session: ContextRailSession;
   readonly open: boolean;
   /** 떠 있는 카드는 접히지 않는다. */
@@ -474,7 +474,7 @@ function serverGlyph(name: string): string {
 }
 
 /** 원호 하나 — 눈금도 라벨도 없이 규모만 세운다. */
-function ContextArc({ ratio, size }: { readonly ratio: number; readonly size: number }) {
+export function ContextArc({ ratio, size }: { readonly ratio: number; readonly size: number }) {
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
   const filled = Math.max(0, Math.min(1, ratio)) * circumference;
@@ -486,7 +486,7 @@ function ContextArc({ ratio, size }: { readonly ratio: number; readonly size: nu
   );
 }
 
-function RailGlyph() {
+export function RailGlyph() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
       <rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />

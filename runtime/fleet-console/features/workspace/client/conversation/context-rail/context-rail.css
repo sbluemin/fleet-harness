@@ -227,3 +227,9 @@
   .context-rail-bar > i,
   .context-rail-arc-fill { transition: none; }
 }
+
+/* 모바일: 대화 머리의 칩과 단추는 터치 과녁 크기를 지키고, 시트 안의 카드는 세로로 쌓는다. */
+.context-rail-hchip.is-mobile { min-height: 32px; padding: 4px 10px; }
+.context-rail-toggle.is-mobile { width: 36px; height: 36px; }
+.context-rail-sheet { display: grid; gap: var(--space-3); padding-bottom: var(--space-3); }
+.context-rail-sheet .context-rail-card { font-size: var(--t-sm); }
