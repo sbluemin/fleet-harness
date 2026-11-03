@@ -1398,7 +1398,7 @@ describe("Objectives contract", () => {
     const asPlugin = { cwd: workspace, caller: { kind: "plugin" as const, pluginId: "other" } };
     expect(((await opened.find((tool) => tool.name === "read")!.execute({}, asPlugin)) as { structuredContent: { error?: string } }).structuredContent.error).toBe("not_participant");
     expect(((await opened.find((tool) => tool.name === "plan")!.execute({ missions: [{ title: "p", text: "p" }] }, asPlugin)) as { structuredContent: { error?: string } }).structuredContent.error).toBe("not_participant");
-    expect(((await opened.find((tool) => tool.name === "read")!.execute({ objectiveId: objective.id }, { cwd: workspace, caller: { kind: "objectiveRecord", objectiveId: other } })) as { structuredContent: { error?: string } }).structuredContent.error).toBe("invalid_arguments");
+    expect(((await opened.find((tool) => tool.name === "read")!.execute({ objectiveId: objective.id }, { cwd: workspace, caller: { kind: "objectiveRecord", objectiveId: other } })) as { structuredContent: { error?: string; hint?: string } }).structuredContent).toMatchObject({ error: "invalid_arguments", hint: "objectiveId is no longer accepted. Call again without it." });
     expect((await call("read", {}, other)).structuredContent.objective).toMatchObject({ id: other });
     expect(store.find(objective.id)!.missions.map((mission) => mission.text)).toEqual(["one", "two"]);
     // 구상 중에는 편성만 — 명단이 비었을 때만 지휘관이 구성원을 제안하고(모델은 고르지 않아 라우팅), 임무에 구성원을 표시한다.

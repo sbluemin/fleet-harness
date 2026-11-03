@@ -47,6 +47,8 @@ const NO_FIXED_NAME = "No fixed session name. The from address on the Commander'
 /** read·mine 설명의 한 줄 — 결정 요청과 결정이 보드에 있다는 사실. */
 const DECISIONS_ON_BOARD = "Console sessions have no tool for asking the person directly; decisions for the person go through the board. The person may not be watching the Commander's panel text. The board holds the current decisionRequest and decisionRequestRevision, and decisions: the person's recorded answers, each with the question, the chosen option labels (selected), any words written (text), and own: true when the person discarded every option for their own answer. A request the person closed without deciding is recorded with declined: true on each of its decisions (no selected options, no text); it chose none of the options, handed nothing to the Commander, and deferred nothing. Only the person's board submissions create decisions, and they survive reruns; reading clears no request and changes no decision.";
 const DECISION_DELIVERING = "The person's answers have been accepted, but delivery and recording are not yet finalized. The current request cannot be replaced or withdrawn.";
+/** 진행 중 세션이 옛 objectiveId 입력을 넣었을 때 — 그 키는 더 받지 않으며, 빼고 다시 부른다. */
+const OBJECTIVE_ID_DROPPED = "objectiveId is no longer accepted. Call again without it.";
 const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS} {point, because} and fellShort: 1–${MAX_RETRO_PAIRS} {point, ifOnly}, each field one line of at most ${MAX_RETRO_TEXT} characters.`;
 
 /** request_decision 의 질문 — 공유 계약에서 예시·권고를 뺀 필드 설명만 덮는다(사령관 ask_person 은 공유 계약 그대로). */
@@ -146,7 +148,10 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     name, description, inputSchema: advertisedSchema(name, schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});
-      if (!parsed.success) return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues) });
+      if (!parsed.success) {
+        const droppedObjectiveId = raw !== null && typeof raw === "object" && !Array.isArray(raw) && Object.prototype.hasOwnProperty.call(raw, "objectiveId");
+        return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues), ...(droppedObjectiveId ? { hint: OBJECTIVE_ID_DROPPED } : {}) });
+      }
       try {
         return await run(parsed.data, context.caller, context);
       }
