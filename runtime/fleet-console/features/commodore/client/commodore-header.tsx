@@ -23,6 +23,7 @@ import { subscribeConversationSurface } from "../../workspace/client/conversatio
 import { getT } from "./i18n/index.js";
 import { isRunningObjective, isCommodoreWaiting, subscribeObjective, useObjectiveTheater } from "./board.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
+import { clusterHasPersonDecision, useObjectiveClusters } from "../../workspace/client/objective-clusters.js";
 
 export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 
@@ -75,7 +76,11 @@ function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContrib
   const warn = (view?.run.phase === "error" || view?.run.phase === "retrying");
   const name = useCommodoreName(commodoreId, t);
   const status = [`${name} · ${meta.map((part) => part.text).join(" · ")}`, routine, errorReason].filter(Boolean).join("\n");
-  const state = commodoreMongleState(view, board.objectives);
+  // 사람이 답할 차례인 결정 요청 — 펼친 목록의 줄과 같은 묶음 판정이라, 채팅을 열어 보고 답 없이 떠나도
+  // 머리의 아바타 상태가 유지된다. 사령관이 직접 묻는 질문(`asks`)도 같은 사람 차례라 함께 읽는다.
+  const clusters = useObjectiveClusters();
+  const personDecision = clusters.some((cluster) => cluster.commodoreId === commodoreId && clusterHasPersonDecision(cluster));
+  const state = commodoreMongleState(view, board.objectives, personDecision);
   const glyph = <CommodoreAvatar commodoreId={commodoreId} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" />;
   // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
   const asks = openAsks(commodoreId).length;
@@ -102,14 +107,15 @@ type CommodoreView = ReturnType<typeof useCommodore>["view"];
 
 /**
  * 사령관의 지금 얼굴 — 사이드바 머리 표식과 대화 중심 화면(머리 pill·오른쪽 패널 머리)이 같은 사실로 고른다. 루틴과 무관하게
- * 메시지 턴도 작업 중이며, 실패·재시도는 오류 얼굴(얼굴 기준 `mongleStateOf` 에 없는 사령관 몫)이다. 그 밖에는 턴을 도는 동안 작업 중, 사령관이 운영하는
- * 목표가 사람을 기다리면 대기, 아니면 쉼이다.
+ * 메시지 턴도 작업 중이며, 실패·재시도는 오류 얼굴(얼굴 기준 `mongleStateOf` 에 없는 사령관 몫)이다. 그 밖에는 턴을 도는 동안 작업 중, 사람이 답할
+ * 차례인 결정 요청이 남아 있으면 결정, 사령관이 운영하는 목표가 사람을 기다리면 대기, 아니면 쉼이다. 결정은 열람으로
+ * 지워지지 않고 답·철회로만 걷힌다.
  */
-export function commodoreMongleState(view: CommodoreView, objectives: readonly Objective[]): MongleState {
+export function commodoreMongleState(view: CommodoreView, objectives: readonly Objective[], personDecision = false): MongleState {
   if (!view) return "idle";
   if (view.run.phase === "error" || view.run.phase === "retrying") return "error";
   const waiting = view.active && objectives.some((objective) => isCommodoreWaiting(objective));
-  return mongleStateOf({ activity: view.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle" });
+  return mongleStateOf({ activity: view.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle", decisionRequest: personDecision });
 }
 export type CommodoreMetaPart = { readonly key: string; readonly text: string; readonly tone?: "on" | "warn" };
 

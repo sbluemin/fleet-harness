@@ -146,6 +146,15 @@ export function useObjectiveClusters(): readonly ObjectiveCluster[] {
   return useSyncExternalStore(objectiveRecordClusters.subscribe, objectiveRecordClusters.get, objectiveRecordClusters.get);
 }
 
+/**
+ * 사람이 답할 차례인 결정 요청이 이 묶음에 있는가 — 사이드바 사령관 머리가 접힌 채로도 그 사실을 아바타에
+ * 남기는 판정이다. `decisionRequest`(사람 차례로 판정된 묶음)와 `decisionRequestedAt`(사람이 답할 차례인
+ * 줄만 싣는다 — 맡은 이가 다루는 `delegated` 요청은 여기에 들지 않는다)이 모두 사람 차례의 신호라 둘을 함께 읽는다.
+ */
+export function clusterHasPersonDecision(cluster: ObjectiveCluster): boolean {
+  return cluster.decisionRequest === true || cluster.row?.decisionRequestedAt !== undefined;
+}
+
 export function useClusterIndex(): ClusterIndex {
   const clusters = useObjectiveClusters();
   return useMemo(() => indexClusters(clusters), [clusters]);
