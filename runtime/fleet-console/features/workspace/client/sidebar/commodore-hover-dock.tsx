@@ -24,7 +24,9 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   // 글리프를 눌러 연 독은 마우스가 벗어나도 남는다 — 호버로 열린 독만 마우스를 따라 닫힌다.
   const pinnedRef = useRef(false);
-  const shut = () => { pinnedRef.current = false; setOpen(false); };
+  // 키보드(Enter·Space)로 연 독 — 마우스를 어디에 두었든 초점이 독 밖으로 나가면 닫힌다.
+  const keyboardRef = useRef(false);
+  const shut = () => { pinnedRef.current = false; keyboardRef.current = false; setOpen(false); };
   const toolbarId = useId();
   // ⋯를 키보드(Enter·Space)로 열면 첫 도구로 초점이 간다. 이미 열려 있던 독에서도 일어나도록 횟수로 센다.
   const [focusFirst, setFocusFirst] = useState(0);
@@ -39,8 +41,7 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
     const onPointerDown = (event: PointerEvent) => {
       // 정렬 메뉴는 문서 최상위에 그려지므로(독 밖 DOM) 따로 안쪽으로 본다.
       if (event.target instanceof Element && (dockRef.current?.contains(event.target) || event.target.closest(".commander-tab-menu"))) return;
-      pinnedRef.current = false;
-      setOpen(false);
+      shut();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
@@ -52,10 +53,11 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
   };
 
   const onMouseLeave = () => {
-    // 정렬 메뉴가 열려 있거나 키보드 초점이 독 안에 있으면 마우스가 벗어나도 닫지 않는다.
-    if (sortOpen || pinnedRef.current) return;
-    if (dockRef.current?.querySelector(":focus-visible")) return;
-    setOpen(false);
+    // 정렬 메뉴가 열려 있거나 초점이 독 안에 있으면 마우스가 벗어나도 닫지 않는다. 마우스로 눌러 고정한 독은 남고, 키보드로 연
+    // 독은 초점이 이미 나갔으면 마우스가 떠날 때 닫힌다.
+    if (sortOpen || (pinnedRef.current && !keyboardRef.current)) return;
+    if (dockRef.current?.contains(document.activeElement)) return;
+    shut();
   };
 
   // 키보드로 초점이 독과 ⋯ 밖으로 나가면 독이 닫힌다 — 열린 독이 아래 목표 행 위에 남지 않게. 마우스가 독 위에 있거나
@@ -63,7 +65,7 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
   const onBlur = (event: FocusEvent<HTMLSpanElement>) => {
     const next = event.relatedTarget;
     if (!(next instanceof Element) || dockRef.current?.contains(next) || next.closest(".commander-tab-menu")) return;
-    if (sortOpen || dockRef.current?.matches(":hover")) return;
+    if (sortOpen || (!keyboardRef.current && dockRef.current?.matches(":hover"))) return;
     shut();
   };
 
@@ -105,6 +107,7 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
           pinnedRef.current = true;
           setOpen(true);
           // detail 0은 키보드(Enter·Space)로 눌렀다는 뜻이다.
+          keyboardRef.current = event.detail === 0;
           if (event.detail === 0) setFocusFirst((count) => count + 1);
         }}
       >
