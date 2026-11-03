@@ -3118,11 +3118,12 @@ describe("Objectives contract", () => {
       records.isTransitioning = () => false;
       vi.useFakeTimers();
       launch.dispose();
-      const real = ctx.consoleControl!.request.bind(ctx.consoleControl);
-      ctx.consoleControl!.request = ((input: { kind: string }) => {
+      const control = ctx.consoleControl!;
+      const real = control.request.bind(control);
+      control.request = ((input: { kind: string }) => {
         const pending = real(input as never);
         return input.kind === "send" ? pending.then((value) => new Promise((resolve) => setTimeout(() => resolve(value), 1_500))) : pending;
-      }) as typeof ctx.consoleControl.request;
+      }) as typeof control.request;
       const after = restart();
       after.launch.watchLiveOutcomes();
       await vi.advanceTimersByTimeAsync(4_000);
