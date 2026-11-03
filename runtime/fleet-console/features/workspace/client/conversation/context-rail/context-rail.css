@@ -253,3 +253,7 @@
   border-radius: var(--radius-pill);
   background: var(--surface-capsule);
 }
+
+/* 레일이 없는 화면(Inbox 시트)의 칩 — 입력창 위 오른쪽 끝에 서고, 카드는 위로 뜬다. */
+.context-rail-inline { position: relative; display: flex; justify-content: flex-end; padding-bottom: var(--space-2); }
+.context-rail-fly.is-inline { top: auto; bottom: calc(100% - var(--space-2)); right: 0; width: 260px; max-height: 60vh; }

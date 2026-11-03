@@ -1,3 +1,5 @@
+import { ContextRailInlineChip } from "../../workspace/client/conversation/context-rail/inline.js";
+import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
 import { ChevronGlyph, PlusGlyph } from "@fleet-console/ui/react";
 import { commodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
@@ -262,7 +264,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
       {failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
-      {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+      {tab === "log" ? <footer className="objectives-commodore-foot">{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );
 }
