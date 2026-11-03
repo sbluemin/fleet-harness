@@ -185,6 +185,8 @@ export interface ReadClaudeSupportedModelsOptions {
   readonly executablePath?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly timeoutMs?: number;
+  /** 질의 자식도 호스트가 소유한 프로세스 그룹에서 띄운다 — Console이 끝날 때 함께 끝나야 한다. */
+  readonly spawnProcess?: ClaudeProcessSpawner;
 }
 
 export interface ClaudeGatewaySdkOptions {

@@ -203,6 +203,9 @@ export function createModelRosterHost(deps: {
       if (model?.provider !== "claude" || model.upstreamId === undefined) return wireModel;
       return wireModel.endsWith(CLAUDE_ONE_MILLION_MARKER) ? `${model.upstreamId}${CLAUDE_ONE_MILLION_MARKER}` : model.upstreamId;
     },
+    ...(deps.ensureClaudeNativeModels ? {
+      warmClaudeVersions: () => { void deps.ensureClaudeNativeModels?.().catch(() => undefined); },
+    } : {}),
     ...(deps.subscribe ? { subscribe: deps.subscribe } : {}),
   };
 }
@@ -230,7 +233,10 @@ export function registerModelRosterRoutes(ctx: ModelRosterRouteContext, models: 
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
     const target = new URL(req.url ?? "/", "http://localhost").searchParams.get("target") ?? "launch";
     if (!isModelRosterTarget(target)) { ctx.host.http.writeJson(res, 400, { error: "invalid_target" }); return true; }
-    ctx.host.http.writeJson(res, 200, { target, roster: models.roster(target) });
+    const roster = models.roster(target);
+    // Claude 행이 있으면 버전 이름을 채우러 간다 — 응답은 기다리지 않고, 표가 바뀌면 변경 알림이 다시 읽게 한다.
+    if (roster.some((group) => group.id === modelRosterGroupId("claude"))) models.warmClaudeVersions?.();
+    ctx.host.http.writeJson(res, 200, { target, roster });
     return true;
   }, [{ method: "GET", path: "", summary: "Read the model roster every Console model picker shares.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   return { notify: () => ctx.host.events.publish(MODEL_ROSTER_CHANGED_CHANNEL, {}) };

@@ -72,6 +72,11 @@ interface AgentRouteDeps {
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /**
+   * Claude 별칭을 설치된 Claude Code가 푸는 정식 id로 고정한다(`opus[1m]` → `claude-opus-5-5[1m]`). 사령관 세션과 같은
+   * 통로(ModelRosterHost.pinClaudeVersion)이며, 지휘관 채팅만 이 값으로 연다. 저장 좌표는 별칭 그대로 둔다.
+   */
+  readonly pinClaudeVersion?: (wireModel: string) => Promise<string>;
+  /**
    * 턴이 어떤 결말로든 멈췄다 — 정상 종료·중단·PTY 의 작업 신호 소실 모두. 여러 경로에서 겹쳐 불릴 수 있으므로
    * 받는 쪽은 멱등이어야 한다. 에이전트 사용 표식을 내리는 자리다.
    */
@@ -2174,6 +2179,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 저장된 bare 네이티브 별칭은 시드부터 `[1m]`라서 첫 라이브 미터가 200k로 열리지 않는다.
     const storedModel = readAgentSession(node)?.model;
     const model = (storedModel ? resolveNativeClaudeModelAlias(storedModel) ?? storedModel : undefined) || "opus[1m]";
+    // 지휘관은 사령관과 같은 모델 id로 연다 — 별칭을 설치 CLI가 푸는 정식 버전으로 고정한다. 구성원은 별칭 그대로다.
+    const launchModel = ctx.isCommanderSession?.(node.id) && deps.pinClaudeVersion
+      ? await deps.pinClaudeVersion(model).catch(() => model)
+      : model;
     const launchEffort = resolveChatLaunchEffort(readAgentSession(node)?.effort ?? "");
     // 터미널 런치가 `-n`으로 싣는 것과 같은 이름 — 다른 세션이 이 세션을 부르는 주소다.
     const sessionName = readAgentSession(node)?.sessionName;
@@ -2223,7 +2232,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         baseUrl: gatewayBaseUrl,
         compactHookToken: deps.aiGateway?.compactHookToken,
         modHookToken: deps.aiGateway?.modHookToken,
-        model,
+        model: launchModel,
         // 자식은 창이 500k인 모델도 자기 200k 좌표로 재고, 그 좌표를 물어보는 모든 표면에 그대로
         // 말한다. 실제 창과 투영에 쓰인 압축 정책을 함께 실어야 세션이 그것을 되돌릴 수 있다.
         // 네이티브 Claude 모델은 카탈로그에 없으므로 두 값 없이 지나가고 오늘의 숫자를 유지한다.

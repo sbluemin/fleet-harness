@@ -61,7 +61,7 @@ import {
   type CommodoreMobileTab,
 } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
-import { DEFAULT_LAUNCH } from "./defaults.js";
+import { COMMANDER_PRESET } from "../../objectives/shared/types.js";
 import { isRunningObjective, openObjectiveOnPhone, useObjectiveTheater } from "./board.js";
 import "./commodore-mobile.css";
 
@@ -762,7 +762,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               target="launch"
               label={t("commodore.settings.commanderAria")}
               value={commanderValue(state)}
-              fallback={DEFAULT_LAUNCH}
+              fallback={COMMANDER_PRESET}
               disabled={!online}
               {...(commanderOverridden ? { reset: { label: t("commodore.settings.useDefault"), onSelect: () => act(() => setCommodoreCommander(theaterId, null)) } } : {})}
               onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}

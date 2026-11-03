@@ -12,6 +12,8 @@ export interface ClaudeNativeModelSyncDeps {
   readonly readSupportedModels: (executable: string | undefined) => Promise<readonly ClaudeNativeModelRow[]>;
   readonly now?: () => number;
   readonly onError?: (error: unknown) => void;
+  /** 받은 표가 카탈로그를 바꿨을 때 울린다 — 이미 목록을 읽어 둔 화면이 버전 이름을 다시 읽게 한다. */
+  readonly onChanged?: () => void;
 }
 
 export interface ClaudeNativeModelSync {
@@ -64,10 +66,11 @@ export function createClaudeNativeModelSync(deps: ClaudeNativeModelSyncDeps): Cl
     try {
       const executable = await deps.resolveExecutable();
       const nextStamp = await readStamp(executable);
-      applyClaudeNativeModels(await deps.readSupportedModels(executable));
+      const changed = applyClaudeNativeModels(await deps.readSupportedModels(executable));
       stamp = nextStamp;
       synced = true;
       checkedAt = now();
+      if (changed) deps.onChanged?.();
     } catch (error) {
       failedAt = now();
       deps.onError?.(error);

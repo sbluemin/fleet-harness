@@ -66,7 +66,7 @@ import {
 } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { useT as useConsoleT } from "../../../core/client/src/i18n/index.js";
-import { DEFAULT_LAUNCH } from "./defaults.js";
+import { COMMANDER_PRESET } from "../../objectives/shared/types.js";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -315,7 +315,7 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
           target="launch"
           label={t("commodore.settings.commanderAria")}
           value={commanderValue(state)}
-          fallback={DEFAULT_LAUNCH}
+          fallback={COMMANDER_PRESET}
           onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
         />
       </SettingsRow>
