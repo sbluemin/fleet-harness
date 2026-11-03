@@ -2731,7 +2731,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         objectiveRecords: { ...consoleFeaturePorts.objectiveRecords, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
         consoleControl: createFeatureConsoleControl("objectives"),
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
-        consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools, options) => pluginMcp.register(name, tools, options),
+        consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools) => pluginMcp.register(name, tools),
         commodoreCommander: commodore.host.commander,
       });
       consoleAgentOwners.add("objectives");

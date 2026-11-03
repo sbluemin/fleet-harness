@@ -71,11 +71,6 @@ export interface ClaudeGatewayServedMcpServer {
   readonly url: string;
   readonly headers?: readonly { readonly name: string; readonly value: string }[];
   readonly toolTimeoutSeconds?: number;
-  /**
-   * true면 이 서버의 도구를 처음부터 프롬프트에 싣고 ToolSearch 뒤로 미루지 않는다(vendor `alwaysLoad`).
-   * 생략하면 ToolSearch가 켜진 세션에서 지연 로드된다. 전 세션이 반드시 쓰는 서버에만 둔다.
-   */
-  readonly alwaysLoad?: boolean;
 }
 
 /**

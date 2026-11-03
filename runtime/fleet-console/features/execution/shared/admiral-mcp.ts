@@ -1,7 +1,7 @@
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 /** 서버 내부 연결 계약. URL과 토큰은 브라우저 DTO에 포함하지 않는다. */
 export interface AdmiralMcpSession {
-  getEndpoint(): Promise<{ readonly servers: readonly { readonly name: string; readonly url: string; readonly alwaysLoad?: boolean }[] }>;
+  getEndpoint(): Promise<{ readonly servers: readonly { readonly name: string; readonly url: string }[] }>;
   issueSessionToken(request: {
     readonly label: string;
     readonly cwd: string;
@@ -20,11 +20,6 @@ export interface AdmiralMcpRegistration {
    * 아니면 생략한다.
    */
   readonly commodoreScoped?: boolean;
-  /**
-   * true면 Objective 채팅 자식이 이 서버의 도구를 처음부터 싣고 ToolSearch 뒤로 미루지 않는다.
-   * 매 턴 반드시 쓰는 서버에만 둔다.
-   */
-  readonly alwaysLoad?: boolean;
 }
 
 

@@ -52,10 +52,6 @@ export interface ExecutorMcpRuntimeProviderRuntime extends ExecutorMcpRuntimePro
 export interface ExecutorServerEndpoint {
   readonly name: string;
   readonly url: string;
-  /**
-   * true면 SDK 자식이 이 서버의 도구를 처음부터 싣는다. CLI 주입은 읽지 않는다.
-   */
-  readonly alwaysLoad?: boolean;
 }
 
 export interface ExecutorEndpoint {
