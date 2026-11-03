@@ -7,7 +7,7 @@ import { getState, ownObjectiveRuntime, subscribe as subscribeConsole } from "..
 import { useConsoleState } from "../../../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../../../core/client/src/i18n/index.js";
 import { getAgentState, subscribe as subscribeAgent } from "../store.js";
-import { readChatJournalEvent } from "./chat-events.js";
+import { readChatJournalEvent, type AgentChatContext } from "./chat-events.js";
 import { createChatSocketSession } from "./chat-store.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationJournal } from "./group-timeline.js";
 import { commodoreDisplayName } from "./group/speaker-mark.js";
@@ -333,6 +333,25 @@ export function useGroupTimeline(rootObjectiveId: string | null): GroupTimelineS
     resync?.();
   }, [rootObjectiveId]);
   return useMemo(() => snapshot(rootObjectiveId, clusters.find((cluster) => cluster.conversation?.objectiveId === rootObjectiveId)?.conversation, t("cluster.picker.coordinator")), [rootObjectiveId, clusters, state, tick, t]);
+}
+
+/**
+ * 한 루트 대화 참여자들의 지금 문맥 창(컨텍스트 레일의 재료). 참여자의 원장 소켓은 이 루트를 본 화면이 있을 때만 열리므로 읽는 쪽이
+ * 수요를 건다 — 소켓은 그룹 대화와 같은 것을 나눠 쓴다. 측정이 없는 참여자는 `null`이다.
+ */
+export function useParticipantContexts(rootObjectiveId: string | null): ReadonlyMap<string, AgentChatContext | null> {
+  const tick = useSyncExternalStore(subscribe, getRevision, getRevision);
+  useEffect(() => {
+    if (!rootObjectiveId || demanded.has(rootObjectiveId)) return;
+    demanded.add(rootObjectiveId);
+    resync?.();
+  }, [rootObjectiveId]);
+  return useMemo(() => {
+    const contexts = new Map<string, AgentChatContext | null>();
+    if (rootObjectiveId) for (const [id, record] of held) if (record.root === rootObjectiveId) contexts.set(id, record.journal.context);
+    return contexts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick 이 held 의 변화를 알린다.
+  }, [rootObjectiveId, tick]);
 }
 
 export function useConversationPreviews(): Readonly<Record<string, ConversationPreview>> {

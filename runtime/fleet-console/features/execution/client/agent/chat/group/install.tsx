@@ -36,6 +36,7 @@ import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
 import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
+import { registerObjectiveContextRail } from "./context-rail.js";
 
 /**
  * 그룹 대화를 대화 중심 화면에 끼운다 — 가운데 칸 본문 렌더러와 오른쪽 「구성원」 탭.
@@ -55,7 +56,8 @@ export function installGroupConversationSurface(): () => void {
   ensureMembersTab();
   const disposeBody = setConversationBodyRenderer(renderConversationBody);
   const disposeComposer = setConversationStandInComposer((objectiveId, language) => <StandInComposer key={objectiveId} rootId={objectiveId} language={language} />);
-  return () => { disposeComposer(); disposeBody(); };
+  const disposeRail = registerObjectiveContextRail();
+  return () => { disposeRail(); disposeComposer(); disposeBody(); };
 }
 
 /**

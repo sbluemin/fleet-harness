@@ -24,8 +24,8 @@ import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodorePlugins } from "./commodore-plugins.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
-import type { CommodoreLiveEvent, CommodoreRunStatus, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
-import { commodoreLogBlocks, commodoreTurnCovering, errorWord, formatContextTokens, type CommodoreLogTurn } from "./commodore-chat.js";
+import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
@@ -262,7 +262,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
       {failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
-      {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+      {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );
 }
@@ -530,80 +530,6 @@ function rememberSheetDraft(theaterId: string, patch: Partial<SheetDraft>): void
 
 
 /**
- * 전송 왼쪽의 문맥 원호. 채팅과 같은 16px 글리프이고, 내역은 총량과 압축 기준선만 말한다. 기준선은 서버가 보낸 압축 지점이고,
- * 서버도 그 지점을 모르면(호스트가 모르는 Gateway 모델) 기준선과 「압축 기준까지」 없이 사용량만 말한다.
- */
-function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context: NonNullable<CommodoreRunStatus["context"]> }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLSpanElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [open]);
-  const occupied = context.inputTokens;
-  const compactAt = context.compactAt;
-  const limit = compactAt !== undefined && context.window > 0 ? Math.min(1, compactAt / context.window) : 1;
-  const ratio = context.window > 0 ? occupied / context.window : 0;
-  const tone = ratio >= limit * 0.97 ? " is-critical" : ratio >= limit * 0.75 ? " is-warn" : "";
-  const percent = Math.round(ratio * 100);
-  const summary = `${formatContextTokens(occupied)} / ${formatContextTokens(context.window)}`;
-  const radius = 6;
-  const circumference = 2 * Math.PI * radius;
-  const filled = Math.max(0, Math.min(1, ratio)) * circumference;
-  const untilCompact = compactAt !== undefined ? Math.max(0, compactAt - occupied) : null;
-  const free = Math.max(0, context.window - occupied);
-  return (
-    <span className={`objectives-commodore-ctx${tone}`} ref={wrapRef}>
-      <button
-        type="button"
-        className="objectives-commodore-ctx-chip"
-        aria-expanded={open}
-        aria-label={t("commodore.context.aria", { percent, summary })}
-        title={t("commodore.context.title", { summary })}
-        onClick={() => setOpen((was) => !was)}
-      >
-        <svg className="objectives-commodore-ctx-arc" viewBox="0 0 16 16" aria-hidden="true">
-          <circle className="objectives-commodore-ctx-track" cx="8" cy="8" r={radius} />
-          <circle className="objectives-commodore-ctx-fill" cx="8" cy="8" r={radius} strokeDasharray={`${filled.toFixed(2)} ${circumference.toFixed(2)}`} />
-        </svg>
-      </button>
-      {open ? (
-        <div className="objectives-commodore-ctx-pop" role="dialog" aria-label={t("commodore.context.label")}>
-          <div className="objectives-commodore-ctx-head">
-            <span>{t("commodore.context.label")}</span>
-            <span>{summary} · {percent}%</span>
-          </div>
-          <div className="objectives-commodore-ctx-bar">
-            <i style={{ width: `${Math.min(100, ratio * 100)}%` }} />
-            {untilCompact !== null ? <span className="objectives-commodore-ctx-line" style={{ left: `${limit * 100}%` }} /> : null}
-          </div>
-          <ul className="objectives-commodore-ctx-rows">
-            <li><span className="objectives-commodore-ctx-swatch" /><span>{t("commodore.context.used")}</span><span>{formatContextTokens(occupied)}</span><span>{(ratio * 100).toFixed(1)}%</span></li>
-            {untilCompact !== null ? <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("commodore.context.untilCompact")}</span><span>{formatContextTokens(untilCompact)}</span><span>{Math.round(limit * 100)}%</span></li> : null}
-            <li><span className="objectives-commodore-ctx-swatch is-free" /><span>{t("commodore.context.free")}</span><span>{formatContextTokens(free)}</span><span>{((free / context.window) * 100).toFixed(1)}%</span></li>
-          </ul>
-          {untilCompact !== null ? <p className="objectives-commodore-ctx-foot">{t("commodore.context.foot", { percent: Math.round(limit * 100) })}</p> : null}
-        </div>
-      ) : null}
-    </span>
-  );
-}
-
-/**
  * 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다.
  * 메시지와 /clear를 받는다. 서버가 전송을 거절하면 쓰던 초안은 그대로 둔다.
  * 다른 창에서 막 끈 경합은 서버가 거절하고(`commodore_inactive`) 초안은 지우지 않는다.
@@ -750,7 +676,6 @@ interface CommodoreComposerProps {
   readonly t: T;
   readonly theaterId: string;
   readonly active: boolean;
-  readonly context?: CommodoreRunStatus["context"];
   readonly phone?: CommodoreComposerPhone;
   readonly topEntries?: ReactNode;
   readonly placeholder?: string;
@@ -778,7 +703,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel }: CommodoreComposerProps) {
   const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId, attachmentPort, attachmentLimits);
@@ -950,7 +875,6 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
         onKeyUp={clearKey.up}
         onBlur={() => { clearKey.up(); clear.disarm(); }}
       />
-      {context ? <CommodoreContextMeter t={t} context={context} /> : null}
       {/* 폰의 빈 원은 흐리지만 눌린다 — 누르면 입력칸으로 초점만 간다(FD-19). 올리는 중·보내는 중에는 잠긴다. */}
       <ComposerSendButton
         className={armed ? undefined : "is-idle"}
