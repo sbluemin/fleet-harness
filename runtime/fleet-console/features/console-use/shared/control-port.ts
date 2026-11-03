@@ -1,4 +1,4 @@
-import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "./control.js";
+import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "./control.js";
 /**
  * Console Use 와 같은 제어 경로로 Objective 을 시작하거나 그 입력창에 메시지를 넣는 능력. 호출자는 이 플러그인
  * 자신이며(`{ kind: "plugin", pluginId }`), 목표의 `launchedBy`에는 `{ kind: "feature", featureId }`로 남는다. 시트를 거치지
@@ -11,8 +11,6 @@ export interface ConsoleControlHost {
   observe(objectiveId: string): ConsoleObjectiveObservation | null;
   /** 소유한 세션의 종료 snapshot. 다음 턴이 곧 시작해도 polling이 실패를 놓치지 않는다. */
   subscribeTurnEnds?(listener: (event: ConsoleTurnEnd) => void): () => void;
-  /** 소유한 세션 사이에 닿은 세션 간 메시지 — 보낸·받은 Objective 과 시각만(본문 없음). 보낸 쪽이 채팅 세션일 때만 관측된다. */
-  subscribeSessionMessages?(listener: (event: ConsoleSessionMessage) => void): () => void;
   /**
    * 유휴 터미널 Agent Objective을 휴면으로 보낸다. 채팅은 chat_sleep_unsupported, 진행 중이면 not_idle. `dormant` 는 옛 프로세스가 끝난 것까지 확인했다는 뜻이고,
    * `ending` 은 휴면으로 전이했지만 그 종료를 아직 확인하지 못했다는 뜻이다. 어느 쪽이든 곧바로 재개를 보내도 된다 — 호스트는 옛 프로세스가

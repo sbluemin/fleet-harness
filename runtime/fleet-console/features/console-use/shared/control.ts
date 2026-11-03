@@ -107,17 +107,6 @@ export interface ConsoleTurnReport {
   readonly pendingWork: boolean;
 }
 
-/**
- * 세션 간 메시지 한 통이 받는 쪽 Objective 에 닿았다 — 보낸 쪽 채팅 세션의 SendMessage 가 결과까지 성공했고, 받는 이름이 이 Console 의
- * Objective 하나로 풀렸다. 누가 누구에게 언제만 싣고 본문은 싣지 않는다.
- */
-export interface ConsoleSessionMessage {
-  readonly fromObjectiveId: string;
-  readonly toObjectiveId: string;
-  /** 성공을 관측한 시각(ms). */
-  readonly at: number;
-}
-
 /** 다음 턴이 관측을 덮기 전에 전달하는 종료 snapshot. 브라우저 알림 채널이 아니다. */
 export interface ConsoleTurnEnd {
   readonly objectiveId: string;

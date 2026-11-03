@@ -898,7 +898,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
         </span>
       ) : null}
       <div className="group-chat-agent-box">
-        {continued ? null : via && entry.recipient ? (
+        {continued ? null : entry.recipient ? (
           <span className="group-chat-agent-name group-chat-agent-via">
             <SpeakerName speaker={speaker} />
             <span className="group-chat-line-arrow" aria-hidden="true">→</span>

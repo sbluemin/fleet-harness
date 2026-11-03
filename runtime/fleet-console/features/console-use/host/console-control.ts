@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
 import { sanitizeLaunchPrompt } from "@fleet-console/agent-runtime/fleet";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
-import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnEnd } from "../shared/control.js";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "../shared/control.js";
 import { z } from "zod";
 
 const callerSchema = z.discriminatedUnion("kind", [
@@ -115,7 +115,6 @@ interface InFlight {
 export function createConsoleControl(deps: ConsoleControlDeps) {
   const now = deps.now ?? Date.now;
   const turnEndListeners = new Set<{ caller: ConsoleCaller; listener: (event: ConsoleTurnEnd) => void }>();
-  const sessionMessageListeners = new Set<{ caller: ConsoleCaller; listener: (event: ConsoleSessionMessage) => void }>();
   const stamp = () => new Date(now()).toISOString();
   const file = path.join(deps.directory, "state.json");
   let state: SavedState = { version: 3, automations: [] };
@@ -456,22 +455,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 턴 정산을 막지 않는다. */ }
       }
     },
-    /** 세션 간 메시지 도착 — 보낸 쪽과 받는 쪽이 모두 그 플러그인이 띄운 Objective(또는 그 자식)일 때만 건넨다. 본문은 없다. */
-    subscribeSessionMessages(caller: ConsoleCaller, listener: (event: ConsoleSessionMessage) => void) {
-      const entry = { caller, listener };
-      sessionMessageListeners.add(entry);
-      return () => { sessionMessageListeners.delete(entry); };
-    },
-    reportSessionMessage(fromObjectiveId: string, toObjectiveId: string, at: number) {
-      if (disposed) return;
-      const from = node(fromObjectiveId), to = node(toObjectiveId);
-      if (!from || !to) return;
-      const event: ConsoleSessionMessage = { fromObjectiveId, toObjectiveId, at };
-      for (const entry of sessionMessageListeners) {
-        if (!launchedByPlugin(entry.caller, from) || !launchedByPlugin(entry.caller, to)) continue;
-        try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 전달을 막지 않는다. */ }
-      }
-    },
     coordinates, transcript,
     async unstartedPreset(caller: ConsoleCaller, objectiveId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
       const op = node(objectiveId);
@@ -509,7 +492,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       }
       return updateAutomation(id, { status: "active", ...(item.input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + item.input.trigger.minutes * 60_000).toISOString() } : {}) });
     },
-    dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); turnEndListeners.clear(); sessionMessageListeners.clear(); adapter = null; },
+    dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); turnEndListeners.clear(); adapter = null; },
   };
 }
 export type ConsoleControl = ReturnType<typeof createConsoleControl>;

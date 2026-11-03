@@ -62,7 +62,9 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
           : { kind: "human", name: "Human" };
       // 보드 행위에 덧붙인 말은 프롬프트 속 인용 그대로 표시 문면이 된다 — 다시 연 뒤에도 같은 구간이 서도록 인용은 호스트에 두고 여기서 걷는다.
       const text = via ? unquote(event.text) : event.text;
-      const recipient = human?.targetObjectiveId ? objectiveRecordSpeaker(human.targetObjectiveId) : via ? speaker : undefined;
+      // 로스터 발화(message 도구)는 받는 쪽 원장에만 선다. 그 원장의 참여자가 받는 사람이다.
+      const rosterTurn = origin?.kind === "objectiveRecord" && origin.objectiveId !== objectiveId;
+      const recipient = human?.targetObjectiveId ? objectiveRecordSpeaker(human.targetObjectiveId) : via ? speaker : rosterTurn ? speaker : undefined;
       entries.push({ kind: "message", id: human ? `human:${human.id}` : id, at, objectiveId, speaker: by, text,
         ...((event.format || by.kind !== "human") && !via ? { format: "markdown" as const } : {}),
         ...(event.attachments?.length ? { attachments: event.attachments } : {}), streaming: false,
@@ -87,27 +89,6 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       draftId = null;
       break;
     }
-    case "tool": {
-      if (event.name !== "SendMessage" || !event.id) return state;
-      const message = event.toolDetail?.sections.find((section) => section.kind === "message")?.text ?? "";
-      const split = message.indexOf("\n");
-      const hasRecipient = message.startsWith("→ ");
-      const recipient = hasRecipient ? message.slice(2, split < 0 ? undefined : split) : "";
-      entries.push({ kind: "delegation", id: `delegation:${objectiveId}:${event.id}`, at, sender: speaker,
-        recipients: recipient ? [{ kind: "objectiveRecord", name: recipient }] : [], text: hasRecipient ? (split < 0 ? "" : message.slice(split + 1)) : message,
-        result: "", received: false, turn: turnOf() });
-      break;
-    }
-    case "tool-result": {
-      const target = `delegation:${objectiveId}:${event.id}`;
-      const result = event.toolDetail?.sections.filter((section) => section.kind === "result").map((section) => section.text).join("\n") || event.summary;
-      entries = entries.map((entry) => entry.kind === "delegation" && entry.id === target ? { ...entry, result, ok: event.ok,
-        ...(event.recipientObjectiveId ? { recipients: [objectiveRecordSpeaker(event.recipientObjectiveId)] } : {}) } : entry);
-      break;
-    }
-    case "received":
-      entries.push({ kind: "delegation", id: `delegation:${event.id}`, at, sender: { kind: "objectiveRecord", name: event.from, ...(event.senderObjectiveId ? { objectiveId: event.senderObjectiveId } : {}) }, recipients: [speaker], text: event.text, result: "", received: true });
-      break;
     case "turn-start":
       // 지시가 이미 연 턴이면 그 턴이 이어진다. 다른 세션의 말이 깨운 턴은 여기서 열린다.
       if (turn !== null) return state;
@@ -221,24 +202,7 @@ export function composeGroupTimeline(input: {
       if (item.kind === "plugin-notice") {
         const recipient = resolve(item.recipient);
         entries.set(item.id, resolvedEntry(item, [recipient], () => ({ ...item, recipient })));
-        continue;
       }
-      if (item.kind !== "delegation") continue;
-      const senderId = [...speakers.keys()].sort((a, b) => b.length - a.length).find((id) => item.id.startsWith(`delegation:${id}:`));
-      const sender = senderId ? speakers.get(senderId)! : resolve(item.sender);
-      const resolvedRecipients = item.recipients.map(resolve);
-      const next = resolvedEntry(item, [sender, ...resolvedRecipients], () => ({ ...item, sender, recipients: resolvedRecipients })) as Extract<GroupTimelineEntry, { kind: "delegation" }>;
-      const previous = entries.get(item.id);
-      if (previous?.kind !== "delegation") { entries.set(item.id, next); continue; }
-      const received = previous.received || next.received;
-      // 수신 DTO가 있으면 모호한 런치 이름 힌트 대신 서버가 확정한 수신 Objective을 쓴다.
-      const recipients = [...previous.recipients, ...next.recipients].filter((recipient) => !received || recipient.objectiveId);
-      const unique = new Map(recipients.map((recipient) => [recipient.objectiveId ?? recipient.name, recipient]));
-      const turn = previous.turn ?? next.turn;
-      entries.set(item.id, { ...previous, sender, recipients: [...unique.values()], received,
-        text: previous.text || next.text, result: previous.result || next.result, ...(turn ? { turn } : {}),
-        ...(previous.ok !== undefined || next.ok !== undefined ? { ok: previous.ok ?? next.ok } : {}),
-        at: previous.at === null ? next.at : next.at === null ? previous.at : Math.min(previous.at, next.at) });
     }
   }
   // 대기 말은 확정 말 뒤에 얹는다. 같은 사람 발송 id 의 확정 말이 이미 있으면 그 말이 이긴다(중복으로 세우지 않는다).

@@ -1125,7 +1125,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const sameTurn = (a: { readonly generation?: string; readonly revision: number } | undefined, b: { readonly generation?: string; readonly revision: number }) =>
     !!a && a.generation === b.generation && a.revision === b.revision;
   let unsubscribeTurnEnds: (() => void) | null = null;
-  let unsubscribeSessionMessages: (() => void) | null = null;
   const outcomeWatched = new Map<string, string>();
   let outcomeTimer: ReturnType<typeof setTimeout> | null = null;
   const dropOutcome = (sessionId: string) => {
@@ -1133,7 +1132,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     outcomeWatched.delete(sessionId);
     turnSends.delete(sessionId);
     settledAt.delete(sessionId);
-    if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; unsubscribeSessionMessages?.(); unsubscribeSessionMessages = null; }
+    if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; }
   };
   const forgetOutcome = (sessionId: string) => {
     store.settleMemberFailure(sessionId, null);
@@ -2219,7 +2218,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       outcomeWatched.clear();
       lastOutcomes.clear();
       unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null;
-      unsubscribeSessionMessages?.(); unsubscribeSessionMessages = null;
       // 구성원 실패·무보고·정산 좌표는 보드 사실이다 — 플러그인이 내려가도 지우지 않는다(다음 기동이 그대로 이어 읽는다).
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = null;

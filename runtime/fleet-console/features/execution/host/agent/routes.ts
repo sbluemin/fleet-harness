@@ -2285,26 +2285,16 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 프로세스가 만든 것)는 null이고, 그 자리는 바이트 없는 첨부로 선다.
         resolveAttachmentId: (filePath: string) => launchAttachments.idForPath(filePath),
         /**
-         * 보낸 쪽이 관측한 세션 간 메시지를 받는 쪽 원장에 옮긴다. `--name`은 Objective의
-         * sessionName과 정확히 대조하고, uds 주소는 같은 Claude 홈의 live 등록과 실제 provider
-         * 신원을 거쳐 푼다. 0개(이 Console 밖 세션·서브에이전트·main)나 2개 이상이면 해석하지 않는다.
-         * 보낸 이름도 본문 대신 서버 값을 쓰고, 이미 열려 있는 채팅 세션에만 건넨다.
-         * 여기서 `ensure`를 부르면 말 한 통이 잠든 Objective의 자식을 깨우게 된다.
+         * 성공한 SendMessage를 받는 쪽 원장에 옮긴다. `--name`은 Objective의 sessionName과 대조하고,
+         * uds 주소는 같은 Claude 홈의 live 등록으로 푼다. 0개나 2개 이상이면 해석하지 않는다.
+         * 이미 열려 있는 채팅 세션에만 건넨다. `ensure`를 부르면 잠든 Objective의 자식을 깨운다.
          */
-        // 받는 쪽 관측 — 보낸 쪽이 터미널이어도 이 세션의 트랜스크립트가 말한 보낸 이름을 등록으로 풀어 같은 도착 사실을 알린다.
-        onPeerMessageReceived: ({ fromName, at }) => {
-          void resolveRecipient(fromName).then((senderId) => {
-            if (senderId) ctx.consoleControl?.reportSessionMessage(senderId, node.id, at);
-          }).catch(() => {});
-        },
         resolveSessionMessageRecipient: resolveRecipient,
         onSessionMessageSent: ({ recipientObjectiveId, text, toolUseId }) => {
           const sender = ctx.host.objectiveRecords.get(node.id);
           if (!recipientObjectiveId || !sender || !ctx.host.objectiveRecords.get(recipientObjectiveId)) return;
-          // 본문 없이 도착 사실만 Console 제어에 알린다 — 받는 쪽이 터미널·휴면이어도 성공한 발신의 대상 좌표는 확정된다.
-          ctx.consoleControl?.reportSessionMessage(node.id, recipientObjectiveId, Date.now());
           const from = readAgentSession(sender)?.sessionName || sender.title || node.id;
-          // 지휘관에게 --name이 없어도 발신 Objective은 확실하다. 이미 있는 원장에만 전달하고 잠든 세션은 깨우지 않는다.
+          // 이미 있는 원장에만 전달하고 잠든 세션은 깨우지 않는다.
           chatRegistry.get(recipientObjectiveId)?.noteReceived({ id: `${node.id}:${toolUseId}`, from, senderObjectiveId: node.id, text });
         },
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },

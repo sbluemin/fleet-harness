@@ -115,7 +115,6 @@ ts: child.ts};
   const outcomes = new Map<string, "running" | "succeeded" | "completed" | "failed" | "interrupted" | "unknown">();
   const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("../../console-use/shared/control.js").ConsoleTurnReport }>();
   const turnEndListeners = new Set<(event: import("../../console-use/shared/control.js").ConsoleTurnEnd) => void>();
-  const sessionMessageListeners = new Set<(event: import("../../console-use/shared/control.js").ConsoleSessionMessage) => void>();
   // 떠 있는 세션이 init 에서 광고한 도구 — 없으면 호스트가 아직 모른다(null).
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
@@ -245,7 +244,6 @@ title: input.title});
       transcript: async (objectiveId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${objectiveId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
       observe: observeSession,
       subscribeTurnEnds: (listener: (event: import("../../console-use/shared/control.js").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
-      subscribeSessionMessages: (listener: (event: import("../../console-use/shared/control.js").ConsoleSessionMessage) => void) => { sessionMessageListeners.add(listener); return () => { sessionMessageListeners.delete(listener); }; },
       // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
       sleep: async (objectiveId: string) => {
         if (surfaceOf(objectiveId) === "chat") return { ok: false, error: "chat_sleep_unsupported" };
@@ -332,9 +330,7 @@ title: input.title});
   return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, objectiveRecords, archivedObjectiveRecords, archiveCalls, accessCalls, objectiveRecordsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ objectiveId: id, output });
-  }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; },
-    // 호스트처럼 본문 없이 보낸·받은 Objective 과 시각만 건넨다.
-    emitSessionMessage: (fromObjectiveId: string, toObjectiveId: string, at = clock) => { for (const listener of sessionMessageListeners) listener({ fromObjectiveId, toObjectiveId, at }); } };
+  }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; } };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -3002,7 +2998,7 @@ describe("Objectives contract", () => {
 
   it("wakes the commander once when an assigned ready mission stays unreported and never steers", async () => {
     const reportQuietMs = 25 * 60_000;
-    const { store, launch, call, sent, activity, advanceClock, restart, emitSessionMessage } = harness(() => null, { reportQuietMs });
+    const { store, launch, call, sent, activity, advanceClock, restart } = harness(() => null, { reportQuietMs });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
