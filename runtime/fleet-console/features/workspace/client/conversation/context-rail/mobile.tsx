@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { MobileSheet } from "../../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../../core/client/src/chrome/mobile/mobile-back.js";
+import { useViewMode } from "../../../../../core/client/src/integration/view-mode-store.js";
 import { useT } from "../../../../../core/client/src/i18n/index.js";
 import type { ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
 import { ContextArc, ContextCard, RailGlyph, chipLabel, percentOf, ratioOf, toneOf } from "./rail.js";
@@ -49,7 +50,9 @@ export function MobileContextRail({ scope: given }: { readonly scope?: ContextRa
   // 앱 틀의 막대 밖에서 자기 머리를 그리는 화면은 범위를 직접 건넨다.
   const current = given ?? stored;
   const providers = useContextRailProviders();
-  if (current === null) return null;
+  // 모바일 단계를 벗어나면 이 칩과 시트는 물러난다 — 그 폭에서는 데스크톱 레일이 선다(자기 머리를 그리는 화면은 넓은 창에서도 남을 수 있다).
+  const mobile = useViewMode().effective === "mobile";
+  if (current === null || !mobile) return null;
   return <>{providers.map((Provider, index) => (
     <Provider key={index} scope={current}>
       {(sessions) => sessions.length > 0 ? <MobileChip sessions={sessions} /> : null}
