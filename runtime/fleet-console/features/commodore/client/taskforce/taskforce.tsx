@@ -32,6 +32,7 @@ import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-ico
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
+import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { MobileContextRail } from "../../../workspace/client/conversation/context-rail/mobile.js";
 import { taskforceT } from "./i18n.js";
 import { MemberPicker } from "./member-picker.js";
@@ -210,6 +211,13 @@ export function TaskforceHost() {
   const rows = useTaskforces();
   const selection = useConversationSurface();
   const experiment = useTaskforceExperiment();
+  // 모바일 화면이 열려 있는 채로 모바일 단계를 벗어나면 같은 TaskForce 의 데스크톱 대화로 넘어간다 — 그 폭의 레일과 컨텍스트 단추가 서는 자리다.
+  // 데스크톱 대화를 세울 수 없으면(open 이 거절) 모바일 화면이 그대로 남는다.
+  const viewMode = useViewMode().effective;
+  useEffect(() => {
+    if (!mobile || viewMode !== "desktop" || !conversation?.isActive()) return;
+    if (conversation.open(SURFACE, { taskforceId: mobile })) { mobileId = null; emit(); }
+  }, [mobile, viewMode]);
   useEffect(() => {
     if (selection?.surfaceId === SURFACE && wasTaskforceRemoved(idOf(selection.params))) conversation?.close(SURFACE);
     if (mobile && wasTaskforceRemoved(mobile)) { mobileId = null; emit(); }
