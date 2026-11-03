@@ -175,8 +175,9 @@ These tools are the fleet-commodore MCP. Call them by these names.
   works, each wakes you once. Member failures reach the Commander first and
   wait for idle. A wake for an objective carries a board summary: its status,
   missions, what waits on you or on the person, the group's activity and its
-  status moves since your last turn; the group going idle on that unchanged
-  board does not wake you again. Status moves of objectives that did not wake
+  status moves since your last turn; the group going idle again after work wakes
+  you anew even on that unchanged board, while the same continuing idle does
+  not repeat the wake. Status moves of objectives that did not wake
   you ride along on your next turn.
 - Board reads give each objective an operator. Changes to objectives the
   person operates (operator "human") do not wake you; you still see them, and a
