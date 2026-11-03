@@ -1342,8 +1342,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const safeRole = role.replace(/[\r\n\]]/g, " ").replace(/\s+/g, " ").trim() || "member";
     const who = from.kind === "commander" ? "the Commander" : `member ${safeRole} (${from.memberId})`;
     // 받는 이가 자기 턴 글로만 답하고 message 를 부르지 않으면 상대 원장에 보고 줄이 없다. 답장 주소를 첫 줄에 적는다.
-    const replyAddress = from.kind === "commander" ? "commander" : safeRole.replace(/"/g, "");
-    const head = [`[message from ${who} — reply with the fleet-objectives message tool, to: "${replyAddress}"]`, `messageId: ${messageId}`, ...(replyTo ? [`replyTo: ${replyTo}`] : [])].join("\n");
+    // 역할은 겹치거나 safeRole 로 달라지거나 "commander" 일 수 있다. 구성원 답장 주소는 id 만 쓴다.
+    const replyAddress = from.kind === "commander" ? "commander" : from.memberId;
+    const roleNote = from.kind === "member" ? ` (${safeRole.replace(/"/g, "")})` : "";
+    const head = [`[message from ${who} — reply with the fleet-objectives message tool, to: "${replyAddress}"${roleNote}]`, `messageId: ${messageId}`, ...(replyTo ? [`replyTo: ${replyTo}`] : [])].join("\n");
     return notice ? `${head}\n\n${notice}\n\n${body}` : `${head}\n\n${body}`;
   };
   const partyId = (party: ObjectiveMessageParty): string | null => party.kind === "member" ? party.memberId : null;
