@@ -97,11 +97,11 @@
 }
 
 /* 이름·요약은 독 앞에서 끝난다 — ⋯ 글리프가 보이는 동안은 글리프 폭만큼 비우고(말줄임), 독이 열리면 독 밑으로 글자가 비치거나
-   잘려 보이지 않게 이름·요약을 걷는다. 닫힌 평소 상태의 말줄임은 그대로다. */
-.side-bar-theater-header:hover .side-bar-theater-activate,
-.side-bar-theater-header:focus-within .side-bar-theater-activate { padding-right: 34px; }
+   잘려 보이지 않게 이름·요약을 걷는다. 닫힌 평소 상태의 말줄임은 그대로다. 독이 없는 머리(우측 배치의 좌측 행)는 건드리지 않는다. */
+.side-bar-theater-header:has(.commodore-dock):hover .side-bar-theater-activate,
+.side-bar-theater-header:has(.commodore-dock):focus-within .side-bar-theater-activate { padding-right: 34px; }
 @media (hover: none) {
-  .side-bar-theater-header .side-bar-theater-activate { padding-right: 34px; }
+  .side-bar-theater-header:has(.commodore-dock) .side-bar-theater-activate { padding-right: 34px; }
 }
 .side-bar-theater-header .side-bar-theater-text { transition: opacity var(--duration-fast) var(--ease-spring); }
 .side-bar-theater-header:has(.commodore-dock[data-open="true"]) .side-bar-theater-text { opacity: 0; }
