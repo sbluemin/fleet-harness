@@ -18,9 +18,10 @@ import { commodoreSectionLabel, useCommodoreList } from "../../../commodore/clie
 import { useCommodore } from "../../../commodore/client/commodore-state.js";
 import { commodoreMongleState } from "../../../commodore/client/commodore-header.js";
 import { useObjectiveTheater } from "../../../commodore/client/board.js";
+import { isNotStartedRow } from "../conversation/new-session-mention.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
-import { toggleFold, useCommanderFolds } from "./commander-folds.js";
+import { toggleFold, useCommanderFolds, type CommanderFold } from "./commander-folds.js";
 import { CommanderRowGlyphs, TAB_LABEL_KEY, type CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { dismissCommanderPlacementNotice, notifyCommanderPlacementMoved, setCommanderPlacement, useCommanderPlacement, useCommanderPlacementNotice, type CommanderPlacement } from "./commander-placement.js";
@@ -107,6 +108,32 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   const { sorted, listSections, preference, settledEmpty } = useCommanderRows(commodoreId, selectedId);
   const folds = useCommanderFolds();
   const groupsId = useId();
+  const renderItems = (rows: readonly SideBarRowItem[], listId: string, settled: boolean) => rows.map((item) => {
+    const objectiveId = commanderObjectiveId(item.layout.cluster);
+    const selected = objectiveId !== null && selectedId === objectiveId;
+    // 글리프 펼침은 제목 선택과 무관하다 — 펼친 행의 글리프만이 그 행의 펼침을 연다.
+    const openTab = expansion !== undefined && objectiveId !== null && expansion.expanded?.objectiveId === objectiveId ? expansion.expanded.tab : null;
+    const titleId = `${listId}-${item.layout.cluster.id}-title`;
+    const panelId = `${listId}-${item.layout.cluster.id}-panel`;
+    return <Fragment key={item.layout.cluster.id}>
+      <SideBarClusterRow item={item} selected={selected} settled={settled}
+        titleId={titleId} expanded={openTab !== null}
+        rowGlyphs={expansion !== undefined && objectiveId !== null ? (
+          <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={objectiveId} title={item.layout.cluster.title} expandedTab={openTab} panelId={panelId} onGlyphTab={expansion.onGlyphTab} />
+        ) : undefined}
+        onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
+        onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />
+      {openTab !== null && expansion !== undefined ? (
+        <ExpandedCommanderPanel item={item} tab={openTab} panelId={panelId} renderPanel={expansion.renderPanel} />
+      ) : null}
+    </Fragment>;
+  });
+  // 우측 작업 탭 카드만 시작 전·완료를 카드 밖 구역으로 나눈다. 줄 순서는 통합 목록(기한·최근 완료)을 유지하고, 접힘은 fresh/done 키다.
+  const settledRows = listSections.find((group) => group.settled === true)?.rows;
+  const outsideFolds: readonly { id: Extract<CommanderFold, "fresh" | "done">; label: "sidebar.row.glyph.fresh" | "sidebar.row.glyph.done"; count: "commanderTab.settledFresh" | "commanderTab.settledDone"; rows: readonly SideBarRowItem[] }[] = [
+    { id: "fresh", label: "sidebar.row.glyph.fresh", count: "commanderTab.settledFresh", rows: settledRows?.filter((item) => isNotStartedRow(item.row)) ?? [] },
+    { id: "done", label: "sidebar.row.glyph.done", count: "commanderTab.settledDone", rows: settledRows?.filter((item) => item.row.glyph === "done") ?? [] },
+  ];
 
   return (
     <section className={["commander-tab", card ? "commander-tab--card" : ""].filter(Boolean).join(" ")} aria-label={t("commanderTab.aria")}>
@@ -118,7 +145,37 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         </button>
         <CommanderPlacementGlyphs commodoreId={commodoreId} />
       </div>
-      {sorted.length === 0 ? (settledEmpty ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : null) : (
+      {sorted.length === 0 ? (settledEmpty ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : null) : card ? (
+        <>
+          {listSections.some((group) => group.settled !== true) ? (
+            <div className="commander-tab-groups">
+              {listSections.filter((group) => group.settled !== true).map((group) => {
+                const listId = `${groupsId}-${group.id}`;
+                return <section key={group.id}>
+                  {group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
+                  <ol className="commander-tab-list side-bar-group-chips">{renderItems(group.rows, listId, false)}</ol>
+                </section>;
+              })}
+            </div>
+          ) : null}
+          {outsideFolds.map((fold) => {
+            if (fold.rows.length === 0) return null;
+            const collapsed = folds[fold.id];
+            const listId = `${groupsId}-${fold.id}`;
+            return <section key={fold.id} className="commander-tab-outside">
+              <button type="button" className="commander-tab-outside-head" aria-expanded={!collapsed} aria-controls={listId}
+                aria-label={t(collapsed ? "commanderTab.settledExpand" : "commanderTab.settledCollapse", { parts: t(fold.count, { n: fold.rows.length }) })}
+                onClick={() => toggleFold(fold.id)}>
+                <span>{t(fold.label)}</span>
+                <span className="commander-tab-outside-count">{fold.rows.length}</span>
+                <span className="commander-tab-outside-rule" aria-hidden="true" />
+                <ChevronGlyph direction="right" className="commander-tab-outside-chev" />
+              </button>
+              <ol id={listId} className="commander-tab-list side-bar-group-chips" hidden={collapsed}>{renderItems(fold.rows, listId, true)}</ol>
+            </section>;
+          })}
+        </>
+      ) : (
         <div className="commander-tab-groups">
           {listSections.map((group) => {
             // 시작 전·완료 통합 목록은 구분 머리(접기 단추) 아래에 선다. 진행 중 행이 없어도 머리는 선다.
@@ -136,26 +193,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
                 </button>
               : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
             <ol id={group.settled === true ? listId : undefined} className="commander-tab-list side-bar-group-chips" hidden={collapsed}>
-              {group.rows.map((item) => {
-                const objectiveId = commanderObjectiveId(item.layout.cluster);
-                const selected = objectiveId !== null && selectedId === objectiveId;
-                // 글리프 펼침은 제목 선택과 무관하다 — 펼친 행의 글리프만이 그 행의 펼침을 연다.
-                const openTab = expansion !== undefined && objectiveId !== null && expansion.expanded?.objectiveId === objectiveId ? expansion.expanded.tab : null;
-                const titleId = `${listId}-${item.layout.cluster.id}-title`;
-                const panelId = `${listId}-${item.layout.cluster.id}-panel`;
-                return <Fragment key={item.layout.cluster.id}>
-                <SideBarClusterRow item={item} selected={selected} settled={group.settled === true}
-                  titleId={titleId} expanded={openTab !== null}
-                  rowGlyphs={expansion !== undefined && objectiveId !== null ? (
-                    <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={objectiveId} title={item.layout.cluster.title} expandedTab={openTab} panelId={panelId} onGlyphTab={expansion.onGlyphTab} />
-                  ) : undefined}
-                  onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
-                  onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />
-                {openTab !== null && expansion !== undefined ? (
-                  <ExpandedCommanderPanel item={item} tab={openTab} panelId={panelId} renderPanel={expansion.renderPanel} />
-                ) : null}
-                </Fragment>;
-              })}
+              {renderItems(group.rows, listId, group.settled === true)}
             </ol>
           </section>;
           })}
