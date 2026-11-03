@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleObjectiveObservation } from "../../console-use/shared/control.js";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
-import { readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPreset, type ObjectiveGroupedEvent } from "../shared/records/types.js";
+import { messageChannelKnown, readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPreset, type ObjectiveGroupedEvent } from "../shared/records/types.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
@@ -1387,7 +1387,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
     }
     if (attentionBlocks(targetId) || ctx.objectiveRecords.isTransitioning?.(targetId)) return "held";
-    const told = store.channelTold(objectiveId, targetId);
+    // 레코드 표식은 이 빌드의 create/createChild 전부(UI 런처·채팅·터미널·구성원)에 있다. channelTold 는 그 표식이 없는 예전 세션에 안내를 한 번 보낸 뒤의 기록이다.
+    const told = store.channelTold(objectiveId, targetId) || messageChannelKnown(ctx.objectiveRecords.get(targetId));
     const body = message.text;
     const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en"));
     try {
