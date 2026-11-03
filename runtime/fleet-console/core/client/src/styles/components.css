@@ -9061,7 +9061,9 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   padding: 0;
   border: 0;
   background: transparent;
-  font: 600 16px sans-serif;
+  font-weight: var(--weight-medium);
+  font-size: var(--t-lg);
+  font-family: var(--font-ui);
   line-height: 1.2;
 }
 .fc-composer-editor__text:focus { outline: none; }
@@ -9181,7 +9183,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   border-radius: 50%;
   background: var(--glass-tint-panel);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   line-height: 1;
   pointer-events: none;
 }
