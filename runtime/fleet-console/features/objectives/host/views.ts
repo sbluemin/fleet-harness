@@ -87,7 +87,6 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
         return {
           state: store.pending(objective.id) ? "not_started" as const : obs.state,
           ...(obs.outcome ? { outcome: obs.outcome } : {}),
-          session: objective.commander.sessionName,
         };
       })(),
       ...(objective.planning ? { planning: true } : {}),
@@ -140,7 +139,6 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
           ...withoutEmpty({ brief: member.brief, model: member.model, effort: member.effort }),
           by: member.by,
           subagents: member.subagents,
-          session: member.sessionName,
           state: obs ? obs.state : ("missing" as const),
           ...(obs?.outcome ? { outcome: obs.outcome } : {}),
           ...(member.failure ? { failure: member.failure } : {}),
@@ -214,8 +212,8 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
   const sessions = (objective: Objective) => {
     const commander = observe(objective.id);
     return {
-      commander: { ...commander, state: store.pending(objective.id) ? "not_started" : commander.state, session: objective.commander.sessionName, model: objective.commander.model, effort: objective.commander.effort },
-      members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, session: member.sessionName, model: member.model, effort: member.effort, next: member.next,
+      commander: { ...commander, state: store.pending(objective.id) ? "not_started" : commander.state, model: objective.commander.model, effort: objective.commander.effort },
+      members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, model: member.model, effort: member.effort, next: member.next,
         ...(member.failure ? { failure: member.failure } : {}), ...(member.unreported ? { unreported: member.unreported } : {}),
         ...(member.failure || member.unreported ? {
           missions: objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [{ n: index + 1, missionId: mission.id, ...(mission.title ? { title: mission.title } : {}), text: mission.text }] : []),

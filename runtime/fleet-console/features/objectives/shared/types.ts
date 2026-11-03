@@ -272,8 +272,27 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "launchBy
   readonly failure?: ObjectiveMemberFailure;
   /** 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다. */
   readonly unreported?: ObjectiveMemberUnreported;
-  /** 떠 있는 세션이 init 에서 광고한 도구에 보고 도구(SendMessage)가 없다 — 표시만 하고 발주·기동은 막지 않는다. 목록을 모르면 없다. */
+  /** 떠 있는 세션이 init 에서 광고한 도구에 보고 도구(fleet-objectives message)가 없다 — 표시만 하고 발주·기동은 막지 않는다. 목록을 모르면 없다. */
   readonly noReportTool?: true;
+}
+
+/** 지휘관·구성원 메시지 본문 상한. 사령관 연락과 같은 크기이고, 목표 저장이 그 상한을 소유한다. */
+export const MAX_OBJECTIVE_MESSAGE_TEXT = 16_000;
+
+export type ObjectiveMessageDelivery = "steered" | "next_turn" | "woke" | "held";
+
+export type ObjectiveMessageParty = { readonly kind: "commander" } | { readonly kind: "member"; readonly memberId: string };
+
+/** Console이 소유하는 지휘관·구성원 메시지. 채팅 표시·발주·보고 시각의 원천이다. 세션 이름은 주소가 아니다. */
+export interface ObjectiveMessage {
+  readonly messageId: string;
+  readonly at: number;
+  readonly from: ObjectiveMessageParty;
+  readonly to: ObjectiveMessageParty;
+  readonly text: string;
+  readonly replyTo?: string;
+  readonly attachments?: readonly { readonly id: string }[];
+  readonly delivery: ObjectiveMessageDelivery;
 }
 
 /** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */
@@ -633,6 +652,10 @@ export interface StoredObjective {
    */
   readonly edited?: ObjectiveEdits;
   readonly actions?: readonly ObjectiveAction[];
+  /** 지휘관·구성원 메시지 로그. 본문이 원천이고 세션 관측으로 다시 추정하지 않는다. */
+  readonly messages?: readonly ObjectiveMessage[];
+  /** 이 세션들에게는 SendMessage가 없어졌다는 안내를 이미 한 번 실었다. */
+  readonly channelTold?: readonly string[];
   /** 새 명부 변경부터 기록한다. 옛 명부의 합류 시각은 추측하지 않는다. */
   readonly memberHistory?: readonly ObjectiveMemberHistoryEntry[];
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;

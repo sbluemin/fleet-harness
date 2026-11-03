@@ -4,7 +4,7 @@ import { MAX_CONTEXT, missionTitle, ownAnswer, type DecisionAnswer, type Decisio
 
 /**
  * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `fleet-objectives` 도구 설명과 보드를 읽고
- * 스스로 흐름을 잡는다. 담당 세션에는 아무 프롬프트도 가지 않는다 — 지휘관이 SendMessage 로 맥락을 담아 일을 시킨다.
+ * 스스로 흐름을 잡는다. 담당 세션에는 아무 프롬프트도 가지 않는다 — 지휘관이 message 도구로 맥락을 담아 일을 시킨다.
  * 사람이 덧붙인 말이 있으면 그 한 줄 아래 인용으로 붙는다(구상·개시·스티어링 모두 같은 모양). 구상·개시 턴만 말풍선 UI 지침
  * (`OPENUI_GUIDE`)을 인용 앞에 함께 싣는다.
  */
@@ -107,8 +107,8 @@ export function memberFailureTurn(objective: Objective, member: ObjectiveMember,
   const ko = language === "ko";
   const missions = objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [`${index + 1}. ${missionTitle(mission)}`] : []);
   const head = ko
-    ? `목표 ${objective.id} 구성원 「${member.role}」(${member.id}, ${member.sessionName ?? ""})의 직전 턴은 실패로 끝났습니다. 연속 실패 ${failure.consecutiveFailures}회입니다. 같은 턴의 idle 알림이 와도 성공이 아닙니다. 자동 재발주나 재시도는 하지 않았습니다.`
-    : `The last turn of member "${member.role}" (${member.id}, ${member.sessionName ?? ""}) in objective ${objective.id} ended in failure. Consecutive failures: ${failure.consecutiveFailures}. An idle notice for the same turn does not mean success. No automatic reissue or retry was performed.`;
+    ? `목표 ${objective.id} 구성원 「${member.role}」(${member.id})의 직전 턴은 실패로 끝났습니다. 연속 실패 ${failure.consecutiveFailures}회입니다. 같은 턴의 idle 알림이 와도 성공이 아닙니다. 자동 재발주나 재시도는 하지 않았습니다.`
+    : `The last turn of member "${member.role}" (${member.id}) in objective ${objective.id} ended in failure. Consecutive failures: ${failure.consecutiveFailures}. An idle notice for the same turn does not mean success. No automatic reissue or retry was performed.`;
   const fields = ["error", "error_details", "last_assistant_message"] as const;
   const raw = fields.flatMap((field) => typeof failure[field] === "string" ? [`--- ${field} ---\n${failure[field]}`] : []).join("\n");
   // 사유는 무보고 통지와 같은 한 줄 모양이다 — 판정한 사유가 있을 때만 선다.
@@ -125,8 +125,8 @@ export function memberUnreportedTurn(objective: Objective, member: ObjectiveMemb
   const ko = language === "ko";
   const missions = objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [`${index + 1}. ${missionTitle(mission)}`] : []);
   const head = ko
-    ? `목표 ${objective.id} 구성원 「${member.role}」(${member.id}, ${member.sessionName ?? ""})의 직전 턴은 실패 없이 닫혔지만, 그 턴에서 전달된 메시지가 없습니다. 배정 임무를 끝내지 못하고 멈췄을 수 있습니다. 자동 재발주·재시도·모델 교체는 하지 않았습니다.`
-    : `The last turn of member "${member.role}" (${member.id}, ${member.sessionName ?? ""}) in objective ${objective.id} closed without failure, but no message from that turn was delivered. It may have stopped before finishing its assigned missions. No automatic reissue, retry, or model switch was performed.`;
+    ? `목표 ${objective.id} 구성원 「${member.role}」(${member.id})의 직전 턴은 실패 없이 닫혔지만, 그 턴에서 전달된 메시지가 없습니다. 배정 임무를 끝내지 못하고 멈췄을 수 있습니다. 자동 재발주·재시도·모델 교체는 하지 않았습니다.`
+    : `The last turn of member "${member.role}" (${member.id}) in objective ${objective.id} closed without failure, but no message from that turn was delivered. It may have stopped before finishing its assigned missions. No automatic reissue, retry, or model switch was performed.`;
   const reason = unreported.reason
     ? `\n${ko ? "사유" : "Reason"}: ${unreported.reason.code}${unreported.reason.detail !== undefined ? `\n<reason-data>\n${unreported.reason.detail}\n</reason-data>` : ""}`
     : "";

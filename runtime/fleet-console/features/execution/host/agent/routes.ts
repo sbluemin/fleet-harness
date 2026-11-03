@@ -690,7 +690,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         if (input.liveOnly && ctx.consoleControl?.observe(objectiveId)?.lifecycle !== "live") throw new ConsoleControlError("session_not_live");
       };
       assertDeliveryCurrent();
-      const origin = chatOrigin(caller);
+      const origin = input.rosterSpeaker
+        ? { kind: "objectiveRecord" as const, objectiveId: input.rosterSpeaker.objectiveId, title: input.rosterSpeaker.title }
+        : chatOrigin(caller);
       const authored = origin?.kind === "plugin" && input.humanInput ? { ...origin, humanInput: input.humanInput } : origin;
       await deliverMessage(objectiveId, input.text!, input.attachmentIds ?? [], reply, assertDeliveryCurrent, settled, authored, input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
@@ -1285,6 +1287,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
           ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
           ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
+          ...(launchOptions.parentObjectiveId || ctx.isCommanderSession?.(sessionId) ? { objectiveMessaging: true as const } : {}),
         });
         // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
         // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
@@ -1459,6 +1462,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
         ...(blockSubagents ? { disableSubagents: true } : {}),
         ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
+        ...(node.parentObjectiveId || ctx.isCommanderSession?.(sessionId) ? { objectiveMessaging: true as const } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.id }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
@@ -2316,6 +2320,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
           ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
+          ...(node.parentObjectiveId || ctx.isCommanderSession?.(node.id) ? { objectiveMessaging: true as const } : {}),
           ...(node.commodoreId && deps.commodorePluginDirs ? { pluginDirs: deps.commodorePluginDirs(node.commodoreId) } : {}),
           ...(node.commodoreId && deps.commodorePluginEnv ? { pluginEnv: deps.commodorePluginEnv(node.commodoreId) } : {}),
           origin: sessionOrigin.kind === "resume"

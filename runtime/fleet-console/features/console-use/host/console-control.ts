@@ -26,6 +26,7 @@ const actionObjectSchema = z.object({
   // send 전용 — 사람이 올린 첨부 id(실행 기능의 런치 첨부). 입력창 상한(4)보다 넉넉한 입력 경계만 둔다; 해석·소유 검사는 전달이 한다.
   attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(16).optional(),
   display: z.string().max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
+  rosterSpeaker: z.object({ objectiveId: z.string().min(1).max(128), title: z.string().trim().min(1).max(80) }).strict().optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
   disableSubagents: z.boolean().optional(), disableAutoMemory: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
@@ -37,7 +38,7 @@ export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.objectiveId : !value.objectiveId || value.theaterId || (value.kind === "send" && value.text === undefined)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
   if (value.kind !== "launch" && (value.commodoreId || value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentObjectiveId !== undefined || value.childSessionId !== undefined || value.newObjectiveId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
-  if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
+  if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined || value.rosterSpeaker !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
   if ((value.parentObjectiveId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.childSessionId && (value.newObjectiveId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });

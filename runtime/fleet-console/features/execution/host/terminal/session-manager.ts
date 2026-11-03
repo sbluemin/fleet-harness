@@ -353,6 +353,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(context.sessionName ? { sessionName: context.sessionName } : {}),
       ...(context.disableSubagents ? { disableSubagents: true } : {}),
       ...(context.disableAutoMemory ? { disableAutoMemory: true } : {}),
+      ...(context.objectiveMessaging ? { objectiveMessaging: true } : {}),
       ...(context.colorScheme ? { colorScheme: context.colorScheme } : {}),
     });
     if (guard.cancelled) {

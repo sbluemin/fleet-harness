@@ -44,6 +44,11 @@ export interface ConsoleActionInput {
   readonly display?: string;
   /** `display` 의 형식. markdown 이면 말풍선이 마크다운으로 그린다. 기본은 평문. */
   readonly displayFormat?: "markdown" | "text";
+  /**
+   * send 전용 — 채팅 원장에 세울 발화자. 소켓 세션 이름이 아니라 로스터 역할이다.
+   * 플러그인 호출자만 싣는다. 없으면 호출자 자신이 출처다.
+   */
+  readonly rosterSpeaker?: { readonly objectiveId: string; readonly title: string };
   /** launch 전용 — 태어날 때부터 속할 그룹과 이름. 같은 Theater 의 그룹이어야 한다. */
   readonly groupId?: string;
   readonly title?: string;
