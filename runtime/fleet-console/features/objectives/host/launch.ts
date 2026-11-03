@@ -396,6 +396,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       ...(input.newObjectiveId ? { newObjectiveId: input.newObjectiveId } : {}),
     });
     touchLive(result.objectiveId);
+    // 이 빌드가 세운 세션은 message 도구를 이미 안다. 이주 문장은 예전 빌드가 띄운 세션에만 한 번 붙인다.
+    store.markChannelTold(input.objectiveId, result.objectiveId);
     return result.objectiveId;
   };
 
@@ -1332,6 +1334,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const channelNotice = (language: PromptLanguage): string => language === "ko"
     ? "이 목표에서 SendMessage와 ListAgents는 없다. fleet-objectives의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다."
     : "SendMessage and ListAgents are no longer available in this objective. The fleet-objectives message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.";
+  /**
+   * 모델이 읽는 문면. 화면 말풍선(`display`)은 본문만 남긴다.
+   * 첫 줄은 자동 작명이 이 프롬프트를 제목으로 삼지 않게 하는 표식이기도 하다(`auto-name.ts`).
+   */
+  const relayModelText = (from: ObjectiveMessageParty, role: string, messageId: string, replyTo: string | undefined, body: string, notice: string | null): string => {
+    const safeRole = role.replace(/[\r\n\]]/g, " ").replace(/\s+/g, " ").trim() || "member";
+    const who = from.kind === "commander" ? "the Commander" : `member ${safeRole} (${from.memberId})`;
+    const head = [`[message from ${who}]`, `messageId: ${messageId}`, ...(replyTo ? [`replyTo: ${replyTo}`] : [])].join("\n");
+    return notice ? `${head}\n\n${notice}\n\n${body}` : `${head}\n\n${body}`;
+  };
   const partyId = (party: ObjectiveMessageParty): string | null => party.kind === "member" ? party.memberId : null;
   const sameParty = (a: ObjectiveMessageParty, b: ObjectiveMessageParty): boolean => a.kind === b.kind && partyId(a) === partyId(b);
   /** 권한·입력 대기 중에는 PTY Enter가 선택지를 확정하므로 넣지 않는다. */
@@ -1347,7 +1359,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 받는 세션에 한 통을 넣는다. 기록이 이미 있을 때 부른다. 못 넣으면 held.
    * 잠든 터미널은 재개하고, 아직 없는 구성원은 muster로 세운 뒤 넣는다.
    */
-  const pushToSession = async (objectiveId: string, targetId: string, memberId: string | null, body: string, display: string, speaker: { readonly objectiveId: string; readonly title: string }, attachmentIds?: readonly string[]): Promise<ObjectiveMessageDelivery> => {
+  const pushToSession = async (objectiveId: string, targetId: string, memberId: string | null, message: { readonly messageId: string; readonly text: string; readonly replyTo?: string; readonly from: ObjectiveMessageParty }, speaker: { readonly objectiveId: string; readonly title: string }, attachmentIds?: readonly string[]): Promise<ObjectiveMessageDelivery> => {
     if (ctx.objectiveRecords.isTransitioning?.(targetId) || attentionBlocks(targetId)) return "held";
     const observation = ctx.consoleControl?.observe(targetId);
     const node = referenceNode(targetId);
@@ -1376,10 +1388,11 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     if (attentionBlocks(targetId) || ctx.objectiveRecords.isTransitioning?.(targetId)) return "held";
     const told = store.channelTold(objectiveId, targetId);
-    const text = told ? body : `${channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en")}\n\n${body}`;
+    const body = message.text;
+    const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en"));
     try {
       await control().request({
-        kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : text, display, displayFormat: "markdown",
+        kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : text, display: body, displayFormat: "markdown",
         rosterSpeaker: speaker, ...(attachmentIds?.length ? { attachmentIds } : {}),
       });
     } catch (error) {
@@ -1402,7 +1415,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (target !== sessionId) continue;
       const speakerId = from.kind === "commander" ? owner.id : from.memberId;
       const role = from.kind === "commander" ? "Commander" : owner.members.find((member) => member.id === speakerId)?.role ?? "member";
-      const delivery = await pushToSession(owner.id, target, to.kind === "member" ? to.memberId : null, message.text, message.text, { objectiveId: speakerId, title: role }, message.attachments?.map((attachment) => attachment.id));
+      const delivery = await pushToSession(owner.id, target, to.kind === "member" ? to.memberId : null, message, { objectiveId: speakerId, title: role }, message.attachments?.map((attachment) => attachment.id));
       if (delivery !== "held") store.setMessageDelivery(owner.id, message.messageId, delivery);
     }
   };
@@ -2079,7 +2092,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (from.kind === "member") store.setMemberDelivered(from.memberId, at);
         let delivery: ObjectiveMessageDelivery = "held";
         try {
-          delivery = await pushToSession(current.id, targetId, target.kind === "member" ? target.memberId : null, text, text, speaker, attachmentIds);
+          delivery = await pushToSession(current.id, targetId, target.kind === "member" ? target.memberId : null, { messageId, text, ...(options?.replyTo ? { replyTo: options.replyTo } : {}), from }, speaker, attachmentIds);
         } catch (error) {
           if (!holdableDelivery(error)) throw error;
         }
