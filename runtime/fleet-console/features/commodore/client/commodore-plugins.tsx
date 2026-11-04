@@ -1015,8 +1015,8 @@ function PluginScopeRows({ t, commodoreId, phone = false, onOpenGlobal }: { read
       buttons[(next + buttons.length) % buttons.length]?.focus();
     }
   };
-  const menuNode = menu && selected ? createPortal(<div className={phone ? "commodore-routines-scrim" : "commodore-routines-menu-host"}>
-    <div ref={menuRef} tabIndex={-1} data-plugin-id={selected.pluginId} className={`commodore-routines-menu${phone ? " is-sheet" : ""}`} role={phone || selectedTrust ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.title} onKeyDown={onMenuKey}>
+  const menuNode = menu && selected ? createPortal(<div className={phone ? "commodore-routines-scrim is-plugin-palette" : "commodore-routines-menu-host"}>
+    <div ref={menuRef} tabIndex={-1} data-plugin-id={selected.pluginId} className={`commodore-routines-menu is-plugin-palette${phone ? " is-sheet" : ""}`} role={phone || selectedTrust ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.title} onKeyDown={onMenuKey}>
       <div className="commodore-routines-menu-head">
         <div className="commodore-routines-menu-title">{selected.title}</div>
         <div className="commodore-routines-menu-meta is-mono">{[menuVersion(t, selected.entry?.version), `@${selected.marketplace}`].filter(Boolean).join(" · ")}{selected.entry?.latestVersion ? ` → ${isCommitVersion(selected.entry.latestVersion) ? menuVersion(t, selected.entry.latestVersion) : selected.entry.latestVersion}` : ""}</div>

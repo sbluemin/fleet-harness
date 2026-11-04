@@ -916,6 +916,9 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 /* 팔레트 — 사령관 설정이 Inbox 시트(스크림 90)나 오른쪽 패널에서 열리므로 덮개 층 위에 선다.
    높이는 스크림 padding(위 10vh·아래 16px)을 뺀 뷰포트 안에 둔다. */
 .commodore-palette-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 4); display: grid; place-items: start center; padding: 10vh 16px 16px; background: var(--dialog-scrim); }
+/* 팔레트 행 메뉴만 덮개(+4) 위, 툴팁(+6) 아래. 루틴 메뉴의 기본 층(+3)은 그대로다. */
+.commodore-routines-scrim.is-plugin-palette,
+.commodore-routines-menu.is-plugin-palette { z-index: calc(var(--z-overlay) + 5); }
 .commodore-palette { display: flex; flex-direction: column; width: min(1040px, 100%); min-width: 0; height: min(760px, calc(90vh - 16px)); border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); overflow: hidden; }
 :root[data-view-mode="desktop"]:not([data-theme="light"]) .commodore-palette { --dialog-face: var(--canvas-abyss); }
 /* 다이얼로그 자체는 Esc 를 받으려고 포커스만 받는다 — 조작 대상이 아니라 링을 그리지 않는다. */
