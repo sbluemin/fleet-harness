@@ -2,11 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 
 import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { toolShellKey } from "../../../execution/shared/shell-key.js";
-import { getShellSessionSnapshot, readShellSession } from "../../../execution/client/terminal/shell/shell-session-store.js";
 import type { CommodoreToolId } from "../../shared/commodore-tool-theater.js";
 import { useCommodoreToolTheater } from "./store.js";
-import { useCommodoreShellStatus } from "./shell-status.js";
 import "./theater-tools.css";
 
 /**
@@ -14,8 +11,7 @@ import "./theater-tools.css";
  * 빗금은 tertiary, Theater 이름은 제목 크기의 secondary, 셰브론은 옅게 서서
  * 올려놓거나 펼치면 또렷해진다. 쉴 때는 테두리도 채움도 없다.
  *
- * 메뉴는 고르기만 한다(추가·해제는 설정의 Theater 구역이 맡는다). 초록 점은
- * 그 Theater에 살아 있는 Shell이 있다는 표시다(미션 8이 살린다).
+ * 메뉴는 고르기만 한다(추가·해제는 설정의 Theater 구역이 맡는다).
  */
 export function CommodoreToolHead({ icon, title, commodoreId, tool }: {
   readonly icon?: ReactNode;
@@ -85,16 +81,6 @@ export function CommodoreToolHead({ icon, title, commodoreId, tool }: {
     () => (state.active && state.resolution !== null ? state.theaters.filter((theater) => !theater.missing) : []),
     [state],
   );
-  // 메뉴를 열 때 아직 모르는 Theater의 호스트 상태를 읽어 둔다 — 마운트하지 않은 채 살아 있는
-  // Shell의 초록 점이 새로고침 뒤에도 서게. 아는 값은 SSE가 갱신하므로 다시 묻지 않는다.
-  useEffect(() => {
-    if (!menuOpen) return;
-    for (const theater of availableTheaters) {
-      const key = toolShellKey(commodoreId, theater.theaterId);
-      if (key !== null && getShellSessionSnapshot(key) === null) void readShellSession(key);
-    }
-  }, [menuOpen, commodoreId, availableTheaters]);
-
   if (!state.active || state.resolution === null || state.resolution.kind === "none") {
     return (
       <span className="ctt-head">
@@ -134,8 +120,6 @@ export function CommodoreToolHead({ icon, title, commodoreId, tool }: {
             {choices.map((theater) => (
               <TheaterMenuRow
                 key={theater.theaterId}
-                commodoreId={commodoreId}
-                theaterId={theater.theaterId}
                 label={theater.label}
                 checked={checkedTheaterId === theater.theaterId}
                 onSelect={() => {
@@ -151,15 +135,11 @@ export function CommodoreToolHead({ icon, title, commodoreId, tool }: {
   );
 }
 
-function TheaterMenuRow({ commodoreId, theaterId, label, checked, onSelect }: {
-  readonly commodoreId: string;
-  readonly theaterId: string;
+function TheaterMenuRow({ label, checked, onSelect }: {
   readonly label: string;
   readonly checked: boolean;
   readonly onSelect: () => void;
 }): ReactNode {
-  const t = useT();
-  const status = useCommodoreShellStatus(commodoreId, theaterId);
   const ref = useRef<HTMLButtonElement | null>(null);
   const onKeyDown = (event: React.KeyboardEvent) => {
     const row = event.currentTarget.closest(".ctt-menu");
@@ -185,11 +165,6 @@ function TheaterMenuRow({ commodoreId, theaterId, label, checked, onSelect }: {
       onClick={onSelect}
       onKeyDown={onKeyDown}
     >
-      {status.live ? (
-        <span className="ctt-live-dot" title={t("theaterTools.liveShell")} aria-hidden="true" />
-      ) : (
-        <span className="ctt-live-dot is-off" aria-hidden="true" />
-      )}
       <span className="ctt-menu-label">{label}</span>
       {checked ? (
         <svg className="ctt-check" viewBox="0 0 12 10" aria-hidden="true">

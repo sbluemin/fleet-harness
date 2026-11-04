@@ -8,9 +8,8 @@ const stored: WorkbenchLayout = {
   ...EMPTY_WORKBENCH_LAYOUT,
   columns: [{ tiles: [
     { id: "objectives", kind: "entry", entryId: "objectives" },
-    { id: "shell", kind: "surface", surfaceId: "shell", params: { tab: "saved" } },
     { id: "repository", kind: "surface", surfaceId: "repository", params: {} },
-  ], weights: [2, 1, 3] }],
+  ], weights: [1, 3] }],
   columnWeights: [1],
   splitRatio: 0.6,
 };
@@ -52,9 +51,9 @@ it("applies startup edits to the saved workbench before persisting, including a 
   workbench.loadWorkbenchLayouts();
   workbench.openWorkbenchEntry("commodore");
   workbench.setWorkbenchSplitRatio(0.7);
-  const shell = workbench.openWorkbenchSurface({ surfaceId: "shell", params: { tab: "linked" } });
-  workbench.replaceWorkbenchTileParams(shell, { tab: "updated" });
-  const closed = workbench.openWorkbenchSurface({ surfaceId: "shell", mode: "split" });
+  const surface = workbench.openWorkbenchSurface({ surfaceId: "repository", params: { tab: "linked" } });
+  workbench.replaceWorkbenchTileParams(surface, { tab: "updated" });
+  const closed = workbench.openWorkbenchSurface({ surfaceId: "repository", mode: "split" });
   workbench.closeWorkbenchTile(closed, { confirmed: true });
   workbench.setWorkbenchConversation("another-owner");
   workbench.openWorkbenchBrowser();
@@ -70,10 +69,9 @@ it("applies startup edits to the saved workbench before persisting, including a 
   expect(workbenchTiles(layout)).toEqual([
     stored.columns[0]!.tiles[0],
     { ...stored.columns[0]!.tiles[1], params: { tab: "updated" } },
-    stored.columns[0]!.tiles[2],
     expect.objectContaining({ kind: "entry", entryId: "commodore" }),
   ]);
-  expect(layout.columns[0]!.weights).toEqual([2, 1, 3]);
+  expect(layout.columns[0]!.weights).toEqual([1, 3, 2]);
   expect(layout.splitRatio).toBe(0.7);
   workbench.flushWorkbenchSaves();
   expect(api.writes.find((write) => write.key === key)?.layout).toEqual(layout);

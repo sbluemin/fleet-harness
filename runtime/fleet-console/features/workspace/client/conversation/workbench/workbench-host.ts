@@ -8,7 +8,6 @@ import {
 } from "../../../../../core/client/src/chrome/expanded-surface/store.js";
 import { adoptRailToolPanel, bindRailToolHost, type RailToolHost } from "../../../../../core/client/src/chrome/rail/rail-store.js";
 import { closePane, getPaneStoreSnapshot, openPane } from "../../../../../core/client/src/chrome/pane/pane-store.js";
-import { setActiveShellKey } from "../../../../execution/client/terminal/shell/shell-session-store.js";
 import {
   bindWorkbenchSurfaceCloseNotifier,
   closeAllWorkbenchSurfaces,
@@ -36,7 +35,7 @@ import {
 /**
  * 대화 칸이 서 있는 동안 작업대를 Console 의 두 입구에 묶는다.
  *
- * - 확대 표면(`surfaces.open` 등 공개 능력, 팔레트, 저장소·Shell 아이콘): 가운데 덮개 대신 지금 대화의 도구 칸으로 선다.
+ * - 확대 표면(`surfaces.open` 등 공개 능력, 팔레트, 저장소 아이콘): 가운데 덮개 대신 지금 대화의 도구 칸으로 선다.
  * - 레일 도구(`rail.open`·단축키·팔레트의 「패널 열기」·파일 착지): 오른쪽 사이드바 슬롯 대신 도구 칸으로 선다. 오른쪽 사이드바의 탭
  *   (대상의 탭·목표·설정)은 도구 목록에 없으므로 그대로 슬롯의 것이다.
  *
@@ -47,7 +46,7 @@ const SURFACE_HOST: ExpandedSurfaceHost = {
   isShown: isWorkbenchSurfaceShown,
   subscribe: subscribeWorkbench,
   open: openWorkbenchSurface,
-  // 표면이 스스로 부르는 닫기(`ctx.close()`·셸 종료)는 묻지 않는다. 사람이 닫는 길은 칸의 단추·도구 아이콘이다.
+  // 표면이 스스로 부르는 닫기는 묻지 않는다. 사람이 닫는 길은 칸의 단추·도구 아이콘이다.
   close: (instanceId) => closeWorkbenchTile(instanceId, { confirmed: true }),
   closeOf: closeWorkbenchSurfacesOf,
   closeAll: closeAllWorkbenchSurfaces,
@@ -65,7 +64,7 @@ const TOOL_HOST: RailToolHost = {
 };
 
 /**
- * 사령관마다 열어 둔 문서(파일 문서 칸의 페인 인스턴스) — 같은 사령관의 목표·구성원 화면은 같은 키를 쓴다.
+ * 사령관마다 열어 둔 페인 인스턴스 — 같은 사령관의 목표·구성원 화면은 같은 키를 쓴다.
  * 키를 떠날 때 보이던 페인을 적어 두고 돌아올 때 다시 세운다. 떠나는 칸의 정리(레일 표면의 departing sweep)가 끝난 뒤에 세운다.
  * 화면 수명 동안만 기억한다.
  */
@@ -82,7 +81,6 @@ export function useConversationWorkbenchHost(conversationKey: string | null, too
       // 않는다(플러그인이 그 대화의 문서를 잊으면 돌아왔을 때 되살릴 수 없다). 도착하는 대화에는 아래에서 그 대화의 세트만 다시 세운다.
       for (const pane of visible) closePane(pane.paneId, { keepAlive: true });
     }
-    setActiveShellKey(conversationKey);
     setWorkbenchConversation(conversationKey);
   }, [conversationKey]);
   useEffect(() => {

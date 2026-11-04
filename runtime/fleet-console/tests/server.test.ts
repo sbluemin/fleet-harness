@@ -1159,16 +1159,37 @@ describe("console static and terminal ticket boundary", () => {
   it("stops and releases the runtime lock while a page still holds a terminal WebSocket", async () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-shell-"));
     tempDirs.push(cwd);
+    const realpath = fs.realpathSync.native(cwd);
+    const theaterId = workspaceHash(realpath);
     let killed = 0;
     const fixture = await startFixture({
       terminalLaunch: createMockLaunch,
       terminalStartShell: () => ({ ...createMockPty(), kill: () => { killed += 1; } }),
+      beforeCreateServer: ({ fleetDataDir }) => {
+        seedDurableObjectives(fleetDataDir, {
+          id: theaterId,
+          path: cwd,
+          realpath,
+          label: path.basename(cwd),
+          registeredAt: "2026-06-16T00:00:00.000Z",
+          lastOpenedAt: "2026-06-16T00:00:01.000Z",
+        }, [{
+          id: "session-a",
+          theaterId,
+          title: "Lock fixture",
+          cwd,
+          ts: { createdAt: 1_000, updatedAt: 1_000 },
+        }]);
+      },
     });
-    const theater = await createTheater(fixture, cwd);
-    const ticketResponse = await fetch(`${fixture.endpoint}api/v1/shell/ticket`, {
+    const resumeResponse = await fetch(`${fixture.endpoint}api/v1/agent/sessions/session-a/resume`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+    });
+    expect(resumeResponse.status).toBe(200);
+    const ticketResponse = await fetch(`${fixture.endpoint}api/v1/agent/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd: { commodoreId: theater.commodoreId, theaterId: theater.id } }),
+      body: JSON.stringify({ objectiveId: "session-a" }),
     });
     expect(ticketResponse.status).toBe(200);
     const { ticket } = await ticketResponse.json() as { readonly ticket: string };

@@ -375,11 +375,10 @@ export const pagesEn = {
 
   // shortcuts
   "shortcuts.group.console": "Console",
-  "shortcuts.console.searchOps": "Go to an Objective, file, or document",
+  "shortcuts.console.searchOps": "Go to an Objective",
   "shortcuts.console.commandPalette": "Open Command Palette",
   "shortcuts.console.newSession": "New Objective",
   "shortcuts.console.newTaskforce": "New TaskForce",
-  "shortcuts.console.toggleGlobalShell": "Toggle Shell",
   "shortcuts.console.toggleRepository": "Toggle Repository",
   "shortcuts.console.toggleObjectives": "Toggle Objectives",
   "shortcuts.group.objectiveRecords": "Objectives",
@@ -416,9 +415,6 @@ export const pagesEn = {
   "activity.idle": "Idle",
   // 확인하지 않은 완료는 이 마크를 단다. 확인 여부로만 말한다.
   "activity.unseen": "Finished, unacknowledged",
-
-  // Objective 종류 마크 — Shell은 활동 축을 발행하지 않으므로 그 자리를 종류가 채운다.
-  "objectiveRecord.kind.shell": "Shell",
 
 
 
@@ -566,8 +562,6 @@ export const pagesEn = {
   "mobile.create.commodore": "New commodore",
   "mobile.commodore.settings": "Settings",
   "mobile.create.conversationSub": "Start with an agent in this Theater",
-  "mobile.create.terminal": "New terminal",
-  "mobile.create.terminalSub": "Shell",
   "mobile.search.kindAria": "Result kind",
   "mobile.search.kind.all": "All",
   "mobile.search.kind.conversation": "Conversations",
@@ -576,7 +570,6 @@ export const pagesEn = {
   "mobile.search.label.conversation": "Conversation",
 
   "mobile.tools.wiki": "Wiki",
-  "mobile.tools.shell": "Shell",
   "mobile.tools.back": "Back",
   "mobile.tools.close": "Close tool",
   "mobile.objectiveRecords.empty": "Open a new objective to start working here.",
@@ -961,11 +954,10 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "palette.openCommissioning": "설정 가이드 보기",
 
   "shortcuts.group.console": "Console",
-  "shortcuts.console.searchOps": "목표·파일·문서로 이동",
+  "shortcuts.console.searchOps": "목표로 이동",
   "shortcuts.console.commandPalette": "커맨드 팔레트 열기",
   "shortcuts.console.newSession": "새 목표",
   "shortcuts.console.newTaskforce": "새 태스크포스",
-  "shortcuts.console.toggleGlobalShell": "Shell 열기/닫기",
   "shortcuts.console.toggleRepository": "Repository 열기/닫기",
   "shortcuts.console.toggleObjectives": "목표 열기/닫기",
   "shortcuts.group.objectiveRecords": "Objectives",
@@ -1000,8 +992,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "activity.ended": "종료됨",
   "activity.idle": "유휴",
   "activity.unseen": "종료됨 — 확인 전",
-
-  "objectiveRecord.kind.shell": "Shell",
 
   "mobile.toast.renamed": "이름을 바꿨어요",
   "mobile.sheet.folder.title": "Theater 추가",
@@ -1146,8 +1136,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.create.commodore": "새 사령관",
   "mobile.commodore.settings": "설정",
   "mobile.create.conversationSub": "이 Theater에서 에이전트와 시작",
-  "mobile.create.terminal": "새 터미널",
-  "mobile.create.terminalSub": "Shell",
   "mobile.search.kindAria": "결과 종류",
   "mobile.search.kind.all": "전체",
   "mobile.search.kind.conversation": "대화",
@@ -1156,7 +1144,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.search.label.conversation": "대화",
 
   "mobile.tools.wiki": "위키",
-  "mobile.tools.shell": "Shell",
   "mobile.tools.back": "뒤로",
   "mobile.tools.close": "도구 닫기",
   "mobile.objectiveRecords.empty": "새 목표를 열면 여기서 작업을 시작할 수 있어요.",

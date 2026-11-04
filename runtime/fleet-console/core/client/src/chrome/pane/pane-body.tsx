@@ -140,7 +140,6 @@ export function usePaneContext({
     preferences,
     panes,
     navigate: opening.navigate,
-    shell: opening.shell,
     rail: opening.rail,
     consoleState: opening.consoleState,
     notifications: opening.notifications,

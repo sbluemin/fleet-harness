@@ -12,7 +12,6 @@ import { registerExperimentRoutes } from "../../../features/execution/host/agent
 import { registerAgentRoutes } from "../../../features/execution/host/agent/routes.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
-import { registerShellRoutes } from "../../../features/execution/host/terminal/shell.js";
 import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/claude-trust.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 import type { CommodoreSystemPromptService } from "../../../features/settings/host/agent-options.js";
@@ -20,7 +19,7 @@ import type { CommodoreSystemPromptService } from "../../../features/settings/ho
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
 
-export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost, commodoreSystemPrompts: CommodoreSystemPromptService, admission: { readonly canUseShellKey: (key: string) => boolean }, commodorePluginDirs?: (commodoreId: string) => readonly string[], commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>) {
+export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost, commodoreSystemPrompts: CommodoreSystemPromptService, commodorePluginDirs?: (commodoreId: string) => readonly string[], commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir);
   // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
@@ -68,7 +67,6 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
    */
   const unsubscribeControl = ctx.host.events.subscribe(CONTROL_HOLDER_EVENT_CHANNEL, () => { runtime.renegotiateSockets(); });
   ctx.host.lifecycle.registerCleanup(unsubscribeControl);
-  const shells = registerShellRoutes(ctx, runtime, { canUseKey: admission.canUseShellKey });
   registerExperimentRoutes(ctx);
   const agent = await registerAgentRoutes(ctx, runtime, {
     organize,
@@ -113,7 +111,6 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: agent.actions,
     listSessions: agent.listSessions,
-    stopShellForKey: shells.stopForKey,
     stopForArchive: async (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord, preserveState = true) => {
       runtime.invalidateTicketsForSession(objectiveRecord.id);
       {

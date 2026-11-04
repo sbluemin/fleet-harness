@@ -255,7 +255,6 @@ function PooledObjectiveBody({ objectiveRecord, descriptor, config, capabilities
     statusDetail: capabilities.statusDetail,
     composer: capabilities.composer,
     navigate: capabilities.navigate,
-    shell: capabilities.shell,
     rail: capabilities.rail,
     onActivate: () => configRef.current?.onActivate(),
     onClose: () => configRef.current?.onClose(),

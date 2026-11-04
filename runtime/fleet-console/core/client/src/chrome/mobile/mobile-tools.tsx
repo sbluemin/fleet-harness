@@ -150,8 +150,7 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
     );
   }
 
-  const title = binding ? resolveLocalizedText(binding.entry.title, language)
-    : instance?.surfaceId === "shell" ? t("mobile.tools.shell") : t("mobile.home.plugins");
+  const title = binding ? resolveLocalizedText(binding.entry.title, language) : t("mobile.home.plugins");
   // 플러그인 CSS에 공개하는 배치 신호 — 내부 호스트 클래스 대신 시트 문맥만 판별한다.
   return <section className="mobile-tool-sheet" data-host-surface="mobile-sheet" aria-label={title}>
     <header className="mobile-tool-sheet-bar">

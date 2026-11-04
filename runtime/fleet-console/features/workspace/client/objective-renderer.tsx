@@ -1,5 +1,4 @@
 import type { ClientRailCapability } from "../shared/navigation-ports.js";
-import type { ClientShellCapability } from "../shared/navigation.js";
 import type { ClientNavigateCapability } from "../shared/navigation.js";
 import type { ClientComposerCapability } from "../../execution/shared/composer-ports.js";
 import type { ClientObjectiveStatusDetailCapability } from "../../execution/shared/client-contract.js";
@@ -88,7 +87,6 @@ export function PluginObjectiveRenderer({
     statusDetail: capabilities.statusDetail,
     composer: capabilities.composer,
     navigate: capabilities.navigate,
-    shell: capabilities.shell,
     rail: capabilities.rail,
     onActivate,
     onClose,
@@ -113,6 +111,5 @@ export interface ObjectiveSurfaceDeps {
   readonly statusDetail: ClientObjectiveStatusDetailCapability;
   readonly composer: ClientComposerCapability;
   readonly navigate: ClientNavigateCapability;
-  readonly shell: ClientShellCapability;
   readonly rail: ClientRailCapability;
 }

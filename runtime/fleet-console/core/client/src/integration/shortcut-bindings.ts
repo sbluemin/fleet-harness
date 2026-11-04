@@ -31,7 +31,6 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   // ⇧⌘O 는 기본 목록에 없던 빈 자리이며 브라우저가 페이지에 넘기는 조합이다.
   { id: "console.new-session", group: "console", descriptionKey: "shortcuts.console.newSession", defaults: ["Mod+KeyJ", "Ctrl+Space", "Mod+Shift+KeyO"] },
   { id: "console.new-taskforce", group: "console", descriptionKey: "shortcuts.console.newTaskforce", defaults: ["Mod+Shift+KeyN"] },
-  { id: "console.toggle-global-shell", group: "console", descriptionKey: "shortcuts.console.toggleGlobalShell", defaults: ["Ctrl+Backquote"], railEntryId: "global-shell" },
   { id: "console.toggle-repository", group: "console", descriptionKey: "shortcuts.console.toggleRepository", defaults: ["Mod+Shift+KeyE"], railEntryId: "repository" },
   { id: "console.toggle-objectives", group: "console", descriptionKey: "shortcuts.console.toggleObjectives", defaults: ["Mod+Shift+KeyY"], railEntryId: "objectives" },
   { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.objectiveRecords.undoClose", defaults: ["Mod+KeyZ"] },

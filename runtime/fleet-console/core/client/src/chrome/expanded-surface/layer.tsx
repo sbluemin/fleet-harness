@@ -93,7 +93,6 @@ export function useExpandedSurfaceContext({
     theaterId,
     commodoreId,
     navigate: capabilities.navigate,
-    shell: capabilities.shell,
     rail: capabilities.rail,
     consoleState: capabilities.consoleState,
     notifications: capabilities.notifications,

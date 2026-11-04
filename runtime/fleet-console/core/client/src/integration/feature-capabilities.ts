@@ -1,7 +1,5 @@
 import type { ConsoleClientCapabilities } from "./client-capabilities.js";
 import type { CommodoreClientHost } from "../../../../features/commodore/shared/contracts/client.js";
-import { requestShellOpenAt, requestShellRestartAt } from "../../../../features/workspace/client/navigation-events.js";
-import { getActiveShellKey } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { openTheaterInbox, setTheaterInboxContext } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { setMobileListTheater } from "../chrome/mobile/mobile-store.js";
 import { commodoreSectionLabel, readCommodoreList, selectMobileCommodore, setZoneCommodore } from "../../../../features/commodore/client/commodore-list.js";
@@ -20,9 +18,6 @@ import { getViewModeSnapshot, subscribeViewMode } from "./view-mode-store.js";
 import { SETTINGS_PANE_ID } from "../../../../features/settings/client/settings-entry.js";
 import { openSettingsSurface } from "../../../../features/settings/client/settings-door.js";
 import { createClientCapabilities } from "./http-capabilities.js";
-import { toolShellKey } from "../../../../features/execution/shared/shell-key.js";
-import { selectCommodoreToolTheater } from "../../../../features/workspace/client/theater-tools/store.js";
-import type { ShellOpenAtRequest, ShellOpenAtResult } from "../../../../features/workspace/shared/navigation.js";
 
 import { loadModelRoster, readModelRoster, refreshModelRoster, rosterModelOptions, subscribeModelRoster } from "../../../../features/ai-gateway/client/model-roster-store.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
@@ -200,29 +195,6 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
   };
 }
 
-// Shell 배치 요청이 성공했을 때만 작업 화면으로 돌아가 Shell 표면을 연다.
-function shellKeyForRequest(request: ShellOpenAtRequest): string {
-  if (request.commodoreId && request.theaterId) {
-    return toolShellKey(request.commodoreId, request.theaterId) ?? getActiveShellKey();
-  }
-  return getActiveShellKey();
-}
-
-/** 명시적 Shell 열기·재시작은 Shell 패널의 Theater 선택도 그 Theater로 옮긴다. */
-function selectShellPanelTheater(request: ShellOpenAtRequest): void {
-  if (request.commodoreId && request.theaterId) {
-    selectCommodoreToolTheater(request.commodoreId, "global-shell", request.theaterId);
-  }
-}
-
-function revealShellOnSuccess(result: ShellOpenAtResult): ShellOpenAtResult {
-  if (result.ok) {
-    navigateConsoleRoute("/objectives");
-    revealExpandedSurface({ surfaceId: "shell" });
-  }
-  return result;
-}
-
 // 능력의 current() 는 같은 대화면 같은 참조를 돌려준다(useSyncExternalStore) — 선택 객체마다 한 번만 만든다.
 const publicSurfaces = new WeakMap<ConversationSurfaceSelection, { readonly surfaceId: string; readonly params: Readonly<Record<string, unknown>> }>();
 function publicSurface(selection: ConversationSurfaceSelection | null) {
@@ -341,20 +313,6 @@ export function createHostCapabilities(
           ...(request.column === undefined ? {} : { column: String(request.column) }),
           ...target.params,
         } });
-      },
-    },
-    shell: {
-      // Theater를 아는 요청은 그 (사령관, Theater)의 Shell을 곧장 겨냥한다 — 지금 대화의 키를
-      // 쓰면 대화 키 세션이 다시 생겨 Theater별 세션이 둘로 갈라진다. 목표 문맥만 있는 요청은
-      // 예전처럼 지금 대화의 Shell로 간다. 명시적 열기는 Shell 패널의 선택도 그 Theater로
-      // 옮긴다(파일 링크와 같은 규칙) — 그래야 보이는 칸과 열리는 세션이 어긋나지 않는다.
-      openAt: async (request) => {
-        selectShellPanelTheater(request);
-        return revealShellOnSuccess(await requestShellOpenAt(request, { shell: shellKeyForRequest(request) }));
-      },
-      restartAt: async (request) => {
-        selectShellPanelTheater(request);
-        return revealShellOnSuccess(await requestShellRestartAt(request, { shell: shellKeyForRequest(request) }));
       },
     },
     navigation: {

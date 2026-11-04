@@ -1,4 +1,3 @@
-import { requestShellOpenAt, requestShellRestartAt } from "../../../../features/workspace/client/navigation-events.js";
 import * as React from "react";
 import { assertObjectiveRecord, ApiError } from "../../../../features/execution/client/objective-records.js";
 import type { ObjectiveRecord } from "../../../../features/objectives/shared/records/types.js";
@@ -86,7 +85,6 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     navigate: {
       openFile: async () => ({ ok: false, reason: "no_handler" }),
     },
-    shell: { openAt: requestShellOpenAt, restartAt: requestShellRestartAt },
     navigation: {
       getSearchParam: () => null,
       setSearchParams: () => undefined,
