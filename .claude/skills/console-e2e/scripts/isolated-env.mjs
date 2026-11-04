@@ -24,7 +24,7 @@
  * <run-dir>/pathbin/call-*, which links only this Node and this call's --bin (resolved on the caller's PATH), then the
  * system directories; another call on the same run dir never changes it. A Node version
  * manager's directory often holds globally installed agent CLIs, so it is never put on PATH whole; name an agent CLI
- * explicitly with --set CLAUDE_BIN=... instead. A shell the run starts (the Console Shell surface, `zsh -i`) reads and
+ * explicitly with --set CLAUDE_BIN=... instead. A shell the run starts (an agent terminal, `zsh -i`) reads and
  * writes history and startup files under <run-dir>/home.
  *
  * It refuses a run dir, --bin, or --set path (each `:`-separated segment; a relative one resolved against the cwd) inside the real home's
