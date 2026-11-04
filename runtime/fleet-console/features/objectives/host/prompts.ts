@@ -136,10 +136,35 @@ export function memberUnreportedTurn(objective: Objective, member: ObjectiveMemb
   return `${head}${reason}\n${ko ? "배정 임무" : "Assigned missions"}:\n${missions.join("\n")}\n\n${last}`;
 }
 
-export function commanderFreshTurnNotice(objectiveId: string, language: PromptLanguage): string {
+export function interruptedMemberMissionsNotice(
+  objective: Objective,
+  isMemberFresh: (memberId: string) => boolean,
+  language: PromptLanguage,
+): string {
+  const lines: string[] = [];
+  for (const member of objective.members) {
+    if (!isMemberFresh(member.id)) continue;
+    const openMissions = objective.missions.flatMap((mission, index) => {
+      if (mission.member !== member.id || mission.done) return [];
+      const n = index + 1;
+      const title = mission.title ? `${mission.title}` : mission.text;
+      return [`m${n} (${title})`];
+    });
+    if (openMissions.length > 0) {
+      lines.push(`- ${member.role}: ${openMissions.join(", ")}`);
+    }
+  }
+  if (lines.length === 0) return "";
   return language === "ko"
-    ? `[목표 \`${objectiveId}\` 지휘관 새 세션]\n새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 읽어 현재 상황과 구성원 상태를 파악하고 이어서 진행하세요. 보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.\n\n`
-    : `[Objective \`${objectiveId}\` commander fresh session]\nOpened as a fresh session (role: commander). Past conversation was not loaded into the model context. Read the board with \`fleet-objectives\` (\`read\` or \`mine\` tool) to check current progress and member states, then continue. The board is the long-term memory; the Commodore will steer if needed.\n\n`;
+    ? `이 미션들은 끝나지 않았고 그 구성원 세션은 이전 지시를 모릅니다. 지금 다시 맡기세요:\n${lines.join("\n")}`
+    : `These missions are not completed, and their member sessions do not know the previous instructions. Reissue them now:\n${lines.join("\n")}`;
+}
+
+export function commanderFreshTurnNotice(objectiveId: string, language: PromptLanguage, memberMissionsNotice = ""): string {
+  const extra = memberMissionsNotice ? `\n\n${memberMissionsNotice}\n\n` : " ";
+  return language === "ko"
+    ? `[목표 \`${objectiveId}\` 지휘관 새 세션]\n새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았습니다. 구성원 세션도 새로 열리거나 정리되어, 진행 중이던 구성원 턴이나 백그라운드 작업은 끝났을 수 있고 지휘관이 메시지를 보내야만 다시 움직입니다. \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 확인하고, 결과가 보드나 결과물에 없는 열린 미션은 담당 구성원에게 다시 맡기며 진행하세요.${extra}보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.\n\n`
+    : `[Objective \`${objectiveId}\` commander fresh session]\nOpened as a fresh session (role: commander) without past conversation loaded into the model context. Member sessions are also fresh or cleared, so running member turns or background tasks may have ended, and members will only resume once you send them a message. Check the board using \`fleet-objectives\` (\`read\` or \`mine\` tool), and reissue open missions that lack results to their members.${extra}The board is the long-term memory; the Commodore will steer if needed.\n\n`;
 }
 
 export function memberFreshTurnNotice(objectiveId: string, role: string, language: PromptLanguage): string {
@@ -160,11 +185,12 @@ export function commanderRestTurn(objective: Objective, facts: { readonly roles:
 /**
  * 재시작 이어가기 — Console 이 다시 서며 진행 중이던 턴이 끊겼을 수 있다는 사실만 싣는다. 무엇을 이어 할지는 지휘관이 보드에서 정한다.
  */
-export function restartTurn(objective: Objective, language: PromptLanguage, options?: { readonly fresh?: boolean }): string {
+export function restartTurn(objective: Objective, language: PromptLanguage, options?: { readonly fresh?: boolean; readonly memberMissionsNotice?: string }): string {
   if (options?.fresh) {
+    const extra = options.memberMissionsNotice ? `\n\n${options.memberMissionsNotice}\n\n` : " ";
     return language === "ko"
-      ? `목표 \`${objective.id}\`: 새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 읽어 현재 상황과 구성원 상태를 파악하고 이어서 진행하세요. 보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.`
-      : `Objective \`${objective.id}\`: Opened as a fresh session (role: commander). Past conversation was not loaded into the model context. Read the board with \`fleet-objectives\` (\`read\` or \`mine\` tool) to check current progress and member states, then continue. The board is the long-term memory; the Commodore will steer if needed.`;
+      ? `목표 \`${objective.id}\`: Console 이 다시 시작돼 진행 중이던 턴이 끊겼을 수 있습니다. 새 세션으로 열렸으며(역할: 지휘관) 이전 대화는 모델 입력에 실리지 않았습니다. 구성원 세션도 새로 열리거나 정리되어, 진행 중이던 구성원 턴이나 백그라운드 작업은 끝났을 수 있고 지휘관이 메시지를 보내야만 다시 움직입니다. \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 확인하고, 결과가 보드나 결과물에 없는 열린 미션은 담당 구성원에게 다시 맡기며 진행하세요.${extra}보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.`
+      : `Objective \`${objective.id}\`: Console restarted, so a turn in progress may have been cut off. Opened as a fresh session (role: commander) without past conversation loaded into the model context. Member sessions are also fresh or cleared, so running member turns or background tasks may have ended, and members will only resume once you send them a message. Check the board using \`fleet-objectives\` (\`read\` or \`mine\` tool), and reissue open missions that lack results to their members.${extra}The board is the long-term memory; the Commodore will steer if needed.`;
   }
   return language === "ko"
     ? `목표 \`${objective.id}\`: Console 이 다시 시작돼 진행 중이던 턴이 끊겼을 수 있습니다. \`fleet-objectives\` 로 보드를 다시 읽고 구성원 상태를 확인한 뒤 이어서 진행하세요.`

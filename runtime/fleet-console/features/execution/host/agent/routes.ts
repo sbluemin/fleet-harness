@@ -2450,7 +2450,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
             const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
             const archivePrevious = freshEnabled && existing?.id && existing.id !== updated.id;
             const previousSessions = archivePrevious
-              ? [...(existing.previousSessions ?? []), { id: existing.id, transcriptPath: existing.transcriptPath, source: existing.source, capturedAt: existing.capturedAt }]
+              ? [...(existing.previousSessions ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
               : existing?.previousSessions;
             const updatedSession = mergeCapturedAgentSession(objectiveRecord, updated);
             const patched = {
@@ -2644,7 +2644,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
         const archivePrevious = freshEnabled && existing?.id && existing.id !== providerSession.id;
         const previousSessions = archivePrevious
-          ? [...(existing.previousSessions ?? []), { id: existing.id, transcriptPath: existing.transcriptPath, source: existing.source, capturedAt: existing.capturedAt }]
+          ? [...(existing.previousSessions ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
           : existing?.previousSessions;
         const updatedSession = mergeCapturedAgentSession(objectiveRecord, providerSession);
         ctx.host.objectiveRecords.patch(sessionId, {

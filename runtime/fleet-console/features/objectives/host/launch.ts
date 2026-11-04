@@ -7,7 +7,7 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
-import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
@@ -302,9 +302,11 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const pendingOpenUIFeedback = new Map<string, string>();
   const withCommanderFreshNotice = (sessionId: string, text: string): string => {
     if (ctx.experiments?.read().objectiveFreshSession !== true || !ctx.consoleControl?.isNextOpenFresh?.(sessionId)) return text;
-    if (text.startsWith(`목표 \`${sessionId}\`: 새 세션으로 열렸습니다`) || text.startsWith(`Objective \`${sessionId}\`: Opened as a fresh session`)) return text;
+    if (text.startsWith(`목표 \`${sessionId}\`: Console 이 다시 시작돼`) || text.startsWith(`Objective \`${sessionId}\`: Console restarted`) || text.includes(`지휘관 새 세션`) || text.includes(`commander fresh session`)) return text;
     const lang = ctx.objectiveRecords.get(sessionId)?.objectiveLanguage === "ko" ? "ko" : "en";
-    return `${commanderFreshTurnNotice(sessionId, lang)}${text}`;
+    const current = store.find(sessionId);
+    const memberNotice = current ? interruptedMemberMissionsNotice(current, (id) => ctx.consoleControl?.isNextOpenFresh?.(id) ?? false, lang) : "";
+    return `${commanderFreshTurnNotice(sessionId, lang, memberNotice)}${text}`;
   };
   const withOpenUIFeedback = (sessionId: string, text: string): string => {
     const textWithFresh = withCommanderFreshNotice(sessionId, text);
@@ -1705,7 +1707,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             if (!resumable(latest)) return;
             await accessObjective(latest.id);
             const fresh = ctx.experiments?.read().objectiveFreshSession === true && ctx.consoleControl?.isNextOpenFresh?.(latest.id) === true;
-            await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en", { fresh }), "");
+            const lang = ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en";
+            const memberMissionsNotice = fresh ? interruptedMemberMissionsNotice(latest, (id) => ctx.consoleControl?.isNextOpenFresh?.(id) ?? false, lang) : "";
+            await requestSend(latest.id, restartTurn(latest, lang, { fresh, memberMissionsNotice }), "");
           });
         } catch (error) { resumeFailed(current, error); }
       }

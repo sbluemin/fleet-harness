@@ -632,6 +632,7 @@ describe("agent chat mode routes", () => {
     await harness.del(sessionId, "chat");
     harness.markNextOpenFresh(sessionId);
     expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
+    harness.setSdkSessionId("sid-second");
     await harness.post(sessionId, "chat");
     await harness.post(sessionId, "message", { text: "turn when on" });
     await vi.waitFor(() => expect(harness.sends).toContain("turn when on"));
@@ -640,6 +641,19 @@ describe("agent chat mode routes", () => {
     expect(secondRequest?.resume).toBeUndefined();
     expect(secondRequest?.sessionId).toBeDefined();
     expect(secondRequest?.sessionId).not.toBe("sid-live");
+
+    // Case 2b: another fresh session accumulates both ancestors in previousSessions with harness (Criteria 4)
+    await harness.del(sessionId, "chat");
+    harness.markNextOpenFresh(sessionId);
+    harness.setSdkSessionId("sid-third");
+    await harness.post(sessionId, "chat");
+    await harness.post(sessionId, "message", { text: "third generation" });
+    await vi.waitFor(() => expect(harness.sends).toContain("third generation"));
+    const record = harness.getRecord(sessionId);
+    const prevSessions = (record?.session as { previousSessions?: unknown[] })?.previousSessions;
+    expect(prevSessions).toHaveLength(2);
+    expect(prevSessions?.[0]).toMatchObject({ id: "sid-live", harness: "claude-code" });
+    expect(prevSessions?.[1]).toMatchObject({ id: "sid-second", harness: "claude-code" });
 
     // Case 3: switchLive maintains coordinates change in-place without restarting as new session
     const beforeSwitchCount = harness.openSessionRequests.length;
@@ -681,6 +695,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   const sends: string[] = [];
   const modelChanges: string[] = [];
   const openSessionRequests: any[] = [];
+  let nextSdkSessionId: string | null = null;
   const closeChat = vi.fn();
   let emitToLatest: (message: Record<string, unknown>) => void = () => { throw new Error("No open chat session"); };
   // 세션 하나가 여러 프롬프트를 받는다 — 보낼 때마다 그 턴의 메시지가 열린 스트림으로 흘러든다.
@@ -691,11 +706,14 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     let closed = false;
     const wake = (): void => { const resume = waiting; waiting = null; resume?.(); };
     emitToLatest = (message) => { queue.push(message); wake(); };
+    const sessionInitId = nextSdkSessionId ?? (request as { resume?: string })?.resume ?? "sid-live";
+    const sessionFile = path.join(transcriptDir, `${sessionInitId}.jsonl`);
+    try { writeFileSync(sessionFile, "", { flag: "wx" }); } catch {}
     return {
       send: (text: string) => {
         sends.push(text);
         queue.push(
-          { type: "system", subtype: "init", session_id: "sid-live" },
+          { type: "system", subtype: "init", session_id: sessionInitId },
           { type: "assistant", message: { content: [{ type: "text", text: "continuing" }] } },
           ...(!options.holdChatTurn ? [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] : []),
         );
@@ -1047,6 +1065,9 @@ ts: { createdAt, updatedAt: createdAt }};
     },
     markNextOpenFresh: (sessionId: string) => {
       consoleControl.markNextOpenFresh?.(sessionId);
+    },
+    setSdkSessionId: (id: string | null) => {
+      nextSdkSessionId = id;
     },
     getRecord: (sessionId: string) => objectiveRecords.find((candidate) => candidate.id === sessionId),
     openSessionRequests,
