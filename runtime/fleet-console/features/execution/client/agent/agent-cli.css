@@ -1687,11 +1687,11 @@
   color: var(--text-primary);
   transition: transform 220ms ease-out;
 }
-.ai-gateway-order-chip button { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 11px; display: inline-grid; place-items: center; cursor: pointer; transition: background 120ms ease, color 120ms ease; }
+.ai-gateway-order-chip button { width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); display: inline-grid; place-items: center; cursor: pointer; transition: background 120ms ease, color 120ms ease; }
 .ai-gateway-order-chip button:hover:not(:disabled) { background: var(--agw-fill-hover); color: var(--text-primary); }
 .ai-gateway-order-chip button:disabled,
 .ai-gateway-order-add:disabled { opacity: 0.3; cursor: default; }
-.ai-gateway-order-add { border: 0; border-radius: 999px; background: var(--agw-fill); color: var(--text-primary); font: inherit; padding: 6px 14px; cursor: pointer; transition: background 120ms ease; }
+.ai-gateway-order-add { border: 0; border-radius: var(--radius-pill); background: var(--agw-fill); color: var(--text-primary); font: inherit; padding: 6px 14px; cursor: pointer; transition: background 120ms ease; }
 .ai-gateway-order-add:hover:not(:disabled) { background: var(--agw-fill-hover); }
 .ai-gateway-text-button { border: 0; background: transparent; color: var(--brass-ink, var(--text-primary)); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; transition: color 120ms ease; }
 .ai-gateway-text-button:hover,
@@ -1752,7 +1752,7 @@ button.ai-gateway-login { border: 0; padding: 0; background: transparent; font: 
 .ai-gateway-models .ai-gateway-key-input:focus-visible { border: 0; background: var(--agw-fill-hover); }
 .ai-gateway-models .ai-gateway-add-button,
 .ai-gateway-models .ai-gateway-signout {
-  border: 0; border-radius: 999px; background: var(--agw-fill); color: var(--text-primary);
+  border: 0; border-radius: var(--radius-pill); background: var(--agw-fill); color: var(--text-primary);
   min-height: 32px; padding: 6px 14px; font: inherit; cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
