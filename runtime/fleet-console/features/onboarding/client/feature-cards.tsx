@@ -229,12 +229,10 @@ export function FeatureCardsHost(): React.JSX.Element | null {
     settings.state,
   ]);
 
-  // 다시보기는 본 기록을 읽지도 쓰지도 않는다 — 첫 실행 노출 판단과 무관하게 목록 전체를 보여 준다.
-  if (state.featureCardsReplayOpen) {
-    return <FeatureCardsDialog cards={FEATURE_CARDS} onClose={closeFeatureCardsReplay} />;
-  }
-  if (autoCards === null) return null;
-  // 다른 우선 오버레이가 떠 있으면 양보한다 — 한눈에 보기와 같은 억제 조건이다.
+  if (!state.featureCardsReplayOpen && autoCards === null) return null;
+  // 다른 우선 오버레이가 떠 있으면 양보한다 — 한눈에 보기와 같은 억제 조건이다. 다시보기도 같은 조건으로
+  // 숨는다: 떠 있는 채로 두면 이 대화상자의 키 처리가 리모컨 커튼보다 먼저 Escape·Tab을 가져간다.
+  // 억제가 풀리면 열린 상태가 유지된 채 다시 선다.
   const suppressed = !state.bootstrapped
     || state.onboardingOpen
     || state.whatsNewOpen
@@ -244,5 +242,10 @@ export function FeatureCardsHost(): React.JSX.Element | null {
     || state.mobileNewSessionOpen
     || state.keyboardShortcutsOpen;
   if (suppressed) return null;
+  // 다시보기는 본 기록을 읽지도 쓰지도 않는다 — 첫 실행 노출 판단과 무관하게 목록 전체를 보여 준다.
+  if (state.featureCardsReplayOpen) {
+    return <FeatureCardsDialog cards={FEATURE_CARDS} onClose={closeFeatureCardsReplay} />;
+  }
+  if (autoCards === null) return null;
   return <FeatureCardsDialog cards={autoCards} onClose={closeAuto} />;
 }
