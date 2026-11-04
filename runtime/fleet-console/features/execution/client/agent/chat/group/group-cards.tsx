@@ -13,6 +13,7 @@ import {
   useUseRequestAnswer,
   useUseRequestClock,
 } from "../../use-request-card.js";
+import { ApprovalComputerCard } from "../../../approval/cards.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark } from "./speaker-mark.js";
 
@@ -248,6 +249,10 @@ export function UseRequestGroupCard({ request, speakers, shared, language }: {
   const title = tt(isConsole ? "terminal.useRequest.consoleTitle" : "terminal.useRequest.computerTitle");
   const titleId = `group-use-request-${request.id}`;
   const shown = shared ? speakers : speakers.slice(0, 1);
+  if (!isConsole) {
+    const who = shown.map((speaker) => speaker.name).filter(Boolean).join(" · ");
+    return <ApprovalComputerCard id={request.id} expiresAt={request.expiresAt} now={now} from={who || undefined} lead={shared ? t("group.use.computerLead") : undefined} />;
+  }
   const names = shown.length > 3
     ? t("group.use.names.others", { name: shown[0]!.name, count: String(shown.length - 1) })
     : shown.map((speaker) => speaker.name).join("·");

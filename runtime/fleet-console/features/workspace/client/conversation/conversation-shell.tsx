@@ -20,6 +20,7 @@ import { ObjectiveBodySlot, type ObjectiveBodyConfig } from "../../../../core/cl
 export { ConversationSideBarBottom } from "./conversation-dock.js";
 import { MIN_PANEL_WIDTH, openConversationTab, RightRail, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
+import { ApprovalCapsule } from "../../../execution/client/approval/panel.js";
 import { closeRailPanel, dismissRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { conversationRailTab, mayAutoOpenConversationRail, useConversationRailMemory } from "./conversation-rail-memory.js";
 import { mountConversationObjectiveTabsHost, registerConversationObjectiveTab, useConversationObjectiveTabPanels, adoptKeptConversationObjectiveTabs, keepConversationObjectiveTabs, releaseKeptConversationObjectiveTabs, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/objective-tabs.js";
@@ -1322,6 +1323,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
         ) : null}
       </span>
       {trail !== null && trail !== false ? <span className="conversation-pill-tools-trail">{trail}</span> : null}
+      <ApprovalCapsule />
       <ToolbarTipLayer rootRef={toolsRef} />
     </span>, band
   );

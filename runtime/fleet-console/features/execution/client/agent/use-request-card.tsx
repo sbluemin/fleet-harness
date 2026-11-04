@@ -8,6 +8,7 @@ import { getT } from "./i18n/index.js";
 import { MobileGlyph, useMobileSurface } from "./mobile-surface.js";
 import { showMobileToast } from "../../../../core/client/src/chrome/mobile/mobile-toast.js";
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
+import { ApprovalComputerCard } from "../approval/cards.js";
 
 /**
  * 허용 요청 — 이 Objective 의 AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면 서버가 그 호출을
@@ -98,6 +99,7 @@ function UseRequestCard({ request, member, language, now }: { readonly request: 
   const titleId = `use-request-${request.id}`;
   const mobile = useMobileSurface();
   const [fineOpen, setFineOpen] = React.useState(false);
+  if (!isConsole) return <ApprovalComputerCard id={request.id} expiresAt={request.expiresAt} now={now} from={member ? t("terminal.useRequest.stripMember") : undefined} />;
 
   if (mobile) {
     // 모바일 카드(impl-spec S-28·D25) — 입력창 바로 위. 머리는 대기 상태 글리프, 남은 시간이 1분 이하면 대기

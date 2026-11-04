@@ -9,6 +9,8 @@ import { AttentionReason } from "./mobile-attention-reason.js";
 import { MobileArchivedFinished } from "./mobile-archived-finished.js";
 import { MobileCommanderList } from "./mobile-commander-list.js";
 import { attentionMovesFirst, entryIconOf, useMobileAttention } from "./mobile-destinations.js";
+import { openApprovalList } from "../../../../../features/execution/client/approval/store.js";
+import { focusObjective } from "../../integration/store.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 import { openMobilePluginDestination } from "./mobile-store.js";
@@ -37,7 +39,7 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
     .map((section) => ({ ...section, rows: section.rows.filter((item) => commanderClusterIds.has(item.layout.cluster.id)) }))
     .filter((section) => section.rows.length > 0);
   const attention = rows.filter((row) => row.kind !== "objectiveRecord")
-    .filter((row) => !row.clusterId || !commanderClusterIds.has(row.clusterId));
+    .filter((row) => row.kind === "approval" || row.kind === "decision" || !row.clusterId || !commanderClusterIds.has(row.clusterId));
   // 지휘관 얼굴은 몽글 아바타다 — 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
   // 새 세션의 주인은 이 사령관이다. 세부를 먼저 접고 홈 자리에 연다.
@@ -47,7 +49,22 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
       {attention.length > 0 ? <>
         <div className="mobile-conv-section"><span>{t("mobile.home.attention")} {attention.length}</span></div>
         <div className="mobile-conv-attention">
-          {attention.map((row) => <MobileMarkedRow key={row.key} mark={row.clusterId ? clusterIndex.layouts.get(row.clusterId)?.cluster.row?.mark : undefined}>
+          {attention.map((row) => <MobileMarkedRow key={row.key} mark={row.kind === "plugin" && row.clusterId ? clusterIndex.layouts.get(row.clusterId)?.cluster.row?.mark : undefined}>
+            {row.kind === "approval" ? (
+              <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => leave(() => openApprovalList())}>
+                <span className="mobile-conv-row-copy">
+                  <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.title}</span></span>
+                  <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>
+                </span>
+              </button>
+            ) : row.kind === "decision" ? (
+              <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => leave(() => focusObjective(row.objectiveId))}>
+                <span className="mobile-conv-row-copy">
+                  <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.title}</span></span>
+                  <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>
+                </span>
+              </button>
+            ) : (
             <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => leave(() => { if (attentionMovesFirst(bindings, row.entryId)) openMobilePluginDestination(row.entryId, commodoreId); row.item.open(); })}>
               <span className="mobile-conv-row-av"><span className="mobile-conv-round is-static">{entryIconOf(bindings, row.entryId)}</span></span>
               <span className="mobile-conv-row-copy">
@@ -55,6 +72,7 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
                 <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>
               </span>
             </button>
+            )}
           </MobileMarkedRow>)}
         </div>
       </> : null}

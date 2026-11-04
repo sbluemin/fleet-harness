@@ -19,6 +19,7 @@ import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { openMobilePluginDestination, setMobileDestination } from "./mobile-store.js";
+import { openApprovalList } from "../../../../../features/execution/client/approval/store.js";
 
 /** S-35 「확인 필요」 전체 화면 — 홈 맨 위 묶음이 세 건까지만 싣는 것의 전부. 답하면 이 목록에서 빠진다. */
 export function MobileAttentionScreen() {
@@ -40,12 +41,22 @@ export function MobileAttentionScreen() {
       {rows.length === 0 ? <p className="mobile-attention-empty">{t("mobile.attention.empty")}</p> : (
         <>
           <div className="mobile-group">
-            {rows.map((row) => (
-              <MobileMarkedRow key={row.key} mark={(row.kind === "objectiveRecord" ? clusterIndex.rowOf.get(row.objectiveRecord.id) : row.clusterId ? clusterIndex.layouts.get(row.clusterId) : undefined)?.cluster.row?.mark}>
+            {rows.map((row) => {
+              const mark = row.kind === "objectiveRecord" ? clusterIndex.rowOf.get(row.objectiveRecord.id) : row.kind === "plugin" && row.clusterId ? clusterIndex.layouts.get(row.clusterId) : undefined;
+              return (
+              <MobileMarkedRow key={row.key} mark={mark?.cluster.row?.mark}>
                 {row.kind === "objectiveRecord" ? (
                   <button type="button" className="mobile-group-row is-two" onClick={() => { setMobileDestination({ kind: "home" }); navigateConsoleRoute("/objectives"); focusObjective(row.objectiveRecord.id); }}>
                     <ObjectiveStatusIcon objectiveRecord={row.objectiveRecord} status={resolveObjectiveMarkVisual({ activity: resolveObjectiveActivity(row.objectiveRecord, state.objectiveRecordRuntime), objectiveId: row.objectiveRecord.id, idleArrivalIds })} size={28} decorative />
                     <span className="mobile-group-row-copy">{row.objectiveRecord.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
+                  </button>
+                ) : row.kind === "approval" ? (
+                  <button type="button" className="mobile-group-row is-two" onClick={() => openApprovalList()}>
+                    <span className="mobile-group-row-copy">{row.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
+                  </button>
+                ) : row.kind === "decision" ? (
+                  <button type="button" className="mobile-group-row is-two" onClick={() => { setMobileDestination({ kind: "home" }); navigateConsoleRoute("/objectives"); focusObjective(row.objectiveId); }}>
+                    <span className="mobile-group-row-copy">{row.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
                   </button>
                 ) : (
                   <button type="button" className="mobile-group-row is-two" onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) { openMobilePluginDestination(row.entryId, getViewedTheaterId()); navigateConsoleRoute("/objectives"); } row.item.open(); }}>
@@ -55,7 +66,8 @@ export function MobileAttentionScreen() {
                   </button>
                 )}
               </MobileMarkedRow>
-            ))}
+              );
+            })}
           </div>
           <p className="mobile-secnote">{t("mobile.attention.note")}</p>
         </>

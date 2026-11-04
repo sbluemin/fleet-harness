@@ -24,6 +24,7 @@ import { FeatureCardsHost } from "../../../../features/onboarding/client/feature
 import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
+import { ApprovalHost } from "../../../../features/execution/client/approval/panel.js";
 import { bindExpandedSurfaceCloseNotifier, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { getGlobalSettingsStoreState, useGlobalSettingsStore } from "../../../../features/settings/client/global-settings-store.js";
 import { hydrateUpdateProgress, useUpdateProgress } from "../../../../features/updates/client/update-progress-store.js";
@@ -562,6 +563,7 @@ function ConnectedApp() {
       <div className={`console-shell${desktopObjectiveRecordsVisible ? " is-objective-records-view" : ""}`}>
         {/* 화면 없는 상주 기여 — 아무것도 그리지 않지만 콘솔 수명 동안 살아 있어야 한다. */}
         <PersistentPluginComponents />
+        <ApprovalHost />
         {/* 상단 크롬은 없다 — 데스크톱은 대화 중심 화면이 찾기·새 Objective·호스트·사용량·도움말·설정을 사이드바 위·아래 줄로,
             도구를 오른쪽 패널 머리의 글자 탭으로 든다(features/workspace/client/conversation). 모바일 셸은 자기 머리와 탭 막대를 쓴다.
             `/`·`/settings`처럼 /objectives로 갈아 끼우는 주소도 그 한 프레임 동안 빈 셸만 보인다. */}
