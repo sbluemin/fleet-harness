@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.282.0] - 2026-11-04
+
+### fleet-console
+
+#### Added
+- 재기동, 보관 해제, 중단 뒤 재개 시 지휘관·구성원 세션을 이전 대화 없이 새 세션으로 여는 실험 기능을 추가합니다.
+
 ## [1.281.1] - 2026-11-03
 
 Release v1.281.1

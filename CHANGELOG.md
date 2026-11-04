@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.282.0] - 2026-11-04
+
+### fleet-console
+
+#### Added
+- Add an experiment to open objective commander and member sessions fresh on restart, restore, or after stop without loading past turns into the model context.
+
 ## [1.281.1] - 2026-11-03
 
 Release v1.281.1
