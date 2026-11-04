@@ -1,4 +1,5 @@
-import { AiGatewayModelsCard as GatewayModelsCard, AiGatewayModelsEntry as GatewayModelsEntry, gatewayLoginKind } from "./gateway-models-card.js";
+import { isProviderCatalogVisible } from "@fleet-console/ai-gateway/model-family";
+import { AiGatewayModelsCard as GatewayModelsCard, AiGatewayModelsEntry as GatewayModelsEntry } from "./gateway-models-card.js";
 import { launchProviderGlyph, serviceGlyph } from "./components/launch-provider-glyphs.js";
 import * as React from "react";
 import { SegmentedThumb } from "@fleet-console/ui/react";
@@ -364,7 +365,7 @@ function AiGatewayRoutingCard() {
   const candidates = enabled.filter((entry) => {
     const provider = providerByModel.get(entry.id);
     const status = provider ? state.aiGatewayLogin[provider] : null;
-    return gatewayLoginKind(provider, status) === "in";
+    return isProviderCatalogVisible(status, provider);
   }).map((entry) => catalogNames.get(entry.id) ?? entry.id);
   const routingPickerLabels = rosterPickerLabels(t, t("terminal.settings.aiGatewayRoutingModel"));
   // 판정기는 강도를 저장하지 않는다 — 실제로 도는 강도(routingJudgeEffort)를 표시에만 실어, 기본값과 고른 모델이
@@ -449,7 +450,7 @@ function AiGatewayRoutingCard() {
               ? (mobileHost ? candidates.join(" · ") : t("terminal.settings.aiGatewayRoutingCandidatesHint"))
               : enabled.some((entry) => {
                 const provider = providerByModel.get(entry.id);
-                return gatewayLoginKind(provider, provider ? state.aiGatewayLogin[provider] : null) === "unknown";
+                return (provider ? state.aiGatewayLogin[provider] : null) == null;
               })
                 ? t("terminal.settings.aiGatewayLoginChecking")
                 : t((state.aiGateway?.models?.length ?? 0) > 0 ? "terminal.settings.aiGatewayRoutingWaiting" : "terminal.settings.aiGatewayRoutingNoneOn")}
@@ -525,7 +526,7 @@ function RoutingTestPanel() {
   const delegable = (state.aiGateway?.models ?? []).filter((entry) => {
     const provider = state.aiGatewayCatalog.providers.find((group) => group.models.some((model) => model.id === entry.id));
     const status = provider ? state.aiGatewayLogin[provider.id] : null;
-    return gatewayLoginKind(provider?.id, status) === "in";
+    return isProviderCatalogVisible(status, provider?.id);
   }).length;
   return (
     <RoutingTest

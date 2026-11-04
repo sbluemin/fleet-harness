@@ -1,7 +1,7 @@
 import { buildGatewayModelConstraints, buildGatewayModelQuota } from "../models.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import { exposedEffortLadder } from "./gateway-agents.js";
-import type { GatewayAssignmentExposure } from "./routing-assignment.js";
+import { delegationCandidateModels, type GatewayAssignmentExposure } from "./routing-assignment.js";
 import { normalizeRoutingQuota, type RoutingQuota } from "./routing-quota.js";
 import { gatewayModelContextWindow } from "../settings/index.js";
 
@@ -9,8 +9,7 @@ import { gatewayModelContextWindow } from "../settings/index.js";
 export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = Date.now()) {
   const quotaPools: Record<string, RoutingQuota> = {};
   const preference = [...new Set(exposure.providerPriority ?? [])];
-  const models = exposure.delegationModels
-    .filter(model => exposure.quota?.[model.provider]?.status !== "signed_out")
+  const models = delegationCandidateModels(exposure)
     .map(model => {
       const constraints = buildGatewayModelConstraints(model);
       const efforts = exposedEffortLadder(model.id, constraints.effortLadder, exposure.effortExposure);

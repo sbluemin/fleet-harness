@@ -1,22 +1,8 @@
+import { isProviderCatalogVisible } from "./model-family.js";
 import { GATEWAY_MODELS, type GatewayModel, type GatewayProvider } from "./models.js";
 import type { ProviderStatus } from "./quota/types.js";
 
-/**
- * 메뉴·`/model`·수동 실행에 이 공급자 카탈로그를 보일지.
- *
- * `signed_out`·`not_connected`만 숨긴다. 상태를 아직 모르면(부재) 보인다 — 라우터의
- * fail-open과 같다. `expired`·`no_subscription`·`stale`·`error`·`ok`도 보인다.
- * 조회가 실패하거나 자격이 잠시 끊긴 것만으로 카탈로그를 비우면, 방금까지 고르던 모델을
- * 메뉴에서 잃는다. 실제로 호출이 거절되는 것은 업스트림의 몫이다.
- *
- * Claude의 `not_connected`는 예외다. 사용량 수집 동의가 꺼지면 자격 증명을 보지 않고
- * 그 상태가 된다. 자격 확인이 로그아웃을 말할 때는 `signed_out`이다. 동의만 꺼진
- * Claude는 미상과 같이 보인다.
- */
-export function isProviderCatalogVisible(status: ProviderStatus | undefined, provider?: GatewayProvider): boolean {
-  if (provider === "claude" && status === "not_connected") return true;
-  return status !== "signed_out" && status !== "not_connected";
-}
+export { isProviderCatalogVisible };
 
 /** 공급자 → 마지막으로 안 로그인 상태. 맵 자체가 없으면 전체를 모르는 것이다. */
 export type ProviderStatusMap = Readonly<Partial<Record<GatewayProvider, ProviderStatus | undefined>>>;

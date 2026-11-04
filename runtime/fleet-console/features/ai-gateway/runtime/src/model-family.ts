@@ -14,6 +14,18 @@ export const AI_GATEWAY_BASE_EFFORTS = ["low", "medium", "high"] as const;
 /** 켠 모델에서만 고르는 강도. */
 export const AI_GATEWAY_OPT_IN_EFFORTS = ["xhigh", "max"] as const;
 
+/**
+ * 메뉴·실행·위임 후보가 같이 쓰는 로그인 술어.
+ *
+ * `signed_out`과 `not_connected`만 빠진다. 상태가 없으면 보인다.
+ * Claude `not_connected`는 사용량 수집 동의가 꺼진 것이지 자격 로그아웃이 아니다.
+ * 자격 확인이 로그아웃을 말할 때는 `signed_out`이다.
+ */
+export function isProviderCatalogVisible(status: string | null | undefined, provider?: string): boolean {
+  if (provider === "claude" && status === "not_connected") return true;
+  return status !== "signed_out" && status !== "not_connected";
+}
+
 export function aiGatewayModelFamilyKey(id: string): string {
   const stem = id.replace(FAST_SUFFIX, "");
   const context = CONTEXT_SUFFIX.exec(stem);

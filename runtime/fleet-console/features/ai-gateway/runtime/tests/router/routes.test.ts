@@ -312,6 +312,21 @@ describe("delegation assignment", () => {
     ]);
   });
 
+  it("drops a not-connected Codex model from delegation and keeps a consent-off Claude model", () => {
+    const models = [requireGatewayModel("claude--sonnet-1m"), requireGatewayModel("codex--gpt-6.1-sol")];
+    const hidden = {
+      delegationRoutingEnabled: true,
+      delegationModels: models,
+      quota: { claude: { status: "not_connected" }, codex: { status: "not_connected" } },
+    } satisfies GatewayAssignmentExposure;
+    expect(buildGatewayLoadout(hidden).models.map((model) => model.provider)).toEqual(["claude"]);
+    expect(decideGatewayRoutingAssignment(
+      { surface: "agent", subagentType: "general-purpose", providerPlugin: "engine" },
+      hidden,
+    ).model).toBe("sonnet[1m]");
+    expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: models }).models.map((model) => model.provider)).toEqual(["claude", "codex"]);
+  });
+
   it("routes a workflow stage instead of letting it keep the model it inherited", async () => {
     // 스테이지는 스폰을 지나지 않아 세션의 모델을 그대로 물려받는다. 그것을 결정으로 읽으면
     // 한 워크플로우의 스테이지 전부가 같은 모델에 몰리고 배분이 아예 돌지 않는다.

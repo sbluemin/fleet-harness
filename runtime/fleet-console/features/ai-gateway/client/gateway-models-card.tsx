@@ -1,4 +1,4 @@
-import { aiGatewayModelFamilyKey, canonicalEffortSelection, defaultEffortSelection } from "@fleet-console/ai-gateway/model-family";
+import { aiGatewayModelFamilyKey, canonicalEffortSelection, defaultEffortSelection, isProviderCatalogVisible } from "@fleet-console/ai-gateway/model-family";
 import { SegmentedThumb } from "@fleet-console/ui/react";
 import * as React from "react";
 
@@ -81,13 +81,14 @@ function hasFastPair(family: ModelFamily): boolean {
 }
 
 /**
- * 설정 알약·위임 후보가 읽는 로그인 판정.
+ * 알약만의 표시. 위임 후보 수는 이 값이 아니라 `isProviderCatalogVisible`로 센다.
  *
- * Claude `not_connected`는 사용량 수집 동의가 꺼진 것이지 자격 로그아웃이 아니다.
- * 그때는 미상이다 — 메뉴에는 남고, 로그인됨으로 세지 않는다. 자격 확인의 `signed_out`만 숨긴다.
+ * 동의만 꺼진 Claude는 자격이 로그아웃이 아니라서 후보로 남는다. 알약을 "확인 중"으로
+ * 두면 조회가 곧 끝난다는 뜻이 되어, 동의를 켜기 전에는 영원히 그 문구가 남는다.
  */
-export function gatewayLoginKind(provider: string | undefined, status: string | null | undefined): "in" | "out" | "unknown" {
-  if (status == null || (provider === "claude" && status === "not_connected")) return "unknown";
+export function gatewayLoginKind(provider: string | undefined, status: string | null | undefined): "in" | "out" | "unknown" | "unlinked" {
+  if (provider === "claude" && status === "not_connected") return "unlinked";
+  if (status == null) return "unknown";
   if (status === "signed_out" || status === "not_connected") return "out";
   return "in";
 }
@@ -124,10 +125,10 @@ function delegationFamilyCounts(state: ReturnType<typeof useSystemPromptSettings
   let unknown = 0;
   for (const provider of orderProviders(state.aiGatewayCatalog.providers)) {
     const on = groupFamilies(provider.models).filter((family) => family.variants.some((variant) => ids.has(variant.model.id))).length;
-    const kind = gatewayLoginKind(provider.id, state.aiGatewayLogin[provider.id]);
-    if (kind === "in") candidates += on;
-    else if (kind === "out") waiting += on;
-    else unknown += on;
+    const status = state.aiGatewayLogin[provider.id];
+    if (isProviderCatalogVisible(status, provider.id)) candidates += on;
+    else waiting += on;
+    if (status == null) unknown += on;
   }
   return { candidates, waiting, unknown };
 }
@@ -291,7 +292,8 @@ export function AiGatewayModelsCard(): React.ReactElement {
           const signedOut = kind === "out";
           return (
             <section key={provider.id} className={`settings-group-surface ai-gateway-provider-group ai-gateway-provider is-${provider.id}`} aria-label={name}>
-              <button type="button" className="ai-gateway-group-head ai-gateway-provider-toggle" aria-expanded={open} onClick={() => setCollapsed((current) => {
+              <div className="ai-gateway-group-head">
+              <button type="button" className="ai-gateway-provider-toggle" aria-expanded={open} onClick={() => setCollapsed((current) => {
                 const next = new Set(current);
                 if (next.has(provider.id)) next.delete(provider.id);
                 else next.add(provider.id);
@@ -299,10 +301,20 @@ export function AiGatewayModelsCard(): React.ReactElement {
               })}>
                 <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
                 <span className="ai-gateway-provider-name">{name}</span>
-                <span className={`ai-gateway-login${signedOut ? " is-needed" : kind === "unknown" ? " is-unknown" : ""}`}>{kind === "unknown" ? t("terminal.settings.aiGatewayLoginChecking") : signedOut ? t("terminal.settings.aiGatewayNeedsLogin") : t("terminal.settings.aiGatewaySignedIn")}</span>
-                <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayEnabledCount", { on: onCount, all: rows.length })}</span>
-                <span className="ai-gateway-model-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
               </button>
+              {kind === "unlinked" ? (
+                <button type="button" className="ai-gateway-login is-unlinked" onClick={() => requestQuotaPanelOpen()}>{t("terminal.settings.aiGatewayUsageUnlinked")}</button>
+              ) : (
+                <span className={`ai-gateway-login${signedOut ? " is-needed" : kind === "unknown" ? " is-unknown" : ""}`}>{kind === "unknown" ? t("terminal.settings.aiGatewayLoginChecking") : signedOut ? t("terminal.settings.aiGatewayNeedsLogin") : t("terminal.settings.aiGatewaySignedIn")}</span>
+              )}
+              <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayEnabledCount", { on: onCount, all: rows.length })}</span>
+              <span className="ai-gateway-model-chevron" aria-hidden="true" onClick={() => setCollapsed((current) => {
+                const next = new Set(current);
+                if (next.has(provider.id)) next.delete(provider.id);
+                else next.add(provider.id);
+                return next;
+              })}>{open ? "▾" : "▸"}</span>
+              </div>
               {provider.id === "xai" ? <XaiEndpointRow /> : null}
               {open ? (
                 <div className="ai-gateway-rows">

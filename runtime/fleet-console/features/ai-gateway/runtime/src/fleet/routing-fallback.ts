@@ -20,10 +20,10 @@ const GATEWAY_PREFIX = "claude-gateway--";
 /** 내장 agent를 제공하는 주체. 이 이름이 아니면 다른 플러그인의 정의다. */
 const ENGINE_PLUGIN = "engine";
 
-import type { GatewayAssignmentRequest, GatewayAssignmentExposure, GatewayAssignmentDecision } from "./routing-assignment.js";
-/** 이 모델을 위임에 줄 수 있는가. 켠 목록(위임 후보)에 없는 모델은 줄 수 없다. */
+import { delegationCandidateModels, type GatewayAssignmentRequest, type GatewayAssignmentExposure, type GatewayAssignmentDecision } from "./routing-assignment.js";
+/** 이 모델을 위임에 줄 수 있는가. 켠 목록이면서 로그인 술어를 통과한 모델만 줄 수 있다. */
 function isDelegable(modelId: string, exposure: GatewayAssignmentExposure): boolean {
-  return exposure.delegationModels.some((model) => toClaudeGatewayModelId(model) === modelId);
+  return delegationCandidateModels(exposure).some((model) => toClaudeGatewayModelId(model) === modelId);
 }
 
 /** 아무것도 바꾸지 않는 답. 세션 모델을 그대로 탄다. */
@@ -111,7 +111,7 @@ export function fallbackGatewayRoutingAssignment(
       because: "already carried a gateway model",
     };
   }
-  const table = buildGatewayRoutingTable(exposure.delegationModels, {
+  const table = buildGatewayRoutingTable(delegationCandidateModels(exposure), {
     ...(exposure.effortExposure === undefined ? {} : { effortExposure: exposure.effortExposure }),
     ...(exposure.providerPriority === undefined ? {} : { providerPriority: exposure.providerPriority }),
   });

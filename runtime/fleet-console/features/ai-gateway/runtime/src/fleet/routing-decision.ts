@@ -7,7 +7,7 @@ import { SystemOneClient, SystemOneError, isSystemOneTokenLimitError } from "../
 import { buildGatewayLoadout } from "./model-loadout.js";
 import { choice, runDecision } from "../upstream/typesafe/decisions.js";
 
-import { isDelegableGatewayModel, guardGatewayRoutingAssignment,
+import { delegationCandidateModels, isDelegableGatewayModel, guardGatewayRoutingAssignment,
   type GatewayRoutingCandidate, type GatewayAssignmentDecision, type GatewayAssignmentExposure,
   type GatewayAssignmentRequest } from "./routing-assignment.js";
 
@@ -451,7 +451,7 @@ function recordCommittedSeat(
   exposure: GatewayAssignmentExposure,
   distribution: NonNullable<GatewayAssignmentExposure["distribution"]>,
 ): void {
-  const model = exposure.delegationModels.find(entry => toClaudeGatewayModelId(entry) === decision.model);
+  const model = delegationCandidateModels(exposure).find(entry => toClaudeGatewayModelId(entry) === decision.model);
   if (model) distribution.record(model.provider, exposure);
 }
 

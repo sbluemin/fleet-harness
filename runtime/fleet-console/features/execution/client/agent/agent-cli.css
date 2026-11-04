@@ -1680,8 +1680,10 @@
 .ai-gateway-inline-hint { color: var(--text-tertiary); font-size: var(--t-xs); text-transform: none; letter-spacing: 0; }
 .ai-gateway-find { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; }
 .ai-gateway-find-input { flex: 1; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; padding: 6px 8px; }
+.ai-gateway-group-head > .ai-gateway-provider-toggle { flex: 1; width: auto; min-width: 0; display: inline-flex; align-items: center; gap: var(--space-2); }
 .ai-gateway-provider-toggle { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; }
 .ai-gateway-login { margin-inline-start: auto; font-size: var(--t-xs); color: var(--text-secondary); }
+button.ai-gateway-login { border: 0; padding: 0; background: transparent; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .ai-gateway-login.is-needed { color: var(--warn, var(--text-secondary)); }
 .ai-gateway-signin-note { margin: 0; padding: 0 var(--space-3) var(--space-2); color: var(--text-secondary); font-size: var(--t-xs); }
 .ai-gateway-family { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: 6px var(--space-3); }
