@@ -765,10 +765,18 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         if (ctx.consoleControl?.observe(objectiveId)?.lifecycle !== "dormant") throw new ConsoleControlError("not_dormant");
         const isSwitchLive = input.reason === "switch_live";
         const fresh = !isSwitchLive && ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(objectiveId);
-        const result = await resumeObjective(objectiveId, fresh);
-        if (!result.ok) throw new ConsoleControlError(result.error);
-        settled("completed");
-        return { objectiveId, delivery: "confirmed" };
+        try {
+          const result = await resumeObjective(objectiveId, fresh);
+          if (!result.ok) {
+            if (fresh) freshOpenSessions.add(objectiveId);
+            throw new ConsoleControlError(result.error);
+          }
+          settled("completed");
+          return { objectiveId, delivery: "confirmed" };
+        } catch (error) {
+          if (fresh) freshOpenSessions.add(objectiveId);
+          throw error;
+        }
       }
       if (input.kind === "interrupt") {
         const confirmed = targetChat
@@ -1543,8 +1551,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node };
         const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
-        const preservePrevious = freshEnabled && providerSession?.id;
-        const previousSessions = preservePrevious ? [...(launchSession?.previousSessions ?? []), providerSession] : launchSession?.previousSessions;
+        const archiveCurrent = freshEnabled && providerSession?.id;
+        const existingPrevious = launchSession?.previousSessions;
+        const previousSessions = archiveCurrent
+          ? [...(existingPrevious ?? []), providerSession]
+          : existingPrevious;
         payloadWithoutProvider.session = {
           harness: "claude-code",
           ...(canonicalStoredModel ? { model: canonicalStoredModel } : {}),
@@ -1552,7 +1563,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
           ...(blockSubagents ? { disableSubagents: true } : {}),
           ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
-          ...(preservePrevious && previousSessions ? { previousSessions } : {}),
+          ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
         };
         ctx.host.objectiveRecords.patch(sessionId, { ...(payloadWithoutProvider) });
       }
@@ -2340,6 +2351,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node) ? [ALL_SUBAGENTS] : [];
     const chatDisableAutoMemory = readAgentSession(node)?.disableAutoMemory === true;
     const mcpTokenLabel = `chat:${node.id}`;
+    let freshConsumed = false;
     return {
       ok: true,
       seed: {
@@ -2423,6 +2435,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 없으므로 트랜스크립트가 말하는 id를 그대로 쓴다.
         resolveClaudeSession: () => {
           const fresh = ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(node.id);
+          if (fresh) freshConsumed = true;
           const existingSession = readAgentSession(node);
           const hadSession = !!providerSession?.id || !!existingSession?.previousSessions?.length;
           return prepareChatClaudeSession({
@@ -2443,21 +2456,28 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
             ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
           });
         },
+        onClaudeSessionFailed: () => {
+          if (freshConsumed && ctx.host.experiments?.read()?.objectiveFreshSession === true) {
+            freshOpenSessions.add(node.id);
+            freshConsumed = false;
+          }
+        },
         onProviderSessionUpdate: (updated) => {
           const objectiveRecord = ctx.host.objectiveRecords.get(node.id);
           if (objectiveRecord) {
             const existing = readAgentSession(objectiveRecord);
             const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+            const existingPrevious = existing?.previousSessions;
             const archivePrevious = freshEnabled && existing?.id && existing.id !== updated.id;
             const previousSessions = archivePrevious
-              ? [...(existing.previousSessions ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
-              : existing?.previousSessions;
+              ? [...(existingPrevious ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
+              : existingPrevious;
             const updatedSession = mergeCapturedAgentSession(objectiveRecord, updated);
             const patched = {
               ...objectiveRecord,
               session: {
                 ...updatedSession,
-                ...(previousSessions && freshEnabled ? { previousSessions } : {}),
+                ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
               },
             };
             ctx.host.objectiveRecords.patch(node.id, { ...patched });
@@ -2642,17 +2662,18 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (objectiveRecord) {
         const existing = readAgentSession(objectiveRecord);
         const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+        const existingPrevious = existing?.previousSessions;
         const archivePrevious = freshEnabled && existing?.id && existing.id !== providerSession.id;
         const previousSessions = archivePrevious
-          ? [...(existing.previousSessions ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
-          : existing?.previousSessions;
+          ? [...(existingPrevious ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
+          : existingPrevious;
         const updatedSession = mergeCapturedAgentSession(objectiveRecord, providerSession);
         ctx.host.objectiveRecords.patch(sessionId, {
           ...({
             ...objectiveRecord,
             session: {
               ...updatedSession,
-              ...(previousSessions && freshEnabled ? { previousSessions } : {}),
+              ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
             },
           }),
         });

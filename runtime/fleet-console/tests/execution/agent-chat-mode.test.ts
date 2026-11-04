@@ -655,6 +655,12 @@ describe("agent chat mode routes", () => {
     expect(prevSessions?.[0]).toMatchObject({ id: "sid-live", harness: "claude-code" });
     expect(prevSessions?.[1]).toMatchObject({ id: "sid-second", harness: "claude-code" });
 
+    // Case 2c: failed resume rolls back fresh marker
+    harness.markNextOpenFresh(sessionId);
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
+    await expect(harness.consoleControl.request({ kind: "objectiveRecord", objectiveId: sessionId }, { kind: "resume", objectiveId: sessionId })).rejects.toThrow();
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
+
     // Case 3: switchLive maintains coordinates change in-place without restarting as new session
     const beforeSwitchCount = harness.openSessionRequests.length;
     await harness.post(sessionId, "chat-coordinates", { model: "sonnet[1m]", effort: "medium" });
@@ -665,6 +671,14 @@ describe("agent chat mode routes", () => {
     const frames = await harness.openChatSocket(sessionId);
     const dispatches = frames.filter((frame) => frame.event.kind === "dispatch");
     expect(dispatches.some((frame) => (frame.event as { text?: string }).text === "first order")).toBe(true);
+
+    // Case 5: experiment turned off preserves existing previousSessions in record
+    harness.setExperiments({ objectiveFreshSession: false });
+    const recordBefore = harness.getRecord(sessionId);
+    expect((recordBefore?.session as { previousSessions?: unknown[] })?.previousSessions).toHaveLength(2);
+    await harness.post(sessionId, "chat-stop");
+    const recordAfter = harness.getRecord(sessionId);
+    expect((recordAfter?.session as { previousSessions?: unknown[] })?.previousSessions).toHaveLength(2);
   });
 });
 
