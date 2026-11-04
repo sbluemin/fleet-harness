@@ -17,7 +17,7 @@ import type { AgentConversationEntry, AgentConversationProps } from "../../../..
 import { getGroupT } from "./group-chat-i18n.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
 import { MentionChip } from "../../../composer-primitives/mention-chip.js";
-import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey, speakerTone, useCommodoreSpeakerKey } from "./speaker-mark.js";
+import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey, speakerNameStyle, speakerTone, useCommodoreSpeakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
 import "./group-chat.css";
@@ -891,8 +891,11 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
       </div>
     );
   }
+  // TF 테두리 원천 — 이름 인라인과 같은 단일 출처(`speakerNameStyle`)의 톤 vars를 행에 싣는다.
+  // 이 행 attrs만으로는 보이는 것이 바뀌지 않는다(읽는 규칙은 `.taskforce-conversation` 아래에만 둔다).
+  const rowTone = speakerTone(speaker);
   return (
-    <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id}>
+    <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id} data-speaker-tone={rowTone ?? undefined} style={speakerNameStyle(rowTone)}>
       {showMark ? (
         <span className="group-chat-agent-mark">
           {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}

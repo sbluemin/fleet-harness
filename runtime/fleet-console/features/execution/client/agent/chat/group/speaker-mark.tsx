@@ -118,6 +118,12 @@ export function LiveSpeakerMark({ speaker, participants }: { readonly speaker: C
   return <SpeakerMark speaker={speaker} state={participantMongleState(speaker, activity, state, clusters)} />;
 }
 
+/** 이름 잉크 vars의 단일 출처 — `SpeakerName` 인라인과 말풍선 행(`.group-chat-agent`)이 같은 값을 싣는다.
+ * TF 테두리(`taskforce.css`)는 행 vars에서, 이름은 자기 인라인에서 같은 식으로 읽어 어긋나지 않는다. */
+export function speakerNameStyle(tone: string | null): React.CSSProperties | undefined {
+  return tone ? { "--speaker-name-ink": `var(--id-${tone})`, "--speaker-name-face": `var(--mongle-${tone})` } as React.CSSProperties : undefined;
+}
+
 /** 발화자 이름 — 말풍선 머리의 사령관·지휘관만 자기 아바타 톤을 읽고, TF·구성원의 명시된 톤은 보존한다. */
 export function SpeakerName({ speaker, className = "", avatarTone = false }: { readonly speaker: ConversationSpeaker; readonly className?: string; readonly avatarTone?: boolean }) {
   const book = useAvatarBook();
@@ -127,7 +133,7 @@ export function SpeakerName({ speaker, className = "", avatarTone = false }: { r
       : speaker.kind === "commander" && speaker.objectiveId ? objectiveRecordAvatarKey(speaker.objectiveId) : null;
   const look = key ? resolveMongleLook(book, key) : null;
   const tone = look ? look.tone ?? mongleBase(look.base).tone : speakerTone(speaker);
-  const style = tone ? { "--speaker-name-ink": `var(--id-${tone})`, "--speaker-name-face": `var(--mongle-${tone})` } as React.CSSProperties : undefined;
+  const style = speakerNameStyle(tone);
   return <span className={`group-chat-name${tone ? ` is-tone-${tone}` : ` is-${speaker.kind}`}${look ? " is-avatar-tone" : ""}${className ? ` ${className}` : ""}`} style={style}>{speaker.name}</span>;
 }
 
