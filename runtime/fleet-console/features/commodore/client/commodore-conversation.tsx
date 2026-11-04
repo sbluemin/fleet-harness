@@ -20,6 +20,7 @@ import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, readCommodoreTasksPlacement, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getConversationSurface, subscribeConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
+import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
 import { getState } from "../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
@@ -339,6 +340,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const [peerLedger, setPeerLedger] = useState<ConversationSpeaker | null>(null);
   useEffect(() => setPeerLedger(null), [commodoreId]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
+  const dockRef = useRef<HTMLElement | null>(null);
+  useConversationDockHeight(dockRef);
 
   const [loadingOlder, setLoadingOlder] = useState(false);
   const readOlder = () => {
@@ -415,7 +418,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
   const composer = (
-    <footer className="objectives-commodore-foot">
+    <footer ref={dockRef} className="objectives-commodore-foot">
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>

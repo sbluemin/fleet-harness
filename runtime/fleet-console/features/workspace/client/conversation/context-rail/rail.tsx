@@ -44,9 +44,19 @@ function ContextRail({ sessions, slot }: {
   const state = useContextRailState();
   // 보는 세션이 맨 위에 선다. 나머지는 제공자가 준 순서(지휘관, 구성원)를 지킨다.
   const ordered = React.useMemo(() => [...sessions.filter((session) => session.focus), ...sessions.filter((session) => !session.focus)], [sessions]);
+  const stackRef = React.useRef<HTMLDivElement | null>(null);
   const chipRefs = React.useRef(new Map<string, HTMLDivElement>());
   const [flyTop, setFlyTop] = React.useState(0);
+  const [bubbleTop, setBubbleTop] = React.useState(0);
+  const [fade, setFade] = React.useState({ top: false, bottom: false });
+  const overId = React.useRef<string | null>(null);
+  const focusId = React.useRef<string | null>(null);
+  const [bubbleId, setBubbleId] = React.useState<string | null>(null);
+  const broughtIntoView = React.useRef<string | null>(null);
   const open = ordered.find((session) => session.id === state.flyout) ?? null;
+  const bubble = ordered.find((session) => session.id === bubbleId && session.id !== state.flyout) ?? null;
+  // 마우스가 칩 위에 있으면 그 칩이 이긴다. 포커스는 키보드(:focus-visible)일 때만 말풍선을 연다.
+  const syncBubble = () => setBubbleId(overId.current ?? focusId.current);
 
   // `/context`는 그 세션의 상세 카드를 띄운다.
   const handled = React.useRef(state.reveal?.nonce ?? 0);
@@ -83,12 +93,38 @@ function ContextRail({ sessions, slot }: {
     if (state.flyout !== null && !ordered.some((session) => session.id === state.flyout)) setContextFlyout(null);
   }, [ordered, state.flyout]);
 
-  // 카드는 누른 칩의 왼쪽에, 그 칩 높이에서 오버레이 바닥까지 뜬다.
+  const placeFloating = React.useCallback((scrollIntoView: boolean) => {
+    const stack = stackRef.current;
+    if (!stack) return;
+    const overflow = stack.scrollHeight - stack.clientHeight > 1;
+    const top = overflow && stack.scrollTop > 1;
+    const bottom = overflow && stack.scrollTop + stack.clientHeight < stack.scrollHeight - 1;
+    setFade((current) => current.top === top && current.bottom === bottom ? current : { top, bottom });
+    const id = state.flyout ?? bubbleId;
+    const node = id === null ? null : chipRefs.current.get(id) ?? null;
+    if (state.flyout !== null && node && scrollIntoView && broughtIntoView.current !== state.flyout) {
+      const top = node.offsetTop;
+      const bottom = top + node.offsetHeight;
+      if (top < stack.scrollTop) stack.scrollTop = top;
+      else if (bottom > stack.scrollTop + stack.clientHeight) stack.scrollTop = bottom - stack.clientHeight;
+      broughtIntoView.current = state.flyout;
+    }
+    if (state.flyout === null) broughtIntoView.current = null;
+    const flyNode = state.flyout === null ? null : chipRefs.current.get(state.flyout) ?? null;
+    if (flyNode) setFlyTop(Math.max(0, flyNode.offsetTop - stack.scrollTop));
+    const bubbleNode = bubbleId === null ? null : chipRefs.current.get(bubbleId) ?? null;
+    if (bubbleNode) setBubbleTop(Math.max(0, bubbleNode.offsetTop - stack.scrollTop + 8));
+  }, [state.flyout, bubbleId]);
+
+  React.useLayoutEffect(() => { placeFloating(true); }, [placeFloating, ordered]);
+  // 독이 자라면 오버레이 높이가 CSS 변수로 줄고, 칩 줄의 넘침·페이드도 따라 갱신한다.
   React.useLayoutEffect(() => {
-    if (state.flyout === null) return;
-    const node = chipRefs.current.get(state.flyout);
-    if (node) setFlyTop(node.offsetTop);
-  }, [state.flyout, ordered]);
+    const stack = stackRef.current;
+    if (!stack || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => placeFloating(false));
+    observer.observe(stack);
+    return () => observer.disconnect();
+  }, [placeFloating]);
 
   const toggleLabel = t(state.enabled ? "conversation.rail.hide" : "conversation.rail.show");
   const toggle = (
@@ -108,19 +144,42 @@ function ContextRail({ sessions, slot }: {
     <>
       {slot ? createPortal(toggle, slot) : null}
       {state.enabled ? (
-        <div className="context-rail-overlay" role="group" aria-label={t("conversation.rail.title")}>
-          {ordered.map((session) => (
-            <div
-              key={session.id}
-              className="context-rail-chip-slot"
-              ref={(node) => {
-                if (node) chipRefs.current.set(session.id, node);
-                else chipRefs.current.delete(session.id);
-              }}
-            >
-              <ContextChip session={session} open={state.flyout === session.id} t={t} onToggle={() => setContextFlyout(state.flyout === session.id ? null : session.id)} />
+        <div
+          className="context-rail-overlay"
+          role="group"
+          aria-label={t("conversation.rail.title")}
+          {...(fade.top ? { "data-fade-top": "" } : {})}
+          {...(fade.bottom ? { "data-fade-bottom": "" } : {})}
+        >
+          <div ref={stackRef} className="context-rail-stack" onScroll={() => placeFloating(false)}>
+            {ordered.map((session) => (
+              <div
+                key={session.id}
+                className="context-rail-chip-slot"
+                ref={(node) => {
+                  if (node) chipRefs.current.set(session.id, node);
+                  else chipRefs.current.delete(session.id);
+                }}
+              >
+                <ContextChip
+                  session={session}
+                  open={state.flyout === session.id}
+                  t={t}
+                  onToggle={() => setContextFlyout(state.flyout === session.id ? null : session.id)}
+                  onHover={(hover) => { overId.current = hover ? session.id : overId.current === session.id ? null : overId.current; syncBubble(); }}
+                  onFocusChange={(focused) => { focusId.current = focused ? session.id : focusId.current === session.id ? null : focusId.current; syncBubble(); }}
+                />
+              </div>
+            ))}
+          </div>
+          {bubble ? (
+            <div className="context-rail-bubble" style={{ top: bubbleTop }} aria-hidden="true">
+              <strong>{bubble.name}</strong>
+              {bubble.measure
+                ? <span className="context-rail-bubble-usage">{`${summaryOf(bubble.measure)} · ${percentOf(bubble.measure)}%`}</span>
+                : <span className="context-rail-bubble-plain">{t("conversation.rail.unmeasuredShort")}</span>}
             </div>
-          ))}
+          ) : null}
           {open ? (
             <div className="context-rail-fly" style={{ top: flyTop, maxHeight: `calc(100% - ${flyTop}px)` }} data-context-rail-keep>
               <ContextCard session={open} open forced state={state} t={t} />
@@ -132,11 +191,13 @@ function ContextRail({ sessions, slot }: {
   );
 }
 
-function ContextChip({ session, open, t, onToggle }: {
+function ContextChip({ session, open, t, onToggle, onHover, onFocusChange }: {
   readonly session: ContextRailSession;
   readonly open: boolean;
   readonly t: Translate;
   readonly onToggle: () => void;
+  readonly onHover: (hover: boolean) => void;
+  readonly onFocusChange: (focused: boolean) => void;
 }) {
   const measure = session.measure;
   const label = chipLabel(session, t);
@@ -148,18 +209,16 @@ function ContextChip({ session, open, t, onToggle }: {
       aria-expanded={open}
       aria-label={label}
       onClick={onToggle}
+      onPointerEnter={() => onHover(true)}
+      onPointerLeave={() => onHover(false)}
+      onFocus={(event) => { if (event.currentTarget.matches(":focus-visible")) onFocusChange(true); }}
+      onBlur={() => onFocusChange(false)}
     >
       <span className="context-rail-ring">
         <ContextRing ratio={ratioOf(measure)} unmeasured={measure === null} />
         <span className="context-rail-ring-face">{session.avatar}</span>
       </span>
       <span className={`context-rail-pct${measure ? "" : " is-none"}`}>{measure ? `${percentOf(measure)}%` : "—"}</span>
-      <span className="context-rail-bubble" aria-hidden="true">
-        <strong>{session.name}</strong>
-        {measure
-          ? <span className="context-rail-bubble-usage">{`${summaryOf(measure)} · ${percentOf(measure)}%`}</span>
-          : <span className="context-rail-bubble-plain">{t("conversation.rail.unmeasuredShort")}</span>}
-      </span>
     </button>
   );
 }

@@ -1,3 +1,4 @@
+import { useConversationDockHeight } from "../../../../workspace/client/conversation/conversation-dock-height.js";
 import { revealContextCard } from "../../../../workspace/client/conversation/context-rail/store.js";
 import * as React from "react";
 import type { ObjectiveRenderContext } from "../../../shared/client-contract.js";
@@ -206,6 +207,7 @@ export function AgentChatComposer({
      간다 — 이 폭에서 같은 폭이 되는 단은 건너뛴다. */
   const readingWidth = useChatReadingWidth();
   const composerRef = React.useRef<HTMLDivElement | null>(null);
+  useConversationDockHeight(composerRef);
   const widthChoices = useDistinctChatWidths(composerRef);
   const widthCollapsed = widthChoices.length < 2;
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
