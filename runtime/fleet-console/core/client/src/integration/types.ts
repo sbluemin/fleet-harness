@@ -384,6 +384,8 @@ export interface ConsoleState {
   readonly keyboardShortcutsOpen: boolean;
   /** 도움말 › 플릿 한눈에 보기 모션 팝업이 열려 있는가. */
   readonly fleetAtAGlanceOpen: boolean;
+  /** 도움말 › 새 기능 다시보기 — 새 기능 카드 목록 전체가 순서대로 다시 떠 있는가. */
+  readonly featureCardsReplayOpen: boolean;
   readonly objectiveRecordNotifications: Readonly<Record<string, ObjectiveNotification>>;
   readonly notificationPreferences: NotificationPreferences;
 }

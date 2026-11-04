@@ -9,7 +9,7 @@ import { requestDesktopShellUpdate, type DesktopShellUpdate } from "../../integr
 import { useUpdateSignals } from "./update-notice-bubble.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
-import { openFleetAtAGlance, openWhatsNew, setState } from "../../integration/store.js";
+import { openFeatureCardsReplay, openFleetAtAGlance, openWhatsNew, setState } from "../../integration/store.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 import { useSideSubmenu, type SideSubmenuGroup } from "./use-side-submenu.js";
@@ -189,6 +189,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); openFleetAtAGlance(); }}><FleetGlanceGlyph /><span>{t("chrome.system.fleetAtAGlance")}</span></button>
+      <button type="button" role="menuitem" onClick={() => { setOpen(false); openFeatureCardsReplay(); }}><FeatureCardsGlyph /><span>{t("chrome.system.featureCardsReplay")}</span></button>
       <div className="command-band-system-menu-divider" role="separator" />
       <ConsoleVersionRow version={version} latestVersion={updateAvailable ? latestVersion : null} foldedIntoShell={consoleFoldsIntoShell} shellUpdateRequired={shellUpdateRequired} onStarted={() => setOpen(false)} />
       {shell.desktopVersion ? <DesktopVersionRow version={shell.desktopVersion} update={shellUpdate} /> : null}
@@ -485,6 +486,11 @@ function KeyboardGlyph() {
 // 한눈에 보기 — 가운데 점(사람)을 궤도와 바깥 점(에이전트)이 도는 모양.
 function FleetGlanceGlyph() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="1.8" fill="currentColor" /><ellipse cx="8" cy="8" rx="6" ry="3.4" fill="none" stroke="currentColor" strokeWidth="1.2" transform="rotate(-24 8 8)" /><circle cx="12.8" cy="5.2" r="1.1" fill="currentColor" /></svg>;
+}
+
+// 새 기능 다시보기 — 겹쳐 쌓인 카드 두 장. 카드를 한 장씩 넘겨 다시 본다는 뜻이다.
+function FeatureCardsGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="4.5" width="9.5" height="9" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M5 2.5h7.4a1.6 1.6 0 0 1 1.6 1.6v6.9" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 function GithubMarkIcon() {

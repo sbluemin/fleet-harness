@@ -13,8 +13,6 @@ export interface TaskforceIntroCopy {
   readonly bodyEm2: string;
   readonly bodyPost: string;
   readonly link: string;
-  readonly primary: string;
-  readonly dismiss: string;
 }
 
 export interface TaskforceIntroCanvasCopy {
@@ -39,8 +37,6 @@ const copyKo: TaskforceIntroCopy = {
   bodyEm2: "목표를 세워 진행",
   bodyPost: "까지 이어 가요. 실험 기능이라 기본으로 꺼져 있어요.",
   link: "설정에서 켜기",
-  primary: "알겠어요",
-  dismiss: "소개 카드 닫기",
 };
 
 const copyEn: TaskforceIntroCopy = {
@@ -53,8 +49,6 @@ const copyEn: TaskforceIntroCopy = {
   bodyEm2: "an objective",
   bodyPost: " and carry it forward. It is experimental and off by default.",
   link: "Turn on in Settings",
-  primary: "Got it",
-  dismiss: "Dismiss the introduction card",
 };
 
 export function taskforceIntroCopy(locale: ConsoleLocale): TaskforceIntroCopy {
