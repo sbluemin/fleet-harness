@@ -27,7 +27,7 @@ import { useSearchShortcutLabel } from "../../../../core/client/src/integration/
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { openCommodoreNewSession, openDefaultNewSession } from "../conversation/new-session-entry.js";
-import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
+import { isCommodoreConversationActive, isCommodoreConversationOpen, openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { requestCommodoreDelete } from "../../../commodore/client/commodore-delete-modal.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { refreshCommodoreList, replaceCommodoreList, replaceSidebarOrder, setZoneCommodore, useCommodoreListLoaded, useSidebarCommodores, useSidebarOrder, type SidebarCommodore } from "../../../commodore/client/commodore-list.js";
@@ -55,7 +55,7 @@ import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
 import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
 import { commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
-import { noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded } from "./commander-expansion.js";
+import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded } from "./commander-expansion.js";
 import { CommodoreHoverDock } from "./commodore-hover-dock.js";
 import type { SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
@@ -393,10 +393,18 @@ export function ObjectiveRecordsSideBar({
     onEscape: closeActiveContextMenu,
   });
 
-  // 활성 사령관을 한 번 더 골랐다 — 머리의 이름 쪽이든 아바타(표식) 쪽이든 같은 규칙이다. 펼침 유지가 켜져 있으면 그 목록만 접고,
-  // 꺼져 있으면 바뀌지 않는다. 목록이 오른쪽이면 사이드바에 접을 목록이 없다.
+  // 활성 사령관을 한 번 더 골랐다 — 머리의 이름 쪽이든 아바타(표식) 쪽이든 같은 규칙이다. 펼침 유지가 켜진 대화 중심
+  // 화면에서는 그 사령관 대화가 이미 서 있을 때만 목록을 접는다 — 지휘관 대화를 보다가 머리를 누른 것은 사령관 대화로
+  // 돌아가는 이동이므로 펼침을 유지한다(접혀 있으면 펼친다). 꺼져 있으면 바뀌지 않는다. 목록이 오른쪽이면 사이드바에
+  // 접을 목록이 없고, 대화 중심 화면이 아니면(모바일) 예전 토글을 둔다.
   const reselectActiveCommodore = (commodoreId: string) => {
-    if (commodoreId === owningCommodoreId && placement === "left") reselectCommander(commodoreId, readCommanderKeepExpanded());
+    if (commodoreId !== owningCommodoreId || placement !== "left") return;
+    const keepExpanded = readCommanderKeepExpanded();
+    if (keepExpanded && isCommodoreConversationActive() && !isCommodoreConversationOpen(commodoreId)) {
+      ensureCommanderExpanded(commodoreId);
+      return;
+    }
+    reselectCommander(commodoreId, keepExpanded);
   };
 
   // 사령관 머리 — 그 사령관의 대화. 대화를 세울 수 없으면 첫 칸은 기여가 정한다(예: 자율 운영이 켜졌으면 사령관 기록). 아무도
