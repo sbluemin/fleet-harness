@@ -20,7 +20,7 @@ import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, readCommodoreTasksPlacement, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getConversationSurface, subscribeConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
-import { useConversationDockRef } from "../../workspace/client/conversation/context-rail/dock.js";
+import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
 import { getState } from "../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
@@ -340,7 +340,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const [peerLedger, setPeerLedger] = useState<ConversationSpeaker | null>(null);
   useEffect(() => setPeerLedger(null), [commodoreId]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
-  const dockRef = useConversationDockRef<HTMLElement>();
+  const dockRef = useRef<HTMLElement | null>(null);
+  useConversationDockHeight(dockRef);
 
   const [loadingOlder, setLoadingOlder] = useState(false);
   const readOlder = () => {

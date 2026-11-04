@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 
 import { useT } from "../../../../../core/client/src/i18n/index.js";
 import type { ContextRailMeasure, ContextRailRow, ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
-import { useConversationDocks } from "./dock.js";
 import { useContextRailProviders } from "./registry.js";
 import {
   setContextFlyout, setContextRailEnabled, toggleContextCard, toggleContextDetail, useContextRailState,
@@ -45,18 +44,15 @@ function ContextRail({ sessions, slot }: {
   const state = useContextRailState();
   // 보는 세션이 맨 위에 선다. 나머지는 제공자가 준 순서(지휘관, 구성원)를 지킨다.
   const ordered = React.useMemo(() => [...sessions.filter((session) => session.focus), ...sessions.filter((session) => !session.focus)], [sessions]);
-  const overlayRef = React.useRef<HTMLDivElement | null>(null);
   const stackRef = React.useRef<HTMLDivElement | null>(null);
   const chipRefs = React.useRef(new Map<string, HTMLDivElement>());
   const [flyTop, setFlyTop] = React.useState(0);
   const [bubbleTop, setBubbleTop] = React.useState(0);
-  const [clearance, setClearance] = React.useState(12);
   const [fade, setFade] = React.useState({ top: false, bottom: false });
   const overId = React.useRef<string | null>(null);
   const focusId = React.useRef<string | null>(null);
   const [bubbleId, setBubbleId] = React.useState<string | null>(null);
   const broughtIntoView = React.useRef<string | null>(null);
-  const docks = useConversationDocks();
   const open = ordered.find((session) => session.id === state.flyout) ?? null;
   const bubble = ordered.find((session) => session.id === bubbleId && session.id !== state.flyout) ?? null;
   const syncBubble = () => setBubbleId(focusId.current ?? overId.current);
@@ -96,23 +92,6 @@ function ContextRail({ sessions, slot }: {
     if (state.flyout !== null && !ordered.some((session) => session.id === state.flyout)) setContextFlyout(null);
   }, [ordered, state.flyout]);
 
-  // 칩 줄의 바닥은 이 대화 칸에 등록된 입력 독 위로 둔다. 높이는 그 요소의 실제 top이다.
-  React.useLayoutEffect(() => {
-    const overlay = overlayRef.current;
-    const main = overlay?.closest<HTMLElement>(".conversation-main");
-    if (!main) return;
-    const mine = docks.filter((dock) => dock.isConnected && main.contains(dock));
-    const apply = () => {
-      const next = dockClearance(main, mine);
-      setClearance((current) => current === next ? current : next);
-    };
-    const observer = new ResizeObserver(apply);
-    observer.observe(main);
-    for (const dock of mine) observer.observe(dock);
-    apply();
-    return () => observer.disconnect();
-  }, [docks, state.enabled, ordered.length]);
-
   const placeFloating = React.useCallback((scrollIntoView: boolean) => {
     const stack = stackRef.current;
     if (!stack) return;
@@ -136,7 +115,15 @@ function ContextRail({ sessions, slot }: {
     if (bubbleNode) setBubbleTop(Math.max(0, bubbleNode.offsetTop - stack.scrollTop + 8));
   }, [state.flyout, bubbleId]);
 
-  React.useLayoutEffect(() => { placeFloating(true); }, [placeFloating, ordered, clearance]);
+  React.useLayoutEffect(() => { placeFloating(true); }, [placeFloating, ordered]);
+  // 독이 자라면 오버레이 높이가 CSS 변수로 줄고, 칩 줄의 넘침·페이드도 따라 갱신한다.
+  React.useLayoutEffect(() => {
+    const stack = stackRef.current;
+    if (!stack || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => placeFloating(false));
+    observer.observe(stack);
+    return () => observer.disconnect();
+  }, [placeFloating]);
 
   const toggleLabel = t(state.enabled ? "conversation.rail.hide" : "conversation.rail.show");
   const toggle = (
@@ -157,11 +144,9 @@ function ContextRail({ sessions, slot }: {
       {slot ? createPortal(toggle, slot) : null}
       {state.enabled ? (
         <div
-          ref={overlayRef}
           className="context-rail-overlay"
           role="group"
           aria-label={t("conversation.rail.title")}
-          style={{ bottom: clearance }}
           {...(fade.top ? { "data-fade-top": "" } : {})}
           {...(fade.bottom ? { "data-fade-bottom": "" } : {})}
         >
@@ -235,18 +220,6 @@ function ContextChip({ session, open, t, onToggle, onHover, onFocusChange }: {
       <span className={`context-rail-pct${measure ? "" : " is-none"}`}>{measure ? `${percentOf(measure)}%` : "—"}</span>
     </button>
   );
-}
-
-/** 독이 없으면 칸 바닥에서 12px. 있으면 이 칸에 등록된 독 중 가장 위에서 8px를 비운다. */
-function dockClearance(main: HTMLElement, docks: readonly HTMLElement[]): number {
-  const mainRect = main.getBoundingClientRect();
-  let dockTop = mainRect.bottom;
-  for (const dock of docks) {
-    const rect = dock.getBoundingClientRect();
-    if (rect.height < 1 || rect.width < 1) continue;
-    if (rect.top < dockTop) dockTop = rect.top;
-  }
-  return Math.max(12, Math.round(mainRect.bottom - dockTop + 8));
 }
 
 /** 지름 40px 링. 측정 전에는 채움 없이 점선만 그린다. */

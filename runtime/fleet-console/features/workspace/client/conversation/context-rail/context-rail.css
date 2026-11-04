@@ -20,7 +20,8 @@
   z-index: 4;
   top: calc(var(--conversation-top-row, 52px) + var(--space-2) - var(--context-rail-pad));
   right: calc(var(--space-3) - var(--context-rail-pad));
-  bottom: var(--space-3);
+  /* --conversation-dock-height 는 대화 stage 바닥에서 독 top까지다. stage와 .conversation-main 의 바닥이 같으므로 그대로 쓴다. */
+  bottom: max(12px, calc(var(--conversation-dock-height, 0px) + 8px));
   width: calc(58px + 2 * var(--context-rail-pad));
   pointer-events: none;
 }
