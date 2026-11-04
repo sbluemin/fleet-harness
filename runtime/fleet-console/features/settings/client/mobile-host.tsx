@@ -158,10 +158,11 @@ export function Select({
   disabled = false,
   compact = false,
   className,
+  popupClassName,
   id,
   label,
   "aria-labelledby": ariaLabelledBy,
-}: SelectProps): React.ReactElement {
+}: SelectProps & { readonly popupClassName?: string }): React.ReactElement {
   const select = useSelect({ value, options, onChange, disabled, id, compact });
   const selected = options.find((option) => option.value === value);
   const mobileHost = useMobileSettingsHost();
@@ -211,7 +212,11 @@ export function Select({
       </button>
       {select.isOpen
         ? createPortal(
-            <ul {...select.listboxProps} {...sharedLabelProps}>
+            <ul
+              {...select.listboxProps}
+              {...sharedLabelProps}
+              className={[select.listboxProps.className, popupClassName].filter(Boolean).join(" ")}
+            >
               {options.map((option, index) => (
                 <li key={option.value} {...select.getOptionProps(index)}>
                   {option.label}<MenuCheckGlyph className="fc-select__check" size={14} />

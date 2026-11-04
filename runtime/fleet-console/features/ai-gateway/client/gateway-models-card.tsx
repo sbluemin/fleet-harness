@@ -6,6 +6,7 @@ import { OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../execution/client/objectiv
 import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import { createPortal } from "react-dom";
+import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { SettingsGroup, SettingsItem, SettingsSubScreenRow, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { Select, useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import {
@@ -133,10 +134,143 @@ function delegationFamilyCounts(state: ReturnType<typeof useSystemPromptSettings
   return { candidates, waiting, unknown };
 }
 
+/** OS `prefers-reduced-motion`과 설정의 「움직임 줄이기」. 둘 중 하나면 순서 칩은 미끄러지지 않는다. */
+function useMotionReduced(): boolean {
+  const settingReduced = useGlobalSettingsStore().state?.reduceMotion === true;
+  const [osReduced, setOsReduced] = React.useState(
+    () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  React.useEffect(() => {
+    const query = matchMedia("(prefers-reduced-motion: reduce)");
+    const update = (): void => setOsReduced(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return settingReduced || osReduced;
+}
+
+/** 칩이 줄 안에서 보이는 자리. transform이 남아 있으면 레이아웃이 아니라 화면 위치를 읽는다. */
+function chipOffset(node: HTMLElement, row: HTMLElement): { x: number; y: number } {
+  const chip = node.getBoundingClientRect();
+  const host = row.getBoundingClientRect();
+  return { x: chip.left - host.left, y: chip.top - host.top };
+}
+
+/**
+ * 구독 순서 칩의 FLIP. 순서가 바뀌거나 추가·제거로 밀릴 때 이전 자리에서 새 자리로 220ms에 미끄러진다.
+ * 저장이 돌아온 뒤의 재렌더도 같은 측정이라, 그 사이에 자리가 안 바뀌면 다시 움직이지 않는다.
+ * 이동 중에 다시 누르면 레이아웃이 아니라 지금 보이는 자리에서 잇는다.
+ */
+function useOrderChipFlip(rowRef: React.RefObject<HTMLElement | null>, signature: string, reduced: boolean): void {
+  const positions = React.useRef(new Map<string, { x: number; y: number }>());
+  const order = React.useRef<readonly string[]>([]);
+  const layerTimers = React.useRef<number[]>([]);
+  React.useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    for (const timer of layerTimers.current) window.clearTimeout(timer);
+    layerTimers.current = [];
+    const nodes = [...row.querySelectorAll<HTMLElement>("[data-order-id]")];
+    const previous = positions.current;
+    const previousOrder = order.current;
+    const seen = new Map<string, { x: number; y: number }>();
+    for (const node of nodes) {
+      const id = node.dataset.orderId;
+      if (!id) continue;
+      seen.set(id, node.style.transform ? chipOffset(node, row) : previous.get(id) ?? chipOffset(node, row));
+    }
+    for (const node of nodes) {
+      node.style.transition = "none";
+      node.style.transform = "";
+    }
+    const next = new Map<string, { x: number; y: number }>();
+    const moves: { node: HTMLElement; dx: number; dy: number }[] = [];
+    for (const node of nodes) {
+      const id = node.dataset.orderId;
+      if (!id) continue;
+      const point = chipOffset(node, row);
+      next.set(id, point);
+      const from = seen.get(id);
+      if (!from || reduced || !previous.has(id)) continue;
+      const dx = from.x - point.x;
+      const dy = from.y - point.y;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moves.push({ node, dx, dy });
+    }
+    positions.current = next;
+    order.current = nodes.flatMap((node) => node.dataset.orderId ? [node.dataset.orderId] : []);
+    const previousIndex = new Map(previousOrder.map((id, index) => [id, index]));
+    for (const node of nodes) node.style.zIndex = "";
+    if (reduced) {
+      for (const node of nodes) node.style.transition = "none";
+      return;
+    }
+    if (moves.length === 0) {
+      for (const node of nodes) node.style.transition = "";
+      return;
+    }
+    for (const { node, dx, dy } of moves) {
+      const id = node.dataset.orderId;
+      const before = id ? previousIndex.get(id) : undefined;
+      const after = id ? order.current.indexOf(id) : -1;
+      node.style.zIndex = before !== undefined && after >= 0 && after < before ? "1" : "";
+      node.style.transition = "none";
+      node.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
+    let played = false;
+    const frame = requestAnimationFrame(() => {
+      played = true;
+      for (const { node } of moves) {
+        node.style.transition = "transform 220ms ease-out";
+        node.style.transform = "";
+        layerTimers.current.push(window.setTimeout(() => { node.style.zIndex = ""; }, 220));
+      }
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (played) return;
+      positions.current = previous;
+      order.current = previousOrder;
+      for (const { node } of moves) {
+        node.style.transform = "";
+        node.style.transition = "";
+        node.style.zIndex = "";
+      }
+    };
+  }, [rowRef, signature, reduced]);
+  React.useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return undefined;
+    const remember = (): void => {
+      const nodes = [...row.querySelectorAll<HTMLElement>("[data-order-id]")];
+      if (nodes.some((node) => getComputedStyle(node).transform !== "none")) return;
+      const next = new Map<string, { x: number; y: number }>();
+      for (const node of nodes) {
+        const id = node.dataset.orderId;
+        if (id) next.set(id, chipOffset(node, row));
+      }
+      positions.current = next;
+    };
+    window.addEventListener("resize", remember);
+    row.addEventListener("transitionend", remember);
+    return () => {
+      window.removeEventListener("resize", remember);
+      row.removeEventListener("transitionend", remember);
+    };
+  }, [rowRef, signature]);
+}
+
 export function AiGatewayModelsCard(): React.ReactElement {
   const mobile = useMobileSettingsHost() !== null;
   const t = getT(useTerminalLocale(), mobile);
   const settings = useSystemPromptSettingsStore();
+  const orderRowRef = React.useRef<HTMLDivElement>(null);
+  const motionReduced = useMotionReduced();
+  const gateway = settings.state?.aiGateway;
+  const orderSignature = gateway
+    ? `${(gateway.providerPriority ?? []).join("\0")}\n${(gateway.models ?? []).map((entry) => entry.id).join("\0")}`
+    : "";
+  useOrderChipFlip(orderRowRef, orderSignature, motionReduced);
   const auth = useModelAuthStore();
   const state = settings.state;
   const [query, setQuery] = React.useState("");
@@ -252,9 +386,9 @@ export function AiGatewayModelsCard(): React.ReactElement {
       {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
       <div className="ai-gateway-order">
         <p className="ai-gateway-order-title">{t("terminal.settings.aiGatewaySpendFirst")}</p>
-        <div className="ai-gateway-order-row">
-          {priority.length === 0 ? <span className="ai-gateway-inline-hint">{t("terminal.settings.aiGatewayNoOrder")}</span> : priority.map((id, index) => (
-            <span key={id} className="ai-gateway-order-chip">
+        <div className="ai-gateway-order-row" ref={orderRowRef}>
+          {priority.map((id, index) => (
+            <span key={id} className="ai-gateway-order-chip" data-order-id={id}>
               <span className="ai-gateway-order-index">{index + 1}</span>
               <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
               <span>{t(PROVIDER_LABEL[id])}</span>
@@ -263,7 +397,6 @@ export function AiGatewayModelsCard(): React.ReactElement {
               <button type="button" disabled={saving} aria-label={t("terminal.settings.aiGatewayRemoveFromOrder", { name: t(PROVIDER_LABEL[id]) })} onClick={() => saveModels(enabled, priority.filter((entry) => entry !== id))}>✕</button>
             </span>
           ))}
-          {enabledProviders.some((provider) => !priority.includes(provider.id as AiGatewayProviderId)) ? <span className="ai-gateway-inline-hint">{t("terminal.settings.aiGatewayThenEvenly")}</span> : null}
           {enabledProviders.filter((provider) => !priority.includes(provider.id as AiGatewayProviderId)).map((provider) => (
             <button key={provider.id} type="button" className="ai-gateway-order-add" disabled={saving} onClick={() => saveModels(enabled, [...priority, provider.id as AiGatewayProviderId])}>
               {t("terminal.settings.aiGatewayAddToOrder", { name: t(PROVIDER_LABEL[provider.id as AiGatewayProviderId]) })}
@@ -344,6 +477,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
                               <Select
                                 compact
                                 className="ai-gateway-window"
+                                popupClassName="ai-gateway-window-menu"
                                 label={`${family.name} ${t("terminal.settings.aiGatewayWindow")}`}
                                 disabled={saving}
                                 value={current.windowLabel}
@@ -359,11 +493,10 @@ export function AiGatewayModelsCard(): React.ReactElement {
                               <button type="button" className={current.fast ? "ai-gateway-fast is-on" : "ai-gateway-fast"} aria-pressed={current.fast} disabled={saving} onClick={() => {
                                 const next = family.variants.find((variant) => variant.windowLabel === current.windowLabel && variant.fast !== current.fast);
                                 if (next) replaceVariant(family, next.model.id);
-                              }}>Fast</button>
+                              }}>{current.fast ? "✓ Fast" : "Fast"}</button>
                             ) : null}
-                            {ladder.length === 0 ? <span className="ai-gateway-inline-hint">{t("terminal.settings.aiGatewayNoEffort")}</span> : (
+                            {ladder.length === 0 ? <span className="ai-gateway-inline-hint">{t("terminal.settings.aiGatewayNoEffort")}</span> : OPT_IN.some((level) => ladder.includes(level)) ? (
                               <span className="ai-gateway-efforts">
-                                <span className="ai-gateway-inline-hint" title={t("terminal.settings.aiGatewayBaseEffortsTip")}>{t("terminal.settings.aiGatewayBaseEfforts")}</span>
                                 {OPT_IN.filter((level) => ladder.includes(level)).map((level) => {
                                   const pressed = exposed.includes(level);
                                   return (
@@ -373,7 +506,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
                                   );
                                 })}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -444,7 +577,7 @@ function ServiceLogin({ service, busy }: { readonly service: ModelAuthProviderSt
   if (service.signedIn) {
     return (
       <SettingsItem label={service.displayName}>
-        <button type="button" className="ai-gateway-text-button" disabled={busy} onClick={() => void signOutModel(service.provider)}>
+        <button type="button" className="ai-gateway-signout" disabled={busy} onClick={() => void signOutModel(service.provider)}>
           {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
         </button>
       </SettingsItem>
