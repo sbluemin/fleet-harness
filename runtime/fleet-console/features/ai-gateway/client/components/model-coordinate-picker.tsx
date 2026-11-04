@@ -264,9 +264,10 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   const activeModel = picked?.model ?? (extraActive ? null : display.shown.model ?? null);
   const currentEffort = picked ? picked.effort : display.shown.effort;
   const [open, setOpen] = React.useState(false);
-  // 확정은 한 번이다. 모델 행은 강도 단계로 넘어가기만 하고(staged), 강도 노브에서 손을 떼거나 Enter를 치는 순간 그 좌표를
-  // 한 번 알리고 닫는다. 강도를 받지 않는 행·모델만 고르는 선택기는 행이 곧 확정이다. 행만 고르고 바깥을 누르거나 Tab으로
-  // 나가면 고른 모델로 한 번 확정하고, Esc는 아무것도 저장하지 않는다. 그래서 한 번의 선택은 늘 저장(세션 전환) 한 번이다.
+  // 확정은 한 번이다. 모델 행과 다른 강도 단 선택은 미리보기(staged)만 갱신하고, 이미 고른 강도 단을 다시 한 번 누르거나
+  // Enter를 치는 순간 그 좌표를 한 번 알리고 닫는다. 강도를 받지 않는 행·모델만 고르는 선택기는 행이 곧 확정이다.
+  // 미리보기를 바꾼 뒤 바깥을 누르거나 Tab으로 나가면 고른 좌표로 한 번 확정하고, Esc는 아무것도 저장하지 않는다.
+  // 그래서 한 번의 선택은 늘 저장(세션 전환) 한 번이다.
   const staged = React.useRef<{ readonly model: string; readonly effort?: string } | null>(null);
   const notify = (next: { readonly model: string; readonly effort?: string } | null) => {
     if (!next || locked || (!props.reconfirm && next.model === value.model && (next.effort ?? "") === (value.effort ?? ""))) return;
@@ -439,7 +440,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
                   row={chosenRow}
                   apexPinnedOpen
                   value={resolveRowEffort(chosenRow, currentEffort ?? null)}
-                  // 끄는 동안·방향키는 미리보기다. 손을 떼거나 Enter를 치면 그 강도로 한 번 확정하고 닫는다.
+                  // 다른 단을 누르거나 끄는 동안·방향키는 미리보기다. 이미 고른 단을 다시 누르거나 Enter를 치면 그 강도로 한 번 확정하고 닫는다.
                   onChange={(next) => {
                     const model = chosenRow.launch.model ?? chosenRow.id;
                     const preview = { model, ...(next ? { effort: next } : {}) };
