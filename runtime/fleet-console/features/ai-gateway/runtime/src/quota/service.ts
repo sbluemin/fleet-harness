@@ -59,6 +59,8 @@ export interface QuotaServiceDeps {
   readonly lastGoodStore?: QuotaLastGoodStore;
   readonly now?: () => number;
   readonly platform?: NodeJS.Platform;
+  /** 공급자 status가 바뀔 때. 로스터가 메뉴를 다시 읽게 하는 자리. 실패는 조회를 막지 않는다. */
+  readonly onProviderStatusChanged?: () => void;
 }
 
 /**
@@ -135,6 +137,17 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
+  let statusSignature = "";
+  const notifyStatus = (): void => {
+    const next = QUOTA_LAST_GOOD_PROVIDERS.map((id) => cache.get(id)?.value.status ?? "").join("|");
+    if (next === statusSignature) return;
+    statusSignature = next;
+    try {
+      deps.onProviderStatusChanged?.();
+    } catch {
+      // 구독자가 실패해도 사용량 조회는 그대로다.
+    }
+  };
   if (deps.lastGoodStore) {
     try {
       const saved = deps.lastGoodStore.read();
@@ -391,6 +404,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         settledAt: at,
         ...(isProviderSuccess(value) ? { accepted: true } : {}),
       });
+      notifyStatus();
     },
     peekSummary() {
       if (cache.size === 0) return undefined;
@@ -440,7 +454,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         load("antigravity", options.force === true || options.forceProvider === "antigravity"),
         load("muse-code", options.force === true || options.forceProvider === "muse-code"),
       ]);
-      return {
+      const summary = {
         providers: {
           claude: withRisk(claude),
           codex: withRisk(codex),
@@ -449,6 +463,8 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           "muse-code": withRisk(museCode),
         },
       };
+      notifyStatus();
+      return summary;
     },
   };
 }

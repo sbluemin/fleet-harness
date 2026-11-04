@@ -38,6 +38,7 @@ import {
   TYPESAFE_AUTH_PROVIDER_ID,
   type AiGatewayStoredSettings,
   type GatewayAssignmentExposure,
+  type ProviderStatusMap,
 } from "@fleet-console/ai-gateway";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
@@ -144,8 +145,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const xai = createXaiOAuth({ authService, cliCredentials: defaultCredentialDeps, onQuota: (value) => quota.record("xai", value) });
   ctx.host.lifecycle.registerCleanup(() => xai.dispose());
   registerConsoleOAuthRoutes(ctx, "xai", "xAI", xai);
+  const providerStatusListeners = new Set<() => void>();
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
+    onProviderStatusChanged: () => {
+      for (const listener of providerStatusListeners) listener();
+    },
     ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai }),
     // 마지막 성공 사용량. Console 슬롯(격리 실행이면 격리 루트) 아래. 키·토큰은 넣지 않는다.
     lastGoodStore: createQuotaLastGoodStore({
@@ -206,6 +211,17 @@ export function startAiGateway(ctx: GatewayStartContext) {
     timeoutMs: JEV_ROUTING_BATCH_TIMEOUT_MS,
     maxAttempts: 1,
   });
+  const readProviderStatuses = (): ProviderStatusMap | undefined => {
+    const summary = quota.peekSummary();
+    if (!summary) return undefined;
+    return {
+      claude: summary.providers.claude.status,
+      codex: summary.providers.codex.status,
+      xai: summary.providers.xai.status,
+      antigravity: summary.providers.antigravity.status,
+      "muse-code": summary.providers["muse-code"].status,
+    };
+  };
   async function assign(request: unknown, signal?: AbortSignal, test = false) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
       void quota.getSummary().catch(() => undefined);
@@ -219,6 +235,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
             baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
             directory: path.join(ctx.dataDir, "routing-model"),
             spawnProcess: ctx.spawnAgentProcess,
+            readProviderStatuses,
           }),
         } : { client: jevClient }),
         forceDecision: test,
@@ -289,6 +306,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
             baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
             directory: path.join(ctx.dataDir, "routing-model"),
             spawnProcess: ctx.spawnAgentProcess,
+            readProviderStatuses,
           }),
         } : { client: jevBatchClient }),
         refreshExposure: () => currentExposure(),
@@ -324,9 +342,19 @@ export function startAiGateway(ctx: GatewayStartContext) {
     return () => { claudeNativeListeners.delete(listener); };
   };
   const ensureClaudeNativeModels = claudeNativeModels?.ensure;
+  const subscribeProviderStatus = (listener: () => void): (() => void) => {
+    providerStatusListeners.add(listener);
+    // 구독보다 먼저 끝난 기동 조회를 놓치지 않는다. 아직 캐시가 없으면 조회가 끝나는 알림이 이어 부른다.
+    if (quota.peekSummary()) listener();
+    return () => { providerStatusListeners.delete(listener); };
+  };
+  // 대화 화면이 쿼터를 부르기 전에는 로그인 상태가 비어 메뉴가 전체 카탈로그로 열린다.
+  // 자격 확인은 조회 함수가 로컬에서 끝내고, 로그인이 있을 때만 사용량 호출로 이어진다.
+  void quota.getSummary().catch(() => undefined);
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
+    readProviderStatuses,
     assignRouting: (request, options) => assign(request, options?.signal),
     readAuth: codex.readSubscription,
     readXaiToken: xai.readSubscriptionToken,
@@ -335,7 +363,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged };
+  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus };
 }
 
 const ROUTING_ASSIGN_MAX_ITEMS = 20;

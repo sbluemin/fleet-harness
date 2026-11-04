@@ -45,7 +45,7 @@ export function buildGatewayHelpText(options: BuildGatewayHelpTextOptions = {}):
     "",
     section("NOTES", colorEnabled),
     `  ${dim("Model selection is edited on the interactive screen only — a model carries a", colorEnabled)}`,
-    `  ${dim("provider, an effort ladder, and a host-only flag, which `set` cannot express.", colorEnabled)}`,
+    `  ${dim("provider and an effort ladder, which `set` cannot express.", colorEnabled)}`,
     "",
   ];
   const text = lines.join("\n");

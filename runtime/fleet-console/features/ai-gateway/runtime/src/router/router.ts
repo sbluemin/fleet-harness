@@ -30,7 +30,8 @@ import {
   upstreamModelId,
 } from "../models.js";
 import type { GatewayModel } from "../models.js";
-import { DEFAULT_XAI_ENDPOINT_PREFERENCE, resolveAiGatewaySelection } from "../settings/index.js";
+import { visibleGatewayModels, type ProviderStatusMap } from "../catalog-access.js";
+import { DEFAULT_XAI_ENDPOINT_PREFERENCE } from "../settings/index.js";
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
 import {
   hasClaudeCompactContinuation,
@@ -144,8 +145,14 @@ export interface AiGatewayRouteDeps {
    * 헤더 스니핑을 쓰지 않는 이유가 이것이다: 스니핑은 라우터에 클라이언트 조건을 되돌려 놓는다.
    */
   readonly harnesses?: Readonly<Record<string, GatewayHarnessProfile>>;
-  /** core-ai-gateway 설정의 노출 모델 선별을 읽는다. 미주입(테스트 하네스)이면 전체 카탈로그를 노출한다. */
+  /** 압축 한도·xAI 엔드포인트 등 게이트웨이 설정을 읽는다. 모델 노출 목록은 여기서 고르지 않는다. */
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
+  /**
+   * 공급자 로그인 상태. 미주입·읽기 실패·빈 결과는 미상으로 보아 카탈로그 전체를 노출한다.
+   * `signed_out`·`not_connected`만 메뉴와 실행에서 빠진다. Claude의 `not_connected`는
+   * 사용량 수집 동의라 빠지지 않고, 자격 확인의 `signed_out`만 숨긴다.
+   */
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
   readonly gateway?: AnthropicMessagesGateway;
   // 자격증명 조달은 호스트 관심사다. 이 패키지는 기본 조회를 갖지 않으며(환경·홈·키체인
@@ -285,26 +292,23 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     string,
     ReturnType<typeof compactCodexConversation>
   >();
-  // 설정 리더가 있으면 노출은 opt-in(켠 모델만)이다. 미주입(테스트 하네스 등)일 때만
-  // 전체 카탈로그로 동작한다 — Console 배선(routes.ts)은 항상 리더를 주입한다.
   const gatewaySettings = (): AiGatewayStoredSettings | undefined => (
     deps.readAiGatewaySettings ? deps.readAiGatewaySettings() : undefined
   );
-  // 요청이 지목한 모델이 사용자가 켠 선별 안에 있는지 본다. 설정 리더가 없으면 노출이
-  // 곧 전체 카탈로그이므로(위 gatewaySettings 주석) 항상 참이다. 별칭·1M 마커로 들어와도
-  // findGatewayModel이 카탈로그 항목으로 정규화한 뒤이므로 id 비교로 충분하다.
-  const isModelExposed = (model: GatewayModel): boolean => {
-    let settings: AiGatewayStoredSettings | undefined;
+  // 메뉴와 실행은 켠 목록이 아니라 로그인된 공급자의 카탈로그다. 상태를 모르거나 읽기에
+  // 실패하면 숨기지 않는다. 별칭·1M 마커로 들어와도 findGatewayModel이 카탈로그 항목으로
+  // 정규화한 뒤이므로 공급자 상태만 보면 된다.
+  const providerStatuses = (): ProviderStatusMap | undefined => {
+    if (!deps.readProviderStatuses) return undefined;
     try {
-      settings = gatewaySettings();
+      return deps.readProviderStatuses();
     } catch {
-      // 설정 판독 실패는 기능을 낮출 뿐 요청을 막지 않는다.
-      // 파일 하나가 깨졌다고 모든 실행이 죽는 편이 끈 모델 한 번보다 나쁘다.
-      return true;
+      return undefined;
     }
-    if (!settings) return true;
-    return resolveAiGatewaySelection(settings).models.some((entry) => entry.id === model.id);
   };
+  const isModelExposed = (model: GatewayModel): boolean => (
+    visibleGatewayModels(providerStatuses()).some((entry) => entry.id === model.id)
+  );
   const xaiEndpoint = (): XaiEndpointPreference => {
     if (!deps.readAiGatewaySettings) return DEFAULT_XAI_ENDPOINT_PREFERENCE;
     try {
@@ -427,10 +431,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      const settings = gatewaySettings();
-      res.end(JSON.stringify(harness.buildModelList(
-        settings ? resolveAiGatewaySelection(settings).models : GATEWAY_MODELS,
-      )));
+      res.end(JSON.stringify(harness.buildModelList(visibleGatewayModels(providerStatuses()))));
       return true;
     }
     if (!pathname.endsWith("/v1/messages")) return false;
@@ -499,12 +500,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       clock?.finish("error", 400);
       return true;
     }
-    // 디스커버리(/v1/models)가 켠 모델만 광고해도 실행 경로가 카탈로그 전체를 받아 주면, raw id를
-    // 아는 호출자는 사용자가 끈 모델로 그 구독을 그대로 쓴다. 선별은 광고 목록이 아니라 지출 계약이므로
-    // 여기서 함께 강제한다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고,
-    // 선별 파일의 주인과 같은 사람이라 호출자 입력과 같은 신뢰 등급이 아니다.
-    if (target && target.provider !== "claude" && modelOverride === undefined && !isModelExposed(target)) {
-      writeClientError(res, 403, "permission_error", `AI gateway model is not enabled: ${requested}`);
+    // 디스커버리가 로그인된 공급자만 광고해도, 실행 경로가 로그아웃 공급자를 받아 주면 raw id로
+    // 그 구독을 쓴다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고
+    // 호출자 입력과 같은 신뢰 등급이 아니다. Claude 공급자도 같은 규칙이다.
+    // 이 거부는 켠 목록이 아니라 공급자 로그인이다. 문구에 "model:"을 넣지 않는다 — 아래 주석.
+    if (target && modelOverride === undefined && !isModelExposed(target)) {
+      writeClientError(res, 403, "permission_error", `AI gateway provider is not signed in: ${requested}`);
       clock?.finish("error", 403);
       return true;
     }

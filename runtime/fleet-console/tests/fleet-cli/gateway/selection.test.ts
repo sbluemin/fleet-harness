@@ -6,7 +6,6 @@ import {
   effortLadderFor,
   toStoredModels,
   withModelEfforts,
-  withModelHostOnly,
 } from "../../../cli/gateway/selection.js";
 
 function firstModelWithLadder(): string {
@@ -27,11 +26,14 @@ describe("gateway model choices", () => {
 
 describe("stored model selection", () => {
 
-  it("flips host-only without disturbing the effort narrowing", () => {
-    const models = [{ id: "a", efforts: ["high"] }];
-    expect(withModelHostOnly(models, "a", true)).toEqual([{ id: "a", efforts: ["high"], hostOnly: true }]);
-    expect(withModelHostOnly([{ id: "a", efforts: ["high"], hostOnly: true }], "a", false)).toEqual([
-      { id: "a", efforts: ["high"] },
+  it("replaces one model's efforts without dropping the others", () => {
+    const id = firstModelWithLadder();
+    const models = [{ id, efforts: ["high"] }, { id: "other" }];
+    expect(withModelEfforts(models, id, ["low", "high"])).toEqual([
+      { id, efforts: ["low", "high"] },
+      { id: "other" },
     ]);
+    expect(effortLadderFor(id).length).toBeGreaterThan(0);
+    expect(toStoredModels([id], models)).toEqual([{ id, efforts: ["high"] }]);
   });
 });

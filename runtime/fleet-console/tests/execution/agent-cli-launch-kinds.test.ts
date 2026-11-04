@@ -1,163 +1,67 @@
-import { resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
+import { exposableEffortLadder, findGatewayModel, GATEWAY_MODELS, toClaudeGatewayModelId } from "@fleet-console/ai-gateway";
 import { describe, expect, it } from "vitest";
-
-import { parseModelRoster, resolveRosterCoordinate } from "../../features/ai-gateway/shared/models.js";
 
 import { buildAgentCliLaunchKinds } from "../../features/execution/host/agent/agent-cli-launch-kinds.js";
 import { buildModelRoster, createModelRosterHost } from "../../features/ai-gateway/host/model-roster.js";
 
-// 축은 사다리 어휘 그대로다. 한 모델이 그 일부만 내놓아도 축은 줄지 않는다 — 그래야 표면이
-// 내놓은 단을 균등히 벌리는 대신 제자리에 세울 수 있다.
-const EFFORT_AXIS = ["low", "medium", "high", "xhigh", "max", "ultra"];
-const EVERYDAY_AXIS = ["low", "medium", "high", "xhigh"];
-const APEX_EFFORTS = ["max", "ultra"];
-// max를 내지 않는 gateway 모델의 축 — max 자리는 건너뛰고, 하네스 능력인 ultra가 끝에 선다.
-const MAX_LESS_AXIS = [...EVERYDAY_AXIS, "ultra"];
-
-describe("buildAgentCliLaunchKinds", () => {
-
-  it("projects the enabled roster as launch variants in provider order with exposed effort ladders", () => {
-    const resolved = resolveAiGatewaySelection({
-      version: 1,
-      models: [
-        { id: "claude--sonnet-1m" },
-        { id: "muse-code--muse-spark-1.3-contributor", efforts: ["high"] },
-        { id: "codex--gpt-6.1-sol-fast" },
-      ],
+describe("buildModelRoster login filter", () => {
+  it("shows a signed-in provider's whole catalog and ladder, hides signed-out providers, and keeps unknown providers", () => {
+    const roster = buildModelRoster("agent", {
+      claude: "ok",
+      codex: "signed_out",
+      xai: "not_connected",
     });
+    const claude = roster.find((group) => group.id === "gateway:claude");
+    const claudeIds = GATEWAY_MODELS.filter((model) => model.provider === "claude").map((model) => toClaudeGatewayModelId(model)).sort();
+    expect(claude?.rows.map((row) => row.launch.model).sort()).toEqual(claudeIds);
+    const sonnet = findGatewayModel("claude--sonnet-1m");
+    expect(sonnet).toBeDefined();
+    expect(claude?.rows.find((row) => row.launch.model === "sonnet[1m]")?.effortAxis).toEqual([...(sonnet ? exposableEffortLadder(sonnet) : [])]);
+    expect(roster.some((group) => group.id === "gateway:codex" || group.id === "gateway:xai")).toBe(false);
+    expect(roster.some((group) => group.id === "gateway:antigravity")).toBe(true);
+    expect(roster.some((group) => group.id === "gateway:muse-code")).toBe(true);
 
-    const result = buildAgentCliLaunchKinds(
-      [{ id: "claude", label: "Claude (Gateway)", available: true, signedIn: true }],
+    const signedIn = buildModelRoster("launch", {
+      claude: "ok",
+      codex: "ok",
+      xai: "ok",
+      antigravity: "ok",
+      "muse-code": "ok",
+    });
+    const sol = signedIn.find((group) => group.id === "gateway:codex")?.rows.find((row) => row.launch.model === "codex--gpt-6.1-sol");
+    const solModel = findGatewayModel("codex--gpt-6.1-sol");
+    expect(solModel).toBeDefined();
+    const ladder = solModel ? exposableEffortLadder(solModel) : [];
+    expect(sol?.effortAxis).toEqual([...ladder.filter((effort) => effort !== "max" || ladder.includes("max")), "ultra"]);
+    expect(sol?.chips?.map((chip) => chip.id)).toEqual([...ladder, "ultra"]);
+    expect(sol?.gatedEfforts).toEqual(ladder.includes("max") ? ["max", "ultra"] : ["ultra"]);
+
+    expect(buildAgentCliLaunchKinds(
+      [{ id: "claude", label: "Claude", available: true, signedIn: true }],
       "agent",
-      resolved,
-    );
+      { claude: "signed_out", codex: "signed_out", xai: "signed_out", antigravity: "not_connected", "muse-code": "signed_out" },
+    )[0]?.variants?.map((group) => group.id)).toEqual(["roster-fallback"]);
 
-    expect(result[0]?.variants).toEqual([
-      // Claude 항목도 로스터의 한 띠다 — 하드코딩 네이티브 띠는 없다. 1M 좌표는 Claude Code 별칭으로 선다.
-      {
-        id: "gateway:claude",
-        label: "Claude",
-        rows: [
-          {
-            id: "sonnet[1m]",
-            label: expect.any(String),
-            launch: { model: "sonnet[1m]" },
-            quotaPool: "claude:shared",
-            contextWindow: 1_000_000,
-            effortAxis: EFFORT_AXIS,
-            gatedEfforts: APEX_EFFORTS,
-            chips: ["low", "medium", "high", "xhigh", "max", "ultra"].map((effort) => expect.objectContaining({ id: effort, launch: { model: "sonnet[1m]", effort } })),
-          },
-        ],
-      },
-      {
-        id: "gateway:codex",
-        label: "Codex",
-        rows: [
-          {
-            id: "codex--gpt-6.1-sol-fast",
-            label: "GPT-6.1-Sol-Fast",
-            launch: { model: "codex--gpt-6.1-sol-fast" },
-            quotaPool: "codex:shared",
-            contextWindow: expect.any(Number),
-            effortAxis: EFFORT_AXIS,
-            gatedEfforts: APEX_EFFORTS,
-            chips: [
-              gatewayChip("codex--gpt-6.1-sol-fast", "low", "LOW"),
-              gatewayChip("codex--gpt-6.1-sol-fast", "medium", "MED"),
-              gatewayChip("codex--gpt-6.1-sol-fast", "high", "HIGH"),
-              gatewayChip("codex--gpt-6.1-sol-fast", "xhigh", "XHIGH"),
-              gatewayChip("codex--gpt-6.1-sol-fast", "max", "MAX"),
-              gatewayChip("codex--gpt-6.1-sol-fast", "ultra", "ULTRACODE"),
-            ],
-          },
-        ],
-      },
-      {
-        id: "gateway:muse-code",
-        label: "Muse Code",
-        rows: [
-          {
-            id: "muse-code--muse-spark-1.3-contributor",
-            label: "Muse-Spark-1.3-Contributor",
-            launch: { model: "muse-code--muse-spark-1.3-contributor" },
-            quotaPool: "muse-code:shared",
-            contextWindow: expect.any(Number),
-            effortAxis: MAX_LESS_AXIS,
-            gatedEfforts: ["ultra"],
-            chips: [
-              gatewayChip("muse-code--muse-spark-1.3-contributor", "high", "HIGH"),
-              gatewayChip("muse-code--muse-spark-1.3-contributor", "ultra", "ULTRACODE"),
-            ],
-          },
-        ],
-      },
-    ]);
-  });
+    // 사용량 수집 동의가 꺼져 생긴 Claude not_connected는 자격 로그아웃이 아니다. 숨기지 않는다.
+    const consentOff = buildModelRoster("agent", { claude: "not_connected", codex: "signed_out" });
+    const consentClaude = consentOff.find((group) => group.id === "gateway:claude");
+    expect(consentClaude?.rows.map((row) => row.launch.model).sort()).toEqual(claudeIds);
+    expect(consentClaude?.rows.find((row) => row.launch.model === "sonnet[1m]")?.effortAxis).toEqual([...(sonnet ? exposableEffortLadder(sonnet) : [])]);
+    expect(consentOff.some((group) => group.id === "gateway:codex")).toBe(false);
+    expect(buildModelRoster("agent", { claude: "signed_out" }).some((group) => group.id === "gateway:claude")).toBe(false);
 
-  it("projects the Gateway roster once for every target and resolves stored coordinates without rewriting them", () => {
-    // 빈 로스터에는 공급자 띠가 없다 — 최후 폴백(Sonnet 1M) 한 행의 폴백 띠만 서서 표면이 폴백 표식으로 그린다.
-    expect(buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], "agent", resolveAiGatewaySelection({ version: 1, models: [] }))[0]?.variants?.map((group) => [group.id, group.rows.map((row) => row.launch.model)])).toEqual([["roster-fallback", ["sonnet[1m]"]]]);
-    const settings = {
-      version: 1 as const,
-      models: [{ id: "claude--sonnet" }, { id: "codex--gpt-6.1-sol-fast", efforts: ["low", "high"] }],
-    };
-    const selection = resolveAiGatewaySelection(settings);
-    const agent = buildModelRoster(selection, "agent");
-    // 정준 id(실행 id)로 서고, Agent SDK 대상에는 ultra도 게이트도 없다. 노출 사다리(effortExposure)가 곧 전체다.
-    // 구 200k 좌표(`claude--sonnet`)로 저장된 Claude도 가족의 단일 1M 좌표로 선다.
-    expect(agent.map((group) => [group.id, group.rows.map((row) => [row.launch.model, row.chips?.map((chip) => chip.id)])])).toEqual([
-      ["gateway:claude", [["sonnet[1m]", ["low", "medium", "high", "xhigh", "max"]]]],
-      ["gateway:codex", [["codex--gpt-6.1-sol-fast", ["low", "high"]]]],
-    ]);
-    expect(agent.flatMap((group) => group.rows).some((row) => row.gatedEfforts !== undefined)).toBe(false);
-    // HTTP/웹 파서는 카탈로그에서 투영한 공급자 풀 식별자를 보존한다.
-    const scoped = buildModelRoster(resolveAiGatewaySelection({ version: 1, models: [{ id: "xai--grok-4.7" }] }), "launch");
-    expect(parseModelRoster(JSON.parse(JSON.stringify(scoped)))[0]?.rows[0]).toMatchObject({ launch: { model: "xai--grok-4.7" }, quotaPool: "xai:shared" });
-    // launch 대상은 같은 행에 하네스 능력 ultra를 끝에 붙인다.
-    expect(buildModelRoster(selection, "launch")[0]?.rows[0]?.chips?.map((chip) => chip.id)).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
-
-    // 레거시 저장 문법은 읽을 때 정준 id로 접힌다. 사다리 밖 강도는 그 이하의 가장 높은 단으로 내려간다.
-    expect(resolveRosterCoordinate(agent, { model: "claude-gateway--codex--gpt-6.1-sol-fast", effort: "xhigh" })).toMatchObject({ model: "codex--gpt-6.1-sol-fast", effort: "high", fallback: false });
-    // Claude 가족의 bare·200k scoped 표기는 1M 정준 좌표와 같은 행이다(폴백 아님).
-    expect(resolveRosterCoordinate(agent, { model: "claude--sonnet", effort: "max" })).toMatchObject({ model: "sonnet[1m]", effort: "max", fallback: false });
-    expect(resolveRosterCoordinate(agent, { model: "sonnet" })).toMatchObject({ model: "sonnet[1m]", fallback: false });
-    // 로스터 밖(꺼진 모델)은 Sonnet 1M으로 돌고 폴백을 드러낸다. 빈 로스터는 최후 폴백 Sonnet 1M이다.
-    expect(resolveRosterCoordinate(agent, { model: "opus", effort: "high" })).toMatchObject({ model: "sonnet[1m]", effort: "high", fallback: true, reason: "model_off" });
-    expect(resolveRosterCoordinate([], { model: "opus[1m]", effort: "high" })).toMatchObject({ model: "sonnet[1m]", row: null, fallback: true, reason: "roster_empty" });
-
-    // 플러그인 포트는 같은 해석에 Agent SDK wire id를 붙인다.
-    const host = createModelRosterHost({ readSettings: () => settings });
-    expect(host.resolve({ model: "codex--gpt-6.1-sol-fast" }, "agent")).toMatchObject({ model: "codex--gpt-6.1-sol-fast", wireModel: expect.stringMatching(/^claude-gateway--codex--gpt-6.1-sol-fast/) });
-    expect(host.resolve({ model: "sonnet" }, "agent").wireModel).toBe("sonnet[1m]");
-
-    // 호스트 전용 Claude도 다른 모델처럼 로스터에 그대로 서고, 행이 그 사실과 1M 창을 싣는다(브라우저 파서도 보존한다).
-    const reserved = buildModelRoster(resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--sonnet-1m", hostOnly: true }] }), "agent");
-    expect(parseModelRoster(JSON.parse(JSON.stringify(reserved)))[0]?.rows[0]).toMatchObject({ launch: { model: "sonnet[1m]" }, contextWindow: 1_000_000, hostOnly: true });
+    expect(buildModelRoster("agent").map((group) => group.id)).toEqual(buildModelRoster("agent", {}).map((group) => group.id));
+    expect(createModelRosterHost({}).roster("agent").length).toBeGreaterThan(0);
   });
 
   it("keeps disabled reasons and does not attach variants to a disabled gateway kind", () => {
     const result = buildAgentCliLaunchKinds(
-      [
-        { id: "claude", label: "Claude (Gateway)", available: false, signedIn: true },
-      ],
+      [{ id: "claude", label: "Claude (Gateway)", available: false, signedIn: true }],
       "agent",
-      resolveAiGatewaySelection({
-        version: 1,
-        models: [{ id: "codex--gpt-6.1-sol-fast" }],
-      }),
+      { claude: "ok" },
     );
-
     expect(result).toEqual([
       { id: "claude", type: "agent", title: "Claude (Gateway)", disabled: true, disabledReason: "Not installed" },
     ]);
   });
 });
-
-function gatewayChip(model: string, effort: string, label: string) {
-  return {
-    id: effort,
-    label,
-    launch: { model, effort },
-  };
-}

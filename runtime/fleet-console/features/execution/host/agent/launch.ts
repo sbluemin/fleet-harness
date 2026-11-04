@@ -8,8 +8,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@fleet-console/process";
-import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@fleet-console/ai-gateway";
-import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@fleet-console/ai-gateway";
+import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId, visibleGatewayModels } from "@fleet-console/ai-gateway";
+import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort, ProviderStatusMap } from "@fleet-console/ai-gateway";
 import { ALL_SUBAGENTS, OBJECTIVE_PEER_TOOLS, createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle, type LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
@@ -65,6 +65,8 @@ export interface TerminalLaunchResolverDeps {
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
+  /** 공급자 로그인 상태. 없으면 미상으로 보아 카탈로그 전체를 실행 가능한 모델로 본다. */
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
 }
 
 export interface ConsoleRuntimeSessionInfo {
@@ -93,17 +95,23 @@ export class GatewayLaunchOptionError extends Error {
 }
 
 export function isGatewayLaunchEffortAllowed(
-  selection: AiGatewaySelection,
   model: GatewayModel,
   effort: string,
 ): boolean {
   // ultra는 카탈로그 사다리 밖의 Console launch sentinel이다 — 하네스 능력(launch factory가
-  // `--effort ultracode`로 전달)이라 enabled 모델이면 사다리·노출과 무관하게 허용한다.
+  // `--effort ultracode`로 전달)이라 사다리와 무관하게 허용한다.
   if (effort === "ultra") return true;
-  // 첫 검사는 어휘만 판별하고, 실제 모델이 그 단을 제공하는지는 아래 카탈로그 사다리가 판다.
   if (!(GATEWAY_REASONING_EFFORTS as readonly string[]).includes(effort)) return false;
-  const efforts = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
-  return efforts.includes(effort as GatewayReasoningEffort);
+  return exposableEffortLadder(model).includes(effort as GatewayReasoningEffort);
+}
+
+function readLaunchProviderStatuses(read: (() => ProviderStatusMap | undefined) | undefined): ProviderStatusMap | undefined {
+  if (!read) return undefined;
+  try {
+    return read();
+  } catch {
+    return undefined;
+  }
 }
 
 export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => Promise<TerminalLaunchSpec>;
@@ -215,6 +223,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       agentRuntime,
       ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
       ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
+      ...(deps.readProviderStatuses ? { readProviderStatuses: deps.readProviderStatuses } : {}),
       cwd,
       dataDir,
       env: launchEnv,
@@ -254,6 +263,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
   readonly cliId?: string;
   readonly model?: string;
   readonly effort?: string;
@@ -303,14 +313,15 @@ async function createAgentCliLaunchSpec(options: {
       : undefined;
     let resolvedModel = options.model;
     let effort = options.effort;
-    // 모델 로스터 — 새로 띄우는 Claude 네이티브 별칭도 로스터(Settings › AI Gateway) 소속을 본다. 로스터 밖(끈 Claude
-    // 항목)이거나 모델 없이 빈 로스터로 띄우면 요청을 고쳐 쓰지 않고 실행만 폴백하며 기록을 남긴다.
-    // 강도는 그 행의 노출 사다리로 클램프한다. 로스터에 맞은 bare 입력도 실행 id는 정준 `[1m]`다.
+    const launchStatuses = cliId === "claude" ? readLaunchProviderStatuses(options.readProviderStatuses) : undefined;
+    const launchCatalog = cliId === "claude" ? visibleGatewayModels(launchStatuses) : [];
+    // 모델 로스터 — 로그인된 공급자의 카탈로그다. 켠 목록과 무관하다. 모델 없이 그 카탈로그가 비면
+    // (전부 로그아웃) 실행만 폴백하며 기록을 남긴다. 강도는 카탈로그 사다리로 클램프한다.
     // 재개는 이 블록을 타지 않는다 — 이어 붙이는 세션은 아래 별칭 접기만 받고 프로세스를 조사만으로 재시작하지 않는다.
-    if (cliId === "claude" && gatewaySelection && !options.resumeSessionId) {
+    if (cliId === "claude" && !options.resumeSessionId) {
       const nativeAlias = resolvedModel ? resolveNativeClaudeModelAlias(resolvedModel) : undefined;
-      if (resolvedModel ? nativeAlias !== undefined : gatewaySelection.models.length === 0) {
-        const roster = buildModelRoster(gatewaySelection, "launch");
+      if (resolvedModel ? nativeAlias !== undefined : launchCatalog.length === 0) {
+        const roster = buildModelRoster("launch", launchStatuses);
         const wantedEffort = effort ?? null;
         let coordinate = resolveRosterCoordinate(roster, { model: resolvedModel ?? null, effort: wantedEffort }, { model: ROSTER_FALLBACK_MODEL });
         // 정준 `[1m]` 입력이 아직 bare 행만 있는 가족(Haiku)에 막히지 않게, 같은 가족의 bare 행으로 한 번 더 본다.
@@ -338,14 +349,14 @@ async function createAgentCliLaunchSpec(options: {
       } else {
         // 스코프 id와 게이트웨이 표기(`claude-gateway--…[1m]`)를 같은 모델로 받는다 — 어느 철자를
         // 옮겨 적은 호출자도 거절당하면 안 된다.
-        const model = gatewaySelection ? findGatewayModel(resolvedModel, gatewaySelection.models) : undefined;
+        const model = findGatewayModel(resolvedModel, launchCatalog);
         if (!model) {
           throw new GatewayLaunchOptionError(
             "gateway_model_not_enabled",
             `Gateway model "${resolvedModel}" is not enabled.`,
           );
         }
-        if (effort !== undefined && (!gatewaySelection || !isGatewayLaunchEffortAllowed(gatewaySelection, model, effort))) {
+        if (effort !== undefined && !isGatewayLaunchEffortAllowed(model, effort)) {
           throw new GatewayLaunchOptionError(
             "invalid_effort",
             `Gateway effort "${effort}" is not enabled for model "${resolvedModel}".`,
@@ -411,7 +422,8 @@ async function createAgentCliLaunchSpec(options: {
       }
       launchProfile = prepareAiGatewayLaunchProfile(injectedProfile, {
         baseUrl: `${origin}${options.aiGateway.routePath}`,
-        selection: gatewaySelection,
+        // 와이어·/model 캐시는 로그인된 카탈로그. 위임 후보(delegationModels)는 켠 목록 그대로다.
+        selection: gatewaySelection ? { ...gatewaySelection, models: launchCatalog } : undefined,
         compactHookToken: options.aiGateway.compactHookToken,
         ...(options.aiGateway.modHookToken ? { modHookToken: options.aiGateway.modHookToken } : {}),
       });

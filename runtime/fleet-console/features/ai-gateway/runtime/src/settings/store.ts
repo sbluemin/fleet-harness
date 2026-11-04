@@ -3,9 +3,11 @@ import * as path from "node:path";
 import { createDurableJsonStore, createStoreCarryOver, jsonFileExists } from "@fleet-console/infra";
 
 import type { CompactCeiling } from "../downstream/harness/claude-code/context.js";
+import { defaultEffortSelection } from "../model-family.js";
 import { findGatewayModel } from "../models.js";
 import {
   ROSTER_SEED_VERSION,
+  exposableEffortLadder,
   normalizeAiGatewaySettings,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
@@ -55,9 +57,13 @@ export interface AiGatewaySettingsStore {
    *
    * 3판(Claude 1M 단일화): 읽기 정규화가 이미 bare/200k scoped Claude id를 가족의 1M id로 접고 같은 가족 두 행을 합쳤다
    * (노출 강도 합집합·호스트 전용 OR). 이 판은 그 정준형을 표식과 함께 파일에 영속할 뿐, 끈 Claude·빈 로스터·호스트 전용을
-   * 되살리거나 해제하지 않는다. 반환값은 1·2판의 목록 변경만 알린다.
+   * 되살리거나 해제하지 않는다.
    *
-   * 어느 경우든 표식을 남기므로 다시 불러도, 그 뒤 사용자가 Claude를 끄거나 호스트 전용으로 다시 켜도 되돌리지 않는다(멱등).
+   * 4판(켠 목록 = 위임 후보): `hostOnly: true` 항목을 켠 목록에서 뺀다. 2판이 풀어 둔 Claude는 남는다.
+   * 이어서 정규화가 계열당 창이 가장 큰 변형 하나만 남기고, 강도에 low·medium·high를 합친다. 반환값은 1·2·4판의
+   * 목록 변경만 알린다.
+   *
+   * 어느 경우든 표식을 남기므로 다시 불러도, 그 뒤 사용자가 Claude를 꺼도 되돌리지 않는다(멱등).
    * 승계(legacyDirs)를 먼저 마친 뒤 판단한다. 목록을 바꿨으면 true.
    */
   readonly seedModels: (ids: readonly string[]) => boolean;
@@ -82,6 +88,12 @@ export interface CreateAiGatewaySettingsStoreDeps {
 }
 
 const isClaudeEntry = (id: string): boolean => findGatewayModel(id)?.provider === "claude";
+
+interface LegacyRosterModel {
+  readonly id: string;
+  readonly efforts?: readonly string[];
+  readonly hostOnly?: boolean;
+}
 
 export function createAiGatewaySettingsStore(
   deps: CreateAiGatewaySettingsStoreDeps,
@@ -171,7 +183,13 @@ export function createAiGatewaySettingsStore(
         if (from >= ROSTER_SEED_VERSION) return current;
         let models = current.models;
         if (from < 1) {
-          const seed = ids.map((id) => ({ id }));
+          // 새로 켜는 모델과 같다. 강도 없이 넣으면 사다리 전체로 읽혀 xhigh·max가 기본으로 켜진다.
+          // 이미 저장된 항목의 부재(전체)는 4판 이행이 그대로 둔다.
+          const seed = ids.map((id) => {
+            const model = findGatewayModel(id);
+            const efforts = model ? defaultEffortSelection(exposableEffortLadder(model)) : undefined;
+            return { id, ...(efforts ? { efforts: [...efforts] } : {}) };
+          });
           if (models === undefined) {
             seeded = true;
             models = seed;
@@ -181,13 +199,23 @@ export function createAiGatewaySettingsStore(
             models = [...models, ...seed.filter((entry) => !present.has(entry.id))];
           }
         }
-        if (from < 2 && models?.some((entry) => entry.hostOnly === true && isClaudeEntry(entry.id))) {
+        const legacy = models as readonly LegacyRosterModel[] | undefined;
+        if (from < 2 && legacy?.some((entry) => entry.hostOnly === true && isClaudeEntry(entry.id))) {
           seeded = true;
-          models = models.map((entry) => {
+          models = legacy.map((entry) => {
             if (entry.hostOnly !== true || !isClaudeEntry(entry.id)) return entry;
             const { hostOnly: _released, ...rest } = entry;
             return rest;
           });
+        }
+        if (from < 4 && models) {
+          const rows = models as readonly LegacyRosterModel[];
+          const kept = rows
+            .filter((entry) => entry.hostOnly !== true)
+            .map(({ id, efforts }) => ({ id, ...(efforts ? { efforts } : {}) }));
+          if (kept.length !== rows.length) seeded = true;
+          else if (rosterRulesChange(kept)) seeded = true;
+          models = kept;
         }
         return normalizeAiGatewaySettings({ ...current, ...(models !== undefined ? { models } : {}), rosterSeedVersion: ROSTER_SEED_VERSION });
       });
@@ -232,6 +260,12 @@ export function createAiGatewaySettingsStore(
       return withoutEndpoint as AiGatewayStoredSettings;
     }),
   };
+}
+
+function rosterRulesChange(models: readonly LegacyRosterModel[]): boolean {
+  const before = normalizeAiGatewaySettings({ version: 1, models, rosterSeedVersion: 3 }).models;
+  const after = normalizeAiGatewaySettings({ version: 1, models, rosterSeedVersion: 4 }).models;
+  return JSON.stringify(before) !== JSON.stringify(after);
 }
 
 function hasStoredValue(settings: AiGatewayStoredSettings): boolean {

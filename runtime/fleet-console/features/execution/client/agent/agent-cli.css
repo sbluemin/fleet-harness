@@ -1,6 +1,6 @@
 /* AI Gateway 모델 카드. 대화 중심 화면의 설정 모달과 같은 결로 선다 — 공급자 묶음은 설정 묶음 면
-   (`.settings-group-surface`)을 빌리고, 모델 하나는 설정 행 하나(이름 + 보조 줄)이며, 조작은 그 행을
-   펼쳐야 보인다. 글자는 문장형이고 대문자·자간·테두리 칩을 쓰지 않는다. 프로바이더 정체성은
+   (`.settings-group-surface`)을 빌리고, 모델 하나는 한 줄(스위치·이름·창·Fast·강도)이다.
+   글자는 문장형이고 대문자·자간·테두리 칩을 쓰지 않는다. 프로바이더 정체성은
    글리프의 mark+wash 문법으로만 칠한다. */
 
 /* 공급자 마크의 색 대조표는 --provider-* 하나뿐이다 — 여기 빠진 공급자는 톤이 미정의가 되어
@@ -1666,3 +1666,33 @@
 .session-watch-bubble::before { content: ""; position: absolute; top: -5px; right: 8px; width: 8px; height: 8px; border-left: 1px solid var(--hairline-strong); border-top: 1px solid var(--hairline-strong); background: var(--surface-panel-raised); transform: rotate(45deg); }
 .session-watch-bubble__text { min-width: 0; }
 .session-watch-bubble.is-reveal { border-color: color-mix(in oklch, var(--console-use-badge) 55%, transparent); color: var(--text-primary); }
+
+.ai-gateway-models-lead { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); letter-spacing: 0; text-transform: none; }
+.ai-gateway-order { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.ai-gateway-order-title { margin: 0; font-size: var(--t-sm); color: var(--text-primary); }
+.ai-gateway-order-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.ai-gateway-order-chip { display: inline-flex; align-items: center; gap: var(--space-1); padding: 4px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: var(--surface-panel-raised); color: var(--text-primary); }
+.ai-gateway-order-chip button, .ai-gateway-order-add { border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; padding: 0 6px; cursor: pointer; }
+.ai-gateway-order-add { padding: 4px 10px; border-style: dashed; }
+.ai-gateway-text-button { border: 0; background: transparent; color: var(--brass-ink, var(--text-primary)); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.ai-gateway-order-chip button:disabled { opacity: 0.4; cursor: default; }
+.ai-gateway-order-index { font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.ai-gateway-inline-hint { color: var(--text-tertiary); font-size: var(--t-xs); text-transform: none; letter-spacing: 0; }
+.ai-gateway-find { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; }
+.ai-gateway-find-input { flex: 1; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; padding: 6px 8px; }
+.ai-gateway-group-head > .ai-gateway-provider-toggle { flex: 1; width: auto; min-width: 0; display: inline-flex; align-items: center; gap: var(--space-2); }
+.ai-gateway-provider-toggle { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.ai-gateway-login { margin-inline-start: auto; font-size: var(--t-xs); color: var(--text-secondary); }
+button.ai-gateway-login { border: 0; padding: 0; background: transparent; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.ai-gateway-login.is-needed { color: var(--warn, var(--text-secondary)); }
+.ai-gateway-signin-note { margin: 0; padding: 0 var(--space-3) var(--space-2); color: var(--text-secondary); font-size: var(--t-xs); }
+.ai-gateway-family { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: 6px var(--space-3); }
+.ai-gateway-family.is-off { opacity: 0.85; }
+.ai-gateway-family-name { display: flex; flex-direction: column; min-width: 8rem; }
+.ai-gateway-family-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-inline-start: auto; }
+.ai-gateway-window, .ai-gateway-window-fixed { font: inherit; color: var(--text-primary); }
+.ai-gateway-window { border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel); padding: 2px 6px; }
+.ai-gateway-fast, .ai-gateway-opt { border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary); font: inherit; padding: 2px 8px; cursor: pointer; }
+.ai-gateway-fast.is-on, .ai-gateway-opt.is-on { color: var(--text-primary); background: color-mix(in oklch, var(--brass, var(--text-primary)) 28%, var(--surface-panel)); border-color: var(--brass, var(--text-primary)); font-weight: var(--weight-medium); }
+.ai-gateway-efforts { display: inline-flex; align-items: center; gap: var(--space-1); }
+.ai-gateway-undo { position: fixed; z-index: 120; left: 50%; bottom: 24px; transform: translateX(-50%); margin: 0; max-width: min(520px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); color: var(--text-primary); box-shadow: var(--shadow-soft); }

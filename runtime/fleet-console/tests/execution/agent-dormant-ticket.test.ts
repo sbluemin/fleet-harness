@@ -28,7 +28,7 @@ afterEach(async () => {
 
 describe("agent dormant ticket guards", () => {
   it("launches an enabled host-only model by its advertised gateway id", async () => {
-    const harness = await createHarness({ body: { theaterId: "theater-1", cliId: "claude", model: "claude-gateway--codex--gpt-6-luna", effort: "low" }, aiGatewaySettings: { version: 1, models: [{ id: "codex--gpt-6-luna", hostOnly: true }] } });
+    const harness = await createHarness({ body: { theaterId: "theater-1", cliId: "claude", model: "claude-gateway--codex--gpt-6-luna", effort: "low" }, aiGatewaySettings: { version: 1, models: [{ id: "codex--gpt-6-luna", hostOnly: true }] as unknown as Array<{ id: string }> } });
     const createRecord = vi.spyOn(harness.records, "create").mockImplementationOnce(() => { throw new Error("objective_owner_unavailable"); });
     await expect(harness.postSessions()).rejects.toThrow("objective_owner_unavailable");
     expect(await harness.getSessions()).toEqual([]);

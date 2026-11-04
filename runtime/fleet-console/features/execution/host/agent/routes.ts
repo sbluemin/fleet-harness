@@ -23,7 +23,7 @@ import { createDefaultAgentCliDetector, type AgentCliDetector } from "./agent-cl
 import { buildAgentCliLaunchKinds } from "./agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "./agent-cli-paths.js";
-import { findGatewayModel, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
+import { findGatewayModel, visibleGatewayModels, type ProviderStatusMap } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { AiGatewayLaunchBinding } from "./launch.js";
 import { deriveObjectiveLabel } from "./auto-name.js";
@@ -71,6 +71,8 @@ interface AgentRouteDeps {
   readonly isClaudePathTrusted?: (cwd: string) => Promise<boolean>;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
+  /** 공급자 로그인 상태. 없으면 미상으로 보아 카탈로그 전체를 고를 수 있다. */
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
   /**
    * Claude 별칭을 설치된 Claude Code가 푸는 정식 id로 고정한다(`opus[1m]` → `claude-opus-5-5[1m]`). 사령관 세션과 같은
    * 통로(ModelRosterHost.pinClaudeVersion)이며, 지휘관 채팅만 이 값으로 연다. 저장 좌표는 별칭 그대로 둔다.
@@ -174,6 +176,14 @@ export async function registerAgentRoutes(
 }
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
+  const readProviderStatuses = (): ProviderStatusMap | undefined => {
+    if (!deps.readProviderStatuses) return undefined;
+    try {
+      return deps.readProviderStatuses();
+    } catch {
+      return undefined;
+    }
+  };
   const agentCliPathStore = createAgentCliPathStore(ctx.dataDir);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   // 목표의 지휘관·구성원에게는 fleet-console-use 를 넣지 않는다. Console Use 는 부관 세션만 연다.
@@ -274,6 +284,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     agentRuntime: runtime,
     ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
     ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
+    ...(deps.readProviderStatuses ? { readProviderStatuses: deps.readProviderStatuses } : {}),
     dataDir: ctx.host.paths.consoleDataDir,
     plugin: ctx.agentCliPlugin,
     ...(ctx.launchPromptDirectories ? { promptDirectories: ctx.launchPromptDirectories } : {}),
@@ -1189,15 +1200,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       return { model: nativeAlias, ...(effort === undefined ? {} : { effort }) };
     }
-    const selection = resolveAiGatewaySelection(deps.readAiGatewaySettings?.());
-    // 로스터는 Claude 하네스 별칭을 내놓고 Settings는 카탈로그 id를 저장한다.
-    // 활성 선택 안에서만 공개 해석기를 사용해 두 표기를 같은 모델로 연결한다.
-    const gatewayModel = findGatewayModel(model, selection.models);
+    const gatewayModel = findGatewayModel(model, visibleGatewayModels(readProviderStatuses()));
     if (!gatewayModel) {
       reply(409, { error: "gateway_model_not_enabled" });
       return false;
     }
-    if (effort !== undefined && !isGatewayLaunchEffortAllowed(selection, gatewayModel, effort)) {
+    if (effort !== undefined && !isGatewayLaunchEffortAllowed(gatewayModel, effort)) {
       reply(400, { error: "invalid_effort" });
       return false;
     }
@@ -2095,10 +2103,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   async function applyChatCoordinates(chat: NonNullable<ReturnType<AgentChatRegistry["get"]>>, model: string, effort: string | null): Promise<AgentChatCoordinatesResult | { readonly ok: false; readonly error: "invalid_model" }> {
     // 런치 메뉴와 같은 행을 세우되 CLI 설치 탐지는 건너뛴다 — 채팅이 이미 돌고 있으니 CLI는 있고,
     // 탐지는 바꿀 때마다 자식 프로세스를 띄워 응답을 초 단위로 늦춘다.
-    const selection = deps.readAiGatewaySettings ? resolveAiGatewaySelection(deps.readAiGatewaySettings()) : undefined;
     const requested = resolveNativeClaudeModelAlias(model) ?? model;
     const sameLaunchModel = (candidate: string) => (resolveNativeClaudeModelAlias(candidate) ?? candidate) === requested;
-    const row = buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], AGENT_OBJECTIVE_TYPE, selection)
+    const row = buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], AGENT_OBJECTIVE_TYPE, readProviderStatuses())
       .find((kind) => kind.id === "claude")
       ?.variants?.flatMap((group) => group.rows)
       .find((candidate) => candidate.launch.model === model || (candidate.launch.model !== undefined && sameLaunchModel(candidate.launch.model)));
@@ -2347,13 +2354,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 공유 홈의 discovery 캐시는 호스트 소유다 — SDK 쪽은 이 홈에 쓰지 않으므로 여기서 세운다.
     // 노출 목록 전체를 쓰는 이유는 같은 홈을 PTY 자식이 함께 읽기 때문이다.
     try {
-      const gatewaySelection = deps.readAiGatewaySettings
-        ? resolveAiGatewaySelection(deps.readAiGatewaySettings())
-        : undefined;
       writeGatewayModelCacheForHome({
         baseUrl: gatewayBaseUrl,
         configDir: claudeConfigDir,
-        ...(gatewaySelection ? { models: gatewaySelection.models } : {}),
+        models: visibleGatewayModels(readProviderStatuses()),
       });
     } catch {
       // 캐시를 세우지 못해도 네이티브 모델 세션은 뜬다. 게이트웨이 별칭 세션만 첫 턴에 드러난다.
@@ -2475,6 +2479,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
                 ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
                 : { kind: "new", preferredSessionId: node.id }),
             ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
+    ...(deps.readProviderStatuses ? { readProviderStatuses: deps.readProviderStatuses } : {}),
           });
         },
         onClaudeSessionFailed: () => {
@@ -2718,10 +2723,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   async function buildLaunchKinds(): Promise<readonly ObjectiveLaunchKind[]> {
     const metadata = await buildAgentCliLaunchMetadata();
-    const selection = deps.readAiGatewaySettings
-      ? resolveAiGatewaySelection(deps.readAiGatewaySettings())
-      : undefined;
-    return buildAgentCliLaunchKinds(metadata, AGENT_OBJECTIVE_TYPE, selection);
+    return buildAgentCliLaunchKinds(metadata, AGENT_OBJECTIVE_TYPE, readProviderStatuses());
   }
 
   function launch(cwd: string | undefined, context: { readonly objectiveId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly sessionName?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean } | undefined) {

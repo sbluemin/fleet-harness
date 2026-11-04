@@ -6,7 +6,7 @@ vi.mock("node:fs/promises", () => ({ mkdir: vi.fn() }));
 
 import { chooseRoutingModel } from "./routing-model.js";
 
-it("keeps a removed routing model stored but runs the roster fallback instead of launching it", async () => {
+it("keeps a signed-out routing model stored but runs the roster fallback instead of launching it", async () => {
   const turns: Array<{ model: string; effort?: string }> = [];
   sdk.mockResolvedValue({
     startTurn: async (options: { model: string; effort?: string }) => {
@@ -15,12 +15,15 @@ it("keeps a removed routing model stored but runs the roster fallback instead of
     },
     dispose: async () => undefined,
   });
+  const settings = { version: 1 as const, delegationRoutingModel: "codex--gpt-6.1-sol", models: [{ id: "claude--sonnet" }] };
   await chooseRoutingModel({
     baseUrl: "http://127.0.0.1:1",
     directory: "/unused-routing-test",
-    settings: { version: 1, delegationRoutingModel: "claude--fable", models: [{ id: "claude--sonnet" }] },
+    settings,
+    readProviderStatuses: () => ({ codex: "signed_out" }),
     instructions: [], state: {}, criteria: { seat: "x" }, difficulty: { instructions: [], criteria: {} },
     spawnProcess: () => { throw new Error("unexpected spawn"); },
   }).catch(() => undefined);
+  expect(settings.delegationRoutingModel).toBe("codex--gpt-6.1-sol");
   expect(turns).toEqual([{ model: "sonnet[1m]", effort: "low" }]);
 });

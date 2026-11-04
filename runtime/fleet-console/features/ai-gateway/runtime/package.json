@@ -30,6 +30,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./model-family": {
+      "types": "./dist/model-family.d.ts",
+      "import": "./dist/model-family.js",
+      "require": "./dist/model-family.cjs"
     }
   },
   "dependencies": {

@@ -1,5 +1,7 @@
 export const quotaEn = {
   "quota.panel.title": "Usage limits",
+  "quota.signin.close": "Close",
+  "quota.signin.unavailable": "Open a conversation, then use the usage button above the composer to sign in.",
   "quota.meter.session": "Session",
   "quota.meter.weekly": "Weekly",
   "quota.meter.cycle": "Included usage",
@@ -85,6 +87,8 @@ export const quotaEn = {
 
 export const quotaKo: Record<keyof typeof quotaEn, string> = {
   "quota.panel.title": "사용 한도",
+  "quota.signin.close": "닫기",
+  "quota.signin.unavailable": "대화를 연 다음, 입력창 위 사용량 단추에서 로그인하세요.",
   "quota.meter.session": "세션",
   "quota.meter.weekly": "주간",
   "quota.meter.cycle": "포함된 사용량",

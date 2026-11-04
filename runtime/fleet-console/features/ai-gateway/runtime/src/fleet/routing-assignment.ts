@@ -1,4 +1,5 @@
 /** 위임 요청 계약과 실행 소유권 가드. 모델 판단은 routing-decision이 담당한다. */
+import { isProviderCatalogVisible } from "../model-family.js";
 import { toRoutingLabel } from "./routing-table.js";
 import { FLEET_EXECUTION_AGENT_TYPE } from "@fleet-console/agent-runtime/fleet";
 import type { GatewayModel, GatewayEffortExposure, GatewayProvider, GatewayReasoningEffort } from "../models.js";
@@ -67,8 +68,17 @@ export interface GatewayRoutingCandidate {
 export function unassigned(because: string): GatewayAssignmentDecision {
   return { label: "session model", because };
 }
+/**
+ * 위임 후보. 켠 모델 가운데 메뉴·라우터와 같은 로그인 술어를 통과한 것이다.
+ * 상태 미상은 후보로 남는다. 동의만 꺼진 Claude도 남고, `not_connected`인 다른 공급자는 빠진다.
+ */
+export function delegationCandidateModels(exposure: Pick<GatewayAssignmentExposure, "delegationModels" | "quota">): readonly GatewayModel[] {
+  return exposure.delegationModels.filter((model) =>
+    isProviderCatalogVisible(exposure.quota?.[model.provider]?.status, model.provider));
+}
+
 export function isDelegableGatewayModel(id: string, exposure: GatewayAssignmentExposure): boolean {
-  return exposure.delegationModels.some(model => toClaudeGatewayModelId(model) === id);
+  return delegationCandidateModels(exposure).some(model => toClaudeGatewayModelId(model) === id);
 }
 export function guardGatewayRoutingAssignment(request: GatewayAssignmentRequest, exposure: GatewayAssignmentExposure): GatewayAssignmentDecision | undefined {
   if (request.fork) return unassigned("a fork inherits the parent's context and model");

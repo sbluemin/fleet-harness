@@ -11,6 +11,7 @@ const BASE: SystemPromptSettingsState = {
   delegationRoutingMode: "model",
   compactCeiling: null,
   xaiEndpoint: "cli-proxy",
+  aiGatewayLogin: {},
 };
 
 const response = (state: SystemPromptSettingsState) => new Response(JSON.stringify(state));

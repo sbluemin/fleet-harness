@@ -34,6 +34,7 @@ import {
   type AiGatewayUpdateValue,
   type CompactCeiling,
   type XaiEndpointPreference,
+  type ProviderStatusMap,
 } from "@fleet-console/ai-gateway";
 
 interface TerminalSettingsRouteDeps {
@@ -47,6 +48,8 @@ interface TerminalSettingsRouteDeps {
   };
   /** AI Gateway 설정을 쓴 직후. 모델 로스터가 그 파일에서 투영되므로 열린 화면에 다시 읽으라고 알린다. */
   readonly onAiGatewayChanged?: () => void;
+  /** 공급자 로그인 상태. 없으면 화면은 미상(로그인 필요로 보지 않음)으로 그린다. */
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
 }
 
 interface TerminalSettingsBody {
@@ -79,6 +82,8 @@ export interface TerminalSettingsState {
   readonly delegationRoutingModel: string | null;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
+  /** 공급자별 로그인 상태. null은 아직 모름(숨기지 않음). */
+  readonly aiGatewayLogin: Readonly<Record<string, string | null>>;
 }
 
 const CLAUDE_CATALOG_WAIT_MS = 5_000;
@@ -101,6 +106,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
         deps.aiGatewayStore.read(),
         deps.wireLogRuntime.enabled(),
+        deps.readProviderStatuses,
       ));
       return true;
     }
@@ -124,26 +130,26 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
         const stored = deps.aiGatewayStore.write(update.aiGateway);
         deps.onAiGatewayChanged?.();
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(),
+          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
         ));
         return true;
       }
       if ("delegationRoutingEnabled" in update) {
         const stored = deps.aiGatewayStore.writeDelegationRoutingEnabled(update.delegationRoutingEnabled);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(),
+          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
         ));
         return true;
       }
       if ("delegationRoutingModel" in update) {
         const stored = deps.aiGatewayStore.writeDelegationRoutingModel(update.delegationRoutingModel ?? undefined);
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(stored, deps.wireLogRuntime.enabled()));
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses));
         return true;
       }
       if ("delegationRoutingMode" in update) {
         const stored = deps.aiGatewayStore.writeDelegationRoutingMode(update.delegationRoutingMode);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(),
+          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
         ));
         return true;
       }
@@ -165,21 +171,21 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
           return true;
         }
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(),
+          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
         ));
         return true;
       }
       if ("compactCeiling" in update) {
         const stored = deps.aiGatewayStore.writeCompactCeiling(update.compactCeiling);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(),
+          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
         ));
         return true;
       }
       if ("xaiEndpoint" in update) {
         const stored = deps.aiGatewayStore.writeXaiEndpoint(update.xaiEndpoint);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(),
+          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
         ));
         return true;
       }
@@ -289,9 +295,12 @@ function parseTheaterSystemPromptUpdate(body: unknown): ClaudeCodeTheaterSystemP
   return { mode: prompt.mode, body: sanitizeClaudeCodeCustomSystemPrompt(prompt.body) ?? "" };
 }
 
+const AI_GATEWAY_LOGIN_PROVIDERS = ["antigravity", "claude", "codex", "muse-code", "xai"] as const;
+
 function toTerminalSettingsState(
   aiGateway: AiGatewayStoredSettings,
   wireLogEnabled: boolean,
+  readProviderStatuses?: () => ProviderStatusMap | undefined,
 ): TerminalSettingsState {
   const configured = (aiGateway.models?.length ?? 0) > 0
     || (aiGateway.providerPriority?.length ?? 0) > 0;
@@ -309,7 +318,18 @@ function toTerminalSettingsState(
     delegationRoutingMode: aiGateway.delegationRoutingMode ?? "model",
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
+    aiGatewayLogin: aiGatewayLogin(readProviderStatuses),
   };
+}
+
+function aiGatewayLogin(read: (() => ProviderStatusMap | undefined) | undefined): Record<string, string | null> {
+  let statuses: ProviderStatusMap | undefined;
+  try {
+    statuses = read?.();
+  } catch {
+    statuses = undefined;
+  }
+  return Object.fromEntries(AI_GATEWAY_LOGIN_PROVIDERS.map((id) => [id, statuses?.[id] ?? null]));
 }
 
 function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | null {

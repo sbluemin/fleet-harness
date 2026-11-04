@@ -26,7 +26,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
     return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
   };
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged } = startAiGateway({
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus } = startAiGateway({
     ...ctx,
     host: { ...ctx.host, storage: quotaStorage },
     // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다.
@@ -34,12 +34,14 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   });
   // 모든 모델 선택지가 읽는 로스터 — 같은 Gateway 설정 파일의 투영이다. 저장 직후 열린 화면 전부에 다시 읽으라고 알린다.
   // Claude 별칭의 버전 이름도 같은 CLI 표에서 온다. 표가 바뀌면(어느 경로가 물었든) 열린 화면이 다시 읽는다.
-  const models = createModelRosterHost({ readSettings: aiGatewayStore.read, ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}) });
+  const models = createModelRosterHost({ readProviderStatuses, ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}) });
   const modelRoster = registerModelRosterRoutes(ctx, models);
   ctx.host.lifecycle.registerCleanup(onClaudeNativeModelsChanged(modelRoster.notify));
+  ctx.host.lifecycle.registerCleanup(subscribeProviderStatus(modelRoster.notify));
   registerTerminalSettingsRoutes(ctx, {
     commodoreSystemPrompts,
     aiGatewayStore,
+    readProviderStatuses,
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     wireLogRuntime: wireLog,
     onAiGatewayChanged: modelRoster.notify,
@@ -76,6 +78,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     ...(commodorePluginEnv ? { commodorePluginEnv } : {}),
     isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
+    readProviderStatuses,
     // 지휘관 채팅은 사령관과 같은 별칭 고정을 쓴다.
     ...(models.pinClaudeVersion ? { pinClaudeVersion: models.pinClaudeVersion } : {}),
     aiGateway: {
@@ -106,6 +109,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     readGatewayCompactCeiling: () => aiGatewayStore.read().compactCeiling ?? null,
     /** 설치된 Claude Code가 별칭을 푸는 버전 조회. 플러그인 로스터 포트의 별칭 고정이 쓴다. */
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
+    /** 플러그인 로스터가 실행 쪽과 같은 로그인 판정을 쓰도록 넘긴다. 캐시가 비면 미상(전체 노출)이다. */
+    readProviderStatuses,
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: agent.actions,

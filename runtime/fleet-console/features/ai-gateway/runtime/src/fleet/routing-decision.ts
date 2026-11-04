@@ -7,7 +7,7 @@ import { SystemOneClient, SystemOneError, isSystemOneTokenLimitError } from "../
 import { buildGatewayLoadout } from "./model-loadout.js";
 import { choice, runDecision } from "../upstream/typesafe/decisions.js";
 
-import { isDelegableGatewayModel, guardGatewayRoutingAssignment,
+import { delegationCandidateModels, isDelegableGatewayModel, guardGatewayRoutingAssignment,
   type GatewayRoutingCandidate, type GatewayAssignmentDecision, type GatewayAssignmentExposure,
   type GatewayAssignmentRequest } from "./routing-assignment.js";
 
@@ -74,7 +74,7 @@ export interface GatewayRoutingDecisionOptions {
   /** 호출자(HTTP) 취소. 타임아웃과 구분하며, 취소는 배정 없이 중단한다. */
   readonly signal?: AbortSignal;
   /**
-   * await 뒤 최신 노출을 다시 읽는다. 설정이 host-only로 바뀌었거나 모드가 내려갔으면
+   * await 뒤 최신 위임 후보를 다시 읽는다. 켠 목록에서 빠졌거나 모드가 내려갔으면
    * 옛 후보를 확정하지 않는다. 생략하면 받은 exposure를 그대로 쓴다.
    */
   readonly refreshExposure?: () => GatewayAssignmentExposure;
@@ -451,7 +451,7 @@ function recordCommittedSeat(
   exposure: GatewayAssignmentExposure,
   distribution: NonNullable<GatewayAssignmentExposure["distribution"]>,
 ): void {
-  const model = exposure.delegationModels.find(entry => toClaudeGatewayModelId(entry) === decision.model);
+  const model = delegationCandidateModels(exposure).find(entry => toClaudeGatewayModelId(entry) === decision.model);
   if (model) distribution.record(model.provider, exposure);
 }
 

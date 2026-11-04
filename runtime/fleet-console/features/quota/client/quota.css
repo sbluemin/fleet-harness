@@ -777,3 +777,9 @@
 .quota-connect-hint { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; }
 .quota-disconnected .quota-button { margin: 0; padding: 3px 8px; min-height: 26px; font-size: var(--t-xs); }
 .quota-meter__label, .quota-meter__percent, .quota-meter__reset { font-size: var(--t-xs); }
+
+.quota-signin-scrim { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 24px; background: color-mix(in oklch, var(--ink, black) 40%, transparent); }
+.quota-signin-dialog { display: flex; flex-direction: column; width: min(420px, 100%); max-height: min(80vh, 720px); overflow: auto; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: var(--shadow-soft); }
+.quota-signin-bar { display: flex; flex: none; justify-content: flex-end; padding: 4px 8px 0; }
+.quota-signin-close { border: 0; background: transparent; color: var(--text-secondary); font: inherit; min-width: 32px; min-height: 32px; cursor: pointer; }
+.quota-signin-note { margin: 0; padding: 8px 16px 16px; color: var(--text-primary); }
