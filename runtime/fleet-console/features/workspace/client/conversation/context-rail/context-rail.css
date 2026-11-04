@@ -11,20 +11,59 @@
 
 .conversation-main > .conversation-body { min-width: 0; }
 
-/* 오버레이는 머리 아래 8px, 오른쪽 12px. 높이를 바닥까지 잡아 카드의 max-height 기준이 된다.
-   빈 자리는 클릭을 채팅에 넘긴다. */
+/* 오버레이는 머리 아래 8px, 오른쪽 12px에서 입력 독 위까지. 칩 줄만 그 높이 안에서 스크롤하고,
+   말풍선·상세 카드는 스크롤 상자 밖에 둔다. 4px 안쪽 여백은 hover 고리(3px)가 스크롤 상자에 잘리지 않게 한 것이고,
+   top·right를 그만큼 당겨 칩의 보이는 자리는 칩이 적을 때와 같다. */
 .context-rail-overlay {
+  --context-rail-pad: 4px;
   position: absolute;
   z-index: 4;
-  top: calc(var(--conversation-top-row, 52px) + var(--space-2));
-  right: var(--space-3);
+  top: calc(var(--conversation-top-row, 52px) + var(--space-2) - var(--context-rail-pad));
+  right: calc(var(--space-3) - var(--context-rail-pad));
   bottom: var(--space-3);
+  width: calc(58px + 2 * var(--context-rail-pad));
+  pointer-events: none;
+}
+
+.context-rail-stack {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: var(--space-2);
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  padding: var(--context-rail-pad);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  scrollbar-width: none;
+}
+
+.context-rail-stack::-webkit-scrollbar { display: none; }
+
+.context-rail-overlay[data-fade-top]::before,
+.context-rail-overlay[data-fade-bottom]::after {
+  content: "";
+  position: absolute;
+  right: var(--context-rail-pad);
+  z-index: 2;
   width: 58px;
+  height: var(--conversation-top-fade, 16px);
   pointer-events: none;
+}
+
+.context-rail-overlay[data-fade-top]::before {
+  top: 0;
+  background: linear-gradient(to bottom, color-mix(in oklch, var(--conversation-surface, var(--canvas-abyss)) 70%, transparent), transparent);
+}
+
+.context-rail-overlay[data-fade-bottom]::after {
+  bottom: 0;
+  background: linear-gradient(to top, color-mix(in oklch, var(--conversation-surface, var(--canvas-abyss)) 70%, transparent), transparent);
 }
 
 .context-rail-chip-slot { position: relative; }
@@ -230,12 +269,11 @@
 .context-rail-chip:hover .context-rail-ring-face,
 .context-rail-chip:focus-visible .context-rail-ring-face { transform: scale(1.08); }
 
-/* 말풍선 — 아바타 쪽 꼬리가 칩 왼쪽에 붙는다. 상세 카드가 열려 있으면 숨긴다. */
+/* 말풍선 — 스크롤 상자 밖, 칩 왼쪽에 붙는다. 열려 있는 칩에는 그리지 않는다. */
 .context-rail-bubble {
   position: absolute;
-  right: calc(100% + 10px);
-  top: 8px;
-  z-index: 1;
+  right: calc(100% + 10px + var(--context-rail-pad));
+  z-index: 7;
   display: grid;
   gap: 1px;
   white-space: nowrap;
@@ -249,9 +287,6 @@
   text-align: left;
   box-shadow: var(--popover-surface-shadow);
   pointer-events: none;
-  opacity: 0;
-  transform: translateX(4px);
-  transition: opacity var(--duration-fast), transform var(--duration-fast);
 }
 .context-rail-bubble::after {
   content: "";
@@ -266,12 +301,6 @@
 .context-rail-bubble-plain { font-size: var(--t-xs); font-weight: var(--weight-regular); color: color-mix(in oklch, var(--ink-abyss) 72%, var(--text-primary)); }
 .context-rail-bubble-usage { font-family: var(--font-code); }
 .context-rail-bubble-plain { font-family: var(--font-ui); }
-.context-rail-chip:hover .context-rail-bubble,
-.context-rail-chip:focus-visible .context-rail-bubble { opacity: 1; transform: none; }
-.context-rail-chip[aria-expanded="true"] .context-rail-bubble,
-.context-rail-chip[aria-expanded="true"]:hover .context-rail-bubble,
-.context-rail-chip[aria-expanded="true"]:focus-visible .context-rail-bubble { opacity: 0; visibility: hidden; }
-
 @media (forced-colors: active) {
   .context-rail-chip:focus-visible { outline: 2px solid CanvasText; box-shadow: none; }
 }
@@ -280,7 +309,7 @@
 .context-rail-fly {
   position: absolute;
   z-index: 6;
-  right: calc(100% + 10px);
+  right: calc(100% + 10px + var(--context-rail-pad));
   display: grid;
   gap: var(--space-2);
   width: min(300px, calc(100vw - 120px));
