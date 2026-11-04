@@ -7,6 +7,7 @@ import "@fleet-console/markdown/styles.css";
 import { httpUrl, pluginReadmeHtml } from "./plugin-readme.js";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
+import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { defineSettingsSection, SettingsGroup, SettingsItem, SettingsToggle, useMobileSettingsHost } from "../../settings/client/preferences-context.js";
 import { openSettingsSurface } from "../../settings/client/settings-door.js";
 import { effectiveCommodorePlugins, pluginIconPath, splitPluginId, type GlobalPluginReplacement, type CommodorePluginAuthView, type PluginServerAuthView, type MarketplaceErrorCode, type MarketplaceView, type PluginCatalogEntry, type PluginCatalogView, type PluginComponents, type PluginContents, type PluginDetail } from "../shared/contracts/plugins.js";
@@ -80,25 +81,38 @@ async function applyCatalog(path: string, body: Record<string, unknown>): Promis
 /**
  * 마켓플레이스 갱신 진행 — 이름이 없으면 전부. 서버는 CLI 가 끝난 뒤에야 최종 등록부를 돌려줘서 요청이 도는
  * 동안에는 등록부 상태가 바뀌지 않으므로, 비행 중 표시는 이 상태로 쥐고 응답·실패 뒤에 놓는다. 같은 자리에서
- * 거듭 누르면 요청이 겹치므로 비행 수를 세어 마지막 응답 뒤에야 놓는다. 목록과 폰 상세는 서로 다른 자리라
- * 각각 이 갈고리를 쓴다(등록 폼·플러그인 업데이트의 진행 상태와 같은 지역 상태다).
+ * 거듭 누르면 요청이 겹치므로 비행 수를 세어 마지막 응답 뒤에야 놓는다. 목록·폰 상세·팔레트 머리 글리프가
+ * 같은 비행을 보도록 모듈에 둔다. 카드의 고리와 「받는 중…」은 이 목록을 그대로 읽는다.
  */
+const marketplaceRefreshCounts = new Map<string, number>();
+let marketplaceRefreshing: readonly string[] = [];
+const marketplaceRefreshListeners = new Set<() => void>();
+function publishMarketplaceRefresh(): void {
+  marketplaceRefreshing = [...marketplaceRefreshCounts.keys()];
+  for (const listener of marketplaceRefreshListeners) listener();
+}
+function subscribeMarketplaceRefresh(listener: () => void): () => void {
+  marketplaceRefreshListeners.add(listener);
+  return () => { marketplaceRefreshListeners.delete(listener); };
+}
+function useMarketplaceRefreshing(): readonly string[] {
+  return useSyncExternalStore(subscribeMarketplaceRefresh, () => marketplaceRefreshing, () => marketplaceRefreshing);
+}
 function useMarketplaceRefresh() {
-  const [refreshing, setRefreshing] = useState<readonly string[]>([]);
-  const counts = useRef(new Map<string, number>());
+  const refreshing = useMarketplaceRefreshing();
   const refresh = async (name?: string): Promise<void> => {
     const names = name ? [name] : (catalog.view?.marketplaces.map((marketplace) => marketplace.name) ?? []);
-    for (const item of names) counts.current.set(item, (counts.current.get(item) ?? 0) + 1);
-    setRefreshing([...counts.current.keys()]);
+    for (const item of names) marketplaceRefreshCounts.set(item, (marketplaceRefreshCounts.get(item) ?? 0) + 1);
+    publishMarketplaceRefresh();
     try {
       await applyCatalog("/commodore/marketplaces/update", name ? { name } : {});
     } finally {
       for (const item of names) {
-        const left = (counts.current.get(item) ?? 1) - 1;
-        if (left <= 0) counts.current.delete(item);
-        else counts.current.set(item, left);
+        const left = (marketplaceRefreshCounts.get(item) ?? 1) - 1;
+        if (left <= 0) marketplaceRefreshCounts.delete(item);
+        else marketplaceRefreshCounts.set(item, left);
       }
-      setRefreshing([...counts.current.keys()]);
+      publishMarketplaceRefresh();
     }
   };
   return { refreshing, refresh };
@@ -246,8 +260,18 @@ function closeGlobalPalette(): void {
 export function GlobalPluginsHost() {
   const t = getT(useConsoleLocale());
   const open = useGlobalPalette();
+  const phone = useViewMode().effective === "mobile";
   useLiveCatalog(open);
-  return open ? <PluginPalette t={t} phone={isFleetMobileShell()} onClose={closeGlobalPalette} /> : null;
+  return open ? <PluginPalette t={t} phone={phone} onClose={closeGlobalPalette} /> : null;
+}
+
+/** 휴대폰 설정(프로필 시트)의 전역 플러그인 행 — 사이드바 알약이 없는 레이아웃의 진입점. 같은 팔레트를 연다. */
+export function MobileGlobalPluginsRow() {
+  const t = getT(useConsoleLocale());
+  return <button type="button" className="mobile-group-row" onClick={(event) => openGlobalPalette(event.currentTarget)}>
+    <span className="mobile-group-row-icon" aria-hidden="true"><GlobalPluginMark /></span>
+    <span className="mobile-group-row-copy">{t("commodore.plugins.global.title")}</span>
+  </button>;
 }
 
 export function GlobalPluginsEntry() {
@@ -760,15 +784,10 @@ type InlineForm = ({ readonly pluginId: string; readonly kind: "key"; readonly n
 
 const pluginReachOn = (excluded: readonly string[] | undefined, id: string): boolean => !(excluded ?? []).includes(id);
 
-function CrewGlyph() {
-  return <svg className="commodore-plugin-reach-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" aria-hidden="true"><circle cx="5.2" cy="6" r="2" /><circle cx="11" cy="6.6" r="1.7" /><path d="M1.8 13c.4-2 1.8-3.1 3.4-3.1S8.2 11 8.6 13M8.8 12.6c.3-1.5 1.2-2.4 2.3-2.4s2 .9 2.3 2.4" /></svg>;
-}
-
-/** 지휘관·구성원 토글. 잠기면 aria-disabled 이고 누르지 않는다 — 이유는 레이블이 말한다. */
+/** 지휘관·구성원 토글. 트랙·손잡이는 콘솔 공용 스위치다. 잠기면 aria-disabled 이고 누르지 않는다 — 이유는 레이블이 말한다. */
 function ObjectiveReachButton({ t, on, locked, label, onToggle }: { readonly t: T; readonly on: boolean; readonly locked: boolean; readonly label: string; readonly onToggle: () => void }) {
   return <button type="button" className="commodore-plugin-reach" aria-pressed={on} aria-disabled={locked || undefined} aria-label={label} title={label} onClick={(event) => { event.stopPropagation(); if (!locked) onToggle(); }} onKeyDown={(event) => event.stopPropagation()}>
-    <span className="commodore-plugin-reach-sw" aria-hidden="true" />
-    <CrewGlyph />
+    <span className="settings-switch" aria-hidden="true"><span className="settings-switch-knob" /></span>
     <span>{t("commodore.plugins.reach.label")}</span>
   </button>;
 }
@@ -1118,7 +1137,8 @@ function CommodoreReachWatch({ id, onChange }: { readonly id: string; readonly o
 /** 팔레트 머리의 마켓플레이스 글리프 — 누르면 설정 › 마켓플레이스로 간다. 받는 중이면 고리, 실패면 점을 얹고 툴팁·aria에 그 상태를 싣는다. */
 function MarketplaceGlyphButton({ t, onOpen }: { readonly t: T; readonly onOpen: () => void }) {
   const { view } = usePluginCatalog();
-  const syncing = view?.marketplaces.some((marketplace) => marketplace.status === "syncing") ?? false;
+  const refreshing = useMarketplaceRefreshing();
+  const syncing = refreshing.length > 0 || (view?.marketplaces.some((marketplace) => marketplace.status === "syncing") ?? false);
   const failed = !syncing && (view?.marketplaces.some((marketplace) => marketplace.status === "failed") ?? false);
   const label = syncing ? t("commodore.plugins.market.syncing") : failed ? t("commodore.plugins.market.failed") : t("commodore.plugins.manage");
   return <button type="button" className={`commodore-palette-icon commodore-palette-market${syncing ? " is-syncing" : ""}`} aria-label={label} title={label} onClick={onOpen}>
@@ -1319,7 +1339,7 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
   </>;
   const currentScopeName = globalScope ? t("commodore.plugins.scope.global") : name;
   return createPortal(
-    <div className="commodore-palette-scrim" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className={`commodore-palette-scrim${phone ? " is-phone" : ""}`} role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div
         ref={dialogRef}
         className={`commodore-palette${phone ? " is-phone" : ""}`}

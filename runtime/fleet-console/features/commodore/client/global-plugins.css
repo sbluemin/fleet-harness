@@ -10,8 +10,9 @@
 .commodore-plugins-list > .commodore-global-row.is-auth { cursor: pointer; }
 .commodore-global-group .commodore-plugins-list.is-phone > li { grid-template-columns: 40px minmax(0, 1fr) auto; padding-block: 8px; }
 .commodore-plugins.is-phone .commodore-global-badge { background: var(--m-surface); }
-.commodore-plugins .is-replaced > :is(.commodore-tile, .commodore-plugins-name, .commodore-plugins-version, .commodore-plugins-meta),
-.commodore-plugins .is-replaced > .objectives-cm-gr-tx { opacity: .55; }
+.commodore-plugins .is-replaced > :is(.commodore-tile, .commodore-plugins-name, .commodore-plugins-version),
+.commodore-plugins .is-replaced > .objectives-cm-gr-tx > :not(.commodore-plugins-meta),
+.commodore-plugins .is-replaced .commodore-plugins-meta > :not(.commodore-plugin-reach) { opacity: .55; }
 .commodore-plugins-replacement-tip, .commodore-global-pill-tip { position: fixed; z-index: calc(var(--z-overlay) + 6); max-width: min(260px, calc(100vw - 24px)); padding: 8px 10px; border-radius: 8px; background: var(--surface-capsule); color: var(--text-secondary); box-shadow: var(--popover-surface-shadow); font-size: calc(var(--t-xs) * 1.04545); line-height: 1.45; pointer-events: none; }
 .commodore-plugins-replacement-tip { transform: translateY(-100%); }
 .commodore-plugins-replacement-tip[hidden] { display: none; }

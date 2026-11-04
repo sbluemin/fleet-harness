@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
+import { MobileGlobalPluginsRow } from "../../../../../features/commodore/client/commodore-plugins.js";
 import { SettingsRow, SettingsToggle } from "../../../../../features/settings/client/preferences-context.js";
 
 import { isFleetMobileShell } from "@fleet-console/link/core";
@@ -232,6 +233,9 @@ export function MobileSettingsPage({ embedded = false }: {
             <span className="mobile-state-chip">{t(connected ? "mobile.settings.connected" : "mobile.settings.reconnecting")}</span>
             <MobileIcon name="down" size={18} className="mobile-group-row-caret" />
           </button>
+          <div className="mobile-settings-group">
+            <div className="mobile-group is-flush"><MobileGlobalPluginsRow /></div>
+          </div>
           {groups.map((group) => (
             <div className="mobile-settings-group" key={group.key}>
               <div className="mobile-group is-flush">

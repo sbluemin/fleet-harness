@@ -978,6 +978,8 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-trust-source a { color: var(--brass-ink); }
 .commodore-palette-trust-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .commodore-palette-body { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.commodore-palette-scrim.is-phone { place-items: end stretch; padding: 0; }
+.commodore-palette.is-phone { width: 100%; height: min(760px, calc(100dvh - 56px)); max-height: calc(100dvh - 56px); border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; padding-bottom: var(--m-safe-bottom, 0px); }
 .commodore-palette.is-phone .commodore-palette-body { flex-direction: column; }
 .commodore-palette-rail { flex: 0 0 196px; overflow: auto; padding: 8px; border-right: 1px solid var(--hairline); }
 .commodore-palette-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
@@ -997,14 +999,14 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-market { position: relative; }
 .commodore-palette-market.is-syncing .commodore-market-spin { position: absolute; inset: 5px; width: auto; height: auto; margin: 0; color: var(--aurora-ink); }
 .commodore-palette-market-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
-.commodore-plugin-reach { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 0 6px; border: 0; border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
-.commodore-plugin-reach[aria-pressed="true"] { color: var(--brass-bright); }
-.commodore-plugin-reach[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
-.commodore-plugin-reach:hover:not([aria-disabled="true"]):not([aria-pressed="true"]) { background: var(--control-wash-hover); }
-.commodore-plugin-reach:focus-visible { box-shadow: var(--focus-face); }
-.commodore-plugin-reach-glyph { width: 12px; height: 12px; flex: none; }
-.commodore-plugin-reach-sw { flex: none; width: 16px; height: 10px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--text-primary) 16%, transparent); }
-.commodore-plugin-reach[aria-pressed="true"] .commodore-plugin-reach-sw { background: var(--brass-bright); }
+.commodore-plugin-reach { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
+.commodore-plugin-reach[aria-pressed="true"] .settings-switch { border-color: var(--quiet-switch-rim); background: var(--quiet-switch-track); }
+.commodore-plugin-reach[aria-pressed="true"] .settings-switch-knob { transform: translateX(14px); background: var(--quiet-switch-knob); }
+.commodore-plugin-reach[aria-disabled="true"] { cursor: default; }
+.commodore-plugin-reach:hover:not([aria-disabled="true"]):not([aria-pressed="true"]) .settings-switch { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.commodore-plugin-reach:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
+@media (prefers-reduced-motion: reduce) { .commodore-plugin-reach .settings-switch, .commodore-plugin-reach .settings-switch-knob { transition: none; } }
+@media (forced-colors: active) { .commodore-plugin-reach[aria-pressed="true"] .settings-switch { background: SelectedItem; border-color: SelectedItem; } }
 .commodore-plugin-reach-note { color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-palette-reach { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 14px 10px; }
 :root[data-view-mode="mobile"] .commodore-palette-scrim { place-items: end stretch; padding: 0; background: var(--m-scrim); }
