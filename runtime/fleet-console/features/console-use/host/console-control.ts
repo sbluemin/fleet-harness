@@ -87,6 +87,7 @@ export interface ConsoleExecutionAdapter {
   /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
   transcript?(objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
   markNextOpenFresh?(objectiveId: string): void;
+  isNextOpenFresh?(objectiveId: string): boolean;
   disposeChat?(objectiveId: string): Promise<void>;
 }
 export interface ConsoleControlDeps {
@@ -146,6 +147,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   const waiters = new Set<() => void>();
   const observed = new Map<string, string>();
   const previousActivity = new Map<string, ConsoleActivity>();
+  const pendingFreshSessions = new Set<string>();
   const timer = setInterval(() => { void tick().catch(() => { storageError = true; }); }, 1_000);
   timer.unref();
 
@@ -439,7 +441,12 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   }
   function code(error: unknown) { return error instanceof ConsoleControlError ? error.code : error instanceof z.ZodError ? "invalid_arguments" : "execution_unavailable"; }
   return {
-    attach(value: ConsoleExecutionAdapter) { if (adapter) throw new Error("Console execution already attached"); adapter = value; return () => { if (adapter === value) adapter = null; }; },
+    attach(value: ConsoleExecutionAdapter) {
+      if (adapter) throw new Error("Console execution already attached");
+      adapter = value;
+      for (const id of pendingFreshSessions) value.markNextOpenFresh?.(id);
+      return () => { if (adapter === value) adapter = null; };
+    },
     observe, request, automation, readEvents, briefing, tick,
     subscribeTurnEnds(caller: ConsoleCaller, listener: (event: ConsoleTurnEnd) => void) {
       const entry = { caller, listener };
@@ -479,7 +486,14 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!op || !launchedByPlugin(caller, op)) return null;
       return adapter?.advertisedTools?.(objectiveId) ?? null;
     },
-    markNextOpenFresh(objectiveId: string): void { adapter?.markNextOpenFresh?.(objectiveId); },
+    markNextOpenFresh(objectiveId: string): void {
+      pendingFreshSessions.add(objectiveId);
+      adapter?.markNextOpenFresh?.(objectiveId);
+    },
+    isNextOpenFresh(objectiveId: string): boolean {
+      if (adapter?.isNextOpenFresh) return adapter.isNextOpenFresh(objectiveId);
+      return pendingFreshSessions.has(objectiveId);
+    },
     async disposeChat(objectiveId: string): Promise<void> { await adapter?.disposeChat?.(objectiveId); },
     migrateLegacyAutomations,
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },

@@ -621,6 +621,7 @@ describe("agent chat mode routes", () => {
 
     // Case 1: fresh session disabled (default) -> resumes existing session
     harness.markNextOpenFresh(sessionId); // no-op when experiment is false
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(false);
     await harness.post(sessionId, "message", { text: "turn when off" });
     await vi.waitFor(() => expect(harness.sends).toContain("turn when off"));
     const firstRequest = harness.openSessionRequests.at(-1) as { resume?: string; sessionId?: string };
@@ -630,9 +631,11 @@ describe("agent chat mode routes", () => {
     harness.setExperiments({ objectiveFreshSession: true });
     await harness.del(sessionId, "chat");
     harness.markNextOpenFresh(sessionId);
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
     await harness.post(sessionId, "chat");
     await harness.post(sessionId, "message", { text: "turn when on" });
     await vi.waitFor(() => expect(harness.sends).toContain("turn when on"));
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(false); // consumed
     const secondRequest = harness.openSessionRequests.at(-1) as { resume?: string; sessionId?: string };
     expect(secondRequest?.resume).toBeUndefined();
     expect(secondRequest?.sessionId).toBeDefined();
@@ -643,6 +646,11 @@ describe("agent chat mode routes", () => {
     await harness.post(sessionId, "chat-coordinates", { model: "sonnet[1m]", effort: "medium" });
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.openSessionRequests.length).toBe(beforeSwitchCount);
+
+    // Case 4: previous transcripts are preserved and replayed in chat journal
+    const frames = await harness.openChatSocket(sessionId);
+    const dispatches = frames.filter((frame) => frame.event.kind === "dispatch");
+    expect(dispatches.some((frame) => (frame.event as { text?: string }).text === "first order")).toBe(true);
   });
 });
 

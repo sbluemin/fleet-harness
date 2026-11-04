@@ -7,7 +7,7 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
-import { commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
@@ -300,11 +300,18 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 한 번만 붙고 소비된다. 표시 문면(`display`)·보드·알림에는 싣지 않는다. 구성원은 OpenUI를 그리지 않으므로 모으지 않는다.
    */
   const pendingOpenUIFeedback = new Map<string, string>();
+  const withCommanderFreshNotice = (sessionId: string, text: string): string => {
+    if (ctx.experiments?.read().objectiveFreshSession !== true || !ctx.consoleControl?.isNextOpenFresh?.(sessionId)) return text;
+    if (text.startsWith(`목표 \`${sessionId}\`: 새 세션으로 열렸습니다`) || text.startsWith(`Objective \`${sessionId}\`: Opened as a fresh session`)) return text;
+    const lang = ctx.objectiveRecords.get(sessionId)?.objectiveLanguage === "ko" ? "ko" : "en";
+    return `${commanderFreshTurnNotice(sessionId, lang)}${text}`;
+  };
   const withOpenUIFeedback = (sessionId: string, text: string): string => {
+    const textWithFresh = withCommanderFreshNotice(sessionId, text);
     const note = pendingOpenUIFeedback.get(sessionId);
-    if (note === undefined) return text;
+    if (note === undefined) return textWithFresh;
     pendingOpenUIFeedback.delete(sessionId);
-    return `${text}\n\n${note}`;
+    return `${textWithFresh}\n\n${note}`;
   };
   /**
    * 턴 전체 되먹임 넓히기 — 채팅 저널 꼬리에서 이번 턴의 assistant 텍스트 블록을 모아 다시 판정한다. 저널 `text`는
@@ -1397,7 +1404,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const told = store.channelTold(objectiveId, targetId) || messageChannelKnown(ctx.objectiveRecords.get(targetId));
     const body = message.text;
     const memberRole = memberId !== null ? store.find(objectiveId)?.members.find((m) => m.id === memberId)?.role ?? "member" : null;
-    const freshNotice = (dormant || !before) && memberId !== null && memberRole && ctx.experiments?.read().objectiveFreshSession === true
+    const isMemberFresh = memberId !== null && memberRole && ctx.experiments?.read().objectiveFreshSession === true && ctx.consoleControl?.isNextOpenFresh?.(targetId) === true;
+    const freshNotice = isMemberFresh
       ? memberFreshTurnNotice(objectiveId, memberRole, ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en")
       : "";
     const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en"));
@@ -1696,7 +1704,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             const latest = objective(current.id);
             if (!resumable(latest)) return;
             await accessObjective(latest.id);
-            await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en", { fresh: ctx.experiments?.read().objectiveFreshSession === true }), "");
+            const fresh = ctx.experiments?.read().objectiveFreshSession === true && ctx.consoleControl?.isNextOpenFresh?.(latest.id) === true;
+            await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en", { fresh }), "");
           });
         } catch (error) { resumeFailed(current, error); }
       }

@@ -1242,6 +1242,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Objective 이나 그 자식)을 Console 제어가 따진다.
     transcript: (objectiveId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, objectiveId, input, signal),
     markNextOpenFresh: (objectiveId) => consoleControl.markNextOpenFresh?.(objectiveId),
+    isNextOpenFresh: (objectiveId) => consoleControl.isNextOpenFresh?.(objectiveId) ?? false,
     disposeChat: async (objectiveId) => { await consoleControl.disposeChat?.(objectiveId); },
   });
   async function resolveObjectiveCatalog(): Promise<{ readonly plugins: readonly ObjectiveCatalogPlugin[] }> {

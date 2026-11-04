@@ -162,6 +162,8 @@ export interface AgentChatSessionSeed {
    */
   readonly claudeConfigDir: string;
   readonly origin: AgentChatSessionOrigin;
+  /** 보존된 이전 세션들의 트랜스크립트 파일 경로 목록 — 화면 저널 재생 시 시간 순서대로 이어 읽는다. */
+  readonly previousTranscriptPaths?: readonly string[];
   /**
    * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. `{ mode: "preset" }`이면 켜고,
    * `undefined`는 결함이 아니라 사용자의 설정(`off`)이다 — SDK는 이 필드가 없으면 그 프롬프트를
@@ -1036,11 +1038,14 @@ class AgentChatSession {
     // 재생 경계는 과거가 0턴이어도 남긴다. 같은 서버 안에서 브라우저만 다시 연결하면 이 저널이
     // chat-born 세션의 첫 턴들을 되쓰는데, 경계가 없으면 과거 Answer를 새 도착으로 알릴 수 있다.
     this.push({ kind: "replay-start" });
-    if (this.seed.origin.kind === "fresh") {
+    const pathsToReplay = [
+      ...(this.seed.previousTranscriptPaths ?? []),
+      ...(this.seed.origin.kind === "resume" ? [this.seed.origin.transcriptPath] : []),
+    ];
+    if (pathsToReplay.length === 0) {
       this.push({ kind: "replay-end", turns: 0 });
       return;
     }
-    const transcriptPath = this.seed.origin.transcriptPath;
     const recipients = new Map<string, string>();
     const replayer = createTranscriptReplayer(
       (line) => chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) }),
@@ -1051,17 +1056,18 @@ class AgentChatSession {
         this.push(withReplayRecipient(event, recipients), at ?? Date.now());
       },
     );
-    try {
-      const raw = await fs.readFile(transcriptPath, "utf8");
-      for (const line of raw.split("\n")) {
-        await resolveReplayRecipients(line, this.seed.resolveSessionMessageRecipient, recipients);
-        replayer.line(line);
+    for (const transcriptPath of pathsToReplay) {
+      try {
+        const raw = await fs.readFile(transcriptPath, "utf8");
+        for (const line of raw.split("\n")) {
+          await resolveReplayRecipients(line, this.seed.resolveSessionMessageRecipient, recipients);
+          replayer.line(line);
+        }
+      } catch {
+        // 개별 이전 파일이 없더라도 다른 파일 및 세션은 계속된다.
       }
-      replayer.end();
-    } catch {
-      // 트랜스크립트를 읽지 못해도 세션은 계속된다 — 로그가 비어 보일 뿐 새 턴은 돌 수 있다.
-      this.push({ kind: "error", code: "chat_replay_unavailable" });
     }
+    replayer.end();
     const turns = replayer.turns();
     this.push({ kind: "replay-end", turns });
   }

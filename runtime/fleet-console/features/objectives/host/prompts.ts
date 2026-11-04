@@ -136,6 +136,12 @@ export function memberUnreportedTurn(objective: Objective, member: ObjectiveMemb
   return `${head}${reason}\n${ko ? "배정 임무" : "Assigned missions"}:\n${missions.join("\n")}\n\n${last}`;
 }
 
+export function commanderFreshTurnNotice(objectiveId: string, language: PromptLanguage): string {
+  return language === "ko"
+    ? `[목표 \`${objectiveId}\` 지휘관 새 세션]\n새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 읽어 현재 상황과 구성원 상태를 파악하고 이어서 진행하세요. 이전 세션의 대화 기록이 필요하면 \`objective\` 도구(action: "transcript")로 확인할 수 있습니다.\n\n`
+    : `[Objective \`${objectiveId}\` commander fresh session]\nOpened as a fresh session (role: commander). Past conversation was not loaded into the model context. Read the board with \`fleet-objectives\` (\`read\` or \`mine\` tool) to check current progress and member states, then continue. If you need past session conversation history, read it using the \`objective\` tool (action: "transcript").\n\n`;
+}
+
 export function memberFreshTurnNotice(objectiveId: string, role: string, language: PromptLanguage): string {
   return language === "ko"
     ? `[목표 \`${objectiveId}\` 구성원 「${role}」 새 세션]\n새 세션으로 열렸습니다. 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`mine\` 도구로 본인의 미션과 보드를 확인하고 작업을 이어가세요.\n\n`
