@@ -107,7 +107,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
 }) {
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
-  const { sorted, listSections, preference, settledEmpty } = useCommanderRows(commodoreId, selectedId);
+  const { sorted, listSections, preference } = useCommanderRows(commodoreId, selectedId);
   const folds = useCommanderFolds();
   const groupsId = useId();
   const renderItems = (rows: readonly SideBarRowItem[], listId: string, settled: boolean) => rows.map((item) => {
@@ -147,7 +147,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         </button>
         <CommanderPlacementGlyphs commodoreId={commodoreId} />
       </div> : null}
-      {sorted.length === 0 ? (settledEmpty ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : null) : card ? (
+      {sorted.length === 0 ? null : card ? (
         <>
           {listSections.some((group) => group.settled !== true) ? (
             <div className="commander-tab-groups">

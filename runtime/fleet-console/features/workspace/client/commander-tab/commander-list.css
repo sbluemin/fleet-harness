@@ -302,13 +302,6 @@
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark.has-glyph { border-radius: 4px; }
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) .side-bar-cluster-row-mark-toggle .side-bar-cluster-row-mark.has-glyph.is-hollow { border-width: 2px; }
 
-.commander-tab-empty {
-  margin: 0;
-  padding: var(--space-3) var(--space-2);
-  font-size: var(--t-sm);
-  color: var(--text-tertiary);
-}
-
 .commander-tab { padding: 10px 10px 16px; }
 .commander-tab-list.side-bar-group-chips { gap: 2px; }
 .commander-tab-group-title { display: flex; gap: 6px; align-items: baseline; margin: 0; padding: 8px 8px 2px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-secondary); }
