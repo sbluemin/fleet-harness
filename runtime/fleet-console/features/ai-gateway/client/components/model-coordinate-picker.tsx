@@ -12,8 +12,8 @@ import { RoutingGlyph } from "./routing-glyph.js";
  * 모델·강도 좌표 하나를 고르는 Console의 단일 선택기.
  *
  * 원천은 모델 로스터(`ctx.models.read(target)`) 하나다. 트리거는 「[공급자 글리프] 모델 · 강도」 한 줄이고, 누르면
- * 맵 우클릭 메뉴와 같은 문법의 메뉴가 선다: 공급자 띠 아래 모델 행 → 행을 고르면 그 모델 한 줄과 강도 트랙만 남는
- * 2단계(모델 이름을 다시 누르면 목록). 강도 트랙은 행이 내놓는 사다리 전체를 게이트 없이 펼친다.
+ * 맵 우클릭 메뉴와 같은 문법의 메뉴가 선다: 공급자 행에 마우스를 올리면 우측 플라이아웃 하위 메뉴에 그 공급자의 모델 행이 뜨고 →
+ * 행을 고르면 그 모델 한 줄과 강도 트랙만 남는 2단계(모델 이름을 다시 누르면 목록). 강도 트랙은 행이 내놓는 사다리 전체를 게이트 없이 펼친다.
  *
  * 저장값이 로스터 밖이면(Gateway에서 끈 모델) 그 id를 「꺼짐」 띠에 세우고 트리거에 `labels.off` 표식을 단다 —
  * 값을 지우거나 첫 행으로 바꿔 보이면 다음 저장이 사용자의 선택을 조용히 덮는다. 로스터가 비고 값도 없으면
@@ -264,9 +264,10 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   const activeModel = picked?.model ?? (extraActive ? null : display.shown.model ?? null);
   const currentEffort = picked ? picked.effort : display.shown.effort;
   const [open, setOpen] = React.useState(false);
-  // 확정은 한 번이다. 모델 행은 강도 단계로 넘어가기만 하고(staged), 강도 노브에서 손을 떼거나 Enter를 치는 순간 그 좌표를
-  // 한 번 알리고 닫는다. 강도를 받지 않는 행·모델만 고르는 선택기는 행이 곧 확정이다. 행만 고르고 바깥을 누르거나 Tab으로
-  // 나가면 고른 모델로 한 번 확정하고, Esc는 아무것도 저장하지 않는다. 그래서 한 번의 선택은 늘 저장(세션 전환) 한 번이다.
+  // 확정은 한 번이다. 모델 행과 다른 강도 단 선택은 미리보기(staged)만 갱신하고, 이미 고른 강도 단을 다시 한 번 누르거나
+  // Enter를 치는 순간 그 좌표를 한 번 알리고 닫는다. 강도를 받지 않는 행·모델만 고르는 선택기는 행이 곧 확정이다.
+  // 미리보기를 바꾼 뒤 바깥을 누르거나 Tab으로 나가면 고른 좌표로 한 번 확정하고, Esc는 아무것도 저장하지 않는다.
+  // 그래서 한 번의 선택은 늘 저장(세션 전환) 한 번이다.
   const staged = React.useRef<{ readonly model: string; readonly effort?: string } | null>(null);
   const notify = (next: { readonly model: string; readonly effort?: string } | null) => {
     if (!next || locked || (!props.reconfirm && next.model === value.model && (next.effort ?? "") === (value.effort ?? ""))) return;
@@ -275,27 +276,46 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   const closeMenu = (mode: "commit" | "cancel", refocus = false) => {
     const last = staged.current;
     staged.current = null;
+    setHoveredGroupId(null);
     setOpen(false);
     if (mode === "commit") notify(last);
     if (refocus) triggerRef.current?.focus();
   };
   const settle = (next: { readonly model: string; readonly effort?: string }) => {
     staged.current = null;
+    setHoveredGroupId(null);
     notify(next);
     setOpen(false);
     triggerRef.current?.focus();
   };
-  React.useEffect(() => { if (locked || disabled) { staged.current = null; setOpen(false); } }, [locked, disabled]);
+  React.useEffect(() => { if (locked || disabled) { staged.current = null; setHoveredGroupId(null); setOpen(false); } }, [locked, disabled]);
   React.useEffect(() => { setPicked(null); }, [value.model, value.effort, open]);
   const [focused, setFocused] = React.useState(!startAtList);
+  const [hoveredGroupId, setHoveredGroupId] = React.useState<string | null>(null);
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const subMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const groupItemRefs = React.useRef<Map<string, HTMLButtonElement>>(new Map());
   const focusIntent = React.useRef<"first" | "last" | null>(null);
+  const subFocusIntent = React.useRef<boolean>(false);
   const [pos, setPos] = React.useState<React.CSSProperties>({});
+  const [subPos, setSubPos] = React.useState<React.CSSProperties>({});
   const menuWidth = props.menuWidth;
   // 문서 리스너는 열릴 때 한 번 붙는다 — 그 뒤 렌더의 값(value·staged)으로 닫도록 최신 닫기 함수를 ref로 읽는다.
   const closeMenuRef = React.useRef(closeMenu);
   closeMenuRef.current = closeMenu;
+  const chosenRow: ObjectiveLaunchVariantRow | null = activeModel ? findRosterRow(groups, activeModel) : null;
+  const showTrack = effortMode === "track" && focused && chosenRow !== null && (chosenRow.chips?.length ?? 0) > 0;
+  const focusSubMenu = React.useCallback((groupId: string) => {
+    if (hoveredGroupId === groupId && subMenuRef.current) {
+      subFocusIntent.current = false;
+      const items = menuItems(subMenuRef.current);
+      (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+      return;
+    }
+    subFocusIntent.current = true;
+    setHoveredGroupId(groupId);
+  }, [hoveredGroupId]);
 
   React.useLayoutEffect(() => {
     if (!open || !triggerRef.current || !menuRef.current) return;
@@ -307,6 +327,36 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     const top = below + height > window.innerHeight - MENU_MARGIN ? Math.max(MENU_MARGIN, rect.top - height - 6) : below;
     setPos({ left, top });
   }, [open, groups.length, activeModel, focused, menuWidth, footer]);
+
+  const hoveredGroup = React.useMemo(
+    () => (hoveredGroupId ? groups.find((group) => group.id === hoveredGroupId) ?? null : null),
+    [groups, hoveredGroupId],
+  );
+
+  React.useLayoutEffect(() => {
+    if (!open || showTrack || !hoveredGroup || !menuRef.current || !subMenuRef.current) return;
+    const menuRect = menuRef.current.getBoundingClientRect();
+    const rowEl = groupItemRefs.current.get(hoveredGroup.id);
+    const rowRect = rowEl ? rowEl.getBoundingClientRect() : menuRect;
+    const subRect = subMenuRef.current.getBoundingClientRect();
+    const width = subRect.width || 200;
+    const height = subMenuRef.current.offsetHeight || subRect.height || 180;
+    const gap = 4;
+    const rightLeft = menuRect.right + gap;
+    const left = rightLeft + width <= window.innerWidth - MENU_MARGIN
+      ? rightLeft
+      : Math.max(MENU_MARGIN, menuRect.left - width - gap);
+    const idealTop = rowRect.top - 6;
+    const top = Math.max(MENU_MARGIN, Math.min(idealTop, window.innerHeight - height - MENU_MARGIN));
+    setSubPos({ left, top });
+  }, [open, showTrack, hoveredGroup, pos]);
+
+  React.useLayoutEffect(() => {
+    if (!open || !subFocusIntent.current || !subMenuRef.current) return;
+    subFocusIntent.current = false;
+    const items = menuItems(subMenuRef.current);
+    (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+  }, [open, hoveredGroup]);
 
   React.useLayoutEffect(() => {
     if (!open || !focusIntent.current || !menuRef.current) return;
@@ -320,19 +370,42 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     if (!open) return;
     const onDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) closeMenuRef.current("commit");
+      if (!menuRef.current?.contains(target) && !subMenuRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
+        closeMenuRef.current("commit");
+      }
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenuRef.current("cancel", true); return; }
-      if (!menuRef.current || !(event.target instanceof Node) || !menuRef.current.contains(event.target)) return;
+      if (!(event.target instanceof Node)) return;
+      const inMain = menuRef.current?.contains(event.target) ?? false;
+      const inSub = subMenuRef.current?.contains(event.target) ?? false;
+      if (!inMain && !inSub) return;
       // 캔버스가 window keydown에서 Space를 삼켜 button의 keyup 클릭이 사라진다 — 체크 항목만 여기서 한 번 누른다.
       if (!event.repeat && (event.key === " " || event.code === "Space") && event.target instanceof Element) {
         const check = event.target.closest<HTMLButtonElement>("[role='menuitemcheckbox']");
         if (check) { event.preventDefault(); event.stopPropagation(); check.click(); return; }
       }
-      const items = menuItems(menuRef.current);
+      const container = inSub ? subMenuRef.current! : menuRef.current!;
+      const items = menuItems(container);
       const index = items.indexOf(event.target as HTMLButtonElement);
       if (index < 0) return;
+      if (inSub && event.key === "ArrowLeft") {
+        event.preventDefault();
+        event.stopPropagation();
+        const groupBtn = hoveredGroupId ? groupItemRefs.current.get(hoveredGroupId) : null;
+        setHoveredGroupId(null);
+        (groupBtn ?? menuItems(menuRef.current!)[0])?.focus();
+        return;
+      }
+      if (inMain && event.key === "ArrowRight") {
+        const groupId = (event.target as HTMLElement).dataset.groupId;
+        if (groupId) {
+          event.preventDefault();
+          event.stopPropagation();
+          focusSubMenu(groupId);
+          return;
+        }
+      }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
@@ -346,7 +419,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
-  }, [open]);
+  }, [open, hoveredGroupId, focusSubMenu]);
 
   const variant = trigger?.variant ?? (trigger?.node ? "glyph" : "inline");
   const routeTrigger = routing?.active && labels.route && !trigger?.text && !trigger?.node
@@ -360,7 +433,6 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     return <span className={`${triggerClass} is-locked`} title={[title, labels.locked].filter(Boolean).join("\n") || undefined}>{text}</span>;
   }
 
-  const chosenRow: ObjectiveLaunchVariantRow | null = activeModel ? findRosterRow(groups, activeModel) : null;
   const providerOfRow = (row: ObjectiveLaunchVariantRow) => {
     const group = groups.find((candidate) => candidate.rows.includes(row));
     return group && group.id !== OFF_GROUP_ID ? launchProviderFromGroupId(group.id) ?? launchProviderFromModelId(row.launch.model) : null;
@@ -373,9 +445,9 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     const next = { model, ...(chosenEffort ? { effort: chosenEffort } : {}) };
     setPicked(next);
     staged.current = next;
+    setHoveredGroupId(null);
     setFocused(true);
   };
-  const showTrack = effortMode === "track" && focused && chosenRow !== null && (chosenRow.chips?.length ?? 0) > 0;
 
   return (
     <>
@@ -392,12 +464,14 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
           focusIntent.current = event.key === "ArrowUp" ? "last" : "first";
+          setHoveredGroupId(null);
           setFocused(!startAtList);
           setOpen(true);
         }}
         onClick={(event) => {
           // 열린 메뉴의 트리거를 다시 누르는 것은 바깥 누름과 같다 — 고른 모델이 있으면 한 번 확정하고 닫는다.
           if (open) { closeMenu("commit"); return; }
+          setHoveredGroupId(null);
           setFocused(!startAtList);
           if (event.detail === 0) focusIntent.current = "first";
           setOpen(true);
@@ -407,110 +481,155 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
       </button>
       {/* body 포털 — 확대 표면은 transform 조상이라 fixed가 그 안에 갇히고 overflow에 잘린다. */}
       {open ? createPortal(
-        <div
-          ref={menuRef}
-          className={["fc-coord-menu", showTrack ? "is-focused" : "", props.menuClassName ?? ""].filter(Boolean).join(" ")}
-          role="menu"
-          aria-label={labels.menu}
-          style={{ ...pos, minWidth: menuWidth }}
-          // 메뉴는 body 포털이지만 React 이벤트는 컴포넌트 트리를 따라 선택기를 품은 서랍·패널·시트로 올라간다. 그쪽의 Esc 닫기가
-          // 문서 리스너보다 먼저 돌므로, 메뉴 안의 키는 여기서 먼저 처리하고 멈춘다 — Esc는 메뉴만 취소해 닫는다. 강도 트랙에서의
-          // Tab은 목록 항목의 경계 Tab처럼 지금 미리보기 좌표로 한 번 확정하고 닫는다(Shift+Tab도 같다).
-          onKeyDown={(event) => {
-            if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenu("cancel", true); return; }
-            if (event.key === "Tab" && event.target instanceof Element && event.target.closest(".effort-track")) {
-              event.stopPropagation();
-              closeMenu("commit", true);
-            }
-          }}
-        >
-          {head ? <div className="fc-coord-menu-head">{head}</div> : null}
-          {showTrack && chosenRow ? (
-            <>
-              <button type="button" role="menuitem" className="fc-coord-menu-item fc-coord-menu-back" onClick={() => setFocused(false)} aria-label={labels.back}>
-                <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron back /></span>
-                <ProviderMark provider={providerOfRow(chosenRow)} className="fc-coord-menu-provider" />
-                <span className="fc-coord-menu-label fc-coord-menu-back-label">{chosenRow.label}</span>
-                <span className="fc-coord-menu-effort-word">{chosenRow.chips?.find((chip) => chip.launch.effort === resolveRowEffort(chosenRow, currentEffort ?? null))?.label ?? labels.auto}</span>
-              </button>
-              {/* 게이트는 고정 개방 — 행이 내놓는 사다리 전체가 한 축에 펼쳐진다. */}
-              <div className="fc-coord-menu-track">
-                <EffortTrack
-                  row={chosenRow}
-                  apexPinnedOpen
-                  value={resolveRowEffort(chosenRow, currentEffort ?? null)}
-                  // 끄는 동안·방향키는 미리보기다. 손을 떼거나 Enter를 치면 그 강도로 한 번 확정하고 닫는다.
-                  onChange={(next) => {
-                    const model = chosenRow.launch.model ?? chosenRow.id;
-                    const preview = { model, ...(next ? { effort: next } : {}) };
-                    setPicked(preview);
-                    staged.current = preview;
-                  }}
-                  onSettle={(next) => settle({ model: chosenRow.launch.model ?? chosenRow.id, ...(next ? { effort: next } : {}) })}
-                  autoLabel={labels.auto}
-                  autoValueText={labels.auto}
-                  ariaLabel={labels.effort}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              {routeShown || extras?.length ? (
-                <div className="fc-coord-menu-group">
-                  {routeShown ? (
-                    <button type="button" role="menuitemradio" aria-checked={routing!.active} disabled={routing!.disabled} className={`fc-coord-menu-item fc-coord-menu-extra${routing!.active ? " is-active" : ""}`} onClick={() => { staged.current = null; routing!.onPick(); setOpen(false); }}>
-                      <RouteMark />
-                      <span className="fc-coord-menu-label">{labels.route}{labels.routeHint ? <span className="fc-coord-menu-hint">{labels.routeHint}</span> : null}</span>
-                      {routing!.active ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
-                    </button>
-                  ) : null}
-                  {extras?.map((extra) => (
-                    <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} disabled={extra.disabled} className={`fc-coord-menu-item fc-coord-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { staged.current = null; extra.onPick(); setOpen(false); }}>
-                      <span className="fc-coord-menu-label">{extra.label}{extra.hint ? <span className="fc-coord-menu-hint">{extra.hint}</span> : null}</span>
-                      {extra.active ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
-                    </button>
-                  ))}
-                  {extrasCaption ? <p className="fc-coord-menu-caption fc-coord-menu-note">{extrasCaption}</p> : null}
-                  <div className="fc-coord-menu-divider" role="separator" />
+        <>
+          <div
+            ref={menuRef}
+            className={["fc-coord-menu", showTrack ? "is-focused" : "", props.menuClassName ?? ""].filter(Boolean).join(" ")}
+            role="menu"
+            aria-label={labels.menu}
+            style={{ ...pos, minWidth: menuWidth }}
+            // 메뉴는 body 포털이지만 React 이벤트는 컴포넌트 트리를 따라 선택기를 품은 서랍·패널·시트로 올라간다. 그쪽의 Esc 닫기가
+            // 문서 리스너보다 먼저 돌므로, 메뉴 안의 키는 여기서 먼저 처리하고 멈춘다 — Esc는 메뉴만 취소해 닫는다. 강도 트랙에서의
+            // Tab은 목록 항목의 경계 Tab처럼 지금 미리보기 좌표로 한 번 확정하고 닫는다(Shift+Tab도 같다).
+            onKeyDown={(event) => {
+              if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenu("cancel", true); return; }
+              if (event.key === "Tab" && event.target instanceof Element && event.target.closest(".effort-track")) {
+                event.stopPropagation();
+                closeMenu("commit", true);
+              }
+            }}
+          >
+            {head ? <div className="fc-coord-menu-head" onMouseEnter={() => setHoveredGroupId(null)}>{head}</div> : null}
+            {showTrack && chosenRow ? (
+              <>
+                <button type="button" role="menuitem" className="fc-coord-menu-item fc-coord-menu-back" onClick={() => { setHoveredGroupId(null); setFocused(false); }} aria-label={labels.back}>
+                  <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron back /></span>
+                  <ProviderMark provider={providerOfRow(chosenRow)} className="fc-coord-menu-provider" />
+                  <span className="fc-coord-menu-label fc-coord-menu-back-label">{chosenRow.label}</span>
+                  <span className="fc-coord-menu-effort-word">{chosenRow.chips?.find((chip) => chip.launch.effort === resolveRowEffort(chosenRow, currentEffort ?? null))?.label ?? labels.auto}</span>
+                </button>
+                {/* 게이트는 고정 개방 — 행이 내놓는 사다리 전체가 한 축에 펼쳐진다. */}
+                <div className="fc-coord-menu-track">
+                  <EffortTrack
+                    row={chosenRow}
+                    apexPinnedOpen
+                    value={resolveRowEffort(chosenRow, currentEffort ?? null)}
+                    // 다른 단을 누르거나 끄는 동안·방향키는 미리보기다. 이미 고른 단을 다시 누르거나 Enter를 치면 그 강도로 한 번 확정하고 닫는다.
+                    onChange={(next) => {
+                      const model = chosenRow.launch.model ?? chosenRow.id;
+                      const preview = { model, ...(next ? { effort: next } : {}) };
+                      setPicked(preview);
+                      staged.current = preview;
+                    }}
+                    onSettle={(next) => settle({ model: chosenRow.launch.model ?? chosenRow.id, ...(next ? { effort: next } : {}) })}
+                    autoLabel={labels.auto}
+                    autoValueText={labels.auto}
+                    ariaLabel={labels.effort}
+                  />
                 </div>
-              ) : null}
-              {groups.map((group, index) => {
-                const provider = group.id === OFF_GROUP_ID ? null : launchProviderFromGroupId(group.id);
-                return (
-                  <div key={group.id} className="fc-coord-menu-group">
-                    {index > 0 ? <div className="fc-coord-menu-divider" role="separator" /> : null}
-                    <p className={`objective-launch-variant-caption fc-coord-menu-caption${provider ? ` is-${provider}` : ""}${group.id === OFF_GROUP_ID ? " is-off" : ""}`}>
-                      {provider ? <span className="objective-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(provider)}</span> : null}
-                      <span>{provider ? launchProviderCaption(provider) : group.label}</span>
-                    </p>
-                    {group.id === OFF_GROUP_ID && display.removedProvider && labels.chooseAnotherModel ? <p className="fc-coord-menu-caption fc-coord-menu-note">{labels.chooseAnotherModel}</p> : null}
-                    {group.rows.map((row) => {
-                      const active = activeModel !== null && canonicalModelId(row.launch.model ?? row.id) === canonicalModelId(activeModel);
+              </>
+            ) : (
+              <>
+                {routeShown || extras?.length ? (
+                  <div className="fc-coord-menu-group" onMouseEnter={() => setHoveredGroupId(null)}>
+                    {routeShown ? (
+                      <button type="button" role="menuitemradio" aria-checked={routing!.active} disabled={routing!.disabled} className={`fc-coord-menu-item fc-coord-menu-extra fc-coord-menu-route${routing!.active ? " is-active" : ""}`} onClick={() => { staged.current = null; routing!.onPick(); setOpen(false); }}>
+                        <RouteMark />
+                        <span className="fc-coord-menu-label">{labels.route}</span>
+                        {labels.routeHint ? <span className="fc-coord-menu-hint">{labels.routeHint}</span> : null}
+                        {routing!.active ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
+                      </button>
+                    ) : null}
+                    {extras?.map((extra) => (
+                      <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} disabled={extra.disabled} className={`fc-coord-menu-item fc-coord-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { staged.current = null; extra.onPick(); setOpen(false); }}>
+                        <span className="fc-coord-menu-label">{extra.label}{extra.hint ? <span className="fc-coord-menu-hint">{extra.hint}</span> : null}</span>
+                        {extra.active ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
+                      </button>
+                    ))}
+                    {extrasCaption ? <p className="fc-coord-menu-caption fc-coord-menu-note">{extrasCaption}</p> : null}
+                    <div className="fc-coord-menu-divider" role="separator" />
+                  </div>
+                ) : null}
+                {groups.length > 0 ? (
+                  <div className="fc-coord-menu-group">
+                    {groups.map((group) => {
+                      const provider = group.id === OFF_GROUP_ID ? null : launchProviderFromGroupId(group.id);
+                      const groupLabel = provider ? launchProviderCaption(provider) : group.label;
+                      const activeGroupRow = activeModel !== null
+                        ? group.rows.find((row) => canonicalModelId(row.launch.model ?? row.id) === canonicalModelId(activeModel)) ?? null
+                        : null;
+                      const hasActiveRow = activeGroupRow !== null;
+                      const isHovered = hoveredGroup?.id === group.id;
                       return (
-                        <button key={row.id} type="button" role="menuitemradio" aria-checked={active} className={`fc-coord-menu-item${active ? " is-active" : ""}`} onClick={() => pickRow(row)}>
-                          {group.id === OFF_GROUP_ID && display.removedProvider ? <span className="fc-coord-provider-name">{display.removedProvider}</span> : null}
-                          <span className="fc-coord-menu-label">{row.label}</span>
-                          {active && effortMode === "track" ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
+                        <button
+                          key={group.id}
+                          ref={(node) => {
+                            if (node) groupItemRefs.current.set(group.id, node);
+                            else groupItemRefs.current.delete(group.id);
+                          }}
+                          type="button"
+                          role="menuitem"
+                          aria-haspopup="menu"
+                          aria-expanded={isHovered}
+                          data-group-id={group.id}
+                          className={`fc-coord-menu-item fc-coord-menu-provider-item${hasActiveRow ? " is-active" : ""}${isHovered ? " is-open" : ""}${group.id === OFF_GROUP_ID ? " is-off" : ""}`}
+                          onMouseEnter={() => setHoveredGroupId(group.id)}
+                          onPointerEnter={() => setHoveredGroupId(group.id)}
+                          onFocus={() => setHoveredGroupId(group.id)}
+                          onClick={() => focusSubMenu(group.id)}
+                        >
+                          {provider ? <ProviderMark provider={provider} className="fc-coord-menu-provider" /> : null}
+                          <span className="fc-coord-menu-label">{groupLabel}</span>
+                          {activeGroupRow ? <span className="fc-coord-menu-hint">{activeGroupRow.label}</span> : null}
+                          <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span>
                         </button>
                       );
                     })}
                   </div>
-                );
-              })}
-              {roster === null ? <div className="fc-coord-menu-empty">{labels.loading}</div> : null}
-              {roster !== null && roster.length === 0 && labels.empty ? <div className="fc-coord-menu-empty">{labels.empty}</div> : null}
-            </>
-          )}
-          {reset ? (
-            <div className="fc-coord-menu-group">
-              <div className="fc-coord-menu-divider" role="separator" />
-              <button type="button" role="menuitem" className="fc-coord-menu-item fc-coord-menu-reset" onClick={() => { staged.current = null; reset.onSelect(); setOpen(false); triggerRef.current?.focus(); }}>
-                <span className="fc-coord-menu-label">{reset.label}{reset.description ? <span className="fc-coord-menu-hint">{reset.description}</span> : null}</span>
-              </button>
+                ) : null}
+                {roster === null ? <div className="fc-coord-menu-empty">{labels.loading}</div> : null}
+                {roster !== null && roster.length === 0 && labels.empty ? <div className="fc-coord-menu-empty">{labels.empty}</div> : null}
+              </>
+            )}
+            {reset ? (
+              <div className="fc-coord-menu-group" onMouseEnter={() => setHoveredGroupId(null)}>
+                <div className="fc-coord-menu-divider" role="separator" />
+                <button type="button" role="menuitem" className="fc-coord-menu-item fc-coord-menu-reset" onClick={() => { staged.current = null; reset.onSelect(); setHoveredGroupId(null); setOpen(false); triggerRef.current?.focus(); }}>
+                  <span className="fc-coord-menu-label">{reset.label}{reset.description ? <span className="fc-coord-menu-hint">{reset.description}</span> : null}</span>
+                </button>
+              </div>
+            ) : null}
+            {footer ? <div className="fc-coord-menu-footer" onMouseEnter={() => setHoveredGroupId(null)}>{footer}</div> : null}
+          </div>
+          {!showTrack && hoveredGroup ? (
+            <div
+              ref={subMenuRef}
+              className={["fc-coord-menu", "fc-coord-submenu", props.menuClassName ?? ""].filter(Boolean).join(" ")}
+              role="menu"
+              aria-label={hoveredGroup.id === OFF_GROUP_ID ? hoveredGroup.label : (launchProviderFromGroupId(hoveredGroup.id) ? launchProviderCaption(launchProviderFromGroupId(hoveredGroup.id)!) : hoveredGroup.label)}
+              style={subPos}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenu("cancel", true); }
+              }}
+            >
+              {hoveredGroup.id === OFF_GROUP_ID && display.removedProvider && labels.chooseAnotherModel ? (
+                <p className="fc-coord-menu-caption fc-coord-menu-note">{labels.chooseAnotherModel}</p>
+              ) : null}
+              <div className="fc-coord-menu-group">
+                {hoveredGroup.rows.map((row) => {
+                  const active = activeModel !== null && canonicalModelId(row.launch.model ?? row.id) === canonicalModelId(activeModel);
+                  return (
+                    <button key={row.id} type="button" role="menuitemradio" aria-checked={active} className={`fc-coord-menu-item${active ? " is-active" : ""}`} onClick={() => pickRow(row)}>
+                      {hoveredGroup.id === OFF_GROUP_ID && display.removedProvider ? <span className="fc-coord-provider-name">{display.removedProvider}</span> : null}
+                      <span className="fc-coord-menu-label">{row.label}</span>
+                      {active && effortMode === "track" ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
-          {footer}
-        </div>,
+        </>,
         document.body,
       ) : null}
     </>
