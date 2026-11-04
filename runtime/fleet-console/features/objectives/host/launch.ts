@@ -460,7 +460,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     let effort = pendingRest?.effort ?? (existing ? readObjectiveLaunch(existing).effort : undefined);
     if (wantsRouting) {
       const choice = await judgeCommanderOnce(objectiveId);
-      rememberCommanderDecision(objectiveId, choice);
+      await rememberCommanderDecision(objectiveId, choice);
       model = choice.model;
       effort = choice.effort;
     }
@@ -519,12 +519,20 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (decision.via === "route") return { model: decision.model, ...(decision.effort ? { effort: decision.effort } : {}), routed: { via: "route", because: decision.because } };
     return { model: COMMANDER_PRESET.model, effort: COMMANDER_PRESET.effort, routed: { via: "fallback", reason: decision.reason, ...(decision.detail ? { detail: decision.detail } : {}) } };
   };
-  /** 판단 결과를 대기 설정(또는 이미 있는 휴면 세션)에 남기고 라우팅 표시를 걷는다. 다음 기동은 이 좌표를 다시 판단하지 않는다. */
-  const rememberCommanderDecision = (objectiveId: string, choice: { readonly model: string; readonly effort?: string; readonly routed: MemberRouted }) => {
+  /**
+   * 판단 결과를 대기 설정과 다음 기동 좌표에 남기고 라우팅 표시를 걷는다. 다음 기동은 이 좌표를 다시 판단하지 않는다.
+   * 이미 있는 채팅은 기록만 고치면 다음 프로세스가 옛 기본 모델로 뜬다 — 모델 메뉴와 같은 미시작 좌표 경로를 쓴다.
+   */
+  const rememberCommanderDecision = async (objectiveId: string, choice: { readonly model: string; readonly effort?: string; readonly routed: MemberRouted }) => {
+    const node = ctx.objectiveRecords.get(objectiveId);
+    if (node?.chatMode === true) {
+      const apply = ctx.consoleControl?.setUnstartedPreset;
+      if (!apply) throw new ObjectiveStoreError("capability_unavailable");
+      const result = await apply(objectiveId, { model: choice.model, effort: choice.effort ?? null });
+      if (!result.ok) throw coordinatesError(result);
+    } else if (node) patchObjective(objectiveId, withObjectiveLaunchPreset(node, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }));
     if (store.pending(objectiveId)) store.patchPending(objectiveId, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}), routing: undefined });
     else store.setCommanderRouting(objectiveId, false);
-    const node = ctx.objectiveRecords.get(objectiveId);
-    if (node) patchObjective(objectiveId, withObjectiveLaunchPreset(node, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }));
     store.setCommanderRouted(objectiveId, choice.routed);
   };
 
@@ -1893,7 +1901,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (current.done) throw new ObjectiveStoreError("objective_done");
         if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
         // 지휘관이 아직 라우팅이면 구성원 폴백보다 먼저 한 번 판단해 대기 설정에 남긴다. 개시·첫 기동은 그 좌표를 다시 묻지 않는다.
-        if (current.commander.routing) rememberCommanderDecision(objectiveId, await judgeCommanderOnce(objectiveId));
+        if (current.commander.routing) await rememberCommanderDecision(objectiveId, await judgeCommanderOnce(objectiveId));
         current = objective(objectiveId);
         const targets = routingTargets(current, assignedMembers(current));
         const { decisions, judged } = await routeMembers(current, targets, options?.rejudge ? "none" : "any");

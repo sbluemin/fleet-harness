@@ -119,6 +119,13 @@ ts: child.ts};
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableAutoMemory?: boolean; groupId?: string }[] = [];
+  // 채팅의 다음 프로세스 기동 좌표. 레코드의 session.model 과 따로다 — 미시작 좌표를 거치지 않은 기록 수정은 여기 닿지 않는다.
+  const launchCoordinates = new Map<string, { model: string; effort: string | null }>();
+  const seedLaunchCoordinate = (id: string, model?: string, effort?: string | null) => {
+    launchCoordinates.set(id, { model: model && model.length > 0 ? model : "opus[1m]", effort: effort ?? null });
+  };
+  // 휴면 채팅을 깨운 send 가 그 순간 읽은 기동 좌표. 기록 패치만으로는 바뀌지 않는다.
+  const woken: { objectiveId: string; model: string; effort: string | null }[] = [];
   const resumed: string[] = [];
   const slept: string[] = [];
   const subagentSpawns: { objectiveId: string; policy: "blocked" | "default" }[] = [];
@@ -142,6 +149,8 @@ ts: child.ts};
 type: "agent",
 pluginId: null,
 title: input.title});
+      const born = node.session as { model?: string; effort?: string } | undefined;
+      if (node.chatMode === true) seedLaunchCoordinate(id, born?.model, born?.effort ?? null);
       activity.set(id, "dormant");
       if (hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
       return node;
@@ -216,7 +225,7 @@ title: input.title});
     objectiveRecords: objectiveRecordsHost,
     consoleControl: {
       request: async (input: ConsoleActionInput) => {
-        if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.(); deliveries.push(input); sent.push({ objectiveId: input.objectiveId!, text: input.text! }); if (activity.get(input.objectiveId!) === "dormant") activity.set(input.objectiveId!, "idle"); return { objectiveId: input.objectiveId }; }
+        if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.(); deliveries.push(input); sent.push({ objectiveId: input.objectiveId!, text: input.text! }); if (activity.get(input.objectiveId!) === "dormant") { woken.push({ objectiveId: input.objectiveId!, ...(launchCoordinates.get(input.objectiveId!) ?? { model: "opus[1m]", effort: null }) }); activity.set(input.objectiveId!, "idle"); } return { objectiveId: input.objectiveId }; }
         // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
         if (input.kind === "interrupt") { if (activity.get(input.objectiveId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.objectiveId!); activity.set(input.objectiveId!, "idle"); return { objectiveId: input.objectiveId }; }
         // resume 은 휴면만 세션째 되살린다.
@@ -257,6 +266,7 @@ title: input.title});
       setSubagentSpawn: (objectiveId: string, policy: "blocked" | "default") => { subagentSpawns.push({ objectiveId, policy }); },
       setUnstartedPreset: async (objectiveId: string, input: { model: string; effort: string | null }) => {
         const node = objectiveRecords.get(objectiveId)!;
+        seedLaunchCoordinate(objectiveId, input.model, input.effort);
         objectiveRecordsHost.patch(objectiveId, { ...({ ...node, session: { ...(node.session as object), model: input.model, effort: input.effort ?? undefined } }) });
         return { ok: true, applied: "now" };
       },
@@ -328,7 +338,7 @@ title: input.title});
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, objectiveRecords, archivedObjectiveRecords, archiveCalls, accessCalls, objectiveRecordsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
+  return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, objectiveRecords, archivedObjectiveRecords, archiveCalls, accessCalls, objectiveRecordsHost, add, sent, deliveries, launches, woken, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ objectiveId: id, output });
   }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; } };
@@ -844,7 +854,7 @@ describe("Objectives contract", () => {
   });
 
   it("judges a routed Commander once on the first launch and not again when the lineup is replanned", async () => {
-    const { store, launch, route, objectiveRecords } = harness(() => "http://routing.invalid", { commodoreCommander: () => ({ route: true }) });
+    const { store, launch, route, objectiveRecords, woken } = harness(() => "http://routing.invalid", { commodoreCommander: () => ({ route: true }) });
     let judgments = 0;
     vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
       judgments += 1;
@@ -883,6 +893,8 @@ describe("Objectives contract", () => {
     expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
     expect(judgments).toBe(2);
     expect(objectiveRecords.get(shelved.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    // 기록의 session 이 아니라, 복원된 휴면 채팅을 깨운 그 send 가 읽은 기동 좌표다. 보관은 모델 없이 만들어 기본 opus 로 심는다.
+    expect(woken.filter((entry) => entry.objectiveId === shelved.id)).toEqual([{ objectiveId: shelved.id, model: "sonnet", effort: "low" }]);
     expect(store.find(shelved.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route", because: "fits the brief" } });
     expect(store.find(shelved.id)!.commander.routing).toBeUndefined();
     expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
