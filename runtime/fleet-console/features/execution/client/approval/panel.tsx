@@ -178,15 +178,28 @@ function IntelRow({ item }: { readonly item: ApprovalItem }) {
   );
 }
 
+const NO_DECISIONS: readonly { readonly id: string; readonly title: string }[] = [];
+let decisionSnapshot: readonly { readonly id: string; readonly title: string }[] = NO_DECISIONS;
+let decisionKey = "";
+
+/**
+ * `useSyncExternalStore` 의 스냅숏은 내용이 같으면 같은 참조여야 한다.
+ * 부를 때마다 새 배열을 돌려주면 렌더가 끝나지 않는다.
+ */
 function decisionRows(): readonly { readonly id: string; readonly title: string }[] {
   const rows: { id: string; title: string }[] = [];
+  let key = "";
   for (const board of readAllTheaters()) {
     for (const objective of board.objectives) {
       if (!objective.decisionRequest || objective.done || objective.removed) continue;
       rows.push({ id: objective.id, title: objective.title });
+      key += `${objective.id}\0${objective.title}\n`;
     }
   }
-  return rows;
+  if (key === decisionKey) return decisionSnapshot;
+  decisionKey = key;
+  decisionSnapshot = rows.length === 0 ? NO_DECISIONS : rows;
+  return decisionSnapshot;
 }
 
 function nameOf(rows: readonly { readonly commodoreId: string; readonly alias?: string; readonly label: string }[], proposerId: string, targetId: string): string {
