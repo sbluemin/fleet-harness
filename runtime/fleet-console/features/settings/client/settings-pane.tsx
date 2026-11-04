@@ -185,7 +185,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
 
   // Esc는 소환한 표면을 돌려보낸다(레퍼런스에서 취한 한 손짓). 페인 안 팝오버가 먼저
   // preventDefault로 소비하면 여기는 물러선다.
-  // 검색이 서 있는 동안의 첫 Esc는 표면이 아니라 검색을 거둔다(file-explorer 필터와 같은
+  // 검색이 서 있는 동안의 첫 Esc는 표면이 아니라 검색을 거둔다(필터 우선의
   // 층위 문법) — 안 그러면 질의를 지우려던 손이 페인째 닫는다.
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Escape" || event.defaultPrevented) return;

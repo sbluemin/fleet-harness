@@ -2,7 +2,7 @@ import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
-import { FileIcon, FolderIcon } from "../../file-explorer/client/components/file-icon.js";
+import { FileIcon, FolderIcon } from "./components/file-icon.js";
 import type { RepositoryContext } from "./repository-context.js";
 
 import type { BlobResult, DiffFileEntry, TreeEntry, TreeResult } from "../shared/types.js";

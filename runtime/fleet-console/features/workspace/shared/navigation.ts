@@ -11,7 +11,7 @@ export interface OpenFileRequest {
   readonly pathKind: "theater-relative" | "absolute";
   readonly line?: number;
   readonly column?: number;
-  readonly source: "palette" | "shell" | "agent-terminal" | "agent-chat" | "files" | "other";
+  readonly source: "palette" | "shell" | "agent-terminal" | "agent-chat" | "other";
 }
 
 export type OpenResult = { readonly ok: true } | {

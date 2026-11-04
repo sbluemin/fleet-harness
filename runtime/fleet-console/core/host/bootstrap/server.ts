@@ -3,7 +3,6 @@ import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveL
 import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
-import { createFileExplorerFeature } from "../../../features/file-explorer/host/index.js";
 import { createRepositoryFeature } from "../../../features/repository/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
@@ -2770,11 +2769,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         agent: scuttlebuttAgent,
       });
       featureCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
-      const fileExplorerFeature = createFileExplorerFeature({
-        paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
-        security: consoleFeaturePorts.security,
-      });
-      featureCleanupCallbacks.add(() => fileExplorerFeature.dispose());
       const repositoryFeature = createRepositoryFeature({
         paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
         security: consoleFeaturePorts.security,
@@ -2788,7 +2782,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         } },
       });
       featureCleanupCallbacks.add(() => repositoryFeature.dispose());
-      for (const feature of [quotaFeature, scuttlebuttFeature, fileExplorerFeature, repositoryFeature]) {
+      for (const feature of [quotaFeature, scuttlebuttFeature, repositoryFeature]) {
         for (const route of feature.routes) {
           routeRegistry.register(route.path, route.handler);
           executionApiCatalog.push(...route.catalog);

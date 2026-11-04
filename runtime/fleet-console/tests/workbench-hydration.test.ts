@@ -7,7 +7,7 @@ const key = "session:commodore:commodore:owner";
 const stored: WorkbenchLayout = {
   ...EMPTY_WORKBENCH_LAYOUT,
   columns: [{ tiles: [
-    { id: "files", kind: "entry", entryId: "file-explorer" },
+    { id: "objectives", kind: "entry", entryId: "objectives" },
     { id: "shell", kind: "surface", surfaceId: "shell", params: { tab: "saved" } },
     { id: "repository", kind: "surface", surfaceId: "repository", params: {} },
   ], weights: [2, 1, 3] }],

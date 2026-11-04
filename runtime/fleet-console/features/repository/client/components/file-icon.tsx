@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 
-// 파일 확장자/이름을 컬러 아이콘으로 매핑하는 공용 모듈 — File Explorer와 Repository가 같은 그림을 쓴다.
+// 파일 확장자/이름을 컬러 아이콘으로 매핑하는 모듈 — Repository의 파일 트리가 쓴다.
 // 각 아이콘은 단색(currentColor) SVG이며, 색은 Console 테마의 identity 토큰(--identity-file-*)에서 직접 온다.
 
 type ShapeKey =
