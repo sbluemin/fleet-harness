@@ -210,7 +210,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       })),
     ] : []),
     ...(intelProposals ? [
-      tool("propose_intel", `Propose an intel change for any Commodore, including yourself. You cannot write intel; only the person approves or rejects, and nothing is stored until they approve. kind add: text is trimmed, 1 to ${MAX_INTEL_TEXT} characters, and the item is attributed to you. kind edit: intelId and the new text; the proposal records the item's current text and editedAt. kind remove: intelId, with the same record. If that item is gone or its text or editedAt changed before approval, the edit or removal is stale and is not applied. An add has no such base and does not go stale. Several open proposals on one item all stay; after one is applied the others go stale when approval is attempted.`, z.object({
+      tool("propose_intel", `Propose an intel change for any Commodore, including yourself. You cannot write intel; only the person approves or rejects, and nothing is stored until they approve. kind add: text is trimmed, 1 to ${MAX_INTEL_TEXT} characters, and the item is attributed to you. kind edit: intelId and the new text; the proposal records the item's current text and editedAt. kind remove: intelId, with the same record. If that item is gone or its text or editedAt changes, the edit or removal is recorded stale and cannot be approved. An add has no such base and does not go stale. Several open proposals on one item all stay until one of those changes.`, z.object({
         kind: z.enum(["add", "edit", "remove"]),
         targetId: z.string().min(1).max(128),
         intelId: z.string().min(1).max(128).optional(),

@@ -5,9 +5,9 @@ import { MAX_INTEL_TEXT } from "../shared/contracts/types.js";
 import type { CommodoreStore } from "./store.js";
 
 /**
- * 정보 변경 제안. 추가는 기준이 없어 stale 이 되지 않고, 고침·삭제는 승인하는 순간
- * 항목이 없거나 본문·editedAt 이 기준과 다르면 stale 로 끝내고 반영하지 않는다.
- * 같은 항목의 제안은 모두 남긴다. 하나가 반영된 뒤 나머지는 승인을 시도할 때 stale 이 된다.
+ * 정보 변경 제안. 추가는 기준이 없어 stale 이 되지 않는다.
+ * 고침·삭제는 항목이 없어지거나 본문·editedAt 이 기준과 달라지는 순간 stale 로 기록된다.
+ * 승인할 때의 같은 판정은 그 기록을 놓쳤을 때의 안전장치다. 끝난 제안은 다시 답할 수 없다.
  * 승인 경로는 addIntel·editIntel·removeIntel 뿐이고, 추가는 `commodore:<제안자>` 출처다.
  */
 
@@ -32,6 +32,16 @@ export function bindIntelProposals(deps: {
   readonly known: (commodoreId: string) => boolean;
   readonly onSettled?: (proposerId: string, status: ApprovalStatus) => void;
 }): IntelProposalBinding {
+  let applying: string | null = null;
+  const noteTarget = (targetId: string, intel: readonly { readonly id: string; readonly text: string; readonly editedAt?: number }[]) => {
+    for (const request of deps.core.snapshot().requests) {
+      if (request.id === applying || request.type !== INTEL_PROPOSAL_TYPE || request.status !== "pending") continue;
+      const payload = readPayload(request.payload);
+      if (!payload || payload.kind === "add" || payload.targetId !== targetId) continue;
+      const item = intel.find((entry) => entry.id === payload.intelId);
+      if (!sameBase(item, payload.base)) deps.core.markStale(request.id);
+    }
+  };
   deps.core.register({
     id: INTEL_PROPOSAL_TYPE,
     retention: "disk",
@@ -51,12 +61,18 @@ export function bindIntelProposals(deps: {
       }
       const item = state.intel.find((entry) => entry.id === payload.intelId);
       if (!sameBase(item, payload.base)) return "stale";
-      if (payload.kind === "edit") deps.store.editIntel(payload.targetId, payload.intelId, payload.text);
-      else deps.store.removeIntel(payload.targetId, payload.intelId);
+      applying = record.id;
+      try {
+        if (payload.kind === "edit") deps.store.editIntel(payload.targetId, payload.intelId, payload.text);
+        else deps.store.removeIntel(payload.targetId, payload.intelId);
+      } finally { applying = null; }
       return "approved";
     },
   });
 
+  const unsubscribeStore = deps.store.subscribe((event) => {
+    if (event.op === "state" && (event.change === "intel-edited" || event.change === "intel-removed")) noteTarget(event.commodoreId, event.state.intel);
+  });
   const unsubscribe = deps.core.subscribeSettled((record) => {
     if (record.type !== INTEL_PROPOSAL_TYPE) return;
     const payload = readPayload(record.payload);
@@ -94,7 +110,7 @@ export function bindIntelProposals(deps: {
       } satisfies IntelProposalPayload),
       list: () => deps.core.snapshot().requests.filter((request) => request.type === INTEL_PROPOSAL_TYPE && readPayload(request.payload)?.proposerId === commodoreId),
     }),
-    dispose: unsubscribe,
+    dispose() { unsubscribeStore(); unsubscribe(); },
   };
 }
 

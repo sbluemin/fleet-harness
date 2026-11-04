@@ -15,7 +15,7 @@ import { createCommodoreTools } from "../features/commodore/host/tools.js";
  * 설명·정보 제안의 저장·권한 경계 하나.
  * 승인 전에는 반영되지 않고, 사람 라우트가 아닌 곳(꺼진 인가·사령관 도구)은 승인하지 못한다.
  * 설명을 하나 승인하면 같은 기준의 나머지는 stale 이라 승인되지 않는다.
- * 정보 고침도 같다. 하나를 반영한 뒤 나머지는 승인을 시도할 때 stale 이 되고 항목은 그대로다.
+ * 정보 고침도 같다. 하나가 반영되면 나머지는 그 순간 stale 이고, 다시 답하면 409 이다.
  */
 
 const dirs: string[] = [];
@@ -117,9 +117,10 @@ it("keeps a description unchanged until the person approves, then blocks a stale
   expect(applied.value.request?.status).toBe("approved");
   expect(store.read("b")?.intel.find((item) => item.id === seeded.id)).toMatchObject({ id: seeded.id, text: "beta", source: "person" });
   expect(store.read("b")?.intel.find((item) => item.id === seeded.id)?.editedAt).toEqual(expect.any(Number));
+  expect(opened.intel.forCommodore("a").list().find((request) => request.id === gamma.id)?.status).toBe("stale");
   const staleEdit = await answer(gamma.id, "approve");
-  expect(staleEdit.status).toBe(200);
-  expect(staleEdit.value.request?.status).toBe("stale");
+  expect(staleEdit.status).toBe(409);
+  expect(staleEdit.value.error).toBe("already_settled");
   expect(store.read("b")?.intel.find((item) => item.id === seeded.id)?.text).toBe("beta");
 
   opened.intel.dispose();
