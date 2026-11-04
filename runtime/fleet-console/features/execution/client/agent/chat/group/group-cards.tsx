@@ -250,8 +250,7 @@ export function UseRequestGroupCard({ request, speakers, shared, language }: {
   const titleId = `group-use-request-${request.id}`;
   const shown = shared ? speakers : speakers.slice(0, 1);
   if (!isConsole) {
-    const who = shown.map((speaker) => speaker.name).filter(Boolean).join(" · ");
-    return <ApprovalComputerCard id={request.id} expiresAt={request.expiresAt} now={now} from={who || undefined} lead={shared ? t("group.use.computerLead") : undefined} />;
+    return <ApprovalComputerCard id={request.id} objectiveId={request.objectiveId} expiresAt={request.expiresAt} now={now} />;
   }
   const names = shown.length > 3
     ? t("group.use.names.others", { name: shown[0]!.name, count: String(shown.length - 1) })

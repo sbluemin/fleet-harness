@@ -5,7 +5,6 @@ import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from
 import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
 import { z } from "zod";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
-import type { ApprovalCore } from "@fleet-console/approval";
 import type { ComputerUseService } from "./computer-use.js";
 
 export const FLEET_COMPUTER_USE_MCP_SERVER = "fleet-computer-use";
@@ -28,11 +27,6 @@ export interface ComputerUseMcpDeps {
    * 주어지면 허용받지 않은 Objective 호출은 거부 대신 붙잡혀 그 패널에 카드를 띄운다. 답은 거절 또는 계속 허용이다.
    */
   readonly requests?: ComputerUseRequestPort;
-  /**
-   * 콘솔 승인 코어. 조립이 사령관과 같은 객체를 넘긴다. 컴퓨터 사용 타입 등록은 이관 미션이 한다.
-   * 지금은 받아 두기만 하고, 허용 판정은 그대로다.
-   */
-  readonly approvals?: ApprovalCore;
   /**
    * 호출한 세션 → 사용 컨텍스트. 자식 세션은 루트(contextId)의 허용과 기기를 함께 쓴다. `shared` 는 자식 세션이 있는 묶음이라는
    * 뜻이고, 그때만 기기 소유자를 루트 하나로 정규화해 참가자들이 직렬로 나눠 쓴다. 없으면 호출한 Objective 자신이다.
@@ -222,8 +216,6 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   const groupHooks = new Set<{ leave(contextId: string, participantId: string): boolean; revoke(contextId: string): void }>();
   let disposed = false;
   return {
-    /** 이관 미션이 컴퓨터 사용 타입을 등록할 코어. 없으면 옛 구성이다. */
-    approvals: deps.approvals ?? null,
     objectiveIdForOwner: (owner: string) => objectiveRecordOwners.get(owner) ?? null,
     /** 그 소유자의 기기를 지금 쓰는 참가자(호출한 세션). 공유 묶음이 아니면 소유 Objective 자신이다. */
     actorForOwner: (owner: string) => ownerActors.get(owner) ?? objectiveRecordOwners.get(owner) ?? null,

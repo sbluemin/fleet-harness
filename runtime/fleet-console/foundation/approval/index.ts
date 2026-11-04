@@ -4,7 +4,6 @@ import path from "node:path";
 
 import {
   APPROVAL_DECISIONS,
-  APPROVAL_STATUSES,
   type ApprovalDecision,
   type ApprovalEndReason,
   type ApprovalRequestView,
@@ -34,7 +33,6 @@ export {
  * 디스크 타입의 대기만 파일에 남고, 메모리 타입은 `expiresAt` 이 지나면 `expired` 로 사라진다.
  */
 
-const STATUS_SET: ReadonlySet<string> = new Set(APPROVAL_STATUSES);
 const APPLYING: ReadonlySet<ApprovalDecision> = new Set(["approve", "always"]);
 const DECLINING: ReadonlySet<ApprovalDecision> = new Set(["reject", "declined"]);
 

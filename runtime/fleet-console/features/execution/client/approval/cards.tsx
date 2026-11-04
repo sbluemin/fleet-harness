@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import type { ApprovalDecision } from "@fleet-console/approval/contract";
 import { useT } from "../../../../core/client/src/i18n/index.js";
+import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { CoreMessageKey } from "../../../../core/client/src/i18n/messages/index.js";
 
 import { wordDiff } from "./diff.js";
@@ -52,12 +53,13 @@ function Pieces({ pieces }: { readonly pieces: readonly { readonly text: string;
   return <>{pieces.map((piece, index) => piece.mark === "same" ? <span key={index}>{piece.text}</span> : piece.mark === "del" ? <del key={index}>{piece.text}</del> : <ins key={index}>{piece.text}</ins>)}</>;
 }
 
-export function ApprovalDiff({ now, after, nowLabel, afterLabel, none }: {
+export function ApprovalDiff({ now, after, nowLabel, afterLabel, none, afterNone }: {
   readonly now: string | null;
   readonly after: string | null;
   readonly nowLabel: string;
   readonly afterLabel: string;
   readonly none: string;
+  readonly afterNone?: string;
 }) {
   const compared = now !== null && after !== null ? wordDiff(now, after) : null;
   return (
@@ -68,7 +70,7 @@ export function ApprovalDiff({ now, after, nowLabel, afterLabel, none }: {
       </div>
       <div className="approval-diff-line is-after">
         <span className="approval-diff-tag">{afterLabel}</span>
-        <span className="approval-diff-body">{after === null ? <span className="approval-none">{none}</span> : compared ? <Pieces pieces={compared.after} /> : after}</span>
+        <span className="approval-diff-body">{after === null ? <span className="approval-none">{afterNone ?? none}</span> : compared ? <Pieces pieces={compared.after} /> : after}</span>
       </div>
     </div>
   );
@@ -114,23 +116,27 @@ export function ApprovalActions({ pending, error, primary, primaryLabel, seconda
   return (
     <>
       <div className="approval-actions">
-        <button type="button" className="approval-btn" disabled={pending} onClick={onSecondary}>{secondaryLabel}</button>
-        <button type="button" className={`approval-btn${primary ? " is-primary" : ""}`} disabled={pending} onClick={onPrimary}>{primaryLabel}</button>
         <p className="approval-effect">{effect}</p>
+        <span className="approval-action-btns">
+          <button type="button" className="approval-btn" disabled={pending} onClick={onSecondary}>{secondaryLabel}</button>
+          <button type="button" className={`approval-btn${primary ? " is-primary" : ""}`} disabled={pending} onClick={onPrimary}>{primaryLabel}</button>
+        </span>
       </div>
       {error ? <p className="approval-error" role="alert">{t(error === "experiment_disabled" ? "approval.experimentOff" : "approval.failed")}</p> : null}
     </>
   );
 }
 
-export function ApprovalComputerCard({ id, expiresAt, now, from, lead }: {
+export function ApprovalComputerCard({ id, objectiveId, expiresAt, now, lead }: {
   readonly id: string;
+  readonly objectiveId: string;
   readonly expiresAt: number;
   readonly now: number;
-  readonly from?: string;
   readonly lead?: string;
 }) {
   const t = useT();
+  const state = useConsoleState();
+  const title = state.objectiveRecords.find((record) => record.id === objectiveId)?.title;
   const { pending, error, answer } = useApprovalAnswer(id);
   const left = approvalSecondsLeft(expiresAt, now) ?? 0;
   const low = left <= LOW_SECONDS;
@@ -139,8 +145,8 @@ export function ApprovalComputerCard({ id, expiresAt, now, from, lead }: {
       titleId={`approval-computer-${id}`}
       glyph={<ComputerGlyph />}
       title={t("approval.computerTitle")}
-      from={from}
-      life={<span className={`approval-card-life${low ? " is-low" : ""}`}><LifeRing seconds={left} /><span className="num">{formatApprovalTime(left)}</span></span>}
+      from={title ? t("approval.computerFrom", { title }) : undefined}
+      life={<span className={`approval-card-life${low ? " is-low" : ""}`}><LifeRing seconds={left} /><span className="num">{t("approval.remaining", { time: formatApprovalTime(left) })}</span></span>}
     >
       <p className="approval-lead">{lead ?? t("approval.computerLead")}</p>
       <ApprovalActions

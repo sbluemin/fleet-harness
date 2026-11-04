@@ -15,7 +15,7 @@ export const APPROVAL_LIST_PATH = `/api/v1/${APPROVAL_LIST_ROUTE}`;
 export const APPROVAL_ANSWER_PATH = `/api/v1/${APPROVAL_ANSWER_ROUTE}`;
 
 export const APPROVAL_API_CATALOG: readonly ApiCatalogEntry[] = [
-  { method: "POST", path: APPROVAL_LIST_PATH, summary: "Read the approval snapshot: every pending request and the ones already settled.", category: "Approvals", gate: "origin-write", transport: "http" },
+  { method: "POST", path: APPROVAL_LIST_PATH, summary: "Read the approval snapshot. It lists only pending requests. Settled requests are not kept.", category: "Approvals", gate: "origin-write", transport: "http" },
   { method: "POST", path: APPROVAL_ANSWER_PATH, summary: "Answer one pending approval. Description and intel proposals take approve or reject. An immediate request takes always or declined. always while Computer Use is off is 409 experiment_disabled and leaves the request pending. An id that is not pending is unknown_request.", category: "Approvals", gate: "origin-write", transport: "http" },
 ];
 

@@ -862,7 +862,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onFailure: recordFailure,
     service: computerUse,
     requests: useRequests,
-    approvals,
     objectiveRecords: () => objectiveRecords.list(),
     resolveObjective: objectiveRecords.get,
     useContext: useContext.resolve,

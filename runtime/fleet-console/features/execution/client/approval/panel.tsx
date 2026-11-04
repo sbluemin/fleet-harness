@@ -1,7 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { loadCommodore, useCommodore } from "../../../commodore/client/commodore-state.js";
 import { readCommodoreList, subscribeCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { focusObjective, readAllTheaters, subscribeObjective } from "../../../objectives/client/objectives-state.js";
@@ -29,8 +28,9 @@ export function ApprovalCapsule() {
       onClick={() => toggleApprovalList()}
     >
       <BellGlyph />
+      <span>{t("approval.capsuleWord")}</span>
       {items.length > 0 ? <span className="approval-count num">{items.length}</span> : null}
-      {urgent && left !== undefined ? <><span className="approval-entry-sep" /><span className={`approval-entry-urgent${low ? " is-low" : ""}`}><LifeRing seconds={left} /><span className="num">{formatApprovalTime(left)}</span></span></> : null}
+      {urgent && left !== undefined ? <><span className="approval-entry-sep" /><span className={`approval-entry-urgent${low ? " is-low" : ""}`}><LifeRing seconds={left} /><span>{t("approval.capsuleUrgent")}</span><span className="num">{formatApprovalTime(left)}</span></span></> : null}
     </button>
   );
 }
@@ -70,10 +70,11 @@ function ApprovalList() {
     <div className="approval-surface" role="dialog" aria-modal="false" aria-labelledby="approval-surface-title">
       <header className="approval-surface-head">
         <h2 id="approval-surface-title">{t("approval.title")}</h2>
+        {items.length > 0 ? <p className="approval-surface-sub">{t("approval.headCount", { count: String(items.length) })}</p> : null}
         <button type="button" className="approval-close" aria-label={t("approval.close")} onClick={() => closeApprovalList()}>✕</button>
       </header>
       <div className="approval-surface-scroll">
-        {urgent.length === 0 && waiting.length === 0 ? <p className="approval-empty">{t("approval.empty")}</p> : null}
+        {urgent.length === 0 && waiting.length === 0 ? <div className="approval-empty"><strong>{t("approval.empty")}</strong><p>{t("approval.emptyMore")}</p></div> : null}
         {urgent.length > 0 ? (
           <section>
             <h3 className="approval-group">{t("approval.now")}<span>{t("approval.nowNote")}</span></h3>
@@ -88,7 +89,7 @@ function ApprovalList() {
         ) : null}
         {decisions.length > 0 ? (
           <section>
-            <h3 className="approval-group">{t("approval.decisions")}</h3>
+            <h3 className="approval-group">{t("approval.decisions")}<span>{t("approval.decisionsNote")}</span></h3>
             <div className="approval-stack">
               {decisions.map((row) => (
                 <div className="approval-link" key={row.id}>
@@ -105,11 +106,9 @@ function ApprovalList() {
 }
 
 function ComputerRow({ item, now }: { readonly item: ApprovalItem; readonly now: number }) {
-  const state = useConsoleState();
   const objectiveId = text(item.payload.objectiveId);
-  const title = state.objectiveRecords.find((record) => record.id === objectiveId)?.title;
-  if (item.expiresAt === undefined) return null;
-  return <ApprovalComputerCard id={item.id} expiresAt={item.expiresAt} now={now} from={title} />;
+  if (item.expiresAt === undefined || !objectiveId) return null;
+  return <ApprovalComputerCard id={item.id} objectiveId={objectiveId} expiresAt={item.expiresAt} now={now} />;
 }
 
 function DescriptionRow({ item }: { readonly item: ApprovalItem }) {
@@ -126,7 +125,7 @@ function DescriptionRow({ item }: { readonly item: ApprovalItem }) {
       titleId={`approval-desc-${item.id}`}
       glyph={<DescriptionGlyph />}
       title={t("approval.descTitle")}
-      from={nameOf(names, text(item.payload.proposerId), targetId)}
+      from={nameOf(t, names, text(item.payload.proposerId), targetId)}
       life={<span className="approval-card-life"><LifeRing /><span>{t("approval.until")}</span></span>}
       replaced={item.payload.replaced === true}
     >
@@ -153,7 +152,7 @@ function IntelRow({ item }: { readonly item: ApprovalItem }) {
       titleId={`approval-intel-${item.id}`}
       glyph={<IntelGlyph />}
       title={<>{t("approval.intelTitle")}<span className="approval-op">{label}</span></>}
-      from={nameOf(names, text(item.payload.proposerId), targetId)}
+      from={nameOf(t, names, text(item.payload.proposerId), targetId)}
       life={<span className="approval-card-life"><LifeRing /><span>{t("approval.until")}</span></span>}
       replaced={item.payload.replaced === true}
     >
@@ -163,6 +162,7 @@ function IntelRow({ item }: { readonly item: ApprovalItem }) {
         nowLabel={t("approval.nowLabel")}
         afterLabel={t("approval.afterLabel")}
         none={t("approval.none")}
+        afterNone={kind === "remove" ? t("approval.noneRemoved") : undefined}
       />
       <ApprovalActions
         pending={pending}
@@ -172,7 +172,7 @@ function IntelRow({ item }: { readonly item: ApprovalItem }) {
         primaryLabel={t(kind === "remove" ? "approval.remove" : "approval.approve")}
         onSecondary={answer("reject")}
         onPrimary={answer("approve")}
-        effect={t(kind === "add" ? "approval.intelAddEffect" : kind === "edit" ? "approval.intelEditEffect" : "approval.intelRemoveEffect")}
+        effect={t(kind === "add" ? "approval.intelAddEffect" : kind === "edit" ? "approval.intelEditEffect" : "approval.intelRemoveEffect", { name: commodoreName(names, targetId) })}
       />
     </ApprovalCardFrame>
   );
@@ -202,9 +202,12 @@ function decisionRows(): readonly { readonly id: string; readonly title: string 
   return decisionSnapshot;
 }
 
-function nameOf(rows: readonly { readonly commodoreId: string; readonly alias?: string; readonly label: string }[], proposerId: string, targetId: string): string {
-  const name = (id: string) => rows.find((row) => row.commodoreId === id)?.alias || rows.find((row) => row.commodoreId === id)?.label || id.slice(0, 8);
-  return proposerId && targetId && proposerId !== targetId ? `${name(proposerId)} · ${name(targetId)}` : name(proposerId || targetId);
+function commodoreName(rows: readonly { readonly commodoreId: string; readonly alias?: string; readonly label: string }[], id: string): string {
+  return rows.find((row) => row.commodoreId === id)?.alias || rows.find((row) => row.commodoreId === id)?.label || (id ? id.slice(0, 8) : "");
+}
+
+function nameOf(t: (key: "approval.proposerTo" | "approval.targetCommodore", values?: { readonly from?: string; readonly to?: string; readonly name?: string }) => string, rows: readonly { readonly commodoreId: string; readonly alias?: string; readonly label: string }[], proposerId: string, targetId: string): string {
+  return t("approval.proposerTo", { from: commodoreName(rows, proposerId), to: t("approval.targetCommodore", { name: commodoreName(rows, targetId) }) });
 }
 
 function text(value: unknown): string {
