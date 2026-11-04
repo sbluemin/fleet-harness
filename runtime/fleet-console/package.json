@@ -66,6 +66,7 @@
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/link": "workspace:*",
     "@fleet-console/lifecycle": "workspace:*",
+    "@fleet-console/approval": "workspace:*",
     "@fleet-console/computer-use": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@vscode/ripgrep": "1.18.0",

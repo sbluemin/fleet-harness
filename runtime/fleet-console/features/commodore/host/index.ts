@@ -40,6 +40,10 @@ import { createCommodorePlugins } from "./plugins.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import { createCommodoreSupervisor } from "./supervisor.js";
 import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
+import { APPROVAL_CHANNEL } from "@fleet-console/approval/contract";
+import type { ApprovalCore, ApprovalStatus } from "@fleet-console/approval";
+import { bindDescriptionProposals, type DescriptionProposalBinding } from "./description-proposals.js";
+import { bindIntelProposals, type IntelProposalBinding } from "./intel-proposals.js";
 
 export interface CommodoreFeatureDeps {
   readonly folderGrants?: Pick<FolderGrantStore, "consume">;
@@ -60,6 +64,8 @@ export interface CommodoreFeatureDeps {
   readonly agent: ConsoleResidentAgentDeps;
   /** 마켓플레이스 받기·설치에 쓰는 `claude` CLI 를 Console 수명에 묶어 띄운다. */
   readonly processes?: OwnedProcessPort;
+  /** 콘솔 승인 코어. 있으면 설명 변경 제안을 등록한다. 실험 스위치가 아니다. */
+  readonly approvals?: ApprovalCore;
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -84,6 +90,24 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     ...(deps.processes ? { processes: deps.processes } : {}),
   });
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
+  // 감독자보다 먼저 등록한다. 채널을 연 뒤에 어긋난 제안을 맞춰야 스냅숏이 브라우저에 닿는다.
+  let releaseApprovalChannel = () => {};
+  let proposals: DescriptionProposalBinding | null = null;
+  let intelProposals: IntelProposalBinding | null = null;
+  let noteProposal = (_commodoreId: string, _kind: "description-proposal" | "intel-proposal", _status: ApprovalStatus) => {};
+  if (deps.approvals) {
+    releaseApprovalChannel = deps.events.registerSseChannel(APPROVAL_CHANNEL);
+    const known = (id: string) => entities.dirOf(id) !== null;
+    proposals = bindDescriptionProposals({
+      core: deps.approvals, store, known,
+      onSettled: (proposerId, status) => noteProposal(proposerId, "description-proposal", status),
+    });
+    intelProposals = bindIntelProposals({
+      core: deps.approvals, store, known,
+      onSettled: (proposerId, status) => noteProposal(proposerId, "intel-proposal", status),
+    });
+    deps.events.publish(APPROVAL_CHANNEL, deps.approvals.snapshot());
+  }
   /**
    * 목표 세션에 실을 id — 전역 우선 대체를 유지한 뒤, 전역 토글과 이 사령관 토글의 OR 로 거른다.
    * 뺀 목록이 없으면 지금과 같이 전부 싣는다. 사령관 세션(`plugins` 아래)과 인증은 이 함수를 쓰지 않는다.
@@ -142,7 +166,10 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     emit,
     taskforce: taskforce.store,
     onTaskforceEvent: (event) => emit(event),
+    ...(proposals ? { proposals: (commodoreId: string) => proposals!.forCommodore(commodoreId) } : {}),
+    ...(intelProposals ? { intelProposals: (commodoreId: string) => intelProposals!.forCommodore(commodoreId) } : {}),
   });
+  noteProposal = (commodoreId, kind, status) => supervisor.noteProposal(commodoreId, kind, status);
   /**
    * 키·토큰이 바뀐 플러그인을 고른 사령관 — 고른 목록은 그대로라 저장소 사건이 없으므로 감독자에게 직접 알려 다음 턴을 새 세션
    * (새 환경·새 MCP 연결)으로 연다. 전역 플러그인이면 모든 사령관이다. 목표 세션은 다음 실행부터 받는다.
@@ -315,6 +342,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       }
       return null;
     },
+    ...(proposals ? { approvals: proposals.desk } : {}),
   });
   const routes = [...commodoreRoutes, ...taskforce.routes];
   return {
@@ -330,7 +358,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     async dispose() {
       if (disposed) return;
       disposed = true;
-      try { await supervisor.dispose(); } finally { await pluginAuth.dispose().catch(() => undefined); await agent.dispose(); releaseChannel(); releaseSidebarChannel(); }
+      try { await supervisor.dispose(); } finally { proposals?.dispose(); intelProposals?.dispose(); releaseApprovalChannel(); await pluginAuth.dispose().catch(() => undefined); await agent.dispose(); releaseChannel(); releaseSidebarChannel(); }
     },
   };
 }

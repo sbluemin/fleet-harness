@@ -21,6 +21,9 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModel
 import { z } from "zod";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 
+import { ApprovalError } from "@fleet-console/approval";
+import { APPROVAL_ANSWER_ROUTE, APPROVAL_DECISIONS, APPROVAL_LIST_ROUTE } from "@fleet-console/approval/contract";
+import type { DescriptionProposalDesk } from "./description-proposals.js";
 import { CommodoreStoreError } from "./errors.js";
 import { commodorePluginSetSchema, effectiveCommodorePlugins, effectivePluginsQuerySchema, globalPluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema, pluginUpdateSchema } from "../shared/contracts/plugins.js";
 import type { EffectiveCommodorePluginsView, GlobalPluginsView } from "../shared/contracts/plugins.js";
@@ -80,6 +83,8 @@ export interface CommodoreRouteHooks {
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly commodoreId: string; readonly title: string; readonly removed?: unknown } | null;
   /** 보드 어댑터가 등록돼 있는가 — 없으면 감독자가 runner를 세우지 않으므로 사령관은 꺼진 것으로 보이고 켜지지 않는다. */
   readonly boardReady?: () => boolean;
+  /** 사람이 승인에 답하는 책상. 사령관 도구에는 없다. */
+  readonly approvals?: DescriptionProposalDesk;
 }
 
 const ids = z.string().min(1).max(128);
@@ -116,6 +121,11 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
+    if (error instanceof ApprovalError) {
+      const status = error.code === "unknown_request" ? 404 : error.code === "invalid_request" || error.code === "unknown_type" ? 400 : 409;
+      ctx.host.http.writeJson(res, status, { error: error.code });
+      return;
+    }
     if (error instanceof CommodoreStoreError) {
       const status = error.code === "unknown_commodore" || error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_routine" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_folder_grant" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
       ctx.host.http.writeJson(res, status, error.details ? { error: error.code, details: error.details } : { error: error.code });
@@ -416,6 +426,11 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       return { commodoreId, entries: store.memory.list(commodoreId) };
     }) },
     { name: "commodore/transcript", method: "POST", summary: "Read a page of the Commodore log, newest last; pass the first entry's seq as before to read older entries.", handler: json(commodoreRef.extend({ limit: z.number().int().min(1).max(MAX_TRANSCRIPT_PAGE).optional(), before: z.number().int().nonnegative().optional() }).strict(), ({ commodoreId, limit, before }) => { read(commodoreId); return { commodoreId, ...store.transcriptRead(commodoreId, { limit, before }) }; }) },
+    // 승인 답은 사람만. json() 이 사령관 설명 라우트와 같은 isTerminalAuthorized 게이트를 쓴다. 사령관 도구에는 답이 없다.
+    ...(hooks.approvals ? [
+      { name: APPROVAL_LIST_ROUTE, method: "POST" as const, summary: "Read the approval snapshot: every pending request and the ones already settled.", handler: json(z.object({}).strict(), () => hooks.approvals!.snapshot()) },
+      { name: APPROVAL_ANSWER_ROUTE, method: "POST" as const, summary: "Answer one approval. Description proposals take approve or reject. An immediate request takes always or declined. A settled request, including one that went stale, cannot be answered again.", handler: json(z.object({ id: z.string().uuid(), decision: z.enum(APPROVAL_DECISIONS) }).strict(), ({ id, decision }) => ({ request: hooks.approvals!.answer(id, decision) })) },
+    ] : []),
   ];
 }
 

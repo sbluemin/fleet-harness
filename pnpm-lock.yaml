@@ -43,6 +43,9 @@ importers:
       '@fleet-console/ai-gateway':
         specifier: workspace:*
         version: link:features/ai-gateway/runtime
+      '@fleet-console/approval':
+        specifier: workspace:*
+        version: link:foundation/approval
       '@fleet-console/computer-use':
         specifier: workspace:*
         version: link:features/computer-use/runtime
@@ -289,6 +292,15 @@ importers:
       zod:
         specifier: ^4.3.6
         version: 4.4.1
+
+  runtime/fleet-console/foundation/approval:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
 
   runtime/fleet-console/foundation/font-picker:
     devDependencies:

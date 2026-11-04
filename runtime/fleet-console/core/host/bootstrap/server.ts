@@ -52,6 +52,8 @@ import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-m
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
+import { createApprovalCore, type ApprovalCore } from "@fleet-console/approval";
+import { APPROVAL_CHANNEL } from "@fleet-console/approval/contract";
 import { CONSOLE_LIFECYCLE_WIRE, CONSOLE_STOP_REQUEST_PATH, CONSOLE_STOP_REQUEST_REVISION, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost, SESSION_BROWSER_OWNER_PREFIX } from "../../../features/browser/host/mcp.js";
@@ -638,6 +640,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let desktopUpdateRequestedAt = 0;
   const pluginSseChannels = new Set<string>();
   let commodore: CommodoreFeature | null = null;
+  let approvals: ApprovalCore | null = null;
   let objectives: ObjectivesFeature | null = null;
   let releaseObjectivesBoard: (() => void) | null = null;
 
@@ -1472,6 +1475,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 붙기 전에 시작된 콘솔·컴퓨터 사용과 허용 요청은 이벤트로 다시 오지 않는다 — 지금 스냅샷을 실어 보낸다.
       // 재연결도 이 자리를 지나므로 끊긴 사이의 변경은 여기서 한 번에 맞춰진다.
       writeObjectiveSse(subscriber, encodeSseData(OBJECTIVE_USE_STATE_EVENT, objectiveRecordUseSnapshot()));
+      if (approvals) writeObjectiveSse(subscriber, encodeSseData(APPROVAL_CHANNEL, approvals.snapshot()));
       // 셸이 이미 게시한 집이 있으면 붙는 순간 실어 보낸다 — 화면의 한 번뿐인 물음과 게시가 어느 순서로
       // 오든 창은 돌아갈 곳을 안다. 빈 답은 보내지 않는다: "아직 모른다"를 "집이 없다"로 굳히지 않기 위해서다.
       const publishedShell = shellOwner === null ? undefined : desktopShellsByOwner.get(shellOwner);
@@ -2589,7 +2593,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         ...objectiveRecords.list(), ...archiveStorage.entries().map((entry) => entry.objectiveRecord),
         ...deletionCoordinator.list().flatMap(deletionObjectiveRecords),
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
+      approvals = createApprovalCore({
+        filePath: path.join(durablePaths.dir, "approvals", "requests.json"),
+        onChange: (snapshot) => publishPluginEvent(APPROVAL_CHANNEL, snapshot),
+      });
+      featureCleanupCallbacks.add(() => approvals?.dispose());
       commodore = createCommodoreFeature({
+        approvals,
         ownership,
         folderGrants,
         deletion: {

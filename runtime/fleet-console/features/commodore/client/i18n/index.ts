@@ -333,6 +333,8 @@ export const commodoreEn = {
   "commodore.decisionHint": "Autonomous operation is enabled, so the Commodore answers this request. You can still answer it yourself; the first answer counts.",
   "commodore.reason.routine": "routine",
   "commodore.reason.description": "description changed",
+  "commodore.reason.description-proposal": "description proposal settled",
+  "commodore.reason.intel-proposal": "intel proposal settled",
   // 옛 기록의 깨움 토큰 — 지시는 설명이 되었다.
   "commodore.reason.directive": "description changed",
   "commodore.reason.intel": "new intel {n}",
@@ -974,6 +976,8 @@ export const commodoreKo: Record<keyof typeof commodoreEn, string> = {
   "commodore.decisionHint": "자동 운영 중이라 사령관이 이 요청에 답해요. 직접 답해도 되고, 먼저 보낸 답이 반영돼요.",
   "commodore.reason.routine": "루틴",
   "commodore.reason.description": "설명 바뀜",
+  "commodore.reason.description-proposal": "설명 제안 결말",
+  "commodore.reason.intel-proposal": "정보 제안 결말",
   "commodore.reason.directive": "설명 바뀜",
   "commodore.reason.intel": "새 정보 {n}",
   "commodore.reason.intel-edited": "정보 수정 {n}",
