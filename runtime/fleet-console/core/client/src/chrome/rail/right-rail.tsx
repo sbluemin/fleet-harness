@@ -1,6 +1,5 @@
 import { useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { theaterLabelOf } from "../../../../../features/commodore/client/theater-owner.js";
-import { useCommodoreToolsConversation } from "../../../../../features/commodore/client/commodore-conversation.js";
 import { usePaneOverlay } from "../pane/use-pane-overlay.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
@@ -655,22 +654,18 @@ function standsWithoutTheater(entry: RailEntryDescriptor): boolean {
 
 function RailIcon({ entry, context, language, isActive, text = false }: RailIconProps) {
   const withoutTheater = standsWithoutTheater(entry);
-  const commodoreToolsHere = useCommodoreToolsConversation();
-  // 사령관 전용 도구는 사령관 대화에서 Theater 없이도 열린다 — 빈 상태가 그 자리에서 안내한다.
-  const gatedHere = entry.commodoreConversationOnly === true && commodoreToolsHere;
-  const disabled = !withoutTheater && context.theaterId === null && !gatedHere;
+  const disabled = !withoutTheater && context.theaterId === null;
   const handleClick = useCallback(() => {
     if (disabled) return;
     if (entry.activate) {
       // fleet 범위는 Console 전역이라 Theater 없이도 선다. Theater를 다루는 entry는
-      // Theater 없이 열 수 없어 조용히 둔다 — 사령관 전용 도구는 빈 상태를 세우므로 예외다.
-      // 등록 때 표시한 패널(사령관)도 예외다.
-      if (context.theaterId === null && !withoutTheater && !gatedHere) return;
+      // Theater 없이 열 수 없어 조용히 둔다. 등록 때 표시한 패널(사령관)은 예외다.
+      if (context.theaterId === null && !withoutTheater) return;
       entry.activate(context);
       return;
     }
     toggleRailPanel(entry.id);
-  }, [context, entry, disabled, gatedHere, withoutTheater]);
+  }, [context, entry, disabled, withoutTheater]);
   useShortcutOverrides();
   const command = CORE_SHORTCUT_COMMANDS.find((candidate) => candidate.railEntryId === entry.id);
   const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);

@@ -43,7 +43,7 @@ import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
 import { isCommanderObjective, keptCommodoreOwnerOf } from "../commander-tab/commander-rows.js";
 import { readCommanderPlacement, useCommanderPlacement } from "../commander-tab/commander-placement.js";
-import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID, useCommodoreToolsConversation } from "../../../commodore/client/commodore-conversation.js";
+import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
@@ -942,28 +942,17 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 숨기는 것과 대화 칸이 오른쪽·아래로 비키는 것이 같은 배치의 geometry 에서 함께 나온다. 저장된 배치는 건드리지 않으므로 작업
   // 위치가 다시 서면 그대로 돌아온다.
   const workbenchSuspended = (conversationKey !== null || standInId !== null) && workLocation === null;
-  // 사령관 대화에서는 사령관 전용 도구가 자기 Theater를 따로 가지므로 막다른 칸을 세우지 않는다 —
-  // 위의 작업 위치 없음이 그 도구들의 숨김이 되지 않는다. 등록 Theater가 없으면 빈 상태를 세운다.
-  const commodoreToolsHere = useCommodoreToolsConversation();
   const shownLayout = useMemo(
     () => {
-      // 사령관 전용 도구 칸은 사령관 대화에서만 선다 — 묵은·저장된 배치에 남은 칸이 지휘관·구성원·일반
-      // Objective 대화에 뜨지 않게 보이는 배치에서만 걷는다. 저장된 배치는 그대로 두므로 사령관으로
-      // 돌아오면 그 칸들이 복원된다.
-      const visible = commodoreToolsHere ? layout : workbenchLayoutKeeping(layout, (tile) => !isCommodoreToolTile(tile, railBindings));
-      if (!workbenchSuspended) return visible;
-      if (commodoreToolsHere) {
-        return workbenchLayoutKeeping(visible, (tile) => tile.kind === "browser" || isCommodoreToolTile(tile, railBindings)
-          || (tile.kind === "entry" && railBindings.some(({ entry }) => entry.id === tile.entryId && (entry.scope === "fleet" || entry.opensWithoutTheater === true))));
-      }
-      return workbenchLayoutKeeping(visible, (tile) => tile.kind === "browser"
+      if (!workbenchSuspended) return layout;
+      return workbenchLayoutKeeping(layout, (tile) => tile.kind === "browser"
         || (tile.kind === "entry" && railBindings.some(({ entry }) => entry.id === tile.entryId && (entry.scope === "fleet" || entry.opensWithoutTheater === true))));
     },
-    [layout, railBindings, workbenchSuspended, commodoreToolsHere],
+    [layout, railBindings, workbenchSuspended],
   );
   const geometry = useMemo(() => computeWorkbenchGeometry(shownLayout, regionWidth, regionHeight), [shownLayout, regionWidth, regionHeight]);
   // 칸들은 자기 대화의 범위만 받는다 — 대화가 바뀌는 렌더에서는 작업대가 아직 앞 대화의 칸을 들고 있으므로(배치는 layout effect
-  // 에서 바뀐다), 그 사이에는 앞 대화의 범위를 그대로 준다. 그러지 않으면 떠나는 칸이 새 대화의 Shell·문서로 착각한다.
+  // 에서 바뀐다), 그 사이에는 앞 대화의 범위를 그대로 준다. 그러지 않으면 떠나는 칸이 새 대화의 칸으로 착각한다.
   const workbenchKey = useSyncExternalStore(subscribeWorkbench, getWorkbenchKey, getWorkbenchKey);
   const workbenchScopeRef = useRef(scopedToolContext);
   if (workbenchKey === (conversationKey ?? "console")) workbenchScopeRef.current = scopedToolContext;
@@ -1093,25 +1082,12 @@ function stableParamsKey(params: Readonly<Record<string, unknown>>): string {
 /**
  * 공통 도구모음에 서는 도구 — 대화에서 곧장 이어 가는 도구(conversationTab, 목표)는 Objective 대화의 오른쪽 패널 글자 탭이
  * 맡으므로 뺀다. 그래서 사령관·지휘관·일반 Objective 대화·빈 칸의 도구 집합이 같다.
- * 사령관 전용 도구(파일·저장소·Shell)는 사령관 대화에서만 덧붙는다.
  */
-function isCommonTool(entry: RailEntryDescriptor, commodoreToolsHere: boolean): boolean {
-  if (entry.conversationTab === true) return false;
-  return commodoreToolsHere || entry.commodoreConversationOnly !== true;
+function isCommonTool(entry: RailEntryDescriptor): boolean {
+  return entry.conversationTab !== true;
 }
 
-/** 사령관 전용 도구의 칸 — 타일 종류에 맞는 진입점 주소로 판정한다. */
-function isCommodoreToolTile(tile: WorkbenchTile, bindings: readonly RailEntryBinding[]): boolean {
-  if (tile.kind === "entry") {
-    return bindings.some((binding) => binding.entry.id === tile.entryId && binding.entry.commodoreConversationOnly === true);
-  }
-  if (tile.kind === "surface") {
-    return bindings.some((binding) => binding.entry.surfaceId === tile.surfaceId && binding.entry.commodoreConversationOnly === true);
-  }
-  return false;
-}
-
-/** 도구 캡슐의 켜짐 — 지금 대화의 도구 칸에 그 도구가 보이는가(다른 칸이 펼쳐 가리면 꺼짐). 저장소·Shell 처럼 표면을 여는 도구는 그 표면 칸을 본다. */
+/** 도구 캡슐의 켜짐 — 지금 대화의 도구 칸에 그 도구가 보이는가(다른 칸이 펼쳐 가리면 꺼짐). 표면을 여는 도구는 그 표면 칸을 본다. */
 function workbenchToolActive(entry: RailEntryDescriptor): boolean | undefined {
   if (entry.activate !== undefined) return entry.surfaceId === undefined ? undefined : isWorkbenchSurfaceShown(entry.surfaceId);
   return isWorkbenchEntryShown(entry.id);
@@ -1144,8 +1120,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   useViewportFit(toolsMenuRef, menuOpen);
   const bindings = useDesktopRailEntries();
-  // 사령관 전용 도구(파일·저장소·Shell)는 사령관 대화의 도구모음에만 선다.
-  const commodoreToolsHere = useCommodoreToolsConversation();
   // 켜짐은 이 대화의 도구 칸이 말한다 — 배치가 바뀌면 다시 그린다.
   useWorkbenchLayout();
   useLayoutEffect(() => {
@@ -1306,7 +1280,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
     <span className="conversation-pill-tools" ref={toolsRef} role="toolbar" aria-label={t("conversation.tools.aria")}>
       {showLead ? <span className="conversation-pill-tools-lead">{lead}</span> : null}
       <span className="conversation-pill-tools-items" ref={itemsRef}>
-        <RailToolIcons context={context} variant="icons" scope="tools" toolFilter={(entry) => isCommonTool(entry, commodoreToolsHere)} toolActive={workbenchToolActive} />
+        <RailToolIcons context={context} variant="icons" scope="tools" toolFilter={(entry) => isCommonTool(entry)} toolActive={workbenchToolActive} />
       </span>
       <span className="conversation-pill-tools-more-wrap">
         <button

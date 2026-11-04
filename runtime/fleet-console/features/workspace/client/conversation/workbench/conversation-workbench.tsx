@@ -6,10 +6,6 @@ import type { ObjectiveKindDescriptor } from "../../../../execution/shared/clien
 import { findAgentObjectiveKind } from "../../../../execution/shared/objective-kind.js";
 
 import type { WorkbenchLayout, WorkbenchTile } from "../../../shared/conversation-workbench.js";
-import { isCommodoreToolId } from "../../../shared/commodore-tool-theater.js";
-import { useCommodoreToolTheater } from "../../theater-tools/store.js";
-import { CommodoreToolHead } from "../../theater-tools/head.js";
-import { CommodoreToolsEmptyState } from "../../theater-tools/empty.js";
 import { useT } from "../../../../../core/client/src/i18n/index.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../../core/client/src/integration/types.js";
 import { setActiveObjective, themePolarity } from "../../../../../core/client/src/integration/store.js";
@@ -614,28 +610,16 @@ function entryIcon(binding: RailEntryBinding | null): ReactNode {
   return typeof icon === "function" ? icon() : icon ?? null;
 }
 
-/** 레일 엔트리의 페인 묶음(파일 등) — 오른쪽 사이드바가 쓰던 같은 표면 렌더러를 칸 안에 세운다. */
+/** 레일 엔트리의 페인 묶음 — 오른쪽 사이드바가 쓰던 같은 표면 렌더러를 칸 안에 세운다. */
 function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<WorkbenchTile, { kind: "entry" }> }) {
   const t = useT();
   const { binding, toolContext, language } = props;
   const title = binding ? resolveLocalizedText(binding.entry.title, language) : props.tile.entryId;
-  // 사령관 전용 도구는 (사령관, 도구)의 Theater를 따로 가진다 — 타일 머리의 선택기와 본문이 같은 값을 읽는다.
-  const toolId = binding !== null && binding.entry.commodoreConversationOnly === true && isCommodoreToolId(binding.entry.id) ? binding.entry.id : null;
-  const ownerId = toolContext.commodoreId ?? null;
-  const toolState = useCommodoreToolTheater(ownerId, toolId);
-  const toolResolution = toolId !== null && ownerId !== null && toolState.active ? toolState.resolution : null;
-  const toolTheaterId = toolResolution === null || toolResolution.kind === "none" ? null : toolResolution.theaterId;
-  const effectiveTheaterId = toolResolution !== null ? toolTheaterId : toolContext.theaterId;
+  const effectiveTheaterId = toolContext.theaterId;
   const needsTheater = binding !== null && binding.entry.scope !== "fleet" && binding.entry.opensWithoutTheater !== true && effectiveTheaterId === null;
-  const toolsEmpty = toolResolution?.kind === "none" && ownerId !== null
-    ? <div className="workbench-tile-rail"><CommodoreToolsEmptyState commodoreId={ownerId} /></div>
-    : null;
-  const head = toolId !== null && ownerId !== null && toolResolution !== null
-    ? <CommodoreToolHead icon={entryIcon(binding)} title={title} commodoreId={ownerId} tool={toolId} />
-    : null;
   const body = binding === null || binding.panes.length === 0
     ? <div className="workbench-tile-notice">{t("conversation.workbench.missingTool")}</div>
-    : toolsEmpty ?? (needsTheater
+    : (needsTheater
       ? <div className="workbench-tile-notice">{t("conversation.workbench.needsTheater")}</div>
       : (
         <div className="workbench-tile-rail">
@@ -653,25 +637,19 @@ function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Work
           />
         </div>
       ));
-  return <TileFrame {...props} parts={head !== null ? { title, titleNode: head, body } : { title, icon: entryIcon(binding), body }} />;
+  return <TileFrame {...props} parts={{ title, icon: entryIcon(binding), body }} />;
 }
 
 const NO_MINIMUM = () => undefined;
 
-/** 확대 표면 서술자 하나(저장소·Shell 등) — 옛 가운데 덮개가 쓰던 같은 서술자를 칸 안에 그린다. */
+/** 확대 표면 서술자 하나 — 옛 가운데 덮개가 쓰던 같은 서술자를 칸 안에 그린다. */
 function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<WorkbenchTile, { kind: "surface" }> }) {
   const { tile, entry, focused, toolContext, state, language, binding } = props;
   const descriptors = useExpandedSurfaceDescriptors();
   const descriptor = descriptors.get(tile.surfaceId);
   const capabilities = useHostCapabilities();
   const instance = useMemo(() => ({ instanceId: tile.id, surfaceId: tile.surfaceId, params: tile.params, weight: 1 }), [tile.id, tile.params, tile.surfaceId]);
-  // 사령관 전용 도구는 (사령관, 도구)의 Theater를 따로 가진다 — EntryTile과 같은 값이다.
-  const toolId = binding !== null && binding.entry.commodoreConversationOnly === true && isCommodoreToolId(binding.entry.id) ? binding.entry.id : null;
-  const ownerId = toolContext.commodoreId ?? null;
-  const toolState = useCommodoreToolTheater(ownerId, toolId);
-  const toolResolution = toolId !== null && ownerId !== null && toolState.active ? toolState.resolution : null;
-  const toolTheaterId = toolResolution === null || toolResolution.kind === "none" ? null : toolResolution.theaterId;
-  const effectiveTheaterId = toolResolution !== null ? toolTheaterId : toolContext.theaterId;
+  const effectiveTheaterId = toolContext.theaterId;
   const context = useExpandedSurfaceContext({
     instance,
     index: entry.index,
@@ -684,20 +662,14 @@ function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Wo
     language,
     capabilities,
     onReportMinimum: NO_MINIMUM,
-    // 표면이 스스로 닫는 길(셸 종료 등)은 묻지 않는다.
+    // 표면이 스스로 닫는 길은 묻지 않는다.
     close: () => closeWorkbenchTile(tile.id, { confirmed: true }),
     focus: () => focusWorkbenchTile(tile.id),
     replaceParams: (next) => replaceWorkbenchTileParams(tile.id, next),
     conversation: toolContext.conversation,
   });
   const title = safeExpandedSurfaceTitle(descriptor, context, language, binding ? resolveLocalizedText(binding.entry.title, language) : tile.surfaceId);
-  const head = toolId !== null && ownerId !== null && toolResolution !== null
-    ? <CommodoreToolHead icon={entryIcon(binding)} title={title} commodoreId={ownerId} tool={toolId} />
-    : null;
-  const toolsEmpty = toolResolution?.kind === "none" && ownerId !== null
-    ? <CommodoreToolsEmptyState commodoreId={ownerId} />
-    : null;
-  const body = toolsEmpty ?? (
+  const body = (
     <div className="workbench-tile-surface">
       {descriptor?.aside ? (
         <aside className="expanded-surface-pane-aside">
@@ -712,7 +684,7 @@ function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Wo
     </div>
   );
   const tools = descriptor?.tools ? <FeatureErrorBoundary fallback={null}><SurfacePanePart render={descriptor.tools} context={context} /></FeatureErrorBoundary> : null;
-  return <TileFrame {...props} parts={head !== null ? { title, titleNode: head, tools, body } : { title, icon: entryIcon(binding), tools, body }} />;
+  return <TileFrame {...props} parts={{ title, icon: entryIcon(binding), tools, body }} />;
 }
 
 /** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Objective companion 과 같은 값이다. */

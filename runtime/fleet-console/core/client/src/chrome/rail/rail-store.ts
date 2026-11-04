@@ -27,7 +27,6 @@ const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const LEGACY_PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
 // 옛 아이콘 열의 접힘 선호 — 열이 도구모음으로 옮겨 가며 퇴역했다. 남은 값은 첫 로드에 걷는다.
 const LEGACY_PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
-const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
 const personListeners = new Set<(open: boolean) => void>();
 let store: RailStore = {
@@ -271,17 +270,10 @@ function readStoredActivePanelId(): string | null {
   } catch { return null; }
 }
 
-/* 단일 활성 슬롯 1기 시절 값 정규화 — diff/history는 repository 패널로 흡수됐고(history는
-   Repository 소스 시드 유지), alerts·codex 패널은 퇴역했다. 스택 시절 값은 현대 id라 그대로 통과한다. */
+/* 단일 활성 슬롯 1기 시절 값 정규화 — diff/history·repository·alerts·codex 패널은 퇴역했다. 스택 시절 값은 현대 id라 그대로 통과한다. */
 function normalizeStoredPanelId(stored: string): string | null {
   if (stored === "") return null;
-  if (stored === "diff" || stored === "history") {
-    try {
-      if (stored === "history") localStorage.setItem(PREFS_REPOSITORY_SOURCE, "history");
-    } catch { /* best-effort migration */ }
-    return "repository";
-  }
-  if (stored === "alerts" || stored === "codex") return null;
+  if (stored === "diff" || stored === "history" || stored === "repository" || stored === "alerts" || stored === "codex") return null;
   return stored;
 }
 

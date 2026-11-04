@@ -51,7 +51,6 @@ import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/objective-records-sse.js";
 import { closeKeyboardShortcuts, closeObjectiveSearch, getState, hydrateGroups, hydrateInitialObjectiveRecords, hydrateObjectiveRecords, openObjectiveSearch, resolveOnboardingOnBootstrap, setObjectiveRecordsViewActive, themePolarity } from "../integration/store.js";
 import { commodoreListLoaded, refreshCommodoreList, subscribeCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
-import { isCommodoreToolsConversationSelected, useCommodoreToolsConversation } from "../../../../features/commodore/client/commodore-conversation.js";
 import { theaterLabelOf } from "../../../../features/commodore/client/theater-owner.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { subscribeObjectiveActivityTracking } from "../../../../features/workspace/client/sidebar/objective-records-side-bar-store.js";
@@ -180,15 +179,11 @@ function ConnectedApp() {
   // 이름은 엔트리가, 검색은 그 엔트리가 세우는 페인들이 말한다. 한 엔트리에 검색을 가진 페인이
   // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
   const railBindings = useDesktopRailEntries();
-  // 사령관 전용 도구(파일·저장소·Shell)는 사령관 대화에서만 팔레트에 선다.
-  const commodoreToolsHere = useCommodoreToolsConversation();
   // 설정 검색 공급자는 React 밖에서 불린다 — 플러그인 섹션 스냅샷을 여기서 실어 준다.
   useEffect(() => { syncSettingsSearchPlugins(registry.providers); }, [registry.providers]);
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
     () => railBindings
       // 페인을 세우지 않는 엔트리도 찾을 것을 가질 수 있다 — 확대 표면을 여는 기여가 그렇다.
-      // 사령관 전용 도구는 사령관 대화가 아니면 팔레트에 서지 않는다.
-      .filter((binding) => binding.entry.commodoreConversationOnly !== true || commodoreToolsHere)
       .filter((binding) => binding.panes.length > 0 || binding.entry.search !== undefined || binding.entry.surfaceId !== undefined)
       .map((binding) => {
         const providers = [
@@ -211,7 +206,7 @@ function ConnectedApp() {
             }),
         };
       }),
-    [railBindings, commodoreToolsHere],
+    [railBindings],
   );
 
   // 확대 표면의 닫힘 통보는 콘솔 수명에 묶는다. 표면 레이어는 /objectives 라우트에만
@@ -453,10 +448,7 @@ function ConnectedApp() {
         const outcome = resolvePanelShortcut();
         const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
         if (outcome === "suppress" || entry === undefined) return false;
-        // 사령관 전용 도구는 사령관 대화에서만 단축키로 열린다 — 다른 대화에서는 키를 삼켜 터미널 입력으로 새지 않게 한다.
-        if (entry.commodoreConversationOnly === true && !isCommodoreToolsConversationSelected()) return true;
-        // 사령관 전용 도구는 보는 Theater가 없어도 열린다 — 빈 상태가 그 자리에서 안내한다.
-        if (getViewedTheaterId() === null && !(entry.commodoreConversationOnly === true && isCommodoreToolsConversationSelected())) {
+        if (getViewedTheaterId() === null) {
           // fleet 범위는 Theater 없이도 선다 — 아래 공통 activate 경로로 떨어진다.
           if (entry.scope !== "fleet" || entry.activate === undefined) return false;
         }

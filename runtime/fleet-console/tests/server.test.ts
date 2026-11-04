@@ -64,20 +64,6 @@ vi.mock("../features/scuttlebutt/host/index.js", async (importOriginal) => {
   } };
 });
 
-vi.mock("../features/repository/host/index.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../features/repository/host/index.js")>();
-  return { ...actual, createRepositoryFeature: (deps: Parameters<typeof actual.createRepositoryFeature>[0]) => {
-
-    const feature = actual.createRepositoryFeature(deps);
-    return { ...feature, dispose: () => {
-      let pending: void | Promise<void>;
-      try { pending = fleetAdmiralMock.cleanupHooks.get("repository")?.(); }
-      catch (error) { void feature.dispose(); throw error; }
-      return Promise.resolve(pending).then(() => feature.dispose());
-    } };
-  } };
-});
-
 interface ServerFixture {
   readonly dir: string;
   readonly fleetDataDir: string;
@@ -551,12 +537,11 @@ describe("console terminal observability", () => {
     const runs: string[] = [];
     const fixture = await startFixture();
     fleetAdmiralMock.cleanupHooks.set("scuttlebutt", () => { runs.push("throws"); throw new Error("sync cleanup failure"); });
-    fleetAdmiralMock.cleanupHooks.set("repository", async () => { runs.push("after"); });
     const warn = vi.spyOn(console, "warn");
     try {
       const stopError = await fixture.server.stop().then(() => null, (error: unknown) => error);
       expect.soft(stopError).toBeNull();
-      expect.soft([...runs].sort()).toEqual(["after", "throws"]);
+      expect.soft([...runs].sort()).toEqual(["throws"]);
       expect.soft(fs.existsSync(fixture.lockFile)).toBe(false);
       expect.soft(warn.mock.calls.filter(([message]) => typeof message === "string" && message.startsWith("[fleet-console] Feature cleanup failed:"))).toHaveLength(1);
     } finally { warn.mockRestore(); fleetAdmiralMock.cleanupHooks.clear(); }

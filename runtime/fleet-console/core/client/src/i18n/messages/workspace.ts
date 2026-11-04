@@ -203,10 +203,6 @@ export const workspaceEn = {
   "rail.chrome.resizeCard": "Resize tool panel",
   "rail.chrome.resetWidth": "Reset panel width",
   "rail.theater.fallback": "Theater",
-  "theaterTools.select.aria": "Choose Theater for {title}",
-  "theaterTools.choose": "Choose Theater",
-  "theaterTools.empty.body": "Add a Theater to use files, repository, and Shell.",
-  "theaterTools.empty.add": "Add Theater",
   "workspace.plugin.objectiveRecordFailed": "Plugin objective failed to render.",
 } as const;
 
@@ -411,9 +407,5 @@ export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
   "rail.chrome.resizeCard": "도구 패널 폭 조절",
   "rail.chrome.resetWidth": "패널 폭 초기화",
   "rail.theater.fallback": "Theater",
-  "theaterTools.select.aria": "{title}의 Theater 고르기",
-  "theaterTools.choose": "Theater 고르기",
-  "theaterTools.empty.body": "Theater를 추가하면 파일·저장소·Shell을 쓸 수 있어요.",
-  "theaterTools.empty.add": "Theater 추가",
   "workspace.plugin.objectiveRecordFailed": "Plugin 목표를 그리지 못했어요.",
 };

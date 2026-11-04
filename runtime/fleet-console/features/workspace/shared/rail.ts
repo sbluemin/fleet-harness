@@ -128,17 +128,11 @@ export interface RailEntryDescriptor {
   readonly icon: ReactNode | (() => ReactNode);
   readonly side?: "right";
   /**
-   * 이 도구가 다루는 범위. `theater`(기본)는 활성 Theater의 파일·저장소·Shell처럼 지금 서 있는
-   * 작전구역을 다루고, `fleet`은 스킬·사용 한도처럼 Console 전체에 걸친다. 레일은 두 범위를
+   * 이 도구가 다루는 범위. `theater`(기본)는 지금 서 있는 작전구역을 다루고,
+   * `fleet`은 스킬·사용 한도처럼 Console 전체에 걸친다. 레일은 두 범위를
    * 구분선으로 갈라 세운다 — 순서는 범위 안에서 등록 순서 그대로다.
    */
   readonly scope?: "theater" | "fleet";
-  /**
-   * 사령관 대화에서만 서는 도구. 그 대화가 아니면 레일·타일 머리·단축키·팔레트·모바일
-   * 입구가 이 도구를 열지 않는다 — 아이콘도 흐릿하게 남지 않고 자리에서 빠진다.
-   * 파일·저장소·Shell이 단다. 사령관 개편의 일시정지(`paused`)는 걷었다.
-   */
-  readonly commodoreConversationOnly?: true;
   /**
    * 등록 Theater가 없어도 본문을 연다. 패널 등록(`opensWithoutTheater`)이 투영 때 이 엔트리로 온다.
    * Console 전체 도구(`scope: "fleet"`)와는 다르다.

@@ -3,7 +3,6 @@ import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveL
 import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
-import { createRepositoryFeature } from "../../../features/repository/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
@@ -2760,20 +2759,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         agent: scuttlebuttAgent,
       });
       featureCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
-      const repositoryFeature = createRepositoryFeature({
-        paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
-        security: consoleFeaturePorts.security,
-        processes: { spawnOwned: (request) => {
-          const child = ownedProcesses.spawn({
-            command: request.command, args: request.args,
-            ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
-            env: request.env ?? process.env, stdin: request.stdin ?? "pipe", owner: "feature:repository",
-          });
-          return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
-        } },
-      });
-      featureCleanupCallbacks.add(() => repositoryFeature.dispose());
-      for (const feature of [quotaFeature, scuttlebuttFeature, repositoryFeature]) {
+      for (const feature of [quotaFeature, scuttlebuttFeature]) {
         for (const route of feature.routes) {
           routeRegistry.register(route.path, route.handler);
           executionApiCatalog.push(...route.catalog);
