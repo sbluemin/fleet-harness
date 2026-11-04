@@ -459,6 +459,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     let model = pendingRest?.model ?? (existing ? readObjectiveLaunch(existing).model : undefined);
     let effort = pendingRest?.effort ?? (existing ? readObjectiveLaunch(existing).effort : undefined);
     if (wantsRouting) {
+      // 보관된 노드는 describe 에만 있다. 되돌리기 전에 판단하면 get 이 비어 좌표를 못 심은 채 라우팅 표시만 걷긴다.
+      if (existing) await accessObjective(objectiveId);
       const choice = await judgeCommanderOnce(objectiveId);
       await rememberCommanderDecision(objectiveId, choice);
       model = choice.model;
@@ -525,13 +527,15 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    */
   const rememberCommanderDecision = async (objectiveId: string, choice: { readonly model: string; readonly effort?: string; readonly routed: MemberRouted }) => {
     const node = ctx.objectiveRecords.get(objectiveId);
+    const pendingCommander = store.pending(objectiveId);
     if (node?.chatMode === true) {
       const apply = ctx.consoleControl?.setUnstartedPreset;
       if (!apply) throw new ObjectiveStoreError("capability_unavailable");
       const result = await apply(objectiveId, { model: choice.model, effort: choice.effort ?? null });
       if (!result.ok) throw coordinatesError(result);
     } else if (node) patchObjective(objectiveId, withObjectiveLaunchPreset(node, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }));
-    if (store.pending(objectiveId)) store.patchPending(objectiveId, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}), routing: undefined });
+    else if (!pendingCommander) throw new ObjectiveStoreError("unknown_objectiveRecord");
+    if (pendingCommander) store.patchPending(objectiveId, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}), routing: undefined });
     else store.setCommanderRouting(objectiveId, false);
     store.setCommanderRouted(objectiveId, choice.routed);
   };

@@ -900,16 +900,29 @@ describe("Objectives contract", () => {
     expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
     expect(judgments).toBe(2);
 
+    const buried = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    await launch.archive(buried.id);
+    expect(store.find(buried.id)!.commander.routing).toBe(true);
+    expect((await route("plan/request", { objectiveId: buried.id })).status).toBe(200);
+    expect(judgments).toBe(3);
+    expect(objectiveRecords.get(buried.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(woken.filter((entry) => entry.objectiveId === buried.id)).toEqual([{ objectiveId: buried.id, model: "sonnet", effort: "low" }]);
+    expect(store.find(buried.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route", because: "fits the brief" } });
+    expect(store.find(buried.id)!.commander.routing).toBeUndefined();
+    expect(store.find(buried.id)!.archived).toBe(false);
+    expect((await route("plan/request", { objectiveId: buried.id })).status).toBe(200);
+    expect(judgments).toBe(3);
+
     const previewed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
     const analyst = store.memberAdd(previewed.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
     store.missionAdd(previewed.id, { text: "read", member: analyst.id });
     const preview = (await route("routing/preview", { objectiveId: previewed.id })).value.preview as { members: { id: string; via: string; model?: string; reason?: string }[] };
-    expect(judgments).toBe(4);
+    expect(judgments).toBe(5);
     expect(store.find(previewed.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route" } });
     expect(store.find(previewed.id)!.commander.routing).toBeUndefined();
     expect(preview.members).toEqual([expect.objectContaining({ id: analyst.id, via: "fallback", model: "sonnet[1m]" })]);
     expect((await route("commander/start", { objectiveId: previewed.id, routing: "preview" })).status).toBe(200);
-    expect(judgments).toBe(4);
+    expect(judgments).toBe(5);
     expect(objectiveRecords.get(analyst.id)!.session).toMatchObject({ model: "sonnet[1m]" });
   });
 
