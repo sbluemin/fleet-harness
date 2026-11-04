@@ -1005,6 +1005,28 @@
 /* 편집기가 열린 동안만 머리를 한 단 올린다 — 팝오버가 머리 쌓임 맥락에 갇혀 폭 조절 손잡이 아래에 깔린다. */
 .right-rail-panel-header:has(.avatar-editor.is-open) { z-index: 3; }
 
+/* 오른쪽 사이드바의 각 탭 본문 위·아래 — 가운데 채팅 상단(.conversation-column::before)과 같은 항상 표시 페이드 덮개다. */
+.right-rail-panel-slot.has-header .right-rail-panel-body::before,
+.right-rail-panel-slot.has-header .right-rail-panel-body::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 4;
+  height: var(--conversation-top-fade);
+  pointer-events: none;
+}
+
+.right-rail-panel-slot.has-header .right-rail-panel-body::before {
+  top: 0;
+  background: linear-gradient(to bottom, color-mix(in oklch, var(--conversation-surface) 70%, transparent), color-mix(in oklch, var(--conversation-surface) 0%, transparent));
+}
+
+.right-rail-panel-slot.has-header .right-rail-panel-body::after {
+  bottom: 0;
+  background: linear-gradient(to top, color-mix(in oklch, var(--conversation-surface) 70%, transparent), color-mix(in oklch, var(--conversation-surface) 0%, transparent));
+}
+
 /* ── 오른쪽 패널 본문 틀(ConversationPanelFrame) ─────────────────────────────────
    머리가 슬롯 전폭에 서므로 본문 외곽도 이 칸의 가용 폭을 채운다. 판정은 창이 아니라 이 칸의 폭이다 — 패널 폭은
    사용자 조절·사이드바 점유로 정해져 창 폭과 따로 논다. 읽기 열(read)이 기본이고, 스크롤을 스스로 갖는 본문만 fill 이다.
@@ -1514,7 +1536,26 @@
 .console-shell.is-objective-records-view .side-bar-top-strip > .side-bar-top-strip-spacer { pointer-events: none; }
 
 .console-shell.is-objective-records-view .side-bar-wide {
+  position: relative;
   margin-top: var(--conversation-top-row);
+}
+.console-shell.is-objective-records-view .side-bar-wide::before,
+.console-shell.is-objective-records-view .side-bar-wide::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  height: var(--conversation-top-fade);
+  pointer-events: none;
+}
+.console-shell.is-objective-records-view .side-bar-wide::before {
+  top: 0;
+  background: linear-gradient(to bottom, color-mix(in oklch, var(--conversation-side) 70%, transparent), color-mix(in oklch, var(--conversation-side) 0%, transparent));
+}
+.console-shell.is-objective-records-view .side-bar-wide::after {
+  bottom: 0;
+  background: linear-gradient(to top, color-mix(in oklch, var(--conversation-side) 70%, transparent), color-mix(in oklch, var(--conversation-side) 0%, transparent));
 }
 .console-shell.is-objective-records-view .objective-records-side-bar.is-compact .side-bar-wide {
   margin-top: 0;
@@ -1536,6 +1577,7 @@
   gap: var(--space-1);
 }
 .console-shell.is-objective-records-view .objective-records-side-bar-chips {
+  isolation: isolate;
   padding-top: var(--space-1);
 }
 
