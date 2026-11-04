@@ -155,7 +155,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       id: "appearance",
       group: "setup",
       label: t("settings.core.appearance.label"),
-      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.fonts.title"), t("settings.fonts.ui"), t("settings.fonts.content"), t("settings.fonts.code"), t("settings.fonts.advanced"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.core.appearance.keywords")],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.fonts.title"), t("settings.fonts.ui"), t("settings.fonts.content"), t("settings.fonts.code"), t("settings.fonts.advanced"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.motion.taskforceBubbleColor"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
@@ -401,6 +401,15 @@ export function ThemeCard({
               </p>
             </div>
             <SettingsToggle checked={state?.lowerUnfocusedFrameRate !== false} disabled={state === null} busy={saving.has("lowerUnfocusedFrameRate")} ariaLabel={t("settings.motion.unfocused")} onChange={(value) => { void setGlobalSettingsField("lowerUnfocusedFrameRate", value); }} />
+          </div>
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title">
+                {t("settings.motion.taskforceBubbleColor")}
+                <SettingsHelp title={t("settings.motion.taskforceBubbleColor")}>{t("settings.motion.taskforceBubbleColorHelp")}</SettingsHelp>
+              </p>
+            </div>
+            <SettingsToggle checked={state?.taskforceBubbleColor === true} disabled={state === null} busy={saving.has("taskforceBubbleColor")} ariaLabel={t("settings.motion.taskforceBubbleColor")} onChange={(value) => { void setGlobalSettingsField("taskforceBubbleColor", value); }} />
           </div>
       </div>
     </section>

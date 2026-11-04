@@ -131,6 +131,8 @@ export interface ConsoleGeneralSettings {
   readonly commanderKeepExpanded?: boolean;
   /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
   readonly lowerUnfocusedFrameRate?: boolean;
+  /** TaskForce 사령관 말풍선 테두리를 이름 색으로 그릴지. 부재는 기본 꺼짐(중립 테두리)이다. */
+  readonly taskforceBubbleColor?: boolean;
   readonly uiFont?: UiFontSettings;
   readonly fonts?: ConsoleFontSettings;
   /**
@@ -392,6 +394,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const commanderFolds = readCommanderFolds(value.commanderFolds);
   const commanderKeepExpanded = typeof value.commanderKeepExpanded === "boolean" ? value.commanderKeepExpanded : undefined;
   const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
+  const taskforceBubbleColor = typeof value.taskforceBubbleColor === "boolean" ? value.taskforceBubbleColor : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
   const archiveRetentionDays = value.archiveRetentionDays === 7 || value.archiveRetentionDays === 30 || value.archiveRetentionDays === 90 || value.archiveRetentionDays === null
@@ -412,6 +415,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(commanderFolds !== undefined ? { commanderFolds } : {}),
     ...(commanderKeepExpanded !== undefined ? { commanderKeepExpanded } : {}),
     ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
+    ...(taskforceBubbleColor !== undefined ? { taskforceBubbleColor } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
     ...(fonts ? { fonts } : {}),
     ...(experiments !== undefined ? { experiments } : {}),
@@ -568,6 +572,7 @@ interface GlobalSettingsBody {
   readonly commanderFolds?: unknown;
   readonly commanderKeepExpanded?: unknown;
   readonly lowerUnfocusedFrameRate?: unknown;
+  readonly taskforceBubbleColor?: unknown;
   readonly uiFont?: unknown;
   readonly fonts?: unknown;
   readonly experiments?: unknown;
@@ -726,6 +731,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
     return;
   }
+  if (body.taskforceBubbleColor !== undefined && typeof body.taskforceBubbleColor !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_taskforce_bubble_color" });
+    return;
+  }
   if (body.fonts !== undefined && !readFontSettings(body.fonts)) {
     deps.writeJson(res, 400, { error: "invalid_fonts" });
     return;
@@ -785,6 +794,7 @@ async function mutateGlobalSettings(
       ...(commanderFolds !== undefined ? { commanderFolds } : {}),
       ...(typeof body.commanderKeepExpanded === "boolean" ? { commanderKeepExpanded: body.commanderKeepExpanded } : {}),
       ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
+      ...(typeof body.taskforceBubbleColor === "boolean" ? { taskforceBubbleColor: body.taskforceBubbleColor } : {}),
       // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
       ...(body.fonts !== undefined ? { fonts: readFontSettings(body.fonts)! } : {}),
       ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
@@ -865,6 +875,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     // 키 없음·손상 값은 null이다 — 화면은 꺼짐으로 읽는다.
     commanderKeepExpanded: typeof general.commanderKeepExpanded === "boolean" ? general.commanderKeepExpanded : null,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
+    taskforceBubbleColor: general.taskforceBubbleColor ?? false,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     fonts: resolveConsoleFonts(data),
     fontsMigrationPending: !general.fonts,

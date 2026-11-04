@@ -323,6 +323,8 @@ export interface GlobalSettingsState {
   readonly commanderFolds: CommanderFolds | null;
   readonly commanderKeepExpanded: boolean | null;
   readonly lowerUnfocusedFrameRate: boolean;
+  /** TaskForce 사령관 말풍선 테두리를 이름 색으로 그릴지 — 기본은 꺼짐. */
+  readonly taskforceBubbleColor: boolean;
   readonly uiFont: UiFontSettings;
   readonly fonts: ConsoleFontSettings;
   readonly fontsMigrationPending?: boolean;
