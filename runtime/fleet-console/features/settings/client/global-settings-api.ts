@@ -191,6 +191,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     commanderFolds: toCommanderFolds(payload.commanderFolds),
     commanderKeepExpanded: typeof payload.commanderKeepExpanded === "boolean" ? payload.commanderKeepExpanded : null,
     lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
+    taskforceBubbleColor: payload.taskforceBubbleColor === true,
     uiFont: normalizeUiFont(payload.uiFont),
     fonts: readFontSettings(payload.fonts) ?? DEFAULT_FONTS,
     fontsMigrationPending: payload.fontsMigrationPending === true,

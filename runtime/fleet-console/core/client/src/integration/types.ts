@@ -253,6 +253,8 @@ export interface GlobalSettingsState {
   /** 사령관을 옮겨도 펼친 다른 사령관 목록을 유지하는지. null은 settings.json에 키 없음(구서버 응답 포함)이다. */
   readonly commanderKeepExpanded: boolean | null;
   readonly lowerUnfocusedFrameRate: boolean;
+  /** TaskForce 사령관 말풍선 테두리를 이름 색으로 그릴지 — 구서버 응답에는 없고, 그때는 꺼짐이다. */
+  readonly taskforceBubbleColor: boolean;
   readonly uiFont: UiFontSettings;
   readonly fonts: ConsoleFontSettings;
   readonly fontsMigrationPending?: boolean;

@@ -30,6 +30,7 @@ const BASE: GlobalSettingsState = {
   commanderFolds: null,
   commanderKeepExpanded: null,
   lowerUnfocusedFrameRate: true,
+  taskforceBubbleColor: false,
   shortcuts: {},
   fonts: DEFAULT_FONTS,
   uiFont: { source: "builtin", id: "manrope", size: 14 },

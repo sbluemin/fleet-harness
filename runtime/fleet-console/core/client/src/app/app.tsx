@@ -84,6 +84,13 @@ export function App() {
     if (calmAvatars) root.dataset.avatarMotion = "calm";
     else delete root.dataset.avatarMotion;
   }, [calmAvatars]);
+  // TaskForce 사령관 말풍선 컬러 — 기본은 꺼짐이고, 켜면 문서 뿌리에 실어 taskforce.css의 테두리 규칙을 켠다.
+  const taskforceBubbleColor = settings.state?.taskforceBubbleColor === true;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (taskforceBubbleColor) root.dataset.taskforceBubbleColor = "on";
+    else delete root.dataset.taskforceBubbleColor;
+  }, [taskforceBubbleColor]);
   const state = useConsoleState();
   // 종료 안내는 같은 문서에 남기되 활성 화면 전체를 내려 WS·플러그인·폴링과 단축키를 정리한다.
   return state.controlReclaimed === null ? <ConnectedApp /> : <ControlReclaimedNotice />;
