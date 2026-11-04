@@ -2,9 +2,8 @@ import { OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../execution/client/objectiv
 
 export interface AiGatewayModelSelection {
   readonly id: string;
-  /** 정체성으로 내보낼 강도. 부재 = 이 모델의 사다리 전체. */
+  /** 위임에 줄 강도. 부재 = 이 모델의 사다리 전체. */
   readonly efforts?: readonly string[];
-  readonly hostOnly?: boolean;
 }
 
 export interface AiGatewaySettings {
@@ -63,6 +62,8 @@ export interface SystemPromptSettingsState {
   readonly delegationRoutingModel: string | null;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
+  /** 공급자 로그인 상태. null·부재는 아직 모름이라 로그인 필요로 보지 않는다. */
+  readonly aiGatewayLogin: Readonly<Partial<Record<AiGatewayProviderId, string | null>>>;
 }
 
 export type SystemPromptSettingsUpdate =
@@ -163,7 +164,13 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     delegationRoutingMode: payload.delegationRoutingMode,
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
+    aiGatewayLogin: isAiGatewayLogin(payload.aiGatewayLogin) ? payload.aiGatewayLogin : {},
   };
+}
+
+function isAiGatewayLogin(value: unknown): value is SystemPromptSettingsState["aiGatewayLogin"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).every((status) => status === null || typeof status === "string");
 }
 
 function isXaiEndpointPreference(value: unknown): value is XaiEndpointPreference {

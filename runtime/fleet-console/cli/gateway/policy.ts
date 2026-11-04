@@ -14,7 +14,7 @@ import {
 
 /**
  * `fleet gateway set`이 다루는 정책 축. 모델 선별은 여기 없다 — 모델 하나가 공급자·강도
- * 사다리·host-only 세 축을 함께 지녀서 `set <key> <value>`로 표현되지 않기 때문이고,
+ * 사다리를 함께 지녀서 `set <key> <value>`로 표현되지 않기 때문이고,
  * 그래서 모델은 인터랙티브 화면이 소유한다.
  */
 export const GATEWAY_SET_KEYS = [

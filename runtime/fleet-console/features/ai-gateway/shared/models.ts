@@ -4,9 +4,9 @@ import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../
 /**
  * 모델 로스터 계약 — Console의 모든 모델 선택지가 읽는 유일한 원천의 모양과 해석 규칙.
  *
- * 원천은 Settings › AI Gateway에서 켠 로스터 하나다. 호스트가 그것을 `ObjectiveLaunchVariantGroup[]`
- * 모양으로 투영해 내놓고, 선택기·서버 해석·플러그인은 이 모듈의 순수 함수로만 읽는다. 서버와 브라우저가
- * 같은 규칙을 나눠 쓰므로 Node·DOM 의존이 없다.
+ * 원천은 로그인된 공급자의 카탈로그다. 호스트가 그것을 `ObjectiveLaunchVariantGroup[]` 모양으로
+ * 투영해 내놓고, 선택기·서버 해석·플러그인은 이 모듈의 순수 함수로만 읽는다. 서버와 브라우저가
+ * 같은 규칙을 나눠 쓰므로 Node·DOM 의존이 없다. 켠 목록(위임 후보)은 이 메뉴를 좁히지 않는다.
  */
 
 /**
@@ -27,46 +27,11 @@ export function isModelRosterTarget(value: unknown): value is ModelRosterTarget 
 /** 공급자 밴드별 행. 행의 `launch.model`이 정준 모델 id(실행 id)다. */
 export type ModelRoster = readonly ObjectiveLaunchVariantGroup[];
 
-/**
- * 로스터 행이 선택기 모양(`ObjectiveLaunchVariantRow`) 위에 얹어 싣는 모델 정보. Claude도 다른 모델과 같은 정보를 싣는다.
- *
- * - `hostOnly`: Settings › AI Gateway에서 호스트 전용으로 둔 모델. 선택기와 실행에는 그대로 서고, 위임 배정 후보에서만 빠진다.
- */
-export interface ModelRosterRowInfo {
-  readonly hostOnly?: true;
-}
+export type ModelRosterRow = ObjectiveLaunchVariantRow;
 
-export type ModelRosterRow = ObjectiveLaunchVariantRow & ModelRosterRowInfo;
-
-/** 행의 모델 정보. 모르는 값은 버린다. */
-export function rosterRowInfo(row: ObjectiveLaunchVariantRow): ModelRosterRowInfo {
-  const value = row as ObjectiveLaunchVariantRow & { readonly hostOnly?: unknown };
-  return {
-    ...(value.hostOnly === true ? { hostOnly: true as const } : {}),
-  };
-}
-
-/**
- * HTTP로 받은 로스터를 읽는다 — 행 모양은 런치 카탈로그 파서가 검증하고, 그 위의 모델 정보({@link ModelRosterRowInfo})는
- * 같은 자리의 원본 행에서 되살린다.
- */
+/** HTTP로 받은 로스터를 읽는다. 행 모양은 런치 카탈로그 파서가 검증한다. */
 export function parseModelRoster(value: unknown): ModelRoster {
-  const groups = readLaunchVariantGroups(value);
-  if (!Array.isArray(value)) return groups;
-  const raw = new Map<string, unknown>();
-  for (const group of value) {
-    if (!group || typeof group !== "object" || !Array.isArray((group as { rows?: unknown }).rows)) continue;
-    for (const row of (group as { rows: unknown[] }).rows) {
-      if (row && typeof row === "object" && typeof (row as { id?: unknown }).id === "string") raw.set((row as { id: string }).id, row);
-    }
-  }
-  return groups.map((group) => ({
-    ...group,
-    rows: group.rows.map((row) => {
-      const source = raw.get(row.id);
-      return source ? { ...row, ...rosterRowInfo(source as ObjectiveLaunchVariantRow) } : row;
-    }),
-  }));
+  return readLaunchVariantGroups(value);
 }
 
 /** Agent SDK 세션이 받는 강도 사다리. `ultra`는 Claude Code 하네스 센티넬이라 여기 없다. */

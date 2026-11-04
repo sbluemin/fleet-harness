@@ -20,6 +20,9 @@
     ],
     "baseUrl": "../..",
     "paths": {
+      "@fleet-console/ai-gateway/model-family": [
+        "features/ai-gateway/runtime/src/model-family.ts"
+      ],
       "@xterm/addon-fit": [
         "node_modules/@xterm/addon-fit"
       ],

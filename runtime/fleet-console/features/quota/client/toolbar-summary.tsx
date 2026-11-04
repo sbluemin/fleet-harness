@@ -57,12 +57,27 @@ function currentLocale(): ConsoleLocale {
   return document.documentElement.lang === "ko" ? "ko" : "en";
 }
 
+/** 설정 화면이 쿼터 패널(로그인)을 열 때 보낸다. 패널은 이 툴바 버튼이 소유한다. */
+export const QUOTA_PANEL_OPEN_EVENT = "fleet:quota-panel-open";
+
+export function requestQuotaPanelOpen(): void {
+  window.dispatchEvent(new Event(QUOTA_PANEL_OPEN_EVENT));
+}
+
 export function QuotaToolbarSummary({ popoverAnchorRef, layout }: ComposerTopEntryContext) {
   const mobile = layout === "mobile";
   const { toolbarProviders: shown, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const onOpen = () => {
+      setOpen(true);
+      buttonRef.current?.focus();
+    };
+    window.addEventListener(QUOTA_PANEL_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(QUOTA_PANEL_OPEN_EVENT, onOpen);
+  }, []);
   const popoverId = useId();
   // 저장값을 읽기 전에는 그리지 않는다 — 전부(기본)로 그렸다가 저장된 선택으로 줄어드는 깜빡임을 막는다.
   if (!loaded) return null;

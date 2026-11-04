@@ -1,6 +1,5 @@
 import {
   buildAiGatewayCatalog,
-  findGatewayModel,
   GATEWAY_PROVIDER_NAMES,
   type AiGatewayCatalogModel,
   type AiGatewayStoredModel,
@@ -44,8 +43,8 @@ export function buildGatewayModelChoices(settings: AiGatewayStoredSettings): Gat
 }
 
 /**
- * 새 노출 집합을 저장 형태로 바꾼다. 이미 있던 모델의 강도 선택과 host-only 표식은
- * 그대로 옮겨 온다 — 모델 하나를 더 켜는 일이 나머지 모델의 세부 설정을 지우면 안 된다.
+ * 새 노출 집합을 저장 형태로 바꾼다. 이미 있던 모델의 강도 선택은 그대로 옮겨 온다 —
+ * 모델 하나를 더 켜는 일이 나머지 모델의 세부 설정을 지우면 안 된다.
  */
 export function toStoredModels(
   selectedIds: readonly string[],
@@ -70,22 +69,7 @@ export function withModelEfforts(
 ): readonly AiGatewayStoredModel[] {
   return models.map((entry) => {
     if (entry.id !== id) return entry;
-    const rest = { id: entry.id, ...(entry.hostOnly === true ? { hostOnly: true } : {}) };
-    return efforts.length === 0 ? rest : { ...rest, efforts };
-  });
-}
-
-/** 한 모델의 host-only 표식만 뒤집는다. 저장 정규형은 true만 남긴다. Claude는 적용하지 않는다. */
-export function withModelHostOnly(
-  models: readonly AiGatewayStoredModel[],
-  id: string,
-  hostOnly: boolean,
-): readonly AiGatewayStoredModel[] {
-  if (findGatewayModel(id)?.provider === "claude") return models;
-  return models.map((entry) => {
-    if (entry.id !== id) return entry;
-    const rest = { id: entry.id, ...(entry.efforts?.length ? { efforts: entry.efforts } : {}) };
-    return hostOnly ? { ...rest, hostOnly: true } : rest;
+    return efforts.length === 0 ? { id: entry.id } : { id: entry.id, efforts };
   });
 }
 

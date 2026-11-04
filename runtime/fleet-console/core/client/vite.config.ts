@@ -11,6 +11,7 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
+      "@fleet-console/ai-gateway/model-family": path.resolve(__dirname, "../../features/ai-gateway/runtime/src/model-family.ts"),
       // react-lang의 개발 모드 CDN 자동 로딩은 허용하지 않는다.
       "@openuidev/devtools": path.resolve(__dirname, "openui-devtools-stub.ts"),
       // xterm 패키지는 workspace root에서 단일 인스턴스로 dedup

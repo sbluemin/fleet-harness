@@ -76,6 +76,18 @@ export { resolveClaudeGatewayModel as resolveGatewayModel } from "./downstream/h
 export * from "./auth/index.js";
 export * from "./oauth/index.js";
 export * from "./settings/index.js";
+export {
+  AI_GATEWAY_BASE_EFFORTS,
+  AI_GATEWAY_OPT_IN_EFFORTS,
+  aiGatewayModelFamilyKey,
+  canonicalEffortSelection,
+  defaultEffortSelection,
+} from "./model-family.js";
+export {
+  isProviderCatalogVisible,
+  visibleGatewayModels,
+  type ProviderStatusMap,
+} from "./catalog-access.js";
 export * from "./settings/store.js";
 export * from "./upstream/codex/responses/index.js";
 export * from "./transport/sse-keepalive.js";

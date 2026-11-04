@@ -31,7 +31,6 @@ import {
   effortLadderFor,
   toStoredModels,
   withModelEfforts,
-  withModelHostOnly,
 } from "./selection.js";
 import type { AuthCommandDeps, AuthCommandIo } from "../auth/login-flow.js";
 
@@ -116,68 +115,39 @@ async function editModels(deps: GatewayInteractiveDeps): Promise<void> {
   if (models.length > 0) await adjustModelDetail(deps);
 }
 
-/** 강도 사다리와 host-only는 모델마다 붙는 축이라 노출 선택과 분리된 두 번째 걸음이다. */
+/** 위임에 줄 강도. low·medium·high는 저장 정규화가 다시 넣고, xhigh·max만 끌 수 있다. */
 async function adjustModelDetail(deps: GatewayInteractiveDeps): Promise<void> {
   for (;;) {
     const models = collectGatewayModels(deps.store.read());
     if (models.length === 0) return;
     const target = await select<string>({
-      message: "Adjust effort or host-only?",
+      message: "Adjust delegation effort?",
       options: [
         ...models.map((model) => ({
           value: model.id,
           label: model.name,
-          hint: [
-            model.efforts.length > 0 ? `effort ${model.efforts.join("·")}` : "no effort ladder",
-            model.hostOnly ? "host-only" : undefined,
-          ].filter((axis): axis is string => axis !== undefined).join(" · "),
+          hint: model.efforts.length > 0 ? `effort ${model.efforts.join("·")}` : "no effort ladder",
         })),
         { value: "", label: "Done", hint: "back to the menu" },
       ],
-      // 기본은 Done이다. 이 화면은 모델 편집기가 자동으로 넘겨주므로, 기본값이 없으면 커서가
-      // 첫 모델에 놓이고 — 사다리 없는 모델이면 다음 화면의 선택지가 Host-only 하나뿐이라 —
-      // 그냥 지나가려던 엔터 두 번이 위임 로스터를 바꿔 버린다.
       initialValue: "",
     });
     if (isCancel(target) || target === "") return;
 
     const ladder = effortLadderFor(target);
-    const axis = await select<"efforts" | "host-only">({
-      message: models.find((model) => model.id === target)?.name ?? target,
-      options: [
-        ...(ladder.length > 0
-          ? [{ value: "efforts" as const, label: "Effort levels", hint: ladder.join("·") }]
-          : []),
-        {
-          value: "host-only" as const,
-          label: "Host-only",
-          hint: "stays on the wire, but is not offered as a delegation identity",
-        },
-      ],
-    });
-    if (isCancel(axis)) continue;
-
+    if (ladder.length === 0) continue;
     const stored = deps.store.read().models ?? [];
-    if (axis === "efforts") {
-      const current = stored.find((entry) => entry.id === target)?.efforts;
-      const efforts = await multiselect<string>({
-        message: "Which effort levels are exposed?",
-        options: ladder.map((level) => ({ value: level, label: level })),
-        initialValues: [...(current ?? ladder)],
-        required: false,
-      });
-      if (isCancel(efforts)) continue;
-      // 사다리 전체를 고른 것은 "좁히지 않음"과 같다 — 키를 남기지 않아야 카탈로그가
-      // 사다리를 넓힐 때 사용자의 선택이 옛 목록에 갇히지 않는다.
-      const narrowed = efforts.length === ladder.length ? [] : efforts;
-      deps.store.write({ models: withModelEfforts(stored, target, narrowed) });
-      log.success(narrowed.length === 0 ? "Effort: the whole ladder." : `Effort: ${narrowed.join("·")}.`);
-      continue;
-    }
-
-    const hostOnly = stored.find((entry) => entry.id === target)?.hostOnly === true;
-    deps.store.write({ models: withModelHostOnly(stored, target, !hostOnly) });
-    log.success(hostOnly ? "Host-only off — delegable again." : "Host-only on.");
+    const current = stored.find((entry) => entry.id === target)?.efforts;
+    const efforts = await multiselect<string>({
+      message: "Which effort levels can delegation use? low, medium, and high stay on.",
+      options: ladder.map((level) => ({ value: level, label: level })),
+      initialValues: [...(current ?? ladder)],
+      required: false,
+    });
+    if (isCancel(efforts)) continue;
+    const narrowed = efforts.length === ladder.length ? [] : efforts;
+    deps.store.write({ models: withModelEfforts(stored, target, narrowed) });
+    log.success(narrowed.length === 0 ? "Effort: the whole ladder." : `Effort: ${narrowed.join("·")}.`);
   }
 }
 

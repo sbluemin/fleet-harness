@@ -26,7 +26,6 @@ export interface GatewayModelReport {
   readonly name: string;
   readonly contextWindow: number | null;
   readonly efforts: readonly string[];
-  readonly hostOnly: boolean;
 }
 
 export interface GatewayRenderOptions {
@@ -40,9 +39,8 @@ export function collectGatewayModels(settings: AiGatewayStoredSettings): readonl
   for (const provider of catalog.providers) {
     for (const model of provider.models) catalogModels.set(model.id, { model, provider: provider.id });
   }
-  // 호스트 전용은 선택 해석이 정한다 — 구 Claude 좌표(`claude--sonnet`)에 남은 표식도 가족 항목에 그대로 이어진다.
   const selection = resolveAiGatewaySelection(settings);
-  return selection.models.flatMap((model: GatewayModel) => {
+  return selection.delegationModels.flatMap((model: GatewayModel) => {
     const entry = catalogModels.get(model.id);
     if (!entry) return [];
     return [{
@@ -51,7 +49,6 @@ export function collectGatewayModels(settings: AiGatewayStoredSettings): readonl
       name: entry.model.name,
       contextWindow: entry.model.contextWindow,
       efforts: selection.effortExposure[model.id] ?? entry.model.effort?.levels ?? [],
-      hostOnly: !selection.delegationModels.includes(model),
     }];
   });
 }
@@ -109,7 +106,7 @@ export function buildGatewayStatusReport(deps: {
   return {
     settingsPath: deps.settingsPath,
     exposed: models.length,
-    delegable: models.filter((model) => !model.hostOnly).length,
+    delegable: models.length,
     providers: [...new Set(models.map((model) => model.provider))],
     policy: describeGatewayPolicy(deps.settings),
     credentials: deps.credentials,
@@ -160,7 +157,6 @@ function describeModelAxes(model: GatewayModelReport): string {
   const axes = [
     formatContextWindow(model.contextWindow),
     model.efforts.length > 0 ? `effort ${model.efforts.join("·")}` : undefined,
-    model.hostOnly ? "host-only" : undefined,
   ].filter((axis): axis is string => axis !== undefined);
   return axes.length > 0 ? axes.join("   ") : model.id;
 }
@@ -173,9 +169,7 @@ function formatContextWindow(contextWindow: number | null): string | undefined {
 
 function summarizeModelCount(models: readonly GatewayModelReport[]): string {
   const providers = [...new Set(models.map((model) => model.provider))].join(", ");
-  const hostOnly = models.filter((model) => model.hostOnly).length;
-  const hostOnlyNote = hostOnly > 0 ? ` · ${hostOnly} host-only` : "";
-  return `${models.length} exposed · ${providers}${hostOnlyNote}`;
+  return `${models.length} exposed · ${providers}`;
 }
 
 function finish(lines: readonly string[], colorEnabled: boolean): string {

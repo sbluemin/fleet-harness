@@ -301,11 +301,13 @@ describe("delegation assignment", () => {
 
     expect(decision.model).not.toBe(reserved);
     expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra");
-    // Claude도 같다 — 저장 설정에서 호스트 전용으로 둔 Claude는 위임 후보(gateway_models)에 서지 않고, 켜 둔 Claude는 다른
-    // 모델과 같은 정보(창·강도)로 선다. 구 200k 좌표(`claude--sonnet`)로 남은 저장값도 가족의 단일 1M 항목으로 선다.
-    const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] });
+    // hostOnly는 위임 후보를 더 이상 갈라내지 않는다. 구 200k 좌표는 가족의 1M 항목으로 접힌다.
+    // 표식이 있던 항목을 켠 목록에서 빼는 것은 저장 이행(4판)이 한다.
+    const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] } as unknown as Parameters<typeof resolveAiGatewaySelection>[0]);
     expect(claude.models.map((model) => model.id)).toEqual(["claude--opus-1m", "claude--sonnet-1m"]);
+    expect(claude.delegationModels.map((model) => model.id)).toEqual(claude.models.map((model) => model.id));
     expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: claude.delegationModels }).models).toEqual([
+      expect.objectContaining({ modelId: "opus[1m]", provider: "claude", contextWindow: 1_000_000 }),
       expect.objectContaining({ modelId: "sonnet[1m]", provider: "claude", contextWindow: 1_000_000 }),
     ]);
   });

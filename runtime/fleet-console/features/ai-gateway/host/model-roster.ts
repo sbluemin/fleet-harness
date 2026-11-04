@@ -17,22 +17,21 @@ import {
   gatewayModelContextWindow,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_PROVIDERS,
-  resolveAiGatewaySelection,
   toClaudeGatewayModelId,
-  type AiGatewaySelection,
-  type AiGatewayStoredSettings,
+  visibleGatewayModels,
   type GatewayModel,
   type GatewayProvider,
   type GatewayReasoningEffort,
+  type ProviderStatusMap,
 } from "@fleet-console/ai-gateway";
 
 /**
  * 모델 로스터 — Console의 모든 모델 선택지(새 세션·Objectives·Settings·플러그인)가 읽는 유일한 원천.
  *
- * Settings › AI Gateway에서 켠 선별(`AiGatewaySelection.models`, Claude 공급자 항목 포함)을 런치 카탈로그와
- * 같은 `ObjectiveLaunchVariantGroup[]` 모양으로 투영한다. 행의 `launch.model`은 정준 id(실행 id)다 — Claude는
- * Claude Code 별칭(`opus[1m]`), 나머지는 scoped id(`codex--gpt-6-luna`). 강도 사다리는 Gateway의 노출 설정을
- * 따른다. Claude CLI 설치 여부와 무관하므로 Agent SDK 세션도 같은 목록을 본다.
+ * 로그인된 공급자의 카탈로그 전체를 런치 카탈로그와 같은 `ObjectiveLaunchVariantGroup[]` 모양으로 투영한다.
+ * 켠 목록(위임 후보)과는 무관하다. 행의 `launch.model`은 정준 id(실행 id)다 — Claude는 Claude Code
+ * 별칭(`opus[1m]`), 나머지는 scoped id(`codex--gpt-6-luna`). 강도 축은 카탈로그 사다리 전체다.
+ * Claude CLI 설치 여부와 무관하므로 Agent SDK 세션도 같은 목록을 본다.
  */
 
 /** 런치 메뉴의 강도 어휘 원본. 채팅 좌표 칩이 같은 어휘를 쓰도록 테스트가 두 표를 맞물린다. */
@@ -92,15 +91,20 @@ export function canonicalGatewayModelId(model: GatewayModel): string {
   return model.provider === "claude" ? toClaudeGatewayModelId(model) : model.id;
 }
 
-export function buildModelRoster(selection: AiGatewaySelection, target: ModelRosterTarget): ModelRoster {
+/**
+ * `statuses` 부재는 로그인 상태를 아직 모르는 것이다 — 카탈로그 전체가 보인다.
+ * 맵에 없는 공급자도 같다. `signed_out`·`not_connected`만 빠진다.
+ */
+export function buildModelRoster(target: ModelRosterTarget, statuses?: ProviderStatusMap): ModelRoster {
+  const visible = visibleGatewayModels(statuses);
   const groups: ObjectiveLaunchVariantGroup[] = [];
   for (const provider of ROSTER_PROVIDER_ORDER) {
-    const models = selection.models.filter((model) => model.provider === provider);
+    const models = visible.filter((model) => model.provider === provider);
     if (models.length === 0) continue;
     groups.push({
       id: modelRosterGroupId(provider),
       label: GATEWAY_PROVIDER_NAMES[provider],
-      rows: models.map((model) => toRosterRow(model, selection, target)),
+      rows: models.map((model) => toRosterRow(model, target)),
     });
   }
   return groups;
@@ -108,12 +112,11 @@ export function buildModelRoster(selection: AiGatewaySelection, target: ModelRos
 
 function toRosterRow(
   model: GatewayModel,
-  selection: AiGatewaySelection,
   target: ModelRosterTarget,
 ): ObjectiveLaunchVariantRow {
   const id = canonicalGatewayModelId(model);
-  // 일상 단은 노출/카탈로그 사다리만 따른다 — ultra는 이 어휘에 없으니 여기서는 절대 나오지 않는다.
-  const ordinary: readonly GatewayReasoningEffort[] = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
+  // 일상 단은 카탈로그 사다리 전체다 — ultra는 이 어휘에 없으니 여기서는 절대 나오지 않는다.
+  const ordinary: readonly GatewayReasoningEffort[] = exposableEffortLadder(model);
   const contextWindow = rosterContextWindow(model, id);
   const base: ModelRosterRow = {
     id,
@@ -122,8 +125,6 @@ function toRosterRow(
     launch: { model: id },
     ...buildGatewayModelQuota(model),
     ...(contextWindow ? { contextWindow } : {}),
-    // 모델 정보 — Claude도 다른 모델과 같다. 호스트 전용은 위임 후보에서만 빠지고 선택기에는 그대로 선다.
-    ...(selection.delegationModels.includes(model) ? {} : { hostOnly: true as const }),
   };
   if (target === "agent") {
     // Agent SDK 세션은 ultra를 받지 않고 게이트도 없다 — 모델이 내놓는 사다리가 곧 전체다.
@@ -172,20 +173,23 @@ export function rosterWireModelId(canonical: string): string {
  * Gateway를 저장한 직후의 요청부터 새 로스터를 본다.
  */
 export function createModelRosterHost(deps: {
-  readonly readSettings: () => AiGatewayStoredSettings;
+  /**
+   * 공급자 로그인 상태. 없으면, 또는 읽기에 실패하면 상태를 모르는 것으로 보고 카탈로그 전체를 보인다.
+   */
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
   readonly subscribe?: (listener: () => void) => () => void;
   /** 설치된 Claude Code에게 별칭이 가리키는 버전을 묻는다. 없으면 별칭 고정은 받은 값을 돌려준다. */
   readonly ensureClaudeNativeModels?: () => Promise<void>;
 }): ModelRosterHost {
   const roster = (target: ModelRosterTarget): ModelRoster => {
-    let settings: AiGatewayStoredSettings | undefined;
+    let statuses: ProviderStatusMap | undefined;
     try {
-      settings = deps.readSettings();
+      statuses = deps.readProviderStatuses?.();
     } catch {
-      // 손상·잠금 경합은 빈 로스터로 답한다 — 실행은 최후 폴백(Sonnet 1M)으로 계속 선다.
-      settings = undefined;
+      // 상태 조회 실패는 숨기지 않는다 — 모르는 공급자는 카탈로그에 남긴다.
+      statuses = undefined;
     }
-    return buildModelRoster(resolveAiGatewaySelection(settings), target);
+    return buildModelRoster(target, statuses);
   };
   return {
     roster,

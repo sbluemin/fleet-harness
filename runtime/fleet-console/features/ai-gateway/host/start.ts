@@ -38,6 +38,7 @@ import {
   TYPESAFE_AUTH_PROVIDER_ID,
   type AiGatewayStoredSettings,
   type GatewayAssignmentExposure,
+  type ProviderStatusMap,
 } from "@fleet-console/ai-gateway";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
@@ -144,8 +145,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const xai = createXaiOAuth({ authService, cliCredentials: defaultCredentialDeps, onQuota: (value) => quota.record("xai", value) });
   ctx.host.lifecycle.registerCleanup(() => xai.dispose());
   registerConsoleOAuthRoutes(ctx, "xai", "xAI", xai);
+  const providerStatusListeners = new Set<() => void>();
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
+    onProviderStatusChanged: () => {
+      for (const listener of providerStatusListeners) listener();
+    },
     ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai }),
     // 마지막 성공 사용량. Console 슬롯(격리 실행이면 격리 루트) 아래. 키·토큰은 넣지 않는다.
     lastGoodStore: createQuotaLastGoodStore({
@@ -324,9 +329,25 @@ export function startAiGateway(ctx: GatewayStartContext) {
     return () => { claudeNativeListeners.delete(listener); };
   };
   const ensureClaudeNativeModels = claudeNativeModels?.ensure;
+  const readProviderStatuses = (): ProviderStatusMap | undefined => {
+    const summary = quota.peekSummary();
+    if (!summary) return undefined;
+    return {
+      claude: summary.providers.claude.status,
+      codex: summary.providers.codex.status,
+      xai: summary.providers.xai.status,
+      antigravity: summary.providers.antigravity.status,
+      "muse-code": summary.providers["muse-code"].status,
+    };
+  };
+  const subscribeProviderStatus = (listener: () => void): (() => void) => {
+    providerStatusListeners.add(listener);
+    return () => { providerStatusListeners.delete(listener); };
+  };
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
+    readProviderStatuses,
     assignRouting: (request, options) => assign(request, options?.signal),
     readAuth: codex.readSubscription,
     readXaiToken: xai.readSubscriptionToken,
@@ -335,7 +356,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged };
+  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus };
 }
 
 const ROUTING_ASSIGN_MAX_ITEMS = 20;
