@@ -199,7 +199,7 @@ describe("ai-gateway settings store", () => {
 
   it("migrates the roster once: seeds an unchosen roster, adds Claude to a Claude-less list, and never re-adds what the user turned off", () => {
     const seed = ["claude--fable-1m", "claude--opus-1m", "claude--sonnet-1m"];
-    const claude = seed.map((id) => ({ id }));
+    const claude = seed.map((id) => ({ id, efforts: ["low", "medium", "high"] }));
 
     // 한 번도 고르지 않은 설치(키 부재) — 기본 로스터를 써 넣고 표식을 남긴다.
     const fresh = createAiGatewaySettingsStore({ dataDir: createDataDir() });
@@ -268,7 +268,7 @@ describe("ai-gateway settings store", () => {
     // Claude 없는 목록 — 1판이 Claude를 더하고, 다른 공급자의 호스트 전용은 그대로다.
     const claudeless = onDisk({ version: 1, models: [{ id: "codex--gpt-6.1-sol", hostOnly: true }] });
     expect(claudeless.seedModels(seed)).toBe(true);
-    expect(claudeless.read()?.models).toEqual(seed.map((id) => ({ id })));
+    expect(claudeless.read()?.models).toEqual(seed.map((id) => ({ id, efforts: ["low", "medium", "high"] })));
     // 해제할 것이 없는 1판 설치는 표식만 올린다.
     const clean = onDisk({ version: 1, models: [{ id: "claude--sonnet" }], rosterSeedVersion: 1 });
     expect(clean.seedModels(seed)).toBe(false);

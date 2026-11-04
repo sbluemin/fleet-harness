@@ -3,9 +3,11 @@ import * as path from "node:path";
 import { createDurableJsonStore, createStoreCarryOver, jsonFileExists } from "@fleet-console/infra";
 
 import type { CompactCeiling } from "../downstream/harness/claude-code/context.js";
+import { defaultEffortSelection } from "../model-family.js";
 import { findGatewayModel } from "../models.js";
 import {
   ROSTER_SEED_VERSION,
+  exposableEffortLadder,
   normalizeAiGatewaySettings,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
@@ -181,7 +183,13 @@ export function createAiGatewaySettingsStore(
         if (from >= ROSTER_SEED_VERSION) return current;
         let models = current.models;
         if (from < 1) {
-          const seed = ids.map((id) => ({ id }));
+          // 새로 켜는 모델과 같다. 강도 없이 넣으면 사다리 전체로 읽혀 xhigh·max가 기본으로 켜진다.
+          // 이미 저장된 항목의 부재(전체)는 4판 이행이 그대로 둔다.
+          const seed = ids.map((id) => {
+            const model = findGatewayModel(id);
+            const efforts = model ? defaultEffortSelection(exposableEffortLadder(model)) : undefined;
+            return { id, ...(efforts ? { efforts: [...efforts] } : {}) };
+          });
           if (models === undefined) {
             seeded = true;
             models = seed;
