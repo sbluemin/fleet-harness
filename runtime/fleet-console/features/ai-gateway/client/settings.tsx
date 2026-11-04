@@ -356,8 +356,8 @@ function AiGatewayRoutingCard() {
   const jevStored = mode === "jev";
   const jevActive = jevStored && typesafeSignedIn;
   const jevFallback = jevStored && !typesafeSignedIn;
-  // 위임 후보 — 켠 모델 중 호스트 전용이 아닌 것. 0개면 라우팅은 배정하지 않고 위임 실행은 세션 모델로 돈다(Claude만 켜고
-  // 모두 호스트 전용으로 둔 설치가 처음 겪을 수 있다). 그 사실을 후보 행이 말하고 테스트를 막는다.
+  // 위임 후보 — 켠 모델 중 로그인된 공급자의 것. 0개면 라우팅은 배정하지 않고 위임 실행은 세션 모델로 돈다.
+  // 켠 모델이 전부 로그아웃 공급자면 로그인 대기로 말하고, 아예 없으면 켜 달라고 말한다.
   const catalogNames = new Map(state.aiGatewayCatalog.providers.flatMap((provider) => provider.models.map((model) => [model.id, model.name] as const)));
   const providerByModel = new Map(state.aiGatewayCatalog.providers.flatMap((provider) => provider.models.map((model) => [model.id, provider.id] as const)));
   const candidates = (state.aiGateway?.models ?? []).filter((entry) => {
@@ -445,7 +445,7 @@ function AiGatewayRoutingCard() {
           <SettingsItem
             label={t("terminal.settings.aiGatewayRoutingCandidates")}
             hint={candidates.length === 0
-              ? t("terminal.settings.aiGatewayRoutingNoCandidates")
+              ? t((state.aiGateway?.models?.length ?? 0) > 0 ? "terminal.settings.aiGatewayRoutingWaiting" : "terminal.settings.aiGatewayRoutingNoneOn")
               : mobileHost ? candidates.join(" · ") : t("terminal.settings.aiGatewayRoutingCandidatesHint")}
           >
             {mobileHost ? null : (

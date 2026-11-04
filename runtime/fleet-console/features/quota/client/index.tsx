@@ -5,6 +5,7 @@ import { quotaSettingsSection } from "./mobile-settings.js";
 import { disposeLogins } from "./provider-login.js";
 import { connectQuotaSummaryApi } from "./summary-store.js";
 import { connectQuotaToolbarSetting } from "./toolbar-setting.js";
+import { QuotaSignInHost } from "./sign-in-host.js";
 import { QuotaToolbarSummary } from "./toolbar-summary.js";
 import "./quota.css";
 
@@ -14,6 +15,7 @@ export const quotaClient: ClientFeatureDescriptor = {
   // 폰의 「설정 › 사용량」 — 데스크톱에는 서지 않는다(mobile.only).
   settingsSections: [quotaSettingsSection],
   composerTopEntries: [{ id: "summary", render: (context) => <QuotaToolbarSummary {...context} /> }],
+  persistentComponents: [{ id: "sign-in", render: () => <QuotaSignInHost /> }],
 
 };
 

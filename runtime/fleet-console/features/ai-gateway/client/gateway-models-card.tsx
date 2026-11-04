@@ -5,8 +5,9 @@ import * as React from "react";
 import { OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../execution/client/objective-records.js";
 import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
+import { createPortal } from "react-dom";
 import { SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSubScreenRow, SettingsToggle } from "../../settings/client/preferences-context.js";
-import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
+import { Select, useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import {
   loadSystemPromptSettings,
   setSystemPromptSettingsField,
@@ -89,21 +90,32 @@ function orderProviders(providers: readonly AiGatewayCatalogProvider[]): AiGatew
 export function AiGatewayModelsEntry(): React.ReactElement {
   const t = getT(useTerminalLocale(), true);
   const state = useSystemPromptSettingsStore().state;
-  const count = enabledFamilyCount(state?.aiGateway ?? null, state?.aiGatewayCatalog.providers ?? []);
+  const counts = delegationFamilyCounts(state);
+  const summary = counts.waiting > 0
+    ? `${t("terminal.settings.aiGatewayDelegationCount", { count: counts.candidates })} · ${t("terminal.settings.aiGatewayWaitingLogin", { count: counts.waiting })}`
+    : t("terminal.settings.aiGatewayDelegationCount", { count: counts.candidates });
   return (
     <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayModels")}>
       <SettingsSubScreenRow
         label={t("terminal.settings.aiGatewayModels")}
-        summary={t("terminal.settings.aiGatewayDelegationCount", { count })}
+        summary={summary}
         render={() => <AiGatewayModelsCard />}
       />
     </SettingsGroup>
   );
 }
 
-function enabledFamilyCount(selection: AiGatewaySettings | null, providers: readonly AiGatewayCatalogProvider[]): number {
-  const ids = new Set((selection?.models ?? []).map((entry) => entry.id));
-  return orderProviders(providers).reduce((sum, provider) => sum + groupFamilies(provider.models).filter((family) => family.variants.some((variant) => ids.has(variant.model.id))).length, 0);
+function delegationFamilyCounts(state: ReturnType<typeof useSystemPromptSettingsStore>["state"]): { readonly candidates: number; readonly waiting: number } {
+  if (!state) return { candidates: 0, waiting: 0 };
+  const ids = new Set((state.aiGateway?.models ?? []).map((entry) => entry.id));
+  let candidates = 0;
+  let waiting = 0;
+  for (const provider of orderProviders(state.aiGatewayCatalog.providers)) {
+    const on = groupFamilies(provider.models).filter((family) => family.variants.some((variant) => ids.has(variant.model.id))).length;
+    if (needsLogin(state.aiGatewayLogin[provider.id])) waiting += on;
+    else candidates += on;
+  }
+  return { candidates, waiting };
 }
 
 export function AiGatewayModelsCard(): React.ReactElement {
@@ -282,18 +294,24 @@ export function AiGatewayModelsCard(): React.ReactElement {
                         <SettingsToggle checked={on} disabled={saving} ariaLabel={family.name} onChange={() => (on ? turnOff(provider, family) : turnOn(family))} />
                         <div className="ai-gateway-family-name">
                           <span>{family.name}</span>
-                          {on ? null : <span className="ai-gateway-model-meta">{[wins.length > 1 ? `${wins[0]}–${wins[wins.length - 1]}` : wins[0], family.variants.some((variant) => variant.fast) ? t("terminal.settings.aiGatewayFastAvailable") : null].filter(Boolean).join(" · ")}</span>}
+                          {on ? null : <span className="ai-gateway-model-meta">{[wins.length > 1 ? `${wins[0]}–${wins[wins.length - 1]}` : wins[0], hasFastPair(family) ? t("terminal.settings.aiGatewayFastAvailable") : null].filter(Boolean).join(" · ")}</span>}
                         </div>
                         {on ? (
                           <div className="ai-gateway-family-controls">
                             {wins.length > 1 ? (
-                              <select className="ai-gateway-window" aria-label={`${family.name} ${t("terminal.settings.aiGatewayWindow")}`} disabled={saving} value={current.windowLabel} onChange={(event) => {
-                                const next = family.variants.find((variant) => variant.windowLabel === event.target.value && variant.fast === current.fast)
-                                  ?? family.variants.find((variant) => variant.windowLabel === event.target.value);
-                                if (next) replaceVariant(family, next.model.id);
-                              }}>
-                                {wins.map((label) => <option key={label} value={label}>{label}</option>)}
-                              </select>
+                              <Select
+                                compact
+                                className="ai-gateway-window"
+                                label={`${family.name} ${t("terminal.settings.aiGatewayWindow")}`}
+                                disabled={saving}
+                                value={current.windowLabel}
+                                options={wins.map((label) => ({ value: label, label }))}
+                                onChange={(value) => {
+                                  const next = family.variants.find((variant) => variant.windowLabel === value && variant.fast === current.fast)
+                                    ?? family.variants.find((variant) => variant.windowLabel === value);
+                                  if (next) replaceVariant(family, next.model.id);
+                                }}
+                              />
                             ) : <span className="ai-gateway-window-fixed">{wins[0]}</span>}
                             {hasFastPair(family) ? (
                               <button type="button" className={current.fast ? "ai-gateway-fast is-on" : "ai-gateway-fast"} aria-pressed={current.fast} disabled={saving} onClick={() => {
@@ -335,11 +353,12 @@ export function AiGatewayModelsCard(): React.ReactElement {
           {services.map((service) => <ServiceLogin key={service.provider} service={service} busy={auth.busyProvider === service.provider} />)}
         </section>
       ) : null}
-      {undo ? (
+      {undo ? createPortal(
         <p className="ai-gateway-undo" role="status">
           {undo.text}{" "}
           <button type="button" className="ai-gateway-text-button" onClick={() => { undo.restore(); setUndo(null); }}>{t("terminal.settings.aiGatewayUndo")}</button>
-        </p>
+        </p>,
+        document.body,
       ) : null}
     </section>
   );

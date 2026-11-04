@@ -3,6 +3,9 @@ import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
+import { navigateConsoleRoute } from "../../../core/client/src/integration/console-location.js";
+import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
+import { closeSettingsModal } from "../../settings/client/settings-door.js";
 import type { ComposerTopEntryContext } from "../../workspace/shared/surface-contracts.js";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 
@@ -57,11 +60,33 @@ function currentLocale(): ConsoleLocale {
   return document.documentElement.lang === "ko" ? "ko" : "en";
 }
 
-/** 설정 화면이 쿼터 패널(로그인)을 열 때 보낸다. 패널은 이 툴바 버튼이 소유한다. */
+/**
+ * 대화 컴포저가 없을 때 설정이 로그인 패널을 대신 연다.
+ * 툴바 버튼이 있으면 그 버튼이 소유한 팝오버를 연다.
+ */
 export const QUOTA_PANEL_OPEN_EVENT = "fleet:quota-panel-open";
 
+/**
+ * 어떤 화면에서 눌러도 로그인 자리에 닿게 한다.
+ *
+ * 폰은 설정 › 사용량이 로그인 자리다. 데스크톱은 설정 모달이 컴포저를 덮으므로 모달을 닫고,
+ * 대화 위 사용량 단추가 있으면 그 팝오버를 연다. 대화가 없어 단추가 없으면 상주 호스트가
+ * 같은 패널을 화면 가운데 연다.
+ */
 export function requestQuotaPanelOpen(): void {
-  window.dispatchEvent(new Event(QUOTA_PANEL_OPEN_EVENT));
+  if (getViewModeSnapshot().effective === "mobile") {
+    navigateConsoleRoute("/settings", "?section=usage");
+    return;
+  }
+  closeSettingsModal();
+  window.setTimeout(() => {
+    const button = document.querySelector<HTMLButtonElement>(".quota-toolbar-summary");
+    if (button) {
+      if (button.getAttribute("aria-expanded") !== "true") button.click();
+      return;
+    }
+    window.dispatchEvent(new Event(QUOTA_PANEL_OPEN_EVENT));
+  }, 0);
 }
 
 export function QuotaToolbarSummary({ popoverAnchorRef, layout }: ComposerTopEntryContext) {
@@ -70,14 +95,6 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout }: ComposerTopEnt
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    const onOpen = () => {
-      setOpen(true);
-      buttonRef.current?.focus();
-    };
-    window.addEventListener(QUOTA_PANEL_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(QUOTA_PANEL_OPEN_EVENT, onOpen);
-  }, []);
   const popoverId = useId();
   // 저장값을 읽기 전에는 그리지 않는다 — 전부(기본)로 그렸다가 저장된 선택으로 줄어드는 깜빡임을 막는다.
   if (!loaded) return null;

@@ -64,8 +64,8 @@ export const EMPTY_GATEWAY_ROUTING_TABLE: GatewayRoutingTable = {
 /**
  * 이 세션의 라우팅 표를 짓는다.
  *
- * `exposed`는 반드시 **위임 모델**이어야 한다 — 사용자가 호스트 전용으로 표시한 모델은
- * `/model` 피커에는 남지만 위임 후보가 아니다. 그 선별은 `resolveAiGatewaySelection`이
+ * `exposed`는 반드시 **위임 후보**(켠 모델)여야 한다. 끄거나 로그인하지 않은 공급자의
+ * 모델은 메뉴에는 남을 수 있지만 위임 후보는 아니다. 그 선별은 `resolveAiGatewaySelection`이
  * 소유하고 여기서는 받은 목록을 그대로 믿는다.
  *
  * 등급 안의 순서는 `providerPriority`가 정한다. 사용자가 공급자 소진 순서를 정해 뒀는데
