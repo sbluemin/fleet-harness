@@ -920,7 +920,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-routines-scrim.is-plugin-palette,
 .commodore-routines-menu.is-plugin-palette { z-index: calc(var(--z-overlay) + 5); }
 .commodore-palette { display: flex; flex-direction: column; width: min(1040px, 100%); min-width: 0; height: min(760px, calc(90vh - 16px)); border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); overflow: hidden; }
-:root[data-view-mode="desktop"]:not([data-theme="light"]) .commodore-palette { --dialog-face: var(--canvas-abyss); }
 /* 다이얼로그 자체는 Esc 를 받으려고 포커스만 받는다 — 조작 대상이 아니라 링을 그리지 않는다. */
 .commodore-palette:focus { outline: none; }
 /* 목록·상세가 함께 쓰는 상단 바 — 뒤로(왼쪽)·닫기(오른쪽)는 설정 창 닫기와 같은 32px 원형 아이콘이고 두 화면에서 같은 자리다. */
@@ -944,20 +943,14 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-chip { padding: 2px 9px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
 .commodore-palette-chip span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .commodore-palette-chip:hover { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
-.commodore-palette-chip[aria-pressed="true"] { border-color: var(--hairline); background: color-mix(in oklch, var(--text-primary) 9%, transparent); color: var(--text-primary); }
-:root[data-view-mode="desktop"]:not([data-theme="light"]) .commodore-palette-chip[aria-pressed="true"] { background: oklch(26% 0 0); }
+.commodore-palette-chip[aria-pressed="true"] { border-color: var(--brass); background: var(--control-tint-fill); color: var(--brass-ink); }
 .commodore-palette-chip:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 16px 8px; }
 .commodore-palette-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; padding: 12px 0 4px; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-palette-group-head > span:first-child { color: var(--text-secondary); font-weight: var(--weight-medium); }
-/* 설정 그룹 라벨(--t-sm / regular / secondary). 줄 높이·간격은 위 규칙을 그대로 둔다. */
-.commodore-palette-group-head { color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-regular); }
-.commodore-palette-group-head > span:first-child { font-weight: var(--weight-regular); }
 /* 팔레트 행 — 마켓플레이스 묶음마다 둥근 카드 하나, 그 안에 플러그인이 한 줄씩 선다(상세의 구성 섹션과 같은 문법).
    설명은 한 줄에서 자르고, 신뢰 확인이 열린 행만 설명 전체와 확인 칸을 아래로 펼친다. */
 .commodore-palette-rows { min-width: 0; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
-/* 다크 그룹 카드만 설정 카드와 같은 면(--surface-capsule = 23.9%). 테두리 29.3%는 설정 모달이 --hairline 에 덮어 쓰는 값이고, 그 이름의 공용 토큰은 없다. */
-:root[data-view-mode="desktop"]:not([data-theme="light"]) .commodore-palette-rows { --hairline: oklch(29.3% 0 0); background: var(--surface-capsule); }
 .commodore-palette-row { position: relative; display: flex; flex-direction: column; min-width: 0; }
 .commodore-palette-row + .commodore-palette-row { border-top: 1px solid var(--hairline); }
 .commodore-palette-open { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; padding: 10px 104px 10px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
@@ -994,13 +987,9 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-rail { flex: 0 0 196px; overflow: auto; padding: 8px; border-right: 1px solid var(--hairline); }
 .commodore-palette-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
 .commodore-palette-scope { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 4px 8px; border: 0; border-radius: var(--radius-md); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: start; cursor: pointer; }
-/* 설정 내비 글자. 행 높이·패딩·폭은 위 규칙을 그대로 둔다. 다크는 primary, 라이트 미선택은 설정과 같이 secondary. */
-.commodore-palette-scope { color: var(--text-primary); font-size: var(--t-base); font-weight: var(--weight-regular); }
-:root[data-theme="light"] .commodore-palette-scope:not([aria-current="true"]) { color: var(--text-secondary); }
 .commodore-palette-scope:hover:not([aria-current="true"]) { background: var(--control-hover-fill); }
 .commodore-palette-scope:focus-visible { box-shadow: var(--focus-face); }
-.commodore-palette-scope[aria-current="true"] { background: color-mix(in oklch, var(--text-primary) 9%, transparent); color: var(--text-primary); }
-:root[data-view-mode="desktop"]:not([data-theme="light"]) .commodore-palette-scope[aria-current="true"] { background: oklch(26% 0 0); }
+.commodore-palette-scope[aria-current="true"] { background: var(--control-wash); color: var(--brass-bright); }
 .commodore-palette-scope-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commodore-palette-scope-count { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .commodore-palette-scope[aria-current="true"] .commodore-palette-scope-count { color: inherit; }
@@ -1010,8 +999,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-scope-fold-btn:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-scope-fold-btn strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 .commodore-palette-scope-menu { display: grid; gap: 2px; padding: 0 8px 8px; }
-.commodore-palette :is(.commodore-plugins-row, .commodore-plugins-phone-row).is-target { background: color-mix(in oklch, var(--text-primary) 9%, transparent); }
-:root[data-view-mode="desktop"]:not([data-theme="light"]) .commodore-palette :is(.commodore-plugins-row, .commodore-plugins-phone-row).is-target { background: oklch(26% 0 0); }
 .commodore-palette-market { position: relative; }
 .commodore-palette-market.is-syncing .commodore-market-spin { position: absolute; inset: 5px; width: auto; height: auto; margin: 0; color: var(--aurora-ink); }
 .commodore-palette-market-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
