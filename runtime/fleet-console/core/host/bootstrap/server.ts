@@ -63,7 +63,8 @@ import { createBrowserScreenshotStore } from "../../../features/browser/host/scr
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } from "../../../features/browser/host/service.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
-import { createUseRequestBroker } from "../../../features/console-use/host/use-requests.js";
+import { createUseRequestBroker, type ComputerUseLedger } from "../../../features/console-use/host/use-requests.js";
+import { bindComputerUseApprovals } from "../../../features/computer-use/host/approval.js";
 import { createUseContext } from "../../../features/execution/host/use-context.js";
 import { resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import type { ObjectiveRecord } from "../../../features/objectives/host/records/objective-records-domain.js";
@@ -829,14 +830,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onActiveOwnerChange: () => scheduleObjectiveUseBroadcast(),
   });
   // 패널 안 허용 요청 — 콘솔 사용과 컴퓨터 사용이 같은 브로커를 나눠 쓴다. 메모리 전용이라 재시작하면 비어 있다.
-  const useRequests = createUseRequestBroker({ onChange: () => scheduleObjectiveUseBroadcast() });
+  // 컴퓨터 사용 허용의 기록은 승인 코어다. 브로커는 그 장부가 생긴 뒤에야 붙잡힌 호출을 넘긴다.
+  let computerLedger: ComputerUseLedger | null = null;
+  const useRequests = createUseRequestBroker({ onChange: () => scheduleObjectiveUseBroadcast(), computerLedger: () => computerLedger });
   // 승인 코어는 사령관 블록 밖이다. 컴퓨터 사용과 사령관이 같은 객체를 받고, 타입은 각 기능이 등록한다.
   const approvals = createApprovalCore({
     filePath: path.join(durablePaths.dir, "approvals", "requests.json"),
-    onChange: (snapshot) => publishPluginEvent(APPROVAL_CHANNEL, snapshot),
+    onChange: (snapshot) => { publishPluginEvent(APPROVAL_CHANNEL, snapshot); scheduleObjectiveUseBroadcast(); },
   });
   pluginSseChannels.add(APPROVAL_CHANNEL);
   featureCleanupCallbacks.add(() => approvals.dispose());
+  const computerUseApprovals = bindComputerUseApprovals({
+    core: approvals,
+    experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
+    language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
+    read: (id) => objectiveRecords.get(id) ?? null,
+    patch: (id, input) => { objectiveRecords.patch(id, input); },
+  });
+  computerLedger = computerUseApprovals.ledger;
+  featureCleanupCallbacks.add(() => computerUseApprovals.dispose());
   const computerUseMcp = createComputerUseMcpHost({
     transport: mcpHttp.transport,
     onFailure: recordFailure,

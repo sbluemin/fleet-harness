@@ -58,12 +58,26 @@ export interface UseRequestBroker {
   dispose(): void;
 }
 
+/**
+ * 컴퓨터 사용 허용 요청의 기록. 브로커는 붙잡힌 호출만 들고, 보이는 요청은 이 장부를 투영한다.
+ * 콘솔 사용은 이 장부에 넣지 않는다.
+ */
+export interface ComputerUseLedger {
+  upsert(input: { readonly objectiveId: string; readonly participantId?: string; readonly tool: string }): { readonly id: string; readonly expiresAt: number };
+  answer(objectiveId: string, requestId: string, decision: "deny" | "always"): { readonly ok: true; readonly capability: "computer" } | { readonly ok: false; readonly error: "request_not_found" };
+  release(requestId: string): void;
+  list(): readonly UseRequestView[];
+  subscribe(listener: (requestId: string, outcome: UseHoldOutcome) => void): () => void;
+}
+
 export interface UseRequestBrokerOptions {
   readonly holdMs?: number;
   readonly recheckMs?: number;
   readonly now?: () => number;
   /** 요청이 바뀔 때마다 불린다 — 호스트가 이걸로 objective-use 스냅샷을 밀어낸다. */
   readonly onChange?: () => void;
+  /** 컴퓨터 사용 요청의 원천. 없으면 컴퓨터 사용도 이 브로커 안에만 둔다(테스트). */
+  readonly computerLedger?: () => ComputerUseLedger | null;
 }
 
 export const USE_REQUEST_HOLD_MS = 4 * 60_000;
@@ -84,7 +98,28 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
   const holdMs = options.holdMs ?? USE_REQUEST_HOLD_MS;
   const now = options.now ?? Date.now;
   const pending = new Map<string, PendingRequest>();
+  const computerWaiters = new Map<string, Set<{ readonly input: UseHoldInput; readonly resolve: (outcome: UseHoldOutcome) => void }>>();
+  let ledgerUnsubscribe = () => {};
+  let ledgerBound = false;
   let disposed = false;
+
+  const ledger = () => {
+    const current = options.computerLedger?.() ?? null;
+    if (current && !ledgerBound) {
+      ledgerBound = true;
+      ledgerUnsubscribe = current.subscribe((requestId, outcome) => finishComputer(requestId, outcome));
+    }
+    return current;
+  };
+  const finishComputer = (requestId: string, outcome: UseHoldOutcome) => {
+    const waiters = computerWaiters.get(requestId);
+    if (!waiters?.size) return;
+    computerWaiters.delete(requestId);
+    for (const waiter of waiters) waiter.resolve(outcome);
+    syncRecheck();
+    options.onChange?.();
+  };
+  const computerBusy = () => [...computerWaiters.values()].some((waiters) => waiters.size > 0);
 
   const finish = (request: PendingRequest, outcome: UseHoldOutcome) => {
     if (pending.get(key(request.objectiveId, request.capability)) !== request) return;
@@ -99,17 +134,25 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
   // 메뉴 스위치·설정으로 허용이 서거나 거두어진 것을 알아채는 순찰. 요청이 있을 때만 돈다.
   let recheck: ReturnType<typeof setInterval> | null = null;
   const syncRecheck = () => {
-    if (pending.size > 0 && !recheck && !disposed) {
+    if ((pending.size > 0 || computerBusy()) && !recheck && !disposed) {
       recheck = setInterval(() => {
         for (const request of [...pending.values()]) {
           const waiter = request.waiters.values().next().value;
           if (withdrawnOf(request)) finish(request, "withdrawn");
           else if (waiter?.input.authorized()) finish(request, "authorized");
         }
+        for (const [requestId, waiters] of [...computerWaiters]) {
+          const waiter = waiters.values().next().value;
+          if (!waiter) continue;
+          const outcome = [...waiters].some((entry) => entry.input.withdrawn?.() === true) ? "withdrawn" as const : waiter.input.authorized() ? "authorized" as const : null;
+          if (!outcome) continue;
+          finishComputer(requestId, outcome);
+          ledger()?.release(requestId);
+        }
         syncRecheck();
       }, options.recheckMs ?? 250);
       recheck.unref?.();
-    } else if (pending.size === 0 && recheck) {
+    } else if (pending.size === 0 && !computerBusy() && recheck) {
       clearInterval(recheck);
       recheck = null;
     }
@@ -122,6 +165,24 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       if (disposed || input.signal?.aborted) return Promise.resolve("stopped");
       if (input.withdrawn?.() === true) return Promise.resolve("withdrawn");
       if (input.authorized()) return Promise.resolve("authorized");
+      const book = input.capability === "computer" ? ledger() : null;
+      if (book) {
+        const created = book.upsert({ objectiveId: input.objectiveId, participantId: input.participantId, tool: input.tool });
+        const waiters = computerWaiters.get(created.id) ?? new Set();
+        computerWaiters.set(created.id, waiters);
+        options.onChange?.();
+        return new Promise<UseHoldOutcome>((resolve) => {
+          const waiter = { input, resolve: (outcome: UseHoldOutcome) => { input.signal?.removeEventListener("abort", onAbort); resolve(outcome); } };
+          const onAbort = () => {
+            waiters.delete(waiter);
+            if (waiters.size === 0) { finishComputer(created.id, "stopped"); book.release(created.id); }
+            resolve("stopped");
+          };
+          waiters.add(waiter);
+          input.signal?.addEventListener("abort", onAbort, { once: true });
+          syncRecheck();
+        });
+      }
       const k = key(input.objectiveId, input.capability);
       let request = pending.get(k);
       let changed = false;
@@ -162,6 +223,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       });
     },
     answer(objectiveId, requestId, answer) {
+      const book = ledger();
+      if (book?.list().some((request) => request.id === requestId && request.objectiveId === objectiveId)) return book.answer(objectiveId, requestId, answer);
       const request = [...pending.values()].find((candidate) => candidate.id === requestId && candidate.objectiveId === objectiveId);
       if (!request) return { ok: false, error: "request_not_found" };
       // 순찰 사이에 거두어졌으면 허용 답은 받지 않고 요청을 거둔다 — 붙잡힌 호출은 `withdrawn` 으로 끝난다.
@@ -170,6 +233,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       return { ok: true, capability: request.capability };
     },
     settle(objectiveId) {
+      const book = ledger();
+      for (const request of book?.list() ?? []) if (request.objectiveId === objectiveId) { finishComputer(request.id, "stopped"); book!.release(request.id); }
       for (const capability of ["console", "computer"] as const) {
         const request = pending.get(key(objectiveId, capability));
         if (request) finish(request, "stopped");
@@ -177,6 +242,16 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       syncRecheck();
     },
     leave(objectiveId, participantId) {
+      const book = ledger();
+      for (const [requestId, waiters] of [...computerWaiters]) {
+        const sample = waiters.values().next().value;
+        if (sample?.input.objectiveId !== objectiveId) continue;
+        const leaving = [...waiters].filter((waiter) => (waiter.input.participantId ?? objectiveId) === participantId);
+        if (!leaving.length) continue;
+        if (leaving.length === waiters.size) { finishComputer(requestId, "stopped"); book?.release(requestId); continue; }
+        for (const waiter of leaving) { waiters.delete(waiter); waiter.resolve("stopped"); }
+        options.onChange?.();
+      }
       for (const capability of ["console", "computer"] as const) {
         const request = pending.get(key(objectiveId, capability));
         if (!request) continue;
@@ -188,23 +263,30 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       }
     },
     revoke(objectiveId, capability) {
+      if (capability === "computer") {
+        const book = ledger();
+        for (const request of book?.list() ?? []) if (request.objectiveId === objectiveId) { finishComputer(request.id, "stopped"); book!.release(request.id); }
+      }
       const request = pending.get(key(objectiveId, capability));
       if (request) finish(request, "stopped");
       syncRecheck();
     },
     list() {
-      return { requests: [...pending.values()].map((request) => ({
+      const own = [...pending.values()].filter((request) => request.capability !== "computer" || !ledger()).map((request) => ({
         id: request.id,
         objectiveId: request.objectiveId,
         capability: request.capability,
         tools: [...request.tools],
         requestedBy: [...new Set([...request.waiters].map((waiter) => waiter.input.participantId ?? request.objectiveId))],
         expiresAt: request.expiresAt,
-      })) };
+      }));
+      return { requests: [...own, ...(ledger()?.list() ?? [])] };
     },
     dispose() {
       disposed = true;
+      ledgerUnsubscribe();
       for (const request of [...pending.values()]) finish(request, "stopped");
+      for (const requestId of [...computerWaiters.keys()]) finishComputer(requestId, "stopped");
       if (recheck) clearInterval(recheck);
       recheck = null;
     },

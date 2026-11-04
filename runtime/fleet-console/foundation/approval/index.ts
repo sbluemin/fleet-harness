@@ -81,6 +81,8 @@ interface StoredRequest {
 export interface ApprovalCore {
   register(type: ApprovalType): void;
   propose(typeId: string, payload: unknown): ApprovalRequestView;
+  /** 대기 중인 본문만 바꾼다. 상태와 만든 시각은 그대로다. */
+  amend(id: string, payload: unknown): ApprovalRequestView;
   /** 사람이 답한다. 없거나 이미 끝난 id 는 `unknown_request`. 반영할 수 없으면 `approval_failed` 로 끝내고 지운다. */
   answer(id: string, decision: ApprovalDecision): ApprovalRequestView;
   /** 즉답형이 답을 받지 못함(`no_response`). 기록은 지운다. */
@@ -198,6 +200,16 @@ export function createApprovalCore(options: ApprovalCoreOptions): ApprovalCore {
       next.set(record.id, record);
       commit(next, type.retention === "disk");
       return view(record);
+    },
+    amend(id, payload) {
+      const record = requirePending(id);
+      const type = types.get(record.type);
+      if (!type) throw new ApprovalError("unknown_type");
+      const updated: StoredRequest = { ...record, payload: type.parse(payload), updatedAt: now() };
+      const next = new Map(records);
+      next.set(id, updated);
+      commit(next, record.retention === "disk");
+      return view(updated);
     },
     answer(id, decision) {
       sweep();

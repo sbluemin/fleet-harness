@@ -287,6 +287,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           return { content: [{ type: "text", text: JSON.stringify({ ended: true, scope: "participant", deviceReleased, reconnect: "on_next_use", hint: deviceReleased ? "You were the last participant, so the device was released." : "Only your participation ended. Other participants of this conversation keep the shared Computer Use session." }) }], isError: false };
         }
         shared.participants.add(scope.participantId);
+        deps.onActorChange?.();
         const call = new AbortController();
         shared.calls.set(call, scope.participantId);
         const mine = AbortSignal.any([call.signal, controller.signal, ...(context.signal ? [context.signal] : [])]);
