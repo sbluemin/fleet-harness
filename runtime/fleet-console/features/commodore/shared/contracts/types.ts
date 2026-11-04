@@ -133,8 +133,13 @@ export const commodoreStateSchema = z.object({
   commanderEffort: z.string().trim().min(1).max(32).optional(),
   /** 사령관이 만드는 목표의 지휘관을 첫 기동 때 라우팅으로 고른다. 모델·강도와 함께 두지 않는다. */
   commanderRouting: z.literal(true).optional(),
-  /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관과 그 목표의 지휘관·구성원 세션이 다음 턴(새 세션)부터 싣는다. */
+  /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관 세션이 다음 턴부터 싣는다. 목표 세션은 `objectiveExcluded` 로 한 번 더 거른다. */
   plugins: commodorePluginsSchema.optional(),
+  /**
+   * 이 사령관의 설치 중 목표 세션에 싣지 않을 id. 없거나 비어 있으면 고른 플러그인을 모두 함께 싣는다(현행).
+   * `plugins` 목록의 형태와 내용은 바꾸지 않는 옆 필드다.
+   */
+  objectiveExcluded: commodorePluginsSchema.optional(),
   routines: z.array(commodoreRoutineSchema).max(MAX_ROUTINES).optional(),
   /** 사람이 지운 루틴은 깨우지 않고 다음 성공한 턴에 알린다. */
   routineNotices: z.array(z.object({ id: ids, name: z.string().max(60) }).strict()).optional(),
@@ -364,13 +369,13 @@ export type CommodoreEvent =
   /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
   | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string }
   /**
-   * 전역 설치 목록이 바뀌었다 — 사령관마다 한 건씩 난다. 사령관 `state`는 그대로다. 하단 알약과 사령관 플러그인
-   * 섹션은 전역 목록 읽기(`commodore/plugins/global/list`)와 실제 로드 읽기(`commodore/plugins/effective`)를
-   * 다시 읽는다. 사령관이 없어 바뀐 목록을 받을 곳이 없으면 사건 없이 지나간다(목록 읽기가 진실이다).
+   * 전역 설치 목록이 바뀌었다 — 사령관마다 한 건씩 난다. 사령관 `state`는 그대로다. 하단 알약과 플러그인 팔레트는
+   * 전역 목록 읽기(`commodore/plugins/global/list`)를 다시 읽는다. 사령관이 없어 바뀐 목록을 받을 곳이 없으면
+   * 사건 없이 지나간다(목록 읽기가 진실이다).
    */
   | { readonly op: "global-plugins"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly plugins: readonly string[] };
 
-export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "description" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "routines" | "language" | "run" | "clear" | "asks";
+export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "description" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "plugin-reach" | "routines" | "language" | "run" | "clear" | "asks";
 
 export interface CommodoreStateView {
   /** 보드 어댑터의 실행 가능 여부. */

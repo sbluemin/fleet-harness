@@ -24,7 +24,6 @@ import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow } from "../../settings/client/preferences-context.js";
 import { CommanderSubagentsSection, useCommanderSubagents, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
-import { CommodorePlugins } from "./commodore-plugins.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
@@ -294,8 +293,6 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
   return (
     <div className="objectives-commodore-settings">
       <CommodoreTheaters commodoreId={theaterId} />
-      <div className="objectives-commodore-settings-divider" role="separator" />
-      <CommodorePlugins t={t} commodoreId={theaterId} />
       <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
         label={t("commodore.settings.model")}

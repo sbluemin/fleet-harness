@@ -46,6 +46,12 @@ export async function setGlobalPlugin(pluginId: string, installed: boolean, trus
   revision += 1;
   publish({ view, error: null });
 }
+/** 전역 설치를 목표 세션에도 실을지. 설치 목록은 서버가 그대로 둔다. */
+export async function setGlobalPluginReach(pluginId: string, forObjectives: boolean): Promise<void> {
+  const view = await postCommodorePlugins<GlobalPluginsView>("/commodore/plugins/global/set", { pluginId, installed: true, forObjectives });
+  revision += 1;
+  publish({ view, error: null });
+}
 export function installGlobalPlugins(events: ClientConsoleEventsCapability): () => void {
   active = true;
   const refresh = () => { revision += 1; void loadGlobalPlugins(); };

@@ -806,7 +806,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 
 /* ── 사령관 플러그인 — 설정 칸 목록(Theater 목록과 같은 줄 문법)과 추가 팔레트, Console 설정 「마켓플레이스」 ──
    색은 채널 규칙을 따른다: 상태(받는 중·실패·설치함·꺼짐)만 signal 잉크, 추가·선택·포커스는 brass, 마켓플레이스·플러그인에 정체성 색을 입히지 않는다. */
-.commodore-plugins-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .commodore-plugins-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .commodore-plugins-list li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
 .commodore-plugins-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
@@ -916,14 +915,21 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 
 /* 팔레트 — 사령관 설정이 Inbox 시트(스크림 90)나 오른쪽 패널에서 열리므로 덮개 층 위에 선다.
    높이는 스크림 padding(위 10vh·아래 16px)을 뺀 뷰포트 안에 둔다. */
-.commodore-palette-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 4); display: grid; place-items: start center; padding: 10vh 16px 16px; background: var(--dialog-scrim); }
-.commodore-palette { display: flex; flex-direction: column; width: min(1040px, 100%); min-width: 0; height: min(760px, calc(90vh - 16px)); border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); overflow: hidden; }
+.commodore-palette-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 4); display: grid; background: var(--dialog-scrim); }
+/* 팔레트 행 메뉴만 덮개(+4) 위, 툴팁(+6) 아래. 루틴 메뉴의 기본 층(+3)은 그대로다. */
+.commodore-routines-scrim.is-plugin-palette,
+.commodore-routines-menu.is-plugin-palette { z-index: calc(var(--z-overlay) + 5); }
+/* 데스크톱은 settings-modal-scrim의 가운데 정렬·여백을 그대로 쓴다. 팔레트만 열릴 때는 위쪽 정렬. */
+.commodore-palette-scrim:not(.settings-modal-scrim) { place-items: start center; padding: 10vh 16px 16px; }
+/* 배치·크기·면은 함께 단 settings-modal이 맡는다. 여기서 display:flex를 주면 그 grid를 덮어 내비가 한 줄로 쌓인다. */
+.commodore-palette { width: min(1040px, 100%); min-width: 0; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); overflow: hidden; }
+.commodore-palette.settings-modal > .commodore-plugin-detail { grid-column: 1 / -1; min-height: 0; }
 /* 다이얼로그 자체는 Esc 를 받으려고 포커스만 받는다 — 조작 대상이 아니라 링을 그리지 않는다. */
 .commodore-palette:focus { outline: none; }
 /* 목록·상세가 함께 쓰는 상단 바 — 뒤로(왼쪽)·닫기(오른쪽)는 설정 창 닫기와 같은 32px 원형 아이콘이고 두 화면에서 같은 자리다. */
-.commodore-palette-bar { display: grid; flex: none; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: 8px; min-height: 52px; padding: 0 10px 0 12px; transition: box-shadow var(--duration-fast) var(--ease-soft); }
+.commodore-palette-bar { display: grid; flex: none; grid-template-columns: 32px minmax(0, 1fr) 32px 32px; align-items: center; gap: 8px; min-height: 52px; padding: 0 10px 0 12px; transition: box-shadow var(--duration-fast) var(--ease-soft); }
 .commodore-palette-bar.is-pinned { box-shadow: 0 1px 0 var(--hairline); }
-.commodore-palette-bar:not(.is-detail) { grid-template-columns: minmax(0, 1fr) 32px; padding-left: 20px; }
+.commodore-palette-bar:not(.is-detail) { grid-template-columns: minmax(0, 1fr) 32px 32px; padding-left: 20px; }
 .commodore-palette-icon { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
 .commodore-palette-icon > svg { width: 16px; height: 16px; }
 .commodore-palette-icon:hover { background: color-mix(in oklch, var(--text-primary) 8%, transparent); color: var(--text-primary); }
@@ -978,7 +984,78 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-trust-source { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-tertiary); }
 .commodore-palette-trust-source a { color: var(--brass-ink); }
 .commodore-palette-trust-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.commodore-palette-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--hairline); color: var(--text-tertiary); font-size: var(--t-2xs); }
+.commodore-palette-body { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.commodore-palette-scrim.is-phone { place-items: end stretch; padding: 0; }
+.commodore-palette.is-phone { display: flex; flex-direction: column; width: 100%; height: min(760px, calc(100dvh - 56px)); max-height: calc(100dvh - 56px); border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; padding-bottom: var(--m-safe-bottom, 0px); }
+.commodore-palette.is-phone .commodore-palette-body { flex-direction: column; }
+.commodore-palette-rail { flex: 0 0 196px; overflow: auto; padding: 8px; border-right: 1px solid var(--hairline); }
+.commodore-palette-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
+.commodore-palette-scope { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 4px 8px; border: 0; border-radius: var(--radius-md); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: start; cursor: pointer; }
+.commodore-palette-scope:hover:not([aria-current="true"]) { background: var(--control-hover-fill); }
+.commodore-palette-scope:focus-visible { box-shadow: var(--focus-face); }
+.commodore-palette-scope[aria-current="true"] { background: var(--control-wash); color: var(--brass-bright); }
+.commodore-palette-scope-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-palette-scope-count { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.commodore-palette-scope[aria-current="true"] .commodore-palette-scope-count { color: inherit; }
+.commodore-palette-scope-fold { flex: none; border-bottom: 1px solid var(--hairline); }
+.commodore-palette-scope-fold-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 40px; padding: 0 16px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
+.commodore-palette-scope-fold-btn:hover { background: var(--control-hover-fill); }
+.commodore-palette-scope-fold-btn:focus-visible { box-shadow: var(--focus-face); }
+.commodore-palette-scope-fold-btn strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.commodore-palette-scope-menu { display: grid; gap: 2px; padding: 0 8px 8px; }
+.commodore-palette .settings-modal-tab-label { flex: 1 1 auto; min-width: 0; }
+.commodore-palette .settings-modal-tab-count { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
+.commodore-palette-tools { position: absolute; z-index: 2; top: 16px; right: 16px; display: flex; align-items: center; gap: 4px; }
+.commodore-palette-tools .settings-modal-close { position: static; }
+.commodore-palette-tools.is-phone { position: static; justify-content: flex-end; padding: 0 12px 8px; }
+.commodore-palette-phone-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 52px; padding: 4px 8px 0 16px; }
+.commodore-palette-phone-title { min-width: 0; margin: 0; overflow: hidden; color: var(--text-primary); font-size: var(--t-lg); font-weight: var(--weight-medium); letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-palette-phone-bar .commodore-palette-tools.is-phone { padding: 0; }
+.settings-modal .commodore-plugins { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.commodore-palette.is-phone .commodore-plugins { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.commodore-palette.is-phone .commodore-palette-list { display: flex; flex-direction: column; gap: 8px; }
+/* 사령관 범위 행은 타일·이름이 한 덩어리로 남고, 칩과 지휘관·구성원 알약은 그 오른쪽이다. */
+.settings-modal .commodore-palette-row.is-scope,
+.settings-modal .commodore-palette-row.is-reach { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; }
+/* 휴대폰 카드 본문이 자식마다 패딩을 입힌다. 카탈로그 행은 자기 여백이 있으니 겹치지 않게 걷고, 범위 설치 행(is-scope)만 그 패딩을 쓴다. */
+.commodore-palette.is-phone .fc-settings-card.is-mobile .fc-settings-card__body > .commodore-palette-row:not(.is-scope) { padding: 0; }
+.commodore-palette-row.is-scope { cursor: pointer; }
+.commodore-palette-row.is-scope:focus-visible { box-shadow: var(--focus-face); }
+.commodore-palette-row.is-scope.is-target { background: var(--brass-glow); }
+.commodore-palette-row.is-scope > .commodore-palette-action,
+.commodore-palette-row.is-reach > .commodore-palette-action { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 100%; }
+.commodore-palette-row.is-scope > .commodore-palette-action:empty { display: none; }
+.commodore-palette-row.is-scope > .commodore-plugins-inline { flex: 1 1 100%; }
+.commodore-palette.is-phone .commodore-palette-row.is-scope { display: flex; flex-flow: row wrap; align-items: center; justify-content: flex-start; gap: 6px 12px; width: 100%; min-width: 0; max-width: 100%; height: auto; min-height: 0; }
+.commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
+.commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-action { position: static; height: auto; pointer-events: auto; margin-left: auto; }
+.commodore-palette.is-phone .commodore-palette-row.is-reach { display: flex; flex-flow: row wrap; align-items: center; justify-content: flex-start; gap: 6px 12px; width: 100%; min-width: 0; max-width: 100%; height: auto; min-height: 0; }
+.commodore-palette.is-phone .commodore-palette-row.is-reach > .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
+.commodore-palette.is-phone .commodore-palette-row.is-reach > .commodore-palette-action { position: static; height: auto; pointer-events: auto; margin-left: auto; }
+.commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-reach { flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 0; }
+.settings-modal .settings-modal-head .commodore-global-lede { padding: 8px 0 0; }
+.settings-modal .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
+.settings-modal .commodore-palette-action { position: static; height: auto; pointer-events: auto; }
+.settings-modal .commodore-palette-reach { flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 0; }
+.global-settings-card-title > .mongle-avatar,
+.fc-settings-card__title > .mongle-avatar { flex: none; }
+.settings-modal .commodore-palette-row { flex-wrap: wrap; align-items: center; }
+.commodore-palette.is-phone .mobile-group { width: 100%; min-width: 0; }
+.commodore-palette.is-phone .mobile-group-row.commodore-plugins-phone-row { display: grid; background: var(--m-surface); }
+.commodore-palette-market { position: relative; }
+.commodore-palette-market.is-syncing .commodore-market-spin { position: absolute; inset: 5px; width: auto; height: auto; margin: 0; color: var(--aurora-ink); }
+.commodore-palette-market-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+.commodore-plugin-reach { display: inline-flex; flex: none; align-items: center; gap: 4px; min-height: 22px; padding: 0 6px; border: 0; border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); white-space: nowrap; cursor: pointer; }
+.commodore-plugin-reach[aria-pressed="true"] { color: var(--brass-bright); }
+.commodore-plugin-reach[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
+.commodore-plugin-reach:hover:not([aria-disabled="true"]):not([aria-pressed="true"]) { background: var(--control-wash-hover); }
+.commodore-plugin-reach:focus-visible { box-shadow: var(--focus-face); }
+.commodore-plugin-reach-glyph { width: 12px; height: 12px; flex: none; }
+.commodore-plugin-reach-sw { flex: none; width: 16px; height: 10px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--text-primary) 16%, transparent); }
+.commodore-plugin-reach[aria-pressed="true"] .commodore-plugin-reach-sw { background: var(--brass-bright); }
+@media (forced-colors: active) { .commodore-plugin-reach[aria-pressed="true"] { color: SelectedItem; } .commodore-plugin-reach[aria-pressed="true"] .commodore-plugin-reach-sw { background: SelectedItem; } }
+.commodore-plugin-reach-note { min-width: 0; max-width: 100%; color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
+.commodore-palette-reach { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 14px 10px; }
 :root[data-view-mode="mobile"] .commodore-palette-scrim { place-items: end stretch; padding: 0; background: var(--m-scrim); }
 :root[data-view-mode="mobile"] .commodore-palette { width: auto; height: calc(100% - 56px); padding-bottom: calc(12px + var(--m-safe-bottom, 0px)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--m-surface); box-shadow: none; }
 :root[data-view-mode="mobile"] .commodore-palette-row .commodore-tile.is-card { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }

@@ -4,8 +4,9 @@ import { z } from "zod";
  * 사령관 플러그인 — Console 이 소유하는 마켓플레이스 등록부와 그 카탈로그, 사령관마다 고른 설치 목록의 브라우저 계약.
  *
  * 마켓플레이스·플러그인 파일은 Console 데이터의 Fleet 전용 Claude 홈 하나에 받아 둔다(사용자 `~/.claude` 는 읽지도 쓰지도
- * 않는다). 사령관은 그중 고른 것만 `state.json` 의 `plugins` 로 기억하고, 그 사령관 세션과 그 사령관이 소유한 목표의
- * 지휘관·구성원 세션이 다음 턴(새 세션)부터 로컬 경로로 싣는다. 이 DTO 에는 파일 경로가 실리지 않는다 — 위치는 사람이
+ * 않는다). 사령관은 그중 고른 것만 `state.json` 의 `plugins` 로 기억하고, 그 사령관 세션은 다음 턴부터 로컬 경로로 싣는다.
+ * 목표의 지휘관·구성원 세션은 같은 집합에서 전역·사령관 토글이 모두 꺼진 항목만 뺀다(`objectiveSessionPlugins`).
+ * 이 DTO 에는 파일 경로가 실리지 않는다 — 위치는 사람이
  * 입력한 저장소·URL 표기(`locator`)뿐이다.
  */
 
@@ -64,7 +65,8 @@ export interface GlobalPluginReplacement {
 
 /**
  * 실제 로드 목록 — 전역 먼저, 사령관 목록에서 (a) 같은 id 또는 (b) 같은 플러그인 이름(`@` 왼쪽)이
- * 이미 있으면 건너뛴다. 사령관 세션·목표 세션·인증 상태가 모두 이 계산을 쓴다.
+ * 이미 있으면 건너뛴다. 사령관 세션과 인증 상태가 이 계산을 쓴다. 목표 세션은 여기서 한 번 더 거른다
+ * (`objectiveSessionPlugins`).
  */
 export function effectiveCommodorePlugins(global: readonly string[], own: readonly string[]): { readonly effective: readonly string[]; readonly replaced: readonly GlobalPluginReplacement[] } {
   const effective: string[] = [];
@@ -91,6 +93,30 @@ export function effectiveCommodorePlugins(global: readonly string[], own: readon
 }
 
 /**
+ * 목표 세션에 실을 id. `effectiveCommodorePlugins` 의 대체를 유지한 뒤, 전역 토글과 사령관 토글의 OR 로 거른다.
+ * 토글이 켜져 있다는 것은 그 id가 뺀 목록(`objectiveExcluded`)에 없다는 뜻이다. 뺀 목록이 없으면 모두 켠 것(현행)이다.
+ * 전역에만 있으면 전역 토글, 사령관에만 있으면 사령관 토글, 둘 다 있으면(같은 id 이거나 같은 이름으로 대체된 항목)
+ * 하나라도 켜져 있을 때 실는다. 사령관 세션 로드는 이 함수를 쓰지 않는다.
+ */
+export function objectiveSessionPlugins(global: readonly string[], own: readonly string[], globalExcluded: readonly string[] | undefined, ownExcluded: readonly string[] | undefined): readonly string[] {
+  const { effective, replaced } = effectiveCommodorePlugins(global, own);
+  const globalIds = new Set(global);
+  const ownIds = new Set(own);
+  const replacedBy = new Map<string, string[]>();
+  for (const row of replaced) {
+    const list = replacedBy.get(row.by);
+    if (list) list.push(row.pluginId);
+    else replacedBy.set(row.by, [row.pluginId]);
+  }
+  const enabled = (excluded: readonly string[] | undefined, id: string): boolean => excluded?.includes(id) !== true;
+  return effective.filter((id) => {
+    const fromGlobal = globalIds.has(id) && enabled(globalExcluded, id);
+    const sources = [...(ownIds.has(id) ? [id] : []), ...(replacedBy.get(id) ?? [])];
+    return fromGlobal || sources.some((source) => enabled(ownExcluded, source));
+  });
+}
+
+/**
  * 전역 목록 읽기 — 그 id를 직접 설치한 사령관과 함께. 파일 경로는 싣지 않는다.
  * `installedBy`는 사령관이 직접 설치한 모든 플러그인 id를 가리킨다(전역 팔레트의 카탈로그 힌트가 읽는다).
  * 키가 없는 id는 직접 설치한 사령관이 없다는 뜻이다. `state`(change `plugins`)와 `global-plugins`
@@ -98,6 +124,8 @@ export function effectiveCommodorePlugins(global: readonly string[], own: readon
  */
 export interface GlobalPluginsView {
   readonly plugins: readonly string[];
+  /** 목표 세션에서 뺀 전역 id. 비어 있으면 설치한 것을 모두 함께 싣는다. `plugins` 와는 다른 필드다. */
+  readonly objectiveExcluded: readonly string[];
   readonly installedBy: Readonly<Record<string, readonly { readonly commodoreId: string; readonly alias?: string }[]>>;
 }
 
@@ -257,13 +285,16 @@ export type MarketplaceErrorCode =
  * - `commodore/plugins/inspect` { pluginId } → { plugin: PluginCatalogEntry } — 받아서 구성 요소·실행 명령을 채운다
  * - `commodore/plugins/detail` { pluginId } → { plugin: PluginDetail } — 카탈로그 필드에 구성 이름·실행 명령·README 를 더한다.
  *   마켓 안 상대 경로 플러그인은 받지 않고 읽고, 그 외에는 inspect 와 같이 Fleet 전용 홈에 받은 뒤 읽는다. 플러그인 코드는 실행하지 않는다.
- * - `commodore/plugins/set` { commodoreId, pluginId, installed, trusted? } → CommodoreStateView
+ * - `commodore/plugins/set` { commodoreId, pluginId, installed, trusted?, forObjectives? } → CommodoreStateView
  *   실행 명령이 있는 플러그인을 처음 설치할 때 trusted 가 없으면 trust_required 로 거절한다.
- * - `commodore/plugins/global/list` {} → { plugins, installedBy } — 전역 설치 목록과, 그 id를 직접 설치한
- *   사령관(`[{ commodoreId, alias? }]`). 전역 팔레트의 카탈로그 힌트가 읽는다.
- * - `commodore/plugins/global/set` { pluginId, installed, trusted? } → { plugins, installedBy }
+ *   `forObjectives` 는 그 설치를 목표 세션에도 실을지다. 설치 여부가 그대로인 요청은 목록을 다시 쓰지 않고 토글만 저장한다.
+ *   필드가 없으면 지금 토글을 유지한다(새 설치의 기본은 함께 싣기).
+ * - `commodore/plugins/global/list` {} → { plugins, objectiveExcluded, installedBy } — 전역 설치 목록과, 그 id를 직접 설치한
+ *   사령관(`[{ commodoreId, alias? }]`). 전역 팔레트의 카탈로그 힌트가 읽는다. `objectiveExcluded` 는 목표 세션에서 뺀 id다.
+ * - `commodore/plugins/global/set` { pluginId, installed, trusted?, forObjectives? } → { plugins, objectiveExcluded, installedBy }
  *   전역 설치(=받기 + 목록 추가, 사령관 설치와 같은 받기·신뢰) 또는 전역 제거. 목록이 바뀌면 모든 사령관의
- *   다음 턴이 새 세션으로 이어지고 `commodore` 채널에 `global-plugins` 사건이 난다.
+ *   다음 턴이 새 세션으로 이어지고 `commodore` 채널에 `global-plugins` 사건이 난다. 토글만 바뀌면 세션은 교체하지 않고
+ *   같은 사건으로 목록만 다시 읽게 한다.
  * - `commodore/plugins/effective` { commodoreId } → { global, effective, replaced } — 그 사령관의 실제 로드
  *   목록. `replaced`는 건너뛴 사령관 항목(`[{ pluginId, by: globalId, reason: "same-id" | "same-name" }]`).
  * - `commodore/plugins/update` { pluginId, trusted?, version? } → { outcome: "updated" | "up_to_date", oldVersion, newVersion, view: PluginCatalogView }
@@ -298,12 +329,16 @@ export const commodorePluginSetSchema = z.object({
   pluginId: pluginIdSchema,
   installed: z.boolean(),
   trusted: z.boolean().optional(),
+  /** 목표의 지휘관·구성원 세션에도 실을지. 없으면 토글을 바꾸지 않는다. */
+  forObjectives: z.boolean().optional(),
 }).strict();
 /** 전역 설치·제거 — 사령관 설치와 같은 받기·신뢰를 거친다. 목록이 그대로면 쓰지 않는다. */
 export const globalPluginSetSchema = z.object({
   pluginId: pluginIdSchema,
   installed: z.boolean(),
   trusted: z.boolean().optional(),
+  /** 목표의 지휘관·구성원 세션에도 실을지. 없으면 토글을 바꾸지 않는다. */
+  forObjectives: z.boolean().optional(),
 }).strict();
 /** 그 사령관의 실제 로드 목록 읽기 — 전역과 대체됨을 함께 준다. */
 export const effectivePluginsQuerySchema = z.object({ commodoreId: z.string().min(1).max(128) }).strict();
