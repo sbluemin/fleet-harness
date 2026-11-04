@@ -94,6 +94,19 @@
   --crest-glow: oklch(78% 0.1 48 / 12%);
   --crest-halo: 0 0 16px var(--crest-glow);
 
+  /* 컨텍스트 창 범주 채움 — 상태가 아니라 내역의 종류를 말한다(승인 시안 v2). 신호·정체성 채널을 빌리지 않는다.
+     막대·견본이라 글자 대비를 지지 않고, 두 테마가 같은 색으로 종류를 기억한다. */
+  --context-cat-messages: oklch(66% 0.15 258);
+  --context-cat-mcp: oklch(66% 0.15 48);
+  --context-cat-prompt: oklch(66% 0.1 168);
+  --context-cat-skills: oklch(76% 0.13 85);
+  --context-cat-tools: oklch(70% 0 0);
+  --context-cat-instructions: oklch(62% 0 0);
+  --context-cat-reserved: oklch(45% 0 0);
+  --context-cat-other: oklch(70% 0 0);
+  /* 칩 hover·열림의 청록. aurora(상태)와 갈라 이 창만 쓴다. */
+  --context-rail-accent: oklch(82% 0.07 190);
+
   /* 신호 ink 티어 — 텍스트로 쓰이는 신호색 전용 채널. 다크은 base 신호색을 그대로 별칭하고,
      라이트만 L 42~46% 리터럴로 오버라이드해 자기 glow 틴트 위에서도 AA(4.5:1)를 지킨다.
      배경·테두리·도트·비콘은 계속 base 신호 토큰을 쓴다 — ink는 color(텍스트) 선언 전용이다. */

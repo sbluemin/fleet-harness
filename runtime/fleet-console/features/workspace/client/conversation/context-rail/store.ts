@@ -33,7 +33,7 @@ function readMemory(): RailMemory {
 export interface ContextRailState {
   readonly enabled: boolean;
   readonly memory: RailMemory;
-  /** 칩 띠·머리 칩에서 카드가 떠 있는 세션 id. */
+  /** 오버레이에서 상세 카드가 떠 있는 세션 id. */
   readonly flyout: string | null;
   /** 펼친 상세(메모리 파일·MCP 도구·서버) 키. */
   readonly details: ReadonlySet<string>;
@@ -79,10 +79,6 @@ export function toggleContextCard(id: string, focus: boolean): void {
   publish({ ...state, memory: next });
 }
 
-export function isContextCardOpen(memory: RailMemory, id: string, focus: boolean): boolean {
-  return focus ? !memory.collapsedFocus.includes(id) : memory.expandedOthers.includes(id);
-}
-
 export function setContextFlyout(id: string | null): void {
   if (state.flyout === id) return;
   publish({ ...state, flyout: id });
@@ -95,8 +91,7 @@ export function toggleContextDetail(key: string): void {
 }
 
 /**
- * 한 세션의 카드를 펼쳐 보인다(`/context`). 레일이 꺼져 있으면 켠다. 카드 열이면 그 카드를 펼치고, 칩 띠·머리 칩이면 그 칩의 카드를
- * 띄운다 — 어느 쪽인지는 레일이 지금 단계로 정한다.
+ * 한 세션의 카드를 펼쳐 보인다(`/context`). 레일이 꺼져 있으면 켠다. 오버레이는 그 세션의 상세 카드를 띄운다.
  */
 export function revealContextCard(id: string): void {
   try { window.localStorage.removeItem(OFF_KEY); } catch { /* 위와 같다 */ }

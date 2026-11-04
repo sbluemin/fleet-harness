@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
+
 /**
- * 대화 칸 옆의 컨텍스트 레일 계약. 레일은 컨텍스트 창 상세만 보여 주고, 세션이 어디서 오든(사령관 상주 세션, 지휘관·구성원 원장)
- * 같은 카드로 그린다. 데이터를 아는 기능이 제공자로 등록하고, 작업 영역 셸은 배치(카드 열·칩 띠·머리 칩)만 맡는다.
+ * 대화 칸의 컨텍스트 창 계약. 레일은 컨텍스트 창 상세만 보여 주고, 세션이 어디서 오든(사령관 상주 세션, 지휘관·구성원 원장)
+ * 같은 카드로 그린다. 데이터를 아는 기능이 제공자로 등록하고, 작업 영역은 채팅 위에 뜨는 칩만 맡는다.
  */
 
 /** 문맥 창을 나눠 쓰는 한 덩어리. MCP 도구에는 `server`가 있다. */
@@ -32,8 +34,13 @@ export interface ContextRailSession {
   readonly id: string;
   readonly name: string;
   readonly role: "commodore" | "commander" | "member";
+  /**
+   * 칩이 그리는 세션 얼굴. 제공자가 그 세션의 몽글 아바타를 넣는다 — 레일은 역할 글리프를 그리지 않는다.
+   * 없으면 링 안은 빈 자리다.
+   */
+  readonly avatar?: ReactNode;
   readonly measure: ContextRailMeasure | null;
-  /** 지금 대화 칸이 보는 세션 — 카드 열에서 맨 위에 펼쳐진다. */
+  /** 지금 대화 칸이 보는 세션 — 칩 줄에서 맨 위에 선다. */
   readonly focus: boolean;
   /** 자동 압축 안내 같은 세션 고유의 꼬리 문구 키가 필요하면 제공자가 준다. 없으면 공통 문구. */
   readonly footnote?: string;

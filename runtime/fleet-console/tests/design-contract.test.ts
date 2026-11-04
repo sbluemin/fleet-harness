@@ -161,8 +161,6 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--ws-tree-width",
   // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
   "--ws-dock-files-width",
-  // Context rail TSX injects the category-stack luminance step (0–5).
-  "--context-rail-step",
 ]);
 
 function source(path: string): string {

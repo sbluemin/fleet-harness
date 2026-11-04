@@ -5,25 +5,18 @@ import { useT } from "../../../../../core/client/src/i18n/index.js";
 import type { ContextRailMeasure, ContextRailRow, ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
 import { useContextRailProviders } from "./registry.js";
 import {
-  isContextCardOpen, setContextFlyout, setContextRailEnabled, toggleContextCard, toggleContextDetail, useContextRailState,
+  setContextFlyout, setContextRailEnabled, toggleContextCard, toggleContextDetail, useContextRailState,
   type ContextRailState,
 } from "./store.js";
 import "./context-rail.css";
 
-/** 채팅 폭(대화 칸 전체)이 이 값 이상이면 카드 열, 이 값 미만이면 원호 칩 띠, 그보다 더 좁으면 머리 칩이다. */
-const DOCK_MIN = 980;
-const STRIP_MIN = 620;
-/** 머리 칩은 세션이 이만큼을 넘으면 앞의 둘과 `+n`으로 줄인다. */
-const HEAD_CHIPS = 3;
-
-type Tier = "dock" | "strip" | "head";
 export type Translate = ReturnType<typeof useT>;
 
 /**
- * 대화 칸 본문과 그 옆의 컨텍스트 레일을 한 줄에 놓는다. 단계는 창 폭이 아니라 이 칸의 실제 폭으로 정한다 — 오른쪽 패널이 열려 있든
- * 닫혀 있든 남은 채팅 폭이 곧 기준이다. 레일은 오른쪽 패널을 열거나 닫지 않는다.
+ * 대화 칸 본문 위에 컨텍스트 창을 띄운다. 폭으로 단계를 나누지 않는다 — 어느 폭에서나 같은 칩이 채팅 우측 위(머리 아래)에
+ * 세로로 쌓이고, 본문을 밀지 않는다. 레일은 오른쪽 패널을 열거나 닫지 않는다.
  *
- * `slot`은 대화 머리 오른쪽 끝의 자리다: ▥ 단추와(머리 칩 단계에서) 원호 칩이 거기에 선다.
+ * `slot`은 대화 머리 오른쪽 끝의 자리다. 창을 켜고 끄는 단추만 거기에 선다.
  */
 export function ContextRailHost({ scope, slot, children }: {
   readonly scope: ContextRailScope;
@@ -31,63 +24,38 @@ export function ContextRailHost({ scope, slot, children }: {
   readonly children: React.ReactNode;
 }) {
   const providers = useContextRailProviders();
-  const mainRef = React.useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = React.useState(0);
-  React.useLayoutEffect(() => {
-    const element = mainRef.current;
-    if (!element) return;
-    const update = () => setWidth(element.clientWidth);
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    // rAF 로 미루지 않는다 — 가려진 탭에서는 rAF 가 멈춰 단계가 낡은 폭에 묶인다. 이 상자의 크기는 단계에 영향을 받지 않아 되먹임이 없다.
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
   return (
-    <div ref={mainRef} className="conversation-main">
+    <div className="conversation-main">
       {children}
       {providers.map((Provider, index) => (
         <Provider key={index} scope={scope}>
-          {(sessions) => sessions.length > 0 ? <ContextRail sessions={sessions} width={width} slot={slot} /> : null}
+          {(sessions) => sessions.length > 0 ? <ContextRail sessions={sessions} slot={slot} /> : null}
         </Provider>
       ))}
     </div>
   );
 }
 
-function tierOf(width: number): Tier {
-  return width >= DOCK_MIN ? "dock" : width >= STRIP_MIN ? "strip" : "head";
-}
-
-function ContextRail({ sessions, width, slot }: {
+function ContextRail({ sessions, slot }: {
   readonly sessions: readonly ContextRailSession[];
-  readonly width: number;
   readonly slot: HTMLElement | null;
 }) {
   const t = useT();
   const state = useContextRailState();
-  const tier = tierOf(width);
   // 보는 세션이 맨 위에 선다. 나머지는 제공자가 준 순서(지휘관, 구성원)를 지킨다.
   const ordered = React.useMemo(() => [...sessions.filter((session) => session.focus), ...sessions.filter((session) => !session.focus)], [sessions]);
-  // 제목 pill 이 읽힐 폭을 잃으면 칩이 먼저 양보한다 — 세션 칩들을 원호 하나로 합치고 누르면 카드가 함께 뜬다.
-  const probe = React.useRef<HTMLSpanElement | null>(null);
-  const yielded = useTitleYield(probe, state.enabled && tier === "head", width, ordered.length);
-  const merged = yielded >= 1;
-  // 합쳐도 제목이 모자라면 칩과 ▥ 단추가 머리 줄을 비우고 머리 아래 떠 있는 줄로 내려앉는다.
-  const floating = yielded >= 2;
-  const shownChips = merged ? 0 : headChipCount(ordered.length);
-  // 머리 칩 단계: 칩을 누르면 그 세션의 카드가, `+n`을 누르면 칩으로 서지 못한 세션들의 카드가 뜬다.
-  const flyoutCards = state.flyout === null ? [] : state.flyout === MORE_ID ? ordered.slice(shownChips) : ordered.filter((session) => session.id === state.flyout);
+  const chipRefs = React.useRef(new Map<string, HTMLDivElement>());
+  const [flyTop, setFlyTop] = React.useState(0);
+  const open = ordered.find((session) => session.id === state.flyout) ?? null;
 
-  // `/context`는 카드 열에서는 카드를 펼치고(기억에 이미 반영됐다), 칩 단계에서는 그 칩의 카드를 띄운다.
+  // `/context`는 그 세션의 상세 카드를 띄운다.
   const handled = React.useRef(state.reveal?.nonce ?? 0);
   React.useEffect(() => {
     const reveal = state.reveal;
     if (!reveal || reveal.nonce === handled.current) return;
     handled.current = reveal.nonce;
-    if (tier !== "dock" && ordered.some((session) => session.id === reveal.id)) setContextFlyout(reveal.id);
-  }, [state.reveal, tier, ordered]);
+    if (ordered.some((session) => session.id === reveal.id)) setContextFlyout(reveal.id);
+  }, [state.reveal, ordered]);
 
   // 떠 있는 카드는 밖을 누르거나 Esc로 닫는다. 떠 있을 때만 문서에 손을 댄다.
   const flyoutId = state.flyout;
@@ -110,200 +78,110 @@ function ContextRail({ sessions, width, slot }: {
       document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [flyoutId]);
-  // 단계가 바뀌면 떠 있던 카드는 닫는다 — 다른 자리의 카드로 옮겨 서지 않는다.
-  React.useEffect(() => { setContextFlyout(null); }, [tier, state.enabled]);
 
+  React.useEffect(() => {
+    if (state.flyout !== null && !ordered.some((session) => session.id === state.flyout)) setContextFlyout(null);
+  }, [ordered, state.flyout]);
+
+  // 카드는 누른 칩의 왼쪽에, 그 칩 높이에서 오버레이 바닥까지 뜬다.
+  React.useLayoutEffect(() => {
+    if (state.flyout === null) return;
+    const node = chipRefs.current.get(state.flyout);
+    if (node) setFlyTop(node.offsetTop);
+  }, [state.flyout, ordered]);
+
+  const toggleLabel = t(state.enabled ? "conversation.rail.hide" : "conversation.rail.show");
   const toggle = (
     <button
       type="button"
       className="context-rail-toggle"
       aria-pressed={state.enabled}
-      aria-label={t(state.enabled ? "conversation.rail.hide" : "conversation.rail.show")}
-      title={t(state.enabled ? "conversation.rail.hide" : "conversation.rail.show")}
+      aria-label={toggleLabel}
+      title={toggleLabel}
       onClick={() => setContextRailEnabled(!state.enabled)}
     >
       <RailGlyph />
     </button>
   );
-  const headChips = state.enabled && tier === "head" ? (
-    <HeadChips sessions={ordered} shown={shownChips} flyout={state.flyout} t={t} />
-  ) : null;
 
   return (
     <>
-      <span ref={probe} hidden />
-      {floating ? <div className="context-rail-float" data-context-rail-keep>{headChips}{toggle}</div> : slot ? createPortal(<>{headChips}{toggle}</>, slot) : null}
-      {state.enabled && tier === "dock" ? <DockColumn sessions={ordered} state={state} t={t} /> : null}
-      {state.enabled && tier === "strip" ? <StripColumn sessions={ordered} flyout={state.flyout} state={state} t={t} /> : null}
-      {state.enabled && tier === "head" && flyoutCards.length > 0 ? (
-        <div className={`context-rail-fly is-head${floating ? " is-float" : ""}`} data-context-rail-keep>
-          {flyoutCards.map((session) => <ContextCard key={session.id} session={session} open forced state={state} t={t} />)}
+      {slot ? createPortal(toggle, slot) : null}
+      {state.enabled ? (
+        <div className="context-rail-overlay" role="group" aria-label={t("conversation.rail.title")}>
+          {ordered.map((session) => (
+            <div
+              key={session.id}
+              className="context-rail-chip-slot"
+              ref={(node) => {
+                if (node) chipRefs.current.set(session.id, node);
+                else chipRefs.current.delete(session.id);
+              }}
+            >
+              <ContextChip session={session} open={state.flyout === session.id} t={t} onToggle={() => setContextFlyout(state.flyout === session.id ? null : session.id)} />
+            </div>
+          ))}
+          {open ? (
+            <div className="context-rail-fly" style={{ top: flyTop, maxHeight: `calc(100% - ${flyTop}px)` }} data-context-rail-keep>
+              <ContextCard session={open} open forced state={state} t={t} />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </>
   );
 }
 
-function DockColumn({ sessions, state, t }: { readonly sessions: readonly ContextRailSession[]; readonly state: ContextRailState; readonly t: Translate }) {
+function ContextChip({ session, open, t, onToggle }: {
+  readonly session: ContextRailSession;
+  readonly open: boolean;
+  readonly t: Translate;
+  readonly onToggle: () => void;
+}) {
+  const measure = session.measure;
+  const label = chipLabel(session, t);
   return (
-    <aside className="context-rail is-dock" aria-label={t("conversation.rail.title")}>
-      <div className="context-rail-title">{t("conversation.rail.title")}</div>
-      {sessions.map((session) => (
-        <ContextCard key={session.id} session={session} open={isContextCardOpen(state.memory, session.id, session.focus)} forced={false} state={state} t={t} />
-      ))}
-    </aside>
+    <button
+      type="button"
+      className={`context-rail-chip${measure?.stale ? " is-stale" : ""}${toneOf(measure)}`}
+      data-context-rail-keep
+      aria-expanded={open}
+      aria-label={label}
+      onClick={onToggle}
+    >
+      <span className="context-rail-ring">
+        <ContextRing ratio={ratioOf(measure)} unmeasured={measure === null} />
+        <span className="context-rail-ring-face">{session.avatar}</span>
+      </span>
+      <span className={`context-rail-pct${measure ? "" : " is-none"}`}>{measure ? `${percentOf(measure)}%` : "—"}</span>
+      <span className="context-rail-bubble" aria-hidden="true">
+        <strong>{session.name}</strong>
+        {measure
+          ? <span className="context-rail-bubble-usage">{`${summaryOf(measure)} · ${percentOf(measure)}%`}</span>
+          : <span className="context-rail-bubble-plain">{t("conversation.rail.unmeasuredShort")}</span>}
+      </span>
+    </button>
   );
 }
 
-function StripColumn({ sessions, flyout, state, t }: { readonly sessions: readonly ContextRailSession[]; readonly flyout: string | null; readonly state: ContextRailState; readonly t: Translate }) {
+/** 지름 40px 링. 측정 전에는 채움 없이 점선만 그린다. */
+function ContextRing({ ratio, unmeasured }: { readonly ratio: number; readonly unmeasured: boolean }) {
+  const radius = 17;
+  const circumference = 2 * Math.PI * radius;
+  const filled = Math.max(0, Math.min(1, ratio)) * circumference;
   return (
-    <aside className="context-rail is-strip" aria-label={t("conversation.rail.title")}>
-      {sessions.map((session) => {
-        const label = chipLabel(session, t);
-        return (
-          <div className="context-rail-chip-wrap" key={session.id}>
-            <button
-              type="button"
-              className={`context-rail-chip${session.measure?.stale ? " is-stale" : ""}${toneOf(session.measure)}`}
-              data-context-rail-keep
-              aria-expanded={flyout === session.id}
-              aria-label={label}
-              title={label}
-              onClick={() => setContextFlyout(flyout === session.id ? null : session.id)}
-            >
-              <ContextArc ratio={ratioOf(session.measure)} size={18} />
-              <strong>{session.measure ? `${percentOf(session.measure)}%` : "—"}</strong>
-              <span className="context-rail-chip-name">{session.name.slice(0, 2)}</span>
-            </button>
-            {flyout === session.id ? (
-              <div className="context-rail-fly is-strip" data-context-rail-keep>
-                <ContextCard session={session} open forced state={state} t={t} />
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </aside>
+    <svg className="context-rail-ring-arc" viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+      {unmeasured ? (
+        <circle className="context-rail-ring-track is-dashed" cx="20" cy="20" r={radius} strokeDasharray="2 3" />
+      ) : (
+        <>
+          <circle className="context-rail-ring-track" cx="20" cy="20" r={radius} />
+          <circle className="context-rail-ring-fill" cx="20" cy="20" r={radius} strokeLinecap="round" strokeDasharray={`${filled.toFixed(2)} ${circumference.toFixed(2)}`} />
+        </>
+      )}
+    </svg>
   );
 }
-
-/** 제목이 이 폭 아래로 줄면(또는 pill 이 제목을 접으면) 칩을 합치고, 그래도 모자라면 머리 줄을 비운다. */
-const TITLE_MIN = 110;
-
-/**
- * 머리 칩이 제목을 밀어내는지 본다. 단계(폭)나 세션 수가 바뀔 때마다 풀어서 다시 재고, 밀어냈으면 합친 채로 둔다 — 합친 뒤의
- * 제목 폭은 칩이 줄어든 결과이므로 그 값으로 다시 풀지 않는다(깜빡임 방지).
- */
-function useTitleYield(probe: React.RefObject<HTMLElement | null>, active: boolean, width: number, sessions: number): 0 | 1 | 2 {
-  const [level, setLevel] = React.useState<0 | 1 | 2>(0);
-  React.useLayoutEffect(() => { setLevel(0); }, [active, width, sessions]);
-  // 머리 칩 단계에서는 제목 pill 이 가운데에 묶이지 않고 칸 왼쪽부터 남는 폭을 쓴다(CSS 가 이 표식을 읽는다). 제목이 잘려야 하면
-  // 보조 글자(「· 구성원 1」)는 조각으로 남기지 않고 통째로 숨긴다 — 숨긴 뒤에는 폭이 바뀔 때까지 그대로 둔다(깜빡임 방지).
-  React.useLayoutEffect(() => {
-    if (!active) return;
-    const column = probe.current?.closest<HTMLElement>(".conversation-column");
-    const pill = column?.querySelector<HTMLElement>(":scope > .conversation-pill-row > .conversation-pill");
-    if (!column || !pill) return;
-    column.setAttribute("data-rail-head", "");
-    pill.removeAttribute("data-rail-sub-hidden");
-    // 셸의 도구 예약은 「⋯」가 서기 전의 캡슐 폭으로 잴 때가 있어 칩이 붙은 캡슐 아래로 알약이 파고든다. 칩이 선 단계에서는 실제 캡슐 폭을
-    // 따로 지켜 준다 — 알약과 캡슐 사이에 최소 12px.
-    const row = pill.parentElement;
-    const tools = document.querySelector<HTMLElement>(".conversation-pill-tools");
-    const reserve = () => {
-      if (!row || !tools) return;
-      const right = Number.parseFloat(getComputedStyle(tools).right) || 0;
-      row.style.setProperty("--rail-head-reserve", `${Math.ceil(tools.getBoundingClientRect().width + right + 12)}px`);
-    };
-    reserve();
-    const toolsObserver = tools ? new ResizeObserver(reserve) : null;
-    if (tools) toolsObserver?.observe(tools);
-    let subWidth = 0;
-    const check = () => {
-      const title = pill.querySelector<HTMLElement>(".conversation-pill-title");
-      const sub = pill.querySelector<HTMLElement>(".conversation-pill-sub");
-      if (title === null) return;
-      if (!pill.hasAttribute("data-rail-sub-hidden")) {
-        if (title.scrollWidth > title.clientWidth + 1) { subWidth = sub?.offsetWidth ?? 0; pill.setAttribute("data-rail-sub-hidden", ""); }
-        return;
-      }
-      // 숨긴 뒤에도 남는 자리가 보조 글자 폭보다 넉넉하면(순간적인 측정으로 숨겼을 수 있다) 다시 보인다. 여유를 둬서 오가지 않게 한다.
-      const tools = document.querySelector<HTMLElement>(".conversation-pill-tools");
-      if (subWidth > 0 && tools !== null && title.scrollWidth <= title.clientWidth + 1 && tools.getBoundingClientRect().left - pill.getBoundingClientRect().right > subWidth + 24) pill.removeAttribute("data-rail-sub-hidden");
-    };
-    check();
-    const observer = new ResizeObserver(check);
-    observer.observe(pill);
-    return () => { observer.disconnect(); toolsObserver?.disconnect(); row?.style.removeProperty("--rail-head-reserve"); column.removeAttribute("data-rail-head"); pill.removeAttribute("data-rail-sub-hidden"); };
-  }, [probe, active, width, sessions]);
-  React.useLayoutEffect(() => {
-    if (!active || level === 2) return;
-    // 제목 pill 은 이 대화 칸 머리 줄에 있다(도구 캡슐은 칸 밖 띠로 포털되므로 칸에서 찾는다).
-    const pill = probe.current?.closest(".conversation-column")?.querySelector<HTMLElement>(":scope > .conversation-pill-row > .conversation-pill");
-    if (!pill) return;
-    const check = () => {
-      const title = pill.querySelector<HTMLElement>(".conversation-pill-title");
-      const squeezed = pill.getAttribute("data-compact") === "true" || (title !== null && title.clientWidth < TITLE_MIN);
-      if (squeezed) setLevel((current) => current === 0 ? 1 : 2);
-    };
-    check();
-    const observer = new ResizeObserver(check);
-    observer.observe(pill);
-    const mutation = new MutationObserver(check);
-    mutation.observe(pill, { attributes: true, attributeFilter: ["data-compact"] });
-    return () => { observer.disconnect(); mutation.disconnect(); };
-  }, [probe, active, level, width, sessions]);
-  return level;
-}
-
-function headChipCount(total: number): number {
-  return total > HEAD_CHIPS ? HEAD_CHIPS - 1 : total;
-}
-
-function HeadChips({ sessions, shown: shownCount, flyout, t }: { readonly sessions: readonly ContextRailSession[]; readonly shown: number; readonly flyout: string | null; readonly t: Translate }) {
-  const shown = sessions.slice(0, shownCount);
-  const more = sessions.length - shown.length;
-  return (
-    <span className="context-rail-head-chips">
-      {shown.map((session) => {
-        const label = chipLabel(session, t);
-        return (
-          <button
-            key={session.id}
-            type="button"
-            className={`context-rail-hchip${session.measure?.stale ? " is-stale" : ""}${toneOf(session.measure)}`}
-            data-context-rail-keep
-            aria-expanded={flyout === session.id}
-            aria-label={label}
-            title={label}
-            onClick={() => setContextFlyout(flyout === session.id ? null : session.id)}
-          >
-            <ContextArc ratio={ratioOf(session.measure)} size={14} />
-            {/* 짧은 이름 — 지휘관은 정해진 짧은 말, 나머지는 이름을 폭으로 말줄임한다. 자리가 모자라면 칩이 먼저 합쳐지고(+N) 이름째 물러난다. */}
-            <span className="context-rail-hchip-name">{session.role === "commander" ? t("conversation.rail.chipCommander") : session.name}</span>
-          </button>
-        );
-      })}
-      {more > 0 ? (
-        <button
-          type="button"
-          className="context-rail-hchip"
-          data-context-rail-keep
-          aria-expanded={flyout === MORE_ID}
-          aria-label={shownCount === 0 ? t("conversation.rail.title") : t("conversation.rail.moreAria", { count: String(more) })}
-          title={shownCount === 0 ? t("conversation.rail.title") : undefined}
-          onClick={() => setContextFlyout(flyout === MORE_ID ? null : MORE_ID)}
-        >
-          {shownCount === 0 ? <ContextArc ratio={ratioOf(sessions[0]?.measure ?? null)} size={14} /> : null}
-          {shownCount === 0 ? more : `+${more}`}
-        </button>
-      ) : null}
-    </span>
-  );
-}
-
-/** 머리 칩의 `+n`이 여는 카드 묶음의 자리. 세션 id와 겹치지 않는다. */
-const MORE_ID = "\u0000more";
 
 export function chipLabel(session: ContextRailSession, t: Translate): string {
   if (!session.measure) return t("conversation.rail.chipUnmeasured", { name: session.name });
@@ -347,6 +225,27 @@ function formatTokens(tokens: number): string {
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
 }
 
+/** 큰 사용량 줄의 점유 — 만 단위도 소수 한 자리를 남겨 125.9k 가 126k 로 둥글어지지 않게 한다. */
+function formatPreciseTokens(tokens: number): string {
+  if (tokens >= 1_000_000 || tokens < 1_000) return formatTokens(tokens);
+  const text = (tokens / 1_000).toFixed(1);
+  return `${text.endsWith(".0") ? text.slice(0, -2) : text}k`;
+}
+
+/** 호스트가 보내는 범주 이름. 모르면 회색이다. */
+const CATEGORY_CLASS: Readonly<Record<string, string>> = {
+  Messages: "is-messages",
+  "MCP tools": "is-mcp",
+  "System prompt": "is-prompt",
+  Skills: "is-skills",
+  "System tools": "is-tools",
+  "MCP server instructions": "is-instructions",
+};
+
+function categoryClass(name: string): string {
+  return CATEGORY_CLASS[name] ?? "is-other";
+}
+
 export function ContextCard({ session, open, forced, state, t }: {
   readonly session: ContextRailSession;
   readonly open: boolean;
@@ -366,14 +265,13 @@ export function ContextCard({ session, open, forced, state, t }: {
     >
       {forced ? (
         <div className="context-rail-card-head is-static">
-          <span className="context-rail-glyph" aria-hidden="true">{glyphOf(session.role)}</span>
           <span className="context-rail-card-name">{session.name}</span>
-          <span className="context-rail-card-sum">{summary}</span>
+          {/* 측정값이 있으면 큰 사용량 줄이 요약을 대신한다. 측정 전만 머리 줄에 짧은 말을 남긴다. */}
+          {measure ? null : <span className="context-rail-card-sum">{summary}</span>}
         </div>
       ) : (
         <button type="button" className="context-rail-card-head" aria-expanded={shown} aria-controls={bodyId} onClick={() => toggleContextCard(session.id, session.focus)}>
           <span className="context-rail-chev" aria-hidden="true">{shown ? "▾" : "▸"}</span>
-          <span className="context-rail-glyph" aria-hidden="true">{glyphOf(session.role)}</span>
           <span className="context-rail-card-name">{session.name}</span>
           <span className="context-rail-card-sum">{summary}</span>
         </button>
@@ -385,10 +283,6 @@ export function ContextCard({ session, open, forced, state, t }: {
       ) : null}
     </section>
   );
-}
-
-function glyphOf(role: ContextRailSession["role"]): string {
-  return role === "commodore" ? "☁" : role === "commander" ? "✿" : "◆";
 }
 
 function ContextBody({ sessionId, measure, footnote, state, t }: {
@@ -406,19 +300,25 @@ function ContextBody({ sessionId, measure, footnote, state, t }: {
   const pending = hasBreakdown ? Math.max(0, measure.occupied - measured) : 0;
   const free = Math.max(0, measure.max - measure.occupied - reserved);
   const share = (tokens: number) => `${((tokens / measure.max) * 100).toFixed(1)}%`;
+  const widthOf = (tokens: number) => ({ width: `${(tokens / measure.max) * 100}%` });
   return (
     <>
+      <div className="context-rail-big">
+        <strong>{t("conversation.rail.usedBig", { percent: String(percentOf(measure)) })}</strong>
+        <span>{formatPreciseTokens(measure.occupied)} / {formatTokens(measure.max)}</span>
+      </div>
       <div className="context-rail-bar" role="img" aria-label={summaryOf(measure)}>
         {hasBreakdown
-          ? rows.map((row, index) => <i key={row.name} style={{ width: `${(row.tokens / measure.max) * 100}%`, "--context-rail-step": String(Math.min(index, 5)) } as React.CSSProperties} />)
-          : <i style={{ width: `${(measure.occupied / measure.max) * 100}%`, "--context-rail-step": "0" } as React.CSSProperties} />}
-        {pending > 0 ? <i className="is-pending" style={{ width: `${(pending / measure.max) * 100}%` }} /> : null}
+          ? rows.map((row) => <i key={row.name} className={categoryClass(row.name)} style={widthOf(row.tokens)} />)
+          : <i className="is-other" style={widthOf(measure.occupied)} />}
+        {pending > 0 ? <i className="is-pending" style={widthOf(pending)} /> : null}
+        {reserved > 0 ? <i className="is-reserved" style={widthOf(reserved)} /> : null}
       </div>
       <ul className="context-rail-rows">
         {hasBreakdown
-          ? rows.map((row, index) => (
+          ? rows.map((row) => (
             <li key={row.name}>
-              <span className="context-rail-swatch" style={{ "--context-rail-step": String(Math.min(index, 5)) } as React.CSSProperties} aria-hidden="true" />
+              <span className={`context-rail-swatch ${categoryClass(row.name)}`} aria-hidden="true" />
               <span className="context-rail-name" title={row.name}>{row.name}</span>
               <span className="context-rail-tokens">{formatTokens(row.tokens)}</span>
               <span className="context-rail-share">{share(row.tokens)}</span>
@@ -426,7 +326,7 @@ function ContextBody({ sessionId, measure, footnote, state, t }: {
           ))
           : (
             <li>
-              <span className="context-rail-swatch" style={{ "--context-rail-step": "0" } as React.CSSProperties} aria-hidden="true" />
+              <span className="context-rail-swatch is-other" aria-hidden="true" />
               <span className="context-rail-name">{t("conversation.rail.used")}</span>
               <span className="context-rail-tokens">{formatTokens(measure.occupied)}</span>
               <span className="context-rail-share">{share(measure.occupied)}</span>
@@ -441,14 +341,14 @@ function ContextBody({ sessionId, measure, footnote, state, t }: {
           </li>
         ) : null}
         {reserved > 0 ? (
-          <li className="is-free">
-            <span className="context-rail-swatch is-free" aria-hidden="true" />
+          <li className="is-gap">
+            <span className="context-rail-swatch is-reserved" aria-hidden="true" />
             <span className="context-rail-name">{t("conversation.rail.reserved")}</span>
             <span className="context-rail-tokens">{formatTokens(reserved)}</span>
             <span className="context-rail-share">{share(reserved)}</span>
           </li>
         ) : null}
-        <li className="is-free">
+        <li className={`is-free${reserved > 0 ? "" : " is-gap"}`}>
           <span className="context-rail-swatch is-free" aria-hidden="true" />
           <span className="context-rail-name">{t("conversation.rail.free")}</span>
           <span className="context-rail-tokens">{formatTokens(free)}</span>
@@ -557,7 +457,7 @@ function serverGlyph(name: string): string {
   return match ? match[0].toUpperCase() : "·";
 }
 
-/** 원호 하나 — 눈금도 라벨도 없이 규모만 세운다. */
+/** 원호 하나 — 눈금도 라벨도 없이 규모만 세운다. 모바일·인라인 칩이 쓴다. */
 export function ContextArc({ ratio, size }: { readonly ratio: number; readonly size: number }) {
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
@@ -570,11 +470,12 @@ export function ContextArc({ ratio, size }: { readonly ratio: number; readonly s
   );
 }
 
+/** 떠 있는 창 — 둥근 테두리 안 우측 위에 작은 채워진 사각형. */
 export function RailGlyph() {
   return (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-      <rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M10 3.5v9" stroke="currentColor" strokeWidth="1.4" />
+    <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+      <rect x="2.5" y="3" width="15" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="10.5" y="6" width="4.5" height="5" rx="1.2" fill="currentColor" stroke="none" />
     </svg>
   );
 }

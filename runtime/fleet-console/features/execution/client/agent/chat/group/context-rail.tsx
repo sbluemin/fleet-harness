@@ -2,6 +2,8 @@ import * as React from "react";
 
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../../../../core/client/src/i18n/index.js";
+import { ObjectiveAvatar, objectiveRecordMongleState } from "../../../../../workspace/client/avatars.js";
+import { useConversationClusters } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { registerContextRailProvider, type ContextRailProvider } from "../../../../../workspace/client/conversation/context-rail/registry.js";
 import type { ContextRailMeasure, ContextRailSession } from "../../../../../workspace/shared/context-rail.js";
 import type { AgentChatContext } from "../chat-events.js";
@@ -14,9 +16,17 @@ import { useGroupClusters, useParticipantContexts } from "../group-timeline-stor
 const ObjectiveContextRail: ContextRailProvider = ({ scope, children }) => {
   const t = useT();
   const state = useConsoleState();
+  const faceClusters = useConversationClusters();
   const clusters = useGroupClusters();
   const root = scope.kind === "objective" ? scope.objectiveId : null;
   const contexts = useParticipantContexts(root);
+  const faceOf = (id: string, role: "commander" | "member") => {
+    const record = state.nestedObjectiveRecords.find((item) => item.id === id) ?? state.objectiveRecords.find((item) => item.id === id);
+    const objectiveRecord = record ?? { id, ...(role === "member" && root ? { parentObjectiveId: root } : {}) };
+    // 시작 전(fresh) 반투명은 사이드바·타임라인의 수명 표현이다. 칩은 측정 전을 점선 링과 — 로만 말하므로 여기서만 쉼 얼굴로 그린다.
+    const face = objectiveRecordMongleState(id, state, faceClusters);
+    return <ObjectiveAvatar objectiveRecord={objectiveRecord} state={face === "fresh" ? "idle" : face} size={26} label="" decorative />;
+  };
   if (scope.kind !== "objective" || root === null) return null;
   const rootRecord = state.objectiveRecords.find((record) => record.id === root);
   if (!rootRecord || rootRecord.chatMode !== true) return null;
@@ -28,17 +38,18 @@ const ObjectiveContextRail: ContextRailProvider = ({ scope, children }) => {
     role: "commander",
     measure: measureOf(contexts.get(root) ?? null),
     focus: scope.bodyObjectiveId === root,
+    avatar: faceOf(root, "commander"),
   }];
   const seen = new Set<string>([root]);
   for (const member of board?.members ?? []) {
     if (!member.objectiveId || seen.has(member.objectiveId)) continue;
     seen.add(member.objectiveId);
-    sessions.push({ id: member.objectiveId, name: member.name, role: "member", measure: measureOf(contexts.get(member.objectiveId) ?? null), focus: scope.bodyObjectiveId === member.objectiveId });
+    sessions.push({ id: member.objectiveId, name: member.name, role: "member", measure: measureOf(contexts.get(member.objectiveId) ?? null), focus: scope.bodyObjectiveId === member.objectiveId, avatar: faceOf(member.objectiveId, "member") });
   }
   for (const record of nested) {
     if (seen.has(record.id)) continue;
     seen.add(record.id);
-    sessions.push({ id: record.id, name: record.title, role: "member", measure: measureOf(contexts.get(record.id) ?? null), focus: scope.bodyObjectiveId === record.id });
+    sessions.push({ id: record.id, name: record.title, role: "member", measure: measureOf(contexts.get(record.id) ?? null), focus: scope.bodyObjectiveId === record.id, avatar: faceOf(record.id, "member") });
   }
   return <>{children(sessions)}</>;
 };
