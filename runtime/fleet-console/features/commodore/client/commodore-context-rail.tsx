@@ -3,7 +3,9 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { registerContextRailProvider, type ContextRailProvider } from "../../workspace/client/conversation/context-rail/registry.js";
 import type { ContextRailMeasure } from "../../workspace/shared/context-rail.js";
+import type { MongleState } from "../../workspace/shared/avatars.js";
 import type { CommodoreRunStatus } from "../shared/contracts/types.js";
+import { CommodoreAvatar } from "./commodore-avatar.js";
 import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
 import { useCommodoreName } from "./commodore-name.js";
 import { commodoreName } from "./commodore-name.js";
@@ -28,7 +30,15 @@ const CommodoreContextRail: ContextRailProvider = ({ scope, children }) => {
   const measure = measureOf(view?.run?.context);
   // 사령관은 대화가 창의 일정 비율에 닿으면 요약해 같은 세션에서 이어 간다 — 그 정책은 그대로이고 꼬리 문구가 말한다.
   const footnote = measure?.compactAt !== undefined ? getT(language)("commodore.context.foot", { percent: Math.round((measure.compactAt / measure.max) * 100) }) : undefined;
-  return <>{children([{ id: commodoreId, name, role: "commodore", measure, focus: true, ...(footnote ? { footnote } : {}) }])}</>;
+  return <>{children([{
+    id: commodoreId,
+    name,
+    role: "commodore",
+    measure,
+    focus: true,
+    avatar: <CommodoreAvatar commodoreId={commodoreId} state={railMongleState(view)} size={26} label="" decorative />,
+    ...(footnote ? { footnote } : {}),
+  }])}</>;
 };
 
 /**
@@ -44,13 +54,17 @@ const TaskforceContextRail: ContextRailProvider = ({ scope, children }) => {
   const revision = useSyncExternalStore(subscribeCommodoreRevision, getCommodoreRevision, getCommodoreRevision);
   const sessions = useMemo(() => {
     const t = getT(language);
-    return (members ?? []).map((id) => ({
-      id,
-      name: commodoreName(id, t),
-      role: "commodore" as const,
-      measure: measureOf(readCommodore(id).view?.run?.context),
-      focus: false,
-    }));
+    return (members ?? []).map((id) => {
+      const view = readCommodore(id).view;
+      return {
+        id,
+        name: commodoreName(id, t),
+        role: "commodore" as const,
+        measure: measureOf(view?.run?.context),
+        focus: false,
+        avatar: <CommodoreAvatar commodoreId={id} state={railMongleState(view)} size={26} label="" decorative />,
+      };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- revision 이 사령관 상태의 변화를 알린다.
   }, [members, revision, language]);
   if (taskforceId === null || sessions.length === 0) return null;
@@ -69,6 +83,14 @@ function subscribeCommodoreRevision(listener: () => void): () => void {
   };
 }
 const getCommodoreRevision = () => commodoreRevision;
+
+/** 칩 얼굴의 상태. 턴이면 작업 중, 실패·재시도면 오류, 아니면 쉼이다. */
+function railMongleState(view: { readonly run: { readonly phase: string } } | null | undefined): MongleState {
+  if (!view) return "idle";
+  if (view.run.phase === "error" || view.run.phase === "retrying") return "error";
+  if (view.run.phase === "turn") return "running";
+  return "idle";
+}
 
 /** 호스트가 알려 준 컨텍스트를 레일 카드의 측정으로. 내역을 얻지 못한 세션(Gateway 모델 등)은 총량만 그린다. */
 export function measureOf(context: CommodoreRunStatus["context"]): ContextRailMeasure | null {

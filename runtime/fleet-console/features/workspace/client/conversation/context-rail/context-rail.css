@@ -1,5 +1,6 @@
-/* 컨텍스트 레일 — 대화 본문 옆의 컨텍스트 창 상세. 배치는 대화 칸의 실제 폭이 정한다(카드 열 ≥980, 칩 띠 ≥620, 머리 칩 그 밑).
-   카테고리는 색이 아니라 명도로 갈린다 — Console 채널 규칙에서 색은 상태만 나른다. */
+/* 컨텍스트 창 — 채팅 우측 위(머리 아래)에 뜨는 아바타 링. 폭으로 단계를 나누지 않고 본문을 밀지 않는다.
+   범주 채움은 상태 채널이 아니다. 테마 토큰(--context-cat-*)이 종류를 말한다. */
+
 .conversation-main {
   position: relative;
   flex: 1;
@@ -10,32 +11,23 @@
 
 .conversation-main > .conversation-body { min-width: 0; }
 
-.context-rail {
-  --context-rail-ink: var(--ink-fog);
-  flex: none;
-  box-sizing: border-box;
-  /* 맨 위 투명 줄 밑에서 시작한다 — 머리 pill·도구가 떠 있는 줄에 가려지지 않게. */
-  padding: var(--conversation-top-row, 52px) var(--space-3) var(--space-3) 0;
-  display: grid;
-  align-content: start;
-  grid-template-columns: minmax(0, 1fr);
+/* 오버레이는 머리 아래 8px, 오른쪽 12px. 높이를 바닥까지 잡아 카드의 max-height 기준이 된다.
+   빈 자리는 클릭을 채팅에 넘긴다. */
+.context-rail-overlay {
+  position: absolute;
+  z-index: 4;
+  top: calc(var(--conversation-top-row, 52px) + var(--space-2));
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: var(--space-2);
-  overflow-x: hidden;
-  overflow-y: auto;
-  font-family: var(--font-ui);
-  font-variant-numeric: tabular-nums;
-  background: var(--conversation-surface, var(--canvas-abyss));
+  width: 58px;
+  pointer-events: none;
 }
 
-.context-rail.is-dock { width: 236px; }
-.context-rail.is-strip { width: 52px; padding-right: var(--space-2); gap: var(--space-2); overflow: visible; }
-
-.context-rail-title {
-  padding: 2px 2px 0;
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  color: var(--text-secondary);
-}
+.context-rail-chip-slot { position: relative; }
 
 .context-rail-card {
   --context-rail-ink: var(--ink-fog);
@@ -76,7 +68,6 @@
 .context-rail-card-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .context-rail-card-sum { margin-left: auto; flex: none; font-family: var(--font-code); font-size: var(--t-2xs); font-weight: normal; color: var(--context-rail-ink); }
 .context-rail-chev { flex: none; width: 10px; font-size: var(--t-2xs); color: var(--text-tertiary); }
-.context-rail-glyph { flex: none; }
 .context-rail-card-body { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: var(--space-2); }
 .context-rail-muted { margin: 0; color: var(--text-tertiary); }
 
@@ -89,16 +80,30 @@
 }
 
 .context-rail-bar > i,
-.context-rail-swatch {
-  --context-rail-fill: color-mix(in oklab, var(--ink-spectral) calc(100% - var(--context-rail-step, 0) * 15%), var(--ink-veil));
-}
+.context-rail-swatch { background: var(--context-cat-other); }
 
-.context-rail-bar > i { display: block; height: 100%; background: var(--context-rail-fill); transition: width var(--duration-fast); }
+.context-rail-bar > i.is-messages,
+.context-rail-swatch.is-messages { background: var(--context-cat-messages); }
+.context-rail-bar > i.is-mcp,
+.context-rail-swatch.is-mcp { background: var(--context-cat-mcp); }
+.context-rail-bar > i.is-prompt,
+.context-rail-swatch.is-prompt { background: var(--context-cat-prompt); }
+.context-rail-bar > i.is-skills,
+.context-rail-swatch.is-skills { background: var(--context-cat-skills); }
+.context-rail-bar > i.is-tools,
+.context-rail-swatch.is-tools { background: var(--context-cat-tools); }
+.context-rail-bar > i.is-instructions,
+.context-rail-swatch.is-instructions { background: var(--context-cat-instructions); }
+.context-rail-bar > i.is-reserved,
+.context-rail-swatch.is-reserved { background: var(--context-cat-reserved); }
+
+.context-rail-bar > i { display: block; height: 100%; transition: width var(--duration-fast); }
 
 .context-rail-rows { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
 .context-rail-rows li { display: flex; align-items: center; gap: var(--space-2); }
 .context-rail-rows.is-sub { padding-left: 14px; }
-.context-rail-swatch { width: 9px; height: 9px; flex: none; border-radius: 2px; background: var(--context-rail-fill); }
+.context-rail-rows li.is-gap { margin-top: 6px; }
+.context-rail-swatch { width: 9px; height: 9px; flex: none; border-radius: 2px; }
 .context-rail-swatch.is-free { background: transparent; border: 1px dashed var(--hairline-strong); }
 
 /* 아직 분해를 모르는 몫 — 채움(측정된 카테고리)도 빈칸(남은 자리)도 아닌 셋째 상태라 셋째 무늬를 진다. */
@@ -145,61 +150,130 @@
 
 .context-rail-foot { margin: 0; padding-top: var(--space-2); border-top: 1px solid var(--hairline); font-size: var(--t-2xs); color: var(--text-tertiary); }
 
-/* 원호 — 칩과 머리 칩이 쓴다. 채움은 상태 잉크를 따른다. */
+/* 원호 — 모바일·인라인 칩이 쓴다. 채움은 상태 잉크를 따른다. */
 .context-rail-arc { flex: none; transform: rotate(-90deg); }
 .context-rail-arc circle { fill: none; stroke-width: 3; }
 .context-rail-arc-track { stroke: var(--ink-veil); }
 .context-rail-arc-fill { stroke: var(--context-rail-ink); transition: stroke-dasharray var(--duration-fast); }
 
-/* 위치 기준이 아니다 — 떠 있는 카드의 높이 비율이 칩 감싸개(몇십 px)가 아니라 대화 칸(.conversation-main)을 기준으로 잡히게 한다. */
-.context-rail-chip-wrap { position: static; }
+/* 칩 — 58×64, 지름 40 링 안에 26px 얼굴, 아래에 % 한 줄. 이름은 말풍선으로만 나온다.
+   hover·키보드 초점은 승인 시안의 청록 고리(--context-rail-accent)다. 일반 컨트롤의 워시 초점과 달리
+   이 칩만 링 색과 함께 같은 하이라이트를 쓴다. */
 .context-rail-chip {
-  --context-rail-ink: var(--ink-fog);
-  width: 100%;
-  min-height: 54px;
+  --context-rail-ink: var(--text-primary);
+  position: relative;
+  width: 58px;
+  height: 64px;
+  box-sizing: border-box;
   display: grid;
-  place-items: center;
+  justify-items: center;
   align-content: center;
   gap: 1px;
-  padding: 4px 0;
+  padding: 4px 0 3px;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface-capsule);
-  color: var(--text-secondary);
-  font-size: var(--t-2xs);
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--surface-capsule) 86%, transparent);
+  backdrop-filter: blur(10px);
+  color: var(--text-primary);
+  font: inherit;
   line-height: 1.2;
   cursor: pointer;
+  pointer-events: auto;
+  transition: background var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
-.context-rail-chip strong { color: var(--text-primary); font-family: var(--font-code); font-weight: normal; }
-.context-rail-chip-name { color: var(--text-tertiary); }
+.context-rail-chip.is-warn { --context-rail-ink: var(--warn); }
+.context-rail-chip.is-critical { --context-rail-ink: var(--coral); }
+.context-rail-chip.is-stale { opacity: 0.55; }
+.context-rail-chip:hover,
+.context-rail-chip:focus-visible {
+  background: color-mix(in oklch, var(--surface-panel-raised) 92%, transparent);
+  border-color: color-mix(in oklch, var(--text-primary) 26%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--context-rail-accent) 18%, transparent);
+  outline: none;
+}
 .context-rail-chip[aria-expanded="true"],
-.context-rail-hchip[aria-expanded="true"] { border-color: var(--hairline-strong); background: var(--brass-glow); }
-.context-rail-chip:focus-visible,
-.context-rail-hchip:focus-visible,
-.context-rail-toggle:focus-visible { box-shadow: var(--focus-face); outline: none; }
-.context-rail-chip.is-warn, .context-rail-hchip.is-warn { --context-rail-ink: var(--warn); }
-.context-rail-chip.is-critical, .context-rail-hchip.is-critical { --context-rail-ink: var(--coral); }
-.context-rail-chip.is-stale, .context-rail-hchip.is-stale { opacity: 0.55; }
+.context-rail-chip[aria-expanded="true"]:hover,
+.context-rail-chip[aria-expanded="true"]:focus-visible { border-color: var(--context-rail-accent); }
+.context-rail-pct { font-family: var(--font-code); font-size: var(--t-xs); font-weight: var(--weight-medium); }
+.context-rail-pct.is-none { color: var(--text-tertiary); font-weight: var(--weight-regular); }
 
-/* 칩 띠의 카드는 칩 왼쪽으로, 머리 칩의 카드는 대화 머리 아래 오른쪽 끝으로 뜬다. */
+.context-rail-ring { position: relative; width: 40px; height: 40px; }
+.context-rail-ring-arc { position: absolute; inset: 0; transform: rotate(-90deg); }
+.context-rail-ring-arc circle { fill: none; stroke-width: 3; }
+.context-rail-ring-track { stroke: color-mix(in oklch, var(--text-primary) 10%, transparent); }
+.context-rail-ring-track.is-dashed { stroke: var(--text-tertiary); }
+.context-rail-ring-fill { stroke: var(--context-rail-ink); transition: stroke var(--duration-fast); }
+.context-rail-chip:hover .context-rail-ring-fill,
+.context-rail-chip:focus-visible .context-rail-ring-fill { stroke: var(--context-rail-accent); }
+.context-rail-ring-face {
+  position: absolute;
+  inset: 7px;
+  display: grid;
+  place-items: center;
+  transition: transform var(--duration-fast);
+}
+.context-rail-chip:hover .context-rail-ring-face,
+.context-rail-chip:focus-visible .context-rail-ring-face { transform: scale(1.08); }
+
+/* 말풍선 — 아바타 쪽 꼬리가 칩 왼쪽에 붙는다. 상세 카드가 열려 있으면 숨긴다. */
+.context-rail-bubble {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 8px;
+  z-index: 1;
+  display: grid;
+  gap: 1px;
+  white-space: nowrap;
+  padding: 7px 11px;
+  border-radius: 12px 12px 4px 12px;
+  background: var(--text-primary);
+  color: var(--ink-abyss);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  line-height: 1.35;
+  text-align: left;
+  box-shadow: var(--popover-surface-shadow);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity var(--duration-fast), transform var(--duration-fast);
+}
+.context-rail-bubble::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 12px;
+  border: 6px solid transparent;
+  border-left-color: var(--text-primary);
+  border-right: 0;
+}
+.context-rail-bubble-usage { font-family: var(--font-code); font-size: var(--t-xs); font-weight: var(--weight-regular); color: color-mix(in oklch, var(--ink-abyss) 72%, var(--text-primary)); }
+.context-rail-chip:hover .context-rail-bubble,
+.context-rail-chip:focus-visible .context-rail-bubble { opacity: 1; transform: none; }
+.context-rail-chip[aria-expanded="true"] .context-rail-bubble,
+.context-rail-chip[aria-expanded="true"]:hover .context-rail-bubble,
+.context-rail-chip[aria-expanded="true"]:focus-visible .context-rail-bubble { opacity: 0; visibility: hidden; }
+
+@media (forced-colors: active) {
+  .context-rail-chip:focus-visible { outline: 2px solid CanvasText; box-shadow: none; }
+}
+
+/* 상세 카드는 누른 칩의 왼쪽. top·max-height 는 그 칩의 자리에서 넣는다. */
 .context-rail-fly {
   position: absolute;
   z-index: 6;
+  right: calc(100% + 10px);
   display: grid;
   gap: var(--space-2);
-  width: 236px;
-  max-height: calc(100% - var(--conversation-top-row, 52px));
+  width: min(300px, calc(100vw - 120px));
   overflow-y: auto;
   border-radius: var(--popover-radius);
   box-shadow: var(--popover-surface-shadow);
+  pointer-events: auto;
 }
-.context-rail-fly.is-strip { top: var(--conversation-top-row, 52px); right: calc(52px + var(--space-3)); max-height: calc(100% - var(--conversation-top-row, 52px) - var(--space-3)); }
-.context-rail-fly.is-head { top: var(--conversation-top-row, 52px); right: var(--space-3); width: 260px; }
-.context-rail-fly.is-head.is-float { top: calc(var(--conversation-top-row, 52px) + 36px); }
 
-/* 대화 머리 오른쪽 끝의 자리 — ▥ 단추와(머리 칩 단계에서) 원호 칩. 도구 캡슐 안에 서므로 캡슐이 자리를 센다. */
+/* 대화 머리 오른쪽 끝의 자리 — 창을 켜고 끄는 단추. 도구 캡슐 안에 서므로 캡슐이 자리를 센다. */
 .conversation-rail-slot { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; }
-.context-rail-head-chips { display: inline-flex; align-items: center; gap: var(--space-1); }
 .context-rail-hchip {
   --context-rail-ink: var(--ink-fog);
   display: inline-flex;
@@ -214,6 +288,12 @@
   white-space: nowrap;
   cursor: pointer;
 }
+.context-rail-hchip:focus-visible,
+.context-rail-toggle:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.context-rail-hchip[aria-expanded="true"] { border-color: var(--hairline-strong); background: var(--brass-glow); }
+.context-rail-hchip.is-warn { --context-rail-ink: var(--warn); }
+.context-rail-hchip.is-critical { --context-rail-ink: var(--coral); }
+.context-rail-hchip.is-stale { opacity: 0.55; }
 .context-rail-toggle {
   display: inline-grid;
   place-items: center;
@@ -231,7 +311,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .context-rail-bar > i,
-  .context-rail-arc-fill { transition: none; }
+  .context-rail-arc-fill,
+  .context-rail-chip,
+  .context-rail-ring-fill,
+  .context-rail-ring-face,
+  .context-rail-bubble { transition: none; }
 }
 
 /* 모바일: 대화 머리의 칩과 단추는 터치 과녁 크기를 지키고, 시트 안의 카드는 세로로 쌓는다. */
@@ -240,29 +324,6 @@
 .context-rail-sheet { display: grid; gap: var(--space-3); padding-bottom: var(--space-3); }
 .context-rail-sheet .context-rail-card { font-size: var(--t-sm); }
 
-/* 머리 줄에 자리가 없을 때 칩과 ▥ 단추가 내려앉는 줄 — 머리 바로 아래 오른쪽 끝에 떠 있다. */
-.context-rail-float {
-  position: absolute;
-  z-index: 5;
-  top: var(--conversation-top-row, 52px);
-  right: var(--space-3);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 2px 4px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: var(--surface-capsule);
-}
-
 /* 레일이 없는 화면(Inbox 시트)의 칩 — 입력창 위 오른쪽 끝에 서고, 카드는 위로 뜬다. */
 .context-rail-inline { position: relative; display: flex; justify-content: flex-end; padding-bottom: var(--space-2); }
 .context-rail-fly.is-inline { top: auto; bottom: calc(100% - var(--space-2)); right: 0; width: 260px; max-height: 60vh; }
-
-/* 머리 칩 단계 — 제목 pill 은 칸 왼쪽부터 남는 폭을 쓴다(가운데에 묶이면 왼쪽이 비는데도 제목이 잘린다). 도구 몫은 오른쪽에 그대로 비운다. */
-.conversation-column[data-rail-head] > .conversation-pill-row { justify-content: flex-start; padding-left: var(--space-3); padding-right: max(var(--conversation-quota-space, 0px), var(--rail-head-reserve, 0px), var(--conversation-caption-reserve, 0px)); }
-.conversation-column[data-rail-head] > .conversation-pill-row > .conversation-pill { max-width: 100%; }
-.conversation-pill[data-rail-sub-hidden] .conversation-pill-sub { display: none; }
-
-/* 머리 칩의 이름 — 라틴 6자, 한글 4자 안팎까지 보이고 넘으면 말줄임이다. 전체 이름과 사용량은 title·aria-label 이 진다. */
-.context-rail-hchip-name { max-width: 4.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
