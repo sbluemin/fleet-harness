@@ -346,7 +346,8 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
     const entry = bySeq.get(Number(message.id)); if (!entry) return;
     const actions = [...(entry.actions ?? []), ...(actionsByReply.get(entry.seq) ?? [])];
     const owner = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
-    return { ...(entry.mentions.length ? { body: <MentionText entry={entry} language={language} speaker={speaker} /> } : {}), ...(actions.length ? { footer: <TaskforceActions actions={actions} {...(owner ? { commodoreId: owner } : {})} language={language} /> } : {}) };
+    // 지목 칩은 사람 말풍선(일반 글)에만 덧그린다. 사령관 말은 지목이 있어도 마크다운·OpenUI 본문을 그대로 쓴다 — 지목은 도구 인자라 원문에 `@이름`이 없다.
+    return { ...(entry.speaker.kind === "person" && entry.mentions.length ? { body: <MentionText entry={entry} language={language} speaker={speaker} /> } : {}), ...(actions.length ? { footer: <TaskforceActions actions={actions} {...(owner ? { commodoreId: owner } : {})} language={language} /> } : {}) };
   };
   const cards = <>{state && state.chain.paused ? <div className="taskforce-paused"><span aria-hidden="true">Ⅱ</span><div><strong>{t("taskforce.paused", { n: state.chain.count })}</strong><small>{t("taskforce.pausedHint")}</small></div><span><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("continue")}>{t("taskforce.continue")}</button></span></div> : null}</>;
   // 판단 중 표시는 사령관 1:1 채팅과 같은 자리·형태(대화 독의 working 줄)로 낸다. 별도 cards 줄을 세우지 않는다.

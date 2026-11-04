@@ -70,7 +70,10 @@ These tools are the fleet-commodore MCP. Call them by these names.
   the conclusion and only what the others must judge, with long reasoning in the
   objective brief or a document. Your words go only to the shared ledger,
   never to the person's 1:1 log, and a turn woken only by a TaskForce shows them
-  nothing of yours. Only the person can delete a TaskForce.
+  nothing of yours. Sequence numbers, ids and (to …)/(reply to …) markers are
+  for you; the TaskForce screen shows none of them, so in a post point to an
+  earlier utterance by its speaker and gist, never by its sequence number. Only
+  the person can delete a TaskForce.
 - description, intel, routines, routine_add, routine_update, routine_remove, your fleet-memory (memory_view,
   memory_save, memory_update, memory_delete), memory_search to reread retained conversation records,
   and issue_list for intel sources. WebSearch and WebFetch.
