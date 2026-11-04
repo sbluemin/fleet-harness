@@ -546,7 +546,10 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
                     {groups.map((group) => {
                       const provider = group.id === OFF_GROUP_ID ? null : launchProviderFromGroupId(group.id);
                       const groupLabel = provider ? launchProviderCaption(provider) : group.label;
-                      const hasActiveRow = activeModel !== null && group.rows.some((row) => canonicalModelId(row.launch.model ?? row.id) === canonicalModelId(activeModel));
+                      const activeGroupRow = activeModel !== null
+                        ? group.rows.find((row) => canonicalModelId(row.launch.model ?? row.id) === canonicalModelId(activeModel)) ?? null
+                        : null;
+                      const hasActiveRow = activeGroupRow !== null;
                       const isHovered = hoveredGroup?.id === group.id;
                       return (
                         <button
@@ -571,6 +574,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
                         >
                           {provider ? <ProviderMark provider={provider} className="fc-coord-menu-provider" /> : null}
                           <span className="fc-coord-menu-label">{groupLabel}</span>
+                          {activeGroupRow ? <span className="fc-coord-menu-hint">{activeGroupRow.label}</span> : null}
                           <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span>
                         </button>
                       );

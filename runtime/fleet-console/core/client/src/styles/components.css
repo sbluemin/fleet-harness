@@ -9783,6 +9783,9 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-coord-menu-route .fc-coord-menu-label { display: block; flex: none; padding-left: 2px; }
 .fc-coord-menu-route .fc-coord-menu-hint { margin-left: auto; font-size: var(--t-xs); white-space: nowrap; }
 .fc-coord-menu-route .fc-coord-menu-chev { margin-left: 2px; }
+.fc-coord-menu-provider-item { gap: 8px; }
+.fc-coord-menu-provider-item .fc-coord-menu-hint { margin-left: auto; font-size: var(--t-xs); white-space: nowrap; }
+.fc-coord-menu-provider-item .fc-coord-menu-chev { margin-left: 2px; }
 .fc-coord-menu-provider-item.is-open { background: var(--wash-hover); }
 .fc-coord-menu-provider-item.is-off { color: var(--warn-ink); }
 .fc-coord-menu-footer { display: flex; flex-direction: column; gap: var(--popover-list-gap); }
