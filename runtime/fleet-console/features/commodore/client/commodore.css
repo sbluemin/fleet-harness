@@ -848,6 +848,10 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-plugins-comp { padding: 0 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--text-secondary); font-size: var(--t-2xs); line-height: 1.6; white-space: nowrap; }
 .commodore-plugins-state { color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-plugins-state.is-syncing { color: var(--aurora-ink); }
+/* 받는 중 고리 — 상태 글자 앞의 작은 회전 고리. 글자의 aurora 잉크를 그대로 물려받아 새 토큰을 열지 않는다. */
+.commodore-market-spin { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border: 1.5px solid color-mix(in oklch, currentColor 25%, transparent); border-top-color: currentColor; border-radius: 50%; vertical-align: -1px; animation: commodore-market-spin 0.9s linear infinite; }
+@keyframes commodore-market-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .commodore-market-spin { animation: none; } }
 .commodore-plugins-state.is-failed { color: var(--coral-ink); }
 .commodore-plugins-state.is-warn { color: var(--warn-ink); }
 .commodore-plugins-state.is-done { color: var(--positive-ink); }

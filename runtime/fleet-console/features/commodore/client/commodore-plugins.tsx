@@ -75,6 +75,32 @@ async function applyCatalog(path: string, body: Record<string, unknown>): Promis
   invalidatePluginDetails();
   setCatalog({ view, error: null });
 }
+/**
+ * 마켓플레이스 갱신 진행 — 이름이 없으면 전부. 서버는 CLI 가 끝난 뒤에야 최종 등록부를 돌려줘서 요청이 도는
+ * 동안에는 등록부 상태가 바뀌지 않으므로, 비행 중 표시는 이 상태로 쥐고 응답·실패 뒤에 놓는다. 같은 자리에서
+ * 거듭 누르면 요청이 겹치므로 비행 수를 세어 마지막 응답 뒤에야 놓는다. 목록과 폰 상세는 서로 다른 자리라
+ * 각각 이 갈고리를 쓴다(등록 폼·플러그인 업데이트의 진행 상태와 같은 지역 상태다).
+ */
+function useMarketplaceRefresh() {
+  const [refreshing, setRefreshing] = useState<readonly string[]>([]);
+  const counts = useRef(new Map<string, number>());
+  const refresh = async (name?: string): Promise<void> => {
+    const names = name ? [name] : (catalog.view?.marketplaces.map((marketplace) => marketplace.name) ?? []);
+    for (const item of names) counts.current.set(item, (counts.current.get(item) ?? 0) + 1);
+    setRefreshing([...counts.current.keys()]);
+    try {
+      await applyCatalog("/commodore/marketplaces/update", name ? { name } : {});
+    } finally {
+      for (const item of names) {
+        const left = (counts.current.get(item) ?? 1) - 1;
+        if (left <= 0) counts.current.delete(item);
+        else counts.current.set(item, left);
+      }
+      setRefreshing([...counts.current.keys()]);
+    }
+  };
+  return { refreshing, refresh };
+}
 async function inspectPlugin(pluginId: string): Promise<PluginCatalogEntry> {
   const { plugin } = await postCommodorePlugins<{ readonly plugin: PluginCatalogEntry }>("/commodore/plugins/inspect", { pluginId });
   const view = catalog.view;
@@ -328,6 +354,7 @@ function MarketplaceSettings() {
   const t = getT(useConsoleLocale());
   const enabled = useCommodoreEnabled();
   const { view, loading, error } = useLiveCatalog(enabled);
+  const { refreshing, refresh } = useMarketplaceRefresh();
   const [failure, setFailure] = useState<string | null>(null);
   const openSubScreen = useMobileSettingsHost()?.openSubScreen;
   if (!enabled) return <p className="global-settings-help">{t("commodore.marketplaces.disabled")}</p>;
@@ -338,18 +365,18 @@ function MarketplaceSettings() {
   const act = (work: () => Promise<void>) => { setFailure(null); void work().catch((reason) => setFailure(errorWord(t, codeOf(reason)))); };
   const presets = view.marketplaces.filter((marketplace) => marketplace.preset);
   const customs = view.marketplaces.filter((marketplace) => !marketplace.preset);
-  const anySyncing = view.marketplaces.some((marketplace) => marketplace.status === "syncing");
+  const anySyncing = view.marketplaces.some((marketplace) => marketplace.status === "syncing" || refreshing.includes(marketplace.name));
   // 데스크톱은 카드 격자(카드 한 층만 테두리를 진다). 폰은 이름·수·상태·토글만 둔 묶음 행이고, 행을 누르면 출처·갱신·설명·제거가
   // 있는 하위 화면이 열린다. 하위 화면을 열 수 없는 호스트는 카드를 그대로 쓴다.
   const list = (items: readonly MarketplaceView[]) => (openSubScreen
-    ? items.map((marketplace) => <MarketplaceRow key={marketplace.name} t={t} marketplace={marketplace} act={act} onOpen={() => openSubScreen({ title: marketplace.name, render: () => <MarketplaceDetail name={marketplace.name} /> })} />)
-    : <div className="commodore-market-grid">{items.map((marketplace) => <MarketplaceCard key={marketplace.name} t={t} marketplace={marketplace} act={act} />)}</div>);
+    ? items.map((marketplace) => <MarketplaceRow key={marketplace.name} t={t} marketplace={marketplace} act={act} pending={refreshing.includes(marketplace.name)} onOpen={() => openSubScreen({ title: marketplace.name, render: () => <MarketplaceDetail name={marketplace.name} /> })} />)
+    : <div className="commodore-market-grid">{items.map((marketplace) => <MarketplaceCard key={marketplace.name} t={t} marketplace={marketplace} act={act} refreshing={refreshing} onRefresh={refresh} />)}</div>);
   return (
     <div className="commodore-marketplaces">
       {failure ? <p className="global-settings-error" role="alert">{failure}</p> : null}
       <SettingsGroup
         ariaLabel={t("commodore.marketplaces.presets")}
-        title={<span className="commodore-marketplaces-head">{t("commodore.marketplaces.presets")}<button type="button" className="commodore-plugins-text" disabled={anySyncing} onClick={() => act(() => applyCatalog("/commodore/marketplaces/update", {}))}>{t("commodore.marketplaces.updateAll")}</button></span>}
+        title={<span className="commodore-marketplaces-head">{t("commodore.marketplaces.presets")}<button type="button" className="commodore-plugins-text" disabled={anySyncing} onClick={() => act(() => refresh())}>{t("commodore.marketplaces.updateAll")}</button></span>}
       >
         {list(presets)}
       </SettingsGroup>
@@ -369,18 +396,29 @@ function updatedWord(at: number): string {
 
 type Act = (work: () => Promise<void>) => void;
 
+/** 받는 중 표시 — 도는 고리 + 「받는 중…」. 갱신 요청 비행 중과 서버 동기화 중을 같은 자리에서 말한다. 평상시에는 세우지 않는다. */
+function SyncingMark({ t }: { readonly t: T }) {
+  return (
+    <span className="commodore-plugins-state is-syncing" role="status">
+      <span className="commodore-market-spin" aria-hidden="true" />
+      {t("commodore.marketplaces.syncing")}
+    </span>
+  );
+}
+
 /** 데스크톱 카드의 상태 한 마디와 행동 단추·제거 확인. 폰은 행(`MarketplaceRow`)과 상세(`MarketplaceDetail`)가 나눠 진다. */
-function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act) {
+function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act, refreshing: readonly string[], onRefresh: (name?: string) => Promise<void>) {
   const [confirming, setConfirming] = useState(false);
-  const syncing = marketplace.status === "syncing";
-  const status = syncing ? <span className="commodore-plugins-state is-syncing">{t("commodore.marketplaces.syncing")}</span>
+  const syncing = marketplace.status === "syncing" || refreshing.includes(marketplace.name);
+  const status = syncing ? <SyncingMark t={t} />
     : marketplace.status === "failed" ? <span className="commodore-plugins-state is-failed">{t("commodore.marketplaces.failed", { reason: errorWord(t, marketplace.error ?? "fetch_failed") })}</span>
       : marketplace.enabled && marketplace.updatedAt ? <span>{t("commodore.marketplaces.updatedAt", { time: updatedWord(marketplace.updatedAt) })}</span> : null;
   const summary = <span>{t("commodore.marketplaces.count", { n: marketplace.pluginCount })}{status ? <> · {status}</> : null}</span>;
   // 카드는 실패 이유를 본문 한 줄로 따로 세운다 — 아래 칸에 두면 긴 문장이 행동 단추를 다음 줄로 민다.
+  // 받는 중에는 지난 실패가 아니라 진행을 말한다.
   const failed = marketplace.status === "failed";
-  const failure = failed ? <p className="commodore-market-card-failure commodore-plugins-state is-failed">{t("commodore.marketplaces.failed", { reason: errorWord(t, marketplace.error ?? "fetch_failed") })}</p> : null;
-  const cardSummary = failed ? <span>{t("commodore.marketplaces.count", { n: marketplace.pluginCount })}</span> : summary;
+  const failure = failed && !syncing ? <p className="commodore-market-card-failure commodore-plugins-state is-failed">{t("commodore.marketplaces.failed", { reason: errorWord(t, marketplace.error ?? "fetch_failed") })}</p> : null;
+  const cardSummary = failed && !syncing ? <span>{t("commodore.marketplaces.count", { n: marketplace.pluginCount })}</span> : summary;
   const confirm = confirming ? (
     <span className="commodore-marketplaces-confirm" role="alert">
       <span>{t("commodore.marketplaces.removeConfirm", { name: marketplace.name })}</span>
@@ -390,7 +428,7 @@ function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act) {
   ) : null;
   const actions = (
     <span className="commodore-marketplaces-actions">
-      <button type="button" className="commodore-plugins-text" disabled={syncing} aria-label={t("commodore.marketplaces.updateAria", { name: marketplace.name })} onClick={() => act(() => applyCatalog("/commodore/marketplaces/update", { name: marketplace.name }))}>{t("commodore.marketplaces.update")}</button>
+      <button type="button" className="commodore-plugins-text" disabled={syncing} aria-label={t("commodore.marketplaces.updateAria", { name: marketplace.name })} onClick={() => act(() => onRefresh(marketplace.name))}>{t("commodore.marketplaces.update")}</button>
       {marketplace.preset ? null : <button type="button" className="commodore-plugins-text" aria-label={t("commodore.marketplaces.removeAria", { name: marketplace.name })} onClick={() => setConfirming(true)}>{t("commodore.marketplaces.remove")}</button>}
     </span>
   );
@@ -402,8 +440,8 @@ function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act) {
  * 데스크톱 마켓플레이스 카드 — 머리(타일·이름·출처), 설명 한 줄, 아래 칸(수·상태·행동). 마켓플레이스에는 아이콘 필드가 없어
  * 타일은 언제나 이니셜이고 켜기/끄기 단추를 겸한다(`MarketplaceGlyph`). 꺼진 카드는 타일 색과 글자 옅어짐으로 말한다.
  */
-function MarketplaceCard({ t, marketplace, act }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act }) {
-  const { cardSummary, failure, confirm, actions, locator } = useMarketplaceControls(t, marketplace, act);
+function MarketplaceCard({ t, marketplace, act, refreshing, onRefresh }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act; readonly refreshing: readonly string[]; readonly onRefresh: (name?: string) => Promise<void> }) {
+  const { cardSummary, failure, confirm, actions, locator } = useMarketplaceControls(t, marketplace, act, refreshing, onRefresh);
   return (
     <article className={`commodore-market-card${marketplace.enabled ? "" : " is-off"}`} aria-label={marketplace.name}>
       <div className="commodore-market-card-head">
@@ -428,8 +466,8 @@ function MarketplaceCard({ t, marketplace, act }: { readonly t: T; readonly mark
 const enableMarketplace = (marketplace: MarketplaceView, act: Act) => (next: boolean) => act(() => applyCatalog("/commodore/marketplaces/enable", { name: marketplace.name, enabled: next }));
 
 /** 폰 행의 짧은 상태 — 긴 실패 이유는 상세가 말하고, 켜짐/꺼짐은 타일 단추가 말한다. */
-function shortStatus(t: T, marketplace: MarketplaceView) {
-  if (marketplace.status === "syncing") return <span className="commodore-plugins-state is-syncing">{t("commodore.marketplaces.syncing")}</span>;
+function shortStatus(t: T, marketplace: MarketplaceView, pending: boolean) {
+  if (marketplace.status === "syncing" || pending) return <SyncingMark t={t} />;
   if (marketplace.status === "failed") return <span className="commodore-plugins-state is-failed">{t("commodore.marketplaces.failedShort")}</span>;
   if (!marketplace.enabled) return null;
   return marketplace.updatedAt ? <span>{t("commodore.marketplaces.updatedAt", { time: updatedWord(marketplace.updatedAt) })}</span> : null;
@@ -439,8 +477,8 @@ function shortStatus(t: T, marketplace: MarketplaceView) {
  * 폰 마켓플레이스 행 — 타일 단추·이름·「플러그인 N개 · 상태」. 모바일 설정 행은 `<label>`이라 행을 누르면 첫 컨트롤이 눌린다.
  * 켜기/끄기와 상세 열기를 한 행에 같이 두려고 행은 `div`로 두고, 행 전체를 덮는 열기 단추 위에 타일 단추만 올려 세운다.
  */
-function MarketplaceRow({ t, marketplace, act, onOpen }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act; readonly onOpen: () => void }) {
-  const status = shortStatus(t, marketplace);
+function MarketplaceRow({ t, marketplace, act, pending, onOpen }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act; readonly pending: boolean; readonly onOpen: () => void }) {
+  const status = shortStatus(t, marketplace, pending);
   return (
     <div className={`fc-settings-row is-mobile commodore-market-row${marketplace.enabled ? "" : " is-off"}`}>
       <button type="button" className="commodore-market-row-open" aria-haspopup="dialog" aria-label={t("commodore.marketplaces.detail.openAria", { name: marketplace.name })} onClick={onOpen} />
@@ -469,8 +507,9 @@ function MarketplaceDetailBody({ t, marketplace }: { readonly t: T; readonly mar
   const [failure, setFailure] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const act: Act = (work) => { setFailure(null); void work().catch((reason) => setFailure(errorWord(t, codeOf(reason)))); };
-  const syncing = marketplace.status === "syncing";
-  const status = syncing ? <span className="commodore-plugins-state is-syncing">{t("commodore.marketplaces.syncing")}</span>
+  const { refreshing, refresh } = useMarketplaceRefresh();
+  const syncing = marketplace.status === "syncing" || refreshing.includes(marketplace.name);
+  const status = syncing ? <SyncingMark t={t} />
     : marketplace.status === "failed" ? <span className="commodore-plugins-state is-failed">{t("commodore.marketplaces.failed", { reason: errorWord(t, marketplace.error ?? "fetch_failed") })}</span> : null;
   return (
     <div className="commodore-market-detail">
@@ -491,7 +530,7 @@ function MarketplaceDetailBody({ t, marketplace }: { readonly t: T; readonly mar
           <SettingsToggle checked={marketplace.enabled} ariaLabel={t("commodore.marketplaces.enableAria", { name: marketplace.name })} onChange={enableMarketplace(marketplace, act)} />
         </SettingsItem>
         <SettingsItem label={t("commodore.marketplaces.detail.update")} hint={marketplace.updatedAt ? t("commodore.marketplaces.updatedAt", { time: updatedWord(marketplace.updatedAt) }) : undefined}>
-          <button type="button" className="commodore-plugins-text" disabled={syncing} aria-label={t("commodore.marketplaces.updateAria", { name: marketplace.name })} onClick={() => act(() => applyCatalog("/commodore/marketplaces/update", { name: marketplace.name }))}>{t("commodore.marketplaces.update")}</button>
+          <button type="button" className="commodore-plugins-text" disabled={syncing} aria-label={t("commodore.marketplaces.updateAria", { name: marketplace.name })} onClick={() => act(() => refresh(marketplace.name))}>{t("commodore.marketplaces.update")}</button>
         </SettingsItem>
         {marketplace.preset ? null : (
           <SettingsItem label={t("commodore.marketplaces.detail.remove")}>
