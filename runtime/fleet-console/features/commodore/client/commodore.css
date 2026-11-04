@@ -1014,39 +1014,47 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .settings-modal .commodore-plugins { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
 .commodore-palette.is-phone .commodore-plugins { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .commodore-palette.is-phone .commodore-palette-list { display: flex; flex-direction: column; gap: 8px; }
-/* 사령관 범위의 설치 행은 전역 설치 행과 같다 — 타일·이름, 오른쪽 동작, 그 아래 토글. flex 양 끝 정렬로 흩어지지 않는다. */
-.settings-modal .commodore-palette-row.is-scope { justify-content: flex-start; }
+/* 사령관 범위 행은 타일·이름이 한 덩어리로 남고, 칩과 지휘관·구성원 알약은 그 오른쪽이다. */
+.settings-modal .commodore-palette-row.is-scope,
+.settings-modal .commodore-palette-row.is-reach { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; }
 /* 휴대폰 카드 본문이 자식마다 패딩을 입힌다. 카탈로그 행은 자기 여백이 있으니 겹치지 않게 걷고, 범위 설치 행(is-scope)만 그 패딩을 쓴다. */
 .commodore-palette.is-phone .fc-settings-card.is-mobile .fc-settings-card__body > .commodore-palette-row:not(.is-scope) { padding: 0; }
 .commodore-palette-row.is-scope { cursor: pointer; }
 .commodore-palette-row.is-scope:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-row.is-scope.is-target { background: var(--brass-glow); }
-.commodore-palette-row.is-scope > .commodore-palette-action { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; }
+.commodore-palette-row.is-scope > .commodore-palette-action,
+.commodore-palette-row.is-reach > .commodore-palette-action { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 100%; }
 .commodore-palette-row.is-scope > .commodore-palette-action:empty { display: none; }
 .commodore-palette-row.is-scope > .commodore-plugins-inline { flex: 1 1 100%; }
 .commodore-palette.is-phone .commodore-palette-row.is-scope { display: flex; flex-flow: row wrap; align-items: center; justify-content: flex-start; gap: 6px 12px; width: 100%; min-width: 0; max-width: 100%; height: auto; min-height: 0; }
 .commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
 .commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-action { position: static; height: auto; pointer-events: auto; }
-.commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-reach { flex: 1 1 100%; padding: 0; }
+.commodore-palette.is-phone .commodore-palette-row.is-reach { display: flex; flex-flow: row wrap; align-items: center; justify-content: flex-start; gap: 6px 12px; width: 100%; min-width: 0; max-width: 100%; height: auto; min-height: 0; }
+.commodore-palette.is-phone .commodore-palette-row.is-reach > .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
+.commodore-palette.is-phone .commodore-palette-row.is-reach > .commodore-palette-action { position: static; height: auto; pointer-events: auto; }
+.commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-reach { flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 0; }
 .settings-modal .settings-modal-head .commodore-global-lede { padding: 8px 0 0; }
 .settings-modal .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
 .settings-modal .commodore-palette-action { position: static; height: auto; pointer-events: auto; }
-.settings-modal .commodore-palette-reach { flex: 1 1 100%; padding: 0; }
+.settings-modal .commodore-palette-reach { flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 0; }
+.global-settings-card-title > .mongle-avatar,
+.fc-settings-card__title > .mongle-avatar { flex: none; }
 .settings-modal .commodore-palette-row { flex-wrap: wrap; align-items: center; }
 .commodore-palette.is-phone .mobile-group { width: 100%; min-width: 0; }
 .commodore-palette.is-phone .mobile-group-row.commodore-plugins-phone-row { display: grid; background: var(--m-surface); }
 .commodore-palette-market { position: relative; }
 .commodore-palette-market.is-syncing .commodore-market-spin { position: absolute; inset: 5px; width: auto; height: auto; margin: 0; color: var(--aurora-ink); }
 .commodore-palette-market-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
-.commodore-plugin-reach { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
-.commodore-plugin-reach[aria-pressed="true"] .settings-switch { border-color: var(--quiet-switch-rim); background: var(--quiet-switch-track); }
-.commodore-plugin-reach[aria-pressed="true"] .settings-switch-knob { transform: translateX(14px); background: var(--quiet-switch-knob); }
-.commodore-plugin-reach[aria-disabled="true"] { cursor: default; }
-.commodore-plugin-reach:hover:not([aria-disabled="true"]):not([aria-pressed="true"]) .settings-switch { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
-.commodore-plugin-reach:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
-@media (prefers-reduced-motion: reduce) { .commodore-plugin-reach .settings-switch, .commodore-plugin-reach .settings-switch-knob { transition: none; } }
-@media (forced-colors: active) { .commodore-plugin-reach[aria-pressed="true"] .settings-switch { background: SelectedItem; border-color: SelectedItem; } }
-.commodore-plugin-reach-note { color: var(--text-tertiary); font-size: var(--t-2xs); }
+.commodore-plugin-reach { display: inline-flex; flex: none; align-items: center; gap: 4px; min-height: 22px; padding: 0 6px; border: 0; border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); white-space: nowrap; cursor: pointer; }
+.commodore-plugin-reach[aria-pressed="true"] { color: var(--brass-bright); }
+.commodore-plugin-reach[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
+.commodore-plugin-reach:hover:not([aria-disabled="true"]):not([aria-pressed="true"]) { background: var(--control-wash-hover); }
+.commodore-plugin-reach:focus-visible { box-shadow: var(--focus-face); }
+.commodore-plugin-reach-glyph { width: 12px; height: 12px; flex: none; }
+.commodore-plugin-reach-sw { flex: none; width: 16px; height: 10px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--text-primary) 16%, transparent); }
+.commodore-plugin-reach[aria-pressed="true"] .commodore-plugin-reach-sw { background: var(--brass-bright); }
+@media (forced-colors: active) { .commodore-plugin-reach[aria-pressed="true"] { color: SelectedItem; } .commodore-plugin-reach[aria-pressed="true"] .commodore-plugin-reach-sw { background: SelectedItem; } }
+.commodore-plugin-reach-note { min-width: 0; max-width: 100%; color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
 .commodore-palette-reach { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 14px 10px; }
 :root[data-view-mode="mobile"] .commodore-palette-scrim { place-items: end stretch; padding: 0; background: var(--m-scrim); }
 :root[data-view-mode="mobile"] .commodore-palette { width: auto; height: calc(100% - 56px); padding-bottom: calc(12px + var(--m-safe-bottom, 0px)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--m-surface); box-shadow: none; }

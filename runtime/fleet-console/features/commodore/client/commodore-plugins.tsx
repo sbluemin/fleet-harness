@@ -791,10 +791,15 @@ type InlineForm = ({ readonly pluginId: string; readonly kind: "key"; readonly n
 
 const pluginReachOn = (excluded: readonly string[] | undefined, id: string): boolean => !(excluded ?? []).includes(id);
 
-/** 지휘관·구성원 토글. 트랙·손잡이는 콘솔 공용 스위치다. 잠기면 aria-disabled 이고 누르지 않는다 — 이유는 레이블이 말한다. */
+function CrewGlyph() {
+  return <svg className="commodore-plugin-reach-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" aria-hidden="true"><circle cx="5.2" cy="6" r="2" /><circle cx="11" cy="6.6" r="1.7" /><path d="M1.8 13c.4-2 1.8-3.1 3.4-3.1S8.2 11 8.6 13M8.8 12.6c.3-1.5 1.2-2.4 2.3-2.4s2 .9 2.3 2.4" /></svg>;
+}
+
+/** 지휘관·구성원 알약. 켜지면 색면·글자가 바뀌고, 잠기면 흐려진다. 이유는 레이블이 말한다. */
 function ObjectiveReachButton({ t, on, locked, label, onToggle }: { readonly t: T; readonly on: boolean; readonly locked: boolean; readonly label: string; readonly onToggle: () => void }) {
   return <button type="button" className="commodore-plugin-reach" aria-pressed={on} aria-disabled={locked || undefined} aria-label={label} title={label} onClick={(event) => { event.stopPropagation(); if (!locked) onToggle(); }} onKeyDown={(event) => event.stopPropagation()}>
-    <span className="settings-switch" aria-hidden="true"><span className="settings-switch-knob" /></span>
+    <span className="commodore-plugin-reach-sw" aria-hidden="true" />
+    <CrewGlyph />
     <span>{t("commodore.plugins.reach.label")}</span>
   </button>;
 }
@@ -1050,20 +1055,20 @@ function PluginScopeRows({ t, commodoreId, phone = false, onOpenGlobal }: { read
             {rowVersion(entry?.version) ? <span className="commodore-palette-desc">{rowVersion(entry?.version)}</span> : null}
           </span>
         </span>
-        <span className="commodore-palette-action">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} /></span>
-        <span className="commodore-palette-reach">{reach}</span>
+        <span className="commodore-palette-action">{mark}{openNow(pluginId)}<Components t={t} components={entry?.components} />{reach}</span>
         <ReplacementHint t={t} replacement={replacement} id={`${replacementId}-${pluginId}`} />
       </div>
       {inline(pluginId, title)}
     </Fragment>
   ));
+  const ownTitle = <><CommodoreAvatar commodoreId={commodoreId} state="idle" size={12} label="" decorative />{t("commodore.plugins.global.own")}</>;
   const list = phone ? (
     <section className="fc-settings-card is-mobile" aria-label={t("commodore.plugins.global.own")}>
-      <h3 className="fc-settings-card__title">{t("commodore.plugins.global.own")}</h3>
+      <h3 className="fc-settings-card__title">{ownTitle}</h3>
       <div className="fc-settings-card__body">{ownRows}</div>
     </section>
   ) : rows.length ? (
-    <SettingsGroup ariaLabel={t("commodore.plugins.global.own")} title={t("commodore.plugins.global.own")}>{ownRows}</SettingsGroup>
+    <SettingsGroup ariaLabel={t("commodore.plugins.global.own")} title={ownTitle}>{ownRows}</SettingsGroup>
   ) : null;
 
   return (
@@ -1524,7 +1529,7 @@ function PaletteRow({ t, entry, installed, installedGlobally = false, globalScop
   const byline = [shown.version ? `v${shown.version}` : null, shown.author ? t("commodore.plugins.byAuthor", { name: shown.author }) : null].filter(Boolean).join(" · ");
   const sub = shown.description ?? (byline || null);
   return (
-    <article className={`${card ? "global-settings-row " : ""}commodore-palette-row${trusting ? " is-open" : ""}`}>
+    <article className={`${card ? "global-settings-row " : ""}commodore-palette-row${reach ? " is-reach" : ""}${trusting ? " is-open" : ""}`}>
       <button type="button" className="commodore-palette-open" data-plugin-id={entry.id} aria-label={t("commodore.plugins.detail.openAria", { plugin: title })} onClick={() => { if (!working && row?.phase !== "trust") onOpen(); }}>
         <PluginTile name={title} iconId={shown.icon ? entry.id : undefined} size="card" />
         <span className="commodore-palette-row-main">
@@ -1538,8 +1543,8 @@ function PaletteRow({ t, entry, installed, installedGlobally = false, globalScop
           : installed ? onRemove ? <button type="button" className="fc-btn fc-btn--secondary commodore-palette-install" disabled={working || disabled} onClick={onRemove}>{t(removeArmed ? "commodore.plugins.removeArmed" : "commodore.plugins.remove")}</button> : <span className="commodore-plugins-state is-done">{t("commodore.plugins.palette.installed")}</span>
             : row?.phase === "trust" ? null
               : <button type="button" className="fc-btn fc-btn--secondary commodore-palette-install" disabled={working || disabled} aria-label={t(globalScope ? "commodore.plugins.global.installAria" : "commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>}
+        {reach}
       </span>
-      {reach ? <span className="commodore-palette-reach">{reach}</span> : null}
       {update}
       {row?.phase === "failed" && showTrust ? <span className="commodore-plugins-state is-failed" role="alert">{errorWord(t, row.code ?? "failed")}</span> : null}
       {trusting ? <TrustPanel t={t} entry={shown} onTrust={onTrust} onCancel={onCancel} trustRef={trustRef} /> : null}
