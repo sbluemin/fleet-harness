@@ -4,7 +4,7 @@ import { createServerSyncedValue } from "../commander-tab/commander-server-sync.
 
 /**
  * 사이드바에서 지휘관 목록이 펼쳐진 사령관 묶음 — 이 브라우저(localStorage)에 기억해 새로고침·재시작 뒤에도 유지한다.
- * 사령관을 옮길 때마다(`noteCommanderNavigated`) 정해지고, 활성 사령관을 다시 누르면(`reselectCommander`) 접힌다.
+ * 사령관을 옮길 때마다(`noteCommanderNavigated`) 정해지고, 자기 대화가 서 있는 활성 사령관을 다시 누르면(`reselectCommander`) 접힌다.
  * 저장이 막히면 이번 화면에서만 기억한다.
  */
 const OPEN_KEY = "fleet-console.sidebar.commanderExpanded";
@@ -97,8 +97,8 @@ export function noteCommanderNavigated(commodoreId: string, keepExpanded: boolea
 }
 
 /**
- * 활성 사령관을 한 번 더 눌렀다. 펼침 유지가 켜져 있으면 그 사령관만 접고(접혀 있으면 다시 펼친다 — 활성인데 열 길이 없는
- * 막다른 상태를 만들지 않는다), 꺼져 있으면 접지 않는다.
+ * 자기 대화가 서 있는 활성 사령관을 한 번 더 눌렀다. 펼침 유지가 켜져 있으면 그 사령관만 접고(접혀 있으면 다시 펼친다 — 활성인데 열 길이 없는
+ * 막다른 상태를 만들지 않는다), 꺼져 있으면 접지 않는다. 지휘관 대화를 보다가 머리를 눌러 돌아오는 이동은 부르는 쪽이 먼저 걸러 펼침을 둔다.
  */
 export function reselectCommander(commodoreId: string, keepExpanded: boolean): void {
   if (!keepExpanded) {
