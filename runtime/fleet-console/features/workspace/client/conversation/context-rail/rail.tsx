@@ -55,7 +55,8 @@ function ContextRail({ sessions, slot }: {
   const broughtIntoView = React.useRef<string | null>(null);
   const open = ordered.find((session) => session.id === state.flyout) ?? null;
   const bubble = ordered.find((session) => session.id === bubbleId && session.id !== state.flyout) ?? null;
-  const syncBubble = () => setBubbleId(focusId.current ?? overId.current);
+  // 마우스가 칩 위에 있으면 그 칩이 이긴다. 포커스는 키보드(:focus-visible)일 때만 말풍선을 연다.
+  const syncBubble = () => setBubbleId(overId.current ?? focusId.current);
 
   // `/context`는 그 세션의 상세 카드를 띄운다.
   const handled = React.useRef(state.reveal?.nonce ?? 0);
@@ -210,7 +211,7 @@ function ContextChip({ session, open, t, onToggle, onHover, onFocusChange }: {
       onClick={onToggle}
       onPointerEnter={() => onHover(true)}
       onPointerLeave={() => onHover(false)}
-      onFocus={() => onFocusChange(true)}
+      onFocus={(event) => { if (event.currentTarget.matches(":focus-visible")) onFocusChange(true); }}
       onBlur={() => onFocusChange(false)}
     >
       <span className="context-rail-ring">
