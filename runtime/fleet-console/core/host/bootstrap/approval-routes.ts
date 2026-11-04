@@ -16,7 +16,7 @@ export const APPROVAL_ANSWER_PATH = `/api/v1/${APPROVAL_ANSWER_ROUTE}`;
 
 export const APPROVAL_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: APPROVAL_LIST_PATH, summary: "Read the approval snapshot: every pending request and the ones already settled.", category: "Approvals", gate: "origin-write", transport: "http" },
-  { method: "POST", path: APPROVAL_ANSWER_PATH, summary: "Answer one approval. Description and intel proposals take approve or reject. An immediate request takes always or declined. A settled request cannot be answered again.", category: "Approvals", gate: "origin-write", transport: "http" },
+  { method: "POST", path: APPROVAL_ANSWER_PATH, summary: "Answer one pending approval. Description and intel proposals take approve or reject. An immediate request takes always or declined. An id that is not pending is unknown_request.", category: "Approvals", gate: "origin-write", transport: "http" },
 ];
 
 const answerBody = z.object({ id: z.string().uuid(), decision: z.enum(APPROVAL_DECISIONS) }).strict();
@@ -41,7 +41,7 @@ export function createApprovalRouter(deps: {
       deps.writeJson(res, 200, { request: deps.core.answer(parsed.data.id, parsed.data.decision) });
     } catch (error) {
       if (error instanceof ApprovalError) {
-        const status = error.code === "unknown_request" ? 404 : error.code === "invalid_request" || error.code === "unknown_type" ? 400 : 409;
+        const status = error.code === "unknown_request" ? 404 : error.code === "approval_failed" ? 409 : error.code === "invalid_request" || error.code === "unknown_type" ? 400 : 409;
         deps.writeJson(res, status, { error: error.code });
         return true;
       }

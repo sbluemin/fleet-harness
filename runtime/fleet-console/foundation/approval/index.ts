@@ -6,6 +6,7 @@ import {
   APPROVAL_DECISIONS,
   APPROVAL_STATUSES,
   type ApprovalDecision,
+  type ApprovalEndReason,
   type ApprovalRequestView,
   type ApprovalRetention,
   type ApprovalSnapshot,
@@ -19,6 +20,7 @@ export {
   APPROVAL_LIST_ROUTE,
   APPROVAL_STATUSES,
   type ApprovalDecision,
+  type ApprovalEndReason,
   type ApprovalRequestView,
   type ApprovalRetention,
   type ApprovalSnapshot,
@@ -27,7 +29,8 @@ export {
 
 /**
  * 승인 기록. 타입의 본문과 승인 때 일어나는 일은 등록된 타입이 알고, 이 코어는 상태 전이와 저장만 한다.
- * 끝난 기록은 다시 답할 수 없다. 디스크 타입만 파일에 남고, 메모리 타입은 `expiresAt` 이 지나면 `expired` 가 된다.
+ * 끝난 기록은 디스크와 스냅숏에 남기지 않는다. 끝난 id 에 다시 답하면 `unknown_request` 다.
+ * 디스크 타입의 대기만 파일에 남고, 메모리 타입은 `expiresAt` 이 지나면 `expired` 로 사라진다.
  */
 
 const STATUS_SET: ReadonlySet<string> = new Set(APPROVAL_STATUSES);
@@ -35,7 +38,7 @@ const APPLYING: ReadonlySet<ApprovalDecision> = new Set(["approve", "always"]);
 const DECLINING: ReadonlySet<ApprovalDecision> = new Set(["reject", "declined"]);
 
 export class ApprovalError extends Error {
-  constructor(readonly code: "unknown_request" | "already_settled" | "invalid_request" | "unknown_type" | "corrupt_store") {
+  constructor(readonly code: "unknown_request" | "approval_failed" | "invalid_request" | "unknown_type" | "corrupt_store") {
     super(code);
     this.name = "ApprovalError";
   }
@@ -50,10 +53,10 @@ export interface ApprovalType {
   readonly ttlMs?: number;
   readonly parse: (payload: unknown) => unknown;
   /**
-   * 승인(`approve`·`always`) 때 동기로 부른다. `stale` 이면 적용하지 않은 채 그 상태로 끝낸다.
-   * 여기서 다른 기록을 `markStale` 해도 된다. 예외면 이 기록은 그대로 `pending` 이다.
+   * 승인(`approve`·`always`) 때 동기로 부른다. `missing` 이면 반영하지 않고 그 요청을 끝낸다.
+   * 예외면 이 기록은 그대로 `pending` 이다.
    */
-  readonly onApprove?: (record: ApprovalRequestView) => "approved" | "stale";
+  readonly onApprove?: (record: ApprovalRequestView) => "approved" | "missing";
 }
 
 export interface ApprovalCoreOptions {
@@ -78,14 +81,12 @@ interface StoredRequest {
 export interface ApprovalCore {
   register(type: ApprovalType): void;
   propose(typeId: string, payload: unknown): ApprovalRequestView;
-  /** 사람이 답한다. 이미 끝난 기록은 `already_settled`. 타입이 받지 않는 답은 `invalid_request`. */
+  /** 사람이 답한다. 없거나 이미 끝난 id 는 `unknown_request`. 반영할 수 없으면 `approval_failed` 로 끝내고 지운다. */
   answer(id: string, decision: ApprovalDecision): ApprovalRequestView;
-  /** `pending` 만 `stale` 로 끝낸다. 이미 끝났으면 그대로 돌려주고 알리지 않는다. */
-  markStale(id: string): ApprovalRequestView;
-  /** 즉답형이 답을 받지 못함(`no_response`). */
+  /** 즉답형이 답을 받지 못함(`no_response`). 기록은 지운다. */
   expire(id: string): ApprovalRequestView;
-  /** 즉답형을 거둠(`stopped`·`withdrawn`·`authorized`). */
-  withdraw(id: string): ApprovalRequestView;
+  /** 요청을 거둔다. `replaced` 는 같은 대상의 새 제안이 밀어낸 것이다. 기록은 지운다. */
+  withdraw(id: string, reason?: ApprovalEndReason): ApprovalRequestView;
   snapshot(): ApprovalSnapshot;
   /** 기록이 `pending` 을 떠날 때 한 번. `silence` 안에서는 울리지 않는다. */
   subscribeSettled(listener: (record: ApprovalRequestView) => void): () => void;
@@ -143,21 +144,18 @@ export function createApprovalCore(options: ApprovalCoreOptions): ApprovalCore {
     arm();
   };
 
-  const transition = (record: StoredRequest, status: Exclude<ApprovalStatus, "pending">): ApprovalRequestView => {
-    if (record.status !== "pending") throw new ApprovalError("already_settled");
-    const updated: StoredRequest = { ...record, status, updatedAt: now() };
+  const end = (record: StoredRequest, status: Exclude<ApprovalStatus, "pending">, reason?: ApprovalEndReason): ApprovalRequestView => {
     const next = new Map(records);
-    next.set(record.id, updated);
+    next.delete(record.id);
     commit(next, record.retention === "disk");
-    const viewed = view(updated);
+    const viewed: ApprovalRequestView = { ...view({ ...record, status, updatedAt: now() }), ...(reason ? { reason } : {}) };
     if (quiet === 0) for (const listener of settled) listener(viewed);
     return viewed;
   };
 
   const requirePending = (id: string): StoredRequest => {
     const record = records.get(id);
-    if (!record) throw new ApprovalError("unknown_request");
-    if (record.status !== "pending") throw new ApprovalError("already_settled");
+    if (!record || record.status !== "pending") throw new ApprovalError("unknown_request");
     return record;
   };
 
@@ -166,7 +164,7 @@ export function createApprovalCore(options: ApprovalCoreOptions): ApprovalCore {
     const due = [...records.values()].filter((record) => record.status === "pending" && record.expiresAt !== undefined && record.expiresAt <= at);
     for (const record of due) {
       const current = records.get(record.id);
-      if (current?.status === "pending") transition(current, "expired");
+      if (current?.status === "pending") end(current, "expired");
     }
   }
 
@@ -206,28 +204,21 @@ export function createApprovalCore(options: ApprovalCoreOptions): ApprovalCore {
       const record = requirePending(id);
       const type = types.get(record.type);
       if (!type || !type.decisions.includes(decision)) throw new ApprovalError("invalid_request");
-      if (DECLINING.has(decision)) return transition(record, "rejected");
+      if (DECLINING.has(decision)) return end(record, "rejected");
       if (!APPLYING.has(decision)) throw new ApprovalError("invalid_request");
       const outcome = type.onApprove?.(view(record)) ?? "approved";
       const current = records.get(id);
-      if (!current) throw new ApprovalError("unknown_request");
-      if (current.status !== "pending") return view(current);
-      if (outcome !== "approved" && outcome !== "stale") throw new ApprovalError("invalid_request");
-      return transition(current, outcome);
-    },
-    markStale(id) {
-      const record = records.get(id);
-      if (!record) throw new ApprovalError("unknown_request");
-      if (record.status !== "pending") return view(record);
-      return transition(record, "stale");
+      if (!current || current.status !== "pending") throw new ApprovalError("unknown_request");
+      if (outcome === "missing") { end(current, "withdrawn", "missing"); throw new ApprovalError("approval_failed"); }
+      if (outcome !== "approved") throw new ApprovalError("invalid_request");
+      return end(current, "approved");
     },
     expire(id) {
       sweep();
-      return transition(requirePending(id), "expired");
+      return end(requirePending(id), "expired");
     },
-    withdraw(id) {
-      sweep();
-      return transition(requirePending(id), "withdrawn");
+    withdraw(id, reason) {
+      return end(requirePending(id), "withdrawn", reason);
     },
     snapshot() {
       sweep();
@@ -291,7 +282,7 @@ function sanitize(entry: unknown): StoredRequest | null {
   if (typeof value.id !== "string" || value.id.length < 1 || value.id.length > 128) return null;
   if (typeof value.type !== "string" || value.type.length < 1 || value.type.length > 128) return null;
   if (value.retention !== "disk") return null;
-  if (typeof value.status !== "string" || !STATUS_SET.has(value.status)) return null;
+  if (value.status !== "pending") return null;
   if (typeof value.createdAt !== "number" || typeof value.updatedAt !== "number") return null;
   return {
     id: value.id,

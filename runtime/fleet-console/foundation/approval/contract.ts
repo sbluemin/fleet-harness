@@ -10,8 +10,11 @@ export const APPROVAL_CHANNEL = "approval:state";
 export const APPROVAL_LIST_ROUTE = "approvals/list";
 export const APPROVAL_ANSWER_ROUTE = "approvals/answer";
 
-export const APPROVAL_STATUSES = ["pending", "approved", "rejected", "expired", "withdrawn", "stale"] as const;
+export const APPROVAL_STATUSES = ["pending", "approved", "rejected", "expired", "withdrawn"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+/** 끝난 이유. 스냅숏에는 대기만 남으므로, 답 한 번의 응답과 깨움에서만 보인다. */
+export type ApprovalEndReason = "replaced" | "missing";
 
 /**
  * 사람이 고르는 답.
@@ -34,6 +37,8 @@ export interface ApprovalRequestView {
   readonly updatedAt: number;
   /** 즉답형만. 이 시각이 지나면 `expired`. */
   readonly expiresAt?: number;
+  /** 대기 중이 아닌 결말의 사유. `replaced` 는 같은 대상의 새 제안, `missing` 은 반영할 항목이 없음. */
+  readonly reason?: ApprovalEndReason;
   readonly payload: unknown;
 }
 

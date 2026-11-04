@@ -40,7 +40,7 @@ import { createCommodorePlugins } from "./plugins.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import { createCommodoreSupervisor } from "./supervisor.js";
 import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
-import type { ApprovalCore, ApprovalStatus } from "@fleet-console/approval";
+import type { ApprovalCore } from "@fleet-console/approval";
 import { bindDescriptionProposals, type DescriptionProposalBinding } from "./description-proposals.js";
 import { bindIntelProposals, type IntelProposalBinding } from "./intel-proposals.js";
 
@@ -92,16 +92,18 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   // 승인 채널은 조립이 이미 열었다. 여기서는 타입만 등록한다.
   let proposals: DescriptionProposalBinding | null = null;
   let intelProposals: IntelProposalBinding | null = null;
-  let noteProposal = (_commodoreId: string, _kind: "description-proposal" | "intel-proposal", _status: ApprovalStatus) => {};
+  let noteProposal = (_commodoreId: string, _kind: "description-proposal" | "intel-proposal", _outcome: string) => {};
   if (deps.approvals) {
     const known = (id: string) => entities.dirOf(id) !== null;
     proposals = bindDescriptionProposals({
       core: deps.approvals, store, known,
-      onSettled: (proposerId, status) => noteProposal(proposerId, "description-proposal", status),
+      onSettled: (proposerId, status, reason) => noteProposal(proposerId, "description-proposal", reason ?? status),
+      onReplaced: (proposerId) => noteProposal(proposerId, "description-proposal", "replaced"),
     });
     intelProposals = bindIntelProposals({
       core: deps.approvals, store, known,
-      onSettled: (proposerId, status) => noteProposal(proposerId, "intel-proposal", status),
+      onSettled: (proposerId, status, reason) => noteProposal(proposerId, "intel-proposal", reason ?? status),
+      onReplaced: (proposerId) => noteProposal(proposerId, "intel-proposal", "replaced"),
     });
   }
   /**

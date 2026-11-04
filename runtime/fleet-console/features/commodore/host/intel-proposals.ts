@@ -1,21 +1,20 @@
-import { ApprovalError, type ApprovalCore, type ApprovalRequestView, type ApprovalStatus } from "@fleet-console/approval";
+import { ApprovalError, type ApprovalCore, type ApprovalEndReason, type ApprovalRequestView, type ApprovalStatus } from "@fleet-console/approval";
 
-import { INTEL_PROPOSAL_TYPE, type IntelProposalBase, type IntelProposalPayload } from "../shared/contracts/intel-proposal.js";
+import { INTEL_PROPOSAL_TYPE, type IntelProposalPayload } from "../shared/contracts/intel-proposal.js";
 import { MAX_INTEL_TEXT } from "../shared/contracts/types.js";
 import type { CommodoreStore } from "./store.js";
 
 /**
- * 정보 변경 제안. 추가는 기준이 없어 stale 이 되지 않는다.
- * 고침·삭제는 항목이 없어지거나 본문·editedAt 이 기준과 달라지는 순간 stale 로 기록된다.
- * 승인할 때의 같은 판정은 그 기록을 놓쳤을 때의 안전장치다. 끝난 제안은 다시 답할 수 없다.
- * 승인 경로는 addIntel·editIntel·removeIntel 뿐이고, 추가는 `commodore:<제안자>` 출처다.
+ * 정보 변경 제안. 대상 사령관마다 열린 제안은 하나(add·edit·remove 중 하나)고, 새 제안이 이전 것을 밀어낸다.
+ * 승인하면 그 순간의 항목을 제안대로 덮어쓴다. 고치거나 지울 항목이 이미 없으면 반영하지 않고 제안을 끝낸다.
+ * 추가는 `commodore:<제안자>` 출처의 addIntel 이다.
  */
 
 export interface CommodoreIntelProposals {
   proposeAdd(targetId: string, text: string): ApprovalRequestView;
   proposeEdit(targetId: string, intelId: string, text: string): ApprovalRequestView;
   proposeRemove(targetId: string, intelId: string): ApprovalRequestView;
-  /** 이 사령관이 낸 정보 제안. 결말도 여기 있다. */
+  /** 이 사령관이 지금 열어 둔 정보 제안. 끝난 제안은 남지 않는다. */
   list(): readonly ApprovalRequestView[];
 }
 
@@ -30,18 +29,19 @@ export function bindIntelProposals(deps: {
   readonly core: ApprovalCore;
   readonly store: CommodoreStore;
   readonly known: (commodoreId: string) => boolean;
-  readonly onSettled?: (proposerId: string, status: ApprovalStatus) => void;
+  readonly onSettled?: (proposerId: string, status: ApprovalStatus, reason?: ApprovalEndReason) => void;
+  readonly onReplaced?: (proposerId: string) => void;
 }): IntelProposalBinding {
-  let applying: string | null = null;
-  const noteTarget = (targetId: string, intel: readonly { readonly id: string; readonly text: string; readonly editedAt?: number }[]) => {
+  const displace = (targetId: string, nextProposer: string) => {
     for (const request of deps.core.snapshot().requests) {
-      if (request.id === applying || request.type !== INTEL_PROPOSAL_TYPE || request.status !== "pending") continue;
+      if (request.type !== INTEL_PROPOSAL_TYPE || request.status !== "pending") continue;
       const payload = readPayload(request.payload);
-      if (!payload || payload.kind === "add" || payload.targetId !== targetId) continue;
-      const item = intel.find((entry) => entry.id === payload.intelId);
-      if (!sameBase(item, payload.base)) deps.core.markStale(request.id);
+      if (!payload || payload.targetId !== targetId) continue;
+      deps.core.withdraw(request.id, "replaced");
+      if (payload.proposerId !== nextProposer) deps.onReplaced?.(payload.proposerId);
     }
   };
+
   deps.core.register({
     id: INTEL_PROPOSAL_TYPE,
     retention: "disk",
@@ -54,29 +54,23 @@ export function bindIntelProposals(deps: {
     onApprove(record) {
       const payload = readPayload(record.payload);
       const state = payload && deps.known(payload.targetId) ? deps.store.read(payload.targetId) : null;
-      if (!payload || !state) return "stale";
+      if (!payload || !state) return "missing";
       if (payload.kind === "add") {
         deps.store.addIntel(payload.targetId, { text: payload.text, source: `commodore:${payload.proposerId}` });
         return "approved";
       }
       const item = state.intel.find((entry) => entry.id === payload.intelId);
-      if (!sameBase(item, payload.base)) return "stale";
-      applying = record.id;
-      try {
-        if (payload.kind === "edit") deps.store.editIntel(payload.targetId, payload.intelId, payload.text);
-        else deps.store.removeIntel(payload.targetId, payload.intelId);
-      } finally { applying = null; }
+      if (!item) return "missing";
+      if (payload.kind === "edit") deps.store.editIntel(payload.targetId, payload.intelId, payload.text);
+      else deps.store.removeIntel(payload.targetId, payload.intelId);
       return "approved";
     },
   });
 
-  const unsubscribeStore = deps.store.subscribe((event) => {
-    if (event.op === "state" && (event.change === "intel-edited" || event.change === "intel-removed")) noteTarget(event.commodoreId, event.state.intel);
-  });
   const unsubscribe = deps.core.subscribeSettled((record) => {
-    if (record.type !== INTEL_PROPOSAL_TYPE) return;
+    if (record.type !== INTEL_PROPOSAL_TYPE || record.reason === "replaced") return;
     const payload = readPayload(record.payload);
-    if (payload) deps.onSettled?.(payload.proposerId, record.status);
+    if (payload) deps.onSettled?.(payload.proposerId, record.status, record.reason);
   });
 
   const textOf = (value: string) => {
@@ -90,32 +84,30 @@ export function bindIntelProposals(deps: {
     if (!state) throw new Error("unknown_commodore");
     return state;
   };
-  const baseOf = (proposerId: string, targetId: string, intelId: string): IntelProposalBase => {
-    const item = target(proposerId, targetId).intel.find((entry) => entry.id === intelId);
-    if (!item) throw new Error("unknown_intel");
-    return { editedAt: item.editedAt ?? null, text: item.text };
-  };
 
   return {
     forCommodore: (commodoreId) => ({
       proposeAdd: (targetId, text) => {
         target(commodoreId, targetId);
+        displace(targetId, commodoreId);
         return deps.core.propose(INTEL_PROPOSAL_TYPE, { kind: "add", proposerId: commodoreId, targetId, text: textOf(text) } satisfies IntelProposalPayload);
       },
-      proposeEdit: (targetId, intelId, text) => deps.core.propose(INTEL_PROPOSAL_TYPE, {
-        kind: "edit", proposerId: commodoreId, targetId, intelId, text: textOf(text), base: baseOf(commodoreId, targetId, intelId),
-      } satisfies IntelProposalPayload),
-      proposeRemove: (targetId, intelId) => deps.core.propose(INTEL_PROPOSAL_TYPE, {
-        kind: "remove", proposerId: commodoreId, targetId, intelId, base: baseOf(commodoreId, targetId, intelId),
-      } satisfies IntelProposalPayload),
+      proposeEdit: (targetId, intelId, text) => {
+        const item = target(commodoreId, targetId).intel.find((entry) => entry.id === intelId);
+        if (!item) throw new Error("unknown_intel");
+        displace(targetId, commodoreId);
+        return deps.core.propose(INTEL_PROPOSAL_TYPE, { kind: "edit", proposerId: commodoreId, targetId, intelId, text: textOf(text) } satisfies IntelProposalPayload);
+      },
+      proposeRemove: (targetId, intelId) => {
+        const item = target(commodoreId, targetId).intel.find((entry) => entry.id === intelId);
+        if (!item) throw new Error("unknown_intel");
+        displace(targetId, commodoreId);
+        return deps.core.propose(INTEL_PROPOSAL_TYPE, { kind: "remove", proposerId: commodoreId, targetId, intelId } satisfies IntelProposalPayload);
+      },
       list: () => deps.core.snapshot().requests.filter((request) => request.type === INTEL_PROPOSAL_TYPE && readPayload(request.payload)?.proposerId === commodoreId),
     }),
-    dispose() { unsubscribeStore(); unsubscribe(); },
+    dispose: unsubscribe,
   };
-}
-
-function sameBase(item: { readonly text: string; readonly editedAt?: number } | undefined, base: IntelProposalBase): item is { readonly text: string; readonly editedAt?: number } {
-  return item !== undefined && item.text === base.text && (item.editedAt ?? null) === base.editedAt;
 }
 
 function readPayload(payload: unknown): IntelProposalPayload | null {
@@ -129,17 +121,7 @@ function readPayload(payload: unknown): IntelProposalPayload | null {
     return { kind: "add", proposerId: value.proposerId, targetId: value.targetId, text: value.text.trim() };
   }
   if (typeof value.intelId !== "string" || value.intelId.length < 1 || value.intelId.length > 128) return null;
-  const base = readBase(value.base);
-  if (!base) return null;
-  if (value.kind === "remove") return { kind: "remove", proposerId: value.proposerId, targetId: value.targetId, intelId: value.intelId, base };
+  if (value.kind === "remove") return { kind: "remove", proposerId: value.proposerId, targetId: value.targetId, intelId: value.intelId };
   if (typeof value.text !== "string" || !value.text.trim() || value.text.trim().length > MAX_INTEL_TEXT) return null;
-  return { kind: "edit", proposerId: value.proposerId, targetId: value.targetId, intelId: value.intelId, text: value.text.trim(), base };
-}
-
-function readBase(value: unknown): IntelProposalBase | null {
-  if (!value || typeof value !== "object") return null;
-  const base = value as Record<string, unknown>;
-  if (typeof base.text !== "string" || base.text.length < 1 || base.text.length > MAX_INTEL_TEXT) return null;
-  if (base.editedAt !== null && (typeof base.editedAt !== "number" || !Number.isInteger(base.editedAt) || base.editedAt < 0)) return null;
-  return { editedAt: base.editedAt ?? null, text: base.text };
+  return { kind: "edit", proposerId: value.proposerId, targetId: value.targetId, intelId: value.intelId, text: value.text.trim() };
 }

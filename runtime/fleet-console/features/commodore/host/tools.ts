@@ -128,7 +128,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
   const proposals = options.proposals;
   const intelProposals = options.intelProposals;
   const descriptionText = proposals
-    ? "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive. You cannot edit it. To ask for a change to any Commodore's description, including your own, use propose_description; only the person can approve or reject it. Read description_proposals for the outcome. Read the description at the start of a turn that says the description changed, and whenever you need to weigh a decision against it."
+    ? "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive. You cannot edit it. To ask for a change to any Commodore's description, including your own, use propose_description; only the person can approve or reject it, and approving overwrites the description as it stands then. One open proposal per Commodore: a new one replaces the previous. Read description_proposals for the open proposal you made. Read the description at the start of a turn that says the description changed, and whenever you need to weigh a decision against it."
     : "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive and you cannot edit it. Read it at the start of a turn that says the description changed, and whenever you need to weigh a decision against it.";
   return [
     tool("description", descriptionText, z.object({}).strict(), () => {
@@ -198,19 +198,19 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
         ...(options.taskforce ? { taskforce: options.taskforce } : {}),
       })),
     ...(proposals ? [
-      tool("propose_description", `Propose a new description for a Commodore. You may propose a change for any Commodore, including yourself. You cannot edit a description; only the person approves or rejects, and nothing changes until they approve. The proposal records the target's revision. If that revision changes first — they approved another proposal, or they edited the description — this one becomes stale and cannot be approved. text is at most ${MAX_DESCRIPTION} characters. The same wording as the current description is refused as unchanged.`, z.object({ targetId: z.string().min(1).max(128), text: z.string().max(MAX_DESCRIPTION) }).strict(), ({ targetId, text }) => {
+      tool("propose_description", `Propose a new description for a Commodore. You may propose a change for any Commodore, including yourself. You cannot edit a description; only the person approves or rejects, and nothing changes until they approve. Approving overwrites the description as it stands then, even if the person edited it after you proposed. One open proposal per Commodore: a new proposal replaces the previous one. text is at most ${MAX_DESCRIPTION} characters. The same wording as the current description is refused as unchanged.`, z.object({ targetId: z.string().min(1).max(128), text: z.string().max(MAX_DESCRIPTION) }).strict(), ({ targetId, text }) => {
         const proposed = proposals.propose(targetId, text);
-        return { id: proposed.id, targetId, baseRev: (proposed.payload as { baseRev: number }).baseRev, status: proposed.status, createdAt: stamp(proposed.createdAt) };
+        return { id: proposed.id, targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) };
       }),
-      tool("description_proposals", "Description changes you have proposed, newest first. Pending ones have not changed the description. Approved, rejected and stale ones are the outcome; this is how you learn it. A turn that says a description proposal you made was settled is referring to this list.", z.object({}).strict(), () => ({
+      tool("description_proposals", "Description changes you currently have open, newest first. Nothing here has changed a description yet. A settled proposal leaves this list; a turn that says one was settled or replaced is how you learn that outcome.", z.object({}).strict(), () => ({
         proposals: proposals.list().map((proposed) => {
-          const payload = proposed.payload as { targetId: string; baseRev: number; text: string };
-          return { id: proposed.id, targetId: payload.targetId, baseRev: payload.baseRev, text: payload.text, status: proposed.status, createdAt: stamp(proposed.createdAt), updatedAt: stamp(proposed.updatedAt) };
+          const payload = proposed.payload as { targetId: string; text: string };
+          return { id: proposed.id, targetId: payload.targetId, text: payload.text, status: proposed.status, createdAt: stamp(proposed.createdAt) };
         }),
       })),
     ] : []),
     ...(intelProposals ? [
-      tool("propose_intel", `Propose an intel change for any Commodore, including yourself. You cannot write intel; only the person approves or rejects, and nothing is stored until they approve. kind add: text is trimmed, 1 to ${MAX_INTEL_TEXT} characters, and the item is attributed to you. kind edit: intelId and the new text; the proposal records the item's current text and editedAt. kind remove: intelId, with the same record. If that item is gone or its text or editedAt changes, the edit or removal is recorded stale and cannot be approved. An add has no such base and does not go stale. Several open proposals on one item all stay until one of those changes.`, z.object({
+      tool("propose_intel", `Propose an intel change for any Commodore, including yourself. You cannot write intel; only the person approves or rejects, and nothing is stored until they approve. One open intel proposal per Commodore: a new one replaces the previous. kind add: text is trimmed, 1 to ${MAX_INTEL_TEXT} characters, and the item is attributed to you. kind edit: intelId and the new text, which overwrites the item as it stands when the person approves. kind remove: intelId. If that item is already gone, approval fails and the proposal ends. An add does not need an existing item.`, z.object({
         kind: z.enum(["add", "edit", "remove"]),
         targetId: z.string().min(1).max(128),
         intelId: z.string().min(1).max(128).optional(),
@@ -227,10 +227,10 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
           : intelProposals.proposeRemove(targetId, intelId);
         return { id: proposed.id, kind, targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) };
       }),
-      tool("intel_proposals", "Intel changes you have proposed, newest first: adds, edits and removals, including ones the person approved or rejected and ones that went stale. Pending ones have not changed intel. This is how you learn the outcome.", z.object({}).strict(), () => ({
+      tool("intel_proposals", "Intel changes you currently have open, newest first. Nothing here has changed intel yet. A settled proposal leaves this list; a turn that says one was settled, replaced, or could not be applied is how you learn that outcome.", z.object({}).strict(), () => ({
         proposals: intelProposals.list().map((proposed) => {
-          const payload = proposed.payload as { kind: string; targetId: string; intelId?: string; text?: string; base?: { editedAt: number | null; text: string } };
-          return { id: proposed.id, kind: payload.kind, targetId: payload.targetId, ...(payload.intelId ? { intelId: payload.intelId } : {}), ...(payload.text !== undefined ? { text: payload.text } : {}), ...(payload.base ? { base: payload.base } : {}), status: proposed.status, createdAt: stamp(proposed.createdAt), updatedAt: stamp(proposed.updatedAt) };
+          const payload = proposed.payload as { kind: string; targetId: string; intelId?: string; text?: string };
+          return { id: proposed.id, kind: payload.kind, targetId: payload.targetId, ...(payload.intelId ? { intelId: payload.intelId } : {}), ...(payload.text !== undefined ? { text: payload.text } : {}), status: proposed.status, createdAt: stamp(proposed.createdAt) };
         }),
       })),
     ] : []),
