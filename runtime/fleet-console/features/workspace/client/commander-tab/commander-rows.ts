@@ -99,8 +99,5 @@ export function useCommanderRows(commodoreId: string, selectedId: string | null)
     ...activeSections,
     ...(settled.length > 0 ? [{ id: "settled", title: null, rows: settled, fold: "settled" as const, settled: true as const, freshCount: fresh.length, doneCount: done.length }] : []),
   ];
-  // 이 사령관의 기록이 아직 오지 않았거나, 기록은 있는데 줄이 아직 서지 않았으면(묶음 원천 설치 전) 빈 상태가 아니다.
-  const settledEmpty = sorted.length === 0 && state.objectiveRecordsHydrated
-    && !state.objectiveRecords.some((objectiveRecord) => objectiveRecord.commodoreId === commodoreId);
-  return { sorted, sections, listSections, preference, settledEmpty };
+  return { sorted, sections, listSections, preference };
 }
