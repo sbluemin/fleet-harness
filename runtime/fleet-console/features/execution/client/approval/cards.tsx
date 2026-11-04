@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import type { ApprovalDecision } from "@fleet-console/approval/contract";
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -61,7 +61,7 @@ export function ApprovalDiff({ now, after, nowLabel, afterLabel, none, afterNone
   readonly none: string;
   readonly afterNone?: string;
 }) {
-  const compared = now !== null && after !== null ? wordDiff(now, after) : null;
+  const compared = useMemo(() => (now !== null && after !== null ? wordDiff(now, after) : null), [now, after]);
   return (
     <div className="approval-diff">
       <div className="approval-diff-line">
