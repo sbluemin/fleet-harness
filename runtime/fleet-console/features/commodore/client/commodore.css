@@ -915,8 +915,12 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 
 /* 팔레트 — 사령관 설정이 Inbox 시트(스크림 90)나 오른쪽 패널에서 열리므로 덮개 층 위에 선다.
    높이는 스크림 padding(위 10vh·아래 16px)을 뺀 뷰포트 안에 둔다. */
-.commodore-palette-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 4); display: grid; place-items: start center; padding: 10vh 16px 16px; background: var(--dialog-scrim); }
-.commodore-palette { display: flex; flex-direction: column; width: min(1040px, 100%); min-width: 0; height: min(760px, calc(90vh - 16px)); border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); overflow: hidden; }
+.commodore-palette-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 4); display: grid; background: var(--dialog-scrim); }
+/* 데스크톱은 settings-modal-scrim의 가운데 정렬·여백을 그대로 쓴다. 팔레트만 열릴 때는 위쪽 정렬. */
+.commodore-palette-scrim:not(.settings-modal-scrim) { place-items: start center; padding: 10vh 16px 16px; }
+/* 배치·크기·면은 함께 단 settings-modal이 맡는다. 여기서 display:flex를 주면 그 grid를 덮어 내비가 한 줄로 쌓인다. */
+.commodore-palette { width: min(1040px, 100%); min-width: 0; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); overflow: hidden; }
+.commodore-palette.settings-modal > .commodore-plugin-detail { grid-column: 1 / -1; min-height: 0; }
 /* 다이얼로그 자체는 Esc 를 받으려고 포커스만 받는다 — 조작 대상이 아니라 링을 그리지 않는다. */
 .commodore-palette:focus { outline: none; }
 /* 목록·상세가 함께 쓰는 상단 바 — 뒤로(왼쪽)·닫기(오른쪽)는 설정 창 닫기와 같은 32px 원형 아이콘이고 두 화면에서 같은 자리다. */
@@ -979,7 +983,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-trust-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .commodore-palette-body { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; }
 .commodore-palette-scrim.is-phone { place-items: end stretch; padding: 0; }
-.commodore-palette.is-phone { width: 100%; height: min(760px, calc(100dvh - 56px)); max-height: calc(100dvh - 56px); border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; padding-bottom: var(--m-safe-bottom, 0px); }
+.commodore-palette.is-phone { display: flex; flex-direction: column; width: 100%; height: min(760px, calc(100dvh - 56px)); max-height: calc(100dvh - 56px); border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; padding-bottom: var(--m-safe-bottom, 0px); }
 .commodore-palette.is-phone .commodore-palette-body { flex-direction: column; }
 .commodore-palette-rail { flex: 0 0 196px; overflow: auto; padding: 8px; border-right: 1px solid var(--hairline); }
 .commodore-palette-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
