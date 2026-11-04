@@ -302,10 +302,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const pendingOpenUIFeedback = new Map<string, string>();
   const withCommanderFreshNotice = (sessionId: string, text: string): string => {
     if (ctx.experiments?.read().objectiveFreshSession !== true || !ctx.consoleControl?.isNextOpenFresh?.(sessionId)) return text;
-    if (text.startsWith(`목표 \`${sessionId}\`: Console 이 다시 시작돼`) || text.startsWith(`Objective \`${sessionId}\`: Console restarted`) || text.includes(`지휘관 새 세션`) || text.includes(`commander fresh session`)) return text;
+    if (text.startsWith(`목표 \`${sessionId}\`: Console 이 다시 시작돼`) || text.startsWith(`Objective \`${sessionId}\`: Console restarted`) || text.includes(`지휘관 새 세션`) || text.includes(`commander fresh session`)) {
+      ctx.consoleControl?.consumeFreshNotice?.(sessionId);
+      return text;
+    }
     const lang = ctx.objectiveRecords.get(sessionId)?.objectiveLanguage === "ko" ? "ko" : "en";
     const current = store.find(sessionId);
     const memberNotice = current ? interruptedMemberMissionsNotice(current, (id) => ctx.consoleControl?.isNextOpenFresh?.(id) ?? false, lang) : "";
+    ctx.consoleControl?.consumeFreshNotice?.(sessionId);
     return `${commanderFreshTurnNotice(sessionId, lang, memberNotice)}${text}`;
   };
   const withOpenUIFeedback = (sessionId: string, text: string): string => {
@@ -1410,6 +1414,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const freshNotice = isMemberFresh
       ? memberFreshTurnNotice(objectiveId, memberRole, ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en")
       : "";
+    if (isMemberFresh) ctx.consoleControl?.consumeFreshNotice?.(targetId);
     const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en"));
     try {
       await control().request({
@@ -2225,7 +2230,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }));
       if (ctx.experiments?.read().objectiveFreshSession === true) {
         for (const sessionId of ids) {
-          try { await ctx.consoleControl?.disposeChat?.(sessionId); } catch { /* dispose 실패는 무시 */ }
+          try {
+            const observation = ctx.consoleControl?.observe(sessionId);
+            if (observation?.surface === "terminal" && observation.lifecycle === "live") {
+              await ctx.consoleControl?.sleep?.(sessionId, { endPendingWork: true });
+            } else {
+              await ctx.consoleControl?.disposeChat?.(sessionId);
+            }
+          } catch { /* 정리 실패는 무시 */ }
           ctx.consoleControl?.markNextOpenFresh?.(sessionId);
         }
       }

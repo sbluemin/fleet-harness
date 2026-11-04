@@ -237,6 +237,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   const freshOpenSessions = new Set<string>();
+  const freshNoticeSessions = new Set<string>();
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
   const chatRegistry = new AgentChatRegistry(testChatSdkFactory ?? createChatSdkFactory(ctx.spawnAgentProcess), (objectiveId) => terminalRuntime.awaitWriterExit(objectiveId, PRIOR_WRITER_EXIT_WAIT_MS));
@@ -833,8 +834,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     },
     advertisedTools: (objectiveId) => chatRegistry.get(objectiveId)?.readAdvertisedTools() ?? null,
     transcript: (objectiveId, input, signal) => actions.transcript!(objectiveId, input.cursor, input.limit, signal, input.tail ? { tail: true } : undefined),
-    markNextOpenFresh: (objectiveId) => { if (ctx.host.experiments?.read()?.objectiveFreshSession === true) freshOpenSessions.add(objectiveId); },
-    isNextOpenFresh: (objectiveId) => ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.has(objectiveId),
+    markNextOpenFresh: (objectiveId) => {
+      if (ctx.host.experiments?.read()?.objectiveFreshSession === true) {
+        freshOpenSessions.add(objectiveId);
+        freshNoticeSessions.add(objectiveId);
+      }
+    },
+    isNextOpenFresh: (objectiveId) => ctx.host.experiments?.read()?.objectiveFreshSession === true && freshNoticeSessions.has(objectiveId),
+    consumeFreshNotice: (objectiveId) => ctx.host.experiments?.read()?.objectiveFreshSession === true && freshNoticeSessions.delete(objectiveId),
     disposeChat: async (objectiveId) => { if (ctx.host.experiments?.read()?.objectiveFreshSession === true) await chatRegistry.dispose(objectiveId); },
   });
   if (detachControl) ctx.host.lifecycle.registerCleanup(detachControl);
@@ -1696,6 +1703,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // resolve가 연 예약은 아래 어떤 경로로 던져져도 닫혀야 한다 — settle을 지나 bind된 뒤의
     // unreserve는 no-op이라(sessionId가 이미 붙었다) 이중 정산이 안전하다.
     let terminalTurnReserved = false;
+    let shouldFreshDormant = false;
     try {
     // Chat Mode Objective은 PTY가 없다 — 전달은 SDK 턴으로 실행된다. 구조화 경로라 PTY 정화를
     // 거치지 않은 원문을 그대로 쓴다(빈 문자열·상한 검사는 위에서 끝났다).
@@ -1805,14 +1813,24 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     assertCurrent();
-    const fresh = !providerSession || providerSession.source === "launch";
-    const result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh, providerSession });
+    const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+    shouldFreshDormant = freshEnabled && freshOpenSessions.delete(sessionId);
+    const fresh = shouldFreshDormant || !providerSession || providerSession.source === "launch";
+    let result: { ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string };
+    try {
+      result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh, providerSession });
+    } catch (error) {
+      if (shouldFreshDormant) freshOpenSessions.add(sessionId);
+      throw error;
+    }
     if (!result.ok) {
+      if (shouldFreshDormant) freshOpenSessions.add(sessionId);
       if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
       settleAttachments(false);
       reply(result.status, { error: result.error });
       return true;
     }
+    shouldFreshDormant = false;
     // 전달은 attach 성공 뒤에만 큐에 올린다 — 죽은 세션에 쌓인 메시지가 다음 재기동에 새는 것을 막는다.
     // 선두의 빈 지연 청크는 재기동된 CLI TUI의 부팅·raw-mode 초기화에 여유를 준다. readiness
     // 신호가 없는 경로라 보장이 아니라 여유폭이다(fresh launch는 argv로 프롬프트를 넘겨 이 경합이 없다).
@@ -1821,6 +1839,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     reply(200, { delivered: true, resumed: true });
     return true;
     } catch (error) {
+      if (shouldFreshDormant) {
+        freshOpenSessions.add(sessionId);
+      }
       if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
       // 처리되지 않은 throw가 예약을 영구 고착시키면 그 id는 어떤 재시도에도 실리지 못한다.
       if (attachmentIds.length > 0) launchAttachments.unreserve(attachmentIds);

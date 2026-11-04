@@ -88,6 +88,7 @@ export interface ConsoleExecutionAdapter {
   transcript?(objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
   markNextOpenFresh?(objectiveId: string): void;
   isNextOpenFresh?(objectiveId: string): boolean;
+  consumeFreshNotice?(objectiveId: string): boolean;
   disposeChat?(objectiveId: string): Promise<void>;
 }
 export interface ConsoleControlDeps {
@@ -148,6 +149,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   const observed = new Map<string, string>();
   const previousActivity = new Map<string, ConsoleActivity>();
   const pendingFreshSessions = new Set<string>();
+  const pendingNoticeSessions = new Set<string>();
   const timer = setInterval(() => { void tick().catch(() => { storageError = true; }); }, 1_000);
   timer.unref();
 
@@ -446,6 +448,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       adapter = value;
       for (const id of pendingFreshSessions) value.markNextOpenFresh?.(id);
       pendingFreshSessions.clear();
+      pendingNoticeSessions.clear();
       return () => { if (adapter === value) adapter = null; };
     },
     observe, request, automation, readEvents, briefing, tick,
@@ -489,11 +492,20 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     },
     markNextOpenFresh(objectiveId: string): void {
       if (adapter) adapter.markNextOpenFresh?.(objectiveId);
-      else pendingFreshSessions.add(objectiveId);
+      else {
+        pendingFreshSessions.add(objectiveId);
+        pendingNoticeSessions.add(objectiveId);
+      }
     },
     isNextOpenFresh(objectiveId: string): boolean {
       if (adapter) return adapter.isNextOpenFresh?.(objectiveId) ?? false;
-      return pendingFreshSessions.has(objectiveId);
+      return pendingNoticeSessions.has(objectiveId);
+    },
+    consumeFreshNotice(objectiveId: string): boolean {
+      if (adapter) return adapter.consumeFreshNotice?.(objectiveId) ?? false;
+      const had = pendingNoticeSessions.has(objectiveId);
+      pendingNoticeSessions.delete(objectiveId);
+      return had;
     },
     async disposeChat(objectiveId: string): Promise<void> { await adapter?.disposeChat?.(objectiveId); },
     migrateLegacyAutomations,

@@ -636,6 +636,8 @@ describe("agent chat mode routes", () => {
     await harness.post(sessionId, "chat");
     await harness.post(sessionId, "message", { text: "turn when on" });
     await vi.waitFor(() => expect(harness.sends).toContain("turn when on"));
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
+    expect(harness.consoleControl.consumeFreshNotice(sessionId)).toBe(true);
     expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(false); // consumed
     const secondRequest = harness.openSessionRequests.at(-1) as { resume?: string; sessionId?: string };
     expect(secondRequest?.resume).toBeUndefined();

@@ -55,8 +55,10 @@ export interface ConsoleControlHost {
   transcript?(objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
   /** 다음 열기에서 이전 대화를 싣지 않는 새 세션으로 열도록 표시를 남긴다. */
   markNextOpenFresh?(objectiveId: string): void;
-  /** 다음 열기가 새 세션으로 예정되어 있는지 확인한다(표시를 소비하지 않는다). */
+  /** 다음 열기가 새 세션으로 예정되어 있는지 확인한다(안내 표시를 확인하며 소비하지 않는다). */
   isNextOpenFresh?(objectiveId: string): boolean;
+  /** 새 세션 첫 턴 안내 표시를 소비한다. */
+  consumeFreshNotice?(objectiveId: string): boolean;
   /** 살아 있는 채팅 자식 인스턴스를 dispose한다(중단 뒤 재개 등에서 새 세션으로 열기 위함). */
   disposeChat?(objectiveId: string): Promise<void>;
 }

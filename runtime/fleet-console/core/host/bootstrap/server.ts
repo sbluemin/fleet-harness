@@ -1243,6 +1243,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     transcript: (objectiveId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, objectiveId, input, signal),
     markNextOpenFresh: (objectiveId) => consoleControl.markNextOpenFresh?.(objectiveId),
     isNextOpenFresh: (objectiveId) => consoleControl.isNextOpenFresh?.(objectiveId) ?? false,
+    consumeFreshNotice: (objectiveId) => consoleControl.consumeFreshNotice?.(objectiveId) ?? false,
     disposeChat: async (objectiveId) => { await consoleControl.disposeChat?.(objectiveId); },
   });
   async function resolveObjectiveCatalog(): Promise<{ readonly plugins: readonly ObjectiveCatalogPlugin[] }> {
