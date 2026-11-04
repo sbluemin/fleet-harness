@@ -1670,7 +1670,23 @@
 .ai-gateway-order { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
 .ai-gateway-order-title { margin: 0; font-size: var(--t-sm); color: var(--text-primary); }
 .ai-gateway-order-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.ai-gateway-order-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 12px; border: 0; border-radius: var(--radius-pill); background: var(--agw-fill); color: var(--text-primary); transition: transform 220ms ease-out; }
+/* 면은 설정 시트(--glass-tint-expanded 위 --float-underlay)에 워시를 얹은 뒤 굽는다.
+   반투명 워시만 두면 두 칩이 교차할 때 뒤 칩 글자가 비친다. */
+.ai-gateway-order-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background:
+    linear-gradient(var(--control-rest-hover), var(--control-rest-hover)),
+    linear-gradient(var(--glass-tint-expanded), var(--glass-tint-expanded)),
+    var(--float-underlay);
+  color: var(--text-primary);
+  transition: transform 220ms ease-out;
+}
 .ai-gateway-order-chip button { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 11px; display: inline-grid; place-items: center; cursor: pointer; transition: background 120ms ease, color 120ms ease; }
 .ai-gateway-order-chip button:hover:not(:disabled) { background: var(--agw-fill-hover); color: var(--text-primary); }
 .ai-gateway-order-chip button:disabled,

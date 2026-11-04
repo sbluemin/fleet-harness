@@ -164,11 +164,16 @@ function chipOffset(node: HTMLElement, row: HTMLElement): { x: number; y: number
  */
 function useOrderChipFlip(rowRef: React.RefObject<HTMLElement | null>, signature: string, reduced: boolean): void {
   const positions = React.useRef(new Map<string, { x: number; y: number }>());
+  const order = React.useRef<readonly string[]>([]);
+  const layerTimers = React.useRef<number[]>([]);
   React.useLayoutEffect(() => {
     const row = rowRef.current;
     if (!row) return;
+    for (const timer of layerTimers.current) window.clearTimeout(timer);
+    layerTimers.current = [];
     const nodes = [...row.querySelectorAll<HTMLElement>("[data-order-id]")];
     const previous = positions.current;
+    const previousOrder = order.current;
     const seen = new Map<string, { x: number; y: number }>();
     for (const node of nodes) {
       const id = node.dataset.orderId;
@@ -193,6 +198,9 @@ function useOrderChipFlip(rowRef: React.RefObject<HTMLElement | null>, signature
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moves.push({ node, dx, dy });
     }
     positions.current = next;
+    order.current = nodes.flatMap((node) => node.dataset.orderId ? [node.dataset.orderId] : []);
+    const previousIndex = new Map(previousOrder.map((id, index) => [id, index]));
+    for (const node of nodes) node.style.zIndex = "";
     if (reduced) {
       for (const node of nodes) node.style.transition = "none";
       return;
@@ -202,6 +210,10 @@ function useOrderChipFlip(rowRef: React.RefObject<HTMLElement | null>, signature
       return;
     }
     for (const { node, dx, dy } of moves) {
+      const id = node.dataset.orderId;
+      const before = id ? previousIndex.get(id) : undefined;
+      const after = id ? order.current.indexOf(id) : -1;
+      node.style.zIndex = before !== undefined && after >= 0 && after < before ? "1" : "";
       node.style.transition = "none";
       node.style.transform = `translate(${dx}px, ${dy}px)`;
     }
@@ -211,15 +223,18 @@ function useOrderChipFlip(rowRef: React.RefObject<HTMLElement | null>, signature
       for (const { node } of moves) {
         node.style.transition = "transform 220ms ease-out";
         node.style.transform = "";
+        layerTimers.current.push(window.setTimeout(() => { node.style.zIndex = ""; }, 220));
       }
     });
     return () => {
       cancelAnimationFrame(frame);
       if (played) return;
       positions.current = previous;
+      order.current = previousOrder;
       for (const { node } of moves) {
         node.style.transform = "";
         node.style.transition = "";
+        node.style.zIndex = "";
       }
     };
   }, [rowRef, signature, reduced]);
