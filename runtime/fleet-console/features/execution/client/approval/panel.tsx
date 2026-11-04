@@ -24,11 +24,14 @@ export function ApprovalCapsule() {
       className={`approval-entry${items.length === 0 ? " is-idle" : ""}${urgent ? " is-urgent" : ""}`}
       aria-expanded={open}
       aria-haspopup="dialog"
-      aria-label={t("approval.open")}
+      aria-label={items.length === 0
+        ? t("approval.capsuleAriaEmpty")
+        : left !== undefined
+          ? t("approval.capsuleAriaUrgent", { count: String(items.length), time: formatApprovalTime(left) })
+          : t("approval.capsuleAriaCount", { count: String(items.length) })}
       onClick={() => toggleApprovalList()}
     >
       <BellGlyph />
-      <span>{t("approval.capsuleWord")}</span>
       {items.length > 0 ? <span className="approval-count num">{items.length}</span> : null}
       {urgent && left !== undefined ? <><span className="approval-entry-sep" /><span className={`approval-entry-urgent${low ? " is-low" : ""}`}><LifeRing seconds={left} /><span>{t("approval.capsuleUrgent")}</span><span className="num">{formatApprovalTime(left)}</span></span></> : null}
     </button>
