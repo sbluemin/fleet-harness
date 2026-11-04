@@ -58,5 +58,5 @@ export interface CommodoreBoardAdapter {
 
 export interface CommodoreBoardHost {
   registerBoard(adapter: CommodoreBoardAdapter): () => void;
-  commander(commodoreId: string): { readonly model: string; readonly effort?: string } | null;
+  commander(commodoreId: string): { readonly model: string; readonly effort?: string } | { readonly route: true } | null;
 }

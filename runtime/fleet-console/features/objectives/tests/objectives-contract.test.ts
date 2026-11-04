@@ -58,7 +58,7 @@ type Saved = {
 
 const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId: "t1", legacyCwd: path.resolve(".fleet/isolated/fixture"), theaterIdOf: () => "t1" });
 
-function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number }) {
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | { readonly route: true } | null }) {
   // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
@@ -119,6 +119,13 @@ ts: child.ts};
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableAutoMemory?: boolean; groupId?: string }[] = [];
+  // 채팅의 다음 프로세스 기동 좌표. 레코드의 session.model 과 따로다 — 미시작 좌표를 거치지 않은 기록 수정은 여기 닿지 않는다.
+  const launchCoordinates = new Map<string, { model: string; effort: string | null }>();
+  const seedLaunchCoordinate = (id: string, model?: string, effort?: string | null) => {
+    launchCoordinates.set(id, { model: model && model.length > 0 ? model : "opus[1m]", effort: effort ?? null });
+  };
+  // 휴면 채팅을 깨운 send 가 그 순간 읽은 기동 좌표. 기록 패치만으로는 바뀌지 않는다.
+  const woken: { objectiveId: string; model: string; effort: string | null }[] = [];
   const resumed: string[] = [];
   const slept: string[] = [];
   const subagentSpawns: { objectiveId: string; policy: "blocked" | "default" }[] = [];
@@ -142,6 +149,8 @@ ts: child.ts};
 type: "agent",
 pluginId: null,
 title: input.title});
+      const born = node.session as { model?: string; effort?: string } | undefined;
+      if (node.chatMode === true) seedLaunchCoordinate(id, born?.model, born?.effort ?? null);
       activity.set(id, "dormant");
       if (hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
       return node;
@@ -216,7 +225,7 @@ title: input.title});
     objectiveRecords: objectiveRecordsHost,
     consoleControl: {
       request: async (input: ConsoleActionInput) => {
-        if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.(); deliveries.push(input); sent.push({ objectiveId: input.objectiveId!, text: input.text! }); if (activity.get(input.objectiveId!) === "dormant") activity.set(input.objectiveId!, "idle"); return { objectiveId: input.objectiveId }; }
+        if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.(); deliveries.push(input); sent.push({ objectiveId: input.objectiveId!, text: input.text! }); if (activity.get(input.objectiveId!) === "dormant") { woken.push({ objectiveId: input.objectiveId!, ...(launchCoordinates.get(input.objectiveId!) ?? { model: "opus[1m]", effort: null }) }); activity.set(input.objectiveId!, "idle"); } return { objectiveId: input.objectiveId }; }
         // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
         if (input.kind === "interrupt") { if (activity.get(input.objectiveId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.objectiveId!); activity.set(input.objectiveId!, "idle"); return { objectiveId: input.objectiveId }; }
         // resume 은 휴면만 세션째 되살린다.
@@ -257,6 +266,7 @@ title: input.title});
       setSubagentSpawn: (objectiveId: string, policy: "blocked" | "default") => { subagentSpawns.push({ objectiveId, policy }); },
       setUnstartedPreset: async (objectiveId: string, input: { model: string; effort: string | null }) => {
         const node = objectiveRecords.get(objectiveId)!;
+        seedLaunchCoordinate(objectiveId, input.model, input.effort);
         objectiveRecordsHost.patch(objectiveId, { ...({ ...node, session: { ...(node.session as object), model: input.model, effort: input.effort ?? undefined } }) });
         return { ok: true, applied: "now" };
       },
@@ -287,14 +297,15 @@ title: input.title});
     },
     paths: { workspaceHash: () => "t1", resolveCommodoreTheaterPath: () => theaterPath, resolveObjectiveOwner: () => "c1", listCommodoreTheaters: () => [{ id: "t1", label: "Project" }], resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
-  const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
+  const launchOptions = { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}), ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}) };
+  const launch = createLaunchService(ctx, store, launchOptions);
   launchServices.push(launch);
   watchQuiet = () => launch.watchReportQuiet();
   // 재시작 — 같은 목표 파일과 같은 호스트 위에 저장소와 기동 서비스를 새로 세운다(메모리 상태는 잃고 보드 파일만 남는다).
   const restart = () => {
     let watchAgain: () => void = () => {};
     const reloaded = createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? path.join(workspace, "objectives") : null), objectiveRecords: objectiveRecordsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
-    const relaunched = createLaunchService(ctx, reloaded, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
+    const relaunched = createLaunchService(ctx, reloaded, launchOptions);
     launchServices.push(relaunched);
     watchAgain = () => relaunched.watchReportQuiet();
     return { store: reloaded, launch: relaunched };
@@ -327,7 +338,7 @@ title: input.title});
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, objectiveRecords, archivedObjectiveRecords, archiveCalls, accessCalls, objectiveRecordsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
+  return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, objectiveRecords, archivedObjectiveRecords, archiveCalls, accessCalls, objectiveRecordsHost, add, sent, deliveries, launches, woken, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ objectiveId: id, output });
   }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; } };
@@ -806,25 +817,13 @@ describe("Objectives contract", () => {
     expect(store.find(objective.id)!.members[0]).toMatchObject({ routed: { via: "route", because: "Sonnet @low · AI model · difficulty low" } });
   });
 
-  it("batch-updates member launch mode to same or route while preserving custom models", async () => {
+  it("batch-updates member launch mode to route while preserving custom models", async () => {
     const { store, launch, route, call, savedObjective, objectiveFile, objectivesDir, objectiveRecordsHost } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Batch Launch Test", groupId: null, note: "brief" });
     const m1 = store.memberAdd(objective.id, { role: "architect" }, "commander").members[0]!;
-    const m2 = store.memberAdd(objective.id, { role: "backend", launch: { mode: "same" } }, "commander").members[1]!;
+    const m2 = store.memberAdd(objective.id, { role: "backend" }, "commander").members[1]!;
     const m3 = store.memberAdd(objective.id, { role: "frontend", launch: { mode: "model", model: "sonnet[1m]", effort: "high" } }, "human").members[2]!;
 
-    // 1. 일괄 "same" 적용: m1(route) -> same, m2(same) -> same, m3(model) -> preserved
-    const resSame = await route("member/batch-launch", { objectiveId: objective.id, mode: "same" });
-    expect(resSame.status).toBe(200);
-    const updated1 = store.find(objective.id)!;
-    expect(updated1.members.find((m) => m.id === m1.id)!.launch).toEqual({ mode: "same" });
-    expect(updated1.members.find((m) => m.id === m2.id)!.launch).toEqual({ mode: "same" });
-    expect(updated1.members.find((m) => m.id === m3.id)!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "high" });
-    expect(updated1.edited?.kinds).toContain("members");
-    expect(store.storedMember(objective.id, m2.id)?.launchBy).toBe("human");
-    expect((await call("set_member_launch", { objectiveId: objective.id, member: m2.id, mode: "route" }, objective.id)).structuredContent.error).toBe("member_launch_person_chosen");
-
-    // 2. 일괄 "route" 적용: m1, m2 -> route, m3(model) -> preserved
     const resRoute = await route("member/batch-launch", { objectiveId: objective.id, mode: "route" });
     expect(resRoute.status).toBe(200);
     const updated2 = store.find(objective.id)!;
@@ -843,6 +842,88 @@ describe("Objectives contract", () => {
     reloaded.patch(objective.id, { note: "Saved after loading legacy members" });
     const savedAgain = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
     expect(savedAgain.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
+    // 디스크에 남은 옛 same 은 다시 쓰지 않고, 읽을 때 라우팅으로 접힌다.
+    const legacySame = savedAgain.find(objective.id)!;
+    const raw = JSON.parse(fs.readFileSync(objectiveFile(objective.id), "utf8")) as { members: { id: string; launch?: unknown }[] };
+    const backend = raw.members.find((member) => member.id === m2.id)!;
+    backend.launch = { mode: "same" };
+    fs.writeFileSync(objectiveFile(objective.id), JSON.stringify(raw));
+    const folded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
+    expect(folded.find(objective.id)!.members.find((member) => member.id === m2.id)!.launch).toEqual({ mode: "route" });
+    expect(legacySame.members.find((member) => member.id === m3.id)!.launch.mode).toBe("model");
+  });
+
+  it("judges a routed Commander once on the first launch and not again when the lineup is replanned", async () => {
+    const { store, launch, route, objectiveRecords, woken } = harness(() => "http://routing.invalid", { commodoreCommander: () => ({ route: true }) });
+    let judgments = 0;
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      judgments += 1;
+      const items = (JSON.parse(init.body) as { items: { key: string; prompt: string }[] }).items;
+      expect(items).toHaveLength(1);
+      expect(items[0]!.prompt).toContain("Objective: Routed commander");
+      expect(items[0]!.prompt).toContain("briefing text");
+      expect(items[0]!.prompt).toContain("Role: Commander — plans the lineup, delegates to members, integrates results, and stays for later rounds.");
+      expect(items[0]!.prompt.length).toBeLessThanOrEqual(16_384);
+      return Response.json({ decisions: items.map((item) => item.prompt.includes("Role: Commander")
+        ? { key: item.key, model: "sonnet", effort: "low", because: "fits the brief", fallback: false }
+        : { key: item.key, because: "AI routing is off", fallback: true }) });
+    });
+    const routed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    expect(store.find(routed.id)!.commander).toMatchObject({ routing: true });
+    expect(store.find(routed.id)!.commander.model).toBeUndefined();
+    expect((await route("plan/request", { objectiveId: routed.id })).status).toBe(200);
+    expect(judgments).toBe(1);
+    expect(objectiveRecords.get(routed.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(store.find(routed.id)!.commander).toMatchObject({ model: "sonnet[1m]", effort: "low", routed: { via: "route", because: "fits the brief" } });
+    expect(store.find(routed.id)!.commander.routing).toBeUndefined();
+    expect((await route("plan/request", { objectiveId: routed.id })).status).toBe(200);
+    expect(judgments).toBe(1);
+    const plain = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Person", groupId: null, note: "kept" });
+    expect(plain.commander.routing).toBeUndefined();
+    expect(plain.commander.model).toBe("opus[1m]");
+    expect((await route("plan/request", { objectiveId: plain.id })).status).toBe(200);
+    expect(judgments).toBe(1);
+
+    const shelved = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    await launch.archive(shelved.id);
+    expect(store.find(shelved.id)!.commander.routing).toBe(true);
+    expect(store.find(shelved.id)!.commander.model).toBeUndefined();
+    await launch.restore(shelved.id);
+    expect(store.find(shelved.id)!.commander.routing).toBe(true);
+    expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
+    expect(judgments).toBe(2);
+    expect(objectiveRecords.get(shelved.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    // 기록의 session 이 아니라, 복원된 휴면 채팅을 깨운 그 send 가 읽은 기동 좌표다. 보관은 모델 없이 만들어 기본 opus 로 심는다.
+    expect(woken.filter((entry) => entry.objectiveId === shelved.id)).toEqual([{ objectiveId: shelved.id, model: "sonnet", effort: "low" }]);
+    expect(store.find(shelved.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route", because: "fits the brief" } });
+    expect(store.find(shelved.id)!.commander.routing).toBeUndefined();
+    expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
+    expect(judgments).toBe(2);
+
+    const buried = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    await launch.archive(buried.id);
+    expect(store.find(buried.id)!.commander.routing).toBe(true);
+    expect((await route("plan/request", { objectiveId: buried.id })).status).toBe(200);
+    expect(judgments).toBe(3);
+    expect(objectiveRecords.get(buried.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(woken.filter((entry) => entry.objectiveId === buried.id)).toEqual([{ objectiveId: buried.id, model: "sonnet", effort: "low" }]);
+    expect(store.find(buried.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route", because: "fits the brief" } });
+    expect(store.find(buried.id)!.commander.routing).toBeUndefined();
+    expect(store.find(buried.id)!.archived).toBe(false);
+    expect((await route("plan/request", { objectiveId: buried.id })).status).toBe(200);
+    expect(judgments).toBe(3);
+
+    const previewed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    const analyst = store.memberAdd(previewed.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
+    store.missionAdd(previewed.id, { text: "read", member: analyst.id });
+    const preview = (await route("routing/preview", { objectiveId: previewed.id })).value.preview as { members: { id: string; via: string; model?: string; reason?: string }[] };
+    expect(judgments).toBe(5);
+    expect(store.find(previewed.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route" } });
+    expect(store.find(previewed.id)!.commander.routing).toBeUndefined();
+    expect(preview.members).toEqual([expect.objectContaining({ id: analyst.id, via: "fallback", model: "sonnet[1m]" })]);
+    expect((await route("commander/start", { objectiveId: previewed.id, routing: "preview" })).status).toBe(200);
+    expect(judgments).toBe(5);
+    expect(objectiveRecords.get(analyst.id)!.session).toMatchObject({ model: "sonnet[1m]" });
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
@@ -2343,9 +2424,9 @@ describe("Objectives contract", () => {
     expect(store.storedMember(id, workerId)).toEqual(personSelection);
     const reloadedStore = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
     expect(reloadedStore.storedMember(id, workerId)?.launchBy).toBe("human");
-    // 실행값을 same에서 명시 모델로 고정해도 같은 세션을 다시 전환하지 않는다. 빈 강도와 생략도 같은 좌표다.
+    // 실행 중인 모델과 같은 좌표를 다시 골라도 세션을 다시 전환하지 않는다. 빈 강도와 생략도 같은 좌표다.
     const reviewerId = store.find(id)!.members[1]!.id;
-    expect((await route("member/patch", { objectiveId: id, memberId: reviewerId, patch: { launch: { mode: "same" } } })).status).toBe(200);
+    expect((await route("member/patch", { objectiveId: id, memberId: reviewerId, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } })).status).toBe(200);
     hostChat.set(reviewerId, { model: "sonnet[1m]", effort: null, pending: null });
     const fixedCoordinates = vi.spyOn(ctx.consoleControl!, "setCoordinates");
     try {
@@ -2554,7 +2635,7 @@ describe("Objectives contract", () => {
     const { ctx, store, launch, events, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, workspace, restart } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Failure delivery", groupId: null });
     const id = objective.id;
-    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
+    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "model", model: "opus[1m]", effort: "high" } }, "human").members[0]!.id;
     const mission = launch.missionAdded(id, { text: "Report the result", member: memberId }).missions[0]!;
     surfaces.set(memberId, "terminal");
     // Console 포트를 주입한다. PTY의 StopFailure→failed는 agent-chat-mode 대표 테스트가 별도로 책임진다.
@@ -2787,7 +2868,7 @@ describe("Objectives contract", () => {
     const { ctx, store, launch, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, restart, advertised } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Unreported stop", groupId: null });
     const id = objective.id;
-    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
+    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "model", model: "opus[1m]", effort: "high" } }, "human").members[0]!.id;
     const mission = launch.missionAdded(id, { text: "Report the result", member: memberId }).missions[0]!;
     surfaces.set(memberId, "chat");
     // 2026-10-07 00:29~00:55 사건: 한도 거절 뒤 SendMessage 가 나가지 못한 채 턴이 정상 종료로 닫혔다.

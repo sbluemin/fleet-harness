@@ -1,4 +1,4 @@
-import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
+import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateRouting, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import type { Translate } from "@fleet-console/i18n";
 import { isAgentEffort, type ModelRosterTarget } from "../../ai-gateway/shared/models.js";
 
@@ -18,7 +18,7 @@ type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
  * 지휘관은 Agent CLI 실행 대상이라 선다. 로스터 밖 저장값은 「꺼짐」으로 남아 보이고, 실행만 폴백한다. 폰 설정 화면 안에서는
  * 호스트의 좌표 시트로 열린다. 값이 비면 `fallback`(기본 좌표)을 보이고, `reset`은 그 기본값의 낱말을 설명으로 단다.
  */
-export function CommodoreCoordinateField({ t, target, label, value, fallback, disabled, reset, onChange }: {
+export function CommodoreCoordinateField({ t, target, label, value, fallback, disabled, reset, routing, onChange }: {
   readonly t: T;
   readonly target: ModelRosterTarget;
   readonly label: string;
@@ -26,6 +26,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
   readonly fallback: ModelCoordinateValue;
   readonly disabled?: boolean;
   readonly reset?: { readonly label: string; readonly onSelect: () => void };
+  readonly routing?: ModelCoordinateRouting & { readonly hint: string };
   readonly onChange: (next: { readonly model?: string; readonly effort?: string }) => void;
 }) {
   const roster = useCommodoreRoster(target);
@@ -51,7 +52,9 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
         providerRemoved: t("commodore.board.launch.providerRemoved"),
         chooseAnotherModel: t("commodore.board.launch.chooseAnotherModel"),
         fallback: t("commodore.board.launch.fallback"),
+        ...(routing ? { route: t("commodore.settings.commanderRoute"), routeHint: routing.hint } : {}),
       }}
+      {...(routing ? { routing: { active: routing.active, onPick: routing.onPick, ...(routing.disabled ? { disabled: true } : {}) } } : {})}
       trigger={{ variant: "field" }}
     />
   );
@@ -74,10 +77,13 @@ export function commodoreCoordinates(state: CommodoreStateFields, defaults: Comm
   return { model, effort };
 }
 
-/** 지휘관 좌표의 저장값 — 비어 있으면 선택기가 보드 기본값(COMMANDER_PRESET)을 보인다. */
+/** 지휘관 좌표의 저장값 — 라우팅이면 비우고 선택기가 라우팅 낱말을 보인다. 둘 다 없으면 보드 기본값(COMMANDER_PRESET). */
 export function commanderValue(state: CommodoreStateFields): ModelCoordinateValue {
+  if (state.commanderRouting) return {};
   return state.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : {};
 }
+
+export const commanderRouted = (state: CommodoreStateFields): boolean => state.commanderRouting === true;
 
 export function commanderCoordinates(state: CommodoreStateFields, next: { readonly model?: string; readonly effort?: string }) {
   const model = next.model ?? state.commanderModel ?? COMMANDER_PRESET.model;

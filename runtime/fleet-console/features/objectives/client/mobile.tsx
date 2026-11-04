@@ -1086,7 +1086,7 @@ function CrewControls({ open, role, locked, lockedNote, note, t, children }: { r
 /**
  * 지휘관·구성원 — 호스트의 모바일 설정 묶음 한 장이 세션 진입과 모델·강도를 함께 진다. 행(글리프 · 이름 · 배지 / 세션 제목 / 값 칩 /
  * 예외 줄 · ›)을 누르면 그 세션이 열리고, 값 칩을 누르면 공유 선택기가 좌표 시트로 선다. 모델과 강도를 차례로 골라도 시트가 닫힐 때 한 번만
- * 저장한다(데스크톱 메뉴와 같은 확정 규칙). 구성원 전용 「라우팅」·「지휘관과 같게」는 시트 맨 위 묶음이다. 세션 판정은 지휘관 = Objective 이
+ * 저장한다(데스크톱 메뉴와 같은 확정 규칙). 띄우기 전 구성원과, 아직 세션이 없는 지휘관의 「라우팅」은 시트 맨 위다. 세션 판정은 지휘관 = Objective 이
  * 있거나 개시함, 구성원 = 세션 이름이 있음이다. 지휘관은 데스크톱과 같이 개시 전에만 바꾼다.
  */
 function CrewSection({ objective, objectiveRecords, t, crew }: { readonly objective: Objective; readonly objectiveRecords: ObjectiveIndex; readonly t: T; readonly crew: CrewActions }) {
@@ -1107,7 +1107,8 @@ function CrewSection({ objective, objectiveRecords, t, crew }: { readonly object
         {...(commanderTitle ? { hint: commanderTitle } : {})}>
         <CrewControls open={commanderSession ? () => focusObjective(objective.id) : null} role={t("objectives.commander.title")} locked={commanderLocked} note={null} t={t}
           {...(commanderLocked && touchable ? { lockedNote: t("objectives.commander.locked") } : {})}>
-          <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={commanderLocked}
+          <LaunchControl t={t} model={objective.commander.routing ? undefined : objective.commander.model} effort={objective.commander.routing ? undefined : objective.commander.effort} locked={commanderLocked}
+            {...(!objective.hasSession || objective.commander.routing ? { routing: { active: objective.commander.routing === true, hint: t("objectives.commander.routeHint"), onPick: () => { crew.send("/objective/patch", { patch: { launch: { routing: true } } }).catch(crew.fail); } } } : {})}
             onChange={(next) => { crew.send("/objective/patch", { patch: { launch: next } }).catch(crew.fail); }} />
         </CrewControls>
       </SettingsRow>

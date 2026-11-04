@@ -583,7 +583,7 @@ function RoutingPanel({ objective, t, intent, context, settle }: { readonly obje
         extras={[{ ...useResult, active: true, onPick: () => undefined }]} onChange={onModel} />, why);
     }
     if (member.launch.mode === "model") return row(t("objectives.routing.fixedModel"), words(member.launch.model, member.launch.effort), undefined, true);
-    return row(t("objectives.memberSelection.inherit"), words(objective.commander.model, objective.commander.effort), undefined, true);
+    return row(t("objectives.memberSelection.route"), <span className="objectives-launch-model">{t("objectives.memberSelection.route")}</span>, undefined, true);
   };
   const model = `${commanderWords.words.model} · ${commanderWords.words.effort}`;
   return (

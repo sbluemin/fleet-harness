@@ -142,7 +142,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
       const reservation = only(patch, ["launch"]) && !!(ctx.objectiveRecords.describe ? ctx.objectiveRecords.describe(memberId) : ctx.objectiveRecords.get(memberId));
       return edited(objectiveId, reservation ? [] : ["members"], () => launch.memberPatched(objectiveId, memberId, patch));
     }),
-    memberBatchLaunch: steerable(() => true, async ({ objectiveId, mode }: Ref & { mode: "same" | "route" }) => {
+    memberBatchLaunch: steerable(() => true, async ({ objectiveId, mode }: Ref & { mode: "route" }) => {
       const result = await launch.memberBatchLaunch(objectiveId, mode);
       const body = objective(result.edits > 0 ? markEdited(objectiveId, ["members"]) : result.objective);
       return { ...body, changed: result.changed, preserved: result.preserved };

@@ -24,7 +24,7 @@ import type { CommodoreMobileSessions } from "./deps.js";
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
-import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
+import { commanderCoordinates, commanderRouted, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodorePlugins } from "./commodore-plugins.js";
@@ -735,7 +735,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   // 좌표 두 칸은 데스크톱 서랍과 같은 공유 선택기 — 폰 설정 화면 안이라 호스트의 좌표 시트로 열린다. 비우면 기본값이다.
   const modelOverridden = state.model !== undefined;
-  const commanderOverridden = state.commanderModel !== undefined;
+  const commanderOverridden = state.commanderModel !== undefined || commanderRouted(state);
 
   const usage = [t("commodore.drawer.session", { n: run.totals.session }), t("commodore.drawer.cost", { cost: run.totals.costUsd.toFixed(2) })].join(" · ");
 
@@ -768,6 +768,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               value={commanderValue(state)}
               fallback={COMMANDER_PRESET}
               disabled={!online}
+              routing={{ active: commanderRouted(state), hint: t("commodore.settings.commanderRouteHint"), onPick: () => act(() => setCommodoreCommander(theaterId, { route: true })), ...(!online ? { disabled: true } : {}) }}
               {...(commanderOverridden ? { reset: { label: t("commodore.settings.useDefault"), onSelect: () => act(() => setCommodoreCommander(theaterId, null)) } } : {})}
               onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
             />

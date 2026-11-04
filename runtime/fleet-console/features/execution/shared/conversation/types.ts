@@ -100,7 +100,9 @@ export interface ConversationMemberProfile {
     readonly providerName?: string;
     readonly struck?: boolean;
     readonly badge?: LocalizedText;
-    readonly via?: { readonly label: LocalizedText; readonly title?: LocalizedText; readonly tone?: "warn" };
+    /** 띄우기 전 라우팅 — 모델 낱말 앞에 라우팅 글리프를 그린다. */
+    readonly route?: boolean;
+    readonly via?: { readonly label: LocalizedText; readonly title?: LocalizedText; readonly tone?: "warn"; readonly route?: boolean };
   };
   readonly status?: { readonly text: LocalizedText; readonly tone?: "danger" };
   /**

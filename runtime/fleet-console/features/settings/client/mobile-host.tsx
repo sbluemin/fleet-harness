@@ -36,7 +36,7 @@ export interface MobileModelGroup {
   readonly description?: string;
   readonly icon?: React.ReactNode;
   /** `meta`는 오른쪽 끝의 짧은 표식(「1M」), `description`은 이름 아래 설명 줄이다(선택 방식의 풀이처럼 긴 글). */
-  readonly options: readonly { readonly value: string; readonly label: string; readonly providerName?: string; readonly meta?: string; readonly description?: string }[];
+  readonly options: readonly { readonly value: string; readonly label: string; readonly providerName?: string; readonly meta?: string; readonly description?: string; readonly icon?: React.ReactNode }[];
 }
 
 
@@ -131,6 +131,8 @@ export interface MobileCoordinateChoiceProps {
   readonly providerRemovedLabel?: string;
   readonly chooseAnotherModelLabel?: string;
   readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
+  /** 시트 맨 위의 라우팅. 글리프는 시트가 그린다. */
+  readonly routing?: { readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void };
   readonly reset?: MobileModelReset;
   readonly onClose: () => void;
 }

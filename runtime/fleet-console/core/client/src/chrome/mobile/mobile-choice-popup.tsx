@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { RoutingGlyph } from "../../../../../features/ai-gateway/client/components/routing-glyph.js";
 import type { MobileCoordinateChoiceProps, MobileModelChoiceProps, MobileModelGroup } from "../../../../../features/settings/client/mobile-host.js";
 import { clampRosterEffort, findRosterRow, rosterRowEfforts } from "../../../../../features/ai-gateway/shared/models.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderGlyph, removedLaunchProviderName } from "../../../../../features/ai-gateway/client/components/launch-provider-glyphs.js";
@@ -177,6 +178,7 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, rese
                   const selected = option.value === value;
                   return (
                     <button type="button" role="radio" key={option.value} aria-checked={selected} className={`mobile-choice-row${selected ? " is-selected" : ""}${option.description ? " has-description" : ""}`} onClick={() => { onSelect(option.value); if (closeAfterSelect?.(option.value)) window.setTimeout(requestClose, CLOSE_AFTER_PICK_MS); }}>
+                      {option.icon ? <span className="mobile-choice-icon" aria-hidden="true">{option.icon}</span> : null}
                       <span className="mobile-choice-copy"><span className="mobile-choice-label">{option.providerName ? <><span className="fc-coord-provider-name">{option.providerName}</span>{" "}</> : null}{withoutGroupPrefix(option.label, group.label)}</span>{option.description ? <small>{option.description}</small> : null}</span>
                       {option.meta ? <span className="mobile-choice-meta">{option.meta}</span> : null}
                       {selected ? <MobileIcon name="check" size={22} className="mobile-choice-check" /> : <span className="mobile-choice-check-slot" aria-hidden="true" />}
@@ -234,9 +236,14 @@ function formatContextWindow(contextWindow: number | undefined): string | undefi
  * 좌표 시트 — 모델 로스터를 모델 팝업의 문법(공급자 묶음 → 구분선 → 강도 탭)으로 편다. 강도 탭은 고른 행이 내놓는
  * 사다리 전체다. 로스터 밖 저장값은 「꺼짐」 묶음에 그대로 서고, 선택 방식(extras)은 맨 위 묶음이다.
  */
-export function MobileCoordinateChoice({ title, roster, value, onSelect, effort, effortLabel, offLabel, providerRemovedLabel, chooseAnotherModelLabel, extras, reset, onClose }: MobileCoordinateChoiceProps) {
+const ROUTING_VALUE = "extra:routing";
+
+export function MobileCoordinateChoice({ title, roster, value, onSelect, effort, effortLabel, offLabel, providerRemovedLabel, chooseAnotherModelLabel, extras, routing, reset, onClose }: MobileCoordinateChoiceProps) {
   const row = findRosterRow(roster, value.model);
   const groups: MobileModelGroup[] = [];
+  if (routing && !routing.disabled) {
+    groups.push({ key: "routing", label: "", options: [{ value: ROUTING_VALUE, label: routing.label, ...(routing.hint ? { description: routing.hint } : {}), icon: <span className="fc-coord-route"><RoutingGlyph /></span> }] });
+  }
   if (extras?.length) {
     groups.push({ key: "extras", label: "", options: extras.filter((extra) => !extra.disabled).map((extra) => ({ value: `${EXTRA_VALUE_PREFIX}${extra.id}`, label: extra.label, ...(extra.hint ? { description: extra.hint } : {}) })) });
   }
@@ -262,11 +269,12 @@ export function MobileCoordinateChoice({ title, roster, value, onSelect, effort,
     });
   }
   const activeExtra = extras?.find((extra) => extra.active);
-  const ladder = effort === "track" && row && !activeExtra ? rosterRowEfforts(row) : [];
+  const selectionActive = routing?.active || !!activeExtra;
+  const ladder = effort === "track" && row && !selectionActive ? rosterRowEfforts(row) : [];
   const currentEffort = clampRosterEffort(ladder, value.effort);
   // 강도 탭이 서지 않는 탭 — 선택 방식, 그리고 강도를 받지 않는 모델(또는 모델만 고르는 칸)의 모델 탭 — 은 고르는 것이 곧 확정이다.
   const settlesOnTap = (next: string): boolean => {
-    if (next.startsWith(EXTRA_VALUE_PREFIX)) return true;
+    if (next === ROUTING_VALUE || next.startsWith(EXTRA_VALUE_PREFIX)) return true;
     const target = findRosterRow(roster, next);
     return effort !== "track" || !target || rosterRowEfforts(target).length === 0;
   };
@@ -274,8 +282,9 @@ export function MobileCoordinateChoice({ title, roster, value, onSelect, effort,
     <MobileModelChoice
       title={title}
       groups={groups}
-      value={activeExtra ? `${EXTRA_VALUE_PREFIX}${activeExtra.id}` : row?.launch.model ?? value.model ?? ""}
+      value={routing?.active ? ROUTING_VALUE : activeExtra ? `${EXTRA_VALUE_PREFIX}${activeExtra.id}` : row?.launch.model ?? value.model ?? ""}
       onSelect={(next) => {
+        if (next === ROUTING_VALUE) { routing?.onPick(); return; }
         if (next.startsWith(EXTRA_VALUE_PREFIX)) {
           extras?.find((extra) => `${EXTRA_VALUE_PREFIX}${extra.id}` === next)?.onPick();
           return;
