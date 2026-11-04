@@ -304,6 +304,18 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   // 문서 리스너는 열릴 때 한 번 붙는다 — 그 뒤 렌더의 값(value·staged)으로 닫도록 최신 닫기 함수를 ref로 읽는다.
   const closeMenuRef = React.useRef(closeMenu);
   closeMenuRef.current = closeMenu;
+  const chosenRow: ObjectiveLaunchVariantRow | null = activeModel ? findRosterRow(groups, activeModel) : null;
+  const showTrack = effortMode === "track" && focused && chosenRow !== null && (chosenRow.chips?.length ?? 0) > 0;
+  const focusSubMenu = React.useCallback((groupId: string) => {
+    if (hoveredGroupId === groupId && subMenuRef.current) {
+      subFocusIntent.current = false;
+      const items = menuItems(subMenuRef.current);
+      (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+      return;
+    }
+    subFocusIntent.current = true;
+    setHoveredGroupId(groupId);
+  }, [hoveredGroupId]);
 
   React.useLayoutEffect(() => {
     if (!open || !triggerRef.current || !menuRef.current) return;
@@ -322,7 +334,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   );
 
   React.useLayoutEffect(() => {
-    if (!open || focused || !hoveredGroup || !menuRef.current || !subMenuRef.current) return;
+    if (!open || showTrack || !hoveredGroup || !menuRef.current || !subMenuRef.current) return;
     const menuRect = menuRef.current.getBoundingClientRect();
     const rowEl = groupItemRefs.current.get(hoveredGroup.id);
     const rowRect = rowEl ? rowEl.getBoundingClientRect() : menuRect;
@@ -337,7 +349,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     const idealTop = rowRect.top - 6;
     const top = Math.max(MENU_MARGIN, Math.min(idealTop, window.innerHeight - height - MENU_MARGIN));
     setSubPos({ left, top });
-  }, [open, focused, hoveredGroup, pos]);
+  }, [open, showTrack, hoveredGroup, pos]);
 
   React.useLayoutEffect(() => {
     if (!open || !subFocusIntent.current || !subMenuRef.current) return;
@@ -390,8 +402,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
         if (groupId) {
           event.preventDefault();
           event.stopPropagation();
-          subFocusIntent.current = true;
-          setHoveredGroupId(groupId);
+          focusSubMenu(groupId);
           return;
         }
       }
@@ -408,7 +419,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
-  }, [open, hoveredGroupId]);
+  }, [open, hoveredGroupId, focusSubMenu]);
 
   const variant = trigger?.variant ?? (trigger?.node ? "glyph" : "inline");
   const routeTrigger = routing?.active && labels.route && !trigger?.text && !trigger?.node
@@ -422,7 +433,6 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     return <span className={`${triggerClass} is-locked`} title={[title, labels.locked].filter(Boolean).join("\n") || undefined}>{text}</span>;
   }
 
-  const chosenRow: ObjectiveLaunchVariantRow | null = activeModel ? findRosterRow(groups, activeModel) : null;
   const providerOfRow = (row: ObjectiveLaunchVariantRow) => {
     const group = groups.find((candidate) => candidate.rows.includes(row));
     return group && group.id !== OFF_GROUP_ID ? launchProviderFromGroupId(group.id) ?? launchProviderFromModelId(row.launch.model) : null;
@@ -438,7 +448,6 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     setHoveredGroupId(null);
     setFocused(true);
   };
-  const showTrack = effortMode === "track" && focused && chosenRow !== null && (chosenRow.chips?.length ?? 0) > 0;
 
   return (
     <>
@@ -567,10 +576,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
                           onMouseEnter={() => setHoveredGroupId(group.id)}
                           onPointerEnter={() => setHoveredGroupId(group.id)}
                           onFocus={() => setHoveredGroupId(group.id)}
-                          onClick={() => {
-                            subFocusIntent.current = true;
-                            setHoveredGroupId(group.id);
-                          }}
+                          onClick={() => focusSubMenu(group.id)}
                         >
                           {provider ? <ProviderMark provider={provider} className="fc-coord-menu-provider" /> : null}
                           <span className="fc-coord-menu-label">{groupLabel}</span>
