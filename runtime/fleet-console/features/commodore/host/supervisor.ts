@@ -73,6 +73,9 @@ export interface CommodoreSupervisorDeps {
   readonly taskforce?: TaskforceStore;
   /** `commodore` 채널로 나가는 TF 사건 — 화면이 판단 중 표시를 그린다. */
   readonly onTaskforceEvent?: (event: TaskforceEvent) => void;
+  /** 이 사령관의 설명·정보 제안 도구. 없으면 그 제안 도구를 싣지 않는다. */
+  readonly proposals?: (commodoreId: string) => import("./description-proposals.js").CommodoreDescriptionProposals;
+  readonly intelProposals?: (commodoreId: string) => import("./intel-proposals.js").CommodoreIntelProposals;
 }
 
 /** 한 턴을 여는 실행 좌표. `model`은 Agent SDK wire id다. */
@@ -99,6 +102,8 @@ export interface CommodoreSupervisor {
   stopForDeletion(commodoreId: string): Promise<void>;
   /** 실험 기능을 다시 읽어 자동 운영할 사령관을 세운다. */
   sync(reason?: string): void;
+  /** 설명·정보 제안이 결말 났다. 실행 중이 아니면 깨우지 않는다 — 제안 목록 도구가 결말을 남긴다. */
+  noteProposal(commodoreId: string, kind: "description-proposal" | "intel-proposal", outcome: string): void;
   dispose(): Promise<void>;
 }
 
@@ -108,7 +113,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 은 아직 전달하지 않은 새 항목 수다. intel-edited·intel-removed 는 서로 다른 수정·삭제 항목 수다.
  */
-export type WakeCode = "settled" | "routine" | "description" | "intel" | "intel-edited" | "intel-removed" | "message" | "mail" | "taskforce" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed";
+export type WakeCode = "settled" | "routine" | "description" | "description-proposal" | "intel-proposal" | "intel" | "intel-edited" | "intel-removed" | "message" | "mail" | "taskforce" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed";
 
 const STATUS_DETAILS = 8;
 
@@ -145,6 +150,12 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "settled": return `${plural("objective group")} went idle${tail}`;
     case "routine": return `routine${tail}`;
     case "description": return `description changed${tail}`;
+    case "description-proposal":
+    case "intel-proposal": {
+      const count = reason.count ?? 1;
+      const noun = code === "intel-proposal" ? "intel proposal" : "description proposal";
+      return `${count} ${noun}${count === 1 ? "" : "s"} you made ${count === 1 ? "was" : "were"} settled${tail}`;
+    }
     case "intel": return `${plural("new intel item")}`;
     case "intel-edited": return `the person edited ${plural("intel item")}${tail}`;
     case "intel-removed": return `the person removed ${plural("intel item")}${tail}`;
@@ -478,6 +489,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
       // 실험 상태는 세션을 연 뒤에도 바뀐다 — 도구 실행 때마다 확인해, 켠 뒤에는 열린 세션도 말할 수 있고 끈 뒤에는 막힌다.
       // 읽기는 말하기와 같은 문이다: 켜져 있을 때만 참여한 구간의 원장을 본다.
+      ...(deps.proposals ? { proposals: deps.proposals(runner.commodoreId) } : {}),
+      ...(deps.intelProposals ? { intelProposals: deps.intelProposals(runner.commodoreId) } : {}),
       ...(deps.taskforce ? {
         taskforce: {
           append: (...args: Parameters<TaskforceStore["append"]>) => {
@@ -1421,6 +1434,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       await clears.get(commodoreId);
     },
     sync,
+    noteProposal(commodoreId, kind, outcome) {
+      const runner = runners.get(commodoreId);
+      if (!runner) return;
+      wake(runner, kind, { bump: true, detail: outcome });
+    },
     async dispose() {
       disposed = true;
       for (const cleanup of cleanups.splice(0)) cleanup();

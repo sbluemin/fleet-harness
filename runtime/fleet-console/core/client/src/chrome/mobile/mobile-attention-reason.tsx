@@ -23,9 +23,10 @@ export function formatRemaining(ms: number): string {
 /** 확인 필요 행의 보조 줄 — 종류마다 다른 말을 한다(S-35). */
 export function useAttentionReason(row: MobileAttentionRow): string {
   const t = useT();
-  const expiresAt = row.kind === "objectiveRecord" ? row.request?.expiresAt : undefined;
+  const expiresAt = row.kind === "objectiveRecord" ? row.request?.expiresAt : row.kind === "approval" ? row.expiresAt : undefined;
   const now = useNow(expiresAt !== undefined);
   if (row.kind === "plugin") return row.item.reason;
+  if (row.kind === "approval" || row.kind === "decision") return expiresAt !== undefined ? t("mobile.attention.useRequest", { time: formatRemaining(expiresAt - now) }) : row.detail;
   if (expiresAt !== undefined) return t("mobile.attention.useRequest", { time: formatRemaining(expiresAt - now) });
   // 채팅 Objective의 대기는 질문, 터미널의 대기는 CLI 확인이다(S-35).
   return t(row.objectiveRecord.chatMode === true ? "mobile.attention.question" : "mobile.attention.terminal");

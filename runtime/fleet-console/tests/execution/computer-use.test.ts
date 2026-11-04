@@ -8,6 +8,11 @@ import { ComputerUseService } from "../../features/computer-use/host/computer-us
 import { ComputerUseInputError, type ComputerUseResult, type ComputerUseBackend } from "@fleet-console/computer-use";
 import { createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { createComputerUseMcpHost } from "../../features/computer-use/host/mcp.js";
+import { bindComputerUseApprovals } from "../../features/computer-use/host/approval.js";
+import { createApprovalCore } from "@fleet-console/approval";
+import { createApprovalRouter } from "../../core/host/bootstrap/approval-routes.js";
+import { APPROVAL_ANSWER_PATH } from "../../core/host/bootstrap/approval-routes.js";
+import { createUseRequestBroker, type ComputerUseLedger } from "../../features/console-use/host/use-requests.js";
 import { createUseContext } from "../../features/execution/host/use-context.js";
 
 const macOSComputerUsePlatform = createMacOSComputerUsePlatform({ resolveCodex: () => null, childEnv: () => ({}), spawnProcess: () => { throw new Error("unexpected spawn"); } });
@@ -216,10 +221,9 @@ describe("Computer Use authorization and lifecycle", () => {
     let memberDeleted = false;
     const get = (id: string) => id === root.id ? root : id === "m-b" && !memberDeleted ? { id, commodoreId: "c1", theaterId: "t", type: "agent", pluginId: null, title: "B", parentObjectiveId: root.id, ...({} as Record<string, unknown>), geometry: null, ts } : null;
     const useContext = createUseContext({ get, turnOpen: () => false });
-    // 허용을 통과한 호출은 그 컨텍스트의 허가를 만진다 — 두 호출이 모두 호스트에 닿았는지를 여기서 본다.
-    const touch = vi.fn();
-    const requests = { hold: vi.fn(async () => "stopped" as const), granted: () => false, touch };
-    const host = createComputerUseMcpHost({ service: f.service, objectiveRecords: () => [root], resolveObjective: get, experimentEnabled: () => true, requests, useContext: useContext.resolve });
+    const requests = { hold: vi.fn(async () => "stopped" as const) };
+    let joined = 0;
+    const host = createComputerUseMcpHost({ service: f.service, objectiveRecords: () => [root], resolveObjective: get, experimentEnabled: () => true, requests, useContext: useContext.resolve, onActorChange: () => { joined += 1; } });
     const connection = host.connect();
     try {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
@@ -231,9 +235,9 @@ describe("Computer Use authorization and lifecycle", () => {
       // 구성원 B 의 호출이 기기에서 도는 동안 지휘관 A 의 호출은 거부되지 않고 줄을 선다.
       const b = call("chat:m-b", "computer_state", { app: "com.apple.TextEdit" });
       await started;
+      const before = joined;
       const a = call("chat:op-root", "computer_state", { app: "com.apple.TextEdit" });
-      await vi.waitFor(() => expect(touch).toHaveBeenCalledTimes(2));
-      expect(touch).toHaveBeenLastCalledWith("op-root", "computer");
+      await vi.waitFor(() => expect(joined).toBeGreaterThan(before));
       // A 의 턴이 끝난다 — A 에게만 취소가 돌아오고 B 의 호출과 기기는 그대로다.
       connection.cancelSession("chat:op-root");
       host.endParticipant("op-root");
@@ -291,6 +295,65 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(parse(await call("computer_apps"))).toMatchObject({ reason: "objectiveRecord_not_authorized" });
       expect(f.call).toHaveBeenCalledTimes(1);
     } finally { await host.dispose(); }
+  });
+
+  it("ends one computer-use request whether the panel or the approval route answers first", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "fleet-computer-approval-"));
+    const approvals = createApprovalCore({ filePath: path.join(dir, "approvals.json") });
+    const objectives: { id: string; computerUse?: { enabled: boolean; language: "en" | "ko" } }[] = [{ id: "op-a" }];
+    let experiment = true;
+    let ledger: ComputerUseLedger | null = null;
+    const requests = createUseRequestBroker({ recheckMs: 60_000, computerLedger: () => ledger });
+    const binding = bindComputerUseApprovals({
+      core: approvals,
+      experimentEnabled: () => experiment,
+      language: () => "en",
+      read: (id) => objectives.find((objective) => objective.id === id) as never ?? null,
+      patch: (_id, input) => { objectives[0] = { ...objectives[0]!, ...input }; },
+    });
+    ledger = binding.ledger;
+    let body: unknown;
+    let replied = { status: 0, value: {} as { error?: string } };
+    const router = createApprovalRouter({
+      core: approvals,
+      isAuthorized: () => true,
+      readJsonBody: async () => body,
+      writeJson: (_res, status, value) => { replied = { status, value: value as { error?: string } }; },
+    });
+    try {
+      const consoleHold = requests.hold({ objectiveId: "op-a", capability: "console", tool: "console_context", authorized: () => false });
+      const held = requests.hold({ objectiveId: "op-a", capability: "computer", tool: "computer_status", authorized: () => objectives[0]?.computerUse?.enabled === true });
+      const view = requests.list().requests.find((request) => request.capability === "computer");
+      expect(view?.tools).toEqual(["computer_status"]);
+      expect(approvals.snapshot().requests.map((request) => request.id)).toEqual([view!.id]);
+      expect(approvals.snapshot().requests.some((request) => request.type !== "computer.use")).toBe(false);
+      expect(requests.answer("op-a", view!.id, "always")).toEqual({ ok: true, capability: "computer" });
+      expect(await held).toBe("always");
+      expect(objectives[0]?.computerUse).toEqual({ enabled: true, language: "en" });
+      expect(approvals.snapshot().requests).toEqual([]);
+      expect(requests.list().requests.map((request) => request.capability)).toEqual(["console"]);
+      body = { id: view!.id, decision: "always" };
+      await router({ req: { method: "POST" } as never, res: {} as never, pathname: APPROVAL_ANSWER_PATH });
+      expect(replied).toEqual({ status: 404, value: { error: "unknown_request" } });
+      delete objectives[0]!.computerUse;
+      experiment = false;
+      const heldOff = requests.hold({ objectiveId: "op-a", capability: "computer", tool: "computer_apps", authorized: () => objectives[0]?.computerUse?.enabled === true });
+      const offView = requests.list().requests.find((request) => request.capability === "computer");
+      body = { id: offView!.id, decision: "always" };
+      await router({ req: { method: "POST" } as never, res: {} as never, pathname: APPROVAL_ANSWER_PATH });
+      expect(replied).toEqual({ status: 409, value: { error: "experiment_disabled" } });
+      expect(approvals.snapshot().requests.map((request) => request.id)).toEqual([offView!.id]);
+      expect(objectives[0]?.computerUse).toBeUndefined();
+      expect(requests.answer("op-a", offView!.id, "deny")).toEqual({ ok: true, capability: "computer" });
+      expect(await heldOff).toBe("declined");
+      requests.answer("op-a", requests.list().requests[0]!.id, "deny");
+      await consoleHold;
+    } finally {
+      requests.dispose();
+      binding.dispose();
+      approvals.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("keeps the default-off and remote boundary ahead of process startup", async () => {

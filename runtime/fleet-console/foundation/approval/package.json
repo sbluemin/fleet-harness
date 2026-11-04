@@ -1,0 +1,25 @@
+{
+  "name": "@fleet-console/approval",
+  "version": "1.282.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts",
+      "default": "./index.ts"
+    },
+    "./contract": {
+      "types": "./contract.ts",
+      "import": "./contract.ts",
+      "default": "./contract.ts"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^6.0.2"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit --incremental -p tsconfig.json"
+  }
+}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useAllObjectiveUseRequests, type ObjectiveUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
+import { openApprovalList } from "../../../../../features/execution/client/approval/store.js";
 import { ObjectiveStatusIcon } from "../../../../../features/execution/client/components/objective-status-icon.js";
 import { resolveObjectiveActivity, resolveObjectiveMarkVisual } from "../../../../../features/execution/client/objective-activity.js";
 import { getIdleArrivalIds } from "../../../../../features/execution/client/objective-marks.js";
@@ -33,7 +34,7 @@ export function MobileRequestBanner({ state, viewingObjectiveId, onOpen }: {
     seenRef.current = ids;
     // 처음 읽은 스냅샷에 이미 있던 요청은 새로 온 것이 아니다.
     if (previous === null) return;
-    const fresh = requests.filter((request) => !previous.has(request.id) && request.objectiveId !== viewingObjectiveId);
+    const fresh = requests.filter((request) => request.capability === "computer" && !previous.has(request.id) && request.objectiveId !== viewingObjectiveId);
     const latest = fresh.at(-1);
     if (latest) { setShown(latest); setLeaving(false); }
   }, [requests, viewingObjectiveId]);
@@ -61,7 +62,7 @@ export function MobileRequestBanner({ state, viewingObjectiveId, onOpen }: {
         <span>{t("mobile.banner.title", { title })}</span>
         <small>{kind}</small>
       </span>
-      <button type="button" onClick={() => { setShown(null); onOpen(shown.objectiveId); }}>{t("mobile.banner.open")}</button>
+      <button type="button" onClick={() => { setShown(null); openApprovalList(); }}>{t("mobile.banner.open")}</button>
     </div>
   );
 }

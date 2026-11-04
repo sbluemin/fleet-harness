@@ -72,7 +72,7 @@ export interface ConsoleUseDeps {
   readonly useContext?: (objectiveId: string) => { readonly contextId: string; readonly participantId: string } | null;
   /**
    * 패널 안 허용 요청. 주어지면 허용받지 않은 Objective 호출자의 호출은 거부되는 대신 붙잡혀 그 패널에
-   * 허용/거절 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다. 없으면(테스트·플러그인 없는 구성) 곧바로 거부한다.
+   * 허용/거절 카드를 띄운다. 답은 거절 또는 계속 허용이다. 없으면(테스트·플러그인 없는 구성) 곧바로 거부한다.
    */
   readonly requests?: UseRequestBroker;
   /**
@@ -259,7 +259,7 @@ function denyConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx) {
   if (!objectiveRecord) return refuse("caller_unresolved", null, fallback);
   const flag = readConsoleUseFlag(objectiveRecord);
   const language = flag?.language ?? fallback;
-  if (!flag && deps.requests?.granted(objectiveRecord.id, "console") !== true) return refuse("objectiveRecord_not_authorized", objectiveRecord.id, language);
+  if (!flag) return refuse("objectiveRecord_not_authorized", objectiveRecord.id, language);
   return null;
 }
 
@@ -759,7 +759,6 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
             if (denied && parsed.ok) denied = await holdConsoleUse(deps, ctx, entry.id, denied, AbortSignal.any([controller.signal, ...(ctx.signal ? [ctx.signal] : [])]));
             if (closed || options.enabled?.() === false) return { ...text({ error: "console_read_disabled" }), isError: true };
             if (denied) { if (ctx.sessionLabel) endUse(ctx.sessionLabel); return { ...text(denied), isError: true }; }
-            if (options.objectiveRecordCallers === true) deps.requests?.touch(useScope(deps, ctx.sessionLabel).contextId, "console");
             if (!parsed.ok) {
               return parsed.error === "invalid_arguments"
                 ? { ...text({ error: "invalid_arguments", issues: parsed.issues ?? [] }), isError: true }

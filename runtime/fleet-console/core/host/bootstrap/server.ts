@@ -52,6 +52,9 @@ import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-m
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
+import { createApprovalCore } from "@fleet-console/approval";
+import { APPROVAL_CHANNEL, APPROVAL_NOTICE_CHANNEL } from "@fleet-console/approval/contract";
+import { APPROVAL_ANSWER_PATH, APPROVAL_LIST_PATH, createApprovalRouter } from "./approval-routes.js";
 import { CONSOLE_LIFECYCLE_WIRE, CONSOLE_STOP_REQUEST_PATH, CONSOLE_STOP_REQUEST_REVISION, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost, SESSION_BROWSER_OWNER_PREFIX } from "../../../features/browser/host/mcp.js";
@@ -60,7 +63,8 @@ import { createBrowserScreenshotStore } from "../../../features/browser/host/scr
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } from "../../../features/browser/host/service.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
-import { createUseRequestBroker } from "../../../features/console-use/host/use-requests.js";
+import { createUseRequestBroker, type ComputerUseLedger } from "../../../features/console-use/host/use-requests.js";
+import { bindComputerUseApprovals } from "../../../features/computer-use/host/approval.js";
 import { createUseContext } from "../../../features/execution/host/use-context.js";
 import { resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import type { ObjectiveRecord } from "../../../features/objectives/host/records/objective-records-domain.js";
@@ -826,7 +830,33 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onActiveOwnerChange: () => scheduleObjectiveUseBroadcast(),
   });
   // 패널 안 허용 요청 — 콘솔 사용과 컴퓨터 사용이 같은 브로커를 나눠 쓴다. 메모리 전용이라 재시작하면 비어 있다.
-  const useRequests = createUseRequestBroker({ onChange: () => scheduleObjectiveUseBroadcast() });
+  // 컴퓨터 사용 허용의 기록은 승인 코어다. 브로커는 그 장부가 생긴 뒤에야 붙잡힌 호출을 넘긴다.
+  let computerLedger: ComputerUseLedger | null = null;
+  const useRequests = createUseRequestBroker({ onChange: () => scheduleObjectiveUseBroadcast(), computerLedger: () => computerLedger });
+  // 승인 코어는 사령관 블록 밖이다. 컴퓨터 사용과 사령관이 같은 객체를 받고, 타입은 각 기능이 등록한다.
+  const approvals = createApprovalCore({
+    filePath: path.join(durablePaths.dir, "approvals", "requests.json"),
+    onChange: (snapshot) => { publishPluginEvent(APPROVAL_CHANNEL, snapshot); scheduleObjectiveUseBroadcast(); },
+  });
+  pluginSseChannels.add(APPROVAL_CHANNEL);
+  // 끝난 요청은 스냅숏에 남기지 않는다. 화면의 한 줄 알림은 이 사건 한 번이고, 다시 붙을 때 다시 보내지 않는다.
+  pluginSseChannels.add(APPROVAL_NOTICE_CHANNEL);
+  const stopApprovalNotices = approvals.subscribeSettled((record) => { publishPluginEvent(APPROVAL_NOTICE_CHANNEL, record); });
+  featureCleanupCallbacks.add(() => { stopApprovalNotices(); approvals.dispose(); });
+  // 기능 포트는 이 아래서 조립된다. 승인 라우트의 계속 허용은 예전 라우트와 같은 patch(저장·방송)를 타야 한다.
+  let patchObjectiveRecord: ConsoleHostPorts["objectiveRecords"]["patch"] | null = null;
+  const computerUseApprovals = bindComputerUseApprovals({
+    core: approvals,
+    experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
+    language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
+    read: (id) => objectiveRecords.get(id) ?? null,
+    patch: (id, input) => {
+      if (!patchObjectiveRecord) throw new Error("objective_records_unavailable");
+      patchObjectiveRecord(id, input);
+    },
+  });
+  computerLedger = computerUseApprovals.ledger;
+  featureCleanupCallbacks.add(() => computerUseApprovals.dispose());
   const computerUseMcp = createComputerUseMcpHost({
     transport: mcpHttp.transport,
     onFailure: recordFailure,
@@ -899,8 +929,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     for (const [id] of consoleUseActivity) {
       const objectiveRecord = objectiveRecords.get(id);
       if (!objectiveRecord) continue;
-      // 「이번 작업만」 허가로 쓰는 중이어도 사용 중이다.
-      if ((objectiveRecord.consoleUse as { enabled?: boolean } | undefined)?.enabled === true || useRequests.granted(id, "console")) consoleObjectiveRecords.push(id);
+      if ((objectiveRecord.consoleUse as { enabled?: boolean } | undefined)?.enabled === true) consoleObjectiveRecords.push(id);
     }
     const owner = computerUse.activeOwner();
     const computerObjective = owner && experiments.computerUse ? computerUseMcp.objectiveIdForOwner(owner) : null;
@@ -1198,6 +1227,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
     },
   };
+  patchObjectiveRecord = consoleFeaturePorts.objectiveRecords.patch;
   const createFeatureConsoleControl = (pluginId: string): NonNullable<(ConsoleControlHost | undefined)> => ({
     request: async (input) => {
       consoleAgentOwners.add(pluginId);
@@ -1472,6 +1502,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 붙기 전에 시작된 콘솔·컴퓨터 사용과 허용 요청은 이벤트로 다시 오지 않는다 — 지금 스냅샷을 실어 보낸다.
       // 재연결도 이 자리를 지나므로 끊긴 사이의 변경은 여기서 한 번에 맞춰진다.
       writeObjectiveSse(subscriber, encodeSseData(OBJECTIVE_USE_STATE_EVENT, objectiveRecordUseSnapshot()));
+      writeObjectiveSse(subscriber, encodeSseData(APPROVAL_CHANNEL, approvals.snapshot()));
       // 셸이 이미 게시한 집이 있으면 붙는 순간 실어 보낸다 — 화면의 한 번뿐인 물음과 게시가 어느 순서로
       // 오든 창은 돌아갈 곳을 안다. 빈 답은 보내지 않는다: "아직 모른다"를 "집이 없다"로 굳히지 않기 위해서다.
       const publishedShell = shellOwner === null ? undefined : desktopShellsByOwner.get(shellOwner);
@@ -1497,6 +1528,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   const objectiveRecordArchiveRouter = createObjectiveArchiveRouter({ archive: objectiveRecordArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: (node) => sanitizeArchiveObjective(node, true) });
+  const approvalRouter = createApprovalRouter({ core: approvals, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson });
+  routeRegistry.register(APPROVAL_LIST_PATH, (context) => context.pathname === APPROVAL_LIST_PATH ? approvalRouter(context) : false);
+  routeRegistry.register(APPROVAL_ANSWER_PATH, (context) => context.pathname === APPROVAL_ANSWER_PATH ? approvalRouter(context) : false);
   routeRegistry.register("/api/v1/objectives/records", async (context) => await objectiveRecordArchiveRouter(context) || objectiveRecordsRouter(context));
   routeRegistry.register("/api/v1/objectives/events", objectiveRecordsRouter);
   const writableCommodore = (id: string) => !!ownership?.entities.dirOf(id) && !ownership.isDeleting(id);
@@ -2077,8 +2111,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * Objective 사용 스냅샷 — /api/v1/objective-use 응답과 같은 모양. 콘솔·컴퓨터·브라우저 사용, 패널 안 허용
-   * 요청, 「이번 작업만」 허가를 한 번에 싣는다. 도구 이름·사유·시한뿐이라 경로·인자 같은 민감 정보는 없다.
+   * Objective 사용 스냅샷 — /api/v1/objective-use 응답과 같은 모양. 콘솔·컴퓨터·브라우저 사용과 패널 안 허용
+   * 요청을 한 번에 싣는다. 도구 이름·사유·시한뿐이라 경로·인자 같은 민감 정보는 없다.
    * 원천(consoleUseActivity, ComputerUseService.owner, browserService, useRequests)이 바뀔 때마다
    * scheduleObjectiveUseBroadcast 로 이 스냅샷을 objectiveRecords SSE 로 밀어 내보낸다.
    */
@@ -2089,14 +2123,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function objectiveRecordUseSnapshot() {
     const using = listObjectiveUse();
     const live = new Set(objectiveRecords.list().flatMap((objectiveRecord) => [objectiveRecord.id, ...(objectiveRecord.sessions ?? []).map((child) => child.id)]));
-    const { requests, grants } = useRequests.list();
+    const { requests } = useRequests.list();
     return {
       console: using.console,
       computer: using.computer ? [using.computer] : [],
       computerActor: using.computerActor,
       browser: using.browser,
       requests: requests.filter((request) => live.has(request.objectiveId)),
-      grants: { console: grants.console.filter((id) => live.has(id)), computer: grants.computer.filter((id) => live.has(id)) },
     };
   }
 
@@ -2590,6 +2623,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         ...deletionCoordinator.list().flatMap(deletionObjectiveRecords),
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
       commodore = createCommodoreFeature({
+        approvals,
         ownership,
         folderGrants,
         deletion: {

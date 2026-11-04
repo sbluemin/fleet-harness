@@ -13,6 +13,7 @@ import {
   useUseRequestAnswer,
   useUseRequestClock,
 } from "../../use-request-card.js";
+import { ApprovalComputerCard } from "../../../approval/cards.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark } from "./speaker-mark.js";
 
@@ -225,7 +226,7 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
 }
 
 /**
- * 허용 요청 카드 — 기존 패널 카드와 같은 계약(답은 요청이 선 Objective 으로, 거절 · 이번 작업만 · 계속 허용, 만료 시계,
+ * 허용 요청 카드 — 기존 패널 카드와 같은 계약(답은 요청이 선 Objective 으로, 거절 · 계속 허용, 만료 시계,
  * 반복 키 무시, 초점 미이동)에 요청한 참여자들의 표식과 이름을 더한다. 허용은 목표(루트)의 것이라 카드는 하나이고, 머리에는
  * 지금 그 답을 기다리는 참여자를 모두 겹쳐 세운다(세 명까지 이름을 잇고, 넘으면 「구현 외 2명」). 답 보내기는 `useUseRequestAnswer` 가 진다.
  */
@@ -248,6 +249,9 @@ export function UseRequestGroupCard({ request, speakers, shared, language }: {
   const title = tt(isConsole ? "terminal.useRequest.consoleTitle" : "terminal.useRequest.computerTitle");
   const titleId = `group-use-request-${request.id}`;
   const shown = shared ? speakers : speakers.slice(0, 1);
+  if (!isConsole) {
+    return <ApprovalComputerCard id={request.id} objectiveId={request.objectiveId} expiresAt={request.expiresAt} now={now} />;
+  }
   const names = shown.length > 3
     ? t("group.use.names.others", { name: shown[0]!.name, count: String(shown.length - 1) })
     : shown.map((speaker) => speaker.name).join("·");
@@ -266,8 +270,7 @@ export function UseRequestGroupCard({ request, speakers, shared, language }: {
       <div className="group-card-foot">
         <button type="button" className="group-card-send is-quiet" disabled={pending} onClick={answer("deny")}>{tt("terminal.useRequest.deny")}</button>
         <span className="group-card-gap" />
-        <button type="button" className="group-card-send is-quiet" disabled={pending} onClick={answer("always")}>{tt("terminal.useRequest.always")}</button>
-        <button type="button" className="group-card-send" disabled={pending} onClick={answer("turn")}>{tt("terminal.useRequest.turn")}</button>
+        <button type="button" className="group-card-send" disabled={pending} onClick={answer("always")}>{tt("terminal.useRequest.always")}</button>
       </div>
       <p className="group-card-fine">{shared ? t("group.use.fine") : tt("terminal.useRequest.fine")}</p>
       {failed ? <p className="group-card-error" role="alert">{tt("terminal.useRequest.failed")}</p> : null}

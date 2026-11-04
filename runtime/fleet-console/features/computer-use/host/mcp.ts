@@ -24,7 +24,7 @@ export interface ComputerUseMcpDeps {
   readonly language?: () => "en" | "ko" | null;
   /**
    * 패널 안 허용 요청 — 콘솔 사용과 같은 요청 브로커를 호스트 조립이 주입한다(이 기능은 콘솔 사용 구현을 모른다).
-   * 주어지면 허용받지 않은 Objective 호출은 거부 대신 붙잡혀 그 패널에 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다.
+   * 주어지면 허용받지 않은 Objective 호출은 거부 대신 붙잡혀 그 패널에 카드를 띄운다. 답은 거절 또는 계속 허용이다.
    */
   readonly requests?: ComputerUseRequestPort;
   /**
@@ -47,7 +47,7 @@ function scopeOf(deps: ComputerUseMcpDeps, objectiveId: string): ComputerUseScop
 }
 
 /** Objective 호출자에게만 붙는 설명 — 플러그인 호출자는 카드를 띄우지 않는다. */
-const OBJECTIVE_REQUEST_NOTE = "Permission: needs this Objective's Computer Use toggle or a per-turn allowance from the request card in the Objective panel. Otherwise the call waits up to four minutes for the person's answer; a per-turn allowance ends with your turn. If declined or unanswered, do not request Computer Use again this turn.";
+const OBJECTIVE_REQUEST_NOTE = "Permission: needs this Objective's Computer Use toggle. Otherwise the call waits up to four minutes for the person's answer on the request card. Keep allowing turns the toggle on. If declined or unanswered, do not request Computer Use again this turn.";
 
 /** 요청 브로커 중 컴퓨터 사용이 쓰는 몫. */
 export interface ComputerUseRequestPort {
@@ -59,9 +59,7 @@ export interface ComputerUseRequestPort {
     readonly signal?: AbortSignal;
     readonly authorized: () => boolean;
     readonly withdrawn?: () => boolean;
-  }): Promise<"turn" | "always" | "authorized" | "declined" | "no_response" | "stopped" | "withdrawn">;
-  granted(objectiveId: string, capability: "computer"): boolean;
-  touch(objectiveId: string, capability: "computer"): void;
+  }): Promise<"always" | "authorized" | "declined" | "no_response" | "stopped" | "withdrawn">;
 }
 
 export function readComputerUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
@@ -151,7 +149,7 @@ function computerUseDenial(deps: ComputerUseMcpDeps, sessionLabel: string | unde
   const flag = readComputerUseFlag(objectiveRecord);
   const language = flag?.language ?? fallback;
   if (deps.experimentEnabled?.() !== true) return { reason: "experiment_disabled", objectiveId: objectiveRecord.id, language };
-  if (!flag && deps.requests?.granted(objectiveRecord.id, "computer") !== true) return { reason: "objectiveRecord_not_authorized", objectiveId: objectiveRecord.id, language };
+  if (!flag) return { reason: "objectiveRecord_not_authorized", objectiveId: objectiveRecord.id, language };
   return null;
 }
 
@@ -281,6 +279,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           return { content: [{ type: "text", text: JSON.stringify({ ended: true, scope: "participant", deviceReleased, reconnect: "on_next_use", hint: deviceReleased ? "You were the last participant, so the device was released." : "Only your participation ended. Other participants of this conversation keep the shared Computer Use session." }) }], isError: false };
         }
         shared.participants.add(scope.participantId);
+        deps.onActorChange?.();
         const call = new AbortController();
         shared.calls.set(call, scope.participantId);
         const mine = AbortSignal.any([call.signal, controller.signal, ...(context.signal ? [context.signal] : [])]);
@@ -310,7 +309,6 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           if (denied) return denied;
           if (controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
           const scope = scopeOf(deps, objectiveIdFromSessionLabel(context.sessionLabel));
-          deps.requests?.touch(scope.contextId, "computer");
           if (scope.shared) return runShared(spec, parsed.data, context, scope);
           const sessionLabel = owner(context.sessionLabel);
           owners.add(sessionLabel);

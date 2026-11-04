@@ -98,7 +98,7 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
 
   /**
    * 패널 안 허용 요청에 답한다. `always` 는 ··· 메뉴 스위치를 켜는 것과 같은 기록을 남긴 뒤 요청을 푼다 — 붙잡힌 호출은
-   * 풀리자마자 판정을 다시 해 스위치를 읽는다. `turn` 은 기록 없이 이번 턴 동안만 허용하고, `deny` 는 거절로 끝낸다.
+   * 풀리자마자 판정을 다시 해 스위치를 읽는다. `deny` 는 거절로 끝낸다. `turn`(이번 작업만)은 받지 않는다.
    * 컴퓨터 사용 실험이 꺼져 있으면 허용은 거절된다(카드는 설정으로 안내한다).
    */
   async function handleUseRequest(req: http.IncomingMessage, res: http.ServerResponse, objectiveId: string, requestId: string): Promise<boolean> {
@@ -108,7 +108,7 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
     const body = await ctx.host.http.readJsonBody<{ readonly decision?: unknown; readonly capability?: unknown; readonly language?: unknown }>(req);
     const decision = body?.decision;
     const capability = body?.capability;
-    if ((decision !== "deny" && decision !== "turn" && decision !== "always") || (capability !== "console" && capability !== "computer")) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    if (decision === "turn" || (decision !== "deny" && decision !== "always") || (capability !== "console" && capability !== "computer")) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     const objectiveRecord = getAgentObjective(ctx, objectiveId);
     if (!objectiveRecord) { ctx.host.http.writeJson(res, 404, { error: "objectiveRecord_not_found" }); return true; }
     const pending = requests.list().requests.find((request) => request.id === requestId && request.objectiveId === objectiveRecord.id);

@@ -46,9 +46,8 @@ type ObjectiveUseActivity = {
   computerActor: string | null;
   browser: string[];
   requests: ObjectiveUseRequest[];
-  grants: { console: string[]; computer: string[] };
 };
-const EMPTY_ACTIVITY: ObjectiveUseActivity = { console: [], computer: [], computerActor: null, browser: [], requests: [], grants: { console: [], computer: [] } };
+const EMPTY_ACTIVITY: ObjectiveUseActivity = { console: [], computer: [], computerActor: null, browser: [], requests: [] };
 const ObjectiveUseContext = createContext<ObjectiveUseActivity>(EMPTY_ACTIVITY);
 export function useObjectiveUse(objectiveId: string) {
   const activity = useContext(ObjectiveUseContext);
@@ -56,8 +55,6 @@ export function useObjectiveUse(objectiveId: string) {
     console: activity.console.includes(objectiveId),
     computer: activity.computer.includes(objectiveId),
     browser: activity.browser.includes(objectiveId),
-    /** 「이번 작업만」 허가로 쓰는 중인 도구군. */
-    turnOnly: { console: activity.grants.console.includes(objectiveId), computer: activity.grants.computer.includes(objectiveId) },
   };
 }
 export type ObjectiveUseTool = "computer" | "browser" | "console";
@@ -111,8 +108,7 @@ function readActivity(value: unknown): ObjectiveUseActivity {
   const record = value as Record<string, unknown>;
   const ids = (v: unknown) => Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : [];
   const requests = readRequests(record.requests);
-  const grants = record.grants as { console?: unknown; computer?: unknown } | undefined;
-  return { console: ids(record.console), computer: ids(record.computer), computerActor: typeof record.computerActor === "string" ? record.computerActor : null, browser: ids(record.browser), requests, grants: { console: ids(grants?.console), computer: ids(grants?.computer) } };
+  return { console: ids(record.console), computer: ids(record.computer), computerActor: typeof record.computerActor === "string" ? record.computerActor : null, browser: ids(record.browser), requests };
 }
 
 /** 영상 수명은 Console가, 표시 위치는 해당 Objective이 소유한다. */
