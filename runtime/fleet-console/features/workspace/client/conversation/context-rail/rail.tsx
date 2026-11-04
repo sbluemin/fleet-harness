@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { useT } from "../../../../../core/client/src/i18n/index.js";
 import type { ContextRailMeasure, ContextRailRow, ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
+import { useConversationDocks } from "./dock.js";
 import { useContextRailProviders } from "./registry.js";
 import {
   setContextFlyout, setContextRailEnabled, toggleContextCard, toggleContextDetail, useContextRailState,
@@ -55,6 +56,7 @@ function ContextRail({ sessions, slot }: {
   const focusId = React.useRef<string | null>(null);
   const [bubbleId, setBubbleId] = React.useState<string | null>(null);
   const broughtIntoView = React.useRef<string | null>(null);
+  const docks = useConversationDocks();
   const open = ordered.find((session) => session.id === state.flyout) ?? null;
   const bubble = ordered.find((session) => session.id === bubbleId && session.id !== state.flyout) ?? null;
   const syncBubble = () => setBubbleId(focusId.current ?? overId.current);
@@ -94,35 +96,22 @@ function ContextRail({ sessions, slot }: {
     if (state.flyout !== null && !ordered.some((session) => session.id === state.flyout)) setContextFlyout(null);
   }, [ordered, state.flyout]);
 
-  // 칩 줄의 바닥은 입력 독(구상·개시·모델 줄과 입력 캡슐) 위로 둔다. 높이를 숫자로 박지 않고 그 독의 실제 top을 읽는다.
+  // 칩 줄의 바닥은 이 대화 칸에 등록된 입력 독 위로 둔다. 높이는 그 요소의 실제 top이다.
   React.useLayoutEffect(() => {
     const overlay = overlayRef.current;
     const main = overlay?.closest<HTMLElement>(".conversation-main");
     if (!main) return;
-    let dock: Element | null = null;
+    const mine = docks.filter((dock) => dock.isConnected && main.contains(dock));
     const apply = () => {
-      const next = dockClearance(main);
+      const next = dockClearance(main, mine);
       setClearance((current) => current === next ? current : next);
-    };
-    const bind = () => {
-      const next = main.querySelector(DOCK_SELECTOR);
-      if (next === dock) return;
-      if (dock) observer.unobserve(dock);
-      dock = next;
-      if (dock) observer.observe(dock);
-      apply();
     };
     const observer = new ResizeObserver(apply);
     observer.observe(main);
-    bind();
-    const body = main.querySelector(".conversation-body");
-    const mutations = new MutationObserver((records) => {
-      if (dock !== null && dock.isConnected && !records.some((record) => touchesDock(record, dock))) return;
-      bind();
-    });
-    if (body) mutations.observe(body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); mutations.disconnect(); };
-  }, [state.enabled, ordered.length]);
+    for (const dock of mine) observer.observe(dock);
+    apply();
+    return () => observer.disconnect();
+  }, [docks, state.enabled, ordered.length]);
 
   const placeFloating = React.useCallback((scrollIntoView: boolean) => {
     const stack = stackRef.current;
@@ -248,29 +237,16 @@ function ContextChip({ session, open, t, onToggle, onHover, onFocusChange }: {
   );
 }
 
-/** 입력 캡슐과 그 위 줄(구상·개시, 모델 표시)을 한 덩어리로 감싼 독. 칩 줄은 이 독의 위에서 끝난다. */
-const DOCK_SELECTOR = ".group-chat-dock, .agent-chat-composer, .objectives-commodore-foot";
-
-function dockClearance(main: HTMLElement): number {
+/** 독이 없으면 칸 바닥에서 12px. 있으면 이 칸에 등록된 독 중 가장 위에서 8px를 비운다. */
+function dockClearance(main: HTMLElement, docks: readonly HTMLElement[]): number {
   const mainRect = main.getBoundingClientRect();
   let dockTop = mainRect.bottom;
-  for (const dock of main.querySelectorAll<HTMLElement>(DOCK_SELECTOR)) {
+  for (const dock of docks) {
     const rect = dock.getBoundingClientRect();
     if (rect.height < 1 || rect.width < 1) continue;
     if (rect.top < dockTop) dockTop = rect.top;
   }
-  // 독이 없으면 예전과 같이 칸 바닥에서 12px. 있으면 독 위에 8px를 비운다.
   return Math.max(12, Math.round(mainRect.bottom - dockTop + 8));
-}
-
-function touchesDock(record: MutationRecord, dock: Element | null): boolean {
-  if (dock === null || !dock.isConnected) return true;
-  if (record.target === dock || dock.contains(record.target)) return true;
-  for (const node of record.addedNodes) {
-    if (!(node instanceof Element)) continue;
-    if (node.matches(DOCK_SELECTOR) || node.querySelector(DOCK_SELECTOR) !== null) return true;
-  }
-  return false;
 }
 
 /** 지름 40px 링. 측정 전에는 채움 없이 점선만 그린다. */

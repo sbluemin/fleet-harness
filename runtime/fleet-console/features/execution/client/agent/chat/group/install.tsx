@@ -1,4 +1,5 @@
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
+import { useRegisterConversationDock } from "../../../../../workspace/client/conversation/context-rail/dock.js";
 import { OpenUINavigationContext } from "../../openui-boundary.js";
 import type { ConversationParticipant, ConversationSpeaker } from "../../../../shared/conversation/types.js";
 import type { RailPanelContext } from "../../../../../workspace/shared/rail.js";
@@ -273,6 +274,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
 function StandInComposer({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
   const dockRef = React.useRef<HTMLDivElement | null>(null);
   useConversationDockHeight(dockRef);
+  useRegisterConversationDock(dockRef);
   const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
   const actions = useGroupConversationActions(rootId);
   const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.objectiveId === rootId && cluster.conversation.recordedObjective === true);

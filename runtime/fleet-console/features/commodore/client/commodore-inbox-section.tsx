@@ -1,3 +1,4 @@
+import { useConversationDockRef } from "../../workspace/client/conversation/context-rail/dock.js";
 import { ContextRailInlineChip } from "../../workspace/client/conversation/context-rail/inline.js";
 import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
 import { ChevronGlyph, PlusGlyph } from "@fleet-console/ui/react";
@@ -161,6 +162,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const tab: CommodoreTab = commodoreTabOf(pageId) ?? "log";
   const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const dockRef = useConversationDockRef<HTMLElement>();
   const [failure, setFailure] = useState<string | null>(null);
   // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
   const [reveal, setReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
@@ -264,7 +266,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
       {failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
-      {tab === "log" ? <footer className="objectives-commodore-foot">{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+      {tab === "log" ? <footer ref={dockRef} className="objectives-commodore-foot">{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );
 }

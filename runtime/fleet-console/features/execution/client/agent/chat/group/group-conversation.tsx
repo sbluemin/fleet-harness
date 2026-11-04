@@ -3,6 +3,7 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import * as React from "react";
 import { MenuCheckGlyph, ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
+import { useRegisterConversationDock } from "../../../../../workspace/client/conversation/context-rail/dock.js";
 import { useAvatarAccent } from "../../../../../workspace/client/avatar-accent.js";
 import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
 
@@ -121,6 +122,7 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
   const dockRef = React.useRef<HTMLDivElement | null>(null);
   useChromeHeightProperty(dockRef, chatRef, "--m-dock-h");
   useConversationDockHeight(dockRef);
+  useRegisterConversationDock(dockRef);
   const nearBottomRef = React.useRef(true);
   // 바닥을 따라가는 동안은 브라우저 scroll anchoring 을 끈다 — 보이던 줄(방금 보낸 말 등)이 재정렬로 목록 위쪽으로 옮겨 가면
   // anchoring 이 그 줄을 따라 scrollTop 을 끌어올리고, 그 scroll 사건을 사람이 위로 올린 것으로 읽어 따라가기가 풀린다.
