@@ -71,6 +71,8 @@ export interface ConsoleActionInput {
   readonly childSessionId?: string;
   /** 플러그인의 새 기동에서만 지정할 수 있는 Objective UUID. */
   readonly newObjectiveId?: string;
+  /** resume 전용 — 재개 사유("switch_live" 등). 실험 기능의 재개 분기 제어에 쓰인다. */
+  readonly reason?: string;
 }
 
 /** 턴 실패의 원문 데이터 — 문자열을 요약하거나 지시로 실행하지 않는다. */

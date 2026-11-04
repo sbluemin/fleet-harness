@@ -1241,6 +1241,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     advertisedTools: (objectiveId) => consoleControl.advertisedTools({ kind: "plugin", pluginId }, objectiveId),
     // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Objective 이나 그 자식)을 Console 제어가 따진다.
     transcript: (objectiveId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, objectiveId, input, signal),
+    markNextOpenFresh: (objectiveId) => consoleControl.markNextOpenFresh?.(objectiveId),
+    isNextOpenFresh: (objectiveId) => consoleControl.isNextOpenFresh?.(objectiveId) ?? false,
+    consumeFreshNotice: (objectiveId) => consoleControl.consumeFreshNotice?.(objectiveId) ?? false,
+    disposeChat: async (objectiveId) => { await consoleControl.disposeChat?.(objectiveId); },
   });
   async function resolveObjectiveCatalog(): Promise<{ readonly plugins: readonly ObjectiveCatalogPlugin[] }> {
     const result: ObjectiveCatalogPlugin[] = [{ id: "terminal", title: "Agent", kinds: await coreLaunchKinds() }];
@@ -2728,6 +2732,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         ownedTheaterIds: (commodoreId) => ownership?.theaterSummaries(commodoreId).filter((theater) => theater.status === "available").map((theater) => theater.theaterId) ?? [],
         storage: archiveStorage.board,
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
+        experiments: consoleFeaturePorts.experiments,
         objectiveRecords: { ...consoleFeaturePorts.objectiveRecords, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
         consoleControl: createFeatureConsoleControl("objectives"),
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,

@@ -7,7 +7,7 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
-import { commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
@@ -56,6 +56,8 @@ export interface LaunchService {
   adoptChatSurfaces(): void;
   /** 후속으로 만든 Objective 이 지워지거나 돌아왔다 — 그 후속을 배치에 가진 원본 화면을 다시 방송한다. */
   followupTargetChanged(sessionId: string): void;
+  /** 다음 열기에서 이전 대화를 싣지 않는 새 세션으로 열도록 표시를 남긴다(실험 켜짐일 때만). */
+  markNextOpenFresh(sessionId: string): void;
   /**
    * 기동 전 목표도 복원 가능하게 보관한다 — 지휘관 Objective 을 휴면 메타데이터로 세운 뒤 보관하므로(기동·모델 없음)
    * 보관함에서 복원하면 휴면 지휘관으로 돌아온다. 영구 삭제는 보관함의 purge만 맡는다.
@@ -298,11 +300,24 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 한 번만 붙고 소비된다. 표시 문면(`display`)·보드·알림에는 싣지 않는다. 구성원은 OpenUI를 그리지 않으므로 모으지 않는다.
    */
   const pendingOpenUIFeedback = new Map<string, string>();
+  const withCommanderFreshNotice = (sessionId: string, text: string): string => {
+    if (ctx.experiments?.read().objectiveFreshSession !== true || !ctx.consoleControl?.isNextOpenFresh?.(sessionId)) return text;
+    if (text.startsWith(`목표 \`${sessionId}\`: Console 이 다시 시작돼`) || text.startsWith(`Objective \`${sessionId}\`: Console restarted`) || text.includes(`지휘관 새 세션`) || text.includes(`commander fresh session`)) {
+      ctx.consoleControl?.consumeFreshNotice?.(sessionId);
+      return text;
+    }
+    const lang = ctx.objectiveRecords.get(sessionId)?.objectiveLanguage === "ko" ? "ko" : "en";
+    const current = store.find(sessionId);
+    const memberNotice = current ? interruptedMemberMissionsNotice(current, (id) => ctx.consoleControl?.isNextOpenFresh?.(id) ?? false, lang) : "";
+    ctx.consoleControl?.consumeFreshNotice?.(sessionId);
+    return `${commanderFreshTurnNotice(sessionId, lang, memberNotice)}${text}`;
+  };
   const withOpenUIFeedback = (sessionId: string, text: string): string => {
+    const textWithFresh = withCommanderFreshNotice(sessionId, text);
     const note = pendingOpenUIFeedback.get(sessionId);
-    if (note === undefined) return text;
+    if (note === undefined) return textWithFresh;
     pendingOpenUIFeedback.delete(sessionId);
-    return `${text}\n\n${note}`;
+    return `${textWithFresh}\n\n${note}`;
   };
   /**
    * 턴 전체 되먹임 넓히기 — 채팅 저널 꼬리에서 이번 턴의 assistant 텍스트 블록을 모아 다시 판정한다. 저널 `text`는
@@ -826,7 +841,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   /** 실행값으로 되돌려 한 번 더 깨운다 — 깨었는지를 돌려준다. */
   const resumeWith = async (sessionId: string, preset: MemberPreset): Promise<boolean> => {
     patchMemberPreset(sessionId, preset);
-    try { await control().request({ kind: "resume", objectiveId: sessionId }); touchLive(sessionId); return true; }
+    try { await control().request({ kind: "resume", objectiveId: sessionId, reason: "switch_live" }); touchLive(sessionId); return true; }
     catch { return false; }
   };
 
@@ -885,7 +900,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     patchMemberPreset(sessionId, goal);
     if (ctx.consoleControl?.observe(sessionId)?.lifecycle !== "dormant") { patchMemberPreset(sessionId, running); return "busy"; }
-    try { await control().request({ kind: "resume", objectiveId: sessionId }); touchLive(sessionId); return "applied"; }
+    try { await control().request({ kind: "resume", objectiveId: sessionId, reason: "switch_live" }); touchLive(sessionId); return "applied"; }
     catch (error) {
       // 휴면을 본 뒤 고친 좌표다 — 그새 누가 깨웠거나(not_dormant) 응답만 늦었으면(request_timeout) 떠 있는 것은 새 좌표로 선 프로세스다.
       const lifecycle = ctx.consoleControl?.observe(sessionId)?.lifecycle;
@@ -1394,10 +1409,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     // 레코드 표식은 이 빌드의 create/createChild 전부(UI 런처·채팅·터미널·구성원)에 있다. channelTold 는 그 표식이 없는 예전 세션에 안내를 한 번 보낸 뒤의 기록이다.
     const told = store.channelTold(objectiveId, targetId) || messageChannelKnown(ctx.objectiveRecords.get(targetId));
     const body = message.text;
+    const memberRole = memberId !== null ? store.find(objectiveId)?.members.find((m) => m.id === memberId)?.role ?? "member" : null;
+    const isMemberFresh = memberId !== null && memberRole && ctx.experiments?.read().objectiveFreshSession === true && ctx.consoleControl?.isNextOpenFresh?.(targetId) === true;
+    const freshNotice = isMemberFresh
+      ? memberFreshTurnNotice(objectiveId, memberRole, ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en")
+      : "";
+    if (isMemberFresh) ctx.consoleControl?.consumeFreshNotice?.(targetId);
     const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en"));
     try {
       await control().request({
-        kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : text, display: body, displayFormat: "markdown",
+        kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : `${freshNotice}${text}`, display: body, displayFormat: "markdown",
         rosterSpeaker: speaker,
       });
     } catch (error) {
@@ -1690,7 +1711,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             const latest = objective(current.id);
             if (!resumable(latest)) return;
             await accessObjective(latest.id);
-            await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en"), "");
+            const fresh = ctx.experiments?.read().objectiveFreshSession === true && ctx.consoleControl?.isNextOpenFresh?.(latest.id) === true;
+            const lang = ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en";
+            const memberMissionsNotice = fresh ? interruptedMemberMissionsNotice(latest, (id) => ctx.consoleControl?.isNextOpenFresh?.(id) ?? false, lang) : "";
+            await requestSend(latest.id, restartTurn(latest, lang, { fresh, memberMissionsNotice }), "");
           });
         } catch (error) { resumeFailed(current, error); }
       }
@@ -2204,6 +2228,19 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           return { objectiveId: sessionId, outcome: "failed", reason };
         }
       }));
+      if (ctx.experiments?.read().objectiveFreshSession === true) {
+        for (const sessionId of ids) {
+          try {
+            const observation = ctx.consoleControl?.observe(sessionId);
+            if (observation?.surface === "terminal" && observation.lifecycle === "live") {
+              await ctx.consoleControl?.sleep?.(sessionId, { endPendingWork: true });
+            } else {
+              await ctx.consoleControl?.disposeChat?.(sessionId);
+            }
+          } catch { /* 정리 실패는 무시 */ }
+          ctx.consoleControl?.markNextOpenFresh?.(sessionId);
+        }
+      }
       // 멈춘 사실을 보드에 남긴다 — 재시작 뒤에도 그 뒤로는 보고를 기대하지 않는다(signals.ts expectsReport). 보고 경보는 개시된 목표에만
       // 걸리므로 개시 전 목표에는 남기지 않는다(기록 없는 목표에 레코드를 만들지 않는다).
       if (current.commenced) current = store.setStopped(objectiveId, true);
@@ -2277,6 +2314,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (host && heldNextOutcome(next!, host) === "applied") store.memberLaunchState(current.id, sessionId, { next: null, routed: null });
       store.refresh(current.id);
       touchLive(sessionId);
+    },
+
+    markNextOpenFresh: (sessionId: string) => {
+      if (ctx.experiments?.read().objectiveFreshSession === true) ctx.consoleControl?.markNextOpenFresh?.(sessionId);
     },
 
     dispose: () => {

@@ -236,6 +236,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const trustedPtySessions = new Set<string>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
+  const freshOpenSessions = new Set<string>();
+  const freshNoticeSessions = new Set<string>();
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
   const chatRegistry = new AgentChatRegistry(testChatSdkFactory ?? createChatSdkFactory(ctx.spawnAgentProcess), (objectiveId) => terminalRuntime.awaitWriterExit(objectiveId, PRIOR_WRITER_EXIT_WAIT_MS));
@@ -520,18 +522,102 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         });
         return { source: "chat", entries, nextCursor: page.nextSeq === null ? null : String(page.nextSeq), truncated: page.headCut };
       }
-      // 터미널 표면 — 캡처된 정확한 전사 파일만 바이트 오프셋으로 읽는다. 사이드체인(서브에이전트)은 뺀다.
-      const file = readProviderSession(node)?.transcriptPath;
-      if (!file) return { error: "transcript_unavailable" };
-      const offset = cursor ? Number(cursor) : 0;
-      if (!Number.isSafeInteger(offset) || offset < 0) return { error: "cursor_expired" };
-      let handle: fs.promises.FileHandle;
-      try { handle = await fs.promises.open(file, "r"); } catch { return { error: "transcript_unavailable" }; }
-      try {
-        const stat = await handle.stat();
-        if (!stat.isFile() || offset > stat.size) return { error: "cursor_expired" };
-        if (tail) {
-          // 마지막 한 쪽 — 앞이 잘렸으면 첫 줄은 반쪽이라 버린다. 그 쪽의 줄을 모두 읽고 끝의 limit 개를 남긴다.
+      // 터미널 표면 — 캡처된 전사 파일(들)을 바이트 오프셋으로 읽는다.
+      const session = readAgentSession(node);
+      const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+      const files: string[] = [];
+      if (freshEnabled && session?.previousSessions) {
+        for (const prev of session.previousSessions) {
+          if (prev.transcriptPath && !files.includes(prev.transcriptPath)) files.push(prev.transcriptPath);
+        }
+      }
+      const currentFile = readProviderSession(node)?.transcriptPath;
+      if (currentFile && !files.includes(currentFile)) files.push(currentFile);
+      if (files.length === 0) return { error: "transcript_unavailable" };
+
+      // 단일 파일이거나 실험 꺼짐인 경우 기존 코드 경로 그대로 단일 파일 처리
+      if (files.length === 1 || !freshEnabled) {
+        const file = files[0]!;
+        const offset = cursor ? Number(cursor) : 0;
+        if (!Number.isSafeInteger(offset) || offset < 0) return { error: "cursor_expired" };
+        let handle: fs.promises.FileHandle;
+        try { handle = await fs.promises.open(file, "r"); } catch { return { error: "transcript_unavailable" }; }
+        try {
+          const stat = await handle.stat();
+          if (!stat.isFile() || offset > stat.size) return { error: "cursor_expired" };
+          if (tail) {
+            const start = Math.max(0, stat.size - TRANSCRIPT_PAGE_BYTES);
+            const buffer = Buffer.alloc(stat.size - start);
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+            if (signal?.aborted) return { error: "cancelled" };
+            const lines = buffer.subarray(0, bytesRead).toString("utf8").split("\n");
+            if (start > 0) lines.shift();
+            const entries: Record<string, unknown>[] = [];
+            for (const line of lines) terminalTranscriptEntries(objectiveId, line, entries);
+            return { source: "terminal", entries: entries.slice(-limit), nextCursor: null, truncated: start > 0 || entries.length > limit };
+          }
+          const buffer = Buffer.alloc(Math.min(TRANSCRIPT_PAGE_BYTES, stat.size - offset));
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+          if (signal?.aborted) return { error: "cancelled" };
+          let text = buffer.subarray(0, bytesRead).toString("utf8");
+          let consumed = bytesRead;
+          if (offset + bytesRead < stat.size) {
+            const cut = text.lastIndexOf("\n");
+            if (cut < 0) {
+              let skipTo = offset + bytesRead;
+              const probe = Buffer.alloc(TRANSCRIPT_PAGE_BYTES);
+              while (skipTo < stat.size) {
+                const chunk = await handle.read(probe, 0, probe.length, skipTo);
+                const nl = probe.subarray(0, chunk.bytesRead).indexOf(0x0a);
+                if (nl >= 0) { skipTo += nl + 1; break; }
+                skipTo += chunk.bytesRead;
+                if (chunk.bytesRead === 0) break;
+              }
+              return { source: "terminal", entries: [{ kind: "skipped", bytes: skipTo - offset, reason: "record_exceeds_page" }], nextCursor: skipTo < stat.size ? String(skipTo) : null, truncated: true };
+            }
+            consumed = Buffer.byteLength(text.slice(0, cut + 1), "utf8"); text = text.slice(0, cut);
+          }
+          const entries: Record<string, unknown>[] = [];
+          let processed = 0;
+          for (const line of text.split("\n")) {
+            processed += Buffer.byteLength(line, "utf8") + 1;
+            terminalTranscriptEntries(objectiveId, line, entries);
+            if (entries.length >= limit) { consumed = Math.min(consumed, processed); break; }
+          }
+          const next = offset + consumed;
+          return { source: "terminal", entries, nextCursor: next < stat.size ? String(next) : null, truncated: false };
+        } finally { await handle.close(); }
+      }
+
+      // 복수 파일 체인 읽기 (실험 켜짐 + previousSessions 있음)
+      let fileIndex = 0;
+      let offset = 0;
+      if (cursor) {
+        if (cursor.includes(":")) {
+          const parts = cursor.split(":");
+          fileIndex = Number(parts[0]);
+          offset = Number(parts[1]);
+        } else {
+          const num = Number(cursor);
+          if (num === 0) {
+            fileIndex = 0;
+            offset = 0;
+          } else {
+            fileIndex = files.length - 1;
+            offset = num;
+          }
+        }
+      }
+      if (!Number.isSafeInteger(fileIndex) || fileIndex < 0 || fileIndex >= files.length || !Number.isSafeInteger(offset) || offset < 0) {
+        return { error: "cursor_expired" };
+      }
+
+      if (tail) {
+        const lastFile = files[files.length - 1]!;
+        let handle: fs.promises.FileHandle;
+        try { handle = await fs.promises.open(lastFile, "r"); } catch { return { error: "transcript_unavailable" }; }
+        try {
+          const stat = await handle.stat();
           const start = Math.max(0, stat.size - TRANSCRIPT_PAGE_BYTES);
           const buffer = Buffer.alloc(stat.size - start);
           const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
@@ -541,17 +627,23 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           const entries: Record<string, unknown>[] = [];
           for (const line of lines) terminalTranscriptEntries(objectiveId, line, entries);
           return { source: "terminal", entries: entries.slice(-limit), nextCursor: null, truncated: start > 0 || entries.length > limit };
-        }
+        } finally { await handle.close(); }
+      }
+
+      const file = files[fileIndex]!;
+      let handle: fs.promises.FileHandle;
+      try { handle = await fs.promises.open(file, "r"); } catch { return { error: "transcript_unavailable" }; }
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile() || offset > stat.size) return { error: "cursor_expired" };
         const buffer = Buffer.alloc(Math.min(TRANSCRIPT_PAGE_BYTES, stat.size - offset));
         const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
         if (signal?.aborted) return { error: "cancelled" };
         let text = buffer.subarray(0, bytesRead).toString("utf8");
         let consumed = bytesRead;
-        // 페이지 끝의 미완성 줄은 다음 페이지에 맡긴다 — 잘린 JSON 을 절반만 읽지 않는다.
         if (offset + bytesRead < stat.size) {
           const cut = text.lastIndexOf("\n");
           if (cut < 0) {
-            // 한 레코드가 페이지보다 크다(거대한 도구 결과). 다음 줄바꿈까지 건너뛰어 커서를 그 뒤에 두고, 건너뛴 사실을 항목으로 남긴다.
             let skipTo = offset + bytesRead;
             const probe = Buffer.alloc(TRANSCRIPT_PAGE_BYTES);
             while (skipTo < stat.size) {
@@ -561,12 +653,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
               skipTo += chunk.bytesRead;
               if (chunk.bytesRead === 0) break;
             }
-            return { source: "terminal", entries: [{ kind: "skipped", bytes: skipTo - offset, reason: "record_exceeds_page" }], nextCursor: skipTo < stat.size ? String(skipTo) : null, truncated: true };
+            const nextCursor = skipTo < stat.size
+              ? `${fileIndex}:${skipTo}`
+              : (fileIndex + 1 < files.length ? `${fileIndex + 1}:0` : null);
+            return { source: "terminal", entries: [{ kind: "skipped", bytes: skipTo - offset, reason: "record_exceeds_page" }], nextCursor, truncated: true };
           }
           consumed = Buffer.byteLength(text.slice(0, cut + 1), "utf8"); text = text.slice(0, cut);
         }
         const entries: Record<string, unknown>[] = [];
-        // 커서는 마지막으로 처리한 줄의 끝이다 — limit 에 걸려 멈추면 청크의 나머지 줄은 다음 페이지가 다시 읽는다.
         let processed = 0;
         for (const line of text.split("\n")) {
           processed += Buffer.byteLength(line, "utf8") + 1;
@@ -574,7 +668,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           if (entries.length >= limit) { consumed = Math.min(consumed, processed); break; }
         }
         const next = offset + consumed;
-        return { source: "terminal", entries, nextCursor: next < stat.size ? String(next) : null, truncated: false };
+        let nextCursor: string | null = null;
+        if (next < stat.size) {
+          nextCursor = `${fileIndex}:${next}`;
+        } else if (fileIndex + 1 < files.length) {
+          nextCursor = `${fileIndex + 1}:0`;
+        }
+        return { source: "terminal", entries, nextCursor, truncated: false };
       } finally { await handle.close(); }
     },
   };
@@ -664,10 +764,20 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       assertCurrent();
       if (input.kind === "resume") {
         if (ctx.consoleControl?.observe(objectiveId)?.lifecycle !== "dormant") throw new ConsoleControlError("not_dormant");
-        const result = await resumeObjective(objectiveId, false);
-        if (!result.ok) throw new ConsoleControlError(result.error);
-        settled("completed");
-        return { objectiveId, delivery: "confirmed" };
+        const isSwitchLive = input.reason === "switch_live";
+        const fresh = !isSwitchLive && ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(objectiveId);
+        try {
+          const result = await resumeObjective(objectiveId, fresh);
+          if (!result.ok) {
+            if (fresh) freshOpenSessions.add(objectiveId);
+            throw new ConsoleControlError(result.error);
+          }
+          settled("completed");
+          return { objectiveId, delivery: "confirmed" };
+        } catch (error) {
+          if (fresh) freshOpenSessions.add(objectiveId);
+          throw error;
+        }
       }
       if (input.kind === "interrupt") {
         const confirmed = targetChat
@@ -724,6 +834,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     },
     advertisedTools: (objectiveId) => chatRegistry.get(objectiveId)?.readAdvertisedTools() ?? null,
     transcript: (objectiveId, input, signal) => actions.transcript!(objectiveId, input.cursor, input.limit, signal, input.tail ? { tail: true } : undefined),
+    markNextOpenFresh: (objectiveId) => {
+      if (ctx.host.experiments?.read()?.objectiveFreshSession === true) {
+        freshOpenSessions.add(objectiveId);
+        freshNoticeSessions.add(objectiveId);
+      }
+    },
+    isNextOpenFresh: (objectiveId) => ctx.host.experiments?.read()?.objectiveFreshSession === true && freshNoticeSessions.has(objectiveId),
+    consumeFreshNotice: (objectiveId) => ctx.host.experiments?.read()?.objectiveFreshSession === true && freshNoticeSessions.delete(objectiveId),
+    disposeChat: async (objectiveId) => { if (ctx.host.experiments?.read()?.objectiveFreshSession === true) await chatRegistry.dispose(objectiveId); },
   });
   if (detachControl) ctx.host.lifecycle.registerCleanup(detachControl);
 
@@ -1438,6 +1557,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 일반 resume 재시도와 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node };
+        const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+        const archiveCurrent = freshEnabled && providerSession?.id;
+        const existingPrevious = launchSession?.previousSessions;
+        const previousSessions = archiveCurrent
+          ? [...(existingPrevious ?? []), providerSession]
+          : existingPrevious;
         payloadWithoutProvider.session = {
           harness: "claude-code",
           ...(canonicalStoredModel ? { model: canonicalStoredModel } : {}),
@@ -1445,6 +1570,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
           ...(blockSubagents ? { disableSubagents: true } : {}),
           ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
+          ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
         };
         ctx.host.objectiveRecords.patch(sessionId, { ...(payloadWithoutProvider) });
       }
@@ -1577,6 +1703,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // resolve가 연 예약은 아래 어떤 경로로 던져져도 닫혀야 한다 — settle을 지나 bind된 뒤의
     // unreserve는 no-op이라(sessionId가 이미 붙었다) 이중 정산이 안전하다.
     let terminalTurnReserved = false;
+    let shouldFreshDormant = false;
     try {
     // Chat Mode Objective은 PTY가 없다 — 전달은 SDK 턴으로 실행된다. 구조화 경로라 PTY 정화를
     // 거치지 않은 원문을 그대로 쓴다(빈 문자열·상한 검사는 위에서 끝났다).
@@ -1686,14 +1813,24 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     assertCurrent();
-    const fresh = !providerSession || providerSession.source === "launch";
-    const result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh, providerSession });
+    const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+    shouldFreshDormant = freshEnabled && freshOpenSessions.delete(sessionId);
+    const fresh = shouldFreshDormant || !providerSession || providerSession.source === "launch";
+    let result: { ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string };
+    try {
+      result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh, providerSession });
+    } catch (error) {
+      if (shouldFreshDormant) freshOpenSessions.add(sessionId);
+      throw error;
+    }
     if (!result.ok) {
+      if (shouldFreshDormant) freshOpenSessions.add(sessionId);
       if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
       settleAttachments(false);
       reply(result.status, { error: result.error });
       return true;
     }
+    shouldFreshDormant = false;
     // 전달은 attach 성공 뒤에만 큐에 올린다 — 죽은 세션에 쌓인 메시지가 다음 재기동에 새는 것을 막는다.
     // 선두의 빈 지연 청크는 재기동된 CLI TUI의 부팅·raw-mode 초기화에 여유를 준다. readiness
     // 신호가 없는 경로라 보장이 아니라 여유폭이다(fresh launch는 argv로 프롬프트를 넘겨 이 경합이 없다).
@@ -1702,6 +1839,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     reply(200, { delivered: true, resumed: true });
     return true;
     } catch (error) {
+      if (shouldFreshDormant) {
+        freshOpenSessions.add(sessionId);
+      }
       if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
       // 처리되지 않은 throw가 예약을 영구 고착시키면 그 id는 어떤 재시도에도 실리지 못한다.
       if (attachmentIds.length > 0) launchAttachments.unreserve(attachmentIds);
@@ -2157,6 +2297,16 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return { ok: false, status: 409, error: "chat_unsupported" };
     }
     const providerSession = readProviderSession(node);
+    const existingSession = readAgentSession(node);
+    const previousTranscriptPaths: string[] = [];
+    if (ctx.host.experiments?.read()?.objectiveFreshSession === true && existingSession?.previousSessions) {
+      for (const prev of existingSession.previousSessions) {
+        if (prev.transcriptPath) {
+          const resolved = await resolveTranscriptPath(prev.transcriptPath, node.ts.createdAt);
+          if (resolved) previousTranscriptPaths.push(resolved);
+        }
+      }
+    }
     const transcriptPath = providerSession?.transcriptPath
       ? await resolveTranscriptPath(providerSession.transcriptPath, node.ts.createdAt)
       : null;
@@ -2222,6 +2372,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node) ? [ALL_SUBAGENTS] : [];
     const chatDisableAutoMemory = readAgentSession(node)?.disableAutoMemory === true;
     const mcpTokenLabel = `chat:${node.id}`;
+    let freshConsumed = false;
     return {
       ok: true,
       seed: {
@@ -2259,6 +2410,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(sessionName ? { sessionName } : {}),
         claudeConfigDir,
         origin: sessionOrigin,
+        ...(previousTranscriptPaths.length > 0 ? { previousTranscriptPaths } : {}),
         resolveFleetMcpServers: async () => {
           const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
           const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
@@ -2302,24 +2454,55 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 새로 태어나는 세션은 Objective id를 그대로 Claude 세션 id로 못박아, Objective의
         // 좌표와 Claude의 좌표가 태어날 때 하나가 된다. 이어 붙이는 세션은 그 id를 고를 수
         // 없으므로 트랜스크립트가 말하는 id를 그대로 쓴다.
-        resolveClaudeSession: () => prepareChatClaudeSession({
-          cwd,
-          dataDir: ctx.host.paths.consoleDataDir,
-          plugin: ctx.agentCliPlugin,
-          ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
-          claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
-          ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
-          ...(node.parentObjectiveId || ctx.isCommanderSession?.(node.id) ? { objectiveMessaging: true as const } : {}),
-          ...(node.commodoreId && deps.commodorePluginDirs ? { pluginDirs: deps.commodorePluginDirs(node.commodoreId) } : {}),
-          ...(node.commodoreId && deps.commodorePluginEnv ? { pluginEnv: deps.commodorePluginEnv(node.commodoreId) } : {}),
-          origin: sessionOrigin.kind === "resume"
-            ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
-            : { kind: "new", preferredSessionId: node.id },
-          ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
-        }),
+        resolveClaudeSession: () => {
+          const fresh = ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(node.id);
+          if (fresh) freshConsumed = true;
+          const existingSession = readAgentSession(node);
+          const hadSession = !!providerSession?.id || !!existingSession?.previousSessions?.length;
+          return prepareChatClaudeSession({
+            cwd,
+            dataDir: ctx.host.paths.consoleDataDir,
+            plugin: ctx.agentCliPlugin,
+            ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
+            claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
+            ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
+            ...(node.parentObjectiveId || ctx.isCommanderSession?.(node.id) ? { objectiveMessaging: true as const } : {}),
+            ...(node.commodoreId && deps.commodorePluginDirs ? { pluginDirs: deps.commodorePluginDirs(node.commodoreId) } : {}),
+            ...(node.commodoreId && deps.commodorePluginEnv ? { pluginEnv: deps.commodorePluginEnv(node.commodoreId) } : {}),
+            origin: fresh
+              ? { kind: "new", preferredSessionId: hadSession ? crypto.randomUUID() : node.id }
+              : (sessionOrigin.kind === "resume"
+                ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
+                : { kind: "new", preferredSessionId: node.id }),
+            ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
+          });
+        },
+        onClaudeSessionFailed: () => {
+          if (freshConsumed && ctx.host.experiments?.read()?.objectiveFreshSession === true) {
+            freshOpenSessions.add(node.id);
+            freshConsumed = false;
+          }
+        },
         onProviderSessionUpdate: (updated) => {
           const objectiveRecord = ctx.host.objectiveRecords.get(node.id);
-          if (objectiveRecord) ctx.host.objectiveRecords.patch(node.id, { ...({ ...objectiveRecord, session: mergeCapturedAgentSession(objectiveRecord, updated) }) });
+          if (objectiveRecord) {
+            const existing = readAgentSession(objectiveRecord);
+            const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+            const existingPrevious = existing?.previousSessions;
+            const archivePrevious = freshEnabled && existing?.id && existing.id !== updated.id;
+            const previousSessions = archivePrevious
+              ? [...(existingPrevious ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
+              : existingPrevious;
+            const updatedSession = mergeCapturedAgentSession(objectiveRecord, updated);
+            const patched = {
+              ...objectiveRecord,
+              session: {
+                ...updatedSession,
+                ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
+              },
+            };
+            ctx.host.objectiveRecords.patch(node.id, { ...patched });
+          }
           observability.updateTerminalSessionProviderSession(node.id, updated);
         },
         canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
@@ -2498,7 +2681,23 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       const objectiveRecord = ctx.host.objectiveRecords.get(sessionId);
       if (objectiveRecord) {
-        ctx.host.objectiveRecords.patch(sessionId, { ...({ ...objectiveRecord, session: mergeCapturedAgentSession(objectiveRecord, providerSession) }) });
+        const existing = readAgentSession(objectiveRecord);
+        const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+        const existingPrevious = existing?.previousSessions;
+        const archivePrevious = freshEnabled && existing?.id && existing.id !== providerSession.id;
+        const previousSessions = archivePrevious
+          ? [...(existingPrevious ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
+          : existingPrevious;
+        const updatedSession = mergeCapturedAgentSession(objectiveRecord, providerSession);
+        ctx.host.objectiveRecords.patch(sessionId, {
+          ...({
+            ...objectiveRecord,
+            session: {
+              ...updatedSession,
+              ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
+            },
+          }),
+        });
       } else {
         console.warn(`[fleet-console] capture-session persisted without objectiveRecord payload: ${sessionId}`);
       }

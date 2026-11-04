@@ -24,6 +24,21 @@ export function readAgentSession(payload: Record<string, unknown> | null | undef
     ...(readString(candidate.transcriptPath) ? { transcriptPath: readString(candidate.transcriptPath)! } : {}),
     ...(readString(candidate.source) ? { source: readString(candidate.source)! } : {}),
     ...(readString(candidate.capturedAt) ? { capturedAt: readString(candidate.capturedAt)! } : {}),
+    ...(Array.isArray(candidate.previousSessions) ? { previousSessions: candidate.previousSessions.filter(isCapturedSession).map(normalizeCapturedSession) } : {}),
+  };
+}
+
+function isCapturedSession(value: unknown): value is CapturedAgentSession {
+  if (!value || typeof value !== "object") return false;
+  const s = value as Record<string, unknown>;
+  const harnessValid = s.harness === undefined || s.harness === "claude-code";
+  return harnessValid && typeof s.id === "string" && typeof s.capturedAt === "string";
+}
+
+function normalizeCapturedSession(item: CapturedAgentSession): CapturedAgentSession {
+  return {
+    ...item,
+    harness: "claude-code",
   };
 }
 
@@ -66,6 +81,7 @@ export function mergeCapturedAgentSession(
     ...(captured.transcriptPath ? { transcriptPath: captured.transcriptPath } : {}),
     ...(captured.source ? { source: captured.source } : {}),
     capturedAt: captured.capturedAt,
+    ...(existing?.previousSessions ? { previousSessions: existing.previousSessions } : {}),
   };
 }
 

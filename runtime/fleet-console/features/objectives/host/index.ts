@@ -86,7 +86,19 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     on("objective:purged", (objectiveId) => { launch.objectiveRecordPurged(objectiveId); launch.followupTargetChanged(objectiveId); });
     // 원본이 복원되면 멈춰 있던 후속 생성을 같은 키로 이어 간다(지운 동안에는 만들지 않는다). 사라진 동안 놓았던 구성원의 이번 턴 뒤
     // 예약도 다시 건다 — 삭제 유예에서 되돌렸든 보관에서 되살렸든(완료 해제 포함) 같은 사건이다.
-    on("objective:restored", (objectiveId) => { launch.objectiveRecordChanged(objectiveId); launch.resumeFollowups(objectiveId); launch.followupTargetChanged(objectiveId); launch.resumeReservations(objectiveId); });
+    on("objective:restored", (objectiveId) => {
+      if (deps.experiments?.read().objectiveFreshSession === true) {
+        launch.markNextOpenFresh(objectiveId);
+        const current = store.find(objectiveId);
+        if (current) {
+          for (const member of current.members) launch.markNextOpenFresh(member.id);
+        }
+      }
+      launch.objectiveRecordChanged(objectiveId);
+      launch.resumeFollowups(objectiveId);
+      launch.followupTargetChanged(objectiveId);
+      launch.resumeReservations(objectiveId);
+    });
     on("objective:archived", (objectiveId) => { launch.objectiveRecordChanged(objectiveId); launch.followupTargetChanged(objectiveId); });
     on("objective:renamed", (objectiveId) => launch.objectiveRecordChanged(objectiveId));
     // 사람이 채팅 화면에서 모델을 바꾸거나 채팅↔터미널을 전환해도 명단은 지금 세션 좌표를 말해야 한다 — 지휘관이든 구성원이든 그 목표를 다시 방송한다.
@@ -109,6 +121,14 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
 
     migrateRemoved();
     adoptChat();
+    // 기동 시 보관되지 않은 진행 중/대기 목표 세션은 다음 열기에서 새 세션으로 열리도록 표시한다(실험 켜짐일 때만).
+    if (deps.experiments?.read().objectiveFreshSession === true) {
+      for (const current of store.all()) {
+        if (current.archived || current.removed) continue;
+        launch.markNextOpenFresh(current.id);
+        for (const member of current.members) launch.markNextOpenFresh(member.id);
+      }
+    }
     // 완료 여부가 아니라 미완료 Core 요청만 재접수한다. 과거 완료 목표의 자동 보관은 하지 않는다.
     // 그다음 진행 중이던 목표를 잇는다 — 재시작 때문에 사령관이 지휘관을 깨울 일이 없게.
     void launch.resumeObjectiveIntents().catch((error) => console.warn(`[objectives] Objective request recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`))

@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 
+import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "../../features/settings/shared/experiments.js";
 import { readObjectiveLaunch, withSubagentSpawn, type ObjectiveRecordCreateInput, type ObjectiveRecord, type ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
@@ -609,6 +610,78 @@ describe("agent chat mode routes", () => {
       resumeSessionId: "sid-live",
     }));
   });
+
+  it("objective fresh session experiment branches: false preserves resume, true branches fresh, switchLive stays resume", async () => {
+    const harness = await createHarness({ cliId: "claude" });
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    harness.allowConsoleUse(sessionId);
+    harness.attachProviderSession(sessionId);
+    await harness.post(sessionId, "chat");
+
+    // Case 1: fresh session disabled (default) -> resumes existing session
+    harness.markNextOpenFresh(sessionId); // no-op when experiment is false
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(false);
+    await harness.post(sessionId, "message", { text: "turn when off" });
+    await vi.waitFor(() => expect(harness.sends).toContain("turn when off"));
+    const firstRequest = harness.openSessionRequests.at(-1) as { resume?: string; sessionId?: string };
+    expect(firstRequest?.resume).toBe("sid-live");
+
+    // Case 2: fresh session enabled -> opens fresh session with new random UUID
+    harness.setExperiments({ objectiveFreshSession: true });
+    await harness.del(sessionId, "chat");
+    harness.markNextOpenFresh(sessionId);
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
+    harness.setSdkSessionId("sid-second");
+    await harness.post(sessionId, "chat");
+    await harness.post(sessionId, "message", { text: "turn when on" });
+    await vi.waitFor(() => expect(harness.sends).toContain("turn when on"));
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
+    expect(harness.consoleControl.consumeFreshNotice(sessionId)).toBe(true);
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(false); // consumed
+    const secondRequest = harness.openSessionRequests.at(-1) as { resume?: string; sessionId?: string };
+    expect(secondRequest?.resume).toBeUndefined();
+    expect(secondRequest?.sessionId).toBeDefined();
+    expect(secondRequest?.sessionId).not.toBe("sid-live");
+
+    // Case 2b: another fresh session accumulates both ancestors in previousSessions with harness (Criteria 4)
+    await harness.del(sessionId, "chat");
+    harness.markNextOpenFresh(sessionId);
+    harness.setSdkSessionId("sid-third");
+    await harness.post(sessionId, "chat");
+    await harness.post(sessionId, "message", { text: "third generation" });
+    await vi.waitFor(() => expect(harness.sends).toContain("third generation"));
+    const record = harness.getRecord(sessionId);
+    const prevSessions = (record?.session as { previousSessions?: unknown[] })?.previousSessions;
+    expect(prevSessions).toHaveLength(2);
+    expect(prevSessions?.[0]).toMatchObject({ id: "sid-live", harness: "claude-code" });
+    expect(prevSessions?.[1]).toMatchObject({ id: "sid-second", harness: "claude-code" });
+
+    // Case 2c: failed resume rolls back fresh marker
+    harness.markNextOpenFresh(sessionId);
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
+    await expect(harness.consoleControl.request({ kind: "objectiveRecord", objectiveId: sessionId }, { kind: "resume", objectiveId: sessionId })).rejects.toThrow();
+    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
+
+    // Case 3: switchLive maintains coordinates change in-place without restarting as new session
+    const beforeSwitchCount = harness.openSessionRequests.length;
+    await harness.post(sessionId, "chat-coordinates", { model: "sonnet[1m]", effort: "medium" });
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.openSessionRequests.length).toBe(beforeSwitchCount);
+
+    // Case 4: previous transcripts are preserved and replayed in chat journal
+    const frames = await harness.openChatSocket(sessionId);
+    const dispatches = frames.filter((frame) => frame.event.kind === "dispatch");
+    expect(dispatches.some((frame) => (frame.event as { text?: string }).text === "first order")).toBe(true);
+
+    // Case 5: experiment turned off preserves existing previousSessions in record
+    harness.setExperiments({ objectiveFreshSession: false });
+    const recordBefore = harness.getRecord(sessionId);
+    expect((recordBefore?.session as { previousSessions?: unknown[] })?.previousSessions).toHaveLength(2);
+    await harness.post(sessionId, "chat-stop");
+    const recordAfter = harness.getRecord(sessionId);
+    expect((recordAfter?.session as { previousSessions?: unknown[] })?.previousSessions).toHaveLength(2);
+  });
 });
 
 async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly theaterPrompt?: { readonly mode: "on" | "append" | "off"; readonly body: string } } = {}) {
@@ -637,20 +710,26 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   vi.stubEnv("CLAUDE_BIN", claudeBin);
   const sends: string[] = [];
   const modelChanges: string[] = [];
+  const openSessionRequests: any[] = [];
+  let nextSdkSessionId: string | null = null;
   const closeChat = vi.fn();
   let emitToLatest: (message: Record<string, unknown>) => void = () => { throw new Error("No open chat session"); };
   // 세션 하나가 여러 프롬프트를 받는다 — 보낼 때마다 그 턴의 메시지가 열린 스트림으로 흘러든다.
-  const openSession = vi.fn(async (_request: unknown) => {
+  const openSession = vi.fn(async (request: unknown) => {
+    openSessionRequests.push(request);
     const queue: Record<string, unknown>[] = [];
     let waiting: (() => void) | null = null;
     let closed = false;
     const wake = (): void => { const resume = waiting; waiting = null; resume?.(); };
     emitToLatest = (message) => { queue.push(message); wake(); };
+    const sessionInitId = nextSdkSessionId ?? (request as { resume?: string })?.resume ?? "sid-live";
+    const sessionFile = path.join(transcriptDir, `${sessionInitId}.jsonl`);
+    try { writeFileSync(sessionFile, "", { flag: "wx" }); } catch {}
     return {
       send: (text: string) => {
         sends.push(text);
         queue.push(
-          { type: "system", subtype: "init", session_id: "sid-live" },
+          { type: "system", subtype: "init", session_id: sessionInitId },
           { type: "assistant", message: { content: [{ type: "text", text: "continuing" }] } },
           ...(!options.holdChatTurn ? [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] : []),
         );
@@ -737,6 +816,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   };
   const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: (pluginId) => pluginId === "fleet-todo" });
   lifecycleCleanups.push(() => consoleControl.dispose());
+  let experimentSettings: ConsoleExperimentSettings = { ...DEFAULT_EXPERIMENT_SETTINGS };
   const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
   const ctx = {
     consoleControl,
@@ -798,6 +878,10 @@ ts: { createdAt, updatedAt: createdAt }};
         publish: () => {},
         subscribe: () => () => {},
         registerSseChannel: () => () => {},
+      },
+      experiments: {
+        read: () => experimentSettings,
+        subscribe: () => () => {},
       },
       server: { origin: () => "http://127.0.0.1:4400" },
       paths: {
@@ -992,5 +1076,16 @@ ts: { createdAt, updatedAt: createdAt }};
         capturedAt: "2026-08-14T00:00:00.000Z",
       };
     },
+    setExperiments: (settings: Partial<ConsoleExperimentSettings>) => {
+      experimentSettings = { ...experimentSettings, ...settings };
+    },
+    markNextOpenFresh: (sessionId: string) => {
+      consoleControl.markNextOpenFresh?.(sessionId);
+    },
+    setSdkSessionId: (id: string | null) => {
+      nextSdkSessionId = id;
+    },
+    getRecord: (sessionId: string) => objectiveRecords.find((candidate) => candidate.id === sessionId),
+    openSessionRequests,
   };
 }

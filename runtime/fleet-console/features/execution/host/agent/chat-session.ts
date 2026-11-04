@@ -162,6 +162,8 @@ export interface AgentChatSessionSeed {
    */
   readonly claudeConfigDir: string;
   readonly origin: AgentChatSessionOrigin;
+  /** 보존된 이전 세션들의 트랜스크립트 파일 경로 목록 — 화면 저널 재생 시 시간 순서대로 이어 읽는다. */
+  readonly previousTranscriptPaths?: readonly string[];
   /**
    * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. `{ mode: "preset" }`이면 켜고,
    * `undefined`는 결함이 아니라 사용자의 설정(`off`)이다 — SDK는 이 필드가 없으면 그 프롬프트를
@@ -182,6 +184,8 @@ export interface AgentChatSessionSeed {
    * `--session-id`·`--plugin-url`·`--settings`로 받는 것과 같은 값이다.
    */
   readonly resolveClaudeSession?: () => Promise<ClaudeSessionHandle>;
+  /** Claude 세션/SDK 기동이 실패했을 때 호출되는 콜백. */
+  readonly onClaudeSessionFailed?: () => void;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
   readonly releaseFleetMcpServers?: () => void;
   /**
@@ -1036,11 +1040,11 @@ class AgentChatSession {
     // 재생 경계는 과거가 0턴이어도 남긴다. 같은 서버 안에서 브라우저만 다시 연결하면 이 저널이
     // chat-born 세션의 첫 턴들을 되쓰는데, 경계가 없으면 과거 Answer를 새 도착으로 알릴 수 있다.
     this.push({ kind: "replay-start" });
-    if (this.seed.origin.kind === "fresh") {
+    const hasPrevious = (this.seed.previousTranscriptPaths?.length ?? 0) > 0;
+    if (this.seed.origin.kind === "fresh" && !hasPrevious) {
       this.push({ kind: "replay-end", turns: 0 });
       return;
     }
-    const transcriptPath = this.seed.origin.transcriptPath;
     const recipients = new Map<string, string>();
     const replayer = createTranscriptReplayer(
       (line) => chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) }),
@@ -1051,16 +1055,34 @@ class AgentChatSession {
         this.push(withReplayRecipient(event, recipients), at ?? Date.now());
       },
     );
-    try {
-      const raw = await fs.readFile(transcriptPath, "utf8");
-      for (const line of raw.split("\n")) {
-        await resolveReplayRecipients(line, this.seed.resolveSessionMessageRecipient, recipients);
-        replayer.line(line);
+    if (hasPrevious) {
+      for (const transcriptPath of this.seed.previousTranscriptPaths!) {
+        try {
+          const raw = await fs.readFile(transcriptPath, "utf8");
+          for (const line of raw.split("\n")) {
+            await resolveReplayRecipients(line, this.seed.resolveSessionMessageRecipient, recipients);
+            replayer.line(line);
+          }
+        } catch {
+          // 개별 이전 세션 파일 부재는 건너뛴다.
+        }
       }
+    }
+    if (this.seed.origin.kind === "resume") {
+      const transcriptPath = this.seed.origin.transcriptPath;
+      try {
+        const raw = await fs.readFile(transcriptPath, "utf8");
+        for (const line of raw.split("\n")) {
+          await resolveReplayRecipients(line, this.seed.resolveSessionMessageRecipient, recipients);
+          replayer.line(line);
+        }
+        replayer.end();
+      } catch {
+        // 트랜스크립트를 읽지 못해도 세션은 계속된다 — 로그가 비어 보일 뿐 새 턴은 돌 수 있다.
+        this.push({ kind: "error", code: "chat_replay_unavailable" });
+      }
+    } else {
       replayer.end();
-    } catch {
-      // 트랜스크립트를 읽지 못해도 세션은 계속된다 — 로그가 비어 보일 뿐 새 턴은 돌 수 있다.
-      this.push({ kind: "error", code: "chat_replay_unavailable" });
     }
     const turns = replayer.turns();
     this.push({ kind: "replay-end", turns });
@@ -2480,9 +2502,14 @@ class AgentChatSession {
       this.claudeSessionFlight = (async () => {
         const resolve = this.seed.resolveClaudeSession;
         if (!resolve) throw new Error("Fleet plugin session resolver is unavailable");
-        const handle = await resolve();
-        this.claudeSession = handle;
-        return handle;
+        try {
+          const handle = await resolve();
+          this.claudeSession = handle;
+          return handle;
+        } catch (error) {
+          this.seed.onClaudeSessionFailed?.();
+          throw error;
+        }
       })().finally(() => {
         this.claudeSessionFlight = null;
       });
@@ -2615,41 +2642,46 @@ class AgentChatSession {
     if (this.session) return this.session;
     if (!this.sessionFlight) {
       this.sessionFlight = (async () => {
-        const sdk = await this.ensureSdk();
-        // Fleet 도구를 못 붙이는 것은 세션을 죽일 사유가 아니지만 조용히 넘길 사유도 아니다 —
-        // 도구 없이 도는 세션은 게이트웨이 로스터를 읽지 못한 채 위임을 판단한다.
-        const fleetMcpServers = await this.ensureFleetMcpServers().catch(() => {
-          this.push({ kind: "error", code: "chat_fleet_tools_unavailable" });
-          return [] as readonly ClaudeGatewayServedMcpServer[];
-        });
-        const claudeSession = await this.resolveClaudeSession();
-        const session = await sdk.openSession({
-          model: this.coordinates.model,
-          ...(this.coordinates.effort ? { effort: this.coordinates.effort } : {}),
-          ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
-          cwd: this.seed.cwd,
-          ...(this.seed.additionalDirectories === undefined ? {} : { additionalDirectories: this.seed.additionalDirectories }),
-          ...(this.seed.sessionName ? { sessionName: this.seed.sessionName } : {}),
-          // 이어붙일 좌표는 admiral이 세션을 준비할 때 이미 확정했다. 채팅으로 태어난 세션도
-          // 마찬가지다 — 자식이 만든 id를 받아 적는 대신 우리가 못박았으므로, 첫 턴을 기다리지
-          // 않고도 이 세션의 좌표를 안다. 시스템 프롬프트 정책도 같은 자리에서 나온다.
-          ...claudeSession.sdk.request,
-          // 이 콜백은 권한 게이트가 아니다. 모드는 그대로 bypass이고 평범한 도구는 여기서 그냥
-          // 통과한다 — 콜백을 주는 이유는 그래야 자식이 대화형 도구를 갖기 때문이다(실측: 29→32).
-          canUseTool: (name, input, context) => this.askUser(name, input, context),
-          // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
-          includePartialMessages: true,
-        });
-        if (this.disposed) {
-          session.close();
-          throw new Error("chat session disposed");
+        try {
+          const sdk = await this.ensureSdk();
+          // Fleet 도구를 못 붙이는 것은 세션을 죽일 사유가 아니지만 조용히 넘길 사유도 아니다 —
+          // 도구 없이 도는 세션은 게이트웨이 로스터를 읽지 못한 채 위임을 판단한다.
+          const fleetMcpServers = await this.ensureFleetMcpServers().catch(() => {
+            this.push({ kind: "error", code: "chat_fleet_tools_unavailable" });
+            return [] as readonly ClaudeGatewayServedMcpServer[];
+          });
+          const claudeSession = await this.resolveClaudeSession();
+          const session = await sdk.openSession({
+            model: this.coordinates.model,
+            ...(this.coordinates.effort ? { effort: this.coordinates.effort } : {}),
+            ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
+            cwd: this.seed.cwd,
+            ...(this.seed.additionalDirectories === undefined ? {} : { additionalDirectories: this.seed.additionalDirectories }),
+            ...(this.seed.sessionName ? { sessionName: this.seed.sessionName } : {}),
+            // 이어붙일 좌표는 admiral이 세션을 준비할 때 이미 확정했다. 채팅으로 태어난 세션도
+            // 마찬가지다 — 자식이 만든 id를 받아 적는 대신 우리가 못박았으므로, 첫 턴을 기다리지
+            // 않고도 이 세션의 좌표를 안다. 시스템 프롬프트 정책도 같은 자리에서 나온다.
+            ...claudeSession.sdk.request,
+            // 이 콜백은 권한 게이트가 아니다. 모드는 그대로 bypass이고 평범한 도구는 여기서 그냥
+            // 통과한다 — 콜백을 주는 이유는 그래야 자식이 대화형 도구를 갖기 때문이다(실측: 29→32).
+            canUseTool: (name, input, context) => this.askUser(name, input, context),
+            // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
+            includePartialMessages: true,
+          });
+          if (this.disposed) {
+            session.close();
+            throw new Error("chat session disposed");
+          }
+          this.session = session;
+          this.readerDone = this.readSession(session);
+          this.primeCatalog(session);
+          // 여는 사이 고른 좌표는 첫 말보다 먼저 적용한다. 디스패치는 이 비행을 기다린 뒤 보낸다.
+          this.applyPendingCoordinates();
+          return session;
+        } catch (error) {
+          this.seed.onClaudeSessionFailed?.();
+          throw error;
         }
-        this.session = session;
-        this.readerDone = this.readSession(session);
-        this.primeCatalog(session);
-        // 여는 사이 고른 좌표는 첫 말보다 먼저 적용한다. 디스패치는 이 비행을 기다린 뒤 보낸다.
-        this.applyPendingCoordinates();
-        return session;
       })().finally(() => {
         this.sessionFlight = null;
       });
