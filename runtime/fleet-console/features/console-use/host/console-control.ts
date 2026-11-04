@@ -445,6 +445,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (adapter) throw new Error("Console execution already attached");
       adapter = value;
       for (const id of pendingFreshSessions) value.markNextOpenFresh?.(id);
+      pendingFreshSessions.clear();
       return () => { if (adapter === value) adapter = null; };
     },
     observe, request, automation, readEvents, briefing, tick,
@@ -487,11 +488,11 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       return adapter?.advertisedTools?.(objectiveId) ?? null;
     },
     markNextOpenFresh(objectiveId: string): void {
-      pendingFreshSessions.add(objectiveId);
-      adapter?.markNextOpenFresh?.(objectiveId);
+      if (adapter) adapter.markNextOpenFresh?.(objectiveId);
+      else pendingFreshSessions.add(objectiveId);
     },
     isNextOpenFresh(objectiveId: string): boolean {
-      if (adapter?.isNextOpenFresh) return adapter.isNextOpenFresh(objectiveId);
+      if (adapter) return adapter.isNextOpenFresh?.(objectiveId) ?? false;
       return pendingFreshSessions.has(objectiveId);
     },
     async disposeChat(objectiveId: string): Promise<void> { await adapter?.disposeChat?.(objectiveId); },

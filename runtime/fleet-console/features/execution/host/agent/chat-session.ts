@@ -1038,11 +1038,8 @@ class AgentChatSession {
     // 재생 경계는 과거가 0턴이어도 남긴다. 같은 서버 안에서 브라우저만 다시 연결하면 이 저널이
     // chat-born 세션의 첫 턴들을 되쓰는데, 경계가 없으면 과거 Answer를 새 도착으로 알릴 수 있다.
     this.push({ kind: "replay-start" });
-    const pathsToReplay = [
-      ...(this.seed.previousTranscriptPaths ?? []),
-      ...(this.seed.origin.kind === "resume" ? [this.seed.origin.transcriptPath] : []),
-    ];
-    if (pathsToReplay.length === 0) {
+    const hasPrevious = (this.seed.previousTranscriptPaths?.length ?? 0) > 0;
+    if (this.seed.origin.kind === "fresh" && !hasPrevious) {
       this.push({ kind: "replay-end", turns: 0 });
       return;
     }
@@ -1056,18 +1053,35 @@ class AgentChatSession {
         this.push(withReplayRecipient(event, recipients), at ?? Date.now());
       },
     );
-    for (const transcriptPath of pathsToReplay) {
+    if (hasPrevious) {
+      for (const transcriptPath of this.seed.previousTranscriptPaths!) {
+        try {
+          const raw = await fs.readFile(transcriptPath, "utf8");
+          for (const line of raw.split("\n")) {
+            await resolveReplayRecipients(line, this.seed.resolveSessionMessageRecipient, recipients);
+            replayer.line(line);
+          }
+        } catch {
+          // 개별 이전 세션 파일 부재는 건너뛴다.
+        }
+      }
+    }
+    if (this.seed.origin.kind === "resume") {
+      const transcriptPath = this.seed.origin.transcriptPath;
       try {
         const raw = await fs.readFile(transcriptPath, "utf8");
         for (const line of raw.split("\n")) {
           await resolveReplayRecipients(line, this.seed.resolveSessionMessageRecipient, recipients);
           replayer.line(line);
         }
+        replayer.end();
       } catch {
-        // 개별 이전 파일이 없더라도 다른 파일 및 세션은 계속된다.
+        // 트랜스크립트를 읽지 못해도 세션은 계속된다 — 로그가 비어 보일 뿐 새 턴은 돌 수 있다.
+        this.push({ kind: "error", code: "chat_replay_unavailable" });
       }
+    } else {
+      replayer.end();
     }
-    replayer.end();
     const turns = replayer.turns();
     this.push({ kind: "replay-end", turns });
   }

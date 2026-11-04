@@ -138,14 +138,14 @@ export function memberUnreportedTurn(objective: Objective, member: ObjectiveMemb
 
 export function commanderFreshTurnNotice(objectiveId: string, language: PromptLanguage): string {
   return language === "ko"
-    ? `[목표 \`${objectiveId}\` 지휘관 새 세션]\n새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 읽어 현재 상황과 구성원 상태를 파악하고 이어서 진행하세요. 이전 세션의 대화 기록이 필요하면 \`objective\` 도구(action: "transcript")로 확인할 수 있습니다.\n\n`
-    : `[Objective \`${objectiveId}\` commander fresh session]\nOpened as a fresh session (role: commander). Past conversation was not loaded into the model context. Read the board with \`fleet-objectives\` (\`read\` or \`mine\` tool) to check current progress and member states, then continue. If you need past session conversation history, read it using the \`objective\` tool (action: "transcript").\n\n`;
+    ? `[목표 \`${objectiveId}\` 지휘관 새 세션]\n새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 읽어 현재 상황과 구성원 상태를 파악하고 이어서 진행하세요. 보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.\n\n`
+    : `[Objective \`${objectiveId}\` commander fresh session]\nOpened as a fresh session (role: commander). Past conversation was not loaded into the model context. Read the board with \`fleet-objectives\` (\`read\` or \`mine\` tool) to check current progress and member states, then continue. The board is the long-term memory; the Commodore will steer if needed.\n\n`;
 }
 
 export function memberFreshTurnNotice(objectiveId: string, role: string, language: PromptLanguage): string {
   return language === "ko"
-    ? `[목표 \`${objectiveId}\` 구성원 「${role}」 새 세션]\n새 세션으로 열렸습니다. 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`mine\` 도구로 본인의 미션과 보드를 확인하고 작업을 이어가세요.\n\n`
-    : `[Objective \`${objectiveId}\` member "${role}" fresh session]\nOpened as a fresh session. Past conversation was not loaded into the model context. Check your missions and the board using \`fleet-objectives\` (\`mine\` tool) and continue your work.\n\n`;
+    ? `[목표 \`${objectiveId}\` 구성원 「${role}」 새 세션]\n새 세션으로 열렸습니다. 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`mine\` 도구로 본인의 미션과 보드를 확인하고 작업을 이어가세요. 보드가 장기 기억입니다.\n\n`
+    : `[Objective \`${objectiveId}\` member "${role}" fresh session]\nOpened as a fresh session. Past conversation was not loaded into the model context. Check your missions and the board using \`fleet-objectives\` (\`mine\` tool) and continue your work. The board is the long-term memory.\n\n`;
 }
 
 /**
@@ -163,8 +163,8 @@ export function commanderRestTurn(objective: Objective, facts: { readonly roles:
 export function restartTurn(objective: Objective, language: PromptLanguage, options?: { readonly fresh?: boolean }): string {
   if (options?.fresh) {
     return language === "ko"
-      ? `목표 \`${objective.id}\`: 새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 읽어 현재 상황과 구성원 상태를 파악하고 이어서 진행하세요. 이전 세션의 대화 기록이 필요하면 \`objective\` 도구(action: "transcript")로 확인할 수 있습니다.`
-      : `Objective \`${objective.id}\`: Opened as a fresh session (role: commander). Past conversation was not loaded into the model context. Read the board with \`fleet-objectives\` (\`read\` or \`mine\` tool) to check current progress and member states, then continue. If you need past session conversation history, read it using the \`objective\` tool (action: "transcript").`;
+      ? `목표 \`${objective.id}\`: 새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 읽어 현재 상황과 구성원 상태를 파악하고 이어서 진행하세요. 보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.`
+      : `Objective \`${objective.id}\`: Opened as a fresh session (role: commander). Past conversation was not loaded into the model context. Read the board with \`fleet-objectives\` (\`read\` or \`mine\` tool) to check current progress and member states, then continue. The board is the long-term memory; the Commodore will steer if needed.`;
   }
   return language === "ko"
     ? `목표 \`${objective.id}\`: Console 이 다시 시작돼 진행 중이던 턴이 끊겼을 수 있습니다. \`fleet-objectives\` 로 보드를 다시 읽고 구성원 상태를 확인한 뒤 이어서 진행하세요.`

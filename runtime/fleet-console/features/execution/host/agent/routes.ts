@@ -237,7 +237,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   const freshOpenSessions = new Set<string>();
-  let switchingLiveCoordinates = false;
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
   const chatRegistry = new AgentChatRegistry(testChatSdkFactory ?? createChatSdkFactory(ctx.spawnAgentProcess), (objectiveId) => terminalRuntime.awaitWriterExit(objectiveId, PRIOR_WRITER_EXIT_WAIT_MS));
@@ -598,8 +597,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           fileIndex = Number(parts[0]);
           offset = Number(parts[1]);
         } else {
-          fileIndex = 0;
-          offset = Number(cursor);
+          const num = Number(cursor);
+          if (num === 0) {
+            fileIndex = 0;
+            offset = 0;
+          } else {
+            fileIndex = files.length - 1;
+            offset = num;
+          }
         }
       }
       if (!Number.isSafeInteger(fileIndex) || fileIndex < 0 || fileIndex >= files.length || !Number.isSafeInteger(offset) || offset < 0) {
@@ -2033,31 +2038,26 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 두 표면이 다른 목록으로 다루면 런치에서 끈 모델을 한쪽에서만 고를 수 있게 된다.
    */
   async function applyObjectiveChatCoordinates(objectiveId: string, model: string, effort: string | null, unstartedOwner?: boolean): Promise<ConsoleCoordinatesResult> {
-    switchingLiveCoordinates = true;
-    try {
-      let chat = chatRegistry.get(objectiveId);
-      if (!chat) {
-        const node = ctx.host.objectiveRecords.get(objectiveId);
-        if (!node) return { ok: false, error: "unknown_objectiveRecord" };
-        if (node[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, error: "chat_not_active" };
-        const generation = chatRegistry.generation(objectiveId);
-        const seed = await resolveChatSeed(node);
-        if (!seed.ok) return { ok: false, error: "coordinates_apply_failed", cause: { message: seed.error } };
-        if (chatRegistry.generation(objectiveId) !== generation || ctx.host.objectiveRecords.get(objectiveId)?.[CHAT_MODE_PAYLOAD_KEY] !== true || ctx.host.objectiveRecords.isTransitioning?.(objectiveId)) return { ok: false, error: "chat_not_active" };
-        try { chat = await chatRegistry.ensure(objectiveId, () => seed.seed); }
-        catch { return { ok: false, error: "coordinates_apply_failed", cause: { message: "chat_unavailable" } }; }
-      }
-      if (unstartedOwner !== undefined) {
-        const node = ctx.host.objectiveRecords.get(objectiveId);
-        if (!node || node[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, error: "chat_not_active" };
-        if (readObjectiveLaunch(node).started || ctx.host.objectiveRecords.isTransitioning?.(objectiveId) || chat.busy) throw new ConsoleControlError("objective_busy");
-        if (chat.hasChild && !unstartedOwner) return { ok: false, error: "forbidden" };
-      }
-      // 원장만 준비한다. changeCoordinates는 자식이 없으면 payload와 다음 기동 좌표만 바꾼다.
-      return applyChatCoordinates(chat, model, effort);
-    } finally {
-      switchingLiveCoordinates = false;
+    let chat = chatRegistry.get(objectiveId);
+    if (!chat) {
+      const node = ctx.host.objectiveRecords.get(objectiveId);
+      if (!node) return { ok: false, error: "unknown_objectiveRecord" };
+      if (node[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, error: "chat_not_active" };
+      const generation = chatRegistry.generation(objectiveId);
+      const seed = await resolveChatSeed(node);
+      if (!seed.ok) return { ok: false, error: "coordinates_apply_failed", cause: { message: seed.error } };
+      if (chatRegistry.generation(objectiveId) !== generation || ctx.host.objectiveRecords.get(objectiveId)?.[CHAT_MODE_PAYLOAD_KEY] !== true || ctx.host.objectiveRecords.isTransitioning?.(objectiveId)) return { ok: false, error: "chat_not_active" };
+      try { chat = await chatRegistry.ensure(objectiveId, () => seed.seed); }
+      catch { return { ok: false, error: "coordinates_apply_failed", cause: { message: "chat_unavailable" } }; }
     }
+    if (unstartedOwner !== undefined) {
+      const node = ctx.host.objectiveRecords.get(objectiveId);
+      if (!node || node[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, error: "chat_not_active" };
+      if (readObjectiveLaunch(node).started || ctx.host.objectiveRecords.isTransitioning?.(objectiveId) || chat.busy) throw new ConsoleControlError("objective_busy");
+      if (chat.hasChild && !unstartedOwner) return { ok: false, error: "forbidden" };
+    }
+    // 원장만 준비한다. changeCoordinates는 자식이 없으면 payload와 다음 기동 좌표만 바꾼다.
+    return applyChatCoordinates(chat, model, effort);
   }
 
   async function applyChatCoordinates(chat: NonNullable<ReturnType<AgentChatRegistry["get"]>>, model: string, effort: string | null): Promise<AgentChatCoordinatesResult | { readonly ok: false; readonly error: "invalid_model" }> {
@@ -2422,7 +2422,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 좌표와 Claude의 좌표가 태어날 때 하나가 된다. 이어 붙이는 세션은 그 id를 고를 수
         // 없으므로 트랜스크립트가 말하는 id를 그대로 쓴다.
         resolveClaudeSession: () => {
-          const fresh = !switchingLiveCoordinates && ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(node.id);
+          const fresh = ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(node.id);
           const existingSession = readAgentSession(node);
           const hadSession = !!providerSession?.id || !!existingSession?.previousSessions?.length;
           return prepareChatClaudeSession({
