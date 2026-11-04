@@ -843,12 +843,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   pluginSseChannels.add(APPROVAL_NOTICE_CHANNEL);
   const stopApprovalNotices = approvals.subscribeSettled((record) => { publishPluginEvent(APPROVAL_NOTICE_CHANNEL, record); });
   featureCleanupCallbacks.add(() => { stopApprovalNotices(); approvals.dispose(); });
+  // 기능 포트는 이 아래서 조립된다. 승인 라우트의 계속 허용은 예전 라우트와 같은 patch(저장·방송)를 타야 한다.
+  let patchObjectiveRecord: ConsoleHostPorts["objectiveRecords"]["patch"] | null = null;
   const computerUseApprovals = bindComputerUseApprovals({
     core: approvals,
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
     read: (id) => objectiveRecords.get(id) ?? null,
-    patch: (id, input) => { objectiveRecords.patch(id, input); },
+    patch: (id, input) => {
+      if (!patchObjectiveRecord) throw new Error("objective_records_unavailable");
+      patchObjectiveRecord(id, input);
+    },
   });
   computerLedger = computerUseApprovals.ledger;
   featureCleanupCallbacks.add(() => computerUseApprovals.dispose());
@@ -1223,6 +1228,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
     },
   };
+  patchObjectiveRecord = consoleFeaturePorts.objectiveRecords.patch;
   const createFeatureConsoleControl = (pluginId: string): NonNullable<(ConsoleControlHost | undefined)> => ({
     request: async (input) => {
       consoleAgentOwners.add(pluginId);
