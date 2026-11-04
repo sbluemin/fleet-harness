@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { createClaudeGatewaySdk, type ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
-import { claudeGatewayModelPolicy, difficultyQuestionId, resolveAiGatewaySelection, type AiGatewayStoredSettings, type RoutingChoice, type RoutingDifficultyQuestion } from "@fleet-console/ai-gateway";
+import { claudeGatewayModelPolicy, difficultyQuestionId, resolveAiGatewaySelection, type AiGatewayStoredSettings, type ProviderStatusMap, type RoutingChoice, type RoutingDifficultyQuestion } from "@fleet-console/ai-gateway";
 import { ROSTER_FALLBACK_MODEL, isAgentEffort, resolveRosterCoordinate, rosterRowEfforts } from "../shared/models.js";
 import { buildModelRoster, rosterWireModelId } from "./model-roster.js";
 
@@ -14,6 +14,8 @@ interface RoutingModelTurn {
   readonly signal?: AbortSignal;
   /** Console's owned-process port: the routing model's CLI must be a child the Console's deadline ends. */
   readonly spawnProcess: ClaudeProcessSpawner;
+  /** 공급자 로그인. 없으면 미상으로 보고 카탈로그 전체를 쓴다. */
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
   readonly schema: {
     readonly type: "object";
     readonly properties: Readonly<Record<string, { readonly type: "string"; readonly enum: readonly string[] }>>;
@@ -47,6 +49,8 @@ export async function chooseRoutingModel(input: {
   readonly signal?: AbortSignal;
   /** Console's owned-process port: the routing model's CLI must be a child the Console's deadline ends. */
   readonly spawnProcess: ClaudeProcessSpawner;
+  /** 공급자 로그인. 없으면 미상으로 보고 카탈로그 전체를 쓴다. */
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
 }): Promise<RoutingChoice> {
   const keys = Object.keys(input.criteria);
   const parsed = await runRoutingModelTurn({
@@ -85,6 +89,8 @@ export async function chooseRoutingModels(input: {
   readonly signal?: AbortSignal;
   /** Console's owned-process port: the routing model's CLI must be a child the Console's deadline ends. */
   readonly spawnProcess: ClaudeProcessSpawner;
+  /** 공급자 로그인. 없으면 미상으로 보고 카탈로그 전체를 쓴다. */
+  readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
 }): Promise<Record<string, RoutingChoice>> {
   const keys = Object.keys(input.criteria);
   const levels = Object.keys(input.difficulty.criteria);
@@ -115,10 +121,19 @@ export async function chooseRoutingModels(input: {
   return choices;
 }
 
+function routingProviderStatuses(read: (() => ProviderStatusMap | undefined) | undefined): ProviderStatusMap | undefined {
+  if (!read) return undefined;
+  try {
+    return read();
+  } catch {
+    return undefined;
+  }
+}
+
 async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
-  // 라우팅 모델도 모델 로스터 하나에서 고른다. 저장값이 로스터 밖(끈 모델)이면 저장값은 두고 Sonnet 1M(로스터에
-  // 없으면 첫 행, 로스터가 비면 최후 폴백 Sonnet 1M)으로 돈다 — 다시 켜면 사용자의 선택이 그대로 돌아온다.
-  const roster = buildModelRoster("agent");
+  // 라우팅 모델도 모델 로스터 하나에서 고른다. 저장값이 로스터 밖(공급자가 로그인되지 않음)이면 저장값은 두고
+  // Sonnet 1M(로스터에 없으면 첫 행, 로스터가 비면 최후 폴백 Sonnet 1M)으로 돈다 — 다시 로그인하면 선택이 돌아온다.
+  const roster = buildModelRoster("agent", routingProviderStatuses(input.readProviderStatuses));
   const resolved = resolveRosterCoordinate(roster, { model: input.settings.delegationRoutingModel ?? ROSTER_FALLBACK_MODEL }, { model: ROSTER_FALLBACK_MODEL });
   if (resolved.fallback) {
     process.stderr.write(`[fleet-routing-model] ${JSON.stringify({ ts: new Date().toISOString(), event: "model_fallback", stored: input.settings.delegationRoutingModel ?? null, model: resolved.model, reason: resolved.reason ?? null })}\n`);

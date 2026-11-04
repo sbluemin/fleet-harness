@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { SettingsGroup, SettingsItem, SettingsSubScreenRow, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { Select, useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import {
+  getSystemPromptSettingsStoreState,
   loadSystemPromptSettings,
   setSystemPromptSettingsField,
   useSystemPromptSettingsStore,
@@ -79,8 +80,14 @@ function hasFastPair(family: ModelFamily): boolean {
   return family.variants.some((variant) => variant.fast) && family.variants.some((variant) => !variant.fast);
 }
 
-function loginKind(status: string | null | undefined): "in" | "out" | "unknown" {
-  if (status == null) return "unknown";
+/**
+ * 설정 알약·위임 후보가 읽는 로그인 판정.
+ *
+ * Claude `not_connected`는 사용량 수집 동의가 꺼진 것이지 자격 로그아웃이 아니다.
+ * 그때는 미상이다 — 메뉴에는 남고, 로그인됨으로 세지 않는다. 자격 확인의 `signed_out`만 숨긴다.
+ */
+export function gatewayLoginKind(provider: string | undefined, status: string | null | undefined): "in" | "out" | "unknown" {
+  if (status == null || (provider === "claude" && status === "not_connected")) return "unknown";
   if (status === "signed_out" || status === "not_connected") return "out";
   return "in";
 }
@@ -117,7 +124,7 @@ function delegationFamilyCounts(state: ReturnType<typeof useSystemPromptSettings
   let unknown = 0;
   for (const provider of orderProviders(state.aiGatewayCatalog.providers)) {
     const on = groupFamilies(provider.models).filter((family) => family.variants.some((variant) => ids.has(variant.model.id))).length;
-    const kind = loginKind(state.aiGatewayLogin[provider.id]);
+    const kind = gatewayLoginKind(provider.id, state.aiGatewayLogin[provider.id]);
     if (kind === "in") candidates += on;
     else if (kind === "out") waiting += on;
     else unknown += on;
@@ -186,16 +193,34 @@ export function AiGatewayModelsCard(): React.ReactElement {
   const turnOff = (provider: AiGatewayCatalogProvider, family: ModelFamily): void => {
     const current = family.variants.find((variant) => enabledIds.has(variant.model.id));
     if (!current) return;
-    const snapshot = enabled;
-    const previousPriority = selection.providerPriority;
-    const remaining = enabled.filter((entry) => entry.id !== current.model.id);
+    const removed = enabled.find((entry) => entry.id === current.model.id);
+    if (!removed) return;
+    const removedIndex = enabled.findIndex((entry) => entry.id === removed.id);
+    const removedEntry = { id: removed.id, ...(removed.efforts ? { efforts: [...removed.efforts] } : {}) };
+    const remaining = enabled.filter((entry) => entry.id !== removed.id);
+    const providerId = provider.id as AiGatewayProviderId;
     const still = groupFamilies(provider.models).some((other) => other.variants.some((variant) => remaining.some((entry) => entry.id === variant.model.id)));
-    const dropPriority = !still && priority.includes(provider.id as AiGatewayProviderId);
-    const nextPriority = dropPriority ? priority.filter((id) => id !== provider.id) : undefined;
+    const dropPriority = !still && priority.includes(providerId);
+    const priorityIndex = priority.indexOf(providerId);
+    const nextPriority = dropPriority ? priority.filter((id) => id !== providerId) : undefined;
     saveModels(remaining, nextPriority);
     setUndo({
       text: t("terminal.settings.aiGatewayRemoved", { name: family.name }),
-      restore: () => saveModels(snapshot, previousPriority),
+      // 끄기 전 목록 전체를 다시 쓰지 않는다. 그 사이 켠 모델·바꾼 순서는 남기고, 뺀 항목만 원래 자리에 넣는다.
+      restore: () => {
+        const latest = getSystemPromptSettingsStoreState().state?.aiGateway;
+        const models = [...(latest?.models ?? [])].filter((entry) => aiGatewayModelFamilyKey(entry.id) !== family.key);
+        models.splice(Math.max(0, Math.min(removedIndex, models.length)), 0, removedEntry);
+        let providerPriority: readonly AiGatewayProviderId[] | undefined;
+        if (dropPriority) {
+          const order = [...(latest?.providerPriority ?? [])];
+          if (!order.includes(providerId)) {
+            order.splice(Math.max(0, Math.min(priorityIndex < 0 ? order.length : priorityIndex, order.length)), 0, providerId);
+          }
+          providerPriority = order;
+        }
+        saveModels(models, providerPriority);
+      },
     });
   };
   const setOptIn = (family: ModelFamily, level: string, on: boolean): void => {
@@ -262,7 +287,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
           const name = t(PROVIDER_LABEL[id]);
           const open = query.trim().length > 0 || !collapsed.has(provider.id);
           const onCount = rows.filter((family) => family.variants.some((variant) => enabledIds.has(variant.model.id))).length;
-          const kind = loginKind(loginOf(provider.id));
+          const kind = gatewayLoginKind(provider.id, loginOf(provider.id));
           const signedOut = kind === "out";
           return (
             <section key={provider.id} className={`settings-group-surface ai-gateway-provider-group ai-gateway-provider is-${provider.id}`} aria-label={name}>

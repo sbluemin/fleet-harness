@@ -42,6 +42,14 @@ describe("buildModelRoster login filter", () => {
       { claude: "signed_out", codex: "signed_out", xai: "signed_out", antigravity: "not_connected", "muse-code": "signed_out" },
     )[0]?.variants?.map((group) => group.id)).toEqual(["roster-fallback"]);
 
+    // 사용량 수집 동의가 꺼져 생긴 Claude not_connected는 자격 로그아웃이 아니다. 숨기지 않는다.
+    const consentOff = buildModelRoster("agent", { claude: "not_connected", codex: "signed_out" });
+    const consentClaude = consentOff.find((group) => group.id === "gateway:claude");
+    expect(consentClaude?.rows.map((row) => row.launch.model).sort()).toEqual(claudeIds);
+    expect(consentClaude?.rows.find((row) => row.launch.model === "sonnet[1m]")?.effortAxis).toEqual([...(sonnet ? exposableEffortLadder(sonnet) : [])]);
+    expect(consentOff.some((group) => group.id === "gateway:codex")).toBe(false);
+    expect(buildModelRoster("agent", { claude: "signed_out" }).some((group) => group.id === "gateway:claude")).toBe(false);
+
     expect(buildModelRoster("agent").map((group) => group.id)).toEqual(buildModelRoster("agent", {}).map((group) => group.id));
     expect(createModelRosterHost({}).roster("agent").length).toBeGreaterThan(0);
   });

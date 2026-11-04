@@ -195,8 +195,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
     }]);
   });
 
-  it("rejects a scoped gateway model that became stale before spawn", async () => {
+  it("rejects a scoped gateway model whose provider is signed out and still runs one that is signed in", async () => {
     const root = makeTempDir("fleet-gateway-stale-model-");
+    let codex: "signed_out" | "not_connected" | "ok" = "signed_out";
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: root,
       dataDir: root,
@@ -214,17 +215,28 @@ describe("createDefaultTerminalLaunchResolver", () => {
       infraServices: createFakeInfraServices() as never,
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
       createSessionIdentityResolver: (() => ({ resolve: async () => null })) as never,
+      // 켠 목록에는 없다. 거부와 실행을 가르는 것은 공급자 로그인이다.
       readAiGatewaySettings: () => ({ version: 1 }),
+      readProviderStatuses: () => ({ codex }),
     });
-
-    await expect(resolve(root, {
+    const launch = (sessionId: string) => resolve(root, {
       cliId: "claude",
       model: "codex--gpt-6.1-sol",
-      sessionId: "gateway-stale-model",
-    })).rejects.toMatchObject({
+      sessionId,
+    });
+
+    await expect(launch("gateway-signed-out")).rejects.toMatchObject({
       name: "GatewayLaunchOptionError",
       code: "gateway_model_not_enabled",
     });
+    codex = "not_connected";
+    await expect(launch("gateway-not-connected")).rejects.toMatchObject({
+      name: "GatewayLaunchOptionError",
+      code: "gateway_model_not_enabled",
+    });
+    codex = "ok";
+    const spec = await launch("gateway-signed-in");
+    expect(spec.args).toContain("claude-gateway--codex--gpt-6.1-sol");
   });
 
   it("accepts the gateway spelling of an enabled model", async () => {

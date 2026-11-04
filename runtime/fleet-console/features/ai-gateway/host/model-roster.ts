@@ -93,7 +93,8 @@ export function canonicalGatewayModelId(model: GatewayModel): string {
 
 /**
  * `statuses` 부재는 로그인 상태를 아직 모르는 것이다 — 카탈로그 전체가 보인다.
- * 맵에 없는 공급자도 같다. `signed_out`·`not_connected`만 빠진다.
+ * 맵에 없는 공급자도 같다. `signed_out`·`not_connected`만 빠진다. Claude의
+ * `not_connected`는 사용량 수집 동의라 빠지지 않는다.
  */
 export function buildModelRoster(target: ModelRosterTarget, statuses?: ProviderStatusMap): ModelRoster {
   const visible = visibleGatewayModels(statuses);

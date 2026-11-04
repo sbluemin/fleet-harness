@@ -149,7 +149,8 @@ export interface AiGatewayRouteDeps {
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /**
    * 공급자 로그인 상태. 미주입·읽기 실패·빈 결과는 미상으로 보아 카탈로그 전체를 노출한다.
-   * `signed_out`·`not_connected`만 메뉴와 실행에서 빠진다.
+   * `signed_out`·`not_connected`만 메뉴와 실행에서 빠진다. Claude의 `not_connected`는
+   * 사용량 수집 동의라 빠지지 않고, 자격 확인의 `signed_out`만 숨긴다.
    */
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
@@ -502,8 +503,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 디스커버리가 로그인된 공급자만 광고해도, 실행 경로가 로그아웃 공급자를 받아 주면 raw id로
     // 그 구독을 쓴다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고
     // 호출자 입력과 같은 신뢰 등급이 아니다. Claude 공급자도 같은 규칙이다.
+    // 이 거부는 켠 목록이 아니라 공급자 로그인이다. 문구에 "model:"을 넣지 않는다 — 아래 주석.
     if (target && modelOverride === undefined && !isModelExposed(target)) {
-      writeClientError(res, 403, "permission_error", `AI gateway model is not enabled: ${requested}`);
+      writeClientError(res, 403, "permission_error", `AI gateway provider is not signed in: ${requested}`);
       clock?.finish("error", 403);
       return true;
     }

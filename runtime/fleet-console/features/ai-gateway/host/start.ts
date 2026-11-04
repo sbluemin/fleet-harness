@@ -211,6 +211,17 @@ export function startAiGateway(ctx: GatewayStartContext) {
     timeoutMs: JEV_ROUTING_BATCH_TIMEOUT_MS,
     maxAttempts: 1,
   });
+  const readProviderStatuses = (): ProviderStatusMap | undefined => {
+    const summary = quota.peekSummary();
+    if (!summary) return undefined;
+    return {
+      claude: summary.providers.claude.status,
+      codex: summary.providers.codex.status,
+      xai: summary.providers.xai.status,
+      antigravity: summary.providers.antigravity.status,
+      "muse-code": summary.providers["muse-code"].status,
+    };
+  };
   async function assign(request: unknown, signal?: AbortSignal, test = false) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
       void quota.getSummary().catch(() => undefined);
@@ -224,6 +235,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
             baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
             directory: path.join(ctx.dataDir, "routing-model"),
             spawnProcess: ctx.spawnAgentProcess,
+            readProviderStatuses,
           }),
         } : { client: jevClient }),
         forceDecision: test,
@@ -294,6 +306,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
             baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
             directory: path.join(ctx.dataDir, "routing-model"),
             spawnProcess: ctx.spawnAgentProcess,
+            readProviderStatuses,
           }),
         } : { client: jevBatchClient }),
         refreshExposure: () => currentExposure(),
@@ -329,17 +342,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
     return () => { claudeNativeListeners.delete(listener); };
   };
   const ensureClaudeNativeModels = claudeNativeModels?.ensure;
-  const readProviderStatuses = (): ProviderStatusMap | undefined => {
-    const summary = quota.peekSummary();
-    if (!summary) return undefined;
-    return {
-      claude: summary.providers.claude.status,
-      codex: summary.providers.codex.status,
-      xai: summary.providers.xai.status,
-      antigravity: summary.providers.antigravity.status,
-      "muse-code": summary.providers["muse-code"].status,
-    };
-  };
   const subscribeProviderStatus = (listener: () => void): (() => void) => {
     providerStatusListeners.add(listener);
     // 구독보다 먼저 끝난 기동 조회를 놓치지 않는다. 아직 캐시가 없으면 조회가 끝나는 알림이 이어 부른다.
