@@ -290,6 +290,8 @@ export interface ObjectiveStore {
   memberBatchLaunch(objectiveId: string, mode: "route", skip?: ReadonlySet<string>): { readonly objective: Objective; readonly changed: number };
   /** 지휘관 라우팅 근거. null 은 지운다. 사람의 편집이 아니라 기동 사실이라 편집 기록을 쌓지 않는다. */
   setCommanderRouted(objectiveId: string, routed: MemberRouted | null): Objective;
+  /** 아직 판단하지 않은 지휘관 라우팅. 모델을 적어 판단이 끝나면 false. 메타데이터만 만드는 보관은 이 표시를 지우지 않는다. */
+  setCommanderRouting(objectiveId: string, enabled: boolean): Objective;
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
@@ -850,7 +852,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       groupId: node ? node.groupId ?? null : liveGroup(pending!.commodoreId, pending!.groupId),
       title: node?.title ?? pending!.title,
       createdAt: node?.ts.createdAt ?? pending!.createdAt,
-      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: canonicalModelId(launch.model) } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}), ...(pending?.routing ? { routing: true as const } : {}), ...(commanderRouted ? { routed: commanderRouted } : {}) },
+      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: canonicalModelId(launch.model) } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}), ...(stored.commanderRouting === true && !launch.model ? { routing: true as const } : {}), ...(commanderRouted ? { routed: commanderRouted } : {}) },
       note: stored.note,
       attachments: stored.attachments ?? [],
       results: stored.results ?? [],
@@ -1350,7 +1352,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     }),
     launched: (objectiveId) => update(objectiveId, (stored) => {
       if (!stored.pending) return stored;
-      const { pending: _pending, commanderRouting: _routing, ...rest } = stored;
+      // 라우팅 의도는 여기서 지우지 않는다. 휴면 메타데이터만 만드는 보관도 이 함수를 부르고, 판단은 실제 첫 기동이 한다.
+      const { pending: _pending, ...rest } = stored;
       return rest;
     }),
     removePending(objectiveId) {
@@ -1738,6 +1741,16 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         if (JSON.stringify(current) === JSON.stringify(next)) return stored;
         const { commanderRouted: _previous, ...rest } = stored;
         return next ? { ...rest, commanderRouted: next } : rest;
+      }, false);
+    },
+    setCommanderRouting(objectiveId, enabled) {
+      return update(objectiveId, (stored) => {
+        if ((stored.commanderRouting === true) === enabled) return stored;
+        if (!enabled) {
+          const { commanderRouting: _routing, ...rest } = stored;
+          return rest;
+        }
+        return { ...stored, commanderRouting: true as const };
       }, false);
     },
     memberBatchLaunch(objectiveId, mode, skip) {

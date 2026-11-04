@@ -1108,7 +1108,7 @@ function CrewSection({ objective, objectiveRecords, t, crew }: { readonly object
         <CrewControls open={commanderSession ? () => focusObjective(objective.id) : null} role={t("objectives.commander.title")} locked={commanderLocked} note={null} t={t}
           {...(commanderLocked && touchable ? { lockedNote: t("objectives.commander.locked") } : {})}>
           <LaunchControl t={t} model={objective.commander.routing ? undefined : objective.commander.model} effort={objective.commander.routing ? undefined : objective.commander.effort} locked={commanderLocked}
-            {...(!objective.hasSession ? { routing: { active: objective.commander.routing === true, hint: t("objectives.commander.routeHint"), onPick: () => { crew.send("/objective/patch", { patch: { launch: { routing: true } } }).catch(crew.fail); } } } : {})}
+            {...(!objective.hasSession || objective.commander.routing ? { routing: { active: objective.commander.routing === true, hint: t("objectives.commander.routeHint"), onPick: () => { crew.send("/objective/patch", { patch: { launch: { routing: true } } }).catch(crew.fail); } } } : {})}
             onChange={(next) => { crew.send("/objective/patch", { patch: { launch: next } }).catch(crew.fail); }} />
         </CrewControls>
       </SettingsRow>

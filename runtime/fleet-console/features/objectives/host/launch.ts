@@ -435,12 +435,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
 
   // 최초 기동은 목표의 UUID 에 묶는다. 실패 후 재시도는 기존 Objective 을 되찾는다.
+  // 라우팅 판단은 아래 assignRouting 이 준비된 뒤에만 호출된다(이 함수 자신은 그때까지 실행되지 않는다).
   const ensureCommander = async (objectiveId: string): Promise<void> => {
     // 에이전트가 지운 목표는 사람이 되돌리기 전에는 기동하지 않는다.
     if (store.find(objectiveId)?.removed) throw new ObjectiveStoreError("objective_removed");
+    const wantsRouting = store.find(objectiveId)?.commander.routing === true;
     const pendingCommander = store.pending(objectiveId);
     const existing = referenceNode(objectiveId);
-    if (existing) {
+    // 이미 세션이 있고 라우팅이 남아 있지 않으면 판단하지 않는다. 다시구상·확장·재개·재시작이 이 길이다.
+    // 보관이 만든 휴면 메타데이터는 세션이 있어도 라우팅이 남아 있으면 아직 첫 기동이 아니다.
+    if (existing && !wantsRouting) {
       await accessObjective(objectiveId);
       if (pendingCommander) {
         if (existing.commodoreId !== pendingCommander.commodoreId || readObjectiveLaunch(existing).sessionName !== pendingCommander.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
@@ -448,29 +452,23 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
       return;
     }
-    if (!pendingCommander) throw new ObjectiveStoreError("unknown_objectiveRecord");
+    if (!existing && !pendingCommander) throw new ObjectiveStoreError("unknown_objectiveRecord");
+    if (existing && pendingCommander && (existing.commodoreId !== pendingCommander.commodoreId || readObjectiveLaunch(existing).sessionName !== pendingCommander.sessionName)) throw new ObjectiveStoreError("objectiveRecord_id_taken");
     // 지휘관은 늘 채팅으로 선다 — 구성원 채팅 입력창이 보드 동작을 받는다. 옛 터미널 프리셋이 저장된 목표도 채팅으로 띄운다.
-    // 라우팅은 이 첫 기동에서만 한 번 판단한다. 이미 세션이 있으면 위의 existing 이 반환하므로 다시구상·확장·재개·재시작은 판단하지 않는다.
-    const { routing: wantsRouting, ...pendingRest } = pendingCommander;
-    let model = pendingRest.model;
-    let effort = pendingRest.effort;
-    let routed: MemberRouted | null = null;
+    const pendingRest = pendingCommander ? (({ routing: _routing, ...rest }) => rest)(pendingCommander) : null;
+    let model = pendingRest?.model ?? (existing ? readObjectiveLaunch(existing).model : undefined);
+    let effort = pendingRest?.effort ?? (existing ? readObjectiveLaunch(existing).effort : undefined);
     if (wantsRouting) {
-      const decision = (await assignRouting([{ key: objectiveId, prompt: commanderRoutingPrompt(objective(objectiveId)) }])).get(objectiveId) ?? { via: "fallback" as const, reason: "routing_failed" };
-      if (decision.via === "route") {
-        model = decision.model;
-        effort = decision.effort;
-        routed = { via: "route", because: decision.because };
-      } else {
-        model = COMMANDER_PRESET.model;
-        effort = COMMANDER_PRESET.effort;
-        routed = { via: "fallback", reason: decision.reason, ...(decision.detail ? { detail: decision.detail } : {}) };
-      }
+      const choice = await judgeCommanderOnce(objectiveId);
+      rememberCommanderDecision(objectiveId, choice);
+      model = choice.model;
+      effort = choice.effort;
     }
-    const launchedId = await launch({ ...pendingRest, ...(model ? { model } : {}), ...(effort ? { effort } : {}), viewMode: "chat", objectiveId, dormant: true, newObjectiveId: objectiveId }).catch(asStoreError);
-    if (launchedId !== objectiveId) throw new ObjectiveStoreError("objectiveRecord_id_taken");
-    store.launched(objectiveId);
-    if (routed) store.setCommanderRouted(objectiveId, routed);
+    if (!existing) {
+      const launchedId = await launch({ ...pendingRest!, ...(model ? { model } : {}), ...(effort ? { effort } : {}), viewMode: "chat", objectiveId, dormant: true, newObjectiveId: objectiveId }).catch(asStoreError);
+      if (launchedId !== objectiveId) throw new ObjectiveStoreError("objectiveRecord_id_taken");
+    }
+    if (store.pending(objectiveId)) store.launched(objectiveId);
   };
 
   /**
@@ -513,6 +511,21 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
     }
     return decisions;
+  };
+
+  /** 대기 중인 지휘관 라우팅을 한 번 판단한다. 결과는 호출부가 대기 설정에 남긴다. */
+  const judgeCommanderOnce = async (objectiveId: string): Promise<{ readonly model: string; readonly effort?: string; readonly routed: MemberRouted }> => {
+    const decision = (await assignRouting([{ key: objectiveId, prompt: commanderRoutingPrompt(objective(objectiveId)) }])).get(objectiveId) ?? { via: "fallback" as const, reason: "routing_failed" };
+    if (decision.via === "route") return { model: decision.model, ...(decision.effort ? { effort: decision.effort } : {}), routed: { via: "route", because: decision.because } };
+    return { model: COMMANDER_PRESET.model, effort: COMMANDER_PRESET.effort, routed: { via: "fallback", reason: decision.reason, ...(decision.detail ? { detail: decision.detail } : {}) } };
+  };
+  /** 판단 결과를 대기 설정(또는 이미 있는 휴면 세션)에 남기고 라우팅 표시를 걷는다. 다음 기동은 이 좌표를 다시 판단하지 않는다. */
+  const rememberCommanderDecision = (objectiveId: string, choice: { readonly model: string; readonly effort?: string; readonly routed: MemberRouted }) => {
+    if (store.pending(objectiveId)) store.patchPending(objectiveId, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}), routing: undefined });
+    else store.setCommanderRouting(objectiveId, false);
+    const node = ctx.objectiveRecords.get(objectiveId);
+    if (node) patchObjective(objectiveId, withObjectiveLaunchPreset(node, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }));
+    store.setCommanderRouted(objectiveId, choice.routed);
   };
 
   /**
@@ -1810,7 +1823,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (pending.has(objectiveId)) throw new ObjectiveStoreError("objective_busy");
         return routing ? store.patchPending(objectiveId, { routing: true, model: undefined, effort: undefined }) : store.patchPending(objectiveId, { ...preset, routing: undefined });
       }
-      if (routing) throw new ObjectiveStoreError("invalid_arguments");
+      // 보관이 만든 휴면 메타데이터는 세션이 있어도 아직 첫 기동 전이다. 라우팅으로 되돌리거나 모델을 고를 수 있다.
       if (!node) throw new ObjectiveStoreError("unknown_objective");
       // 캡처된 세션의 프리셋 금지는 복원 전에 확인한다. 복원으로 기존 제약을 우회하지 않는다.
       if (readObjectiveLaunch(node).started || pending.has(objectiveId) || (node.chatMode !== true && control().observe(objectiveId)?.lifecycle === "live") || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
@@ -1819,6 +1832,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const active = ctx.objectiveRecords.get(objectiveId);
       if (!active) throw new ObjectiveStoreError("unknown_objective");
       if (readObjectiveLaunch(active).started || (active.chatMode !== true && control().observe(objectiveId)?.lifecycle === "live") || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
+      if (routing) {
+        const session = { ...(active.session as Record<string, unknown> | undefined) };
+        delete session.model;
+        delete session.effort;
+        patchObjective(objectiveId, { session });
+        store.setCommanderRouting(objectiveId, true);
+        store.setCommanderRouted(objectiveId, null);
+        store.refresh(objectiveId);
+        return objective(objectiveId);
+      }
       if (active.chatMode === true) {
         const session = readObjectiveLaunch(active);
         const apply = ctx.consoleControl?.setUnstartedPreset;
@@ -1826,6 +1849,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         const result = await apply(objectiveId, { model: preset.model ?? session.model ?? "opus[1m]", effort: preset.effort ?? session.effort ?? null });
         if (!result.ok) throw coordinatesError(result);
       } else patchObjective(objectiveId, { ...(withObjectiveLaunchPreset(active, preset)) });
+      store.setCommanderRouting(objectiveId, false);
       store.setCommanderRouted(objectiveId, null);
       store.refresh(objectiveId);
       return objective(objectiveId);
@@ -1865,9 +1889,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const running = previewTasks.get(objectiveId);
       if (running) return running;
       const task = (async (): Promise<RoutingPreview> => {
-        const current = objective(objectiveId);
+        let current = objective(objectiveId);
         if (current.done) throw new ObjectiveStoreError("objective_done");
         if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
+        // 지휘관이 아직 라우팅이면 구성원 폴백보다 먼저 한 번 판단해 대기 설정에 남긴다. 개시·첫 기동은 그 좌표를 다시 묻지 않는다.
+        if (current.commander.routing) rememberCommanderDecision(objectiveId, await judgeCommanderOnce(objectiveId));
+        current = objective(objectiveId);
         const targets = routingTargets(current, assignedMembers(current));
         const { decisions, judged } = await routeMembers(current, targets, options?.rejudge ? "none" : "any");
         // 판단을 기다리는 동안 지휘관 프리셋이 바뀌었을 수 있다 — 폴백이 뜰 모델은 지금 값으로 보인다.

@@ -854,7 +854,9 @@ describe("Objectives contract", () => {
       expect(items[0]!.prompt).toContain("briefing text");
       expect(items[0]!.prompt).toContain("Role: Commander — plans the lineup, delegates to members, integrates results, and stays for later rounds.");
       expect(items[0]!.prompt.length).toBeLessThanOrEqual(16_384);
-      return Response.json({ decisions: [{ key: items[0]!.key, model: "sonnet", effort: "low", because: "fits the brief", fallback: false }] });
+      return Response.json({ decisions: items.map((item) => item.prompt.includes("Role: Commander")
+        ? { key: item.key, model: "sonnet", effort: "low", because: "fits the brief", fallback: false }
+        : { key: item.key, because: "AI routing is off", fallback: true }) });
     });
     const routed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
     expect(store.find(routed.id)!.commander).toMatchObject({ routing: true });
@@ -871,6 +873,32 @@ describe("Objectives contract", () => {
     expect(plain.commander.model).toBe("opus[1m]");
     expect((await route("plan/request", { objectiveId: plain.id })).status).toBe(200);
     expect(judgments).toBe(1);
+
+    const shelved = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    await launch.archive(shelved.id);
+    expect(store.find(shelved.id)!.commander.routing).toBe(true);
+    expect(store.find(shelved.id)!.commander.model).toBeUndefined();
+    await launch.restore(shelved.id);
+    expect(store.find(shelved.id)!.commander.routing).toBe(true);
+    expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
+    expect(judgments).toBe(2);
+    expect(objectiveRecords.get(shelved.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(store.find(shelved.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route", because: "fits the brief" } });
+    expect(store.find(shelved.id)!.commander.routing).toBeUndefined();
+    expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
+    expect(judgments).toBe(2);
+
+    const previewed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    const analyst = store.memberAdd(previewed.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
+    store.missionAdd(previewed.id, { text: "read", member: analyst.id });
+    const preview = (await route("routing/preview", { objectiveId: previewed.id })).value.preview as { members: { id: string; via: string; model?: string; reason?: string }[] };
+    expect(judgments).toBe(4);
+    expect(store.find(previewed.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route" } });
+    expect(store.find(previewed.id)!.commander.routing).toBeUndefined();
+    expect(preview.members).toEqual([expect.objectContaining({ id: analyst.id, via: "fallback", model: "sonnet[1m]" })]);
+    expect((await route("commander/start", { objectiveId: previewed.id, routing: "preview" })).status).toBe(200);
+    expect(judgments).toBe(4);
+    expect(objectiveRecords.get(analyst.id)!.session).toMatchObject({ model: "sonnet[1m]" });
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
