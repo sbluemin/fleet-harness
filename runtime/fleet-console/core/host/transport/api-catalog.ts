@@ -8,6 +8,7 @@ import { OBJECTIVE_RECORDS_API_CATALOG } from "../../../features/objectives/host
 import { AVATARS_API_CATALOG } from "../../../features/workspace/host/avatars.js";
 import { CONVERSATION_WORKBENCH_API_CATALOG } from "../../../features/workspace/host/conversation-workbench.js";
 import { SERVER_API_CATALOG } from "../bootstrap/server.js";
+import { APPROVAL_API_CATALOG } from "../bootstrap/approval-routes.js";
 import { SYSTEM_FONTS_API_CATALOG } from "../shell/system-fonts.js";
 
 export type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
@@ -21,6 +22,7 @@ const compareApiCatalogEntries = (left: ApiCatalogEntry, right: ApiCatalogEntry)
 export function buildApiCatalog(extraEntries: readonly ApiCatalogEntry[] = []): ApiCatalogEntry[] {
   const entries = [
     ...SERVER_API_CATALOG,
+    ...APPROVAL_API_CATALOG,
     ...DESKTOP_SHELL_API_CATALOG,
     ...DESKTOP_SHELL_UPDATE_API_CATALOG,
     ...DESKTOP_THEME_API_CATALOG,

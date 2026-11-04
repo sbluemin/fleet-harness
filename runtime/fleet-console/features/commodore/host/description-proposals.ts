@@ -1,4 +1,4 @@
-import { ApprovalError, type ApprovalCore, type ApprovalDecision, type ApprovalRequestView, type ApprovalSnapshot, type ApprovalStatus } from "@fleet-console/approval";
+import { ApprovalError, type ApprovalCore, type ApprovalDecision, type ApprovalRequestView, type ApprovalStatus } from "@fleet-console/approval";
 
 import { DESCRIPTION_PROPOSAL_TYPE, type DescriptionProposalPayload } from "../shared/contracts/description-proposal.js";
 import { MAX_DESCRIPTION } from "../shared/contracts/types.js";
@@ -16,14 +16,8 @@ export interface CommodoreDescriptionProposals {
   list(): readonly ApprovalRequestView[];
 }
 
-export interface DescriptionProposalDesk {
-  snapshot(): ApprovalSnapshot;
-  answer(id: string, decision: ApprovalDecision): ApprovalRequestView;
-}
-
 export interface DescriptionProposalBinding {
   forCommodore(commodoreId: string): CommodoreDescriptionProposals;
-  readonly desk: DescriptionProposalDesk;
   dispose(): void;
 }
 
@@ -108,10 +102,6 @@ export function bindDescriptionProposals(deps: {
         return readPayload(request.payload)?.proposerId === commodoreId;
       }),
     }),
-    desk: {
-      snapshot: () => deps.core.snapshot(),
-      answer: (id, decision) => deps.core.answer(id, decision),
-    },
     dispose() {
       unsubscribeStore();
       unsubscribeSettled();

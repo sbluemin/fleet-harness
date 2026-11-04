@@ -3,12 +3,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { createApprovalCore } from "@fleet-console/approval";
-import { APPROVAL_ANSWER_ROUTE } from "@fleet-console/approval/contract";
 import { afterEach, expect, it } from "vitest";
 
+import { APPROVAL_ANSWER_PATH, createApprovalRouter } from "../core/host/bootstrap/approval-routes.js";
 import { bindDescriptionProposals } from "../features/commodore/host/description-proposals.js";
 import { bindIntelProposals } from "../features/commodore/host/intel-proposals.js";
-import { createCommodoreRoutes, type CommodoreRouteContext } from "../features/commodore/host/routes.js";
 import { createCommodoreStore as createHostStore } from "../features/commodore/host/store.js";
 import { createCommodoreTools } from "../features/commodore/host/tools.js";
 
@@ -37,26 +36,24 @@ it("keeps a description unchanged until the person approves, then blocks a stale
   let body: unknown;
   let result = { status: 0, value: {} as { request?: { status?: string }; error?: string } };
   let authorized = true;
-  const ctx = {
-    host: {
-      http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value: value as typeof result.value }; } },
-      security: { isTerminalAuthorized: () => authorized },
-    },
-  } as unknown as CommodoreRouteContext;
 
   const open = () => {
     const core = createApprovalCore({ filePath });
     const known = (id: string) => ids.includes(id);
     const binding = bindDescriptionProposals({ core, store, known });
     const intel = bindIntelProposals({ core, store, known });
-    const routes = createCommodoreRoutes(ctx, store, { approvals: binding.desk });
-    return { core, binding, intel, routes };
+    const router = createApprovalRouter({
+      core,
+      isAuthorized: () => authorized,
+      readJsonBody: async () => body,
+      writeJson: (_res, status, value) => { result = { status, value: value as typeof result.value }; },
+    });
+    return { core, binding, intel, router };
   };
   let opened = open();
   const answer = async (id: string, decision: "approve" | "reject") => {
     body = { id, decision };
-    const route = opened.routes.find((candidate) => candidate.name === APPROVAL_ANSWER_ROUTE)!;
-    await route.handler({ req: { method: "POST" } as never, res: {} as never, pathname: `/api/v1/${APPROVAL_ANSWER_ROUTE}` });
+    await opened.router({ req: { method: "POST" } as never, res: {} as never, pathname: APPROVAL_ANSWER_PATH });
     return result;
   };
 

@@ -40,7 +40,6 @@ import { createCommodorePlugins } from "./plugins.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import { createCommodoreSupervisor } from "./supervisor.js";
 import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
-import { APPROVAL_CHANNEL } from "@fleet-console/approval/contract";
 import type { ApprovalCore, ApprovalStatus } from "@fleet-console/approval";
 import { bindDescriptionProposals, type DescriptionProposalBinding } from "./description-proposals.js";
 import { bindIntelProposals, type IntelProposalBinding } from "./intel-proposals.js";
@@ -90,13 +89,11 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     ...(deps.processes ? { processes: deps.processes } : {}),
   });
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
-  // 감독자보다 먼저 등록한다. 채널을 연 뒤에 어긋난 제안을 맞춰야 스냅숏이 브라우저에 닿는다.
-  let releaseApprovalChannel = () => {};
+  // 승인 채널은 조립이 이미 열었다. 여기서는 타입만 등록한다.
   let proposals: DescriptionProposalBinding | null = null;
   let intelProposals: IntelProposalBinding | null = null;
   let noteProposal = (_commodoreId: string, _kind: "description-proposal" | "intel-proposal", _status: ApprovalStatus) => {};
   if (deps.approvals) {
-    releaseApprovalChannel = deps.events.registerSseChannel(APPROVAL_CHANNEL);
     const known = (id: string) => entities.dirOf(id) !== null;
     proposals = bindDescriptionProposals({
       core: deps.approvals, store, known,
@@ -106,7 +103,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       core: deps.approvals, store, known,
       onSettled: (proposerId, status) => noteProposal(proposerId, "intel-proposal", status),
     });
-    deps.events.publish(APPROVAL_CHANNEL, deps.approvals.snapshot());
   }
   /**
    * 목표 세션에 실을 id — 전역 우선 대체를 유지한 뒤, 전역 토글과 이 사령관 토글의 OR 로 거른다.
@@ -342,7 +338,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       }
       return null;
     },
-    ...(proposals ? { approvals: proposals.desk } : {}),
   });
   const routes = [...commodoreRoutes, ...taskforce.routes];
   return {
@@ -358,7 +353,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     async dispose() {
       if (disposed) return;
       disposed = true;
-      try { await supervisor.dispose(); } finally { proposals?.dispose(); intelProposals?.dispose(); releaseApprovalChannel(); await pluginAuth.dispose().catch(() => undefined); await agent.dispose(); releaseChannel(); releaseSidebarChannel(); }
+      try { await supervisor.dispose(); } finally { proposals?.dispose(); intelProposals?.dispose(); await pluginAuth.dispose().catch(() => undefined); await agent.dispose(); releaseChannel(); releaseSidebarChannel(); }
     },
   };
 }
