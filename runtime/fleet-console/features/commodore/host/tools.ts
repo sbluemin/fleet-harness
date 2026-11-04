@@ -128,7 +128,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
   const proposals = options.proposals;
   const intelProposals = options.intelProposals;
   const descriptionText = proposals
-    ? "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive. You cannot edit it. To ask for a change to any Commodore's description, including your own, use propose_description; only the person can approve or reject it, and approving overwrites the description as it stands then. One open proposal per Commodore: a new one replaces the previous. Read description_proposals for the open proposal you made. Read the description at the start of a turn that says the description changed, and whenever you need to weigh a decision against it."
+    ? "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive. You cannot edit it. To ask for a change to any Commodore's description, including your own, use propose_description; only the person can approve or reject it, and approving overwrites the description as it stands then. One open proposal per Commodore: a new one replaces the previous. Read description_proposals for the open proposal you made, and withdraw_description to take back one you opened. You cannot withdraw someone else's. Read the description at the start of a turn that says the description changed, and whenever you need to weigh a decision against it."
     : "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive and you cannot edit it. Read it at the start of a turn that says the description changed, and whenever you need to weigh a decision against it.";
   return [
     tool("description", descriptionText, z.object({}).strict(), () => {
@@ -137,7 +137,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     }),
     // since 는 「이미 본 가장 최신 항목」이다 — 그 뒤에 들어온 항목과, 그 항목이 들어온 뒤 사람이 고친 항목(더 오래된 것·since 자신 포함)을 함께 돌려준다.
     // 고친 항목은 id·출처·자리가 그대로라 앞에서부터 자르면 놓친다. 이미 읽은 고침이 같은 editedAt 으로 다시 올 수 있다.
-    tool("intel", `Intel items — information from the person and from sources, newest first, each dated and attributed — plus the list of intel sources. The person can edit an item in place: it keeps its id, source and position and carries editedAt. Pass since (the newest item id you already saw) to get only items added after it plus items edited after it was added; an edit you already read can come back with the same editedAt. Intel informs judgment; it does not command.${intelProposals ? " You cannot write intel. To ask for an add, edit or removal on any Commodore, including yourself, use propose_intel; only the person approves it, and read intel_proposals for the outcome." : ""}`, z.object({ since: z.string().min(1).max(128).optional(), limit: z.number().int().min(1).max(200).optional() }).strict(), ({ since, limit }) => {
+    tool("intel", `Intel items — information from the person and from sources, newest first, each dated and attributed — plus the list of intel sources. The person can edit an item in place: it keeps its id, source and position and carries editedAt. Pass since (the newest item id you already saw) to get only items added after it plus items edited after it was added; an edit you already read can come back with the same editedAt. Intel informs judgment; it does not command.${intelProposals ? " You cannot write intel. To ask for an add, edit or removal on any Commodore, including yourself, use propose_intel; only the person approves it. Read intel_proposals for the open proposal you made, and withdraw_intel to take back one you opened. You cannot withdraw someone else's." : ""}`, z.object({ since: z.string().min(1).max(128).optional(), limit: z.number().int().min(1).max(200).optional() }).strict(), ({ since, limit }) => {
       const { intel, sources } = state();
       const end = since ? intel.findIndex((item) => item.id === since) : -1;
       const seenAt = end >= 0 ? intel[end]!.at : 0;
@@ -198,11 +198,15 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
         ...(options.taskforce ? { taskforce: options.taskforce } : {}),
       })),
     ...(proposals ? [
-      tool("propose_description", `Propose a new description for a Commodore. You may propose a change for any Commodore, including yourself. You cannot edit a description; only the person approves or rejects, and nothing changes until they approve. Approving overwrites the description as it stands then, even if the person edited it after you proposed. One open proposal per Commodore: a new proposal replaces the previous one. text is at most ${MAX_DESCRIPTION} characters. The same wording as the current description is refused as unchanged.`, z.object({ targetId: z.string().min(1).max(128), text: z.string().max(MAX_DESCRIPTION) }).strict(), ({ targetId, text }) => {
+      tool("propose_description", `Propose a new description for a Commodore. You may propose a change for any Commodore, including yourself. You cannot edit a description; only the person approves or rejects, and nothing changes until they approve. Approving overwrites the description as it stands then, even if the person edited it after you proposed. One open proposal per Commodore: a new proposal replaces the previous one. text is at most ${MAX_DESCRIPTION} characters. The same wording as the current description is refused as unchanged. Use withdraw_description to take back a proposal you opened.`, z.object({ targetId: z.string().min(1).max(128), text: z.string().max(MAX_DESCRIPTION) }).strict(), ({ targetId, text }) => {
         const proposed = proposals.propose(targetId, text);
         return { id: proposed.id, targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) };
       }),
-      tool("description_proposals", "Description changes you currently have open, newest first. Nothing here has changed a description yet. A settled proposal leaves this list; a turn that says one was settled or replaced is how you learn that outcome.", z.object({}).strict(), () => ({
+      tool("withdraw_description", "Withdraw a description proposal you opened. Pass its id from description_proposals. You cannot withdraw another Commodore's proposal. The proposal ends and nothing is applied.", z.object({ id: z.string().uuid() }).strict(), ({ id }) => {
+        const withdrawn = proposals.withdraw(id);
+        return { id: withdrawn.id, status: withdrawn.status, ...(withdrawn.reason ? { reason: withdrawn.reason } : {}) };
+      }),
+      tool("description_proposals", "Description changes you currently have open, newest first. Nothing here has changed a description yet. A settled proposal leaves this list; a turn that says one was settled or replaced is how you learn that outcome. Use withdraw_description to take one back.", z.object({}).strict(), () => ({
         proposals: proposals.list().map((proposed) => {
           const payload = proposed.payload as { targetId: string; text: string };
           return { id: proposed.id, targetId: payload.targetId, text: payload.text, status: proposed.status, createdAt: stamp(proposed.createdAt) };
@@ -210,7 +214,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       })),
     ] : []),
     ...(intelProposals ? [
-      tool("propose_intel", `Propose an intel change for any Commodore, including yourself. You cannot write intel; only the person approves or rejects, and nothing is stored until they approve. One open intel proposal per Commodore: a new one replaces the previous. kind add: text is trimmed, 1 to ${MAX_INTEL_TEXT} characters, and the item is attributed to you. kind edit: intelId and the new text, which overwrites the item as it stands when the person approves. kind remove: intelId. If that item is already gone, approval fails and the proposal ends. An add does not need an existing item.`, z.object({
+      tool("propose_intel", `Propose an intel change for any Commodore, including yourself. You cannot write intel; only the person approves or rejects, and nothing is stored until they approve. One open intel proposal per Commodore: a new one replaces the previous. kind add: text is trimmed, 1 to ${MAX_INTEL_TEXT} characters, and the item is attributed to you. kind edit: intelId and the new text, which overwrites the item as it stands when the person approves. kind remove: intelId. If the person deletes that item before approving, the proposal ends then and nothing is applied. An add does not need an existing item. Use withdraw_intel to take back a proposal you opened.`, z.object({
         kind: z.enum(["add", "edit", "remove"]),
         targetId: z.string().min(1).max(128),
         intelId: z.string().min(1).max(128).optional(),
@@ -227,7 +231,11 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
           : intelProposals.proposeRemove(targetId, intelId);
         return { id: proposed.id, kind, targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) };
       }),
-      tool("intel_proposals", "Intel changes you currently have open, newest first. Nothing here has changed intel yet. A settled proposal leaves this list; a turn that says one was settled, replaced, or could not be applied is how you learn that outcome.", z.object({}).strict(), () => ({
+      tool("withdraw_intel", "Withdraw an intel proposal you opened. Pass its id from intel_proposals. You cannot withdraw another Commodore's proposal. The proposal ends and nothing is applied.", z.object({ id: z.string().uuid() }).strict(), ({ id }) => {
+        const withdrawn = intelProposals.withdraw(id);
+        return { id: withdrawn.id, status: withdrawn.status, ...(withdrawn.reason ? { reason: withdrawn.reason } : {}) };
+      }),
+      tool("intel_proposals", "Intel changes you currently have open, newest first. Nothing here has changed intel yet. A settled proposal leaves this list; a turn that says one was settled, replaced, or ended because its item was deleted is how you learn that outcome. Use withdraw_intel to take one back.", z.object({}).strict(), () => ({
         proposals: intelProposals.list().map((proposed) => {
           const payload = proposed.payload as { kind: string; targetId: string; intelId?: string; text?: string };
           return { id: proposed.id, kind: payload.kind, targetId: payload.targetId, ...(payload.intelId ? { intelId: payload.intelId } : {}), ...(payload.text !== undefined ? { text: payload.text } : {}), status: proposed.status, createdAt: stamp(proposed.createdAt) };

@@ -301,11 +301,12 @@ describe("Computer Use authorization and lifecycle", () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "fleet-computer-approval-"));
     const approvals = createApprovalCore({ filePath: path.join(dir, "approvals.json") });
     const objectives: { id: string; computerUse?: { enabled: boolean; language: "en" | "ko" } }[] = [{ id: "op-a" }];
+    let experiment = true;
     let ledger: ComputerUseLedger | null = null;
     const requests = createUseRequestBroker({ recheckMs: 60_000, computerLedger: () => ledger });
     const binding = bindComputerUseApprovals({
       core: approvals,
-      experimentEnabled: () => true,
+      experimentEnabled: () => experiment,
       language: () => "en",
       read: (id) => objectives.find((objective) => objective.id === id) as never ?? null,
       patch: (_id, input) => { objectives[0] = { ...objectives[0]!, ...input }; },
@@ -334,6 +335,17 @@ describe("Computer Use authorization and lifecycle", () => {
       body = { id: view!.id, decision: "always" };
       await router({ req: { method: "POST" } as never, res: {} as never, pathname: APPROVAL_ANSWER_PATH });
       expect(replied).toEqual({ status: 404, value: { error: "unknown_request" } });
+      delete objectives[0]!.computerUse;
+      experiment = false;
+      const heldOff = requests.hold({ objectiveId: "op-a", capability: "computer", tool: "computer_apps", authorized: () => objectives[0]?.computerUse?.enabled === true });
+      const offView = requests.list().requests.find((request) => request.capability === "computer");
+      body = { id: offView!.id, decision: "always" };
+      await router({ req: { method: "POST" } as never, res: {} as never, pathname: APPROVAL_ANSWER_PATH });
+      expect(replied).toEqual({ status: 409, value: { error: "experiment_disabled" } });
+      expect(approvals.snapshot().requests.map((request) => request.id)).toEqual([offView!.id]);
+      expect(objectives[0]?.computerUse).toBeUndefined();
+      expect(requests.answer("op-a", offView!.id, "deny")).toEqual({ ok: true, capability: "computer" });
+      expect(await heldOff).toBe("declined");
       requests.answer("op-a", requests.list().requests[0]!.id, "deny");
       await consoleHold;
     } finally {

@@ -6,7 +6,11 @@
 
 export const INTEL_PROPOSAL_TYPE = "commodore.intel";
 
-export type IntelProposalPayload =
+export type IntelProposalPayload = (
   | { readonly kind: "add"; readonly proposerId: string; readonly targetId: string; readonly text: string }
   | { readonly kind: "edit"; readonly proposerId: string; readonly targetId: string; readonly intelId: string; readonly text: string }
-  | { readonly kind: "remove"; readonly proposerId: string; readonly targetId: string; readonly intelId: string };
+  | { readonly kind: "remove"; readonly proposerId: string; readonly targetId: string; readonly intelId: string }
+) & {
+  /** 이 제안이 같은 대상의 이전 정보 제안을 밀어냈으면 참. 끝난 제안의 이력은 아니다. */
+  readonly replaced?: true;
+};

@@ -13,4 +13,6 @@ export interface DescriptionProposalPayload {
   readonly targetId: string;
   /** 제안 문안. `MAX_DESCRIPTION` 이내. 승인하면 그 순간의 설명을 이 문안으로 덮어쓴다. */
   readonly text: string;
+  /** 이 제안이 같은 대상의 이전 제안을 밀어냈으면 참. 카드의 「이전 제안을 대신했어요」. 끝난 제안의 이력은 아니다. */
+  readonly replaced?: true;
 }

@@ -16,6 +16,7 @@ import {
 export {
   APPROVAL_ANSWER_ROUTE,
   APPROVAL_CHANNEL,
+  APPROVAL_NOTICE_CHANNEL,
   APPROVAL_DECISIONS,
   APPROVAL_LIST_ROUTE,
   APPROVAL_STATUSES,
@@ -38,7 +39,7 @@ const APPLYING: ReadonlySet<ApprovalDecision> = new Set(["approve", "always"]);
 const DECLINING: ReadonlySet<ApprovalDecision> = new Set(["reject", "declined"]);
 
 export class ApprovalError extends Error {
-  constructor(readonly code: "unknown_request" | "approval_failed" | "invalid_request" | "unknown_type" | "corrupt_store") {
+  constructor(readonly code: "unknown_request" | "approval_failed" | "invalid_request" | "unknown_type" | "corrupt_store" | "experiment_disabled") {
     super(code);
     this.name = "ApprovalError";
   }
@@ -87,7 +88,7 @@ export interface ApprovalCore {
   answer(id: string, decision: ApprovalDecision): ApprovalRequestView;
   /** 즉답형이 답을 받지 못함(`no_response`). 기록은 지운다. */
   expire(id: string): ApprovalRequestView;
-  /** 요청을 거둔다. `replaced` 는 같은 대상의 새 제안이 밀어낸 것이다. 기록은 지운다. */
+  /** 요청을 거둔다. 사유는 밀어냄·제안자·대상 항목 삭제. 기록은 지운다. */
   withdraw(id: string, reason?: ApprovalEndReason): ApprovalRequestView;
   snapshot(): ApprovalSnapshot;
   /** 기록이 `pending` 을 떠날 때 한 번. `silence` 안에서는 울리지 않는다. */

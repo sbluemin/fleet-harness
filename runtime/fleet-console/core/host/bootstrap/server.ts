@@ -53,7 +53,7 @@ import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUs
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { createApprovalCore } from "@fleet-console/approval";
-import { APPROVAL_CHANNEL } from "@fleet-console/approval/contract";
+import { APPROVAL_CHANNEL, APPROVAL_NOTICE_CHANNEL } from "@fleet-console/approval/contract";
 import { APPROVAL_ANSWER_PATH, APPROVAL_LIST_PATH, createApprovalRouter } from "./approval-routes.js";
 import { CONSOLE_LIFECYCLE_WIRE, CONSOLE_STOP_REQUEST_PATH, CONSOLE_STOP_REQUEST_REVISION, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
@@ -839,7 +839,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onChange: (snapshot) => { publishPluginEvent(APPROVAL_CHANNEL, snapshot); scheduleObjectiveUseBroadcast(); },
   });
   pluginSseChannels.add(APPROVAL_CHANNEL);
-  featureCleanupCallbacks.add(() => approvals.dispose());
+  // 끝난 요청은 스냅숏에 남기지 않는다. 화면의 한 줄 알림은 이 사건 한 번이고, 다시 붙을 때 다시 보내지 않는다.
+  pluginSseChannels.add(APPROVAL_NOTICE_CHANNEL);
+  const stopApprovalNotices = approvals.subscribeSettled((record) => { publishPluginEvent(APPROVAL_NOTICE_CHANNEL, record); });
+  featureCleanupCallbacks.add(() => { stopApprovalNotices(); approvals.dispose(); });
   const computerUseApprovals = bindComputerUseApprovals({
     core: approvals,
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,

@@ -39,7 +39,8 @@ export function bindComputerUseApprovals(deps: {
       const payload = readPayload(record.payload);
       const objective = payload ? deps.read(payload.objectiveId) : null;
       if (!payload || !objective) return "missing";
-      if (!deps.experimentEnabled()) throw new ApprovalError("invalid_request");
+      // 실험이 꺼져 있으면 요청은 그대로 두고 409 experiment_disabled. 예전 라우트와 같다.
+      if (!deps.experimentEnabled()) throw new ApprovalError("experiment_disabled");
       // 예전 라우트가 이미 스위치를 켰으면 언어를 덮어쓰지 않는다. 승인 라우트만 답하면 여기서 켠다.
       if (!computerUseEnabled(objective)) deps.patch(payload.objectiveId, { ...objective, computerUse: { enabled: true, language: deps.language() ?? "en" } });
       return "approved";
