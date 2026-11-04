@@ -342,8 +342,13 @@ export function startAiGateway(ctx: GatewayStartContext) {
   };
   const subscribeProviderStatus = (listener: () => void): (() => void) => {
     providerStatusListeners.add(listener);
+    // 구독보다 먼저 끝난 기동 조회를 놓치지 않는다. 아직 캐시가 없으면 조회가 끝나는 알림이 이어 부른다.
+    if (quota.peekSummary()) listener();
     return () => { providerStatusListeners.delete(listener); };
   };
+  // 대화 화면이 쿼터를 부르기 전에는 로그인 상태가 비어 메뉴가 전체 카탈로그로 열린다.
+  // 자격 확인은 조회 함수가 로컬에서 끝내고, 로그인이 있을 때만 사용량 호출로 이어진다.
+  void quota.getSummary().catch(() => undefined);
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     readAiGatewaySettings: aiGatewayStore.read,

@@ -3,9 +3,10 @@ import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { navigateConsoleRoute } from "../../../core/client/src/integration/console-location.js";
 import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
-import { closeSettingsModal } from "../../settings/client/settings-door.js";
+import { openSettingsSurface, closeSettingsModal } from "../../settings/client/settings-door.js";
+import { pluginSettingsSectionId } from "../../settings/client/settings-entry.js";
+import { QUOTA_PLUGIN_ID, QUOTA_USAGE_SECTION_ID } from "./section-id.js";
 import type { ComposerTopEntryContext } from "../../workspace/shared/surface-contracts.js";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 
@@ -75,7 +76,7 @@ export const QUOTA_PANEL_OPEN_EVENT = "fleet:quota-panel-open";
  */
 export function requestQuotaPanelOpen(): void {
   if (getViewModeSnapshot().effective === "mobile") {
-    navigateConsoleRoute("/settings", "?section=usage");
+    openSettingsSurface(pluginSettingsSectionId(QUOTA_PLUGIN_ID, QUOTA_USAGE_SECTION_ID));
     return;
   }
   closeSettingsModal();

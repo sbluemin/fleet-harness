@@ -360,10 +360,11 @@ function AiGatewayRoutingCard() {
   // 켠 모델이 전부 로그아웃 공급자면 로그인 대기로 말하고, 아예 없으면 켜 달라고 말한다.
   const catalogNames = new Map(state.aiGatewayCatalog.providers.flatMap((provider) => provider.models.map((model) => [model.id, model.name] as const)));
   const providerByModel = new Map(state.aiGatewayCatalog.providers.flatMap((provider) => provider.models.map((model) => [model.id, provider.id] as const)));
-  const candidates = (state.aiGateway?.models ?? []).filter((entry) => {
+  const enabled = state.aiGateway?.models ?? [];
+  const candidates = enabled.filter((entry) => {
     const provider = providerByModel.get(entry.id);
     const status = provider ? state.aiGatewayLogin[provider] : null;
-    return status !== "signed_out" && status !== "not_connected";
+    return status != null && status !== "signed_out" && status !== "not_connected";
   }).map((entry) => catalogNames.get(entry.id) ?? entry.id);
   const routingPickerLabels = rosterPickerLabels(t, t("terminal.settings.aiGatewayRoutingModel"));
   // 판정기는 강도를 저장하지 않는다 — 실제로 도는 강도(routingJudgeEffort)를 표시에만 실어, 기본값과 고른 모델이
@@ -444,9 +445,14 @@ function AiGatewayRoutingCard() {
           {/* 폰의 행은 컨트롤 칸이 좁아 이름 목록이 보조 줄을 짓누른다 — 폰에서는 이름 목록이 곧 보조 줄이다. */}
           <SettingsItem
             label={t("terminal.settings.aiGatewayRoutingCandidates")}
-            hint={candidates.length === 0
-              ? t((state.aiGateway?.models?.length ?? 0) > 0 ? "terminal.settings.aiGatewayRoutingWaiting" : "terminal.settings.aiGatewayRoutingNoneOn")
-              : mobileHost ? candidates.join(" · ") : t("terminal.settings.aiGatewayRoutingCandidatesHint")}
+            hint={candidates.length > 0
+              ? (mobileHost ? candidates.join(" · ") : t("terminal.settings.aiGatewayRoutingCandidatesHint"))
+              : enabled.some((entry) => {
+                const provider = providerByModel.get(entry.id);
+                return (provider ? state.aiGatewayLogin[provider] : null) == null;
+              })
+                ? t("terminal.settings.aiGatewayLoginChecking")
+                : t((state.aiGateway?.models?.length ?? 0) > 0 ? "terminal.settings.aiGatewayRoutingWaiting" : "terminal.settings.aiGatewayRoutingNoneOn")}
           >
             {mobileHost ? null : (
               <span className={`ai-gateway-routing-candidates${candidates.length === 0 ? " is-empty" : ""}`} role={candidates.length === 0 ? "status" : undefined}>
@@ -519,7 +525,7 @@ function RoutingTestPanel() {
   const delegable = (state.aiGateway?.models ?? []).filter((entry) => {
     const provider = state.aiGatewayCatalog.providers.find((group) => group.models.some((model) => model.id === entry.id));
     const status = provider ? state.aiGatewayLogin[provider.id] : null;
-    return status !== "signed_out" && status !== "not_connected";
+    return status != null && status !== "signed_out" && status !== "not_connected";
   }).length;
   return (
     <RoutingTest

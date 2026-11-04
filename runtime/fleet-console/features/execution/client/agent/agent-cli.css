@@ -1667,6 +1667,7 @@
 .session-watch-bubble__text { min-width: 0; }
 .session-watch-bubble.is-reveal { border-color: color-mix(in oklch, var(--console-use-badge) 55%, transparent); color: var(--text-primary); }
 
+.ai-gateway-models-lead { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); letter-spacing: 0; text-transform: none; }
 .ai-gateway-order { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
 .ai-gateway-order-title { margin: 0; font-size: var(--t-sm); color: var(--text-primary); }
 .ai-gateway-order-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }

@@ -40,7 +40,9 @@ export function QuotaSignInHost(): React.ReactElement | null {
   return createPortal(
     <div className="quota-signin-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
       <div className="quota-signin-dialog" role="dialog" aria-modal="true" aria-labelledby={labelId}>
-        <button type="button" className="quota-signin-close" aria-label={t("quota.signin.close")} onClick={() => setOpen(false)}>✕</button>
+        <div className="quota-signin-bar">
+          <button type="button" className="quota-signin-close" aria-label={t("quota.signin.close")} onClick={() => setOpen(false)}>✕</button>
+        </div>
         {api
           ? <QuotaPanel api={api} locale={locale} labelId={labelId} />
           : <p className="quota-signin-note" id={labelId}>{t("quota.signin.unavailable")}</p>}

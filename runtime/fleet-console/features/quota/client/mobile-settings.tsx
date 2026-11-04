@@ -11,6 +11,7 @@ import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subs
 import type { LoginProvider, ProviderId } from "../shared/provider-order.js";
 import "./mobile.css";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
+import { QUOTA_USAGE_SECTION_ID } from "./section-id.js";
 import { summaryLines } from "./toolbar-summary.js";
 
 /**
@@ -203,7 +204,7 @@ function subscribe(listener: () => void): () => void {
 }
 
 export const quotaSettingsSection: SettingsSectionDescriptor = {
-  id: "usage",
+  id: QUOTA_USAGE_SECTION_ID,
   // 시안·명세의 행·상세 제목은 「사용량」이다(데스크톱 팝업의 「사용 한도」와 다른 자리).
   title: (locale) => getT(locale, true)("mobile.usage.title"),
   group: "work",

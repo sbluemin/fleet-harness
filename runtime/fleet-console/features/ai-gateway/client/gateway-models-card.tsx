@@ -6,7 +6,7 @@ import { OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../execution/client/objectiv
 import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import { createPortal } from "react-dom";
-import { SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSubScreenRow, SettingsToggle } from "../../settings/client/preferences-context.js";
+import { SettingsGroup, SettingsItem, SettingsSubScreenRow, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { Select, useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import {
   loadSystemPromptSettings,
@@ -79,8 +79,10 @@ function hasFastPair(family: ModelFamily): boolean {
   return family.variants.some((variant) => variant.fast) && family.variants.some((variant) => !variant.fast);
 }
 
-function needsLogin(status: string | null | undefined): boolean {
-  return status === "signed_out" || status === "not_connected";
+function loginKind(status: string | null | undefined): "in" | "out" | "unknown" {
+  if (status == null) return "unknown";
+  if (status === "signed_out" || status === "not_connected") return "out";
+  return "in";
 }
 
 function orderProviders(providers: readonly AiGatewayCatalogProvider[]): AiGatewayCatalogProvider[] {
@@ -91,9 +93,11 @@ export function AiGatewayModelsEntry(): React.ReactElement {
   const t = getT(useTerminalLocale(), true);
   const state = useSystemPromptSettingsStore().state;
   const counts = delegationFamilyCounts(state);
-  const summary = counts.waiting > 0
-    ? `${t("terminal.settings.aiGatewayDelegationCount", { count: counts.candidates })} · ${t("terminal.settings.aiGatewayWaitingLogin", { count: counts.waiting })}`
-    : t("terminal.settings.aiGatewayDelegationCount", { count: counts.candidates });
+  const summary = [
+    t("terminal.settings.aiGatewayDelegationCount", { count: counts.candidates }),
+    counts.waiting > 0 ? t("terminal.settings.aiGatewayWaitingLogin", { count: counts.waiting }) : null,
+    counts.unknown > 0 ? t("terminal.settings.aiGatewayLoginChecking") : null,
+  ].filter(Boolean).join(" · ");
   return (
     <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayModels")}>
       <SettingsSubScreenRow
@@ -105,17 +109,20 @@ export function AiGatewayModelsEntry(): React.ReactElement {
   );
 }
 
-function delegationFamilyCounts(state: ReturnType<typeof useSystemPromptSettingsStore>["state"]): { readonly candidates: number; readonly waiting: number } {
-  if (!state) return { candidates: 0, waiting: 0 };
+function delegationFamilyCounts(state: ReturnType<typeof useSystemPromptSettingsStore>["state"]): { readonly candidates: number; readonly waiting: number; readonly unknown: number } {
+  if (!state) return { candidates: 0, waiting: 0, unknown: 0 };
   const ids = new Set((state.aiGateway?.models ?? []).map((entry) => entry.id));
   let candidates = 0;
   let waiting = 0;
+  let unknown = 0;
   for (const provider of orderProviders(state.aiGatewayCatalog.providers)) {
     const on = groupFamilies(provider.models).filter((family) => family.variants.some((variant) => ids.has(variant.model.id))).length;
-    if (needsLogin(state.aiGatewayLogin[provider.id])) waiting += on;
-    else candidates += on;
+    const kind = loginKind(state.aiGatewayLogin[provider.id]);
+    if (kind === "in") candidates += on;
+    else if (kind === "out") waiting += on;
+    else unknown += on;
   }
-  return { candidates, waiting };
+  return { candidates, waiting, unknown };
 }
 
 export function AiGatewayModelsCard(): React.ReactElement {
@@ -158,9 +165,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
   const enabledProviders = providers.filter(providerHasEnabled);
   const priority = (selection.providerPriority ?? []).filter((id): id is AiGatewayProviderId => enabledProviders.some((provider) => provider.id === id));
   const loginOf = (id: string) => state.aiGatewayLogin[id as AiGatewayProviderId] ?? null;
-  const signedInFamily = (provider: AiGatewayCatalogProvider, family: ModelFamily) => family.variants.some((variant) => enabledIds.has(variant.model.id)) && !needsLogin(loginOf(provider.id));
-  const waiting = families.reduce((sum, group) => sum + group.families.filter((family) => family.variants.some((variant) => enabledIds.has(variant.model.id)) && needsLogin(loginOf(group.provider.id))).length, 0);
-  const candidates = families.reduce((sum, group) => sum + group.families.filter((family) => signedInFamily(group.provider, family)).length, 0);
+  const counts = delegationFamilyCounts(state);
   const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
 
   const saveModels = (models: AiGatewaySettings["models"], providerPriority?: readonly AiGatewayProviderId[]): void => {
@@ -211,14 +216,12 @@ export function AiGatewayModelsCard(): React.ReactElement {
 
   return (
     <section className="global-settings-card ai-gateway-models" aria-label={t("terminal.settings.aiGatewayModels")}>
-      <div className="ai-gateway-roster-head">
-        <h3 className="global-settings-card-title ai-gateway-roster-title">
-          {t("terminal.settings.aiGatewayModels")}
-          <SettingsHelpTip ariaLabel={t("terminal.settings.helpTipAria", { title: t("terminal.settings.aiGatewayModels") })}>
-            <p>{t("terminal.settings.aiGatewayModelsHelp")}</p>
-          </SettingsHelpTip>
-        </h3>
-      </div>
+      {mobile ? null : (
+        <div className="ai-gateway-roster-head">
+          <h3 className="global-settings-card-title ai-gateway-roster-title">{t("terminal.settings.aiGatewayModels")}</h3>
+        </div>
+      )}
+      <p className="ai-gateway-models-lead">{t("terminal.settings.aiGatewayModelsHelp")}</p>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
       <div className="ai-gateway-order">
@@ -246,8 +249,9 @@ export function AiGatewayModelsCard(): React.ReactElement {
       <div className="ai-gateway-find">
         <input className="ai-gateway-find-input" value={query} placeholder={t("terminal.settings.aiGatewayFindModel")} aria-label={t("terminal.settings.aiGatewayFindModel")} onChange={(event) => setQuery(event.target.value)} />
         <span className="ai-gateway-roster-count">
-          {t("terminal.settings.aiGatewayDelegationCount", { count: candidates })}
-          {waiting > 0 ? ` · ${t("terminal.settings.aiGatewayWaitingLogin", { count: waiting })}` : ""}
+          {t("terminal.settings.aiGatewayDelegationCount", { count: counts.candidates })}
+          {counts.waiting > 0 ? ` · ${t("terminal.settings.aiGatewayWaitingLogin", { count: counts.waiting })}` : ""}
+          {counts.unknown > 0 ? ` · ${t("terminal.settings.aiGatewayLoginChecking")}` : ""}
         </span>
       </div>
       <div className="ai-gateway-groups">
@@ -258,7 +262,8 @@ export function AiGatewayModelsCard(): React.ReactElement {
           const name = t(PROVIDER_LABEL[id]);
           const open = query.trim().length > 0 || !collapsed.has(provider.id);
           const onCount = rows.filter((family) => family.variants.some((variant) => enabledIds.has(variant.model.id))).length;
-          const signedOut = needsLogin(loginOf(provider.id));
+          const kind = loginKind(loginOf(provider.id));
+          const signedOut = kind === "out";
           return (
             <section key={provider.id} className={`settings-group-surface ai-gateway-provider-group ai-gateway-provider is-${provider.id}`} aria-label={name}>
               <button type="button" className="ai-gateway-group-head ai-gateway-provider-toggle" aria-expanded={open} onClick={() => setCollapsed((current) => {
@@ -269,7 +274,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
               })}>
                 <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
                 <span className="ai-gateway-provider-name">{name}</span>
-                <span className={signedOut ? "ai-gateway-login is-needed" : "ai-gateway-login"}>{signedOut ? t("terminal.settings.aiGatewayNeedsLogin") : t("terminal.settings.aiGatewaySignedIn")}</span>
+                <span className={`ai-gateway-login${signedOut ? " is-needed" : kind === "unknown" ? " is-unknown" : ""}`}>{kind === "unknown" ? t("terminal.settings.aiGatewayLoginChecking") : signedOut ? t("terminal.settings.aiGatewayNeedsLogin") : t("terminal.settings.aiGatewaySignedIn")}</span>
                 <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayEnabledCount", { on: onCount, all: rows.length })}</span>
                 <span className="ai-gateway-model-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
               </button>
