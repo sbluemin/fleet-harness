@@ -56,6 +56,8 @@ export interface CommodoreRouteHooks {
   readonly pluginsChanged?: (pluginIds: readonly string[]) => void;
   /** 전역 설치 목록이 바뀌었다 — 모든 사령관의 다음 턴이 새 세션으로 이어지고 `global-plugins` 사건이 난다. */
   readonly globalPluginsChanged?: (plugins: readonly string[]) => void;
+  /** 전역 토글만 바뀌었다 — 사령관 세션은 그대로 두고 `global-plugins` 사건만 낸다. 목표 세션은 다음 실행부터 받는다. */
+  readonly globalPluginReachChanged?: () => void;
   readonly deletion?: ReturnType<typeof import("./deletion.js").createCommodoreDeletion>;
   readonly assertWritable?: (commodoreId: string) => void;
   readonly create?: (alias: string) => string;
@@ -145,7 +147,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
         rows.push(state.alias ? { commodoreId, alias: state.alias } : { commodoreId });
       }
     }
-    return { plugins: list, installedBy };
+    return { plugins: list, objectiveExcluded: plugins().listGlobalExcluded(), installedBy };
   };
   /** 그 사령관의 실제 로드 id — 전역 먼저, 대체된 사령관 항목은 뺀다. 모든 적재 지점이 같은 계산을 쓴다. */
   const effectiveIds = (commodoreId: string): readonly string[] =>
@@ -231,8 +233,13 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: "commodore/marketplaces/remove", method: "POST", summary: "Remove a custom marketplace; presets can only be turned off.", handler: json(marketplaceNameRefSchema, ({ name }) => plugins().remove(name)) },
     { name: "commodore/plugins/inspect", method: "POST", summary: "Fetch a plugin into Console's plugin home and report its components and the commands it would run.", handler: json(pluginInspectSchema, async ({ pluginId }) => ({ plugin: await plugins().inspect(pluginId) })) },
     { name: "commodore/plugins/detail", method: "POST", summary: "Read a plugin's component names, run commands and README from inside its folder without executing plugin code.", handler: json(pluginInspectSchema, async ({ pluginId }) => ({ plugin: await plugins().detail(pluginId) })) },
-    { name: "commodore/plugins/set", method: "POST", summary: "Install or remove a plugin for one Commodore; applies from its next turn and to its objectives' next sessions.", handler: json(commodorePluginSetSchema, async ({ commodoreId, pluginId, installed, trusted }) => {
+    { name: "commodore/plugins/set", method: "POST", summary: "Install or remove a plugin for one Commodore, or set whether its objectives' sessions load it. A reach-only change does not replace the Commodore session.", handler: json(commodorePluginSetSchema, async ({ commodoreId, pluginId, installed, trusted, forObjectives }) => {
       const selected = () => read(commodoreId).plugins ?? [];
+      // 설치 여부가 그대로인 토글은 받지도, plugins 목록을 다시 쓰지도 않는다.
+      if (forObjectives !== undefined && installed === selected().includes(pluginId)) {
+        if (!installed) throw new CommodoreStoreError("plugin_not_found");
+        return view(commodoreId, store.setPluginReach(commodoreId, pluginId, forObjectives));
+      }
       if (installed) {
         const before = selected();
         if (!before.includes(pluginId) && before.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
@@ -240,12 +247,22 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
         // 받는 동안 같은 사령관의 다른 설치·제거가 끝났을 수 있다 — 저장 직전의 목록에 더한다.
         const latest = selected();
         if (!latest.includes(pluginId) && latest.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
-        return view(commodoreId, store.setPlugins(commodoreId, [...latest, pluginId]));
+        store.setPlugins(commodoreId, [...latest, pluginId]);
+      } else {
+        store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId));
       }
-      return view(commodoreId, store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId)));
+      if (forObjectives !== undefined && selected().includes(pluginId)) store.setPluginReach(commodoreId, pluginId, forObjectives);
+      return view(commodoreId, read(commodoreId));
     }) },
     { name: "commodore/plugins/global/list", method: "POST", summary: "Read the global plugin installs with the Commodores that installed each id directly.", handler: json(z.object({}).strict(), () => globalView(), false) },
-    { name: "commodore/plugins/global/set", method: "POST", summary: "Install (fetching like a Commodore install, then adding to the list) or remove a global plugin; applies from every Commodore's next session.", handler: json(globalPluginSetSchema, async ({ pluginId, installed, trusted }) => {
+    { name: "commodore/plugins/global/set", method: "POST", summary: "Install or remove a global plugin, or set whether objective sessions load it. A reach-only change does not replace Commodore sessions.", handler: json(globalPluginSetSchema, async ({ pluginId, installed, trusted, forObjectives }) => {
+      const installedNow = plugins().listGlobal().includes(pluginId);
+      if (forObjectives !== undefined && installed === installedNow) {
+        if (!installed) throw new CommodoreStoreError("plugin_not_found");
+        const reach = plugins().setGlobalObjective(pluginId, forObjectives);
+        if (reach.changed) hooks.globalPluginReachChanged?.();
+        return globalView();
+      }
       if (installed) {
         const before = plugins().listGlobal();
         if (!before.includes(pluginId) && before.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
@@ -257,6 +274,10 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       const next = plugins().setGlobal(pluginId, installed);
       // 목록이 그대로면 쓰지도 알리지도 않았다 — 세션을 헛되이 교체하지 않는다.
       if (next.changed) hooks.globalPluginsChanged?.(next.plugins);
+      if (forObjectives !== undefined && plugins().listGlobal().includes(pluginId)) {
+        const reach = plugins().setGlobalObjective(pluginId, forObjectives);
+        if (reach.changed) hooks.globalPluginReachChanged?.();
+      }
       return globalView();
     }, false) },
     { name: "commodore/plugins/effective", method: "POST", summary: "Read one Commodore's actual plugin load: the global list, the effective ids, and the replaced entries.", handler: json(effectivePluginsQuerySchema, ({ commodoreId }): EffectiveCommodorePluginsView => {

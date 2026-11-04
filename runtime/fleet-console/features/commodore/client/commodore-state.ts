@@ -555,6 +555,13 @@ export async function setCommodorePlugin(commodoreId: string, pluginId: string, 
   const view = await post<CommodoreStateView>(client, "/commodore/plugins/set", { commodoreId, pluginId, installed, ...(trusted ? { trusted: true } : {}) });
   if (view && typeof view === "object" && "state" in view) setTheater(commodoreId, { view });
 }
+/** 이 사령관의 설치를 목표 세션에도 실을지. 설치 목록은 서버가 그대로 둔다. */
+export async function setCommodorePluginReach(commodoreId: string, pluginId: string, forObjectives: boolean): Promise<void> {
+  const client = api();
+  if (!client || !commodoreId) throw new Error("not_installed");
+  const view = await post<CommodoreStateView>(client, "/commodore/plugins/set", { commodoreId, pluginId, installed: true, forObjectives });
+  if (view && typeof view === "object" && "state" in view) setTheater(commodoreId, { view });
+}
 
 /** 마켓플레이스 등록부·카탈로그 라우트 — 사령관 하나에 묶이지 않는 Console 전역 요청이다. */
 export async function postCommodorePlugins<T>(path: string, body: Record<string, unknown>): Promise<T> {

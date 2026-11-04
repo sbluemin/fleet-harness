@@ -27,7 +27,7 @@ import { createCommodoreManagementTools } from "../features/commodore/host/conso
 import { createCommodoreMessenger } from "../features/commodore/host/messaging.js";
 import { createCommodoreDeletion } from "../features/commodore/host/deletion.js";
 import { createCommodorePlugins } from "../features/commodore/host/plugins.js";
-import { effectiveCommodorePlugins, MAX_PLUGIN_README_BYTES } from "../features/commodore/shared/contracts/plugins.js";
+import { effectiveCommodorePlugins, objectiveSessionPlugins, MAX_PLUGIN_README_BYTES } from "../features/commodore/shared/contracts/plugins.js";
 import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
@@ -1137,6 +1137,25 @@ describe("commodore theater state", () => {
     ]);
     // 실제 적재 경로도 전역 쪽을 한 번만 싣는다 — CLI 를 부르지 않는다.
     expect(plugins.resolve(effective).map((plugin) => plugin.id)).toEqual(["tool@team"]);
+
+    // 목표 세션만 토글로 거른다. 뺀 목록이 없으면 적재 목록과 같고, plugins 배열은 토글을 저장해도 그대로다.
+    expect(objectiveSessionPlugins(["tool@team"], ["tool@team", "tool@other"], undefined, undefined)).toEqual(["tool@team"]);
+    expect(objectiveSessionPlugins(["tool@team"], [], ["tool@team"], undefined)).toEqual([]);
+    expect(objectiveSessionPlugins(["tool@team"], ["tool@team"], ["tool@team"], [])).toEqual(["tool@team"]);
+    expect(objectiveSessionPlugins(["tool@team"], ["tool@team"], ["tool@team"], ["tool@team"])).toEqual([]);
+    expect(objectiveSessionPlugins(["tool@team"], ["tool@other"], ["tool@team"], [])).toEqual(["tool@team"]);
+    expect(objectiveSessionPlugins(["tool@team"], ["tool@other"], ["tool@team"], ["tool@other"])).toEqual([]);
+    expect(objectiveSessionPlugins(["a@m"], ["b@n"], ["a@m"], [])).toEqual(["b@n"]);
+    const globalFile = path.join(root, "global.json");
+    const before = JSON.parse(fs.readFileSync(globalFile, "utf8")) as { plugins: string[] };
+    expect(plugins.setGlobalObjective("tool@team", false)).toMatchObject({ plugins: ["tool@team"], objectiveExcluded: ["tool@team"], changed: true });
+    const after = JSON.parse(fs.readFileSync(globalFile, "utf8")) as { plugins: string[]; objectiveExcluded: string[] };
+    expect(after.plugins).toEqual(before.plugins);
+    expect(after.objectiveExcluded).toEqual(["tool@team"]);
+    expect(plugins.setGlobalObjective("tool@team", false).changed).toBe(false);
+    expect(plugins.setGlobalObjective("tool@team", true).changed).toBe(true);
+    expect(JSON.parse(fs.readFileSync(globalFile, "utf8"))).toEqual({ version: 1, plugins: ["tool@team"] });
+    expect(plugins.listGlobalExcluded()).toEqual([]);
   });
   it("computes the next plugin version from files only and updates one plugin through its trust boundary", async () => {
     // 업데이트 호스트 픽스처 — 상대 출처(tool·nover)와 외부 출처(ext·ext2), 설치본 캐시, CLI 대역 스크립트.

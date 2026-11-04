@@ -69,8 +69,13 @@ export interface CommodoreStore {
   setCoordinates(commodoreId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
   /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
   setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string } | { readonly route: true } | null): CommodoreState;
-  /** 사람이 고른 플러그인 목록 — 비면 필드를 지운다. 같으면 아무 일도 없다(세션을 헛되이 교체하지 않는다). */
+  /** 사람이 고른 플러그인 목록 — 비면 필드를 지운다. 같으면 아무 일도 없다(세션을 헛되이 교체하지 않는다). 빠진 id는 목표 세션 제외 목록에서도 떨어진다. */
   setPlugins(commodoreId: string, plugins: readonly string[]): CommodoreState;
+  /**
+   * 그 설치를 목표 세션에도 실을지. `plugins` 는 그대로 두고 `objectiveExcluded` 만 고친다.
+   * 설치되지 않은 id는 `plugin_not_found`. 그대로면 쓰지 않는다(세션을 교체하지 않는다).
+   */
+  setPluginReach(commodoreId: string, pluginId: string, forObjectives: boolean): CommodoreState;
   /** 사람이 이 Theater 를 보는 언어를 남긴다 — 같으면 아무 일도 없다. */
   setLanguage(commodoreId: string, language: "en" | "ko"): CommodoreState;
   /** 누적 셈을 더한다(세션 +1, 비용 +, 행위 +). 감독자가 턴 결과마다 부른다. */
@@ -357,8 +362,19 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const current = load(commodoreId);
       const next = [...new Set(plugins)];
       if (isDeepStrictEqual(current.plugins ?? [], next)) return current;
-      const { plugins: _plugins, ...rest } = current;
-      return commit(commodoreId, next.length ? { ...rest, plugins: next } : rest, "plugins");
+      const excluded = (current.objectiveExcluded ?? []).filter((id) => next.includes(id));
+      const { plugins: _plugins, objectiveExcluded: _excluded, ...rest } = current;
+      return commit(commodoreId, { ...rest, ...(next.length ? { plugins: next } : {}), ...(excluded.length ? { objectiveExcluded: excluded } : {}) }, "plugins");
+    },
+    setPluginReach(commodoreId, pluginId, forObjectives) {
+      const current = load(commodoreId);
+      const installed = current.plugins ?? [];
+      if (!installed.includes(pluginId)) throw new CommodoreStoreError("plugin_not_found");
+      const excluded = (current.objectiveExcluded ?? []).filter((id) => installed.includes(id) && id !== pluginId);
+      const nextExcluded = forObjectives ? excluded : [...excluded, pluginId];
+      if (isDeepStrictEqual(current.objectiveExcluded ?? [], nextExcluded)) return current;
+      const { objectiveExcluded: _excluded, ...rest } = current;
+      return commit(commodoreId, nextExcluded.length ? { ...rest, objectiveExcluded: nextExcluded } : rest, "plugin-reach");
     },
     setLanguage(commodoreId, language) {
       const current = load(commodoreId);

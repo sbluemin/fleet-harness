@@ -27,7 +27,6 @@ import { CommodoreTrailSection } from "./commodore-trail.js";
 import { commanderCoordinates, commanderRouted, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
-import { CommodorePlugins } from "./commodore-plugins.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
@@ -744,7 +743,6 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
       <div className="objectives-cm-pad objectives-cm-settings">
         {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
         <CommodoreTheaters commodoreId={theaterId} phone />
-        <CommodorePlugins t={t} commodoreId={theaterId} phone />
         <SettingsCard description={t("commodore.settings.modelHint")}>
           <SettingsRow label={t("commodore.settings.model")} icon={<SparkIcon />} disabled={!online}>
             <CommodoreCoordinateField

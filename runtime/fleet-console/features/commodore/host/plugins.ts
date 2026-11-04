@@ -384,27 +384,38 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   };
   const update = (change: (registry: Registry) => Registry): Registry => { const next = change(readRegistry()); writeRegistry(next); return next; };
   /**
-   * 전역 설치 목록 — 모든 사령관과 그 목표 세션이 함께 싣는다. registry.json 과 같은 방식(임시 파일 + rename,
-   * mode 0600)으로 쓰고, 파일이 없거나 형식이 틀리면 빈 목록으로 읽는다. 순서를 유지하고 상한을 넘기지 않는다.
+   * 전역 설치 목록 — 모든 사령관 세션이 싣는다. 목표 세션은 `objectiveExcluded` 에 없는 것만 싣는다.
+   * registry.json 과 같은 방식(임시 파일 + rename, mode 0600)으로 쓰고, 파일이 없거나 형식이 틀리면 빈 목록으로 읽는다.
+   * `plugins` 의 순서와 내용은 토글을 저장할 때 바꾸지 않는다. 뺀 목록이 없으면 필드를 쓰지 않아 옛 파일과 같다.
    */
   const globalFile = path.join(options.root, GLOBAL_FILE);
-  const readGlobal = (): string[] => {
-    const raw = readJson(globalFile);
-    if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.plugins)) return [];
+  const readIdList = (value: unknown, limit: number): string[] => {
+    if (!Array.isArray(value)) return [];
     const seen = new Set<string>();
-    const plugins: string[] = [];
-    for (const id of raw.plugins) {
+    const ids: string[] = [];
+    for (const id of value) {
       if (typeof id !== "string" || !pluginIdSchema.safeParse(id).success || seen.has(id)) continue;
       seen.add(id);
-      plugins.push(id);
-      if (plugins.length >= MAX_GLOBAL_PLUGINS) break;
+      ids.push(id);
+      if (ids.length >= limit) break;
     }
-    return plugins;
+    return ids;
   };
-  const writeGlobal = (plugins: readonly string[]): void => {
+  const readGlobalRecord = (): { readonly plugins: string[]; readonly objectiveExcluded: string[] } => {
+    const raw = readJson(globalFile);
+    if (!isRecord(raw) || raw.version !== 1) return { plugins: [], objectiveExcluded: [] };
+    const plugins = readIdList(raw.plugins, MAX_GLOBAL_PLUGINS);
+    const allowed = new Set(plugins);
+    return { plugins, objectiveExcluded: readIdList(raw.objectiveExcluded, MAX_GLOBAL_PLUGINS).filter((id) => allowed.has(id)) };
+  };
+  const writeGlobal = (plugins: readonly string[], objectiveExcluded: readonly string[]): void => {
+    const allowed = new Set(plugins);
+    const excluded = objectiveExcluded.filter((id) => allowed.has(id));
+    const body: { version: 1; plugins: readonly string[]; objectiveExcluded?: readonly string[] } = { version: 1, plugins };
+    if (excluded.length) body.objectiveExcluded = excluded;
     fs.mkdirSync(options.root, { recursive: true });
     const tmp = `${globalFile}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify({ version: 1, plugins }, null, 2)}\n`, { mode: 0o600 });
+    fs.writeFileSync(tmp, `${JSON.stringify(body, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(tmp, globalFile);
   };
   const patchMarketplace = (name: string, patch: Partial<RegistryMarketplace>, clearError = false) => update((registry) => ({
@@ -431,7 +442,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   const selectedPresetNames = (): ReadonlySet<string> => {
     const names = new Set<string>();
     // 전역 설치도 기본 켜짐을 한 번 정할 때 본다 — 어느 사령관도 고르지 않은 기본 제공을 전역이 가리키면 그대로 둔다.
-    for (const id of [...readGlobal(), ...(options.selectedPlugins?.() ?? [])]) {
+    for (const id of [...readGlobalRecord().plugins, ...(options.selectedPlugins?.() ?? [])]) {
       if (!pluginIdSchema.safeParse(id).success) continue;
       const marketplace = splitPluginId(id).marketplace;
       if (PRESET_MARKETPLACES.some((preset) => preset.name === marketplace)) names.add(marketplace);
@@ -1064,21 +1075,40 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     },
     /** 전역 설치 목록 — 파일이 없거나 형식이 틀리면 빈 목록이다. */
     listGlobal(): readonly string[] {
-      return readGlobal();
+      return readGlobalRecord().plugins;
+    },
+    /** 목표 세션에서 뺀 전역 id. 필드가 없으면 빈 목록(모두 함께 싣기)이다. */
+    listGlobalExcluded(): readonly string[] {
+      return readGlobalRecord().objectiveExcluded;
     },
     /**
      * 전역 설치·제거 — 목록이 그대로면 쓰지 않고 `changed: false` 로 돌려준다(세션을 헛되이 교체하지 않는다).
      * 상한을 넘기는 추가는 `limit` 로 거절한다. 받는 것(CLI 설치)은 라우트가 `prepareInstall` 로 먼저 한다.
+     * 뺀 목록은 그대로 두되, 제거된 id만 떨어뜨린다.
      */
     setGlobal(pluginId: string, installed: boolean): { readonly plugins: readonly string[]; readonly changed: boolean } {
-      const current = readGlobal();
+      const current = readGlobalRecord();
       const next = installed
-        ? (current.includes(pluginId) ? current : [...current, pluginId])
-        : (current.includes(pluginId) ? current.filter((id) => id !== pluginId) : current);
-      if (next === current) return { plugins: current, changed: false };
+        ? (current.plugins.includes(pluginId) ? current.plugins : [...current.plugins, pluginId])
+        : (current.plugins.includes(pluginId) ? current.plugins.filter((id) => id !== pluginId) : current.plugins);
+      if (next === current.plugins) return { plugins: current.plugins, changed: false };
       if (next.length > MAX_GLOBAL_PLUGINS) throw new CommodoreStoreError("limit");
-      writeGlobal(next);
+      writeGlobal(next, current.objectiveExcluded);
       return { plugins: next, changed: true };
+    },
+    /**
+     * 그 전역 설치를 목표 세션에도 실을지. `plugins` 배열은 그대로 다시 쓴다.
+     * 설치되지 않은 id는 `plugin_not_found`. 그대로면 쓰지 않는다.
+     */
+    setGlobalObjective(pluginId: string, forObjectives: boolean): { readonly plugins: readonly string[]; readonly objectiveExcluded: readonly string[]; readonly changed: boolean } {
+      const current = readGlobalRecord();
+      if (!current.plugins.includes(pluginId)) throw new CommodoreStoreError("plugin_not_found");
+      const next = forObjectives ? current.objectiveExcluded.filter((id) => id !== pluginId) : current.objectiveExcluded.includes(pluginId) ? current.objectiveExcluded : [...current.objectiveExcluded, pluginId];
+      if (next.length === current.objectiveExcluded.length && next.every((id, index) => id === current.objectiveExcluded[index])) {
+        return { plugins: current.plugins, objectiveExcluded: current.objectiveExcluded, changed: false };
+      }
+      writeGlobal(current.plugins, next);
+      return { plugins: current.plugins, objectiveExcluded: next, changed: true };
     },
     async add(rawSource: string, ref?: string): Promise<MarketplaceView> {
       const source = detectMarketplaceSource(rawSource, ref);

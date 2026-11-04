@@ -10,7 +10,7 @@ import { ClaudeTrustError, trustClaudeTheater } from "../../workspace/host/theat
 import { createCommodoreDeletion, type CommodoreDeletionHost } from "./deletion.js";
 export type { CommodoreDeletionHost } from "./deletion.js";
 import type { ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
-import { effectiveCommodorePlugins } from "../shared/contracts/plugins.js";
+import { effectiveCommodorePlugins, objectiveSessionPlugins } from "../shared/contracts/plugins.js";
 import { EMPTY_RUN_TOTALS } from "../shared/contracts/types.js";
 import { CommodoreStoreError } from "./errors.js";
 import { createCommodoreOwnership } from "./ownership.js";
@@ -83,10 +83,15 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     selectedPlugins: () => selectedPlugins(),
     ...(deps.processes ? { processes: deps.processes } : {}),
   });
-  /** 그 사령관의 실제 로드 id — 전역 먼저, 대체된 사령관 항목은 뺀다. 모든 적재 지점이 같은 계산을 쓴다. */
-  const effectiveIds = (commodoreId: string): readonly string[] =>
-    effectiveCommodorePlugins(plugins.listGlobal(), store.read(commodoreId)?.plugins ?? []).effective;
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
+  /**
+   * 목표 세션에 실을 id — 전역 우선 대체를 유지한 뒤, 전역 토글과 이 사령관 토글의 OR 로 거른다.
+   * 뺀 목록이 없으면 지금과 같이 전부 싣는다. 사령관 세션(`plugins` 아래)과 인증은 이 함수를 쓰지 않는다.
+   */
+  const objectiveIds = (commodoreId: string): readonly string[] => {
+    const state = store.read(commodoreId);
+    return objectiveSessionPlugins(plugins.listGlobal(), state?.plugins ?? [], plugins.listGlobalExcluded(), state?.objectiveExcluded);
+  };
   /**
    * TF 삭제는 사이드바 한 줄도 함께 걷는다 — 순서와 섹션 소속에서 id를 뺀다.
    * 사령관 삭제 경로(서버 cleanup)가 같은 일을 하므로 두 삭제는 같은 뒷정리를 공유한다.
@@ -150,16 +155,18 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     }
   };
   /**
-   * 전역 설치 목록이 바뀌었다 — 모든 사령관의 다음 턴을 새 세션으로 열고, 사령관마다 `global-plugins` 사건을
-   * 낸다(하단 알약·사령관 섹션이 목록을 다시 읽는다). 목표 세션은 다음 실행부터 받는다(기존과 같은 규칙).
+   * 전역 플러그인 알림. 목록이 바뀌면 모든 사령관의 다음 턴을 새 세션으로 연다. 토글만 바뀌면 세션은 그대로 두고
+   * 사건만 낸다(하단 알약이 목록을 다시 읽는다). 목표 세션은 어느 쪽이든 다음 실행부터 받는다.
    */
-  const globalPluginsChanged = (next: readonly string[]) => {
+  const announceGlobalPlugins = (next: readonly string[], rotate: boolean) => {
     const list = [...next];
     for (const commodoreId of entities.ids()) {
-      supervisor.replaceSessionNext(commodoreId);
+      if (rotate) supervisor.replaceSessionNext(commodoreId);
       emit({ op: "global-plugins", commodoreId, theaterIds: theaterIds(commodoreId), plugins: list });
     }
   };
+  const globalPluginsChanged = (next: readonly string[]) => announceGlobalPlugins(next, true);
+  const globalPluginReachChanged = () => announceGlobalPlugins(plugins.listGlobal(), false);
   const pluginAuth = createCommodorePluginAuth({
     servers: (ids) => plugins.authServers(ids),
     env: (ids) => plugins.pluginEnv(ids),
@@ -253,7 +260,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     changed: () => deps.events.publish(COMMODORE_SIDEBAR_CHANNEL, { op: "changed" }),
   });
   const commodoreRoutes = createCommodoreRoutes(context, store, {
-    sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, deletion, assertWritable: ownership.assertWritable,
+    sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, globalPluginReachChanged, deletion, assertWritable: ownership.assertWritable,
     theaterIds, summary, list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map(summary),
     order: orderedIds,
     setOrder: (requested) => {
@@ -316,10 +323,10 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     /** TaskForce 저장소 — 판단·깨움 런타임과 TF 화면이 쓰는 TF 원장의 주인이다. */
     taskforce: taskforce.store,
     sync: () => { restored = true; supervisor.sync("restart"); },
-    /** 이 사령관이 고른 플러그인의 로컬 경로 — 전역 먼저, 대체된 항목은 뺀다. 그 사령관 목표의 지휘관·구성원 세션이 연다(MCP 는 그 세션들이 플러그인에서 직접 읽는다). */
-    pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(effectiveIds(commodoreId)).map((plugin) => plugin.path),
-    /** 그 플러그인 MCP 선언의 `${VAR}` 키 — 전역 먼저, 대체된 항목은 뺀다. 같은 목표 세션의 자식 환경에 얹는다(자식이 플러그인 MCP 를 읽으며 펼친다). */
-    pluginEnv: (commodoreId: string): Readonly<Record<string, string>> => plugins.pluginEnv(effectiveIds(commodoreId)),
+    /** 이 사령관 목표의 지휘관·구성원 세션이 여는 플러그인 경로 — 전역 우선 대체 뒤, 토글 OR 로 거른다. 사령관 세션은 거르지 않는다. */
+    pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(objectiveIds(commodoreId)).map((plugin) => plugin.path),
+    /** 그 플러그인 MCP 선언의 `${VAR}` 키 — 목표 세션에 실리는 id만. 같은 세션의 자식 환경에 얹는다. */
+    pluginEnv: (commodoreId: string): Readonly<Record<string, string>> => plugins.pluginEnv(objectiveIds(commodoreId)),
     async dispose() {
       if (disposed) return;
       disposed = true;
