@@ -502,7 +502,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   return (
     <>
       <span className="agent-objective-marks">
-        <ObjectiveUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
+        <ObjectiveUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
       </span>
       {bubble}
     </>

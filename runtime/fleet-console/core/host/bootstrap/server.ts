@@ -910,8 +910,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     for (const [id] of consoleUseActivity) {
       const objectiveRecord = objectiveRecords.get(id);
       if (!objectiveRecord) continue;
-      // 「이번 작업만」 허가로 쓰는 중이어도 사용 중이다.
-      if ((objectiveRecord.consoleUse as { enabled?: boolean } | undefined)?.enabled === true || useRequests.granted(id, "console")) consoleObjectiveRecords.push(id);
+      if ((objectiveRecord.consoleUse as { enabled?: boolean } | undefined)?.enabled === true) consoleObjectiveRecords.push(id);
     }
     const owner = computerUse.activeOwner();
     const computerObjective = owner && experiments.computerUse ? computerUseMcp.objectiveIdForOwner(owner) : null;
@@ -2092,8 +2091,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * Objective 사용 스냅샷 — /api/v1/objective-use 응답과 같은 모양. 콘솔·컴퓨터·브라우저 사용, 패널 안 허용
-   * 요청, 「이번 작업만」 허가를 한 번에 싣는다. 도구 이름·사유·시한뿐이라 경로·인자 같은 민감 정보는 없다.
+   * Objective 사용 스냅샷 — /api/v1/objective-use 응답과 같은 모양. 콘솔·컴퓨터·브라우저 사용과 패널 안 허용
+   * 요청을 한 번에 싣는다. 도구 이름·사유·시한뿐이라 경로·인자 같은 민감 정보는 없다.
    * 원천(consoleUseActivity, ComputerUseService.owner, browserService, useRequests)이 바뀔 때마다
    * scheduleObjectiveUseBroadcast 로 이 스냅샷을 objectiveRecords SSE 로 밀어 내보낸다.
    */
@@ -2104,14 +2103,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function objectiveRecordUseSnapshot() {
     const using = listObjectiveUse();
     const live = new Set(objectiveRecords.list().flatMap((objectiveRecord) => [objectiveRecord.id, ...(objectiveRecord.sessions ?? []).map((child) => child.id)]));
-    const { requests, grants } = useRequests.list();
+    const { requests } = useRequests.list();
     return {
       console: using.console,
       computer: using.computer ? [using.computer] : [],
       computerActor: using.computerActor,
       browser: using.browser,
       requests: requests.filter((request) => live.has(request.objectiveId)),
-      grants: { console: grants.console.filter((id) => live.has(id)), computer: grants.computer.filter((id) => live.has(id)) },
     };
   }
 

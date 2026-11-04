@@ -56,7 +56,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     runtime.terminate(payload.objectiveId);
     // 브라우저 컨텍스트(탭·쿠키)도 Objective 과 함께 사라진다 — 남겨 두면 엔진이 유휴 종료에 닿지 못한다.
     ctx.host.browserMcp?.revokeObjective(payload.objectiveId);
-    // 닫힌 Objective 이 띄운 허용 요청은 답할 자리가 없다 — 붙잡힌 호출을 풀고 허가도 걷는다.
+    // 닫힌 Objective 이 띄운 허용 요청은 답할 자리가 없다 — 붙잡힌 호출을 푼다.
     ctx.host.useRequests?.settle(payload.objectiveId);
   });
   ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
@@ -86,9 +86,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     },
     // 턴이 멈추면(정상·중단 모두) 에이전트 사용 표식을 내린다. Computer Use 는 기기 소유도 함께 놓는다 — 표식만
     // 내리고 잡고 있으면 공유 화면이 조용히 살아 있는 셈이다. 세 호출 모두 멱등이라 겹쳐 불려도 된다.
-    // 「이번 작업만」 허가도 턴과 함께 풀린다.
     // 자식 세션은 루트의 사용 컨텍스트를 함께 쓴다 — 한 참가자의 턴 종료는 그 참가자의 호출·세션만 닫고, 브라우저 표식·기기는
-    // 마지막 참가자가 빠질 때 내려간다(각 호스트가 참가자 수를 센다). 「이번 작업만」 허가를 걷을 때인지는 `turnGrantEnds` 한 곳이 정한다.
+    // 마지막 참가자가 빠질 때 내려간다(각 호스트가 참가자 수를 센다). 붙잡힌 요청을 그 묶음에서 걷을 때인지는 `turnGrantEnds` 가 정한다.
     onTurnSettled: (objectiveId) => {
       const scope = ctx.host.useContext?.resolve(objectiveId) ?? { contextId: objectiveId, participantId: objectiveId };
       ctx.host.useRequests?.leave(scope.contextId, scope.participantId);

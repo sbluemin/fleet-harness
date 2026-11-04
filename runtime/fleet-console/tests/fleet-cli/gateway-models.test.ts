@@ -107,9 +107,9 @@ describe("fleet-console-use host", () => {
       } finally { restarted.dispose(); }
     } finally { await host.dispose(); control.dispose(); rmSync(directory, { recursive: true, force: true }); }
   });
-  it("holds an unauthorized Objective call for the person's answer in its panel, and a turn-only grant ends with the turn", async () => {
-    // 허용받지 않은 호출은 거부 대신 붙잡혀 사람의 답을 기다린다. 답하기 전에는 아무것도 실행되지 않고, 「이번 작업만」은
-    // 턴이 끝나면 풀리며, 거절은 이번 턴에 다시 묻지 말라는 사유로 끝난다.
+  it("holds an unauthorized Objective call for the person's answer in its panel", async () => {
+    // 허용받지 않은 호출은 거부 대신 붙잡혀 사람의 답을 기다린다. 답하기 전에는 아무것도 실행되지 않고,
+    // 「이번 작업만」은 받지 않으며, 계속 허용은 스위치를 켜고, 거절은 다시 묻지 말라는 사유로 끝난다.
     const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", title: "Build", commodoreId: "c1", theaterId: "theater-a", type: "agent", pluginId: null, ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
     const requests = createUseRequestBroker({ recheckMs: 10 });
     const host = createConsoleUseMcpHost({ objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-a", name: "Project" }], requests, language: () => "en" });
@@ -130,6 +130,7 @@ describe("fleet-console-use host", () => {
       let route: RouteHandler | undefined;
       let replied: { status: number; body: unknown } | undefined;
       let authorized = false;
+      let decision = "turn";
       registerExperimentRoutes({
         basePath: "/api/v1",
         registerRouter: (_path: string, handler: RouteHandler) => { route = handler; },
@@ -137,28 +138,34 @@ describe("fleet-console-use host", () => {
           experiments: { read: () => DEFAULT_EXPERIMENT_SETTINGS },
           useRequests: requests,
           security: { validateHost: () => authorized, isTerminalAuthorized: () => authorized },
-          objectiveRecords: { get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id), patch: () => undefined },
+          objectiveRecords: {
+            get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id),
+            patch: (_id: string, input: { consoleUse?: { enabled: boolean; language: string } }) => { objectiveRecords[0] = { ...objectiveRecords[0]!, ...input }; },
+          },
           http: {
-            readJsonBody: async () => ({ decision: "turn", capability: "console", language: "en" }),
+            readJsonBody: async () => ({ decision, capability: "console", language: "en" }),
             writeJson: (_res: unknown, status: number, body: unknown) => { replied = { status, body }; },
           },
         },
       } as unknown as ConsoleRuntimeContext);
-      const answerFromPanel = async () => {
-        await route!({ req: { method: "POST" }, res: {}, pathname: `/api/v1/experiments/sessions/op-a/use-requests/${first.id}` } as unknown as Parameters<RouteHandler>[0]);
+      const answerFromPanel = async (requestId: string) => {
+        await route!({ req: { method: "POST" }, res: {}, pathname: `/api/v1/experiments/sessions/op-a/use-requests/${requestId}` } as unknown as Parameters<RouteHandler>[0]);
         return replied!;
       };
-      expect((await answerFromPanel()).status).toBe(403);
+      expect((await answerFromPanel(first.id)).status).toBe(403);
       expect(requests.list().requests).toHaveLength(1);
       authorized = true;
-      expect(await answerFromPanel()).toEqual({ status: 200, body: { decision: "turn", capability: "console" } });
+      expect(await answerFromPanel(first.id)).toEqual({ status: 400, body: { error: "invalid_request" } });
+      expect(requests.list().requests).toHaveLength(1);
+      decision = "always";
+      expect(await answerFromPanel(first.id)).toEqual({ status: 200, body: { decision: "always", capability: "console" } });
       expect((await held).caller.objectiveId).toBe("op-a");
-      // 같은 턴 안의 다음 호출은 묻지 않는다.
+      // 계속 허용은 스위치를 켜므로 다음 호출은 묻지 않는다.
       expect((await call()).caller.objectiveId).toBe("op-a");
       expect(requests.list().requests).toHaveLength(0);
 
-      // 턴이 끝나면 허가가 풀려 다시 묻는다. 거절은 재시도할 길이 아니라고 말한다.
-      requests.settle("op-a");
+      // 스위치를 끄면 다시 묻는다. 거절은 재시도할 길이 아니라고 말한다.
+      objectiveRecords[0] = { ...objectiveRecords[0]!, consoleUse: undefined };
       const again = call();
       const second = await pendingRequest();
       requests.answer("op-a", second.id, "deny");
@@ -170,36 +177,6 @@ describe("fleet-console-use host", () => {
       objectiveRecords[0]! = { ...objectiveRecords[0]!, consoleUse: { enabled: true, language: "en" } };
       expect((await third).caller.objectiveId).toBe("op-a");
     } finally { requests.dispose(); await connection.dispose(); await host.dispose(); }
-  });
-  it("expires an idle turn-only grant on its own timer without any reader", async () => {
-    // 「이번 작업만」 허가는 예전에는 list() 를 읽을 때만(lazy) 걷혔다 — 폴링이 그 읽기를 계속했기 때문이다.
-    // 이제는 서버 타이머가 스스로 걷어야 아무도 읽지 않아도(idleMs 뒤) 허가가 사라지고 onChange 가 불린다.
-    // lazy 경로가 대신 지워 통과하는 일을 막기 위해, 타이머가 발화하기 전까지는 list()/granted() 를 부르지 않는다.
-    vi.useFakeTimers();
-    const onChange = vi.fn();
-    let time = 1_000;
-    const requests = createUseRequestBroker({ idleMs: 20, now: () => time, onChange });
-    try {
-      const held = requests.hold({ objectiveId: "op-a", capability: "console", tool: "console_context", authorized: () => false });
-      const request = requests.list().requests[0]!;
-      expect(requests.answer("op-a", request.id, "turn")).toEqual({ ok: true, capability: "console" });
-      expect(requests.list().grants.console).toEqual(["op-a"]);
-      onChange.mockClear();
-      // answer("turn") 시점에 시한 20 타이머가 걸렸다. 19 뒤 touch 가 시한을 다시 잰다.
-      time += 19; vi.advanceTimersByTime(19);
-      requests.touch("op-a", "console");
-      // touch 후 19 뒤에도 아직 살아 있다(연장된 시한은 touch 시점 + 20).
-      time += 19; vi.advanceTimersByTime(19);
-      expect(requests.list().grants.console).toEqual(["op-a"]);
-      // 시한을 넘긴다. 먼저 읽기(list) 없이 onChange 가 불렸는지 확인해 타이머가 스스로 걷었음을 증명한다.
-      time += 2; vi.advanceTimersByTime(2);
-      expect(onChange).toHaveBeenCalled();
-      expect(requests.list().grants.console).toEqual([]);
-      expect(await held).toBe("turn");
-    } finally {
-      requests.dispose();
-      vi.useRealTimers();
-    }
   });
   it("binds aide execution to the host plugin owner without a session and revokes it on unload", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-aide-"));

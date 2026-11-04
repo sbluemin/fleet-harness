@@ -24,13 +24,13 @@ export function setUseRequestApi(api: ExecutionClientDeps["api"] | null): void {
   cardApi = api;
 }
 
-export type UseRequestDecision = "deny" | "turn" | "always";
+export type UseRequestDecision = "deny" | "always";
 
-/** 모바일에서는 답한 뒤 토스트로 알린다(S-33: 거절 · 계속 허용 · 이번 작업만 허용). */
+/** 모바일에서는 답한 뒤 토스트로 알린다(거절 · 계속 허용). */
 function announceMobileAnswer(decision: UseRequestDecision, capability: "console" | "computer"): void {
   if (getViewModeSnapshot().effective !== "mobile") return;
   const t = getT(document.documentElement.lang === "ko" ? "ko" : "en");
-  showMobileToast(t(decision === "deny" ? "terminal.mobile.toastDeny" : decision === "turn" ? "terminal.mobile.toastTurn" : capability === "console" ? "terminal.mobile.toastAlwaysConsole" : "terminal.mobile.toastAlwaysComputer"));
+  showMobileToast(t(decision === "deny" ? "terminal.mobile.toastDeny" : capability === "console" ? "terminal.mobile.toastAlwaysConsole" : "terminal.mobile.toastAlwaysComputer"));
 }
 
 /** 한 요청의 답 보내기 — 보내는 동안의 두 번째 누름과 누르고 있는 Enter·Space 의 반복을 버린다. 채팅·터미널이 같은 계약을 쓴다. */
@@ -115,8 +115,7 @@ function UseRequestCard({ request, member, language, now }: { readonly request: 
         <div className="use-request-foot">
           <button type="button" className="use-request-pill" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
           <span className="use-request-gap" />
-          <button type="button" className="use-request-pill" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
-          <button type="button" className="use-request-pill is-primary" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
+          <button type="button" className="use-request-pill is-primary" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
         </div>
         <button type="button" className="use-request-scope" aria-expanded={fineOpen} onClick={() => setFineOpen((open) => !open)}>
           <MobileGlyph name="info" size={14} />
@@ -140,8 +139,7 @@ function UseRequestCard({ request, member, language, now }: { readonly request: 
       <div className="use-request-foot">
         <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
         <span className="use-request-gap" />
-        <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
-        <button type="button" className="agent-chat-ask-send" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
+        <button type="button" className="agent-chat-ask-send" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
       </div>
       <p className="use-request-fine">{t("terminal.useRequest.fine")}</p>
       {failed ? <p className="use-request-error" role="alert">{t("terminal.useRequest.failed")}</p> : null}

@@ -34,9 +34,8 @@ export interface UseContext {
   /** 이 컨텍스트의 참가자 — 루트와 그 자식 세션. */
   participants(contextId: string): readonly string[];
   /**
-   * 「이번 작업만」 허가를 걷을 때인가 — 판정 지점은 여기 하나다. 지금 정책은 「그룹의 열린 턴이 모두 끝날 때까지」:
-   * 방금 턴을 닫은 참가자(`settling`)를 빼고 열린 턴이 하나도 없으면 참이다. 사람의 결정에 따라 「지휘관(루트) 턴까지」로
-   * 바꾸려면 이 함수만 `settling === contextId` 로 바꾸면 된다.
+   * 공유 묶음의 붙잡힌 허용 요청을 걷을 때인가 — 판정 지점은 여기 하나다. 지금 정책은 「그룹의 열린 턴이 모두 끝날 때까지」:
+   * 방금 턴을 닫은 참가자(`settling`)를 빼고 열린 턴이 하나도 없으면 참이다.
    */
   turnGrantEnds(contextId: string, settling: string): boolean;
 }
