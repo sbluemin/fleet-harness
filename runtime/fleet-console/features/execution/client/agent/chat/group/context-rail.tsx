@@ -23,7 +23,9 @@ const ObjectiveContextRail: ContextRailProvider = ({ scope, children }) => {
   const faceOf = (id: string, role: "commander" | "member") => {
     const record = state.nestedObjectiveRecords.find((item) => item.id === id) ?? state.objectiveRecords.find((item) => item.id === id);
     const objectiveRecord = record ?? { id, ...(role === "member" && root ? { parentObjectiveId: root } : {}) };
-    return <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(id, state, faceClusters)} size={26} label="" decorative />;
+    // 시작 전(fresh) 반투명은 사이드바·타임라인의 수명 표현이다. 칩은 측정 전을 점선 링과 — 로만 말하므로 여기서만 쉼 얼굴로 그린다.
+    const face = objectiveRecordMongleState(id, state, faceClusters);
+    return <ObjectiveAvatar objectiveRecord={objectiveRecord} state={face === "fresh" ? "idle" : face} size={26} label="" decorative />;
   };
   if (scope.kind !== "objective" || root === null) return null;
   const rootRecord = state.objectiveRecords.find((record) => record.id === root);
