@@ -554,7 +554,6 @@ export const chromeEn = {
   "conversation.workbench.closeConfirm": "End and close",
   "conversation.workbench.closeCancel": "Keep open",
 
-  "approval.open": "Approvals",
   "approval.title": "Approvals",
   "approval.close": "Close approvals",
   "approval.empty": "Nothing to answer right now",
@@ -1155,7 +1154,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.workbench.closeConfirm": "끝내고 닫기",
   "conversation.workbench.closeCancel": "닫지 않기",
 
-  "approval.open": "승인",
   "approval.title": "승인",
   "approval.close": "승인 목록 닫기",
   "approval.empty": "지금 답할 요청이 없어요",
