@@ -1028,10 +1028,10 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-row.is-scope > .commodore-plugins-inline { flex: 1 1 100%; }
 .commodore-palette.is-phone .commodore-palette-row.is-scope { display: flex; flex-flow: row wrap; align-items: center; justify-content: flex-start; gap: 6px 12px; width: 100%; min-width: 0; max-width: 100%; height: auto; min-height: 0; }
 .commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
-.commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-action { position: static; height: auto; pointer-events: auto; }
+.commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-action { position: static; height: auto; pointer-events: auto; margin-left: auto; }
 .commodore-palette.is-phone .commodore-palette-row.is-reach { display: flex; flex-flow: row wrap; align-items: center; justify-content: flex-start; gap: 6px 12px; width: 100%; min-width: 0; max-width: 100%; height: auto; min-height: 0; }
 .commodore-palette.is-phone .commodore-palette-row.is-reach > .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
-.commodore-palette.is-phone .commodore-palette-row.is-reach > .commodore-palette-action { position: static; height: auto; pointer-events: auto; }
+.commodore-palette.is-phone .commodore-palette-row.is-reach > .commodore-palette-action { position: static; height: auto; pointer-events: auto; margin-left: auto; }
 .commodore-palette.is-phone .commodore-palette-row.is-scope > .commodore-palette-reach { flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 0; }
 .settings-modal .settings-modal-head .commodore-global-lede { padding: 8px 0 0; }
 .settings-modal .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
