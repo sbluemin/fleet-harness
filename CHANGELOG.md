@@ -5,6 +5,29 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.283.0] - 2026-11-04
+
+### fleet-console
+
+#### Added
+- Answer computer use, commodore description changes, and intel additions, edits, and removals from one list at the top of the desktop. The same list opens from the mobile banner and Needs attention. Nothing changes until you approve it, and a finished request leaves the list.
+- Replay every new feature card from the Help menu, paging through them in order.
+- Leave a Commodore's Commander on routing, and the first time that Commander starts, AI Gateway chooses the model from the objective briefing.
+- Add a TaskForce bubble color setting under Appearance so you can turn speaker-colored TaskForce message borders on when you want them, with the default off.
+
+#### Changed
+- AI Gateway settings list each model on one line: turn it on to make it a delegation candidate, pick one context window and Fast, and keep low-high on while xhigh and max stay optional.
+- Console model menus and Claude Code /model now list every model and effort from signed-in providers, whether or not that model is a delegation candidate. Signed-out providers stay hidden. Turning off the Claude usage connection does not hide Claude models. Delegation offers the same set: an enabled model whose provider is not signed in is not assigned.
+- Existing AI Gateway selections drop host-only models from the delegation list, keep one variant per model (the largest context window), and fill in low-high. A new install starts its default models at low-high too, with xhigh and max off.
+- The context window floats over the chat as avatar rings, and its breakdown uses a color for each category.
+- Member model menus share one Routing choice, and a member saved to follow the Commander's model is treated as routing.
+- Manage plugins from the sidebar, pick a scope, and choose per plugin whether commander and member sessions load it. Commodore sessions still load every installed plugin.
+- Outline each commodore's TaskForce messages in their name color, so speakers are easier to tell apart while reading a long discussion.
+
+#### Removed
+- The one-task-only allowance for console use and computer use. You can decline a request or keep allowing it until you turn the switch off.
+- Removed the unused Files, Repository, and Shell panels from Console. Agent terminals and all other surfaces keep working as before.
+
 ## [1.282.1] - 2026-11-04
 
 Release v1.282.1
