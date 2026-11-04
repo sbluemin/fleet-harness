@@ -20,6 +20,7 @@ import { CoordinationGraph, MissionNodeIcon, graphMissionStates, setGraphOrienta
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
+import { RoutingGlyph } from "../../ai-gateway/client/components/routing-glyph.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, objectiveRecordSummaries, patchOwnerView, post, subscribeObjective, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner, objectivesApi } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
@@ -121,10 +122,6 @@ export const SunGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="curre
 export const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></svg>;
 /** 명단 일괄 모델 설정 입구 트리거 — 3개 노드와 정렬 제어 화살표. */
 const BatchTunerGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3.8" cy="4.5" r="1.4" /><circle cx="3.8" cy="8" r="1.4" /><circle cx="3.8" cy="11.5" r="1.4" /><path d="M7.5 4.5h5M7.5 8h3.5M7.5 11.5h5" /><path d="M11 3l2 1.5-2 1.5M9.5 6.5l2 1.5-2 1.5M11 10l2 1.5-2 1.5" /></svg>;
-/** 지휘관과 같게 — 4각 스파크 별에서 우하단 수신 궤도로 꺾여 내려오는 동기화선. */
-const StarSparkGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 2.5L4.8 4.2L6.5 5L4.8 5.8L4 7.5L3.2 5.8L1.5 5L3.2 4.2Z" fill="currentColor" stroke="none" /><path d="M6.5 5h3.5a2 2 0 0 1 2 2v4.8M9.8 9.8l2 2 2-2" /><circle cx="4" cy="12.2" r="1.4" /></svg>;
-/** 라우팅 — 한 요청이 갈래로 나뉘어 모델이 배정되는 분기선. */
-const RouteGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 8h4M6.5 8c2 0 2.5-3.5 4.5-3.5h2.5M6.5 8c2 0 2.5 3.5 4.5 3.5h2.5" /></svg>;
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const CrewGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M2 13c0-2.2 1.8-3.8 4-3.8s4 1.6 4 3.8M10.6 3.6a2.1 2.1 0 0 1 0 3.9M11.6 9.4c1.4.4 2.4 1.8 2.4 3.6" /></svg>;
@@ -551,7 +548,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
   const [notes, setNotes] = useState<ReadonlySet<string>>(new Set());
   const [announce, setAnnounce] = useState("");
   const [batchOpen, setBatchOpen] = useState(false);
-  const [balloon, setBalloon] = useState<{ kind: "done"; changed: number; preserved: number; mode: "same" | "route" } | { kind: "failed" } | null>(null);
+  const [balloon, setBalloon] = useState<{ kind: "done"; changed: number; preserved: number } | { kind: "failed" } | null>(null);
   const batchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const batchMenuRef = useRef<HTMLDivElement | null>(null);
   useViewportFit(batchMenuRef, batchOpen);
@@ -630,7 +627,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
 
   // 띄운 구성원의 모델 — 휴면·유휴면 곧바로, 일하는 중이면 이번 턴 뒤 바뀐다. 바꾸지 못하면(문맥이 새 모델의 창보다 큼 등) 그 칩에 사유가 선다.
   const pickLaunched = (member: ObjectiveMember, launch: MemberLaunchChoice) => {
-    const picked = launch.mode === "same" ? { model: objective.commander.model, effort: objective.commander.effort } : { model: launch.model, effort: launch.effort };
+    const picked = { model: launch.model, effort: launch.effort };
     void request("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } }).then(
       (payload) => {
         setFault((current) => current?.id === member.id ? null : current);
@@ -659,7 +656,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
     });
   };
 
-  const applyBatch = (mode: "same" | "route") => {
+  const applyBatch = () => {
     if (saving.current.has("batch") || !touchable) return;
     saving.current.add("batch");
     setBatchOpen(false);
@@ -672,7 +669,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
     };
 
     // 성공도 실패도 입구 글리프의 말풍선으로 알린다 — 패널에는 따로 띄우는 알림이 없고, 명단은 접혀 있을 수 있다.
-    void request("/member/batch-launch", { objectiveId: objective.id, mode }).then((payload) => {
+    void request("/member/batch-launch", { objectiveId: objective.id, mode: "route" }).then((payload) => {
       saving.current.delete("batch");
       const echoed = (payload as { objective?: Objective } | null)?.objective?.members;
       if (!echoed) { settle({ kind: "failed" }); setAnnounce(t("objectives.members.batchFailed")); return; }
@@ -685,7 +682,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
       const preservedCount = (payload as { preserved?: number } | null)?.preserved ?? echoed.filter((member) => member.launch.mode === "model").length;
       const changedCount = changedMembers.length;
 
-      settle({ kind: "done", changed: changedCount, preserved: preservedCount, mode });
+      settle({ kind: "done", changed: changedCount, preserved: preservedCount });
 
       if (changedCount > 0) {
         setAnnounce(t("objectives.members.batchAnnounce", { count: changedCount, preserved: preservedCount }));
@@ -733,22 +730,15 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
         </span>
       ) : balloon ? (
         <span className="objectives-batch-balloon" aria-hidden="true">
-          <span className={`objectives-batch-balloon-dot is-${balloon.mode}`} />
+          <span className="objectives-batch-balloon-dot is-route" />
           <span>{balloon.changed > 0 ? t("objectives.members.batchChanged", { count: balloon.changed }) : t("objectives.members.batchNoop")}</span>
           {balloon.preserved > 0 ? <span className="objectives-batch-balloon-preserved">{t("objectives.members.batchPreserved", { count: balloon.preserved })}</span> : null}
         </span>
       ) : null}
       {batchOpen ? (
         <div ref={batchMenuRef} className="objectives-menu objectives-batch-menu" role="menu" aria-label={t("objectives.members.batchTitle")}>
-          <button type="button" role="menuitem" className="objectives-menu-item" onClick={() => applyBatch("same")}>
-            <span className="objectives-batch-menu-glyph is-same"><StarSparkGlyph /></span>
-            <span className="objectives-menu-label">
-              <span className="objectives-batch-menu-title">{t("objectives.members.batchInherit")}</span>
-              <span className="objectives-batch-menu-hint">{t("objectives.members.batchInheritHint")}</span>
-            </span>
-          </button>
-          <button type="button" role="menuitem" className="objectives-menu-item" onClick={() => applyBatch("route")}>
-            <span className="objectives-batch-menu-glyph is-route"><RouteGlyph /></span>
+          <button type="button" role="menuitem" className="objectives-menu-item" onClick={() => applyBatch()}>
+            <span className="objectives-batch-menu-glyph fc-coord-route"><RoutingGlyph /></span>
             <span className="objectives-menu-label">
               <span className="objectives-batch-menu-title">{t("objectives.members.batchRoute")}</span>
               <span className="objectives-batch-menu-hint">{t("objectives.members.batchRouteHint")}</span>
@@ -801,7 +791,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
           </div>
           <div className="objectives-member-meta">
-            {routedTag ? <span className={`objectives-member-via is-${routedTag.via}`} title={routedTag.title}>{routedTag.label}</span> : null}
+            {routedTag ? <span className={`objectives-member-via is-${routedTag.via}`} title={routedTag.title}>{routedTag.via === "route" ? <span className="fc-coord-route"><RoutingGlyph /></span> : null}{routedTag.label}</span> : null}
             <MemberLaunchControl key={member.id} t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
               onPickLaunched={(launch) => pickLaunched(member, launch)}
               onPatchLaunch={(launch) => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } })}
@@ -1577,7 +1567,10 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>
       </div>
       <div className="objectives-member-meta">
-        <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={locked || !editable} onChange={(next) => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: next } })} />
+        {objective.commander.routed ? <span className={`objectives-member-via is-${objective.commander.routed.via}`} title={objective.commander.routed.via === "route" ? objective.commander.routed.because : t(objective.commander.routed.reason === "routing_disabled" || objective.commander.routed.reason === "routing_off" || objective.commander.routed.reason === "no_candidate" ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle")}>{objective.commander.routed.via === "route" ? <span className="fc-coord-route"><RoutingGlyph /></span> : null}{t(objective.commander.routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")}</span> : null}
+        <LaunchControl t={t} model={objective.commander.routing ? undefined : objective.commander.model} effort={objective.commander.routing ? undefined : objective.commander.effort} locked={locked || !editable}
+          {...(!objective.hasSession ? { routing: { active: objective.commander.routing === true, hint: t("objectives.commander.routeHint"), onPick: () => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: { routing: true } } }) } } : {})}
+          onChange={(next) => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: next } })} />
         {commanderState !== "closed" ? <span className={`objectives-member-status is-${commanderState}${objective.commander.outcome === "failed" && commanderState !== "running" && commanderState !== "awaiting" ? " is-failed" : ""}`}>{memberStateWord(commanderState, objective.commander.outcome)}</span> : null}
       </div>
     </div>

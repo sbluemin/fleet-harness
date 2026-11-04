@@ -1,6 +1,7 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import { launchProviderGlyph } from "../../../../../ai-gateway/client/components/launch-provider-glyphs.js";
+import { RoutingGlyph } from "../../../../../ai-gateway/client/components/routing-glyph.js";
 import * as React from "react";
 
 import { objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
@@ -145,8 +146,9 @@ function MemberLaunch({ launch, text }: {
   const effort = launch.effort ? text(launch.effort) : "";
   return (
     <span className="group-members-launch">
-      {launch.via ? <span className={`group-members-via${launch.via.tone === "warn" ? " is-warn" : ""}`} title={launch.via.title ? text(launch.via.title) : undefined}>{text(launch.via.label)}</span> : null}
+      {launch.via ? <span className={`group-members-via${launch.via.tone === "warn" ? " is-warn" : ""}`} title={launch.via.title ? text(launch.via.title) : undefined}>{launch.via.route ? <span className="fc-coord-route"><RoutingGlyph /></span> : null}{text(launch.via.label)}</span> : null}
       <span className="group-members-launch-coord" title={launch.title ? text(launch.title) : [label, effort].filter(Boolean).join(" · ")}>
+        {launch.route ? <span className="fc-coord-route"><RoutingGlyph /></span> : null}
         {launch.providerName ? <span className="fc-coord-provider-name">{launch.providerName}</span> : null}
         {launch.provider ? <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${launch.provider}`} aria-hidden="true">{launchProviderGlyph(launch.provider)}</span> : null}
         <span className={`group-members-launch-label${launch.struck ? " is-off" : ""}`}>{label}</span>

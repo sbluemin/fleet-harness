@@ -296,26 +296,24 @@ span.objectives-row-main { cursor: default; }
 /* 구성원 일괄 모델 설정 — 섹션 헤더 액션 바, 전용 글리프 버튼과 은은한 말풍선 안내 */
 .objectives-section-head-bar { display: flex; align-items: center; position: relative; }
 .objectives-section-head-bar > .objectives-row { flex: 1; min-width: 0; padding-right: 6px; }
-.objectives-section-head-actions { flex: none; display: inline-flex; align-items: center; padding-right: 14px; position: relative; }
-.objectives-batch-actions { position: relative; display: inline-flex; align-items: center; }
+.objectives-section-head-actions { flex: none; display: inline-flex; align-items: center; padding-right: 14px; }
+.objectives-batch-actions { display: inline-flex; align-items: center; }
 .objectives-batch-trigger { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast), border-color var(--duration-fast); }
 .objectives-batch-trigger:hover, .objectives-batch-trigger.is-active { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); border-color: color-mix(in oklch, var(--brass) 24%, transparent); }
 .objectives-batch-trigger:focus-visible { box-shadow: var(--focus-face); }
 .objectives-batch-trigger:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 .objectives-batch-trigger svg { width: 14px; height: 14px; }
 /* commodore.css도 .objectives-menu { position: fixed }를 정의하고 번들에서 뒤에 오므로, 순서에 기대지 않게 두 클래스로 이긴다. */
-.objectives-menu.objectives-batch-menu { position: absolute; top: calc(100% + 4px); right: 0; width: var(--popover-width); z-index: 60; }
+/* 섹션 머리(패널 폭)에 붙여 메뉴가 패널 왼쪽 밖으로 나가지 않게 한다. */
+.objectives-menu.objectives-batch-menu { position: absolute; top: calc(100% + 4px); left: 12px; right: 12px; width: auto; z-index: 60; }
 .objectives-batch-menu-glyph { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; }
-.objectives-batch-menu-glyph.is-same { color: var(--brass-ink); }
-.objectives-batch-menu-glyph.is-route { color: var(--aurora); }
 .objectives-batch-menu-title { display: block; font-weight: var(--weight-regular); }
 .objectives-batch-menu-hint { display: block; font-size: var(--t-sm); color: var(--text-secondary); white-space: normal; line-height: calc(14px * var(--font-ui-scale)); }
 /* 일괄 설정 결과 말풍선 — 글리프에 은은하게 붙어 잠시 나타났다 사라진다. */
-.objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 0; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in var(--duration-fast) var(--ease-spring); }
+.objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 14px; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in var(--duration-fast) var(--ease-spring); }
 .objectives-batch-balloon::before { content: ""; position: absolute; top: -4px; right: 8px; width: 6px; height: 6px; background: var(--surface-panel-raised); border-left: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-top: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); transform: rotate(45deg); }
 @keyframes objectives-balloon-in { from { opacity: 0; transform: translateY(-3px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .objectives-batch-balloon-dot { width: 5px; height: 5px; border-radius: 50%; flex: none; }
-.objectives-batch-balloon-dot.is-same { background: var(--brass); }
 .objectives-batch-balloon-dot.is-route { background: var(--aurora); }
 .objectives-batch-balloon-dot.is-failed { background: var(--coral); }
 .objectives-batch-balloon-preserved { color: var(--text-tertiary); }
@@ -482,7 +480,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 
 /* 임무 배정 — 글리프 트리거와 메뉴의 특별 항목. 배정 낱말은 담당 줄과 같은 자리, 조금 더 dim. */
 .objectives-mission-add .objectives-launch.is-glyph { margin-left: auto; }
-/* 선택 방식(라우팅·지휘관과 같게·라우팅 결과 쓰기)과 그 설명은 사람의 말이다 — 모노 글꼴과 자간에서는 한글 낱말 사이가 한 칸 더 벌어지므로 본문 글꼴로 쓴다. */
+/* 선택 방식(라우팅·라우팅 결과 쓰기)과 그 설명은 사람의 말이다 — 모노 글꼴과 자간에서는 한글 낱말 사이가 한 칸 더 벌어지므로 본문 글꼴로 쓴다. */
 .objectives-menu-hint { font-size: var(--t-sm); color: var(--text-secondary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui); }
 /* 서브에이전트 허용 — 라디오가 아닌 체크. 보조 글은 두 줄까지 감싸고 자르지 않는다. 목록·강도 단계가 같은 푸터를 쓴다. */
 .objectives-menu-check { align-items: flex-start; }
@@ -875,7 +873,8 @@ button.objectives-result-open:focus-visible { color: var(--brass-ink); box-shado
 .objectives-menu-head b { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-menu-item:disabled { cursor: default; opacity: var(--control-disabled-opacity, 0.45); }
 .objectives-menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
-.objectives-member-via { flex: none; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-ui); }
+.objectives-member-via { display: inline-flex; align-items: center; gap: 3px; flex: none; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-ui); }
+.objectives-member-via .fc-coord-route, .objectives-member-via .fc-coord-route svg { width: 12px; height: 12px; }
 .objectives-member-via.is-fallback { border-color: color-mix(in oklch, var(--warn) 45%, transparent); color: var(--warn-ink); }
 /* 띄운 구성원의 모델 변경 경과 — 칩 아래, 설명 줄의 오른쪽 칸에 서서 칩을 가리키는 한 줄 말풍선. 행의 칸이라 다른 행이나 조작을 덮지 않고
    레일 밖으로 넘치지 않는다. 서 있는 동안 설명은 이름 칸 폭으로 접힌다. */

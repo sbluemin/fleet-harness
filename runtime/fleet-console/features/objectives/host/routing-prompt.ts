@@ -49,3 +49,27 @@ export function memberRoutingPrompt(objective: Objective, member: ObjectiveMembe
   const body = clip(note, room);
   return body ? `${head}${gap}${label}${body}` : head;
 }
+
+/** 지휘관 라우팅에 붙는 고정 역할 한 줄. 내용이 아니라 역할 맥락이다. */
+export const COMMANDER_ROUTING_ROLE = "Role: Commander — plans the lineup, delegates to members, integrates results, and stays for later rounds.";
+
+/**
+ * 지휘관 첫 기동의 라우팅 판단에 건넬 프롬프트.
+ *
+ * 그 시점에는 임무·기준·구성원이 아직 없다. 목표 제목, 브리핑(노트), 고정 역할 한 줄만 담는다.
+ * 상한은 구성원 prompt 와 같고, 넘는 부분은 노트만 자른다.
+ */
+export function commanderRoutingPrompt(objective: Pick<Objective, "title" | "note">, max: number = MEMBER_ROUTING_PROMPT_MAX): string {
+  const limit = Math.min(Math.max(0, max), MEMBER_ROUTING_PROMPT_MAX);
+  const title = `Objective: ${oneLine(objective.title)}`;
+  const role = COMMANDER_ROUTING_ROLE;
+  const gap = "\n\n";
+  const tail = `${gap}${role}`;
+  const note = objective.note.trim();
+  if (!note) return clip(`${title}${tail}`, limit);
+  const label = "Objective note:\n";
+  const fixed = title.length + gap.length + label.length + tail.length;
+  if (fixed >= limit) return clip(`${title}${gap}${label}${note}${tail}`, limit);
+  const body = clip(note, limit - fixed);
+  return body ? `${title}${gap}${label}${body}${tail}` : `${title}${tail}`;
+}

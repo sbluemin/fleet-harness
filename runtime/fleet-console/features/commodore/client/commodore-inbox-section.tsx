@@ -29,7 +29,7 @@ import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInb
 
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
-import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
+import { commanderCoordinates, commanderRouted, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
@@ -289,7 +289,7 @@ function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => voi
 export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const { state, defaults } = view;
   const modelOverridden = state.model !== undefined;
-  const commanderOverridden = state.commanderModel !== undefined;
+  const commanderOverridden = state.commanderModel !== undefined || commanderRouted(state);
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
     <div className="objectives-commodore-settings">
@@ -321,6 +321,7 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
           label={t("commodore.settings.commanderAria")}
           value={commanderValue(state)}
           fallback={COMMANDER_PRESET}
+          routing={{ active: commanderRouted(state), hint: t("commodore.settings.commanderRouteHint"), onPick: () => act(() => setCommodoreCommander(theaterId, { route: true })) }}
           onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
         />
       </SettingsRow>

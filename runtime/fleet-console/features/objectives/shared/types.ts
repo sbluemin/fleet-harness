@@ -137,7 +137,7 @@ export interface ObjectiveEdits {
 }
 export interface ObjectiveCompletion { readonly at: number; readonly by?: ObjectiveActor }
 
-export type MemberLaunch = { readonly mode: "same" } | { readonly mode: "model"; readonly model: string; readonly effort?: string };
+export type MemberLaunch = { readonly mode: "model"; readonly model: string; readonly effort?: string };
 export type MemberSelection = MemberLaunch | { readonly mode: "route" };
 
 /** 모델·강도 한 쌍 — 강도가 없으면 그 모델의 기본이다. */
@@ -594,12 +594,18 @@ export interface PendingCommander {
   readonly sessionName: string;
   readonly model?: string;
   readonly effort?: string;
+  /** 모델을 두지 않고, 첫 기동 때 한 번 라우팅으로 고른다. */
+  readonly routing?: true;
   readonly viewMode: "terminal" | "chat";
 }
 
 export interface StoredObjective {
   /** 아직 지휘관 Objective 이 없다 — 첫 기동 때 제거한다. */
   readonly pending?: true;
+  /** 띄우기 전 지휘관을 라우팅으로 둔다. 모델을 고르면 지운다. */
+  readonly commanderRouting?: true;
+  /** 첫 기동 때 한 번 판단한 지휘관 라우팅 근거. 사람이 모델을 바꾸면 지운다. */
+  readonly commanderRouted?: MemberRouted;
   readonly title?: string;
   readonly commodoreId?: string;
   readonly cwd?: string;
@@ -818,7 +824,7 @@ export interface Objective {
   readonly title: string;
   readonly createdAt: number;
   /** 지휘관 세션 — 이름·모델·강도·한 번이라도 깨었는지는 지휘관 Objective 에서 읽는다. */
-  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean; readonly outcome?: "failed" };
+  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean; readonly outcome?: "failed"; readonly routing?: true; readonly routed?: MemberRouted };
   readonly note: string;
   readonly attachments: readonly ObjectiveAttachment[];
   readonly results: readonly ObjectiveResult[];
@@ -1147,17 +1153,14 @@ export const patchObjectiveSchema = z.object({
   today: z.boolean().optional(),
   groupId: ids.nullable().optional(),
   /** 지휘관 모델·강도 — 지휘관 Objective 에 쓴다. */
-  launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional() }).strict().optional(),
+  launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional(), routing: z.literal(true).optional() }).strict().optional(),
 }).strict();
 
-export const memberLaunchSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("same") }).strict(),
-  z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().max(32).optional() }).strict(),
-]);
+export const memberLaunchSchema = z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().max(32).optional() }).strict();
 export interface MemberProposal { readonly model: string; readonly effort?: string }
 export const memberAddSchema = z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional(), launch: memberLaunchSchema.optional(), subagents: z.boolean().optional() }).strict();
 export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.optional(), brief: z.string().max(300).nullable().optional(), launch: memberLaunchSchema.nullable().optional(), subagents: z.boolean().optional() }).strict();
-export const memberBatchLaunchSchema = z.object({ mode: z.enum(["same", "route"]) }).strict();
+export const memberBatchLaunchSchema = z.object({ mode: z.literal("route") }).strict();
 export type MemberBatchLaunchInput = z.infer<typeof memberBatchLaunchSchema>;
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
 

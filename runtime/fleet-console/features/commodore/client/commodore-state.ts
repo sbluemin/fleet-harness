@@ -639,9 +639,9 @@ export function useCommodoreIntelEdits(theaterId: string, intel: readonly { read
 }
 export const setCommodoreCoordinates = (theaterId: string, coordinates: { readonly model: string; readonly effort: string } | null) =>
   write(theaterId, "/commodore/coordinates", coordinates ? { model: coordinates.model, effort: coordinates.effort } : { model: null, effort: null });
-/** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
-export const setCommodoreCommander = (theaterId: string, commander: { readonly model: string; readonly effort?: string } | null) =>
-  write(theaterId, "/commodore/commander", commander ? { model: commander.model, effort: commander.effort ?? null } : { model: null });
+/** 사령관이 만드는 목표의 지휘관 — 모델·강도, 라우팅, 또는 null(보드 기본값). */
+export const setCommodoreCommander = (theaterId: string, commander: { readonly model: string; readonly effort?: string } | { readonly route: true } | null) =>
+  write(theaterId, "/commodore/commander", commander && "route" in commander ? { route: true } : commander ? { model: commander.model, effort: commander.effort ?? null } : { model: null });
 export const toggleCommodoreRoutine = (commodoreId: string, routineId: string, enabled: boolean) => write(commodoreId, "/commodore/routine-toggle", { routineId, enabled });
 export const removeCommodoreRoutine = (commodoreId: string, routineId: string) => write(commodoreId, "/commodore/routine-remove", { routineId });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});

@@ -9724,6 +9724,11 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 /* 이름만 말줄임한다 — 강도와 꺼짐·폴백 배지는 늘 보인다. */
 .fc-row-value .fc-row-value-text, .fc-coord-trigger.is-field .fc-coord-trigger-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-coord-trigger-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
+/* 라우팅 글리프의 색 — 일괄 메뉴가 쓰던 --aurora 를 선택기·표식·명부가 같이 쓴다. 새 토큰은 두지 않는다. */
+.fc-coord-route { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--aurora); }
+.fc-coord-route svg { width: 16px; height: 16px; }
+.fc-coord-trigger .fc-coord-route, .fc-coord-trigger.is-field .fc-coord-route { width: 14px; height: 14px; }
+.fc-coord-trigger .fc-coord-route svg, .fc-coord-trigger.is-field .fc-coord-route svg { width: 14px; height: 14px; }
 .objective-launch-provider-glyph.fc-coord-trigger-provider { border: 0; background: none; }
 .fc-coord-trigger-provider svg { width: 14px; height: 14px; }
 .fc-coord-provider-name { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); }

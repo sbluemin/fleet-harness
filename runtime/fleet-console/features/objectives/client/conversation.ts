@@ -170,7 +170,7 @@ function memberProfile(objective: Objective, member: ObjectiveMember, crew: Conv
     ...(member.brief ? { brief: member.brief } : {}),
     launch: {
       ...launchLine((t) => memberLaunchShown(member, launched, t, crew.roster)),
-      ...(routed ? { via: { label: localized((t) => memberRoutedTag(member, launched, t)!.label), title: localized((t) => memberRoutedTag(member, launched, t)!.title), ...(routed.via === "fallback" ? { tone: "warn" as const } : {}) } } : {}),
+      ...(routed ? { via: { label: localized((t) => memberRoutedTag(member, launched, t)!.label), title: localized((t) => memberRoutedTag(member, launched, t)!.title), ...(routed.via === "route" ? { route: true as const } : { tone: "warn" as const }) } } : {}),
     },
     status: { text: localized((t) => memberStatus(member, state, objective, t).text), ...(failed ? { tone: "danger" as const } : {}) },
     // 진단 줄의 개수·순서·tone·원문은 로케일과 무관하다 — 낱말만 로케일마다 다시 푼다.
@@ -180,7 +180,11 @@ function memberProfile(objective: Objective, member: ObjectiveMember, crew: Conv
 
 /** 보드의 지휘관 행은 모델·강도만 보인다 — 그 한 줄만 싣는다. */
 function commanderProfile(objective: Objective, roster: ModelRoster | null): ConversationMemberProfile {
-  return { launch: launchLine((t) => commanderLaunchShown(objective, t, roster)) };
+  const routed = objective.commander.routed;
+  return { launch: {
+    ...launchLine((t) => commanderLaunchShown(objective, t, roster)),
+    ...(routed ? { via: { label: localized((t) => t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")), title: localized((t) => t(routed.via === "route" ? "objectives.members.routedTitle" : "objectives.members.fallbackTitle")), ...(routed.via === "route" ? { route: true as const } : { tone: "warn" as const }) } } : {}),
+  } };
 }
 
 /** 트리거 낱말 한 줄을 계약의 모양으로 — 글은 로케일마다 다시 풀고, 글리프·취소선은 한 번만 센다. */
@@ -194,5 +198,6 @@ function launchLine(shown: (t: Translate<ObjectiveMessageKey>) => LaunchShown): 
     ...(providerName ? { providerName } : {}),
     ...(struck ? { struck } : {}),
     ...(badge !== null ? { badge: localized((t) => shown(t).badge ?? "") } : {}),
+    ...(shown(getT("en")).route ? { route: true } : {}),
   };
 }

@@ -287,7 +287,9 @@ export interface ObjectiveStore {
   storedMember(objectiveId: string, memberId: string): StoredMember | null;
   storedAnswers(objectiveId: string, requestId: string): readonly { readonly questionId: string; readonly selectedOptionIds: readonly string[]; readonly text: string }[] | null;
   /** 직접 고른 모델(model)은 보존한다. 대상의 선택 출처는 사람으로 남기며, changed는 값이나 출처가 바뀐 구성원 수다. */
-  memberBatchLaunch(objectiveId: string, mode: "same" | "route", skip?: ReadonlySet<string>): { readonly objective: Objective; readonly changed: number };
+  memberBatchLaunch(objectiveId: string, mode: "route", skip?: ReadonlySet<string>): { readonly objective: Objective; readonly changed: number };
+  /** 지휘관 라우팅 근거. null 은 지운다. 사람의 편집이 아니라 기동 사실이라 편집 기록을 쌓지 않는다. */
+  setCommanderRouted(objectiveId: string, routed: MemberRouted | null): Objective;
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
@@ -419,11 +421,14 @@ function pendingPreset(stored: StoredObjective): PendingCommander | null {
   const session = stored.session ?? {};
   return { commodoreId: stored.commodoreId ?? "", theaterId: stored.theaterId ?? "", ...(stored.theaterIdExplicit ? { theaterIdExplicit: true as const } : {}), cwd: stored.cwd ?? "", title: stored.title ?? stored.id, groupId: stored.groupId ?? null,
     createdAt: stored.ts?.createdAt ?? 0, sessionName: typeof session.sessionName === "string" ? session.sessionName : stored.id,
+    ...(stored.commanderRouting === true && typeof session.model !== "string" ? { routing: true as const } : {}),
     ...(typeof session.model === "string" ? { model: session.model } : {}), ...(typeof session.effort === "string" ? { effort: session.effort } : {}), viewMode: stored.chatMode ? "chat" : "terminal" };
 }
 function draftFields(preset: PendingCommander) {
+  const routing = preset.routing === true && !preset.model;
   return { pending: true as const, commodoreId: preset.commodoreId, theaterId: preset.theaterId, ...(preset.theaterIdExplicit ? { theaterIdExplicit: true as const } : {}), cwd: preset.cwd, title: preset.title, groupId: preset.groupId,
-    ts: { createdAt: preset.createdAt, updatedAt: preset.createdAt }, session: { sessionName: preset.sessionName, model: preset.model, effort: preset.effort }, chatMode: preset.viewMode === "chat" };
+    ts: { createdAt: preset.createdAt, updatedAt: preset.createdAt }, session: { sessionName: preset.sessionName, ...(routing ? {} : { model: preset.model, effort: preset.effort }) }, chatMode: preset.viewMode === "chat",
+    commanderRouting: routing ? true as const : undefined };
 }
 const bareRecord = (objectiveId: string): StoredObjective => ({ id: objectiveId, rank: 0, note: "", enlisted: true, missions: [] });
 /** 실행만 있는 빈 파일은 옛 가상 목표와 같다. 저장 위치가 생겼다는 이유로 터미널을 채팅으로 바꾸지 않는다. */
@@ -604,10 +609,12 @@ function storedNext(value: StoredMember["next"]): MemberNext | null {
   return { ...rest, model: canonicalModelId(rest.model), ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), cause: shortText(value.failed, 64) ? cause : undefined, ...(value.held === "host" || value.held === "plugin" ? {} : { held: undefined }) };
 }
 
-function canonicalStoredLaunch(launch: MemberLaunch | null | undefined): MemberLaunch | undefined {
-  if (!launch || launch.mode !== "model") return launch ?? undefined;
+function canonicalStoredLaunch(launch: { readonly mode?: string; readonly model?: string; readonly effort?: string } | null | undefined): MemberLaunch | undefined {
+  // 모델이 아닌 옛 저장은 라우팅으로 접는다. 디스크를 다시 쓰지 않는다 — 다음 저장이 자연히 지운다.
+  if (!launch || launch.mode !== "model" || typeof launch.model !== "string" || launch.model.length === 0) return undefined;
   const model = canonicalModelId(launch.model);
-  return model === launch.model ? launch : { ...launch, model };
+  const effort = typeof launch.effort === "string" ? launch.effort : undefined;
+  return { mode: "model", model, ...(effort !== undefined ? { effort } : {}) };
 }
 
 function canonicalStoredNext(next: MemberNext | null | undefined): MemberNext | null | undefined {
@@ -628,7 +635,8 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.channelTold?.length) delete out.channelTold;
   if (!objective.followups?.length) delete out.followups;
   if (!objective.followupBatches?.length) delete out.followupBatches;
-  for (const key of ["planning", "criteriaOpen", "today", "commenced"] as const) if (out[key] !== true) delete out[key];
+  for (const key of ["planning", "criteriaOpen", "today", "commenced", "commanderRouting"] as const) if (out[key] !== true) delete out[key];
+  if (!objective.commanderRouted) delete out.commanderRouted;
   if (typeof objective.enlisted !== "boolean") delete out.enlisted;
   delete out.routingConfirm;
   if (!(objective.attachments?.length)) delete out.attachments;
@@ -832,6 +840,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     // 단계 기록이 생기기 전의 옛 레코드 — 개시 여부는 기동 흔적으로 읽는다. 에이전트 Objective 은 레코드가 있든 없든 모두 목표다.
     const legacy = recorded && !pending && typeof stored.enlisted !== "boolean";
     const commanderOutcome = options.observe ? deriveFailedOutcome(options.observe(stored.id)) : undefined;
+    const commanderRouted = storedRouted(stored.commanderRouted);
     return {
       archived: options.objectiveRecords.describe?.(stored.id)?.location === "archived",
       hasSession: node !== null,
@@ -841,7 +850,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       groupId: node ? node.groupId ?? null : liveGroup(pending!.commodoreId, pending!.groupId),
       title: node?.title ?? pending!.title,
       createdAt: node?.ts.createdAt ?? pending!.createdAt,
-      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: canonicalModelId(launch.model) } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}) },
+      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: canonicalModelId(launch.model) } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}), ...(pending?.routing ? { routing: true as const } : {}), ...(commanderRouted ? { routed: commanderRouted } : {}) },
       note: stored.note,
       attachments: stored.attachments ?? [],
       results: stored.results ?? [],
@@ -1334,11 +1343,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     pending(objectiveId) { try { return pendingPreset(locate(objectiveId).stored); } catch { return null; } },
     patchPending: (objectiveId, patch) => update(objectiveId, (stored) => {
       if (!stored.pending) throw new ObjectiveStoreError("unknown_objective");
-      return { ...stored, ...draftFields({ ...pendingPreset(stored)!, ...patch }) };
+      const next = { ...pendingPreset(stored)!, ...patch };
+      if (patch.routing) { next.model = undefined; next.effort = undefined; }
+      else if (patch.model) next.routing = undefined;
+      return { ...stored, ...draftFields(next) };
     }),
     launched: (objectiveId) => update(objectiveId, (stored) => {
       if (!stored.pending) return stored;
-      const { pending: _pending, ...rest } = stored;
+      const { pending: _pending, commanderRouting: _routing, ...rest } = stored;
       return rest;
     }),
     removePending(objectiveId) {
@@ -1719,21 +1731,27 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         return member ? { ...member, launchBy: member.launchBy === "commander" ? "commander" : "human", ...(member.next ? { next: storedNext(member.next) ?? undefined } : {}) } : null;
       } catch { return null; }
     },
+    setCommanderRouted(objectiveId, routed) {
+      return update(objectiveId, (stored) => {
+        const current = storedRouted(stored.commanderRouted);
+        const next = routed ? storedRouted(routed) : null;
+        if (JSON.stringify(current) === JSON.stringify(next)) return stored;
+        const { commanderRouted: _previous, ...rest } = stored;
+        return next ? { ...rest, commanderRouted: next } : rest;
+      }, false);
+    },
     memberBatchLaunch(objectiveId, mode, skip) {
       let changed = 0;
       const objective = update(objectiveId, (stored) => {
         const members = (stored.members ?? []).map((member) => {
           if (member.launch?.mode === "model") return member;
-          const same = (member.launch?.mode ?? "route") === mode;
-          if (skip?.has(member.id) && !same) return member;
+          const already = (member.launch?.mode ?? "route") === mode;
+          if (skip?.has(member.id) && !already) return member;
           // 같은 값을 다시 고른 것도 사람의 선택이다 — 값이 그대로여도 지휘관의 선택을 사람의 것으로 넘긴다.
-          if (same && member.launchBy === "human") return member;
+          if (already && member.launchBy === "human") return member;
           changed += 1;
-          if (mode === "route") {
-            const { launch: _discarded, ...rest } = member;
-            return { ...rest, launchBy: "human" as const };
-          }
-          return { ...member, launch: { mode: "same" as const }, launchBy: "human" as const };
+          const { launch: _discarded, ...rest } = member;
+          return { ...rest, launchBy: "human" as const };
         });
         // 바뀐 구성원이 없으면 보드도 그대로다 — 저장도, 편집 기록도 남기지 않는다.
         return changed > 0 ? { ...stored, members } : stored;

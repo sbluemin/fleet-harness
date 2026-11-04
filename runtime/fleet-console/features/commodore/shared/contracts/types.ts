@@ -131,6 +131,8 @@ export const commodoreStateSchema = z.object({
    */
   commanderModel: z.string().trim().min(1).max(128).optional(),
   commanderEffort: z.string().trim().min(1).max(32).optional(),
+  /** 사령관이 만드는 목표의 지휘관을 첫 기동 때 라우팅으로 고른다. 모델·강도와 함께 두지 않는다. */
+  commanderRouting: z.literal(true).optional(),
   /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관과 그 목표의 지휘관·구성원 세션이 다음 턴(새 세션)부터 싣는다. */
   plugins: commodorePluginsSchema.optional(),
   routines: z.array(commodoreRoutineSchema).max(MAX_ROUTINES).optional(),

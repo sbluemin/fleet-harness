@@ -58,7 +58,7 @@ type Saved = {
 
 const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId: "t1", legacyCwd: path.resolve(".fleet/isolated/fixture"), theaterIdOf: () => "t1" });
 
-function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number }) {
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | { readonly route: true } | null }) {
   // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
@@ -287,14 +287,15 @@ title: input.title});
     },
     paths: { workspaceHash: () => "t1", resolveCommodoreTheaterPath: () => theaterPath, resolveObjectiveOwner: () => "c1", listCommodoreTheaters: () => [{ id: "t1", label: "Project" }], resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
-  const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
+  const launchOptions = { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}), ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}) };
+  const launch = createLaunchService(ctx, store, launchOptions);
   launchServices.push(launch);
   watchQuiet = () => launch.watchReportQuiet();
   // 재시작 — 같은 목표 파일과 같은 호스트 위에 저장소와 기동 서비스를 새로 세운다(메모리 상태는 잃고 보드 파일만 남는다).
   const restart = () => {
     let watchAgain: () => void = () => {};
     const reloaded = createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? path.join(workspace, "objectives") : null), objectiveRecords: objectiveRecordsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
-    const relaunched = createLaunchService(ctx, reloaded, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
+    const relaunched = createLaunchService(ctx, reloaded, launchOptions);
     launchServices.push(relaunched);
     watchAgain = () => relaunched.watchReportQuiet();
     return { store: reloaded, launch: relaunched };
@@ -806,25 +807,13 @@ describe("Objectives contract", () => {
     expect(store.find(objective.id)!.members[0]).toMatchObject({ routed: { via: "route", because: "Sonnet @low · AI model · difficulty low" } });
   });
 
-  it("batch-updates member launch mode to same or route while preserving custom models", async () => {
+  it("batch-updates member launch mode to route while preserving custom models", async () => {
     const { store, launch, route, call, savedObjective, objectiveFile, objectivesDir, objectiveRecordsHost } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Batch Launch Test", groupId: null, note: "brief" });
     const m1 = store.memberAdd(objective.id, { role: "architect" }, "commander").members[0]!;
-    const m2 = store.memberAdd(objective.id, { role: "backend", launch: { mode: "same" } }, "commander").members[1]!;
+    const m2 = store.memberAdd(objective.id, { role: "backend" }, "commander").members[1]!;
     const m3 = store.memberAdd(objective.id, { role: "frontend", launch: { mode: "model", model: "sonnet[1m]", effort: "high" } }, "human").members[2]!;
 
-    // 1. 일괄 "same" 적용: m1(route) -> same, m2(same) -> same, m3(model) -> preserved
-    const resSame = await route("member/batch-launch", { objectiveId: objective.id, mode: "same" });
-    expect(resSame.status).toBe(200);
-    const updated1 = store.find(objective.id)!;
-    expect(updated1.members.find((m) => m.id === m1.id)!.launch).toEqual({ mode: "same" });
-    expect(updated1.members.find((m) => m.id === m2.id)!.launch).toEqual({ mode: "same" });
-    expect(updated1.members.find((m) => m.id === m3.id)!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "high" });
-    expect(updated1.edited?.kinds).toContain("members");
-    expect(store.storedMember(objective.id, m2.id)?.launchBy).toBe("human");
-    expect((await call("set_member_launch", { objectiveId: objective.id, member: m2.id, mode: "route" }, objective.id)).structuredContent.error).toBe("member_launch_person_chosen");
-
-    // 2. 일괄 "route" 적용: m1, m2 -> route, m3(model) -> preserved
     const resRoute = await route("member/batch-launch", { objectiveId: objective.id, mode: "route" });
     expect(resRoute.status).toBe(200);
     const updated2 = store.find(objective.id)!;
@@ -843,6 +832,45 @@ describe("Objectives contract", () => {
     reloaded.patch(objective.id, { note: "Saved after loading legacy members" });
     const savedAgain = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
     expect(savedAgain.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
+    // 디스크에 남은 옛 same 은 다시 쓰지 않고, 읽을 때 라우팅으로 접힌다.
+    const legacySame = savedAgain.find(objective.id)!;
+    const raw = JSON.parse(fs.readFileSync(objectiveFile(objective.id), "utf8")) as { members: { id: string; launch?: unknown }[] };
+    const backend = raw.members.find((member) => member.id === m2.id)!;
+    backend.launch = { mode: "same" };
+    fs.writeFileSync(objectiveFile(objective.id), JSON.stringify(raw));
+    const folded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
+    expect(folded.find(objective.id)!.members.find((member) => member.id === m2.id)!.launch).toEqual({ mode: "route" });
+    expect(legacySame.members.find((member) => member.id === m3.id)!.launch.mode).toBe("model");
+  });
+
+  it("judges a routed Commander once on the first launch and not again when the lineup is replanned", async () => {
+    const { store, launch, route, objectiveRecords } = harness(() => "http://routing.invalid", { commodoreCommander: () => ({ route: true }) });
+    let judgments = 0;
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      judgments += 1;
+      const items = (JSON.parse(init.body) as { items: { key: string; prompt: string }[] }).items;
+      expect(items).toHaveLength(1);
+      expect(items[0]!.prompt).toContain("Objective: Routed commander");
+      expect(items[0]!.prompt).toContain("briefing text");
+      expect(items[0]!.prompt).toContain("Role: Commander — plans the lineup, delegates to members, integrates results, and stays for later rounds.");
+      expect(items[0]!.prompt.length).toBeLessThanOrEqual(16_384);
+      return Response.json({ decisions: [{ key: items[0]!.key, model: "sonnet", effort: "low", because: "fits the brief", fallback: false }] });
+    });
+    const routed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    expect(store.find(routed.id)!.commander).toMatchObject({ routing: true });
+    expect(store.find(routed.id)!.commander.model).toBeUndefined();
+    expect((await route("plan/request", { objectiveId: routed.id })).status).toBe(200);
+    expect(judgments).toBe(1);
+    expect(objectiveRecords.get(routed.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(store.find(routed.id)!.commander).toMatchObject({ model: "sonnet[1m]", effort: "low", routed: { via: "route", because: "fits the brief" } });
+    expect(store.find(routed.id)!.commander.routing).toBeUndefined();
+    expect((await route("plan/request", { objectiveId: routed.id })).status).toBe(200);
+    expect(judgments).toBe(1);
+    const plain = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Person", groupId: null, note: "kept" });
+    expect(plain.commander.routing).toBeUndefined();
+    expect(plain.commander.model).toBe("opus[1m]");
+    expect((await route("plan/request", { objectiveId: plain.id })).status).toBe(200);
+    expect(judgments).toBe(1);
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
@@ -2343,9 +2371,9 @@ describe("Objectives contract", () => {
     expect(store.storedMember(id, workerId)).toEqual(personSelection);
     const reloadedStore = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
     expect(reloadedStore.storedMember(id, workerId)?.launchBy).toBe("human");
-    // 실행값을 same에서 명시 모델로 고정해도 같은 세션을 다시 전환하지 않는다. 빈 강도와 생략도 같은 좌표다.
+    // 실행 중인 모델과 같은 좌표를 다시 골라도 세션을 다시 전환하지 않는다. 빈 강도와 생략도 같은 좌표다.
     const reviewerId = store.find(id)!.members[1]!.id;
-    expect((await route("member/patch", { objectiveId: id, memberId: reviewerId, patch: { launch: { mode: "same" } } })).status).toBe(200);
+    expect((await route("member/patch", { objectiveId: id, memberId: reviewerId, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } })).status).toBe(200);
     hostChat.set(reviewerId, { model: "sonnet[1m]", effort: null, pending: null });
     const fixedCoordinates = vi.spyOn(ctx.consoleControl!, "setCoordinates");
     try {
@@ -2554,7 +2582,7 @@ describe("Objectives contract", () => {
     const { ctx, store, launch, events, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, workspace, restart } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Failure delivery", groupId: null });
     const id = objective.id;
-    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
+    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "model", model: "opus[1m]", effort: "high" } }, "human").members[0]!.id;
     const mission = launch.missionAdded(id, { text: "Report the result", member: memberId }).missions[0]!;
     surfaces.set(memberId, "terminal");
     // Console 포트를 주입한다. PTY의 StopFailure→failed는 agent-chat-mode 대표 테스트가 별도로 책임진다.
@@ -2787,7 +2815,7 @@ describe("Objectives contract", () => {
     const { ctx, store, launch, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, restart, advertised } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Unreported stop", groupId: null });
     const id = objective.id;
-    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
+    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "model", model: "opus[1m]", effort: "high" } }, "human").members[0]!.id;
     const mission = launch.missionAdded(id, { text: "Report the result", member: memberId }).missions[0]!;
     surfaces.set(memberId, "chat");
     // 2026-10-07 00:29~00:55 사건: 한도 거절 뒤 SendMessage 가 나가지 못한 채 턴이 정상 종료로 닫혔다.
