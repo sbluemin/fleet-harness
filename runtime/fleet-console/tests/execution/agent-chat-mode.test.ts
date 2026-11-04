@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 
+import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "../../features/settings/shared/experiments.js";
 import { readObjectiveLaunch, withSubagentSpawn, type ObjectiveRecordCreateInput, type ObjectiveRecord, type ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
@@ -609,6 +610,40 @@ describe("agent chat mode routes", () => {
       resumeSessionId: "sid-live",
     }));
   });
+
+  it("objective fresh session experiment branches: false preserves resume, true branches fresh, switchLive stays resume", async () => {
+    const harness = await createHarness({ cliId: "claude" });
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    harness.allowConsoleUse(sessionId);
+    harness.attachProviderSession(sessionId);
+    await harness.post(sessionId, "chat");
+
+    // Case 1: fresh session disabled (default) -> resumes existing session
+    harness.markNextOpenFresh(sessionId); // no-op when experiment is false
+    await harness.post(sessionId, "message", { text: "turn when off" });
+    await vi.waitFor(() => expect(harness.sends).toContain("turn when off"));
+    const firstRequest = harness.openSessionRequests.at(-1) as { resume?: string; sessionId?: string };
+    expect(firstRequest?.resume).toBe("sid-live");
+
+    // Case 2: fresh session enabled -> opens fresh session with new random UUID
+    harness.setExperiments({ objectiveFreshSession: true });
+    await harness.del(sessionId, "chat");
+    harness.markNextOpenFresh(sessionId);
+    await harness.post(sessionId, "chat");
+    await harness.post(sessionId, "message", { text: "turn when on" });
+    await vi.waitFor(() => expect(harness.sends).toContain("turn when on"));
+    const secondRequest = harness.openSessionRequests.at(-1) as { resume?: string; sessionId?: string };
+    expect(secondRequest?.resume).toBeUndefined();
+    expect(secondRequest?.sessionId).toBeDefined();
+    expect(secondRequest?.sessionId).not.toBe("sid-live");
+
+    // Case 3: switchLive maintains coordinates change in-place without restarting as new session
+    const beforeSwitchCount = harness.openSessionRequests.length;
+    await harness.post(sessionId, "chat-coordinates", { model: "sonnet[1m]", effort: "medium" });
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.openSessionRequests.length).toBe(beforeSwitchCount);
+  });
 });
 
 async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly theaterPrompt?: { readonly mode: "on" | "append" | "off"; readonly body: string } } = {}) {
@@ -637,10 +672,12 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   vi.stubEnv("CLAUDE_BIN", claudeBin);
   const sends: string[] = [];
   const modelChanges: string[] = [];
+  const openSessionRequests: any[] = [];
   const closeChat = vi.fn();
   let emitToLatest: (message: Record<string, unknown>) => void = () => { throw new Error("No open chat session"); };
   // 세션 하나가 여러 프롬프트를 받는다 — 보낼 때마다 그 턴의 메시지가 열린 스트림으로 흘러든다.
-  const openSession = vi.fn(async (_request: unknown) => {
+  const openSession = vi.fn(async (request: unknown) => {
+    openSessionRequests.push(request);
     const queue: Record<string, unknown>[] = [];
     let waiting: (() => void) | null = null;
     let closed = false;
@@ -737,6 +774,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   };
   const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: (pluginId) => pluginId === "fleet-todo" });
   lifecycleCleanups.push(() => consoleControl.dispose());
+  let experimentSettings: ConsoleExperimentSettings = { ...DEFAULT_EXPERIMENT_SETTINGS };
   const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
   const ctx = {
     consoleControl,
@@ -798,6 +836,10 @@ ts: { createdAt, updatedAt: createdAt }};
         publish: () => {},
         subscribe: () => () => {},
         registerSseChannel: () => () => {},
+      },
+      experiments: {
+        read: () => experimentSettings,
+        subscribe: () => () => {},
       },
       server: { origin: () => "http://127.0.0.1:4400" },
       paths: {
@@ -992,5 +1034,13 @@ ts: { createdAt, updatedAt: createdAt }};
         capturedAt: "2026-08-14T00:00:00.000Z",
       };
     },
+    setExperiments: (settings: Partial<ConsoleExperimentSettings>) => {
+      experimentSettings = { ...experimentSettings, ...settings };
+    },
+    markNextOpenFresh: (sessionId: string) => {
+      consoleControl.markNextOpenFresh?.(sessionId);
+    },
+    getRecord: (sessionId: string) => objectiveRecords.find((candidate) => candidate.id === sessionId),
+    openSessionRequests,
   };
 }

@@ -53,4 +53,8 @@ export interface ConsoleControlHost {
    * 커서 없이 `tail` 이면 마지막 `limit` 줄(그 앞이 남았으면 truncated)이고, 아니면 커서부터 앞으로 읽는다.
    */
   transcript?(objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
+  /** 다음 열기에서 이전 대화를 싣지 않는 새 세션으로 열도록 표시를 남긴다. */
+  markNextOpenFresh?(objectiveId: string): void;
+  /** 살아 있는 채팅 자식 인스턴스를 dispose한다(중단 뒤 재개 등에서 새 세션으로 열기 위함). */
+  disposeChat?(objectiveId: string): Promise<void>;
 }

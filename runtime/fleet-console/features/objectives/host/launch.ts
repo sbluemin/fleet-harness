@@ -7,7 +7,7 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
-import { commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
@@ -56,6 +56,8 @@ export interface LaunchService {
   adoptChatSurfaces(): void;
   /** 후속으로 만든 Objective 이 지워지거나 돌아왔다 — 그 후속을 배치에 가진 원본 화면을 다시 방송한다. */
   followupTargetChanged(sessionId: string): void;
+  /** 다음 열기에서 이전 대화를 싣지 않는 새 세션으로 열도록 표시를 남긴다(실험 켜짐일 때만). */
+  markNextOpenFresh(sessionId: string): void;
   /**
    * 기동 전 목표도 복원 가능하게 보관한다 — 지휘관 Objective 을 휴면 메타데이터로 세운 뒤 보관하므로(기동·모델 없음)
    * 보관함에서 복원하면 휴면 지휘관으로 돌아온다. 영구 삭제는 보관함의 purge만 맡는다.
@@ -826,7 +828,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   /** 실행값으로 되돌려 한 번 더 깨운다 — 깨었는지를 돌려준다. */
   const resumeWith = async (sessionId: string, preset: MemberPreset): Promise<boolean> => {
     patchMemberPreset(sessionId, preset);
-    try { await control().request({ kind: "resume", objectiveId: sessionId }); touchLive(sessionId); return true; }
+    try { await control().request({ kind: "resume", objectiveId: sessionId, reason: "switch_live" }); touchLive(sessionId); return true; }
     catch { return false; }
   };
 
@@ -885,7 +887,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     patchMemberPreset(sessionId, goal);
     if (ctx.consoleControl?.observe(sessionId)?.lifecycle !== "dormant") { patchMemberPreset(sessionId, running); return "busy"; }
-    try { await control().request({ kind: "resume", objectiveId: sessionId }); touchLive(sessionId); return "applied"; }
+    try { await control().request({ kind: "resume", objectiveId: sessionId, reason: "switch_live" }); touchLive(sessionId); return "applied"; }
     catch (error) {
       // 휴면을 본 뒤 고친 좌표다 — 그새 누가 깨웠거나(not_dormant) 응답만 늦었으면(request_timeout) 떠 있는 것은 새 좌표로 선 프로세스다.
       const lifecycle = ctx.consoleControl?.observe(sessionId)?.lifecycle;
@@ -1394,10 +1396,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     // 레코드 표식은 이 빌드의 create/createChild 전부(UI 런처·채팅·터미널·구성원)에 있다. channelTold 는 그 표식이 없는 예전 세션에 안내를 한 번 보낸 뒤의 기록이다.
     const told = store.channelTold(objectiveId, targetId) || messageChannelKnown(ctx.objectiveRecords.get(targetId));
     const body = message.text;
+    const memberRole = memberId !== null ? store.find(objectiveId)?.members.find((m) => m.id === memberId)?.role ?? "member" : null;
+    const freshNotice = (dormant || !before) && memberId !== null && memberRole && ctx.experiments?.read().objectiveFreshSession === true
+      ? memberFreshTurnNotice(objectiveId, memberRole, ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en")
+      : "";
     const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en"));
     try {
       await control().request({
-        kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : text, display: body, displayFormat: "markdown",
+        kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : `${freshNotice}${text}`, display: body, displayFormat: "markdown",
         rosterSpeaker: speaker,
       });
     } catch (error) {
@@ -1690,7 +1696,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             const latest = objective(current.id);
             if (!resumable(latest)) return;
             await accessObjective(latest.id);
-            await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en"), "");
+            await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en", { fresh: ctx.experiments?.read().objectiveFreshSession === true }), "");
           });
         } catch (error) { resumeFailed(current, error); }
       }
@@ -2204,6 +2210,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           return { objectiveId: sessionId, outcome: "failed", reason };
         }
       }));
+      if (ctx.experiments?.read().objectiveFreshSession === true) {
+        for (const sessionId of ids) {
+          try { await ctx.consoleControl?.disposeChat?.(sessionId); } catch { /* dispose 실패는 무시 */ }
+          ctx.consoleControl?.markNextOpenFresh?.(sessionId);
+        }
+      }
       // 멈춘 사실을 보드에 남긴다 — 재시작 뒤에도 그 뒤로는 보고를 기대하지 않는다(signals.ts expectsReport). 보고 경보는 개시된 목표에만
       // 걸리므로 개시 전 목표에는 남기지 않는다(기록 없는 목표에 레코드를 만들지 않는다).
       if (current.commenced) current = store.setStopped(objectiveId, true);
@@ -2277,6 +2289,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (host && heldNextOutcome(next!, host) === "applied") store.memberLaunchState(current.id, sessionId, { next: null, routed: null });
       store.refresh(current.id);
       touchLive(sessionId);
+    },
+
+    markNextOpenFresh: (sessionId: string) => {
+      if (ctx.experiments?.read().objectiveFreshSession === true) ctx.consoleControl?.markNextOpenFresh?.(sessionId);
     },
 
     dispose: () => {

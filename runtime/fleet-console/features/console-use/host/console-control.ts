@@ -86,6 +86,8 @@ export interface ConsoleExecutionAdapter {
   advertisedTools?(objectiveId: string): readonly string[] | null;
   /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
   transcript?(objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
+  markNextOpenFresh?(objectiveId: string): void;
+  disposeChat?(objectiveId: string): Promise<void>;
 }
 export interface ConsoleControlDeps {
   readonly directory: string;
@@ -477,6 +479,8 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!op || !launchedByPlugin(caller, op)) return null;
       return adapter?.advertisedTools?.(objectiveId) ?? null;
     },
+    markNextOpenFresh(objectiveId: string): void { adapter?.markNextOpenFresh?.(objectiveId); },
+    async disposeChat(objectiveId: string): Promise<void> { await adapter?.disposeChat?.(objectiveId); },
     migrateLegacyAutomations,
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
     pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },

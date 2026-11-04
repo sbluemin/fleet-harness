@@ -236,6 +236,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const trustedPtySessions = new Set<string>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
+  const freshOpenSessions = new Set<string>();
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
   const chatRegistry = new AgentChatRegistry(testChatSdkFactory ?? createChatSdkFactory(ctx.spawnAgentProcess), (objectiveId) => terminalRuntime.awaitWriterExit(objectiveId, PRIOR_WRITER_EXIT_WAIT_MS));
@@ -664,7 +665,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       assertCurrent();
       if (input.kind === "resume") {
         if (ctx.consoleControl?.observe(objectiveId)?.lifecycle !== "dormant") throw new ConsoleControlError("not_dormant");
-        const result = await resumeObjective(objectiveId, false);
+        const isSwitchLive = input.reason === "switch_live";
+        const fresh = !isSwitchLive && ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(objectiveId);
+        const result = await resumeObjective(objectiveId, fresh);
         if (!result.ok) throw new ConsoleControlError(result.error);
         settled("completed");
         return { objectiveId, delivery: "confirmed" };
@@ -724,6 +727,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     },
     advertisedTools: (objectiveId) => chatRegistry.get(objectiveId)?.readAdvertisedTools() ?? null,
     transcript: (objectiveId, input, signal) => actions.transcript!(objectiveId, input.cursor, input.limit, signal, input.tail ? { tail: true } : undefined),
+    markNextOpenFresh: (objectiveId) => { if (ctx.host.experiments?.read()?.objectiveFreshSession === true) freshOpenSessions.add(objectiveId); },
+    disposeChat: async (objectiveId) => { if (ctx.host.experiments?.read()?.objectiveFreshSession === true) await chatRegistry.dispose(objectiveId); },
   });
   if (detachControl) ctx.host.lifecycle.registerCleanup(detachControl);
 
@@ -1438,6 +1443,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 일반 resume 재시도와 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node };
+        const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+        const preservePrevious = freshEnabled && providerSession?.id;
+        const previousSessions = preservePrevious ? [...(launchSession?.previousSessions ?? []), providerSession] : launchSession?.previousSessions;
         payloadWithoutProvider.session = {
           harness: "claude-code",
           ...(canonicalStoredModel ? { model: canonicalStoredModel } : {}),
@@ -1445,6 +1453,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
           ...(blockSubagents ? { disableSubagents: true } : {}),
           ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
+          ...(preservePrevious && previousSessions ? { previousSessions } : {}),
         };
         ctx.host.objectiveRecords.patch(sessionId, { ...(payloadWithoutProvider) });
       }
@@ -2302,24 +2311,47 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 새로 태어나는 세션은 Objective id를 그대로 Claude 세션 id로 못박아, Objective의
         // 좌표와 Claude의 좌표가 태어날 때 하나가 된다. 이어 붙이는 세션은 그 id를 고를 수
         // 없으므로 트랜스크립트가 말하는 id를 그대로 쓴다.
-        resolveClaudeSession: () => prepareChatClaudeSession({
-          cwd,
-          dataDir: ctx.host.paths.consoleDataDir,
-          plugin: ctx.agentCliPlugin,
-          ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
-          claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
-          ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
-          ...(node.parentObjectiveId || ctx.isCommanderSession?.(node.id) ? { objectiveMessaging: true as const } : {}),
-          ...(node.commodoreId && deps.commodorePluginDirs ? { pluginDirs: deps.commodorePluginDirs(node.commodoreId) } : {}),
-          ...(node.commodoreId && deps.commodorePluginEnv ? { pluginEnv: deps.commodorePluginEnv(node.commodoreId) } : {}),
-          origin: sessionOrigin.kind === "resume"
-            ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
-            : { kind: "new", preferredSessionId: node.id },
-          ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
-        }),
+        resolveClaudeSession: () => {
+          const fresh = ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(node.id);
+          const existingSession = readAgentSession(node);
+          const hadSession = !!providerSession?.id || !!existingSession?.previousSessions?.length;
+          return prepareChatClaudeSession({
+            cwd,
+            dataDir: ctx.host.paths.consoleDataDir,
+            plugin: ctx.agentCliPlugin,
+            ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
+            claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
+            ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
+            ...(node.parentObjectiveId || ctx.isCommanderSession?.(node.id) ? { objectiveMessaging: true as const } : {}),
+            ...(node.commodoreId && deps.commodorePluginDirs ? { pluginDirs: deps.commodorePluginDirs(node.commodoreId) } : {}),
+            ...(node.commodoreId && deps.commodorePluginEnv ? { pluginEnv: deps.commodorePluginEnv(node.commodoreId) } : {}),
+            origin: fresh
+              ? { kind: "new", preferredSessionId: hadSession ? crypto.randomUUID() : node.id }
+              : (sessionOrigin.kind === "resume"
+                ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
+                : { kind: "new", preferredSessionId: node.id }),
+            ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
+          });
+        },
         onProviderSessionUpdate: (updated) => {
           const objectiveRecord = ctx.host.objectiveRecords.get(node.id);
-          if (objectiveRecord) ctx.host.objectiveRecords.patch(node.id, { ...({ ...objectiveRecord, session: mergeCapturedAgentSession(objectiveRecord, updated) }) });
+          if (objectiveRecord) {
+            const existing = readAgentSession(objectiveRecord);
+            const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+            const archivePrevious = freshEnabled && existing?.id && existing.id !== updated.id;
+            const previousSessions = archivePrevious
+              ? [...(existing.previousSessions ?? []), { id: existing.id, transcriptPath: existing.transcriptPath, source: existing.source, capturedAt: existing.capturedAt }]
+              : existing?.previousSessions;
+            const updatedSession = mergeCapturedAgentSession(objectiveRecord, updated);
+            const patched = {
+              ...objectiveRecord,
+              session: {
+                ...updatedSession,
+                ...(previousSessions && freshEnabled ? { previousSessions } : {}),
+              },
+            };
+            ctx.host.objectiveRecords.patch(node.id, { ...patched });
+          }
           observability.updateTerminalSessionProviderSession(node.id, updated);
         },
         canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
@@ -2498,7 +2530,22 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       const objectiveRecord = ctx.host.objectiveRecords.get(sessionId);
       if (objectiveRecord) {
-        ctx.host.objectiveRecords.patch(sessionId, { ...({ ...objectiveRecord, session: mergeCapturedAgentSession(objectiveRecord, providerSession) }) });
+        const existing = readAgentSession(objectiveRecord);
+        const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+        const archivePrevious = freshEnabled && existing?.id && existing.id !== providerSession.id;
+        const previousSessions = archivePrevious
+          ? [...(existing.previousSessions ?? []), { id: existing.id, transcriptPath: existing.transcriptPath, source: existing.source, capturedAt: existing.capturedAt }]
+          : existing?.previousSessions;
+        const updatedSession = mergeCapturedAgentSession(objectiveRecord, providerSession);
+        ctx.host.objectiveRecords.patch(sessionId, {
+          ...({
+            ...objectiveRecord,
+            session: {
+              ...updatedSession,
+              ...(previousSessions && freshEnabled ? { previousSessions } : {}),
+            },
+          }),
+        });
       } else {
         console.warn(`[fleet-console] capture-session persisted without objectiveRecord payload: ${sessionId}`);
       }

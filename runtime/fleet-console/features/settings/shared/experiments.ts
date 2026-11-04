@@ -49,6 +49,8 @@ export interface ConsoleExperimentSettings {
   readonly commodoreEffort: ExperimentEffort;
   /** TaskForce — 여러 사령관의 합동 판단. 옵트인이며 기본 꺼짐이다. */
   readonly taskforce: boolean;
+  /** 목표 세션(지휘관·구성원) 재개 시 이전 대화를 모델 입력에 싣지 않고 새 세션으로 엽니다. 옵트인이며 기본 꺼짐이다. */
+  readonly objectiveFreshSession: boolean;
 }
 
 /**
@@ -69,6 +71,7 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
   commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
   taskforce: false,
+  objectiveFreshSession: false,
 };
 
 /**
@@ -125,6 +128,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
     commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
     taskforce: record.taskforce === true,
+    objectiveFreshSession: record.objectiveFreshSession === true,
   };
 }
 

@@ -8,6 +8,7 @@ import type { EventPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 import type { CommodoreFeature } from "../../commodore/host/index.js";
+import type { ExperimentsHost } from "../../settings/shared/experiment-ports.js";
 
 /** 목표가 쓰는 Console 포트. 조합이 소유·호출자·정리 수명을 명시로 묶는다. */
 export interface ObjectivesFeatureDeps {
@@ -25,4 +26,5 @@ export interface ObjectivesFeatureDeps {
   readonly consoleUse: Pick<ConsoleUseMcpHost, "contribute">;
   readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[]) => () => void;
   readonly commodoreCommander?: CommodoreFeature["host"]["commander"];
+  readonly experiments?: ExperimentsHost;
 }

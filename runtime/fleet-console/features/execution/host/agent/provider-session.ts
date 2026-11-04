@@ -24,7 +24,14 @@ export function readAgentSession(payload: Record<string, unknown> | null | undef
     ...(readString(candidate.transcriptPath) ? { transcriptPath: readString(candidate.transcriptPath)! } : {}),
     ...(readString(candidate.source) ? { source: readString(candidate.source)! } : {}),
     ...(readString(candidate.capturedAt) ? { capturedAt: readString(candidate.capturedAt)! } : {}),
+    ...(Array.isArray(candidate.previousSessions) ? { previousSessions: candidate.previousSessions.filter(isCapturedSession) } : {}),
   };
+}
+
+function isCapturedSession(value: unknown): value is CapturedAgentSession {
+  if (!value || typeof value !== "object") return false;
+  const s = value as Record<string, unknown>;
+  return s.harness === "claude-code" && typeof s.id === "string" && typeof s.capturedAt === "string";
 }
 
 export function readProviderSession(payload: Record<string, unknown> | null | undefined): CapturedAgentSession | undefined {
@@ -66,6 +73,7 @@ export function mergeCapturedAgentSession(
     ...(captured.transcriptPath ? { transcriptPath: captured.transcriptPath } : {}),
     ...(captured.source ? { source: captured.source } : {}),
     capturedAt: captured.capturedAt,
+    ...(existing?.previousSessions ? { previousSessions: existing.previousSessions } : {}),
   };
 }
 

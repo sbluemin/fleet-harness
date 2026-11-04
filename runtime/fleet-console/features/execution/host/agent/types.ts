@@ -51,6 +51,7 @@ export interface AgentSession {
   readonly transcriptPath?: string;
   readonly source?: string;
   readonly capturedAt?: string;
+  readonly previousSessions?: readonly CapturedAgentSession[];
 }
 
 export interface CapturedAgentSession extends AgentSession {

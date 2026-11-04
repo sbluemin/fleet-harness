@@ -21,7 +21,7 @@ export interface ObjectiveDocumentContext {
   readonly theaterIdOf: (cwd: string) => string;
 }
 const executionKeys = ["cwd", "session", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "launchedBy", "consoleUse", "computerUse", "labelSource", "providerTitle", "objectiveLanguage"] as const;
-const sessionKeys = ["harness", "model", "effort", "sessionName", "id", "transcriptPath", "source", "capturedAt", "disableSubagents", "disableAutoMemory"] as const;
+const sessionKeys = ["harness", "model", "effort", "sessionName", "id", "transcriptPath", "source", "capturedAt", "disableSubagents", "disableAutoMemory", "previousSessions"] as const;
 const surfaceKeys = ["title", "groupId", "order", "accent", "ts", "sessions", ...executionKeys];
 export const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 function pick(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
