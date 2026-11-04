@@ -71,6 +71,15 @@
 .context-rail-card-body { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: var(--space-2); }
 .context-rail-muted { margin: 0; color: var(--text-tertiary); }
 
+.context-rail-big {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.context-rail-big strong { font-size: var(--t-lg); font-weight: var(--weight-medium); color: var(--text-primary); }
+.context-rail-big span { flex: none; font-family: var(--font-code); font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
+
 .context-rail-bar {
   display: flex;
   height: 6px;
@@ -105,6 +114,12 @@
 .context-rail-rows li.is-gap { margin-top: 6px; }
 .context-rail-swatch { width: 9px; height: 9px; flex: none; border-radius: 2px; }
 .context-rail-swatch.is-free { background: transparent; border: 1px dashed var(--hairline-strong); }
+
+/* 예비(L45)와 빈 칸은 다크 절대값이라 종이 위에서 거의 검정이 된다. 라이트만 한 단 옅은 회색으로 뒤집는다. */
+:root[data-theme="light"] .context-rail-bar > i.is-reserved,
+:root[data-theme="light"] .context-rail-swatch.is-reserved { background: var(--ink-rim); }
+:root[data-theme="light"] .context-rail-bar { background: var(--ink-mid); }
+:root[data-theme="light"] .context-rail-swatch.is-free { border-color: var(--ink-rim); }
 
 /* 아직 분해를 모르는 몫 — 채움(측정된 카테고리)도 빈칸(남은 자리)도 아닌 셋째 상태라 셋째 무늬를 진다. */
 .context-rail-bar > i.is-pending,
@@ -247,7 +262,10 @@
   border-left-color: var(--text-primary);
   border-right: 0;
 }
-.context-rail-bubble-usage { font-family: var(--font-code); font-size: var(--t-xs); font-weight: var(--weight-regular); color: color-mix(in oklch, var(--ink-abyss) 72%, var(--text-primary)); }
+.context-rail-bubble-usage,
+.context-rail-bubble-plain { font-size: var(--t-xs); font-weight: var(--weight-regular); color: color-mix(in oklch, var(--ink-abyss) 72%, var(--text-primary)); }
+.context-rail-bubble-usage { font-family: var(--font-code); }
+.context-rail-bubble-plain { font-family: var(--font-ui); }
 .context-rail-chip:hover .context-rail-bubble,
 .context-rail-chip:focus-visible .context-rail-bubble { opacity: 1; transform: none; }
 .context-rail-chip[aria-expanded="true"] .context-rail-bubble,

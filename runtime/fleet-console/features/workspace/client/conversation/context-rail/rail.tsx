@@ -156,7 +156,9 @@ function ContextChip({ session, open, t, onToggle }: {
       <span className={`context-rail-pct${measure ? "" : " is-none"}`}>{measure ? `${percentOf(measure)}%` : "—"}</span>
       <span className="context-rail-bubble" aria-hidden="true">
         <strong>{session.name}</strong>
-        <span className="context-rail-bubble-usage">{measure ? `${summaryOf(measure)} · ${percentOf(measure)}%` : t("conversation.rail.unmeasuredShort")}</span>
+        {measure
+          ? <span className="context-rail-bubble-usage">{`${summaryOf(measure)} · ${percentOf(measure)}%`}</span>
+          : <span className="context-rail-bubble-plain">{t("conversation.rail.unmeasuredShort")}</span>}
       </span>
     </button>
   );
@@ -223,6 +225,13 @@ function formatTokens(tokens: number): string {
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
 }
 
+/** 큰 사용량 줄의 점유 — 만 단위도 소수 한 자리를 남겨 125.9k 가 126k 로 둥글어지지 않게 한다. */
+function formatPreciseTokens(tokens: number): string {
+  if (tokens >= 1_000_000 || tokens < 1_000) return formatTokens(tokens);
+  const text = (tokens / 1_000).toFixed(1);
+  return `${text.endsWith(".0") ? text.slice(0, -2) : text}k`;
+}
+
 /** 호스트가 보내는 범주 이름. 모르면 회색이다. */
 const CATEGORY_CLASS: Readonly<Record<string, string>> = {
   Messages: "is-messages",
@@ -257,7 +266,8 @@ export function ContextCard({ session, open, forced, state, t }: {
       {forced ? (
         <div className="context-rail-card-head is-static">
           <span className="context-rail-card-name">{session.name}</span>
-          <span className="context-rail-card-sum">{summary}</span>
+          {/* 측정값이 있으면 큰 사용량 줄이 요약을 대신한다. 측정 전만 머리 줄에 짧은 말을 남긴다. */}
+          {measure ? null : <span className="context-rail-card-sum">{summary}</span>}
         </div>
       ) : (
         <button type="button" className="context-rail-card-head" aria-expanded={shown} aria-controls={bodyId} onClick={() => toggleContextCard(session.id, session.focus)}>
@@ -293,6 +303,10 @@ function ContextBody({ sessionId, measure, footnote, state, t }: {
   const widthOf = (tokens: number) => ({ width: `${(tokens / measure.max) * 100}%` });
   return (
     <>
+      <div className="context-rail-big">
+        <strong>{t("conversation.rail.usedBig", { percent: String(percentOf(measure)) })}</strong>
+        <span>{formatPreciseTokens(measure.occupied)} / {formatTokens(measure.max)}</span>
+      </div>
       <div className="context-rail-bar" role="img" aria-label={summaryOf(measure)}>
         {hasBreakdown
           ? rows.map((row) => <i key={row.name} className={categoryClass(row.name)} style={widthOf(row.tokens)} />)
