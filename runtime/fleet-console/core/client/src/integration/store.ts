@@ -126,6 +126,7 @@ let state: ConsoleState = {
   newSessionRejection: null,
   keyboardShortcutsOpen: false,
   fleetAtAGlanceOpen: false,
+  featureCardsReplayOpen: false,
   objectiveRecordNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
 };
@@ -843,6 +844,16 @@ export function openFleetAtAGlance(): void {
 export function closeFleetAtAGlance(): void {
   if (!state.fleetAtAGlanceOpen) return;
   setState({ fleetAtAGlanceOpen: false });
+}
+
+export function openFeatureCardsReplay(): void {
+  if (state.featureCardsReplayOpen) return;
+  setState({ featureCardsReplayOpen: true });
+}
+
+export function closeFeatureCardsReplay(): void {
+  if (!state.featureCardsReplayOpen) return;
+  setState({ featureCardsReplayOpen: false });
 }
 
 export function nextObjectiveId(order: readonly string[], currentId: string | null, delta: number): string | null {

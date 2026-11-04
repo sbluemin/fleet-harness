@@ -157,3 +157,55 @@
 .tfi-primary:hover:not(:disabled) {
   background: var(--control-rest-hover);
 }
+
+/* 새 기능 카드 셸의 넘김 — 카드가 두 장 이상일 때만 선다(feature-cards.tsx).
+   점은 위치만 말하므로 중립 텍스트 톤이고, 지금 장만 진하게 둔다. */
+.tfi-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.tfi-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+}
+
+.tfi-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--text-tertiary);
+  opacity: 0.45;
+}
+
+.tfi-dot--current {
+  background: var(--text-primary);
+  opacity: 1;
+}
+
+.tfi-secondary {
+  padding: 9px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tfi-secondary:hover:not(:disabled) {
+  background: var(--wash-hover);
+}
+
+.tfi-secondary:disabled {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  cursor: default;
+}
