@@ -76,7 +76,6 @@ function toPaneContext(ctx: ExpandedSurfaceContext, role: import("../../../../..
     focused: ctx.focused,
     theaterId: ctx.theaterId,
     navigate: ctx.navigate,
-    shell: ctx.shell,
     rail: ctx.rail,
     consoleState: ctx.consoleState,
     notifications: ctx.notifications,

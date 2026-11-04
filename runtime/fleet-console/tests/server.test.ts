@@ -64,34 +64,6 @@ vi.mock("../features/scuttlebutt/host/index.js", async (importOriginal) => {
   } };
 });
 
-vi.mock("../features/file-explorer/host/index.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../features/file-explorer/host/index.js")>();
-  return { ...actual, createFileExplorerFeature: (deps: Parameters<typeof actual.createFileExplorerFeature>[0]) => {
-
-    const feature = actual.createFileExplorerFeature(deps);
-    return { ...feature, dispose: () => {
-      let pending: void | Promise<void>;
-      try { pending = fleetAdmiralMock.cleanupHooks.get("file-explorer")?.(); }
-      catch (error) { void feature.dispose(); throw error; }
-      return Promise.resolve(pending).then(() => feature.dispose());
-    } };
-  } };
-});
-
-vi.mock("../features/repository/host/index.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../features/repository/host/index.js")>();
-  return { ...actual, createRepositoryFeature: (deps: Parameters<typeof actual.createRepositoryFeature>[0]) => {
-
-    const feature = actual.createRepositoryFeature(deps);
-    return { ...feature, dispose: () => {
-      let pending: void | Promise<void>;
-      try { pending = fleetAdmiralMock.cleanupHooks.get("repository")?.(); }
-      catch (error) { void feature.dispose(); throw error; }
-      return Promise.resolve(pending).then(() => feature.dispose());
-    } };
-  } };
-});
-
 interface ServerFixture {
   readonly dir: string;
   readonly fleetDataDir: string;
@@ -228,7 +200,7 @@ describe("console terminal observability", () => {
     const activeId = "10000000-0000-4000-8000-000000000001", archivedId = "10000000-0000-4000-8000-000000000002";
     const closedId = "10000000-0000-4000-8000-000000000003", keptId = "10000000-0000-4000-8000-000000000004", childId = "10000000-0000-4000-8000-000000000005";
     const previousClaudeHome = process.env.CLAUDE_CONFIG_DIR;
-    const layout = { columns: [{ tiles: [{ id: "files", kind: "entry", entryId: "file-explorer" }], weights: [1] }], columnWeights: [1], below: { tiles: [], weights: [] }, splitRatio: null, belowRatio: null, expandedTileId: null };
+    const layout = { columns: [{ tiles: [{ id: "objectives", kind: "entry", entryId: "objectives" }], weights: [1] }], columnWeights: [1], below: { tiles: [], weights: [] }, splitRatio: null, belowRatio: null, expandedTileId: null };
     const write = (file: string, value: unknown) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(value)); };
     try {
       const fixture = await startFixture({ compactPaths: true, beforeCreateServer: ({ fleetDataDir }) => {
@@ -564,14 +536,12 @@ describe("console terminal observability", () => {
   it("runs every feature cleanup and releases the lock when one cleanup throws synchronously", async () => {
     const runs: string[] = [];
     const fixture = await startFixture();
-    fleetAdmiralMock.cleanupHooks.set("scuttlebutt", () => { runs.push("before"); });
-    fleetAdmiralMock.cleanupHooks.set("file-explorer", () => { runs.push("throws"); throw new Error("sync cleanup failure"); });
-    fleetAdmiralMock.cleanupHooks.set("repository", async () => { runs.push("after"); });
+    fleetAdmiralMock.cleanupHooks.set("scuttlebutt", () => { runs.push("throws"); throw new Error("sync cleanup failure"); });
     const warn = vi.spyOn(console, "warn");
     try {
       const stopError = await fixture.server.stop().then(() => null, (error: unknown) => error);
       expect.soft(stopError).toBeNull();
-      expect.soft([...runs].sort()).toEqual(["after", "before", "throws"]);
+      expect.soft([...runs].sort()).toEqual(["throws"]);
       expect.soft(fs.existsSync(fixture.lockFile)).toBe(false);
       expect.soft(warn.mock.calls.filter(([message]) => typeof message === "string" && message.startsWith("[fleet-console] Feature cleanup failed:"))).toHaveLength(1);
     } finally { warn.mockRestore(); fleetAdmiralMock.cleanupHooks.clear(); }
@@ -995,22 +965,6 @@ describe("console static and terminal ticket boundary", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
     expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
     expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);
-    // 명시적인 목표 파일 요청은 고정 cwd인 B와 C를 열되 심볼릭 링크로 바뀐 경계는 닫힌다.
-    const filesInB = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
-      method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId: "fixed-b", relativePath: "" }),
-    });
-    expect(filesInB.status).toBe(200);
-    const fixedOutside = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
-      method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId: "outside-c", relativePath: "" }),
-    });
-    expect(fixedOutside.status).toBe(200);
-    for (const objectiveId of ["escaped"]) {
-      const files = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
-        method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId, relativePath: "" }),
-      });
-      expect(files.status).toBe(404);
-      expect(await files.json()).toEqual({ error: "unavailable" });
-    }
     const sessionsBefore = await getJson(`${origin}/api/v1/agent/sessions`);
     const ownerless = await fetch(`${origin}/api/v1/agent/sessions`, {
       method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ theaterId, cliId: "claude" }),
@@ -1190,16 +1144,37 @@ describe("console static and terminal ticket boundary", () => {
   it("stops and releases the runtime lock while a page still holds a terminal WebSocket", async () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-shell-"));
     tempDirs.push(cwd);
+    const realpath = fs.realpathSync.native(cwd);
+    const theaterId = workspaceHash(realpath);
     let killed = 0;
     const fixture = await startFixture({
       terminalLaunch: createMockLaunch,
       terminalStartShell: () => ({ ...createMockPty(), kill: () => { killed += 1; } }),
+      beforeCreateServer: ({ fleetDataDir }) => {
+        seedDurableObjectives(fleetDataDir, {
+          id: theaterId,
+          path: cwd,
+          realpath,
+          label: path.basename(cwd),
+          registeredAt: "2026-06-16T00:00:00.000Z",
+          lastOpenedAt: "2026-06-16T00:00:01.000Z",
+        }, [{
+          id: "session-a",
+          theaterId,
+          title: "Lock fixture",
+          cwd,
+          ts: { createdAt: 1_000, updatedAt: 1_000 },
+        }]);
+      },
     });
-    const theater = await createTheater(fixture, cwd);
-    const ticketResponse = await fetch(`${fixture.endpoint}api/v1/shell/ticket`, {
+    const resumeResponse = await fetch(`${fixture.endpoint}api/v1/agent/sessions/session-a/resume`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+    });
+    expect(resumeResponse.status).toBe(200);
+    const ticketResponse = await fetch(`${fixture.endpoint}api/v1/agent/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd: { commodoreId: theater.commodoreId, theaterId: theater.id } }),
+      body: JSON.stringify({ objectiveId: "session-a" }),
     });
     expect(ticketResponse.status).toBe(200);
     const { ticket } = await ticketResponse.json() as { readonly ticket: string };

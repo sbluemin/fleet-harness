@@ -1,13 +1,4 @@
 export const chromeEn = {
-  "chrome.objectiveRecordSearch.openShell": "Open Shell",
-  "chrome.objectiveRecordSearch.openShellHere": "Open Shell in active Theater",
-  "chrome.objectiveRecordSearch.shell.busy": "A program is running in Shell. Finish it before changing folders.",
-  "chrome.objectiveRecordSearch.shell.input_pending": "Shell has unfinished input. Submit or clear it first.",
-  "chrome.objectiveRecordSearch.shell.read_only": "Shell is read-only. Take control before changing folders.",
-  "chrome.objectiveRecordSearch.shell.not_found": "The Theater or folder could not be found.",
-  "chrome.objectiveRecordSearch.shell.outside_theater": "This folder is outside the Theater.",
-  "chrome.objectiveRecordSearch.shell.failed": "Shell could not be opened. Try again.",
-
   // command-band
   "chrome.viewMode.auto": "View mode: Auto",
   "chrome.viewMode.mobile": "View mode: Mobile",
@@ -103,7 +94,7 @@ export const chromeEn = {
   "chrome.objectiveRecordSearch.current": "current",
   "chrome.objectiveRecordSearch.noMatchingCommands": "No matching commands.",
   "chrome.objectiveRecordSearch.open": "open",
-  "chrome.objectiveRecordSearch.noMatching": "No matching objectives, files, or commands.",
+  "chrome.objectiveRecordSearch.noMatching": "No matching objectives or commands.",
   "chrome.objectiveRecordSearch.tabObjectiveRecords": "Go to",
   "chrome.objectiveRecordSearch.tabCommands": "Commands",
   "chrome.objectiveRecordSearch.switchAria": "Palette mode",
@@ -565,15 +556,6 @@ export const chromeEn = {
 } as const;
 
 export const chromeKo: Record<keyof typeof chromeEn, string> = {
-  "chrome.objectiveRecordSearch.openShell": "Shell 열기",
-  "chrome.objectiveRecordSearch.openShellHere": "활성 Theater에서 Shell",
-  "chrome.objectiveRecordSearch.shell.busy": "Shell에서 프로그램이 실행 중이에요. 끝낸 뒤 위치를 바꿔 주세요.",
-  "chrome.objectiveRecordSearch.shell.input_pending": "Shell에 입력 중인 명령이 있어요. 먼저 실행하거나 지워 주세요.",
-  "chrome.objectiveRecordSearch.shell.read_only": "Shell이 읽기 전용이에요. 제어권을 가져온 뒤 위치를 바꿔 주세요.",
-  "chrome.objectiveRecordSearch.shell.not_found": "Theater나 폴더를 찾을 수 없어요.",
-  "chrome.objectiveRecordSearch.shell.outside_theater": "이 폴더는 Theater 밖에 있어요.",
-  "chrome.objectiveRecordSearch.shell.failed": "Shell을 열지 못했어요. 다시 시도해 주세요.",
-
   "chrome.viewMode.auto": "보기 모드: 자동",
   "chrome.viewMode.mobile": "보기 모드: 모바일",
   "chrome.viewMode.desktop": "보기 모드: 데스크톱",
@@ -666,7 +648,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.objectiveRecordSearch.current": "현재",
   "chrome.objectiveRecordSearch.noMatchingCommands": "맞는 명령이 없어요.",
   "chrome.objectiveRecordSearch.open": "열기",
-  "chrome.objectiveRecordSearch.noMatching": "맞는 목표·파일·명령이 없어요.",
+  "chrome.objectiveRecordSearch.noMatching": "맞는 목표·명령이 없어요.",
   "chrome.objectiveRecordSearch.tabObjectiveRecords": "이동",
   "chrome.objectiveRecordSearch.tabCommands": "명령",
   "chrome.objectiveRecordSearch.switchAria": "팔레트 모드",

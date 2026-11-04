@@ -4,7 +4,7 @@ import { openTheaterInbox } from "../../../../../features/workspace/client/theat
 import { resolveTheaterInboxLanding } from "../../../../../features/workspace/client/theater-contributions.js";
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
-import { getViewedCommodoreId, getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
+import { getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { openTaskforce, requestTaskforceCreate, TaskforceStack } from "../../../../../features/commodore/client/taskforce/taskforce.js";
 import { useTaskforceExperiment, useTaskforces } from "../../../../../features/commodore/client/taskforce/state.js";
@@ -13,7 +13,6 @@ import { taskforceT } from "../../../../../features/commodore/client/taskforce/i
 import { openCommodoreConversation } from "../../../../../features/commodore/client/commodore-conversation.js";
 import { fuzzyMatchPaletteLabel } from "../../integration/palette-match.js";
 import { useCommodoreList, setZoneCommodore, selectMobileCommodore, useZoneCommodore } from "../../../../../features/commodore/client/commodore-list.js";
-import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
 import { createHostPaneTargetPorts } from "../../integration/feature-capabilities.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -123,30 +122,7 @@ export function ObjectiveSearch({
   // 활성 행을 마지막으로 옮긴 입력 — 키보드일 때만 활성 행이 포커스 링을 그리고, 마우스가 옮긴 행은 hover 워시뿐이다.
   const [navigation, setNavigation] = useState<"keyboard" | "pointer">("keyboard");
   const [providerSearchGroups, setRailSearchGroups] = useState<readonly RailSearchGroup[]>([]);
-  const capabilities = useHostCapabilities();
-  const [shellNotice, setShellNotice] = useState<string | null>(null);
-  useEffect(() => setShellNotice(null), [text, state.objectiveRecordSearchOpen]);
-  const railSearchGroups = useMemo<readonly RailSearchGroup[]>(() => {
-    const query = text.trim().toLowerCase();
-    const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
-    if (!matchesShell || !desktopView) return providerSearchGroups;
-    const theaterId = getViewedTheaterId();
-    // 활성 Theater를 소유한 사령관 — Shell 기동이 Theater 루트를 찾는다. 모르면 생략한다.
-    const commodoreId = getViewedCommodoreId();
-    return [...providerSearchGroups, {
-      panelId: "global-shell",
-      panelTitle: "Shell",
-      results: [
-        { id: "open-shell", title: t("chrome.objectiveRecordSearch.openShell"), activate: () => undefined },
-        ...(theaterId ? [{ id: "open-shell-here", title: t("chrome.objectiveRecordSearch.openShellHere"), activate: async () => {
-          const result = await capabilities.shell.openAt({ theaterId, ...(commodoreId ? { commodoreId } : {}) }).catch(() => null);
-          if (result?.ok) return;
-          setShellNotice(t(result ? `chrome.objectiveRecordSearch.shell.${result.reason}` : "chrome.objectiveRecordSearch.shell.failed"));
-          throw new Error("shell_open_refused");
-        } }] : []),
-      ],
-    }];
-  }, [providerSearchGroups, text, getViewedTheaterId(), getViewedCommodoreId(), desktopView, capabilities, t]);
+  const railSearchGroups = providerSearchGroups;
   // 동작 띠가 펼쳐진 Objective 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [actionIndex, setActionIndex] = useState(0);
@@ -408,9 +384,6 @@ export function ObjectiveSearch({
       else presentRailPanel(panelId);
     }
     closeObjectiveSearch();
-    if (panelId === "global-shell") {
-      requestAnimationFrame(() => document.querySelector<HTMLElement>(".global-shell-mount .xterm-helper-textarea")?.focus({ preventScroll: true }));
-    }
   };
 
   const runAction = (action: PaletteCommandAction, current: boolean) => {
@@ -1010,7 +983,6 @@ export function ObjectiveSearch({
         </div>
         {/* 단축키 안내 줄은 그리지 않는다 — 키보드 조작 문구는 보조기기에만 남긴다. */}
         <p className="objective-search-sr-only">{t("chrome.objectiveRecordSearch.legendMove")} ↑↓ · {t("chrome.objectiveRecordSearch.legendOpen")} Enter · {t("chrome.objectiveRecordSearch.legendActions")} → · {t("chrome.objectiveRecordSearch.legendClose")} Esc</p>
-        {shellNotice ? <p className="archive-sheet-notice" role="alert">{shellNotice}</p> : null}
       </section>
     </div>
   );

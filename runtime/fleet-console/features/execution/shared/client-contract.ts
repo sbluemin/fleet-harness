@@ -1,4 +1,4 @@
-import type { ClientNavigateCapability, ClientShellCapability } from "../../workspace/shared/navigation.js";
+import type { ClientNavigateCapability } from "../../workspace/shared/navigation.js";
 import type { ReactNode } from "react";
 import type { LocalizedText } from "@fleet-console/i18n";
 import type { ObjectiveLaunchKind, ObjectiveRecord, ObjectiveGeometry } from "../../objectives/shared/records/types.js";
@@ -228,7 +228,6 @@ export interface ObjectiveRenderContext extends ObjectiveContext {
    */
   readonly mobileObjective?: ClientMobileObjectiveCapability;
   readonly navigate: ClientNavigateCapability;
-  readonly shell: ClientShellCapability;
   readonly rail: ClientRailCapability;
   readonly active: boolean;
   /**

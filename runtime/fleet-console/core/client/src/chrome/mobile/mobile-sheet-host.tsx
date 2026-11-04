@@ -23,9 +23,7 @@ import { MongleAvatar } from "../../../../../features/workspace/client/component
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { getState, openMobileNewSession } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
-import { globalShellEntry } from "../../../../../features/execution/client/terminal/global-shell/rail-panel.js";
-import { useRailEntries } from "../pane/pane-registry.js";
-import { mobileHomeCommodoreId, useMobileDestinationBindings } from "./mobile-destinations.js";
+import { mobileHomeCommodoreId } from "./mobile-destinations.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileFolderSheet } from "./mobile-folder-sheet.js";
@@ -35,7 +33,7 @@ import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { getMobileSheetStack, closeMobileSheets, openMobilePluginDestination, popMobileSheet, pushMobileSheet, setMobileListTheater, useMobileSheetStack } from "./mobile-store.js";
+import { getMobileSheetStack, closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileListTheater, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
@@ -364,8 +362,6 @@ function TaskforceCreateSheetRow() {
 
 function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
-  const bindings = useRailEntries();
-  const shell = useMobileDestinationBindings(bindings, mobileHomeCommodoreId()).find((binding) => binding.entry.id === globalShellEntry.id);
   const hasTheater = getViewedTheaterId() !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
@@ -378,12 +374,6 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
         <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
       </button>
-      {shell ? (
-        <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(() => openMobilePluginDestination(shell.entry.id, getViewedTheaterId()))}>
-          <span className="mobile-sheet-row-glyph"><MobileIcon name="term" /></span>
-          <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.terminal")}</strong><small>{t("mobile.create.terminalSub")}</small></span>
-        </button>
-      ) : null}
       <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "folder" })}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="folder" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>

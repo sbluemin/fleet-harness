@@ -51,8 +51,6 @@ const TERMINAL_CHAT_COORDINATE_MENU_PATH = new URL("../features/execution/client
 const TERMINAL_CHAT_CSS_PATH = new URL("../features/execution/client/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../features/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../features/quota/client/quota-panel.tsx", import.meta.url);
-const FILE_EXPLORER_CSS_PATH = new URL("../features/file-explorer/client/explorer.css", import.meta.url);
-const REPOSITORY_CSS_PATH = new URL("../features/repository/client/repository.css", import.meta.url);
 const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../features/workspace/shared/rail.ts", import.meta.url);
 const SDK_CAPTION_ACTIONS_PATH = new URL("../features/workspace/client/components/caption-actions.tsx", import.meta.url);
@@ -127,8 +125,6 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".directory-browser-sector-advance",
   ".whatsnew-close",
   ".alerts-icon-badge",
-  ".fexp-refresh-btn",
-  ".history-commit-avatar",
   // 승인 시안 §2의 검색 입력 글자 15px — 사다리(t-md 13·t-base 14·t-lg 17) 사이에 없는 Grok 원본 값이다.
   "#objective-search-input",
 ] as const;
@@ -518,17 +514,13 @@ describe("Console core design contract", () => {
   it("keeps selected controls stronger than hover and preserves forced-color form state", () => {
     const components = source("styles/components.css");
     const layout = source("styles/layout.css");
-    const explorer = externalSource(FILE_EXPLORER_CSS_PATH);
-    const repository = externalSource(REPOSITORY_CSS_PATH);
 
     expect(layout).not.toContain(".command-band-mode-seg");
     expect(layout).not.toContain(".command-band-mode-tool");
     expect(source("../../../features/remote-access/client/console-section.css")).toContain('.console-section-row:hover:not([aria-disabled="true"])');
     expect(components).toContain('.fleet-caption-action:hover:not(:disabled):not([aria-pressed="true"])');
-    expect(explorer).toContain('.fexp-view-mode button:hover:not(:disabled):not([aria-pressed="true"])');
-    expect(repository).toContain(".repository-toggle-btn:hover:not(.is-active)");
 
-    for (const css of [components, repository]) {
+    for (const css of [components]) {
       expect(css).toContain("@media (forced-colors: active)");
       expect(css).toContain("appearance: auto;");
     }
@@ -1424,8 +1416,6 @@ describe("Console core design contract", () => {
       [source("styles/components.css"), ".fc-coord-menu"],
       [source("../../../features/workspace/client/conversation/conversation-dock.css"), ".conversation-dock-menu"],
       [source("../../../features/workspace/client/commander-tab/commander-list.css"), ".commander-tab-menu"],
-      [externalSource(FILE_EXPLORER_CSS_PATH), ".fexp-context-menu"],
-      [externalSource(REPOSITORY_CSS_PATH), ".repository-context-menu"],
     ];
     for (const [css, selector] of surfaces) {
       const block = rule(css, selector);
@@ -1436,7 +1426,6 @@ describe("Console core design contract", () => {
     for (const [css, selector] of [
       [source("styles/components.css"), ".theater-menu-item"],
       [source("styles/components.css"), ".fc-composer-menu__item"],
-      [externalSource(FILE_EXPLORER_CSS_PATH), ".fexp-context-menu-item"],
     ] as const) {
       const block = rule(css, selector);
       expect(block, selector).toContain("min-height: var(--popover-row);");

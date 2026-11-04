@@ -7,10 +7,9 @@ const key = "session:commodore:commodore:owner";
 const stored: WorkbenchLayout = {
   ...EMPTY_WORKBENCH_LAYOUT,
   columns: [{ tiles: [
-    { id: "files", kind: "entry", entryId: "file-explorer" },
-    { id: "shell", kind: "surface", surfaceId: "shell", params: { tab: "saved" } },
-    { id: "repository", kind: "surface", surfaceId: "repository", params: {} },
-  ], weights: [2, 1, 3] }],
+    { id: "objectives", kind: "entry", entryId: "objectives" },
+    { id: "browser", kind: "browser" },
+  ], weights: [1, 3] }],
   columnWeights: [1],
   splitRatio: 0.6,
 };
@@ -43,8 +42,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// 확대 표면의 탭 복원 검사는 서버 작업대의 GET/PUT 경합을 지나지 않는다.
-// 읽기보다 먼저 온 도구 열기·변경이 다른 칸을 영구 삭제하지 않는 저장 무결성 경계를 검증한다.
+// 서버 작업대의 GET/PUT 경합을 지나지 않는다. 읽기보다 먼저 온 도구 열기·닫기가
+// 다른 칸을 영구 삭제하지 않는 저장 무결성 경계를 검증한다.
 it("applies startup edits to the saved workbench before persisting, including a reused tool on reload", async () => {
   vi.useFakeTimers();
   const api = server();
@@ -52,10 +51,9 @@ it("applies startup edits to the saved workbench before persisting, including a 
   workbench.loadWorkbenchLayouts();
   workbench.openWorkbenchEntry("commodore");
   workbench.setWorkbenchSplitRatio(0.7);
-  const shell = workbench.openWorkbenchSurface({ surfaceId: "shell", params: { tab: "linked" } });
-  workbench.replaceWorkbenchTileParams(shell, { tab: "updated" });
-  const closed = workbench.openWorkbenchSurface({ surfaceId: "shell", mode: "split" });
-  workbench.closeWorkbenchTile(closed, { confirmed: true });
+  workbench.openWorkbenchBrowser();
+  workbench.openWorkbenchEntry("quota");
+  workbench.closeWorkbenchEntry("quota");
   workbench.setWorkbenchConversation("another-owner");
   workbench.openWorkbenchBrowser();
   await vi.advanceTimersByTimeAsync(1_000);
@@ -69,11 +67,10 @@ it("applies startup edits to the saved workbench before persisting, including a 
   const layout = workbench.getWorkbenchLayout();
   expect(workbenchTiles(layout)).toEqual([
     stored.columns[0]!.tiles[0],
-    { ...stored.columns[0]!.tiles[1], params: { tab: "updated" } },
-    stored.columns[0]!.tiles[2],
+    stored.columns[0]!.tiles[1],
     expect.objectContaining({ kind: "entry", entryId: "commodore" }),
   ]);
-  expect(layout.columns[0]!.weights).toEqual([2, 1, 3]);
+  expect(layout.columns[0]!.weights).toEqual([1, 3, 2]);
   expect(layout.splitRatio).toBe(0.7);
   workbench.flushWorkbenchSaves();
   expect(api.writes.find((write) => write.key === key)?.layout).toEqual(layout);

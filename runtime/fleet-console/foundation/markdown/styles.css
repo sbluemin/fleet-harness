@@ -1,8 +1,8 @@
 /* @fleet-console/markdown — shared markdown/diagram styles.
-   Consumed by Markdown surfaces such as file-explorer. Token references (--brass, --aurora, etc.) are declared
+   Consumed by Markdown surfaces such as chat. Token references (--brass, --aurora, etc.) are declared
    in the consuming surface's theme.css and must be present at render time. */
 
-/* highlight.js 팔레트 — 다크 쪽은 테마별로 재조율되는 신택스 역할 채널(--syntax-*, theme.css)을 쓴다. 고정 GitHub-dark hex는 다크 테마에서 같은 채도(C≈.12~.18)로 튀었다. 라이트 쪽만 vendored GitHub(light) raw 리터럴이 sanctioned 예외로 남는다(다크 보정 범위 밖). 전환은 각 테마의 color-scheme을 따르는 light-dark()가 수행하며, color-scheme 미선언 표면은 다크 값을 쓴다. 역할 배정은 파일 탐색기 하이라이터(.syn-*)와 같다 — 같은 코드가 뷰어와 마크다운에서 다른 색으로 읽히지 않게. */
+/* highlight.js 팔레트 — 다크 쪽은 테마별로 재조율되는 신택스 역할 채널(--syntax-*, theme.css)을 쓴다. 고정 GitHub-dark hex는 다크 테마에서 같은 채도(C≈.12~.18)로 튀었다. 라이트 쪽만 vendored GitHub(light) raw 리터럴이 sanctioned 예외로 남는다(다크 보정 범위 밖). 전환은 각 테마의 color-scheme을 따르는 light-dark()가 수행하며, color-scheme 미선언 표면은 다크 값을 쓴다. 역할 배정은 코드 뷰어와 마크다운에서 같은 코드가 다른 색으로 읽히지 않게 맞춘다. */
 pre code.hljs {
   display: block;
   overflow-x: auto;

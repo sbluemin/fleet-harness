@@ -116,32 +116,6 @@ export function useCommodoreConversationActive(): boolean {
 }
 
 /**
- * 파일·저장소·Shell이 서는 대화인가 — 입력창 있는 사령관 대화가 가운데 칸에 서 있을 때만 true다.
- * 지휘관·구성원·일반 Objective 대화와 읽기 전용 기록 들여다보기는 해당하지 않는다.
- * 도구모음·타일·단축키·팔레트의 진입점 판정이 함께 읽는다(미션 4의 공통 틀).
- */
-export function isCommodoreToolsConversationSelected(): boolean {
-  const surface = getConversationSurface();
-  if (surface === null || surface.surfaceId !== COMMODORE_SURFACE_ID) return false;
-  const params = readParams(surface.params);
-  return params !== null && !params.readOnly;
-}
-
-/** 사령관 도구 대화가 바뀌면 깨운다 — 진입점 판정이 다시 그린다. */
-export function subscribeCommodoreToolsConversation(listener: () => void): () => void {
-  return subscribeConversationSurface(listener);
-}
-
-/** 사령관 도구 대화 여부를 따라 다시 그리는 훅. */
-export function useCommodoreToolsConversation(): boolean {
-  return useSyncExternalStore(
-    subscribeConversationSurface,
-    isCommodoreToolsConversationSelected,
-    () => false,
-  );
-}
-
-/**
  * 빈 상태의 「Theater 추가」가 간다 — 사령관 대화를 세우고 오른쪽 패널을 설정 탭 Theater 구역으로 연다.
  * 대화 배치 밖(모바일 등)에서는 대화가 서지 않아 false를 돌려준다.
  */

@@ -25,9 +25,7 @@ import type { TheaterInboxSectionDescriptor } from "../../../../features/workspa
 import { quotaClient, installQuotaClient } from "../../../../features/quota/client/index.js";
 import { TasksCommanderList, readTasksCommanderPlacement, useTasksCommanderPlacement } from "../../../../features/workspace/client/commander-tab/commander-tasks-list.js";
 import { scuttlebuttClient, installScuttlebuttClient } from "../../../../features/scuttlebutt/client/index.js";
-import { fileExplorerClient } from "../../../../features/file-explorer/client/index.js";
-import { repositoryClient } from "../../../../features/repository/client/index.js";
-const builtInPlugins = [fileExplorerClient, repositoryClient, quotaClient, scuttlebuttClient];
+const builtInPlugins = [quotaClient, scuttlebuttClient];
 import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 
 /** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */

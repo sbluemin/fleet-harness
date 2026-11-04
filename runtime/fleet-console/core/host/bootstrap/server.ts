@@ -3,8 +3,6 @@ import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveL
 import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
-import { createFileExplorerFeature } from "../../../features/file-explorer/host/index.js";
-import { createRepositoryFeature } from "../../../features/repository/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
@@ -68,7 +66,6 @@ import { resolveAgentCliBinary } from "../../../features/execution/host/agent/ag
 import type { ObjectiveRecord } from "../../../features/objectives/host/records/objective-records-domain.js";
 import { createObjectiveRecordsStore, createObjectiveRecordsRouter, createSanitizedOpDto } from "../../../features/objectives/host/records/objective-records-domain.js";
 import { stripConsoleInternalEnv } from "../../../features/execution/host/terminal/launch-env.js";
-import { parseToolShellKey } from "../../../features/execution/shared/shell-key.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "../../../features/remote-access/host/access-control-contract.js";
 import { parseAccessLink, sanitizeAccessLabel } from "../../../features/remote-access/host/access-link.js";
 import { createAccessRegistry, createLoopbackListenerIdentity, listenerAuthority, listenerOrigin, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type ListenerIdentity } from "../../../features/remote-access/host/auth.js";
@@ -2576,14 +2573,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, { canUseShellKey: (key) => {
-        // 도구 Shell 키(tool-shell:commodore:<사령관>:theater:<Theater>)는 그 사령관이 쓰기 가능할 때만 연다 —
-        // 대화 키와 같은 경계다. 모르는 키는 예전처럼 연다.
-        if (key.startsWith("session:commodore:commodore:")) return writableCommodore(key.slice("session:commodore:commodore:".length));
-        const tool = parseToolShellKey(key);
-        if (tool) return writableCommodore(tool.commodoreId);
-        return true;
-      } }, (commodoreId) => commodore?.pluginDirs(commodoreId) ?? [], (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {});
+      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, (commodoreId) => commodore?.pluginDirs(commodoreId) ?? [], (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {});
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
@@ -2616,7 +2606,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           stopObjectives: async (id) => {
             // 이미 시작한 보관 전이가 정지 뒤 저장하지 않도록 소유자 차단 후 큐를 비운다.
             await objectiveRecordArchive.settled();
-            await execution.stopShellForKey(`session:commodore:commodore:${id}`);
             for (const node of ownerRecords(id).flatMap(archiveSessionNodes)) await execution.stopForArchive(node, false);
           },
           detachObjectives: (id) => {
@@ -2770,25 +2759,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         agent: scuttlebuttAgent,
       });
       featureCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
-      const fileExplorerFeature = createFileExplorerFeature({
-        paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
-        security: consoleFeaturePorts.security,
-      });
-      featureCleanupCallbacks.add(() => fileExplorerFeature.dispose());
-      const repositoryFeature = createRepositoryFeature({
-        paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
-        security: consoleFeaturePorts.security,
-        processes: { spawnOwned: (request) => {
-          const child = ownedProcesses.spawn({
-            command: request.command, args: request.args,
-            ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
-            env: request.env ?? process.env, stdin: request.stdin ?? "pipe", owner: "feature:repository",
-          });
-          return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
-        } },
-      });
-      featureCleanupCallbacks.add(() => repositoryFeature.dispose());
-      for (const feature of [quotaFeature, scuttlebuttFeature, fileExplorerFeature, repositoryFeature]) {
+      for (const feature of [quotaFeature, scuttlebuttFeature]) {
         for (const route of feature.routes) {
           routeRegistry.register(route.path, route.handler);
           executionApiCatalog.push(...route.catalog);

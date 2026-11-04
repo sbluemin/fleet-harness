@@ -4,12 +4,8 @@ import { getGlobalSettingsStoreState, subscribe } from "../../../../features/set
 import type { ClientFeatureDescriptor } from "../../../../features/workspace/shared/feature-surfaces.js";
 
 import { agentAttentionNotification, agentObjectiveKind, agentExecution, agentSettingsSection, generalSettingsSection, installAgentExecution } from "../../../../features/execution/client/agent/index.js";
-import { globalShellEntry } from "../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { BrowserSessionHost } from "../../../../features/browser/client/browser-session-host.js";
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";
-import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
-import { connectShellLaunchContext, PersistentShellHost, shellSurface } from "../../../../features/execution/client/terminal/shell/index.js";
-import { connectShellSession } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { preloadTerminalFallbackFonts } from "../../../../features/execution/client/terminal/shared/terminal-fallback-fonts.js";
 import { connectTerminalFontSettings, connectTerminalSettings } from "../../../../features/execution/client/terminal/shared/terminal-preferences.js";
 import "../../../../features/execution/client/terminal/assets/fonts/symbols-nerd-font-mono.css";
@@ -25,10 +21,7 @@ import "@fontsource/nanum-gothic-coding/korean-700.css";
 export const consoleExecution: ClientFeatureDescriptor = {
   ...agentExecution,
   id: null,
-  railEntries: [globalShellEntry],
-  expandedSurfaces: [shellSurface],
   persistentComponents: [
-    { id: "terminal-shell-host", render: (ctx) => <PersistentShellHost language={ctx.language} theme={ctx.theme} /> },
     // Session 브라우저의 단축키 중계·엔진 가용성·shared 안내. 전역 브라우저 화면은 없다.
     { id: "browser-session-host", render: (ctx) => <BrowserSessionHost language={ctx.language} /> },
   ],
@@ -44,12 +37,8 @@ export function installConsoleExecution(ctx: ConsoleClientCapabilities): () => v
     });
     // 문서 수준 링크 라우터 — Console 수명 동안 한 번 선다.
     installGlobalLinkRouter();
-    const disconnectShellSession = connectShellSession(ctx.consoleEvents);
-    const disconnectShellLaunchContext = connectShellLaunchContext(ctx.consoleState, { get: getViewedTheaterId, subscribe: subscribeViewedTheater });
     const disposeAgent = installAgentExecution(ctx);
     return () => {
-      disconnectShellSession();
-      disconnectShellLaunchContext();
       if (typeof disposeAgent === "function") disposeAgent();
     };
 }

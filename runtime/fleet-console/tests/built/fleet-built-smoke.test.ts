@@ -468,7 +468,6 @@ afterEach(async () => {
   // through the real path: both spellings name one slot, so the killed Console's leftovers are the next one's to reclaim.
   it.skipIf(process.platform === "win32")("leaves no process behind and reclaims the lock and leftovers after an external SIGKILL", async () => {
     const run = createRun("sigkill");
-    installFeatureChildFixture(run);
     const linked = path.join(run.dir, "linked-root");
     fs.symlinkSync(run.root, linked, "dir");
     const group = spawnGroup(run, { env: { FLEET_DATA_DIR: linked, FLEET_CONSOLE_DATA_DIR: path.join(linked, "console") } });
@@ -476,8 +475,7 @@ afterEach(async () => {
     const endpoint = await waitForReady(run, consolePid);
     const attachment = await uploadAttachment(run, endpoint);
     await openWorkload(run, endpoint, { terminal: true });
-    const featureChildren = await openFeatureChildren(run, endpoint);
-    const started = [...descendantsOf(consolePid).filter((entry) => !featureChildren.some((child) => child.pid === entry.pid)), ...featureChildren];
+    const started = [...descendantsOf(consolePid)];
 
     process.kill(consolePid, "SIGKILL");
     await group.consoleExit(5_000);
@@ -492,27 +490,25 @@ afterEach(async () => {
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
   }, 60_000);
 
-  // L6n, e7874487:N9 (I2, I4; L6's feature children on the normal stop path). The same hung feature children must not hold a
-  // normal stop to the deadline: the single cleanup ends the features' registered groups after their grace — those whose
-  // CLI ignores SIGTERM by E1, those whose CLI ended (on SIGTERM, or by itself before the stop) but left a helper holding
-  // its pipes by one proving process-table read — so stop succeeds well inside B_int, the instance records `clean`, and
+  // L6n, e7874487:N9 (I2, I4; the agent residual on the normal stop path). The hung residual must not hold a
+  // normal stop to the deadline: the single cleanup ends the registered groups after their grace — those whose
+  // CLI ignores SIGTERM by E1, those whose CLI ended but left a helper holding its pipes by one proving
+  // process-table read — so stop succeeds well inside B_int, the instance records `clean`, and
   // nothing it started outlives it.
   // 에이전트 helper도 리더가 SDK 종료로 사라진 뒤 파이프를 잡는다. 플러그인만의 stop으로 이 방어를 대체할 수 없다.
-  it.skipIf(process.platform === "win32")("ends an agent residual and hung feature children on a normal stop and reports clean", async () => {
+  it.skipIf(process.platform === "win32")("ends an agent residual on a normal stop and reports clean", async () => {
     // claude-agent-sdk 0.3.306 close(): EOF grace 2000ms + 최종 SIGKILL까지 5000ms. 벤더 갱신 시 재측정한다.
     const sdkCloseMaxMs = 2_000 + 5_000;
     expect(Math.max(sdkCloseMaxMs, OWNED_GROUP_TERM_GRACE_MS) + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS,
       "정지 grace는 SDK 종료와 겹쳐야 하고, 증명 조회와 스케줄링 여유까지 B_int 안에 들어야 한다").toBeLessThan(CONSOLE_STOP_DEADLINE_MS);
     const run = createRun("plugin-stop");
-    installFeatureChildFixture(run);
     run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     const consoleProcess = spawnConsole(run);
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
     await openWorkload(run, endpoint, { terminal: false });
     expect(agentProcs(run).some((entry) => entry.role === "chat-residual"), "에이전트 잔여 helper가 실행되어야 한다").toBe(true);
-    const featureChildren = await openFeatureChildren(run, endpoint);
-    const started = [...descendantsOf(consoleProcess.pid!).filter((entry) => !featureChildren.some((child) => child.pid === entry.pid)), ...featureChildren];
+    const started = [...descendantsOf(consoleProcess.pid!)];
     await provableByStartTime(startedAt);
 
     const stoppedAt = Date.now();
@@ -521,7 +517,7 @@ afterEach(async () => {
     const elapsedMs = Date.now() - stoppedAt;
 
     console.log(`L6n stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: EXTERNAL_ESCALATION_MS - elapsedMs })}`);
-    lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung feature child is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
+    lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung agent residual is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
     lifecycleCheck("L6n", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "the Console ends by itself and records `clean`", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run) } });
     lifecycleCheck("L6n", elapsedMs < EXTERNAL_ESCALATION_MS, "I4: a clean stop returns before the actor's escalation (B_ext)", { detail: { elapsedMs } });
     const left = await survivors(run, started);
@@ -590,87 +586,6 @@ afterEach(async () => {
     expect(record?.stopReason).toBe("request");
   }, 90_000);
 
-  // W1/W5: 에이전트와 멈춘 플러그인을 함께 정지한다. 플러그인의 detached·native 손자와 에이전트 잔여가
-  // B_int 안에 사라지고 clean을 기록해야 한다. 첫 spawn 전 direct breakaway는 error 5로 거부돼야 하고,
-  // spawn 뒤 내부 libuv Job을 벗어나는 호출이 성공하면 장기 생존 자식이 stop과 함께 종료돼야 한다.
-  // Start-Process는 headless runner 한계로 필수 역할에서 제외한다(계약의 powershell-intermediate 잔류).
-  // N9-W2: 외부 CLI stop이 토큰 인증 정지 요청으로 cleanup을 실행하므로 실제 dist/cli.mjs stop으로 멈춘다.
-  it.skipIf(process.platform !== "win32")("ends a hung feature child's grandchildren on an external stop and denies breakaway", async () => {
-    const run = createRun("win-plugin-stop");
-    const breakawayFile = path.join(run.dir, "breakaway.json");
-    const pluginBreakawayFile = path.join(run.dir, "plugin-breakaway.json");
-    run.env.FEATURE_CHILD_WINDOWS_GRANDCHILDREN = "1";
-    run.env.FEATURE_CHILD_BREAKAWAY_RESULT = pluginBreakawayFile;
-    installFeatureChildFixture(run);
-    run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
-    run.env.FAKE_AGENT_BREAKAWAY_RESULT = breakawayFile;
-    run.env.FAKE_AGENT_KOFFI = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
-    const consoleProcess = spawnConsole(run);
-    const endpoint = await waitForReady(run, consoleProcess.pid!);
-    await openWorkload(run, endpoint, { terminal: false });
-    expect(agentProcs(run).some((entry) => entry.role === "chat-residual"), "에이전트 잔여 helper가 실행되어야 한다").toBe(true);
-    const featureChildren = await openFeatureChildren(run, endpoint);
-    const started = [...featureChildren, ...descendantsOf(consoleProcess.pid!)];
-    type PluginBreakawayAttempt = { phase: string; nonDetachedSpawns: number; ok: boolean; err: number; pid: number; callerPid: number };
-    const pluginBreakaway = JSON.parse(fs.readFileSync(pluginBreakawayFile, "utf8")) as { beforeSpawn: PluginBreakawayAttempt; afterSpawn: PluginBreakawayAttempt };
-    const before = pluginBreakaway.beforeSpawn;
-    const after = pluginBreakaway.afterSpawn;
-    expect(before.phase).toBe("before-non-detached-spawn");
-    expect(before.nonDetachedSpawns, "직접 게이트 전에 non-detached 자식을 띄우면 안 된다").toBe(0);
-    expect(before.ok, `직접 호출은 거부돼야 한다: ${JSON.stringify(before)}`).toBe(false);
-    expect(before.err, "직접 호출은 ACCESS_DENIED여야 한다").toBe(5);
-    expect(after.phase).toBe("after-non-detached-spawn");
-    expect(after.nonDetachedSpawns, "후속 게이트 전에 실제 non-detached 자식이 실행돼야 한다").toBeGreaterThan(0);
-    expect(after.callerPid, "두 경로는 동일한 플러그인 리더에서 실행돼야 한다").toBe(before.callerPid);
-    expect(typeof after.ok).toBe("boolean");
-    // libuv 내부 Job에서의 breakaway는 허용되지만 G는 벗어나지 못한다. run 37404900488의 explicit-G
-    // 일회성 증거와 Node v22 uv__init_global_job_handle이 근거다. Commodore 결정 C는 G 소속 영구 조회를
-    // 이 증거로 갈음하고, 사용자 보장인 stop 뒤 고아 0을 행동으로 단언한다. 향후 API가 거부하면 err=5만 허용한다.
-    let pluginBreakawayStartedAt: string | null = null;
-    if (after.ok) {
-      expect(after.ok).toBe(true);
-      expect(after.err).toBe(0);
-      expect(after.pid, "성공한 호출은 실제 자식 pid를 반환해야 한다").toBeGreaterThan(0);
-      pluginBreakawayStartedAt = processStartTime(after.pid);
-      expect(pluginBreakawayStartedAt, "성공한 breakaway 자식은 stop 전 실제로 살아 있어야 한다").not.toBeNull();
-      own(after.pid);
-      started.push({ pid: after.pid, startedAt: pluginBreakawayStartedAt!, command: "plugin-breakaway-child" });
-    } else {
-      expect(after.err, "동작이 바뀌어 거부되는 경우도 ACCESS_DENIED만 격리 유지로 인정한다").toBe(5);
-    }
-    const breakaway = JSON.parse(fs.readFileSync(breakawayFile, "utf8")) as { ok?: boolean; err?: number; pid?: number };
-    // Nested with libuv's breakaway-ok job, Windows may accept the flag and still keep the child in our job.
-    // Either the call is denied, or the process it created dies with the console. A survivor is the failure.
-    if (breakaway.ok) {
-      const startedAt = processStartTime(breakaway.pid ?? 0);
-      expect(startedAt, `breakaway process was not visible (${JSON.stringify(breakaway)})`).not.toBeNull();
-      own(breakaway.pid!);
-      started.push({ pid: breakaway.pid!, startedAt: startedAt!, command: "breakaway" });
-    } else {
-      expect(breakaway.err, `breakaway failed for an unexpected reason (${JSON.stringify(breakaway)})`).toBe(5);
-    }
-    for (const role of ["detached", "native"]) {
-      expect(featureChildren.some((child) => child.command === `feature-cli ${role}`), `${role} grandchild was not started`).toBe(true);
-    }
-    if (after.ok) {
-      expect(processStartTime(after.pid), "stop 직전에도 성공한 breakaway 자식이 같은 생성 시각으로 살아 있어야 한다").toBe(pluginBreakawayStartedAt);
-    }
-
-    const stoppedAt = Date.now();
-    const stop = await runStop(run.env);
-    const exit = await exitOf(consoleProcess, 30_000);
-    const elapsedMs = Date.now() - stoppedAt;
-
-    console.log(`W1 stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: EXTERNAL_ESCALATION_MS - elapsedMs })}`);
-    lifecycleCheck("W1", stop.status === 0 && stop.stdout.includes("stopped"), "an external stop is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), stderr: stop.stderr.trim(), elapsedMs } });
-    lifecycleCheck("W1", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "an external stop records clean", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run), elapsedMs } });
-    lifecycleCheck("W1", elapsedMs < EXTERNAL_ESCALATION_MS, "I4: a clean stop returns before the actor's escalation (B_ext)", { detail: { elapsedMs } });
-    const left = await survivors(run, started);
-    if (after.ok) {
-      expect(processStartTime(after.pid), `stop 뒤 성공한 breakaway 자식이 남으면 안 된다: pid=${after.pid}, startedAt=${pluginBreakawayStartedAt}`).not.toBe(pluginBreakawayStartedAt);
-    }
-    lifecycleCheck("W1", left.length === 0, "I2: the feature child and its grandchildren do not outlive the Console", { detail: { survivors: left, failureLog: failureKinds(run) } });
-  }, 150_000);
 
   // W2. An uncaught exception while a fake agent, its MCP child, and a detached grandchild are running. The job closes
   // with the process, so none of them is still the process we recorded.
@@ -1001,77 +916,6 @@ function windowsFakeAgentExe(): string {
   return exePath;
 }
 
-/**
- * Grandchild setup baked into the stand-in, so the flag is not read from the feature child's environment at runtime.
- * A failure is appended to the same pids file the timeout prints.
- */
-function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefined): readonly string[] {
-  if (!enabled) return [];
-  if (!breakawayFile) throw new Error("플러그인 breakaway 결과 경로가 필요합니다");
-  const koffiEntry = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
-  return [
-    "if (role === 'cli-ignores') {",
-    "  let once = false;",
-    "  try { require('fs').mkdirSync(require('path').join(__dirname, 'grandchildren.lock')); once = true; } catch (error) {}",
-    "  if (once) try {",
-    "    const fs = require('fs');",
-    "    // 할당 경합을 제거했다는 증거가 아니다. race 측정은 M2가 맡고 W1은 containment 게이트만 확인한다.",
-    "    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);",
-    "    const path = require('path');",
-    "    const { spawn: nativeSpawn } = require('child_process');",
-    "    let nonDetachedSpawns = 0;",
-    "    const spawn = (command, args, options) => { const child = nativeSpawn(command, args, options); if (child.pid && options?.detached !== true) nonDetachedSpawns += 1; return child; };",
-    "    const note = (text) => record('windows-error', String(text).replace(/\\s+/g, ' ').slice(0, 400));",
-    `    const koffi = require(${JSON.stringify(koffiEntry)});`,
-    "    const kernel32 = koffi.load('kernel32.dll');",
-    "    const CreateProcessW = kernel32.func('__stdcall', 'CreateProcessW', 'int', ['void *', koffi.pointer('uint16'), 'void *', 'void *', 'int', 'uint32', 'void *', 'void *', koffi.pointer('uint8'), koffi.pointer('uint8')]);",
-    "    const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32', []);",
-    "    const GetCurrentProcess = kernel32.func('__stdcall', 'GetCurrentProcess', 'void *', []);",
-    "    const IsProcessInJob = kernel32.func('__stdcall', 'IsProcessInJob', 'int', ['void *', 'void *', koffi.out(koffi.pointer('int32'))]);",
-    "    const CloseHandle = kernel32.func('__stdcall', 'CloseHandle', 'int', ['void *']);",
-    "    const runBreakaway = (phase, stayAlive) => {",
-    "      const inJob = Buffer.alloc(4);",
-    "      const queryOk = Boolean(IsProcessInJob(GetCurrentProcess(), null, inJob));",
-    "      // NULL(any-job)은 G 소속 증명이 아니다. 정확한 G 소속의 영구 조회는 Commodore 결정 C로 면제한다.",
-    "      const inAnyJob = queryOk ? inJob.readInt32LE(0) !== 0 : null;",
-    "      const q = String.fromCharCode(34);",
-    "      const command = stayAlive ? q + process.execPath + q + ' -e ' + q + 'setInterval(()=>{},1<<30)' + q : 'cmd.exe /c exit 0';",
-    "      const cmd = Buffer.from(command + String.fromCharCode(0), 'utf16le');",
-    "      const si = Buffer.alloc(104); si.writeUInt32LE(104, 0);",
-    "      const pi = Buffer.alloc(24);",
-    "      const ok = CreateProcessW(null, cmd, null, null, 0, 0x01000000, null, null, si, pi);",
-    "      const err = ok ? 0 : Number(typeof koffi.errno === 'function' ? koffi.errno() : 0) || Number(GetLastError());",
-    "      const pid = ok ? pi.readUInt32LE(16) : 0;",
-    "      if (ok) { CloseHandle(koffi.decode(pi, 0, 'void *')); CloseHandle(koffi.decode(pi, 8, 'void *')); }",
-    "      return { phase, nonDetachedSpawns, ok: Boolean(ok), err, pid, callerPid: process.pid, inAnyJob, queryOk };",
-    "    };",
-    "    // 이 블록은 생성된 stand-in의 모든 spawn 호출보다 먼저 배치되고, 호출은 동기로 끝난다.",
-    "    const beforeSpawn = runBreakaway('before-non-detached-spawn', false);",
-    "    const stay = path.join(__dirname, 'stay.js');",
-    "    fs.writeFileSync(stay, 'setInterval(() => {}, 1 << 30);\\n');",
-    "    try {",
-    "      const detached = spawn(process.execPath, [stay], { detached: true, stdio: 'ignore', windowsHide: true });",
-    "      detached.unref();",
-    "      if (detached.pid) record('detached', detached.pid);",
-    "      else note('detached spawn returned no pid');",
-    "    } catch (error) { note('detached ' + (error && error.message || error)); }",
-    "    // Start-Process does not return on the headless windows-2022 session (it blocks until the timeout), so it is not a required grandchild here.",
-    "    const pidFile = path.join(__dirname, 'native.pid');",
-    "    const bridge = path.join(__dirname, 'native-bridge.js');",
-    "    fs.writeFileSync(bridge, \"const {spawn}=require('child_process'); const fs=require('fs'); const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 400'],{stdio:'ignore',windowsHide:true}); fs.writeFileSync(process.argv[2], String(child.pid)); setInterval(()=>{},1<<30);\\n\");",
-    "    spawn(process.execPath, [bridge, pidFile], { stdio: 'ignore', windowsHide: true });",
-    "    const deadline = Date.now() + 5000;",
-    "    while (!fs.existsSync(pidFile) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);",
-    "    if (fs.existsSync(pidFile)) record('native', Number(fs.readFileSync(pidFile, 'utf8')));",
-    "    else note('native grandchild pid was not written');",
-    "    const afterSpawn = runBreakaway('after-non-detached-spawn', true);",
-    `    fs.writeFileSync(${JSON.stringify(breakawayFile)}, JSON.stringify({ beforeSpawn, afterSpawn }));`,
-    "  } catch (error) {",
-    "    try { record('windows-error', String(error && error.message || error).replace(/\\s+/g, ' ').slice(0, 400)); } catch {}",
-    "  }",
-    "}",
-  ];
-}
 
 function windowsRunEnv(home: string, tmp: string, pathbin: string, root: string, dir: string, agentDir: string): LifecycleRun["env"] {
   const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:\\Windows";
@@ -1393,103 +1237,6 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
   }
 }
 
-/** Repository fetches exercise the product's owned-process port without an extension loader. */
-function featureChildRoot(run: LifecycleRun): string {
-  return path.join(run.dir, "feature-child");
-}
-
-function installFeatureChildFixture(run: LifecycleRun): void {
-  const root = featureChildRoot(run);
-  fs.mkdirSync(root, { recursive: true });
-  fs.mkdirSync(path.join(run.theater, ".git"), { recursive: true });
-  // Interpose only the Git executable, not Console's ownership or containment implementation.
-  // Non-fetch probes return the fixture repository; fetch starts the same hostile CLI shapes as before.
-  const preload = writePreload(run, "repository-git.mjs", [
-    "import cp from 'node:child_process';",
-    "import { syncBuiltinESMExports } from 'node:module';",
-    "const original = cp.spawn;",
-    "cp.spawn = function(command, args, options) {",
-    "  if (command !== 'git') return original.call(this, command, args, options);",
-    `  if (args.includes('fetch')) return original.call(this, process.execPath, [${JSON.stringify(path.join(root, "cli.mjs"))}], options);`,
-    `  const output = args.includes('rev-parse') ? (args.includes('--abbrev-ref') ? 'main' : ${JSON.stringify(path.join(run.theater, ".git"))}) : args.includes('remote') || args.some(a => a.endsWith('.remote')) ? 'origin' : '';`,
-    "  return original.call(this, process.execPath, ['-e', 'process.stdout.write(' + JSON.stringify(output + \"\\n\") + ')'], options);",
-    "};",
-    "syncBuiltinESMExports();",
-  ]);
-  run.env.NODE_OPTIONS = `--import ${pathToFileURL(preload).href}`;
-}
-
-/**
- * A feature's own long-running children (N7): four requests to the Repository fixture each start its CLI stand-in once through
- * the feature's owned-process port, and the stand-in hangs in the three shapes a CLI leaves behind. Two runs ignore SIGTERM
- * themselves. One run ends on SIGTERM but leaves a helper that ignores it and holds the run's inherited stdout and stderr
- * (N9). One run leaves the same helper and exits by itself before any stop, as a CLI that timed out does. The runs claim
- * those shapes in arrival order, so the four concurrent runs always split the same way. Only the Console's containment
- * ends them. Returns every process recorded, with its start time, so a case watches the helpers too once they are no
- * longer the Console's descendants. The suite owns each one at once: one that escapes is reparented away from the Console
- * and would otherwise outlive the case.
- */
-async function openFeatureChildren(run: LifecycleRun, endpoint: string): Promise<Array<{ readonly pid: number; readonly startedAt: string; readonly command: string }>> {
-  const pkg = featureChildRoot(run);
-  const pids = path.join(pkg, "pids");
-  fs.writeFileSync(path.join(pkg, "cli.mjs"), [
-    "import { createRequire } from 'node:module';",
-    "import { fileURLToPath } from 'node:url';",
-    "const require = createRequire(import.meta.url);",
-    "const __dirname = require('path').dirname(fileURLToPath(import.meta.url));",
-    `const record = (role, pid) => require("fs").appendFileSync(${JSON.stringify(pids)}, role + " " + pid + "\\n");`,
-    "const claim = (name) => { try { require('fs').mkdirSync(require('path').join(__dirname, name)); return true; } catch { return false; } };",
-    "const role = claim('claim-gone') ? 'cli-gone' : claim('claim-honours') ? 'cli-honours' : 'cli-ignores';",
-    // Windows 직접 게이트가 elected 리더의 첫 spawn보다 반드시 앞서 실행되도록 배치한다.
-    ...windowsGrandchildLines(run.env.FEATURE_CHILD_WINDOWS_GRANDCHILDREN === "1", run.env.FEATURE_CHILD_BREAKAWAY_RESULT),
-    "if (role !== 'cli-ignores') {",
-    "  const helper = require('child_process').spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);\"], { stdio: 'inherit' });",
-    "  record(role === 'cli-gone' ? 'helper-gone' : 'helper', helper.pid);",
-    "  record(role, process.pid);",
-    "  if (role === 'cli-gone') setTimeout(() => process.exit(0), 100);",
-    "} else {",
-    "  process.on('SIGTERM', () => {});",
-    "  record(role, process.pid);",
-    "}",
-    "setInterval(() => {}, 1 << 30);",
-  ].join("\n"));
-  const grant = await consoleApi<{ folderGrantId?: string; id?: string; grant?: { id: string } }>(endpoint, "/api/v1/theaters/folder-grants", { path: run.theater });
-  const { commodoreId } = await consoleApi<{ commodoreId: string }>(endpoint, "/api/v1/commodore/create", { alias: "Feature children fixture" });
-  const { theaterId } = await consoleApi<{ theaterId: string }>(endpoint, "/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
-  // Each request answers only once the CLI does; the requests end with the Console.
-  for (let request = 0; request < 4; request += 1) {
-    void consoleApi(endpoint, "/api/v1/repository/fetch", { commodoreId, theaterId }).catch(() => {});
-  }
-  const recorded = () => fs.existsSync(pids)
-    ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map((line) => { const [role, pid] = line.split(" "); return { role: role!, pid: Number(pid) }; })
-    : [];
-  // Four CLI runs and the two helpers.
-  await waitUntil(() => recorded().length >= 6, 20_000, "the Repository fixture did not start its CLI");
-  if (run.env.FEATURE_CHILD_WINDOWS_GRANDCHILDREN === "1") {
-    const ready = () => {
-      const roles = new Set(recorded().map((entry) => entry.role));
-      return roles.has("detached") && roles.has("native") && run.env.FEATURE_CHILD_BREAKAWAY_RESULT !== undefined && fs.existsSync(run.env.FEATURE_CHILD_BREAKAWAY_RESULT);
-    };
-    const deadline = Date.now() + 40_000;
-    while (!ready() && Date.now() < deadline) await delay(25);
-    if (!ready()) {
-      const body = fs.existsSync(pids) ? fs.readFileSync(pids, "utf8") : "(no pids file)";
-      throw new Error(`the feature child did not start its Windows grandchildren\n${body}`);
-    }
-  }
-  const entries = recorded();
-  for (const entry of entries) own(entry.pid);
-  const roles = entries.map((entry) => entry.role);
-  expect(roles.filter((role) => role === "cli-ignores"), "two CLI runs must ignore SIGTERM").toHaveLength(2);
-  expect(roles.filter((role) => role === "cli-honours"), "one CLI run must leave a helper and end on SIGTERM").toHaveLength(1);
-  const gone = entries.find((entry) => entry.role === "cli-gone");
-  expect(gone, "one CLI run must leave a helper and exit by itself").toBeDefined();
-  await waitUntil(() => !isAlive(gone!.pid), 10_000, "the timed-out CLI stand-in did not exit by itself");
-  return entries.flatMap((entry) => {
-    const startedAt = processStartTime(entry.pid);
-    return startedAt === null ? [] : [{ pid: entry.pid, startedAt, command: `feature-cli ${entry.role}` }];
-  });
-}
 
 const ONE_PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 

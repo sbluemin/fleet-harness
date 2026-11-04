@@ -2,7 +2,7 @@ import type { ClientConsoleStateCapability } from "./console-state.js";
 import type { ConversationPillTakeover } from "./conversation-pill.js";
 import type { ClientNotificationsCapability } from "../../execution/shared/notification-ports.js";
 import type { ClientRailCapability } from "./navigation-ports.js";
-import type { ClientNavigateCapability, ClientShellCapability } from "./navigation.js";
+import type { ClientNavigateCapability } from "./navigation.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
@@ -199,7 +199,6 @@ export interface ConversationWorkLocation {
  */
 export interface PaneContext {
   readonly navigate: ClientNavigateCapability;
-  readonly shell: ClientShellCapability;
   readonly rail: ClientRailCapability;
   /** Theater 이름·활성 Theater처럼 페인 머리에 필요한 콘솔 상태 — install ctx와 같은 읽기 창구다. */
   readonly consoleState: ClientConsoleStateCapability;

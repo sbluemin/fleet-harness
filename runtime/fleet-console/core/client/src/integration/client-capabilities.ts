@@ -16,12 +16,11 @@ import type { ClientNotificationsCapability } from "../../../../features/executi
 import type { ClientTerminalCapability } from "../../../../features/execution/shared/client-contract.js";
 import type { ClientLifecycleCapability } from "@fleet-console/infra/http/client-ports";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
-import type { ClientNavigateCapability, ClientShellCapability } from "../../../../features/workspace/shared/navigation.js";
+import type { ClientNavigateCapability } from "../../../../features/workspace/shared/navigation.js";
 import type { ClientTheaterInboxCapability } from "../../../../features/workspace/shared/theater-inbox.js";
 import type { ClientAgentChatCapability } from "../../../../features/execution/shared/chat-renderer.js";
 export interface ConsoleClientCapabilities {
   readonly navigate: ClientNavigateCapability;
-  readonly shell: ClientShellCapability;
   readonly api: ClientApiCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly terminal: ClientTerminalCapability;

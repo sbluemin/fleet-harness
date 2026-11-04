@@ -10,7 +10,7 @@ Rebuild any workspace package the change touched first (`pnpm --filter @fleet-co
 
 ### 2. Boot it isolated, with the levers already set
 
-Isolate the handoff exactly as an E2E run does: boot through the console-e2e [isolated-environment wrapper](../../console-e2e/references/setup.md#keep-the-real-home-out), which replaces `HOME` and every inherited Fleet and Claude path with owned directories under `<handoff-dir>`, and follow [Claude state and trust preflight](../../console-e2e/references/claude-state.md) for trust preparation whenever the scenario may start Claude (terminal or chat). The user will open the Shell surface in this instance too, so its history stays under `<handoff-dir>/home`:
+Isolate the handoff exactly as an E2E run does: boot through the console-e2e [isolated-environment wrapper](../../console-e2e/references/setup.md#keep-the-real-home-out), which replaces `HOME` and every inherited Fleet and Claude path with owned directories under `<handoff-dir>`, and follow [Claude state and trust preflight](../../console-e2e/references/claude-state.md) for trust preparation whenever the scenario may start Claude (terminal or chat). The user may start agent terminals in this instance too, so their history stays under `<handoff-dir>/home`:
 
 ```bash
 nohup node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir <handoff-dir> \

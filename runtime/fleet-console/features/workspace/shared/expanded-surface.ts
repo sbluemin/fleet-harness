@@ -1,7 +1,7 @@
 import type { ClientConsoleStateCapability } from "./console-state.js";
 import type { ClientNotificationsCapability } from "../../execution/shared/notification-ports.js";
 import type { ClientRailCapability } from "./navigation-ports.js";
-import type { ClientNavigateCapability, ClientShellCapability } from "./navigation.js";
+import type { ClientNavigateCapability } from "./navigation.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
@@ -87,7 +87,6 @@ export interface ExpandedSurfaceDescriptor {
 
 export interface ExpandedSurfaceContext {
   readonly navigate: ClientNavigateCapability;
-  readonly shell: ClientShellCapability;
   readonly rail: ClientRailCapability;
   /** Theater 이름·활성 Theater 등 콘솔 상태 읽기 창구 — install ctx와 같다. */
   readonly consoleState: ClientConsoleStateCapability;
