@@ -21,6 +21,7 @@ import { commodoreAvatarKey, mongleBase } from "../../workspace/shared/avatars.j
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import "./commodore-routines.css";
 import "./global-plugins.css";
+import "../../settings/client/settings-modal.css";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -330,24 +331,23 @@ function GlobalPluginGroup({ t, plugins, entries, phone, authOf, updateMark, get
   readonly onOpenGlobal?: () => void;
 }) {
   if (!plugins.length) return null;
-  return <div className="commodore-global-group">
-    <p className="commodore-plugins-group-head"><GlobalPluginMark /><span>{t("commodore.plugins.global.group")}</span><button type="button" className="commodore-plugins-text" onClick={(event) => { event.stopPropagation(); if (onOpenGlobal) onOpenGlobal(); else openGlobalPalette(event.currentTarget); }}>{t(onOpenGlobal ? "commodore.plugins.reach.switchGlobal" : "commodore.plugins.global.manage")}</button></p>
-    <ul className={`commodore-plugins-list${phone ? " is-phone" : ""}`}>
-      {plugins.map((pluginId) => {
-        const { plugin, marketplace } = splitPluginId(pluginId);
-        const entry = entries.get(pluginId);
-        const title = titleOf(entry, plugin);
-        const handlers = getRowHandlers(pluginId);
-        return <li key={pluginId} className={`commodore-plugins-row commodore-global-row${handlers.tabIndex === 0 ? " is-auth" : ""}${handlers["aria-expanded"] ? " is-target" : ""}`} aria-label={title} {...handlers}>
-          <span className="commodore-global-tile"><PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size={phone ? "phone" : "row"} /><span className="commodore-global-badge"><GlobalPluginMark /></span></span>
-          <span className="commodore-plugins-name">{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
-          <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
-          <span className="commodore-plugins-meta">{updateMark(entry, pluginId)}{authMark(t, authOf.get(pluginId))}{reachOf?.(pluginId)}<Components t={t} components={entry?.components} /></span>
-          {renderInline(pluginId, title)}
-        </li>;
-      })}
-    </ul>
-  </div>;
+  const head = <button type="button" className="commodore-plugins-text" onClick={(event) => { event.stopPropagation(); if (onOpenGlobal) onOpenGlobal(); else openGlobalPalette(event.currentTarget); }}>{t(onOpenGlobal ? "commodore.plugins.reach.switchGlobal" : "commodore.plugins.global.manage")}</button>;
+  const rows = plugins.map((pluginId) => {
+    const { plugin, marketplace } = splitPluginId(pluginId);
+    const entry = entries.get(pluginId);
+    const title = titleOf(entry, plugin);
+    const handlers = getRowHandlers(pluginId);
+    return <div key={pluginId} className={`${phone ? "mobile-group-row " : "global-settings-row "}commodore-plugins-row commodore-global-row${handlers.tabIndex === 0 ? " is-auth" : ""}${handlers["aria-expanded"] ? " is-target" : ""}`} aria-label={title} {...handlers}>
+      <span className="commodore-global-tile"><PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size={phone ? "phone" : "row"} /><span className="commodore-global-badge"><GlobalPluginMark /></span></span>
+      <span className="commodore-plugins-name">{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
+      <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
+      <span className="commodore-plugins-meta">{updateMark(entry, pluginId)}{authMark(t, authOf.get(pluginId))}{reachOf?.(pluginId)}<Components t={t} components={entry?.components} /></span>
+      {renderInline(pluginId, title)}
+    </div>;
+  });
+  return phone
+    ? <section className="mobile-group" aria-label={t("commodore.plugins.global.group")}><h3 className="fc-settings-card__title"><GlobalPluginMark />{t("commodore.plugins.global.group")}{head}</h3><div className="mobile-group is-flush">{rows}</div></section>
+    : <SettingsGroup ariaLabel={t("commodore.plugins.global.group")} title={<><GlobalPluginMark />{t("commodore.plugins.global.group")}{head}</>}>{rows}</SettingsGroup>;
 }
 
 /**
@@ -1035,10 +1035,10 @@ function PluginScopeRows({ t, commodoreId, phone = false, onOpenGlobal }: { read
   </div>, document.body) : null;
 
   const list = phone ? (
-    <div className="objectives-cm-grp">
+    <div className="objectives-cm-grp mobile-group is-flush">
       {rows.map(({ pluginId, title, marketplace, entry, mark, replacement, reach }) => (
         <Fragment key={pluginId}>
-          <div className={`objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId && !menu.global ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
+          <div className={`mobile-group-row objectives-cm-gr commodore-plugins-phone-row${menu?.pluginId === pluginId && !menu.global ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
             <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="phone" />
             <span className="objectives-cm-gr-tx"><span className="commodore-plugins-name">{title}</span><small className="is-mono">@{marketplace}</small><small className="commodore-plugins-meta">{mark}{openNow(pluginId)}{reach}<Components t={t} components={entry?.components} /></small></span>
             <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
@@ -1049,24 +1049,24 @@ function PluginScopeRows({ t, commodoreId, phone = false, onOpenGlobal }: { read
       ))}
     </div>
   ) : rows.length ? (
-    <ul className="commodore-plugins-list">
+    <SettingsGroup ariaLabel={t("commodore.plugins.global.own")} title={t("commodore.plugins.global.own")}>
       {rows.map(({ pluginId, title, marketplace, entry, mark, replacement, reach }) => (
-        <li key={pluginId} className={`commodore-plugins-row${menu?.pluginId === pluginId && !menu.global ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
+        <div key={pluginId} className={`global-settings-row commodore-plugins-row${menu?.pluginId === pluginId && !menu.global ? " is-target" : ""}${replacement ? " is-replaced" : ""}`} aria-label={title} aria-describedby={replacement ? `${replacementId}-${pluginId}` : undefined} {...rowHandlers(pluginId)}>
           <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="row" />
           <span className="commodore-plugins-name" title={pluginId}>{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
           <span className="commodore-plugins-version">{rowVersion(entry?.version)}</span>
           <span className="commodore-plugins-meta">{mark}{openNow(pluginId)}{reach}<Components t={t} components={entry?.components} /></span>
           <ReplacementHint t={t} replacement={replacement} id={`${replacementId}-${pluginId}`} />
           {inline(pluginId, title)}
-        </li>
+        </div>
       ))}
-    </ul>
+    </SettingsGroup>
   ) : null;
 
   return (
     <div className={`commodore-plugins${phone ? " is-phone" : ""}`} style={identityStyle}>
       {globalGroup}
-      {ownHeading}
+      {phone ? ownHeading : null}
       {list}
       {failureLine}
       {note ? <p className={phone ? "objectives-cm-secnote" : "objectives-commodore-hint"}>{note}</p> : null}
@@ -1116,12 +1116,18 @@ interface RowState {
   readonly code?: string;
 }
 
-function CommodoreScopeButton({ commodoreId, name, current, onSelect }: { readonly commodoreId: string; readonly name: string; readonly current: boolean; readonly onSelect: () => void }) {
+function CommodoreScopeButton({ commodoreId, name, current, nav, onSelect }: { readonly commodoreId: string; readonly name: string; readonly current: boolean; readonly nav: boolean; readonly onSelect: () => void }) {
   const { view } = useCommodore(commodoreId);
+  const count = view?.state.plugins?.length ?? 0;
+  if (nav) return <button type="button" className="settings-modal-tab" role="tab" aria-selected={current} onClick={onSelect}>
+    <span className="settings-modal-tab-glyph" aria-hidden="true"><CommodoreAvatar commodoreId={commodoreId} state="idle" size={18} label="" decorative /></span>
+    <span className="settings-modal-tab-label">{name}</span>
+    <span className="settings-modal-tab-count">{count}</span>
+  </button>;
   return <button type="button" className="commodore-palette-scope" aria-current={current ? "true" : undefined} onClick={onSelect}>
     <CommodoreAvatar commodoreId={commodoreId} state="idle" size={22} label="" decorative />
     <span className="commodore-palette-scope-name">{name}</span>
-    <span className="commodore-palette-scope-count">{view?.state.plugins?.length ?? 0}</span>
+    <span className="commodore-palette-scope-count">{count}</span>
   </button>;
 }
 
@@ -1314,35 +1320,30 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
   const body = !view ? <p className="commodore-plugins-empty" role={error ? "alert" : "status"}>{error ? errorWord(t, error) : t("commodore.plugins.loading")}</p>
     : enabled.length === 0 ? <p className="commodore-plugins-empty">{t("commodore.plugins.palette.none")}</p>
       : groups.length === 0 ? <p className="commodore-plugins-empty">{t("commodore.plugins.palette.empty", { query: query.trim() })}</p>
-        : groups.map(({ marketplace, items }) => (
-          <section key={marketplace.name} className="commodore-palette-group" aria-label={marketplace.name}>
-            <p className="commodore-palette-group-head">
-              <span>{marketplace.name}</span>
-              {marketplace.preset ? <span>{t("commodore.marketplaces.by")}</span> : <span className="commodore-plugins-locator">{marketplace.locator}</span>}
-              <span>{browsing ? t("commodore.marketplaces.count", { n: marketplace.pluginCount }) : t("commodore.plugins.palette.found", { n: items.length })}</span>
-            </p>
-            <div className="commodore-palette-rows">
-              {items.map((entry) => <PaletteRow key={entry.id} t={t} entry={entry} installed={installedSet.has(entry.id)} installedGlobally={!globalScope && Boolean(global.view?.plugins.includes(entry.id))} globalScope={globalScope} disabled={!global.view || busy} hint={globalScope && !installedSet.has(entry.id) && global.view?.installedBy[entry.id]?.length ? t("commodore.plugins.global.alreadyOwn", { name: global.view.installedBy[entry.id]!.map((owner) => owner.alias || commodoreName(owner.commodoreId, t)).join(", ") }) : undefined} row={row?.pluginId === entry.id ? row : null} showTrust={openedId === null} onOpen={() => openDetail(entry.id)} onInstall={() => install(entry)} onTrust={(fresh) => save(entry.id, true, fresh)} onCancel={() => setRow(null)} />)}
-            </div>
-          </section>
-        ));
+        : groups.map(({ marketplace, items }) => {
+          const rows = items.map((entry) => <PaletteRow key={entry.id} card={!phone} t={t} entry={entry} installed={installedSet.has(entry.id)} installedGlobally={!globalScope && Boolean(global.view?.plugins.includes(entry.id))} globalScope={globalScope} disabled={!global.view || busy} hint={globalScope && !installedSet.has(entry.id) && global.view?.installedBy[entry.id]?.length ? t("commodore.plugins.global.alreadyOwn", { name: global.view.installedBy[entry.id]!.map((owner) => owner.alias || commodoreName(owner.commodoreId, t)).join(", ") }) : undefined} row={row?.pluginId === entry.id ? row : null} showTrust={openedId === null} onOpen={() => openDetail(entry.id)} onInstall={() => install(entry)} onTrust={(fresh) => save(entry.id, true, fresh)} onCancel={() => setRow(null)} />);
+          const title = <>{marketplace.name} <span>{browsing ? t("commodore.marketplaces.count", { n: marketplace.pluginCount }) : t("commodore.plugins.palette.found", { n: items.length })}</span></>;
+          return phone
+            ? <section key={marketplace.name} className="mobile-group" aria-label={marketplace.name}><h3 className="fc-settings-card__title">{title}</h3><div className="mobile-group is-flush">{rows}</div></section>
+            : <SettingsGroup key={marketplace.name} ariaLabel={marketplace.name} title={title}>{rows}</SettingsGroup>;
+        });
 
   const selectScope = (next: string) => { setScope(next); setScopeOpen(false); };
   const market = <MarketplaceGlyphButton t={t} onOpen={() => { onClose(); openSettingsSurface(MARKETPLACE_SETTINGS_ADDRESS); }} />;
-  const scopeChoices = <>
-    <button type="button" className="commodore-palette-scope" aria-current={scope === "global" ? "true" : undefined} onClick={() => selectScope("global")}>
-      <GlobalPluginMark />
-      <span className="commodore-palette-scope-name">{t("commodore.plugins.scope.global")}</span>
-      <span className="commodore-palette-scope-count">{global.view?.plugins.length ?? 0}</span>
+  const scopeChoices = (nav: boolean) => <>
+    <button type="button" className={nav ? "settings-modal-tab" : "commodore-palette-scope"} role={nav ? "tab" : undefined} aria-selected={nav ? scope === "global" : undefined} aria-current={!nav && scope === "global" ? "true" : undefined} onClick={() => selectScope("global")}>
+      {nav ? <span className="settings-modal-tab-glyph" aria-hidden="true"><GlobalPluginMark /></span> : <GlobalPluginMark />}
+      <span className={nav ? "settings-modal-tab-label" : "commodore-palette-scope-name"}>{t("commodore.plugins.scope.global")}</span>
+      <span className={nav ? "settings-modal-tab-count" : "commodore-palette-scope-count"}>{global.view?.plugins.length ?? 0}</span>
     </button>
-    {commodores.map((row) => <CommodoreScopeButton key={row.commodoreId} commodoreId={row.commodoreId} name={row.alias ?? row.label} current={scope === row.commodoreId} onSelect={() => selectScope(row.commodoreId)} />)}
+    {commodores.map((row) => <CommodoreScopeButton key={row.commodoreId} nav={nav} commodoreId={row.commodoreId} name={row.alias ?? row.label} current={scope === row.commodoreId} onSelect={() => selectScope(row.commodoreId)} />)}
   </>;
   const currentScopeName = globalScope ? t("commodore.plugins.scope.global") : name;
   return createPortal(
-    <div className={`commodore-palette-scrim${phone ? " is-phone" : ""}`} role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className={`commodore-palette-scrim${phone ? " is-phone" : " settings-modal-scrim"}`} role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div
         ref={dialogRef}
-        className={`commodore-palette${phone ? " is-phone" : ""}`}
+        className={`commodore-palette${phone ? " is-phone" : " settings-modal"}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={opened ? detailTitleId : titleId}
@@ -1376,25 +1377,21 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
           />
         ) : (
           <>
-            <PaletteBar t={t} title={t("commodore.plugins.global.title")} titleId={titleId} globalScope onClose={onClose} market={market} />
-            <div className="commodore-palette-body">
-              {phone ? (
-                <div className="commodore-palette-scope-fold">
-                  <button type="button" className="commodore-palette-scope-fold-btn" aria-expanded={scopeOpen} aria-controls="commodore-palette-scope-menu" onClick={() => setScopeOpen((open) => !open)}>
-                    <span>{t("commodore.plugins.scope.fold")}</span>
-                    <strong>{currentScopeName}</strong>
-                  </button>
-                  {scopeOpen ? <div id="commodore-palette-scope-menu" className="commodore-palette-scope-menu" role="group" aria-label={t("commodore.plugins.scope.rail")}>{scopeChoices}</div> : null}
-                </div>
-              ) : <nav className="commodore-palette-rail" aria-label={t("commodore.plugins.scope.rail")}>{scopeChoices}</nav>}
-              <div className="commodore-palette-main">
-                <p className="commodore-global-lede">{globalScope ? t("commodore.plugins.scope.ledeGlobal") : t("commodore.plugins.scope.ledeCommodore", { name })}</p>
-                <div className="commodore-palette-search">
+            {phone ? (
+              <div className="commodore-palette-scope-fold">
+                <button type="button" className="commodore-palette-scope-fold-btn" aria-expanded={scopeOpen} aria-controls="commodore-palette-scope-menu" onClick={() => setScopeOpen((open) => !open)}>
+                  <span>{t("commodore.plugins.scope.fold")}</span>
+                  <strong>{currentScopeName}</strong>
+                </button>
+                {scopeOpen ? <div id="commodore-palette-scope-menu" className="commodore-palette-scope-menu" role="group" aria-label={t("commodore.plugins.scope.rail")}>{scopeChoices(false)}</div> : null}
+              </div>
+            ) : (
+              <nav className="settings-modal-nav" aria-label={t("commodore.plugins.scope.rail")}>
+                <div className="settings-modal-search">
                   <SearchGlyph />
                   <input
                     ref={searchRef}
                     type="search"
-                    className="commodore-palette-input"
                     value={query}
                     placeholder={t("commodore.plugins.palette.search", { n: total })}
                     aria-label={t("commodore.plugins.palette.searchAria")}
@@ -1403,17 +1400,35 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
                     onChange={(event) => setQuery(event.target.value)}
                   />
                 </div>
+                <div className="settings-modal-tabs" role="tablist" aria-orientation="vertical" aria-label={t("commodore.plugins.scope.rail")}>{scopeChoices(true)}</div>
+              </nav>
+            )}
+            <section className={phone ? "commodore-palette-main" : "settings-modal-main"}>
+              {phone ? null : <div className="commodore-palette-tools">{market}<button type="button" className="settings-modal-close" aria-label={t("commodore.plugins.palette.close")} title={t("commodore.plugins.palette.close")} onClick={onClose}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button></div>}
+              <div className={phone ? "commodore-palette-main" : "settings-modal-scroll"}>
+                {phone ? (
+                  <div className="commodore-palette-search">
+                    <SearchGlyph />
+                    <input ref={searchRef} type="search" className="commodore-palette-input" value={query} placeholder={t("commodore.plugins.palette.search", { n: total })} aria-label={t("commodore.plugins.palette.searchAria")} autoComplete="off" spellCheck={false} onChange={(event) => setQuery(event.target.value)} />
+                  </div>
+                ) : (
+                  <header className="settings-modal-head">
+                    <h2 id={titleId} className="settings-modal-title">{currentScopeName}</h2>
+                    <p className="commodore-global-lede">{globalScope ? t("commodore.plugins.scope.ledeGlobal") : t("commodore.plugins.scope.ledeCommodore", { name })}</p>
+                  </header>
+                )}
+                {phone ? <p id={titleId} className="commodore-global-lede">{globalScope ? t("commodore.plugins.scope.ledeGlobal") : t("commodore.plugins.scope.ledeCommodore", { name })}</p> : null}
+                {phone ? <div className="commodore-palette-tools is-phone">{market}<button type="button" className="commodore-palette-icon" aria-label={t("commodore.plugins.palette.close")} title={t("commodore.plugins.palette.close")} onClick={onClose}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button></div> : null}
+                <div className={phone ? "commodore-palette-list" : "settings-pane settings-modal-sections"} ref={listRef}>
                 {enabled.length > 0 ? (
                   <div className="commodore-palette-filters" role="group" aria-label={t("commodore.plugins.palette.filterAria")}>
                     <button type="button" className="commodore-palette-chip" aria-pressed={filter === null} onClick={() => setFilter(null)}>{t("commodore.plugins.palette.all")} <span>{total}</span></button>
                     {enabled.map((marketplace) => <button key={marketplace.name} type="button" className="commodore-palette-chip" aria-pressed={filter === marketplace.name} onClick={() => setFilter(marketplace.name)}>{marketplace.name} <span>{marketplace.pluginCount}</span></button>)}
                   </div>
                 ) : null}
-                <div ref={listRef} className="commodore-palette-list">
                   {global.error ? <p className="commodore-plugins-empty" role="alert">{errorWord(t, global.error)} <button type="button" className="commodore-plugins-text" onClick={() => { void loadGlobalPlugins(); }}>{t("commodore.plugins.detail.retry")}</button></p> : null}
-                  {globalScope ? <section className="commodore-global-installed">
-                    <h3 className="commodore-palette-group-head"><GlobalPluginMark /><span>{t("commodore.plugins.global.installedCount", { n: installed.length })}</span></h3>
-                    {global.view ? installed.length ? <div className="commodore-palette-rows">{installed.map((pluginId) => {
+                  {globalScope ? <SettingsGroup ariaLabel={t("commodore.plugins.global.installedCount", { n: installed.length })} title={t("commodore.plugins.global.installedCount", { n: installed.length })}>
+                    {global.view ? installed.length ? installed.map((pluginId) => {
                       const parts = splitPluginId(pluginId);
                       const entry = view?.plugins.find((plugin) => plugin.id === pluginId) ?? { id: pluginId, name: parts.plugin, marketplace: parts.marketplace };
                       const on = pluginReachOn(global.view?.objectiveExcluded, pluginId);
@@ -1428,13 +1443,13 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
                         <ObjectiveReachButton t={t} on={on} locked={false} label={label} onToggle={() => { void setGlobalPluginReach(pluginId, !on).catch((reason) => setRow({ pluginId, phase: "failed", code: codeOf(reason) })); }} />
                         {names.length ? <span className="commodore-plugin-reach-note">{t("commodore.plugins.reach.effectException", { names: names.join(", ") })}</span> : null}
                       </>;
-                      return <PaletteRow key={pluginId} t={t} entry={entry} installed globalScope showMarketplace disabled={busy} reach={reach} update={renderUpdate(entry, openedId === null)} row={row?.pluginId === pluginId ? row : null} showTrust onOpen={() => openDetail(pluginId)} onInstall={() => {}} onTrust={(fresh) => save(pluginId, true, fresh)} onCancel={() => setRow(null)} onRemove={() => { if (armed === pluginId) removeInstalled(pluginId); else setArmed(pluginId); }} removeArmed={armed === pluginId} />;
-                    })}</div> : <p className="commodore-plugins-empty">{t("commodore.plugins.empty")}</p> : <p className="commodore-plugins-empty" role="status">{t("commodore.plugins.loading")}</p>}
-                  </section> : commodoreId ? <PluginScopeRows t={t} commodoreId={commodoreId} phone={phone} onOpenGlobal={() => selectScope("global")} /> : null}
+                      return <PaletteRow key={pluginId} card={!phone} t={t} entry={entry} installed globalScope showMarketplace disabled={busy} reach={reach} update={renderUpdate(entry, openedId === null)} row={row?.pluginId === pluginId ? row : null} showTrust onOpen={() => openDetail(pluginId)} onInstall={() => {}} onTrust={(fresh) => save(pluginId, true, fresh)} onCancel={() => setRow(null)} onRemove={() => { if (armed === pluginId) removeInstalled(pluginId); else setArmed(pluginId); }} removeArmed={armed === pluginId} />;
+                    }) : <p className="commodore-plugins-empty">{t("commodore.plugins.empty")}</p> : <p className="commodore-plugins-empty" role="status">{t("commodore.plugins.loading")}</p>}
+                  </SettingsGroup> : commodoreId ? <PluginScopeRows t={t} commodoreId={commodoreId} phone={phone} onOpenGlobal={() => selectScope("global")} /> : null}
                   {body}
                 </div>
               </div>
-            </div>
+            </section>
           </>
         )}
       </div>
@@ -1472,7 +1487,7 @@ function TrustPanel({ t, entry, onTrust, onCancel, trustRef }: {
  * 팔레트 행 — 마켓플레이스 묶음의 둥근 카드 안에 한 줄씩 선다. 설치 단추를 제외한 행은 상세를 연다. Enter 는 그 단추의 기본 동작이다.
  * 둘째 줄은 설명 한 줄(없으면 버전·만든 이)이고, 나머지 사실은 상세의 정보 카드가 맡는다. 신뢰 확인이 필요하면 행 아래로 펼친다.
  */
-function PaletteRow({ t, entry, installed, installedGlobally = false, globalScope = false, disabled = false, hint, showMarketplace = false, onRemove, removeArmed = false, update, reach, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
+function PaletteRow({ t, entry, installed, installedGlobally = false, globalScope = false, disabled = false, hint, showMarketplace = false, card = false, onRemove, removeArmed = false, update, reach, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
   readonly t: T;
   readonly entry: PluginCatalogEntry;
   readonly installed: boolean;
@@ -1481,6 +1496,7 @@ function PaletteRow({ t, entry, installed, installedGlobally = false, globalScop
   readonly disabled?: boolean;
   readonly hint?: string | undefined;
   readonly showMarketplace?: boolean;
+  readonly card?: boolean;
   readonly update?: ReactNode;
   readonly reach?: ReactNode;
   readonly row: RowState | null;
@@ -1501,7 +1517,7 @@ function PaletteRow({ t, entry, installed, installedGlobally = false, globalScop
   const byline = [shown.version ? `v${shown.version}` : null, shown.author ? t("commodore.plugins.byAuthor", { name: shown.author }) : null].filter(Boolean).join(" · ");
   const sub = shown.description ?? (byline || null);
   return (
-    <article className={`commodore-palette-row${trusting ? " is-open" : ""}`}>
+    <article className={`${card ? "global-settings-row " : ""}commodore-palette-row${trusting ? " is-open" : ""}`}>
       <button type="button" className="commodore-palette-open" data-plugin-id={entry.id} aria-label={t("commodore.plugins.detail.openAria", { plugin: title })} onClick={() => { if (!working && row?.phase !== "trust") onOpen(); }}>
         <PluginTile name={title} iconId={shown.icon ? entry.id : undefined} size="card" />
         <span className="commodore-palette-row-main">

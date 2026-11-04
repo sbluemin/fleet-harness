@@ -999,6 +999,18 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-scope-fold-btn:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-scope-fold-btn strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 .commodore-palette-scope-menu { display: grid; gap: 2px; padding: 0 8px 8px; }
+.commodore-palette .settings-modal-tab-label { flex: 1 1 auto; min-width: 0; }
+.commodore-palette .settings-modal-tab-count { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
+.commodore-palette-tools { position: absolute; z-index: 2; top: 16px; right: 16px; display: flex; align-items: center; gap: 4px; }
+.commodore-palette-tools .settings-modal-close { position: static; }
+.commodore-palette-tools.is-phone { position: static; justify-content: flex-end; padding: 0 12px 8px; }
+.settings-modal .settings-modal-head .commodore-global-lede { padding: 8px 0 0; }
+.settings-modal .commodore-palette-open { flex: 1 1 12rem; width: auto; min-width: 0; padding: 0; }
+.settings-modal .commodore-palette-action { position: static; height: auto; pointer-events: auto; }
+.settings-modal .commodore-palette-reach { flex: 1 1 100%; padding: 0; }
+.settings-modal .commodore-palette-row { flex-wrap: wrap; align-items: center; }
+.commodore-palette.is-phone .mobile-group { width: 100%; min-width: 0; }
+.commodore-palette.is-phone .mobile-group-row.commodore-plugins-phone-row { display: grid; background: var(--m-surface); }
 .commodore-palette-market { position: relative; }
 .commodore-palette-market.is-syncing .commodore-market-spin { position: absolute; inset: 5px; width: auto; height: auto; margin: 0; color: var(--aurora-ink); }
 .commodore-palette-market-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }

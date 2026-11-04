@@ -58,7 +58,8 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
 
 /* 켜진 토글 — 데스크톱 설정 모달은 다크·라이트 모두 강조색 트랙(--settings-accent, 실측 #326bcb) 위에 밝은 손잡이
    #f5f5f5(97%)를 세운다. 손잡이 대비 4.7:1. 꺼진 토글과 설정 밖 스위치는 테마의 중립 슬롯 그대로다. */
-:root[data-view-mode="desktop"] .settings-modal {
+:root[data-view-mode="desktop"] .settings-modal,
+.commodore-palette {
   --quiet-switch-track: var(--settings-accent);
   --quiet-switch-rim: var(--settings-accent);
   --quiet-switch-knob: oklch(97% 0 0);
