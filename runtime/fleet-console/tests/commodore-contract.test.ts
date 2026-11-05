@@ -1950,6 +1950,104 @@ describe("commodore session", () => {
     expect(stub.disposedCount()).toBe(1);
     await expect(session.turn({ reasons: ["routine"] })).rejects.toThrow("session_disposed");
   });
+
+  it("adds only the person's home MCP, skills and enabled plugins behind Fleet's, without home settings or hooks", async () => {
+    const h = harness();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-home-test-"));
+    dirs.push(root);
+    const write = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+    const skill = (dir: string, extra = "") => write(path.join(dir, "SKILL.md"), `---\nname: ${path.basename(dir)}\n${extra}---\nUse \${CLAUDE_PLUGIN_ROOT}/docs/guide.md\n`);
+    // Fleet 사령관 플러그인 — 이름 `shared`의 스킬과 `plugin:fleetdup:svc` 서버를 싣는다.
+    const fleetDir = path.join(root, "fleet", "fleetdup");
+    write(path.join(fleetDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "fleetdup" }));
+    skill(path.join(fleetDir, "skills", "shared"));
+    const fleetServer = { type: "http" as const, url: "https://fleet.example/mcp" };
+    // 사람의 홈 — 설정의 훅·env·모델, CLAUDE.md 는 실리면 안 된다.
+    const home = path.join(root, "home", ".claude");
+    write(path.join(home, "CLAUDE.md"), "HOME_INSTRUCTIONS");
+    const tool = path.join(home, "plugins", "cache", "m", "tool", "1.0.0");
+    const twin = path.join(home, "plugins", "cache", "m", "fleetdup", "1.0.0");
+    write(path.join(home, "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: "HOME_SETTINGS_HOOK" }] }] }, env: { HOME_ENV: "HOME_ENV_VALUE" }, model: "HOME_MODEL", permissions: { allow: ["Bash(*)"] },
+      enabledPlugins: { "tool@m": true, "fleetdup@m": true, "off@m": false, "gone@m": true } }));
+    write(path.join(home, "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: {
+      "tool@m": [{ scope: "user", installPath: tool, version: "1.0.0" }], "fleetdup@m": [{ scope: "user", installPath: twin }], "off@m": [{ scope: "user", installPath: twin }], "gone@m": [{ scope: "user", installPath: path.join(root, "missing") }] } }));
+    write(path.join(tool, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", version: "1.0.0", description: "Tool", hooks: "./hooks/hooks.json", lspServers: { ts: { command: "HOME_LSP" } } }));
+    skill(path.join(tool, "skills", "alpha"));
+    skill(path.join(tool, "skills", "hooked"), "hooks:\n  PreToolUse: []\n");
+    skill(path.join(tool, "skills", "shared"));
+    // 본문이 실행 요소를 가리켜도 그 자리는 링크하지 않는다.
+    write(path.join(tool, "commands", "run.md"), "Run \${CLAUDE_PLUGIN_ROOT}/bin/tool after \${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json.");
+    write(path.join(tool, "docs", "guide.md"), "guide");
+    write(path.join(tool, "hooks", "hooks.json"), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: "HOME_PLUGIN_HOOK" }] }] } }));
+    write(path.join(tool, "bin", "tool"), "#!/bin/sh");
+    write(path.join(tool, ".mcp.json"), JSON.stringify({ mcpServers: { svc: { type: "http", url: "https://tool.example/mcp" } } }));
+    write(path.join(twin, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "fleetdup" }));
+    skill(path.join(twin, "skills", "twin"));
+    skill(path.join(home, "skills", "solo"));
+    skill(path.join(home, "skills", "shared"));
+    const configFile = path.join(root, "home", ".claude.json");
+    write(configFile, JSON.stringify({ projects: { [root]: { mcpServers: { project: { command: "HOME_PROJECT_MCP" } } } }, mcpServers: {
+      github: { type: "http", url: "https://api.example/mcp", headers: { Authorization: "Bearer HOME_SECRET" } },
+      "fleet-commodore": { command: "HOME_SHADOW" },
+      "plugin:fleetdup:svc": { type: "http", url: "https://shadow.example/mcp" },
+      leak: { type: "http", url: "https://leak.example/mcp", headers: { A: "${FLEET_CONSOLE_DIR}" } },
+      ide: { type: "sdk", name: "ide" },
+    } }));
+    const open = async (claudeHome: { configDir: string; configFile: string }) => {
+      const stub = agentStub();
+      const session = createCommodoreSession({ commodoreId: "t1", cwd: h.objectivesDir, theaterLabel: "t", theaterRoot: h.objectivesDir, agent: stub.agent, store: h.store, coordinates: { model: "opus[1m]" }, boardTools: [], claudeHome,
+        plugins: () => [{ id: "fleetdup@fleet", name: "fleetdup", path: fleetDir, mcpServers: { "plugin:fleetdup:svc": fleetServer }, env: {} }] });
+      await session.start();
+      return { session, workspace: stub.created[0]!.workspace! };
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { session, workspace } = await open({ configDir: home, configFile });
+      // Fleet 플러그인이 먼저, 홈 플러그인(Fleet 과 이름이 같은 것은 빠진다)과 홈 스킬 묶음이 뒤에 선다.
+      const [fleet, staged, skills, ...rest] = workspace.plugins!;
+      expect(rest).toEqual([]);
+      expect(fleet).toEqual({ path: fleetDir, skipMcp: true });
+      const tree = (dir: string) => fs.readdirSync(dir, { recursive: true }).map(String).sort();
+      expect(JSON.parse(fs.readFileSync(path.join(staged!.path, ".claude-plugin", "plugin.json"), "utf8"))).toEqual({ name: "tool", version: "1.0.0", description: "Tool" });
+      // 투영본에는 스킬·커맨드와 본문이 가리키는 docs 만 — 훅·bin·.mcp.json·훅을 선언한 스킬·Fleet 과 같은 이름의 스킬은 없다.
+      expect(tree(staged!.path).filter((entry) => !entry.includes(path.sep + "SKILL.md") && !entry.startsWith("docs" + path.sep))).toEqual([".claude-plugin", path.join(".claude-plugin", "plugin.json"), "commands", path.join("commands", "run.md"), "docs", "skills", path.join("skills", "alpha")]);
+      expect(fs.readFileSync(path.join(staged!.path, "docs", "guide.md"), "utf8")).toBe("guide");
+      expect(JSON.parse(fs.readFileSync(path.join(skills!.path, ".claude-plugin", "plugin.json"), "utf8"))).toEqual({ name: "home-skills" });
+      expect(fs.readdirSync(path.join(skills!.path, "skills"))).toEqual(["solo"]);
+      // MCP — Fleet 이름·예약 묶음과 겹치는 홈 서버, 내부 이름을 끌어가는 선언, 모르는 형식은 빠진다. 글자 그대로의 헤더 값은 자식 환경으로 옮긴다.
+      expect(workspace.mcpServers).toEqual({
+        "plugin:fleetdup:svc": fleetServer,
+        github: { type: "http", url: "https://api.example/mcp", headers: { Authorization: "${FLEET_HOME_MCP_0}" } },
+        "plugin:tool:svc": { type: "http", url: "https://tool.example/mcp" },
+      });
+      expect(workspace.env).toEqual({ FLEET_HOME_MCP_0: "Bearer HOME_SECRET" });
+      const serialized = JSON.stringify({ ...workspace, env: undefined });
+      for (const leaked of ["HOME_SECRET", "HOME_INSTRUCTIONS", "HOME_SETTINGS_HOOK", "HOME_PLUGIN_HOOK", "HOME_ENV", "HOME_MODEL", "HOME_LSP", "HOME_SHADOW", "HOME_PROJECT_MCP", "Bash(*)"]) expect(serialized).not.toContain(leaked);
+      // 진단은 이름과 이유 코드만 남긴다.
+      const logged = warn.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(logged).toContain("plugin fleetdup@m: fleet_precedence");
+      expect(logged).toContain("plugin gone@m: missing");
+      expect(logged).toContain("mcp leak: reserved_placeholder");
+      expect(logged).not.toContain("HOME_SECRET");
+      expect(logged).not.toContain(root);
+      // 세션 폐기가 투영본을 거둔다. 원본 홈은 그대로다.
+      await session.dispose();
+      expect(fs.existsSync(staged!.path)).toBe(false);
+      expect(fs.existsSync(path.join(tool, "hooks", "hooks.json"))).toBe(true);
+
+      // 손상된 홈 — 읽지 못한 부분만 빠지고 사령관은 Fleet 플러그인으로 그대로 선다.
+      write(path.join(home, "settings.json"), "{ broken");
+      write(path.join(home, "plugins", "installed_plugins.json"), JSON.stringify({ version: 3, plugins: {} }));
+      write(configFile, "{ broken");
+      const damaged = await open({ configDir: home, configFile });
+      expect(damaged.workspace.plugins!.map((plugin) => path.basename(plugin.path))).toEqual(["fleetdup", "home-skills"]);
+      expect(damaged.workspace.mcpServers).toEqual({ "plugin:fleetdup:svc": fleetServer });
+      await damaged.session.dispose();
+      const absent = await open({ configDir: path.join(root, "nowhere"), configFile: path.join(root, "nowhere.json") });
+      expect(absent.workspace.plugins).toEqual([{ path: fleetDir, skipMcp: true }]);
+      await absent.session.dispose();
+    } finally { warn.mockRestore(); }
+  });
 });
 
 describe("commodore supervisor", () => {

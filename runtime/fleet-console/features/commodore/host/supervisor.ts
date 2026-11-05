@@ -62,6 +62,8 @@ export interface CommodoreSupervisorDeps {
   readonly managementTools?: (commodoreId: string, turn: CommodoreTurnBindings) => readonly ConsoleMcpTool[];
   /** 사령관이 고른 플러그인을 세션을 여는 순간 푼다. */
   readonly plugins?: (pluginIds: readonly string[]) => readonly import("./plugins.js").ResolvedPlugin[];
+  /** 사람의 실제 Claude 홈 — 있으면 사령관 세션이 그 MCP·스킬·켜 둔 플러그인을 더한다. 목표 세션에는 닿지 않는다. */
+  readonly claudeHome?: import("./home-overlay.js").ClaudeHomeLocation;
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
@@ -487,6 +489,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       boardTools: boardTools(runner), now,
       onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
+      ...(deps.claudeHome ? { claudeHome: deps.claudeHome } : {}),
       // 실험 상태는 세션을 연 뒤에도 바뀐다 — 도구 실행 때마다 확인해, 켠 뒤에는 열린 세션도 말할 수 있고 끈 뒤에는 막힌다.
       // 읽기는 말하기와 같은 문이다: 켜져 있을 때만 참여한 구간의 원장을 본다.
       ...(deps.proposals ? { proposals: deps.proposals(runner.commodoreId) } : {}),

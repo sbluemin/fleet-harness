@@ -5,7 +5,7 @@ import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
-import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
+import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
@@ -2631,6 +2631,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         approvals,
         ownership,
         folderGrants,
+        // 사령관 세션만 사람의 Claude 홈에서 MCP·스킬·켜 둔 플러그인을 더한다 — 설정·훅·CLAUDE.md 는 싣지 않는다.
+        claudeHome: userClaudeHome(),
         deletion: {
           claudeProjectsDirectory: path.join(process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(os.homedir(), ".claude"), "projects"),
           preview: (id) => {
