@@ -1,6 +1,5 @@
 import { contextBreakdownOf } from "./context-breakdown.js";
 import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, projectClaudeContextInputTokens, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
-import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
@@ -39,10 +38,11 @@ export type WorkspaceBuiltin = (typeof WORKSPACE_BUILTINS)[number];
 /**
  * 세션이 다룰 폴더들과 그 폴더가 가져오는 능력. `workspace` 정책을 연 호스트만 받는다.
  *
- * 추가 폴더의 `.claude/skills`는 세션을 여는 순간 폴더마다 하나의 로컬 플러그인(`<폴더 이름>:<스킬>`)으로 실려 Skill
- * 도구로 쓰인다. 자식은 디스크 설정 층을 하나도 읽지 않는다 — `project` 층은 작업 폴더에서 상위(체크아웃·데이터 루트)로
- * 올라가며 그곳의 스킬·설정·CLAUDE.md까지 싣기 때문이다. 그래서 작업 폴더와 그 상위, 추가 폴더의 CLAUDE.md·설정 파일은
- * 실리지 않는다. 폴더의 `.mcp.json`도 읽히지 않는다 — MCP 서버는 호출자가 `mcpServers`로 지목한다.
+ * 추가 폴더의 `.claude/skills`는 플러그인으로 싣지 않는다. 그 프로젝트 스킬은 이 세션의 Skill 도구에 오지 않고,
+ * 그 Theater 목표의 지휘관·구성원 세션 몫이다. 자식은 디스크 설정 층을 하나도 읽지 않는다 — `project` 층은 작업 폴더에서
+ * 상위(체크아웃·데이터 루트)로 올라가며 그곳의 스킬·설정·CLAUDE.md까지 싣기 때문이다. 그래서 작업 폴더와 그 상위, 추가
+ * 폴더의 CLAUDE.md·설정 파일은 실리지 않는다. 폴더의 `.mcp.json`도 읽히지 않는다 — MCP 서버는 호출자가 `mcpServers`로
+ * 지목한다. 사람이 고른 플러그인만 `plugins`로 남는다.
  */
 export interface AgentWorkspace {
   readonly additionalDirectories: readonly string[];
@@ -97,10 +97,8 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
     const { cwd, scratch } = resources;
     const releaseCwd = () => resources.release();
     if (disposed) { await releaseCwd(); throw new Error("agent_host_disposed"); }
-    let plugins: ClaudeGatewayLocalPlugin[];
-    try {
-      plugins = [...(options.workspace?.plugins ?? []).map((plugin) => ({ ...plugin })), ...(options.workspace ? await folderSkillPlugins(scratch, options.workspace.additionalDirectories) : [])];
-    } catch (error) { await releaseCwd(); throw error; }
+    // 추가 폴더의 스킬은 여기서 감싸지 않는다. 사람이 고른 플러그인만 싣는다.
+    const plugins: ClaudeGatewayLocalPlugin[] = (options.workspace?.plugins ?? []).map((plugin) => ({ ...plugin }));
     const lifetime = new AbortController();
     let turnController: AbortController | null = null;
     let closed = false;
@@ -403,29 +401,6 @@ function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: Compa
     return { ...event, usage: { ...event.usage, ...(contextTokens === undefined ? {} : { contextTokens: real(contextTokens) }), context: { window, compactAt: compactAt === undefined ? threshold : Math.min(compactAt, threshold) } } };
   }
   return event;
-}
-
-/**
- * 추가 폴더의 `.claude/skills`를 폴더마다 scratch 안의 플러그인으로 싣는다 — 매니페스트는 이름만 갖고 `skills`는 그 폴더를
- * 가리키는 링크다. 스킬만 연결하므로 그 폴더의 hooks·agents·`.mcp.json`은 실리지 않는다. 스킬 폴더가 없는 추가 폴더는 건너뛴다.
- */
-async function folderSkillPlugins(scratch: string, directories: readonly string[]): Promise<ClaudeGatewayLocalPlugin[]> {
-  const plugins: ClaudeGatewayLocalPlugin[] = [];
-  const names = new Set<string>();
-  for (const directory of directories) {
-    const skills = path.join(directory, ".claude", "skills");
-    if (!(await fs.stat(skills).catch(() => null))?.isDirectory()) continue;
-    const base = path.basename(directory).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "folder";
-    let name = base;
-    for (let n = 2; names.has(name); n++) name = `${base}-${n}`;
-    names.add(name);
-    const root = path.join(scratch, "folder-skills", name);
-    await fs.mkdir(path.join(root, ".claude-plugin"), { recursive: true });
-    await fs.writeFile(path.join(root, ".claude-plugin", "plugin.json"), JSON.stringify({ name }));
-    await fs.symlink(skills, path.join(root, "skills"), process.platform === "win32" ? "junction" : "dir");
-    plugins.push({ path: root, skipMcp: true });
-  }
-  return plugins;
 }
 
 /** Claude Code 가 MCP 도구 이름에 쓰는 서버 몫 — 영숫자·`_`·`-` 밖의 글자는 `_`가 된다. */

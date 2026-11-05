@@ -271,7 +271,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   };
 
   const open = async () => {
-    // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 그 프로젝트 스킬을 싣는다. 뒤에 더한 Theater 는 다음 세션부터 실린다.
+    // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 파일을 읽게 한다. 그 프로젝트 스킬은 싣지 않는다. 뒤에 더한 Theater 는 다음 세션부터 폴더로 붙는다.
     // Theater 의 `.mcp.json` 서버는 싣지 않는다 — Theater 에서 하는 실무는 그 목표의 지휘관·구성원 몫이다.
     const roots = [...new Set((options.theaters?.() ?? []).flatMap(({ root }) => (root ? [root] : [])))];
     const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.taskforce ? { taskforce: options.taskforce } : {}), ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}), ...(options.proposals ? { proposals: options.proposals } : {}), ...(options.intelProposals ? { intelProposals: options.intelProposals } : {}) });

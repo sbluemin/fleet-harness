@@ -113,7 +113,8 @@ describe("Console-owned plugin Agent", () => {
     const events: AgentEvent[] = [];
     const host = hostFor();
     const theater = path.join(dataRoot, "Theater A"); await fs.mkdir(path.join(theater, ".claude", "skills"), { recursive: true });
-    const session = await host.createSession({ ...options, cwd, workspace: { additionalDirectories: [theater, path.join(dataRoot, "no-skills")] }, onEvent: (event) => events.push(event) });
+    const selected = path.join(dataRoot, "selected-plugin"); await fs.mkdir(selected, { recursive: true });
+    const session = await host.createSession({ ...options, cwd, workspace: { additionalDirectories: [theater, path.join(dataRoot, "no-skills")], plugins: [{ path: selected, skipMcp: true }] }, onEvent: (event) => events.push(event) });
     expect(homes[0]).toMatchObject({ kind: "persistent", configDir: expect.stringContaining("fleet-commodore-") });
 
     // 턴 중 건넨 말 — 턴이 그 말을 집기 전에 닫히려 하면 결말을 쥐고, 집힌 뒤의 결말과 합쳐 한 턴으로 낸다.
@@ -136,13 +137,10 @@ describe("Console-owned plugin Agent", () => {
     expect(events.filter((event) => event.kind === "result")).toEqual([expect.objectContaining({ isError: false, usage: expect.objectContaining({ inputTokens: 30, outputTokens: 3, costUsd: 0.25 }) })]);
     expect(events.findIndex((event) => event.kind === "input-started" && event.id === "m1")).toBeLessThan(events.findIndex((event) => event.kind === "text" && event.text === "and that"));
     expect(opened[0]).toMatchObject({ sessionId: expect.any(String) });
-    // 디스크 설정 층은 열지 않는다 — cwd 상위(체크아웃·데이터 루트)의 스킬이 섞이지 않고, 추가 폴더의 스킬만 scratch 플러그인으로 실린다.
+    // 디스크 설정 층은 열지 않는다. 추가 폴더는 그대로 넘기되 그 `.claude/skills`는 플러그인으로 만들지 않고, 사람이 고른 플러그인만 실린다.
     expect(settingSources[0]).toBeUndefined();
-    const [folderPlugin, ...extra] = opened[0]!.plugins as { path: string; skipMcp: boolean }[];
-    expect(extra).toEqual([]);
-    expect(folderPlugin).toMatchObject({ path: expect.stringContaining(path.dirname((homes[0] as { configDir: string }).configDir)), skipMcp: true });
-    expect(await fs.realpath(path.join(folderPlugin!.path, "skills"))).toBe(await fs.realpath(path.join(theater, ".claude", "skills")));
-    expect(JSON.parse(await fs.readFile(path.join(folderPlugin!.path, ".claude-plugin", "plugin.json"), "utf8"))).toEqual({ name: "theater-a" });
+    expect(opened[0]).toMatchObject({ additionalDirectories: [theater, path.join(dataRoot, "no-skills")], plugins: [{ path: selected, skipMcp: true }] });
+    expect(await fs.stat(path.join(path.dirname((homes[0] as { configDir: string }).configDir), "folder-skills")).catch(() => null)).toBeNull();
     expect(opened[0]).not.toHaveProperty("resume");
     expect(JSON.stringify(events)).not.toContain(dataRoot);
     expect(JSON.stringify(events)).not.toContain(path.dirname((homes[0] as { configDir: string }).configDir));
