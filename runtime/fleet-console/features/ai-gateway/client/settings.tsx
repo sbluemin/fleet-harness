@@ -21,7 +21,8 @@ import { useModelRoster } from "./model-roster-store.js";
 function rosterPickerLabels(t: ReturnType<typeof getT>, title: string): ModelCoordinatePickerLabels {
   return {
     menu: title,
-    effort: title,
+    // 강도 묶음 제목·게이지 접근 이름은 행 제목이 아니다. 다른 좌표 메뉴와 같은 「추론 강도」다.
+    effort: t("terminal.chat.coordMenuEffortTrack"),
     auto: t("terminal.settings.models.auto"),
     back: t("terminal.settings.models.back"),
     loading: t("terminal.settings.models.loading"),
