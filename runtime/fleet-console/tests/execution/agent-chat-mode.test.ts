@@ -55,6 +55,8 @@ describe("agent chat mode routes", () => {
   it("tracks Terminal requests to matching hook turns, projects public output, and confirms interruption", async () => {
     const harness = await createHarness({ cliId: "claude" });
     const sessionId = await harness.createSession();
+    asLegacyTerminal(harness, sessionId);
+    harness.releaseChatOwnership(sessionId);
     harness.setLive(sessionId);
     harness.allowConsoleUse(sessionId);
     harness.attachProviderSession(sessionId);
@@ -375,35 +377,25 @@ describe("agent chat mode routes", () => {
     expect(frames.map(({ raw }) => raw).join("\n")).not.toContain(hostPath);
   });
 
-  it("converts an idle live claude-gateway session: marks payload, invalidates tickets, terminates the pty", async () => {
+  it("does not terminate a live terminal when chat is requested, and adopts chat only once it is idle", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
+    asLegacyTerminal(harness, sessionId);
     harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
 
     await harness.post(sessionId, "chat");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
-    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
-    expect(harness.terminate).toHaveBeenCalledWith(sessionId);
-  });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "session_live" } });
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBeUndefined();
+    expect(harness.terminate).not.toHaveBeenCalled();
 
-  it("interrupts a running terminal turn when converting to chat", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    harness.attachProviderSession(sessionId);
-    await harness.post(sessionId, "turn", { phase: "start" });
-
+    harness.setLive(sessionId, false);
     await harness.post(sessionId, "chat");
 
     expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
     expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
-    expect(harness.terminate).toHaveBeenCalledWith(sessionId);
-    expect((await harness.sessions()).find((session) => session.sessionId === sessionId)).toMatchObject({
-      chatActive: true,
-      turnState: "none",
-    });
+    expect(harness.terminate).not.toHaveBeenCalled();
   });
 
   /**
@@ -444,7 +436,6 @@ describe("agent chat mode routes", () => {
   it("refuses a terminal ticket for a chat mode objectiveRecord", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
     await harness.post(sessionId, "chat");
 
@@ -540,51 +531,7 @@ describe("agent chat mode routes", () => {
     expect((harness.objectiveRecord(sessionId)!.session as { id: string }).id).toBe(providerId);
   });
 
-  it.each(["pending", "missed"])("preserves first-turn identity after a %s transcript lookup at disposal", async (lookup) => {
-    const harness = await createHarness({ holdChatTurn: true });
-    vi.stubEnv("CLAUDE_CONFIG_DIR", harness.fleetDataDir);
-    const sessionId = await harness.createSession();
-    harness.attachLaunchProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
-    let release!: () => void;
-    let locating = false;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    const readDirectory = fs.readdir.bind(fs);
-    const spy = vi.spyOn(fs, "readdir").mockImplementation(async (...args: Parameters<typeof fs.readdir>) => {
-      if (args[0] === path.join(harness.fleetDataDir, "projects")) {
-        locating = true;
-        if (lookup === "missed" && harness.closeChat.mock.calls.length === 0) return [];
-        if (lookup === "pending") await gate;
-      }
-      return readDirectory(...args);
-    });
-    try {
-      await harness.post(sessionId, "message", { text: "first streaming turn" });
-      await vi.waitFor(() => expect(locating).toBe(true));
-      const resume = (async () => {
-        await harness.del(sessionId, "chat");
-        await harness.post(sessionId, "resume");
-      })();
-      await vi.waitFor(() => expect(harness.closeChat).toHaveBeenCalled());
-      release();
-      await resume;
-      expect(harness.responses.at(-1)?.status).toBe(200);
-      expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({ resumeSessionId: "sid-live" }));
-    } finally {
-      release();
-      spy.mockRestore();
-      vi.unstubAllEnvs();
-    }
-  });
-
-  /**
-   * 모드를 떠나면 자식과 함께 그 대화의 일감이 끝난다 — 전환 **뒤에** 새로 도는 것은 없다.
-   *
-   * 예전에는 "두 번째 메시지가 자식에게 닿지 않는다"가 그 보증의 기계장치였다. 지금은 턴이 도는
-   * 동안 보낸 말이 곧바로 자식에게 건너가므로(Claude Code CLI와 같은 계약) 그 장치는 사라졌고,
-   * 남는 보증은 하나다: 전환은 자식을 닫고, 닫힌 뒤로는 아무것도 보내지지 않는다.
-   */
-  it("closes the chat child before returning to the terminal so no work runs after switching", async () => {
+  it("refuses to leave chat for a terminal and keeps the running turn", async () => {
     const harness = await createHarness({ holdChatTurn: true });
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
@@ -592,34 +539,61 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "message", { text: "stream until interrupted" });
     await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted"]));
-    // 턴이 도는 동안 보낸 말은 기다리지 않고 건너간다 — 도는 턴이 다음 도구 라운드에서 집어간다.
-    await harness.post(sessionId, "message", { text: "handed to the running turn" });
-    await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted", "handed to the running turn"]));
-    expect((await harness.sessions()).find((session) => session.sessionId === sessionId)?.modelActivity).toBe("working");
     await harness.del(sessionId, "chat");
+
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "terminal_view_removed" } });
+    expect(harness.closeChat).not.toHaveBeenCalled();
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
+    await harness.post(sessionId, "message", { text: "still the same chat" });
+    await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted", "still the same chat"]));
+  });
+
+  it("opens a fresh chat when a legacy terminal transcript is gone", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    asLegacyTerminal(harness, sessionId);
+    harness.removeTranscript();
+
+    await harness.post(sessionId, "resume");
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_transcript_missing" } });
+    expect(harness.objectiveRecord(sessionId)?.chatMode).not.toBe(true);
+    expect((harness.objectiveRecord(sessionId)?.session as { id?: string }).id).toBe("sid-live");
+
+    await harness.post(sessionId, "resume", { fresh: true });
     expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(harness.closeChat).toHaveBeenCalled();
-    const before = harness.sends.length;
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
+    expect(harness.objectiveRecord(sessionId)?.session).not.toHaveProperty("id");
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
+  it("opens chat for a legacy objective with no agent session and keeps the record", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    asLegacyTerminal(harness, sessionId);
+    const record = harness.objectiveRecord(sessionId);
+    if (!record) throw new Error("Objective not found");
+    const title = record.title;
+    delete record.session;
+
     await harness.post(sessionId, "resume");
 
-    expect(harness.closeChat).toHaveBeenCalled();
-    // 전환 뒤로는 한 마디도 나가지 않는다. 자식이 닫혔으므로 남은 일감도 함께 거둬진다.
-    expect(harness.sends).toHaveLength(before);
     expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(harness.objectiveRecord(sessionId)?.chatMode).toBeUndefined();
-    expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
-      sessionId,
-      resumeSessionId: "sid-live",
-    }));
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
+    expect(harness.objectiveRecord(sessionId)?.title).toBe(title);
+    expect(harness.attach).not.toHaveBeenCalled();
   });
 
   it("objective fresh session experiment branches: false preserves resume, true branches fresh, switchLive stays resume", async () => {
     const harness = await createHarness({ cliId: "claude" });
     const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
     harness.allowConsoleUse(sessionId);
     harness.attachProviderSession(sessionId);
     await harness.post(sessionId, "chat");
+    // 새 목표는 태어날 때 이미 채팅 자식을 연다. 그 뒤 붙은 provider를 첫 턴이 보게 자식을 한 번 접는다.
+    harness.setExperiments({ objectiveFreshSession: true });
+    await harness.consoleControl.disposeChat?.(sessionId);
+    harness.setExperiments({ objectiveFreshSession: false });
 
     // Case 1: fresh session disabled (default) -> resumes existing session
     harness.markNextOpenFresh(sessionId); // no-op when experiment is false
@@ -631,7 +605,7 @@ describe("agent chat mode routes", () => {
 
     // Case 2: fresh session enabled -> opens fresh session with new random UUID
     harness.setExperiments({ objectiveFreshSession: true });
-    await harness.del(sessionId, "chat");
+    await harness.consoleControl.disposeChat?.(sessionId);
     harness.markNextOpenFresh(sessionId);
     expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
     harness.setSdkSessionId("sid-second");
@@ -647,7 +621,7 @@ describe("agent chat mode routes", () => {
     expect(secondRequest?.sessionId).not.toBe("sid-live");
 
     // Case 2b: another fresh session accumulates both ancestors in previousSessions with harness (Criteria 4)
-    await harness.del(sessionId, "chat");
+    await harness.consoleControl.disposeChat?.(sessionId);
     harness.markNextOpenFresh(sessionId);
     harness.setSdkSessionId("sid-third");
     await harness.post(sessionId, "chat");
@@ -685,6 +659,13 @@ describe("agent chat mode routes", () => {
     expect((recordAfter?.session as { previousSessions?: unknown[] })?.previousSessions).toHaveLength(2);
   });
 });
+
+function asLegacyTerminal(harness: { objectiveRecord(sessionId: string): Record<string, unknown> | undefined }, sessionId: string): void {
+  const record = harness.objectiveRecord(sessionId);
+  if (!record) throw new Error("Objective not found");
+  delete record.chatMode;
+  delete record.chatBorn;
+}
 
 async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly basePromptEnabled?: boolean } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
@@ -951,6 +932,7 @@ ts: { createdAt, updatedAt: createdAt }};
       api = await start();
     },
     sleep: (objectiveId: string) => api.actions.sleep!(objectiveId),
+    releaseChatOwnership: (sessionId: string) => api.releaseChatOwnership(sessionId),
     emitToLatest: (message: Record<string, unknown>) => emitToLatest(message),
     sdkOptions,
     fleetDataDir,
@@ -1027,7 +1009,7 @@ ts: { createdAt, updatedAt: createdAt }};
       });
       return frames;
     },
-    setLive: (sessionId: string) => { liveSessions.add(sessionId); },
+    setLive: (sessionId: string, live = true) => { if (live) liveSessions.add(sessionId); else liveSessions.delete(sessionId); },
     overrideCliId: (sessionId: string, value: string) => {
       const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
       if (!objectiveRecord) throw new Error("Objective not found");

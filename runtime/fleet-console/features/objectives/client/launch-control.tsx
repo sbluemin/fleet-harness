@@ -194,16 +194,11 @@ function useLaunchRoster(): ModelRoster | null {
   return useModelRoster(models, "launch");
 }
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, routing, startAtList = false, subagents, head, reconfirm = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, trigger, triggerLabel, triggerText, triggerTitle, extras, routing, startAtList = false, subagents, head, reconfirm = false }: LaunchControlProps) {
   const roster = useLaunchRoster();
   const viewPrefix = viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : undefined;
-  const footer = (viewMode && onViewChange) || subagents ? (
+  const footer = subagents ? (
     <>
-      {viewMode && onViewChange ? <div className="fc-coord-menu-group">
-        <div className="fc-coord-menu-divider" role="separator" />
-        <p className="fc-coord-menu-caption">{t("objectives.view.label")}</p>
-        {(["terminal", "chat"] as const).map((view) => <button key={view} type="button" role="menuitemradio" aria-checked={viewMode === view} className={`fc-coord-menu-item${viewMode === view ? " is-active" : ""}`} onClick={() => onViewChange(view)}><span className="objectives-launch-view"><StartViewGlyph view={view} /></span><span className="fc-coord-menu-label">{startViewLabel(t, view)}</span></button>)}
-      </div> : null}
       {subagents ? <div className="fc-coord-menu-group" role="group" aria-label={t("objectives.members.subagentsGroup")}>
         <div className="fc-coord-menu-divider" role="separator" />
         <button type="button" role="menuitemcheckbox" aria-checked={subagents.allowed} className={`fc-coord-menu-item objectives-menu-check${subagents.allowed ? " is-active" : ""}`} onClick={() => subagents.onToggle()}>

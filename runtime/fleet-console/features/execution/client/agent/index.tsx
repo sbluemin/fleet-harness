@@ -6,14 +6,14 @@ import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import "@fleet-console/font-picker/styles.css";
-import { CaptionActionButton, CaptionBrowserUseGlyph, CaptionChatGlyph, CaptionComputerUseGlyph, CaptionTerminalGlyph } from "../../../workspace/client/components/caption-actions.js";
+import { CaptionActionButton, CaptionBrowserUseGlyph, CaptionComputerUseGlyph } from "../../../workspace/client/components/caption-actions.js";
 import { launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { defineNotificationKind } from "../notifications.js";
 import type { ClientFeatureDescriptor } from "../../../workspace/shared/feature-surfaces.js";
 import type { ObjectiveMenuContext, ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
-import { MenuCheckGlyph, SegmentedThumb, ConfirmDialog } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, SegmentedThumb } from "@fleet-console/ui/react";
 import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
@@ -34,11 +34,10 @@ import { MobileGlyph, MobileSurfaceProvider, mobileObjectiveOf, useMobileMenuIte
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, readComputerUseEnabled, readInstalledExperiments, recordObjectiveReveal, setComputerUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
 import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
-import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitchState } from "./view-switch-store.js";
 
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
-import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
+import { AgentApiError, confirmAgentSessionLinks, createAgentSession, discardLaunchAttachment, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { HistoryFoldButton } from "./chat/composer.js";
 import { installGroupTimeline, useGroupClusters, useHasGroupConversation } from "./chat/group-timeline-store.js";
@@ -178,7 +177,6 @@ export const agentExecution: ClientFeatureDescriptor = {
     try {
       await terminateAgentSession(objectiveId);
     } finally {
-      disposeViewSwitch(objectiveId);
       disposeObjectiveViewState(objectiveId);
       removeSession(objectiveId);
     }
@@ -277,7 +275,6 @@ export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
     const ids = (payload as { removedIds?: unknown } | null)?.removedIds;
     if (!Array.isArray(ids)) return;
     for (const id of ids) if (typeof id === "string") {
-      disposeViewSwitch(id);
       disposeObjectiveViewState(id);
       removeSession(id);
     }
@@ -423,22 +420,8 @@ function AgentCaptionActions({ context, part = "shelf" }: { readonly context: Ob
 
 function AgentCaptionActionsBody({ context, part }: { readonly context: ObjectiveRenderContext; readonly part: AgentCaptionPart }) {
   const t = getT(context.language ?? "en");
-  const state = useAgentState();
-  const session = state.sessions[context.objectiveId] ?? sessionFromObjective(context);
-  const { terminalPending } = useViewSwitchState(context.objectiveId);
   const chatMode = context.objectiveRecord.chatMode === true;
   const groupConversation = useHasGroupConversation(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
-
-  const openTerminal = React.useCallback(async () => {
-    setTerminalHandoff(context.objectiveId, { pending: true, error: "none" });
-    try {
-      await openTerminalForObjective(context);
-    } catch {
-      setTerminalHandoff(context.objectiveId, { error: "failed" });
-    } finally {
-      setTerminalHandoff(context.objectiveId, { pending: false });
-    }
-  }, [context]);
 
   // 브라우저 문 — 대화 중심 화면에서는 이 Session 의 브라우저를 바로 연다. 허용은 패널 안에서 켠다.
   // 자식 세션(목표 구성원)은 루트의 브라우저를 함께 쓴다 — 쓰는 중인지도 루트의 것을 읽는다.
@@ -464,29 +447,6 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
     </CaptionActionButton>
   );
 
-  // 전환은 목적지 하나로 말한다 — 채팅에서는 터미널 마크가, 터미널에서는 채팅 마크가 선다.
-  // 휴면 세션에는 아직 떠날 자리가 없다(휴면 카드의 고스트가 그 전환을 진다).
-  const canSwitch = chatMode || session.status !== "dormant";
-  const viewSwitch = !canSwitch ? null : chatMode ? (
-    <CaptionActionButton
-      actionId="view-switch"
-      label={terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminalAria")}
-      disabled={terminalPending}
-      pending={terminalPending}
-      onClick={() => { void openTerminal(); }}
-    >
-      <CaptionTerminalGlyph />
-    </CaptionActionButton>
-  ) : (
-    <CaptionActionButton
-      actionId="view-switch"
-      label={t("terminal.chat.openAria")}
-      onClick={() => { setChatPromptOpen(context.objectiveId, true); }}
-    >
-      <CaptionChatGlyph />
-    </CaptionActionButton>
-  );
-
   // console_reveal 말풍선 — 선반 끝에 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다.
   // 산 이벤트에만 뜬다(지난 사건은 다시 튀어나오지 않는다).
   const liveReveal = React.useSyncExternalStore(subscribeObjectiveReveals, () => getObjectiveReveal(context.objectiveId), () => null);
@@ -495,7 +455,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
     : null;
 
   // 그룹 대화는 구성원 턴을 항상 접는다. 1:1 채팅만 이전 문답 자동 접기 전환을 보탠다.
-  if (part === "view-switch") return <>{chatMode && !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null}{viewSwitch}</>;
+  if (part === "view-switch") return chatMode && !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null;
   if (part === "tools-lead") return browser;
   // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
   if (!using.computer && bubble === null) return null;
@@ -556,22 +516,6 @@ function RevealBubble({ context, reveal }: { readonly context: ObjectiveRenderCo
   );
 }
 
-/** 채팅 → 터미널. 순서가 계약이다: chat 모드 마커를 걷은 뒤에만 resume이 PTY를 되살린다(서버 ticket 가드). */
-async function openTerminalForObjective(context: ObjectiveRenderContext): Promise<void> {
-  await exitAgentChat(context.objectiveId);
-  try {
-    await resumeSession(context.objectiveId);
-    context.notifications.dismiss(context.objectiveId);
-  } catch (error) {
-    context.notifications.emit({
-      kind: agentResumeFailedNotification.id,
-      objectiveId: context.objectiveId,
-      message: resumeFailureMessage(error, context.language),
-    });
-    throw error;
-  }
-}
-
 /**
  * 터미널 표면의 PTY가 끝났다(4001). 그 표면이 붙어 있던 세대의 항목일 때만 지운다 — 항목이 이미 다른 세대를
  * 싣고 있으면 그 사이 새 PTY가 섰다는 뜻이고, 늦게 온 옛 종료가 방금 선 세션을 지우면 패널은 「종료됨」에
@@ -603,45 +547,15 @@ function AgentObjectiveView({ context }: { readonly context: ObjectiveRenderCont
 }
 
 /**
- * 모바일 ⋮의 에이전트 항목(impl-spec S-08). 보기 전환은 지금 보기의 반대이고, 채팅→터미널은 바로, 터미널→채팅은
- * 확인 시트(S-14)를 거친다. 「컴퓨터 사용 계속 허용」은 이 Objective의 계속 허용 스위치이며, 설정에서 컴퓨터 사용
- * 실험이 꺼져 있으면 서지 않는다(D7). 캡션의 같은 동작과 같은 경로를 탄다.
+ * 모바일 ⋮의 에이전트 항목. 「컴퓨터 사용 계속 허용」은 이 Objective의 계속 허용 스위치이며, 설정에서 컴퓨터 사용
+ * 실험이 꺼져 있으면 서지 않는다. 캡션의 같은 동작과 같은 경로를 탄다.
  */
 function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRenderContext; readonly mobile: MobileObjectiveLike }) {
   const t = getT(context.language ?? "en");
-  const state = useAgentState();
-  const session = state.sessions[context.objectiveId] ?? sessionFromObjective(context);
-  const chatMode = context.objectiveRecord.chatMode === true;
-  const { terminalPending } = useViewSwitchState(context.objectiveId);
   const experiments = useExperimentsSnapshot();
   const computerUseEnabled = readComputerUseEnabled(context.objectiveRecord);
   const [usePending, setUsePending] = React.useState(false);
-  const canSwitch = chatMode || session.status !== "dormant";
 
-  const toTerminal = async () => {
-    setTerminalHandoff(context.objectiveId, { pending: true, error: "none" });
-    try {
-      await openTerminalForObjective(context);
-    } catch {
-      setTerminalHandoff(context.objectiveId, { error: "failed" });
-    } finally {
-      setTerminalHandoff(context.objectiveId, { pending: false });
-    }
-  };
-  const toChat = async () => {
-    const confirmed = await mobile.confirm({
-      question: t("terminal.chat.confirmQuestion"),
-      cancelLabel: t("terminal.chat.confirmKeep"),
-      confirmLabel: t("terminal.mobile.toChatTitle"),
-    });
-    if (!confirmed) return;
-    try {
-      await convertAgentSessionToChat(context.objectiveId);
-    } catch {
-      // 무엇이 끝나야 넘어갈 수 있는지(바쁨 사유)는 본문의 전환 오버레이가 이미 말한다 — 거기서 다시 묻는다.
-      setChatPromptOpen(context.objectiveId, true);
-    }
-  };
   const toggleComputerUse = () => {
     if (usePending || !installedApi) return;
     setUsePending(true);
@@ -653,15 +567,6 @@ function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRende
   };
 
   const items: MobileMenuItemLike[] = [];
-  if (canSwitch) {
-    items.push({
-      id: "agent-view-switch",
-      label: chatMode ? t(terminalPending ? "terminal.chat.openingTerminal" : "terminal.mobile.viewTerminal") : t("terminal.mobile.viewChat"),
-      icon: <MobileGlyph name="swap" />,
-      disabled: terminalPending,
-      run: () => { void (chatMode ? toTerminal() : toChat()); },
-    });
-  }
   if (experiments?.computerUse === true) {
     items.push({
       id: "agent-computer-use",
@@ -672,7 +577,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRende
       run: toggleComputerUse,
     });
   }
-  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
+  useMobileMenuItems(mobile, items, `${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
   return null;
 }
 
@@ -685,15 +590,7 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
   const observed = state.sessions[context.objectiveId];
   const session = observed ?? sessionFromObjective(context);
   const chatMode = context.objectiveRecord.chatMode === true;
-  const sessionStatus = session.status;
-  const { chatPromptOpen } = useViewSwitchState(context.objectiveId);
-  React.useEffect(() => {
-    // 확인 오버레이는 라이브 터미널 분기 전용이다 — PTY 종료·채팅 전환으로 분기를 떠나면
-    // 상태를 걷어 재개 시 낡은 다이얼로그가 되살아나지 않게 한다(이전 ChatModeEntry의
-    // 언마운트-폐기와 등가).
-    if (sessionStatus === "dormant" || chatMode) setChatPromptOpen(context.objectiveId, false);
-  }, [context.objectiveId, sessionStatus, chatMode]);
-  // 주소를 누르면 어디서 열지 먼저 묻는다 — CLI(터미널이 찾아낸 링크)와 채팅(마크다운 앵커)이 같은 카드를 쓴다.
+  // 주소를 누르면 어디서 열지 먼저 묻는다 — 떠 있는 터미널과 채팅이 같은 카드를 쓴다.
   // 수식 없는 왼클릭은 3행 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다.
   // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통). 가운데 칸의 그룹 대화도 같은 길을 쓴다(objective-links).
   const links = useObjectiveLinks({
@@ -731,16 +628,13 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
     return (
       <div className="agent-stream-host">
         <DormantObjectiveView context={context} session={session} />
-        {session.resumeAvailable ? <DormantChatEntry context={context} /> : null}
       </div>
     );
   }
 
   return (
     <div className="agent-stream-host">
-      {/* 전환을 누르는 곳은 캡션이고, 무엇이 끝나야 넘어갈 수 있는지 말하는 이 오버레이는 본문이다. */}
-      {chatPromptOpen ? <ChatModeInterstitial context={context} onClose={() => setChatPromptOpen(context.objectiveId, false)} /> : null}
-      {/* 세대가 바뀌면(재기동) 표면을 새로 붙인다 — 같은 청크로 휴면과 새 기동이 함께 오면 휴면을 그리지 못한 채
+      {/* 떠 있는 PTY만 이 표면을 유지한다. 세대가 바뀌면(재기동) 표면을 새로 붙인다 — 같은 청크로 휴면과 새 기동이 함께 오면 휴면을 그리지 못한 채
           옛 표면이 남고, 그 연결은 옛 PTY의 종료(4001)로 재접속을 멈춘다. 새 표면이 새 티켓으로 새 PTY에 붙는다. */}
       <TerminalSurface
         key={session.generation}
@@ -826,58 +720,6 @@ function AgentObjectiveMarks({ context }: { readonly context: ObjectiveMenuConte
 
 function SwitchCheckMark() {
   return <MenuCheckGlyph className="group-context-menu-item__check" />;
-}
-
-/**
- * 전환이 막힌 사유 → 문구 키. 서버가 사유를 못 실어 보냈으면 뭉뚱그린 문구로 내려간다 —
- * 모르는 사유를 아는 척 이름 붙이는 것보다 낫다.
- */
-function chatConvertBusyKey(reason: string | null): "terminal.chat.convertBusy" | "terminal.chat.convertBusyStarting" {
-  return reason === "starting" ? "terminal.chat.convertBusyStarting" : "terminal.chat.convertBusy";
-}
-
-/** Chat view 전환 확인 — 칩은 뷰 칩 줄이 소유하고, 여기는 확인과 서버 전환만 진다. */
-function ChatModeInterstitial({ context, onClose }: { readonly context: ObjectiveRenderContext; readonly onClose: () => void }) {
-  const t = getT(context.language ?? "en");
-  const [state, setState] = React.useState<"idle" | "converting" | "busy" | "error">("idle");
-  // 무엇이 끝나야 전환되는지 — 서버가 구분해 보내 준 사유. 알 수 없으면 뭉뚱그린 문구로 내려간다.
-  const [busyReason, setBusyReason] = React.useState<string | null>(null);
-  const convert = React.useCallback(async () => {
-    setState("converting");
-    try {
-      await convertAgentSessionToChat(context.objectiveId);
-      // payload.chatMode 반영이 뷰를 전환한다 — 여기서는 오버레이만 닫는다.
-      onClose();
-    } catch (error) {
-      const busy = error instanceof AgentApiError && error.message === "chat_convert_busy";
-      setBusyReason(busy && error instanceof AgentApiError ? error.reason ?? null : null);
-      setState(busy ? "busy" : "error");
-    }
-  }, [context.objectiveId, onClose]);
-  const error = state === "busy" ? t(chatConvertBusyKey(busyReason)) : state === "error" ? t("terminal.chat.convertFailed") : null;
-  return <ConfirmDialog question={t("terminal.chat.confirmQuestion")} cancelLabel={t("terminal.chat.confirmKeep")} confirmLabel={t("terminal.chat.confirmSwitch")} busy={state === "converting"} error={error} onCancel={onClose} onConfirm={() => { void convert(); }} />;
-}
-
-/** 휴면 카드 위의 chat 진입 고스트 — 죽일 PTY조차 없는 가장 안전한 전환 경로다. */
-function DormantChatEntry({ context }: { readonly context: ObjectiveRenderContext }) {
-  const t = getT(context.language ?? "en");
-  const [state, setState] = React.useState<"idle" | "working" | "error">("idle");
-  return (
-    <button
-      type="button"
-      className="agent-chat-dormant-open"
-      disabled={state === "working"}
-      aria-label={t("terminal.chat.dormantOpenAria")}
-      onClick={() => {
-        setState("working");
-        void convertAgentSessionToChat(context.objectiveId)
-          .catch(() => { setState("error"); })
-          .then(() => { setState((current) => current === "error" ? current : "idle"); });
-      }}
-    >
-      {state === "error" ? t("terminal.chat.convertFailed") : t("terminal.chat.dormantOpen")}
-    </button>
-  );
 }
 
 function GeneralSection() {

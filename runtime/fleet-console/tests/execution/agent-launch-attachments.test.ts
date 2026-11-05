@@ -132,31 +132,18 @@ describe("agent attachment routes", () => {
     await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
 
     expect(harness.responses.at(-1)?.status).toBe(200);
-    // 경로 합성은 서버의 일이다 — spawn 프롬프트에는 사용자 텍스트 뒤에 절대 경로 지시가 실린다.
-    expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
-      prompt: expect.stringMatching(
-        new RegExp(`^fix it\\n\\n${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}.*fleet-attachments-.*image\\.png$`),
-      ) as unknown as string,
-    }));
+    await vi.waitFor(() => {
+      const prompt = harness.prompts.at(-1);
+      expect(prompt).toContain("fix it");
+      expect(prompt).toContain(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX);
+      expect(prompt).toMatch(/fleet-attachments-.*image\.png/);
+    });
 
     // 발사된 첨부는 세션에 묶인다 — 두 번째 실행이 같은 id를 실으면 스폰 전에 거절된다.
     await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "again", attachmentIds: [id] });
     expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "attachment_not_found" } });
   });
 
-  it("keeps attachments unsent when the spawn itself fails", async () => {
-    const harness = await createHarness({ attachError: new Error("spawn failed") });
-    await harness.postAttachment(PNG_BYTES);
-    const id = (harness.responses.at(-1)?.body as { id: string }).id;
-
-    // 실패한 스폰은 첨부를 묶지 않는다 — 재시도가 같은 id를 다시 실을 수 있다.
-    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
-    expect(harness.responses.at(-1)).toEqual({ status: 503, body: { error: "terminal_unavailable" } });
-
-    harness.clearAttachError();
-    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
-    expect(harness.responses.at(-1)?.status).toBe(200);
-  });
 });
 
 async function createHarness(options: { readonly attachError?: Error } = {}) {
@@ -256,7 +243,7 @@ ts: { createdAt, updatedAt: createdAt }};
         },
       },
       events: { publish: () => {}, subscribe: () => () => {}, registerSseChannel: () => () => {} },
-      server: { origin: () => null },
+      server: { origin: () => "http://127.0.0.1:4400" },
       paths: {
         fleetDataDir,
         consoleDataDir: fleetDataDir,
@@ -292,6 +279,31 @@ ts: { createdAt, updatedAt: createdAt }};
 
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
+  const prompts: string[] = [];
+  (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async () => {
+    return {
+      configDir: fleetDataDir,
+      models: ["claude--sonnet"],
+      openSession: () => {
+        let ended = false;
+        let end = (): void => {};
+        const untilEnd = new Promise<void>((resolve) => { end = resolve; });
+        const finish = (): void => { if (!ended) { ended = true; end(); } };
+        return {
+          send: (text: string) => { prompts.push(text); },
+          close: () => { finish(); },
+          getContextUsage: async () => null,
+          supportedCommands: async () => [],
+          supportedAgents: async () => [],
+          reloadSkills: async () => [],
+          setModel: async () => {},
+          applySessionSettings: async () => {},
+          async *[Symbol.asyncIterator]() { await untilEnd; },
+        };
+      },
+      dispose: async () => {},
+    };
+  };
   await registerAgentRoutes(ctx, terminalRuntime, {
     agentOptionsService: agentOptionsStub,
   });
@@ -316,7 +328,7 @@ ts: { createdAt, updatedAt: createdAt }};
       const req = { method: "POST", url: `/api/v1/agent/sessions/${sessionId}/message`, __body: body } as TestRequest;
       await dispatch(req, `/api/v1/agent/sessions/${sessionId}/message`);
     },
-    clearAttachError: () => { attachError = undefined; },
+    prompts,
     postAttachment: async (bytes: Buffer) => {
       const req = Readable.from([bytes]) as unknown as http.IncomingMessage;
       Object.assign(req, { method: "POST", url: "/api/v1/agent/attachments" });

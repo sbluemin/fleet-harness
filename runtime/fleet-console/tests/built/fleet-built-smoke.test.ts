@@ -220,7 +220,7 @@ afterEach(async () => {
     const consoleProcess = spawnConsole(run);
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
-    await openWorkload(run, endpoint, { terminal: true });
+    await openWorkload(run, endpoint);
     const started = descendantsOf(consoleProcess.pid!);
     await provableByStartTime(startedAt);
 
@@ -258,7 +258,7 @@ afterEach(async () => {
     ]);
     const consoleProcess = spawnConsole(run, { preload });
     const endpoint = await waitForReady(run, consoleProcess.pid!);
-    await openWorkload(run, endpoint, { terminal: false });
+    await openWorkload(run, endpoint);
     const started = descendantsOf(consoleProcess.pid!);
     const agent = agentProcs(run).find((entry) => entry.role === "chat")!;
     const exited = exitOf(consoleProcess, 40_000);
@@ -293,7 +293,7 @@ afterEach(async () => {
     const consolePid = await group.consolePid;
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consolePid);
-    await openWorkload(run, endpoint, { terminal: false });
+    await openWorkload(run, endpoint);
     const started = descendantsOf(consolePid);
     await provableByStartTime(startedAt);
 
@@ -319,7 +319,7 @@ afterEach(async () => {
     const consoleProcess = spawnConsole(run, { preload: stall.preload });
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
-    await openWorkload(run, endpoint, { terminal: false });
+    await openWorkload(run, endpoint);
     const started = descendantsOf(consoleProcess.pid!);
     await provableByStartTime(startedAt);
 
@@ -340,7 +340,7 @@ afterEach(async () => {
     const consoleProcess = spawnConsole(run, { preload: stall.preload, env: { PATH: [hangingProcessTable(run), run.env.PATH].join(":") } });
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
-    await openWorkload(run, endpoint, { terminal: false });
+    await openWorkload(run, endpoint);
     const started = descendantsOf(consoleProcess.pid!);
     await provableByStartTime(startedAt);
 
@@ -365,7 +365,7 @@ afterEach(async () => {
     const consoleProcess = spawnConsole(run, { preload: stall.preload, env: { PATH: [slowProcessTable(run, 400, psCalls), run.env.PATH].join(":"), FAKE_AGENT_LEADER_EXITS: "1" } });
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
-    await openWorkload(run, endpoint, { terminal: false });
+    await openWorkload(run, endpoint);
     const leader = agentProcs(run).find((entry) => entry.role === "chat")!;
     await waitUntil(() => !isAlive(leader.pid), 10_000, "the agent's group leader did not exit");
     const started = descendantsOf(consoleProcess.pid!);
@@ -448,7 +448,7 @@ afterEach(async () => {
     const group = spawnGroup(run, { preload });
     const consolePid = await group.consolePid;
     const endpoint = await waitForReady(run, consolePid);
-    await openWorkload(run, endpoint, { terminal: true });
+    await openWorkload(run, endpoint);
     const started = descendantsOf(consolePid);
 
     process.kill(consolePid, "SIGUSR2");
@@ -474,7 +474,7 @@ afterEach(async () => {
     const consolePid = await group.consolePid;
     const endpoint = await waitForReady(run, consolePid);
     const attachment = await uploadAttachment(run, endpoint);
-    await openWorkload(run, endpoint, { terminal: true });
+    await openWorkload(run, endpoint);
     const started = [...descendantsOf(consolePid)];
 
     process.kill(consolePid, "SIGKILL");
@@ -506,7 +506,7 @@ afterEach(async () => {
     const consoleProcess = spawnConsole(run);
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
-    await openWorkload(run, endpoint, { terminal: false });
+    await openWorkload(run, endpoint);
     expect(agentProcs(run).some((entry) => entry.role === "chat-residual"), "에이전트 잔여 helper가 실행되어야 한다").toBe(true);
     const started = [...descendantsOf(consoleProcess.pid!)];
     await provableByStartTime(startedAt);
@@ -533,7 +533,7 @@ afterEach(async () => {
     const owner = spawnConsole(run);
     const endpoint = await waitForReady(run, owner.pid!);
     const attachment = await uploadAttachment(run, endpoint);
-    await openWorkload(run, endpoint, { terminal: false });
+    await openWorkload(run, endpoint);
     await delay(1_000);
     const before = snapshotFiles(run.root);
 
@@ -597,7 +597,7 @@ afterEach(async () => {
       env: { FAKE_AGENT_DETACHED_GRANDCHILD: "1" },
     });
     const endpoint = await waitForReady(run, consoleProcess.pid!);
-    await openWorkload(run, endpoint, { terminal: false });
+    await openWorkload(run, endpoint);
     const started = descendantsOf(consoleProcess.pid!);
     expect(agentProcs(run).some((entry) => entry.role === "chat-mcp")).toBe(true);
     expect(agentProcs(run).some((entry) => entry.role === "chat-detached")).toBe(true);
@@ -691,7 +691,7 @@ async function expectWindowsExternalKill(kind: "terminate" | "taskkill"): Promis
   const run = createRun(kind === "taskkill" ? "win-taskkill" : "win-terminate");
   const consoleProcess = spawnConsole(run, { env: { FAKE_AGENT_DETACHED_GRANDCHILD: "1" } });
   const endpoint = await waitForReady(run, consoleProcess.pid!);
-  await openWorkload(run, endpoint, { terminal: false });
+  await openWorkload(run, endpoint);
   const started = descendantsOf(consoleProcess.pid!);
   expect(agentProcs(run).some((entry) => entry.role === "chat-detached")).toBe(true);
 
@@ -1211,8 +1211,8 @@ async function consoleApi<T>(endpoint: string, route: string, body: unknown, con
   return JSON.parse(text) as T;
 }
 
-/** An open chat turn (agent mid-turn, MCP child running) and optionally a terminal session, through the public API. */
-async function openWorkload(run: LifecycleRun, endpoint: string, options: { readonly terminal: boolean }): Promise<void> {
+/** An open chat turn, through the public API. A Claude objective no longer starts a PTY. */
+async function openWorkload(run: LifecycleRun, endpoint: string): Promise<void> {
   const grant = await consoleApi<{ folderGrantId?: string; id?: string; grant?: { id: string } }>(endpoint, "/api/v1/theaters/folder-grants", { path: run.theater });
   const { commodoreId } = await consoleApi<{ commodoreId: string }>(endpoint, "/api/v1/commodore/create", { alias: "Lifecycle fixture" });
   const { theaterId } = await consoleApi<{ theaterId: string }>(endpoint, "/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
@@ -1229,11 +1229,6 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
     const launcherLog = path.join(run.dir, "bin", "claude-fake.log");
     const launcher = fs.existsSync(launcherLog) ? fs.readFileSync(launcherLog, "utf8") : "(no launcher log)";
     throw new Error(`the chat turn did not open\nprocs:\n${procs}\nlauncher:\n${launcher}\nerrors:\n${errors}`);
-  }
-  if (options.terminal) {
-    const terminals = count("terminal");
-    await consoleApi(endpoint, "/api/v1/agent/sessions", { commodoreId, theaterId, cliId: "claude" });
-    await waitUntil(() => count("terminal") > terminals, 20_000, "the terminal did not start");
   }
 }
 

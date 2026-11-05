@@ -2088,9 +2088,9 @@ describe("Console core design contract", () => {
       /\.agent-chat \.agent-chat-ledger-note\.markdown-body p,\s*\n\.agent-chat \.agent-chat-ledger-note\.markdown-body li \{[^}]*\}/,
     )?.[0] ?? "";
     expect(chatNoteInkBlock).toContain("color: var(--text-primary);");
-    expect((terminalEntry.match(/actionId="view-switch"/g) ?? [])).toHaveLength(2);
-    expect(terminalEntry).toContain("<CaptionTerminalGlyph />");
-    expect(terminalEntry).toContain("<CaptionChatGlyph />");
+    expect(terminalEntry).not.toContain('actionId="view-switch"');
+    expect(terminalEntry).not.toContain("<CaptionTerminalGlyph />");
+    expect(terminalEntry).not.toContain("<CaptionChatGlyph />");
     // 패널 컴포저는 언제나 서 있다 — 접힘도, 되돌아오는 쉬는 줄도 없다.
     expect(chat).not.toContain(".agent-chat-composer-rest");
     expect(chatView).not.toContain("ComposerRestStrip");

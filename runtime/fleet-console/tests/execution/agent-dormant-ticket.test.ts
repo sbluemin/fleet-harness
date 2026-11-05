@@ -36,8 +36,9 @@ describe("agent dormant ticket guards", () => {
     expect(harness.attach).not.toHaveBeenCalled();
     createRecord.mockRestore();
     await harness.createLiveSession();
-    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ model: "codex--gpt-6-luna", effort: "low" }));
+    expect(harness.attach).not.toHaveBeenCalled();
     expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(JSON.stringify(harness.objectiveRecords[0]?.session)).toContain("gpt-6-luna");
   });
 
   it("creates a dormant terminal launch without a process and starts fresh on first send with its saved settings", async () => {
@@ -46,20 +47,16 @@ describe("agent dormant ticket guards", () => {
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
     const id = (await control.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "terminal", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).objectiveId;
     expect(harness.attach).not.toHaveBeenCalled();
-    expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "terminal", supportedActions: ["send", "resume"] });
+    expect(control.observe(id)).toMatchObject({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: ["send"] });
     const objectiveRecord = harness.objectiveRecords.find((op) => op.id === id)!;
-    expect(readObjectiveLaunch(objectiveRecord)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "terminal", started: false });
+    expect(readObjectiveLaunch(objectiveRecord)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "chat", started: false });
     expect(harness.objectiveRecords).toHaveLength(1);
-    await expect(control.request(caller, { kind: "send", objectiveId: id, text: "Do not wake", liveOnly: true })).rejects.toThrow("session_not_live");
-    expect(control.observe(id)?.lifecycle).toBe("dormant");
     expect(harness.attach).not.toHaveBeenCalled();
-    harness.patch(id, { ...(withObjectiveLaunchPreset(objectiveRecord, { model: "sonnet", effort: "low", viewMode: "terminal" })) });
-    expect(harness.objectiveRecords.find((op) => op.id === id)!).not.toHaveProperty("chatBorn");
-    expect(control.observe(id)?.surface).toBe("terminal");
-    expect(await control.request(caller, { kind: "send", objectiveId: id, text: "Begin" })).toEqual({ objectiveId: id, delivery: "queued" });
-    expect(harness.attach).toHaveBeenCalledTimes(1);
-    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId: id, model: "sonnet[1m]", effort: "low", sessionName: "commander", disableSubagents: true }));
-    expect(harness.attach.mock.calls[0]![0]).not.toHaveProperty("resumeSessionId");
+    harness.patch(id, { ...(withObjectiveLaunchPreset(objectiveRecord, { model: "sonnet", effort: "low", viewMode: "chat" })) });
+    expect(harness.objectiveRecords.find((op) => op.id === id)).toHaveProperty("chatBorn", true);
+    expect(control.observe(id)?.surface).toBe("chat");
+    expect(await control.request(caller, { kind: "send", objectiveId: id, text: "Begin" })).toMatchObject({ objectiveId: id });
+    expect(harness.attach).not.toHaveBeenCalled();
   });
 
   it("resumes a dormant member with the host subagent policy instead of a stale session block", async () => {
@@ -73,12 +70,8 @@ describe("agent dormant ticket guards", () => {
         session: { ...(objectiveRecord.session as Record<string, unknown>), disableSubagents: true },
       }),
     });
-    await harness.transitionToDormant(sessionId);
-    harness.attach.mockClear();
-    await harness.resumeSession(sessionId);
-    const attached = harness.attach.mock.calls.at(-1)?.[0] as { disableSubagents?: boolean } | undefined;
-    expect(attached).toMatchObject({ sessionId });
-    expect(attached).not.toHaveProperty("disableSubagents");
+    await expect(harness.resumeSession(sessionId)).resolves.toBeUndefined();
+    expect(harness.attach).not.toHaveBeenCalled();
     expect(harness.objectiveRecords.find((op) => op.id === sessionId)?.subagentSpawn).toBe("default");
   });
 
@@ -86,26 +79,18 @@ describe("agent dormant ticket guards", () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
     // 생산자 세대는 같은 프로세스가 사는 동안 그대로이고, 재개한 새 프로세스에서 바뀐다 — 플러그인은 이것으로 그 사이의 휴면을 안다.
-    const born = harness.control.observe(sessionId)?.generation;
-    expect(born).toEqual(expect.any(String));
-    expect(harness.control.observe(sessionId)?.generation).toBe(born);
-    await harness.transitionToDormant(sessionId);
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    await expect(harness.control.request(caller, { kind: "resume", objectiveId: sessionId, text: "wrong" } as never)).rejects.toThrow();
-    expect(await harness.control.request(caller, { kind: "resume", objectiveId: sessionId })).toEqual({ objectiveId: sessionId, delivery: "confirmed" });
-    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId }));
-    expect(harness.control.observe(sessionId)).toMatchObject({ lifecycle: "live", generation: expect.any(String) });
-    expect(harness.control.observe(sessionId)?.generation).not.toBe(born);
-    await expect(harness.control.request(caller, { kind: "resume", objectiveId: sessionId })).rejects.toThrow("not_dormant");
+    await expect(harness.control.request(caller, { kind: "resume", objectiveId: sessionId })).rejects.toThrow("chat_resume_unsupported");
+    expect(harness.attach).not.toHaveBeenCalled();
+    expect(harness.control.observe(sessionId)?.surface).toBe("chat");
   });
 
   it("rejects ticket issuance for a dormant session with objectiveRecord_dormant", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
-    await harness.transitionToDormant(sessionId);
 
     await harness.postTicket(sessionId);
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_dormant" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_chat_mode" } });
     expect(harness.ticketsIssued).toBe(0);
   });
 
@@ -116,30 +101,19 @@ describe("agent dormant ticket guards", () => {
     expect(harness.tickets.consume(issued.ticket)).toMatchObject({ sessionId });
 
     const second = harness.issueDirectTicket(sessionId);
-    await harness.transitionToDormant(sessionId);
+    await harness.postTicket(sessionId);
 
-    expect(harness.tickets.consume(second.ticket)).toBeNull();
-    expect(harness.invalidateCalls).toEqual([sessionId]);
+    expect(harness.tickets.consume(second.ticket)).toMatchObject({ sessionId });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_chat_mode" } });
   });
 
   it("allows ticket issuance after resume moves the session out of dormant", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
-    await harness.transitionToDormant(sessionId);
 
     await harness.postTicket(sessionId);
-    expect(harness.responses.at(-1)?.status).toBe(409);
-
-    await harness.resumeSession(sessionId);
-    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId }));
-    const sessions = await harness.getSessions();
-    expect(sessions[0]?.status).not.toBe("dormant");
-
-    await harness.postTicket(sessionId);
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    const body = harness.responses.at(-1)?.body as { readonly ticket?: string };
-    expect(typeof body.ticket).toBe("string");
-    expect(harness.tickets.consume(body.ticket!)).toMatchObject({ sessionId });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_chat_mode" } });
+    expect(harness.attach).not.toHaveBeenCalled();
   });
 });
 
@@ -277,7 +251,7 @@ ts: { createdAt, updatedAt: createdAt }};
         },
         registerSseChannel: () => () => {},
       },
-      server: { origin: () => null },
+      server: { origin: () => "http://127.0.0.1:4400" },
       paths: {
         fleetDataDir,
         consoleDataDir: fleetDataDir,
@@ -316,6 +290,15 @@ ts: { createdAt, updatedAt: createdAt }};
     },
   } satisfies ConsoleRuntimeContext;
 
+  (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async () => ({
+    configDir: fleetDataDir,
+    models: ["claude--sonnet"],
+    openSession: () => ({
+      send: async function* () { yield { type: "result", subtype: "success" }; },
+      close: async () => {},
+    }),
+    dispose: async () => {},
+  });
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
   await registerAgentRoutes(ctx, terminalRuntime, {
