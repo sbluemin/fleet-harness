@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.284.0] - 2026-11-05
+
+### fleet-console
+
+#### Changed
+- The approval list opens under the bell and stays with it when the side panel or window moves, and the bell swings once when a new request arrives.
+
 ## [1.283.1] - 2026-11-05
 
 Release v1.283.1

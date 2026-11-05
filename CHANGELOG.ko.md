@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.284.0] - 2026-11-05
+
+### fleet-console
+
+#### Changed
+- 승인 목록이 벨 바로 아래에서 열리고 옆 패널이나 창이 움직여도 벨을 따라가며, 새 요청이 오면 벨이 한 번 흔들립니다.
+
 ## [1.283.1] - 2026-11-05
 
 Release v1.283.1
