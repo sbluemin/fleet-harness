@@ -161,7 +161,8 @@ const PRESET_ACTIVATION_FILE = "preset-activation.json";
 /** 실패한 기본 제공을 목록 읽기로 다시 받기까지의 간격. 「갱신」 단추는 이 간격과 무관하게 바로 받는다. */
 const PRESET_RETRY_MS = 10 * 60_000;
 const CLI_TIMEOUT_MS = 180_000;
-const COMPONENT_KEYS = ["commands", "agents", "skills", "hooks", "mcpServers", "lspServers", "outputStyles"] as const;
+/** marketplace 항목이 플러그인 대신 선언할 수 있는 구성 요소 키. */
+export const COMPONENT_KEYS = ["commands", "agents", "skills", "hooks", "mcpServers", "lspServers", "outputStyles"] as const;
 const segment = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9_-])?$/;
 
 /** 사람이 넣은 출처를 알아본다. 파일 경로는 받지 않는다 — 원격 Console 에서 서버 디스크를 가리키는 통로가 되지 않게. */
@@ -1279,8 +1280,11 @@ export function pluginNameOf(dir: string, fallback: string): string {
   return typeof declared === "string" && segment.test(declared) ? declared : fallback;
 }
 
-/** 플러그인의 MCP 선언 — manifest `mcpServers`(객체 또는 json 경로)와 루트 `.mcp.json`. `${CLAUDE_PLUGIN_ROOT}` 를 펼친다. */
-function mcpDeclarations(dir: string): Record<string, Record<string, unknown>> {
+/**
+ * 플러그인의 MCP 선언 — manifest `mcpServers`(객체 또는 json 경로)와 루트 `.mcp.json`. `${CLAUDE_PLUGIN_ROOT}` 를 펼친다.
+ * manifest 는 기본이 그 폴더의 plugin.json 이고, marketplace 항목과 합친 것을 넘길 수도 있다.
+ */
+function mcpDeclarations(dir: string, manifest: Record<string, unknown> = manifestOf(dir)): Record<string, Record<string, unknown>> {
   const servers: Record<string, Record<string, unknown>> = {};
   const absorb = (value: unknown) => {
     const table = isRecord(value) && isRecord(value.mcpServers) ? value.mcpServers : value;
@@ -1288,7 +1292,7 @@ function mcpDeclarations(dir: string): Record<string, Record<string, unknown>> {
     for (const [name, config] of Object.entries(table)) if (isRecord(config) && segment.test(name)) servers[name] = config;
   };
   const readInside = (file: string | null) => file && staysInside(dir, file) ? readJson(file) : undefined;
-  const declared = manifestOf(dir).mcpServers;
+  const declared = manifest.mcpServers;
   for (const item of Array.isArray(declared) ? declared : [declared]) {
     if (typeof item === "string") absorb(readInside(inside(dir, item)));
     else absorb(item);
@@ -1312,9 +1316,9 @@ export interface PluginMcpServer {
  * `plugin:<plugin.json name>:<서버>`(CLI 2.1.312 판독)다. `${CLAUDE_PLUGIN_ROOT}`를 펼치고, 동적 헤더 명령은
  * `--mcp-config`에서도 플러그인 로딩 때와 같은 루트 환경·작업 폴더로 실행되도록 감싼다. 쓸 수 없는 선언은 뺀다.
  */
-export function pluginMcpServers(dir: string, pluginName: string): PluginMcpServer[] {
+export function pluginMcpServers(dir: string, pluginName: string, manifest?: Record<string, unknown>): PluginMcpServer[] {
   const servers: PluginMcpServer[] = [];
-  for (const [server, config] of Object.entries(mcpDeclarations(dir))) {
+  for (const [server, config] of Object.entries(mcpDeclarations(dir, manifest))) {
     const name = `plugin:${pluginName}:${server}`;
     const converted = externalMcpServerOf(config, (helper) => pluginHeadersHelper(helper, dir));
     if (converted) servers.push({ server, name, config: converted });

@@ -1951,36 +1951,54 @@ describe("commodore session", () => {
     await expect(session.turn({ reasons: ["routine"] })).rejects.toThrow("session_disposed");
   });
 
-  it("adds only the person's home MCP, skills and enabled plugins behind Fleet's, without home settings or hooks", async () => {
+  it("adds the person's home MCP, skills and enabled plugins behind Fleet's, without home settings or any hook", async () => {
     const h = harness();
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-home-test-"));
     dirs.push(root);
     const write = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
-    const skill = (dir: string, extra = "") => write(path.join(dir, "SKILL.md"), `---\nname: ${path.basename(dir)}\n${extra}---\nUse \${CLAUDE_PLUGIN_ROOT}/docs/guide.md\n`);
+    const skill = (dir: string, frontmatter = `name: ${path.basename(dir)}\n`) => write(path.join(dir, "SKILL.md"), `---\n${frontmatter}---\nUse \${CLAUDE_PLUGIN_ROOT}/docs/guide.md\n`);
     // Fleet 사령관 플러그인 — 이름 `shared`의 스킬과 `plugin:fleetdup:svc` 서버를 싣는다.
     const fleetDir = path.join(root, "fleet", "fleetdup");
     write(path.join(fleetDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "fleetdup" }));
     skill(path.join(fleetDir, "skills", "shared"));
     const fleetServer = { type: "http" as const, url: "https://fleet.example/mcp" };
-    // 사람의 홈 — 설정의 훅·env·모델, CLAUDE.md 는 실리면 안 된다.
+    // 사람의 홈 — 설정의 훅·env·모델·권한, CLAUDE.md 는 실리면 안 된다. 훅 명령은 모두 HOME_HOOK 으로 표시한다.
     const home = path.join(root, "home", ".claude");
+    const hook = { PreToolUse: [{ hooks: [{ type: "command", command: "HOME_HOOK" }] }] };
     write(path.join(home, "CLAUDE.md"), "HOME_INSTRUCTIONS");
-    const tool = path.join(home, "plugins", "cache", "m", "tool", "1.0.0");
-    const twin = path.join(home, "plugins", "cache", "m", "fleetdup", "1.0.0");
-    write(path.join(home, "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: "HOME_SETTINGS_HOOK" }] }] }, env: { HOME_ENV: "HOME_ENV_VALUE" }, model: "HOME_MODEL", permissions: { allow: ["Bash(*)"] },
-      enabledPlugins: { "tool@m": true, "fleetdup@m": true, "off@m": false, "gone@m": true } }));
+    const cache = path.join(home, "plugins", "cache", "m");
+    const tool = path.join(cache, "tool", "1.0.0");
+    const lsp = path.join(cache, "lsp", "1.0.0");
+    const twin = path.join(cache, "fleetdup", "1.0.0");
+    write(path.join(home, "settings.json"), JSON.stringify({ hooks: hook, env: { HOME_ENV: "HOME_ENV_VALUE" }, model: "HOME_MODEL", permissions: { allow: ["Bash(*)"] },
+      enabledPlugins: { "tool@m": true, "lsp@m": true, "fleetdup@m": true, "off@m": false, "gone@m": true } }));
     write(path.join(home, "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: {
-      "tool@m": [{ scope: "user", installPath: tool, version: "1.0.0" }], "fleetdup@m": [{ scope: "user", installPath: twin }], "off@m": [{ scope: "user", installPath: twin }], "gone@m": [{ scope: "user", installPath: path.join(root, "missing") }] } }));
-    write(path.join(tool, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", version: "1.0.0", description: "Tool", hooks: "./hooks/hooks.json", lspServers: { ts: { command: "HOME_LSP" } } }));
+      "tool@m": [{ scope: "user", installPath: tool, version: "1.0.0" }], "lsp@m": [{ scope: "user", installPath: lsp }], "fleetdup@m": [{ scope: "user", installPath: twin }],
+      "off@m": [{ scope: "user", installPath: twin }], "gone@m": [{ scope: "user", installPath: path.join(root, "missing") }] } }));
+    // strict:false 항목 — plugin.json 없이 marketplace 가 LSP 와 훅을 선언한다. LSP 는 싣고 훅은 뺀다.
+    const market = path.join(home, "plugins", "marketplaces", "m");
+    write(path.join(home, "plugins", "known_marketplaces.json"), JSON.stringify({ m: { installLocation: market } }));
+    const lspServers = { ts: { command: "typescript-language-server", args: ["--stdio"], extensionToLanguage: { ".ts": "typescript" } } };
+    write(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "m", plugins: [{ name: "lsp", source: "./plugins/lsp", version: "1.0.0", strict: false, lspServers, hooks: hook }] }));
+    write(path.join(lsp, "README.md"), "lsp");
+    write(path.join(lsp, ".in_use"), "");
+    write(path.join(tool, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", version: "1.0.0", description: "Tool", hooks: "./hooks/hooks.json", lspServers }));
     skill(path.join(tool, "skills", "alpha"));
-    skill(path.join(tool, "skills", "hooked"), "hooks:\n  PreToolUse: []\n");
+    // 머리말의 훅 — 블록 키·따옴표 키는 그 키만 빼고 싣는다. 흐름 매핑처럼 키만 뺄 수 없으면 그 파일은 싣지 않는다.
+    skill(path.join(tool, "skills", "hooked"), "name: hooked\nhooks:\n  PreToolUse:\n    - hooks:\n        - type: command\n          command: HOME_HOOK\ndescription: Keeps working\n");
+    skill(path.join(tool, "skills", "flowy"), "{name: flowy, hooks: {Stop: [{hooks: [{type: command, command: HOME_HOOK}]}]}}\n");
+    write(path.join(tool, "skills", "flowy", "notes.md"), "notes");
     skill(path.join(tool, "skills", "shared"));
-    // 본문이 실행 요소를 가리켜도 그 자리는 링크하지 않는다.
-    write(path.join(tool, "commands", "run.md"), "Run \${CLAUDE_PLUGIN_ROOT}/bin/tool after \${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json.");
+    write(path.join(tool, "agents", "helper.md"), `---\nname: helper\n"hooks": {Stop: [{hooks: [{type: command, command: HOME_HOOK}]}]}\ndescription: Helps\n---\nHelp.\n`);
+    write(path.join(tool, "commands", "run.md"), "Run ${CLAUDE_PLUGIN_ROOT}/bin/tool.");
+    write(path.join(tool, "commands", "nested", "deep.md"), "Deep.");
     write(path.join(tool, "docs", "guide.md"), "guide");
-    write(path.join(tool, "hooks", "hooks.json"), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: "HOME_PLUGIN_HOOK" }] }] } }));
+    write(path.join(tool, "hooks", "hooks.json"), JSON.stringify({ hooks: hook }));
     write(path.join(tool, "bin", "tool"), "#!/bin/sh");
+    write(path.join(tool, ".lsp.json"), JSON.stringify({}));
     write(path.join(tool, ".mcp.json"), JSON.stringify({ mcpServers: { svc: { type: "http", url: "https://tool.example/mcp" } } }));
+    write(path.join(root, "outside", "secret.txt"), "HOME_OUTSIDE");
+    fs.symlinkSync(path.join(root, "outside"), path.join(tool, "link-out"));
     write(path.join(twin, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "fleetdup" }));
     skill(path.join(twin, "skills", "twin"));
     skill(path.join(home, "skills", "solo"));
@@ -2000,19 +2018,31 @@ describe("commodore session", () => {
       await session.start();
       return { session, workspace: stub.created[0]!.workspace! };
     };
+    /** 자식이 따라 읽을 수 있는 모든 파일(링크를 따라간다). */
+    const reachable = (dir: string): string[] => fs.readdirSync(dir).flatMap((name) => {
+      const file = path.join(dir, name);
+      return fs.statSync(file).isDirectory() ? reachable(file) : [fs.readFileSync(file, "utf8")];
+    });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       const { session, workspace } = await open({ configDir: home, configFile });
-      // Fleet 플러그인이 먼저, 홈 플러그인(Fleet 과 이름이 같은 것은 빠진다)과 홈 스킬 묶음이 뒤에 선다.
-      const [fleet, staged, skills, ...rest] = workspace.plugins!;
+      // Fleet 플러그인이 먼저, 켜 둔 홈 플러그인(Fleet 과 이름이 같은 것은 빠진다)과 홈 스킬 묶음이 뒤에 선다.
+      const [fleet, staged, lspStaged, skills, ...rest] = workspace.plugins!;
       expect(rest).toEqual([]);
       expect(fleet).toEqual({ path: fleetDir, skipMcp: true });
-      const tree = (dir: string) => fs.readdirSync(dir, { recursive: true }).map(String).sort();
-      expect(JSON.parse(fs.readFileSync(path.join(staged!.path, ".claude-plugin", "plugin.json"), "utf8"))).toEqual({ name: "tool", version: "1.0.0", description: "Tool" });
-      // 투영본에는 스킬·커맨드와 본문이 가리키는 docs 만 — 훅·bin·.mcp.json·훅을 선언한 스킬·Fleet 과 같은 이름의 스킬은 없다.
-      expect(tree(staged!.path).filter((entry) => !entry.includes(path.sep + "SKILL.md") && !entry.startsWith("docs" + path.sep))).toEqual([".claude-plugin", path.join(".claude-plugin", "plugin.json"), "commands", path.join("commands", "run.md"), "docs", "skills", path.join("skills", "alpha")]);
-      expect(fs.readFileSync(path.join(staged!.path, "docs", "guide.md"), "utf8")).toBe("guide");
-      expect(JSON.parse(fs.readFileSync(path.join(skills!.path, ".claude-plugin", "plugin.json"), "utf8"))).toEqual({ name: "home-skills" });
+      const manifest = (dir: string) => JSON.parse(fs.readFileSync(path.join(dir, ".claude-plugin", "plugin.json"), "utf8"));
+      expect(manifest(staged!.path)).toEqual({ name: "tool", version: "1.0.0", description: "Tool", lspServers });
+      expect(manifest(lspStaged!.path)).toEqual({ name: "lsp", version: "1.0.0", lspServers });
+      expect(fs.readFileSync(path.join(lspStaged!.path, "README.md"), "utf8")).toBe("lsp");
+      expect(fs.existsSync(path.join(lspStaged!.path, ".in_use"))).toBe(false);
+      // 훅만 빠진다 — 스킬·중첩 커맨드·에이전트·LSP·bin·지원 파일은 원래 자리에 있다.
+      const at = (...parts: string[]) => path.join(staged!.path, ...parts);
+      for (const kept of [["skills", "alpha", "SKILL.md"], ["skills", "flowy", "notes.md"], ["commands", "run.md"], ["commands", "nested", "deep.md"], ["bin", "tool"], ["docs", "guide.md"], [".lsp.json"]]) expect(fs.existsSync(at(...kept))).toBe(true);
+      for (const dropped of [["hooks", "hooks.json"], ["skills", "flowy", "SKILL.md"], ["skills", "shared"], ["link-out"]]) expect(fs.existsSync(at(...dropped))).toBe(false);
+      expect(fs.readFileSync(at("skills", "hooked", "SKILL.md"), "utf8")).toBe(`---\nname: hooked\ndescription: Keeps working\n---\nUse \${CLAUDE_PLUGIN_ROOT}/docs/guide.md\n`);
+      expect(fs.readFileSync(at("agents", "helper.md"), "utf8")).toBe("---\nname: helper\ndescription: Helps\n---\nHelp.\n");
+      for (const plugin of workspace.plugins!.slice(1)) for (const text of reachable(plugin.path)) expect(text).not.toMatch(/HOME_HOOK|HOME_OUTSIDE|HOME_INSTRUCTIONS/);
+      expect(manifest(skills!.path)).toEqual({ name: "home-skills" });
       expect(fs.readdirSync(path.join(skills!.path, "skills"))).toEqual(["solo"]);
       // MCP — Fleet 이름·예약 묶음과 겹치는 홈 서버, 내부 이름을 끌어가는 선언, 모르는 형식은 빠진다. 글자 그대로의 헤더 값은 자식 환경으로 옮긴다.
       expect(workspace.mcpServers).toEqual({
@@ -2022,18 +2052,17 @@ describe("commodore session", () => {
       });
       expect(workspace.env).toEqual({ FLEET_HOME_MCP_0: "Bearer HOME_SECRET" });
       const serialized = JSON.stringify({ ...workspace, env: undefined });
-      for (const leaked of ["HOME_SECRET", "HOME_INSTRUCTIONS", "HOME_SETTINGS_HOOK", "HOME_PLUGIN_HOOK", "HOME_ENV", "HOME_MODEL", "HOME_LSP", "HOME_SHADOW", "HOME_PROJECT_MCP", "Bash(*)"]) expect(serialized).not.toContain(leaked);
+      for (const leaked of ["HOME_SECRET", "HOME_HOOK", "HOME_ENV", "HOME_MODEL", "HOME_SHADOW", "HOME_PROJECT_MCP", "Bash(*)"]) expect(serialized).not.toContain(leaked);
       // 진단은 이름과 이유 코드만 남긴다.
       const logged = warn.mock.calls.map((call) => String(call[0])).join("\n");
-      expect(logged).toContain("plugin fleetdup@m: fleet_precedence");
-      expect(logged).toContain("plugin gone@m: missing");
-      expect(logged).toContain("mcp leak: reserved_placeholder");
+      for (const line of ["plugin fleetdup@m: fleet_precedence", "plugin gone@m: missing", "skill tool:flowy: hooks", "skill tool:shared: fleet_precedence", "file tool/link-out: outside", "mcp leak: reserved_placeholder"]) expect(logged).toContain(line);
       expect(logged).not.toContain("HOME_SECRET");
       expect(logged).not.toContain(root);
       // 세션 폐기가 투영본을 거둔다. 원본 홈은 그대로다.
       await session.dispose();
       expect(fs.existsSync(staged!.path)).toBe(false);
       expect(fs.existsSync(path.join(tool, "hooks", "hooks.json"))).toBe(true);
+      expect(fs.readFileSync(path.join(tool, "agents", "helper.md"), "utf8")).toContain("HOME_HOOK");
 
       // 손상된 홈 — 읽지 못한 부분만 빠지고 사령관은 Fleet 플러그인으로 그대로 선다.
       write(path.join(home, "settings.json"), "{ broken");
