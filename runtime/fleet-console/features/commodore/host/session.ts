@@ -318,6 +318,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         sessionName: `commodore-${(options.store.read(options.commodoreId)?.alias ?? "commodore").normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
         ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
         systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias }),
+        autoMemoryEnabled: options.store.read(options.commodoreId)?.autoMemoryEnabled !== false,
         continuation: "conversation",
         settlement: "result",
         cwd: options.cwd,

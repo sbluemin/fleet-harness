@@ -61,6 +61,8 @@ export interface InternalSessionOptions extends Omit<AgentSessionOptions, "tools
   readonly cwd?: string;
   readonly tools?: InternalTools;
   readonly workspace?: AgentWorkspace;
+  /** Console 내부 소유자가 명시하는 SDK 자동 메모리. 생략하면 기존 실행 정책을 유지한다. */
+  readonly autoMemoryEnabled?: boolean;
 }
 /** 호스트가 스스로 싣는 MCP 서버 이름 — 호출자의 도구 묶음·외부 서버는 이 이름을 쓸 수 없다. */
 export const AGENT_RESERVED_TOOL_GROUPS: readonly string[] = [FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER];
@@ -140,6 +142,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt, deps.compactCeiling?.() ?? null);
       return (deps.createSdk ?? createClaudeGatewaySdk)({
         baseUrl, models: [options.model], env, modelPolicy: claudeGatewayModelPolicy,
+        ...(options.autoMemoryEnabled === undefined ? {} : { autoMemoryEnabled: options.autoMemoryEnabled }),
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.
         ...(resources.resident ? { home: { kind: "persistent" as const, configDir: path.join(scratch, "claude") } } : { tempRoot: scratch }),
         ...(executablePath === undefined ? {} : { executablePath }), ...(autoCompactWindow === undefined ? {} : { autoCompactWindow }),

@@ -135,6 +135,8 @@ export const commodoreStateSchema = z.object({
   commanderRouting: z.literal(true).optional(),
   /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관 세션이 다음 턴부터 싣는다. 목표 세션은 `objectiveExcluded` 로 한 번 더 거른다. */
   plugins: commodorePluginsSchema.optional(),
+  /** 이 사령관 자신의 SDK 자동 메모리. 없으면 켬이며, 변경은 다음 턴의 새 세션부터 적용된다. */
+  autoMemoryEnabled: z.boolean().optional(),
   /**
    * 이 사령관의 설치 중 목표 세션에 싣지 않을 id. 없거나 비어 있으면 고른 플러그인을 모두 함께 싣는다(현행).
    * `plugins` 목록의 형태와 내용은 바꾸지 않는 옆 필드다.
@@ -377,7 +379,7 @@ export type CommodoreEvent =
    */
   | { readonly op: "global-plugins"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly plugins: readonly string[] };
 
-export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "description" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "plugin-reach" | "routines" | "language" | "run" | "clear" | "asks";
+export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "description" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "auto-memory" | "plugin-reach" | "routines" | "language" | "run" | "clear" | "asks";
 
 export interface CommodoreStateView {
   /** 보드 어댑터의 실행 가능 여부. */

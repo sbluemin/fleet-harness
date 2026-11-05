@@ -96,6 +96,23 @@ describe("turn assembly", () => {
   });
 });
 
+// 명시한 자동 메모리 정책은 상속 환경과 충돌해도 일치해야 한다. 실제 모델 호출 없이 vendor 경계에서 확인한다.
+it("applies explicit auto memory policy to both SDK settings and the child environment", async () => {
+  for (const enabled of [false, true]) {
+    const sdk = await createClaudeGatewaySdk({ modelPolicy: claudeGatewayModelPolicy, baseUrl: BASE_URL, models: [LUNA],
+      autoMemoryEnabled: enabled, env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: enabled ? "1" : "0" } });
+    try {
+      const session = await sdk.openSession({ model: LUNA });
+      expect(runVendorSession.mock.calls.at(-1)?.[0].options).toMatchObject({
+        settings: { autoMemoryEnabled: enabled },
+        env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: enabled ? "0" : "1" },
+        settingSources: [],
+      });
+      session.close();
+    } finally { await sdk.dispose(); }
+  }
+});
+
 describe("fail-closed refusals", () => {
 
   it("refuses a second concurrent turn on one instance", async () => {
