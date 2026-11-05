@@ -187,7 +187,7 @@ ts: { createdAt, updatedAt: createdAt }};
         },
         registerSseChannel: () => () => {},
       },
-      server: { origin: () => null },
+      server: { origin: () => "http://127.0.0.1:4400" },
       paths: {
         fleetDataDir,
         consoleDataDir: fleetDataDir,
@@ -223,7 +223,13 @@ ts: { createdAt, updatedAt: createdAt }};
 
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
-  await registerAgentRoutes(ctx, terminalRuntime, {
+  (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async () => ({
+    configDir: fleetDataDir,
+    models: ["claude--sonnet"],
+    openSession: () => ({ send: async function* () {}, close: async () => {} }),
+    dispose: async () => {},
+  });
+  const api = await registerAgentRoutes(ctx, terminalRuntime, {
     agentOptionsService: agentOptionsStub,
   });
   cleanups.push(async () => {
@@ -287,6 +293,12 @@ ts: { createdAt, updatedAt: createdAt }};
         res: {} as http.ServerResponse,
         pathname: "/api/v1/agent/sessions",
       });
+      const created = objectiveRecords[0];
+      if (created) {
+        delete created.chatMode;
+        delete created.chatBorn;
+        api.releaseChatOwnership(created.id);
+      }
     },
     resumeSession: async (sessionId: string) => {
       if (!route) throw new Error("Agent route was not registered");

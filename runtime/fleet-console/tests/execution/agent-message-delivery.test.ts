@@ -42,8 +42,7 @@ describe("agent message delivery", () => {
     await vi.waitFor(() => {
       expect(harness.writes).toEqual(expectedChunks("run the suite"));
     });
-    // 살아 있는 세션에는 재기동이 없어야 한다 — attach는 생성 1회로 끝.
-    expect(harness.attach).toHaveBeenCalledTimes(1);
+    expect(harness.attach).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -65,10 +64,10 @@ describe("agent message delivery", () => {
     const harness = await createHarness({ trusted: false });
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
+    harness.setLive(sessionId);
     await harness.postMessage(sessionId, { text: "start the objective" });
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "claude_trust_required" } });
-    expect(harness.attach).toHaveBeenCalledTimes(1);
-    harness.setLive(sessionId);
+    expect(harness.attach).not.toHaveBeenCalled();
     await harness.postMessage(sessionId, { text: "confirm the objective" });
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "claude_trust_required" } });
     expect(harness.writes).toEqual([]);
@@ -97,14 +96,14 @@ describe("agent message delivery", () => {
     expect(harness.responses.at(-1)).toEqual({ status: 404, body: { error: "session_not_found" } });
   });
 
-  it("rejects a dormant objectiveRecord without a provider session with 409", async () => {
+  it("delivers a dormant objective without a provider session as chat", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
 
     await harness.postMessage(sessionId, { text: "hello" });
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "resume_unavailable" } });
-    expect(harness.attach).toHaveBeenCalledTimes(1);
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
+    expect(harness.attach).not.toHaveBeenCalled();
   });
 
   it("rejects delivery into a session awaiting terminal input with 409", async () => {
@@ -120,36 +119,28 @@ describe("agent message delivery", () => {
     expect(harness.writes).toEqual([]);
   });
 
-  it("resumes a dormant objectiveRecord then delivers in the same request", async () => {
+  it("delivers a dormant launch session as chat without starting a PTY", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
 
     await harness.postMessage(sessionId, { text: "resume and summarize" });
 
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, resumed: true } });
-    expect(harness.attach).toHaveBeenCalledTimes(2);
-    expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
-      sessionId,
-      resumeSessionId: "provider-session-1",
-    }));
-    // 재기동 전달은 부팅 여유폭의 빈 선두 청크가 앞선다.
-    await vi.waitFor(() => {
-      expect(harness.writes).toEqual(["", ...expectedChunks("resume and summarize")]);
-    }, { timeout: 4000 });
-  }, 10000);
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
+    expect(harness.attach).not.toHaveBeenCalled();
+    expect(harness.writes).toEqual([]);
+  });
 
-  it("keeps the draft deliverable when the resume spawn fails", async () => {
-    const harness = await createHarness({ resumeAttachError: new Error("spawn failed") });
+  it("does not type into a PTY when a dormant launch session is delivered as chat", async () => {
+    const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
 
     await harness.postMessage(sessionId, { text: "resume and summarize" });
 
-    expect(harness.responses.at(-1)).toEqual({ status: 503, body: { error: "terminal_unavailable" } });
-    // 실패한 재기동 뒤에 죽은 세션으로 쓰기가 쌓이면 다음 재기동으로 샌다 — 전달은 없어야 한다.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
     expect(harness.writes).toEqual([]);
+    expect(harness.attach).not.toHaveBeenCalled();
   });
 });
 
@@ -257,7 +248,7 @@ ts: { createdAt, updatedAt: createdAt }};
         subscribe: () => () => {},
         registerSseChannel: () => () => {},
       },
-      server: { origin: () => null },
+      server: { origin: () => "http://127.0.0.1:4400" },
       paths: {
         fleetDataDir,
         consoleDataDir: fleetDataDir,
@@ -293,7 +284,13 @@ ts: { createdAt, updatedAt: createdAt }};
 
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
-  await registerAgentRoutes(ctx, terminalRuntime, {
+  (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async () => ({
+    configDir: fleetDataDir,
+    models: ["claude--sonnet"],
+    openSession: () => ({ send: async function* () {}, close: async () => {} }),
+    dispose: async () => {},
+  });
+  const api = await registerAgentRoutes(ctx, terminalRuntime, {
     agentOptionsService: agentOptionsStub,
     ...(options.trusted === undefined ? {} : { isClaudePathTrusted: async () => trustAllowed === true }),
   });
@@ -312,6 +309,9 @@ ts: { createdAt, updatedAt: createdAt }};
     });
     const objectiveRecord = objectiveRecords[0];
     if (!objectiveRecord) throw new Error(`Session create failed: ${JSON.stringify(responses.at(-1))}`);
+    delete objectiveRecord.chatMode;
+    delete objectiveRecord.chatBorn;
+    api.releaseChatOwnership(objectiveRecord.id);
     return objectiveRecord.id;
   }
 
@@ -351,6 +351,7 @@ ts: { createdAt, updatedAt: createdAt }};
         harness: "claude-code",
         id: "provider-session-1",
         capturedAt: "2026-08-13T00:00:00.000Z",
+        source: "launch",
       };
     },
   };

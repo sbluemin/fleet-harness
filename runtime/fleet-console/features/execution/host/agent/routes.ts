@@ -1512,15 +1512,18 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // provider 세션의 증거가 아니다. 이를 --resume에 넘기면 첫 턴 전 Chat → CLI 복귀가 존재하지
     // 않는 세션을 재개하려다 실패한다.
     //
-    // chat 여부로는 판단할 수 없다: 캡션의 복귀 버튼은 chat 마커를 먼저 걷고 이 라우트를 부르므로
-    // 이 시점의 payload에는 이미 없다. 그래서 Chat 진입의 resolveChatSeed와 같은 source 판정을 쓴다.
-    // 떠 있지 않은 옛 터미널 목표의 다음 열기는 채팅이다. PTY를 시작하지 않는다.
+    // 떠 있지 않은 옛 터미널 목표의 다음 열기는 채팅이다. 채팅 시드를 만들 수 없을 때만
+    // 기존 PTY 재개로 떨어진다. 채팅으로 태어난 목표는 이 재개를 쓰지 않는다.
     if (node[CHAT_MODE_PAYLOAD_KEY] !== true && terminalRuntime.getSessionLastActivityAt(sessionId) === null) {
       const adopted = await setChatMode(sessionId, true);
-      if (!adopted.ok) return { ok: false, status: adopted.error === "session_not_found" ? 404 : 409, error: adopted.error };
-      const resumed = observability.getTerminalSessionInfo(sessionId);
-      if (!resumed) return { ok: false, status: 404, error: "session_not_found" };
-      return { ok: true, resumed };
+      if (adopted.ok) {
+        const resumed = observability.getTerminalSessionInfo(sessionId);
+        if (!resumed) return { ok: false, status: 404, error: "session_not_found" };
+        return { ok: true, resumed };
+      }
+      if (adopted.error === "session_not_found" || adopted.error === "session_live" || adopted.error === "chat_convert_busy") {
+        return { ok: false, status: adopted.error === "session_not_found" ? 404 : 409, error: adopted.error };
+      }
     }
     if (node[CHAT_MODE_PAYLOAD_KEY] === true) return { ok: false, status: 409, error: "chat_resume_unsupported" };
     const startsFresh = fresh || !providerSession || providerSession.source === "launch";
