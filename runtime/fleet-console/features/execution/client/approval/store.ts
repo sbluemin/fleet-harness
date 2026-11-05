@@ -28,6 +28,8 @@ let open = false;
 let toasts: readonly ApprovalToast[] = [];
 let announce = "";
 let seen: ReadonlySet<string> | null = null;
+/** 첫 스냅숏 이후에 새로 생긴 대기 id마다 1씩. 첫 로드에 이미 있던 요청은 세지 않는다. */
+let arrival = 0;
 let installed = false;
 
 export function subscribeApprovals(listener: () => void): () => void {
@@ -58,6 +60,10 @@ export function approvalToasts(): readonly ApprovalToast[] {
 
 export function approvalAnnounce(): string {
   return announce;
+}
+
+export function approvalArrival(): number {
+  return arrival;
 }
 
 export function openApprovalList(): void {
@@ -102,7 +108,10 @@ function applySnapshot(value: unknown): void {
   const ids = new Set(next.map((item) => item.id));
   if (seen !== null) {
     const fresh = next.find((item) => !seen!.has(item.id));
-    if (fresh) announce = fresh.type;
+    if (fresh) {
+      announce = fresh.type;
+      arrival += 1;
+    }
   }
   seen = ids;
   items = next;
