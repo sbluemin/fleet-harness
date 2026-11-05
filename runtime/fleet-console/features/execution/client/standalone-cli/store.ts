@@ -23,11 +23,16 @@ export interface StandaloneCliViewState {
   readonly focusRequest: number;
   /** 새 CLI를 붙일 때마다 오른다 — 끝난 CLI의 표면을 새 표면으로 갈아 끼우는 key다. */
   readonly generation: number;
+  /**
+   * 이 세대의 CLI를 띄우지 못했다(Console이 터미널을 붙이지 못하고 재연결을 그만둠). 열린 동안은 그 실패 화면을 그대로
+   * 보이고, 다음 열기는 같은 표면을 다시 보이는 대신 새 세대로 다시 띄운다 — 실행 파일 설정을 고친 뒤 새로고침 없이 돌아오게.
+   */
+  readonly failed: boolean;
 }
 
 const STATE_PATH = "/api/v1/standalone-cli/state";
 
-let state: StandaloneCliViewState = { open: false, placement: null, needsTheater: false, focusRequest: 0, generation: 0 };
+let state: StandaloneCliViewState = { open: false, placement: null, needsTheater: false, focusRequest: 0, generation: 0, failed: false };
 const listeners = new Set<() => void>();
 let toggling = false;
 /**
@@ -68,13 +73,13 @@ export function useStandaloneCliState(): StandaloneCliViewState {
 }
 
 /** 서버가 쥔 자리. 새로고침 뒤에도 살아 있는 CLI에 다시 붙기 위해 연다 — 브라우저는 그 Theater의 불투명 id만 받는다. */
-async function readServerPlacement(): Promise<StandaloneCliPlacement | null> {
+async function readServerPlacement(): Promise<{ readonly placement: StandaloneCliPlacement; readonly live: boolean } | null> {
   try {
     const response = await fetch(STATE_PATH);
     if (!response.ok) return null;
-    const payload = await response.json() as { readonly commodoreId?: unknown; readonly theaterId?: unknown };
+    const payload = await response.json() as { readonly live?: unknown; readonly commodoreId?: unknown; readonly theaterId?: unknown };
     return typeof payload.commodoreId === "string" && typeof payload.theaterId === "string"
-      ? { commodoreId: payload.commodoreId, theaterId: payload.theaterId }
+      ? { placement: { commodoreId: payload.commodoreId, theaterId: payload.theaterId }, live: payload.live === true }
       : null;
   } catch {
     return null;
@@ -92,17 +97,20 @@ export async function toggleStandaloneCli(viewed: { readonly commodoreId: string
     return;
   }
   rememberReturnFocus();
-  if (state.placement !== null) {
+  // 붙어 있는 CLI는 숨겼던 그대로 다시 보인다. 띄우지 못한 CLI만 아래에서 새로 띄운다.
+  if (state.placement !== null && !state.failed) {
     write({ ...state, open: true, needsTheater: false, focusRequest: state.focusRequest + 1 });
     return;
   }
   toggling = true;
   try {
-    const placement = await readServerPlacement()
-      ?? (viewed.commodoreId !== null && viewed.theaterId !== null ? { commodoreId: viewed.commodoreId, theaterId: viewed.theaterId } : null);
+    // 살아 있는 CLI가 최우선이고, 다음은 지금 보는 Theater다. 서지 못한 자리(띄우다 실패한 자리)는 고를 Theater가 없을 때만 다시 쓴다.
+    const server = await readServerPlacement();
+    const viewedPlacement = viewed.commodoreId !== null && viewed.theaterId !== null ? { commodoreId: viewed.commodoreId, theaterId: viewed.theaterId } : null;
+    const placement = (server?.live ? server.placement : null) ?? viewedPlacement ?? server?.placement ?? (state.failed ? state.placement : null);
     write(placement === null
-      ? { ...state, open: true, needsTheater: true }
-      : { open: true, placement, needsTheater: false, focusRequest: state.focusRequest + 1, generation: state.generation + 1 });
+      ? { ...state, open: true, placement: null, needsTheater: true, failed: false }
+      : { open: true, placement, needsTheater: false, focusRequest: state.focusRequest + 1, generation: state.generation + 1, failed: false });
   } finally {
     toggling = false;
   }
@@ -119,8 +127,14 @@ export function closeStandaloneCli(): void {
   write({ ...state, open: false, needsTheater: false });
 }
 
+/** 이 세대의 CLI를 띄우지 못했다. 실패 화면은 그대로 두고, 다음 열기가 새 세대로 다시 띄우게 표시만 한다. */
+export function failStandaloneCli(generation: number): void {
+  if (state.generation !== generation || state.placement === null || state.failed) return;
+  write({ ...state, failed: true });
+}
+
 /** PTY가 끝났다. 표면을 걷고 패널을 닫는다 — 같은 자리에 끝난 화면을 남기지 않는다. */
 export function endStandaloneCli(generation: number): void {
   if (state.generation !== generation || state.placement === null) return;
-  write({ ...state, open: false, placement: null, needsTheater: false });
+  write({ ...state, open: false, placement: null, needsTheater: false, failed: false });
 }

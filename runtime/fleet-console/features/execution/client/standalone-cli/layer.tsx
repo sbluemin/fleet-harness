@@ -8,7 +8,7 @@ import { launchProviderGlyph } from "../../../ai-gateway/client/components/launc
 import { theaterLabelOrNull } from "../../../commodore/client/theater-owner.js";
 import { subscribeCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { getT } from "../agent/i18n/index.js";
-import { closeStandaloneCli, endStandaloneCli, focusStandaloneCli, takeStandaloneCliReturnFocus, useStandaloneCliState } from "./store.js";
+import { closeStandaloneCli, endStandaloneCli, failStandaloneCli, focusStandaloneCli, takeStandaloneCliReturnFocus, useStandaloneCliState } from "./store.js";
 import "./standalone-cli.css";
 
 const STANDALONE_CLI_SESSION_ID = "standalone-cli";
@@ -101,6 +101,7 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
                   theme={theme}
                   locale={language}
                   onExit={() => endStandaloneCli(generation)}
+                  onUnavailable={() => failStandaloneCli(generation)}
                 />
               </div>
             </div>

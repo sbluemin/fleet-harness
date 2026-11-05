@@ -69,6 +69,11 @@ export interface TerminalSurfaceProps {
    */
   readonly onExit?: (exit: TerminalExitInfo) => void;
   /**
+   * Console이 이 터미널을 붙이지 못해(`terminal_unavailable` — 띄우기 실패 등) 재연결을 그만뒀다. 이 표면은 같은 연결로
+   * 다시 시도하지 않는다. 다시 띄울 수 있는 표면(독립 CLI)만 받아 새 표면을 붙인다 — 생략하면 지금처럼 닫힌 화면에 남는다.
+   */
+  readonly onUnavailable?: () => void;
+  /**
    * 마운트할 때 첫 재생보다 먼저 쓸 앞 셸의 흔적. 같은 페인에서 셸을 갈아 끼운 경우에만 넘긴다 —
    * 흐린 앞 화면과 "새 Shell" 구분선이 새 셸의 출력 위에 선다(K-10).
    */
@@ -278,7 +283,7 @@ export interface TerminalCarryOver {
   readonly cols?: number;
 }
 
-export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "dark", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, carryOver, active, visible = true, keyboardFocusRequestId, keepScrollOnActivate = false, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
+export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "dark", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, onUnavailable, carryOver, active, visible = true, keyboardFocusRequestId, keepScrollOnActivate = false, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -343,6 +348,8 @@ export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath,
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  const onUnavailableRef = useRef(onUnavailable);
+  onUnavailableRef.current = onUnavailable;
   const onStatusDetailRef = useRef(onStatusDetail);
   onStatusDetailRef.current = onStatusDetail;
   // 링크를 여는 문은 렌더마다 새 함수일 수 있고, 마운트 effect는 다시 돌지 않는다(세션이 끊긴다).
@@ -707,6 +714,7 @@ export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath,
         onStatus: (nextStatus, message) => {
           if (nextStatus === "live") setHadLive(true);
           setStatus({ kind: nextStatus, code: message });
+          if (nextStatus === "closed" && message === "terminal_unavailable") onUnavailableRef.current?.();
         },
       });
       connectionRef.current = connection;
