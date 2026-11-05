@@ -441,6 +441,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
                 <span className={`ai-gateway-login${signedOut ? " is-needed" : kind === "unknown" ? " is-unknown" : ""}`}>{kind === "unknown" ? t("terminal.settings.aiGatewayLoginChecking") : signedOut ? t("terminal.settings.aiGatewayNeedsLogin") : t("terminal.settings.aiGatewaySignedIn")}</span>
               )}
               <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayEnabledCount", { on: onCount, all: rows.length })}</span>
+              {provider.id === "xai" ? <XaiEndpointRow /> : null}
               <span className="ai-gateway-model-chevron" aria-hidden="true" onClick={() => setCollapsed((current) => {
                 const next = new Set(current);
                 if (next.has(provider.id)) next.delete(provider.id);
@@ -448,7 +449,6 @@ export function AiGatewayModelsCard(): React.ReactElement {
                 return next;
               })}>{open ? "▾" : "▸"}</span>
               </div>
-              {provider.id === "xai" ? <XaiEndpointRow /> : null}
               {open ? (
                 <div className="ai-gateway-rows">
                   {signedOut ? (
