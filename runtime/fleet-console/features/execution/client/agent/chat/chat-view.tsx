@@ -51,7 +51,6 @@ import {
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
-import { useViewSwitchState } from "../view-switch-store.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
 import { LiveSpeakerMark, SpeakerMark, SpeakerName } from "./group/speaker-mark.js";
 import { getGroupT } from "./group/group-chat-i18n.js";
@@ -141,7 +140,6 @@ export function AgentChatView({
   const working = runtime?.lifecycle === "live" && runtime.activity === "running";
   // 터미널로 넘어가는 문은 캡션에 서고, 그 시도가 왜 막혔는지는 이 면이 말한다 — 버튼과 문장이
   // 서로 다른 트리에 살므로 사실은 저장소를 거쳐 온다.
-  const { terminalError } = useViewSwitchState(context.objectiveId);
   const [stopping, setStopping] = React.useState(false);
   const [stopFailed, setStopFailed] = React.useState(false);
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
@@ -789,14 +787,6 @@ export function AgentChatView({
         : null}
       {state.connection === "lost"
         ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.connectionLost")}</div>
-        : null}
-      {terminalError !== "none"
-        ? (
-          <div className="agent-chat-sys agent-chat-sys--error" role="alert">
-            <span aria-hidden="true">✕</span>{" "}
-            {t("terminal.chat.openTerminalFailed")}
-          </div>
-        )
         : null}
         </div>
 

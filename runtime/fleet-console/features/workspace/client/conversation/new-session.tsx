@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useViewportFit, MenuCheckGlyph, ChevronGlyph } from "@fleet-console/ui/react";
-import type { ObjectiveCatalogPlugin, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../objectives/shared/records/types.js";
+import type { ObjectiveCatalogPlugin, ObjectiveLaunchKind } from "../../../objectives/shared/records/types.js";
 import { fetchObjectiveCatalog, OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../../execution/client/objective-records.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
@@ -28,8 +28,7 @@ import { readCommandInput, type NewSessionCommandInput } from "./new-session-com
 import { deckOptionId, deckRows, markMatch, NewSessionDeck, type NewSessionDeckItem } from "./new-session-deck.js";
 import { isMentionSelectable, mentionErrorMessageKey, mentionTargetName, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget } from "./new-session-mention.js";
 import { useMentionSources } from "./new-session-mention-sources.js";
-import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunchStartSurface } from "../../../execution/client/launch-start-surface.js";
-import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
+import { withStartSurface } from "../../../execution/client/launch-start-surface.js";
 import { TheaterGlyph } from "../components/theater-glyph.js";
 import { KeyedAvatar } from "../avatars.js";
 import { useAvatarAccent } from "../avatar-accent.js";
@@ -88,7 +87,6 @@ export function NewSessionColumn({ state, target, tools }: {
     ?? null;
   const [catalog, setCatalog] = useState<readonly ObjectiveCatalogPlugin[] | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [startView, setStartView] = useState<ObjectiveLaunchView>(readLaunchStartSurface);
   const [starting, setStarting] = useState(false);
   const [launchError, setLaunchError] = useState<{ readonly key: string; readonly shortenBy: number | null } | null>(null);
   const [theaterMenuOpen, setTheaterMenuOpen] = useState(false);
@@ -179,7 +177,6 @@ export function NewSessionColumn({ state, target, tools }: {
   const groups = variantTarget?.kind.variants ?? [];
   const remembered = useMemo(() => resolveSelection(groups, readNewSessionSelection()), [groups]);
   const launchChoice: NewSessionLaunchChoice = choice ?? { model: remembered.model, effort: remembered.effort };
-  const chatAvailable = variantTarget !== null && supportsChatStart(variantTarget.kind);
   // 모델 밴드가 없는 실행 종류(설치 안 됨·로그인 필요 같은 사유 포함)는 「다른 시작」 카드에 선다 — 지운 '+' 메뉴의 직접 실행 칸을 잇는다.
   const directKinds = useMemo(() => (catalog ?? []).flatMap((plugin) => plugin.kinds
     .filter((kind) => !(variantTarget && plugin.id === variantTarget.pluginId && kind.id === variantTarget.kind.id))
@@ -228,7 +225,6 @@ export function NewSessionColumn({ state, target, tools }: {
   const rows = groups.flatMap((group) => group.rows);
   const selectedRow = rows.find((row) => (row.launch.model ?? null) === launchChoice.model) ?? null;
   const autoLabel = t("launchVariants.effort.auto");
-  const viewLabelOf = (view: ObjectiveLaunchView) => t(view === "chat" ? "conversation.newSession.viewChat" : "conversation.newSession.viewTerminal");
 
   const placeCaret = (next: string) => {
     setPrompt(next);
@@ -266,7 +262,6 @@ export function NewSessionColumn({ state, target, tools }: {
         { id: "theater" as const, label: t("conversation.newSession.commandTheater"), value: theater ? theater.label : null, icon: <TheaterCommandGlyph /> },
         { id: "model" as const, label: t("conversation.newSession.commandModel"), value: selectedRow?.label ?? null, icon: <ModelCommandGlyph /> },
         { id: "effort" as const, label: t("conversation.newSession.commandEffort"), value: selectedRow ? (selectedRow.chips?.find((chip) => chip.id === launchChoice.effort)?.label ?? autoLabel) : null, icon: <EffortCommandGlyph /> },
-        ...(chatAvailable ? [{ id: "view" as const, label: t("conversation.newSession.commandView"), value: viewLabelOf(startView), icon: startView === "chat" ? <ChatBubbleIcon /> : <TerminalViewIcon /> }] : []),
       ];
       const matches = all.filter((entry) => query.length === 0 || entry.id.startsWith(query) || entry.label.toLowerCase().includes(query));
       return [
@@ -361,22 +356,7 @@ export function NewSessionColumn({ state, target, tools }: {
           }] : []),
         ];
       }
-      if (!chatAvailable) return [];
-      return [
-        { kind: "section", key: "view", label: t("conversation.newSession.deckView") },
-        ...(["terminal", "chat"] as const)
-          .map((view) => ({ view, label: viewLabelOf(view), hint: t(view === "chat" ? "conversation.newSession.viewChatHint" : "conversation.newSession.viewTerminalHint") }))
-          .filter((entry) => entry.view.startsWith(query) || entry.label.toLowerCase().includes(query))
-          .map((entry): NewSessionDeckItem => ({
-            kind: "row",
-            key: `view-${entry.view}`,
-            icon: entry.view === "chat" ? <ChatBubbleIcon /> : <TerminalViewIcon />,
-            name: entry.label,
-            value: entry.hint,
-            checked: entry.view === startView,
-            pick: () => { setStartView(entry.view); writeLaunchStartSurface(entry.view); finishCommand(); },
-          })),
-      ];
+      return [];
     }
     if (mentionToken) {
       const query = mentionToken.query;
@@ -573,7 +553,7 @@ export function NewSessionColumn({ state, target, tools }: {
       ...(commodoreId ? { commodoreId } : {}),
       pluginId: variantTarget.pluginId,
       kind: variantTarget.kind,
-      variant: withStartSurface(variant, variantTarget.kind, startView) ?? variant,
+      variant: withStartSurface(variant, variantTarget.kind, "chat") ?? variant,
       ...(launched.length > 0 ? { attachments: launched } : {}),
     });
     // 새 Objective 이 서면 그 포커스가 이 화면을 걷는다(store 의 focusObjective). 그동안은 시작하는 중으로 선다.
@@ -594,12 +574,6 @@ export function NewSessionColumn({ state, target, tools }: {
     return () => window.clearTimeout(timer);
   }, [starting]);
 
-  const toggleView = () => {
-    const next: ObjectiveLaunchView = startView === "chat" ? "terminal" : "chat";
-    setStartView(next);
-    writeLaunchStartSurface(next);
-  };
-
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || event.defaultPrevented) return;
     // 폴더 대화상자는 포털이라 그 키도 React 트리를 타고 이 열까지 올라온다 — 대화상자의 Esc 는 대화상자만 닫는다.
@@ -607,8 +581,6 @@ export function NewSessionColumn({ state, target, tools }: {
     event.preventDefault();
     closeNewSession();
   };
-
-  const viewLabel = t(startView === "chat" ? "conversation.newSession.viewChat" : "conversation.newSession.viewTerminal");
 
   return (
     <div className="conversation-column new-session" onKeyDown={onKeyDown}>
@@ -726,12 +698,6 @@ export function NewSessionColumn({ state, target, tools }: {
                   {theaterMenuOpen && theater ? <TheaterMenu theaters={theaters} current={theater.id} onPick={pickTheater} onAdd={addTheater} onClose={() => setTheaterMenuOpen(false)} /> : null}
                 </span>
               </span>
-              {chatAvailable ? (
-                <button type="button" className="new-session-chip" onClick={toggleView} disabled={starting} aria-label={t("conversation.newSession.viewAria", { view: viewLabel })} title={t("conversation.newSession.viewAria", { view: viewLabel })}>
-                  <span className="new-session-chip-glyph" aria-hidden="true">{startView === "chat" ? <ChatBubbleIcon /> : <TerminalViewIcon />}</span>
-                  <span className="new-session-chip-label">{viewLabel}</span>
-                </button>
-              ) : null}
             </span>
             <span className="new-session-chips-trail">
               {starting ? <span className="new-session-status" role="status">{t("conversation.newSession.starting")}</span> : null}

@@ -52,6 +52,7 @@ export function withStartSurface(
   kind: { readonly launchViews?: readonly ObjectiveLaunchView[] },
   surface: ObjectiveLaunchView,
 ): Readonly<Record<string, string>> | undefined {
-  if (surface !== "chat" || !supportsChatStart(kind)) return launch;
+  void surface;
+  if (!supportsChatStart(kind)) return launch;
   return { ...(launch ?? {}), viewMode: "chat" };
 }
