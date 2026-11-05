@@ -196,25 +196,33 @@ function declaredPaths(dir: string, declared: unknown, fallback: string): string
   return [...new Set([path.join(dir, fallback), ...list.map((item) => inside(dir, item)).filter((item): item is string => item !== null)])];
 }
 
-/** 스킬 폴더들 — 그 자체가 스킬(SKILL.md)이거나 스킬 폴더를 담은 폴더다. 이름은 폴더 이름이다. */
-function skillEntries(sources: readonly string[]): { readonly name: string; readonly dir: string }[] {
+/**
+ * 스킬 폴더들 — 그 자체가 스킬(SKILL.md)이거나 스킬 폴더를 담은 폴더다. 이름은 폴더 이름이다. `within`이 있으면 실제 경로가 그 안에
+ * 머무는 것만 본다.
+ */
+function skillEntries(sources: readonly string[], within?: string): { readonly name: string; readonly dir: string }[] {
   const found: { name: string; dir: string }[] = [];
+  const allowed = (file: string) => within === undefined || staysInside(within, file);
   for (const source of sources) {
-    if (!isDirectory(source)) continue;
+    if (!isDirectory(source) || !allowed(source)) continue;
     if (isFile(path.join(source, "SKILL.md"))) { found.push({ name: path.basename(source), dir: source }); continue; }
     let names: string[];
     try { names = fs.readdirSync(source).sort(); } catch { continue; }
     for (const name of names) {
       const dir = path.join(source, name);
-      if (!name.startsWith(".") && isFile(path.join(dir, "SKILL.md"))) found.push({ name, dir });
+      if (!name.startsWith(".") && isFile(path.join(dir, "SKILL.md")) && allowed(dir)) found.push({ name, dir });
     }
   }
   return found;
 }
 
-/** 커맨드·에이전트 파일들 — 폴더 아래(중첩 포함)의 `.md` 이거나 선언된 `.md` 파일이다. 이름은 확장자를 뺀 파일 이름이다. */
-function markdownEntries(sources: readonly string[]): { readonly name: string; readonly file: string }[] {
+/**
+ * 커맨드·에이전트 파일들 — 폴더 아래(중첩 포함)의 `.md` 이거나 선언된 `.md` 파일이다. 이름은 확장자를 뺀 파일 이름이다.
+ * `within`이 있으면 실제 경로가 그 밖인 폴더로는 내려가지 않는다(밖을 가리키는 파일은 그대로 돌려줘 부른 쪽이 뺀다).
+ */
+function markdownEntries(sources: readonly string[], within?: string): { readonly name: string; readonly file: string }[] {
   const found: { name: string; file: string }[] = [];
+  const allowed = (file: string) => within === undefined || staysInside(within, file);
   const walk = (dir: string, depth: number) => {
     let names: string[];
     try { names = fs.readdirSync(dir).sort(); } catch { return; }
@@ -222,12 +230,12 @@ function markdownEntries(sources: readonly string[]): { readonly name: string; r
       if (name.startsWith(".") || found.length >= MAX_MARKDOWN_FILES) continue;
       const file = path.join(dir, name);
       if (name.endsWith(".md") && isFile(file)) found.push({ name: name.slice(0, -3), file });
-      else if (depth < 8 && isDirectory(file)) walk(file, depth + 1);
+      else if (depth < 8 && isDirectory(file) && allowed(file)) walk(file, depth + 1);
     }
   };
   for (const source of sources) {
     if (isFile(source)) { if (source.endsWith(".md")) found.push({ name: path.basename(source, ".md"), file: source }); }
-    else walk(source, 0);
+    else if (allowed(source)) walk(source, 0);
   }
   return found;
 }
@@ -313,12 +321,11 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
         const entry = path.join(from, name);
         const destination = path.join(to, name);
         const relative = path.relative(source, entry);
-        if (overrides.has(entry)) {
-          const replaced = overrides.get(entry);
-          if (replaced) fs.writeFileSync(destination, replaced.text);
-          continue;
-        }
+        // 빼는 자리는 그대로 빼고, 사본을 쓰는 자리도 원본이 `root` 안일 때만 쓴다 — 사본이 밖의 내용을 안으로 들이지 않게.
+        if (overrides.has(entry) && overrides.get(entry) === null) continue;
         if (!staysInside(root, entry)) { skipped.push({ kind: "file", name: `${label}/${relative}`, reason: "outside" }); continue; }
+        const replaced = overrides.get(entry);
+        if (replaced) { fs.writeFileSync(destination, replaced.text); continue; }
         const real = realpathOf(entry);
         if (isDirectory(entry) && (expand.has(entry) || tainted.has(real))) {
           if (ancestors.has(real)) { skipped.push({ kind: "file", name: `${label}/${relative}`, reason: "cycle" }); continue; }
@@ -331,8 +338,12 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
     walk(source, target, new Set([realpathOf(source)]));
   };
 
-  /** 스킬·에이전트·커맨드 마크다운의 머리말 훅을 떼어 낼 자리로 적는다. 떼어 낼 수 없으면 싣지 않는다. */
-  const stripHooks = (overrides: Overrides, file: string, kind: HomeOverlaySkip["kind"], name: string) => {
+  /**
+   * 스킬·에이전트·커맨드 마크다운의 머리말 훅을 떼어 낼 자리로 적는다. 떼어 낼 수 없으면 싣지 않는다. 실제 경로가 `root` 밖인
+   * 파일은 읽지 않고 뺀다.
+   */
+  const stripHooks = (overrides: Overrides, root: string, file: string, kind: HomeOverlaySkip["kind"], name: string) => {
+    if (!staysInside(root, file)) { overrides.set(file, null); skipped.push({ kind, name, reason: "outside" }); return; }
     const result = withoutFrontmatterHooks(file);
     if (result.kind === "write") overrides.set(file, { text: result.text });
     else if (result.kind === "omit") { overrides.set(file, null); skipped.push({ kind, name, reason: "hooks" }); }
@@ -356,12 +367,16 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
       if (!record) { skipped.push({ kind: "plugin", name: id, reason: "not_installed" }); continue; }
       const dir = record.installPath as string;
       if (!isDirectory(dir)) { skipped.push({ kind: "plugin", name: id, reason: "missing" }); continue; }
-      const name = pluginNameOf(dir, plugin);
+      // plugin.json 도 그 실제 경로가 설치 폴더 안일 때만 읽는다 — 그 키는 스테이징 매니페스트로 옮겨지기 때문이다.
+      const manifestFile = path.join(dir, ".claude-plugin", "plugin.json");
+      const manifestInside = staysInside(dir, manifestFile);
+      if (!manifestInside && fs.existsSync(manifestFile)) skipped.push({ kind: "file", name: `${plugin}/.claude-plugin/plugin.json`, reason: "outside" });
+      const own = manifestInside ? manifestOf(dir) : {};
+      const name = manifestInside ? pluginNameOf(dir, plugin) : plugin;
       if (pluginNames.has(fold(name))) { skipped.push({ kind: "plugin", name: id, reason: fleet.plugins.some((row) => fold(row.name) === fold(name)) ? "fleet_precedence" : "duplicate" }); continue; }
       pluginNames.add(fold(name));
 
       // plugin.json 과 marketplace 항목의 구성 요소를 합치고(Fleet 등록부가 strict:false 를 싣는 방식과 같은 키) `hooks`만 뺀다.
-      const own = manifestOf(dir);
       const entry = marketplaceEntry(home.configDir, plugin, marketplace);
       const manifest: Record<string, unknown> = { ...own, name };
       for (const key of COMPONENT_KEYS) if (entry && entry[key] !== undefined) manifest[key] = combine(manifest[key], entry[key]);
@@ -375,20 +390,20 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
       // CLI 가 설치본의 사용 중 표시로 쓰는 파일 — 링크하면 자식의 쓰기가 홈 캐시에 닿는다.
       overrides.set(path.join(dir, ".in_use"), null);
       // 플러그인 settings.json 이 훅을 들면 그 키만 뺀 사본을 둔다.
-      const pluginSettings = readJson(path.join(dir, "settings.json"));
+      const pluginSettings = staysInside(dir, path.join(dir, "settings.json")) ? readJson(path.join(dir, "settings.json")) : undefined;
       if (isRecord(pluginSettings) && pluginSettings.hooks !== undefined) {
         const { hooks: _hooks, ...rest } = pluginSettings;
         overrides.set(path.join(dir, "settings.json"), { text: JSON.stringify(rest) });
       }
-      for (const skill of skillEntries(declaredPaths(dir, manifest.skills, "skills"))) {
+      for (const skill of skillEntries(declaredPaths(dir, manifest.skills, "skills"), dir)) {
         if (fleetSkills.has(fold(skill.name))) { overrides.set(skill.dir, null); skipped.push({ kind: "skill", name: `${name}:${skill.name}`, reason: "fleet_precedence" }); continue; }
-        stripHooks(overrides, path.join(skill.dir, "SKILL.md"), "skill", `${name}:${skill.name}`);
+        stripHooks(overrides, dir, path.join(skill.dir, "SKILL.md"), "skill", `${name}:${skill.name}`);
       }
-      for (const command of markdownEntries(declaredPaths(dir, manifest.commands, "commands"))) {
+      for (const command of markdownEntries(declaredPaths(dir, manifest.commands, "commands"), dir)) {
         if (fleetSkills.has(fold(command.name))) { overrides.set(command.file, null); skipped.push({ kind: "command", name: `${name}:${command.name}`, reason: "fleet_precedence" }); continue; }
-        stripHooks(overrides, command.file, "command", `${name}:${command.name}`);
+        stripHooks(overrides, dir, command.file, "command", `${name}:${command.name}`);
       }
-      for (const agent of markdownEntries(declaredPaths(dir, manifest.agents, "agents"))) stripHooks(overrides, agent.file, "agent", `${name}:${agent.name}`);
+      for (const agent of markdownEntries(declaredPaths(dir, manifest.agents, "agents"), dir)) stripHooks(overrides, dir, agent.file, "agent", `${name}:${agent.name}`);
 
       const tainted = foldersWithEscapingLinks(dir);
       if (!tainted) { skipped.push({ kind: "plugin", name: id, reason: "limit" }); continue; }
@@ -408,7 +423,7 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
     const reason = !segment.test(skill.name) ? "name_invalid" : homeSkills.length >= MAX_SKILLS ? "limit" : fleetSkills.has(fold(skill.name)) ? "fleet_precedence" : null;
     if (reason) { skipped.push({ kind: "skill", name: skill.name, reason }); continue; }
     const overrides: Overrides = new Map();
-    stripHooks(overrides, path.join(skill.dir, "SKILL.md"), "skill", skill.name);
+    stripHooks(overrides, skill.dir, path.join(skill.dir, "SKILL.md"), "skill", skill.name);
     const target = path.join(skillsRoot, "skills", skill.name);
     if (overrides.get(path.join(skill.dir, "SKILL.md")) === null) continue;
     // 스킬 폴더 자체는 사람이 홈에 건 링크일 수 있다. 그 안의 링크는 그 스킬의 실제 폴더 밖에 닿지 않아야 한다.

@@ -2003,11 +2003,25 @@ describe("commodore session", () => {
     fs.symlinkSync(path.join(root, "outside"), path.join(tool, "docs", "escape"));
     fs.symlinkSync(path.join(tool, "bin"), path.join(tool, "docs", "tools"));
     fs.symlinkSync(tool, path.join(tool, "docs", "loop"));
+    // 사본·판독 경로 — 훅이 든 머리말이나 설정이어도 실제 경로가 밖이면 읽어 옮기지 않는다.
+    const hooked = path.join(root, "outside", "hooked.md");
+    write(hooked, "---\nname: away\nhooks:\n  Stop: []\n---\nHOME_OUTSIDE\n");
+    write(path.join(root, "outside", "settings.json"), JSON.stringify({ hooks: hook, agent: "HOME_OUTSIDE" }));
+    write(path.join(root, "outside", "plugin.json"), JSON.stringify({ name: "lsp", description: "HOME_OUTSIDE" }));
+    fs.symlinkSync(hooked, path.join(tool, "agents", "outside.md"));
+    fs.symlinkSync(hooked, path.join(tool, "commands", "away.md"));
+    fs.mkdirSync(path.join(tool, "skills", "linked"));
+    fs.symlinkSync(hooked, path.join(tool, "skills", "linked", "SKILL.md"));
+    fs.symlinkSync(path.join(root, "outside", "settings.json"), path.join(tool, "settings.json"));
+    fs.mkdirSync(path.join(lsp, ".claude-plugin"), { recursive: true });
+    fs.symlinkSync(path.join(root, "outside", "plugin.json"), path.join(lsp, ".claude-plugin", "plugin.json"));
     write(path.join(twin, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "fleetdup" }));
     skill(path.join(twin, "skills", "twin"));
     skill(path.join(home, "skills", "solo"));
     write(path.join(home, "skills", "solo", "ref.md"), "ref");
     fs.symlinkSync(path.join(root, "outside"), path.join(home, "skills", "solo", "escape"));
+    fs.mkdirSync(path.join(home, "skills", "away"));
+    fs.symlinkSync(hooked, path.join(home, "skills", "away", "SKILL.md"));
     skill(path.join(home, "skills", "shared"));
     const configFile = path.join(root, "home", ".claude.json");
     write(configFile, JSON.stringify({ projects: { [root]: { mcpServers: { project: { command: "HOME_PROJECT_MCP" } } } }, mcpServers: {
@@ -2044,7 +2058,7 @@ describe("commodore session", () => {
       // 훅만 빠진다 — 스킬·중첩 커맨드·에이전트·LSP·bin·지원 파일은 원래 자리에 있다.
       const at = (...parts: string[]) => path.join(staged!.path, ...parts);
       for (const kept of [["skills", "alpha", "SKILL.md"], ["skills", "flowy", "notes.md"], ["commands", "run.md"], ["commands", "nested", "deep.md"], ["bin", "tool"], ["docs", "guide.md"], ["docs", "tools", "tool"], [".lsp.json"]]) expect(fs.existsSync(at(...kept))).toBe(true);
-      for (const dropped of [["hooks", "hooks.json"], ["skills", "flowy", "SKILL.md"], ["skills", "shared"], ["link-out"], ["docs", "escape"]]) expect(fs.existsSync(at(...dropped))).toBe(false);
+      for (const dropped of [["hooks", "hooks.json"], ["skills", "flowy", "SKILL.md"], ["skills", "shared"], ["link-out"], ["docs", "escape"], ["agents", "outside.md"], ["commands", "away.md"], ["skills", "linked", "SKILL.md"], ["settings.json"]]) expect(fs.existsSync(at(...dropped))).toBe(false);
       expect(fs.readFileSync(at("skills", "hooked", "SKILL.md"), "utf8")).toBe(`---\nname: hooked\ndescription: Keeps working\n---\nUse \${CLAUDE_PLUGIN_ROOT}/docs/guide.md\n`);
       expect(fs.readFileSync(at("agents", "helper.md"), "utf8")).toBe("---\nname: helper\ndescription: Helps\n---\nHelp.\n");
       for (const plugin of workspace.plugins!.slice(1)) for (const text of reachable(plugin.path)) expect(text).not.toMatch(/HOME_HOOK|HOME_OUTSIDE|HOME_INSTRUCTIONS/);
@@ -2062,7 +2076,7 @@ describe("commodore session", () => {
       for (const leaked of ["HOME_SECRET", "HOME_HOOK", "HOME_ENV", "HOME_MODEL", "HOME_SHADOW", "HOME_PROJECT_MCP", "Bash(*)"]) expect(serialized).not.toContain(leaked);
       // 진단은 이름과 이유 코드만 남긴다.
       const logged = warn.mock.calls.map((call) => String(call[0])).join("\n");
-      for (const line of ["plugin fleetdup@m: fleet_precedence", "plugin gone@m: missing", "skill tool:flowy: hooks", "skill tool:shared: fleet_precedence", "file tool/link-out: outside", "file tool/docs/escape: outside", "file tool/docs/loop: cycle", "file solo/escape: outside", "mcp leak: reserved_placeholder"]) expect(logged).toContain(line);
+      for (const line of ["plugin fleetdup@m: fleet_precedence", "plugin gone@m: missing", "skill tool:flowy: hooks", "skill tool:shared: fleet_precedence", "file tool/link-out: outside", "file tool/docs/escape: outside", "file tool/docs/loop: cycle", "file solo/escape: outside", "agent tool:outside: outside", "command tool:away: outside", "skill tool:linked: outside", "file tool/settings.json: outside", "file lsp/.claude-plugin/plugin.json: outside", "skill away: outside", "mcp leak: reserved_placeholder"]) expect(logged).toContain(line);
       expect(logged).not.toContain("HOME_SECRET");
       expect(logged).not.toContain(root);
       // 세션 폐기가 투영본을 거둔다. 원본 홈은 그대로다.
