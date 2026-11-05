@@ -548,6 +548,25 @@ describe("agent chat mode routes", () => {
     await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted", "still the same chat"]));
   });
 
+  it("opens a fresh chat when a legacy terminal transcript is gone", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    asLegacyTerminal(harness, sessionId);
+    harness.removeTranscript();
+
+    await harness.post(sessionId, "resume");
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_transcript_missing" } });
+    expect(harness.objectiveRecord(sessionId)?.chatMode).not.toBe(true);
+    expect((harness.objectiveRecord(sessionId)?.session as { id?: string }).id).toBe("sid-live");
+
+    await harness.post(sessionId, "resume", { fresh: true });
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
+    expect(harness.objectiveRecord(sessionId)?.session).not.toHaveProperty("id");
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
   it("objective fresh session experiment branches: false preserves resume, true branches fresh, switchLive stays resume", async () => {
     const harness = await createHarness({ cliId: "claude" });
     const sessionId = await harness.createSession();

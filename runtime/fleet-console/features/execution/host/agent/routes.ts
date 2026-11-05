@@ -1512,18 +1512,20 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // provider 세션의 증거가 아니다. 이를 --resume에 넘기면 첫 턴 전 Chat → CLI 복귀가 존재하지
     // 않는 세션을 재개하려다 실패한다.
     //
-    // 떠 있지 않은 옛 터미널 목표의 다음 열기는 채팅이다. 채팅 시드를 만들 수 없을 때만
-    // 기존 PTY 재개로 떨어진다. 채팅으로 태어난 목표는 이 재개를 쓰지 않는다.
+    // 떠 있지 않은 옛 터미널 목표의 다음 열기는 채팅이다. 트랜스크립트가 없으면 새 채팅이 아니라
+    // 그 사실을 돌려, Start fresh가 옛 좌표를 버리고 채팅을 새로 열게 한다. 채팅 시드 자체가
+    // 없는 목표만 기존 PTY 재개로 떨어진다. 채팅으로 태어난 목표는 이 재개를 쓰지 않는다.
     if (node[CHAT_MODE_PAYLOAD_KEY] !== true && terminalRuntime.getSessionLastActivityAt(sessionId) === null) {
-      const adopted = await setChatMode(sessionId, true);
+      const adopted = await setChatMode(sessionId, true, { fresh });
       if (adopted.ok) {
         const resumed = observability.getTerminalSessionInfo(sessionId);
         if (!resumed) return { ok: false, status: 404, error: "session_not_found" };
         return { ok: true, resumed };
       }
-      if (adopted.error === "session_not_found" || adopted.error === "session_live" || adopted.error === "chat_convert_busy") {
+      if (adopted.error === "session_not_found" || adopted.error === "session_live" || adopted.error === "chat_convert_busy" || adopted.error === "chat_transcript_missing") {
         return { ok: false, status: adopted.error === "session_not_found" ? 404 : 409, error: adopted.error };
       }
+      if (adopted.error === "unavailable") return { ok: false, status: 404, error: adopted.error };
     }
     if (node[CHAT_MODE_PAYLOAD_KEY] === true) return { ok: false, status: 409, error: "chat_resume_unsupported" };
     const startsFresh = fresh || !providerSession || providerSession.source === "launch";
@@ -1919,18 +1921,62 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return true;
   }
 
+  /** Start fresh가 시드를 만들기 전에 옛 provider 좌표를 떼 둔다. 실패하면 그대로 되돌린다. */
+  function detachProviderForFreshChat(sessionId: string, node: ObjectiveRecord): CapturedAgentSession | null {
+    const provider = readProviderSession(node);
+    if (!provider) return null;
+    observability.clearTerminalSessionProviderSession(sessionId);
+    const agent = readAgentSession(node);
+    ctx.host.objectiveRecords.patch(sessionId, {
+      ...node,
+      session: {
+        harness: "claude-code",
+        ...(agent?.model ? { model: agent.model } : {}),
+        ...(agent?.effort ? { effort: agent.effort } : {}),
+        ...(agent?.sessionName ? { sessionName: agent.sessionName } : {}),
+        ...(agent?.disableSubagents ? { disableSubagents: true } : {}),
+        ...(agent?.disableAutoMemory ? { disableAutoMemory: true } : {}),
+        ...(agent?.previousSessions && agent.previousSessions.length > 0 ? { previousSessions: agent.previousSessions } : {}),
+      },
+    });
+    return provider;
+  }
+
+  function restoreDetachedProvider(sessionId: string, provider: CapturedAgentSession): void {
+    const live = ctx.host.objectiveRecords.get(sessionId);
+    if (!live) return;
+    const agent = readAgentSession(live);
+    ctx.host.objectiveRecords.patch(sessionId, {
+      ...live,
+      session: {
+        ...(agent ?? { harness: "claude-code" as const }),
+        id: provider.id,
+        capturedAt: provider.capturedAt,
+        ...(provider.transcriptPath ? { transcriptPath: provider.transcriptPath } : {}),
+        ...(provider.source ? { source: provider.source } : {}),
+      },
+    });
+    observability.updateTerminalSessionProviderSession(sessionId, provider);
+  }
+
   /**
    * 아직 채팅이 아닌 목표를 다음 열기에서 채팅으로 연다.
    * 떠 있는 PTY와 시작 중인 스폰은 끊지 않는다 — 그때는 마커도 심지 않아 SDK와 PTY가 한 세션의 두 필자가 되지 않는다.
    * `on: false`는 터미널 복귀라 항상 거절한다.
    */
-  async function setChatMode(sessionId: string, on: boolean): Promise<{ ok: true; mode: "chat" | "terminal"; changed: boolean } | { ok: false; error: string }> {
+  async function setChatMode(sessionId: string, on: boolean, options?: { readonly fresh?: boolean }): Promise<{ ok: true; mode: "chat" | "terminal"; changed: boolean } | { ok: false; error: string }> {
     if (!on) return { ok: false, error: "terminal_view_removed" };
-    const node = ctx.host.objectiveRecords.get(sessionId);
+    let node = ctx.host.objectiveRecords.get(sessionId);
     if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) return { ok: false, error: "session_not_found" };
     if (node[CHAT_MODE_PAYLOAD_KEY] === true) return { ok: true, mode: "chat", changed: false };
+    // Start fresh는 없어진 트랜스크립트를 요구하지 않는다. 시드가 실패하면 옛 좌표를 되돌린다.
+    const detached = options?.fresh ? detachProviderForFreshChat(sessionId, node) : null;
+    if (detached) node = ctx.host.objectiveRecords.get(sessionId) ?? node;
     const seed = await resolveChatSeed(node);
-    if (!seed.ok) return { ok: false, error: seed.error };
+    if (!seed.ok) {
+      if (detached) restoreDetachedProvider(sessionId, detached);
+      return { ok: false, error: seed.error };
+    }
     const info = observability.getTerminalSessionInfo(sessionId);
     if (info?.status === "starting") return { ok: false, error: "chat_convert_busy" };
     const live = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
