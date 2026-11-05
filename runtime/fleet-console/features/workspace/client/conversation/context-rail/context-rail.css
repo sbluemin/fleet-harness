@@ -171,6 +171,19 @@
 .context-rail-tokens { flex: none; color: var(--text-tertiary); font-family: var(--font-code); }
 .context-rail-share { flex: none; width: 40px; text-align: right; color: var(--text-tertiary); font-family: var(--font-code); }
 .context-rail-count { flex: none; min-width: 20px; text-align: right; color: var(--text-tertiary); font-family: var(--font-code); }
+/* 스킬 행의 출처 — 이름이 먼저 줄고, 출처는 긴 플러그인 이름만 잘린다. */
+.context-rail-source {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 5px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
 .context-rail-rows li.is-free .context-rail-name,
 .context-rail-rows li.is-free .context-rail-tokens { color: var(--text-tertiary); }
 

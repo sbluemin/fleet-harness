@@ -185,6 +185,8 @@ export interface CommodoreContextDetail {
   readonly slices: readonly { readonly name: string; readonly tokens: number }[];
   readonly memoryFiles: readonly { readonly name: string; readonly tokens: number }[];
   readonly mcpTools: readonly { readonly name: string; readonly tokens: number; readonly server?: string }[];
+  /** 모델에게 알려 둔 스킬 목록의 몫. 옛 상태에는 없다. */
+  readonly skills?: readonly { readonly name: string; readonly tokens: number; readonly source?: string; readonly plugin?: string }[];
 }
 
 /** 모델 창(토큰)에서 압축 지점(토큰)을 낸다. 상한 이하의 창은 덮지 않는다(`null`). */

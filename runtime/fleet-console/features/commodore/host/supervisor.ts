@@ -1091,7 +1091,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (!usage || runner.session !== session || disposed) return;
       runner.contextDetail = {
         total: usage.total, max: usage.max, ...(usage.reserved !== undefined ? { reserved: usage.reserved } : {}),
-        slices: usage.slices, memoryFiles: usage.memoryFiles, mcpTools: usage.mcpTools,
+        slices: usage.slices, memoryFiles: usage.memoryFiles, mcpTools: usage.mcpTools, skills: usage.skills,
       };
       publish(runner);
     }, () => undefined);

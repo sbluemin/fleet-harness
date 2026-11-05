@@ -92,7 +92,7 @@ function railMongleState(view: { readonly run: { readonly phase: string } } | nu
   return "idle";
 }
 
-/** 호스트가 알려 준 컨텍스트를 레일 카드의 측정으로. 내역을 얻지 못한 세션(Gateway 모델 등)은 총량만 그린다. */
+/** 호스트가 알려 준 컨텍스트를 레일 카드의 측정으로. 내역을 얻지 못한 세션(창을 모르는 Gateway 모델 등)은 총량만 그린다. */
 export function measureOf(context: CommodoreRunStatus["context"]): ContextRailMeasure | null {
   if (!context) return null;
   const detail = context.detail;
@@ -107,6 +107,7 @@ export function measureOf(context: CommodoreRunStatus["context"]): ContextRailMe
     slices: detail?.slices ?? [],
     memoryFiles: detail?.memoryFiles ?? [],
     mcpTools: detail?.mcpTools ?? [],
+    skills: detail?.skills ?? [],
   };
 }
 

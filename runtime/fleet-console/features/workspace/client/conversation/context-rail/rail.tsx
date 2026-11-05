@@ -416,6 +416,7 @@ function ContextBody({ sessionId, measure, footnote, state, t }: {
       </ul>
       <FileDetail sessionId={sessionId} rows={measure.memoryFiles} state={state} t={t} />
       <McpDetail sessionId={sessionId} rows={measure.mcpTools} state={state} t={t} />
+      <SkillDetail sessionId={sessionId} rows={measure.skills} state={state} t={t} />
       <p className="context-rail-foot">{footnote ?? t(hasBreakdown ? "conversation.rail.foot" : "conversation.rail.footTotalOnly")}</p>
     </>
   );
@@ -489,6 +490,51 @@ function McpDetail({ sessionId, rows, state, t }: { readonly sessionId: string; 
       }) : null}
     </div>
   );
+}
+
+/**
+ * 모델에게 알려 둔 스킬 목록. 메모리 파일과 같은 접는 줄이고, 행마다 출처를 붙인다 — 플러그인 스킬은 그 플러그인 이름이다.
+ * Skill 도구로 연 본문은 대화 몫에 들어 여기에 따로 나오지 않는다.
+ */
+function SkillDetail({ sessionId, rows, state, t }: { readonly sessionId: string; readonly rows: readonly ContextRailRow[]; readonly state: ContextRailState; readonly t: Translate }) {
+  const spent = spentRows(rows);
+  if (spent.length === 0) return null;
+  const key = `${sessionId}:skills`;
+  const open = state.details.has(key);
+  return (
+    <div className="context-rail-detail">
+      <DetailHead open={open} label={t("conversation.rail.skills")} tokens={spent.reduce((sum, row) => sum + row.tokens, 0)} count={spent.length} onToggle={() => toggleContextDetail(key)} />
+      {open ? (
+        <ul className="context-rail-rows is-sub">
+          {spent.map((row) => {
+            const source = skillSourceLabel(row, t);
+            return (
+              <li key={`${row.plugin ?? row.source ?? ""}:${row.name}`}>
+                <span className="context-rail-name" title={row.name}>{row.name}</span>
+                {source ? <span className="context-rail-source" title={source}>{source}</span> : null}
+                <span className="context-rail-tokens">{formatTokens(row.tokens)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** vendor 출처 식별자를 사람이 읽는 말로. 플러그인 스킬은 플러그인 이름이 곧 출처이고, 모르는 식별자는 그대로 둔다. */
+function skillSourceLabel(row: ContextRailRow, t: Translate): string {
+  if (row.plugin) return row.plugin;
+  switch (row.source) {
+    case "userSettings": return t("conversation.rail.skillSource.userSettings");
+    case "projectSettings": return t("conversation.rail.skillSource.projectSettings");
+    case "localSettings": return t("conversation.rail.skillSource.localSettings");
+    case "policySettings": return t("conversation.rail.skillSource.policySettings");
+    case "built-in":
+    case "bundled": return t("conversation.rail.skillSource.builtIn");
+    case "plugin": return t("conversation.rail.skillSource.plugin");
+    default: return row.source ?? "";
+  }
 }
 
 function DetailHead({ open, label, tokens, count, onToggle }: { readonly open: boolean; readonly label: string; readonly tokens: number; readonly count: number; readonly onToggle: () => void }) {

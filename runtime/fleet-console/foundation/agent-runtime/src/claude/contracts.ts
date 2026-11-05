@@ -467,6 +467,11 @@ export interface ClaudeGatewayContextUsage {
   readonly categories: readonly ClaudeGatewayContextCategory[];
   readonly memoryFiles: readonly { readonly path: string; readonly tokens: number }[];
   readonly mcpTools: readonly { readonly name: string; readonly server: string; readonly tokens: number }[];
+  /**
+   * 모델에게 알려 둔 스킬(이름·설명)마다 차지한 토큰. 세션이 Skill 도구로 연 본문은 여기가 아니라 대화 몫에 든다.
+   * `source`는 vendor의 출처 식별자(`userSettings`, `built-in` 등) 그대로이고, 플러그인 스킬이면 `plugin`이 그 이름이다.
+   */
+  readonly skills: readonly { readonly name: string; readonly source: string; readonly plugin?: string; readonly tokens: number }[];
 }
 
 /**

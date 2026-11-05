@@ -198,11 +198,16 @@ function readVendorContextUsage(response: unknown): ClaudeGatewayContextUsage | 
     categories?: unknown;
     memoryFiles?: unknown;
     mcpTools?: unknown;
+    skills?: unknown;
   };
   if (typeof usage.totalTokens !== "number" || typeof usage.maxTokens !== "number") return null;
   const rows = Array.isArray(usage.categories) ? usage.categories : [];
   const memory = Array.isArray(usage.memoryFiles) ? usage.memoryFiles : [];
   const mcp = Array.isArray(usage.mcpTools) ? usage.mcpTools : [];
+  const skillRows = typeof usage.skills === "object" && usage.skills !== null
+    ? (usage.skills as { skillFrontmatter?: unknown }).skillFrontmatter
+    : undefined;
+  const skills = Array.isArray(skillRows) ? skillRows : [];
   return {
     total: usage.totalTokens,
     max: usage.maxTokens,
@@ -226,6 +231,17 @@ function readVendorContextUsage(response: unknown): ClaudeGatewayContextUsage | 
       const entry = row as { name?: unknown; serverName?: unknown; tokens?: unknown };
       return typeof entry?.name === "string" && typeof entry.tokens === "number"
         ? [{ name: entry.name, server: typeof entry.serverName === "string" ? entry.serverName : "", tokens: entry.tokens }]
+        : [];
+    }),
+    skills: skills.flatMap((row: unknown) => {
+      const entry = row as { name?: unknown; source?: unknown; pluginName?: unknown; tokens?: unknown };
+      return typeof entry?.name === "string" && entry.name.length > 0 && typeof entry.tokens === "number"
+        ? [{
+            name: entry.name,
+            source: typeof entry.source === "string" ? entry.source : "",
+            ...(typeof entry.pluginName === "string" && entry.pluginName.length > 0 ? { plugin: entry.pluginName } : {}),
+            tokens: entry.tokens,
+          }]
         : [];
     }),
   };

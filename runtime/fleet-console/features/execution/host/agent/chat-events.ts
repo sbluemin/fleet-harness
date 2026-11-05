@@ -102,6 +102,10 @@ export interface AgentChatContextSlice {
   readonly tokens: number;
   /** MCP 도구가 속한 서버 이름. 도구가 아닌 항목이나 서버를 모르는 도구에는 없다. */
   readonly server?: string;
+  /** 스킬의 vendor 출처 식별자(`userSettings`, `built-in` 등). 스킬이 아닌 항목에는 없다. */
+  readonly source?: string;
+  /** 플러그인 스킬의 플러그인 이름. */
+  readonly plugin?: string;
 }
 
 /**
@@ -141,6 +145,7 @@ export type AgentChatStreamEvent =
       readonly slices: readonly AgentChatContextSlice[];
       readonly memoryFiles?: readonly AgentChatContextSlice[];
       readonly mcpTools?: readonly AgentChatContextSlice[];
+      readonly skills?: readonly AgentChatContextSlice[];
       /**
        * 이 내역이 언제의 것인가. 부재는 `"start"`이며 그것이 옛 저널의 뜻이기도 하다.
        *
