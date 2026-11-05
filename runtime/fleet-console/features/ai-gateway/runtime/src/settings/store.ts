@@ -35,6 +35,8 @@ export interface AiGatewaySettingsStore {
   /** `undefined`는 wireLogEnabled 키를 제거해 env 폴백으로 돌아간다. */
   readonly writeWireLogEnabled: (enabled: boolean | undefined) => AiGatewayStoredSettings;
   readonly writeDelegationRoutingModel: (model: string | undefined) => AiGatewayStoredSettings;
+  /** `undefined`는 키를 지워 기본 강도(low 우선)로 돌아간다. */
+  readonly writeDelegationRoutingEffort: (effort: string | undefined) => AiGatewayStoredSettings;
   readonly writeDelegationRoutingEnabled: (enabled: boolean) => AiGatewayStoredSettings;
   /** 배정 방식만 갱신하고 모델 선별을 보존한다. */
   readonly writeDelegationRoutingMode: (mode: DelegationRoutingMode) => AiGatewayStoredSettings;
@@ -162,6 +164,7 @@ export function createAiGatewaySettingsStore(
     write: (value) => update((current) => normalizeAiGatewaySettings({
       version: 1,
       ...(current.delegationRoutingModel ? { delegationRoutingModel: current.delegationRoutingModel } : {}),
+      ...(current.delegationRoutingEffort ? { delegationRoutingEffort: current.delegationRoutingEffort } : {}),
       ...(typeof current.wireLogEnabled === "boolean" ? { wireLogEnabled: current.wireLogEnabled } : {}),
       ...(current.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
       ...((current.delegationRoutingMode === "jev" || current.delegationRoutingMode === "model") ? { delegationRoutingMode: current.delegationRoutingMode } : {}),
@@ -222,6 +225,7 @@ export function createAiGatewaySettingsStore(
       return seeded;
     },
     writeDelegationRoutingModel: (model) => update(current => normalizeAiGatewaySettings({ ...current, delegationRoutingModel: model })),
+    writeDelegationRoutingEffort: (effort) => update(current => normalizeAiGatewaySettings({ ...current, delegationRoutingEffort: effort })),
     writeDelegationRoutingEnabled: (enabled) => update((current) => normalizeAiGatewaySettings({
       ...current,
       delegationRoutingEnabled: enabled,
@@ -275,6 +279,7 @@ function hasStoredValue(settings: AiGatewayStoredSettings): boolean {
     || settings.delegationRoutingEnabled !== undefined
     || settings.delegationRoutingMode !== undefined
     || settings.delegationRoutingModel !== undefined
+    || settings.delegationRoutingEffort !== undefined
     || settings.compactCeiling !== undefined
     || settings.xaiEndpoint !== undefined;
 }

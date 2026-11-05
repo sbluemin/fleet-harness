@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { createClaudeGatewaySdk, type ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import { claudeGatewayModelPolicy, difficultyQuestionId, resolveAiGatewaySelection, type AiGatewayStoredSettings, type ProviderStatusMap, type RoutingChoice, type RoutingDifficultyQuestion } from "@fleet-console/ai-gateway";
-import { ROSTER_FALLBACK_MODEL, isAgentEffort, resolveRosterCoordinate, rosterRowEfforts } from "../shared/models.js";
+import { ROSTER_FALLBACK_MODEL, clampRosterEffort, isAgentEffort, resolveRosterCoordinate, rosterRowEfforts } from "../shared/models.js";
 import { buildModelRoster, rosterWireModelId } from "./model-roster.js";
 
 interface RoutingModelTurn {
@@ -139,9 +139,14 @@ async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
     process.stderr.write(`[fleet-routing-model] ${JSON.stringify({ ts: new Date().toISOString(), event: "model_fallback", stored: input.settings.delegationRoutingModel ?? null, model: resolved.model, reason: resolved.reason ?? null })}\n`);
   }
   const id = rosterWireModelId(resolved.model);
-  // 판정기는 빨라야 한다 — 사다리에 low가 있으면 low, 없으면 첫 단. 강도를 받지 않는 모델은 생략한다.
+  // 저장한 강도를 실제로 뜨는 모델의 사다리에 맞춘다. 없으면 기본(low, 그것도 없으면 첫 단).
+  // 모델을 못 찾아 폴백해도 그 행의 사다리로 맞추고, 사다리 자체가 없으면 강도를 생략한다.
+  // 로스터가 비어 행이 없으면 검증할 사다리가 없으므로 기본 low만 보낸다.
+  const storedEffort = input.settings.delegationRoutingModel && isAgentEffort(input.settings.delegationRoutingEffort)
+    ? input.settings.delegationRoutingEffort
+    : undefined;
   const ladder = rosterRowEfforts(resolved.row);
-  const rung = resolved.row ? (ladder.includes("low") ? "low" : ladder[0]) : "low";
+  const rung = resolved.row ? clampRosterEffort(ladder, storedEffort ?? "low") : "low";
   const effort = isAgentEffort(rung) ? rung : undefined;
   await mkdir(input.directory, { recursive: true });
   const controller = new AbortController();

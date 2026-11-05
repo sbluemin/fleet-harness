@@ -8,6 +8,7 @@ import {
   GATEWAY_MODELS,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_PROVIDERS,
+  GATEWAY_REASONING_EFFORTS,
   buildGatewayModelConstraints,
   findGatewayModel,
 } from "../models.js";
@@ -98,6 +99,13 @@ export interface AiGatewayStoredSettings {
   readonly delegationRoutingMode?: DelegationRoutingMode;
   readonly delegationRoutingModel?: string;
   /**
+   * Reasoning effort of the routing judge. Absent keeps the default: `low` when
+   * the launched model's ladder has it, otherwise that ladder's first rung.
+   * A rung the launched model does not offer is clamped when the turn starts, not here,
+   * so a later model change does not discard the stored choice.
+   */
+  readonly delegationRoutingEffort?: GatewayReasoningEffort;
+  /**
    * The user's opt-in ordered preference for which provider allowances to spend
    * first. It weights the allowance axis of run distribution only and never
    * overrides quality evidence; absent means no preference.
@@ -179,6 +187,9 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     // 실행 시점에 로스터가 정한다 — 끈 모델의 저장값을 지우면 다시 켰을 때 사용자의 선택이 돌아오지 않는다.
     ...(typeof value.delegationRoutingModel === "string" && findClaudeGatewayModel(value.delegationRoutingModel)
       ? { delegationRoutingModel: canonicalRoutingModel(value.delegationRoutingModel) }
+      : {}),
+    ...(isGatewayReasoningEffort(value.delegationRoutingEffort)
+      ? { delegationRoutingEffort: value.delegationRoutingEffort }
       : {}),
     ...(value.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
     ...((value.delegationRoutingMode === "jev" || value.delegationRoutingMode === "model") ? { delegationRoutingMode: value.delegationRoutingMode } : {}),
@@ -295,6 +306,10 @@ function sanitizeProviderPriority(value: unknown): readonly GatewayProvider[] | 
     cleaned.push(provider);
   }
   return cleaned.length > 0 ? cleaned : undefined;
+}
+
+function isGatewayReasoningEffort(value: unknown): value is GatewayReasoningEffort {
+  return typeof value === "string" && (GATEWAY_REASONING_EFFORTS as readonly string[]).includes(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
