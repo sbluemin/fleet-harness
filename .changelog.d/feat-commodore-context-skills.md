@@ -4,8 +4,8 @@ branch: feat/commodore-context-skills
 
 ### fleet-console
 #### Added
-- See which skills are loaded into a session's context, with their source and token share, in the context window popover.
-  ko: 컨텍스트 창 팝오버에서 세션에 로드된 스킬과 그 출처, 차지한 토큰을 볼 수 있습니다.
+- See which skills are loaded into a session's context in the context window popover, grouped by source like MCP tools, with each skill's token share.
+  ko: 컨텍스트 창 팝오버에서 세션에 로드된 스킬을 MCP 도구처럼 출처별로 묶어 보고, 스킬마다 차지한 토큰을 확인할 수 있습니다.
 
 #### Fixed
 - The Commodore's context window popover now shows the same per-category breakdown as Commanders and members when the Commodore runs on an AI Gateway model.
