@@ -292,8 +292,6 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
     <div className="objectives-commodore-settings">
-      <CommodoreTheaters commodoreId={theaterId} />
-      <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
         label={t("commodore.settings.model")}
         hint={<>{t("commodore.settings.modelHint")}{modelOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCoordinates(theaterId, null))} /> : null}</>}
@@ -323,6 +321,8 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
         />
       </SettingsRow>
       <CommodoreSessionSettings key={theaterId} t={t} commodoreId={theaterId} />
+      <div className="objectives-commodore-settings-divider" role="separator" />
+      <CommodoreTheaters commodoreId={theaterId} />
     </div>
   );
 }
