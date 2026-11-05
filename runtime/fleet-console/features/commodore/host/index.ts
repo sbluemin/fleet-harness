@@ -37,6 +37,8 @@ import { createCommodoreMessenger } from "./messaging.js";
 import { createCommodoreCreator } from "./creation.js";
 import { createCommodoreManagementTools } from "./console-tools.js";
 import { createCommodorePlugins } from "./plugins.js";
+import type { ClaudeHomeLocation } from "./home-overlay.js";
+export { userClaudeHome, type ClaudeHomeLocation } from "./home-overlay.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import { createCommodoreSupervisor } from "./supervisor.js";
 import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
@@ -63,6 +65,11 @@ export interface CommodoreFeatureDeps {
   readonly agent: ConsoleResidentAgentDeps;
   /** 마켓플레이스 받기·설치에 쓰는 `claude` CLI 를 Console 수명에 묶어 띄운다. */
   readonly processes?: OwnedProcessPort;
+  /**
+   * 사람의 실제 Claude 홈. 있으면 사령관 세션만 그 MCP 서버·스킬·켜 둔 플러그인을 Fleet 것 뒤에 더한다(읽기만 한다).
+   * 없으면 홈을 읽지 않는다 — 테스트·다른 호스트가 실제 홈에 닿지 않는다.
+   */
+  readonly claudeHome?: ClaudeHomeLocation;
   /** 콘솔 승인 코어. 있으면 설명 변경 제안을 등록한다. 실험 스위치가 아니다. */
   readonly approvals?: ApprovalCore;
 }
@@ -161,6 +168,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       message: (input) => messageFromCommodore(commodoreId, input, turn),
     }),
     plugins: (ids) => plugins.resolve(effectiveCommodorePlugins(plugins.listGlobal(), ids).effective),
+    ...(deps.claudeHome ? { claudeHome: deps.claudeHome } : {}),
     emit,
     taskforce: taskforce.store,
     onTaskforceEvent: (event) => emit(event),

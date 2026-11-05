@@ -69,6 +69,8 @@ export interface PluginUpdateResult {
 /** 세션이 싣는 플러그인 하나 — 로컬 경로와, 호스트가 대신 소유할 MCP 선언. */
 export interface ResolvedPlugin {
   readonly id: string;
+  /** Claude Code 가 이 플러그인에 붙이는 이름(`pluginNameOf`) — 스킬 이름공간과 MCP 서버 이름의 가운데 몫. */
+  readonly name: string;
   readonly path: string;
   /**
    * 서버 이름은 Claude Code 가 `--plugin-dir` 플러그인에 붙이는 `plugin:<플러그인>:<서버>` 그대로다. 값의 `${VAR}`는
@@ -159,7 +161,8 @@ const PRESET_ACTIVATION_FILE = "preset-activation.json";
 /** 실패한 기본 제공을 목록 읽기로 다시 받기까지의 간격. 「갱신」 단추는 이 간격과 무관하게 바로 받는다. */
 const PRESET_RETRY_MS = 10 * 60_000;
 const CLI_TIMEOUT_MS = 180_000;
-const COMPONENT_KEYS = ["commands", "agents", "skills", "hooks", "mcpServers", "lspServers", "outputStyles"] as const;
+/** marketplace 항목이 플러그인 대신 선언할 수 있는 구성 요소 키. */
+export const COMPONENT_KEYS = ["commands", "agents", "skills", "hooks", "mcpServers", "lspServers", "outputStyles"] as const;
 const segment = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9_-])?$/;
 
 /** 사람이 넣은 출처를 알아본다. 파일 경로는 받지 않는다 — 원격 Console 에서 서버 디스크를 가리키는 통로가 되지 않게. */
@@ -692,10 +695,6 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     return target;
   };
 
-  const manifestOf = (dir: string): Record<string, unknown> => {
-    const raw = readJson(path.join(dir, ".claude-plugin", "plugin.json"));
-    return isRecord(raw) ? raw : {};
-  };
   /** 선언된 경로 목록(문자열·배열)을 기본 디렉터리와 함께 푼다. */
   const declaredDirs = (dir: string, declared: unknown, fallback: string): string[] => {
     const list = Array.isArray(declared) ? declared : typeof declared === "string" ? [declared] : [];
@@ -713,25 +712,6 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     return count;
   };
 
-  /** 플러그인의 MCP 선언 — manifest `mcpServers`(객체 또는 json 경로)와 루트 `.mcp.json`. `${CLAUDE_PLUGIN_ROOT}` 를 펼친다. */
-  const mcpDeclarations = (dir: string): Record<string, Record<string, unknown>> => {
-    const servers: Record<string, Record<string, unknown>> = {};
-    const absorb = (value: unknown) => {
-      const table = isRecord(value) && isRecord(value.mcpServers) ? value.mcpServers : value;
-      if (!isRecord(table)) return;
-      for (const [name, config] of Object.entries(table)) if (isRecord(config) && segment.test(name)) servers[name] = config;
-    };
-    const readInside = (file: string | null) => file && staysInside(dir, file) ? readJson(file) : undefined;
-    const declared = manifestOf(dir).mcpServers;
-    for (const item of Array.isArray(declared) ? declared : [declared]) {
-      if (typeof item === "string") absorb(readInside(inside(dir, item)));
-      else absorb(item);
-    }
-    absorb(readInside(path.join(dir, ".mcp.json")));
-    const expand = (text: string) => text.replaceAll("${CLAUDE_PLUGIN_ROOT}", dir);
-    const deep = (value: unknown): unknown => typeof value === "string" ? expand(value) : Array.isArray(value) ? value.map(deep) : isRecord(value) ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, deep(item)])) : value;
-    return Object.fromEntries(Object.entries(servers).map(([name, config]) => [name, deep(config) as Record<string, unknown>]));
-  };
   const hookCommands = (dir: string): string[][] => {
     const commands: string[][] = [];
     const absorb = (value: unknown) => {
@@ -1024,40 +1004,25 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     fs.renameSync(tmp, keysFile);
   };
 
-  /**
-   * 세션에 실을 수 있는 플러그인과 그 MCP 서버. 서버 이름은 Claude Code 가 `--plugin-dir` 플러그인 서버에 붙이는
-   * `plugin:<plugin.json name>:<서버>`(CLI 2.1.312 판독)다. `${CLAUDE_PLUGIN_ROOT}`를 펼치고, 동적 헤더 명령은
-   * `--mcp-config`에서도 플러그인 로딩 때와 같은 루트 환경·작업 폴더로 실행되도록 감싼다.
-   */
+  /** 세션에 실을 수 있는 플러그인과 그 MCP 서버(`pluginMcpServers`). */
   const loadable = (ids: readonly string[]) => {
-    const found: { readonly id: string; readonly dir: string; readonly servers: readonly { readonly server: string; readonly name: string; readonly config: ClaudeGatewayExternalMcpServer }[] }[] = [];
+    const found: { readonly id: string; readonly dir: string; readonly name: string; readonly servers: readonly PluginMcpServer[] }[] = [];
     for (const id of ids) {
       let dir: string | null = null;
       try { dir = loadDirOf(id); } catch (error) { console.warn(`[commodore] plugin ${id} unavailable: ${error instanceof Error ? error.message : String(error)}`); }
       if (!dir) continue;
-      const manifestName = manifestOf(dir).name;
-      const pluginName = typeof manifestName === "string" && segment.test(manifestName) ? manifestName : splitPluginId(id).plugin;
-      const servers: { server: string; name: string; config: ClaudeGatewayExternalMcpServer }[] = [];
-      for (const [server, config] of Object.entries(mcpDeclarations(dir))) {
-        const name = `plugin:${pluginName}:${server}`;
-        const type = config.type === "http" || config.type === "sse" || config.type === "ws" ? config.type : typeof config.url === "string" && config.command === undefined ? "http" : "stdio";
-        if (type === "stdio" && typeof config.command === "string") {
-          servers.push({ server, name, config: { type: "stdio", command: config.command, ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}), ...(isRecord(config.env) ? { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, String(value)])) } : {}) } });
-        } else if (type !== "stdio" && typeof config.url === "string" && (type === "ws" ? /^wss?:\/\/\S+$/i : /^https?:\/\/\S+$/i).test(config.url)) {
-          servers.push({ server, name, config: { type, url: config.url, ...(isRecord(config.headers) ? { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, String(value)])) } : {}), ...(typeof config.headersHelper === "string" ? { headersHelper: pluginHeadersHelper(config.headersHelper, dir) } : {}) } });
-        }
-      }
-      found.push({ id, dir, servers });
+      const name = pluginNameOf(dir, splitPluginId(id).plugin);
+      found.push({ id, dir, name, servers: pluginMcpServers(dir, name) });
     }
     return found;
   };
 
   const resolve = (ids: readonly string[]): readonly ResolvedPlugin[] => {
     const stored = readKeys();
-    return loadable(ids).map(({ id, dir, servers }) => {
+    return loadable(ids).map(({ id, dir, name, servers }) => {
       const env: Record<string, string> = {};
       for (const { config } of servers) for (const key of keyNamesOf(config)) { const value = stored[id]?.[key]; if (value) env[key] = value; }
-      return { id, path: dir, mcpServers: Object.fromEntries(servers.map(({ name, config }) => [name, config])), env };
+      return { id, name, path: dir, mcpServers: Object.fromEntries(servers.map((server) => [server.name, server.config])), env };
     });
   };
 
@@ -1301,6 +1266,78 @@ export function mergePluginEnv(plugins: readonly Pick<ResolvedPlugin, "env">[]):
   const env: Record<string, string> = {};
   for (const plugin of plugins) for (const [key, value] of Object.entries(plugin.env)) if (!(key in env)) env[key] = value;
   return env;
+}
+
+/** 플러그인 폴더의 plugin.json — 없거나 형식이 틀리면 빈 객체다. */
+export function manifestOf(dir: string): Record<string, unknown> {
+  const raw = readJson(path.join(dir, ".claude-plugin", "plugin.json"));
+  return isRecord(raw) ? raw : {};
+}
+
+/** Claude Code 가 그 폴더 플러그인에 붙이는 이름 — plugin.json `name`, 없거나 쓸 수 없으면 설치 id 의 플러그인 몫. */
+export function pluginNameOf(dir: string, fallback: string): string {
+  const declared = manifestOf(dir).name;
+  return typeof declared === "string" && segment.test(declared) ? declared : fallback;
+}
+
+/**
+ * 플러그인의 MCP 선언 — manifest `mcpServers`(객체 또는 json 경로)와 루트 `.mcp.json`. `${CLAUDE_PLUGIN_ROOT}` 를 펼친다.
+ * manifest 는 기본이 그 폴더의 plugin.json 이고, marketplace 항목과 합친 것을 넘길 수도 있다.
+ */
+function mcpDeclarations(dir: string, manifest: Record<string, unknown> = manifestOf(dir)): Record<string, Record<string, unknown>> {
+  const servers: Record<string, Record<string, unknown>> = {};
+  const absorb = (value: unknown) => {
+    const table = isRecord(value) && isRecord(value.mcpServers) ? value.mcpServers : value;
+    if (!isRecord(table)) return;
+    for (const [name, config] of Object.entries(table)) if (isRecord(config) && segment.test(name)) servers[name] = config;
+  };
+  const readInside = (file: string | null) => file && staysInside(dir, file) ? readJson(file) : undefined;
+  const declared = manifest.mcpServers;
+  for (const item of Array.isArray(declared) ? declared : [declared]) {
+    if (typeof item === "string") absorb(readInside(inside(dir, item)));
+    else absorb(item);
+  }
+  absorb(readInside(path.join(dir, ".mcp.json")));
+  const expand = (text: string) => text.replaceAll("${CLAUDE_PLUGIN_ROOT}", dir);
+  const deep = (value: unknown): unknown => typeof value === "string" ? expand(value) : Array.isArray(value) ? value.map(deep) : isRecord(value) ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, deep(item)])) : value;
+  return Object.fromEntries(Object.entries(servers).map(([name, config]) => [name, deep(config) as Record<string, unknown>]));
+}
+
+export interface PluginMcpServer {
+  /** 플러그인 선언의 서버 키(`.mcp.json`의 이름). */
+  readonly server: string;
+  /** 세션이 쓰는 서버 이름(`plugin:<플러그인>:<서버>`). */
+  readonly name: string;
+  readonly config: ClaudeGatewayExternalMcpServer;
+}
+
+/**
+ * 플러그인 폴더의 MCP 서버를 세션 선언으로. 서버 이름은 Claude Code 가 `--plugin-dir` 플러그인 서버에 붙이는
+ * `plugin:<plugin.json name>:<서버>`(CLI 2.1.312 판독)다. `${CLAUDE_PLUGIN_ROOT}`를 펼치고, 동적 헤더 명령은
+ * `--mcp-config`에서도 플러그인 로딩 때와 같은 루트 환경·작업 폴더로 실행되도록 감싼다. 쓸 수 없는 선언은 뺀다.
+ */
+export function pluginMcpServers(dir: string, pluginName: string, manifest?: Record<string, unknown>): PluginMcpServer[] {
+  const servers: PluginMcpServer[] = [];
+  for (const [server, config] of Object.entries(mcpDeclarations(dir, manifest))) {
+    const name = `plugin:${pluginName}:${server}`;
+    const converted = externalMcpServerOf(config, (helper) => pluginHeadersHelper(helper, dir));
+    if (converted) servers.push({ server, name, config: converted });
+  }
+  return servers;
+}
+
+/**
+ * Claude Code MCP 선언 하나를 세션의 외부 서버 선언으로 옮긴다. http·sse·ws 가 아니면 명령 없는 URL 은 http, 아니면 stdio 다.
+ * 필드가 맞지 않는 선언은 null.
+ */
+export function externalMcpServerOf(config: Record<string, unknown>, wrapHeadersHelper: (command: string) => string = (command) => command): ClaudeGatewayExternalMcpServer | null {
+  const type = config.type === "http" || config.type === "sse" || config.type === "ws" ? config.type : typeof config.url === "string" && config.command === undefined ? "http" : "stdio";
+  if (type === "stdio") {
+    if (typeof config.command !== "string") return null;
+    return { type: "stdio", command: config.command, ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}), ...(isRecord(config.env) ? { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, String(value)])) } : {}) };
+  }
+  if (typeof config.url !== "string" || !(type === "ws" ? /^wss?:\/\/\S+$/i : /^https?:\/\/\S+$/i).test(config.url)) return null;
+  return { type, url: config.url, ...(isRecord(config.headers) ? { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, String(value)])) } : {}), ...(typeof config.headersHelper === "string" ? { headersHelper: wrapHeadersHelper(config.headersHelper) } : {}) };
 }
 
 /** 원문은 셸 명령 그대로 두고 플러그인별 환경·작업 폴더만 복원한다. Console 은 이 명령을 실행하지 않는다. */

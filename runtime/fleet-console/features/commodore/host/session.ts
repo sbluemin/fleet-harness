@@ -5,7 +5,8 @@ import type { AgentWorkStep } from "../../execution/host/agent/types.js";
 import { createChatStepReporter, type ChatStepReporter } from "../../execution/host/agent/chat-step.js";
 import type { CommodoreToolTheater } from "./tools.js";
 import type { AgentContextBreakdown, AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
-import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
+import { AGENT_RESERVED_TOOL_GROUPS, type ConsoleResidentAgentHost, type ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
+import { stageClaudeHomeOverlay, type ClaudeHomeLocation, type ClaudeHomeOverlay } from "./home-overlay.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
@@ -41,6 +42,11 @@ export interface CommodoreSessionOptions {
   /** 호스트가 이 사령관에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindCommodore`) — 서버 이름 그대로 도구 그룹이 된다. */
   /** 세션을 여는 순간 이 사령관이 고른 플러그인 — 로컬 경로와 호스트가 대신 여는 MCP 선언. */
   readonly plugins?: () => readonly ResolvedPlugin[];
+  /**
+   * 사람의 실제 Claude 홈 — 있으면 세션을 열 때마다 그 MCP 서버·스킬·켜 둔 플러그인을 Fleet 플러그인 뒤에 더한다
+   * (`home-overlay.ts`). 설정·훅·CLAUDE.md 는 싣지 않는다. 없으면 홈을 읽지 않는다.
+   */
+  readonly claudeHome?: ClaudeHomeLocation;
   /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
@@ -129,6 +135,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   // 보드 도구마다 쓰기 action — 호출의 action 이 이 중 하나면 보드 행위로 기록하고 센다. 나머지는 읽기다.
   const boardWrites = new Map(options.boardTools.map((tool) => [tool.name, new Set(Object.entries(tool.actionSchema?.actions ?? {}).flatMap(([action, info]) => (info.kind === "write" ? [action] : [])))]));
   let session: ConsoleResidentSession | null = null;
+  let home: ClaudeHomeOverlay | null = null;
   let starting: Promise<void> | null = null;
   let disposed = false;
   let turnActive = false;
@@ -275,44 +282,58 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     // Theater 의 `.mcp.json` 서버는 싣지 않는다 — Theater 에서 하는 실무는 그 목표의 지휘관·구성원 몫이다.
     const roots = [...new Set((options.theaters?.() ?? []).flatMap(({ root }) => (root ? [root] : [])))];
     const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.taskforce ? { taskforce: options.taskforce } : {}), ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}), ...(options.proposals ? { proposals: options.proposals } : {}), ...(options.intelProposals ? { intelProposals: options.intelProposals } : {}) });
-    const created = await options.agent.createSession({
-      model: options.coordinates.model,
-      // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
-      sessionName: `commodore-${(options.store.read(options.commodoreId)?.alias ?? "commodore").normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
-      ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
-      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias }),
-      continuation: "conversation",
-      settlement: "result",
-      cwd: options.cwd,
-      ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
-      workspace: (() => {
-        // 사람이 이 사령관에 고른 플러그인 — Theater 의 `.mcp.json` 과 달리 사령관 자신의 도구다. 플러그인 MCP 는 strictMcpConfig 가
-        // 막으므로 호스트가 선언을 옮겨 연다. 서버 이름은 `plugin:…` 이라 호스트의 예약 도구 묶음과 겹치지 않는다.
-        const selected = options.plugins?.() ?? [];
-        const servers: Record<string, ClaudeGatewayExternalMcpServer> = {};
-        // 이름이 같은 플러그인(마켓플레이스만 다름)이나 도구 이름으로 정규화해 겹치는 서버는 먼저 고른 쪽만 싣는다 — 목표 세션의 자식도 같다.
-        const taken = new Set<string>();
-        for (const plugin of selected) for (const [name, config] of Object.entries(plugin.mcpServers)) {
-          const prefix = name.replace(/[^a-zA-Z0-9_-]/g, "_");
-          if (taken.has(prefix)) continue;
-          taken.add(prefix);
-          servers[name] = config;
-        }
-        // 서버 이름은 목표 세션의 자식이 같은 플러그인에 붙이는 `plugin:<플러그인>:<서버>` 그대로라 OAuth 토큰을 함께 쓴다.
-        // 키는 선언에 펼치지 않고 자식 환경에 얹는다 — 자식이 `${VAR}`를 펼친다.
-        const env = mergePluginEnv(selected);
-        return { additionalDirectories: roots, ...(Object.keys(servers).length ? { mcpServers: servers } : {}), ...(Object.keys(env).length ? { env } : {}), ...(selected.length ? { plugins: selected.map((plugin) => ({ path: plugin.path, skipMcp: true })) } : {}) };
-      })(),
-      tools: {
-        builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
-        browser: { scopeId: `commodore:${options.commodoreId}` },
-        custom: [
-          { name: FLEET_COMMODORE_TOOL_GROUP, tools: [...tools.map(observed), ...options.boardTools.map(observed)] },
-        ],
-      },
-      onEvent,
-    });
-    if (disposed) { await created.dispose(); return; }
+    // 사람이 이 사령관에 고른 플러그인 — Theater 의 `.mcp.json` 과 달리 사령관 자신의 도구다. 플러그인 MCP 는 strictMcpConfig 가
+    // 막으므로 호스트가 선언을 옮겨 연다. 서버 이름은 `plugin:…` 이라 호스트의 예약 도구 묶음과 겹치지 않는다.
+    const selected = options.plugins?.() ?? [];
+    const servers: Record<string, ClaudeGatewayExternalMcpServer> = {};
+    // 이름이 같은 플러그인(마켓플레이스만 다름)이나 도구 이름으로 정규화해 겹치는 서버는 먼저 고른 쪽만 싣는다 — 목표 세션의 자식도 같다.
+    // 서버 이름은 목표 세션의 자식이 같은 플러그인에 붙이는 `plugin:<플러그인>:<서버>` 그대로라 OAuth 토큰을 함께 쓴다.
+    // 키는 선언에 펼치지 않고 자식 환경에 얹는다 — 자식이 `${VAR}`를 펼친다.
+    const taken = new Set<string>();
+    for (const plugin of selected) for (const [name, config] of Object.entries(plugin.mcpServers)) {
+      const prefix = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+      if (taken.has(prefix)) continue;
+      taken.add(prefix);
+      servers[name] = config;
+    }
+    // 사람의 Claude 홈에서 더하는 것 — 세션마다 새로 읽는다. 읽거나 세우지 못하면 홈 없이 연다(Fleet 기동을 막지 않는다).
+    if (options.claudeHome) {
+      try {
+        home = await stageClaudeHomeOverlay(options.claudeHome, { plugins: selected, reservedGroups: [...AGENT_RESERVED_TOOL_GROUPS, FLEET_COMMODORE_TOOL_GROUP] });
+        if (home.skipped.length) console.warn(`[commodore] home overlay skipped ${home.skipped.map(({ kind, name, reason }) => `${kind} ${name}: ${reason}`).join(", ")}`);
+      } catch (error) {
+        console.warn(`[commodore] home overlay unavailable: ${(error as NodeJS.ErrnoException)?.code ?? "home_overlay_failed"}`);
+      }
+    }
+    // 홈 서버는 Fleet 이름과 겹치지 않게 이미 걸렀다(Fleet 우선). 홈 플러그인은 Fleet 플러그인 뒤에 선다.
+    for (const [name, config] of Object.entries(home?.mcpServers ?? {})) servers[name] = config;
+    const env = { ...home?.env, ...mergePluginEnv(selected) };
+    const plugins = [...selected.map((plugin) => ({ path: plugin.path, skipMcp: true })), ...(home?.plugins ?? [])];
+    const releaseHome = async () => { const staged = home; home = null; await staged?.release().catch(() => undefined); };
+    let created: ConsoleResidentSession;
+    try {
+      created = await options.agent.createSession({
+        model: options.coordinates.model,
+        // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
+        sessionName: `commodore-${(options.store.read(options.commodoreId)?.alias ?? "commodore").normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
+        ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
+        systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias }),
+        continuation: "conversation",
+        settlement: "result",
+        cwd: options.cwd,
+        ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
+        workspace: { additionalDirectories: roots, ...(Object.keys(servers).length ? { mcpServers: servers } : {}), ...(Object.keys(env).length ? { env } : {}), ...(plugins.length ? { plugins } : {}) },
+        tools: {
+          builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
+          browser: { scopeId: `commodore:${options.commodoreId}` },
+          custom: [
+            { name: FLEET_COMMODORE_TOOL_GROUP, tools: [...tools.map(observed), ...options.boardTools.map(observed)] },
+          ],
+        },
+        onEvent,
+      });
+    } catch (error) { await releaseHome(); throw error; }
+    if (disposed) { await created.dispose(); await releaseHome(); return; }
     session = created;
   };
 
@@ -400,6 +421,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await starting?.catch(() => undefined);
       await session?.dispose();
       session = null;
+      await home?.release().catch(() => undefined);
+      home = null;
     },
   };
 }
