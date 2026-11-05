@@ -8,6 +8,7 @@ const BASE: SystemPromptSettingsState = {
   wireLogEnabled: false,
   delegationRoutingEnabled: true,
   delegationRoutingModel: null,
+  delegationRoutingEffort: null,
   delegationRoutingMode: "model",
   compactCeiling: null,
   xaiEndpoint: "cli-proxy",

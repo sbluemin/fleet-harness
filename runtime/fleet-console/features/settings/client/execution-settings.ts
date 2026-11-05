@@ -60,6 +60,8 @@ export interface SystemPromptSettingsState {
   readonly delegationRoutingEnabled: boolean;
   readonly delegationRoutingMode: DelegationRoutingMode;
   readonly delegationRoutingModel: string | null;
+  /** 판정 모델의 추론 강도. null은 미선택 — 화면과 실행 모두 low(없으면 가장 낮은 단). */
+  readonly delegationRoutingEffort: string | null;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
   /** 공급자 로그인 상태. null·부재는 아직 모름이라 로그인 필요로 보지 않는다. */
@@ -72,6 +74,7 @@ export type SystemPromptSettingsUpdate =
   | { readonly delegationRoutingEnabled: boolean }
   | { readonly delegationRoutingMode: DelegationRoutingMode }
   | { readonly delegationRoutingModel: string | null }
+  | { readonly delegationRoutingEffort: string | null }
   | { readonly compactCeiling: CompactCeiling | null }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -161,6 +164,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     wireLogEnabled: payload.wireLogEnabled,
     delegationRoutingEnabled: payload.delegationRoutingEnabled,
     delegationRoutingModel: payload.delegationRoutingModel ?? null,
+    delegationRoutingEffort: typeof payload.delegationRoutingEffort === "string" ? payload.delegationRoutingEffort : null,
     delegationRoutingMode: payload.delegationRoutingMode,
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
@@ -202,7 +206,7 @@ import * as React from "react";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "delegationRoutingEffort" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -321,6 +325,7 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
     return { delegationRoutingEnabled: state.delegationRoutingEnabled };
   }
   if (field === "delegationRoutingModel") return { delegationRoutingModel: state.delegationRoutingModel };
+  if (field === "delegationRoutingEffort") return { delegationRoutingEffort: state.delegationRoutingEffort };
   if (field === "delegationRoutingMode") {
     return { delegationRoutingMode: state.delegationRoutingMode };
   }

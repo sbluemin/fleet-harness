@@ -214,6 +214,12 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(aiGateway.delegationRoutingMode === "jev"
             ? { delegationRoutingMode: "jev" }
             : {}),
+          ...(aiGateway.delegationRoutingModel
+            ? { delegationRoutingModel: aiGateway.delegationRoutingModel }
+            : {}),
+          ...(aiGateway.delegationRoutingEffort
+            ? { delegationRoutingEffort: aiGateway.delegationRoutingEffort }
+            : {}),
           models: [],
           ...(value ?? {}),
         });
@@ -231,6 +237,11 @@ function createRouteHarness(options: HarnessOptions = {}) {
       writeDelegationRoutingModel: (model) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingModel: model });
+        return aiGateway;
+      },
+      writeDelegationRoutingEffort: (effort) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingEffort: effort });
         return aiGateway;
       },
       writeDelegationRoutingMode: (mode) => {

@@ -11,7 +11,7 @@ import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemP
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 import { ModelCoordinatePicker, modelCoordinateDisplay, type ModelCoordinatePickerLabels } from "./components/model-coordinate-picker.js";
-import { ROSTER_FALLBACK_MODEL, findRosterRow, rosterRowEfforts, rosterRows, type ModelRoster } from "../shared/models.js";
+import { ROSTER_FALLBACK_MODEL, clampRosterEffort, findRosterRow, isAgentEffort, rosterRowEfforts, rosterRows, type ModelRoster } from "../shared/models.js";
 import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
@@ -358,10 +358,9 @@ function AiGatewayRoutingCard() {
   const jevActive = jevStored && typesafeSignedIn;
   const jevFallback = jevStored && !typesafeSignedIn;
   const routingPickerLabels = rosterPickerLabels(t, t("terminal.settings.aiGatewayRoutingModel"));
-  // 판정기는 강도를 저장하지 않는다 — 실제로 도는 강도(routingJudgeEffort)를 표시에만 실어, 기본값과 고른 모델이
-  // 같은 규칙으로 읽히게 한다. 저장은 모델만이다(onChange).
+  // 저장한 강도가 있으면 그 값을, 없으면 실행과 같은 기본(low 우선)을 표시에 실어 표기가 갈리지 않게 한다.
   const routingValue = state.delegationRoutingModel
-    ? { model: state.delegationRoutingModel, ...withEffort(routingJudgeEffort(routingRoster, state.delegationRoutingModel)) }
+    ? { model: state.delegationRoutingModel, ...withEffort(routingJudgeEffort(routingRoster, state.delegationRoutingModel, state.delegationRoutingEffort)) }
     : {};
   const routingFallback = { model: ROSTER_FALLBACK_MODEL, effort: "low" };
   // 폰의 선택기 행은 「모델 · 강도」를 한 문자열로 그려 CSS가 강도만 내릴 수 없다 — 설정의 데스크톱
@@ -420,14 +419,14 @@ function AiGatewayRoutingCard() {
           </SettingsItem>
           {mode === "model" ? (
             <SettingsItem label={t("terminal.settings.aiGatewayRoutingModel")} labelId="routing-model-label" hint={lines("terminal.settings.aiGatewayRoutingModelNotice")}>
-              {/* 라우팅 판정기는 모델만 고른다 — 강도는 실행이 빠른 단(low)으로 정한다. 선택지는 모델 로스터 하나다. */}
+              {/* 다른 화면과 같은 강도 게이지. 고르지 않으면 저장하지 않고, 실행은 low(없으면 가장 낮은 단)다. */}
               <ModelCoordinatePicker
                 roster={routingRoster}
                 value={routingValue}
                 fallback={routingFallback}
-                effort="none"
-                disabled={saving.has("delegationRoutingModel")}
-                onChange={(next) => { if (next.model) void setSystemPromptSettingsField("delegationRoutingModel", next.model); }}
+                effort="track"
+                disabled={saving.has("delegationRoutingModel") || saving.has("delegationRoutingEffort")}
+                onChange={(next) => { saveRoutingCoordinate(state.delegationRoutingModel, state.delegationRoutingEffort, next); }}
                 labels={routingPickerLabels}
                 trigger={{ variant: "field", className: "ai-gateway-field-trigger", ...(routingPickerText ? { text: routingPickerText } : {}) }}
               />
@@ -465,13 +464,25 @@ function AiGatewayRoutingCard() {
 }
 
 /**
- * 판정기가 실제로 도는 강도 — host/routing-model.ts의 규칙(사다리에 low가 있으면 low, 없으면 첫 단, 사다리가 없으면 생략)과 같다.
- * 트리거 표시에만 쓴다. 이것이 없으면 기본값은 해석 경로가 첫 단(low)을, 고른 모델은 저장값에 강도가 없어 「자동」을 보여 표기가 갈린다.
+ * 트리거가 말하는 강도. 저장값이 그 모델 사다리에 있으면 그대로, 없으면 실행과 같이 사다리 안으로 맞춘다.
+ * 저장값이 없으면 low(사다리에 없으면 첫 단). 사다리가 없으면 생략한다 — host/routing-model.ts와 같다.
  */
-function routingJudgeEffort(roster: ModelRoster | null, model: string): string | undefined {
+function routingJudgeEffort(roster: ModelRoster | null, model: string, stored: string | null): string | undefined {
   const ladder = rosterRowEfforts(findRosterRow(roster, model));
   if (ladder.length === 0) return undefined;
-  return ladder.includes("low") ? "low" : ladder[0];
+  return clampRosterEffort(ladder, stored && isAgentEffort(stored) ? stored : "low");
+}
+
+/** 선택기가 확정한 모델과 강도를 각각 저장한다. 강도 없는 모델은 저장 강도를 지워 기본 규칙으로 되돌린다. */
+function saveRoutingCoordinate(
+  model: string | null,
+  effort: string | null,
+  next: { readonly model?: string; readonly effort?: string },
+): void {
+  if (!next.model) return;
+  if (next.model !== model) void setSystemPromptSettingsField("delegationRoutingModel", next.model);
+  const chosen = next.effort && isAgentEffort(next.effort) ? next.effort : null;
+  if (chosen !== effort) void setSystemPromptSettingsField("delegationRoutingEffort", chosen);
 }
 
 function withEffort(effort: string | undefined): { readonly effort?: string } {
