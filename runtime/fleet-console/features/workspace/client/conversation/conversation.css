@@ -235,7 +235,9 @@
   top: 0;
   right: calc(-1 * var(--conversation-split-right, 0px));
   left: 0;
-  z-index: 3;
+  /* 컨텍스트 레일 칩(.context-rail-overlay, z-index 4)보다 위. 승인 버튼이 좁아지면 오른쪽 고정 칩이
+     도구 틈으로 올라와 지구본과 「…」 사이를 가린다. 빈 자리는 여전히 클릭을 넘긴다. */
+  z-index: 6;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -395,7 +397,8 @@
   height: 30px;
   padding: 0;
   border: 0;
-  background: none;
+  /* 레일 칩(58×64, 어두운 면·색 점)이 투명한 단추 틈으로 비치지 않게 대화 바탕을 깐다. */
+  background: var(--conversation-surface, var(--canvas-abyss));
 }
 
 .conversation-pill-tools-items,
