@@ -96,6 +96,8 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
                   active={view.open}
                   visible={view.open}
                   keyboardFocusRequestId={view.focusRequest}
+                  // 숨겼다 다시 열면 보던 자리(스크롤)로 돌아온다 — 바닥 추적을 다시 걸지 않는다.
+                  keepScrollOnActivate
                   theme={theme}
                   locale={language}
                   onExit={() => endStandaloneCli(generation)}
