@@ -1,5 +1,5 @@
 import type { AgentOptionsService } from "@fleet-console/infra";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -280,6 +280,12 @@ ts: { createdAt, updatedAt: createdAt }};
 
   const previousTerminalCommand = process.env.FLEET_TERMINAL_CMD;
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
+  // 채팅 발사는 자식을 열기 전에 Claude 실행 파일을 찾는다. 그 탐색이 기계마다 달라지면
+  // 합성 프롬프트가 테스트 대역에 닿지 않는다.
+  const previousClaudeBin = process.env.CLAUDE_BIN;
+  const claudeBin = path.join(fleetDataDir, "claude");
+  writeFileSync(claudeBin, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  process.env.CLAUDE_BIN = claudeBin;
   const prompts: string[] = [];
   (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async () => {
     return {
@@ -311,6 +317,8 @@ ts: { createdAt, updatedAt: createdAt }};
   cleanups.push(async () => {
     if (previousTerminalCommand === undefined) delete process.env.FLEET_TERMINAL_CMD;
     else process.env.FLEET_TERMINAL_CMD = previousTerminalCommand;
+    if (previousClaudeBin === undefined) delete process.env.CLAUDE_BIN;
+    else process.env.CLAUDE_BIN = previousClaudeBin;
     for (const cleanup of [...lifecycleCleanups].reverse()) await cleanup();
   });
 
