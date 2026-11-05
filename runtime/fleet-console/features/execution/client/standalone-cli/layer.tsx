@@ -8,7 +8,7 @@ import { launchProviderGlyph } from "../../../ai-gateway/client/components/launc
 import { theaterLabelOrNull } from "../../../commodore/client/theater-owner.js";
 import { subscribeCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { getT } from "../agent/i18n/index.js";
-import { closeStandaloneCli, endStandaloneCli, focusStandaloneCli, useStandaloneCliState } from "./store.js";
+import { closeStandaloneCli, endStandaloneCli, focusStandaloneCli, takeStandaloneCliReturnFocus, useStandaloneCliState } from "./store.js";
 import "./standalone-cli.css";
 
 const STANDALONE_CLI_SESSION_ID = "standalone-cli";
@@ -39,18 +39,15 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
     () => (placement ? { commodoreId: placement.commodoreId, theaterId: placement.theaterId } : undefined),
     [placement],
   );
-  // 열기 전 포커스를 기억했다가 닫으면 그 자리(보던 대화의 입력창 등)로 돌려준다.
-  const returnFocusRef = React.useRef<HTMLElement | null>(null);
+  // 열기 전 포커스(스토어가 열기 직전에 붙잡음)를 닫으면 그 자리(보던 대화의 입력창 등)로 돌려준다.
   const layerRef = React.useRef<HTMLDivElement | null>(null);
+  const wasOpenRef = React.useRef(view.open);
   React.useLayoutEffect(() => {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = view.open;
+    if (view.open || !wasOpen) return;
     const layer = layerRef.current;
-    if (view.open) {
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && !layer?.contains(active)) returnFocusRef.current = active;
-      return;
-    }
-    const target = returnFocusRef.current;
-    returnFocusRef.current = null;
+    const target = takeStandaloneCliReturnFocus();
     if (layer?.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     if (target?.isConnected) target.focus({ preventScroll: true });
   }, [view.open]);

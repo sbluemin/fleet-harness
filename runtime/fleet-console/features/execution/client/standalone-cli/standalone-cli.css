@@ -16,3 +16,10 @@
   visibility: hidden;
   pointer-events: none;
 }
+
+/* 열린 동안 칸의 나머지(밑의 대화, 그 맨 위 줄 pill, 칸에 꽂힌 독)는 마운트·크기를 둔 채 가린다. 층 순서에 맡기면 그 줄이
+   z-index 를 올릴 때마다 독립 CLI 의 pill 위로 다시 올라온다 — 가려진 것은 그려지지도, 포인터를 받지도 않는다. 칸 밖의
+   사이드바와 맨 위 줄 공용 도구모음(.conversation-band)은 그대로다. */
+.conversation-stage:has(> .standalone-cli-layer.is-open) > :not(.standalone-cli-layer) {
+  visibility: hidden;
+}

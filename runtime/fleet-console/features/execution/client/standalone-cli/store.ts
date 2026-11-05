@@ -30,6 +30,24 @@ const STATE_PATH = "/api/v1/standalone-cli/state";
 let state: StandaloneCliViewState = { open: false, placement: null, needsTheater: false, focusRequest: 0, generation: 0 };
 const listeners = new Set<() => void>();
 let toggling = false;
+/**
+ * 열기 직전에 포커스가 있던 곳(보던 대화의 입력창 등). 닫으면 그리로 돌려준다. 열린 동안 밑의 칸은 가려져 포커스를
+ * 잃으므로, 화면이 바뀌기 전인 여기서 붙잡아야 한다.
+ */
+let returnFocus: HTMLElement | null = null;
+
+function rememberReturnFocus(): void {
+  if (typeof document === "undefined") return;
+  const active = document.activeElement;
+  returnFocus = active instanceof HTMLElement && active !== document.body && active.closest(".standalone-cli-layer") === null ? active : null;
+}
+
+/** 닫힌 패널이 포커스를 돌려줄 곳을 한 번 꺼낸다. */
+export function takeStandaloneCliReturnFocus(): HTMLElement | null {
+  const target = returnFocus;
+  returnFocus = null;
+  return target;
+}
 
 function write(next: StandaloneCliViewState): void {
   state = next;
@@ -73,6 +91,7 @@ export async function toggleStandaloneCli(viewed: { readonly commodoreId: string
     write({ ...state, open: false, needsTheater: false });
     return;
   }
+  rememberReturnFocus();
   if (state.placement !== null) {
     write({ ...state, open: true, needsTheater: false, focusRequest: state.focusRequest + 1 });
     return;
