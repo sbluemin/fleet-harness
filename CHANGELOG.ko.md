@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.284.1] - 2026-11-05
+
+### fleet-console
+
+#### Fixed
+- AI Gateway의 Codex 모델(GPT-6.1 Sol, Terra 등)에서 대화 압축 뒤 모든 턴이 `API Error: 500 ... (reading 'filter')`로 실패하던 문제를 고쳤습니다.
+
 ## [1.284.0] - 2026-11-05
 
 ### fleet-console

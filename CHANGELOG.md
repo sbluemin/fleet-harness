@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.284.1] - 2026-11-05
+
+### fleet-console
+
+#### Fixed
+- Codex models in AI Gateway, such as GPT-6.1 Sol and Terra, no longer fail every turn after a conversation compaction with `API Error: 500 ... (reading 'filter')`.
+
 ## [1.284.0] - 2026-11-05
 
 ### fleet-console
