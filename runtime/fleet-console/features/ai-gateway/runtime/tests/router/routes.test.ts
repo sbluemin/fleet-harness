@@ -94,6 +94,86 @@ describe("Claude Codex compaction routing", () => {
     }));
     expect(res.status).toBe(401);
   });
+
+  // 압축 다음 턴은 체크포인트를 앞에 실은 채 업스트림에 닿아야 한다. 한때 입력 토큰 추정이
+  // 그 항목을 도구 결과로 읽어 TypeError를 냈고, 압축 뒤 모든 턴이 500으로 끝났다.
+  it("continues the turn after a compaction with the checkpoint replayed upstream", async () => {
+    const sse = (events: unknown[]) => new Response(
+      events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+    const completed = (id: string) => ({
+      type: "response.completed",
+      response: { id, model: "gpt-6.1-sol", usage: { input_tokens: 10, output_tokens: 5 } },
+    });
+    const bodies: Array<Record<string, any>> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      if (bodies.length === 1) {
+        return sse([
+          { type: "response.output_item.done", output_index: 0, item: { type: "compaction", encrypted_content: "opaque-checkpoint" } },
+          completed("compact"),
+        ]);
+      }
+      return sse([
+        { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: bodies.length === 2 ? "summary" : "RECALLED" },
+        completed(`turn-${bodies.length}`),
+      ]);
+    });
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-compaction-"));
+    const router = createAiGatewayRouter({
+      readAuth,
+      fetch: fetchMock,
+      compactionStore: createClaudeCodexCompactionStore({ directory }),
+      compactionHookToken: "hook-token",
+    });
+    const sessionId = "4d7c1b52-3f7e-4f0a-9d55-2b8f6a1c0e91";
+    const metadata = { user_id: JSON.stringify({ session_id: sessionId }) };
+    const hook = async (event: Record<string, unknown>) => {
+      const res = response();
+      await router.handle(ctx({
+        res,
+        pathname: `${BASE}/v1/compact-events`,
+        headers: { "x-fleet-compact-token": "hook-token" },
+        rawBody: { session_id: sessionId, trigger: "manual", ...event },
+      }));
+      expect(res.status).toBe(200);
+    };
+    try {
+      await hook({ hook_event_name: "PreCompact" });
+      const compact = response();
+      await router.handle(ctx({
+        res: compact,
+        token: ANTHROPIC_CRED,
+        metadata,
+        messages: [
+          { role: "user", content: "Remember CANARY-1" },
+          { role: "assistant", content: "STORED" },
+          { role: "user", content: `${CLAUDE_COMPACT_PROMPT_MARKER} Summarize.` },
+        ],
+      }));
+      expect(compact.status).toBe(200);
+      await hook({ hook_event_name: "PostCompact", compact_summary: "summary" });
+
+      const next = response();
+      await router.handle(ctx({
+        res: next,
+        token: ANTHROPIC_CRED,
+        metadata,
+        messages: [
+          { role: "user", content: `${CLAUDE_COMPACT_CONTINUATION_MARKER} summary` },
+          { role: "user", content: "Reply RECALL" },
+        ],
+      }));
+      expect(next.status).toBe(200);
+      expect(next.body).toContain("RECALLED");
+      expect(bodies).toHaveLength(3);
+      expect(bodies[2]!.input[0]).toEqual({ type: "compaction", encrypted_content: "opaque-checkpoint" });
+    } finally {
+      router.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 /**

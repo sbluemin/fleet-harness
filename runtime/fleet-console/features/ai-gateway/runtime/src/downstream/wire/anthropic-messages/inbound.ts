@@ -226,10 +226,12 @@ function estimateCanonicalRequestTokens(
       parts.push(canonicalMessageText(item.content));
     } else if (item.type === "function_call") {
       parts.push(item.name, item.arguments);
-    } else {
+    } else if (item.type === "function_call_output") {
       parts.push(canonicalMessageText(item.output));
     }
-
+    // Anything else carries no text to count. The Codex compact continuation prepends an opaque
+    // `compaction` checkpoint outside the canonical union; reading it as a tool result threw on
+    // its missing `output` and failed every turn after a compaction with a 500.
   }
   for (const tool of wireTools) {
     parts.push(tool.name);
