@@ -10,6 +10,7 @@ import { z } from "zod";
 import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, inboxAwaits, inboxReasons, livePersonHold } from "../shared/board-state.js";
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, type BriefAttachmentInput } from "./attachments.js";
 import { createModelCatalog } from "./catalog.js";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
@@ -58,6 +59,9 @@ const HINTS: Readonly<Record<string, string>> = {
   routing_preview_stale: "Judge with routing first; commence launches routed members with the models it showed.",
   followup_changed: "That candidate was revised since you read it; read the board again and name it with its current rev.",
   held_for_person: "You handed this to the person. It is theirs until they answer it or return it to you; either wakes you.",
+  model_not_in_catalog: "Pick an available model id from the models action.",
+  invalid_effort: "Pick one of efforts for that model, or omit commanderEffort.",
+  commander_model_required: "commanderEffort needs commanderModel.",
 };
 
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
@@ -77,7 +81,9 @@ const listTool = defineConsoleTool({
     models: { kind: "read", input: z.object(scope) },
     // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관의 fleet-objectives search 와 같은 핵심·같은 입력이다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
-    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
+    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan."),
+      commanderModel: z.string().trim().min(1).max(128).optional().describe("Commander model from the models action, only when asked; omitted keeps your Commander setting or the board default."),
+      commanderEffort: z.string().trim().min(1).max(32).optional().describe("Commander effort from that model's efforts; needs commanderModel. Omitted uses the model's default.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
@@ -280,9 +286,11 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         // 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
         const inherited = caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId : undefined;
         const specified = call.theaterId !== undefined;
+        const commander = await chosenCommander(call.commanderModel, call.commanderEffort, context.signal);
         const objective = await launch.create({
           commodoreId, theaterId: call.theaterId ?? inherited ?? "", theaterIdSpecified: specified, groupId, title: call.title, requestSource: call.requestSource, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
           ...(caller?.kind === "objectiveRecord" ? { addedBy: caller.objectiveId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
+          ...(commander ? { commander } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
         return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, requestSource: kept.requestSource, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
@@ -436,6 +444,21 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
       }
     }
     return text({ ok: true, scheduled, warning });
+  }
+
+  /** 생성 호출이 고른 지휘관을 models 목록(사람의 선택기와 같은 카탈로그)으로 확인한다. 목록을 읽지 못하면 추측으로 통과시키지 않는다. */
+  async function chosenCommander(model: string | undefined, effort: string | undefined, signal: AbortSignal | undefined) {
+    if (model === undefined) {
+      if (effort !== undefined) throw new ObjectiveStoreError("commander_model_required");
+      return null;
+    }
+    const catalog = await modelCatalog.load(signal);
+    if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
+    const wanted = canonicalModelId(model);
+    const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
+    if (!row || !row.available) throw new ObjectiveStoreError("model_not_in_catalog", undefined, { model, ...(row?.reason ? { reason: row.reason } : {}) });
+    if (effort !== undefined && !row.efforts.includes(effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.model, efforts: row.efforts });
+    return { model: wanted, ...(effort !== undefined ? { effort } : {}) };
   }
 
   async function models(commodoreId: string | null, signal: AbortSignal | undefined) {

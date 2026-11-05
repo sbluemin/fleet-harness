@@ -42,7 +42,7 @@ export type DecisionOutcome = { readonly answers: readonly DecisionAnswer[] } | 
 export interface LaunchService {
   describe(): { readonly available: boolean };
   /** 목표 레코드만 만든다. 후속 후보는 안정적인 objectiveId 를 지정할 수 있다. */
-  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly theaterIdSpecified?: boolean; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
+  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly theaterIdSpecified?: boolean; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string; readonly commander?: { readonly model: string; readonly effort?: string } } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
   /**
    * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 Core에 보관을 요청하고 후속 목표 레코드를
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
@@ -1593,7 +1593,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     describe: () => ({ available: !!ctx.consoleControl }),
 
     async create(input, options) {
-      const { objectiveId, ...init } = input;
+      const { objectiveId, commander: chosen, ...init } = input;
       checkedCriteria(init);
       const id = objectiveId ?? randomUUID();
       if (store.recorded(id)) return objective(id);
@@ -1602,7 +1602,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 보드 동작이 구성원 채팅 입력창에 서므로 보기 선택은 없다(옛 요청의 viewMode 는 받되 쓰지 않는다).
       const actor = options?.actor ?? init.by;
       const byCommodore = !!actor && typeof actor === "object" && actor.kind === "commodore";
-      const commander = byCommodore ? serviceOptions.commodoreCommander?.(input.commodoreId) ?? null : null;
+      // 생성 호출이 고른 지휘관이 사령관 설정보다 앞선다. 고르지 않으면 지금처럼 사령관 설정, 그다음 보드 기본이다.
+      const commander = chosen ?? (byCommodore ? serviceOptions.commodoreCommander?.(input.commodoreId) ?? null : null);
       if (byCommodore && actor.commodoreId !== input.commodoreId) throw new ObjectiveStoreError("other_commodore");
       const requested = typeof input.theaterId === "string" ? input.theaterId : "";
       const owned = ctx.ownedTheaterIds?.(input.commodoreId);
