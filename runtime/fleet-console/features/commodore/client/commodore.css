@@ -415,15 +415,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-advanced-chevron.is-open { transform: rotate(90deg); }
 .objectives-commodore-commander-options { display: grid; min-width: 0; gap: 8px; margin: 4px 0 12px 2px; padding-left: 14px; border-left: 1px solid var(--commodore-settings-line); }
 .objectives-commodore-commander-options[hidden] { display: none; }
-.objectives-commodore-option-label { margin: 0; color: var(--text-primary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
-.objectives-commodore-prompt-editor { display: grid; min-width: 0; gap: 8px; }
-.objectives-commodore-prompt-modes { display: flex; min-width: 0; gap: 3px; padding: 3px; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); }
-.objectives-commodore-prompt-modes label { position: relative; flex: 1 1 auto; min-width: 0; cursor: pointer; }
-.objectives-commodore-prompt-modes input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.objectives-commodore-prompt-modes span { display: block; overflow: hidden; padding: 6px 4px; border-radius: var(--radius-xs); color: var(--text-secondary); font-size: var(--t-xs); text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-commodore-prompt-modes input:checked + span { background: var(--control-rest); color: var(--text-primary); }
-.objectives-commodore-prompt-modes input:focus-visible + span { box-shadow: var(--focus-face); }
-.objectives-commodore-commander-options .commander-subagents { gap: 0; margin: 0; padding: 0; border: 0; }
+.objectives-commodore-commander-options .commodore-session-setting { gap: 0; }
 .objectives-commodore-commander-options .fc-settings-row { padding-block: 12px; border: 0; }
 .objectives-commodore-commander-options .fc-settings-row__label { font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .objectives-commodore-hint { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
@@ -729,8 +721,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .is-sheet .commodore-create-foot { padding: 10px 16px calc(16px + var(--m-safe-bottom, 0px)); border-top: 0; }
 .is-sheet .commodore-create-button { flex: 1; height: 56px; font-size: var(--m-fs-body); font-weight: var(--weight-bold); }
 @media (prefers-reduced-motion: reduce) { .is-sheet .commodore-create { animation: none; } }
-.objectives-commodore-prompt-editor .commodore-prompt-body { box-sizing: border-box; width: 100%; min-height: 120px; margin: 0; padding: 10px 12px; resize: vertical; color: var(--text-primary); background: var(--control-field); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); font: inherit; font-size: var(--t-sm); line-height: 1.55; }
-.objectives-commodore-prompt-editor .commodore-prompt-body:focus-visible { box-shadow: var(--field-focus-edge); }
 /* 설정 맨 위의 Theater·플러그인 — 정보 탭 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px, --commodore-settings-line)로만 나눈다.
    Theater 제목은 이 칸의 SettingsRow(.fc-settings-row__label + 위 font-size 재정의)와 같은 크기·색·굵기. 플러그인 제목은 그 클래스를 그대로 쓴다.
    폰·Theater Inbox 제목에는 닿지 않는다. */

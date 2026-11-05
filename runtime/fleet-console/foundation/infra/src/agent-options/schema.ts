@@ -9,24 +9,30 @@
  */
 
 /**
- * What a new gateway session receives as its system prompt.
+ * Whether a new Claude Code session loads Claude Code's own base system prompt.
  *
- * - `on` — Claude Code's own base prompt, which is what a launch without any prompt flag
- *   already does. The key being absent means this.
- * - `append` — that base prompt followed by the user's own instructions.
- * - `off` — no base prompt. The user's instructions become the whole system prompt, and
- *   when there are none the session runs without one.
+ * - `on` — load it, which is what a launch without any prompt flag already does. The key
+ *   being absent means this.
+ * - `off` — run without a system prompt.
+ * - `append` — a stored value from when users could write their own instructions. It is
+ *   read as `on`; the toggle only ever writes `on` or `off`.
  *
- * The mode and user-authored body form one Commodore-scoped setting; legacy Theater keys remain migration sources.
+ * `body` is the user-authored text from that retired feature. Sessions no longer load it,
+ * but storage keeps it as written so removing the feature does not delete the user's data.
+ * The mode and body form one Commodore-scoped setting; legacy Theater keys remain migration sources.
  */
 export type ClaudeCodeSystemPromptMode = "on" | "append" | "off";
 
 /**
- * Upper bound on the user's own system prompt, in characters. The same ceiling the launch
- * prompt carries: past it a caller is pasting a document, not writing an instruction, and
- * every turn of every session would pay for it.
+ * Upper bound on a stored body, in characters. Bodies are no longer written, but stored ones
+ * past this were never accepted, so the sanitizer keeps the same bound.
  */
-export const MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS = 16_000;
+const MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS = 16_000;
+
+/** Whether a stored setting loads Claude Code's base system prompt. */
+export function claudeCodeBasePromptEnabled(prompt: ClaudeCodeTheaterSystemPrompt | null | undefined): boolean {
+  return prompt?.mode !== "off";
+}
 
 export interface ClaudeCodeTheaterSystemPrompt {
   readonly mode: ClaudeCodeSystemPromptMode;
@@ -105,9 +111,9 @@ function sanitizeTheaterSystemPrompts(value: unknown): Readonly<Record<string, C
  * hands the editor back something other than what was typed.
  *
  * A body past the ceiling drops the key rather than being silently truncated: half an
- * instruction is a different instruction. The route refuses it before it ever reaches here.
+ * instruction is a different instruction.
  */
-export function sanitizeClaudeCodeCustomSystemPrompt(value: unknown): string | undefined {
+function sanitizeClaudeCodeCustomSystemPrompt(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value
     .replace(/\r\n/g, "\n")

@@ -2372,7 +2372,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // admiral이 정한다 — CLI는 기본 프롬프트를 쓸 때 플래그를 싣지 않고 SDK는 그때 preset을
     // 싣는, 서로 뒤집힌 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
     const additionalDirectories = ctx.host.paths.resolveObjectiveAdditionalDirectories?.(node.id);
-    const chatTheaterPrompt = deps.commodoreSystemPrompts?.read(node.commodoreId);
+    const chatBasePromptEnabled = deps.commodoreSystemPrompts?.basePromptEnabled(node.commodoreId) ?? true;
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node) ? [ALL_SUBAGENTS] : [];
     const chatDisableAutoMemory = readAgentSession(node)?.disableAutoMemory === true;
     const mcpTokenLabel = `chat:${node.id}`;
@@ -2467,7 +2467,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
             cwd,
             dataDir: ctx.host.paths.consoleDataDir,
             plugin: ctx.agentCliPlugin,
-            ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
+            ...(chatBasePromptEnabled ? {} : { claudeCodeSystemPrompt: "off" as const }),
             claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
             ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
             ...(node.parentObjectiveId || ctx.isCommanderSession?.(node.id) ? { objectiveMessaging: true as const } : {}),

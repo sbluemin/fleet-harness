@@ -131,7 +131,7 @@ describe("agent chat mode routes", () => {
     expect(harness.consoleControl.observe(sessionId)?.output).not.toHaveProperty("failure");
   });
   it("routes an opted-in Console message through the existing Chat session and records its result", async () => {
-    const harness = await createHarness({ theaterPrompt: { mode: "append", body: "Theater rules" } });
+    const harness = await createHarness({ basePromptEnabled: false });
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
@@ -143,7 +143,9 @@ describe("agent chat mode routes", () => {
     expect(await delivered).toMatchObject({ objectiveId: sessionId });
     await vi.waitFor(() => expect(harness.sends).toEqual(["Inspect the build"]));
     // 목표 밖의 평범한 채팅 Objective도 사람에게 묻는 도구와 계획 모드 도구 없이 연다.
-    expect(harness.openSession.mock.calls[0]?.[0]).toMatchObject({ systemPrompt: { mode: "append", text: "Theater rules" }, disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
+    expect(harness.openSession.mock.calls[0]?.[0]).toMatchObject({ disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
+    // 사령관이 기본 시스템 지침을 끄면 SDK 표면은 systemPrompt 를 싣지 않는다.
+    expect(harness.openSession.mock.calls[0]?.[0]).not.toHaveProperty("systemPrompt");
     expect(harness.sdkOptions[0]?.executablePath).toBe(resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: {} }).resolved?.bin);
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing"));
     const launched = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).objectiveId;
@@ -684,7 +686,7 @@ describe("agent chat mode routes", () => {
   });
 });
 
-async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly theaterPrompt?: { readonly mode: "on" | "append" | "off"; readonly body: string } } = {}) {
+async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly basePromptEnabled?: boolean } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir, resolveLaunchAttachmentNamespaceRoot(fleetDataDir));
@@ -923,7 +925,7 @@ ts: { createdAt, updatedAt: createdAt }};
     agentOptionsService: agentOptionsStub,
     // 모델 좌표 후보는 모델 로스터(Settings › AI Gateway)다 — 운영처럼 Claude 항목이 켜진 로스터를 둔다.
     readAiGatewaySettings: () => ({ version: 1, models: [{ id: "claude--sonnet" }, { id: "claude--opus-1m" }] }),
-    ...(options.theaterPrompt ? { commodoreSystemPrompts: { exists: (id: string) => id === "owner-1", read: (id: string | undefined) => id === "owner-1" ? options.theaterPrompt! : null, save: () => null, subagentsKept: () => false, keepSubagents: () => false, purge: () => {}, migrate: () => {} } } : {}),
+    ...(options.basePromptEnabled !== undefined ? { commodoreSystemPrompts: { exists: (id: string) => id === "owner-1", basePromptEnabled: (id: string | undefined) => id === "owner-1" ? options.basePromptEnabled! : true, setBasePromptEnabled: () => true, subagentsKept: () => false, keepSubagents: () => false, purge: () => {}, migrate: () => {} } } : {}),
   });
   let api = await start();
   cleanups.push(async () => {

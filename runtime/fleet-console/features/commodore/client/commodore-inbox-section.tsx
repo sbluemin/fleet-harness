@@ -22,7 +22,7 @@ import { SyncedTextarea } from "../../execution/client/composer-primitives/input
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
 import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow } from "../../settings/client/preferences-context.js";
-import { CommanderSubagentsSection, useCommanderSubagents, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
+import { CommanderSubagentsSection, CommodoreBasePromptSection, useCommanderSubagents, useCommodoreBasePrompt } from "../../settings/client/commodore-session-settings.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
@@ -328,28 +328,21 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
 }
 
 export function CommodoreSessionSettings({ t, commodoreId, phone = false }: { readonly t: T; readonly commodoreId: string; readonly phone?: boolean }) {
-  const controller = useTheaterPromptController(commodoreId ? { id: commodoreId, label: commodoreId } : null, 0, { onMissing: () => undefined, onDiscarded: () => undefined, ignoreTheaterRegistry: true });
+  const basePrompt = useCommodoreBasePrompt(commodoreId);
   const subagents = useCommanderSubagents(commodoreId);
-  const names = useTheaterPromptModeNames(phone);
   const promptT = useConsoleT(phone);
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
-  const labelId = `${bodyId}-instructions`;
-  const modes = Object.keys(names) as Array<keyof typeof names>;
-  const body = controller.draft.body;
-  const custom = controller.draft.mode !== "on";
-  const loading = controller.loading || subagents.state === "loading";
-  const failed = controller.loadFailed || subagents.state === "loadFailed";
-  const summary = loading ? promptT("sidebar.theater.prompt.loading") : failed ? t("commodore.settings.advancedLoadFailed") : t("commodore.settings.advancedSummary", {
-    mode: names[controller.draft.mode],
-    count: custom && body.trim() ? ` · ${t("commodore.settings.characters", { n: body.length })}` : "",
-    subagents: promptT(subagents.allowed ? "sidebar.commodore.commanderSubagents.allowed" : "sidebar.commodore.commanderSubagents.off"),
+  const loading = basePrompt.state === "loading" || subagents.state === "loading";
+  const failed = basePrompt.state === "loadFailed" || subagents.state === "loadFailed";
+  const summary = loading ? promptT("sidebar.commodore.setting.loading") : failed ? t("commodore.settings.advancedLoadFailed") : t("commodore.settings.advancedSummary", {
+    prompt: promptT(basePrompt.value ? "sidebar.commodore.basePrompt.on" : "sidebar.commodore.basePrompt.off"),
+    subagents: promptT(subagents.value ? "sidebar.commodore.commanderSubagents.allowed" : "sidebar.commodore.commanderSubagents.off"),
   });
-  const toggle = () => { if (expanded) controller.flush(); setExpanded(!expanded); };
   if (!commodoreId) return null;
   return (
     <div className="objectives-commodore-advanced">
-      <button type="button" className="objectives-commodore-advanced-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={toggle}>
+      <button type="button" className="objectives-commodore-advanced-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={() => setExpanded(!expanded)}>
         <span className="objectives-commodore-advanced-copy">
           <span className="objectives-commodore-advanced-label">{t("commodore.settings.advanced")}</span>
           {!expanded ? <span className="objectives-commodore-advanced-summary">{summary}</span> : null}
@@ -357,25 +350,10 @@ export function CommodoreSessionSettings({ t, commodoreId, phone = false }: { re
         <ChevronGlyph direction="right" className={`objectives-commodore-advanced-chevron${expanded ? " is-open" : ""}`} />
       </button>
       <div id={bodyId} className="objectives-commodore-commander-options" hidden={!expanded}>
-        <div className="objectives-commodore-prompt-editor">
-          <h4 id={labelId} className="objectives-commodore-option-label">{t("commodore.settings.instructions")}</h4>
-          {controller.loading || controller.loadFailed ? <p className="objectives-commodore-hint" role={controller.loadFailed ? "alert" : "status"}>{promptT(controller.loadFailed ? "sidebar.theater.prompt.loadFailed" : "sidebar.theater.prompt.loading")}</p> : <>
-            <div className="objectives-commodore-prompt-modes" role="radiogroup" aria-labelledby={labelId}>
-              {modes.map((mode) => (
-                <label key={mode} title={names[mode]}>
-                  <input type="radio" name={`commodore-prompt-${bodyId}`} checked={controller.draft.mode === mode} onChange={() => controller.changeMode(mode)} />
-                  <span>{names[mode]}</span>
-                </label>
-              ))}
-            </div>
-            {custom ? <SyncedTextarea className="commodore-prompt-body" value={body} aria-labelledby={labelId} aria-invalid={controller.status === "over"} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} /> : null}
-          </>}
-          {controller.status !== "untouched" ? <p className={`objectives-commodore-hint${controller.status === "error" || controller.status === "over" ? " is-error" : ""}`} role={controller.status === "error" || controller.status === "over" ? "alert" : "status"}>{promptT(`sidebar.theater.prompt.save.${controller.status}`)}</p> : null}
-        </div>
+        <CommodoreBasePromptSection controller={basePrompt} mobile={phone} />
         <CommanderSubagentsSection controller={subagents} mobile={phone} />
       </div>
-      {!expanded && (controller.status === "error" || controller.status === "over") ? <p className="objectives-commodore-hint is-error" role="alert">{promptT(`sidebar.theater.prompt.save.${controller.status}`)}</p> : null}
-      {!expanded && subagents.state === "saveFailed" ? <p className="objectives-commodore-hint is-error" role="alert">{promptT("sidebar.commodore.commanderSubagents.saveFailed")}</p> : null}
+      {!expanded && (basePrompt.state === "saveFailed" || subagents.state === "saveFailed") ? <p className="objectives-commodore-hint is-error" role="alert">{promptT("sidebar.commodore.setting.saveFailed")}</p> : null}
     </div>
   );
 }

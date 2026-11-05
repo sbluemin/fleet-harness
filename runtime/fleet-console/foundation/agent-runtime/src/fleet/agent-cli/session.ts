@@ -62,7 +62,7 @@ export interface ClaudeSessionHandle {
   /** 이 세션이 실을 Fleet 플러그인 zip 주소. */
   readonly pluginUrl: string;
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
-  readonly claudeCodeSystemPrompt: "on" | "append" | "off";
+  readonly claudeCodeSystemPrompt: "on" | "off";
   /** 이 세션에서 끈 내장 서브에이전트 이름들. 생략은 전부 남는다는 뜻이다. */
   readonly claudeCodeDisabledAgents?: readonly string[];
   /** 이 세션에서 뺀 도구 이름들. 생략은 뺀 것이 없다는 뜻이다. */
@@ -90,19 +90,14 @@ export interface PrepareClaudeSessionOptions {
   readonly workspaceHookExec?: FleetHookExec;
   readonly origin: ClaudeSessionOrigin;
   /**
-   * 이 세션의 시스템 프롬프트를 무엇으로 세울지. 생략하면 `on`.
+   * 이 세션에 Claude Code 기본 시스템 프롬프트를 실을지. 생략하면 `on`, `off`는 시스템 프롬프트 없이 연다.
    *
    * 두 표면의 표현이 서로 뒤집혀 있다 — CLI는 기본 프롬프트를 쓸 때 아무 플래그도 싣지
    * 않고, SDK는 반대로 그때 `{ mode: "preset" }`을 실어야 한다. SDK에서 `systemPrompt`를
    * 생략하면 기본 프롬프트가 실리는 것이 아니라 최소 프롬프트가 된다(실측: 턴당 총 입력
    * 토큰 생략 18,272 / preset 24,632). 그 사상을 호스트가 각자 하면 한쪽만 따라온다.
    */
-  readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
-  /**
-   * 사용자가 쓴 시스템 프롬프트 본문. `append`면 기본 프롬프트 뒤에 잇고, `off`면 이 글이
-   * 시스템 프롬프트 전체가 된다. 비어 있으면 두 모드 모두 본문 없이 해석된다.
-   */
-  readonly claudeCodeCustomSystemPrompt?: string;
+  readonly claudeCodeSystemPrompt?: "on" | "off";
   /**
    * 이 세션에서 끌 Claude Code 내장 서브에이전트 이름들. 생략·빈 목록이면 전부 남는다.
    * 두 표면이 같은 규칙을 받는다 — CLI는 `--settings`의 `permissions.deny`, SDK는
@@ -177,8 +172,8 @@ export async function prepareClaudeSession(
         // argv 표면과 같은 bypass다. 채팅 세션의 `canUseTool`은 권한 게이트가 아니라
         // 질문 통로이고, 그 집합 밖의 도구는 콜백 첫 줄에서 그대로 허용된다.
         permissionMode: "bypassPermissions",
-        // 사용자가 고른 구성을 SDK 어휘로 옮긴다. 실리는 본문은 전부 사용자가 쓴 것이다.
-        ...buildSdkSystemPrompt(claudeCodeSystemPrompt, options.claudeCodeCustomSystemPrompt),
+        // 사용자가 고른 탑재 여부를 SDK 어휘로 옮긴다.
+        ...buildSdkSystemPrompt(claudeCodeSystemPrompt),
         // 옵트아웃한 내장 서브에이전트와 뺀 도구는 SDK 표면에서도 같은 목록으로 빠진다. 실측(SDK 0.3.269):
         // `canUseTool`이 대화형 도구를 싣더라도 여기 적힌 `AskUserQuestion`은 init 도구 목록에서 빠진다.
         ...(denyRules.length > 0 ? { disallowedTools: denyRules } : {}),
@@ -189,26 +184,15 @@ export async function prepareClaudeSession(
 }
 
 /**
- * 사용자가 고른 구성을 SDK의 `systemPrompt` 모양으로 옮긴다.
+ * 사용자가 고른 탑재 여부를 SDK의 `systemPrompt` 모양으로 옮긴다.
  *
- * CLI와 대칭이 아닌 두 지점이 여기서 갈린다. 첫째, 이 표면에서 필드를 **생략**하는 것은
- * 기본 프롬프트를 싣는다는 뜻이 아니라 최소 프롬프트로 연다는 뜻이다 — 그래서 `on`은
- * 생략이 아니라 `preset`이어야 하고, 기본 프롬프트를 원하지 않는 `off`가 생략 쪽이다.
- * 둘째, `replace`·`append`의 본문은 비어 있을 수 없다(vendor가 `TypeError`로 거절한다).
- * CLI가 `--system-prompt ""`로 표현하는 "프롬프트 없음"을 이 표면에서는 생략이 맡는다.
+ * 이 표면에서 필드를 **생략**하는 것은 기본 프롬프트를 싣는다는 뜻이 아니라 최소 프롬프트로
+ * 연다는 뜻이다 — 그래서 `on`은 생략이 아니라 `preset`이어야 하고, 기본 프롬프트를 원하지 않는
+ * `off`가 생략 쪽이다. CLI가 `--system-prompt ""`로 표현하는 "프롬프트 없음"을 이 표면에서는
+ * 생략이 맡는다(`replace` 본문은 비어 있을 수 없다).
  */
-function buildSdkSystemPrompt(
-  claudeCodeSystemPrompt: "on" | "append" | "off",
-  customSystemPrompt: string | undefined,
-): { systemPrompt?: ClaudeGatewaySystemPrompt } {
-  const text = customSystemPrompt === undefined || customSystemPrompt.length === 0 ? undefined : customSystemPrompt;
-  if (claudeCodeSystemPrompt === "off") {
-    return text === undefined ? {} : { systemPrompt: { mode: "replace", text } };
-  }
-  if (claudeCodeSystemPrompt === "append" && text !== undefined) {
-    return { systemPrompt: { mode: "append", text } };
-  }
-  return { systemPrompt: { mode: "preset" } };
+function buildSdkSystemPrompt(claudeCodeSystemPrompt: "on" | "off"): { systemPrompt?: ClaudeGatewaySystemPrompt } {
+  return claudeCodeSystemPrompt === "off" ? {} : { systemPrompt: { mode: "preset" } };
 }
 
 /**

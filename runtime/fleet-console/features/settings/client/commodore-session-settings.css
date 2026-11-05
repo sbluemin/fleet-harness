@@ -1,0 +1,5 @@
+/* 사령관 고급 옵션의 켬·끔 줄(시스템 지침, 서브에이전트). 줄 틀은 SettingsRow 가 진다. */
+.commodore-session-setting { display: grid; gap: 8px; }
+.commodore-session-setting p { margin: 0; }
+.commodore-session-setting-status { display: flex; gap: 8px; align-items: center; min-height: 18px; margin: 0; color: var(--text-tertiary); font: var(--t-xs) var(--font-ui); }
+.commodore-session-setting-status.is-error { color: var(--coral-ink); }

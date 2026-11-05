@@ -51,22 +51,19 @@ The Commander cannot overwrite a person's launch selection, including routing;
 legacy selections without recorded ownership are conservatively protected as
 person-chosen.
 
-`claudeCodeSystemPrompt` (`on` | `append` | `off`, default `on`) controls the harness's
-own prompt, and `claudeCodeCustomSystemPrompt` carries the user's own instructions:
-`append` puts them after the harness prompt, `off` makes them the whole system prompt,
-and an empty body leaves `off` running without one. Fleet still writes no text of its
-own under any setting — carrying a body the user authored is a different thing from
-authoring one, and nothing on this path may add to, summarize, or reword it.
+`claudeCodeSystemPrompt` (`on` | `off`, default `on`) chooses whether a session loads
+Claude Code's own base prompt; `off` runs it without a system prompt. It is a per-Commodore
+switch. Fleet writes no text of its own under either setting. Instructions users wrote
+before custom instructions were removed stay in storage as their data, but no session
+loads them.
 
 The two surfaces express the same setting inversely, so they are mapped in one place
 (`agent-cli/session.ts` and `agent-cli/builders/claude.ts`) rather than by each host.
 The CLI omits every flag when the harness prompt is used, while the SDK must say
 `{ mode: "preset" }` there — omitting `systemPrompt` on that surface yields a minimal
-prompt, not the harness one. The SDK also rejects an empty `replace`/`append` body, so
-the "no system prompt" state that the CLI writes as `--system-prompt ""` is an omission
-on the SDK side. A user body never travels through argv: it is written to a file and
-passed as `--append-system-prompt-file` / `--system-prompt-file`, which keeps it clear
-of the Windows command-line budget and of `cmd`'s reinterpretation.
+prompt, not the harness one. The SDK also rejects an empty `replace` body, so the
+"no system prompt" state that the CLI writes as `--system-prompt ""` is an omission
+on the SDK side.
 
 The one prompt Fleet still ships is the execution contract in
 `runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/execution-contract.ts`.

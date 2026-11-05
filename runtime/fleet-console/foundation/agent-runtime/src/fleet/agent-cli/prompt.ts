@@ -25,9 +25,6 @@ export const LAUNCH_PROMPT_TEMP_DIR_PREFIX = "fleet-launch-prompt-";
 export const LAUNCH_PROMPT_FILE_NAME = "prompt.md";
 export const LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX = "Read and follow the launch prompt file: ";
 
-export const CUSTOM_SYSTEM_PROMPT_TEMP_DIR_PREFIX = "fleet-system-prompt-";
-export const CUSTOM_SYSTEM_PROMPT_FILE_NAME = "system-prompt.md";
-
 /**
  * launch 프롬프트 파일을 둘 디렉터리를 정하는 호스트 포트.
  *
@@ -268,45 +265,6 @@ export function writeLaunchPromptFile(
     filePath: written.filePath,
     instruction: formatLaunchPromptFileInstruction(written.filePath),
   };
-}
-
-/**
- * 사용자가 쓴 시스템 프롬프트를 파일에 두고 그 절대 경로를 돌려준다.
- *
- * 본문이 argv를 지나지 않는 것이 요점이다. 인라인으로 실으면 Windows 명령줄 예산을 본문
- * 길이만큼 먹고(그 예산을 넘기면 런치가 거절된다), cmd shim은 따옴표 안에서도 `%`를 전개하고
- * 줄바꿈에서 명령을 끊어 사용자의 지침을 조용히 다른 글로 만든다. 경로만 실으면 본문은
- * 무엇이든 담을 수 있고, 검사할 것은 짧은 경로 하나로 줄어든다.
- *
- * 파일은 런치 프롬프트와 같은 수명을 쓴다 — 호출자의 cleanup 스택에 올라가 세션이 끝날 때
- * 함께 사라진다.
- */
-export function writeCustomSystemPromptFile(
-  body: string,
-  onCleanup: (cleanup: () => void) => void,
-  cmdWrapped: boolean,
-  directories?: LaunchPromptDirectoryAllocator,
-): string {
-  const written = writePromptFile(
-    body,
-    onCleanup,
-    CUSTOM_SYSTEM_PROMPT_TEMP_DIR_PREFIX,
-    CUSTOM_SYSTEM_PROMPT_FILE_NAME,
-    directories,
-  );
-  try {
-    assertLaunchPromptShimSafe(written.filePath, cmdWrapped ? ["cmd-shim"] : []);
-  } catch (error) {
-    written.cleanup();
-    if (error instanceof LaunchPromptError && error.code === "prompt_unsafe_for_shim") {
-      throw new LaunchPromptError(
-        "prompt_unsafe_for_shim",
-        'The system prompt file path contains a character cmd.exe would reinterpret (" & < > ( ) @ ^ | %) while running the Windows shim. Fleet cannot start this launch from the current Windows temp directory.',
-      );
-    }
-    throw error;
-  }
-  return written.filePath;
 }
 
 function writePromptFile(

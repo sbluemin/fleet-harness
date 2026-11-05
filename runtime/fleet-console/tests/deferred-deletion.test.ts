@@ -64,7 +64,7 @@ describe("deferred deletion coordinator", () => {
     harness.beforePurge.value = (_nodes, tombstone) => { if (tombstone.kind === "theater") prompts.purge(tombstone.targetId); };
     const deletion = legacyTheaterTombstone();
     harness.coordinator.load([deletion]);
-    expect(prompts.read("c1")).toEqual({ mode: "off", body: "private instructions" });
+    expect(data.claudeCodeCommodoreSystemPrompts?.c1).toEqual({ mode: "off", body: "private instructions" });
     await harness.coordinator.restore(deletion.deletionId);
     const again = legacyTheaterTombstone();
     harness.coordinator.load([again]);
@@ -73,7 +73,7 @@ describe("deferred deletion coordinator", () => {
     expect(data.claudeCodeTheaterSystemPrompts).toBeUndefined();
     expect(data.claudeCodeTheaterSubagents).toBeUndefined();
     expect(prompts.subagentsKept("c1")).toBe(true);
-    expect(prompts.read("c1")).toEqual({ mode: "off", body: "private instructions" });
+    expect(data.claudeCodeCommodoreSystemPrompts?.c1).toEqual({ mode: "off", body: "private instructions" });
   });
 
   it("rolls memory back when the durable save fails", () => {
