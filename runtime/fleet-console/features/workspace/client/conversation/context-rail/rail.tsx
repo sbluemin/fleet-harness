@@ -416,6 +416,7 @@ function ContextBody({ sessionId, measure, footnote, state, t }: {
       </ul>
       <FileDetail sessionId={sessionId} rows={measure.memoryFiles} state={state} t={t} />
       <McpDetail sessionId={sessionId} rows={measure.mcpTools} state={state} t={t} />
+      <SkillDetail sessionId={sessionId} rows={measure.skills} state={state} t={t} />
       <p className="context-rail-foot">{footnote ?? t(hasBreakdown ? "conversation.rail.foot" : "conversation.rail.footTotalOnly")}</p>
     </>
   );
@@ -449,37 +450,102 @@ function FileDetail({ sessionId, rows, state, t }: { readonly sessionId: string;
 }
 
 function McpDetail({ sessionId, rows, state, t }: { readonly sessionId: string; readonly rows: readonly ContextRailRow[]; readonly state: ContextRailState; readonly t: Translate }) {
+  return (
+    <GroupedDetail
+      detailKey={`${sessionId}:mcp`}
+      label={t("conversation.rail.mcpTools")}
+      rows={rows}
+      groupOf={(row) => { const name = row.server ?? ""; return { id: name, label: name === "" ? "—" : name }; }}
+      rowLabel={(row, group) => toolLabel(row.name, group.id)}
+      countTitle={(count) => t(count === 1 ? "conversation.rail.toolCount_one" : "conversation.rail.toolCount_other", { count: String(count) })}
+      state={state}
+    />
+  );
+}
+
+/**
+ * 모델에게 알려 둔 스킬 목록. MCP 도구처럼 출처(플러그인 스킬은 그 플러그인, 그 밖에는 내장·사용자·프로젝트 등)마다 글리프 묶음으로 접고 편다.
+ * Skill 도구로 연 본문은 대화 몫에 들어 여기에 따로 나오지 않는다.
+ */
+function SkillDetail({ sessionId, rows, state, t }: { readonly sessionId: string; readonly rows: readonly ContextRailRow[]; readonly state: ContextRailState; readonly t: Translate }) {
+  return (
+    <GroupedDetail
+      detailKey={`${sessionId}:skills`}
+      label={t("conversation.rail.skills")}
+      rows={rows}
+      groupOf={(row) => {
+        const label = skillSourceLabel(row, t);
+        return { id: row.plugin ? `plugin:${row.plugin}` : `source:${row.source ?? ""}`, label: label === "" ? "—" : label };
+      }}
+      rowLabel={(row) => row.name}
+      countTitle={(count) => t(count === 1 ? "conversation.rail.skillCount_one" : "conversation.rail.skillCount_other", { count: String(count) })}
+      state={state}
+    />
+  );
+}
+
+/** vendor 출처 식별자를 사람이 읽는 말로. 플러그인 스킬은 플러그인 이름이 곧 출처이고, 모르는 식별자는 그대로 둔다. */
+function skillSourceLabel(row: ContextRailRow, t: Translate): string {
+  if (row.plugin) return row.plugin;
+  switch (row.source) {
+    case "userSettings": return t("conversation.rail.skillSource.userSettings");
+    case "projectSettings": return t("conversation.rail.skillSource.projectSettings");
+    case "localSettings": return t("conversation.rail.skillSource.localSettings");
+    case "policySettings": return t("conversation.rail.skillSource.policySettings");
+    case "built-in":
+    case "bundled": return t("conversation.rail.skillSource.builtIn");
+    case "plugin": return t("conversation.rail.skillSource.plugin");
+    default: return row.source ?? "";
+  }
+}
+
+/**
+ * 묶음이 있는 접는 줄 — 머리 줄 아래에 묶음(글리프·이름·토큰·개수)이 서고, 묶음을 펴면 그 행들이 나온다. MCP 도구는 서버로, 스킬은
+ * 출처로 묶는다. 묶음과 행은 토큰이 큰 순서다.
+ */
+function GroupedDetail({ detailKey, label, rows, groupOf, rowLabel, countTitle, state }: {
+  readonly detailKey: string;
+  readonly label: string;
+  readonly rows: readonly ContextRailRow[];
+  readonly groupOf: (row: ContextRailRow) => { readonly id: string; readonly label: string };
+  readonly rowLabel: (row: ContextRailRow, group: { readonly id: string; readonly label: string }) => string;
+  readonly countTitle: (count: number) => string;
+  readonly state: ContextRailState;
+}) {
   const spent = spentRows(rows);
   if (spent.length === 0) return null;
-  const byServer = new Map<string, ContextRailRow[]>();
-  for (const row of spent) byServer.set(row.server ?? "", [...(byServer.get(row.server ?? "") ?? []), row]);
-  const servers = [...byServer.entries()]
-    .map(([name, tools]) => ({ name, tools, tokens: tools.reduce((sum, row) => sum + row.tokens, 0) }))
+  const byGroup = new Map<string, { id: string; label: string; rows: ContextRailRow[] }>();
+  for (const row of spent) {
+    const group = groupOf(row);
+    const held = byGroup.get(group.id);
+    if (held) held.rows.push(row);
+    else byGroup.set(group.id, { ...group, rows: [row] });
+  }
+  const groups = [...byGroup.values()]
+    .map((group) => ({ ...group, tokens: group.rows.reduce((sum, row) => sum + row.tokens, 0) }))
     .sort((left, right) => right.tokens - left.tokens);
-  const key = `${sessionId}:mcp`;
-  const open = state.details.has(key);
+  const open = state.details.has(detailKey);
   return (
     <div className="context-rail-detail">
-      <DetailHead open={open} label={t("conversation.rail.mcpTools")} tokens={servers.reduce((sum, server) => sum + server.tokens, 0)} count={spent.length} onToggle={() => toggleContextDetail(key)} />
-      {open ? servers.map((server) => {
-        const serverKey = `${key}:${server.name}`;
-        const serverOpen = state.details.has(serverKey);
-        const label = server.name === "" ? "—" : server.name;
+      <DetailHead open={open} label={label} tokens={groups.reduce((sum, group) => sum + group.tokens, 0)} count={spent.length} onToggle={() => toggleContextDetail(detailKey)} />
+      {open ? groups.map((group) => {
+        const groupKey = `${detailKey}:${group.id}`;
+        const groupOpen = state.details.has(groupKey);
         return (
-          <div className="context-rail-server" key={server.name}>
-            <button type="button" className="context-rail-detail-head is-server" aria-expanded={serverOpen} onClick={() => toggleContextDetail(serverKey)}>
-              <span className="context-rail-chev" aria-hidden="true">{serverOpen ? "▾" : "▸"}</span>
-              <span className="context-rail-server-glyph" aria-hidden="true">{serverGlyph(server.name)}</span>
-              <span className="context-rail-name" title={label}>{label}</span>
-              <span className="context-rail-tokens">{formatTokens(server.tokens)}</span>
-              <span className="context-rail-count" title={t(server.tools.length === 1 ? "conversation.rail.toolCount_one" : "conversation.rail.toolCount_other", { count: String(server.tools.length) })}>{server.tools.length}</span>
+          <div className="context-rail-server" key={group.id}>
+            <button type="button" className="context-rail-detail-head is-server" aria-expanded={groupOpen} onClick={() => toggleContextDetail(groupKey)}>
+              <span className="context-rail-chev" aria-hidden="true">{groupOpen ? "▾" : "▸"}</span>
+              <span className="context-rail-server-glyph" aria-hidden="true">{serverGlyph(group.label)}</span>
+              <span className="context-rail-name" title={group.label}>{group.label}</span>
+              <span className="context-rail-tokens">{formatTokens(group.tokens)}</span>
+              <span className="context-rail-count" title={countTitle(group.rows.length)}>{group.rows.length}</span>
             </button>
-            {serverOpen ? (
+            {groupOpen ? (
               <ul className="context-rail-rows is-sub">
-                {server.tools.map((tool) => (
-                  <li key={tool.name}>
-                    <span className="context-rail-name" title={tool.name}>{toolLabel(tool.name, server.name)}</span>
-                    <span className="context-rail-tokens">{formatTokens(tool.tokens)}</span>
+                {group.rows.map((row) => (
+                  <li key={row.name}>
+                    <span className="context-rail-name" title={row.name}>{rowLabel(row, group)}</span>
+                    <span className="context-rail-tokens">{formatTokens(row.tokens)}</span>
                   </li>
                 ))}
               </ul>

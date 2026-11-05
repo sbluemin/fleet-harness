@@ -67,6 +67,7 @@ export function measureOf(context: AgentChatContext | null): ContextRailMeasure 
     slices: context.slices,
     memoryFiles: context.memoryFiles,
     mcpTools: context.mcpTools,
+    skills: context.skills,
   };
 }
 

@@ -205,10 +205,21 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       },
       ...(resident ? {
         async contextUsage() {
-          // Gateway 모델의 자식은 공급자 창을 Claude 좌표로 투영한 값을 말한다 — 채팅과 달리 이 경로는 되돌리는 정책을 싣지 않으므로 말하지 않는다.
-          if (closed || active || gateway !== undefined) return null;
+          // 창을 모르는 Gateway 모델은 되돌릴 자가 없다 — 자식 좌표의 숫자를 실제 창의 것처럼 싣지 않는다.
+          if (closed || active || gateway === null) return null;
           const usage = await resident.contextUsage();
-          return usage ? contextBreakdownOf(usage) : null;
+          if (!usage) return null;
+          if (gateway === undefined) return contextBreakdownOf(usage);
+          // Gateway 모델의 자식은 공급자 창을 Claude 좌표(200k·1M)로 투영해 말한다. 결과 사건(`inGatewayFrame`)과 같은 좌표·함수·
+          // 정책 값으로 되돌려야 내역의 합과 칩의 총량이 같은 자를 쓴다.
+          const ceiling = deps.compactCeiling?.() ?? null;
+          const coordinate = gateway >= CLAUDE_COMPAT_CONTEXT_WINDOW ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
+          const threshold = compactThresholdTokens(gateway, ceiling);
+          return contextBreakdownOf(usage, {
+            max: gateway,
+            compactAt: options.compactAt === undefined ? threshold : Math.min(options.compactAt, threshold),
+            unproject: (tokens) => unprojectClaudeContextInputTokens(tokens, gateway, coordinate, ceiling),
+          });
         },
       } : {}),
       ...(resident ? {

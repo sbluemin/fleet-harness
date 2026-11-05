@@ -117,6 +117,10 @@ export interface AgentChatContextSlice {
   readonly tokens: number;
   /** MCP 도구가 속한 서버 이름. 도구가 아닌 항목이나 서버를 모르는 도구에는 없다. */
   readonly server?: string;
+  /** 스킬의 vendor 출처 식별자(`userSettings`, `built-in` 등). 스킬이 아닌 항목에는 없다. */
+  readonly source?: string;
+  /** 플러그인 스킬의 플러그인 이름. */
+  readonly plugin?: string;
 }
 
 export type AgentChatStreamEvent =
@@ -138,6 +142,7 @@ export type AgentChatStreamEvent =
       readonly slices: readonly AgentChatContextSlice[];
       readonly memoryFiles?: readonly AgentChatContextSlice[];
       readonly mcpTools?: readonly AgentChatContextSlice[];
+      readonly skills?: readonly AgentChatContextSlice[];
       readonly asOf?: "start" | "end";
     }
   /** 라이브 전용 총량 — 저널에 실리지 않는다. 내역은 없다(control 채널만 그것을 안다). */
@@ -316,6 +321,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           slices: readContextSlices(event.slices),
           ...(Array.isArray(event.memoryFiles) ? { memoryFiles: readContextSlices(event.memoryFiles) } : {}),
           ...(Array.isArray(event.mcpTools) ? { mcpTools: readContextSlices(event.mcpTools) } : {}),
+          ...(Array.isArray(event.skills) ? { skills: readContextSlices(event.skills) } : {}),
           // 모르는 값은 부재와 같이 다룬다 — 그것이 옛 저널의 뜻이고, 새 값이 들어오더라도
           // 총량을 권위로 삼는 쪽(`"end"`)으로 오해되지 않는다.
           ...(event.asOf === "end" ? { asOf: "end" as const } : {}),
@@ -659,9 +665,15 @@ function readChange(value: unknown): AgentChatChange | null {
 function readContextSlices(value: unknown): readonly AgentChatContextSlice[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((row: unknown) => {
-    const slice = row as { readonly name?: unknown; readonly tokens?: unknown; readonly server?: unknown };
+    const slice = row as { readonly name?: unknown; readonly tokens?: unknown; readonly server?: unknown; readonly source?: unknown; readonly plugin?: unknown };
     return typeof slice?.name === "string" && slice.name.length > 0 && typeof slice.tokens === "number"
-      ? [{ name: slice.name, tokens: slice.tokens, ...(typeof slice.server === "string" && slice.server.length > 0 ? { server: slice.server } : {}) }]
+      ? [{
+          name: slice.name,
+          tokens: slice.tokens,
+          ...(typeof slice.server === "string" && slice.server.length > 0 ? { server: slice.server } : {}),
+          ...(typeof slice.source === "string" && slice.source.length > 0 ? { source: slice.source } : {}),
+          ...(typeof slice.plugin === "string" && slice.plugin.length > 0 ? { plugin: slice.plugin } : {}),
+        }]
       : [];
   });
 }
@@ -825,6 +837,7 @@ export interface AgentChatContext {
   readonly slices: readonly AgentChatContextSlice[];
   readonly memoryFiles: readonly AgentChatContextSlice[];
   readonly mcpTools: readonly AgentChatContextSlice[];
+  readonly skills: readonly AgentChatContextSlice[];
 }
 
 /**
@@ -1066,6 +1079,7 @@ export function reduceContextSnapshot(
     slices: event.slices,
     memoryFiles: event.memoryFiles ?? [],
     mcpTools: event.mcpTools ?? [],
+    skills: event.skills ?? [],
   };
 }
 
@@ -1076,7 +1090,7 @@ export function reduceContextLive(
 ): AgentChatContext {
   return previous
     ? { ...previous, liveTotal: event.total }
-    : { total: 0, max: event.max, liveTotal: event.total, slices: [], memoryFiles: [], mcpTools: [] };
+    : { total: 0, max: event.max, liveTotal: event.total, slices: [], memoryFiles: [], mcpTools: [], skills: [] };
 }
 
 /**

@@ -106,6 +106,8 @@ export interface AgentContextBreakdown {
   readonly slices: readonly { readonly name: string; readonly tokens: number }[];
   readonly memoryFiles: readonly { readonly name: string; readonly tokens: number }[];
   readonly mcpTools: readonly { readonly name: string; readonly tokens: number; readonly server?: string }[];
+  /** 모델에게 알려 둔 스킬 목록의 몫. `source`는 vendor 출처 식별자, `plugin`은 플러그인 스킬의 플러그인 이름이다. */
+  readonly skills: readonly { readonly name: string; readonly tokens: number; readonly source?: string; readonly plugin?: string }[];
 }
 
 export interface AgentSession {

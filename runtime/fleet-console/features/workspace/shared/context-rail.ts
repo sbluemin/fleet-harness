@@ -5,11 +5,13 @@ import type { ReactNode } from "react";
  * 같은 카드로 그린다. 데이터를 아는 기능이 제공자로 등록하고, 작업 영역은 채팅 위에 뜨는 칩만 맡는다.
  */
 
-/** 문맥 창을 나눠 쓰는 한 덩어리. MCP 도구에는 `server`가 있다. */
+/** 문맥 창을 나눠 쓰는 한 덩어리. MCP 도구에는 `server`가, 스킬에는 vendor 출처 식별자 `source`와 플러그인 이름 `plugin`이 있다. */
 export interface ContextRailRow {
   readonly name: string;
   readonly tokens: number;
   readonly server?: string;
+  readonly source?: string;
+  readonly plugin?: string;
 }
 
 /** 한 세션의 지금 문맥 창. 한 턴도 측정되지 않았으면 세션의 `measure`가 `null`이다(0%를 그리지 않는다). */
@@ -25,6 +27,8 @@ export interface ContextRailMeasure {
   readonly slices: readonly ContextRailRow[];
   readonly memoryFiles: readonly ContextRailRow[];
   readonly mcpTools: readonly ContextRailRow[];
+  /** 모델에게 알려 둔 스킬 목록(이름·설명)의 몫. Skill 도구로 연 본문은 대화 몫에 든다. */
+  readonly skills: readonly ContextRailRow[];
   /** 턴이 시작됐고 아직 첫 값이 오지 않은 사이 — 옛 값이 새 사실인 척하지 않게 흐리게 그린다. */
   readonly stale?: boolean;
 }

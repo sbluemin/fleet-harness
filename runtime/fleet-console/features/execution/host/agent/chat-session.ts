@@ -1,4 +1,4 @@
-import { CONTEXT_RESERVED_NAME, CONTEXT_UNSPENT } from "./context-breakdown.js";
+import { CONTEXT_RESERVED_NAME, CONTEXT_UNSPENT, skillRowsOf } from "./context-breakdown.js";
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
 import { resolveNativeClaudeModelAlias } from "@fleet-console/agent-runtime/fleet";
 import { randomUUID } from "node:crypto";
@@ -2382,6 +2382,9 @@ class AgentChatSession {
               tokens: window ? window.unproject(tool.tokens) : tool.tokens,
             })),
           }
+        : {}),
+      ...(usage.skills.length > 0
+        ? { skills: skillRowsOf(usage, window ? window.unproject : undefined) }
         : {}),
     });
   }
