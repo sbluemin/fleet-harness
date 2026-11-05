@@ -2,6 +2,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { useT } from "../../../../../core/client/src/i18n/index.js";
+import { ChevronGlyph } from "../../../../../foundation/ui/react.js";
 import type { ContextRailMeasure, ContextRailRow, ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
 import { useContextRailProviders } from "./registry.js";
 import {
@@ -534,7 +535,7 @@ function GroupedDetail({ detailKey, label, rows, groupOf, rowLabel, countTitle, 
         return (
           <div className="context-rail-server" key={group.id}>
             <button type="button" className="context-rail-detail-head is-server" aria-expanded={groupOpen} onClick={() => toggleContextDetail(groupKey)}>
-              <span className="context-rail-chev" aria-hidden="true">{groupOpen ? "▾" : "▸"}</span>
+              <RailChevron open={groupOpen} />
               <span className="context-rail-server-glyph" aria-hidden="true">{serverGlyph(group.label)}</span>
               <span className="context-rail-name" title={group.label}>{group.label}</span>
               <span className="context-rail-tokens">{formatTokens(group.tokens)}</span>
@@ -557,10 +558,15 @@ function GroupedDetail({ detailKey, label, rows, groupOf, rowLabel, countTitle, 
   );
 }
 
+/** 그룹·출처 행의 접기 표식. 채운 삼각형 대신 선 꺾쇠. 세션 카드 머리는 그대로 둔다. */
+function RailChevron({ open }: { readonly open: boolean }) {
+  return <ChevronGlyph direction={open ? "down" : "right"} className="context-rail-chev" />;
+}
+
 function DetailHead({ open, label, tokens, count, onToggle }: { readonly open: boolean; readonly label: string; readonly tokens: number; readonly count: number; readonly onToggle: () => void }) {
   return (
     <button type="button" className="context-rail-detail-head" aria-expanded={open} onClick={onToggle}>
-      <span className="context-rail-chev" aria-hidden="true">{open ? "▾" : "▸"}</span>
+      <RailChevron open={open} />
       <span className="context-rail-name">{label}</span>
       <span className="context-rail-tokens">{formatTokens(tokens)}</span>
       <span className="context-rail-count">{count}</span>
