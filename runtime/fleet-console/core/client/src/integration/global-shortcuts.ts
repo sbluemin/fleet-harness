@@ -24,6 +24,8 @@ export interface ConsoleGlobalShortcutDependencies {
   /** 새 세션 화면을 열고 컴포저에 포커스한다. 그릴 셸이 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
   readonly openNewSession?: () => boolean;
   readonly openTaskforce?: () => boolean;
+  /** 독립 Claude Code CLI 패널을 여닫는다. 그릴 자리가 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
+  readonly toggleStandaloneCli?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
@@ -70,6 +72,14 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     }
     if (matches("console.new-taskforce")) {
       if (event.repeat || dependencies.openTaskforce?.()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
+    // 독립 CLI: 터미널 포커스 가드를 두지 않는다 — 그 CLI 안에서 같은 키로 닫는 것이 이 단축키의 절반이다.
+    if (matches("console.standalone-cli")) {
+      if (event.repeat || dependencies.toggleStandaloneCli?.()) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }

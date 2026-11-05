@@ -1,0 +1,18 @@
+/* 독립 Claude Code CLI — 가운데 칸 전체를 덮는 층. 안쪽은 지휘관 CLI 화면과 같은 칸(.conversation-column)이다.
+   닫힌 동안에도 걷지 않고 크기를 유지한 채 숨긴다 — 터미널 격자가 0으로 접히면 다시 열 때 PTY가 리사이즈되고
+   전체 화면 TUI가 다시 그려진다. 밑의 대화는 그대로 남아 닫으면 다시 보인다. */
+.standalone-cli-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* 가운데 칸의 바탕 토큰은 대화 배치(conversation.css)가 연다 — 그 밖에서는 기본 바탕으로 떨어진다. */
+  background: var(--conversation-surface, var(--canvas-abyss));
+}
+
+.standalone-cli-layer:not(.is-open) {
+  visibility: hidden;
+  pointer-events: none;
+}

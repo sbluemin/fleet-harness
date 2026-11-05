@@ -1,4 +1,4 @@
-import { getViewedTheaterId, useViewedTheaterId } from "../integration/viewed-theater.js";
+import { getViewedCommodoreId, getViewedTheaterId, useViewedTheaterId } from "../integration/viewed-theater.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
@@ -25,6 +25,7 @@ import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
 import { ApprovalHost } from "../../../../features/execution/client/approval/panel.js";
+import { getStandaloneCliState, toggleStandaloneCli } from "../../../../features/execution/client/standalone-cli/store.js";
 import { bindExpandedSurfaceCloseNotifier, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { getGlobalSettingsStoreState, useGlobalSettingsStore } from "../../../../features/settings/client/global-settings-store.js";
 import { hydrateUpdateProgress, useUpdateProgress } from "../../../../features/updates/client/update-progress-store.js";
@@ -442,6 +443,13 @@ function ConnectedApp() {
         if (getGlobalSettingsStoreState().state?.experiments.taskforce !== true) return false;
         if (!objectiveRecordsViewVisibleRef.current) navigate("/objectives");
         requestTaskforceCreate();
+        return true;
+      },
+      // 독립 CLI 패널은 데스크톱 대화 배치의 가운데 칸 위에 선다 — 모바일 셸에는 그릴 자리가 없다.
+      toggleStandaloneCli: () => {
+        if (getViewModeSnapshot().effective === "mobile") return false;
+        if (!getStandaloneCliState().open && !objectiveRecordsViewVisibleRef.current) navigate("/objectives");
+        void toggleStandaloneCli({ commodoreId: getViewedCommodoreId(), theaterId: getViewedTheaterId() });
         return true;
       },
       toggleRailSurface: (entryId) => {
