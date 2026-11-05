@@ -1852,9 +1852,10 @@ describe("commodore session", () => {
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"], browser: { scopeId: "commodore:t1" } });
-    // Theater 들은 추가 폴더로(그 프로젝트 스킬) 붙고, 그 .mcp.json 서버는 건네지 않는다.
+    // Theater 들은 추가 폴더로 붙고, 그 프로젝트 스킬과 .mcp.json 서버는 건네지 않는다.
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();
+    expect(options.systemPrompt).not.toContain("project skills of the Theaters you had");
     expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["fleet-commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "memory_search", "issue_list", "taskforce_post", "console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
