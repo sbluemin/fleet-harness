@@ -1971,10 +1971,16 @@ describe("commodore session", () => {
     const lsp = path.join(cache, "lsp", "1.0.0");
     const twin = path.join(cache, "fleetdup", "1.0.0");
     write(path.join(home, "settings.json"), JSON.stringify({ hooks: hook, env: { HOME_ENV: "HOME_ENV_VALUE" }, model: "HOME_MODEL", permissions: { allow: ["Bash(*)"] },
-      enabledPlugins: { "tool@m": true, "lsp@m": true, "fleetdup@m": true, "off@m": false, "gone@m": true } }));
+      enabledPlugins: { "tool@m": true, "lsp@m": true, "fleetdup@m": true, "off@m": false, "gone@m": true, "many@m": true, "deep@m": true } }));
     write(path.join(home, "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: {
       "tool@m": [{ scope: "user", installPath: tool, version: "1.0.0" }], "lsp@m": [{ scope: "user", installPath: lsp }], "fleetdup@m": [{ scope: "user", installPath: twin }],
-      "off@m": [{ scope: "user", installPath: twin }], "gone@m": [{ scope: "user", installPath: path.join(root, "missing") }] } }));
+      "off@m": [{ scope: "user", installPath: twin }], "gone@m": [{ scope: "user", installPath: path.join(root, "missing") }],
+      "many@m": [{ scope: "user", installPath: path.join(cache, "many", "1.0.0") }], "deep@m": [{ scope: "user", installPath: path.join(cache, "deep", "1.0.0") }] } }));
+    // 다 훑지 못한 플러그인 — 상한 너머의 커맨드는 훅을 확인하지 못했으므로 그 플러그인을 통째로 싣지 않는다.
+    const hookedCommand = "---\nhooks:\n  Stop: []\n---\nHOME_HOOK\n";
+    for (let index = 0; index < 2000; index++) write(path.join(cache, "many", "1.0.0", "commands", `a-${String(index).padStart(4, "0")}.md`), "Ordinary.");
+    write(path.join(cache, "many", "1.0.0", "commands", "z-hooked.md"), hookedCommand);
+    write(path.join(cache, "deep", "1.0.0", "commands", ...Array.from({ length: 10 }, (_, index) => `d${index}`), "deep.md"), hookedCommand);
     // strict:false 항목 — plugin.json 없이 marketplace 가 LSP 와 훅을 선언한다. LSP 는 싣고 훅은 뺀다.
     const market = path.join(home, "plugins", "marketplaces", "m");
     write(path.join(home, "plugins", "known_marketplaces.json"), JSON.stringify({ m: { installLocation: market } }));
@@ -2076,7 +2082,7 @@ describe("commodore session", () => {
       for (const leaked of ["HOME_SECRET", "HOME_HOOK", "HOME_ENV", "HOME_MODEL", "HOME_SHADOW", "HOME_PROJECT_MCP", "Bash(*)"]) expect(serialized).not.toContain(leaked);
       // 진단은 이름과 이유 코드만 남긴다.
       const logged = warn.mock.calls.map((call) => String(call[0])).join("\n");
-      for (const line of ["plugin fleetdup@m: fleet_precedence", "plugin gone@m: missing", "skill tool:flowy: hooks", "skill tool:shared: fleet_precedence", "file tool/link-out: outside", "file tool/docs/escape: outside", "file tool/docs/loop: cycle", "file solo/escape: outside", "agent tool:outside: outside", "command tool:away: outside", "skill tool:linked: outside", "file tool/settings.json: outside", "file lsp/.claude-plugin/plugin.json: outside", "skill away: outside", "mcp leak: reserved_placeholder"]) expect(logged).toContain(line);
+      for (const line of ["plugin fleetdup@m: fleet_precedence", "plugin gone@m: missing", "plugin many@m: limit", "plugin deep@m: limit", "skill tool:flowy: hooks", "skill tool:shared: fleet_precedence", "file tool/link-out: outside", "file tool/docs/escape: outside", "file tool/docs/loop: cycle", "file solo/escape: outside", "agent tool:outside: outside", "command tool:away: outside", "skill tool:linked: outside", "file tool/settings.json: outside", "file lsp/.claude-plugin/plugin.json: outside", "skill away: outside", "mcp leak: reserved_placeholder"]) expect(logged).toContain(line);
       expect(logged).not.toContain("HOME_SECRET");
       expect(logged).not.toContain(root);
       // 세션 폐기가 투영본을 거둔다. 원본 홈은 그대로다.

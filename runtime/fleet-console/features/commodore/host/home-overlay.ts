@@ -69,6 +69,7 @@ const MAX_SKILLS = 200;
 const MAX_PLUGINS = 50;
 const MAX_MCP_SERVERS = 50;
 const MAX_MARKDOWN_FILES = 2_000;
+const MAX_MARKDOWN_DEPTH = 8;
 /** 링크 검사를 위해 훑는 원본 항목의 상한 — 넘으면 그 플러그인·스킬은 안을 다 확인할 수 없어 싣지 않는다. */
 const MAX_TREE_ENTRIES = 50_000;
 const MAX_MARKDOWN_BYTES = 1024 * 1024;
@@ -219,25 +220,28 @@ function skillEntries(sources: readonly string[], within?: string): { readonly n
 /**
  * 커맨드·에이전트 파일들 — 폴더 아래(중첩 포함)의 `.md` 이거나 선언된 `.md` 파일이다. 이름은 확장자를 뺀 파일 이름이다.
  * `within`이 있으면 실제 경로가 그 밖인 폴더로는 내려가지 않는다(밖을 가리키는 파일은 그대로 돌려줘 부른 쪽이 뺀다).
+ * 개수·깊이 상한에 닿아 다 보지 못하면 `complete: false` — 보지 못한 파일은 훅을 확인하지 못했으므로 부른 쪽이 싣지 않는다.
  */
-function markdownEntries(sources: readonly string[], within?: string): { readonly name: string; readonly file: string }[] {
+function markdownEntries(sources: readonly string[], within?: string): { readonly entries: readonly { readonly name: string; readonly file: string }[]; readonly complete: boolean } {
   const found: { name: string; file: string }[] = [];
+  let complete = true;
   const allowed = (file: string) => within === undefined || staysInside(within, file);
+  const add = (name: string, file: string) => { if (found.length >= MAX_MARKDOWN_FILES) complete = false; else found.push({ name, file }); };
   const walk = (dir: string, depth: number) => {
     let names: string[];
     try { names = fs.readdirSync(dir).sort(); } catch { return; }
     for (const name of names) {
-      if (name.startsWith(".") || found.length >= MAX_MARKDOWN_FILES) continue;
+      if (name.startsWith(".") || !complete) continue;
       const file = path.join(dir, name);
-      if (name.endsWith(".md") && isFile(file)) found.push({ name: name.slice(0, -3), file });
-      else if (depth < 8 && isDirectory(file) && allowed(file)) walk(file, depth + 1);
+      if (name.endsWith(".md") && isFile(file)) add(name.slice(0, -3), file);
+      else if (isDirectory(file) && allowed(file)) { if (depth < MAX_MARKDOWN_DEPTH) walk(file, depth + 1); else complete = false; }
     }
   };
   for (const source of sources) {
-    if (isFile(source)) { if (source.endsWith(".md")) found.push({ name: path.basename(source, ".md"), file: source }); }
+    if (isFile(source)) { if (source.endsWith(".md")) add(path.basename(source, ".md"), source); }
     else if (allowed(source)) walk(source, 0);
   }
-  return found;
+  return { entries: found, complete };
 }
 
 /** Fleet 플러그인이 싣는 스킬·커맨드 이름 — 같은 이름의 홈 스킬·커맨드는 싣지 않는다. */
@@ -246,7 +250,7 @@ function fleetSkillNames(plugins: HomeOverlayFleet["plugins"]): Set<string> {
   for (const plugin of plugins) {
     const manifest = manifestOf(plugin.path);
     for (const { name } of skillEntries(declaredPaths(plugin.path, manifest.skills, "skills"))) names.add(fold(name));
-    for (const { name } of markdownEntries(declaredPaths(plugin.path, manifest.commands, "commands"))) names.add(fold(name));
+    for (const { name } of markdownEntries(declaredPaths(plugin.path, manifest.commands, "commands")).entries) names.add(fold(name));
   }
   return names;
 }
@@ -389,6 +393,10 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
       overrides.set(path.join(dir, "hooks", "hooks.json"), null);
       // CLI 가 설치본의 사용 중 표시로 쓰는 파일 — 링크하면 자식의 쓰기가 홈 캐시에 닿는다.
       overrides.set(path.join(dir, ".in_use"), null);
+      // 커맨드·에이전트를 다 보지 못하면 훅을 확인하지 못한 파일이 남는다 — 그 플러그인은 통째로 싣지 않는다.
+      const commands = markdownEntries(declaredPaths(dir, manifest.commands, "commands"), dir);
+      const agents = markdownEntries(declaredPaths(dir, manifest.agents, "agents"), dir);
+      if (!commands.complete || !agents.complete) { skipped.push({ kind: "plugin", name: id, reason: "limit" }); continue; }
       // 플러그인 settings.json 이 훅을 들면 그 키만 뺀 사본을 둔다.
       const pluginSettings = staysInside(dir, path.join(dir, "settings.json")) ? readJson(path.join(dir, "settings.json")) : undefined;
       if (isRecord(pluginSettings) && pluginSettings.hooks !== undefined) {
@@ -399,11 +407,11 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
         if (fleetSkills.has(fold(skill.name))) { overrides.set(skill.dir, null); skipped.push({ kind: "skill", name: `${name}:${skill.name}`, reason: "fleet_precedence" }); continue; }
         stripHooks(overrides, dir, path.join(skill.dir, "SKILL.md"), "skill", `${name}:${skill.name}`);
       }
-      for (const command of markdownEntries(declaredPaths(dir, manifest.commands, "commands"), dir)) {
+      for (const command of commands.entries) {
         if (fleetSkills.has(fold(command.name))) { overrides.set(command.file, null); skipped.push({ kind: "command", name: `${name}:${command.name}`, reason: "fleet_precedence" }); continue; }
         stripHooks(overrides, dir, command.file, "command", `${name}:${command.name}`);
       }
-      for (const agent of markdownEntries(declaredPaths(dir, manifest.agents, "agents"), dir)) stripHooks(overrides, dir, agent.file, "agent", `${name}:${agent.name}`);
+      for (const agent of agents.entries) stripHooks(overrides, dir, agent.file, "agent", `${name}:${agent.name}`);
 
       const tainted = foldersWithEscapingLinks(dir);
       if (!tainted) { skipped.push({ kind: "plugin", name: id, reason: "limit" }); continue; }
