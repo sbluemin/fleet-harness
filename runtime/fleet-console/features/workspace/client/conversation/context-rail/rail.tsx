@@ -505,7 +505,7 @@ function SkillDetail({ sessionId, rows, state, t }: { readonly sessionId: string
     <div className="context-rail-detail">
       <DetailHead open={open} label={t("conversation.rail.skills")} tokens={spent.reduce((sum, row) => sum + row.tokens, 0)} count={spent.length} onToggle={() => toggleContextDetail(key)} />
       {open ? (
-        <ul className="context-rail-rows is-sub">
+        <ul className="context-rail-rows is-sub is-skills">
           {spent.map((row) => {
             const source = skillSourceLabel(row, t);
             return (

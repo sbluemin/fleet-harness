@@ -184,6 +184,8 @@
   font-size: var(--t-2xs);
   color: var(--text-tertiary);
 }
+/* 토큰 칸 폭을 맞춰 출처 꼬리표의 오른쪽 끝이 한 줄로 선다. */
+.context-rail-rows.is-skills .context-rail-tokens { min-width: 4ch; text-align: right; }
 .context-rail-rows li.is-free .context-rail-name,
 .context-rail-rows li.is-free .context-rail-tokens { color: var(--text-tertiary); }
 
