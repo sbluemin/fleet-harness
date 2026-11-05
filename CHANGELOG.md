@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.285.0] - 2026-11-05
+
+### fleet-console
+
+#### Added
+- See which skills are loaded into a session's context in the context window popover, grouped by source like MCP tools, with each skill's token share.
+- Commodores can use the MCP servers, skills, and enabled plugins from your own Claude Code setup alongside Fleet's; when a name matches, Fleet's version wins, and your Claude Code instructions, hooks, permissions, and other settings still stay out.
+- Ask your Commodore to start a new objective with a specific Commander model and reasoning effort; without one, it keeps your Commander setting.
+- Choose the reasoning effort of the AI model that assigns delegated work, with the same effort gauge used elsewhere. Leaving it unset still uses low, or the lowest level that model allows.
+- Press Ctrl+` to open a plain Claude Code CLI over the conversation area that works through the AI Gateway in the Theater you are viewing; closing it brings back your conversation, and reopening it returns to the same session while the Console keeps running.
+
+#### Changed
+- The Commodore system instructions setting is now a single on/off switch for Claude Code's default system instructions; writing your own instructions is no longer supported, and instructions you saved earlier are kept but no longer applied.
+- The approval control in the conversation toolbar now matches the tool buttons beside it: a flat 30px button, square when nothing is waiting. The toolbar stays above the context-rail chip so that chip cannot cover the tools.
+
+#### Fixed
+- The Commodore's context window popover now shows the same per-category breakdown as Commanders and members when the Commodore runs on an AI Gateway model.
+
+#### Removed
+- The Commodore no longer loads a Theater's project skills. Theater folders stay open as extra directories, and objective Commanders and members still use those skills. Restart the Commodore session to drop skills an already-open session still has.
+- Objective sessions now open only as chat. The control that switched a session between chat and the terminal is gone. A session already running in the terminal is left running, and the next time you open that objective it opens as chat; its transcript stays.
+
 ## [1.284.1] - 2026-11-05
 
 ### fleet-console
