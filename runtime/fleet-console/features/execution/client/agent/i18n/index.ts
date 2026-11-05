@@ -637,6 +637,11 @@ export const terminalEn = {
   "terminal.failure.relaunch.title": "This Shell did not restart",
   "terminal.failure.relaunch.cause": "The Console refused to relaunch it. Try again, or close this Objective and start a new Shell.",
   "terminal.failure.relaunch.retry": "Try again",
+  "terminal.standaloneCli.title": "Claude Code",
+  "terminal.standaloneCli.aria": "Claude Code CLI",
+  "terminal.standaloneCli.close": "Close Claude Code ({shortcut})",
+  "terminal.standaloneCli.selectTheaterTitle": "Select a Theater first",
+  "terminal.standaloneCli.selectTheaterBody": "Claude Code opens in the Theater you are viewing. Open a conversation in a Theater, then press {shortcut} again.",
 } as const;
 
 export const terminalKo: Record<keyof typeof terminalEn, string> = {
@@ -1258,6 +1263,11 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.failure.relaunch.title": "이 Shell이 다시 시작되지 않았어요",
   "terminal.failure.relaunch.cause": "Console이 재기동을 거절했어요. 다시 시도하거나, 이 목표를 닫고 새 Shell을 시작해 주세요.",
   "terminal.failure.relaunch.retry": "다시 시도",
+  "terminal.standaloneCli.title": "Claude Code",
+  "terminal.standaloneCli.aria": "Claude Code CLI",
+  "terminal.standaloneCli.close": "Claude Code 닫기 ({shortcut})",
+  "terminal.standaloneCli.selectTheaterTitle": "먼저 작전 구역을 선택해 주세요",
+  "terminal.standaloneCli.selectTheaterBody": "Claude Code는 지금 보고 있는 작전 구역에서 열려요. 작전 구역의 대화를 연 뒤 {shortcut}을 다시 눌러 주세요.",
 };
 
 export const TERMINAL_MESSAGES = { en: terminalEn, ko: terminalKo } as const;

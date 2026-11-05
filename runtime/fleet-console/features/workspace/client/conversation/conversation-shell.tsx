@@ -13,7 +13,8 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
 import { closeNewSession, getState, selectNestedBody, setActiveObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
-import { useNewSessionShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { useNewSessionShortcutLabel, useStandaloneCliShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { StandaloneCliLayer } from "../../../execution/client/standalone-cli/layer.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, useFeatureRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/feature-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { ObjectiveBodySlot, type ObjectiveBodyConfig } from "../../../../core/client/src/chrome/mobile/objective-body-pool.js";
@@ -780,6 +781,7 @@ function useStageSubject(state: ConsoleState): ObjectiveRecord | null {
 export function ConversationStage({ state, insets, language, objectiveRecordKinds, onClose, toolContext }: ConversationStageProps) {
   const t = useT();
   const newSessionShortcut = useNewSessionShortcutLabel();
+  const standaloneCliShortcut = useStandaloneCliShortcutLabel();
   const subject = useStageSubject(state);
   // 플러그인 대화(사령관 등)가 가운데 칸을 가지면 Objective 대신 선다.
   const surface = useConversationSurface();
@@ -1022,6 +1024,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
         </div>
       )}
       </ConversationDockHost.Provider>
+      {/* 독립 Claude Code CLI(Ctrl+₩) — 칸 위에 서고, 닫으면 밑에 그대로 있던 대화가 다시 보인다. */}
+      <StandaloneCliLayer language={language} theme={state.activeTheme} shortcutLabel={standaloneCliShortcut} />
     </section>
     <ConversationWorkbench
       layerRef={workbenchLayerRef}

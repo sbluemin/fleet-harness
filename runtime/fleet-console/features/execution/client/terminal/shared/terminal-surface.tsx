@@ -69,6 +69,11 @@ export interface TerminalSurfaceProps {
    */
   readonly onExit?: (exit: TerminalExitInfo) => void;
   /**
+   * Console이 이 터미널을 붙이지 못해(`terminal_unavailable` — 띄우기 실패 등) 재연결을 그만뒀다. 이 표면은 같은 연결로
+   * 다시 시도하지 않는다. 다시 띄울 수 있는 표면(독립 CLI)만 받아 새 표면을 붙인다 — 생략하면 지금처럼 닫힌 화면에 남는다.
+   */
+  readonly onUnavailable?: () => void;
+  /**
    * 마운트할 때 첫 재생보다 먼저 쓸 앞 셸의 흔적. 같은 페인에서 셸을 갈아 끼운 경우에만 넘긴다 —
    * 흐린 앞 화면과 "새 Shell" 구분선이 새 셸의 출력 위에 선다(K-10).
    */
@@ -80,6 +85,12 @@ export interface TerminalSurfaceProps {
    */
   readonly visible?: boolean;
   readonly keyboardFocusRequestId?: number;
+  /**
+   * 다시 활성이 될 때(또는 새 키보드 요청에) 보던 스크롤 위치를 그대로 둔다. 생략하면 기존대로 바닥 추적을 재개한다 —
+   * Objective 를 다시 고르는 것은 "지금을 보러 왔다"는 뜻이기 때문이다. 같은 화면을 숨겼다 다시 여는 표면(독립 CLI)만
+   * 켠다: 그 표면에서 다시 연다는 것은 보던 자리로 돌아온다는 뜻이다. 입력하면 xterm 이 평소대로 바닥으로 내린다.
+   */
+  readonly keepScrollOnActivate?: boolean;
   // 맵 캔버스의 줌 배율(viewport.zoom). 캔버스 외 셸 패널 사용처는 기본 1.
   // 캔버스가 부모에 transform:scale(zoom)을 걸면 xterm의 마우스 셀 좌표 계산이 scale을 보정하지 못해
   // zoom≠1에서 커서/선택 위치가 어긋난다(분자=scale 반영 화면거리, 분모=scale 미반영 cellWidth). 이를
@@ -272,7 +283,7 @@ export interface TerminalCarryOver {
   readonly cols?: number;
 }
 
-export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "dark", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
+export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "dark", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, onUnavailable, carryOver, active, visible = true, keyboardFocusRequestId, keepScrollOnActivate = false, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -337,6 +348,8 @@ export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath,
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  const onUnavailableRef = useRef(onUnavailable);
+  onUnavailableRef.current = onUnavailable;
   const onStatusDetailRef = useRef(onStatusDetail);
   onStatusDetailRef.current = onStatusDetail;
   // 링크를 여는 문은 렌더마다 새 함수일 수 있고, 마운트 effect는 다시 돌지 않는다(세션이 끊긴다).
@@ -701,6 +714,7 @@ export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath,
         onStatus: (nextStatus, message) => {
           if (nextStatus === "live") setHadLive(true);
           setStatus({ kind: nextStatus, code: message });
+          if (nextStatus === "closed" && message === "terminal_unavailable") onUnavailableRef.current?.();
         },
       });
       connectionRef.current = connection;
@@ -847,13 +861,14 @@ export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath,
     previousFocusRef.current = { active, keyboardFocusRequestId };
     if (!active) return;
     if (!keyPanelOpenRef.current) terminalRef.current?.focus();
+    if (keepScrollOnActivate) return;
     // 배치 전환의 재마운트는 새 선택이 아니다. 비동기 입력 준비가 끝나도 복원 좌표를 바닥으로 덮지 않는다.
     // 사람이 다시 선택하거나 새 키보드 요청을 보낸 때는 기존 바닥 추적 정책을 그대로 쓴다.
     if (!restoredPositionRef.current || previous.active === false || previous.keyboardFocusRequestId !== keyboardFocusRequestId) {
       restoredPositionRef.current = undefined;
       scrollFollowRef.current?.resumeFollowing();
     }
-  }, [active, keyboardFocusRequestId, inputReadyEpoch]);
+  }, [active, keyboardFocusRequestId, inputReadyEpoch, keepScrollOnActivate]);
 
   // 흐름 제어는 화면에 보이며 활성인 Shell에만 건다. 숨은·비활성 표면은 출력을 느리게 파싱하므로, 거기서
   // PTY를 멈추면 화면이 없는 동안 빌드 같은 자식 프로세스가 느려진다. Agent 터미널은 건드리지 않는다.

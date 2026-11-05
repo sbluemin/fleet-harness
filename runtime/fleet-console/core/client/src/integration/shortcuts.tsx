@@ -130,6 +130,11 @@ export function useNewSessionShortcutLabel(): string {
   return shortcutCommandLabel("console.new-session");
 }
 
+export function useStandaloneCliShortcutLabel(): string {
+  useShortcutOverrides();
+  return shortcutCommandLabel("console.standalone-cli");
+}
+
 // ─── editing guard — when typing swallows an ObjectiveRecords shortcut ───────────────
 
 /**

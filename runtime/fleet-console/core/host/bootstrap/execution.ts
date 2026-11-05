@@ -10,6 +10,7 @@ import { AI_GATEWAY_ROUTE_SEGMENT } from "../../../features/ai-gateway/host/rout
 import { createModelRosterHost, registerModelRosterRoutes } from "../../../features/ai-gateway/host/model-roster.js";
 import { registerExperimentRoutes } from "../../../features/execution/host/agent/experiments-routes.js";
 import { registerAgentRoutes } from "../../../features/execution/host/agent/routes.js";
+import { registerStandaloneCliRoutes } from "../../../features/execution/host/standalone-cli/routes.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
 import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/claude-trust.js";
@@ -70,6 +71,14 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   const unsubscribeControl = ctx.host.events.subscribe(CONTROL_HOLDER_EVENT_CHANNEL, () => { runtime.renegotiateSockets(); });
   ctx.host.lifecycle.registerCleanup(unsubscribeControl);
   registerExperimentRoutes(ctx);
+  const aiGatewayRoutePath = `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`;
+  // 사령관·지휘관과 무관한 독립 Claude Code CLI(Ctrl+₩). Gateway 주소만 받고 Fleet MCP·플러그인·훅 자격은 받지 않는다.
+  registerStandaloneCliRoutes(ctx, runtime, {
+    aiGateway: { routePath: aiGatewayRoutePath, origin: () => ctx.host.server.origin() },
+    readAgentCliPaths: async () => (await agentCliPaths.read()).paths,
+    readAiGatewaySettings: aiGatewayStore.read,
+    readProviderStatuses,
+  });
   const agent = await registerAgentRoutes(ctx, runtime, {
     organize,
     agentOptionsService: ctx.agentOptions,
@@ -82,7 +91,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     // 지휘관 채팅은 사령관과 같은 별칭 고정을 쓴다.
     ...(models.pinClaudeVersion ? { pinClaudeVersion: models.pinClaudeVersion } : {}),
     aiGateway: {
-      routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,
+      routePath: aiGatewayRoutePath,
       origin: () => ctx.host.server.origin(),
       compactHookToken: aiGatewayRuntime.compactHookToken,
       modHookToken: aiGatewayRuntime.modHookToken,
