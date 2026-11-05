@@ -1266,8 +1266,8 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.standaloneCli.title": "Claude Code",
   "terminal.standaloneCli.aria": "Claude Code CLI",
   "terminal.standaloneCli.close": "Claude Code 닫기 ({shortcut})",
-  "terminal.standaloneCli.selectTheaterTitle": "먼저 Theater를 선택해 주세요",
-  "terminal.standaloneCli.selectTheaterBody": "Claude Code는 지금 보고 있는 Theater에서 열려요. Theater의 대화를 연 뒤 {shortcut}을 다시 눌러 주세요.",
+  "terminal.standaloneCli.selectTheaterTitle": "먼저 작전 구역을 선택해 주세요",
+  "terminal.standaloneCli.selectTheaterBody": "Claude Code는 지금 보고 있는 작전 구역에서 열려요. 작전 구역의 대화를 연 뒤 {shortcut}을 다시 눌러 주세요.",
 };
 
 export const TERMINAL_MESSAGES = { en: terminalEn, ko: terminalKo } as const;
