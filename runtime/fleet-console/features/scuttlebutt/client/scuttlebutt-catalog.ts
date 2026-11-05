@@ -227,7 +227,7 @@ const scuttlebuttKo: Record<ScuttlebuttMessageKey, string> = {
   "grant.web": "웹 읽기",
   "grant.web.tip": "웹을 검색하고 페이지를 읽어요. 읽은 페이지는 출처로 남아요.",
   "grant.console": "Console 조회·지시",
-  "grant.console.tip": "Theater·목표 조회와 출력 확인, 목표 시작·지시·중단, 한정된 자동화 예약을 개별 확인 없이 해요. 목표를 닫거나 지우지는 않아요.",
+  "grant.console.tip": "작전 구역·목표 조회와 출력 확인, 목표 시작·지시·중단, 한정된 자동화 예약을 개별 확인 없이 해요. 목표를 닫거나 지우지는 않아요.",
   "grant.computer": "Mac 앱 조작",
   "grant.computer.tip": "앱 목록·화면 텍스트·스크린샷을 읽고 클릭·입력을 개별 확인 없이 해요. 읽은 내용은 이 부관의 모델 공급자로 전송돼요.",
   "grant.noFs": "파일·셸 없음",

@@ -213,7 +213,7 @@ const ko: Record<GroupChatMessageKey, string> = {
   "group.stop.all": "모두 정지",
   "group.stop.one": "{name} 정지",
   "group.notice.failedSend": "보내지 못했어요. 쓴 말은 그대로 남아 있어요.",
-  "group.notice.commodoreOff": "이 Theater의 자율 운영이 꺼져 있어서 사령관에게 보낼 수 없어요.",
+  "group.notice.commodoreOff": "이 작전 구역의 자율 운영이 꺼져 있어서 사령관에게 보낼 수 없어요.",
   "group.notice.toCommodore": "사령관 기록으로 보냈어요.",
   "group.notice.plugin": "플러그인",
   "group.via.start": "개시하며",
