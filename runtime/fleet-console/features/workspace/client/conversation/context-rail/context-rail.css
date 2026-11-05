@@ -108,6 +108,7 @@
 .context-rail-card-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .context-rail-card-sum { margin-left: auto; flex: none; font-family: var(--font-code); font-size: var(--t-2xs); font-weight: normal; color: var(--context-rail-ink); }
 .context-rail-chev { flex: none; width: 10px; font-size: var(--t-2xs); color: var(--text-tertiary); }
+svg.context-rail-chev { display: block; width: 10px; height: 10px; }
 .context-rail-card-body { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: var(--space-2); }
 .context-rail-muted { margin: 0; color: var(--text-tertiary); }
 
