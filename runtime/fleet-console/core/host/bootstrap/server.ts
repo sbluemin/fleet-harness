@@ -2723,7 +2723,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             ...current, commodoreSidebar: layout, ...(order ? { commodoreOrder: [...order] } : {}),
           })); },
         },
-        created: (id) => { commodoreSystemPrompts.save(id, null); },
+        created: (id) => { commodoreSystemPrompts.setBasePromptEnabled(id, true); },
         beforeTheatersChange: (id) => archiveStorage.assertTheatersMutable(id),
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,

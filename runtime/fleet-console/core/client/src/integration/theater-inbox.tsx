@@ -4,9 +4,8 @@ import type { TheaterInboxAddress } from "../../../../features/workspace/shared/
 import { useConsoleLocale } from "../i18n/index.js";
 import { useTheaterLabel } from "../hooks/use-store.js";
 import { useFeatureRegistry } from "./feature-registry.js";
-import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
+import { useViewMode } from "./view-mode-store.js";
 import { createTheaterSettingsInboxSection, THEATER_MEMBERSHIP_PAGE_ID, THEATER_SETTINGS_SECTION_ID } from "../../../../features/settings/client/theater-settings-inbox.js";
-import { subscribeTheaterSystemPromptOpen } from "../../../../features/settings/client/theater-prompt-editor.js";
 import { readZoneCommodore, useCommodoreList, useZoneCommodore } from "../../../../features/commodore/client/commodore-list.js";
 import { openCommodoreMobile, useCommodoreEnabled } from "../../../../features/commodore/client/commodore-state.js";
 import { closeTheaterInbox, openTheaterInbox, readTheaterInboxState, selectTheaterInboxPage, theaterInboxCapability, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
@@ -26,7 +25,7 @@ const COMMODORE_SETTINGS_ADDRESS: TheaterInboxAddress = { sectionId: "commodore:
 
 /**
  * Theater Inbox 의 합성 — 시트 틀(workspace feature), 호스트의 「Theater 설정」(settings feature), 플러그인 섹션(registry)을
- * 한 자리에서 잇는다. 사이드바 Theater 메뉴의 「시스템 프롬프트」는 데스크톱에서 여기로 와서 Theater 설정 칸을 연다.
+ * 한 자리에서 잇는다.
  * 데스크톱은 섹션을 오른쪽 패널의 탭으로 세운다(TheaterInboxPanel).
  * 폰 배치로 바뀌면 보던 섹션을 폰 화면에 넘기고 닫는다.
  */
@@ -46,17 +45,11 @@ export function TheaterInboxHost() {
   const commodoreId = useZoneCommodore();
   const commodores = useCommodoreList();
   const label = commodoreId ? commodores.find((row) => row.commodoreId === commodoreId)?.theaters.find((row) => row.theaterId === open?.theaterId)?.label ?? null : registeredLabel;
-  // 연 채로 Theater 가 잊혀도 시트는 남는다(프롬프트 칸이 남은 글을 보여 준다) — 마지막 이름을 붙들어 둔다.
+  // 연 채로 Theater 가 잊혀도 시트는 남는다 — 마지막 이름을 붙들어 둔다.
   const lastLabel = useRef<{ readonly id: string; readonly label: string } | null>(null);
   if (open && label !== null) lastLabel.current = { id: open.theaterId, label };
   const theaterLabel = open ? (label ?? (lastLabel.current?.id === open.theaterId ? lastLabel.current.label : "")) : "";
   const theater = useMemo(() => open ? { id: open.theaterId, label: theaterLabel } : null, [open?.theaterId, theaterLabel]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => subscribeTheaterSystemPromptOpen((request) => {
-    // 폰의 입구는 프롬프트 시트가 받는다.
-    if (getViewModeSnapshot().effective === "mobile") return;
-    openTheaterInbox({ theaterId: request.theater.id, ...THEATERS_ADDRESS, returnFocus: request.returnFocus });
-  }), []);
 
   // 데스크톱에서 연 채 폰 배치로 바뀌면 — 보던 섹션의 폰 화면으로 넘기고 시트를 닫는다(언마운트가 대기 저장을 확정한다).
   useEffect(() => {

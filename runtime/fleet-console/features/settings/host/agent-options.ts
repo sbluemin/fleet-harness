@@ -1,11 +1,11 @@
 import path from "node:path";
 
 import {
+  claudeCodeBasePromptEnabled,
   createStoreCarryOver,
   sanitizeAgentOptionsData,
   type AgentOptionsData,
   type AgentOptionsService,
-  type ClaudeCodeTheaterSystemPrompt,
   type DurableJsonStore,
 } from "@fleet-console/infra";
 
@@ -14,8 +14,9 @@ import type { ConsoleSettingsData } from "./settings-domain.js";
 /** Host-side UUID admission keeps the schema independent of the Commodore feature. */
 export interface CommodoreSystemPromptService {
   readonly exists: (commodoreId: string) => boolean;
-  readonly read: (commodoreId: string | undefined) => ClaudeCodeTheaterSystemPrompt | null;
-  readonly save: (commodoreId: string, prompt: ClaudeCodeTheaterSystemPrompt | null) => ClaudeCodeTheaterSystemPrompt | null;
+  /** Whether new Claude Code sessions of this Commodore load Claude Code's base system prompt. Default on. */
+  readonly basePromptEnabled: (commodoreId: string | undefined) => boolean;
+  readonly setBasePromptEnabled: (commodoreId: string, enabled: boolean) => boolean;
   readonly subagentsKept: (commodoreId: string | undefined) => boolean;
   readonly keepSubagents: (commodoreId: string, kept: boolean) => boolean;
   readonly purge: (theaterId: string) => void;
@@ -26,18 +27,21 @@ export function createCommodoreSystemPromptService(options: AgentOptionsService,
   const mark = (current: AgentOptionsData, id: string): AgentOptionsData => ({ ...current, commodoreSettingsMigrated: { ...current.commodoreSettingsMigrated, [id]: true } });
   return {
     exists,
-    read: (id) => id && exists(id) ? options.load().claudeCodeCommodoreSystemPrompts?.[id] ?? null : null,
+    basePromptEnabled: (id) => !id || !exists(id) || claudeCodeBasePromptEnabled(options.load().claudeCodeCommodoreSystemPrompts?.[id]),
     subagentsKept: (id) => !!id && exists(id) && options.load().claudeCodeCommodoreSubagents?.[id] === true,
-    save(id, prompt) {
+    setBasePromptEnabled(id, enabled) {
       if (!exists(id)) throw new Error("commodore_not_found");
-      const value = prompt?.mode === "on" && !prompt.body.trim() ? null : prompt;
       const updated = options.update((current) => {
         const prompts = { ...current.claudeCodeCommodoreSystemPrompts };
-        if (value === null) delete prompts[id]; else prompts[id] = value;
+        // Only the mode changes. A body written with the retired custom-instructions feature stays
+        // in storage as the user's data; an entry left with no body and the default mode is dropped.
+        const body = prompts[id]?.body ?? "";
+        if (enabled && !body.trim()) delete prompts[id];
+        else prompts[id] = { mode: enabled ? "on" : "off", body };
         const { claudeCodeCommodoreSystemPrompts: _previous, ...rest } = mark(current, id);
         return Object.keys(prompts).length ? { ...rest, claudeCodeCommodoreSystemPrompts: prompts } : rest;
       });
-      return updated.claudeCodeCommodoreSystemPrompts?.[id] ?? null;
+      return claudeCodeBasePromptEnabled(updated.claudeCodeCommodoreSystemPrompts?.[id]);
     },
     keepSubagents(id, kept) {
       if (!exists(id)) throw new Error("commodore_not_found");

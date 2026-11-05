@@ -42,7 +42,6 @@ import { ObjectiveRecords } from "../../../../features/workspace/client/objectiv
 import { MobileNewSession } from "../../../../features/workspace/client/conversation/mobile-new-session.js";
 import { openDefaultNewSession } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 import { ArchiveSheetHost } from "../integration/archive-sheet-host.js";
-import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { CommodoreDeletionHost } from "../integration/commodore-deletion.js";
 import { CommodoreDeleteModal } from "../../../../features/commodore/client/commodore-delete-modal.js";
 import { CommodoreCreateModal } from "../../../../features/commodore/client/commodore-create-modal.js";
@@ -111,13 +110,6 @@ function ConnectedApp() {
   const [undoClock, setUndoClock] = useState(Date.now());
   // 보관·되돌리기가 거절됐을 때의 짧은 안내 — 조용히 삼키지 않는다.
   const [undoNotice, setUndoNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
-  const [promptForgottenNotice, setPromptForgottenNotice] = useState<string | null>(null);
-  useEffect(() => subscribeTheaterSystemPromptForgotten(setPromptForgottenNotice), []);
-  useEffect(() => {
-    if (promptForgottenNotice === null) return;
-    const timer = setTimeout(() => setPromptForgottenNotice(null), THEME_NOTICE_AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [promptForgottenNotice]);
   const pendingUndosRef = useRef(pendingUndos);
   const undoInFlightRef = useRef(false);
   pendingUndosRef.current = pendingUndos;
@@ -599,7 +591,6 @@ function ConnectedApp() {
         <MobileNewSession />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <ArchiveSheetHost />
-        <TheaterSystemPromptSheet />
         <CommodoreCreateModal />
         <CommodoreDeleteModal />
         {/* 대화 중심 화면의 설정은 레일이 아니라 가운데 모달로 선다(settings-door.ts) — 배치가 바뀌면 열린 설정이 그릇을 갈아탄다. */}
@@ -618,7 +609,6 @@ function ConnectedApp() {
             title={themeNotice === "light" ? t("chrome.toast.themeLight") : t("chrome.toast.themeDark")}
             onDismiss={() => setThemeNotice(null)}
           />
-          <Toast open={promptForgottenNotice !== null} tone="warn" title={t("sidebar.theater.prompt.forgotten", { theater: promptForgottenNotice ?? "" })} onDismiss={() => setPromptForgottenNotice(null)} />
           {mobileLayout ? deletionToast : null}
         </ToastHost>
       </div>

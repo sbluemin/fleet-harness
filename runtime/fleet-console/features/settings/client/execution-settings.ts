@@ -39,13 +39,6 @@ export interface AiGatewayCatalog {
   readonly providers: readonly AiGatewayCatalogProvider[];
 }
 
-export type ClaudeCodeSystemPromptMode = "on" | "append" | "off";
-export interface TheaterSystemPrompt { readonly mode: ClaudeCodeSystemPromptMode; readonly body: string }
-export interface TheaterSystemPromptState { readonly theaterId: string; readonly prompt: TheaterSystemPrompt | null }
-
-/** 서버 PUT 상한. 초과 본문은 400. */
-export const CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS = 16_000;
-
 /** Which xAI endpoint a subscription turn opens on. Mirrors the gateway's own vocabulary. */
 export type XaiEndpointPreference = "direct" | "cli-proxy";
 
@@ -109,30 +102,6 @@ export async function saveSystemPromptSettings(settings: SystemPromptSettingsUpd
   return state;
 }
 
-export async function fetchTheaterSystemPrompt(theaterId: string, signal?: AbortSignal): Promise<TheaterSystemPromptState> {
-  const response = await fetch(`/api/v1/agent/theater-system-prompt?theaterId=${encodeURIComponent(theaterId)}`, { signal });
-  await assertOk(response);
-  return assertTheaterSystemPromptState(await response.json(), theaterId, response.status);
-}
-
-export async function saveTheaterSystemPrompt(theaterId: string, prompt: TheaterSystemPrompt | null, signal?: AbortSignal): Promise<TheaterSystemPromptState> {
-  const response = await fetch(`/api/v1/agent/theater-system-prompt?theaterId=${encodeURIComponent(theaterId)}`, {
-    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }), signal,
-  });
-  await assertOk(response);
-  return assertTheaterSystemPromptState(await response.json(), theaterId, response.status);
-}
-
-function assertTheaterSystemPromptState(value: unknown, theaterId: string, status: number): TheaterSystemPromptState {
-  if (!value || typeof value !== "object") throw new TerminalSettingsApiError(status, "Invalid Theater system prompt response");
-  const result = value as Partial<TheaterSystemPromptState>;
-  const prompt = result.prompt;
-  if (result.theaterId !== theaterId || !(prompt === null || (prompt && isClaudeCodeSystemPromptMode(prompt.mode) && typeof prompt.body === "string"))) {
-    throw new TerminalSettingsApiError(status, "Invalid Theater system prompt response");
-  }
-  return { theaterId, prompt };
-}
-
 async function assertOk(response: Response): Promise<void> {
   if (response.ok) return;
   let message = response.statusText || `HTTP ${response.status}`;
@@ -183,10 +152,6 @@ function isXaiEndpointPreference(value: unknown): value is XaiEndpointPreference
 
 function isDelegationRoutingMode(value: unknown): value is DelegationRoutingMode {
   return value === "jev" || value === "model";
-}
-
-function isClaudeCodeSystemPromptMode(value: unknown): value is ClaudeCodeSystemPromptMode {
-  return value === "on" || value === "append" || value === "off";
 }
 
 function isAiGatewayCatalog(value: unknown): value is AiGatewayCatalog {

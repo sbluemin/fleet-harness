@@ -132,8 +132,7 @@ export async function prepareChatClaudeSession(
   deps: Omit<TerminalLaunchResolverDeps, "infraServices"> & {
     readonly cwd: string;
     readonly origin: ClaudeSessionOrigin;
-    readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
-    readonly claudeCodeCustomSystemPrompt?: string;
+    readonly claudeCodeSystemPrompt?: "on" | "off";
     readonly claudeCodeDisabledAgents?: readonly string[];
     readonly disableAutoMemory?: boolean;
     readonly objectiveMessaging?: boolean;
@@ -152,7 +151,6 @@ export async function prepareChatClaudeSession(
     ...(deps.pluginEnv ? { pluginEnv: deps.pluginEnv } : {}),
     origin: deps.origin,
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
-    ...(deps.claudeCodeCustomSystemPrompt ? { claudeCodeCustomSystemPrompt: deps.claudeCodeCustomSystemPrompt } : {}),
     ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
     ...(deps.disableAutoMemory ? { disableAutoMemory: true } : {}),
     claudeCodeDisabledTools: consoleDisabledTools(deps.objectiveMessaging),
@@ -373,7 +371,7 @@ async function createAgentCliLaunchSpec(options: {
       prompt: options.prompt,
       sessionName: options.sessionName,
     });
-    const theaterPrompt = options.commodoreSystemPrompts?.read(options.commodoreId);
+    const basePromptEnabled = options.commodoreSystemPrompts?.basePromptEnabled(options.commodoreId) ?? true;
     const pluginDirs = options.commodoreId ? options.commodorePluginDirs?.(options.commodoreId) ?? [] : [];
     const pluginEnv = options.commodoreId && pluginDirs.length ? options.commodorePluginEnv?.(options.commodoreId) : undefined;
     const injectedProfile = await options.injectProfile(profile, {
@@ -386,7 +384,7 @@ async function createAgentCliLaunchSpec(options: {
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       ...(options.promptDirectories ? { promptDirectories: options.promptDirectories } : {}),
       // 사령관 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
-      ...(theaterPrompt ? { claudeCodeSystemPrompt: theaterPrompt.mode, claudeCodeCustomSystemPrompt: theaterPrompt.body } : {}),
+      ...(basePromptEnabled ? {} : { claudeCodeSystemPrompt: "off" as const }),
       ...(options.disableSubagents ? { claudeCodeDisabledAgents: [ALL_SUBAGENTS] } : {}),
       ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
       // 사람에게 묻는 도구와 계획 모드 도구는 늘 뺀다 — 서브에이전트 규칙과 합쳐 같은 deny 목록으로 실린다.

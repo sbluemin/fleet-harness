@@ -9,7 +9,6 @@ import { buildClaudeGatewayArgs } from "./builders/claude.js";
 import {
   assertLaunchCommandLineBudget,
   assertLaunchPromptShimSafe,
-  writeCustomSystemPromptFile,
   writeLaunchPromptFile,
   LaunchPromptError,
   launchPromptHasCmdLineBreak,
@@ -56,17 +55,10 @@ export interface InjectAgentCliProfileOptions {
    */
   readonly promptDirectories?: LaunchPromptDirectoryAllocator;
   /**
-   * 이 세션의 시스템 프롬프트를 무엇으로 세울지. 생략하면 `on` — 플래그 없는 런치가 이미
-   * 하는 일이다. `append`는 기본 프롬프트 뒤에 사용자 본문을 잇고, `off`는 사용자 본문이
-   * 그 자리를 대신한다(본문이 없으면 빈 본문으로 기본 프롬프트를 대체한다).
+   * 이 세션에 Claude Code 기본 시스템 프롬프트를 실을지. 생략하면 `on` — 플래그 없는 런치가
+   * 이미 하는 일이다. `off`는 빈 본문으로 기본 프롬프트를 대체해 시스템 프롬프트 없이 연다.
    */
-  readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
-  /**
-   * 사용자가 쓴 시스템 프롬프트 본문. `append`·`off`에서만 쓰이고, 그때 이 패키지가 파일로
-   * 옮겨 경로만 argv에 싣는다. 이 글은 사용자의 것이라 손대지 않는다 — Fleet이 보탤 지침은
-   * 없다.
-   */
-  readonly claudeCodeCustomSystemPrompt?: string;
+  readonly claudeCodeSystemPrompt?: "on" | "off";
   /**
    * 이 세션에서 끌 Claude Code 내장 서브에이전트 이름들. 생략·빈 목록이면 전부 남는다.
    * argv와 SDK 두 표면에 같은 규칙으로 실린다(`session.ts`).
@@ -142,7 +134,7 @@ export async function injectAgentCliProfile(
     };
     // POSIX와 한도 안의 Windows 원문은 argv에 그대로 둔다. Windows에서 cmd가 재해석할
     // 문자가 있으면 길이 상한과 무관하게 파일 포인터로 옮긴다 — 플러그인 조립이 실패해도
-    // 파일이 남으면 안 되므로 시스템 프롬프트와 같이 플러그인보다 먼저 쓰고 tempCleanups에
+    // 파일이 남으면 안 되므로 플러그인보다 먼저 쓰고 tempCleanups에
     // 올린다. 명령줄 초과는 주입 인자가 합쳐진 뒤에만 알 수 있어 예산 검사에서 옮긴다.
     if (promptArgs.length > 0 && windowsLaunch) {
       const body = takeLaunchPromptBody(promptArgs);
@@ -153,20 +145,6 @@ export async function injectAgentCliProfile(
         convertPromptToFile(body);
       }
     }
-    // 사용자 본문은 기본 프롬프트를 잇거나(`append`) 대신할(`off`) 때만 실린다. `on`에서는
-    // 파일도 만들지 않는다 — 쓰이지 않을 글을 디스크에 남길 이유가 없다.
-    const customSystemPromptBody = options.claudeCodeSystemPrompt === "append"
-      || options.claudeCodeSystemPrompt === "off"
-      ? options.claudeCodeCustomSystemPrompt
-      : undefined;
-    const customSystemPromptFile = customSystemPromptBody === undefined || customSystemPromptBody.length === 0
-      ? undefined
-      : writeCustomSystemPromptFile(
-        customSystemPromptBody,
-        (cleanupFn) => tempCleanups.push(cleanupFn),
-        cmdWrapped,
-        options.promptDirectories,
-      );
     const session = await prepareClaudeSession({
       cliId: profile.id,
       cwd: profile.cwd,
@@ -176,7 +154,6 @@ export async function injectAgentCliProfile(
         ? { kind: "external" }
         : options.origin ?? { kind: "new" },
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
-      ...(customSystemPromptBody ? { claudeCodeCustomSystemPrompt: customSystemPromptBody } : {}),
       ...(options.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: options.claudeCodeDisabledAgents } : {}),
       ...(options.claudeCodeDisabledTools ? { claudeCodeDisabledTools: options.claudeCodeDisabledTools } : {}),
       ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
@@ -203,7 +180,6 @@ export async function injectAgentCliProfile(
       sessionCoordinate: session.coordinate,
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
-      ...(customSystemPromptFile ? { claudeCodeCustomSystemPromptFile: customSystemPromptFile } : {}),
       ...(session.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: session.claudeCodeDisabledAgents } : {}),
       ...(session.claudeCodeDisabledTools ? { claudeCodeDisabledTools: session.claudeCodeDisabledTools } : {}),
       ...(session.disableAutoMemory ? { disableAutoMemory: true } : {}),

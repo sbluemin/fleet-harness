@@ -88,7 +88,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
     const agentOptions = createFakeInfraServices();
     const commodoreSystemPrompts = createCommodoreSystemPromptService(agentOptions.agentOptionsService, (id) => id === "theater-a");
-    commodoreSystemPrompts.save("theater-a", { mode: "append", body: "Theater rules" });
+    commodoreSystemPrompts.setBasePromptEnabled("theater-a", false);
     const resolve = createDefaultTerminalLaunchResolver({
       dataDir: launchDataDir,
       commodoreSystemPrompts,
@@ -119,7 +119,8 @@ describe("createDefaultTerminalLaunchResolver", () => {
       terminalName: "xterm-256color",
     });
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
-    expect(injectProfile).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ claudeCodeSystemPrompt: "append", claudeCodeCustomSystemPrompt: "Theater rules", additionalDirectories: ["/work/a", "/work/b"] }));
+    expect(injectProfile).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ claudeCodeSystemPrompt: "off", additionalDirectories: ["/work/a", "/work/b"] }));
+    expect(injectProfile.mock.calls[0]?.[1]).not.toHaveProperty("claudeCodeCustomSystemPrompt");
     await resolve("/work/project", { sessionId: "session-b" });
     expect(injectProfile.mock.calls[1]?.[1]).not.toHaveProperty("claudeCodeSystemPrompt");
     expect(events).toEqual([]);

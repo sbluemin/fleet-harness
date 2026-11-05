@@ -14,12 +14,6 @@ import type http from "node:http";
 import type { CommodoreSystemPromptService } from "./agent-options.js";
 
 import {
-  MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS,
-  sanitizeClaudeCodeCustomSystemPrompt,
-  type ClaudeCodeTheaterSystemPrompt,
-} from "@fleet-console/infra";
-
-import {
   buildAiGatewayCatalog,
   findClaudeGatewayModel,
   normalizeCompactCeiling,
@@ -225,7 +219,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       return true;
     }
     if (req.method === "GET") {
-      ctx.host.http.writeJson(res, 200, { commodoreId, prompt: deps.commodoreSystemPrompts.read(commodoreId) });
+      ctx.host.http.writeJson(res, 200, { commodoreId, basePromptEnabled: deps.commodoreSystemPrompts.basePromptEnabled(commodoreId) });
       return true;
     }
     if (!isJsonRequest(req)) {
@@ -233,8 +227,8 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       return true;
     }
     const body = await ctx.host.http.readJsonBody<unknown>(req);
-    const prompt = parseTheaterSystemPromptUpdate(body);
-    if (prompt === undefined) {
+    const enabled = body && typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 1 ? (body as { basePromptEnabled?: unknown }).basePromptEnabled : undefined;
+    if (typeof enabled !== "boolean") {
       ctx.host.http.writeJson(res, 400, { error: "invalid_commodore_system_prompt" });
       return true;
     }
@@ -243,12 +237,11 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       ctx.host.http.writeJson(res, 404, { error: "commodore_not_found" });
       return true;
     }
-    const saved = deps.commodoreSystemPrompts.save(commodoreId, prompt);
-    ctx.host.http.writeJson(res, 200, { commodoreId, prompt: saved });
+    ctx.host.http.writeJson(res, 200, { commodoreId, basePromptEnabled: deps.commodoreSystemPrompts.setBasePromptEnabled(commodoreId, enabled) });
     return true;
   }, [
-    { method: "GET", path: "", summary: "Read a Commodore's Claude Code system prompt.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "PUT", path: "", summary: "Save or clear a Commodore's Claude Code system prompt.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "", summary: "Read whether a Commodore's Claude Code sessions load Claude Code's base system prompt.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "", summary: "Choose whether a Commodore's Claude Code sessions load Claude Code's base system prompt.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
   // 사령관별 지휘관 서브에이전트 허용 — 키가 없으면 비허용이다. 구성원과 사령관 본인 세션에는 적용하지 않는다.
@@ -292,17 +285,6 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
     { method: "GET", path: "", summary: "Read whether a Commodore allows its Commanders to use Claude Code subagents.", category: "Console Execution", gate: "loopback", transport: "http" },
     { method: "PUT", path: "", summary: "Choose whether a Commodore allows its Commanders to use Claude Code subagents.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
-}
-
-function parseTheaterSystemPromptUpdate(body: unknown): ClaudeCodeTheaterSystemPrompt | null | undefined {
-  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length !== 1 || !("prompt" in body)) return undefined;
-  const prompt = body.prompt;
-  if (prompt === null) return null;
-  if (!prompt || typeof prompt !== "object" || Array.isArray(prompt) || Object.keys(prompt).length !== 2) return undefined;
-  if (!("mode" in prompt) || !("body" in prompt)) return undefined;
-  if (prompt.mode !== "on" && prompt.mode !== "append" && prompt.mode !== "off") return undefined;
-  if (typeof prompt.body !== "string" || prompt.body.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS) return undefined;
-  return { mode: prompt.mode, body: sanitizeClaudeCodeCustomSystemPrompt(prompt.body) ?? "" };
 }
 
 const AI_GATEWAY_LOGIN_PROVIDERS = ["antigravity", "claude", "codex", "muse-code", "xai"] as const;

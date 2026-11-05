@@ -1,6 +1,4 @@
-export type CommodoreSystemPromptMode = "on" | "append" | "off";
-export interface CommodoreSystemPrompt { readonly mode: CommodoreSystemPromptMode; readonly body: string }
-export interface CommodoreSystemPromptState { readonly commodoreId: string; readonly prompt: CommodoreSystemPrompt | null }
+export interface CommodoreBasePromptState { readonly commodoreId: string; readonly basePromptEnabled: boolean }
 export interface CommodoreSubagentsState { readonly commodoreId: string; readonly subagentsKept: boolean }
 
 async function request<T>(route: string, commodoreId: string, body: unknown, signal?: AbortSignal): Promise<T> {
@@ -12,7 +10,7 @@ async function request<T>(route: string, commodoreId: string, body: unknown, sig
   if (result?.commodoreId !== commodoreId) throw new Error("invalid_commodore_settings");
   return result as T;
 }
-export const fetchCommodoreSystemPrompt = (commodoreId: string, signal?: AbortSignal): Promise<CommodoreSystemPromptState> => request("commodore-system-prompt", commodoreId, undefined, signal);
-export const saveCommodoreSystemPrompt = (commodoreId: string, prompt: CommodoreSystemPrompt | null, signal?: AbortSignal): Promise<CommodoreSystemPromptState> => request("commodore-system-prompt", commodoreId, { prompt }, signal);
+export const fetchCommodoreBasePrompt = (commodoreId: string, signal?: AbortSignal): Promise<CommodoreBasePromptState> => request("commodore-system-prompt", commodoreId, undefined, signal);
+export const saveCommodoreBasePrompt = (commodoreId: string, basePromptEnabled: boolean, signal?: AbortSignal): Promise<CommodoreBasePromptState> => request("commodore-system-prompt", commodoreId, { basePromptEnabled }, signal);
 export const fetchCommodoreSubagents = (commodoreId: string, signal?: AbortSignal): Promise<CommodoreSubagentsState> => request("commodore-subagents", commodoreId, undefined, signal);
 export const saveCommodoreSubagents = (commodoreId: string, subagentsKept: boolean, signal?: AbortSignal): Promise<CommodoreSubagentsState> => request("commodore-subagents", commodoreId, { subagentsKept }, signal);
