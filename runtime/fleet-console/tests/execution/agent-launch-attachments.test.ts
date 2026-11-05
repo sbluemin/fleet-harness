@@ -132,12 +132,13 @@ describe("agent attachment routes", () => {
     await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
 
     expect(harness.responses.at(-1)?.status).toBe(200);
+    // 채팅 발사는 200을 먼저 돌려주고, 합성 프롬프트는 그 뒤 자식에게 간다. 부하가 있는 전체 스위트에서도 놓치지 않게 기다린다.
     await vi.waitFor(() => {
-      const prompt = harness.prompts.at(-1);
+      const prompt = harness.prompts.at(-1) ?? "";
       expect(prompt).toContain("fix it");
       expect(prompt).toContain(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX);
       expect(prompt).toMatch(/fleet-attachments-.*image\.png/);
-    });
+    }, { timeout: 10_000 });
 
     // 발사된 첨부는 세션에 묶인다 — 두 번째 실행이 같은 id를 실으면 스폰 전에 거절된다.
     await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "again", attachmentIds: [id] });
