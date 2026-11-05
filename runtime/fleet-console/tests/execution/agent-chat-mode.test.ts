@@ -567,6 +567,24 @@ describe("agent chat mode routes", () => {
     expect(harness.attach).not.toHaveBeenCalled();
   });
 
+  it("keeps the prior provider on the history chain when Start fresh runs with the experiment on", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    asLegacyTerminal(harness, sessionId);
+    harness.setExperiments({ objectiveFreshSession: true });
+    const transcriptPath = (harness.objectiveRecord(sessionId)?.session as { transcriptPath: string }).transcriptPath;
+
+    await harness.post(sessionId, "resume", { fresh: true });
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.objectiveRecord(sessionId)?.session).not.toHaveProperty("id");
+    expect((harness.objectiveRecord(sessionId)?.session as { previousSessions?: Array<{ id: string; transcriptPath?: string }> }).previousSessions).toEqual([
+      expect.objectContaining({ id: "sid-live", transcriptPath }),
+    ]);
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
   it("opens chat for a legacy objective with no agent session and keeps the record", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();

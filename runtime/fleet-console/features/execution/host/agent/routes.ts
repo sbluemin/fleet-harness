@@ -1788,6 +1788,18 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (!provider) return null;
     observability.clearTerminalSessionProviderSession(sessionId);
     const agent = readAgentSession(node);
+    // 실험이 켜져 있으면 직전 provider는 이력 체인이다. 현재 좌표만 떼고 파일을 지워도,
+    // previousSessions에 남지 않으면 목표는 그 전사에 다시 닿지 못한다.
+    const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
+    const previousSessions = freshEnabled
+      ? [...(agent?.previousSessions ?? []), {
+          harness: "claude-code" as const,
+          id: provider.id,
+          capturedAt: provider.capturedAt,
+          ...(provider.transcriptPath ? { transcriptPath: provider.transcriptPath } : {}),
+          ...(provider.source ? { source: provider.source } : {}),
+        }]
+      : agent?.previousSessions;
     ctx.host.objectiveRecords.patch(sessionId, {
       ...node,
       session: {
@@ -1797,7 +1809,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(agent?.sessionName ? { sessionName: agent.sessionName } : {}),
         ...(agent?.disableSubagents ? { disableSubagents: true } : {}),
         ...(agent?.disableAutoMemory ? { disableAutoMemory: true } : {}),
-        ...(agent?.previousSessions && agent.previousSessions.length > 0 ? { previousSessions: agent.previousSessions } : {}),
+        ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
       },
     });
     return provider;
