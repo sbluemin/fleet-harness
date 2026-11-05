@@ -89,6 +89,7 @@ describe("standalone Claude Code CLI launch", () => {
           // Console 이 다른 Claude·Fleet 세션 안에서 떴을 때 상속하는 표식과 자격.
           CLAUDECODE: "1",
           CLAUDE_CODE_SESSION_ID: "parent-session",
+          CLAUDE_CODE_SESSION_ACCESS_TOKEN: "parent-session-access",
           CLAUDE_CODE_MESSAGING_SOCKET: "/tmp/parent.sock",
           CLAUDE_CODE_MESSAGING_TOKEN: "parent-token",
           FLEET_CONSOLE_SESSION_ID: "objective-1",
@@ -110,7 +111,7 @@ describe("standalone Claude Code CLI launch", () => {
       expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:4100/api/v1/ai-gateway");
       expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("200000");
       expect(spec.env.HOME).toBe(home);
-      for (const key of ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "FLEET_CONSOLE_SESSION_ID", "FLEET_MOD_TOKEN", "FLEET_MOD_BASE_URL", "FLEET_COMPACT_HOOK_TOKEN", "FLEET_COMPACT_BASE_URL", "FLEET_CONSOLE_OWNER_KIND", "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS"]) {
+      for (const key of ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_SESSION_ACCESS_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "FLEET_CONSOLE_SESSION_ID", "FLEET_MOD_TOKEN", "FLEET_MOD_BASE_URL", "FLEET_COMPACT_HOOK_TOKEN", "FLEET_COMPACT_BASE_URL", "FLEET_CONSOLE_OWNER_KIND", "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS"]) {
         expect(spec.env[key], key).toBeUndefined();
       }
     } finally {
