@@ -16,7 +16,7 @@ import { ConsoleControlError } from "../../../console-use/host/console-control.j
 import { readObjectiveLaunch, retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type ObjectiveGeometry, type ObjectiveLaunchKind, type ObjectiveRecord, type ObjectiveRecordPatchInput } from "../../../objectives/shared/records/types.js";
 import { registerRouter } from "../context.js";
 import type { ConsoleRuntimeContext } from "../context.js";
-import { PRIOR_WRITER_EXIT_WAIT_MS, readSocketRole, readTicketChannel, TERMINAL_PRIOR_WRITER_ALIVE } from "../terminal/index.js";
+import { PRIOR_WRITER_EXIT_WAIT_MS, readSocketRole, readTicketChannel } from "../terminal/index.js";
 import type { TerminalRuntime } from "../terminal/index.js";
 
 import { createDefaultAgentCliDetector, type AgentCliDetector } from "./agent-cli-detect.js";
@@ -87,9 +87,6 @@ interface AgentRouteDeps {
 
 const AGENT_OBJECTIVE_TYPE = "agent";
 const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
-// 재기동 직후 전달의 부팅 여유폭 — resume된 CLI가 컴포저를 세우기 전의 stdin flush에 페이로드가
-// 삼켜지지 않도록 페이로드 앞에 두는 지연이다.
-const RESUMED_PTY_MESSAGE_BOOT_DELAY_MS = 1500;
 const OBJECTIVE_RENAMED_EVENT_CHANNEL = "objective:renamed";
 const OBJECTIVE_RESTORED_EVENT_CHANNEL = "objective:restored";
 const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
@@ -1499,164 +1496,45 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return true;
   }
 
-  /** handleResume 의 본체 — Console Use 의 console_resume 도 같은 길을 쓴다(chat 접기·좌표 판정·코어 재기동). */
+  /** handleResume 의 본체 — Console Use 의 console_resume 도 같은 길을 쓴다. 끝난 목표는 채팅으로만 연다. */
   async function resumeObjective(sessionId: string, fresh: boolean): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
     if (ctx.host.objectiveRecords.isTransitioning?.(sessionId)) return { ok: false, status: 409, error: "objectiveRecord_busy" };
     const node = ctx.host.objectiveRecords.get(sessionId);
     if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) return { ok: false, status: 404, error: "session_not_found" };
-    const payload = node;
-    const cliId = CLAUDE_HARNESS_ID;
-    const providerSession = readProviderSession(payload);
-    // 이어붙일 좌표가 없거나 launch 좌표뿐이면 재개는 정의상 **새 시작**이고, `fresh`와 같은
-    // 경로다. launch 좌표는 플러그인 수명용으로 첫 prompt 전에 심은 id일 뿐 transcript가 있는
-    // provider 세션의 증거가 아니다. 이를 --resume에 넘기면 첫 턴 전 Chat → CLI 복귀가 존재하지
-    // 않는 세션을 재개하려다 실패한다.
-    //
-    // 떠 있지 않은 옛 터미널 목표의 다음 열기는 채팅이다. 트랜스크립트가 없으면 새 채팅이 아니라
-    // 그 사실을 돌려, Start fresh가 옛 좌표를 버리고 채팅을 새로 열게 한다. 채팅 시드 자체가
-    // 없는 목표만 기존 PTY 재개로 떨어진다. 채팅으로 태어난 목표는 이 재개를 쓰지 않는다.
-    if (node[CHAT_MODE_PAYLOAD_KEY] !== true && terminalRuntime.getSessionLastActivityAt(sessionId) === null) {
-      const adopted = await setChatMode(sessionId, true, { fresh });
-      if (adopted.ok) {
-        const resumed = observability.getTerminalSessionInfo(sessionId);
-        if (!resumed) return { ok: false, status: 404, error: "session_not_found" };
-        return { ok: true, resumed };
-      }
-      if (adopted.error === "session_not_found" || adopted.error === "session_live" || adopted.error === "chat_convert_busy" || adopted.error === "chat_transcript_missing") {
-        return { ok: false, status: adopted.error === "session_not_found" ? 404 : 409, error: adopted.error };
-      }
-      if (adopted.error === "unavailable") return { ok: false, status: 404, error: adopted.error };
+    // 떠 있는 PTY는 끊지도, 다시 붙이지도 않는다. 끝난 목표의 다음 열기는 채팅이고, 여기서 PTY를 시작하지 않는다.
+    if (node[CHAT_MODE_PAYLOAD_KEY] !== true && terminalRuntime.getSessionLastActivityAt(sessionId) !== null) {
+      return { ok: false, status: 409, error: "session_live" };
     }
     if (node[CHAT_MODE_PAYLOAD_KEY] === true) return { ok: false, status: 409, error: "chat_resume_unsupported" };
-    const startsFresh = fresh || !providerSession || providerSession.source === "launch";
-    return await resumeAgentSessionCore(node, sessionId, cliId, { fresh: startsFresh, providerSession });
+    // 트랜스크립트가 없으면 새 채팅이 아니라 그 사실을 돌려, Start fresh가 옛 좌표를 버리고 채팅을 연다.
+    // 세션 좌표가 아예 없는 목표는 기록을 지우지 않은 채 빈 채팅 좌표를 세워 연다.
+    let adopted = await setChatMode(sessionId, true, { fresh });
+    if (!adopted.ok && adopted.error === "chat_unsupported") {
+      const current = ctx.host.objectiveRecords.get(sessionId);
+      if (current && !readAgentSession(current)) {
+        ctx.host.objectiveRecords.patch(sessionId, { ...current, session: { harness: "claude-code" } });
+        adopted = await setChatMode(sessionId, true, { fresh: true });
+        if (!adopted.ok) {
+          const rolled = ctx.host.objectiveRecords.get(sessionId);
+          if (rolled) {
+            const { session: _added, ...withoutSession } = rolled;
+            ctx.host.objectiveRecords.patch(sessionId, { ...withoutSession, id: rolled.id });
+          }
+        }
+      }
+    }
+    if (!adopted.ok) {
+      const status = adopted.error === "session_not_found" || adopted.error === "unavailable" ? 404
+        : adopted.error === "chat_gateway_unavailable" ? 503
+        : 409;
+      return { ok: false, status, error: adopted.error };
+    }
+    const resumed = observability.getTerminalSessionInfo(sessionId);
+    if (!resumed) return { ok: false, status: 404, error: "session_not_found" };
+    return { ok: true, resumed };
   }
 
-  // handleResume(fresh 포함)과 handleMessage(dormant 전달)가 공유하는 재기동 코어 — 상태 어휘·
-  // 기본 모델 폴백·롤백 계약이 한 곳에만 살아야 두 진입점이 같은 Objective을 같은 좌표로 되살린다.
-  async function resumeAgentSessionCore(
-    node: ObjectiveRecord,
-    sessionId: string,
-    cliId: AgentCliId,
-    options: { readonly fresh: boolean; readonly providerSession: CapturedAgentSession | undefined },
-  ): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
-    const { fresh, providerSession } = options;
-    // 새 세대는 좌표를 읽기 전에 — 이 기동은 아래에서 읽는 세션 좌표로 선다(패널 재개·휴면 중 전달 모두 이 코어를 지난다).
-    observability.beginTerminalGeneration(sessionId);
-    // launchModel 도입 전 Objective은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
-    // 새 세션과 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
-    const launchSession = readAgentSession(node);
-    // 이번 기동의 강제 차단은 진입 시점의 다음 기동 정책이다. 세션 스냅샷의 옛 true는 명시 정책이 있으면 지지 못한다.
-    const blockSubagents = subagentSpawnBlocked(node);
-    // 저장된 bare 네이티브 별칭은 이 기동의 실행 id만 `[1m]`로 접는다. 다른 모델 문자열은 그대로다.
-    const canonicalStoredModel = launchSession?.model
-      ? resolveNativeClaudeModelAlias(launchSession.model) ?? launchSession.model
-      : undefined;
-    const launchModel = canonicalStoredModel
-      || (cliId === "claude" ? "opus[1m]" : undefined);
-    const launchEffort = launchSession?.effort || undefined;
-    // cwd 해석은 상태 전이 전에 끝낸다 — 'starting'으로 올린 뒤 404로 빠지면 catch의 dormant
-    // 복귀를 건너뛰어 세션이 starting에 고착된다.
-    const cwd = confirmedObjectiveCwd(sessionId, node);
-    if (!cwd) return { ok: false, status: 404, error: "unavailable" };
-    resetOscActivity(sessionId);
-    let starting = observability.updateTerminalSessionStatus(sessionId, "starting");
-    if (!starting) {
-      // 관측이 없던 Objective 은 여기서 주입된다 — 위에서 매기지 못한 세대를 이제 받는다.
-      const injected = injectObjective(node);
-      starting = observability.beginTerminalGeneration(sessionId) ?? injected;
-    }
-    try {
-      if (fresh) {
-        // stale provider 상태는 spawn 전에 observability와 payload에서 모두 떼어낸다 —
-        // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새
-        // providerSession까지 지우고, payload에 구 세션이 남으면 성공 patch가 그것을 다시
-        // 심는다. attach 실패 시에는 catch에서 payload providerSession을 원복해
-        // 일반 resume 재시도와 transcript 접근을 보존한다.
-        observability.clearTerminalSessionProviderSession(sessionId);
-        const payloadWithoutProvider = { ...node };
-        const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
-        const archiveCurrent = freshEnabled && providerSession?.id;
-        const existingPrevious = launchSession?.previousSessions;
-        const previousSessions = archiveCurrent
-          ? [...(existingPrevious ?? []), providerSession]
-          : existingPrevious;
-        payloadWithoutProvider.session = {
-          harness: "claude-code",
-          ...(canonicalStoredModel ? { model: canonicalStoredModel } : {}),
-          ...(launchSession?.effort ? { effort: launchSession.effort } : {}),
-          ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
-          ...(blockSubagents ? { disableSubagents: true } : {}),
-          ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
-          ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
-        };
-        ctx.host.objectiveRecords.patch(sessionId, { ...(payloadWithoutProvider) });
-      }
-      trustedPtySessions.delete(sessionId);
-      await terminalRuntime.attach({
-        cwd,
-        sessionId,
-        objectiveId: sessionId,
-        objectiveRecordType: "agent",
-        pluginId: null,
-        theaterId: node.theaterId,
-        cliId,
-        ...(launchModel ? { model: launchModel } : {}),
-        ...(launchEffort ? { effort: launchEffort } : {}),
-        ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
-        ...(blockSubagents ? { disableSubagents: true } : {}),
-        ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
-        ...(node.parentObjectiveId || ctx.isCommanderSession?.(sessionId) ? { objectiveMessaging: true as const } : {}),
-        ...(fresh ? {} : { resumeSessionId: providerSession?.id }),
-      });
-      const runtimeSession = pendingRuntimeSessions.get(sessionId);
-      pendingRuntimeSessions.delete(sessionId);
-      const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
-      observability.notifySessionUpdated(resumed);
-      workspaceContext.observe(sessionId, node.theaterId, cwd);
-      // fresh 성공 patch는 attach 중 자식이 capture한 새 providerSession만 보존한다 —
-      // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다.
-      const currentPayload = fresh ? ctx.host.objectiveRecords.get(sessionId) : node;
-      const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
-      const livePayload = ctx.host.objectiveRecords.get(sessionId);
-      const resumedPayload = retainSubagentSpawn(toObjectivePayload(currentPayload ?? node, cwd, resumed, effectiveProviderSession, observability.getDurableObjective(sessionId)?.providerTitle), livePayload);
-      // Legacy fallback도 첫 성공 뒤에는 Objective의 확정 launch 좌표가 된다 — 매 resume마다
-      // fallback 정책을 다시 적용해 향후 기본값 변경에 따라 같은 Objective이 흔들리지 않게 한다.
-      if (!readAgentSession(resumedPayload)?.model && launchModel) {
-        resumedPayload.session = {
-          ...(readAgentSession(resumedPayload) ?? { harness: "claude-code" }),
-          model: launchModel,
-          ...(launchEffort ? { effort: launchEffort } : {}),
-        };
-      }
-      ctx.host.objectiveRecords.patch(sessionId, { ...(resumedPayload) });
-      return { ok: true, resumed };
-    } catch (error) {
-      resetOscActivity(sessionId);
-      if (fresh && providerSession) {
-        // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
-        // 복원한다 — payload의 providerSession이 resume과 transcript의 단일 권위다.
-        const livePayload = ctx.host.objectiveRecords.get(sessionId);
-        const rollbackPayload = retainSubagentSpawn({ ...(livePayload ?? {}) }, livePayload);
-        rollbackPayload.session = providerSession;
-        ctx.host.objectiveRecords.patch(sessionId, { ...(rollbackPayload) });
-        observability.updateTerminalSessionProviderSession(sessionId, providerSession);
-      }
-      pendingRuntimeSessions.delete(sessionId);
-      const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
-      if (reverted) observability.notifySessionUpdated(reverted);
-      if (error instanceof GatewayLaunchOptionError) {
-        return { ok: false, status: gatewayLaunchOptionErrorStatus(error), error: error.code };
-      }
-      // 접은 옛 프로세스가 아직 끝나지 않았다 — 같은 Claude 세션의 두 번째 필자를 세우지 않고 휴면으로 남긴다. 곧 다시 시도할 수 있다.
-      if (error instanceof Error && error.message === TERMINAL_PRIOR_WRITER_ALIVE) return { ok: false, status: 409, error: "objectiveRecord_busy" };
-      return { ok: false, status: 503, error: "terminal_unavailable" };
-    }
-  }
-
-  // 새 세션 멘션 전달 라우트. 살아 있는 세션이면 PTY에 곧장 쓰고, dormant면 재기동(비-fresh
-  // resume) 후 같은 요청 안에서 전달한다 — 재기동 흐름은 handleResume의 비-fresh 경로와 행동
-  // 쌍둥이로 유지한다(fresh 분기가 얽힌 handleResume를 쪼개면 그쪽 롤백 계약이 흔들린다).
+  // 살아 있는 PTY에는 곧장 쓴다. 끝난 목표는 채팅으로만 넘기고, 여기서 PTY를 깨우지 않는다.
   // 응답에는 프롬프트 원문·providerSession·경로를 싣지 않는다.
   async function handleMessage(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
     if (req.method !== "POST") return methodNotAllowed(res);
@@ -1721,15 +1599,31 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // resolve가 연 예약은 아래 어떤 경로로 던져져도 닫혀야 한다 — settle을 지나 bind된 뒤의
     // unreserve는 no-op이라(sessionId가 이미 붙었다) 이중 정산이 안전하다.
     let terminalTurnReserved = false;
-    let shouldFreshDormant = false;
     try {
     // 떠 있지 않은 옛 터미널 목표는 이 전달이 다음 열기다. PTY를 깨우지 않고 채팅으로 넘긴 뒤 같은 길을 탄다.
     let active = node;
     if (active[CHAT_MODE_PAYLOAD_KEY] !== true && terminalRuntime.getSessionLastActivityAt(sessionId) === null) {
-      const adopted = await setChatMode(sessionId, true);
+      let adopted = await setChatMode(sessionId, true);
+      if (!adopted.ok && adopted.error === "chat_unsupported") {
+        const current = ctx.host.objectiveRecords.get(sessionId);
+        if (current && !readAgentSession(current)) {
+          ctx.host.objectiveRecords.patch(sessionId, { ...current, session: { harness: "claude-code" } });
+          adopted = await setChatMode(sessionId, true, { fresh: true });
+          if (!adopted.ok) {
+            const rolled = ctx.host.objectiveRecords.get(sessionId);
+            if (rolled) {
+              const { session: _added, ...withoutSession } = rolled;
+              ctx.host.objectiveRecords.patch(sessionId, { ...withoutSession, id: rolled.id });
+            }
+          }
+        }
+      }
       if (!adopted.ok) {
         settleAttachments(false);
-        reply(adopted.error === "session_not_found" ? 404 : 409, { error: adopted.error });
+        const status = adopted.error === "session_not_found" || adopted.error === "unavailable" ? 404
+          : adopted.error === "chat_gateway_unavailable" ? 503
+          : 409;
+        reply(status, { error: adopted.error });
         return true;
       }
       const next = ctx.host.objectiveRecords.get(sessionId);
@@ -1837,45 +1731,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       reply(200, { delivered: true });
       return true;
     }
-    // dormant 대상은 재기동 후 전달한다(제품 결정). providerSession이 없으면 이어붙일 세션이 없다.
-    const cliId = CLAUDE_HARNESS_ID;
-    const providerSession = readProviderSession(node);
-    if (!providerSession && node.dormantBorn !== true) {
-      if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
-      settleAttachments(false);
-      reply(409, { error: "resume_unavailable" });
-      return true;
-    }
-    assertCurrent();
-    const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
-    shouldFreshDormant = freshEnabled && freshOpenSessions.delete(sessionId);
-    const fresh = shouldFreshDormant || !providerSession || providerSession.source === "launch";
-    let result: { ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string };
-    try {
-      result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh, providerSession });
-    } catch (error) {
-      if (shouldFreshDormant) freshOpenSessions.add(sessionId);
-      throw error;
-    }
-    if (!result.ok) {
-      if (shouldFreshDormant) freshOpenSessions.add(sessionId);
-      if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
-      settleAttachments(false);
-      reply(result.status, { error: result.error });
-      return true;
-    }
-    shouldFreshDormant = false;
-    // 전달은 attach 성공 뒤에만 큐에 올린다 — 죽은 세션에 쌓인 메시지가 다음 재기동에 새는 것을 막는다.
-    // 선두의 빈 지연 청크는 재기동된 CLI TUI의 부팅·raw-mode 초기화에 여유를 준다. readiness
-    // 신호가 없는 경로라 보장이 아니라 여유폭이다(fresh launch는 argv로 프롬프트를 넘겨 이 경합이 없다).
-    deliver([{ data: "", submitDelayMs: RESUMED_PTY_MESSAGE_BOOT_DELAY_MS }]);
-    settleAttachments(true);
-    reply(200, { delivered: true, resumed: true });
+    // 끝난 목표에 메시지를 넣으며 PTY를 깨우지 않는다. 채팅으로 넘기지 못한 전달은 거절만 한다.
+    if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
+    settleAttachments(false);
+    reply(409, { error: "resume_unavailable" });
     return true;
     } catch (error) {
-      if (shouldFreshDormant) {
-        freshOpenSessions.add(sessionId);
-      }
       if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
       // 처리되지 않은 throw가 예약을 영구 고착시키면 그 id는 어떤 재시도에도 실리지 못한다.
       if (attachmentIds.length > 0) launchAttachments.unreserve(attachmentIds);

@@ -1174,7 +1174,7 @@ describe("console static and terminal ticket boundary", () => {
     const ticketResponse = await fetch(`${fixture.endpoint}api/v1/agent/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ objectiveId: "session-a" }),
+      body: JSON.stringify({ objectiveId: "session-a", channel: "chat" }),
     });
     expect(ticketResponse.status).toBe(200);
     const { ticket } = await ticketResponse.json() as { readonly ticket: string };
@@ -1189,7 +1189,8 @@ describe("console static and terminal ticket boundary", () => {
     await fixture.server.stop();
 
     expect(fs.existsSync(fixture.lockFile)).toBe(false);
-    expect(killed).toBe(1);
+    // 끝난 목표는 채팅으로 열리므로 이 재개는 PTY를 시작하지 않는다. 열린 소켓이 stop과 lock 해제를 막지 않는지만 본다.
+    expect(killed).toBe(0);
     await socketClosed;
   }, 10_000);
 });

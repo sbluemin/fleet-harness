@@ -567,6 +567,23 @@ describe("agent chat mode routes", () => {
     expect(harness.attach).not.toHaveBeenCalled();
   });
 
+  it("opens chat for a legacy objective with no agent session and keeps the record", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    asLegacyTerminal(harness, sessionId);
+    const record = harness.objectiveRecord(sessionId);
+    if (!record) throw new Error("Objective not found");
+    const title = record.title;
+    delete record.session;
+
+    await harness.post(sessionId, "resume");
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
+    expect(harness.objectiveRecord(sessionId)?.title).toBe(title);
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
   it("objective fresh session experiment branches: false preserves resume, true branches fresh, switchLive stays resume", async () => {
     const harness = await createHarness({ cliId: "claude" });
     const sessionId = await harness.createSession();
