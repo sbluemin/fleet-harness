@@ -5,9 +5,10 @@
   --approval-tempo: 1;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  height: 34px;
-  padding: 0 12px;
+  height: 30px;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
   /* 같은 줄 왼쪽 도구(.conversation-pill-tools .right-rail-ico)와 같이 면·테두리 없이 선다. */
@@ -26,7 +27,8 @@
   color: var(--text-primary);
   outline: none;
 }
-.approval-bell { width: 15px; height: 15px; transform-origin: 50% 2px; }
+.approval-entry.is-idle { width: 30px; }
+.approval-bell { width: 16px; height: 16px; transform-origin: 50% 2px; }
 .approval-count {
   min-width: 18px;
   height: 18px;
