@@ -43,7 +43,7 @@ export function userClaudeHome(env: NodeJS.ProcessEnv = process.env, homedir: st
 export interface HomeOverlaySkip {
   readonly kind: "home" | "plugin" | "skill" | "command" | "agent" | "file" | "mcp";
   readonly name: string;
-  readonly reason: "fleet_precedence" | "duplicate" | "unreadable" | "unsupported" | "not_installed" | "missing" | "hooks" | "outside" | "name_invalid" | "reserved_placeholder" | "limit";
+  readonly reason: "fleet_precedence" | "duplicate" | "unreadable" | "unsupported" | "not_installed" | "missing" | "hooks" | "outside" | "cycle" | "name_invalid" | "reserved_placeholder" | "limit";
 }
 
 export interface ClaudeHomeOverlay {
@@ -69,6 +69,8 @@ const MAX_SKILLS = 200;
 const MAX_PLUGINS = 50;
 const MAX_MCP_SERVERS = 50;
 const MAX_MARKDOWN_FILES = 2_000;
+/** 링크 검사를 위해 훑는 원본 항목의 상한 — 넘으면 그 플러그인·스킬은 안을 다 확인할 수 없어 싣지 않는다. */
+const MAX_TREE_ENTRIES = 50_000;
 const MAX_MARKDOWN_BYTES = 1024 * 1024;
 const LIFTED_ENV_PREFIX = "FLEET_HOME_MCP_";
 const segment = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9_-])?$/;
@@ -119,6 +121,33 @@ function staysInside(root: string, candidate: string): boolean {
     return real === realRoot || real.startsWith(realRoot + path.sep);
   } catch { return false; }
 }
+
+/**
+ * `root` 의 실제 트리(링크를 따라가지 않는다)에서 실제 경로가 `root` 밖이거나 끊긴 링크를 품은 폴더들의 실제 경로.
+ * 이런 폴더는 통째로 링크하면 그 안의 링크로 밖에 닿으므로, 다시 세울 때 내려가서 그 링크만 뺀다. 상한을 넘으면 null.
+ */
+function foldersWithEscapingLinks(root: string): Set<string> | null {
+  let realRoot: string;
+  try { realRoot = fs.realpathSync(root); } catch { return new Set(); }
+  const tainted = new Set<string>();
+  let seen = 0;
+  const pending = [realRoot];
+  while (pending.length) {
+    const dir = pending.pop()!;
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      if (++seen > MAX_TREE_ENTRIES) return null;
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) { pending.push(file); continue; }
+      if (!entry.isSymbolicLink() || staysInside(realRoot, file)) continue;
+      for (let up = dir; up === realRoot || up.startsWith(realRoot + path.sep); up = path.dirname(up)) { tainted.add(up); if (up === realRoot) break; }
+    }
+  }
+  return tainted;
+}
+
+const realpathOf = (file: string): string => { try { return fs.realpathSync(file); } catch { return file; } };
 
 /**
  * 머리말이 `hooks` 키를 둘 수 있는가 — YAML 이 같은 키로 읽는 모양을 모두 본다: 줄 머리·흐름 매핑·따옴표·태그·앵커 뒤의
@@ -269,13 +298,14 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
   const mcpCandidates: { readonly name: string; readonly config: ClaudeGatewayExternalMcpServer }[] = [];
 
   /**
-   * `source`를 `target`에 링크로 다시 세운다. 바꿀 자리가 아래에 있는 폴더만 실제 폴더로 만들고 내려간다. 링크는 `root` 안에
-   * 머무는 항목만 잇는다 — 밖을 가리키는 항목은 `label`로 이름 붙여 뺀다.
+   * `source`를 `target`에 링크로 다시 세운다. 바꿀 자리가 아래에 있는 폴더와, 안에 `root` 밖으로 가는 링크를 품은 폴더
+   * (`tainted`)만 실제 폴더로 만들고 내려간다 — 그래서 어느 깊이의 링크로도 `root` 밖에 닿지 않는다. 밖을 가리키는 항목과
+   * 돌아 들어오는 폴더 링크는 `label`로 이름 붙여 뺀다.
    */
-  const mirror = (root: string, source: string, target: string, overrides: Overrides, label: string) => {
+  const mirror = (root: string, source: string, target: string, overrides: Overrides, label: string, tainted: ReadonlySet<string>) => {
     const expand = new Set<string>();
     for (const file of overrides.keys()) for (let dir = path.dirname(file); dir.startsWith(source + path.sep) || dir === source; dir = path.dirname(dir)) { expand.add(dir); if (dir === source) break; }
-    const walk = (from: string, to: string) => {
+    const walk = (from: string, to: string, ancestors: ReadonlySet<string>) => {
       fs.mkdirSync(to, { recursive: true });
       let names: string[];
       try { names = fs.readdirSync(from).sort(); } catch { return; }
@@ -289,11 +319,16 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
           continue;
         }
         if (!staysInside(root, entry)) { skipped.push({ kind: "file", name: `${label}/${relative}`, reason: "outside" }); continue; }
-        if (expand.has(entry) && isDirectory(entry)) { walk(entry, destination); continue; }
+        const real = realpathOf(entry);
+        if (isDirectory(entry) && (expand.has(entry) || tainted.has(real))) {
+          if (ancestors.has(real)) { skipped.push({ kind: "file", name: `${label}/${relative}`, reason: "cycle" }); continue; }
+          walk(entry, destination, new Set([...ancestors, real]));
+          continue;
+        }
         fs.symlinkSync(entry, destination, process.platform === "win32" && isDirectory(entry) ? "junction" : undefined);
       }
     };
-    walk(source, target);
+    walk(source, target, new Set([realpathOf(source)]));
   };
 
   /** 스킬·에이전트·커맨드 마크다운의 머리말 훅을 떼어 낼 자리로 적는다. 떼어 낼 수 없으면 싣지 않는다. */
@@ -355,8 +390,10 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
       }
       for (const agent of markdownEntries(declaredPaths(dir, manifest.agents, "agents"))) stripHooks(overrides, agent.file, "agent", `${name}:${agent.name}`);
 
+      const tainted = foldersWithEscapingLinks(dir);
+      if (!tainted) { skipped.push({ kind: "plugin", name: id, reason: "limit" }); continue; }
       const root = path.join(stage, name);
-      mirror(dir, dir, root, overrides, name);
+      mirror(dir, dir, root, overrides, name, tainted);
       fs.mkdirSync(path.join(root, ".claude-plugin"), { recursive: true });
       fs.writeFileSync(path.join(root, ".claude-plugin", "plugin.json"), JSON.stringify(manifest));
       plugins.push({ path: root, skipMcp: true });
@@ -374,8 +411,11 @@ function project(home: ClaudeHomeLocation, fleet: HomeOverlayFleet, stage: strin
     stripHooks(overrides, path.join(skill.dir, "SKILL.md"), "skill", skill.name);
     const target = path.join(skillsRoot, "skills", skill.name);
     if (overrides.get(path.join(skill.dir, "SKILL.md")) === null) continue;
+    // 스킬 폴더 자체는 사람이 홈에 건 링크일 수 있다. 그 안의 링크는 그 스킬의 실제 폴더 밖에 닿지 않아야 한다.
+    const tainted = foldersWithEscapingLinks(skill.dir);
+    if (!tainted) { skipped.push({ kind: "skill", name: skill.name, reason: "limit" }); continue; }
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (overrides.size) mirror(skill.dir, skill.dir, target, overrides, skill.name);
+    if (overrides.size || tainted.size) mirror(skill.dir, skill.dir, target, overrides, skill.name, tainted);
     else fs.symlinkSync(skill.dir, target, process.platform === "win32" ? "junction" : undefined);
     homeSkills.push(skill.name);
   }
