@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { loadCommodore, useCommodore } from "../../../commodore/client/commodore-state.js";
@@ -7,7 +7,7 @@ import { focusObjective, readAllTheaters, subscribeObjective } from "../../../ob
 
 import "./approval.css";
 import { ApprovalActions, ApprovalCardFrame, ApprovalComputerCard, ApprovalDiff, DescriptionGlyph, IntelGlyph, LifeRing, announceText, approvalSecondsLeft, formatApprovalTime, toastText, useApprovalAnswer } from "./cards.js";
-import { approvalAnnounce, approvalItems, approvalOpen, approvalToasts, closeApprovalList, installApprovals, subscribeApprovals, toggleApprovalList, type ApprovalItem } from "./store.js";
+import { approvalAnnounce, approvalArrival, approvalItems, approvalOpen, approvalToasts, closeApprovalList, installApprovals, subscribeApprovals, toggleApprovalList, type ApprovalItem } from "./store.js";
 
 /** 데스크톱 오른쪽 위 캡슐. 새 요청이 와도 초점을 가져가지 않는다. */
 export function ApprovalCapsule() {
@@ -18,10 +18,11 @@ export function ApprovalCapsule() {
   const urgent = items.filter((item) => item.expiresAt !== undefined).sort((a, b) => a.expiresAt! - b.expiresAt!)[0];
   const left = urgent ? approvalSecondsLeft(urgent.expiresAt, clock) : undefined;
   const low = left !== undefined && left <= 30;
+  const arrive = useArrivalSwing(items);
   return (
     <button
       type="button"
-      className={`approval-entry${items.length === 0 ? " is-idle" : ""}${urgent ? " is-urgent" : ""}`}
+      className={`approval-entry${items.length === 0 ? " is-idle" : ""}${urgent ? " is-urgent" : ""}${arrive ? " is-arrive" : ""}`}
       aria-expanded={open}
       aria-haspopup="dialog"
       aria-label={items.length === 0
@@ -69,8 +70,12 @@ function ApprovalList() {
   const decisions = useSyncExternalStore(subscribeObjective, decisionRows, decisionRows);
   const urgent = items.filter((item) => item.type === "computer.use" && item.expiresAt !== undefined).sort((a, b) => a.expiresAt! - b.expiresAt!);
   const waiting = items.filter((item) => item.type !== "computer.use").sort((a, b) => a.createdAt - b.createdAt);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const nibRef = useRef<HTMLSpanElement>(null);
+  useAnchoredApprovalSurface(panelRef, nibRef);
   return (
-    <div className="approval-surface" role="dialog" aria-modal="false" aria-labelledby="approval-surface-title">
+    <div ref={panelRef} className="approval-surface" role="dialog" aria-modal="false" aria-labelledby="approval-surface-title">
+      <span ref={nibRef} className="approval-nib" aria-hidden="true" />
       <header className="approval-surface-head">
         <h2 id="approval-surface-title">{t("approval.title")}</h2>
         {items.length > 0 ? <p className="approval-surface-sub">{t("approval.headCount", { count: String(items.length) })}</p> : null}
@@ -215,6 +220,113 @@ function nameOf(t: (key: "approval.proposerTo" | "approval.targetCommodore", val
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+const ANCHOR_EDGE = 8;
+const NIB = 10;
+const MOBILE_LAYOUT = "(max-width: 420px)";
+
+/**
+ * 보이는 `.approval-entry` 중 뷰포트와 가장 많이 겹치는 버튼.
+ * 마운트된 버튼이 없으면 null — 패널은 스타일시트의 fixed 위치로 남는다.
+ */
+function visibleApprovalEntry(): HTMLElement | null {
+  const nodes = document.querySelectorAll<HTMLElement>(".approval-entry");
+  let best: HTMLElement | null = null;
+  let bestArea = 0;
+  for (const node of nodes) {
+    const box = node.getBoundingClientRect();
+    const width = Math.min(box.right, window.innerWidth) - Math.max(box.left, 0);
+    const height = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
+    const area = Math.max(0, width) * Math.max(0, height);
+    if (area > bestArea) {
+      best = node;
+      bestArea = area;
+    }
+  }
+  return best;
+}
+
+function clearAnchor(panel: HTMLElement, nib: HTMLElement): void {
+  panel.classList.remove("is-anchored");
+  panel.style.top = "";
+  panel.style.right = "";
+  panel.style.left = "";
+  nib.style.right = "";
+}
+
+/**
+ * 패널 오른쪽 끝을 벨 오른쪽 끝에 맞추고, 위는 벨 아래 8px.
+ * 왼쪽이 8px보다 좁아지면 안쪽으로 민다. 꼬리는 밀린 뒤에도 벨 가운데를 가리킨다.
+ * 사이드바 폭 전환과 창 크기 변화는 열린 동안 매 프레임 다시 읽는다.
+ * 420px 이하(모바일 레이아웃)는 손대지 않는다.
+ */
+function useAnchoredApprovalSurface(panelRef: RefObject<HTMLDivElement | null>, nibRef: RefObject<HTMLSpanElement | null>): void {
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const nib = nibRef.current;
+    if (!panel || !nib) return;
+    const mobile = window.matchMedia(MOBILE_LAYOUT);
+    let frame = 0;
+    const place = (): void => {
+      frame = requestAnimationFrame(place);
+      const anchor = mobile.matches ? null : visibleApprovalEntry();
+      if (!anchor) {
+        if (panel.classList.contains("is-anchored") || panel.style.top !== "" || panel.style.right !== "") clearAnchor(panel, nib);
+        return;
+      }
+      const box = anchor.getBoundingClientRect();
+      const width = panel.offsetWidth;
+      let right = window.innerWidth - box.right;
+      if (window.innerWidth - right - width < ANCHOR_EDGE) right = Math.max(ANCHOR_EDGE, window.innerWidth - width - ANCHOR_EDGE);
+      if (right < ANCHOR_EDGE) right = ANCHOR_EDGE;
+      const nibRight = window.innerWidth - (box.left + box.width / 2) - right - NIB / 2;
+      const nibLimit = Math.max(NIB, width - NIB - ANCHOR_EDGE);
+      const topText = `${box.bottom + ANCHOR_EDGE}px`;
+      const rightText = `${right}px`;
+      const nibText = `${Math.min(Math.max(NIB, nibRight), nibLimit)}px`;
+      if (panel.style.top !== topText) panel.style.top = topText;
+      if (panel.style.right !== rightText) panel.style.right = rightText;
+      if (panel.style.left !== "auto") panel.style.left = "auto";
+      if (!panel.classList.contains("is-anchored")) panel.classList.add("is-anchored");
+      if (nib.style.right !== nibText) nib.style.right = nibText;
+    };
+    place();
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [panelRef, nibRef]);
+}
+
+/**
+ * `approvalArrival` 이 마운트 이후 늘었을 때만 0.9초 흔들림.
+ * 스토어가 첫 스냅숏은 도착으로 세지 않으므로, 로드 때 이미 있던 요청은 흔들지 않는다.
+ * 대기가 0이면 바로 끈다. 진행 중 타이머는 도착이 아닐 때 끊지 않는다.
+ */
+function useArrivalSwing(items: readonly ApprovalItem[]): boolean {
+  const arrival = useSyncExternalStore(subscribeApprovals, approvalArrival, approvalArrival);
+  const seen = useRef<number | null>(null);
+  const timer = useRef(0);
+  const [swing, setSwing] = useState(false);
+  useEffect(() => {
+    if (items.length === 0) {
+      window.clearTimeout(timer.current);
+      setSwing(false);
+      seen.current = arrival;
+      return;
+    }
+    if (seen.current === null) {
+      seen.current = arrival;
+      return;
+    }
+    if (arrival === seen.current) return;
+    seen.current = arrival;
+    setSwing(true);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setSwing(false), 900);
+  }, [arrival, items.length]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return swing && items.length > 0;
 }
 
 function useClock(active: boolean): number {

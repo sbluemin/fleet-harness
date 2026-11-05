@@ -1,6 +1,8 @@
 .approval-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 .approval-entry {
+  --approval-pulse: var(--aurora);
+  --approval-tempo: 1;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -18,7 +20,7 @@
 }
 .approval-entry:hover,
 .approval-entry[aria-expanded="true"] { color: var(--text-primary); }
-.approval-bell { width: 15px; height: 15px; }
+.approval-bell { width: 15px; height: 15px; transform-origin: 50% 2px; }
 .approval-count {
   min-width: 18px;
   height: 18px;
@@ -32,6 +34,32 @@
   place-items: center;
 }
 .approval-entry.is-idle .approval-count { display: none; }
+.approval-entry.is-urgent { --approval-pulse: var(--warn); --approval-tempo: 0.55; }
+.approval-entry.is-arrive:not(.is-idle) .approval-bell { animation: approval-swing 0.9s cubic-bezier(.36, .07, .19, .97); }
+.approval-entry:not(.is-idle) .approval-count {
+  background: var(--approval-pulse);
+  animation: approval-glow calc(3.2s * var(--approval-tempo)) ease-in-out infinite;
+}
+.approval-entry.is-arrive:not(.is-idle) .approval-count {
+  animation: approval-badge 0.5s cubic-bezier(.2, 1.6, .4, 1), approval-glow calc(3.2s * var(--approval-tempo)) ease-in-out 0.5s infinite;
+}
+@keyframes approval-swing {
+  0% { transform: rotate(0); }
+  15% { transform: rotate(16deg); }
+  30% { transform: rotate(-13deg); }
+  45% { transform: rotate(9deg); }
+  60% { transform: rotate(-6deg); }
+  75% { transform: rotate(3deg); }
+  100% { transform: rotate(0); }
+}
+@keyframes approval-badge {
+  0% { transform: scale(.4); }
+  100% { transform: scale(1); }
+}
+@keyframes approval-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--approval-pulse) 0%, transparent); }
+  50% { box-shadow: 0 0 10px 2px color-mix(in oklch, var(--approval-pulse) 55%, transparent); }
+}
 .approval-entry-sep { width: 0.5px; height: 14px; background: var(--hairline-strong); }
 .approval-entry-urgent { display: inline-flex; align-items: center; gap: 6px; color: var(--text-primary); font-weight: var(--weight-medium); }
 .approval-entry-urgent.is-low,
@@ -57,7 +85,25 @@
   background: var(--popover-face);
   color: var(--text-primary);
   box-shadow: var(--popover-ring), 0 18px 48px oklch(0% 0 0 / 28%);
-  overflow: hidden;
+  /* 꼬리(마름모)가 위쪽 모서리 밖으로 나가야 하므로 표면은 자르지 않는다. 목록은 .approval-surface-scroll 이 자른다. */
+  overflow: visible;
+}
+.approval-surface.is-anchored { transform-origin: top right; animation: approval-pop 0.16s cubic-bezier(.2, .8, .2, 1); }
+.approval-nib {
+  display: none;
+  position: absolute;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  background: var(--popover-face);
+  transform: rotate(45deg);
+  box-shadow: -0.5px -0.5px 0 0 var(--popover-rim);
+  pointer-events: none;
+}
+.approval-surface.is-anchored .approval-nib { display: block; }
+@keyframes approval-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(.97); }
+  to { opacity: 1; transform: none; }
 }
 .approval-surface-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; }
 .approval-surface-head h2 { margin: 0; font-size: var(--t-base); font-weight: var(--weight-bold); }
@@ -116,4 +162,10 @@
 @media (max-width: 420px) {
   .approval-surface { top: 8px; right: 8px; left: 8px; width: auto; }
   .approval-diff-line { grid-template-columns: 44px 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .approval-entry .approval-bell,
+  .approval-entry .approval-count,
+  .approval-surface.is-anchored { animation: none !important; }
+  .approval-entry:not(.is-idle) .approval-count { box-shadow: 0 0 8px 1px color-mix(in oklch, var(--approval-pulse) 50%, transparent); }
 }
