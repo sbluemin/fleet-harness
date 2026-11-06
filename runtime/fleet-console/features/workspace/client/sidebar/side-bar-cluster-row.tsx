@@ -388,6 +388,54 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
     : undefined;
   const titleNode = <span className="side-bar-cluster-row-title" onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
   const style = accentValue ? ({ "--user-accent": accentValue } as CSSProperties) : undefined;
+  const hasProgressButton = !!popups && !!progress && !settled;
+  const statusLine = settled ? null : (
+    <span className="side-bar-cluster-row-line" aria-hidden={hasProgressButton ? undefined : true}>
+      <span className="side-bar-cluster-row-swap" aria-hidden="true">
+        <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
+        <RowToolUse tool={toolUse?.tool ?? null} label={toolUseLabel} />
+      </span>
+      {hasProgressButton ? (
+        <button
+          type="button"
+          className="side-bar-cluster-row-progress"
+          aria-label={`${popups.progressLabel(progress.done, progress.total)}${popups.unseen ? ` · ${popups.unseenLabel}` : ""}`}
+          aria-haspopup="dialog"
+          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onProgress(event.currentTarget); }}
+        >
+          <ClusterRowProgress progress={progress} />
+          {popups.unseen ? <i className="side-bar-cluster-row-progress-dot" aria-hidden="true" /> : null}
+        </button>
+      ) : popups ? null : <ClusterRowProgress progress={progress} />}
+    </span>
+  );
+  const mainButton = (
+    <button
+      type="button"
+      className="side-bar-cluster-row-main"
+      aria-current={active ? "true" : undefined}
+      aria-expanded={popups ? popups.open : undefined}
+      aria-haspopup={popups ? "dialog" : onContextMenu ? "menu" : undefined}
+      aria-label={[layout.cluster.title, label, toolUseLabel ?? "", ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
+      onClick={open}
+      onKeyDown={(event) => {
+        openFromKey(event);
+        if (event.defaultPrevented) return;
+        if (renameRow && event.key === "F2") {
+          event.preventDefault();
+          rename.begin();
+        }
+      }}
+    >
+      <span className="side-bar-cluster-row-head">
+        {rename.renaming ? renameInput : titleNode}
+        {headMeta.map((part) => (
+          <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
+        ))}
+      </span>
+      {hasProgressButton ? null : statusLine}
+    </button>
+  );
   return (
     <li
       ref={rowRef}
@@ -399,7 +447,6 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         settled ? "side-bar-cluster-row--settled" : "",
         settled && state === "done" ? "is-done" : "",
         popups?.open ? "is-open" : "",
-        popups && progress ? "has-progress-button" : "",
       ].filter(Boolean).join(" ")}
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}
@@ -443,50 +490,8 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
           <ClusterRowAvatar item={item} rowState={state} label={label} />
         </span>
       )}
-      <button
-        type="button"
-        className="side-bar-cluster-row-main"
-        aria-current={active ? "true" : undefined}
-        aria-expanded={popups ? popups.open : undefined}
-        aria-haspopup={popups ? "dialog" : onContextMenu ? "menu" : undefined}
-        aria-label={[layout.cluster.title, label, toolUseLabel ?? "", ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
-        onClick={open}
-        onKeyDown={(event) => {
-          openFromKey(event);
-          if (event.defaultPrevented) return;
-          if (renameRow && event.key === "F2") {
-            event.preventDefault();
-            rename.begin();
-          }
-        }}
-      >
-        <span className="side-bar-cluster-row-head">
-            {rename.renaming ? renameInput : titleNode}
-            {headMeta.map((part) => (
-              <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
-            ))}
-        </span>
-        {settled ? null : <span className="side-bar-cluster-row-line" aria-hidden="true">
-          <span className="side-bar-cluster-row-swap">
-            <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
-            <RowToolUse tool={toolUse?.tool ?? null} label={toolUseLabel} />
-          </span>
-          {popups ? null : <ClusterRowProgress progress={progress} />}
-        </span>}
-      </button>
-      {/* 임무 게이지 단추 — 행 본문 단추 안에 두지 않는다(단추 안 단추). 본문의 상태 줄과 같은 줄에 겹쳐 선다(카드 CSS). */}
-      {popups && progress && !settled ? (
-        <button
-          type="button"
-          className="side-bar-cluster-row-progress"
-          aria-label={`${popups.progressLabel(progress.done, progress.total)}${popups.unseen ? ` · ${popups.unseenLabel}` : ""}`}
-          aria-haspopup="dialog"
-          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onProgress(event.currentTarget); }}
-        >
-          <ClusterRowProgress progress={progress} />
-          {popups.unseen ? <i className="side-bar-cluster-row-progress-dot" aria-hidden="true" /> : null}
-        </button>
-      ) : null}
+      {/* 본문과 상태 줄은 같은 두 행을 공유한다. 임무 단추는 본문 밖에서 상태 문구 바로 뒤에 선다. */}
+      {hasProgressButton ? <div className="workspace-cluster-row-body">{mainButton}{statusLine}</div> : mainButton}
       {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식만 숨긴다. */}
       <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle ? {} : { "aria-hidden": true })}>
         {row.mark ? (row.mark.toggle ? <ClusterRowMarkToggle mark={row.mark} toggle={row.mark.toggle} /> : <ClusterRowMark mark={row.mark} />) : null}
