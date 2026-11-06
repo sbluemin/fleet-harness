@@ -105,8 +105,13 @@ describe("standalone Claude Code CLI launch", () => {
       const spec = await launch(theater, { sessionId: "standalone-cli", objectiveRecordType: "standalone-cli" });
 
       expect(spec.bin).toBe(bin);
-      // 인자가 없다 — --mcp-config·--plugin-dir·--settings·시스템 프롬프트·세션 좌표 어느 것도 싣지 않는다.
-      expect(spec.args).toEqual([]);
+      // Fleet MCP·플러그인·프롬프트·세션 좌표는 없다. 인자는 압축 창 --settings뿐이다.
+      expect(spec.args.filter((arg) => arg !== "--settings" && !arg.startsWith("{"))).toEqual([]);
+      const settings = JSON.parse(spec.args[spec.args.indexOf("--settings") + 1] ?? "{}") as {
+        modelSettings: Record<string, { autoCompactWindow: number }>;
+      };
+      // 카탈로그 272_000 × Auto(창−16_000) + 33_000.
+      expect(settings.modelSettings["claude-gateway--codex--gpt-6.1-sol[1m]"]?.autoCompactWindow).toBe(289_000);
       expect(spec.cwd).toBe(theater);
       expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:4100/api/v1/ai-gateway");
       expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();

@@ -45,6 +45,11 @@ describe("prepareAiGatewayLaunchProfile", () => {
 			ANTHROPIC_API_KEY: "key",
 		});
 		expect(prepared.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
+		const settings = JSON.parse(prepared.args[prepared.args.indexOf("--settings") + 1] ?? "{}") as {
+			modelSettings: Record<string, { autoCompactWindow: number }>;
+		};
+		expect(settings.modelSettings["claude-gateway--codex--gpt-6.1-sol[1m]"]?.autoCompactWindow).toBe(289_000);
+		expect(settings.modelSettings["claude-gateway--antigravity--gemini-3.8-flash[1m]"]?.autoCompactWindow).toBe(1_000_000);
 		expect(prepared.env).toMatchObject({
 			ANTHROPIC_AUTH_TOKEN: "token",
 			ANTHROPIC_API_KEY: "key",

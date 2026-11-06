@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { GATEWAY_MODELS, type GatewayModel } from "../models.js";
+import { claudeModelAutoCompactWindows } from "../downstream/harness/claude-code/auto-compact-window.js";
+import type { CompactCeiling } from "../downstream/harness/claude-code/context.js";
 import { buildAnthropicModelList } from "../downstream/harness/claude-code/discovery.js";
 import { type AiGatewaySelection } from "../settings/index.js";
 import { writeAtomicSync } from "@fleet-console/infra";
@@ -16,6 +18,8 @@ export interface AiGatewayLaunchEnvOptions {
 	readonly compactHookToken?: string;
 	/** 라우팅 Mod가 `/v1/fleet/routing/assign`을 부를 때 쓰는 자격. */
 	readonly modHookToken?: string;
+	/** Fleet 압축 시점. 없으면 Auto(창 − 16_000). */
+	readonly compactCeiling?: CompactCeiling | null;
 }
 
 export function prepareAiGatewayLaunchProfile(
@@ -62,7 +66,34 @@ export function prepareAiGatewayLaunchProfile(
 	);
 	// 자체 bearer는 주입하지 않는다. Claude Code가 이미 가진 OAuth 또는 환경변수 자격을 보내면
 	// built-in Anthropic 모델은 그대로 중계하고, 다른 provider 분기는 Console 소유 자격으로 교체한다.
-	return { ...profile, env };
+	return {
+		...profile,
+		env,
+		args: withModelAutoCompactSettings(profile.args, claudeModelAutoCompactWindows(GATEWAY_MODELS, options.compactCeiling ?? null)),
+	};
+}
+
+
+/** 기존 `--settings` JSON이 있으면 modelSettings만 합친다. 없으면 플래그를 하나 붙인다. */
+function withModelAutoCompactSettings(args: readonly string[], windows: Readonly<Record<string, number>>): string[] {
+	if (Object.keys(windows).length === 0) return [...args];
+	const modelSettings = Object.fromEntries(
+		Object.entries(windows).map(([id, autoCompactWindow]) => [id, { autoCompactWindow }]),
+	);
+	const next = [...args];
+	const index = next.indexOf("--settings");
+	if (index >= 0 && index + 1 < next.length) {
+		const parsed = JSON.parse(next[index + 1] ?? "") as Record<string, unknown>;
+		const existing = parsed.modelSettings;
+		parsed.modelSettings = {
+			...(existing !== null && typeof existing === "object" && !Array.isArray(existing) ? existing as Record<string, unknown> : {}),
+			...modelSettings,
+		};
+		next[index + 1] = JSON.stringify(parsed);
+		return next;
+	}
+	next.push("--settings", JSON.stringify({ modelSettings }));
+	return next;
 }
 
 /**

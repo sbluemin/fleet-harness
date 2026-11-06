@@ -31,12 +31,13 @@ Options:
   --provider-window <n>    Real provider context window
   --input-tokens <n>       Real input usage returned by the pressure turn
   --expect <result>        Expected auto-compact result
-  --auto-compact-window <n>  Optional explicit Claude Code compact ceiling
+  --auto-compact-window <n>  Optional compact ceiling, passed as --settings modelSettings (not env)
   --timeout-ms <ms>        Positive process timeout (default: ${DEFAULT_TIMEOUT_MS})
   --help                   Show this help without launching Claude Code
 
 The probe reports real usage without coordinate mapping, clears
-inherited auto-compact overrides, optionally injects the requested ceiling, and drives
+inherited auto-compact overrides, optionally passes the requested ceiling as
+--settings modelSettings (never CLAUDE_CODE_AUTO_COMPACT_WINDOW), and drives
 the installed Claude Code against a local fixture. It contacts no provider or credential.
 `);
     return;
@@ -180,9 +181,6 @@ async function runProbe(options) {
     ]) delete environment[name];
     delete environment.INIT_CWD;
     Object.assign(environment, {
-      ...(options.autoCompactWindow === undefined
-        ? {}
-        : { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(options.autoCompactWindow) }),
       ANTHROPIC_API_KEY: "sk-ant-fleet-gateway-smoke",
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}`,
       CLAUDE_CONFIG_DIR: configDir,
@@ -199,6 +197,9 @@ async function runProbe(options) {
       "--verbose",
       "--session-id", sessionId,
       "--tools", "",
+      ...(options.autoCompactWindow === undefined ? [] : ["--settings", JSON.stringify({
+        modelSettings: { [options.model]: { autoCompactWindow: options.autoCompactWindow } },
+      })]),
     ], { env: environment, stdio: ["pipe", "pipe", "pipe"] });
 
     let stdoutBuffer = "";
