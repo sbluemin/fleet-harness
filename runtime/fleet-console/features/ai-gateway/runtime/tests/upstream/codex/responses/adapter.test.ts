@@ -233,7 +233,7 @@ describe("codex responses adapter", () => {
     ).not.toHaveProperty("pattern");
   });
 
-  it("keeps a schema's own null apart from strict mode's omission null", async () => {
+  it("recovers a zero-usage strict-schema failure without losing tools or null semantics", async () => {
     // `dueDate: null` clears a due date and `member: null` assigns the Commander. Strict mode
     // turns every unused optional key into a null the strip must remove, so those nulls need
     // their own spelling or the call silently loses them.
@@ -244,6 +244,13 @@ describe("codex responses adapter", () => {
       `data: ${JSON.stringify({ type: "response.output_item.added", output_index: 0, item: { ...call, arguments: "" } })}\n\n`,
       `data: ${JSON.stringify({ type: "response.function_call_arguments.done", item_id: "fc_1", output_index: 0, arguments: args })}\n\n`,
       `data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: { ...call, arguments: args } })}\n\n`,
+    ));
+    fetchMock.mockImplementationOnce(async () => sse(
+      `data: ${JSON.stringify({ type: "response.created", response: { id: "discarded", model: "gpt-6.1-sol" } })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.incomplete", response: {
+        id: "discarded", model: "gpt-6.1-sol", status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" }, usage: { input_tokens: 0, output_tokens: 0 },
+      } })}\n\n`,
     ));
     const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
       tools: [{
@@ -258,7 +265,10 @@ describe("codex responses adapter", () => {
           },
           required: ["dueDate"],
         },
-      }],
+      }, ...Array.from({ length: 264 }, (_, index) => ({
+        type: "function" as const, name: `tool_${index}`,
+        parameters: { type: "object", properties: { value: { type: "string" } } },
+      }))],
     }), { apiKey: "k" });
     if (!response.ok) throw new Error("expected success");
     const events: CanonicalResponseEvent[] = [];
@@ -268,6 +278,16 @@ describe("codex responses adapter", () => {
       tools: Array<{ strict?: boolean; parameters: { properties: Record<string, { anyOf?: unknown[] }> } }>;
     };
     expect(body.tools[0]!.strict).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const fallback = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(fallback).toEqual({
+      ...JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
+      tools: body.tools.map((tool) => ({ ...tool, strict: false })),
+    });
+    expect(fallback.tools).toHaveLength(265);
+    expect(events).not.toContainEqual(expect.objectContaining({
+      type: "response.created", response: expect.objectContaining({ id: "discarded" }),
+    }));
     const nullSpelling = { type: "string", enum: ["<null>"] };
     // Required: the spelling replaces null outright. Optional: a bare null still means absent.
     expect(body.tools[0]!.parameters.properties.dueDate!.anyOf).toEqual([{ type: "string" }, nullSpelling]);
@@ -278,6 +298,44 @@ describe("codex responses adapter", () => {
       .toMatchObject({ arguments: decoded });
     expect(events.find((event) => event.type === "response.output_item.done"))
       .toMatchObject({ item: { type: "function_call", arguments: decoded } });
+  });
+
+  it("never relaxes strict schemas after inference, committed output, or a spent retry budget", async () => {
+    const terminal = (inputTokens: number) => `data: ${JSON.stringify({
+      type: "response.incomplete", response: {
+        id: "r", model: "gpt-6.1-sol", status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        usage: { input_tokens: inputTokens, output_tokens: 0 },
+      },
+    })}\n\n`;
+    const tools = [{ type: "function" as const, name: "read", parameters: { type: "object", properties: {} } }];
+    for (const scenario of ["inference", "committed", "no-tools", "tools-disabled", "suggestion", "spent-budget", "fallback-fails"] as const) {
+      const fetchMock = vi.fn<typeof fetch>(async () => sse(
+        ...(scenario === "committed" ? ['data: {"type":"response.output_text.delta","item_id":"m","output_index":0,"content_index":0,"delta":"partial"}\n\n'] : []),
+        terminal(scenario === "inference" ? 12 : 0),
+      ));
+      if (scenario === "spent-budget") fetchMock.mockImplementationOnce(async () => {
+        throw Object.assign(new Error("socket closed"), { code: "UND_ERR_SOCKET" });
+      });
+      const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+        ...(scenario === "no-tools" ? {} : { tools }),
+        ...(scenario === "tools-disabled" ? { tool_choice: "none" as const } : {}),
+        ...(scenario === "suggestion" ? { input: [{
+          type: "message" as const, role: "user" as const,
+          content: "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]\nReply with ONLY the suggestion.",
+        }] } : {}),
+      }), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected success");
+      const events = [];
+      for await (const event of response.events) events.push(event);
+      expect(fetchMock).toHaveBeenCalledTimes(
+        scenario === "spent-budget" || scenario === "fallback-fails" ? 2 : 1,
+      );
+      if (scenario === "tools-disabled" || scenario === "suggestion") {
+        expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).not.toHaveProperty("tools");
+      }
+      expect(events.at(-1)).toMatchObject({ type: "response.completed", response: { incomplete: { reason: "max_output_tokens" } } });
+    }
   });
 
   it("does not retry UND_ERR_SOCKET after caller-visible output was yielded", async () => {
