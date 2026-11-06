@@ -472,7 +472,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
 
   return (
     <>
-      {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 누르면 닫힌다.
+      {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 눌러도 닫히지 않는다.
           설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
       {scope === "tools" ? null : (
         <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 /* 레일은 다중 고정(pin) 스택에서 단일 독점 슬롯으로 회귀했다 — 카드에는 패널이 하나만 상주한다.
    - activePanelId: 카드에 상주하는 유일한 패널. localStorage에 영속.
-   - 아이콘 클릭은 배타 전환이다: 켜진 패널을 다시 누르면 닫히고, 다른 패널을 누르면 교체된다.
+   - 아이콘 클릭은 배타 전환이다: 켜진 패널을 다시 눌러도 열린 채로 두고, 다른 패널을 누르면 교체된다.
    - push/overlay 이원의 퇴역과 아레나 인셋 승계는 스택 시절 그대로다 — 열린 패널 폭이
      아레나에서 항상 제외된다. */
 interface RailStore {
@@ -104,13 +104,10 @@ export function isRailPanelOpen(id: string): boolean {
   return store.activePanelId === id;
 }
 
-/** 아이콘 클릭의 배타 토글 — 켜진 패널이면 닫고, 아니면 그 패널로 교체한다. */
+/** 아이콘 클릭의 배타 전환 — 켜진 패널이면 그대로 두고, 아니면 그 패널로 교체한다. */
 export function toggleRailPanel(id: string): void {
   if (toolHost?.owns(id)) { toolHost.toggle(id); return; }
-  if (store.activePanelId === id) {
-    dismissActiveRailPanel();
-    return;
-  }
+  if (store.activePanelId === id) return;
   activateRailPanel(id);
   notifyPersonToggle(true);
 }
@@ -122,7 +119,7 @@ export function openRailPanel(id: string): void {
 }
 
 /**
- * 사람이 오른쪽 사이드바를 닫는다(닫기 단추·머리 pill·켜진 아이콘 다시 누름·바깥 누름) — 닫힘은 `closeRailPanel` 과 같고, 닫힌 뒤
+ * 사람이 오른쪽 사이드바를 닫는다(닫기 단추·머리 pill·바깥 누름) — 닫힘은 `closeRailPanel` 과 같고, 닫힌 뒤
  * `subscribeRailPanelPersonToggle` 구독자에게 알린다. 대화 전환 cleanup·플러그인 capability 같은 호스트의 닫힘은 `closeRailPanel` 이라 알리지 않는다.
  */
 export function dismissRailPanel(id: string): void {
