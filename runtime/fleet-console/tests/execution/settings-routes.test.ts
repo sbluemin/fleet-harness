@@ -105,7 +105,7 @@ describe("terminal settings routes", () => {
   it("ignores retired delegation routing keys on read and drops them on the next save", async () => {
     const legacy = {
       version: 1, models: [{ id: "codex--gpt-6.1-sol" }],
-      delegationRoutingEnabled: true, delegationRoutingMode: "jev", delegationRoutingModel: "sonnet", delegationRoutingEffort: "low",
+      delegationRoutingEnabled: true, delegationRoutingMode: "model", delegationRoutingModel: "sonnet", delegationRoutingEffort: "low",
     } as AiGatewayStoredSettings;
     const harness = createRouteHarness({ aiGateway: legacy, body: { delegationRoutingMode: "model" } });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/api/v1/agent/settings" });
