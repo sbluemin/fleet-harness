@@ -45,7 +45,7 @@ export interface AgentSession {
   readonly effort?: string;
   readonly sessionName?: string;
   readonly disableSubagents?: boolean;
-  /** 이 Objective의 Claude 세션은 auto-memory를 끄고 뜬다. 태어날 때 정해지고 재개·재기동이 그대로 따른다. */
+  /** 생성 시 고정한 auto-memory 정책(true=끔, false=켬). 생략은 기존 설정이며 재개·재기동도 그대로 따른다. */
   readonly disableAutoMemory?: boolean;
   readonly id?: string;
   readonly transcriptPath?: string;

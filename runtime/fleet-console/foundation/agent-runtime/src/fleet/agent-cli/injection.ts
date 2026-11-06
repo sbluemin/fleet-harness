@@ -66,7 +66,7 @@ export interface InjectAgentCliProfileOptions {
   readonly claudeCodeDisabledAgents?: readonly string[];
   /** 이 세션에서 뺄 도구 이름들. 서브에이전트 규칙과 합쳐 두 표면에 실린다(`session.ts`). */
   readonly claudeCodeDisabledTools?: readonly string[];
-  /** 이 세션에서 auto-memory를 끈다. argv와 SDK 두 표면에 같은 키로 실린다(`session.ts`). */
+  /** 명시한 auto-memory 정책(true=끔, false=켬)을 argv·SDK와 자식 환경에 함께 싣는다(`session.ts`). */
   readonly disableAutoMemory?: boolean;
   /** 이 런치가 여는 Claude 세션의 출발점. 생략하면 새 세션을 발급한다. */
   readonly origin?: ClaudeSessionOrigin;
@@ -156,7 +156,7 @@ export async function injectAgentCliProfile(
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
       ...(options.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: options.claudeCodeDisabledAgents } : {}),
       ...(options.claudeCodeDisabledTools ? { claudeCodeDisabledTools: options.claudeCodeDisabledTools } : {}),
-      ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
+      ...(options.disableAutoMemory !== undefined ? { disableAutoMemory: options.disableAutoMemory } : {}),
       plugin: options.plugin,
       ...(options.pluginDirs?.length ? { pluginDirs: options.pluginDirs } : {}),
       ...(options.pluginEnv ? { pluginEnv: options.pluginEnv } : {}),
@@ -182,7 +182,7 @@ export async function injectAgentCliProfile(
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
       ...(session.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: session.claudeCodeDisabledAgents } : {}),
       ...(session.claudeCodeDisabledTools ? { claudeCodeDisabledTools: session.claudeCodeDisabledTools } : {}),
-      ...(session.disableAutoMemory ? { disableAutoMemory: true } : {}),
+      ...(session.disableAutoMemory !== undefined ? { disableAutoMemory: session.disableAutoMemory } : {}),
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     const mergeArgs = (nextPromptArgs: readonly string[]) => mergeAgentCliArgs(
@@ -230,7 +230,12 @@ export async function injectAgentCliProfile(
       // 자식은 플러그인 zip을 루프백에서 받아 간다. 사용자 프록시가 그 요청을 삼키면 세션은
       // 오류 없이 플러그인만 빠진 채 뜬다.
       // 플러그인 키는 사람이 Console 에 넣은 값이라 상속 환경의 같은 이름보다 앞선다.
-      env: withLoopbackProxyBypass({ ...profile.env, ...session.pluginEnv }),
+      env: withLoopbackProxyBypass({
+        ...profile.env,
+        ...session.pluginEnv,
+        // 생성 시 정책은 상속 환경·플러그인의 같은 키보다 우선한다.
+        ...(session.disableAutoMemory !== undefined ? { CLAUDE_CODE_DISABLE_AUTO_MEMORY: session.disableAutoMemory ? "1" : "0" } : {}),
+      }),
       args: mergeArgs(promptArgs),
       // 위치 인자는 이미 args 끝에 합쳐졌으므로 비운다. 남겨 두면 하류가 한 번 더 붙일 수 있다.
       promptArgs: [],

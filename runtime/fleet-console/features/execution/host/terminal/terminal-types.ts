@@ -34,7 +34,7 @@ export interface TerminalLaunchContext {
   readonly sessionName?: string;
   /** 서브에이전트 전부 끄기 — 설정의 옵트아웃 목록 대신 `Agent` 도구 자체를 막는다. spawn 인자로만 나간다. */
   readonly disableSubagents?: boolean;
-  /** auto-memory 끄기 — `--settings`의 `autoMemoryEnabled: false`. spawn 인자로만 나간다. */
+  /** 명시한 auto-memory 정책(true=끔, false=켬). 생략은 기존 설정이며 spawn 인자로만 나간다. */
   readonly disableAutoMemory?: boolean;
   /** 목표 세션 — SendMessage·ListAgents를 deny 한다. spawn 인자로만 나간다. */
   readonly objectiveMessaging?: boolean;

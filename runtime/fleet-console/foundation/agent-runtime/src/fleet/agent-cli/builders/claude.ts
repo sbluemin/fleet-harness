@@ -65,8 +65,8 @@ function buildSettingsArgs(
   }
   const deny = buildClaudeDenyRules(disabledAgents, disabledTools);
   if (deny.length > 0) settings.permissions = { deny };
-  // SDK 표면의 flag settings와 같은 키다(`session.ts`). `false`만 싣는다.
-  if (disableAutoMemory) settings.autoMemoryEnabled = false;
+  // SDK 표면의 flag settings와 같은 키다(`session.ts`). 명시한 켬·끔을 모두 싣는다.
+  if (disableAutoMemory !== undefined) settings.autoMemoryEnabled = !disableAutoMemory;
   if (workspaceHook) {
     // plugin CwdChanged는 2.1.212에서 누락된다. flag settings는 PTY와 SDK 양쪽에서 발화한다.
     const hook = { type: "command", command: workspaceHook.command, args: [...workspaceHook.args] };

@@ -552,6 +552,8 @@ export interface StoredPersonHold {
 }
 
 export interface PendingCommander {
+  /** 생성 시 고정하는 자동 메모리 정책. 옛 레코드의 생략은 기존 설정을 보존한다. */
+  readonly disableAutoMemory?: boolean;
   readonly commodoreId: string;
   readonly cwd: string;
   readonly theaterId: string;

@@ -152,7 +152,7 @@ export async function prepareChatClaudeSession(
     origin: deps.origin,
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
     ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
-    ...(deps.disableAutoMemory ? { disableAutoMemory: true } : {}),
+    ...(deps.disableAutoMemory !== undefined ? { disableAutoMemory: deps.disableAutoMemory } : {}),
     claudeCodeDisabledTools: consoleDisabledTools(deps.objectiveMessaging),
     workspaceHookExec: buildConsoleWorkspaceHookCommand(buildConsoleHookEntry(deps)),
     ...(gatewaySelection
@@ -248,7 +248,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       resumeSessionId: context?.resumeSessionId,
       sessionName: context?.sessionName,
       ...(context?.disableSubagents ? { disableSubagents: true } : {}),
-      ...(context?.disableAutoMemory ? { disableAutoMemory: true } : {}),
+      ...(context?.disableAutoMemory !== undefined ? { disableAutoMemory: context?.disableAutoMemory } : {}),
       ...(context?.objectiveMessaging ? { objectiveMessaging: true } : {}),
       sessionId,
     });
@@ -291,7 +291,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly sessionName?: string;
   /** 서브에이전트 전부 끄기 — 설정의 옵트아웃 목록 대신 `Agent` 도구 자체를 막는다. */
   readonly disableSubagents?: boolean;
-  /** auto-memory 끄기 — Chat 표면과 같은 설정 키(`autoMemoryEnabled: false`)로 실린다. */
+  /** 명시한 auto-memory 정책(true=끔, false=켬) — Chat 표면과 같은 설정 키로 실린다. */
   readonly disableAutoMemory?: boolean;
   /** 목표 세션이면 SendMessage·ListAgents를 deny 목록에 더한다. */
   readonly objectiveMessaging?: boolean;
@@ -386,7 +386,7 @@ async function createAgentCliLaunchSpec(options: {
       // 사령관 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
       ...(basePromptEnabled ? {} : { claudeCodeSystemPrompt: "off" as const }),
       ...(options.disableSubagents ? { claudeCodeDisabledAgents: [ALL_SUBAGENTS] } : {}),
-      ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
+      ...(options.disableAutoMemory !== undefined ? { disableAutoMemory: options.disableAutoMemory } : {}),
       // 사람에게 묻는 도구와 계획 모드 도구는 늘 뺀다 — 서브에이전트 규칙과 합쳐 같은 deny 목록으로 실린다.
       // 목표 세션은 여기에 SendMessage·ListAgents를 더한다.
       claudeCodeDisabledTools: consoleDisabledTools(options.objectiveMessaging),

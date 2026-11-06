@@ -352,7 +352,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(context.resumeSessionId ? { resumeSessionId: context.resumeSessionId } : {}),
       ...(context.sessionName ? { sessionName: context.sessionName } : {}),
       ...(context.disableSubagents ? { disableSubagents: true } : {}),
-      ...(context.disableAutoMemory ? { disableAutoMemory: true } : {}),
+      ...(context.disableAutoMemory !== undefined ? { disableAutoMemory: context.disableAutoMemory } : {}),
       ...(context.objectiveMessaging ? { objectiveMessaging: true } : {}),
       ...(context.colorScheme ? { colorScheme: context.colorScheme } : {}),
     });

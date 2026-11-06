@@ -64,6 +64,8 @@ interface AgentRouteDeps {
   readonly organize?: Pick<ConsoleUseActions, "rename" | "group">;
   readonly agentOptionsService: AgentOptionsService;
   readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
+  /** 직접 만드는 새 지휘관의 정책. 기존·재개 세션에는 읽지 않는다. */
+  readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean;
   /** 사령관이 고른 플러그인의 로컬 디렉터리 — 그 사령관 목표의 세션이 새로 열릴 때 싣는다. */
   readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
   /** 그 플러그인 MCP 선언의 `${VAR}`에 채울 키 — 같은 세션의 자식 환경에 얹는다. */
@@ -753,7 +755,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         assertCurrent();
         const source = readObjectiveLaunchSource(caller);
         if (!source) throw new ConsoleControlError("invalid_launch_source");
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, launchedBy: source, commodoreId: input.commodoreId, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory ? { disableAutoMemory: true } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), chatBorn: true, ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, launchedBy: source, commodoreId: input.commodoreId, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), chatBorn: true, ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보는 생성 payload에 들어가 launch 스냅샷보다 먼저 내구화된다.
         const launchedId = response.value.sessionId as string;
@@ -1317,6 +1319,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     reply: (status: number, value: unknown) => void,
     launchOptions: { readonly launchedBy?: NonNullable<ReturnType<typeof readObjectiveLaunchSource>>; readonly sourceObjectiveId?: string; readonly commodoreId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
+    // 보드가 먼저 만든 지휘관(newObjectiveId)은 pending에 저장한 값만 쓴다(legacy 생략도 보존).
+    // 직접 생성은 첫 await 이전에 사령관 설정 또는 부모의 고정값을 스냅샷으로 잡는다.
+    if (launchOptions.disableAutoMemory === undefined && !launchOptions.newObjectiveId) {
+      const parent = launchOptions.parentObjectiveId ? readAgentSession(ctx.host.objectiveRecords.get(launchOptions.parentObjectiveId)) : undefined;
+      const disableAutoMemory = launchOptions.parentObjectiveId
+        ? parent?.disableAutoMemory ?? true
+        : !(deps.commodoreAutoMemoryEnabled?.(launchOptions.commodoreId ?? "") ?? true);
+      launchOptions = { ...launchOptions, disableAutoMemory };
+    }
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
     if (!launchOptions.dormant && (!meta || !meta.available || !meta.signedIn)) {
@@ -1357,7 +1368,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
           ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
           // 태어날 때의 auto-memory 정책은 세션 스냅샷에 남아 재개·재기동·모델 변경이 그대로 따른다.
-          ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
+          ...(launchOptions.disableAutoMemory !== undefined ? { disableAutoMemory: launchOptions.disableAutoMemory } : {}),
         },
         // 채팅으로 태어난 Objective은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
         // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
@@ -1408,7 +1419,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
           ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
           ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
-          ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
+          ...(launchOptions.disableAutoMemory !== undefined ? { disableAutoMemory: launchOptions.disableAutoMemory } : {}),
           ...(launchOptions.parentObjectiveId || ctx.isCommanderSession?.(sessionId) ? { objectiveMessaging: true as const } : {}),
         });
         // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
@@ -1808,7 +1819,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(agent?.effort ? { effort: agent.effort } : {}),
         ...(agent?.sessionName ? { sessionName: agent.sessionName } : {}),
         ...(agent?.disableSubagents ? { disableSubagents: true } : {}),
-        ...(agent?.disableAutoMemory ? { disableAutoMemory: true } : {}),
+        ...(agent?.disableAutoMemory !== undefined ? { disableAutoMemory: agent?.disableAutoMemory } : {}),
         ...(previousSessions && previousSessions.length > 0 ? { previousSessions } : {}),
       },
     });
@@ -2298,7 +2309,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const additionalDirectories = ctx.host.paths.resolveObjectiveAdditionalDirectories?.(node.id);
     const chatBasePromptEnabled = deps.commodoreSystemPrompts?.basePromptEnabled(node.commodoreId) ?? true;
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node) ? [ALL_SUBAGENTS] : [];
-    const chatDisableAutoMemory = readAgentSession(node)?.disableAutoMemory === true;
+    const chatDisableAutoMemory = readAgentSession(node)?.disableAutoMemory;
     const mcpTokenLabel = `chat:${node.id}`;
     let freshConsumed = false;
     return {
@@ -2394,7 +2405,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
             plugin: ctx.agentCliPlugin,
             ...(chatBasePromptEnabled ? {} : { claudeCodeSystemPrompt: "off" as const }),
             claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
-            ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
+            ...(chatDisableAutoMemory !== undefined ? { disableAutoMemory: chatDisableAutoMemory } : {}),
             ...(node.parentObjectiveId || ctx.isCommanderSession?.(node.id) ? { objectiveMessaging: true as const } : {}),
             ...(node.commodoreId && deps.commodorePluginDirs ? { pluginDirs: deps.commodorePluginDirs(node.commodoreId) } : {}),
             ...(node.commodoreId && deps.commodorePluginEnv ? { pluginEnv: deps.commodorePluginEnv(node.commodoreId) } : {}),
@@ -2656,7 +2667,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const objectiveRecord = ctx.host.objectiveRecords.get(objectiveId);
     const cliId = objectiveRecord ? CLAUDE_HARNESS_ID : undefined;
     const blockSubagents = objectiveRecord ? subagentSpawnBlocked(objectiveRecord) : context?.disableSubagents === true;
-    const disableAutoMemory = objectiveRecord ? readAgentSession(objectiveRecord)?.disableAutoMemory === true : context?.disableAutoMemory === true;
+    const disableAutoMemory = objectiveRecord ? readAgentSession(objectiveRecord)?.disableAutoMemory : context?.disableAutoMemory;
     const providerSession = readProviderSession(objectiveRecord)?.id;
     // prompt는 spawn-only. Objective payload·브라우저 DTO에 넣지 않는다(FORBIDDEN_BROWSER_PAYLOAD_KEYS).
     return launchResolver(cwd, {
@@ -2673,7 +2684,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ...(context?.prompt ? { prompt: context.prompt } : {}),
       ...(context?.sessionName ? { sessionName: context.sessionName } : {}),
       ...(blockSubagents ? { disableSubagents: true } : {}),
-      ...(disableAutoMemory ? { disableAutoMemory: true } : {}),
+      ...(disableAutoMemory !== undefined ? { disableAutoMemory } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }
