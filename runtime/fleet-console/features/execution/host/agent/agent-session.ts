@@ -1,6 +1,6 @@
 import { contextBreakdownOf } from "./context-breakdown.js";
 import { SDK_CLAUDE_SKILL_OVERRIDES } from "@fleet-console/agent-runtime/fleet";
-import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, projectClaudeContextInputTokens, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
+import { CLAUDE_AUTO_COMPACT_RESERVE, claudeAutoCompactWindowTokens, claudeGatewayModelPolicy, claudeModelAutoCompactWindows, compactThresholdTokens, findGatewayModel, GATEWAY_MODELS, type CompactCeiling } from "@fleet-console/ai-gateway";
 import path from "node:path";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
@@ -9,6 +9,8 @@ import { z } from "zod";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
 import { FLEET_BROWSER_MCP_SERVER, type BrowserPluginConnection, type BrowserPluginOptions } from "../../../browser/host/mcp.js";
 import { FLEET_COMPUTER_USE_MCP_SERVER, type ComputerUsePluginConnection, type ComputerUsePluginOptions } from "../../../computer-use/host/mcp.js";
+
+export { CLAUDE_AUTO_COMPACT_RESERVE };
 
 export interface AgentSessionHostDeps {
   readonly baseUrl: () => string | null;
@@ -20,8 +22,8 @@ export interface AgentSessionHostDeps {
   /** 설치된 Claude Code 실행 파일. 없으면 SDK 동봉본이 떠서 새 모델을 모르는 옛 버전이 될 수 있다. */
   readonly resolveExecutablePath?: () => Promise<string>;
   /**
-   * Gateway의 compact 정책(Settings › AI Gateway). Gateway 모델 세션의 문맥 토큰을 실제 공급자 창으로 되돌릴 때 읽는다 —
-   * Gateway가 사용량을 투영할 때 읽는 그 값이어야 두 쪽이 같은 자를 쓴다. 없으면 Auto(창 − 16k)다.
+   * Gateway의 compact 정책(Settings › AI Gateway). 모델 최대 창으로 자동 압축 창을 계산할 때 읽는다.
+   * 없으면 Auto(창 − 16k)다.
    */
   readonly compactCeiling?: () => CompactCeiling | null | undefined;
 
@@ -140,14 +142,15 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       delete env.FLEET_CONSOLE_SESSION_ID;
       const executablePath = await deps.resolveExecutablePath?.();
       if (resources.resident && (typeof executablePath !== "string" || !executablePath.trim())) throw new Error("agent_cli_unavailable");
-      const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt, deps.compactCeiling?.() ?? null);
+      const modelAutoCompactWindows = sessionModelAutoCompactWindows(options.model, options.compactAt, deps.compactCeiling?.() ?? null);
       return (deps.createSdk ?? createClaudeGatewaySdk)({
         baseUrl, models: [options.model], env, modelPolicy: claudeGatewayModelPolicy,
         ...(resources.resident ? { disableBundledSkills: true as const, skillOverrides: SDK_CLAUDE_SKILL_OVERRIDES } : {}),
         ...(options.autoMemoryEnabled === undefined ? {} : { autoMemoryEnabled: options.autoMemoryEnabled }),
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.
         ...(resources.resident ? { home: { kind: "persistent" as const, configDir: path.join(scratch, "claude") } } : { tempRoot: scratch }),
-        ...(executablePath === undefined ? {} : { executablePath }), ...(autoCompactWindow === undefined ? {} : { autoCompactWindow }),
+        ...(executablePath === undefined ? {} : { executablePath }),
+        ...(Object.keys(modelAutoCompactWindows).length > 0 ? { modelAutoCompactWindows } : {}),
       });
     };
     const buildTurn = (): ClaudeExecutionTurn => ({
@@ -213,15 +216,13 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
           const usage = await resident.contextUsage();
           if (!usage) return null;
           if (gateway === undefined) return contextBreakdownOf(usage);
-          // Gateway 모델의 자식은 공급자 창을 Claude 좌표(200k·1M)로 투영해 말한다. 결과 사건(`inGatewayFrame`)과 같은 좌표·함수·
-          // 정책 값으로 되돌려야 내역의 합과 칩의 총량이 같은 자를 쓴다.
+          // 자식이 말한 토큰은 실제 점유다. 창과 압축 지점만 카탈로그·정책으로 붙인다.
           const ceiling = deps.compactCeiling?.() ?? null;
-          const coordinate = gateway >= CLAUDE_COMPAT_CONTEXT_WINDOW ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
           const threshold = compactThresholdTokens(gateway, ceiling);
           return contextBreakdownOf(usage, {
             max: gateway,
             compactAt: options.compactAt === undefined ? threshold : Math.min(options.compactAt, threshold),
-            unproject: (tokens) => unprojectClaudeContextInputTokens(tokens, gateway, coordinate, ceiling),
+            unproject: (tokens) => tokens,
           });
         },
       } : {}),
@@ -340,43 +341,27 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
 }
 
 /**
- * Claude Code가 자동 압축 창에서 빼는 몫 — 출력 예약 `min(maxOutputTokens, 20k)`과 여유 13k.
- * 압축 지점은 `창 − 33k`다(2.1.293 바이너리 판독, 2.1.296 실측: 창 100k에서 67k). 출력 상한이 20k보다
- * 작은 모델만 그 차이만큼 늦게 압축한다.
+ * 카탈로그 전 모델의 자동 압축 창. 세션이 `compactAt`을 주면 그 모델만 정책 지점과 그 중 이른 쪽으로 덮는다.
+ * `compactAt`이 없어도 정책(없으면 Auto)으로 넣는다 — env 기본 1M에 기대지 않는다.
  */
-export const CLAUDE_AUTO_COMPACT_RESERVE = 33_000;
-/** Claude Code가 받는 자동 압축 창의 범위. 밖의 값은 자식이 이 끝으로 clamp한다. */
-const CLAUDE_AUTO_COMPACT_WINDOW_MIN = 100_000;
-const CLAUDE_AUTO_COMPACT_WINDOW_MAX = 1_000_000;
-
-/**
- * 플러그인이 고른 압축 지점(문맥 토큰)을 자식의 자동 압축 창으로 옮긴다. 네이티브 Claude 모델은 지점에 출력 예약을
- * 더해 그대로 옮긴다.
- *
- * Gateway 카탈로그 모델(discovery 항목이 있는 비-Claude)은 자식이 Claude 좌표(200k/1M)로 투영된 사용량을 보므로,
- * 요청 지점을 Gateway가 투영할 때 쓰는 같은 자(카탈로그 창·ceiling)로 투영해 옮긴다 — 변환 없이 덮으면 투영된 좌표
- * 위에서 판정이 바뀌어 실제 압축 지점이 어긋난다. 라우팅 별칭의 턴별 축소는 여기가 알 수 없어 카탈로그 창을 쓴다.
- * Gateway 기본 지점이 이미 요청 안이면 덮지 않고 그 정책을 따른다(상한 의미). 창을 모르면 투영할 자가 없으므로
- * Gateway 정책을 따른다.
- */
-function claudeAutoCompactWindow(model: string, compactAt: number, ceiling: CompactCeiling | null): number | undefined {
-  let catalog: boolean;
-  try { catalog = claudeGatewayModelPolicy.resolve(model).discovery !== undefined; }
-  catch { return undefined; }
-  if (!catalog) return Math.min(CLAUDE_AUTO_COMPACT_WINDOW_MAX, Math.max(CLAUDE_AUTO_COMPACT_WINDOW_MIN, compactAt + CLAUDE_AUTO_COMPACT_RESERVE));
-  const window = findGatewayModel(model)?.contextWindow;
-  if (typeof window !== "number" || !Number.isFinite(window) || window <= 0) return undefined;
-  const providerThreshold = compactThresholdTokens(window, ceiling);
-  if (providerThreshold <= compactAt) return undefined;
-  const projected = projectClaudeContextInputTokens(compactAt, window, window, ceiling);
-  return Math.min(CLAUDE_AUTO_COMPACT_WINDOW_MAX, Math.max(CLAUDE_AUTO_COMPACT_WINDOW_MIN, projected + CLAUDE_AUTO_COMPACT_RESERVE));
+function sessionModelAutoCompactWindows(model: string, compactAt: number | undefined, ceiling: CompactCeiling | null): Readonly<Record<string, number>> {
+  const windows: Record<string, number> = { ...claudeModelAutoCompactWindows(GATEWAY_MODELS, ceiling) };
+  if (compactAt === undefined) return windows;
+  let id: string;
+  try { id = claudeGatewayModelPolicy.resolve(model).id; }
+  catch { return windows; }
+  const catalogWindow = findGatewayModel(model)?.contextWindow;
+  const override = typeof catalogWindow === "number"
+    ? claudeAutoCompactWindowTokens(catalogWindow, ceiling, compactAt)
+    : Math.min(1_000_000, Math.max(100_000, compactAt + CLAUDE_AUTO_COMPACT_RESERVE));
+  if (override !== undefined) windows[id] = override;
+  return windows;
 }
 
 /**
  * Gateway 카탈로그 모델(비-Claude)이면 그 실제 창(모르면 `null`), 아니면 `undefined`.
  *
- * 그런 세션의 자식은 Gateway가 공급자 창에서 Claude 좌표(200k, 1M 이상이면 1M)로 비례 투영한 사용량을 말하고, 세션이
- * 요청한 지점과 Gateway compact 정책 지점 중 이른 쪽에서 압축한다. 창은 Gateway가 투영할 때 읽는 그 카탈로그 조회다.
+ * 창은 카탈로그 조회다. 자식은 1M 좌표로 광고된 채 토큰을 실제 점유로 말하므로, 여기서 다시 스케일하지 않는다.
  */
 function gatewayModelWindow(model: string): number | null | undefined {
   try { if (claudeGatewayModelPolicy.resolve(model).discovery === undefined) return undefined; }
@@ -386,26 +371,16 @@ function gatewayModelWindow(model: string): number | null | undefined {
 }
 
 /**
- * Gateway 모델 세션의 사건을 호출자의 좌표로 옮긴다 — 문맥 토큰은 실제 공급자 토큰으로 되돌리고, 그 단위의 창과 실제 압축 지점을
- * `usage.context`로 싣는다. 세션이 지점을 요청했으면 Gateway 기본 지점과 요청 중 이른 쪽이 실제 지점이다(자식 창도 그쪽으로
- * 실린다). 창을 모르면 되돌릴 자가 없으므로 토큰은 그대로 두고 지점은 모른다(`null`)고 말한다.
- * 역투영은 Chat의 문맥 표시와 같은 함수·같은 정책 값이다.
+ * Gateway 모델 세션의 결과에 실제 창과 압축 지점을 싣는다. 토큰은 다시 스케일하지 않는다.
+ * 세션이 지점을 요청했으면 정책 지점과 요청 중 이른 쪽이 실제 지점이다. 창을 모르면 지점은 `null`이다.
  */
 function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: CompactCeiling | null, compactAt?: number): AgentEvent {
   if (window === null) {
     return event.kind === "result" && event.usage ? { ...event, usage: { ...event.usage, context: { window: null, compactAt: null } } } : event;
   }
-  const coordinate = window >= CLAUDE_COMPAT_CONTEXT_WINDOW ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
-  const real = (tokens: number) => unprojectClaudeContextInputTokens(tokens, window, coordinate, ceiling);
-  if (event.kind === "compacted") {
-    return { ...event, preTokens: real(event.preTokens), ...(event.postTokens === undefined ? {} : { postTokens: real(event.postTokens) }) };
-  }
-  if (event.kind === "result" && event.usage) {
-    const { contextTokens } = event.usage;
-    const threshold = compactThresholdTokens(window, ceiling);
-    return { ...event, usage: { ...event.usage, ...(contextTokens === undefined ? {} : { contextTokens: real(contextTokens) }), context: { window, compactAt: compactAt === undefined ? threshold : Math.min(compactAt, threshold) } } };
-  }
-  return event;
+  if (event.kind !== "result" || !event.usage) return event;
+  const threshold = compactThresholdTokens(window, ceiling);
+  return { ...event, usage: { ...event.usage, context: { window, compactAt: compactAt === undefined ? threshold : Math.min(compactAt, threshold) } } };
 }
 
 /** Claude Code 가 MCP 도구 이름에 쓰는 서버 몫 — 영숫자·`_`·`-` 밖의 글자는 `_`가 된다. */

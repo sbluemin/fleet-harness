@@ -13,8 +13,8 @@ import type { TerminalLaunchContext, TerminalLaunchSpec } from "../terminal/term
  * 독립 Claude Code CLI의 런치.
  *
  * 사령관도 지휘관도 아닌, AI Gateway만 바라보는 평범한 `claude`다. 그래서 Agent 런치(`agent/launch.ts`)가
- * 싣는 것 — Fleet MCP(`--mcp-config`)·Fleet 플러그인 트리·시스템 프롬프트·`--settings` 정책·세션 훅·
- * 세션 좌표 — 을 하나도 싣지 않는다. 인자는 비어 있고, 사용자 `~/.claude`의 설정·CLAUDE.md·스킬·
+ * 싣는 것 — Fleet MCP(`--mcp-config`)·Fleet 플러그인 트리·시스템 프롬프트·세션 훅·세션 좌표 —
+ * 을 싣지 않는다. 인자는 압축 창 `--settings`뿐이다. 사용자 `~/.claude`의 설정·CLAUDE.md·스킬·
  * 플러그인·MCP와 Theater의 `.mcp.json`은 Claude Code가 평소대로 읽는다.
  *
  * 환경만 다르다: Gateway로 향하는 변수를 얹고, Console이 다른 Claude 세션 안에서 떴을 때 상속했을
@@ -33,7 +33,8 @@ export interface StandaloneCliLaunchDeps {
 
 /**
  * 부모 Claude 세션이나 Fleet 세션에서 상속될 수 있는 이름들. 값이 있어도 이 CLI의 것이 아니다.
- * 사용자가 셸에서 직접 고른 Claude Code 설정(예: 자동 compact 창, 서브에이전트 깊이)은 여기 없다 — 그것은 남긴다.
+ * 사용자가 셸에서 직접 고른 Claude Code 설정(예: 서브에이전트 깊이)은 여기 없다 — 그것은 남긴다.
+ * `CLAUDE_CODE_AUTO_COMPACT_WINDOW`만은 settings보다 우선하므로 자식 환경에서 지운다.
  */
 const INHERITED_SESSION_ENV_KEYS = [
   // Fleet 세션 식별·훅 자격. 이 CLI에는 Fleet 훅이 없다.
@@ -83,7 +84,8 @@ export function createStandaloneCliLaunchResolver(deps: StandaloneCliLaunchDeps)
     });
     // Gateway 변수와 모델 캐시는 Agent PTY와 같은 한 함수가 같은 목록(로그인된 카탈로그)으로 정한다 — 같은 홈의
     // 캐시를 다른 목록으로 덮으면 그 홈을 쓰는 다른 자식의 별칭이 흔들린다. compact·Mod 자격은 넘기지 않는다.
-    const selection = deps.readAiGatewaySettings ? resolveAiGatewaySelection(deps.readAiGatewaySettings()) : undefined;
+    const gatewaySettings = deps.readAiGatewaySettings ? deps.readAiGatewaySettings() : undefined;
+    const selection = gatewaySettings ? resolveAiGatewaySelection(gatewaySettings) : undefined;
     const profile = prepareAiGatewayLaunchProfile({
       id: "claude",
       label: "Claude Code",
@@ -95,6 +97,7 @@ export function createStandaloneCliLaunchResolver(deps: StandaloneCliLaunchDeps)
     }, {
       baseUrl: `${origin}${deps.aiGateway.routePath}`,
       ...(selection ? { selection: { ...selection, models: visibleGatewayModels(readStatuses(deps.readProviderStatuses)) } } : {}),
+      compactCeiling: gatewaySettings?.compactCeiling ?? null,
       ...(deps.homeDir ? { homeDir: deps.homeDir } : {}),
     });
     const launchEnv: Record<string, string> = { ...profile.env };

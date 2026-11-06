@@ -3077,8 +3077,8 @@ function gatewayLaunchOptionErrorStatus(error: GatewayLaunchOptionError): 400 | 
 }
 
 /**
- * 카탈로그가 아는 이 모델의 실제 창. 게이트웨이가 usage를 투영할 때 읽는 것과 같은 조회이므로 두 쪽이
- * 같은 수를 쓴다. 네이티브 Claude 모델과 카탈로그 밖 id는 `undefined`다.
+ * 카탈로그가 아는 이 모델의 실제 창. 압축 창 계산이 읽는 것과 같은 조회다.
+ * 카탈로그 밖 id는 `undefined`다.
  */
 function catalogContextWindow(model: string): number | undefined {
   const window = findGatewayModel(model)?.contextWindow;

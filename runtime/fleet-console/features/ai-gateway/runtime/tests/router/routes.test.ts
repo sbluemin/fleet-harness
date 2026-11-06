@@ -92,6 +92,117 @@ describe("Claude Codex compaction routing", () => {
     expect(res.status).toBe(401);
   });
 
+  it("recovers input overflow before commit and preserves streaming after output starts", async () => {
+    const overflow = { type: "invalid_request_error", code: "context_length_exceeded", message: "Your input exceeds the context window of this model." };
+    const frame = (event: unknown) => `data: ${JSON.stringify(event)}\n\n`;
+    const created = { type: "response.created", response: { id: "r", model: "gpt-6.1-sol", usage: null } };
+    const failed = { type: "response.failed", response: { error: overflow } };
+    const text = { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "recovered" };
+    const completed = { type: "response.completed", response: { id: "r", model: "gpt-6.1-sol", usage: { input_tokens: 1, output_tokens: 1 } } };
+    let mode: "http" | "early" | "summary" | "late" | "success" | "quiet" = "http";
+    let finish: (() => void) | undefined;
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      if (mode === "http" || mode === "summary") {
+        const native = payload.input.some((item: { type: string }) => item.type === "compaction_trigger");
+        return new Response(JSON.stringify({ error: native ? { type: "invalid_request_error", message: "Unsupported compaction trigger" } : overflow }), { status: 400 });
+      }
+      if (mode === "quiet") {
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+          controller.enqueue(new TextEncoder().encode(frame(created)));
+          setTimeout(() => {
+            controller.enqueue(new TextEncoder().encode(frame(text) + frame(completed)));
+            controller.close();
+          }, 15_000);
+        } }), { headers: { "content-type": "text/event-stream" } });
+      }
+      if (mode === "success") {
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+          controller.enqueue(new TextEncoder().encode(frame(created) + frame(text)));
+          finish = () => { controller.enqueue(new TextEncoder().encode(frame(completed))); controller.close(); };
+        } }), { headers: { "content-type": "text/event-stream" } });
+      }
+      return new Response(frame(created) + (mode === "late" ? frame(text) : "") + frame(failed), { headers: { "content-type": "text/event-stream" } });
+    });
+    const router = createAiGatewayRouter({
+      readAuth, fetch: fetchMock,
+      compactionStore: {
+        path: "unused", recordPreCompact() {}, recordPostCompact() {}, clearPending() {}, writeReady() {}, clear() {},
+        readReady: () => undefined,
+        readPending: () => ({ trigger: "auto", customInstructions: "", updatedAt: Date.now() }),
+      },
+    });
+    const run = async (messages?: ReadonlyArray<Record<string, unknown>>) => {
+      const res = response();
+      await router.handle(ctx({ res, token: ANTHROPIC_CRED, messages }));
+      return res;
+    };
+    const expectOverflow = (res: ResponseStub) => {
+      expect(res.status).toBe(413);
+      const error = JSON.parse(res.body).error;
+      expect(error.type).toBe("invalid_request_error");
+      expect(error.message).toMatch(/^Prompt is too long:.*context window/);
+    };
+    try {
+      const guarded = await run([{ role: "user", content: "x".repeat(2_400_000) }]);
+      expectOverflow(guarded);
+      const numericOverflow = /^Prompt is too long: (\d+) tokens > (\d+) maximum context window$/.exec(JSON.parse(guarded.body).error.message);
+      expect(Number(numericOverflow?.[1])).toBeGreaterThan(500_000);
+      expect(Number(numericOverflow?.[2])).toBe(500_000);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expectOverflow(await run());
+      mode = "early";
+      expectOverflow(await run());
+      mode = "summary";
+      const summary = response();
+      await router.handle(ctx({ res: summary, token: ANTHROPIC_CRED,
+        metadata: { user_id: JSON.stringify({ session_id: "4d7c1b52-3f7e-4f0a-9d55-2b8f6a1c0e91" }) },
+        messages: [{ role: "user", content: `${CLAUDE_COMPACT_PROMPT_MARKER} Summarize.` }],
+      }));
+      expectOverflow(summary);
+      mode = "late";
+      const late = await run();
+      expect(late.status).toBe(200);
+      expect(late.body).toContain("recovered");
+      expect(late.body).toContain("event: error");
+      expect(late.body).toContain("Prompt is too long");
+      mode = "success";
+      const live = response();
+      let firstOutput!: () => void;
+      const first = new Promise<void>((resolve) => { firstOutput = resolve; });
+      const write = live.write.bind(live);
+      live.write = (chunk) => { const result = write(chunk); if (live.body.includes("recovered")) firstOutput(); return result; };
+      const pending = router.handle(ctx({ res: live, token: ANTHROPIC_CRED }));
+      await first;
+      expect(live.status).toBe(200);
+      expect(live.body).not.toContain("message_stop");
+      finish!();
+      await pending;
+      expect(live.body).toContain("message_stop");
+
+      // Codex may buffer response.created until actual output; silence must still get heartbeats.
+      vi.useFakeTimers();
+      mode = "quiet";
+      const quiet = response();
+      const delayed = router.handle(ctx({ res: quiet, token: ANTHROPIC_CRED }));
+      await vi.advanceTimersByTimeAsync(999);
+      expect(quiet.headersSent).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(quiet.status).toBe(200);
+      expect(quiet.body).toContain(": keep-alive\n\n");
+      expect(quiet.body).not.toContain("recovered");
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(quiet.body.match(/: keep-alive/g)).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(4_000);
+      await delayed;
+      expect(quiet.body).toContain("recovered");
+      expect(quiet.body).toContain("message_stop");
+    } finally {
+      vi.useRealTimers();
+      router.dispose();
+    }
+  });
+
   // 압축 다음 턴은 체크포인트를 앞에 실은 채 업스트림에 닿아야 한다. 한때 입력 토큰 추정이
   // 그 항목을 도구 결과로 읽어 TypeError를 냈고, 압축 뒤 모든 턴이 500으로 끝났다.
   it("continues the turn after a compaction with the checkpoint replayed upstream", async () => {
@@ -373,7 +484,7 @@ describe("delegation assignment", () => {
 
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({
-      model: "claude-gateway--codex--gpt-6.1-terra",
+      model: "claude-gateway--codex--gpt-6.1-terra[1m]",
       because: "no model named → work",
     });
   });
@@ -387,7 +498,7 @@ describe("delegation assignment", () => {
       providerPlugin: "fleet",
     });
 
-    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--codex--gpt-6.1-terra" });
+    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--codex--gpt-6.1-terra[1m]" });
   });
 
   it("spreads a fan across providers instead of piling onto one, and steps over a spent allowance", async () => {
@@ -413,7 +524,7 @@ describe("delegation assignment", () => {
       spread,
     ).model);
 
-    expect(carried.every((model) => model === "claude-gateway--codex--gpt-6.1-terra")).toBe(true);
+    expect(carried.every((model) => model === "claude-gateway--codex--gpt-6.1-terra[1m]")).toBe(true);
     expect(providerLoad.get("codex")).toBe(4);
     expect(providerLoad.get("xai")).toBeUndefined();
   });
@@ -459,7 +570,7 @@ describe("delegation assignment", () => {
     );
 
     expect(decision.model).not.toBe(reserved);
-    expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra");
+    expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra[1m]");
     // hostOnly는 위임 후보를 더 이상 갈라내지 않는다. 구 200k 좌표는 가족의 1M 항목으로 접힌다.
     // 표식이 있던 항목을 켠 목록에서 빼는 것은 저장 이행(4판)이 한다.
     const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] } as unknown as Parameters<typeof resolveAiGatewaySelection>[0]);
@@ -632,15 +743,17 @@ describe("delegation assignment", () => {
     ]);
     expect(data.candidates[0]).toEqual({
       model: "codex--gpt-6.1-terra",
+      fast: false,
       efforts: ["low", "medium", "high"],
       pressure: "elevated",
-      summary: "Balanced coding and implementation model (500K context).",
+      summary: "Balanced coding and implementation model.",
     });
     expect(data.candidates[1]).toEqual({
       model: "xai--grok-composer-2.5-fast",
+      fast: true,
       efforts: [],
       pressure: "unknown",
-      summary: "Fast code editing and implementation model (200K context).",
+      summary: "Code editing and implementation model.",
     });
 
     // 리셋이 지난 창이나 미래 시각 관측은 ok로 오인하지 않고 unknown으로 처리한다.
@@ -810,7 +923,7 @@ describe("Astra asynchronous tools", () => {
     const tools = ["Read", "Grep", "Glob", "Bash", "Edit", "AskUserQuestion", "mcp__other__Read"]
       .map((name) => ({ name, input_schema: { type: "object", properties: {}, additionalProperties: false } }));
     const base = {
-      model: "claude-gateway--codex--gpt-6-astra-1m[1m]",
+      model: "claude-gateway--codex--gpt-6-astra",
       messages: [{ role: "user", content: "read the files" }], tools, stream: true, max_tokens: 128,
     };
     try {

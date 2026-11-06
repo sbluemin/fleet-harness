@@ -105,7 +105,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(spec).toMatchObject<TerminalLaunchSpec>({
       bin: "/bin/claude",
-      args: ["--model", "sonnet", "--fleet"],
+      args: expect.any(Array),
       cwd: "/work/project",
       env: expect.objectContaining({
         FLEET_CONSOLE_SESSION_ID: "session-a",
@@ -118,6 +118,11 @@ describe("createDefaultTerminalLaunchResolver", () => {
       messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
       terminalName: "xterm-256color",
     });
+    expect(spec.args.slice(0, 3)).toEqual(["--model", "sonnet", "--fleet"]);
+    expect(spec.args[3]).toBe("--settings");
+    const settings = JSON.parse(spec.args[4] ?? "{}") as { modelSettings: Record<string, { autoCompactWindow: number }> };
+    expect(settings.modelSettings["sonnet[1m]"]?.autoCompactWindow).toBe(1_000_000);
+    expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
     expect(injectProfile).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ claudeCodeSystemPrompt: "off", additionalDirectories: ["/work/a", "/work/b"] }));
     expect(injectProfile.mock.calls[0]?.[1]).not.toHaveProperty("claudeCodeCustomSystemPrompt");
@@ -207,6 +212,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
         CLAUDE_BIN: process.execPath,
         CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
         PATH: process.env.PATH,
+        CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000",
       },
       agentRuntime: createFakeRuntime() as never,
       aiGateway: {
@@ -237,7 +243,12 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
     codex = "ok";
     const spec = await launch("gateway-signed-in");
-    expect(spec.args).toContain("claude-gateway--codex--gpt-6.1-sol");
+    expect(spec.args).toContain("claude-gateway--codex--gpt-6.1-sol[1m]");
+    expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
+    const settings = JSON.parse(spec.args[spec.args.indexOf("--settings") + 1] ?? "{}") as {
+      modelSettings: Record<string, { autoCompactWindow: number }>;
+    };
+    expect(settings.modelSettings["claude-gateway--codex--gpt-6.1-sol[1m]"]?.autoCompactWindow).toBe(517_000);
   });
 
   it("accepts the gateway spelling of an enabled model", async () => {
@@ -258,7 +269,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     await resolve("/work/project", { sessionId: "gateway-roster-model", cliId: "claude", model: "claude-gateway--codex--gpt-6.1-sol" });
 
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--codex--gpt-6.1-sol" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--codex--gpt-6.1-sol[1m]" }));
   });
 
   it("launches the user's shell without Agent CLI injection for shell sessions", async () => {

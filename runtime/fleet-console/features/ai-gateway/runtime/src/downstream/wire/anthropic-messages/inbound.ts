@@ -2,13 +2,13 @@ import { collectAnthropicMessage, encodeAnthropicSse, translateAnthropicRequest 
 import type {
   AnthropicMessagesRequest,
   TranslateAnthropicRequestOptions,
-  UsageProjection,
 } from "./protocol.js";
 import { ContextWindowExceededError, canonicalMessageText } from "../../../canonical/index.js";
 import type {
   AiGatewayAdapter,
   CanonicalFunctionTool,
   CanonicalResponseRequest,
+  CanonicalResponseEvent,
 } from "../../../canonical/index.js";
 import { OpenAIResponsesAdapter } from "../../../upstream/codex/responses/adapter.js";
 import { withSseKeepAlive } from "../../../transport/sse-keepalive.js";
@@ -20,13 +20,6 @@ export { ContextWindowExceededError } from "../../../canonical/index.js";
 export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOptions {
   apiKey: string;
   /**
-   * Projection denominator for the client's own context meter — the coordinate the
-   * harness told the client this model has. Never a limit.
-   */
-  contextWindow?: number;
-  /** Harness-owned occupancy map, applied to every usage frame this turn emits. */
-  projectInputTokens?: UsageProjection;
-  /**
    * Lift an upstream refusal onto a status the client's retry budget acts on.
    *
    * Which statuses a client retries is that client's contract, so the map arrives from
@@ -35,8 +28,7 @@ export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOp
   retryableStatus?: (status: number) => number;
   /**
    * The model's real usable context window. Always set by the caller, regardless of
-   * whether the `[1m]` coordinate applies, and used only by the pre-flight overflow
-   * guard — never as a projection denominator.
+   * the downstream advertised window, and used only by the pre-flight overflow guard.
    */
   modelContextWindow?: number;
   signal?: AbortSignal;
@@ -144,25 +136,22 @@ export class AnthropicMessagesGateway {
       : upstream.events;
 
     if (request.stream === true) {
+      const deferred = await deferCreatedEvents(events);
       return {
         status: upstream.status,
         headers: new Headers({
           "cache-control": "no-cache",
           "content-type": "text/event-stream; charset=utf-8"
         }),
-        body: withSseKeepAlive(encodeAnthropicSse(events, {
-          contextWindow: options.contextWindow,
-          projectInputTokens: options.projectInputTokens,
+        body: withSseKeepAlive(encodeAnthropicSse(deferred.events, {
           model: request.model,
           estimatedInputTokens,
-        }))
+        }), undefined, deferred.timedOut)
       };
     }
 
     // Claude Code는 일부 요청을 비스트리밍으로 보낸다. 그때는 이벤트를 모아 단일 Messages 응답을 준다.
     const message = await collectAnthropicMessage(events, request.model, {
-      contextWindow: options.contextWindow,
-      projectInputTokens: options.projectInputTokens,
       model: request.model,
       estimatedInputTokens,
     });
@@ -174,6 +163,60 @@ export class AnthropicMessagesGateway {
   }
 }
 
+// One second retains early input refusals while leaving ample headroom before the 10s heartbeat.
+const INITIAL_OVERFLOW_LOOKAHEAD_MS = 1_000;
+
+/** Keep early input refusals recoverable without withholding heartbeats during long reasoning. */
+async function deferCreatedEvents(events: AsyncIterable<CanonicalResponseEvent>): Promise<{
+  readonly events: AsyncIterable<CanonicalResponseEvent>;
+  readonly timedOut: boolean;
+}> {
+  const iterator = events[Symbol.asyncIterator]();
+  const pending: CanonicalResponseEvent[] = [];
+  let next: Promise<IteratorResult<CanonicalResponseEvent>> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const deadline = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), INITIAL_OVERFLOW_LOOKAHEAD_MS);
+  });
+  try {
+    for (;;) {
+      next = iterator.next();
+      const result = await Promise.race([next, deadline]);
+      if (result === undefined) {
+        timedOut = true;
+        break;
+      }
+      next = undefined;
+      if (result.done) break;
+      pending.push(result.value);
+      if (result.value.type !== "response.created") break;
+    }
+  } catch (error) {
+    await iterator.return?.();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+  return {
+    timedOut,
+    events: (async function* () {
+      try {
+        yield* pending;
+        for (;;) {
+          // A timed-out read still belongs to this consumer: never discard it or read concurrently.
+          const result = await (next ?? iterator.next());
+          next = undefined;
+          if (result.done) return;
+          yield result.value;
+        }
+      } finally {
+        await iterator.return?.();
+      }
+    })(),
+  };
+}
+
 async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
   yield body;
 }
@@ -181,10 +224,10 @@ async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
 /**
  * Pre-flight overflow guard.
  *
- * Upstream providers report an overflow in provider-specific wire shapes we do not
- * translate, so a turn that exceeds the model window can die without any text Claude
- * Code can classify. Refusing the turn locally with the literal `Prompt is too long:`
- * prefix keeps reactive compaction reachable.
+ * Adapters normalize explicit provider overflows too, but this local backstop avoids
+ * sending a request that already exceeds the real catalog window. It never uses the
+ * larger window advertised to the client. The same recoverable refusal keeps reactive
+ * compaction reachable without spending another upstream turn.
  *
  * The estimate is a conservative character-based heuristic (see `estimateTokens`), not
  * a tokenizer. It is a last-resort backstop behind correct window accounting, never the

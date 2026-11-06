@@ -6,7 +6,7 @@ import type {
   CanonicalResponseSnapshot,
   ReasoningEffort,
 } from "../../canonical/index.js";
-import { clampReasoningEffort } from "../../canonical/index.js";
+import { ContextWindowExceededError, clampReasoningEffort } from "../../canonical/index.js";
 
 import type { CodexResponsesAdapter } from "./responses/adapter.js";
 
@@ -39,13 +39,17 @@ export async function compactCodexConversation(options: {
   let encryptedContent: string | undefined;
   try {
     encryptedContent = await requestNativeCompaction(options);
-  } catch {
+  } catch (error) {
+    if (error instanceof ContextWindowExceededError) throw error;
     // The plaintext fallback is an explicit second contract. Claude Code's own compact
     // prompt was measured to produce a 14-byte summary on Luna and lose durable state.
   }
 
   const rendered = encryptedContent
-    ? await renderOpaqueSummary(options, encryptedContent).catch(() => summarizePlaintext(options))
+    ? await renderOpaqueSummary(options, encryptedContent).catch((error) => {
+        if (error instanceof ContextWindowExceededError) throw error;
+        return summarizePlaintext(options);
+      })
     : await summarizePlaintext(options);
   return {
     ...(encryptedContent ? { encryptedContent } : {}),

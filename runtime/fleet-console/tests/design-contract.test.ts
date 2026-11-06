@@ -956,7 +956,7 @@ describe("Console core design contract", () => {
     // 그래서 등급은 모델 행과 팔레트 항목의 보조 줄 첫 낱말로만 선다.
     const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
     expect(css).not.toContain(".ai-gateway-class-badge");
-    for (const selector of [".ai-gateway-model-meta", ".ai-gateway-palette-hit-hint"]) {
+    for (const selector of [".ai-gateway-palette-hit-hint"]) {
       const rules = [...css.matchAll(new RegExp(`([^{}]*\\${selector}[^{}]*)\\{([^}]*)\\}`, "g"))];
       expect(rules.length).toBeGreaterThan(0);
       for (const [, , body] of rules) {

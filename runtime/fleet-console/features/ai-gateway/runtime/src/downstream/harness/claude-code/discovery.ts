@@ -43,50 +43,31 @@ import {
  */
 export const GATEWAY_MODEL_ALIAS_PREFIX = "claude-gateway--";
 const CLAUDE_ONE_MILLION_MARKER = "[1m]";
-const CLAUDE_ONE_MILLION_DISPLAY_SUFFIX = " (1M Context)";
 
 export function toGatewayModelAlias(modelId: string): string {
   return `${GATEWAY_MODEL_ALIAS_PREFIX}${modelId}`;
 }
 
 /**
- * Claude Code understands only its default 200k coordinate and the `[1m]` 1M
- * coordinate. Keep that marker truthful: only a provider model whose real window
- * reaches 1M is advertised as such. Every native Claude family entry is 1M, so it
- * always carries the marker; the unmarked 200k coordinate is left to custom models. The response compatibility seam maps every
- * other real window onto the unmarked 200k coordinate while preserving Claude's
- * absolute compaction reserve.
+ * Claude Code는 `[1m]`이 없는 사용자 정의 id의 좌표를 200_000으로 clamp한다.
+ * 실제 창과 무관하게 모든 모델을 1M 좌표로 광고하려면 마커가 필요하다(2.1.319 실측).
+ * 압축 시점은 이 마커가 아니라 settings `autoCompactWindow`가 정한다.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
-  if (model.provider === "claude") {
-    // 버전은 자식 CLI가 푼다 — alias를 넘겨야 CLI가 갱신돼도 최신 버전으로 뜬다.
-    // 네이티브 가족 항목은 모두 1M 창이므로 정준 실행 alias는 늘 `<family>[1m]`이다.
-    const id = model.claudeAlias ?? model.upstreamId ?? model.id;
-    return isClaudeOneMillionContextWindow(model.contextWindow)
-      ? `${id}${CLAUDE_ONE_MILLION_MARKER}`
-      : id;
-  }
-  const alias = toGatewayModelAlias(model.id);
-  return isClaudeOneMillionContextWindow(model.contextWindow)
-    ? `${alias}${CLAUDE_ONE_MILLION_MARKER}`
-    : alias;
+  // 네이티브 가족은 alias를 넘긴다 — 버전은 자식 CLI가 푼다.
+  const id = model.provider === "claude"
+    ? (model.claudeAlias ?? model.upstreamId ?? model.id)
+    : toGatewayModelAlias(model.id);
+  return hasClaudeOneMillionMarker(id) ? id : `${id}${CLAUDE_ONE_MILLION_MARKER}`;
 }
-
-function toClaudeGatewayModelDisplayName(model: GatewayModel): string {
-  return isClaudeOneMillionContextWindow(model.contextWindow)
-    ? `${model.displayName}${CLAUDE_ONE_MILLION_DISPLAY_SUFFIX}`
-    : model.displayName;
-}
-
 
 /**
  * A catalog entry by the id Claude Code actually sends.
  *
- * Claude Code may omit the discovery-only marker from the request, so both forms
- * resolve to the same registry model. A fabricated marker for a genuinely unmarked
- * 200k model would make Claude undercount its context, so accept a marker only when
- * discovery emits one. A bare catalog id still resolves — the child sends one when a
- * stored default predates the alias grammar.
+ * Claude Code may omit the discovery marker from the request, so both forms
+ * resolve to the same registry model. Every advertised id carries `[1m]`; a marker
+ * is still refused when discovery would not emit one. A bare catalog id still
+ * resolves — the child sends one when a stored default predates the alias grammar.
  */
 export function findClaudeGatewayModel(
   id: string,
@@ -118,7 +99,7 @@ export function buildAnthropicModelList(
     createdAt,
     (model) => ({
       id: toClaudeGatewayModelId(model),
-      displayName: toClaudeGatewayModelDisplayName(model),
+      displayName: model.displayName,
     }),
     (model) => anthropicModelCapabilities(model.effort),
   );

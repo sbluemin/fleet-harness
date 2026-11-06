@@ -28,7 +28,7 @@ import {
   createToolNameCodec,
   type AntigravitySignatureLedger,
 } from "./wire.js";
-import { parseAntigravityFrame, translateAntigravityStream } from "./stream.js";
+import { antigravityError, parseAntigravityFrame, translateAntigravityStream } from "./stream.js";
 
 /**
  * Cloud Code Assist's streaming turn endpoint.
@@ -200,12 +200,13 @@ export class AntigravityGenerateContentAdapter implements AiGatewayAdapter {
 
     if (!response.ok) {
       try {
-        return {
-          ok: false,
-          status: response.status,
-          headers: response.headers,
-          body: await readBoundedBody(response.body, readOptions),
-        };
+        const body = await readBoundedBody(response.body, readOptions);
+        if (response.status === 400) {
+          let parsed: unknown;
+          try { parsed = JSON.parse(new TextDecoder().decode(body)); } catch { /* Preserve non-JSON failures. */ }
+          antigravityError(parsed);
+        }
+        return { ok: false, status: response.status, headers: response.headers, body };
       } finally {
         unlink();
       }

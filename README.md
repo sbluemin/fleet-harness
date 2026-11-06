@@ -57,9 +57,9 @@ The gateway is a local Claude Code endpoint, not an API proxy. Claude Code keeps
 
 | Provider | Sign-in | Models |
 |---|---|---|
-| **Codex** | ChatGPT subscription | GPT-6.1 Sol and GPT-6 Astra · Sol · Luna, each at 272K, 524K or 1M context, with a Fast twin. GPT-6.1 Terra opens at 500K, with 524K and 1M variants and a Fast twin |
+| **Codex** | ChatGPT subscription | GPT-6.1 Sol · GPT-6 Astra · GPT-6 Luna · GPT-6.1 Terra. One identity and a 500,000-token context window per model, with an optional priority speed setting |
 | **Antigravity** | Google subscription | Gemini 3.8 Flash · Gemini 4 Argon |
-| **xAI** | Grok subscription | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
+| **xAI** | Grok subscription | Grok 4.7 · Grok Composer 2.5 |
 | **Muse Code** | Muse Code subscription | Muse Spark 1.3 · Muse Spark 1.3 Contributor |
 
 Each model carries its own reasoning ladder. Every row also offers **ULTRACODE**, which launches Claude Code at xhigh effort with standing multi-agent orchestration. With **AI Gateway routing** turned on, subagents and workflow stages are assigned to gateway models, and providers whose usage window is nearly spent are skipped. The usage meters at the top right use the same measure, so you see a window running hot before it stops a run.

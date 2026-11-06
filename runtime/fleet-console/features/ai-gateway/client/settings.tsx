@@ -164,10 +164,10 @@ function AiGatewayCompactTimingCard() {
 
   const ceiling = state.compactCeiling;
   const policy = compactPolicyFromCeiling(ceiling);
-  // 미리보기도 모델 로스터(켠 모델)에서 고른다 — 로스터가 비면 기본 창(272K)으로 그린다.
+  // 미리보기도 모델 로스터(켠 모델)에서 고른다 — 로스터가 비면 기본 창(500K)으로 그린다.
   const previewModels = rosterRows(previewRoster).filter((row) => typeof row.contextWindow === "number" && row.contextWindow > 0);
   const preview = (previewId ? findRosterRow(previewRoster, previewId) : null) ?? previewModels[0];
-  const previewWindow = preview?.contextWindow ?? 272_000;
+  const previewWindow = preview?.contextWindow ?? 500_000;
   const liveCeiling: CompactCeiling | null = policy === "custom" && dragPercent !== null
     ? dragPercent
     : ceiling;

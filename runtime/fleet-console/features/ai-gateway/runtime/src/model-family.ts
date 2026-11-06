@@ -1,12 +1,8 @@
 /**
  * 모델 계열과 위임 강도의 저장 규칙. 호스트 정규화와 설정 화면이 같은 함수를 쓴다.
  *
- * 계열 키는 id에서 `-fast`와 컨텍스트 접미사(`-524k`, `-1m`)를 벗긴 줄기다.
- * 접미사가 항상 쌍을 뜻하지는 않는다 — 짝이 없는 `…-fast`는 그 키의 유일한 변형이다.
+ * 모델은 창·속도와 무관하게 단일 id를 갖는다. 계열 키도 그 id 자체다.
  */
-
-const FAST_SUFFIX = /-fast$/i;
-const CONTEXT_SUFFIX = /-(\d+[km])$/i;
 
 /** 위임에 켜면 늘 포함하는 강도. */
 export const AI_GATEWAY_BASE_EFFORTS = ["low", "medium", "high"] as const;
@@ -27,9 +23,7 @@ export function isProviderCatalogVisible(status: string | null | undefined, prov
 }
 
 export function aiGatewayModelFamilyKey(id: string): string {
-  const stem = id.replace(FAST_SUFFIX, "");
-  const context = CONTEXT_SUFFIX.exec(stem);
-  return context ? stem.slice(0, context.index) : stem;
+  return id;
 }
 
 /**

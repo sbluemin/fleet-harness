@@ -2,7 +2,6 @@ import { estimateTokens } from "../../../transport/token-estimate.js";
 
 export const CLAUDE_COMPAT_CONTEXT_WINDOW = 1_000_000;
 export const CLAUDE_DEFAULT_CONTEXT_WINDOW = 200_000;
-const CLAUDE_COMPACT_RESERVE = 32_000;
 export const PROVIDER_COMPACT_RESERVE = 16_000;
 const COMPACT_CEILING_EARLY_PERCENT = 88;
 const COMPACT_CEILING_LATE_PERCENT = 97;
@@ -169,87 +168,6 @@ function messageTextIncludes(content: unknown, marker: string): boolean {
   ));
 }
 
-/**
- * Map a provider model's occupied input onto the fixed coordinate Claude Code assigns
- * from its model id: 200k without `[1m]`, 1M with it. Native Claude families always
- * launch on `[1m]`; the unmarked 200k coordinate applies to custom models only.
- *
- * Claude Code 2.1.227 compacted between 166k/168k on 200k and 966k/968k on 1M,
- * leaving roughly 32k on either coordinate. Scale usage so that observed compact
- * threshold lands 16k before the real provider window instead. This keeps the status
- * line increasing from the first token, while letting a 272k model reach 256k and a
- * 1M model reach 984k before compaction.
- *
- * An upstream-reported window can narrow the catalog value. This matters for routing
- * aliases whose serving model changes per turn: the reported window, when present,
- * is the real capacity the current response occupied. The result is capped at the
- * coordinate so an inconsistent over-window usage cannot strand Claude Code in its
- * manual "context exceeds the limit" state.
- */
-export function projectClaudeContextInputTokens(
-  inputTokens: number,
-  advertisedContextWindow: number | undefined,
-  upstreamContextWindow: number | undefined = advertisedContextWindow,
-  compactCeiling?: CompactCeiling | null,
-): number {
-  if (!Number.isFinite(inputTokens) || inputTokens < 0) return inputTokens;
-  const advertisedWindow = positiveContextWindow(advertisedContextWindow);
-  if (advertisedWindow === undefined) return inputTokens;
-  const projectionWindow = positiveContextWindow(upstreamContextWindow) ?? advertisedWindow;
-  const coordinate = advertisedWindow >= CLAUDE_COMPAT_CONTEXT_WINDOW
-    ? CLAUDE_COMPAT_CONTEXT_WINDOW
-    : CLAUDE_DEFAULT_CONTEXT_WINDOW;
-  const claudeCompactThreshold = coordinate - CLAUDE_COMPACT_RESERVE;
-  const providerCompactThreshold = compactThresholdTokens(projectionWindow, compactCeiling);
-  if (providerCompactThreshold <= 0) return Math.min(coordinate, inputTokens);
-  return Math.min(
-    coordinate,
-    Math.ceil(inputTokens * claudeCompactThreshold / providerCompactThreshold),
-  );
-}
-
-/**
- * Read a projected occupancy back onto the provider's real window.
- *
- * This is the inverse of the map above, and it exists because Claude Code reports its own
- * coordinate — never the provider's — to anything that asks it how full the window is. A
- * surface that prints those tokens verbatim states a 200k window for a 500k model, and the
- * breakdown beside them partitions the same wrong total. Measured on xAI Grok 4.6: the child
- * reported 15,785 of 200,000 while the provider had actually consumed 45,473 of 500,000, and
- * this inverse recovers 45,478 of it — five tokens, invisible at the thousands granularity
- * every caller displays.
- *
- * `claudeCoordinate` is what the child said its window is, and it is checked rather than
- * trusted: only Claude's two real coordinates admit an inverse, so any other value (a host
- * that moved the child's ceiling, a future release with a third coordinate) returns the input
- * untouched instead of inventing a scale. The forward map's upstream-window narrowing has no
- * inverse either — a caller holding only the catalog window cannot know which turn was served
- * by a narrower alias — so the result is an occupancy on the advertised window, never a claim
- * about which model served it.
- */
-export function unprojectClaudeContextInputTokens(
-  projectedTokens: number,
-  advertisedContextWindow: number | undefined,
-  claudeCoordinate: number | undefined,
-  compactCeiling?: CompactCeiling | null,
-): number {
-  if (!Number.isFinite(projectedTokens) || projectedTokens < 0) return projectedTokens;
-  const advertisedWindow = positiveContextWindow(advertisedContextWindow);
-  if (advertisedWindow === undefined) return projectedTokens;
-  if (claudeCoordinate !== CLAUDE_DEFAULT_CONTEXT_WINDOW
-    && claudeCoordinate !== CLAUDE_COMPAT_CONTEXT_WINDOW) {
-    return projectedTokens;
-  }
-  const claudeCompactThreshold = claudeCoordinate - CLAUDE_COMPACT_RESERVE;
-  if (claudeCompactThreshold <= 0) return projectedTokens;
-  const providerCompactThreshold = compactThresholdTokens(advertisedWindow, compactCeiling);
-  if (providerCompactThreshold <= 0) return projectedTokens;
-  return Math.min(
-    advertisedWindow,
-    Math.round(projectedTokens * providerCompactThreshold / claudeCompactThreshold),
-  );
-}
-
 /** Tokens of the real provider window at which Claude Code should compact. */
 export function compactThresholdTokens(
   window: number,
@@ -282,12 +200,6 @@ export function normalizeCompactCeiling(value: unknown): CompactCeiling | undefi
     return value;
   }
   return undefined;
-}
-
-function positiveContextWindow(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
-    ? value
-    : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

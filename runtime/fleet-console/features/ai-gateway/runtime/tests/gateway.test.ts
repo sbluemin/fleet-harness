@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { claudeCodeHarnessProfile } from "../src/downstream/harness/claude-code/profile.js";
 import {
   ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS,
   AnthropicMessagesGateway,
@@ -14,13 +13,10 @@ import {
   gatewayModelIdentity,
   parseGatewayModelsRegistry,
   resolveGatewayModel,
-  projectClaudeContextInputTokens,
-  unprojectClaudeContextInputTokens,
   toClaudeGatewayModelId,
   toGatewayModelAlias,
   DEFAULT_CODEX_MODEL,
   CHATGPT_CODEX_RESPONSES_URL,
-  ContextWindowExceededError,
   OPENAI_RESPONSES_URL,
   OpenAIResponsesAdapter,
   UpstreamBodyLimitError,
@@ -40,17 +36,6 @@ import type {
   FetchLike,
   GatewayModel
 } from "../src/index.js";
-
-/**
- * The occupancy map Claude Code's profile installs on every turn.
- *
- * The wire itself no longer projects — a harness that meters on the provider's real
- * window passes nothing — so a test that asserts Claude's coordinate has to hand the
- * wire the same projection the router does.
- */
-function claudeProjection(compactCeiling?: "early" | "late" | number) {
-  return claudeCodeHarnessProfile.usageProjection?.(compactCeiling);
-}
 
 describe("Anthropic request translation", () => {
 
@@ -149,13 +134,13 @@ describe("model catalog", () => {
     expect(() => parseGatewayModelsRegistry(duplicate)).toThrow(/Duplicate gateway model id/);
 
     const invalidTier = minimalRegistry();
-    invalidTier.providers.xai.models[0] = {
+    invalidTier.providers.antigravity.models[0] = {
       modelId: "grok-4.6",
       name: "Grok",
       providerModelId: "grok-4.6",
-      serviceTier: "priority",
+      fastSupported: true,
     };
-    expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex/);
+    expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex and xAI/);
 
     const legacyAutoCompactThreshold = minimalRegistry();
     legacyAutoCompactThreshold.providers.codex.models[0] = {
@@ -302,67 +287,6 @@ describe("upstream errors", () => {
 
     expect(response.status).toBe(529);
     expect(await collectBody(response.body)).toBe(raw);
-  });
-});
-
-describe("pre-flight context window guard", () => {
-  /** Claude Code 2.1.220's own extraction regex for reactive compaction. */
-  const CLAUDE_OVERFLOW_RE = /prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i;
-  /** 4 chars/token for a non-code model id, so this estimates 300_000 tokens. */
-  const OVERFLOW_CHARS = 1_200_000;
-
-  function guardedGateway(): {
-    gateway: AnthropicMessagesGateway;
-    calls: () => number;
-  } {
-    let calls = 0;
-    const adapter: AiGatewayAdapter = {
-      async stream() {
-        calls += 1;
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          events: iterable<CanonicalResponseEvent>([
-            { type: "response.created", response: { id: "resp_guard", model: "gpt-6-sol", usage: null } },
-            { type: "response.completed", response: { id: "resp_guard", model: "gpt-6-sol", usage: { input_tokens: 1, output_tokens: 1 } } },
-          ]),
-        };
-      },
-    };
-    return { gateway: new AnthropicMessagesGateway(adapter), calls: () => calls };
-  }
-
-  function requestOfChars(chars: number): AnthropicMessagesRequest {
-    return {
-      model: "claude-sonnet-4-6",
-      messages: [{ role: "user", content: "x".repeat(chars) }],
-      max_tokens: 128,
-      stream: true,
-    };
-  }
-
-  it("emits the exact literal Claude Code classifies for reactive compaction", async () => {
-    const { gateway } = guardedGateway();
-
-    const error = await gateway.stream(requestOfChars(OVERFLOW_CHARS), {
-      apiKey: "k",
-      modelContextWindow: 272_000,
-    }).then(() => undefined, (thrown: unknown) => thrown);
-
-    expect(error).toBeInstanceOf(ContextWindowExceededError);
-    const overflow = error as ContextWindowExceededError;
-    expect(overflow.name).toBe("ContextWindowExceededError");
-    expect(overflow.message).toMatch(/^Prompt is too long: \d+ tokens > \d+ maximum context window$/);
-    // Claude Code's three classifiers: prefix, lowercased substring, numeric extraction.
-    expect(overflow.message.startsWith("Prompt is too long")).toBe(true);
-    expect(overflow.message.toLowerCase()).toContain("prompt is too long");
-    const match = CLAUDE_OVERFLOW_RE.exec(overflow.message);
-    expect(match).not.toBeNull();
-    expect(Number(match?.[1])).toBe(overflow.requestTokens);
-    expect(Number(match?.[2])).toBe(overflow.contextWindow);
-    expect(overflow.contextWindow).toBe(272_000);
-    expect(overflow.requestTokens).toBeGreaterThan(272_000);
   });
 });
 

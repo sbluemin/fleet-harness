@@ -9,7 +9,7 @@ import type {
   CanonicalResponseSnapshot,
   CanonicalUsage,
 } from "../../../canonical/index.js";
-import { withoutReplayMetadata } from "../../../canonical/index.js";
+import { ContextWindowExceededError, withoutReplayMetadata } from "../../../canonical/index.js";
 import {
   UpstreamProtocolError,
   linkAbortSignal,
@@ -382,6 +382,14 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         idleTimeoutMs: this.idleTimeoutMs,
         maxBodyBytes: this.maxBodyBytes
       });
+      let parsedError: unknown;
+      try { parsedError = JSON.parse(new TextDecoder().decode(body)); } catch { /* Preserve non-JSON failures. */ }
+      if ((response.status === 400 || response.status === 413) && isRecord(parsedError) && isRecord(parsedError.error)) {
+        const error = parsedError.error;
+        if (error.code === "context_length_exceeded" || error.type === "context_length_exceeded") {
+          throw new ContextWindowExceededError();
+        }
+      }
       return {
         ok: false,
         status: response.status,
@@ -1180,11 +1188,12 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
       return { type: "response.completed", response: terminalSnapshot(value.response, value.type) };
     case "response.failed": {
       const response = record(value.response, "response.failed.response");
+      const error = canonicalError(response.error);
       return {
         type: value.type,
         response: {
           ...responseSnapshot(response),
-          error: canonicalError(response.error)
+          error
         }
       };
     }
@@ -1314,6 +1323,9 @@ const XAI_CAPACITY_MESSAGE = /\bat capacity\b|\boverloaded\b/i;
 
 function canonicalError(value: unknown): CanonicalError {
   const error = record(value, "error");
+  if (error.code === "context_length_exceeded" || error.type === "context_length_exceeded") {
+    throw new ContextWindowExceededError();
+  }
   const message = string(error.message, "error.message");
   return { type: xaiErrorType(error, message), message };
 }

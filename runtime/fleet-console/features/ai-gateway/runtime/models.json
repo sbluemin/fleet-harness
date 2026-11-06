@@ -10,7 +10,7 @@
         {
           "modelId": "gemini-3.8-flash",
           "name": "Gemini-3.8-Flash",
-          "description": "Fast multimodal coding and scan model (1M context).",
+          "description": "multimodal coding and scan model.",
           "providerModelId": "gemini-3.8-flash-high",
           "contextWindow": 1048576,
           "effort": {
@@ -30,7 +30,7 @@
         {
           "modelId": "gemini-4-argon",
           "name": "Gemini-4-Argon",
-          "description": "General-purpose coding and reasoning model (1M context).",
+          "description": "General-purpose coding and reasoning model.",
           "providerModelId": "gemini-4-argon-medium",
           "contextWindow": 1048576,
           "effort": {
@@ -52,13 +52,13 @@
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-6-astra",
-      "source": "codex app-server model/list (codex-cli 0.147.0, observed 2026-08-11) for model/effort/service-tier and the unsuffixed 272000 defaults; Fleet catalog effort ladders are capped at max because harness launch capabilities are not model rungs; 2026-08-17 production Codex live observations added explicit 524K (524288) and explicit 1M (1000000) variants on the same upstream bases; 2026-09-05 codex app-server model/list (codex-cli 0.153.4) added gpt-6-astra as the entry that now carries isDefault, reporting low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out of the catalog under the same launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 2x speed. A live app-server turn that day reported modelContextWindow 258400 for gpt-6-astra and the identical figure for gpt-5.6-sol, so Astra shares the 272000 base this catalog records for that lineup and takes the same explicit 524K/1M variants. The GPT-5.6 models stay listed because the same model/list still serves them with no upgrade pointer and no retirement date, unlike its deprecated gpt-5.4-mini entry; 2026-09-23 codex app-server model/list (codex-cli 0.156.0) added gpt-6-sol and gpt-6-luna after gpt-6-astra, with Sol reporting low/medium/high/xhigh/max/ultra and Luna low/medium/high/xhigh/max reasoning efforts (ultra again stays out under the launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 1.5x speed; the same client models_cache.json recorded context_window 272000 and max_context_window 872000 for both, identical to gpt-6-astra and the GPT-5.6 lineup, so both take the same explicit 524K/1M variants. GPT-5.6 Sol and GPT-5.6 Luna were then retired from this catalog in favor of their GPT-6 successors, while the Terra lineup stayed because GPT-6 had no Terra counterpart; 2026-09-30 client models_cache.json (codex-cli 0.159.2) added gpt-6.1-sol ahead of gpt-6-astra with low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out under the launch-capability cap), additionalSpeedTiers [\"fast\"], a priority \"Fast\" tier at 2x speed, and context_window 272000 with max_context_window 872000, identical to gpt-6-sol, so it takes the same explicit 524K/1M variants. GPT-6 Sol is retired from this catalog in favor of GPT-6.1 Sol (2026-11-01); stored selections keep their value and run the roster fallback; 2026-10-27 codex app-server model/list (codex-cli 0.161.0) added gpt-6.1-terra with low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out under the launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 1.5x speed. The same client models_cache.json (fetched 2026-10-27T04:10:07.644564Z) recorded context_window 500000 and max_context_window 872000 for gpt-6.1-terra, so the unsuffixed base and its Fast twin follow that 500000 default while the explicit 524K (524288) and 1M (1000000) variants stay. The previous Terra lineup is retired in favor of gpt-6.1-terra; model/list still serves the retired id with no upgrade pointer and no retirement date",
+      "source": "Codex current-generation model lineup and reasoning ladders; Fleet exposes one id per model, a fixed 500000-token context window, and an optional priority service tier selected by the fast flag. Context-window and service-tier variants are not model identities.",
       "models": [
         {
           "modelId": "gpt-6-astra",
           "name": "GPT-6-Astra",
-          "description": "Flagship coding and reasoning model (272K context).",
-          "contextWindow": 272000,
+          "description": "Flagship coding and reasoning model.",
+          "contextWindow": 500000,
           "effort": {
             "supported": true,
             "levels": [
@@ -71,34 +71,14 @@
           },
           "aliases": [
             "gpt-6-astra"
-          ]
-        },
-        {
-          "modelId": "gpt-6-astra-fast",
-          "name": "GPT-6-Astra-Fast",
-          "description": "Flagship coding and reasoning model (priority tier, 272K context).",
-          "providerModelId": "gpt-6-astra",
-          "serviceTier": "priority",
-          "contextWindow": 272000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-astra-fast"
-          ]
+          ],
+          "fastSupported": true
         },
         {
           "modelId": "gpt-6.1-sol",
           "name": "GPT-6.1-Sol",
-          "description": "Deep reasoning and architecture model (272K context).",
-          "contextWindow": 272000,
+          "description": "Deep reasoning and architecture model.",
+          "contextWindow": 500000,
           "effort": {
             "supported": true,
             "levels": [
@@ -111,34 +91,14 @@
           },
           "aliases": [
             "gpt-6.1-sol"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-sol-fast",
-          "name": "GPT-6.1-Sol-Fast",
-          "description": "Deep reasoning and architecture model (priority tier, 272K context).",
-          "providerModelId": "gpt-6.1-sol",
-          "serviceTier": "priority",
-          "contextWindow": 272000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-sol-fast"
-          ]
+          ],
+          "fastSupported": true
         },
         {
           "modelId": "gpt-6-luna",
           "name": "GPT-6-Luna",
-          "description": "Lightweight, fast coding model (272K context).",
-          "contextWindow": 272000,
+          "description": "Lightweight, fast coding model.",
+          "contextWindow": 500000,
           "effort": {
             "supported": true,
             "levels": [
@@ -151,33 +111,13 @@
           },
           "aliases": [
             "gpt-6-luna"
-          ]
-        },
-        {
-          "modelId": "gpt-6-luna-fast",
-          "name": "GPT-6-Luna-Fast",
-          "description": "Lightweight, fast coding model (priority tier, 272K context).",
-          "providerModelId": "gpt-6-luna",
-          "serviceTier": "priority",
-          "contextWindow": 272000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-luna-fast"
-          ]
+          ],
+          "fastSupported": true
         },
         {
           "modelId": "gpt-6.1-terra",
           "name": "GPT-6.1-Terra",
-          "description": "Balanced coding and implementation model (500K context).",
+          "description": "Balanced coding and implementation model.",
           "contextWindow": 500000,
           "effort": {
             "supported": true,
@@ -191,356 +131,8 @@
           },
           "aliases": [
             "gpt-6.1-terra"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-terra-fast",
-          "name": "GPT-6.1-Terra-Fast",
-          "description": "Balanced coding and implementation model (priority tier, 500K context).",
-          "providerModelId": "gpt-6.1-terra",
-          "serviceTier": "priority",
-          "contextWindow": 500000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-terra-fast"
-          ]
-        },
-        {
-          "modelId": "gpt-6-astra-524k",
-          "name": "GPT-6-Astra-524K",
-          "description": "Flagship coding and reasoning model (524K context).",
-          "providerModelId": "gpt-6-astra",
-          "contextWindow": 524288,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-astra-524k"
-          ]
-        },
-        {
-          "modelId": "gpt-6-astra-524k-fast",
-          "name": "GPT-6-Astra-524K-Fast",
-          "description": "Flagship coding and reasoning model (priority tier, 524K context).",
-          "providerModelId": "gpt-6-astra",
-          "serviceTier": "priority",
-          "contextWindow": 524288,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-astra-524k-fast"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-sol-524k",
-          "name": "GPT-6.1-Sol-524K",
-          "description": "Deep reasoning and architecture model (524K context).",
-          "providerModelId": "gpt-6.1-sol",
-          "contextWindow": 524288,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-sol-524k"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-sol-524k-fast",
-          "name": "GPT-6.1-Sol-524K-Fast",
-          "description": "Deep reasoning and architecture model (priority tier, 524K context).",
-          "providerModelId": "gpt-6.1-sol",
-          "serviceTier": "priority",
-          "contextWindow": 524288,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-sol-524k-fast"
-          ]
-        },
-        {
-          "modelId": "gpt-6-luna-524k",
-          "name": "GPT-6-Luna-524K",
-          "description": "Lightweight, fast coding model (524K context).",
-          "providerModelId": "gpt-6-luna",
-          "contextWindow": 524288,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-luna-524k"
-          ]
-        },
-        {
-          "modelId": "gpt-6-luna-524k-fast",
-          "name": "GPT-6-Luna-524K-Fast",
-          "description": "Lightweight, fast coding model (priority tier, 524K context).",
-          "providerModelId": "gpt-6-luna",
-          "serviceTier": "priority",
-          "contextWindow": 524288,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-luna-524k-fast"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-terra-524k",
-          "name": "GPT-6.1-Terra-524K",
-          "description": "Balanced coding and implementation model (524K context).",
-          "providerModelId": "gpt-6.1-terra",
-          "contextWindow": 524288,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-terra-524k"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-terra-524k-fast",
-          "name": "GPT-6.1-Terra-524K-Fast",
-          "description": "Balanced coding and implementation model (priority tier, 524K context).",
-          "providerModelId": "gpt-6.1-terra",
-          "serviceTier": "priority",
-          "contextWindow": 524288,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-terra-524k-fast"
-          ]
-        },
-        {
-          "modelId": "gpt-6-astra-1m",
-          "name": "GPT-6-Astra-1M",
-          "description": "Flagship coding and reasoning model (1M context).",
-          "providerModelId": "gpt-6-astra",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-astra-1m"
-          ]
-        },
-        {
-          "modelId": "gpt-6-astra-1m-fast",
-          "name": "GPT-6-Astra-1M-Fast",
-          "description": "Flagship coding and reasoning model (priority tier, 1M context).",
-          "providerModelId": "gpt-6-astra",
-          "serviceTier": "priority",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-astra-1m-fast"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-sol-1m",
-          "name": "GPT-6.1-Sol-1M",
-          "description": "Deep reasoning and architecture model (1M context).",
-          "providerModelId": "gpt-6.1-sol",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-sol-1m"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-sol-1m-fast",
-          "name": "GPT-6.1-Sol-1M-Fast",
-          "description": "Deep reasoning and architecture model (priority tier, 1M context).",
-          "providerModelId": "gpt-6.1-sol",
-          "serviceTier": "priority",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-sol-1m-fast"
-          ]
-        },
-        {
-          "modelId": "gpt-6-luna-1m",
-          "name": "GPT-6-Luna-1M",
-          "description": "Lightweight, fast coding model (1M context).",
-          "providerModelId": "gpt-6-luna",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-luna-1m"
-          ]
-        },
-        {
-          "modelId": "gpt-6-luna-1m-fast",
-          "name": "GPT-6-Luna-1M-Fast",
-          "description": "Lightweight, fast coding model (priority tier, 1M context).",
-          "providerModelId": "gpt-6-luna",
-          "serviceTier": "priority",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-luna-1m-fast"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-terra-1m",
-          "name": "GPT-6.1-Terra-1M",
-          "description": "Balanced coding and implementation model (1M context).",
-          "providerModelId": "gpt-6.1-terra",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-terra-1m"
-          ]
-        },
-        {
-          "modelId": "gpt-6.1-terra-1m-fast",
-          "name": "GPT-6.1-Terra-1M-Fast",
-          "description": "Balanced coding and implementation model (priority tier, 1M context).",
-          "providerModelId": "gpt-6.1-terra",
-          "serviceTier": "priority",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-terra-1m-fast"
-          ]
+          ],
+          "fastSupported": true
         }
       ]
     },
@@ -552,23 +144,7 @@
         {
           "modelId": "grok-4.7",
           "name": "Grok-4.7",
-          "description": "General-purpose coding and reasoning model (500K context).",
-          "wire": "responses",
-          "contextWindow": 500000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh"
-            ]
-          }
-        },
-        {
-          "modelId": "grok-4.7-fast",
-          "name": "Grok-4.7-Fast",
-          "description": "Fast coding and reasoning variant of Grok 4.7 (500K context).",
+          "description": "General-purpose coding and reasoning model.",
           "wire": "responses",
           "contextWindow": 500000,
           "effort": {
@@ -580,26 +156,28 @@
               "xhigh"
             ]
           },
-          "providerModelId": "grok-4.7-build-fast"
+          "fastSupported": true,
+          "fastUpstreamId": "grok-4.7-build-fast"
         },
         {
           "modelId": "grok-composer-2.5-fast",
-          "name": "Grok-Composer-2.5-Fast",
-          "description": "Fast code editing and implementation model (200K context).",
+          "name": "Grok-Composer-2.5",
+          "description": "Code editing and implementation model.",
           "wire": "responses",
-          "contextWindow": 200000
+          "contextWindow": 200000,
+          "fast": true
         }
       ]
     },
     "muse-code": {
       "name": "Muse Code",
       "defaultModel": "muse-spark-1.3-contributor",
-      "source": "Fleet 실측(2026-09-25): 제품 라우터로 muse-spark-1.3-contributor 도구 루프 2턴(tool_use→tool_result→end_turn)이 HTTP 200 SSE로 성공했다. muse-spark-1.3과 아래 나머지 사양은 소스 기반이다. 모델 ID: Muse Code CLI 로그인 키로 GET https://api.meta.ai/v1/models 1회 실측(2026-09-25) — muse-spark-1.1/1.2/1.2-contributor/1.3/1.3-contributor와 비채팅 sam-3.1·muse-image-1.0·muse-voice-transcribe-1.0, capability 필드 없음. 현세대 1.3만 등록한다. 사양: oh-my-pi catalog rules meta.kdl·muse-code.kdl(2026-09-25 열람) — context 1048576, 최대 출력 131072, text+image, effort minimal~xhigh 및 1.3 standard의 max. contributor max는 지휘관이 직접 실측(2026-10-17T22:41:37Z~22:41:42Z): muse exec --model muse-spark-1.3-contributor --contributor-mode on --reasoning-effort max --max-model-steps 1 --workspace \"$T\" --json \"Reply with exactly: OK\"가 RC=0, run_terminal.text=OK, stream_succeeded, response_id=resp_6ad3f9a5f922a34ed9d44803으로 완료됐다. 단일 최소 프로브 1회로 max 요청 수락을 확인했으며 강도별 품질은 비교하지 않았다. minimal은 Fleet 노출 사다리 밖이라 low부터 노출한다. contributor는 같은 모델의 학습 동의 할인 SKU다. 와이어: https://api.meta.ai/v1/responses, x-api-version 1.0.0, tool_choice auto·function 도구만 허용(참고 소스 oh-my-pi 기록 2026-09-05/09-10; 거부 사례는 직접 미검증). 기본 모델 contributor는 비용을 보수적으로 잡은 Fleet 설계 선택이다. 벤치마크는 결합하지 않는다.",
+      "source": "Fleet \uc2e4\uce21(2026-09-25): \uc81c\ud488 \ub77c\uc6b0\ud130\ub85c muse-spark-1.3-contributor \ub3c4\uad6c \ub8e8\ud504 2\ud134(tool_use\u2192tool_result\u2192end_turn)\uc774 HTTP 200 SSE\ub85c \uc131\uacf5\ud588\ub2e4. muse-spark-1.3\uacfc \uc544\ub798 \ub098\uba38\uc9c0 \uc0ac\uc591\uc740 \uc18c\uc2a4 \uae30\ubc18\uc774\ub2e4. \ubaa8\ub378 ID: Muse Code CLI \ub85c\uadf8\uc778 \ud0a4\ub85c GET https://api.meta.ai/v1/models 1\ud68c \uc2e4\uce21(2026-09-25) \u2014 muse-spark-1.1/1.2/1.2-contributor/1.3/1.3-contributor\uc640 \ube44\ucc44\ud305 sam-3.1\u00b7muse-image-1.0\u00b7muse-voice-transcribe-1.0, capability \ud544\ub4dc \uc5c6\uc74c. \ud604\uc138\ub300 1.3\ub9cc \ub4f1\ub85d\ud55c\ub2e4. \uc0ac\uc591: oh-my-pi catalog rules meta.kdl\u00b7muse-code.kdl(2026-09-25 \uc5f4\ub78c) \u2014 context 1048576, \ucd5c\ub300 \ucd9c\ub825 131072, text+image, effort minimal~xhigh \ubc0f 1.3 standard\uc758 max. contributor max\ub294 \uc9c0\ud718\uad00\uc774 \uc9c1\uc811 \uc2e4\uce21(2026-10-17T22:41:37Z~22:41:42Z): muse exec --model muse-spark-1.3-contributor --contributor-mode on --reasoning-effort max --max-model-steps 1 --workspace \"$T\" --json \"Reply with exactly: OK\"\uac00 RC=0, run_terminal.text=OK, stream_succeeded, response_id=resp_6ad3f9a5f922a34ed9d44803\uc73c\ub85c \uc644\ub8cc\ub410\ub2e4. \ub2e8\uc77c \ucd5c\uc18c \ud504\ub85c\ube0c 1\ud68c\ub85c max \uc694\uccad \uc218\ub77d\uc744 \ud655\uc778\ud588\uc73c\uba70 \uac15\ub3c4\ubcc4 \ud488\uc9c8\uc740 \ube44\uad50\ud558\uc9c0 \uc54a\uc558\ub2e4. minimal\uc740 Fleet \ub178\ucd9c \uc0ac\ub2e4\ub9ac \ubc16\uc774\ub77c low\ubd80\ud130 \ub178\ucd9c\ud55c\ub2e4. contributor\ub294 \uac19\uc740 \ubaa8\ub378\uc758 \ud559\uc2b5 \ub3d9\uc758 \ud560\uc778 SKU\ub2e4. \uc640\uc774\uc5b4: https://api.meta.ai/v1/responses, x-api-version 1.0.0, tool_choice auto\u00b7function \ub3c4\uad6c\ub9cc \ud5c8\uc6a9(\ucc38\uace0 \uc18c\uc2a4 oh-my-pi \uae30\ub85d 2026-09-05/09-10; \uac70\ubd80 \uc0ac\ub840\ub294 \uc9c1\uc811 \ubbf8\uac80\uc99d). \uae30\ubcf8 \ubaa8\ub378 contributor\ub294 \ube44\uc6a9\uc744 \ubcf4\uc218\uc801\uc73c\ub85c \uc7a1\uc740 Fleet \uc124\uacc4 \uc120\ud0dd\uc774\ub2e4. \ubca4\uce58\ub9c8\ud06c\ub294 \uacb0\ud569\ud558\uc9c0 \uc54a\ub294\ub2e4.",
       "models": [
         {
           "modelId": "muse-spark-1.3",
           "name": "Muse-Spark-1.3",
-          "description": "General-purpose coding and reasoning model (1M context).",
+          "description": "General-purpose coding and reasoning model.",
           "wire": "responses",
           "contextWindow": 1048576,
           "effort": {
@@ -616,7 +194,7 @@
         {
           "modelId": "muse-spark-1.3-contributor",
           "name": "Muse-Spark-1.3-Contributor",
-          "description": "Contributor-tier coding and reasoning model (1M context).",
+          "description": "Contributor-tier coding and reasoning model.",
           "wire": "responses",
           "contextWindow": 1048576,
           "effort": {

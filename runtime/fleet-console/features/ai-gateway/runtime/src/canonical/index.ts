@@ -486,10 +486,12 @@ export interface CanonicalError {
  */
 export class ContextWindowExceededError extends Error {
   constructor(
-    readonly requestTokens: number,
-    readonly contextWindow: number,
+    readonly requestTokens?: number,
+    readonly contextWindow?: number,
   ) {
-    super(`Prompt is too long: ${requestTokens} tokens > ${contextWindow} maximum context window`);
+    super(requestTokens !== undefined && contextWindow !== undefined
+      ? `Prompt is too long: ${requestTokens} tokens > ${contextWindow} maximum context window`
+      : "Prompt is too long: input exceeds the model's maximum context window");
     this.name = "ContextWindowExceededError";
   }
 }

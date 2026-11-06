@@ -1,13 +1,12 @@
 import type { GatewayModel } from "../../../models.js";
 import type { AnthropicMessagesRequest } from "../../wire/anthropic-messages/protocol.js";
-import type { CompactCeilingSetting, GatewayHarnessProfile } from "../contract.js";
+import type { GatewayHarnessProfile } from "../contract.js";
 
 import {
   GATEWAY_TRANSIENT_ERROR_STATUS,
   claudeDecisiveRefusalHeaders,
   claudeDecisiveRefusalStatus,
   claudeRetryableUpstreamStatus,
-  projectClaudeContextInputTokens,
   stripClaudeUsageLimitDirectives,
 } from "./context.js";
 import {
@@ -46,14 +45,6 @@ export const claudeCodeHarnessProfile: GatewayHarnessProfile = {
     const stripped = stripClaudeUsageLimitDirectives(request.messages);
     return stripped.changed ? { ...request, messages: [...stripped.messages] } : request;
   },
-  usageProjection: (compactCeiling: CompactCeilingSetting) => (
-    (inputTokens, advertisedContextWindow, upstreamContextWindow) => projectClaudeContextInputTokens(
-      inputTokens,
-      advertisedContextWindow,
-      upstreamContextWindow,
-      compactCeiling,
-    )
-  ),
   retryableStatus: claudeRetryableUpstreamStatus,
   decisiveRefusalHeaders: claudeDecisiveRefusalHeaders,
   decisiveRefusalStatus: claudeDecisiveRefusalStatus,

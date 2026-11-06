@@ -61,7 +61,9 @@ const GatewayModelEntrySchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
-  serviceTier: z.literal("priority").optional(),
+  fastSupported: z.boolean().optional(),
+  fastUpstreamId: z.string().min(1).optional(),
+  fast: z.boolean().optional(),
   wire: z.enum(GATEWAY_MODEL_WIRES).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
@@ -109,6 +111,11 @@ export interface GatewayModel {
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
   readonly serviceTier?: "priority";
+  /** Whether this model offers an optional priority service tier. */
+  readonly fastSupported?: boolean;
+  readonly fastUpstreamId?: string;
+  /** Selected service tier; never a separate model identity. */
+  readonly fast?: boolean;
   /** 공급자가 선언한 업스트림 와이어 프로토콜. 생략하면 `anthropic`이다. */
   readonly wire?: GatewayModelWire;
   readonly description?: string;
@@ -138,10 +145,10 @@ const CLAUDE_PROVIDER_NAME = "Claude";
  * spellings of that same entry, never entries of their own.
  */
 const CLAUDE_NATIVE_FAMILIES = [
-  { alias: "fable", name: "Fable", description: "Deepest reasoning and architecture model in the Claude lineup (1M context)." },
-  { alias: "opus", name: "Opus", description: "High-capability reasoning, planning, and coding model (1M context)." },
-  { alias: "sonnet", name: "Sonnet", description: "Balanced coding and general agent execution model (1M context)." },
-  { alias: "haiku", name: "Haiku", description: "Lightweight, fast model for simple tasks and scans (1M context)." },
+  { alias: "fable", name: "Fable", description: "Deepest reasoning and architecture model in the Claude lineup." },
+  { alias: "opus", name: "Opus", description: "High-capability reasoning, planning, and coding model." },
+  { alias: "sonnet", name: "Sonnet", description: "Balanced coding and general agent execution model." },
+  { alias: "haiku", name: "Haiku", description: "Lightweight, fast model for simple tasks and scans." },
 ] as const satisfies readonly {
   readonly alias: string;
   readonly name: string;
@@ -328,23 +335,22 @@ export function findGatewayModel(
   return catalog.find((model) => model.id === id || model.aliases?.includes(id));
 }
 
+/** Apply the selected speed without creating a second catalog identity. */
+export function withGatewayModelFast(model: GatewayModel, selected: boolean): GatewayModel {
+  const fast = model.fast === true || (model.fastSupported === true && selected);
+  return {
+    ...model,
+    fast,
+    ...(fast && model.fastUpstreamId ? { upstreamId: model.fastUpstreamId } : {}),
+    ...(fast && model.provider === "codex" ? { serviceTier: "priority" as const } : {}),
+  };
+}
+
 export function upstreamModelId(model: GatewayModel): string {
   return model.upstreamId ?? model.id;
 }
 
-/**
- * The upstream model a catalog entry actually reaches, as `provider::upstreamId`.
- *
- * Several entries are the same model under different service terms — Codex's
- * `-fast` variants are the priority tier of an identical upstream id — so a fact
- * measured about one holds for its siblings. Entries that merely share a vendor
- * name but reach different upstream transports keep separate identities.
- *
- * This is a lookup key for measurements recorded per upstream, not a routing
- * fact and not an id anything accepts. It stays out of `GatewayModelConstraints`
- * for that reason: a caller handed a `provider::model` string next to real model
- * ids will eventually pass it as one.
- */
+/** The actual upstream model identity used for provider measurements, not routing ids. */
 export function gatewayModelIdentity(model: GatewayModel): string {
   return `${model.provider}::${upstreamModelId(model)}`;
 }
@@ -384,19 +390,12 @@ export function buildGatewayModelQuota(model: GatewayModel) {
   return { quotaPool: `${model.provider}:shared` };
 }
 
-function formatCatalogWindowLabel(tokens: number | undefined): string {
-  if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens <= 0) return "";
-  if (tokens >= 1_000_000) return "1M context";
-  return `${Math.round(tokens / 1_000)}K context`;
-}
-
 /**
  * 카탈로그가 관리하는 한 줄 모델 요약(성능 보증이 아닌 관리 메타데이터).
  */
 export function gatewayModelSummary(model: GatewayModel): string {
   if (model.description && model.description.trim().length > 0) return model.description.trim();
-  const windowLabel = formatCatalogWindowLabel(model.contextWindow);
-  return windowLabel.length > 0 ? `${model.displayName} (${windowLabel}).` : `${model.displayName}.`;
+  return `${model.displayName}.`;
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
@@ -491,7 +490,9 @@ function toGatewayModel(
     displayName: `${providerName}-${entry.name}`,
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
-    ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
+    ...(entry.fastSupported ? { fastSupported: true } : {}),
+    ...(entry.fastUpstreamId ? { fastUpstreamId: entry.fastUpstreamId } : {}),
+    ...(entry.fast ? { fast: true } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
@@ -522,11 +523,8 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         throw new Error(`Duplicate gateway model id: ${provider}/${model.modelId}`);
       }
       modelIds.add(model.modelId);
-      if (model.serviceTier && !model.providerModelId) {
-        throw new Error(`Gateway service tier requires providerModelId: ${provider}/${model.modelId}`);
-      }
-      if (model.serviceTier && provider !== "codex") {
-        throw new Error(`Gateway service tier is only supported by Codex: ${provider}/${model.modelId}`);
+      if (model.fastSupported && provider !== "codex" && provider !== "xai") {
+        throw new Error(`Gateway fast selection is only supported by Codex and xAI: ${provider}/${model.modelId}`);
       }
       // xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
       if (model.wire && provider !== "xai" && provider !== "muse-code") {

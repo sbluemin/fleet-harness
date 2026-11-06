@@ -7,12 +7,6 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  CLAUDE_COMPAT_CONTEXT_WINDOW,
-  CLAUDE_DEFAULT_CONTEXT_WINDOW,
-  projectClaudeContextInputTokens,
-} from "../dist/index.js";
-
 const DEFAULT_TIMEOUT_MS = 45_000;
 const MODEL_PREFIX = "claude-gateway--";
 const ONE_MILLION_MARKER = "[1m]";
@@ -33,16 +27,17 @@ async function main() {
     --expect <compact|no-compact>
 
 Options:
-  --model <id>             Gateway model id; use [1m] only for a real >=1M model
+  --model <id>             Gateway model id advertised to Claude Code
   --provider-window <n>    Real provider context window
   --input-tokens <n>       Real input usage returned by the pressure turn
   --expect <result>        Expected auto-compact result
-  --auto-compact-window <n>  Optional explicit Claude Code compact ceiling
+  --auto-compact-window <n>  Optional compact ceiling, passed as --settings modelSettings (not env)
   --timeout-ms <ms>        Positive process timeout (default: ${DEFAULT_TIMEOUT_MS})
   --help                   Show this help without launching Claude Code
 
-The probe maps real usage through core-ai-gateway's built implementation, clears
-inherited auto-compact overrides, optionally injects the requested ceiling, and drives
+The probe reports real usage without coordinate mapping, clears
+inherited auto-compact overrides, optionally passes the requested ceiling as
+--settings modelSettings (never CLAUDE_CODE_AUTO_COMPACT_WINDOW), and drives
 the installed Claude Code against a local fixture. It contacts no provider or credential.
 `);
     return;
@@ -123,10 +118,6 @@ function parseArguments(argv) {
   if (options.expect !== "compact" && options.expect !== "no-compact") {
     throw new UsageError("--expect must be compact or no-compact");
   }
-  const marked = options.model.endsWith(ONE_MILLION_MARKER);
-  if (marked !== (options.providerWindow >= CLAUDE_COMPAT_CONTEXT_WINDOW)) {
-    throw new UsageError("[1m] must exactly match a provider window of at least 1M");
-  }
   return options;
 }
 
@@ -153,12 +144,8 @@ async function runProbe(options) {
   const outputEvents = [];
   const sessionId = randomUUID();
   const modelWindow = options.model.endsWith(ONE_MILLION_MARKER)
-    ? CLAUDE_COMPAT_CONTEXT_WINDOW
-    : CLAUDE_DEFAULT_CONTEXT_WINDOW;
-  const projectedInputTokens = projectClaudeContextInputTokens(
-    options.inputTokens,
-    options.providerWindow,
-  );
+    ? 1_000_000
+    : 200_000;
   const configDir = await mkdtemp(path.join(os.tmpdir(), "fleet-compact-probe-"));
   let server;
   let child;
@@ -167,7 +154,7 @@ async function runProbe(options) {
   try {
     server = http.createServer((req, res) => {
       void handleFixtureRequest(req, res, {
-        inputTokens: projectedInputTokens,
+        inputTokens: options.inputTokens,
         model: options.model,
         providerWindow: options.providerWindow,
         requests,
@@ -194,9 +181,6 @@ async function runProbe(options) {
     ]) delete environment[name];
     delete environment.INIT_CWD;
     Object.assign(environment, {
-      ...(options.autoCompactWindow === undefined
-        ? {}
-        : { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(options.autoCompactWindow) }),
       ANTHROPIC_API_KEY: "sk-ant-fleet-gateway-smoke",
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}`,
       CLAUDE_CONFIG_DIR: configDir,
@@ -213,6 +197,9 @@ async function runProbe(options) {
       "--verbose",
       "--session-id", sessionId,
       "--tools", "",
+      ...(options.autoCompactWindow === undefined ? [] : ["--settings", JSON.stringify({
+        modelSettings: { [options.model]: { autoCompactWindow: options.autoCompactWindow } },
+      })]),
     ], { env: environment, stdio: ["pipe", "pipe", "pipe"] });
 
     let stdoutBuffer = "";
@@ -276,7 +263,7 @@ async function runProbe(options) {
       autoCompactWindow: options.autoCompactWindow ?? null,
       providerWindow: options.providerWindow,
       actualInputTokens: options.inputTokens,
-      projectedInputTokens,
+      inputTokens: options.inputTokens,
       expected: options.expect,
       expectedContextWindow: modelWindow,
       observedContextWindow: modelUsage?.contextWindow ?? null,

@@ -5,6 +5,7 @@ import type {
   CanonicalResponseEvent,
   CanonicalUsage,
 } from "../../../canonical/index.js";
+import { ContextWindowExceededError } from "../../../canonical/index.js";
 import { UpstreamProtocolError } from "../../../transport/upstream-sse.js";
 import { logRawWireEvent } from "../../../transport/wire-log.js";
 import {
@@ -55,6 +56,15 @@ export function antigravityError(value: unknown): CanonicalError | undefined {
     : "Antigravity request failed";
   const status = typeof error.status === "string" ? error.status : undefined;
   const code = typeof error.code === "number" ? error.code : undefined;
+  // Vertex documents 400 INVALID_ARGUMENT for input-token overflow; quota 429 is unrelated.
+  if ((status === "INVALID_ARGUMENT" || code === 400)
+    && (status === undefined || status === "INVALID_ARGUMENT")
+    && (code === undefined || code === 400)
+    && (/^Request exceeds the model['’]s input token limit\.?$/i.test(message)
+      || /^The input token count \(\d+\) exceeds the maximum number of tokens allowed \(\d+\)\.?$/i.test(message))) {
+    const tokens = /^The input token count \((\d+)\) exceeds the maximum number of tokens allowed \((\d+)\)/i.exec(message);
+    throw new ContextWindowExceededError(tokens ? Number(tokens[1]) : undefined, tokens ? Number(tokens[2]) : undefined);
+  }
   return { type: canonicalErrorType(status, code), message };
 }
 

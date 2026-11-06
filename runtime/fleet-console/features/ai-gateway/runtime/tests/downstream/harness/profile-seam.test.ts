@@ -174,8 +174,6 @@ describe("gateway harness profile seam", () => {
     expect(claudeCodeHarnessProfile.probePaths).toEqual(["/api/hello"]);
     expect(claudeCodeHarnessProfile.acceptsCredential("sk-ant-oat01-caller")).toBe(true);
     expect(claudeCodeHarnessProfile.acceptsCredential("grok-local-key")).toBe(false);
-    expect(claudeCodeHarnessProfile.usageProjection?.(undefined)).toBeTypeOf("function");
-    expect(bareHarness.usageProjection).toBeUndefined();
   });
 });
 

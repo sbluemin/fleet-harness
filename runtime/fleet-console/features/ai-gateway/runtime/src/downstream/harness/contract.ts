@@ -1,6 +1,5 @@
 import type {
   AnthropicMessagesRequest,
-  UsageProjection,
 } from "../wire/anthropic-messages/protocol.js";
 import type { GatewayModel, GatewayModelLookup } from "../../models.js";
 
@@ -60,13 +59,6 @@ export interface GatewayHarnessProfile {
    * instead — that seam is the only one native traffic never enters.
    */
   readonly sanitizeRequest: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
-  /**
-   * How this client meters context occupancy, given the user's compact-timing setting.
-   *
-   * Absent means the client reads the provider's real numbers and needs no map. A client
-   * that knows only its own fixed coordinates returns one here.
-   */
-  readonly usageProjection?: (compactCeiling: CompactCeilingSetting) => UsageProjection | undefined;
   /**
    * Lift an upstream refusal onto a status this client's retry budget acts on.
    *
@@ -129,4 +121,3 @@ export type GatewayHarnessWire = "anthropic-messages";
  * Typed structurally so the contract stays free of any one harness's vocabulary: the
  * profile that understands the setting is the one that receives it.
  */
-export type CompactCeilingSetting = "early" | "late" | number | undefined;
