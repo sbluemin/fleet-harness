@@ -6,7 +6,6 @@ import {
 } from "../downstream/wire/anthropic-messages/inbound.js";
 import {
   anthropicNativeHeaders,
-  withAnthropicContextOverflow,
   ANTHROPIC_MESSAGES_URL,
 } from "../upstream/anthropic/native.js";
 import { claudeCodeHarnessProfile } from "../downstream/harness/claude-code/profile.js";
@@ -838,7 +837,7 @@ async function proxyToAnthropic(
     ...(retryableStatus ? { retryableStatus } : {}),
     ...(decisiveRefusalHeaders ? { decisiveRefusalHeaders } : {}),
     keepAlive: true,
-    fetchImpl: withAnthropicContextOverflow(fetchImpl),
+    fetchImpl,
     headers,
     signal,
     url: ANTHROPIC_MESSAGES_URL,
