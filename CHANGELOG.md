@@ -5,6 +5,30 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.286.0] - 2026-11-06
+
+### fleet-console
+
+#### Added
+- Choose Claude Code auto memory for future Commanders in Commodore settings, enabled by default. New members inherit their Commander's creation-time setting; existing sessions and memories are kept, and Commodores continue using Fleet memory instead.
+
+#### Changed
+- With the commander list on the right, clicking an objective in the Commodore's Tasks tab now opens a summary popup where you can check status, criteria and recent results and change the due date; clicking its mission gauge shows the missions together with the member roster.
+- Commodores now choose each Commander's model, and Commanders each member's model, from AI Gateway candidates: the models you turned on, ordered by remaining quota, without providers that are close to their limit. A member you add without a model waits until its Commander picks one.
+- AI Gateway settings show the candidate list Commodores and Commanders receive, including models left out of it, in place of the routing settings and routing test.
+- Commodores now pick Commander models only from the models you turned on in AI Gateway. A new objective whose Commander would run on a model you turned off is refused with a short reason instead of starting on it.
+- Disable Claude's built-in skills in SDK-powered Commodore, Commander, and member sessions. Other skills remain available, except any user, project, or plugin skill named `plugin-authoring` is also disabled.
+
+#### Fixed
+- Tools sent to Codex stay out of strict mode unless the tool explicitly turns strict on, so optional arguments are not all required.
+- Clicking the open tab on the commander's right sidebar again keeps that tab and the sidebar open. Switching to another tab still works.
+
+#### Removed
+- Removed AI routing through Jev or a routing model. Subagents and Workflow stages now get their model from a fixed quota rule; TypeSafe sign-in remains available.
+- Removed the commander list left/right placement switch. The list now appears on both sides, so the placement setting, its sidebar controls, and the move notification are gone.
+- Selecting a goal in the Tasks tab now opens its commander conversation directly instead of showing a summary popup. The missions gauge popup stays as it is.
+- The per-objective delegate-to-Commodore switch is gone: every objective now runs under the Commodore's operation as if delegated, and board monitoring applies to all objectives.
+
 ## [1.285.0] - 2026-11-05
 
 ### fleet-console
