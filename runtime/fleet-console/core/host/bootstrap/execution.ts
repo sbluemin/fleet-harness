@@ -27,7 +27,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
     return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
   };
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus } = startAiGateway({
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates } = startAiGateway({
     ...ctx,
     host: { ...ctx.host, storage: quotaStorage },
     // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다.
@@ -122,6 +122,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     /** 플러그인 로스터가 실행 쪽과 같은 로그인 판정을 쓰도록 넘긴다. 캐시가 비면 미상(전체 노출)이다. */
     readProviderStatuses,
+    /** Gateway `candidates` 본문. 사령관·지휘관의 `fleet-ai-gateway` 도구가 읽는다. */
+    readGatewayCandidates: readCandidates,
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: agent.actions,

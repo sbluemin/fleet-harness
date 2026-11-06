@@ -1183,7 +1183,7 @@ export const planSchema = z.object({
     /** 구성원 id 또는 역할 이름. 없으면 지휘관 직접. */
     member: ids.optional(),
   })).min(1).max(MAX_MISSIONS).optional(),
-  /** 지휘관이 짠 구성원 — gateway_models로 확인한 모델은 launch에 저장하고, 없으면 라우팅 선택으로 남는다. */
+  /** 지휘관이 짠 구성원 — candidates로 확인한 모델은 launch에 저장하고, 없으면 라우팅 선택으로 남는다. */
   members: z.array(memberAddSchema.pick({ role: true, brief: true, launch: true })).max(MAX_MISSIONS).optional(),
   criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
 }).strict();

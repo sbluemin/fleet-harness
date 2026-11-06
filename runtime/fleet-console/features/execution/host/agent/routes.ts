@@ -2356,6 +2356,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
               name: server.name,
               url: server.url,
               headers: [{ name: "Authorization", value: `Bearer ${token}` }],
+              ...(server.alwaysLoad ? { alwaysLoad: true } : {}),
             };
           });
         },

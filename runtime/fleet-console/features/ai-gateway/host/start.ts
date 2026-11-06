@@ -208,11 +208,15 @@ export function startAiGateway(ctx: GatewayStartContext) {
       void quota.getSummary().catch(() => undefined);
       return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), currentExposure());
   }
+  /** HTTP 라우트와 `fleet-ai-gateway` candidates 도구가 같은 본문을 읽는다. 갱신은 비동기로, 응답은 현재 캐시로 낸다. */
+  const readCandidates = () => {
+    void quota.getSummary().catch(() => undefined);
+    return buildGatewayCandidates(currentExposure());
+  };
   ctx.registerRouter("ai-gateway/candidates", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-    void quota.getSummary().catch(() => undefined);
-    ctx.host.http.writeJson(res, 200, buildGatewayCandidates(currentExposure()));
+    ctx.host.http.writeJson(res, 200, readCandidates());
     return true;
   }, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   ctx.registerRouter("ai-gateway/routing-assign", async ({ req, res }) => {
@@ -270,7 +274,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus };
+  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates };
 }
 
 const ROUTING_ASSIGN_MAX_ITEMS = 20;

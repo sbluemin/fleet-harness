@@ -5,15 +5,12 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { ObjectiveStoreError } from "./store.js";
 
 /**
- * 모델 목록의 출처 — Gateway `candidates` 응답과 실행 카탈로그는 루프백 HTTP로 읽고, 사람이 AI Gateway에서 켠 모델은 호스트 포트(`enabledModels`)로 읽는다.
+ * 모델 선택 확인의 출처 — Gateway `candidates` 응답과 실행 카탈로그. 둘 다 루프백 HTTP로 읽는다.
  * 빈 후보 목록(`candidates: []`)과 조회 실패(`null` → `gateway_models_unavailable`)를 구분한다.
  */
 const CATALOG_PATH = "/api/v1/objectives/records/catalog";
-const QUOTA_PATH = "/api/v1/ai-gateway/quota";
 const CANDIDATES_PATH = "/api/v1/ai-gateway/candidates";
 const CATALOG_TIMEOUT_MS = 5_000;
-const QUOTA_TIMEOUT_MS = 5_000;
-const QUOTA_MAX_BYTES = 65_536;
 const CANDIDATES_MAX_BYTES = 131_072;
 
 export interface GatewayCandidateEntry {
@@ -92,22 +89,6 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
     return rows;
   }
 
-  /** Gateway 한도 요약(공급자별 창의 사용률) — 읽지 못하면 null 이고 목록은 그대로 낸다. */
-  async function loadQuota(signal: AbortSignal | undefined) {
-    const body = await loopback(`${QUOTA_PATH}?stale=1`, QUOTA_TIMEOUT_MS, signal);
-    const providers = isRecord(body) && isRecord(body.providers) ? body.providers : null;
-    if (!providers || JSON.stringify(providers).length > QUOTA_MAX_BYTES) return null;
-    const quota: Record<string, { status: string; windows?: { id: string; label?: string; usedPercent: number; resetsAt?: number; scope?: string; isAggregate?: boolean }[] }> = {};
-    for (const [provider, entry] of Object.entries(providers)) {
-      if (!isRecord(entry) || typeof entry.status !== "string") continue;
-      const windows = Array.isArray(entry.windows) ? entry.windows.flatMap((window) => isRecord(window) && typeof window.id === "string" && typeof window.usedPercent === "number" && Number.isFinite(window.usedPercent)
-        ? [{ id: window.id, ...(typeof window.label === "string" ? { label: window.label.slice(0, 80) } : {}), usedPercent: window.usedPercent, ...(typeof window.resetsAt === "number" ? { resetsAt: window.resetsAt } : {}), ...(typeof window.scope === "string" ? { scope: window.scope } : {}), ...(typeof window.isAggregate === "boolean" ? { isAggregate: window.isAggregate } : {}) }]
-        : []) : [];
-      quota[provider] = { status: entry.status, ...(windows.length ? { windows } : {}) };
-    }
-    return Object.keys(quota).length ? quota : null;
-  }
-
   /**
    * Gateway `candidates` 응답. 빈 배열(`candidates: []`)은 유효한 빈 후보 목록으로 돌려주고,
    * 조회 자체가 실패했거나 형식이 깨진 경우에만 `null`을 돌려준다.
@@ -130,17 +111,6 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
   }
 
   /**
-   * 사람이 AI Gateway에서 켠 모델(정준 id). 후보 집합과 달리 쿼터 압박(`critical`)으로 빠지지 않는다.
-   * 로그인이 끊긴 공급자의 모델은 실행 카탈로그가 고를 수 없게 내므로, 카탈로그와 겹쳐 쓰면 켠·로그인 가시 모델이 된다.
-   * null은 설정을 읽지 못한 것이고, 포트가 없으면(테스트 대역) undefined로 겹치지 않는다.
-   */
-  function enabledModels(): ReadonlySet<string> | null | undefined {
-    if (!ctx.enabledModels) return undefined;
-    const enabled = ctx.enabledModels();
-    return enabled ? new Set([...enabled].map(canonicalModelId)) : null;
-  }
-
-  /**
    * 사령관 쪽 지휘관 모델 선택(명시 지정·사령관 기본값·보드 기본)을 확인한다 — 실행 카탈로그에서 고를 수 있고 candidates에 있는 모델만 받는다.
    * 어느 목록이든 읽지 못하면 추측으로 통과시키지 않는다. 사람이 직접 고른 지휘관은 이 확인을 거치지 않는다.
    */
@@ -153,7 +123,7 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
     return checkProposal(choice, signal, loaded);
   }
 
-  return { load: loadCatalog, quota: loadQuota, candidates, enabledModels, checkProposal, checkCommander };
+  return { candidates, checkProposal, checkCommander };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);

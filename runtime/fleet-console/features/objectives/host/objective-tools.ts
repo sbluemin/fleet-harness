@@ -38,7 +38,7 @@ const rosterMember = z.object({
   model: z.string().trim().min(1).max(128).optional(),
   effort: z.string().trim().min(1).max(32).optional(),
 }).strict();
-const MODEL_FACT = "A member may select a model and effort from models (gateway_models); without one, AI Gateway routing chooses.";
+const MODEL_FACT = "A member may select a model and effort from candidates; without one, AI Gateway routing chooses.";
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
 const PLANNING_ONLY = "The objective is in planning: its lineup can change, but missions are not carried out and members are not launched until the person commences.";
 const BOARD_CHANGED = "The person edited the objective after your last read.";
@@ -328,7 +328,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         for (const member of roster) current = store.memberAdd(objective.id, member, "commander");
         return text({ ok: true, members: current.members.filter((member) => !existing.has(member.id)).map((member) => ({ id: member.id, role: member.role, launch: member.launch })) });
       }),
-    commanderTool("set_member_launch", "Change an existing member's launch setting, named by id or role. mode model takes a model and optional effort from models (gateway_models); mode route returns to AI Gateway routing and takes neither. Available while planning too. A model selection switches a chat immediately when idle, or after its running turn; without an SDK child it saves the next launch coordinates. Dormant terminal sessions keep their terminal resume behavior. Returning to routing cancels a pending switch; routing judges at a later launch, not for the current session. Host refusals keep the previous selection. A member the person added without a launch selection can be changed; the person's selection, including a same-value confirmation or a routing return, and legacy members without ownership cannot (member_launch_person_chosen).",
+    commanderTool("set_member_launch", "Change an existing member's launch setting, named by id or role. mode model takes a model and optional effort from candidates; mode route returns to AI Gateway routing and takes neither. Available while planning too. A model selection switches a chat immediately when idle, or after its running turn; without an SDK child it saves the next launch coordinates. Dormant terminal sessions keep their terminal resume behavior. Returning to routing cancels a pending switch; routing judges at a later launch, not for the current session. Host refusals keep the previous selection. A member the person added without a launch selection can be changed; the person's selection, including a same-value confirmation or a routing return, and legacy members without ownership cannot (member_launch_person_chosen).",
       z.object({ member: memberReference, mode: z.enum(["model", "route"]), model: rosterMember.shape.model, effort: rosterMember.shape.effort }).strict(),
       async ({ member, mode, model, effort }, before, _caller, context) => {
         if (mode === "route" && (model !== undefined || effort !== undefined)) return refuse("invalid_arguments");
@@ -337,13 +337,6 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         const [proposal] = mode === "model" ? await rosterOf([{ role: "member", model, effort }], context.signal) : [];
         const updated = await launch.memberPatched(before.id, memberId, { launch: proposal && "launch" in proposal ? proposal.launch : null }, "commander");
         return text({ ok: true, memberId, launch: updated.members.find((entry) => entry.id === memberId)!.launch });
-      }),
-    commanderTool("models", "gateway_models: the candidate models, efforts, quota pools, preferences and recent assignments AI Gateway routing judges with.",
-      z.object({}).strict(),
-      async (_args, _objective, _caller, context) => {
-        const loadout = await modelCatalog.candidates(context.signal);
-        if (!loadout) return refuse("gateway_models_unavailable");
-        return text(loadout);
       }),
     tool("message", `Send one message to the Commander (to: "commander") or, for the Commander, to a roster member by id or role. The record is kept before delivery. A running turn is steered; an idle session gets a new turn; a dormant or absent session is woken; a session that is relaunching or waiting on a permission prompt holds the message until it can be delivered. Nothing is dropped. SendMessage and ListAgents are not a channel. Addresses are roster ids and roles, not session names.`,
       z.object({

@@ -60,6 +60,8 @@ export interface CommodoreSupervisorDeps {
   readonly board: () => CommodoreBoardAdapter | null;
   /** 사령관 자신의 생성 도구 — 목표 보드의 권한·귀속 감싸기와 별개로 같은 턴 바인딩을 쓴다. */
   readonly managementTools?: (commodoreId: string, turn: CommodoreTurnBindings) => readonly ConsoleMcpTool[];
+  /** 사령관 세션에만 싣는 Gateway 도구 묶음. */
+  readonly gatewayTools?: import("../../execution/shared/agent.js").AgentToolGroup;
   /** 사령관이 고른 플러그인을 세션을 여는 순간 푼다. */
   readonly plugins?: (pluginIds: readonly string[]) => readonly import("./plugins.js").ResolvedPlugin[];
   /** 사람의 실제 Claude 홈 — 있으면 사령관 세션이 그 MCP·스킬·켜 둔 플러그인을 더한다. 목표 세션에는 닿지 않는다. */
@@ -487,6 +489,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = createCommodoreSession({
       commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), ...(compactAt === null ? {} : { compactAt }) },
       boardTools: boardTools(runner), now,
+      ...(deps.gatewayTools ? { gatewayTools: deps.gatewayTools } : {}),
       onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },
       ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
       ...(deps.claudeHome ? { claudeHome: deps.claudeHome } : {}),

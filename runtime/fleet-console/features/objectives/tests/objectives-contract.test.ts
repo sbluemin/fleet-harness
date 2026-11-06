@@ -2152,9 +2152,7 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    // 사람이 AI Gateway에서 켠 모델 — 모델 목록의 available 이 이 집합과 실행 카탈로그를 겹쳐 낸다.
-    const enabled = new Set(["sonnet[1m]"]);
-    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid", { enabledModels: () => enabled });
+    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid");
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
@@ -2196,21 +2194,11 @@ describe("Objectives contract", () => {
       expect(result.isError).toBe(false);
       return result.structuredContent;
     };
-    // 모델 선택의 공개 경계가 호스트의 풀 판정과 한도 창의 범위를 잃지 않는다. 네이티브 행에는 추측한 풀을 넣지 않는다.
-    // available 은 실제 새 선택 허용과 같다 — 사람이 AI Gateway에서 끈 모델은 실행 카탈로그에 있어도 고를 수 없다.
-    const loadout = await board({ action: "models" });
-    expect(loadout.models).toEqual([
-      { model: "sonnet[1m]", label: "Sonnet", provider: "claude", efforts: ["low"], available: true },
-      { model: "opus[1m]", label: "Opus", provider: "claude", efforts: ["high"], available: false, reason: "not_enabled" },
-      { model: "xai--grok-4.7", label: "Grok", provider: "xai", efforts: [], available: false, reason: "not_enabled", quotaPool: "xai:shared" },
-    ]);
-    expect(loadout.quota).toEqual(quota.providers);
     // 사령관이 candidates 밖의 모델을 고르거나, 고르지 않았는데 쓰일 기본값(여기서는 보드 기본 Opus)이 candidates 밖이면 목표를 만들지 않는다.
     const offAdd = async (args: Record<string, unknown>) => ((await commodoreList.execute({ action: "add", theaterId: "t1", title: "Off model", ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
     expect(await offAdd({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7" });
     expect(await offAdd({})).toMatchObject({ error: "model_not_in_gateway_models", model: "opus[1m]" });
     expect(store.list("c1")).toEqual([]);
-    enabled.add("opus[1m]");
     candidates.candidates.push({ model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" });
     const actor = { kind: "commodore", commodoreId: "c1" };
     const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
@@ -2404,7 +2392,6 @@ describe("Objectives contract", () => {
     hostFault.coordinates = { ok: false, error: "coordinates_apply_failed", cause };
     expect(await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } })).toMatchObject({ value: { error: "coordinates_apply_failed" } });
     expect(hostFault.coordinates).toBeNull();
-    expect((await board({ action: "models" })).failedSwitches).toEqual([{ objectiveId: id, memberId: workerId, role: "worker", model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause }]);
     expect(((await route("objective/get", { objectiveId: id })).value as { objective: Objective }).objective.members.find((m) => m.id === workerId)?.next).toEqual({ model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause });
     await route("member/next-cancel", { objectiveId: id, memberId: workerId });
     // 작업 중 도구 선택은 호스트의 턴 뒤 예약을 쓰며, 라우팅 복귀는 그 예약을 거둔다.
