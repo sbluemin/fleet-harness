@@ -11,7 +11,6 @@ import { SettledDoneGlyph, SettledFreshGlyph } from "../sidebar/side-bar-cluster
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { SideBarClusterRow } from "../sidebar/side-bar-cluster-row.js";
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
-import { openCommodoreTasksPanel } from "../../../commodore/client/commodore-conversation.js";
 import { commodoreSectionLabel, useCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { useCommodore } from "../../../commodore/client/commodore-state.js";
 import { commodoreMongleState } from "../../../commodore/client/commodore-header.js";
@@ -21,9 +20,6 @@ import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { toggleFold, useCommanderFolds, type CommanderFold } from "./commander-folds.js";
 import { useCommanderRows } from "./commander-rows.js";
-import { dismissCommanderPlacementNotice, moveCommanderPlacement, setCommanderPlacement, useCommanderPlacement, useCommanderPlacementNotice, type CommanderPlacement } from "./commander-placement.js";
-import { Toast, ToastHost } from "../../../../core/client/src/chrome/components/toast.js";
-import { ensureCommanderExpanded } from "../sidebar/commander-expansion.js";
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
@@ -68,11 +64,11 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly sortNameOnly?: boolean;
   /** 루틴 목록과 같은 테두리 카드 안에 행이 선다(작업 탭 목표 섹션). */
   readonly card?: boolean;
-  /** 정렬·새 목표·위치 막대를 그린다. 사이드바는 사령관 머리의 호버 독이 같은 일을 하므로 끈다. */
+  /** 정렬·새 목표 막대를 그린다. 사이드바는 사령관 머리의 호버 독이 같은 일을 하므로 끈다. */
   readonly showBar?: boolean;
   /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
   readonly heading?: ReactNode;
-  /** 우측 작업 탭 카드의 행 팝업(아바타·임무 게이지) — 목표 행에만 건넨다. 없으면 지금 행 그대로다. */
+  /** 작업 탭 카드의 행 팝업(아바타·임무 게이지) — 목표 행에만 건넨다. 없으면 지금 행 그대로다. */
   readonly popups?: ((item: SideBarRowItem, objectiveId: string) => RowPopups) | undefined;
 }) {
   const t = useT();
@@ -103,7 +99,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
-        <CommanderPlacementGlyphs commodoreId={commodoreId} />
       </div> : null}
       {sorted.length === 0 ? null : card ? (
         <>
@@ -180,54 +175,6 @@ export function CommanderListOwner({ commodoreId, selected, onSelect }: { readon
     <CommodoreAvatar commodoreId={commodoreId} state={owner.state} size={30} label="" decorative />
     <span><strong>{owner.name}</strong><small>{t("sidebar.commodore.fallback")}</small></span>
   </button>;
-}
-
-/** 목록 위치. 글자 없이 글리프만 두고, 왼쪽·오른쪽 사이드바는 한 묶음이다. 폰에는 위치 선택을 두지 않는다. */
-function CommanderPlacementGlyphs({ commodoreId }: { readonly commodoreId: string }) {
-  const t = useT();
-  const desktop = useViewMode().effective !== "mobile";
-  const placement = useCommanderPlacement();
-  if (!desktop) return null;
-  // 알림·되돌리기·옮겨 간 쪽 보이기는 언마운트되지 않는 호스트가 맡는다.
-  const choose = (next: CommanderPlacement) => moveCommanderPlacement(commodoreId, next);
-  return (
-    <span className="commander-place" role="group" aria-label={t("commanderRail.place")}>
-      <button type="button" className="commander-place-button" aria-pressed={placement === "left"} aria-label={t("commanderRail.placeSidebar")} title={t("commanderRail.placeSidebar")} onClick={() => choose("left")}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.4h3.1v11.2H2.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M7.6 4.6h6M7.6 8h6M7.6 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-      </button>
-      <button type="button" className="commander-place-button" aria-pressed={placement === "right"} aria-label={t("commanderRail.placeRight")} title={t("commanderRail.placeRight")} onClick={() => choose("right")}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.7 2.4h3.1v11.2h-3.1z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M2.4 4.6h6M2.4 8h6M2.4 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-      </button>
-    </span>
-  );
-}
-
-/**
- * 옮기기 알림 한 곳 — 목록이 반대쪽으로 넘어가며 언마운트돼도 살아남는다. 사이드바 뿌리처럼 옮겨도
- * 바뀌지 않는 자리에 둔다. 옮겨 간 쪽을 보이게 하고, 되돌리기는 그 반대로 보인다.
- */
-export function CommanderPlacementNoticeHost() {
-  const t = useT();
-  const notice = useCommanderPlacementNotice();
-  useEffect(() => {
-    if (notice === null) return;
-    if (notice.next === "left") ensureCommanderExpanded(notice.commodoreId);
-    else openCommodoreTasksPanel(notice.commodoreId);
-  }, [notice]);
-  if (notice === null) return null;
-  const undo = () => {
-    setCommanderPlacement(notice.prev);
-    if (notice.prev === "left") ensureCommanderExpanded(notice.commodoreId);
-    else openCommodoreTasksPanel(notice.commodoreId);
-    dismissCommanderPlacementNotice();
-  };
-  // 화면 최상위 층에 포털로 그린다 — 사이드바 스택 문맥 안에 두면 오른쪽 패널에 가려진다.
-  return createPortal(
-    <ToastHost>
-      <Toast open tone="info" title={t(notice.next === "left" ? "commanderRail.movedToLeft" : "commanderRail.movedToRight")} actionLabel={t("chrome.toast.undo")} onAction={undo} onDismiss={dismissCommanderPlacementNotice} />
-    </ToastHost>,
-    document.body,
-  );
 }
 
 /**

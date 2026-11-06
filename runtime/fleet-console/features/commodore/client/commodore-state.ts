@@ -372,14 +372,9 @@ export function commodoreMobileSessions(): CommodoreMobileSessions | null {
   return installed?.mobileSessions ?? null;
 }
 
-/** 작업 탭 「목표」 섹션의 목록 렌더러와 배치 읽기(조립 `tasksList`). 없으면 목표 섹션이 서지 않는다. */
+/** 작업 탭 「목표」 섹션의 목록 렌더러(조립 `tasksList`). 없으면 목표 섹션이 서지 않는다. */
 export function commodoreTasksList(): CommodoreTasksList | null {
   return installed?.tasksList ?? null;
-}
-
-/** 작업 탭이 읽는 목록 배치 — 설치 전이면 왼쪽이다. */
-export function readCommodoreTasksPlacement(): "left" | "right" {
-  return installed?.tasksList?.readPlacement() ?? "left";
 }
 
 

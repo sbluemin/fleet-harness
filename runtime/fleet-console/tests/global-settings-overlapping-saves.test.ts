@@ -25,7 +25,6 @@ const BASE: GlobalSettingsState = {
   sideBarDoubleClickOpen: false,
   reduceMotion: false,
   calmAvatars: false,
-  commanderPlacement: "left",
   commanderSort: null,
   commanderFolds: null,
   commanderKeepExpanded: null,

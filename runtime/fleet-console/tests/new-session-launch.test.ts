@@ -213,12 +213,11 @@ it("opens a registry goal as a full conversation before and after its session ar
 
 describe("kept commodore owner", () => {
   // 레일 머리가 가운데가 아니라 레일을 따르는 조건 — 유지 상태일 때만 사령관 주인이다.
-  it("keeps the panel owner only on the right with its commander centered", async () => {
+  it("keeps the panel owner only when its commander is centered", async () => {
     const { keptCommodoreOwnerOf } = await import("../features/workspace/client/commander-tab/commander-rows.js");
-    expect(keptCommodoreOwnerOf("right", "c1", true)).toBe("c1");
-    expect(keptCommodoreOwnerOf("left", "c1", true)).toBeNull();
-    expect(keptCommodoreOwnerOf("right", null, true)).toBeNull();
-    expect(keptCommodoreOwnerOf("right", "c1", false)).toBeNull();
+    expect(keptCommodoreOwnerOf("c1", true)).toBe("c1");
+    expect(keptCommodoreOwnerOf(null, true)).toBeNull();
+    expect(keptCommodoreOwnerOf("c1", false)).toBeNull();
   });
 
   // 유지 상태의 탭 줄은 사령관 탭 3개뿐 — 기본 「구성원」 탭은 펼친 행 패널의 「구성원」 탭이 대신한다.
@@ -325,9 +324,9 @@ describe("commander rail keep rule", () => {
 });
 
 describe("kept tabs across a fresh center", () => {
-  // 재현: 시작 전 행 펼침(유지) → 좌측 전환 → 사령관 탭이 남지 않는다.
-  // 탭 없는 시작 화면 마운트가 보관 등록의 손잡이를 버리면 전환 때 release가 빗나간다.
-  it("releases kept tabs when flipping left from a fresh commander", async () => {
+  // 재현: 시작 전 행 펼침(유지) → 탭 없는 fresh 대화 마운트 → 사령관 탭이 살아 있다.
+  // 탭 없는 시작 화면 마운트가 보관 등록의 손잡이를 버리면 release가 빗나간다.
+  it("keeps tabs when a fresh commander mounts", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     const range = vi.spyOn(document, "createRange").mockImplementation(() => Object.assign(new Range(), {
@@ -341,7 +340,6 @@ describe("kept tabs across a fresh center", () => {
     const { freshConversationSurface } = await import("../features/objectives/client/fresh-conversation.js");
     const { mountConversationObjectiveTabsHost, useRegisteredConversationObjectiveTabs } = await import("../core/client/src/chrome/rail/objective-tabs.js");
     const { openRailPanel } = await import("../core/client/src/chrome/rail/rail-store.js");
-    const { setCommanderPlacement } = await import("../features/workspace/client/commander-tab/commander-placement.js");
     const { readCommodoreList, replaceCommodoreList } = await import("../features/commodore/client/commodore-list.js");
     const { installCommodoreBoard } = await import("../features/commodore/client/board.js");
     const { loadBoard } = await import("../features/objectives/client/objectives-state.js");
@@ -410,16 +408,12 @@ describe("kept tabs across a fresh center", () => {
       const unmountHost = mountConversationObjectiveTabsHost();
       try {
         await act(async () => root.render(h(Screen)));
-        await act(async () => setCommanderPlacement("right"));
         await act(async () => openConversationSurface("test-commodore-tabs", { commodoreId: owner }));
         expect(seen.at(-1)).toEqual(["commodore-routines", "commodore-info"]);
         await act(async () => openRailPanel("commodore-routines"));
         // 시작 전 지휘관으로 — 탭 없는 fresh 대화가 마운트돼도 보관은 살아 있다.
         await act(async () => openConversationSurface(freshConversationSurface.id, { objectiveId: commanderId }));
         expect(seen.at(-1)).toEqual(["commodore-routines", "commodore-info"]);
-        // 좌측으로 바꾸면 유지가 풀리고 사령관 탭이 남지 않는다.
-        await act(async () => setCommanderPlacement("left"));
-        expect(seen.at(-1)).toEqual([]);
       } finally {
         unmountHost();
       }
