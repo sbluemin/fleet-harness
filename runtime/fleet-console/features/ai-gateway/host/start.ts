@@ -205,15 +205,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
       "muse-code": summary.providers["muse-code"].status,
     };
   };
-  async function assign(request: unknown, signal?: AbortSignal, test = false) {
+  function assign(request: unknown, test = false) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
       void quota.getSummary().catch(() => undefined);
       const parsed = parseGatewayAssignmentRequest(request);
       const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad), distribution: new GatewayRoutingDistribution() } : currentExposure();
-      return decideGatewayRoutingAssignment(parsed, exposure, {
-        refreshExposure: () => test ? { ...currentExposure(), providerLoad: exposure.providerLoad, distribution: exposure.distribution } : currentExposure(),
-        ...(signal === undefined ? {} : { signal }),
-      });
+      return decideGatewayRoutingAssignment(parsed, exposure);
   }
   let testing = false;
   ctx.registerRouter("ai-gateway/routing-test", async ({ req, res }) => {
@@ -236,7 +233,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     res.once("close", abort);
     const started = Date.now();
     try {
-      const decision = await assign({ surface: "agent", prompt: body.prompt, providerPlugin: "engine" }, controller.signal, true);
+      const decision = assign({ surface: "agent", prompt: body.prompt, providerPlugin: "engine" }, true);
       if (!res.destroyed) ctx.host.http.writeJson(res, 200, {
         mode: selection.delegationRoutingMode, elapsedMs: Date.now() - started,
         ...decision, fallback: decision.model === undefined,
@@ -246,16 +243,13 @@ export function startAiGateway(ctx: GatewayStartContext) {
     } finally { testing = false; res.off("close", abort); }
     return true;
   }, [{ method: "POST", path: "", summary: "Test the configured routing decision with a real provider request.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
-  const serveCandidates: RouteHandler = async ({ req, res }) => {
+  ctx.registerRouter("ai-gateway/candidates", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
     void quota.getSummary().catch(() => undefined);
-    const selection = currentExposure();
-    ctx.host.http.writeJson(res, 200, buildGatewayCandidates(selection));
+    ctx.host.http.writeJson(res, 200, buildGatewayCandidates(currentExposure()));
     return true;
-  };
-  ctx.registerRouter("ai-gateway/candidates", serveCandidates, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
-  ctx.registerRouter("ai-gateway/gateway-models", serveCandidates, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   ctx.registerRouter("ai-gateway/routing-assign", async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -267,27 +261,15 @@ export function startAiGateway(ctx: GatewayStartContext) {
       ctx.host.http.writeJson(res, 409, { error: "routing_disabled_or_no_candidates" }); return true;
     }
     void quota.getSummary().catch(() => undefined);
-    const controller = new AbortController();
-    const abort = () => { if (!res.writableEnded) controller.abort(); };
-    res.once("close", abort);
-    try {
-      const decisions = decideGatewayRoutingBatch(items, selection, {
-        refreshExposure: () => currentExposure(),
-        signal: controller.signal,
+    const decisions = decideGatewayRoutingBatch(items, selection);
+    if (!res.destroyed) {
+      ctx.host.http.writeJson(res, 200, {
+        mode: selection.delegationRoutingMode === "jev" ? "jev" : "model",
+        decisions,
       });
-      if (!res.destroyed && !controller.signal.aborted) {
-        ctx.host.http.writeJson(res, 200, {
-          mode: selection.delegationRoutingMode === "jev" ? "jev" : "model",
-          decisions,
-        });
-      }
-    } catch (error) {
-      // 호출자가 끊기면 본문 없이 끝낸다.
-      if (res.destroyed || controller.signal.aborted) return true;
-      throw error;
-    } finally { res.off("close", abort); }
+    }
     return true;
-  }, [{ method: "POST", path: "", summary: "Assign a model and reasoning effort to each of several tasks in one routing decision.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "POST", path: "", summary: "Assign a model and reasoning effort to each of several tasks by the code rule.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
   const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
   // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
   const claudeNativeListeners = new Set<() => void>();
@@ -318,7 +300,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,
-    assignRouting: (request, options) => assign(request, options?.signal),
+    assignRouting: async (request) => assign(request),
     readAuth: codex.readSubscription,
     readXaiToken: xai.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,
@@ -331,31 +313,23 @@ export function startAiGateway(ctx: GatewayStartContext) {
 
 const ROUTING_ASSIGN_MAX_ITEMS = 20;
 const ROUTING_ASSIGN_MAX_KEY_CHARS = 64;
-const ROUTING_ASSIGN_MAX_PROMPT_CHARS = 16_384;
-const ROUTING_ASSIGN_MAX_PROMPT_SUM_CHARS = 131_072;
 const ROUTING_ASSIGN_KEY = /^[A-Za-z0-9._:-]+$/;
 
-/** 아는 필드만 읽는다. 모르는 필드는 버리고, 깨진 항목이 하나라도 있으면 요청 전체를 거절한다. */
-function parseRoutingAssignItems(body: unknown): readonly { readonly key: string; readonly prompt: string }[] | undefined {
+/** 아는 필드(`key`)만 읽는다. 모르는 필드는 버리고, 깨진 항목이 하나라도 있으면 요청 전체를 거절한다. */
+function parseRoutingAssignItems(body: unknown): readonly { readonly key: string }[] | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   const items = (body as { items?: unknown }).items;
   if (!Array.isArray(items) || items.length < 1 || items.length > ROUTING_ASSIGN_MAX_ITEMS) return undefined;
   const seen = new Set<string>();
-  let total = 0;
-  const parsed: { key: string; prompt: string }[] = [];
+  const parsed: { key: string }[] = [];
   for (const entry of items) {
     if (typeof entry !== "object" || entry === null) return undefined;
-    const record = entry as { key?: unknown; prompt?: unknown };
-    const key = record.key;
-    const prompt = record.prompt;
+    const key = (entry as { key?: unknown }).key;
     if (typeof key !== "string" || key.length < 1 || key.length > ROUTING_ASSIGN_MAX_KEY_CHARS || !ROUTING_ASSIGN_KEY.test(key) || seen.has(key)) {
       return undefined;
     }
-    if (typeof prompt !== "string" || prompt.trim() === "" || prompt.length > ROUTING_ASSIGN_MAX_PROMPT_CHARS) return undefined;
-    total += prompt.length;
-    if (total > ROUTING_ASSIGN_MAX_PROMPT_SUM_CHARS) return undefined;
     seen.add(key);
-    parsed.push({ key, prompt });
+    parsed.push({ key });
   }
   return parsed;
 }

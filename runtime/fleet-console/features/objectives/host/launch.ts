@@ -505,13 +505,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         // 라우팅이 꺼졌거나 후보가 없으면 Gateway 는 항목별 사유 없이 409 하나로 답한다.
         if (response.status === 409) { settle(keys, "routing_disabled"); continue; }
         if (!response.ok) { settle(keys, "routing_failed", `http ${response.status}`); continue; }
-        const body = await response.json() as { decisions?: readonly { key?: string; model?: string; effort?: string; because?: string; fallback?: boolean }[] };
+        const body = await response.json() as { decisions?: readonly { key?: string; model?: string; effort?: string; because?: string }[] };
         if (!Array.isArray(body?.decisions)) { settle(keys, "routing_failed", "invalid response"); continue; }
         const known = new Set(keys);
         for (const decision of body.decisions) {
           if (!decision?.key || !known.has(decision.key) || decisions.has(decision.key)) continue;
           const because = typeof decision.because === "string" ? decision.because.slice(0, 300) : "";
-          if (decision.fallback === false && typeof decision.model === "string" && decision.model) {
+          if (typeof decision.model === "string" && decision.model) {
             decisions.set(decision.key, { via: "route", model: decision.model, ...(typeof decision.effort === "string" && decision.effort ? { effort: decision.effort } : {}), because });
           } else decisions.set(decision.key, { via: "fallback", ...fallbackReason(because) });
         }

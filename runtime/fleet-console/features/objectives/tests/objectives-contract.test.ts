@@ -2152,7 +2152,9 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid");
+    // 사람이 AI Gateway에서 켠 모델 — 모델 목록의 available 이 이 집합과 실행 카탈로그를 겹쳐 낸다.
+    const enabled = new Set(["sonnet[1m]"]);
+    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid", { enabledModels: () => enabled });
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
@@ -2163,12 +2165,12 @@ describe("Objectives contract", () => {
     const quota = { providers: { xai: { status: "ok", windows: [
       { id: "weekly", usedPercent: 20 },
     ] } } };
-    // gateway_models — 라우팅 판단이 보는 후보. 지휘관이 고른 구성원 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
-    const gatewayModels = { routing: { enabled: true, mode: "jev" }, quotaPools: {}, models: [{ modelId: "sonnet[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["low"] }] };
+    // candidates — 지휘관이 고른 구성원 모델과 사령관 쪽 지휘관 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
+    const candidates = { candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] };
     const judged: string[] = [];
     vi.stubGlobal("fetch", async (url: string, init?: { body?: string }) => {
       if (url.endsWith("/api/v1/objectives/records/catalog")) return Response.json(catalog);
-      if (url.endsWith("/api/v1/ai-gateway/gateway-models")) return Response.json(gatewayModels);
+      if (url.endsWith("/api/v1/ai-gateway/candidates")) return Response.json(candidates);
       if (url.endsWith("/api/v1/ai-gateway/routing-assign")) { judged.push(String(init?.body ?? "")); return new Response("unavailable", { status: 503 }); }
       return Response.json(quota);
     });
@@ -2203,12 +2205,13 @@ describe("Objectives contract", () => {
       { model: "xai--grok-4.7", label: "Grok", provider: "xai", efforts: [], available: false, reason: "not_enabled", quotaPool: "xai:shared" },
     ]);
     expect(loadout.quota).toEqual(quota.providers);
-    // 사령관이 끈 모델을 고르거나, 고르지 않았는데 쓰일 기본값(여기서는 보드 기본 Opus)이 꺼져 있으면 목표를 만들지 않는다.
+    // 사령관이 candidates 밖의 모델을 고르거나, 고르지 않았는데 쓰일 기본값(여기서는 보드 기본 Opus)이 candidates 밖이면 목표를 만들지 않는다.
     const offAdd = async (args: Record<string, unknown>) => ((await commodoreList.execute({ action: "add", theaterId: "t1", title: "Off model", ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
-    expect(await offAdd({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_enabled", model: "xai--grok-4.7" });
-    expect(await offAdd({})).toMatchObject({ error: "model_not_enabled", model: "opus[1m]" });
+    expect(await offAdd({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7" });
+    expect(await offAdd({})).toMatchObject({ error: "model_not_in_gateway_models", model: "opus[1m]" });
     expect(store.list("c1")).toEqual([]);
-    gatewayModels.models.push({ modelId: "opus[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["high"] });
+    enabled.add("opus[1m]");
+    candidates.candidates.push({ model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" });
     const actor = { kind: "commodore", commodoreId: "c1" };
     const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
     const created = await board({ action: "add", theaterId: "t1", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage], requestSource });

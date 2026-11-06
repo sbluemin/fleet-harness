@@ -396,14 +396,7 @@ function formatCatalogWindowLabel(tokens: number | undefined): string {
 export function gatewayModelSummary(model: GatewayModel): string {
   if (model.description && model.description.trim().length > 0) return model.description.trim();
   const windowLabel = formatCatalogWindowLabel(model.contextWindow);
-  const tierLabel = model.serviceTier === "priority" ? "priority tier" : "";
-  const qualifiers = [tierLabel, windowLabel].filter((part) => part.length > 0).join(", ");
-  const qualifiersSuffix = qualifiers.length > 0 ? ` (${qualifiers})` : "";
-  if (model.id.includes("gpt-6-astra")) return `Flagship coding and reasoning model${qualifiersSuffix}.`;
-  if (model.id.includes("gpt-6.1-sol")) return `Deep reasoning and architecture model${qualifiersSuffix}.`;
-  if (model.id.includes("gpt-6-luna")) return `Lightweight, fast coding model${qualifiersSuffix}.`;
-  if (model.id.includes("gpt-6.1-terra")) return `Balanced coding and implementation model${qualifiersSuffix}.`;
-  return `${model.displayName}${qualifiersSuffix}.`;
+  return windowLabel.length > 0 ? `${model.displayName} (${windowLabel}).` : `${model.displayName}.`;
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {

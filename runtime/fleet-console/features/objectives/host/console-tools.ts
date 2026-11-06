@@ -457,11 +457,12 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   }
 
   async function models(commodoreId: string | null, signal: AbortSignal | undefined) {
-    const [catalog, enabled, quota] = await Promise.all([modelCatalog.load(signal), modelCatalog.enabledModels(signal), modelCatalog.quota(signal)]);
+    const [catalog, quota] = await Promise.all([modelCatalog.load(signal), modelCatalog.quota(signal)]);
     if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
-    if (!enabled) throw new ObjectiveStoreError("gateway_models_unavailable");
+    const enabled = modelCatalog.enabledModels();
+    if (enabled === null) throw new ObjectiveStoreError("gateway_settings_unavailable");
     // available 은 실제로 새로 고를 수 있는지다 — 사람이 AI Gateway에서 끈 모델은 실행 카탈로그에 있어도 고를 수 없다.
-    const rows = catalog.map((row) => row.available && !enabled.has(canonicalModelId(row.model)) ? { ...row, available: false, reason: "not_enabled" } : row);
+    const rows = enabled ? catalog.map((row) => row.available && !enabled.has(canonicalModelId(row.model)) ? { ...row, available: false, reason: "not_enabled" } : row) : catalog;
     // 바꾸지 못한 전환(곧바로든 턴 뒤든) — 그 모델로 다시 고르기 전에 볼 사유다. cause 는 자식이 거절하며 던진 원문이다.
     const failedSwitches = commodoreId ? store.list(commodoreId).filter((objective) => !objective.done && !objective.removed).flatMap((objective) => objective.members.flatMap((member) => member.next?.failed
       ? [{ objectiveId: objective.id, memberId: member.id, role: member.role, model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}), failed: member.next.failed, ...(member.next.cause ? { cause: member.next.cause } : {}) }]

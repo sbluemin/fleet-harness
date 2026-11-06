@@ -46,7 +46,7 @@ import {
 import {
   pickSeat,
 } from "../../src/fleet/routing-fallback.js";
-import { buildGatewayCandidates, buildGatewayLoadout, GATEWAY_CANDIDATES_TOOL_DESCRIPTION_DRAFT } from "../../src/fleet/model-loadout.js";
+import { buildGatewayCandidates } from "../../src/fleet/model-loadout.js";
 import type { AiGatewayRouteDeps, GatewayAssignmentExposure } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
@@ -473,7 +473,7 @@ describe("delegation assignment", () => {
     const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] } as unknown as Parameters<typeof resolveAiGatewaySelection>[0]);
     expect(claude.models.map((model) => model.id)).toEqual(["claude--opus-1m", "claude--sonnet-1m"]);
     expect(claude.delegationModels.map((model) => model.id)).toEqual(claude.models.map((model) => model.id));
-    expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: claude.delegationModels }).candidates).toEqual([
+    expect(buildGatewayCandidates({ delegationModels: claude.delegationModels }).candidates).toEqual([
       expect.objectContaining({ model: "opus[1m]", pressure: "unknown", summary: expect.any(String) }),
       expect.objectContaining({ model: "sonnet[1m]", pressure: "unknown", summary: expect.any(String) }),
     ]);
@@ -486,12 +486,12 @@ describe("delegation assignment", () => {
       delegationModels: models,
       quota: { claude: { status: "not_connected" }, codex: { status: "not_connected" } },
     } satisfies GatewayAssignmentExposure;
-    expect(buildGatewayLoadout(hidden).candidates.map((candidate) => candidate.model)).toEqual(["sonnet[1m]"]);
+    expect(buildGatewayCandidates(hidden).candidates.map((candidate) => candidate.model)).toEqual(["sonnet[1m]"]);
     expect(decideGatewayRoutingAssignment(
       { surface: "agent", subagentType: "general-purpose", providerPlugin: "engine" },
       hidden,
     ).model).toBe("sonnet[1m]");
-    expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: models }).candidates.map((candidate) => candidate.model)).toEqual([
+    expect(buildGatewayCandidates({ delegationModels: models }).candidates.map((candidate) => candidate.model)).toEqual([
       "sonnet[1m]",
       "codex--gpt-6.1-sol",
     ]);
@@ -591,7 +591,7 @@ describe("delegation assignment", () => {
       quota: { claude: { status: "ok" } },
     } satisfies GatewayAssignmentExposure;
 
-    const loadout = buildGatewayLoadout(exposure);
+    const loadout = buildGatewayCandidates(exposure);
     expect(loadout.candidates.map((candidate) => candidate.model)).toEqual(["sonnet[1m]"]);
 
     const decision = decideGatewayRoutingAssignment(
@@ -610,7 +610,7 @@ describe("delegation assignment", () => {
     expect(decision.label).toBe("session model");
   });
 
-  it("shapes candidates with canonical ids, allowed efforts, summary, pressure, and resetsInSeconds only", () => {
+  it("shapes candidates with canonical ids, allowed efforts, summary, and pressure only", () => {
     const now = Date.now();
     const hour = 3_600_000;
     const window = (id: string, usedPercent: number, durationHours: number, remainingHours: number) => ({
@@ -641,20 +641,13 @@ describe("delegation assignment", () => {
       "codex--gpt-6.1-terra",
       "xai--grok-composer-2.5-fast",
     ]);
-    const codexCandidate = data.candidates[0]!;
-    expect(Object.keys(codexCandidate).sort()).toEqual(["efforts", "model", "pressure", "resetsInSeconds", "summary"]);
-    expect(codexCandidate).toMatchObject({
+    expect(data.candidates[0]).toEqual({
       model: "codex--gpt-6.1-terra",
       efforts: ["low", "medium", "high"],
       pressure: "elevated",
       summary: "Balanced coding and implementation model (500K context).",
     });
-    expect(codexCandidate.resetsInSeconds).toBeGreaterThan(67 * 3600);
-    expect(codexCandidate.resetsInSeconds).toBeLessThanOrEqual(Math.ceil(67.2 * 3600));
-
-    const xaiCandidate = data.candidates[1]!;
-    expect(Object.keys(xaiCandidate).sort()).toEqual(["efforts", "model", "pressure", "summary"]);
-    expect(xaiCandidate).toEqual({
+    expect(data.candidates[1]).toEqual({
       model: "xai--grok-composer-2.5-fast",
       efforts: [],
       pressure: "unknown",
@@ -666,16 +659,11 @@ describe("delegation assignment", () => {
       (candidate) => candidate.model === "codex--gpt-6.1-terra",
     )!;
     expect(expired.pressure).toBe("unknown");
-    expect(expired).not.toHaveProperty("resetsInSeconds");
 
     const future = run({ codex: { ...quota, fetchedAt: now + hour } }).candidates.find(
       (candidate) => candidate.model === "codex--gpt-6.1-terra",
     )!;
     expect(future.pressure).toBe("unknown");
-
-    expect(GATEWAY_CANDIDATES_TOOL_DESCRIPTION_DRAFT).toBe(
-      "Current eligible models and allowed efforts, ordered by quota headroom (most first). Unknown pressure is unmeasured, not low pressure.",
-    );
   });
 
   it("excludes critical providers without falling back to critical or hidden providers when empty", () => {

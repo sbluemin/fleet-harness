@@ -163,10 +163,10 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     },
   });
   const modelCatalog = createModelCatalog(ctx);
-  /** 지휘관의 구성원 편성 — gateway_models로 확인한 모델·강도를 기동 선택에 저장한다. 목록은 한 번만 읽는다. */
+  /** 지휘관의 구성원 편성 — candidates로 확인한 모델·강도를 기동 선택에 저장한다. 목록은 한 번만 읽는다. */
   const rosterOf = async (members: readonly z.output<typeof rosterMember>[], signal: AbortSignal | undefined) => {
     if (members.some((member) => member.effort !== undefined && member.model === undefined)) throw new ObjectiveStoreError("effort_needs_model");
-    const loadout = members.some((member) => member.model !== undefined) ? await modelCatalog.gatewayModels(signal) : null;
+    const loadout = members.some((member) => member.model !== undefined) ? await modelCatalog.candidates(signal) : null;
     return Promise.all(members.map(async ({ model, effort, ...member }) => {
       if (model === undefined) return member;
       return { ...member, launch: { mode: "model" as const, ...await modelCatalog.checkProposal({ model, effort }, signal, loadout) } };
@@ -341,7 +341,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     commanderTool("models", "gateway_models: the candidate models, efforts, quota pools, preferences and recent assignments AI Gateway routing judges with.",
       z.object({}).strict(),
       async (_args, _objective, _caller, context) => {
-        const loadout = await modelCatalog.gatewayModels(context.signal);
+        const loadout = await modelCatalog.candidates(context.signal);
         if (!loadout) return refuse("gateway_models_unavailable");
         return text(loadout);
       }),

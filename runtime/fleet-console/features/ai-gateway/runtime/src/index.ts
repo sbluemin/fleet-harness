@@ -205,9 +205,7 @@ export {
   type GatewayModelAllowance,
 } from "./fleet/routing-allowance.js";
 export {
-  GATEWAY_CANDIDATES_TOOL_DESCRIPTION_DRAFT,
   buildGatewayCandidates,
-  buildGatewayLoadout,
   canonicalGatewayCandidateId,
   type GatewayCandidate,
   type GatewayCandidatesResponse,
@@ -215,10 +213,8 @@ export {
 export {
   decideGatewayRoutingAssignment,
   decideGatewayRoutingBatch,
-  type GatewayRoutingDecisionOptions,
   type GatewayRoutingBatchItem,
   type GatewayRoutingBatchDecision,
-  type GatewayRoutingBatchOptions,
 } from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 

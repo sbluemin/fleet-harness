@@ -5,32 +5,27 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { ObjectiveStoreError } from "./store.js";
 
 /**
- * 후보 모델 목록의 출처 — Gateway `candidates` 응답과 실행 카탈로그. 둘 다 루프백 HTTP로만 읽는다.
+ * 모델 목록의 출처 — Gateway `candidates` 응답과 실행 카탈로그는 루프백 HTTP로 읽고, 사람이 AI Gateway에서 켠 모델은 호스트 포트(`enabledModels`)로 읽는다.
  * 빈 후보 목록(`candidates: []`)과 조회 실패(`null` → `gateway_models_unavailable`)를 구분한다.
  */
 const CATALOG_PATH = "/api/v1/objectives/records/catalog";
 const QUOTA_PATH = "/api/v1/ai-gateway/quota";
 const CANDIDATES_PATH = "/api/v1/ai-gateway/candidates";
-const GATEWAY_MODELS_PATH = "/api/v1/ai-gateway/gateway-models";
 const CATALOG_TIMEOUT_MS = 5_000;
 const QUOTA_TIMEOUT_MS = 5_000;
 const QUOTA_MAX_BYTES = 65_536;
-const GATEWAY_MODELS_MAX_BYTES = 131_072;
+const CANDIDATES_MAX_BYTES = 131_072;
 
 export interface GatewayCandidateEntry {
   readonly model: string;
   readonly efforts: readonly string[];
   readonly summary: string;
   readonly pressure: "ok" | "elevated" | "unknown";
-  readonly resetsInSeconds?: number;
 }
 
 export interface GatewayCandidates {
   readonly candidates: readonly GatewayCandidateEntry[];
 }
-
-export type GatewayModel = GatewayCandidateEntry;
-export type GatewayModels = GatewayCandidates;
 
 export interface CatalogModel {
   readonly model: string;
@@ -47,30 +42,14 @@ export type ModelCatalog = ReturnType<typeof createModelCatalog>;
 
 function parseCandidateEntry(entry: unknown): GatewayCandidateEntry[] {
   if (!isRecord(entry)) return [];
-  const rawModel = typeof entry.model === "string"
-    ? entry.model
-    : typeof entry.modelId === "string"
-      ? entry.modelId
-      : null;
-  if (!rawModel) return [];
-  const model = canonicalModelId(rawModel);
+  if (typeof entry.model !== "string" || entry.model === "") return [];
+  const model = canonicalModelId(entry.model);
   const efforts = Array.isArray(entry.efforts)
     ? entry.efforts.filter((effort): effort is string => typeof effort === "string")
     : [];
   const summary = typeof entry.summary === "string" ? entry.summary : "";
   const pressure = entry.pressure === "ok" || entry.pressure === "elevated" ? entry.pressure : "unknown";
-  const resetsInSeconds = typeof entry.resetsInSeconds === "number"
-    && Number.isFinite(entry.resetsInSeconds)
-    && entry.resetsInSeconds > 0
-    ? Math.ceil(entry.resetsInSeconds)
-    : undefined;
-  return [{
-    model,
-    efforts,
-    summary,
-    pressure,
-    ...(resetsInSeconds === undefined ? {} : { resetsInSeconds }),
-  }];
+  return [{ model, efforts, summary, pressure }];
 }
 
 export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
@@ -134,16 +113,9 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
    * 조회 자체가 실패했거나 형식이 깨진 경우에만 `null`을 돌려준다.
    */
   async function candidates(signal: AbortSignal | undefined): Promise<GatewayCandidates | null> {
-    const primary = await loopback(CANDIDATES_PATH, CATALOG_TIMEOUT_MS, signal);
-    const body = isRecord(primary) ? primary : await loopback(GATEWAY_MODELS_PATH, CATALOG_TIMEOUT_MS, signal);
-    if (!isRecord(body) || JSON.stringify(body).length > GATEWAY_MODELS_MAX_BYTES) return null;
-    const list = Array.isArray(body.candidates)
-      ? body.candidates
-      : Array.isArray(body.models)
-        ? body.models
-        : null;
-    if (!list) return null;
-    return { candidates: list.flatMap(parseCandidateEntry) };
+    const body = await loopback(CANDIDATES_PATH, CATALOG_TIMEOUT_MS, signal);
+    if (!isRecord(body) || !Array.isArray(body.candidates) || JSON.stringify(body).length > CANDIDATES_MAX_BYTES) return null;
+    return { candidates: body.candidates.flatMap(parseCandidateEntry) };
   }
 
   /** 사령관·지휘관의 모델 선택을 candidates로 확인한다 — 후보의 모델과 허용 강도만 받고, 조회 실패는 추측으로 통과시키지 않는다. */
@@ -157,16 +129,31 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
     return { model: row.model, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
   }
 
-  async function enabledModels(signal: AbortSignal | undefined): Promise<ReadonlySet<string> | null> {
-    const loadout = await candidates(signal);
-    return loadout ? new Set(loadout.candidates.map((entry) => canonicalModelId(entry.model))) : null;
+  /**
+   * 사람이 AI Gateway에서 켠 모델(정준 id). 후보 집합과 달리 쿼터 압박(`critical`)으로 빠지지 않는다.
+   * 로그인이 끊긴 공급자의 모델은 실행 카탈로그가 고를 수 없게 내므로, 카탈로그와 겹쳐 쓰면 켠·로그인 가시 모델이 된다.
+   * null은 설정을 읽지 못한 것이고, 포트가 없으면(테스트 대역) undefined로 겹치지 않는다.
+   */
+  function enabledModels(): ReadonlySet<string> | null | undefined {
+    if (!ctx.enabledModels) return undefined;
+    const enabled = ctx.enabledModels();
+    return enabled ? new Set([...enabled].map(canonicalModelId)) : null;
   }
 
+  /**
+   * 사령관 쪽 지휘관 모델 선택(명시 지정·사령관 기본값·보드 기본)을 확인한다 — 실행 카탈로그에서 고를 수 있고 candidates에 있는 모델만 받는다.
+   * 어느 목록이든 읽지 못하면 추측으로 통과시키지 않는다. 사람이 직접 고른 지휘관은 이 확인을 거치지 않는다.
+   */
   async function checkCommander(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined): Promise<{ readonly model: string; readonly effort?: string }> {
-    return checkProposal(choice, signal);
+    const [catalog, loaded] = await Promise.all([loadCatalog(signal), candidates(signal)]);
+    if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
+    const wanted = canonicalModelId(choice.model);
+    const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
+    if (!row || !row.available) throw new ObjectiveStoreError("model_not_in_catalog", undefined, { model: choice.model, ...(row?.reason ? { reason: row.reason } : {}) });
+    return checkProposal(choice, signal, loaded);
   }
 
-  return { load: loadCatalog, quota: loadQuota, candidates, gatewayModels: candidates, enabledModels, checkProposal, checkCommander };
+  return { load: loadCatalog, quota: loadQuota, candidates, enabledModels, checkProposal, checkCommander };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
