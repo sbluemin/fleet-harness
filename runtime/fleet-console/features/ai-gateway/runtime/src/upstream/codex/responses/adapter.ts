@@ -193,6 +193,14 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
     request: CanonicalResponseRequest,
     options: AdapterCallOptions
   ): Promise<AdapterResponse> {
+    return this.streamWithToolSchemaMode(request, options);
+  }
+
+  protected async streamWithToolSchemaMode(
+    request: CanonicalResponseRequest,
+    options: AdapterCallOptions,
+    enforceStrictTools = true,
+  ): Promise<AdapterResponse> {
     if (options.apiKey.length === 0) {
       throw new TypeError("apiKey must not be empty");
     }
@@ -200,6 +208,14 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
     const payload = forOpenAIResponsesBackend(request, this.dropSamplingParams, this.reasoningReplayOrigin);
+    // Keep the rewritten schemas and their inverse decoding together even when the
+    // subscription backend cannot compile the combined strict grammar.
+    const decoding = argumentDecoding(payload.tools);
+    if (!enforceStrictTools) {
+      for (const tool of payload.tools ?? []) {
+        if (tool.type === "function" && tool.strict === true) tool.strict = false;
+      }
+    }
     if (this.dropSamplingParams && request.model === "gpt-6-astra"
       && request.parallel_tool_calls !== false && request.tool_choice !== "none") {
       let hasAsyncTools = false;
@@ -266,7 +282,7 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
         idleTimeoutMs: this.idleTimeoutMs,
         maxBodyBytes: this.maxBodyBytes,
         onClose: unlinkAbort
-      }, argumentDecoding(payload.tools))
+      }, decoding)
     };
   }
 }
@@ -377,14 +393,17 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     }
     return {
       ...response,
-      events: retryCodexStream(response.events, async (retrySignal) => {
+      events: retryCodexStream(response.events, async (retrySignal, relaxStrictTools) => {
         await abortableDelay(CODEX_RETRY_DELAY_MS, retrySignal);
-        const retried = await super.stream(activeRequest, { ...callOptions, signal: retrySignal });
+        const retried = await super.streamWithToolSchemaMode(
+          activeRequest, { ...callOptions, signal: retrySignal }, !relaxStrictTools,
+        );
         if (!retried.ok) {
           throw new UpstreamProtocolError(`Codex retry failed with status ${retried.status}`);
         }
         return retried.events;
-      }, callController, unlinkCallAbort, retryAvailable),
+      }, callController, unlinkCallAbort, retryAvailable,
+      (activeRequest.tools ?? []).some((tool) => strictCompatible(readablePatternParameters(tool.parameters)))),
     };
   }
 }
@@ -410,15 +429,16 @@ function isRefusedReasoningReplay(response: Extract<AdapterResponse, { ok: false
 
 function retryCodexStream(
   events: AsyncIterable<CanonicalResponseEvent>,
-  retry: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  retry: (signal: AbortSignal, relaxStrictTools?: boolean) => Promise<AsyncIterable<CanonicalResponseEvent>>,
   callController: AbortController,
   unlinkCallAbort: () => void,
   retryAvailable: boolean,
+  hasStrictTools: boolean,
 ): AsyncIterable<CanonicalResponseEvent> {
   return {
     [Symbol.asyncIterator]() {
       const source = events[Symbol.asyncIterator]();
-      const iterator = generateCodexRetryStream(source, retry, callController, unlinkCallAbort, retryAvailable);
+      const iterator = generateCodexRetryStream(source, retry, callController, unlinkCallAbort, retryAvailable, hasStrictTools);
       return {
         next: () => iterator.next(),
         return: async () => {
@@ -439,10 +459,11 @@ function retryCodexStream(
 
 async function* generateCodexRetryStream(
   source: AsyncIterator<CanonicalResponseEvent>,
-  retry: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  retry: (signal: AbortSignal, relaxStrictTools?: boolean) => Promise<AsyncIterable<CanonicalResponseEvent>>,
   callController: AbortController,
   unlinkCallAbort: () => void,
   retryAvailable: boolean,
+  hasStrictTools: boolean,
 ): AsyncGenerator<CanonicalResponseEvent> {
   // retry 확정 전까지 response.created/reasoning을 보류한다. 이 lead 이벤트들은 Anthropic
   // 변환에서 message_start/thinking으로 즉시 발화되므로, retry가 r2로 전환된 뒤에도 r1 헤더
@@ -496,6 +517,21 @@ async function* generateCodexRetryStream(
         return;
       }
       const event = result.value;
+      // Observed with a large MCP catalog: strict grammar compilation ends before
+      // inference, but the backend labels it max_output_tokens with zero usage.
+      // Retry once with the identical schemas/catalog and strict:false. A genuine
+      // output limit, any committed output, or a spent retry budget must pass through.
+      if (retryAvailable && hasStrictTools && !committedOutput
+        && !callController.signal.aborted && event.type === "response.completed"
+        && event.response.incomplete?.reason === "max_output_tokens"
+        && event.response.usage?.input_tokens === 0
+        && event.response.usage.output_tokens === 0) {
+        wireLog("codex.retry.discarded", { reason: "strict_schema_zero_usage", phase: "pre_commit" });
+        await source.return?.();
+        bufferedLead.length = 0;
+        yield* await retry(callController.signal, true);
+        return;
+      }
       if (retryAvailable && isRetryableCodexServerFailure(event, committedOutput, callController.signal)) {
         // 폐기되는 response.failed가 게이트웨이 wrapper에 도달하기 전에 버려지므로 이
         // seam에서 증거를 남긴다. 직전에 대기 중인 retryable error도 함께 버려진다면
