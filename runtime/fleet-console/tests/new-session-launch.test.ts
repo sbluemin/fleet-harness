@@ -108,7 +108,7 @@ it("opens a registry goal as a full conversation before and after its session ar
     done: null, awaitingHandoff: false, awaitingReview: false, handoff: null, extensions: [], extensionActive: false,
     criteria: [], criteriaProposals: [], members: [], missions: [], followups: [], followupBatches: [], followupHistory: null,
     origin: null, requestSource: null, decisionRequest: null, decisionRequestRevision: 0, decisionDelivery: null, decisions: [], personHolds: [],
-    commenced: false, operator: "human", removed: null, merged: [],
+    commenced: false, removed: null, merged: [],
   };
   const openQuestion = vi.fn();
   const question: ObjectiveCluster = {
@@ -374,7 +374,7 @@ describe("kept tabs across a fresh center", () => {
       done: null, awaitingHandoff: false, awaitingReview: false, handoff: null, extensions: [], extensionActive: false,
       criteria: [], criteriaProposals: [], members: [], missions: [], followups: [], followupBatches: [], followupHistory: null,
       origin: null, requestSource: null, decisionRequest: null, decisionRequestRevision: 0, decisionDelivery: null, decisions: [], personHolds: [],
-      commenced: false, operator: "human", removed: null, merged: [],
+      commenced: false, removed: null, merged: [],
     };
     const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false, handedDecision: null }] };
     // 시작 화면의 findObjective가 사령관을 읽도록 보드를 채운다 — 실앱의 로드된 보드와 같다.

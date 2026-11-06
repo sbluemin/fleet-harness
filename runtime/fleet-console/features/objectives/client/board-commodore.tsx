@@ -26,9 +26,9 @@ export function decisionTurn(objective: Objective, commodoreActive: boolean): "p
   return !commodoreActive || reasonAwaits(objective, "decision") === "person" ? "person" : "commodore";
 }
 
-/** 위임 목표에서 현재 결정 요청을 명시적으로 넘긴 경우만 사령관 대화로 옮긴다. 자율 운영이 꺼져도 넘긴 요청은 남는다. */
+/** 현재 결정 요청을 명시적으로 넘긴 경우만 사령관 대화로 옮긴다. 자율 운영이 꺼져도 넘긴 요청은 남는다. */
 export function decisionInCommodoreConversation(objective: Objective): boolean {
-  return objective.operator === "commodore" && !objective.removed && !objective.done && !!livePersonHold(objective, "decision");
+  return !objective.removed && !objective.done && !!livePersonHold(objective, "decision");
 }
 
 /** 사령관이 사람에게 넘겨 지금 사람이 답할 차례인 항목들 — 대상 순서(결정·기준·검토·후속)대로. */
@@ -72,11 +72,11 @@ export function personTurnAt(objective: Objective, commodoreActive: boolean): nu
 }
 
 /**
- * 사령관이 맡아 기다리는 목표 — 사령관이 운영하고, 사람에게 넘기지 않은 대기 항목(출범 전·기준 제안·결정 요청·검토·후속)이 남았다.
+ * 사령관이 맡아 기다리는 목표 — 사람에게 넘기지 않은 대기 항목(출범 전·기준 제안·결정 요청·검토·후속)이 남았다.
  * 사람에게 넘긴 항목만 남은 목표는 사령관을 기다리지 않는다.
  */
 export function isCommodoreWaiting(objective: Objective): boolean {
-  if (objective.operator !== "commodore" || objective.removed || objective.done) return false;
+  if (objective.removed || objective.done) return false;
   const kept = (target: (typeof PERSON_HOLD_TARGETS)[number]) => !livePersonHold(objective, target);
   // 출범 전 기준 제안을 사람에게 넘겼으면 개시는 사람의 답을 기다린다(criteria_pending) — 사령관의 일이 아니다.
   return (!objective.commenced && !(objective.criteriaProposals.length > 0 && !kept("criteria")))
@@ -115,8 +115,6 @@ export const subscribeCommodoreConversationActive = (listener: () => void) => { 
 export const openCommodoreConversation = (commodoreId: string, options?: Parameters<CommodoreClientHost["open"]>[1]) => host?.open(commodoreId, options) ?? false;
 export const openCommodoreLog = (commodoreId: string) => { host?.open(commodoreId, { tab: "log" }); };
 export const openCommodoreMobile = (tab: "log" | "info" | "settings" | "goals", commodoreId: string | null) => { if (commodoreId) host?.open(commodoreId, { tab, mobile: true }); };
-export const renderCommodoreRowGlyph = () => host?.renderRowGlyph("", true) ?? null;
-export const renderCommodoreRowGlyphOff = () => host?.renderRowGlyph("", false) ?? null;
 const boards = new Map<string, { readonly key: string; readonly value: { readonly active: boolean; readonly stalled: readonly string[] } }>();
 function boardSnapshot(commodoreId: string) {
   const { active, stalled } = commodoreBoardOf(commodoreId);

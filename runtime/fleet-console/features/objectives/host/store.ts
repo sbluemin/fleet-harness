@@ -12,7 +12,7 @@ import { type ObjectiveDescription } from "../shared/records/archive.js";
 import type { ConsoleTurnFailure } from "../../console-use/shared/control.js";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, attachmentName, imageInfo, type BriefAttachmentInput } from "./attachments.js";
-import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, heldItemStands, objectiveOperator, type HoldSubject } from "../shared/board-state.js";
+import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, heldItemStands, type HoldSubject } from "../shared/board-state.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "../shared/results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import { deriveFailedOutcome } from "./views.js";
@@ -304,14 +304,7 @@ export interface ObjectiveStore {
   recordStage(objectiveId: string, stage: "planned" | "commenced", by?: ObjectiveActor): Objective;
   setCriteriaOpen(objectiveId: string, open: boolean): Objective;
   /**
-   * 운영 주체를 사람이 정한다 — true 는 사령관에게 맡김, false 는 사람이 운영. 바뀔 때만 쓰고 행위 기록에 `edit` 한 줄을 남긴다.
-   * 새 행위 종류를 만들지 않는 것은 옛 빌드가 모르는 종류가 든 레코드를 통째로 격리하기 때문이다(`invalid_stored_actions`).
-   * 편집 종류(`kinds`) 없는 `edit` 는 이 기록뿐이다 — 화면의 출처가 그것을 맡기기·돌려받기로 읽는다(client/actors.ts `lastAct`).
-   */
-  setCommodoreOperated(objectiveId: string, operated: boolean, by: ObjectiveActor): Objective;
-  /**
-   * 사령관이 운영하는 목표에 서 있는 대기 항목을 사람에게 넘긴다(사유와 함께). 같은 대상의 넘김은 갈아 끼운다.
-   * 사람이 운영하는 목표는 `not_commodore_operated`, 넘길 항목이 없으면 `nothing_to_hand`, 답이 가는 중인 결정은 `decision_delivering`.
+   * 서 있는 대기 항목을 사람에게 넘긴다(사유와 함께). 같은 대상의 넘김은 갈아 끼운다.
    */
   personHold(objectiveId: string, input: { readonly target: PersonHoldTarget; readonly reason: string; readonly by: Extract<ObjectiveActor, { kind: "commodore" }> }): Objective;
   /** 사람이 넘겨받은 항목을 사령관에게 돌려준다 — 넘김은 「돌려줌」으로 끝난다. 서 있는 넘김이 없으면 `not_held`. */
@@ -909,9 +902,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         restorable: load(node?.commodoreId ?? pending!.commodoreId).get(entry.sourceId)?.removed?.mergedInto === stored.id })),
       commenced: stored.commenced === true || (legacy && launch.started && stored.planning !== true),
       ...(stored.commencedBy ? { commencedBy: stored.commencedBy } : {}),
-      // 불린이 아닌 저장값은 손상이 아니라 「정하지 않음」으로 읽는다 — 이 값 하나로 목표를 격리하지 않는다.
-      ...(typeof stored.commodoreOperated === "boolean" ? { commodoreOperated: stored.commodoreOperated } : {}),
-      operator: objectiveOperator(stored, (id) => load(node?.commodoreId ?? pending!.commodoreId).get(id)),
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
         return {
@@ -1311,8 +1301,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
         requestSource: objectiveRequestSourceSchema.parse(init.requestSource ?? { kind: "direct" }),
         ...(init.origin ? { origin: init.origin } : {}),
-        // 사령관이 고른 후속은 태어날 때 사람 운영(false)으로 적는다 — 원본이 영구 삭제되면 대체 판정(원본의 배치)을 더는 읽을 수 없으므로 생략하지 않는다.
-        ...(init.origin && typeof init.by === "object" && init.by.kind === "commodore" ? { commodoreOperated: false } : {}),
         ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: init.by ?? "human" })) } : {}),
         enlisted: true,
         missions: [...lineupOrder(missions)],
@@ -1857,10 +1845,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (!by) return staged;
       return stage === "commenced" ? { ...action(staged, by, "commence"), commencedBy: by } : action(staged, by, "plan");
     }),
-    setCommodoreOperated: (objectiveId, operated, by) => update(objectiveId, (stored) => (stored.commodoreOperated === operated ? stored : action({ ...stored, commodoreOperated: operated }, by, "edit"))),
     personHold(objectiveId, { target, reason, by }) {
-      const { commodoreId, stored: current } = locate(objectiveId);
-      if (objectiveOperator(current, (id) => load(commodoreId).get(id)) !== "commodore") throw new ObjectiveStoreError("not_commodore_operated");
       return update(objectiveId, (stored) => {
         if (stored.removed) throw new ObjectiveStoreError("objective_removed");
         const request = stored.decisionRequest;

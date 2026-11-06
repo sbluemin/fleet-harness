@@ -1,5 +1,5 @@
 import type { ConsoleObjectiveObservation } from "../../console-use/shared/control.js";
-import type { Objective, ObjectiveOperator, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
+import type { Objective, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
 import { liftNestedActivity } from "./records/activity.js";
 
 export const STALL_MS = 30 * 60_000;
@@ -45,38 +45,6 @@ export function objectiveStatus(objective: Objective): ObjectiveStatus {
   if (!objective.commenced) return objective.planning ? "planning" : objective.missions.length ? "planned" : "pending";
   if (objective.awaitingHandoff) return "missions-done";
   return "running";
-}
-
-export type { ObjectiveOperator };
-
-/** 운영 판정이 읽는 목표의 사실 — 저장 레코드와 목표 보기가 같은 모양으로 넘긴다. */
-interface OperatorFacts {
-  readonly commodoreOperated?: boolean;
-  readonly addedBy?: unknown;
-  readonly origin?: { readonly objectiveId: string; readonly candidateId: string } | null;
-}
-/** 후속의 원본에서 읽는 것 — 누가 어떤 후보를 골랐나. */
-interface OperatorSource {
-  readonly followupBatches?: readonly { readonly by?: unknown; readonly items: readonly { readonly candidateId: string }[] }[];
-}
-const isCommodore = (actor: unknown): boolean => typeof actor === "object" && actor !== null && "kind" in actor && actor.kind === "commodore";
-
-/**
- * 목표를 운영하는 쪽 — 사령관 깨움(보드 사건·inbox 집계), 조회의 `operator`, 목표 보기의 `operator`(화면)가 이 하나를 쓴다.
- * 정해 둔 값이 있으면 그것(사령관이 고른 후속은 태어날 때 false)이고, 없으면 필드가 없는 옛 레코드만 사령관이 만든 목표(직접 추가했거나
- * 사령관이 고른 후속)를 사령관으로 본다. 개시한 손(`commencedBy`)은 기준이 아니다. `find` 는 후속의 원본을 찾는 데만 쓴다.
- */
-export function objectiveOperator(objective: OperatorFacts, find: (objectiveId: string) => OperatorSource | null | undefined): ObjectiveOperator {
-  if (typeof objective.commodoreOperated === "boolean") return objective.commodoreOperated ? "commodore" : "human";
-  return createdByCommodore(objective, find) ? "commodore" : "human";
-}
-
-/** 사령관이 만든 목표 — 직접 추가했거나, 사령관이 고른 후속 후보에서 생겼다. */
-export function createdByCommodore(objective: OperatorFacts, find: (objectiveId: string) => OperatorSource | null | undefined): boolean {
-  if (isCommodore(objective.addedBy)) return true;
-  const origin = objective.origin;
-  if (!origin) return false;
-  return !!find(origin.objectiveId)?.followupBatches?.some((batch) => isCommodore(batch.by) && batch.items.some((item) => item.candidateId === origin.candidateId));
 }
 
 /**
@@ -179,9 +147,9 @@ export const followupsJudgeable = (subject: { readonly awaitingReview: boolean; 
 export const FOLLOWUPS_AT_REVIEW_HINT = "Follow-up candidates only collect while the objective works; judge them all at once when it awaits review.";
 
 /**
- * 누가 답할 차례인가 — 대기 이유마다 하나. 사람이 운영하는 목표는 모두 사람이고, 사령관이 운영하는 목표는 사령관이 사람에게
+ * 누가 답할 차례인가 — 모든 목표를 사령관이 운영하므로 사령관이 사람에게
  * 넘긴 항목(`livePersonHold`)만 사람이다. 자율 운영이 꺼져 있으면 사령관 몫도 사람에게 돌아온다 — 그 판정은 자율 운영 상태를
- * 아는 화면이 이 값 위에 얹는다(보드는 넘김과 운영 주체만 안다).
+ * 아는 화면이 이 값 위에 얹는다(보드는 넘김만 안다).
  */
 export type InboxAwaits = "person" | "commodore";
 /** 사람에게 넘길 수 있는 대기 이유와 그 대상 — 다른 이유(개시·정체·구성원 실패·후속 생성 실패)는 넘기지 않는다. */
@@ -210,9 +178,8 @@ export function livePersonHold(objective: HoldSubject & { readonly personHolds?:
   const hold = (objective.personHolds ?? []).find((entry) => entry.target === target);
   return hold && !hold.settled && heldItemStands(objective, { target, ...(hold.requestId ? { requestId: hold.requestId } : {}) }) ? hold : null;
 }
-/** 대기 이유 하나의 차례 — 운영 주체는 기본으로 목표의 판정을 쓴다. */
-export function reasonAwaits(objective: Objective, reason: InboxReason, operator: ObjectiveOperator = objective.operator): InboxAwaits {
-  if (operator === "human") return "person";
+/** 대기 이유 하나의 차례. */
+export function reasonAwaits(objective: Objective, reason: InboxReason): InboxAwaits {
   const target = holdTargetOf(reason);
   return target && livePersonHold(objective, target) ? "person" : "commodore";
 }

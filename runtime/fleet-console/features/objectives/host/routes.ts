@@ -355,8 +355,6 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     // 라우팅 확인 스위치는 사람의 개시 방식이라 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 편집도 아니다.
     { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Objective's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), actions.patch) },
     // 목표를 지우면 지휘관 Objective 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
-    // 운영 주체 — 사람만 바꾼다. 사령관 보드 도구에는 이 쓰기가 없고, 사령관은 조회의 operator 로 읽기만 한다.
-    { name: "objective/operator", method: "POST", summary: "Hand an objective to the Theater's Commodore (commodore true) or take it back (false). Only the person sets it; the change is kept in the objective's actions. The Commodore is woken by an objective's board changes only while it operates it.", handler: json(objectiveRef.extend({ commodore: z.boolean() }), ({ objectiveId, commodore }) => objective(store.setCommodoreOperated(objectiveId, commodore, "human"))) },
     // 사령관에게 돌려주기 — 사령관이 사람에게 넘긴 항목을 사람이 되돌린다. 넘김은 「돌려줌」으로 남고 사령관이 깨어나 그 항목을 다시 맡는다.
     { name: "person-hold/return", method: "POST", summary: "Return an item the Commodore handed to the person (decision, criteria, review or followup) to the Commodore; it can answer it again and is woken.", handler: json(objectiveRef.extend({ target: z.enum(PERSON_HOLD_TARGETS) }), actions.returnToCommodore) },
     // 옛 페이지의 restorable 필드는 받아 두되, 값과 기동 여부에 관계없이 복원 가능한 보관만 한다.

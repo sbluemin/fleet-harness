@@ -129,7 +129,7 @@ export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView
   const on = view?.active === true;
   const run = view?.run;
   const running = objectives.filter(isRunningObjective).length;
-  // 대기는 사령관이 운영하는 목표의, 사람에게 넘기지 않은 항목만 센다 — 사람의 목표는 사령관을 깨우지 않는다(서버 판정 `operator`).
+  // 대기는 사람에게 넘기지 않은 항목만 센다.
   const waiting = objectives.filter((objective) => isCommodoreWaiting(objective)).length;
   const meta: CommodoreMetaPart[] = [
     { key: "mode", text: t(on ? "commodore.meta.autonomous" : "commodore.meta.inactive"), ...(on ? { tone: "on" as const } : {}) },

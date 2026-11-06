@@ -142,7 +142,7 @@ function ownHit(entry: CommodoreTranscriptEntry, callerId: string, callerAlias: 
 function ownOperationalLabel(entry: CommodoreTranscriptEntry): string {
   switch (entry.kind) {
     case "wake": return `[wake: ${entry.reasons.join("; ")}]`;
-    case "wake-scope": return `[wake-scope: woke ${entry.woke.map((item) => item.id).join(",") || "-"} / held ${entry.held.map((item) => item.id).join(",") || "-"}]`;
+    case "wake-scope": return `[wake-scope: woke ${entry.woke.map((item) => item.id).join(",") || "-"}]`;
     case "tool": return `[tool ${entry.name}${entry.summary ? `: ${entry.summary}` : ""}${entry.action ? ` action=${entry.action}` : ""}${entry.objectiveId ? ` objective=${entry.objectiveId}` : ""}${entry.title ? ` ${entry.title}` : ""}${entry.ok === false ? ` failed${entry.error ? `: ${entry.error}` : ""}` : ""}]`;
     case "result": return `[result ${entry.outcome}${entry.error ? `: ${entry.error}` : ""}]`;
     case "session": return `[session ${entry.event}${entry.reason ? `: ${entry.reason}` : ""}]`;

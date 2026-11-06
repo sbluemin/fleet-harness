@@ -2193,7 +2193,7 @@ describe("Objectives contract", () => {
     expect(created).toMatchObject({ stored: { dueDate: "2026-10-31", requestSource } });
     const id = created.objectiveId as string;
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor, requestSource });
-    expect((await board({ action: "list", filter: "agent" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor, requestSource }));
+    expect((await board({ action: "list", filter: "all" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor, requestSource }));
     const reloadObjective = () => createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(id);
     expect(reloadObjective()).toMatchObject({ addedBy: actor, requestSource, origin: null, dueDate: "2026-10-31", attachments: [expect.objectContaining({ n: 1, type: "image/png", bytes: PNG.length })] });
     // 같은 호출자가 이어 만든 개인 요청은 직전 TF에 귀속되지 않는다. 기존 파일의 부재도 직접 출처로 추정하지 않는다.
@@ -2248,14 +2248,11 @@ describe("Objectives contract", () => {
     expect(reloadObjective()?.dueDate).toBe("2026-11-01");
     expect(await board({ action: "edit_due", objectiveId: id, dueDate: null })).toMatchObject({ stored: { dueDate: null } });
     expect(reloadObjective()?.dueDate).toBeNull();
-    // 운영 주체 — 사람이 만든 목표도 사령관 조회에 그대로 서고 operator 로 구분된다. 맡기는 것은 사람의 라우트뿐이고,
-    // 맡긴 값은 다시 읽어도 남으며 행위 기록에 사람의 손으로 남는다.
+    // 운영 구분 없음 — 사람이 만든 목표도 조회에 그대로 서고, 넘김에 맡기기가 필요 없다.
     const personal = (await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Person's own", groupId: null, note: "brief" })).id;
-    expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ operator: "commodore" });
-    expect((await board({ action: "list" })).objectives).toContainEqual(expect.objectContaining({ id: personal, operator: "human" }));
-    expect((await route("objective/operator", { objectiveId: personal, commodore: true })).status).toBe(200);
-    expect((await board({ action: "read", objectiveId: personal })).objective).toMatchObject({ operator: "commodore", actions: [expect.objectContaining({ kind: "edit", by: "human" })] });
-    expect(createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(personal)?.commodoreOperated).toBe(true);
+    expect((await board({ action: "read", objectiveId: personal })).objective).not.toHaveProperty("operator");
+    expect((await board({ action: "list" })).objectives).toContainEqual(expect.objectContaining({ id: personal }));
+    expect(createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(personal)).not.toHaveProperty("commodoreOperated");
     expect(launches).toHaveLength(0);
     // 사령관이 만든 목표의 지휘관도 채팅 뷰로 준비된다 — 보기 선택은 없다.
     expect(store.find(id)!.commander.viewMode).toBe("chat");
@@ -2548,10 +2545,8 @@ describe("Objectives contract", () => {
     expect(restarted.store.list("c1").filter((entry) => entry.origin?.candidateId === candidate.id).map((entry) => entry.id)).toEqual([nextId]);
     expect((await board({ action: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ hasRetrospective: true })] }));
     expect(JSON.parse((await board({ action: "read", objectiveId: id, section: "handoffs" })).text as string)).toContainEqual(expect.objectContaining({ retrospective }));
-    // 사령관이 고른 후속은 따로 정하지 않아도 사람이 운영한다. 사람이 맡기면 사령관 운영이 된다(깨움과 같은 판정).
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"], operator: "human" }));
-    expect((await route("objective/operator", { objectiveId: nextId, commodore: true })).status).toBe(200);
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"], operator: "commodore" }));
+    // 사령관이 고른 후속도 기본 운영이다 — 맡기기가 필요 없다.
+    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"] }));
     // 사령관이 고른 후속은 터미널 원본의 뷰를 이어받지 않고 채팅 뷰 지휘관으로 시작한다.
     expect(store.find(nextId)!.commander.viewMode).toBe("chat");
     await board({ action: "commence", objectiveId: nextId });
@@ -2577,7 +2572,7 @@ describe("Objectives contract", () => {
         questions: [{ header: "Backlog", text: "Continue the backlog?", options: [{ label: "Continue" }, { label: "Pause" }] }] });
     }
     type Page = { total: number; offset: number; nextOffset: number | null; objectives: { id: string; criteriaCount: number }[] };
-    for (const args of [...[undefined, "all", "today", "due", "agent"].map((filter) => ({ action: "list", ...(filter ? { filter } : {}) })),
+    for (const args of [...[undefined, "all", "today", "due"].map((filter) => ({ action: "list", ...(filter ? { filter } : {}) })),
       ...["inbox", "fleet", "history"].map((action) => ({ action }))]) {
       const seen: string[] = [];
       let offset = 0;
