@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ClaudeGatewaySystemPrompt } from "../../claude/index.js";
 
 import { buildClaudeDenyRules } from "./claude-agent-rules.js";
-import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
+import { GATEWAY_DISABLED_CLAUDE_SKILLS, SDK_CLAUDE_SKILL_OVERRIDES, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
 import type { AgentCliPlugin, ClaudeSessionCoordinate, FleetHookExec } from "./types.js";
 
 /**
@@ -34,7 +34,8 @@ export interface ClaudeSessionSdkOptions {
   readonly settingSources: readonly ("user" | "project" | "local")[];
   readonly allowAmbientMcpServers: boolean;
   readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
-  readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
+  readonly disableBundledSkills: true;
+  readonly skillOverrides: typeof SDK_CLAUDE_SKILL_OVERRIDES;
   readonly autoMemoryEnabled?: boolean;
 }
 
@@ -164,7 +165,9 @@ export async function prepareClaudeSession(
         settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
         ...(options.workspaceHookExec ? { cwdHook: options.workspaceHookExec } : {}),
-        ...(skillOverrides ? { skillOverrides } : {}),
+        // 출처 차단과 vendor 공백의 한 이름 보완을 함께 적용한다.
+        disableBundledSkills: true,
+        skillOverrides: SDK_CLAUDE_SKILL_OVERRIDES,
         ...(options.disableAutoMemory !== undefined ? { autoMemoryEnabled: !options.disableAutoMemory } : {}),
       },
       request: {

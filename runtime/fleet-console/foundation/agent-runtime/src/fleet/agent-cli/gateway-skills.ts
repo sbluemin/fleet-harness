@@ -20,6 +20,9 @@ export type ClaudeSkillOverride = "on" | "name-only" | "user-invocable-only" | "
  */
 export const GATEWAY_DISABLED_CLAUDE_SKILLS: readonly string[] = ["claude-api"];
 
+/** 번들 차단에서 빠지는 내장 플러그인 스킬의 SDK 한정 보완. 동명 비내장 스킬도 차단한다. */
+export const SDK_CLAUDE_SKILL_OVERRIDES = { "plugin-authoring": "off" } as const;
+
 /** 스킬 이름 목록 → `skillOverrides` 맵. 빈 목록이면 undefined(설정을 싣지 않음). */
 export function buildDisabledSkillOverrides(
   skillNames: readonly string[],

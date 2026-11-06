@@ -269,6 +269,8 @@ export interface ClaudeGatewaySdkOptions {
    * 설정 파일 모양으로 들어오는 통로가 다시 생긴다.
    */
   readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
+  /** 번들 스킬·워크플로 공급만 끈다. 홈·프로젝트·플러그인 스킬과 공용 Skill 도구는 유지한다. */
+  readonly disableBundledSkills?: true;
   /**
    * 설정 `claudeMdExcludes` — 읽지 않을 CLAUDE.md·규칙 파일의 glob(절대 경로에 picomatch로 맞춘다). 사용자·프로젝트·
    * 로컬 층에만 듣는다.

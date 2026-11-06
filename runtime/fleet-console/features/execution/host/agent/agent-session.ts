@@ -1,4 +1,5 @@
 import { contextBreakdownOf } from "./context-breakdown.js";
+import { SDK_CLAUDE_SKILL_OVERRIDES } from "@fleet-console/agent-runtime/fleet";
 import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, projectClaudeContextInputTokens, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
 import path from "node:path";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
@@ -142,6 +143,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt, deps.compactCeiling?.() ?? null);
       return (deps.createSdk ?? createClaudeGatewaySdk)({
         baseUrl, models: [options.model], env, modelPolicy: claudeGatewayModelPolicy,
+        ...(resources.resident ? { disableBundledSkills: true as const, skillOverrides: SDK_CLAUDE_SKILL_OVERRIDES } : {}),
         ...(options.autoMemoryEnabled === undefined ? {} : { autoMemoryEnabled: options.autoMemoryEnabled }),
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.
         ...(resources.resident ? { home: { kind: "persistent" as const, configDir: path.join(scratch, "claude") } } : { tempRoot: scratch }),

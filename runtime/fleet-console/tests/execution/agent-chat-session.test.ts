@@ -247,7 +247,8 @@ function fakeClaudeSession(
         pluginUrl,
         settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
-        skillOverrides: { "claude-api": "off" },
+        disableBundledSkills: true,
+        skillOverrides: { "plugin-authoring": "off" },
       },
       request: {
         ...(overrides.resumeOf ? { resume: sessionId } : { sessionId }),
