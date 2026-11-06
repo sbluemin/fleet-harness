@@ -21,12 +21,12 @@ import { useComposerAttachmentSnapshot } from "../../execution/client/composer-p
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
 import type { Translate } from "@fleet-console/i18n";
-import { SettingsRow } from "../../settings/client/preferences-context.js";
+import { SettingsRow, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { CommanderSubagentsSection, CommodoreBasePromptSection, useCommanderSubagents, useCommodoreBasePrompt } from "../../settings/client/commodore-session-settings.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
-import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import type { CommodoreLiveEvent, CommodoreState, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderCoordinates, commanderRouted, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
@@ -60,6 +60,7 @@ import {
   retryCommodore,
   saveCommodoreDescription,
   setCommodoreCommander,
+  setCommodoreAutoMemory,
   setCommodoreCoordinates,
   subscribeCommodore,
   useCommodore,
@@ -320,14 +321,23 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
           onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
         />
       </SettingsRow>
-      <CommodoreSessionSettings key={theaterId} t={t} commodoreId={theaterId} />
+      <CommodoreSessionSettings key={theaterId} t={t} commodoreId={theaterId} state={state} />
       <div className="objectives-commodore-settings-divider" role="separator" />
       <CommodoreTheaters commodoreId={theaterId} />
     </div>
   );
 }
 
-export function CommodoreSessionSettings({ t, commodoreId, phone = false }: { readonly t: T; readonly commodoreId: string; readonly phone?: boolean }) {
+export function CommodoreSessionSettings({ t, commodoreId, state, phone = false }: { readonly t: T; readonly commodoreId: string; readonly state: CommodoreState; readonly phone?: boolean }) {
+  const [memorySaving, setMemorySaving] = useState(false);
+  const [memoryFailed, setMemoryFailed] = useState(false);
+  const autoMemoryEnabled = state.autoMemoryEnabled !== false;
+  const changeMemory = (next: boolean) => {
+    setMemorySaving(true);
+    setMemoryFailed(false);
+    // 성공한 서버 상태만 그린다. 쓰기 실패 시 이전 선택은 그대로 남는다.
+    void setCommodoreAutoMemory(commodoreId, next).catch(() => setMemoryFailed(true)).finally(() => setMemorySaving(false));
+  };
   const basePrompt = useCommodoreBasePrompt(commodoreId);
   const subagents = useCommanderSubagents(commodoreId);
   const promptT = useConsoleT(phone);
@@ -338,6 +348,7 @@ export function CommodoreSessionSettings({ t, commodoreId, phone = false }: { re
   const summary = loading ? promptT("sidebar.commodore.setting.loading") : failed ? t("commodore.settings.advancedLoadFailed") : t("commodore.settings.advancedSummary", {
     prompt: promptT(basePrompt.value ? "sidebar.commodore.basePrompt.on" : "sidebar.commodore.basePrompt.off"),
     subagents: promptT(subagents.value ? "sidebar.commodore.commanderSubagents.allowed" : "sidebar.commodore.commanderSubagents.off"),
+    memory: promptT(autoMemoryEnabled ? "sidebar.commodore.basePrompt.on" : "sidebar.commodore.basePrompt.off"),
   });
   if (!commodoreId) return null;
   return (
@@ -351,9 +362,15 @@ export function CommodoreSessionSettings({ t, commodoreId, phone = false }: { re
       </button>
       <div id={bodyId} className="objectives-commodore-commander-options" hidden={!expanded}>
         <CommodoreBasePromptSection controller={basePrompt} mobile={phone} />
+        <div className="commodore-session-setting">
+          <SettingsRow label={t("commodore.settings.autoMemory")} hint={t(autoMemoryEnabled ? "commodore.settings.autoMemoryOnHint" : "commodore.settings.autoMemoryOffHint")}>
+            <SettingsToggle checked={autoMemoryEnabled} busy={memorySaving} ariaLabel={t("commodore.settings.autoMemoryAria")} onChange={changeMemory} />
+          </SettingsRow>
+          {memoryFailed ? <p className="commodore-session-setting-status is-error" role="alert">{promptT("sidebar.commodore.setting.saveFailed")}</p> : null}
+        </div>
         <CommanderSubagentsSection controller={subagents} mobile={phone} />
       </div>
-      {!expanded && (basePrompt.state === "saveFailed" || subagents.state === "saveFailed") ? <p className="objectives-commodore-hint is-error" role="alert">{promptT("sidebar.commodore.setting.saveFailed")}</p> : null}
+      {!expanded && (memoryFailed || basePrompt.state === "saveFailed" || subagents.state === "saveFailed") ? <p className="objectives-commodore-hint is-error" role="alert">{promptT("sidebar.commodore.setting.saveFailed")}</p> : null}
     </div>
   );
 }

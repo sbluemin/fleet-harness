@@ -104,7 +104,7 @@ export async function createClaudeGatewaySdk(
     model: string,
     env: ReturnType<typeof claudeGatewayLaunchEnv>,
   ): Record<string, unknown> => ({
-    env,
+    env: options.autoMemoryEnabled === undefined ? env : { ...env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: options.autoMemoryEnabled ? "0" : "1" },
     model,
     ...(options.executablePath === undefined ? {} : { pathToClaudeCodeExecutable: options.executablePath }),
     ...(request.systemPrompt === undefined
@@ -362,7 +362,7 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
   }
   if (options.claudeMdExcludes && options.claudeMdExcludes.length > 0) settings.claudeMdExcludes = [...options.claudeMdExcludes];
   if (options.ultracode === true) settings.ultracode = true;
-  if (options.autoMemoryEnabled === false) settings.autoMemoryEnabled = false;
+  if (options.autoMemoryEnabled !== undefined) settings.autoMemoryEnabled = options.autoMemoryEnabled;
   if (options.cwdHook) {
     const hook = { type: "command", command: options.cwdHook.command, args: [...options.cwdHook.args] };
     settings.hooks = {

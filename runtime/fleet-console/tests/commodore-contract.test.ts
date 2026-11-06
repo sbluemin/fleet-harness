@@ -845,6 +845,18 @@ describe("commodore theater state", () => {
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
     expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "language", "description", "intel", "intel", "intel-edited", "coordinates"]);
 
+    // SDK 기억 정책도 같은 영속·인가 경계를 쓴다. 기존 파일이나 Fleet 기억은 삭제하지 않는다.
+    expect(h.store.read("t1")?.autoMemoryEnabled ?? true).toBe(true);
+    expect((await h.route("commodore/auto-memory", { commodoreId: "unknown", autoMemoryEnabled: false })).status).toBe(404);
+    expect((await h.route("commodore/auto-memory", { commodoreId: "t1", autoMemoryEnabled: "false" })).status).toBe(400);
+    expect((await h.route("commodore/auto-memory", { commodoreId: "t1", autoMemoryEnabled: false })).value.state!.autoMemoryEnabled).toBe(false);
+    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")?.autoMemoryEnabled).toBe(false);
+    expect((await h.route("commodore/auto-memory", { commodoreId: "t1", autoMemoryEnabled: true })).value.state!.autoMemoryEnabled).toBe(true);
+    h.setAuthorized(false);
+    expect((await h.route("commodore/auto-memory", { commodoreId: "t1", autoMemoryEnabled: false })).status).toBe(401);
+    expect(h.store.read("t1")?.autoMemoryEnabled).toBe(true);
+    h.setAuthorized(true);
+
     // 저장된 스위치와 실행 가능 여부는 별개다. 보드 없는 view는 꺼짐이며 켜기 요청도 거절한다.
     expect((await h.route("commodore/state", { commodoreId: "t1" }, { boardReady: () => false })).value).toMatchObject({ boardReady: false, active: false, state: { description: { rev: 1 } }, run: { phase: "off" } });
     // 같은 origin 의 Console 만 지난다.
@@ -2642,14 +2654,14 @@ describe("commodore supervisor", () => {
     } finally { release?.(); await supervisor.dispose(); vi.useRealTimers(); }
   });
 
-  it("rotates the session silently when the next wake comes more than an hour after the last turn", async () => {
+  it("rotates silently after idle expiry or an auto memory policy change at the next turn", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
     const h = harness();
     h.setExperiments({ commodore: true });
-    const sessions: { sent: string[]; disposed: boolean }[] = [];
+    const sessions: { sent: string[]; disposed: boolean; autoMemoryEnabled: boolean | undefined }[] = [];
     const agent: AgentHost = { createSession: async (options) => {
-      const entry = { sent: [] as string[], disposed: false };
+      const entry = { sent: [] as string[], disposed: false, autoMemoryEnabled: options.autoMemoryEnabled };
       sessions.push(entry);
       return {
         send: async (text) => {
@@ -2684,6 +2696,21 @@ describe("commodore supervisor", () => {
       expect(sessions[1]!.sent).toHaveLength(1);
       expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      expect(sessions[1]!.autoMemoryEnabled).toBe(true);
+      // 설정 저장 자체는 턴을 띄우거나 기존 세션을 끊지 않는다. 다음 메시지의 새 세션에서만 적용된다.
+      for (const enabled of [false, true]) {
+        const previous = sessions.at(-1)!;
+        const count = sessions.length;
+        expect((await h.route("commodore/auto-memory", { commodoreId: "t1", autoMemoryEnabled: enabled })).status).toBe(200);
+        await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+        expect(sessions).toHaveLength(count);
+        expect(previous.disposed).toBe(false);
+        h.store.transcriptAppend("t1", { kind: "message", text: "Use the new memory policy." });
+        await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+        expect(previous.disposed).toBe(true);
+        expect(sessions).toHaveLength(count + 1);
+        expect(sessions.at(-1)!.autoMemoryEnabled).toBe(enabled);
+      }
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
 

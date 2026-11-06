@@ -771,7 +771,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
             />
           </SettingsRow>
-          <CommodoreSessionSettings key={theaterId} t={t} commodoreId={theaterId} phone />
+          <CommodoreSessionSettings key={theaterId} t={t} commodoreId={theaterId} state={state} phone />
         </SettingsCard>
         <SettingsCard>
           {/* 정보 행 — 누름 없음. 값 줄은 다른 행의 값과 같은 자리·같은 글자다(비활성 단추가 아니다). */}
