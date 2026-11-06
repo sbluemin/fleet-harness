@@ -360,6 +360,7 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
   if (options.skillOverrides && Object.keys(options.skillOverrides).length > 0) {
     settings.skillOverrides = { ...options.skillOverrides };
   }
+  if (options.disableBundledSkills === true) settings.disableBundledSkills = true;
   if (options.claudeMdExcludes && options.claudeMdExcludes.length > 0) settings.claudeMdExcludes = [...options.claudeMdExcludes];
   if (options.ultracode === true) settings.ultracode = true;
   if (options.autoMemoryEnabled !== undefined) settings.autoMemoryEnabled = options.autoMemoryEnabled;

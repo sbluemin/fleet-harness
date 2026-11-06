@@ -34,7 +34,7 @@ export interface ClaudeSessionSdkOptions {
   readonly settingSources: readonly ("user" | "project" | "local")[];
   readonly allowAmbientMcpServers: boolean;
   readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
-  readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
+  readonly disableBundledSkills: true;
   readonly autoMemoryEnabled?: boolean;
 }
 
@@ -164,7 +164,8 @@ export async function prepareClaudeSession(
         settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
         ...(options.workspaceHookExec ? { cwdHook: options.workspaceHookExec } : {}),
-        ...(skillOverrides ? { skillOverrides } : {}),
+        // SDK는 이름이 아니라 번들 출처를 끈다. 동명 사용자·프로젝트·플러그인 스킬은 남는다.
+        disableBundledSkills: true,
         ...(options.disableAutoMemory !== undefined ? { autoMemoryEnabled: !options.disableAutoMemory } : {}),
       },
       request: {

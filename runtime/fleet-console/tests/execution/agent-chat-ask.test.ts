@@ -107,7 +107,7 @@ function seedFor(awaitingLog: boolean[]): AgentChatSessionSeed {
         pluginUrl,
         claudeCodeSystemPrompt: "off",
         sdk: {
-          options: { pluginUrl, settingSources: ["user", "project", "local"], allowAmbientMcpServers: true },
+          options: { pluginUrl, settingSources: ["user", "project", "local"], allowAmbientMcpServers: true, disableBundledSkills: true },
           request: { sessionId, permissionMode: "bypassPermissions" },
         },
       };

@@ -108,7 +108,7 @@ describe("Console-owned plugin Agent", () => {
       return { send: (input: unknown, options?: { messageId?: string }) => reply(typeof input === "string" ? input : JSON.stringify(input), options?.messageId), close: () => closeChild(),
         async *[Symbol.asyncIterator]() { for (;;) { while (queue.length) yield queue.shift()!; if (done) return; await new Promise<void>((r) => { wake = r; }); wake = null; } } };
     }) } as unknown as ClaudeGatewaySdk; };
-    const hostFor = () => createConsoleResidentAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { expect(sdkOptions.executablePath).toBe("/installed/claude"); homes.push(sdkOptions.home); settingSources.push(sdkOptions.settingSources); return engine((sdkOptions.home as { configDir: string }).configDir); } });
+    const hostFor = () => createConsoleResidentAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { expect(sdkOptions.executablePath).toBe("/installed/claude"); expect(sdkOptions.disableBundledSkills).toBe(true); homes.push(sdkOptions.home); settingSources.push(sdkOptions.settingSources); return engine((sdkOptions.home as { configDir: string }).configDir); } });
     const cwd = dataRoot;
     const events: AgentEvent[] = [];
     const host = hostFor();

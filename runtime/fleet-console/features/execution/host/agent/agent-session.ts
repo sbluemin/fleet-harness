@@ -142,6 +142,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt, deps.compactCeiling?.() ?? null);
       return (deps.createSdk ?? createClaudeGatewaySdk)({
         baseUrl, models: [options.model], env, modelPolicy: claudeGatewayModelPolicy,
+        ...(resources.resident ? { disableBundledSkills: true as const } : {}),
         ...(options.autoMemoryEnabled === undefined ? {} : { autoMemoryEnabled: options.autoMemoryEnabled }),
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.
         ...(resources.resident ? { home: { kind: "persistent" as const, configDir: path.join(scratch, "claude") } } : { tempRoot: scratch }),

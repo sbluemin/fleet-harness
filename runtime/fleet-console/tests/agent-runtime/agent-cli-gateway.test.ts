@@ -121,6 +121,8 @@ describe("claude-gateway argument composition", () => {
     // 옵트아웃이 없으면 규칙 키 자체가 실리지 않는다.
     const untouched = await prepareClaudeSession({ cliId: "claude", cwd: root, plugin: pluginStub, origin: { kind: "new" } });
     expect(untouched.sdk.request).not.toHaveProperty("disallowedTools");
+    expect(untouched.sdk.options.disableBundledSkills).toBe(true);
+    expect(untouched.sdk.options).not.toHaveProperty("skillOverrides");
   });
 
   /**
