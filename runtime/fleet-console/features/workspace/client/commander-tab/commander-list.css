@@ -225,72 +225,45 @@
   overflow: clip;
 }
 .commander-tab--card .commander-tab-groups .commander-tab-list { gap: 0; }
-/* 우측 작업 탭의 행 아래 펼침 — 카드 안 행과 같은 배경 위에 hairline으로만 나뉜다. 카드 밖 시작 전·완료에는 적용하지 않는다. */
+/* 우측 작업 탭 카드 — 행 펼침은 없다. 카드 안 행은 같은 배경 위에 hairline으로만 나뉜다. 카드 밖 시작 전·완료에는 적용하지 않는다. */
 .commander-tab--card .commander-tab-groups .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
 .commander-tab--card .commander-tab-groups .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
-.commander-tab--card .commander-row-panel {
-  min-width: 0;
-  padding: 4px 8px 10px;
-  border-top: 1px solid var(--hairline);
-}
-.commander-tab--card .commander-row-panel + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
-.commander-row-panel-empty { margin: 0; padding: 8px 4px; color: var(--text-tertiary); font-size: var(--t-sm); text-align: center; }
-
-/* 행 글리프(우측 카드) — B안: 쉬는 행에서는 세 글리프를 모두 숨기고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만
-   늘 같은 자리에 함께 나타난다. 점 있는 글리프만 쉬는 행에 남기면 가리킬 때 나머지가 끼어들며 그 글리프 자리가 밀리므로,
-   쉬는 행의 점은 ★ 옆 작은 점(.commander-row-pips)으로 둔다. */
-.commander-tab--card .commander-row-glyphs { display: none; flex: none; align-items: center; gap: 1px; }
-.commander-tab--card .side-bar-cluster-row:hover .commander-row-glyphs,
-.commander-tab--card .side-bar-cluster-row:focus-within .commander-row-glyphs,
-.commander-tab--card .side-bar-cluster-row.is-open .commander-row-glyphs { display: inline-flex; }
-/* 한 줄 행(시작 전·완료)은 둘째 줄이 없어 글리프를 흐름에 두고 작게 그려 잃는 폭을 줄인다(최소 20px). */
-.commander-tab--card .side-bar-cluster-row--settled .commander-row-glyphs { gap: 0; }
-.commander-tab--card .side-bar-cluster-row--settled .commander-row-glyph { width: 22px; height: 22px; }
-.commander-row-glyph {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-.commander-row-glyph svg { width: 14px; height: 14px; }
-.commander-row-glyph:hover { background: var(--wash-hover); color: var(--text-primary); }
-.commander-row-glyph[aria-expanded="true"] { background: var(--wash-selected); color: var(--text-primary); }
-.commander-row-glyph:focus-visible { box-shadow: var(--focus-face); }
-/* 글리프 위의 점 — 탭 줄의 점과 같은 뜻·색이다: 결정 요청(aurora), 안 읽은 기록(brass).
-   아이콘 획과 겹치지 않게 버튼 모서리에 두고 카드 배경 테두리를 두른다. */
-.commander-row-glyph-dot { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--surface-panel); }
-.commander-row-glyph-dot.is-attention { background: var(--aurora); }
-.commander-row-glyph-dot.is-unseen { background: var(--brass); }
-/* 쉬는 행의 점 — 글리프가 나타나면 해당 글리프 위의 점으로 옮겨 가므로 쉬는 행에서만 보인다. */
-.commander-tab--card .commander-row-pips { display: none; align-items: center; gap: 3px; padding: 0 3px; }
-.commander-tab--card .side-bar-cluster-row:not(:hover):not(:focus-within):not(.is-open) .commander-row-pips { display: inline-flex; }
-.commander-row-pips i { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--aurora); }
-.commander-row-pips i.is-unseen { background: var(--brass); }
-
-/* 글리프 펼침의 「오늘까지·기한」 — 목표 내용 맨 위에 중앙 정렬로 둔다. 단추는 지금 모양(글리프+글자) 그대로다. */
-.commander-row-panel-schedule { display: flex; justify-content: center; margin: 2px 0 0; }
-/* 「오늘까지·기한」 아래에는 본문 첫 묶음을 바로 붙인다 — 본문 위 4·6px는 펼침에 탭 줄이 있던 때 탭과 본문을 가르던 여백이라
-   여기서는 빈 띠만 만든다. 줄 아래 간격은 첫 행(44px) 안의 여백이 맡는다. 일정 줄이 없는 구성원·라이브러리 펼침은 그대로다. */
-.commander-row-panel-schedule + .objectives-detail .objectives-tab-body { padding-top: 0; }
-.commander-row-panel-schedule + .objectives-detail .objectives-tab-body > .objectives-group:first-child { padding-top: 0; }
+/* 목표 팝업이 열린 행 — 가리킴과 같은 옅은 면을 붙들어 어느 행의 팝업인지 말한다. 고름(가운데 대화)의 면이 있으면 그대로 둔다. */
+.commander-tab--card .side-bar-cluster-row.is-open:not(.side-bar-cluster-row--active) { background: var(--wash-hover); }
 
 /* 상태 줄은 줄바꿈하지 않고 상태 문구는 말줄임한다 — 게이지·분수는 기존 @container 규칙을 그대로 따른다. */
 .commander-tab--card .side-bar-cluster-row-line { flex-wrap: nowrap; white-space: nowrap; }
-/* 글리프가 보이는 동안만 상태 줄을 표식 칸 앞에서 멈춘다 — 넓어진 aside(글리프+★) 아래에 막대·분수가 깔리지 않게.
-   쉬는 행은 표식 칸 아래까지 쓰는 기존 배치 그대로다. */
-.commander-tab--card .side-bar-cluster-row:is(:hover, :focus-within, .is-open) .side-bar-cluster-row-line { grid-column: 1; }
 .commander-tab--card .side-bar-cluster-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 드러난 두 줄 행에서는 게이지·분수를 숨기고 상태 문구만 글리프 앞에서 말줄임한다 — 1px 막대 부스러기와 몇 px짜리
-   문구 조각이 남지 않게. 말줄임은 통째 글자 단위라 조각 획이 생기지 않는다. 쉬는 행에는 닿지 않는다. */
-.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-gauge,
-.commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled):is(:hover, :focus-within, .is-open) .side-bar-cluster-row-fraction { display: none; }
+
+/* 임무 게이지 단추 — 행 본문 단추 안이 아니라 형제로 서서(단추 안 단추를 피한다) 본문 상태 줄 끝에 겹친다.
+   상태 줄은 단추 폭만큼 오른쪽을 비워 두어 문구가 단추 밑으로 깔리지 않는다. 폭은 게이지 @container 단계와 함께 줄어든다. */
+.commander-tab--card .side-bar-cluster-row.has-progress-button { --row-progress-room: 92px; }
+.commander-tab--card .side-bar-cluster-row.has-progress-button .side-bar-cluster-row-line { grid-column: 1; padding-right: var(--row-progress-room); }
+.side-bar-cluster-row-progress {
+  position: relative;
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -4px -2px 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.side-bar-cluster-row-progress:hover { background: var(--wash-hover); }
+.side-bar-cluster-row-progress:hover .side-bar-cluster-row-fraction { color: var(--text-primary); }
+.side-bar-cluster-row-progress:focus-visible { outline: none; box-shadow: var(--focus-face); }
+@container (max-width: 300px) { .commander-tab--card .side-bar-cluster-row.has-progress-button { --row-progress-room: 68px; } }
+@container (max-width: 260px) { .commander-tab--card .side-bar-cluster-row.has-progress-button { --row-progress-room: 34px; } }
 /* 글리프·위임 토글은 같은 칸의 정상 흐름에 둔다. 좁아지면 제목 열이 먼저 줄고 도구 폭은 보존한다.
    시작 전·완료 한 줄 행은 이전 크기와 높이를 그대로 둔다. */
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) { grid-template-columns: 30px minmax(0, 1fr) auto; }
@@ -388,3 +361,5 @@
 .side-bar-cluster-row-date.is-glyph.is-done { color: color-mix(in oklch, var(--text-tertiary) 72%, transparent); }
 .side-bar-cluster-row-date.is-glyph { place-items: center; height: 26px; color: color-mix(in oklch, var(--text-tertiary) 80%, transparent); }
 .side-bar-cluster-row-date.is-glyph > svg { width: 15px; height: 15px; }
+/* 안 읽은 임무 기록 — 지난 행 글리프의 점과 같은 뜻·색(brass)이다. 분수 오른쪽 위에 카드 배경 테두리를 두르고 선다. */
+.side-bar-cluster-row-progress-dot { position: absolute; top: 0; right: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); border: 1px solid var(--surface-panel); }
