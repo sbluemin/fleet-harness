@@ -3,8 +3,10 @@ import { createPortal } from "react-dom";
 import type { ObjectiveResult } from "../shared/types.js";
 import { getT } from "./i18n/index.js";
 import { DatePicker } from "./date-picker.js";
-import { LaunchControl } from "./launch-control.js";
+import { commanderLaunchShown, LaunchControl, readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
 import { openResultWindow } from "./result-window.js";
+import { commodoreBoardOf, decisionTurn, subscribeCommodore } from "./board-commodore.js";
+import { reasonAwaits } from "../shared/board-state.js";
 import { relative, useNow } from "./result-content.js";
 import { CalGlyph, dueLabel, todayIso } from "./objectives-panel.js";
 import { loadBoard, objectiveRecordSummaries, objectivesApi, post, subscribeObjective, useObjectiveBoard } from "./objectives-state.js";
@@ -21,21 +23,20 @@ const RECENT_RESULTS = 3;
  * 행 쪽 사실(상태 문구·도구 사용·아바타)은 목록이 넘기고, 목표 사실은 보드에서 읽어 변경이 바로 보인다.
  * Esc·바깥 누름으로 닫히고 닫힌 뒤 연 단추로 초점이 돌아간다. 날짜 선택기·결과물 창 안의 누름은 바깥으로 치지 않는다.
  */
-export function CommanderObjectivePopover({ commodoreId, objectiveId, anchor, language, avatar, activityAt, statusLine, toolLabel, onOpenConversation, onReview, onClose }: {
+export function CommanderObjectivePopover({ commodoreId, objectiveId, anchor, language, avatar, lastWords, statusLine, toolLabel, onOpenConversation, onClose }: {
   readonly commodoreId: string;
   readonly objectiveId: string;
   /** 위치를 잡는 행 — 아바타로 열어도 행 전체를 기준으로 선다. */
   readonly anchor: HTMLElement;
   readonly language: "en" | "ko";
   readonly avatar: ReactNode;
-  /** 행의 마지막 활동 시각 — 머리 밑줄에 상대 시각으로 선다. */
-  readonly activityAt: number | null;
-  /** 행 둘째 줄과 같은 상태 문구 — 「지금」 칸. */
+  /** 지휘관이 대화에서 마지막으로 한 말과 그 시각 — 「지금」 칸. 아직 없으면 null. */
+  readonly lastWords: { readonly text: string; readonly at: number | null } | null;
+  /** 행 둘째 줄과 같은 상태 문구 — 머리 오른쪽 칩. */
   readonly statusLine: string;
   readonly toolLabel: string | null;
+  /** 그 지휘관 대화를 연다 — 「대화 열기」와 사람 차례의 「답하기」·「검토하기」가 함께 쓴다. 결정 카드·검토 카드는 그 대화에 선다. */
   readonly onOpenConversation: () => void;
-  /** 검토 대기 목표의 검토 — 행의 검토 동작이 없으면 대화를 연다. */
-  readonly onReview: (() => void) | null;
   /** 닫기 — `restoreFocus` 면 연 단추로 초점을 돌린다(Esc·닫기). 바깥 누름은 누른 자리에 초점을 둔다. */
   readonly onClose: (restoreFocus: boolean) => void;
 }) {
@@ -78,6 +79,9 @@ export function CommanderObjectivePopover({ commodoreId, objectiveId, anchor, la
     ref.current?.focus({ preventScroll: true });
   }, [position]);
   const now = useNow();
+  const roster = useSyncExternalStore(subscribeLaunchRoster, readLaunchRoster, readLaunchRoster);
+  const readActive = () => commodoreBoardOf(commodoreId).active;
+  const commodoreActive = useSyncExternalStore(subscribeCommodore, readActive, readActive);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -104,8 +108,9 @@ export function CommanderObjectivePopover({ commodoreId, objectiveId, anchor, la
   // 기한은 머리 「기한」 단추와 같은 기준으로 잠긴다 — 지휘관이 일하는 동안·끝난 목표는 바꾸지 않는다(서버도 같은 기준).
   const dueEditable = !objective.done && activity !== "running" && activity !== "background";
   const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
-  const decision = !objective.done && objective.decisionRequest !== null;
-  const review = !objective.done && objective.awaitingReview;
+  // 사람의 차례일 때만 선다 — 사령관이 맡아 답하는 결정·검토는 행 상태 칩(「…가 답하는 중」)이 말한다. 판정은 사이드바·결정 칸과 같다.
+  const decision = decisionTurn(objective, commodoreActive) === "person";
+  const review = !objective.done && objective.awaitingReview && (!commodoreActive || reasonAwaits(objective, "review") === "person");
   const recent = [...objective.results].sort((a, b) => b.createdAt - a.createdAt).slice(0, RECENT_RESULTS);
   const patchDue = (dueDate: string | null) => {
     if (api) void post(api, "/objective/patch", { objectiveId: objective.id, patch: { dueDate }, language }).catch(() => undefined);
@@ -128,13 +133,17 @@ export function CommanderObjectivePopover({ commodoreId, objectiveId, anchor, la
         <span className="commander-objective-popover-avatar" aria-hidden="true">{avatar}</span>
         <span className="commander-objective-popover-heading">
           <b id={titleId}>{objective.title}</b>
-          {activityAt !== null ? <small>{t("objectives.popover.active", { ago: relative(activityAt, now, language) })}</small> : null}
+          <small>{t("objectives.popover.commanderModel", { model: commanderLaunchShown(objective, t, roster).label })}</small>
         </span>
+        <span className="commander-objective-popover-chip">{statusLine}</span>
       </div>
 
       <section className="commander-objective-popover-sec" aria-label={t("objectives.popover.now")}>
         <h4>{t("objectives.popover.now")}</h4>
-        <p className="commander-objective-popover-now">{statusLine}{toolLabel ? <small>{toolLabel}</small> : null}</p>
+        <p className="commander-objective-popover-now">
+          {lastWords ? <span className="commander-objective-popover-words">{lastWords.text}</span> : <span className="commander-objective-popover-empty">{t("objectives.popover.noWords")}</span>}
+          {lastWords?.at != null || toolLabel ? <small>{[lastWords?.at != null ? relative(lastWords.at, now, language) : null, toolLabel].filter(Boolean).join(" · ")}</small> : null}
+        </p>
       </section>
 
       {decision || review ? (
@@ -142,7 +151,7 @@ export function CommanderObjectivePopover({ commodoreId, objectiveId, anchor, la
           <h4>{t("objectives.popover.turn")}</h4>
           <div className="commander-objective-popover-turn">
             <span>{decision ? t("objectives.popover.decision", { n: objective.decisionRequest!.questions.length }) : t("objectives.popover.review")}</span>
-            <button type="button" onClick={() => { onClose(false); if (decision || !onReview) onOpenConversation(); else onReview(); }}>{t(decision ? "objectives.popover.answer" : "objectives.popover.reviewAction")}</button>
+            <button type="button" onClick={() => { onClose(false); onOpenConversation(); }}>{t(decision ? "objectives.popover.answer" : "objectives.popover.reviewAction")}</button>
           </div>
         </section>
       ) : null}

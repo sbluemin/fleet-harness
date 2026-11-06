@@ -1052,3 +1052,26 @@ a.objectives-result-open:focus-visible { color: var(--brass-ink); box-shadow: va
 .commander-objective-popover-actions button { flex: 1; padding: 6px 10px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: none; color: var(--text-primary); font: inherit; font-weight: var(--weight-medium); cursor: pointer; }
 .commander-objective-popover-actions button.is-primary { border-color: var(--text-primary); background: var(--text-primary); color: var(--surface-panel); }
 .commander-objective-popover-actions button:focus-visible { outline: none; box-shadow: var(--focus-face); }
+
+/* 임무 팝업의 구성원 로스터 — 가로 카드 한 줄(넘치면 가로로 민다). 고른 카드는 테두리로, 그 담당 밖의 임무는 그래프에서 흐려진다. */
+.commander-roster-group { padding-bottom: 4px; }
+.commander-roster { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; }
+.commander-roster-card { flex: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 1px 8px; align-items: center; width: 176px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel); color: var(--text-primary); font: inherit; font-size: var(--t-xs); text-align: left; cursor: pointer; }
+.commander-roster-card:hover { background: var(--wash-hover); }
+.commander-roster-card[aria-pressed="true"] { border-color: var(--text-secondary); box-shadow: inset 0 0 0 1px var(--text-secondary); }
+.commander-roster-card:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commander-roster-mark { grid-row: 1 / span 3; align-self: start; display: grid; place-items: center; width: 22px; height: 22px; }
+.commander-roster-name { font-size: var(--t-sm); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commander-roster-model { grid-column: 2; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commander-roster-state { grid-column: 2; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commander-roster-state.is-running { color: var(--aurora); }
+.commander-roster-state.is-awaiting { color: var(--brass-ink); }
+.commander-roster-card.is-add { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-tertiary); border-style: dashed; }
+.commander-roster-card.is-add input { width: 100%; border: 0; background: none; color: var(--text-primary); font: inherit; font-size: var(--t-sm); outline: none; }
+.commander-roster-hint { margin: 2px 2px 0; color: var(--text-tertiary); font-size: var(--t-xs); }
+.objectives-graph-focus-out { opacity: 0.28; transition: opacity var(--duration-fast) ease; }
+@media (prefers-reduced-motion: reduce) { .objectives-graph-focus-out { transition: none; } }
+/* 목표 팝업 머리의 상태 칩과 「지금」의 지휘관 말 — 말은 세 줄까지만 보인다. */
+.commander-objective-popover-head { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.commander-objective-popover-chip { align-self: start; padding: 1px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-pill); color: var(--text-secondary); font-size: var(--t-xs); white-space: nowrap; }
+.commander-objective-popover-words { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }

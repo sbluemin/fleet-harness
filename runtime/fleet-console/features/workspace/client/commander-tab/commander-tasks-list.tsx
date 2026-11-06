@@ -10,6 +10,7 @@ import { CommanderMissionsDialog } from "../../../objectives/client/objectives-p
 import { CommanderObjectivePopover } from "../../../objectives/client/commander-objective-popover.js";
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
 import { useObjectivesToolUse } from "../../../computer-use/client/computer-screen-share.js";
+import { useGroupTimeline } from "../../../execution/client/agent/chat/group-timeline-store.js";
 import { readCommanderPlacement, useCommanderPlacement } from "./commander-placement.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
@@ -119,6 +120,15 @@ function ObjectivePopoverForRow({ commodoreId, selectedId, popover, language, t,
   const { sorted } = useCommanderRows(commodoreId, selectedId);
   const item = sorted.find((candidate) => candidate.layout.cluster.id === popover.clusterId) ?? null;
   const toolUse = useObjectivesToolUse(item ? rowUseIds(item) : []);
+  // 「지금」 — 지휘관이 그 목표 대화에서 마지막으로 한 말. 팝업이 열린 목표의 대화만 청한다.
+  const timeline = useGroupTimeline(popover.objectiveId);
+  const lastWords = (() => {
+    for (let index = timeline.entries.length - 1; index >= 0; index -= 1) {
+      const entry = timeline.entries[index]!;
+      if (entry.kind === "message" && entry.speaker.kind === "commander" && entry.text.trim()) return { text: entry.text.replace(/\s+/g, " ").trim(), at: entry.at };
+    }
+    return null;
+  })();
   if (!item) return null;
   const { state, label, conversationLine } = clusterRowSummary(item, locale, t);
   return (
@@ -128,11 +138,10 @@ function ObjectivePopoverForRow({ commodoreId, selectedId, popover, language, t,
       anchor={rowElement(popover.opener, popover.clusterId)}
       language={language}
       avatar={<ClusterRowAvatar item={item} rowState={state} label={label} decorative size={40} />}
-      activityAt={item.row.activityAt ?? null}
+      lastWords={lastWords}
       statusLine={conversationLine}
       toolLabel={toolUse ? rowToolUseLabel(item, toolUse, t) : null}
       onOpenConversation={() => onOpenConversation(item)}
-      onReview={item.row.review ? () => item.row.review!(locale) : null}
       onClose={onClose}
     />
   );
