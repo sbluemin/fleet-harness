@@ -690,27 +690,7 @@ interface OpenBlock {
   closed: boolean;
 }
 
-/**
- * How a downstream harness maps a provider's real input occupancy onto the coordinate
- * its client meters on.
- *
- * The wire never assumes one. A client that reads the provider's real window — a Grok
- * Build `[model.*]` block carries its own `context_window` — is metered by passing no
- * projection at all; Claude Code, which knows only its two model-id-selected
- * coordinates, supplies one from its own folder. Applying that map here unconditionally
- * is what made this wire single-harness.
- */
-export type UsageProjection = (
-  inputTokens: number,
-  advertisedContextWindow: number | undefined,
-  upstreamContextWindow: number | undefined,
-) => number;
-
 export interface ResponseCompatibilityOptions {
-  /** Real provider window, as the coordinate the client was told this model has. */
-  readonly contextWindow?: number;
-  /** Harness-owned occupancy map. Absent reports the provider's own numbers unchanged. */
-  readonly projectInputTokens?: UsageProjection;
   /** Rewrites the echoed response model to the client-requested id. */
   readonly model?: string;
   /**
@@ -745,24 +725,14 @@ interface AnthropicCacheAwareUsage {
  * three, so leaving the subset inside `input_tokens` would double count it. Both streaming
  * (message_start, message_delta) and non-streaming callers share this conversion so their
  * usage shapes never drift apart.
- *
- * When context projection is active, the aggregate input is mapped once and the three
- * coordinates are redistributed proportionally so their sum equals that projected total.
  */
 function toAnthropicCacheAwareUsage(
   rawInputTokens: number,
   cachedInputTokens: number | undefined,
   cacheWriteInputTokens: number | undefined,
   outputTokens: number,
-  advertisedContextWindow: number | undefined,
-  upstreamContextWindow: number | undefined,
-  projectInputTokens?: UsageProjection,
 ): AnthropicCacheAwareUsage {
   const safeInputTokens = Number.isFinite(rawInputTokens) && rawInputTokens > 0 ? rawInputTokens : 0;
-
-  const projectedTotal = projectInputTokens
-    ? projectInputTokens(safeInputTokens, advertisedContextWindow, upstreamContextWindow)
-    : safeInputTokens;
 
   if (safeInputTokens === 0) {
     return {
@@ -780,34 +750,20 @@ function toAnthropicCacheAwareUsage(
   // parent input total) while still being well-typed; the canonical layer preserves that
   // as-is rather than rejecting it. There is no principled way to decide which of
   // cached/cache-write "wins" a truncation here, so inventing a read-over-write priority
-  // would just fabricate a number. Fall back to the authoritative parent total (raw, or
-  // projected when the 1M coordinate is active) with no cache breakdown at all instead.
+  // would just fabricate a number. Fall back to the authoritative parent total with no cache breakdown at all instead.
   if (safeCacheRead + safeCacheCreation > safeInputTokens) {
     return {
-      input_tokens: projectedTotal,
+      input_tokens: safeInputTokens,
       cache_read_input_tokens: 0,
       cache_creation_input_tokens: 0,
       output_tokens: outputTokens,
     };
   }
 
-  if (projectedTotal === safeInputTokens) {
-    return {
-      input_tokens: safeInputTokens - safeCacheRead - safeCacheCreation,
-      cache_read_input_tokens: safeCacheRead,
-      cache_creation_input_tokens: safeCacheCreation,
-      output_tokens: outputTokens,
-    };
-  }
-
-  // Redistribute the projected total by the original cache proportions, flooring so the
-  // three parts cannot overshoot it; the remainder lands on input_tokens.
-  const scaledCacheRead = Math.floor((safeCacheRead * projectedTotal) / safeInputTokens);
-  const scaledCacheCreation = Math.floor((safeCacheCreation * projectedTotal) / safeInputTokens);
   return {
-    input_tokens: projectedTotal - scaledCacheRead - scaledCacheCreation,
-    cache_read_input_tokens: scaledCacheRead,
-    cache_creation_input_tokens: scaledCacheCreation,
+    input_tokens: safeInputTokens - safeCacheRead - safeCacheCreation,
+    cache_read_input_tokens: safeCacheRead,
+    cache_creation_input_tokens: safeCacheCreation,
     output_tokens: outputTokens,
   };
 }
@@ -829,10 +785,8 @@ function estimatedFallbackInputTokens(value: number | undefined): number {
 /** Build the shared usage shape directly from a canonical response snapshot's usage. */
 function anthropicUsageFromCanonical(
   usage: CanonicalUsage | null | undefined,
-  advertisedContextWindow: number | undefined,
   options: {
     forceOutputZero?: boolean;
-    projectInputTokens?: UsageProjection;
     estimatedInputTokens?: number;
   } = {},
 ): AnthropicCacheAwareUsage {
@@ -848,9 +802,6 @@ function anthropicUsageFromCanonical(
     usage?.cached_input_tokens,
     usage?.cache_write_input_tokens,
     options.forceOutputZero ? 0 : usage?.output_tokens ?? 0,
-    advertisedContextWindow,
-    usage?.context_window,
-    options.projectInputTokens,
   );
 }
 
@@ -902,7 +853,6 @@ export async function collectAnthropicMessage(
   let inputTokens = 0;
   let cachedInputTokens: number | undefined;
   let cacheWriteInputTokens: number | undefined;
-  let upstreamContextWindow: number | undefined;
 
   for await (const event of events) {
     switch (event.type) {
@@ -912,7 +862,6 @@ export async function collectAnthropicMessage(
         inputTokens = event.response.usage?.input_tokens ?? 0;
         cachedInputTokens = event.response.usage?.cached_input_tokens;
         cacheWriteInputTokens = event.response.usage?.cache_write_input_tokens;
-        upstreamContextWindow = event.response.usage?.context_window;
         break;
       case "response.output_text.delta":
         text += event.delta;
@@ -996,7 +945,6 @@ export async function collectAnthropicMessage(
         outputTokens = event.response.usage?.output_tokens ?? 0;
         cachedInputTokens = event.response.usage?.cached_input_tokens ?? cachedInputTokens;
         cacheWriteInputTokens = event.response.usage?.cache_write_input_tokens ?? cacheWriteInputTokens;
-        upstreamContextWindow = event.response.usage?.context_window ?? upstreamContextWindow;
         break;
       }
       case "response.failed":
@@ -1036,9 +984,6 @@ export async function collectAnthropicMessage(
       cachedInputTokens,
       cacheWriteInputTokens,
       outputTokens,
-      options.contextWindow,
-      upstreamContextWindow,
-      options.projectInputTokens,
     ),
   };
 }
@@ -1133,9 +1078,8 @@ export async function* encodeAnthropicSse(
               model: options.model ?? event.response.model,
               stop_reason: null,
               stop_sequence: null,
-              usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow, {
+              usage: anthropicUsageFromCanonical(event.response.usage, {
                 forceOutputZero: true,
-                projectInputTokens: options.projectInputTokens,
                 estimatedInputTokens: options.estimatedInputTokens,
               })
             }
@@ -1331,8 +1275,7 @@ export async function* encodeAnthropicSse(
           // Claude Code updates context occupancy from the terminal cumulative
           // usage frame. Sending output-only leaves Responses-backed models at
           // zero input usage even though native Anthropic streams work.
-          usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow, {
-            projectInputTokens: options.projectInputTokens,
+          usage: anthropicUsageFromCanonical(event.response.usage, {
             estimatedInputTokens: options.estimatedInputTokens,
           })
         });

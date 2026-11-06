@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { claudeCodeHarnessProfile } from "../src/downstream/harness/claude-code/profile.js";
 import {
   ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS,
   AnthropicMessagesGateway,
@@ -14,8 +13,6 @@ import {
   gatewayModelIdentity,
   parseGatewayModelsRegistry,
   resolveGatewayModel,
-  projectClaudeContextInputTokens,
-  unprojectClaudeContextInputTokens,
   toClaudeGatewayModelId,
   toGatewayModelAlias,
   DEFAULT_CODEX_MODEL,
@@ -40,17 +37,6 @@ import type {
   FetchLike,
   GatewayModel
 } from "../src/index.js";
-
-/**
- * The occupancy map Claude Code's profile installs on every turn.
- *
- * The wire itself no longer projects — a harness that meters on the provider's real
- * window passes nothing — so a test that asserts Claude's coordinate has to hand the
- * wire the same projection the router does.
- */
-function claudeProjection(compactCeiling?: "early" | "late" | number) {
-  return claudeCodeHarnessProfile.usageProjection?.(compactCeiling);
-}
 
 describe("Anthropic request translation", () => {
 
@@ -149,13 +135,13 @@ describe("model catalog", () => {
     expect(() => parseGatewayModelsRegistry(duplicate)).toThrow(/Duplicate gateway model id/);
 
     const invalidTier = minimalRegistry();
-    invalidTier.providers.xai.models[0] = {
+    invalidTier.providers.antigravity.models[0] = {
       modelId: "grok-4.6",
       name: "Grok",
       providerModelId: "grok-4.6",
-      serviceTier: "priority",
+      fastSupported: true,
     };
-    expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex/);
+    expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex and xAI/);
 
     const legacyAutoCompactThreshold = minimalRegistry();
     legacyAutoCompactThreshold.providers.codex.models[0] = {

@@ -2,7 +2,6 @@ import { collectAnthropicMessage, encodeAnthropicSse, translateAnthropicRequest 
 import type {
   AnthropicMessagesRequest,
   TranslateAnthropicRequestOptions,
-  UsageProjection,
 } from "./protocol.js";
 import { ContextWindowExceededError, canonicalMessageText } from "../../../canonical/index.js";
 import type {
@@ -20,13 +19,6 @@ export { ContextWindowExceededError } from "../../../canonical/index.js";
 export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOptions {
   apiKey: string;
   /**
-   * Projection denominator for the client's own context meter — the coordinate the
-   * harness told the client this model has. Never a limit.
-   */
-  contextWindow?: number;
-  /** Harness-owned occupancy map, applied to every usage frame this turn emits. */
-  projectInputTokens?: UsageProjection;
-  /**
    * Lift an upstream refusal onto a status the client's retry budget acts on.
    *
    * Which statuses a client retries is that client's contract, so the map arrives from
@@ -35,8 +27,7 @@ export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOp
   retryableStatus?: (status: number) => number;
   /**
    * The model's real usable context window. Always set by the caller, regardless of
-   * whether the `[1m]` coordinate applies, and used only by the pre-flight overflow
-   * guard — never as a projection denominator.
+   * the downstream advertised window, and used only by the pre-flight overflow guard.
    */
   modelContextWindow?: number;
   signal?: AbortSignal;
@@ -151,8 +142,6 @@ export class AnthropicMessagesGateway {
           "content-type": "text/event-stream; charset=utf-8"
         }),
         body: withSseKeepAlive(encodeAnthropicSse(events, {
-          contextWindow: options.contextWindow,
-          projectInputTokens: options.projectInputTokens,
           model: request.model,
           estimatedInputTokens,
         }))
@@ -161,8 +150,6 @@ export class AnthropicMessagesGateway {
 
     // Claude Code는 일부 요청을 비스트리밍으로 보낸다. 그때는 이벤트를 모아 단일 Messages 응답을 준다.
     const message = await collectAnthropicMessage(events, request.model, {
-      contextWindow: options.contextWindow,
-      projectInputTokens: options.projectInputTokens,
       model: request.model,
       estimatedInputTokens,
     });

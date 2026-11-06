@@ -11,6 +11,7 @@ import {
   GATEWAY_REASONING_EFFORTS,
   buildGatewayModelConstraints,
   findGatewayModel,
+  withGatewayModelFast,
 } from "../models.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type {
@@ -32,6 +33,7 @@ import { aiGatewayModelFamilyKey, canonicalEffortSelection } from "../model-fami
 export interface AiGatewayStoredModel {
   readonly id: string;
   readonly efforts?: readonly string[];
+  readonly fast?: boolean;
 }
 
 /** 4판 이전 파일에만 있던 표식. 정규화 입력으로만 읽고, 4판부터는 저장하지 않는다. */
@@ -194,6 +196,7 @@ function mergeStoredModels(entries: readonly LegacyStoredModel[], keepHostOnly: 
     const hostOnly = keepHostOnly && (existing.hostOnly === true || entry.hostOnly === true);
     merged[index] = {
       id: existing.id,
+      ...(existing.fast ? { fast: true } : {}),
       ...(efforts ? { efforts: [...efforts] } : {}),
       ...(hostOnly ? { hostOnly: true } : {}),
     };
@@ -217,6 +220,7 @@ function canonicalizeStoredModels(entries: readonly LegacyStoredModel[], rosterS
     const exposed = efforts.length > 0 ? narrowEffortLadder(model, efforts) : undefined;
     return [{
       id: storedModelId(model, entry.id),
+      ...(model.fastSupported && entry.fast === true ? { fast: true } : {}),
       ...(exposed ? { efforts: [...exposed] } : {}),
       ...(keepHostOnly && entry.hostOnly === true ? { hostOnly: true as const } : {}),
     }];
@@ -253,7 +257,7 @@ function withCanonicalEfforts(entry: LegacyStoredModel): AiGatewayStoredModel {
   const model = findGatewayModel(entry.id);
   if (!model) return { id: entry.id, ...(entry.efforts ? { efforts: entry.efforts } : {}) };
   const efforts = canonicalEffortSelection(exposableEffortLadder(model), entry.efforts);
-  return { id: entry.id, ...(efforts ? { efforts: [...efforts] } : {}) };
+  return { id: entry.id, ...(entry.fast ? { fast: true } : {}), ...(efforts ? { efforts: [...efforts] } : {}) };
 }
 
 function sanitizeProviderPriority(value: unknown): readonly GatewayProvider[] | undefined {
@@ -303,8 +307,8 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   const entries = canonicalizeStoredModels((settings?.models ?? []) as readonly LegacyStoredModel[], settings?.rosterSeedVersion ?? 0);
   for (const entry of entries) {
     const model = findGatewayModel(entry.id);
-    if (!model || enabled.includes(model)) continue;
-    enabled.push(model);
+    if (!model || enabled.some((existing) => existing.id === model.id)) continue;
+    enabled.push(withGatewayModelFast(model, entry.fast === true));
     const exposed = entry.efforts;
     if (exposed && exposed.length > 0) effortExposure[model.id] = exposed as readonly GatewayReasoningEffort[];
   }
@@ -344,7 +348,7 @@ function sortGatewayModelsByProvider(models: readonly GatewayModel[]): GatewayMo
     const providerDelta =
       GATEWAY_PROVIDERS.indexOf(left.provider) - GATEWAY_PROVIDERS.indexOf(right.provider);
     if (providerDelta !== 0) return providerDelta;
-    return GATEWAY_MODELS.indexOf(left) - GATEWAY_MODELS.indexOf(right);
+    return GATEWAY_MODELS.findIndex((model) => model.id === left.id) - GATEWAY_MODELS.findIndex((model) => model.id === right.id);
   });
 }
 
@@ -370,14 +374,15 @@ export function parseAiGatewayUpdate(value: unknown):
     if (!Array.isArray(record.models)) return { ok: false };
     for (const raw of record.models) {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false };
-      const entry = raw as { readonly id?: unknown; readonly efforts?: unknown; readonly hostOnly?: unknown };
+      const entry = raw as { readonly id?: unknown; readonly efforts?: unknown; readonly hostOnly?: unknown; readonly fast?: unknown };
       // 옛 클라이언트의 hostOnly는 어떤 값이든 버린다. 그 키만으로 400을 주지 않고, 항목은 켠 채로 남긴다.
-      if (Object.keys(entry).some((key) => key !== "id" && key !== "efforts" && key !== "hostOnly")) {
+      if (Object.keys(entry).some((key) => key !== "id" && key !== "efforts" && key !== "hostOnly" && key !== "fast")) {
         return { ok: false };
       }
       if (typeof entry.id !== "string") return { ok: false };
       const model = findGatewayModel(entry.id);
       if (!model) return { ok: false };
+      if (entry.fast !== undefined && (typeof entry.fast !== "boolean" || (entry.fast && !model.fastSupported))) return { ok: false };
       // 같은 모델을 두 번 보내는 것은 거부한다. 다만 구 Claude 좌표(`claude--sonnet`)와 1M id처럼 표기만 다른 같은 가족은
       // 옛 화면이 보낸 값이므로 아래에서 한 행으로 합친다. 계열의 다른 변형(창·Fast)은 정규화가 하나 남긴다.
       if (models.some((existing) => existing.id === model.id) && (model.provider !== "claude" || rawIds.has(entry.id))) {
@@ -388,6 +393,7 @@ export function parseAiGatewayUpdate(value: unknown):
       if (efforts === null) return { ok: false };
       models.push({
         id: model.id,
+        ...(entry.fast === true ? { fast: true } : {}),
         ...(efforts ? { efforts } : {}),
       });
     }
@@ -465,7 +471,7 @@ export interface AiGatewayCatalogModel {
   readonly contextWindow: number | null;
   /** True when Claude Code accounts this model on its 1M coordinate (`[1m]` alias). */
   readonly oneMillion: boolean;
-  /** Fast variants are separate catalog models paired by the `-fast` id suffix. */
+  /** Whether the model supports the optional priority service tier. */
   readonly fast: boolean;
   readonly description: string | null;
   /**
@@ -495,7 +501,7 @@ function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
     name: bareModelName(model),
     contextWindow: gatewayModelContextWindow(model),
     oneMillion: hasClaudeOneMillionMarker(toClaudeGatewayModelId(model)),
-    fast: model.id.endsWith("-fast"),
+    fast: model.fastSupported === true,
     description: model.description ?? null,
     effort: levels.length > 0 ? { levels } : null,
   };

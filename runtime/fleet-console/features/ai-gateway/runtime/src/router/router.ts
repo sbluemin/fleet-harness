@@ -28,6 +28,7 @@ import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
 import {
   GATEWAY_MODELS,
   upstreamModelId,
+  withGatewayModelFast,
 } from "../models.js";
 import type { GatewayModel } from "../models.js";
 import { visibleGatewayModels, type ProviderStatusMap } from "../catalog-access.js";
@@ -39,7 +40,6 @@ import {
   stripClaudeCompactContinuation,
   stripClaudeCompactPrompt,
 } from "../downstream/harness/claude-code/context.js";
-import type { CompactCeiling } from "../downstream/harness/claude-code/context.js";
 import { defaultCredentialDeps } from "../transport/credentials.js";
 import { findCauseCode } from "../transport/upstream-sse.js";
 import { createUpstreamGate } from "../transport/upstream-gate.js";
@@ -313,13 +313,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return DEFAULT_XAI_ENDPOINT_PREFERENCE;
     }
   };
-  const compactCeiling = (): CompactCeiling | undefined => {
-    try {
-      return gatewaySettings()?.compactCeiling;
-    } catch {
-      return undefined;
-    }
-  };
 
   const handle: GatewayHttpHandler = async ({ req, res, pathname }) => {
     const harness = harnessForPath(pathname);
@@ -499,6 +492,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return true;
     }
     if (target) {
+      const fast = target.fastSupported === true
+        && gatewaySettings()?.models?.some((entry) => entry.id === target!.id && entry.fast === true) === true;
+      target = withGatewayModelFast(target, fast);
       clock?.setTarget(target);
     }
 
@@ -592,13 +588,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         clock?.finish("ok");
         return true;
       }
-      // Claude Code meters every custom model on either its unmarked 200k coordinate
-      // or the truthful `[1m]` coordinate. Pass the real catalog window for both: the
-      // compatibility seam removes only the capacity above Claude's chosen coordinate,
-      // so each model reaches its real window minus Claude's own compaction reserve.
-      const claudeContextWindow = target.contextWindow;
-      const ceiling = compactCeiling();
-      const projection = harness.usageProjection?.(ceiling);
       const codexAdapter = target.provider === "codex"
         ? new CodexResponsesAdapter({
             accountId: chatgptAccountId,
@@ -638,8 +627,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         : undefined;
       const callOptions = {
         apiKey: credential,
-        ...(claudeContextWindow ? { contextWindow: claudeContextWindow } : {}),
-        ...(projection === undefined ? {} : { projectInputTokens: projection }),
         ...(harness.retryableStatus ? { retryableStatus: harness.retryableStatus } : {}),
         ...(modelContextWindow === undefined ? {} : { modelContextWindow }),
         signal: controller.signal,

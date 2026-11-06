@@ -4,6 +4,7 @@ export interface AiGatewayModelSelection {
   readonly id: string;
   /** 위임에 줄 강도. 부재 = 이 모델의 사다리 전체. */
   readonly efforts?: readonly string[];
+  readonly fast?: boolean;
 }
 
 export interface AiGatewaySettings {

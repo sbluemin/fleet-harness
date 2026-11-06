@@ -632,12 +632,14 @@ describe("delegation assignment", () => {
     ]);
     expect(data.candidates[0]).toEqual({
       model: "codex--gpt-6.1-terra",
+      fast: false,
       efforts: ["low", "medium", "high"],
       pressure: "elevated",
-      summary: "Balanced coding and implementation model (500K context).",
+      summary: "Balanced coding and implementation model.",
     });
     expect(data.candidates[1]).toEqual({
       model: "xai--grok-composer-2.5-fast",
+      fast: true,
       efforts: [],
       pressure: "unknown",
       summary: "Fast code editing and implementation model (200K context).",
@@ -810,7 +812,7 @@ describe("Astra asynchronous tools", () => {
     const tools = ["Read", "Grep", "Glob", "Bash", "Edit", "AskUserQuestion", "mcp__other__Read"]
       .map((name) => ({ name, input_schema: { type: "object", properties: {}, additionalProperties: false } }));
     const base = {
-      model: "claude-gateway--codex--gpt-6-astra-1m[1m]",
+      model: "claude-gateway--codex--gpt-6-astra",
       messages: [{ role: "user", content: "read the files" }], tools, stream: true, max_tokens: 128,
     };
     try {
