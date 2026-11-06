@@ -201,7 +201,7 @@ export function CommanderObjectivePopover({ commodoreId, objectiveId, anchor, la
       <section className="commander-objective-popover-sec" aria-label={t("objectives.commander.title")}>
         <h4>{t("objectives.commander.title")}</h4>
         <div className="commander-objective-popover-commander">
-          <LaunchControl t={t} model={objective.commander.routing ? undefined : objective.commander.model} effort={objective.commander.routing ? undefined : objective.commander.effort} locked onChange={() => undefined} />
+          <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked onChange={() => undefined} />
           <span>{t("objectives.popover.members", { n: objective.members.length })}</span>
         </div>
       </section>

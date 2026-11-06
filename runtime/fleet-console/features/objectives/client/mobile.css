@@ -109,7 +109,7 @@
 :root .objectives-m .objectives-m-val .fc-select--mobile.is-locked { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: default; }
 .objectives-m-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* 지휘관·구성원 값 줄 — 공유 선택기의 모바일 값 줄(.fc-select--mobile) 안에 데스크톱 어댑터의 낱말(실행값·「라우팅」)이 선다.
+/* 지휘관·구성원 값 줄 — 공유 선택기의 모바일 값 줄(.fc-select--mobile) 안에 데스크톱 어댑터의 낱말(실행값·「지휘관이 지정」)이 선다.
    데스크톱의 낱말 색(text-primary·brass)은 여기서 쓰지 않고 값 줄의 한 색을 따른다. */
 .objectives-m .fc-select--mobile :is(.objectives-launch-model, .objectives-launch-dot, .objectives-launch-effort) { color: inherit; }
 .objectives-m .fc-select--mobile .objectives-launch-dot { margin: 0 .3em; }
@@ -236,15 +236,6 @@
 .objectives-m-sheet-layer :focus-visible:not([data-press]) { border-radius: 8px; box-shadow: var(--focus-face); }
 /* 열릴 때 포커스를 받는 시트 판 자체는 고리를 그리지 않는다 — 판 전체가 대화상자다. */
 .objectives-m-sheet-layer .objectives-m-sheet:focus-visible { outline: none; border-radius: 28px 28px 0 0; box-shadow: var(--popover-surface-shadow); }
-/* 라우팅 확인 시트 — 라우팅 구성원마다 역할 · 판단된 모델 · 강도, 그 아래 근거 또는 폴백 사유. */
-.objectives-m-route { display: flex; flex-direction: column; }
-.objectives-m-route-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; padding: 12px 4px; border-top: var(--popover-divider-width) solid var(--popover-divider); }
-.objectives-m-route-row:first-child { border-top: 0; }
-.objectives-m-route-role { font-size: var(--m-fs-body); font-weight: var(--weight-bold); overflow-wrap: anywhere; }
-.objectives-m-route-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); white-space: nowrap; }
-.objectives-m-route-tag { color: var(--m-awaiting); font-size: var(--m-fs-caption); font-weight: var(--weight-bold); }
-.objectives-m-route-why { grid-column: 1 / -1; font-size: var(--m-fs-caption); line-height: 18px; color: var(--m-text-faint); overflow-wrap: anywhere; }
-.objectives-m-route-why.is-warn { color: var(--m-awaiting); }
 
 /*
  * 후속 후보 고르기 시트 — 데스크톱 띠의 후속 칸과 같은 줄·상세(followups-view.tsx)를 이 범위에서만 모바일 문법으로 다시 입힌다.

@@ -10,12 +10,12 @@ import { SettingsCard, SettingsRow, SettingsToggle } from "../../settings/client
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 
 import { livePersonHold } from "../shared/board-state.js";
-import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, unseenRecords, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
+import { MAX_DECISION_ANSWER_INPUT, unseenRecords, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
 import { answeringText, commodoreAliasOf, commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
@@ -316,11 +316,8 @@ interface ObjectiveActions {
   readonly complete: boolean;
   readonly handOff: boolean;
   readonly stop: boolean;
-  /**
-   * 개시 카드 — null 이면 서지 않는다. 띠가 개시·재개를 고를 수 있으면 누를 수 있고, 아니면 reason 이 막힌 사정을 말한다.
-   * review 는 개시가 라우팅으로 새로 띄울 구성원이다 — 라우팅 확인이 켜져 있을 때만 차고, 차 있으면 개시는 확인 시트를 거친다.
-   */
-  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly review: readonly ObjectiveMember[]; readonly primary: boolean } | null;
+  /** 개시 카드 — null 이면 서지 않는다. 띠가 개시·재개를 고를 수 있으면 누를 수 있고, 아니면 reason 이 막힌 사정을 말한다. */
+  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly primary: boolean } | null;
   /**
    * 완료 검토 — 검토 대기일 때만 선다. blocked 는 띠가 지금 「완료」를 세우지 못하는 사정(띠의 판정 순서와 같다), null 이면
    * 누를 수 있다. followups 는 완료가 후속 후보 고르기를 거쳐야 하는가(띠의 followupAvailable) — 그러면 완료는 고르기 시트를 연다.
@@ -330,8 +327,7 @@ interface ObjectiveActions {
 
 /**
  * ⋮ 의 사람 동작 — 데스크톱 하단 띠와 같은 판정에서, 폰에서 의미 있는 넷(메시지·완료·검토로 넘기기·중단)만 고른다.
- * 개시는 ⋮ 가 아니라 본문 카드로 세운다(누름 한 번). 덧붙일 말 칸은 폰에 없으므로 바로 `/commander/start` 를 보내고,
- * 라우팅 확인이 걸리는 개시(확인 켬 + 아직 띄우지 않은 라우팅 구성원)는 데스크톱 띠처럼 확인 시트를 거쳐 본 결과로만 띄운다.
+ * 개시는 ⋮ 가 아니라 본문 카드로 세운다(누름 한 번). 덧붙일 말 칸은 폰에 없으므로 바로 `/commander/start` 를 보낸다.
  * 제안 대기(띠가 잠김)·작업 중에는 카드가 막힌 채 서서 이유를 말하고, 그 밖의 다른 할 일이 먼저인 상태에서는 서지 않는다.
  */
 function objectiveActions(objective: Objective, objectiveRecords: ObjectiveIndex, t: T, launchAvailable: boolean): ObjectiveActions {
@@ -352,16 +348,14 @@ function objectiveActions(objective: Objective, objectiveRecords: ObjectiveIndex
   const choices = bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: activityOf(objectiveRecords, objective.id) !== "closed", recipientCount: recipients.length });
   const has = (key: (typeof choices.alts)[number]) => choices.primary === key || choices.alts.includes(key);
   const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";
-  // 데스크톱 띠의 routingTargets 와 같은 판정 — 아직 띄우지 않은 라우팅 구성원. 개시는 늘 그 판단 결과를 먼저 확인한다.
-  const review = objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(objectiveRecords, id)));
   // 띠의 주 동작이 개시·재개일 때 개시 카드가 주 단추다 — 폰에 있는 다른 할 일(답·인계·완료 등)이 먼저면 보조 단추로 내려 다음 걸음이 둘로 갈리지 않게 한다.
   // 띠의 주 동작이 폰에 없는 것(구상·재구상·스티어링·확장)이면 이 화면에서 경쟁할 걸음이 없으므로 개시가 주 단추다.
   const primary = choices.primary === "start" || choices.primary === "resume" || (choices.primary !== null && !PHONE_STEPS.has(choices.primary));
   const commence = done ? null
     : has("start") || has("resume")
-      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review, primary }
-      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), review, primary }
-        : working ? { kind, reason: t("objectives.mobile.commence.working"), review, primary } : null;
+      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, primary }
+      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), primary }
+        : working ? { kind, reason: t("objectives.mobile.commence.working"), primary } : null;
   const finish: ObjectiveActions["finish"] = done || !objective.awaitingReview ? null : {
     blocked: choices.primary === "complete" && !choices.gated ? null
       : commanderAwaiting ? "awaiting"
@@ -455,7 +449,6 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const [sheet, setSheet] = useState(false);
   // 단독 목표 화면의 구역. null이면 프로필(행 목록)이고, 고르면 그 구역 본문이다. 대화 정보 화면은 호스트가 구역을 고른다.
   const [section, setSection] = useState<DetailTab | null>(null);
-  const [routingSheet, setRoutingSheet] = useState(false);
   const [followupSheet, setFollowupSheet] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useFocusedFieldInView(rootRef);
@@ -473,10 +466,6 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const launchAvailable = useSyncExternalStore(subscribeObjective, () => launchAvailableFor(objectiveId), () => launchAvailableFor(objectiveId));
   const actions = objective ? objectiveActions(objective, objectiveRecords, t, launchAvailable) : null;
   const crew = useCrewActions(objective, objectiveRecords, t, api, language, say);
-  // 확인 시트는 누를 수 있는 개시 카드가 라우팅 확인을 요구하는 동안만 선다 — 그새 다른 곳에서 개시했거나 막혔으면 닫는다.
-  const reviewing = actions?.commence && !actions.commence.reason && actions.commence.review.length > 0 ? actions.commence.review : null;
-  const canReview = reviewing !== null;
-  useEffect(() => { if (!canReview) setRoutingSheet(false); }, [canReview]);
   // 후속 시트는 볼 후보가 남아 있는 동안만 선다 — 그새 완료됐거나 모두 정리됐으면 닫는다.
   const followupCount = objective && !objective.done ? openFollowups(objective).length : 0;
   useEffect(() => { if (followupCount === 0) setFollowupSheet(false); }, [followupCount]);
@@ -589,7 +578,6 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const heroStatus = fresh ? t("objectives.state.fresh") : objective.done ? t("objectives.mobile.state.done") : memberActivityWord(ownActivityOf(objectiveRecords, objective.id), t);
   const overlays = (
     <>
-      {routingSheet && reviewing ? <RoutingSheet objective={objective} targets={reviewing} t={t} api={api} language={language} say={say} onClose={() => setRoutingSheet(false)} /> : null}
       {followupSheet && followupCount > 0 ? <FollowupSheet objective={objective} finish={actions.finish} t={t} api={api} language={language} onClose={() => setFollowupSheet(false)} /> : null}
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
@@ -609,7 +597,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
       {/* 지금 할 일(결정 요청·넘김·개시)은 프로필과 구역 맨 위에 선다. 결정 내역은 목표 구역 맨 아래다. */}
       <DecisionSection objective={objective} objectiveRecords={objectiveRecords} t={t} language={language} api={api} say={say} />
       <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} onShowLeftover={() => { pickTab("results"); revealFollowupResults(); }} />
-      {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
+      {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
     </>
   );
   if (!embedded && activeTab === null) {
@@ -875,17 +863,14 @@ const launchAvailableFor = (objectiveId: string): boolean =>
 /**
  * 개시 카드 — 누름 한 번으로 데스크톱 입력창의 「개시」와 같은 `/commander/start` 를 보낸다(덧붙일 말 없이). 막혔으면 단추를 흐리게 두고
  * 그 아래에 이유를 말한다. 보낸 요청이 돌아올 때까지 단추를 잠가 두 번 보내지 않는다. 실패 문구는 띠와 같은 `bandFailure` 다.
- * 라우팅 확인이 걸리면(review) 여기서는 보내지 않고 확인 시트를 연다 — 확인 없이 라우팅 구성원을 띄우는 길을 남기지 않는다.
  */
-function CommenceCard({ objective, commence, t, language, api, say, onReview }: { readonly objective: Objective; readonly commence: NonNullable<ObjectiveActions["commence"]>; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void; readonly onReview: () => void }) {
+function CommenceCard({ objective, commence, t, language, api, say }: { readonly objective: Objective; readonly commence: NonNullable<ObjectiveActions["commence"]>; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
   const [busy, setBusy] = useState(false);
   const members = objective.members.length;
-  const routed = commence.review.length ? t("objectives.start.routeConfirm", { count: commence.review.length }) : "";
-  const desc = commence.reason ?? (commence.kind === "resume" ? `${t("objectives.start.resume")}${routed}`
-    : members ? `${t("objectives.start.members", { count: members })}${routed}` : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare"));
+  const desc = commence.reason ?? (commence.kind === "resume" ? t("objectives.start.resume")
+    : members ? t("objectives.start.members", { count: members }) : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare"));
   const start = () => {
     if (busy || commence.reason) return;
-    if (commence.review.length > 0) { onReview(); return; }
     setBusy(true);
     void post<{ failed?: readonly { role: string }[] }>(api, "/commander/start", { objectiveId: objective.id, language })
       .then((result) => {
@@ -1010,10 +995,10 @@ function RetroCard({ objective, t }: { readonly objective: Objective; readonly t
 
 const COMMANDER_LIVE = new Set(["idle", "running", "awaiting"]);
 
-/** 거절 코드 → 토스트 한 줄. 라우팅·전환 사유는 사람의 말로, 지휘관이 일하는 중이면 그 사정으로. */
+/** 거절 코드 → 토스트 한 줄. 전환 사유는 사람의 말로, 지휘관이 일하는 중이면 그 사정으로. */
 const launchFailure = (t: T, error: unknown): string => {
   const code = error instanceof Error ? error.message : "unknown";
-  return code === "objective_busy" ? t("objectives.toast.busy") : hasRoutingReason(code) ? routingReason(t, code) : t("objectives.toast.failed", { code });
+  return code === "objective_busy" ? t("objectives.toast.busy") : hasLaunchReason(code) ? launchReason(t, code) : t("objectives.toast.failed", { code });
 };
 
 /** 구성원 행의 예외 줄 — 이번 턴 뒤 예약, 바꾸지 못한 예약. 없으면 null. */
@@ -1025,7 +1010,7 @@ function memberNote(member: ObjectiveMember, state: string, rows: ReturnType<typ
     const words = launchedWords(rows, next.model, next.effort, labels).words;
     return { text: `${t("objectives.members.next.whenTurn")} → ${words.model} · ${words.effort}`, failed: false };
   }
-  return { text: t("objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: routingReason(t, next.failed) }), failed: true };
+  return { text: t("objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: launchReason(t, next.failed) }), failed: true };
 }
 
 interface CrewActions {
@@ -1086,7 +1071,7 @@ function CrewControls({ open, role, locked, lockedNote, note, t, children }: { r
 /**
  * 지휘관·구성원 — 호스트의 모바일 설정 묶음 한 장이 세션 진입과 모델·강도를 함께 진다. 행(글리프 · 이름 · 배지 / 세션 제목 / 값 칩 /
  * 예외 줄 · ›)을 누르면 그 세션이 열리고, 값 칩을 누르면 공유 선택기가 좌표 시트로 선다. 모델과 강도를 차례로 골라도 시트가 닫힐 때 한 번만
- * 저장한다(데스크톱 메뉴와 같은 확정 규칙). 띄우기 전 구성원과, 아직 세션이 없는 지휘관의 「라우팅」은 시트 맨 위다. 세션 판정은 지휘관 = Objective 이
+ * 저장한다(데스크톱 메뉴와 같은 확정 규칙). 세션 판정은 지휘관 = Objective 이
  * 있거나 개시함, 구성원 = 세션 이름이 있음이다. 지휘관은 데스크톱과 같이 개시 전에만 바꾼다.
  */
 function CrewSection({ objective, objectiveRecords, t, crew }: { readonly objective: Objective; readonly objectiveRecords: ObjectiveIndex; readonly t: T; readonly crew: CrewActions }) {
@@ -1099,7 +1084,7 @@ function CrewSection({ objective, objectiveRecords, t, crew }: { readonly object
   // 지휘관 제목이 목표 제목과 같으면 상단 막대가 이미 말한다.
   const commanderTitle = commanderObjective && commanderObjective.title !== objective.title ? commanderObjective.title : undefined;
   const commanderWord = memberActivityWord(commanderState, t);
-  const patchMember = (member: ObjectiveMember, launch: MemberLaunchChoice | null) => { crew.send("/member/patch", { memberId: member.id, patch: { launch } }).catch(crew.fail); };
+  const patchMember = (member: ObjectiveMember, launch: MemberLaunchChoice) => { crew.send("/member/patch", { memberId: member.id, patch: { launch } }).catch(crew.fail); };
   return (
     <SettingsCard title={t("objectives.mobile.crew")}>
       <SettingsRow label={t("objectives.commander.title")} icon={<CommanderMark objective={objective} objectiveRecords={objectiveRecords} />}
@@ -1107,8 +1092,7 @@ function CrewSection({ objective, objectiveRecords, t, crew }: { readonly object
         {...(commanderTitle ? { hint: commanderTitle } : {})}>
         <CrewControls open={commanderSession ? () => focusObjective(objective.id) : null} role={t("objectives.commander.title")} locked={commanderLocked} note={null} t={t}
           {...(commanderLocked && touchable ? { lockedNote: t("objectives.commander.locked") } : {})}>
-          <LaunchControl t={t} model={objective.commander.routing ? undefined : objective.commander.model} effort={objective.commander.routing ? undefined : objective.commander.effort} locked={commanderLocked}
-            {...(!objective.hasSession || objective.commander.routing ? { routing: { active: objective.commander.routing === true, hint: t("objectives.commander.routeHint"), onPick: () => { crew.send("/objective/patch", { patch: { launch: { routing: true } } }).catch(crew.fail); } } } : {})}
+          <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={commanderLocked}
             onChange={(next) => { crew.send("/objective/patch", { patch: { launch: next } }).catch(crew.fail); }} />
         </CrewControls>
       </SettingsRow>
@@ -1541,124 +1525,6 @@ function BottomSheet({ sheet, t, title, busy, focusOnOpen, children, foot }: { r
       </div>
     </div>,
     document.body,
-  );
-}
-
-// ── 라우팅 확인 시트 ──
-
-/** 판단 중(judging)·결과(ready). preview 가 없는 ready 는 판단을 받지 못했다(error). */
-interface RoutingReview {
-  readonly phase: "judging" | "ready";
-  readonly preview: RoutingPreview | null;
-  readonly error: { readonly stage: "preview" | "start"; readonly code: string } | null;
-}
-
-/**
- * 라우팅 확인 시트 — 데스크톱 띠의 확인 시트에서 최소 경로만 옮겼다. 열면 `/routing/preview` 로 판단(또는 10분 안의 같은 결과)을
- * 받아 라우팅 구성원마다 역할·모델·강도를 보이고, 폴백이면 사유를 말한다. 「개시」는 결과를 받은 뒤에만 `routing: "preview"` 로 보낸다 —
- * 서버는 본 결과가 없거나 낡았으면 `routing_preview_stale` 로 거절하고, 그때 시트는 결과를 다시 받아 사정을 말한다.
- * 행별 모델 바꾸기·다시 판단(과금)·확인 끄기는 데스크톱에만 둔다.
- */
-function RoutingSheet({ objective, targets, t, api, language, say, onClose }: {
-  readonly objective: Objective;
-  readonly targets: readonly ObjectiveMember[];
-  readonly t: T;
-  readonly api: PaneContext["api"];
-  readonly language: ConsoleLocale;
-  readonly say: (text: string) => void;
-  readonly onClose: () => void;
-}) {
-  const rows = useLaunchRows();
-  const [review, setReview] = useState<RoutingReview>({ phase: "judging", preview: null, error: null });
-  const [sending, setSending] = useState(false);
-  const token = useRef(0);
-  const objectiveId = objective.id;
-  // 결과를 본 채 닫으면 그 결과가 다음 개시에 그대로 쓰인다고 알린다(데스크톱 시트와 같은 안내).
-  const seen = useRef(false);
-  const sheet = useBottomSheet(useCallback(() => {
-    if (seen.current) say(t("objectives.routing.kept", { minutes: Math.round(ROUTING_PREVIEW_TTL_MS / 60_000) }));
-    onClose();
-  }, [onClose, say, t]));
-
-  /** 결과를 (다시) 받는다 — 받는 동안 앞선 결과를 비워 「개시」가 낡은 결과로 나가지 않게 한다. reason 은 다시 받는 사정이다. */
-  const load = useCallback((reason: RoutingReview["error"]) => {
-    const mine = ++token.current;
-    seen.current = false;
-    setReview({ phase: "judging", preview: null, error: reason });
-    void post<{ preview?: RoutingPreview }>(api, "/routing/preview", { objectiveId, language }).then((result) => {
-      if (mine !== token.current) return;
-      const preview = result?.preview ?? null;
-      seen.current = preview !== null;
-      setReview((current) => ({ phase: "ready", preview, error: preview ? current.error : { stage: "preview", code: "unknown" } }));
-    }, (failure: unknown) => {
-      if (mine !== token.current) return;
-      setReview({ phase: "ready", preview: null, error: { stage: "preview", code: failure instanceof Error ? failure.message : "unknown" } });
-    });
-  }, [api, objectiveId, language]);
-  useEffect(() => {
-    load(null);
-    // 닫힌 뒤 돌아온 응답은 버린다.
-    return () => { token.current += 1; };
-  }, [load]);
-
-  const judging = review.phase === "judging";
-  const ready = review.phase === "ready" && review.preview !== null;
-  const go = async () => {
-    const preview = review.preview;
-    // 만료 판정은 서버에 맡긴다 — 폰 시계는 서버와 어긋날 수 있어, 서버의 routing_preview_stale 거절만 다시 받는 사정으로 삼는다.
-    if (sending || !ready || !preview) return;
-    setSending(true);
-    try {
-      const result = await post<{ failed?: readonly { role: string }[] }>(api, "/commander/start", { objectiveId, routing: "preview", language });
-      const failed = result?.failed ?? [];
-      if (failed.length) say(t("objectives.start.failedMembers", { count: failed.length, roles: failed.map((entry) => entry.role).join(", ") }));
-      seen.current = false;
-      sheet.close();
-    } catch (failure) {
-      const code = failure instanceof Error ? failure.message : "unknown";
-      if (code === "routing_preview_stale") load({ stage: "start", code });
-      else setReview((current) => ({ ...current, error: { stage: "start", code } }));
-    } finally { setSending(false); }
-  };
-
-  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
-  const words = (model: string | undefined, effort: string | undefined) => { const shown = launchedWords(rows, model, effort, labels).words; return `${shown.model} · ${shown.effort}`; };
-  const minutes = review.preview ? Math.floor((Date.now() - review.preview.at) / 60_000) : 0;
-  const status = judging ? t("objectives.routing.judging") : !review.preview ? "" : review.preview.judged ? t("objectives.routing.judgedNow") : minutes <= 0 ? t("objectives.routing.cachedNow") : t("objectives.routing.cached", { minutes });
-  const error = review.error;
-  const errorText = !error ? null
-    : error.code === "routing_preview_stale" ? t("objectives.mobile.routing.stale")
-      : error.stage === "preview" ? t("objectives.routing.failed", { reason: error.code === "objective_busy" ? t("objectives.toast.busy") : routingReason(t, error.code) })
-        : bandFailure(t, new Error(error.code), { message: false, talk: false });
-
-  return (
-    <BottomSheet sheet={sheet} t={t} title={t("objectives.routing.title")} busy={judging} focusOnOpen
-      foot={(
-        <button type="button" data-press="r3" className="objectives-m-pill2 is-inv" disabled={!ready || sending} aria-busy={sending || undefined} onClick={() => void go()}>
-          {t("objectives.commander.start")}
-        </button>
-      )}>
-      <p className="objectives-m-secnote" aria-live="polite">{status}</p>
-      <div className="objectives-m-route">
-        {targets.map((member) => {
-          const entry = review.preview?.members.find((candidate) => candidate.id === member.id);
-          // 폴백은 띄우는 순간의 지휘관 값으로 뜬다 — 데스크톱 시트와 같이 지금의 지휘관 모델을 보인다.
-          const pick = judging ? t("objectives.routing.judgingRow")
-            : !entry ? "—"
-              : entry.via === "route" ? words(entry.model, entry.effort)
-                : <>{words(objective.commander.model, objective.commander.effort)}<span className="objectives-m-route-tag">{t("objectives.members.fallback")}</span></>;
-          const why = judging || !entry ? null : entry.via === "route" ? (entry.because ? { text: entry.because, warn: false } : null) : { text: t("objectives.routing.fallbackWhy", { reason: routingReason(t, entry.reason) }), warn: true };
-          return (
-            <div key={member.id} className="objectives-m-route-row">
-              <span className="objectives-m-route-role">{member.role}</span>
-              <span className="objectives-m-route-pick">{pick}</span>
-              {why ? <span className={`objectives-m-route-why${why.warn ? " is-warn" : ""}`}>{why.text}</span> : null}
-            </div>
-          );
-        })}
-      </div>
-      {errorText ? <p className="objectives-m-fault" role="alert">{errorText}</p> : ready ? <p className="objectives-m-secnote">{t("objectives.mobile.routing.hint", { count: targets.length })}</p> : null}
-    </BottomSheet>
   );
 }
 

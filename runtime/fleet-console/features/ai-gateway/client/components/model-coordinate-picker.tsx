@@ -6,7 +6,6 @@ import { canonicalModelId, findRosterRow, resolveRosterCoordinate, type ModelRos
 import { useMobileSettingsHost, MobileSettingsRowLabelContext, type MobileCoordinateChoiceProps } from "../../../settings/client/mobile-host.js";
 import { EffortTrack, resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, removedLaunchProviderName, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
-import { RoutingGlyph } from "./routing-glyph.js";
 
 /**
  * 모델·강도 좌표 하나를 고르는 Console의 단일 선택기.
@@ -57,17 +56,6 @@ export interface ModelCoordinatePickerLabels {
   readonly fallback?: string;
   /** 잠긴 트리거의 툴팁 둘째 줄. */
   readonly locked?: string;
-  /** 라우팅 행의 낱말. `routing` 을 넘길 때만 쓴다. */
-  readonly route?: string;
-  /** 라우팅 행의 설명. */
-  readonly routeHint?: string;
-}
-
-/** 메뉴 맨 위의 라우팅 선택. 활성일 때 트리거는 글리프와 `labels.route` 다. */
-export interface ModelCoordinateRouting {
-  readonly active: boolean;
-  readonly onPick: () => void;
-  readonly disabled?: boolean;
 }
 
 export interface ModelCoordinatePickerProps {
@@ -98,7 +86,7 @@ export interface ModelCoordinatePickerProps {
     /** `inline`: 글자 한 줄. `field`: 설정 행의 선택 상자. `glyph`: `node` 하나. */
     readonly variant?: "inline" | "field" | "glyph";
     readonly node?: React.ReactNode;
-    /** 모델 좌표가 아닌 표시 낱말(예: 「라우팅」). */
+    /** 모델 좌표가 아닌 표시 낱말(예: 「지휘관이 지정」). */
     readonly text?: React.ReactNode;
     readonly title?: string;
     /** 트리거 앞에 덧붙는 표시(예: 시작 뷰). */
@@ -109,8 +97,6 @@ export interface ModelCoordinatePickerProps {
   readonly head?: React.ReactNode;
   /** 모델 행 위의 선택 방식. 하나라도 active 면 모델 행은 선택으로 서지 않는다. 고르면 메뉴가 닫힌다. */
   readonly extras?: readonly ModelCoordinatePickerExtra[];
-  /** 메뉴 맨 위 「라우팅」. 낱말·설명은 `labels.route`·`labels.routeHint`. */
-  readonly routing?: ModelCoordinateRouting;
   readonly extrasCaption?: string;
   /** 메뉴 맨 아래 슬롯. 안의 `role=menuitem*` 버튼은 메뉴의 키보드 순회에 합류한다. */
   readonly footer?: React.ReactNode;
@@ -241,12 +227,8 @@ function TriggerText({ display, prefix }: { readonly display: ModelCoordinateDis
   );
 }
 
-function RouteMark(): React.ReactElement {
-  return <span className="fc-coord-route" aria-hidden="true"><RoutingGlyph /></span>;
-}
-
 function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.ReactElement | null {
-  const { roster, value, onChange, labels, trigger, head, extras, extrasCaption, footer, reset, routing, locked = false, disabled = false } = props;
+  const { roster, value, onChange, labels, trigger, head, extras, extrasCaption, footer, reset, locked = false, disabled = false } = props;
   const effortMode = props.effort ?? "track";
   const startAtList = props.startAt === "list";
   const display = useDisplay(props);
@@ -259,8 +241,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   const rows = React.useMemo(() => groups.flatMap((group) => group.rows), [groups]);
   // 메뉴에서 방금 고른 값 — 저장이 돌아오기 전에도 2단계가 그 모델로 선다. 값이 돌아오거나 메뉴가 닫히면 거둔다.
   const [picked, setPicked] = React.useState<{ readonly model: string; readonly effort?: string } | null>(null);
-  const routeShown = Boolean(routing && labels.route);
-  const extraActive = (routing?.active ?? false) || (extras?.some((extra) => extra.active) ?? false);
+  const extraActive = extras?.some((extra) => extra.active) ?? false;
   const activeModel = picked?.model ?? (extraActive ? null : display.shown.model ?? null);
   const currentEffort = picked ? picked.effort : display.shown.effort;
   const [open, setOpen] = React.useState(false);
@@ -422,11 +403,8 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   }, [open, hoveredGroupId, focusSubMenu]);
 
   const variant = trigger?.variant ?? (trigger?.node ? "glyph" : "inline");
-  const routeTrigger = routing?.active && labels.route && !trigger?.text && !trigger?.node
-    ? <><RouteMark /><span className="fc-coord-trigger-model">{labels.route}</span></>
-    : null;
-  const title = trigger?.title ?? (routeTrigger ? labels.routeHint : trigger?.text ? undefined : display.title);
-  const text = trigger?.text ?? routeTrigger ?? <TriggerText display={display} prefix={trigger?.prefix} />;
+  const title = trigger?.title ?? (trigger?.text ? undefined : display.title);
+  const text = trigger?.text ?? <TriggerText display={display} prefix={trigger?.prefix} />;
   const triggerClass = ["fc-coord-trigger", `is-${variant}`, trigger?.className ?? ""].filter(Boolean).join(" ");
   if (locked) {
     if (trigger?.node) return null;
@@ -530,16 +508,8 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
               </>
             ) : (
               <>
-                {routeShown || extras?.length ? (
+                {extras?.length ? (
                   <div className="fc-coord-menu-group" onMouseEnter={() => setHoveredGroupId(null)}>
-                    {routeShown ? (
-                      <button type="button" role="menuitemradio" aria-checked={routing!.active} disabled={routing!.disabled} className={`fc-coord-menu-item fc-coord-menu-extra fc-coord-menu-route${routing!.active ? " is-active" : ""}`} onClick={() => { staged.current = null; routing!.onPick(); setOpen(false); }}>
-                        <RouteMark />
-                        <span className="fc-coord-menu-label">{labels.route}</span>
-                        {labels.routeHint ? <span className="fc-coord-menu-hint">{labels.routeHint}</span> : null}
-                        {routing!.active ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
-                      </button>
-                    ) : null}
                     {extras?.map((extra) => (
                       <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} disabled={extra.disabled} className={`fc-coord-menu-item fc-coord-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { staged.current = null; extra.onPick(); setOpen(false); }}>
                         <span className="fc-coord-menu-label">{extra.label}{extra.hint ? <span className="fc-coord-menu-hint">{extra.hint}</span> : null}</span>
@@ -638,7 +608,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
 
 /** 폰: 값 줄(「{모델} · {강도}」 + 표식)만 서고, 누르면 호스트의 좌표 시트가 선다. */
 function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly Sheet: React.ComponentType<MobileCoordinateChoiceProps> }): React.ReactElement | null {
-  const { roster, value, onChange, labels, extras, reset, routing, locked = false, disabled = false, Sheet } = props;
+  const { roster, value, onChange, labels, extras, reset, locked = false, disabled = false, Sheet } = props;
   const display = useDisplay(props);
   const rowLabel = React.useContext(MobileSettingsRowLabelContext);
   const [open, setOpen] = React.useState(false);
@@ -657,8 +627,7 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
     notify(last);
   };
   // 모바일 트리거는 글자 한 줄이다. 제거된 공급자는 좁은 구성원 행처럼 공급자 이름과 표식만 말한다 — 모델 이름은 시트가 보인다.
-  const routeText = routing?.active && labels.route && !props.trigger?.text ? <><RouteMark />{labels.route}</> : null;
-  const text = props.trigger?.text ?? routeText ?? [display.struck && display.removedProvider ? display.removedProvider : display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · ");
+  const text = props.trigger?.text ?? [display.struck && display.removedProvider ? display.removedProvider : display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · ");
   if (locked) return <span className="fc-select__trigger fc-select--mobile fc-coord-trigger is-locked"><span className="fc-select__value">{text}</span></span>;
   return (
     <>
@@ -680,7 +649,6 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
           {...(labels.providerRemoved ? { providerRemovedLabel: labels.providerRemoved } : {})}
           {...(labels.chooseAnotherModel ? { chooseAnotherModelLabel: labels.chooseAnotherModel } : {})}
           // 모델을 고른 초안이 있으면 선택 방식은 선택으로 서지 않는다 — 데스크톱 메뉴처럼 고른 모델과 그 강도 탭이 선다.
-          {...(routing && labels.route ? { routing: { label: labels.route, ...(labels.routeHint ? { hint: labels.routeHint } : {}), active: draft ? false : routing.active, ...(routing.disabled ? { disabled: true } : {}), onPick: () => { keepDraft(null); routing.onPick(); } } } : {})}
           {...(extras ? { extras: extras.map((extra) => ({ ...extra, active: draft ? false : extra.active, onPick: () => { keepDraft(null); extra.onPick(); } })) } : {})}
           {...(reset ? { reset: { ...reset, onSelect: () => { keepDraft(null); reset.onSelect(); } } } : {})}
           onClose={closeSheet}

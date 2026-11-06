@@ -99,7 +99,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-menu-head b { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-menu-item:disabled { cursor: default; opacity: var(--control-disabled-opacity, 0.45); }
 .objectives-menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
-.objectives-routing-foot .objectives-btn { flex: none; }
 .objectives-composer-panel-head .objectives-glyph { border-color: transparent; }
 .objectives-composer-panel-foot .objectives-btn { flex: none; }
 

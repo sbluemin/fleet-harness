@@ -292,30 +292,7 @@ span.objectives-row-main { cursor: default; }
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Objective 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
 .objectives-members-empty { margin: 0; padding: 5px 20px 9px 62px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
-/* 구성원 일괄 모델 설정 — 섹션 헤더 액션 바, 전용 글리프 버튼과 은은한 말풍선 안내 */
-.objectives-section-head-bar { display: flex; align-items: center; position: relative; }
-.objectives-section-head-bar > .objectives-row { flex: 1; min-width: 0; padding-right: 6px; }
-.objectives-section-head-actions { flex: none; display: inline-flex; align-items: center; padding-right: 14px; }
-.objectives-batch-actions { display: inline-flex; align-items: center; }
-.objectives-batch-trigger { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast), border-color var(--duration-fast); }
-.objectives-batch-trigger:hover, .objectives-batch-trigger.is-active { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); border-color: color-mix(in oklch, var(--brass) 24%, transparent); }
-.objectives-batch-trigger:focus-visible { box-shadow: var(--focus-face); }
-.objectives-batch-trigger:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
-.objectives-batch-trigger svg { width: 14px; height: 14px; }
-/* commodore.css도 .objectives-menu { position: fixed }를 정의하고 번들에서 뒤에 오므로, 순서에 기대지 않게 두 클래스로 이긴다. */
-/* 섹션 머리(패널 폭)에 붙여 메뉴가 패널 왼쪽 밖으로 나가지 않게 한다. */
-.objectives-menu.objectives-batch-menu { position: absolute; top: calc(100% + 4px); left: 12px; right: 12px; width: auto; z-index: 60; }
-.objectives-batch-menu-glyph { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; }
-.objectives-batch-menu-title { display: block; font-weight: var(--weight-regular); }
-.objectives-batch-menu-hint { display: block; font-size: var(--t-sm); color: var(--text-secondary); white-space: normal; line-height: calc(14px * var(--font-ui-scale)); }
-/* 일괄 설정 결과 말풍선 — 글리프에 은은하게 붙어 잠시 나타났다 사라진다. */
-.objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 14px; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in var(--duration-fast) var(--ease-spring); }
-.objectives-batch-balloon::before { content: ""; position: absolute; top: -4px; right: 8px; width: 6px; height: 6px; background: var(--surface-panel-raised); border-left: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-top: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); transform: rotate(45deg); }
 @keyframes objectives-balloon-in { from { opacity: 0; transform: translateY(-3px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.objectives-batch-balloon-dot { width: 5px; height: 5px; border-radius: 50%; flex: none; }
-.objectives-batch-balloon-dot.is-route { background: var(--aurora); }
-.objectives-batch-balloon-dot.is-failed { background: var(--coral); }
-.objectives-batch-balloon-preserved { color: var(--text-tertiary); }
 /* 윗줄은 역할 · 모델·상태 · 삭제, 설명은 아랫줄에서 역할 칸부터 오른쪽 끝까지 — 모델명 길이가 설명 폭을 깎지 않는다. */
 .objectives-member { display: grid; grid-template-columns: 28px minmax(0, 1fr) fit-content(55%); grid-template-areas: "mark name meta" "mark brief brief"; align-items: center; gap: 2px 12px; min-height: 50px; padding: 6px 14px 6px 22px; }
 .objectives-member:has(> .objectives-member-remove) { grid-template-columns: 28px minmax(0, 1fr) fit-content(55%) auto; grid-template-areas: "mark name meta remove" "mark brief brief brief"; }
@@ -479,7 +456,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 
 /* 임무 배정 — 글리프 트리거와 메뉴의 특별 항목. 배정 낱말은 담당 줄과 같은 자리, 조금 더 dim. */
 .objectives-mission-add .objectives-launch.is-glyph { margin-left: auto; }
-/* 선택 방식(라우팅·라우팅 결과 쓰기)과 그 설명은 사람의 말이다 — 모노 글꼴과 자간에서는 한글 낱말 사이가 한 칸 더 벌어지므로 본문 글꼴로 쓴다. */
+/* 메뉴의 설명 글은 사람의 말이다 — 모노 글꼴과 자간에서는 한글 낱말 사이가 한 칸 더 벌어지므로 본문 글꼴로 쓴다. */
 .objectives-menu-hint { font-size: var(--t-sm); color: var(--text-secondary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui); }
 /* 서브에이전트 허용 — 라디오가 아닌 체크. 보조 글은 두 줄까지 감싸고 자르지 않는다. 목록·강도 단계가 같은 푸터를 쓴다. */
 .objectives-menu-check { align-items: flex-start; }
@@ -865,16 +842,12 @@ button.objectives-result-open:focus-visible { color: var(--brass-ink); box-shado
   .objectives-merged-trail { padding-left: 14px; padding-right: 12px; }
 }
 
-/* ── 구성원 모델 변경 · 개시 전 라우팅 확인 ─────────────────────────────────────────
-   개시한 구성원의 행은 실행값 그대로 서고, 바꾼 경과(바꿨습니다·이번 턴 뒤·바뀌지 않음)는 모델 칩의 말풍선이 말한다. 기동 근거는 행의 작은
-   표식(라우팅·폴백)이 말한다 — 라우팅은 중립 테두리, 폴백은 warn(상태 채널). 바뀌지 않았으면 coral 말풍선이다. */
+/* ── 구성원 모델 변경 ─────────────────────────────────────────
+   개시한 구성원의 행은 실행값 그대로 서고, 바꾼 경과(바꿨습니다·이번 턴 뒤·바뀌지 않음)는 모델 칩의 말풍선이 말한다. 바뀌지 않았으면 coral 말풍선이다. */
 .objectives-menu-head { display: grid; gap: 2px; margin: 0 0 4px; padding: 8px 12px; border-bottom: 1px solid var(--popover-divider); font-size: var(--t-sm); line-height: 1.45; color: var(--text-secondary); }
 .objectives-menu-head b { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-menu-item:disabled { cursor: default; opacity: var(--control-disabled-opacity, 0.45); }
 .objectives-menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
-.objectives-member-via { display: inline-flex; align-items: center; gap: 3px; flex: none; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-ui); }
-.objectives-member-via .fc-coord-route, .objectives-member-via .fc-coord-route svg { width: 12px; height: 12px; }
-.objectives-member-via.is-fallback { border-color: color-mix(in oklch, var(--warn) 45%, transparent); color: var(--warn-ink); }
 /* 띄운 구성원의 모델 변경 경과 — 칩 아래, 설명 줄의 오른쪽 칸에 서서 칩을 가리키는 한 줄 말풍선. 행의 칸이라 다른 행이나 조작을 덮지 않고
    레일 밖으로 넘치지 않는다. 서 있는 동안 설명은 이름 칸 폭으로 접힌다. */
 .objectives-member:has(> .objectives-member-bubble) { grid-template-areas: "mark name meta" "mark brief bubble"; }
@@ -908,48 +881,13 @@ button.objectives-result-open:focus-visible { color: var(--brass-ink); box-shado
   .objectives-member-bubble::before { top: 50%; right: auto; left: -4px; margin-top: -3px; border-top: 0; border-bottom: 1px solid; }
   .objectives-member-bubble:not(.is-failed, .is-applied) :is(.objectives-member-bubble-when, .objectives-member-bubble-arrow, .objectives-member-bubble-effort) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
-.objectives-member-reason { margin: -2px 14px 6px 62px; font-size: var(--t-xs); line-height: 1.45; color: var(--warn-ink); }
 
-/* 확인 시트 — 펼친 띠와 같은 한 장. 구성원 전원이 한 목록으로 모여 순서대로 읽힌다. */
-.objectives-routing:focus { outline: none; }
-.objectives-routing-head { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.objectives-routing-head b { flex: none; color: var(--text-primary); font-weight: var(--weight-bold); white-space: nowrap; }
-.objectives-routing-head > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-routing-banner { margin: 8px 14px 0; padding: 6px 10px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--warn) 8%, transparent); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
-/* 목록 자신이 폭을 잰다 — 좁은 패널에서 행이 두 줄 배치로 바뀌는 기준이다. */
-/* 고른 모델은 늘 역할과 같은 줄에 선다 — 자리가 모자라면 아래 줄로 건너뛰지 않고 모델 이름만 말줄임으로 접힌다. */
-.objectives-routing-list { display: grid; gap: 2px; padding: 6px 8px 4px; }
-.objectives-routing-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(0, max-content); grid-template-areas: "mark who pick" ". why why"; align-items: center; column-gap: 8px; row-gap: 2px; padding: 5px 6px; border-radius: var(--radius-xs); }
-.objectives-routing-row > .objectives-avatar { grid-area: mark; }
-.objectives-routing-row.is-fixed { opacity: 0.78; }
-.objectives-routing-who { grid-area: who; display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
-.objectives-routing-role { flex: 0 1 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); }
-/* 방식 낱말은 역할 이름보다 먼저 줄어든다(말줄임). 사람의 말이라 본문 글꼴이다. */
-.objectives-routing-who small { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.3 var(--font-ui); color: var(--text-tertiary); }
-/* 모델 낱말은 한 줄이다 — 넘치면 모델 이름만 말줄임하고 풀네임은 title 이 말한다. 글리프·강도는 자리를 지킨다. */
-.objectives-routing-pick { grid-area: pick; display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 100%; }
-.objectives-routing-pick .objectives-launch { margin: 0; min-width: 0; max-width: 100%; white-space: nowrap; }
-.objectives-routing-pick .objectives-launch > *, .objectives-routing-words > * { flex: none; }
-.objectives-routing-pick .objectives-launch > .objectives-routing-words, .objectives-routing-pick > .objectives-routing-words { flex: 0 1 auto; max-width: 100%; }
-.objectives-routing-pick .objectives-launch > :is(.objectives-launch-model, .fc-coord-trigger-model), .objectives-routing-words > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-routing-words { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 0; font: var(--weight-regular) var(--t-xs)/1.4 var(--font-ui); letter-spacing: 0.04em; color: var(--text-secondary); white-space: nowrap; }
-.objectives-routing-why { grid-area: why; justify-self: start; text-align: left; min-width: 0; font-size: var(--t-xs); line-height: 1.4; color: var(--text-tertiary); overflow-wrap: anywhere; }
-.objectives-routing-why.is-warn { color: var(--warn-ink); }
-.objectives-routing-judging { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); }
-.objectives-routing-spinner { flex: none; width: 10px; height: 10px; border: 1.5px solid var(--hairline-strong); border-top-color: var(--text-secondary); border-radius: 50%; animation: objectives-routing-spin 900ms linear infinite; animation-name: var(--state-motion, objectives-routing-spin); }
-@keyframes objectives-routing-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .objectives-routing-spinner { animation-duration: 2400ms; } }
-.objectives-routing-foot { display: flex; align-items: flex-start; gap: 10px; padding: 4px 14px 8px; font-size: var(--t-2xs); line-height: 1.45; color: var(--text-tertiary); }
-.objectives-routing-foot > span { flex: 1; min-width: 0; }
-.objectives-routing-foot .objectives-btn { flex: none; }
-/* 입력창 위 칸 — 라우팅 확인·후속 후보. 면·테두리·그림자는 호스트 입력창의 칸이 진다. 안쪽은 머리 한 줄, 내용, 바닥 한 줄이다. */
+/* 입력창 위 칸 — 후속 후보. 면·테두리·그림자는 호스트 입력창의 칸이 진다. 안쪽은 머리 한 줄, 내용, 바닥 한 줄이다. */
 .objectives-composer-panel { display: flex; flex-direction: column; min-width: 0; font-size: var(--t-sm); }
 .objectives-composer-panel:focus { outline: none; }
 .objectives-composer-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 4px 2px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-composer-panel-head > span { min-width: 0; }
 .objectives-composer-panel-head .objectives-glyph { border-color: transparent; }
-.objectives-composer-panel .objectives-routing-foot { padding-inline: 8px; }
-.objectives-composer-panel .objectives-routing-banner { margin-inline: 8px; }
 .objectives-composer-panel .objectives-followup-list { padding: 0; }
 .objectives-composer-panel .objectives-followup-trace { margin: 4px 8px 2px; }
 .objectives-composer-panel-error { margin: 0; padding: 4px 8px 0; font-size: var(--t-xs); line-height: 1.5; color: var(--coral); }

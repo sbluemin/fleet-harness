@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { MenuCheckGlyph, PlusGlyph, useViewportFit } from "@fleet-console/ui/react";
+import { MenuCheckGlyph, PlusGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
@@ -20,8 +20,7 @@ import { CoordinationGraph, MissionNodeIcon, graphMissionStates, setGraphOrienta
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { RoutingGlyph } from "../../ai-gateway/client/components/routing-glyph.js";
-import { commanderLaunchShown, hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberLaunchShown, readLaunchRoster, subscribeLaunchRoster, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { commanderLaunchShown, hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberLaunchShown, readLaunchRoster, subscribeLaunchRoster, memberNotes, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, objectiveRecordSummaries, patchOwnerView, post, subscribeObjective, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner, objectivesApi } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./board-commodore.js";
@@ -120,8 +119,6 @@ export function dueLabel(iso: string, language: "en" | "ko"): string {
 }
 export const SunGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3" /></svg>;
 export const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></svg>;
-/** 명단 일괄 모델 설정 입구 트리거 — 3개 노드와 정렬 제어 화살표. */
-const BatchTunerGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3.8" cy="4.5" r="1.4" /><circle cx="3.8" cy="8" r="1.4" /><circle cx="3.8" cy="11.5" r="1.4" /><path d="M7.5 4.5h5M7.5 8h3.5M7.5 11.5h5" /><path d="M11 3l2 1.5-2 1.5M9.5 6.5l2 1.5-2 1.5M11 10l2 1.5-2 1.5" /></svg>;
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const CrewGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M2 13c0-2.2 1.8-3.8 4-3.8s4 1.6 4 3.8M10.6 3.6a2.1 2.1 0 0 1 0 3.9M11.6 9.4c1.4.4 2.4 1.8 2.4 3.6" /></svg>;
@@ -603,8 +600,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   );
 }
 
-/** 라우팅이 꺼졌거나 후보가 없는 것은 실패가 아니라 설정 상태다 — 폴백 줄도 시트처럼 중립으로 말한다. */
-
 /** 구성원 표식 — 그 구성원 Objective 의 몽글 아바타(사이드바와 같은 모습). 세션이 아직 없으면 시작 전 얼굴이다. 이름은 곁의 글자가 말한다. */
 function MemberMark({ objective, member, objectiveRecordState, still, size }: { objective: Objective; member: ObjectiveMember; objectiveRecordState: (objectiveId: string) => string; still?: boolean; size?: number }) {
   return <ObjectiveAvatar objectiveId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? objectiveRecordState(member.id) : "closed")} still={still} {...(size ? { size } : {})} />;
@@ -628,7 +623,7 @@ function LedgerMark({ rootId, objectiveId, name, open, available, t, children }:
   return <button type="button" className="objectives-member-ledger" aria-pressed={open} aria-label={label} title={label} onClick={() => toggleLedger(rootId, objectiveId)}>{children}</button>;
 }
 
-/** 구성원 탭의 명단 — 머리(셈·일괄 설정) 아래 첫 줄에 지휘관 실행 설정(lead)이 같은 줄 문법으로 서고, 이어서 구성원 줄이다. 탭이 접힘을 대신하므로 머리는 접지 않는다. */
+/** 구성원 탭의 명단 — 머리(셈) 아래 첫 줄에 지휘관 실행 설정(lead)이 같은 줄 문법으로 서고, 이어서 구성원 줄이다. 탭이 접힘을 대신하므로 머리는 접지 않는다. */
 function MemberRoster({ objective, t, call, request, objectiveRecordState, rows, touchable, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; objectiveRecordState: DetailProps["objectiveRecordState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; lead: ReactNode }) {
   const ledger = useLedgerObjective(objective.id);
   const ledgerReady = canOpenLedger();
@@ -639,12 +634,6 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
   const [fault, setFault] = useState<{ id: string; code: string; picked?: { readonly model?: string; readonly effort?: string } } | null>(null);
   const [notes, setNotes] = useState<ReadonlySet<string>>(new Set());
   const [announce, setAnnounce] = useState("");
-  const [batchOpen, setBatchOpen] = useState(false);
-  const [balloon, setBalloon] = useState<{ kind: "done"; changed: number; preserved: number } | { kind: "failed" } | null>(null);
-  const batchTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const batchMenuRef = useRef<HTMLDivElement | null>(null);
-  useViewportFit(batchMenuRef, batchOpen);
-  const balloonTimer = useRef<number | null>(null);
   const cancelNext = (member: ObjectiveMember) => void call("/member/next-cancel", { objectiveId: objective.id, memberId: member.id });
   // 안내는 구성원마다 따로 사라진다 — 한 타이머를 공유하면 앞서 뜬 구성원의 안내가 남는다.
   const noteTimers = useRef(new Map<string, number>());
@@ -690,32 +679,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
   useEffect(() => () => {
     for (const timer of noteTimers.current.values()) window.clearTimeout(timer);
     for (const timer of appliedTimers.current.values()) window.clearTimeout(timer);
-    if (balloonTimer.current !== null) window.clearTimeout(balloonTimer.current);
   }, []);
-
-  useEffect(() => {
-    if (!batchOpen) return;
-    const onDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!batchMenuRef.current?.contains(target) && !batchTriggerRef.current?.contains(target)) {
-        setBatchOpen(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setBatchOpen(false);
-        batchTriggerRef.current?.focus();
-      }
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onDown, true);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [batchOpen]);
 
   // 띄운 구성원의 모델 — 휴면·유휴면 곧바로, 일하는 중이면 이번 턴 뒤 바뀐다. 바꾸지 못하면(문맥이 새 모델의 창보다 큼 등) 그 칩에 사유가 선다.
   const pickLaunched = (member: ObjectiveMember, launch: MemberLaunchChoice) => {
@@ -748,109 +712,21 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
     });
   };
 
-  const applyBatch = () => {
-    if (saving.current.has("batch") || !touchable) return;
-    saving.current.add("batch");
-    setBatchOpen(false);
-    // 앞선 결과 말풍선은 이번 선택의 결과가 아니다 — 먼저 거둔다.
-    if (balloonTimer.current !== null) window.clearTimeout(balloonTimer.current);
-    setBalloon(null);
-    const settle = (next: NonNullable<typeof balloon>) => {
-      setBalloon(next);
-      balloonTimer.current = window.setTimeout(() => setBalloon(null), 3800);
-    };
-
-    // 성공도 실패도 입구 글리프의 말풍선으로 알린다 — 패널에는 따로 띄우는 알림이 없고, 명단은 접혀 있을 수 있다.
-    void request("/member/batch-launch", { objectiveId: objective.id, mode: "route" }).then((payload) => {
-      saving.current.delete("batch");
-      const echoed = (payload as { objective?: Objective } | null)?.objective?.members;
-      if (!echoed) { settle({ kind: "failed" }); setAnnounce(t("objectives.members.batchFailed")); return; }
-
-      const changedMembers = echoed.filter((member) => {
-        const old = objective.members.find((entry) => entry.id === member.id);
-        return old && old.launch.mode !== member.launch.mode;
-      });
-      // 직접 지정과, 일괄 「라우팅」이 건너뛴 띄운 구성원 — 서버가 센다.
-      const preservedCount = (payload as { preserved?: number } | null)?.preserved ?? echoed.filter((member) => member.launch.mode === "model").length;
-      const changedCount = changedMembers.length;
-
-      settle({ kind: "done", changed: changedCount, preserved: preservedCount });
-
-      if (changedCount > 0) {
-        setAnnounce(t("objectives.members.batchAnnounce", { count: changedCount, preserved: preservedCount }));
-      } else {
-        setAnnounce(t("objectives.members.batchAnnounceNoop"));
-      }
-
-      // 실제로 값이 바뀐 구성원 중 실행 중인 세션에게만 안내 노출
-      const changedLiveIds = changedMembers
-        .filter((member) => MEMBER_LIVE.has(member.sessionName !== null ? objectiveRecordState(member.id) : "closed"))
-        .map((member) => member.id);
-
-      if (changedLiveIds.length > 0) showNotes(changedLiveIds);
-    }, () => {
-      saving.current.delete("batch");
-      settle({ kind: "failed" });
-      setAnnounce(t("objectives.members.batchFailed"));
-    });
-  };
-
   // 달성 기준·임무 줄과 같은 문법 — 글자 자체가 입력칸이고, 떠나면 저장한다. Enter 는 확정, Escape 는 되돌린다.
   const inlineKeys = (original: string) => (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (submitKey(event)) event.currentTarget.blur();
     else if (event.key === "Escape") { event.currentTarget.value = original; event.currentTarget.blur(); }
   };
 
-  const actions = objective.members.length > 0 && touchable ? (
-    <div className="objectives-batch-actions">
-      <button
-        ref={batchTriggerRef}
-        type="button"
-        className={`objectives-glyph objectives-batch-trigger${batchOpen ? " is-active" : ""}`}
-        title={t("objectives.members.batchTitle")}
-        aria-label={t("objectives.members.batchAria")}
-        aria-haspopup="menu"
-        aria-expanded={batchOpen}
-        onClick={() => setBatchOpen((open) => !open)}
-      >
-        <BatchTunerGlyph />
-      </button>
-      {balloon?.kind === "failed" ? (
-        <span className="objectives-batch-balloon" aria-hidden="true">
-          <span className="objectives-batch-balloon-dot is-failed" />
-          <span>{t("objectives.members.batchFailed")}</span>
-        </span>
-      ) : balloon ? (
-        <span className="objectives-batch-balloon" aria-hidden="true">
-          <span className="objectives-batch-balloon-dot is-route" />
-          <span>{balloon.changed > 0 ? t("objectives.members.batchChanged", { count: balloon.changed }) : t("objectives.members.batchNoop")}</span>
-          {balloon.preserved > 0 ? <span className="objectives-batch-balloon-preserved">{t("objectives.members.batchPreserved", { count: balloon.preserved })}</span> : null}
-        </span>
-      ) : null}
-      {batchOpen ? (
-        <div ref={batchMenuRef} className="objectives-menu objectives-batch-menu" role="menu" aria-label={t("objectives.members.batchTitle")}>
-          <button type="button" role="menuitem" className="objectives-menu-item" onClick={() => applyBatch()}>
-            <span className="objectives-batch-menu-glyph fc-coord-route"><RoutingGlyph /></span>
-            <span className="objectives-menu-label">
-              <span className="objectives-batch-menu-title">{t("objectives.members.batchRoute")}</span>
-              <span className="objectives-batch-menu-hint">{t("objectives.members.batchRouteHint")}</span>
-            </span>
-          </button>
-        </div>
-      ) : null}
-    </div>
-  ) : null;
-
   return <div className="objectives-members">
-    {/* 머리는 임무 섹션과 같은 문법 — 글리프 · 「구성원」 · 수 | 일괄 설정. */}
-    <SectionHead glyph={<CrewGlyph />} label={t("objectives.members.title")} tools={<span className="objectives-criteria-count">{objective.members.length}</span>} {...(actions ? { actions } : {})} />
+    {/* 머리는 임무 섹션과 같은 문법 — 글리프 · 「구성원」 · 수. */}
+    <SectionHead glyph={<CrewGlyph />} label={t("objectives.members.title")} tools={<span className="objectives-criteria-count">{objective.members.length}</span>} />
     <div id="objectives-sec-members">
     {lead}
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
     {objective.members.map((member, index) => {
       const state = member.sessionName !== null ? objectiveRecordState(member.id) : "closed";
       const launched = memberLaunched(member, objectiveRecordState);
-      const routedTag = memberRoutedTag(member, launched, t);
       const diagnostics = memberNotes(member, launched, t);
       const noteOf = (kind: (typeof diagnostics)[number]["kind"]) => diagnostics.find((note) => note.kind === kind);
       const next = launched ? member.next : null;
@@ -883,7 +759,6 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
           </div>
           <div className="objectives-member-meta">
-            {routedTag ? <span className={`objectives-member-via is-${routedTag.via}`} title={routedTag.title}>{routedTag.via === "route" ? <span className="fc-coord-route"><RoutingGlyph /></span> : null}{routedTag.label}</span> : null}
             <MemberLaunchControl key={member.id} t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
               onPickLaunched={(launch) => pickLaunched(member, launch)}
               onPatchLaunch={(launch) => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } })}
@@ -906,7 +781,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
               {touchable ? <button type="button" className="objectives-glyph objectives-member-bubble-x" aria-label={t("objectives.members.next.dismiss")} title={t("objectives.members.next.dismiss")} onClick={failure.dismiss}><CloseGlyph /></button> : null}
             </span>
           // 자식이 던진 원문이 있으면 사유 문장 뒤에 그대로 붙인다 — 같은 코드 뒤의 서로 다른 원인을 사람이 읽는 자리다.
-          ))(`${t("objectives.members.next.failedBody", { model: launchedWords(rows, failure.model, failure.effort, labels).title, reason: routingReason(t, failure.code) })}${"cause" in failure && failure.cause ? `\n${failure.cause}` : ""}`) : appliedTo ? (
+          ))(`${t("objectives.members.next.failedBody", { model: launchedWords(rows, failure.model, failure.effort, labels).title, reason: launchReason(t, failure.code) })}${"cause" in failure && failure.cause ? `\n${failure.cause}` : ""}`) : appliedTo ? (
             <span className="objectives-member-bubble is-applied" role="status"><span className="objectives-member-bubble-when">{t("objectives.members.next.applied")}</span></span>
           ) : null}
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
@@ -924,9 +799,8 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
             ? <p>{[member.next.cause.errorClass, member.next.cause.code, member.next.cause.exitCode !== undefined ? `exit ${member.next.cause.exitCode}` : undefined, member.next.cause.signal].filter((value) => value !== undefined && value !== "").join(" · ")}</p> : null}
         </details> : null}
         {member.noReportTool ? <p className="objectives-member-note is-warn" role="status">{noteOf("noReportTool")?.text}</p> : null}
-        {((fallback) => fallback ? <p className="objectives-member-reason" title={fallback.title}>{fallback.text}</p> : null)(noteOf("fallback"))}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
-        {fault?.id === member.id && !picked ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}
+        {fault?.id === member.id && !picked ? <p className="objectives-member-note is-error" role="alert">{hasLaunchReason(fault.code) ? launchReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}
         </div>
       );
     })}
@@ -1179,11 +1053,10 @@ function SharedFolderSection({ objective, t, language, open, onToggle }: { reado
   </>;
 }
 
-function SectionHead({ glyph, label, tools, actions, controls, expanded, onToggle }: {
+function SectionHead({ glyph, label, tools, controls, expanded, onToggle }: {
   readonly glyph: ReactNode;
   readonly label: string;
   readonly tools?: ReactNode;
-  readonly actions?: ReactNode;
   /** 접히는 본문의 id — 없으면 정적 머리. */
   readonly controls?: string;
   readonly expanded?: boolean;
@@ -1194,18 +1067,11 @@ function SectionHead({ glyph, label, tools, actions, controls, expanded, onToggl
     <span className="objectives-row-lab">{label}</span>
     {tools ? <span className="objectives-row-tools">{tools}</span> : null}
   </>;
-  const head = !controls ? <div className="objectives-row is-static">{inner}</div> : (
+  return !controls ? <div className="objectives-row is-static">{inner}</div> : (
     <button type="button" className="objectives-row objectives-acc-hd" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}>
       {inner}
       <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
     </button>
-  );
-  if (!actions) return head;
-  return (
-    <div className="objectives-section-head-bar">
-      {head}
-      <div className="objectives-section-head-actions">{actions}</div>
-    </div>
   );
 }
 
@@ -1665,9 +1531,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>
       </div>
       <div className="objectives-member-meta">
-        {objective.commander.routed ? <span className={`objectives-member-via is-${objective.commander.routed.via}`} title={objective.commander.routed.via === "route" ? objective.commander.routed.because : t(objective.commander.routed.reason === "routing_disabled" || objective.commander.routed.reason === "routing_off" || objective.commander.routed.reason === "no_candidate" ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle")}>{objective.commander.routed.via === "route" ? <span className="fc-coord-route"><RoutingGlyph /></span> : null}{t(objective.commander.routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")}</span> : null}
-        <LaunchControl t={t} model={objective.commander.routing ? undefined : objective.commander.model} effort={objective.commander.routing ? undefined : objective.commander.effort} locked={locked || !editable}
-          {...(!objective.hasSession || objective.commander.routing ? { routing: { active: objective.commander.routing === true, hint: t("objectives.commander.routeHint"), onPick: () => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: { routing: true } } }) } } : {})}
+        <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={locked || !editable}
           onChange={(next) => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: next } })} />
         {commanderState !== "closed" ? <span className={`objectives-member-status is-${commanderState}${objective.commander.outcome === "failed" && commanderState !== "running" && commanderState !== "awaiting" ? " is-failed" : ""}`}>{memberStateWord(commanderState, objective.commander.outcome)}</span> : null}
       </div>

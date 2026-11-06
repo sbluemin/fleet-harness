@@ -361,8 +361,7 @@ const shownActivity = (activity: string): string => (activity === "background" ?
 const resolveText = (text: LocalizedText): string => (typeof text === "string" ? text : text("en"));
 // 명부 줄의 글은 함수라 JSON 이 버린다 — 영어로 풀어 비교한다(모델·상태·로스터가 바뀌면 글이 바뀐다).
 const profileSignature = (profile: ConversationMemberProfile | undefined) => (profile ? [profile.badge ? resolveText(profile.badge) : "", profile.brief ?? "",
-  profile.launch ? [resolveText(profile.launch.label), profile.launch.effort ? resolveText(profile.launch.effort) : "", profile.launch.title ? resolveText(profile.launch.title) : "", profile.launch.provider ?? "", profile.launch.providerName ?? "", profile.launch.struck === true, profile.launch.badge ? resolveText(profile.launch.badge) : "",
-    profile.launch.via ? [resolveText(profile.launch.via.label), profile.launch.via.title ? resolveText(profile.launch.via.title) : "", profile.launch.via.tone ?? ""] : null] : null,
+  profile.launch ? [resolveText(profile.launch.label), profile.launch.effort ? resolveText(profile.launch.effort) : "", profile.launch.title ? resolveText(profile.launch.title) : "", profile.launch.provider ?? "", profile.launch.providerName ?? "", profile.launch.struck === true, profile.launch.badge ? resolveText(profile.launch.badge) : ""] : null,
   profile.status ? [resolveText(profile.status.text), profile.status.tone ?? ""] : null,
   profile.notes?.map((note) => [resolveText(note.text), note.title ?? "", note.tone ?? ""]) ?? []] : null);
 // 보드 동작의 글도 함수다 — 칩·안내·자리표시를 영어로 풀어 비교한다(상태 사다리가 바뀌면 글이나 칩이 바뀐다).

@@ -725,9 +725,6 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-members-launch-dot,
 .group-members-launch-effort { flex: none; }
 .group-members-launch-label.is-off { color: var(--text-tertiary); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--text-tertiary) 60%, transparent); }
-.group-members-via { display: inline-flex; align-items: center; gap: 3px; flex: none; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-ui); }
-.group-members-via .fc-coord-route, .group-members-via .fc-coord-route svg, .group-members-launch .fc-coord-route, .group-members-launch .fc-coord-route svg { width: 12px; height: 12px; }
-.group-members-via.is-warn { border-color: color-mix(in oklch, var(--warn) 45%, transparent); color: var(--warn-ink); }
 .group-members-launch-badge { flex: none; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; padding: 0 5px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-pill); color: var(--warn-ink); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
 .group-members-brief { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; margin-top: 2px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .group-members-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 2px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); overflow-wrap: anywhere; }
@@ -1040,7 +1037,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   .group-composer-wrap .fc-composer-send { transition: none; }
   .group-composer-wrap .fc-composer-send:active:not(:disabled):not(.is-idle) { transform: none; }
 }
-/* 플러그인이 이어받는 칸(라우팅 확인·후속 후보) — 입력창 오른쪽 위로 뜬다. 안의 내용은 플러그인이 그린다. */
+/* 플러그인이 이어받는 칸(후속 후보) — 입력창 오른쪽 위로 뜬다. 안의 내용은 플러그인이 그린다. */
 .group-composer-panel {
   position: absolute;
   right: clamp(var(--space-4), 4cqi, 48px);
