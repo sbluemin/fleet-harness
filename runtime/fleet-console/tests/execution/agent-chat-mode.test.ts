@@ -133,7 +133,8 @@ describe("agent chat mode routes", () => {
     expect(harness.consoleControl.observe(sessionId)?.output).not.toHaveProperty("failure");
   });
   it("routes an opted-in Console message through the existing Chat session and records its result", async () => {
-    const harness = await createHarness({ basePromptEnabled: false });
+    let autoMemoryEnabled = false;
+    const harness = await createHarness({ basePromptEnabled: false, autoMemoryEnabled: () => autoMemoryEnabled });
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
@@ -148,6 +149,8 @@ describe("agent chat mode routes", () => {
     expect(harness.openSession.mock.calls[0]?.[0]).toMatchObject({ disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
     // 사령관이 기본 시스템 지침을 끄면 SDK 표면은 systemPrompt 를 싣지 않는다.
     expect(harness.openSession.mock.calls[0]?.[0]).not.toHaveProperty("systemPrompt");
+    expect(harness.sdkOptions[0]?.autoMemoryEnabled).toBe(false);
+    expect(harness.objectiveRecord(sessionId)?.session).toMatchObject({ disableAutoMemory: true });
     expect(harness.sdkOptions[0]?.executablePath).toBe(resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: {} }).resolved?.bin);
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing"));
     const launched = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).objectiveId;
@@ -158,17 +161,22 @@ describe("agent chat mode routes", () => {
     const commander = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true })).objectiveId;
     expect(harness.consoleControl.observe(commander)).toMatchObject({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: ["send"] });
     expect(harness.sends).toHaveLength(2);
+    autoMemoryEnabled = true;
+    expect(harness.objectiveRecord(commander)?.session).toMatchObject({ disableAutoMemory: true });
     await harness.consoleControl.request(caller, { kind: "send", objectiveId: commander, text: "Begin the objective" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Begin the objective"));
     expect(harness.consoleControl.observe(commander)?.surface).toBe("chat");
+    expect(harness.sdkOptions.at(-1)?.autoMemoryEnabled).toBe(false);
     await vi.waitFor(() => expect(readObjectiveLaunch(harness.objectiveRecord(commander)!).started).toBe(true));
     // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
     // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스에는 서브에이전트 차단 규칙이 없다.
     const member = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).objectiveId;
+    expect(harness.objectiveRecord(member)?.session).toMatchObject({ disableAutoMemory: false });
     harness.setSubagentSpawn(member, "default");
     await harness.consoleControl.request(caller, { kind: "send", objectiveId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Start the mission"));
+    expect(harness.sdkOptions.at(-1)?.autoMemoryEnabled).toBe(true);
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
     const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "dormant-member" })).objectiveId;
     // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
@@ -482,6 +490,7 @@ describe("agent chat mode routes", () => {
     }
     harness.attachProviderSession(sessionId);
     const objectiveRecord = harness.objectiveRecord(sessionId)!;
+    delete (objectiveRecord.session as Record<string, unknown>).disableAutoMemory;
     Object.assign(objectiveRecord, { chatMode: true, chatBorn: true, dormantBorn: true, restoredDormant: true });
     const at = (second: number) => `2026-08-14T00:00:0${second}.000Z`;
     await fs.writeFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), [
@@ -528,6 +537,8 @@ describe("agent chat mode routes", () => {
     await harness.post(sessionId, "message", { text: "Continue the same plan" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Continue the same plan"));
     expect(harness.openSession.mock.calls).toHaveLength(sessionsBefore + 1);
+    expect(harness.sdkOptions.at(-1)?.autoMemoryEnabled).toBeUndefined();
+    expect(harness.objectiveRecord(sessionId)?.session).not.toHaveProperty("disableAutoMemory");
     expect((harness.objectiveRecord(sessionId)!.session as { id: string }).id).toBe(providerId);
   });
 
@@ -648,6 +659,8 @@ describe("agent chat mode routes", () => {
     const record = harness.getRecord(sessionId);
     const prevSessions = (record?.session as { previousSessions?: unknown[] })?.previousSessions;
     expect(prevSessions).toHaveLength(2);
+    expect(record?.session).toMatchObject({ disableAutoMemory: false });
+    expect(harness.sdkOptions.at(-1)?.autoMemoryEnabled).toBe(true);
     expect(prevSessions?.[0]).toMatchObject({ id: "sid-live", harness: "claude-code" });
     expect(prevSessions?.[1]).toMatchObject({ id: "sid-second", harness: "claude-code" });
 
@@ -685,7 +698,7 @@ function asLegacyTerminal(harness: { objectiveRecord(sessionId: string): Record<
   delete record.chatBorn;
 }
 
-async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly basePromptEnabled?: boolean } = {}) {
+async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly basePromptEnabled?: boolean; readonly autoMemoryEnabled?: () => boolean } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir, resolveLaunchAttachmentNamespaceRoot(fleetDataDir));
@@ -757,7 +770,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       },
     };
   });
-  const sdkOptions: Array<{ readonly executablePath?: string }> = [];
+  const sdkOptions: Array<{ readonly executablePath?: string; readonly autoMemoryEnabled?: boolean }> = [];
   (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async (options: { readonly models: readonly string[]; readonly executablePath?: string }) => {
     sdkOptions.push(options);
     return { configDir: sdkConfigDir, models: options.models, openSession, dispose: async () => {} };
@@ -922,6 +935,7 @@ ts: { createdAt, updatedAt: createdAt }};
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
   const start = () => registerAgentRoutes(ctx, terminalRuntime, {
     agentOptionsService: agentOptionsStub,
+    commodoreAutoMemoryEnabled: () => options.autoMemoryEnabled?.() ?? true,
     // 모델 좌표 후보는 모델 로스터(Settings › AI Gateway)다 — 운영처럼 Claude 항목이 켜진 로스터를 둔다.
     readAiGatewaySettings: () => ({ version: 1, models: [{ id: "claude--sonnet" }, { id: "claude--opus-1m" }] }),
     ...(options.basePromptEnabled !== undefined ? { commodoreSystemPrompts: { exists: (id: string) => id === "owner-1", basePromptEnabled: (id: string | undefined) => id === "owner-1" ? options.basePromptEnabled! : true, setBasePromptEnabled: () => true, subagentsKept: () => false, keepSubagents: () => false, purge: () => {}, migrate: () => {} } } : {}),

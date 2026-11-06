@@ -115,8 +115,8 @@ export interface AgentCliInjectionContext {
   readonly claudeCodeDisabledAgents?: readonly string[];
   /** 이 세션에서 뺄 도구 이름들(예: `AskUserQuestion`). 서브에이전트 규칙과 합쳐 같은 `permissions.deny`로 실린다. */
   readonly claudeCodeDisabledTools?: readonly string[];
-  /** 이 세션에서 auto-memory를 끈다. `--settings`의 `autoMemoryEnabled: false`로 실린다. */
-  readonly disableAutoMemory?: true;
+  /** 명시하면 auto-memory를 고정한다(true=끔, false=켬). 생략은 사용자 설정을 따른다. */
+  readonly disableAutoMemory?: boolean;
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

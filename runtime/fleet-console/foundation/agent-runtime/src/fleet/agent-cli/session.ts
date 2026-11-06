@@ -35,7 +35,7 @@ export interface ClaudeSessionSdkOptions {
   readonly allowAmbientMcpServers: boolean;
   readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
-  readonly autoMemoryEnabled?: false;
+  readonly autoMemoryEnabled?: boolean;
 }
 
 /** `startSession`/`startTurn` 요청에 그대로 펼치는 몫. */
@@ -67,8 +67,8 @@ export interface ClaudeSessionHandle {
   readonly claudeCodeDisabledAgents?: readonly string[];
   /** 이 세션에서 뺀 도구 이름들. 생략은 뺀 것이 없다는 뜻이다. */
   readonly claudeCodeDisabledTools?: readonly string[];
-  /** 이 세션에서 auto-memory를 끄는가. 생략은 사용자·프로젝트 설정을 따른다는 뜻이다. */
-  readonly disableAutoMemory?: true;
+  /** 명시한 auto-memory 정책(true=끔, false=켬). 생략은 사용자·프로젝트 설정을 따른다. */
+  readonly disableAutoMemory?: boolean;
   /** 이 세션이 함께 실을 로컬 플러그인 디렉터리. 생략은 없다는 뜻이다. */
   readonly pluginDirs?: readonly string[];
   /** 그 플러그인들의 MCP 선언이 `${VAR}`로 가리키는 키 — 두 표면 모두 자식 환경에 얹는다. 생략은 없다는 뜻이다. */
@@ -110,8 +110,8 @@ export interface PrepareClaudeSessionOptions {
    */
   readonly claudeCodeDisabledTools?: readonly string[];
   /**
-   * 이 세션에서 auto-memory를 끈다. 누구를 끌지는 호출자 정책이다. 두 표면이 같은 설정 키를 받는다 —
-   * CLI는 `--settings`의 `autoMemoryEnabled: false`, SDK는 flag settings의 같은 키로 실린다.
+   * 명시하면 auto-memory를 고정한다(true=끔, false=켬). 생략은 사용자·프로젝트 설정이다.
+   * CLI의 `--settings`와 SDK의 flag settings가 같은 `autoMemoryEnabled` 값을 받는다.
    */
   readonly disableAutoMemory?: boolean;
   /**
@@ -153,7 +153,7 @@ export async function prepareClaudeSession(
     claudeCodeSystemPrompt,
     ...(claudeCodeDisabledAgents.length > 0 ? { claudeCodeDisabledAgents } : {}),
     ...(claudeCodeDisabledTools.length > 0 ? { claudeCodeDisabledTools } : {}),
-    ...(options.disableAutoMemory ? { disableAutoMemory: true as const } : {}),
+    ...(options.disableAutoMemory !== undefined ? { disableAutoMemory: options.disableAutoMemory } : {}),
     ...(pluginDirs.length > 0 ? { pluginDirs } : {}),
     ...(pluginDirs.length > 0 && options.pluginEnv && Object.keys(options.pluginEnv).length > 0 ? { pluginEnv: { ...options.pluginEnv } } : {}),
     sdk: {
@@ -165,7 +165,7 @@ export async function prepareClaudeSession(
         allowAmbientMcpServers: true,
         ...(options.workspaceHookExec ? { cwdHook: options.workspaceHookExec } : {}),
         ...(skillOverrides ? { skillOverrides } : {}),
-        ...(options.disableAutoMemory ? { autoMemoryEnabled: false as const } : {}),
+        ...(options.disableAutoMemory !== undefined ? { autoMemoryEnabled: !options.disableAutoMemory } : {}),
       },
       request: {
         ...toSdkSessionCoordinate(coordinate),

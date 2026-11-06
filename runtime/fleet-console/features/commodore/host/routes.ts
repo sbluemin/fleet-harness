@@ -310,7 +310,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image declared in its plugin.json; only image files inside the plugin folder are served.", handler: pluginIcon },
     { name: "commodore/state", method: "POST", summary: "Read a Commodore's state: routines, description, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
-    { name: "commodore/auto-memory", method: "POST", summary: "Set this Commodore's SDK auto memory independently of Fleet memory; applies in a fresh session from the next turn.", handler: json(commodoreRef.extend({ autoMemoryEnabled: z.boolean() }).strict(), ({ commodoreId, autoMemoryEnabled }) => {
+    { name: "commodore/auto-memory", method: "POST", summary: "Set Claude Code auto memory for future Commanders under this Commodore; new members inherit their Commander's creation-time policy. Existing sessions and Fleet memory are unchanged.", handler: json(commodoreRef.extend({ autoMemoryEnabled: z.boolean() }).strict(), ({ commodoreId, autoMemoryEnabled }) => {
       read(commodoreId);
       return view(commodoreId, store.setAutoMemoryEnabled(commodoreId, autoMemoryEnabled));
     }) },

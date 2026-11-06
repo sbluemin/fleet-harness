@@ -2613,7 +2613,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, (commodoreId) => commodore?.pluginDirs(commodoreId) ?? [], (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {});
+      }), consoleActions, consoleFeaturePorts.storage, {
+        commodoreSystemPrompts,
+        commodorePluginDirs: (commodoreId) => commodore?.pluginDirs(commodoreId) ?? [],
+        commodorePluginEnv: (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {},
+        commodoreAutoMemoryEnabled: (commodoreId) => commodore?.commanderAutoMemoryEnabled(commodoreId) ?? true,
+      });
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
@@ -2775,6 +2780,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools) => pluginMcp.register(name, tools),
         commodoreCommander: commodore.host.commander,
+        commodoreAutoMemoryEnabled: commodore.commanderAutoMemoryEnabled,
       });
       consoleAgentOwners.add("objectives");
       // 구성원 세션에는 토큰을 내지 않고, 직접 불러도 실행 전에 거절한다.

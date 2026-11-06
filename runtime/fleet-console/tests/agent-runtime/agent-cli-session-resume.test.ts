@@ -58,18 +58,24 @@ describe("agent CLI session resume and capture hooks", () => {
 
   it("pins a Fleet-issued session id for a new session, and forks with a fresh one", async () => {
     const root = createTempRoot("fleet-admiral-claude-pin-");
-    const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
+    const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" } });
 
-    const fresh = await injectAgentCliProfile(profile, baseInjectOptions(root));
+    const fresh = await injectAgentCliProfile(profile, { ...baseInjectOptions(root), disableAutoMemory: false });
+    expect(JSON.parse(fresh.args[fresh.args.indexOf("--settings") + 1]!)).toMatchObject({ autoMemoryEnabled: true });
+    expect(fresh.session.sdk.options.autoMemoryEnabled).toBe(true);
+    expect(fresh.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe("0");
     expect(indexOfSequence(fresh.args, ["--session-id", fresh.session.sessionId])).toBeGreaterThanOrEqual(0);
     expect(fresh.args).not.toContain("--resume");
     // 세션 좌표와 무관하게 모든 런치는 호스트가 기동에 묶어 둔 같은 zip을 받는다.
     expect(fresh.session.pluginUrl).toBe("http://127.0.0.1:9/fleet-plugin-stub/fleet.zip");
 
     const from = randomUUID();
-    const forked = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      origin: { kind: "fork", from },
-    }));
+    const forked = await injectAgentCliProfile({ ...profile, env: { ...profile.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "0" } }, {
+      ...baseInjectOptions(root, { origin: { kind: "fork", from } }), disableAutoMemory: true,
+    });
+    expect(JSON.parse(forked.args[forked.args.indexOf("--settings") + 1]!)).toMatchObject({ autoMemoryEnabled: false });
+    expect(forked.session.sdk.options.autoMemoryEnabled).toBe(false);
+    expect(forked.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe("1");
     expect(indexOfSequence(forked.args, ["--resume", from, "--fork-session", "--session-id", forked.session.sessionId])).toBe(0);
     expect(forked.session.sessionId).not.toBe(from);
   });

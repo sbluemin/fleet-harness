@@ -65,7 +65,7 @@ const stubCandidates = () => vi.stubGlobal("fetch", async (url: string) => url.e
   ? Response.json({ candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] })
   : new Response("", { status: 404 }));
 
-function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null }) {
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null }) {
   // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
@@ -248,7 +248,7 @@ title: input.title});
         launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableAutoMemory: input.disableAutoMemory, groupId: input.groupId });
         // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
         activity.set(id, input.dormant ? "dormant" : "idle");
-        const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
+        const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), session: { harness: "claude-code", ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}), ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
         if (input.childSessionId && input.parentObjectiveId) {
           const parent = objectiveRecords.get(input.parentObjectiveId)!;
           parent.sessions = [...(parent.sessions ?? []), { id, ...payload, ts: { createdAt: clock++, updatedAt: clock } }];
@@ -304,14 +304,14 @@ title: input.title});
     },
     paths: { workspaceHash: () => "t1", resolveCommodoreTheaterPath: () => theaterPath, resolveObjectiveOwner: () => "c1", listCommodoreTheaters: () => [{ id: "t1", label: "Project" }], resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
-  const launchOptions = { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}), ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}) };
+  const launchOptions = { now: () => clock, commodoreAutoMemoryEnabled: options?.commodoreAutoMemoryEnabled, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}), ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}) };
   const launch = createLaunchService(ctx, store, launchOptions);
   launchServices.push(launch);
   watchQuiet = () => launch.watchReportQuiet();
   // 재시작 — 같은 목표 파일과 같은 호스트 위에 저장소와 기동 서비스를 새로 세운다(메모리 상태는 잃고 보드 파일만 남는다).
   const restart = () => {
     let watchAgain: () => void = () => {};
-    const reloaded = createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? path.join(workspace, "objectives") : null), objectiveRecords: objectiveRecordsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
+    const reloaded = createObjectiveStore({ documentContext, commodoreIds: () => ["c1"], dirOf: (commodoreId) => (commodoreId === "c1" ? path.join(workspace, "objectives") : null), objectiveRecords: objectiveRecordsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
     const relaunched = createLaunchService(ctx, reloaded, launchOptions);
     launchServices.push(relaunched);
     watchAgain = () => relaunched.watchReportQuiet();
@@ -546,7 +546,8 @@ describe("Objectives contract", () => {
 
   // 재시작 이어가기 — 진행 중 목표는 지휘관에게 이어 가라는 턴이 가고, 사람이 멈춘 목표는 그대로다. 잇지 못한 목표만 사령관 몫으로 남는다.
   it("resumes in-progress objectives after a Console restart and leaves only failed resumes for the Commodore", async () => {
-    const { store, launch, sent, hostFault } = harness();
+    const h = harness();
+    const { store, launch, sent, hostFault } = h;
     const started = async (title: string) => {
       const created = await launch.create({ commodoreId: "c1", theaterId: "t1", title, groupId: null, note: "brief" });
       store.missionAdd(created.id, { text: "work" });
@@ -566,6 +567,13 @@ describe("Objectives contract", () => {
     expect(new Set([...resumedTo, failures[0]!.objectiveId])).toEqual(new Set([first, second]));
     expect(sent.at(-1)!.text).toContain("Console restarted");
     expect(launch.takeResumeFailures("c1")).toEqual([]);
+    // 옛 지휘관은 설정 생략을 유지하고 새 구성원도 종전의 항상 끔을 따른다.
+    h.add("legacy-memory", { session: { harness: "claude-code", sessionName: "legacy" } });
+    store.adopt("legacy-memory", { note: "legacy" });
+    store.memberAdd("legacy-memory", { role: "build", launch: SONNET }, "human");
+    await launch.muster("legacy-memory");
+    expect(h.launches.at(-1)?.disableAutoMemory).toBe(true);
+    expect(h.objectiveRecords.get("legacy-memory")?.session).not.toHaveProperty("disableAutoMemory");
   });
 
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
@@ -580,8 +588,8 @@ describe("Objectives contract", () => {
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
     // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다 — 미기동 지휘관의 저장된 시작 뷰가 터미널이어도.
     expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["chat", "chat"]);
-    // 구성원만 auto-memory를 끄고 뜬다 — 지휘관(첫 기동)은 사용자 설정을 그대로 쓴다.
-    expect(launches.map((entry) => entry.disableAutoMemory)).toEqual([undefined, true, true]);
+    // 기본 켬은 지휘관과 구성원 모두 명시해서 전달한다.
+    expect(launches.map((entry) => entry.disableAutoMemory)).toEqual([false, false, false]);
     const roster = store.find(objective.id)!;
     const blockedObjectiveId = blocked.id;
     objectiveRecordsHost.patch(blockedObjectiveId, { chatMode: false });
@@ -778,13 +786,21 @@ describe("Objectives contract", () => {
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
-    const { ctx, store, events, launch, call, route, resultFile, objectiveRecords, objectiveRecordsHost, archivedObjectiveRecords, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault, removedGroups } = harness();
+    let enabled = false;
+    const h = harness(() => null, { commodoreAutoMemoryEnabled: () => enabled });
+    const { ctx, store, events, launch, call, route, resultFile, objectiveRecords, objectiveRecordsHost, archivedObjectiveRecords, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault, removedGroups } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
     expect(launches).toEqual([]);
     expect(objectiveRecords.has(objective.id)).toBe(false);
     expect(store.list("c1")).toContainEqual(expect.objectContaining({ id: objective.id, title: "Release", groupId: "g-ship" }));
     expect(savedObjective(objective.id).id).toBe(objective.id);
     expect(savedObjective(objective.id)).toHaveProperty("title", "Release");
+    // 생성 후 첫 기동 전에 설정을 바꿔도, 재로드한 pending의 고정 정책이 남는다.
+    expect(savedObjective(objective.id)).toHaveProperty("session.disableAutoMemory", true);
+    enabled = true;
+    const pendingReloaded = h.restart();
+    expect(pendingReloaded.store.pending(objective.id)?.disableAutoMemory).toBe(true);
+    pendingReloaded.launch.dispose();
     expect(savedObjective(objective.id)).toHaveProperty("cwd", ctx.paths.resolveCommodoreTheaterPath("c1", "t1"));
     expect(objective).toMatchObject({ commodoreId: "c1", theaterId: "t1" });
     expect(objective).not.toHaveProperty("cwd");
@@ -821,6 +837,8 @@ describe("Objectives contract", () => {
     const starts = await Promise.all([launch.startCommander(objective.id), launch.startCommander(objective.id)]);
     expect(starts.map((entry) => entry.objectiveId)).toEqual([objective.id, objective.id]);
     expect(launches.filter((entry) => entry.dormant)).toHaveLength(1);
+    expect(launches.map((entry) => entry.disableAutoMemory)).toEqual([true, true, true]);
+    expect(savedObjective(objective.id)).toHaveProperty("session.disableAutoMemory", true);
     expect(savedObjective(objective.id)).not.toHaveProperty("pending");
     expect(objectiveRecords.get(objective.id)!.consoleUse).toBeUndefined();
     expect(sent).toEqual([{ objectiveId: objective.id, text: expect.stringContaining(objective.id) }]);
@@ -1109,7 +1127,8 @@ describe("Objectives contract", () => {
   });
 
   it("keeps merge sources in the receiving record and archives all objectives restorably through Console Use until public purge", async () => {
-    const { ctx, store, launch, add, workspace, consoleTool, consoleDetail, objectiveRecords, archivedObjectiveRecords, route, savedIds, launches, objectiveFile } = harness();
+    let autoMemoryEnabled = true;
+    const { ctx, store, launch, add, workspace, consoleTool, consoleDetail, objectiveRecords, archivedObjectiveRecords, route, savedIds, launches, objectiveFile } = harness(() => null, { commodoreAutoMemoryEnabled: () => autoMemoryEnabled });
     const caller = add("tidy-caller", { title: "Tidy caller" });
     const use = async (args: Record<string, unknown>, tool = consoleTool) => (await tool.execute(args, { cwd: workspace, caller: { kind: "objectiveRecord" as const, objectiveId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
     const waiting = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
@@ -1190,15 +1209,23 @@ describe("Objectives contract", () => {
     const launchedBefore = launches.length;
     expect((await route("objective/complete", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, hasSession: false, done: expect.any(Object) });
     expect(launches).toHaveLength(launchedBefore);
+    expect(store.pending(pendingCompletion.id)?.disableAutoMemory).toBe(false);
     expect((await route("objective/archive", { objectiveId: pendingCompletion.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, done: expect.any(Object) } });
+    expect(archivedObjectiveRecords.get(pendingCompletion.id)?.session).toMatchObject({ disableAutoMemory: false });
     expect(launches).toHaveLength(launchedBefore);
     // 보관 복원은 도메인 경로로 확인한다 — HTTP 라우트는 제거됐다.
     expect(await launch.restore(pendingCompletion.id)).toMatchObject({ archived: false, done: expect.any(Object) });
+    expect(objectiveRecords.get(pendingCompletion.id)?.session).toMatchObject({ disableAutoMemory: false });
     // 사람이 「보관」을 고른 기동 전 목표(restorable)는 지우지 않는다 — 무기동 지휘관 Objective 으로 보관되고, 복원하면 기록과 함께 돌아온다.
+    autoMemoryEnabled = false;
     const shelved = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Shelve before starting", groupId: null, note: "keep the brief" });
+    autoMemoryEnabled = true;
+    expect(store.pending(shelved.id)?.disableAutoMemory).toBe(true);
     expect((await route("objective/archive", { objectiveId: shelved.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, note: "keep the brief" } });
+    expect(archivedObjectiveRecords.get(shelved.id)?.session).toMatchObject({ disableAutoMemory: true });
     expect(launches).toHaveLength(launchedBefore);
     expect(await launch.restore(shelved.id)).toMatchObject({ archived: false, hasSession: true, note: "keep the brief" });
+    expect(objectiveRecords.get(shelved.id)?.session).toMatchObject({ disableAutoMemory: true });
     // 플래그가 없어도 보관만 한다. 영구 삭제는 이 라우트에서 할 수 없다.
     const discarded = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Archive before starting", groupId: null });
     expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: false });

@@ -2660,7 +2660,7 @@ describe("commodore supervisor", () => {
     } finally { release?.(); await supervisor.dispose(); vi.useRealTimers(); }
   });
 
-  it("rotates silently after idle expiry or an auto memory policy change at the next turn", async () => {
+  it("rotates silently after idle expiry but keeps Commodore SDK memory off independently of future Commander policy", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
     const h = harness();
@@ -2702,8 +2702,8 @@ describe("commodore supervisor", () => {
       expect(sessions[1]!.sent).toHaveLength(1);
       expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
-      expect(sessions[1]!.autoMemoryEnabled).toBe(true);
-      // 설정 저장 자체는 턴을 띄우거나 기존 세션을 끊지 않는다. 다음 메시지의 새 세션에서만 적용된다.
+      expect(sessions[1]!.autoMemoryEnabled).toBe(false);
+      // 새 지휘관 설정은 사령관 세션을 교대하지 않으며 SDK 메모리는 계속 꺼진다.
       for (const enabled of [false, true]) {
         const previous = sessions.at(-1)!;
         const count = sessions.length;
@@ -2713,9 +2713,9 @@ describe("commodore supervisor", () => {
         expect(previous.disposed).toBe(false);
         h.store.transcriptAppend("t1", { kind: "message", text: "Use the new memory policy." });
         await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-        expect(previous.disposed).toBe(true);
-        expect(sessions).toHaveLength(count + 1);
-        expect(sessions.at(-1)!.autoMemoryEnabled).toBe(enabled);
+        expect(previous.disposed).toBe(false);
+        expect(sessions).toHaveLength(count);
+        expect(sessions.at(-1)!.autoMemoryEnabled).toBe(false);
       }
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });

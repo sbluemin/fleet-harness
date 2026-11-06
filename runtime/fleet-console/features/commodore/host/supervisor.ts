@@ -1290,7 +1290,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const edited = new Set(runner.pending.get("intel-edited")?.details).add(event.intelId);
         wake(runner, "intel-edited", { count: edited.size, detail: event.intelId });
       }
-      else if (event.change === "coordinates" || event.change === "plugins" || event.change === "auto-memory") { runner.rotateNext ??= "replaced"; }
+      else if (event.change === "coordinates" || event.change === "plugins") { runner.rotateNext ??= "replaced"; }
       return;
     }
     // 사람이 사령관의 질문에 답했다 — 답은 asks 도구로 읽는다(깨움 문장에는 싣지 않는다).

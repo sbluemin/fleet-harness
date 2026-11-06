@@ -210,6 +210,8 @@ const memberSession = (objectiveId: string, commander: string | null, index: num
 export interface LaunchServiceOptions {
   /** 사람이 그 사령관에 정한 지휘관 모델·강도. 없으면 null — 사령관이 만드는 목표는 지휘관 모델을 직접 골라야 한다. */
   readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null;
+  /** 지휘관 레코드 생성 시에만 읽는다. 지연 최초 기동·구성원 생성에는 저장값을 쓴다. */
+  readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean;
   /** 무보고 깨움까지 기다리는 시간. 기본은 25분. 테스트가 짧은 값을 넣는다. */
   readonly reportQuietMs?: number;
   readonly now?: () => number;
@@ -362,7 +364,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (!groupId || !groups) return groupId ?? null;
     return groups.get(groupId)?.commodoreId === commodoreId ? groupId : null;
   };
-  const launch = async (input: { objectiveId: string; newObjectiveId?: string; commodoreId: string; cwd?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; autoMemory?: boolean; parentObjectiveId?: string; childSessionId?: string }): Promise<string> => {
+  const launch = async (input: { objectiveId: string; newObjectiveId?: string; commodoreId: string; cwd?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; disableAutoMemory?: boolean; parentObjectiveId?: string; childSessionId?: string }): Promise<string> => {
     const groupId = liveGroupId(input.commodoreId, input.groupId);
     const result = await control().request({
       kind: "launch",
@@ -374,8 +376,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       ...(input.dormant ? { dormant: true } : {}),
       // 허용하지 않은 구성원만 태어날 때 서브에이전트(fleet:execute 포함)를 끈다. 허용은 전역 정책을 그대로 쓴다.
       ...(input.subagents === false ? { disableSubagents: true } : {}),
-      // 구성원은 지휘관을 통해서만 제어된다 — 그 세션만 auto-memory를 끄고 띄운다. 지휘관은 사용자 설정을 그대로 쓴다.
-      ...(input.autoMemory === false ? { disableAutoMemory: true } : {}),
+      // 명시한 켬·끔을 모두 보존한다. 생략은 옛 지휘관의 기존 설정이다.
+      ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}),
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
       ...(groupId ? { groupId } : {}),
@@ -512,6 +514,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           ...({ launchedBy: { kind: "feature", featureId: "objectives" }, dormantBorn: true, restoredDormant: true,
             chatMode: true, chatBorn: true,
             session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
+              ...(config.disableAutoMemory !== undefined ? { disableAutoMemory: config.disableAutoMemory } : {}),
               ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}) } }) });
         if (created.id !== id) throw new ObjectiveStoreError("objectiveRecord_id_taken");
       } catch (error) { asStoreError(error); }
@@ -640,7 +643,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다.
       const memberCwd = ctx.paths.resolveObjectivePath?.(current.id) ?? store.pending(current.id)?.cwd;
       // 구성원 레코드의 theaterId는 실행 위치의 해시를 유지한다. 보드에 저장한 등록 Theater id를 세션 목록 키로 쓰지 않는다.
-      const spawn = (with_: MemberPreset) => launch({ objectiveId, commodoreId: current.commodoreId, cwd: memberCwd, theaterId: memberCwd ? ctx.paths.workspaceHash(memberCwd) : current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, autoMemory: false, viewMode: "chat", parentObjectiveId: current.id, childSessionId: member.id });
+      // 옛 지휘관은 구성원을 항상 끄던 정책을 보존한다. 새 지휘관은 생성 시 고정값을 상속한다.
+      const commanderPolicy = (referenceNode(current.id)?.session as { disableAutoMemory?: unknown } | undefined)?.disableAutoMemory ?? store.pending(current.id)?.disableAutoMemory;
+      const memberDisableAutoMemory = typeof commanderPolicy === "boolean" ? commanderPolicy : true;
+      const spawn = (with_: MemberPreset) => launch({ objectiveId, commodoreId: current.commodoreId, cwd: memberCwd, theaterId: memberCwd ? ctx.paths.workspaceHash(memberCwd) : current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, disableAutoMemory: memberDisableAutoMemory, viewMode: "chat", parentObjectiveId: current.id, childSessionId: member.id });
       let launchedId: string;
       try { launchedId = await spawn(preset); }
       catch (error) {
@@ -1415,6 +1421,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         theaterId: bound ? requested : ctx.paths.workspaceHash(cwd),
         ...(bound ? { theaterIdExplicit: true as const } : {}),
         cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
+        disableAutoMemory: !(serviceOptions.commodoreAutoMemoryEnabled?.(input.commodoreId) ?? true),
         sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
       });
     },

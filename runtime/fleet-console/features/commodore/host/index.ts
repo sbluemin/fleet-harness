@@ -354,6 +354,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const routes = [...commodoreRoutes, ...taskforce.routes];
   return {
     host,
+    /** 새 지휘관이 생성 시 고정할 자동 메모리 정책. 사령관 자신의 SDK 설정과는 별개다. */
+    commanderAutoMemoryEnabled: (commodoreId: string): boolean => store.read(commodoreId)?.autoMemoryEnabled !== false,
     routes,
     /** TaskForce 저장소 — 판단·깨움 런타임과 TF 화면이 쓰는 TF 원장의 주인이다. */
     taskforce: taskforce.store,

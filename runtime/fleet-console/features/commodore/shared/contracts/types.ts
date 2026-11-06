@@ -133,7 +133,7 @@ export const commodoreStateSchema = z.object({
   commanderEffort: z.string().trim().min(1).max(32).optional(),
   /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관 세션이 다음 턴부터 싣는다. 목표 세션은 `objectiveExcluded` 로 한 번 더 거른다. */
   plugins: commodorePluginsSchema.optional(),
-  /** 이 사령관 자신의 SDK 자동 메모리. 없으면 켬이며, 변경은 다음 턴의 새 세션부터 적용된다. */
+  /** 앞으로 생성되는 지휘관의 Claude Code 자동 메모리(없으면 켬). 생성 시 고정되어 새 구성원도 상속하며 기존 세션에는 소급하지 않는다. */
   autoMemoryEnabled: z.boolean().optional(),
   /**
    * 이 사령관의 설치 중 목표 세션에 싣지 않을 id. 없거나 비어 있으면 고른 플러그인을 모두 함께 싣는다(현행).

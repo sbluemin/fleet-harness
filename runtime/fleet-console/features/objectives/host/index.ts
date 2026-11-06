@@ -62,6 +62,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(deps, store, {
       commodoreCommander: (commodoreId) => deps.commodoreCommander?.(commodoreId) ?? null,
+      commodoreAutoMemoryEnabled: deps.commodoreAutoMemoryEnabled,
     });
     watchQuiet = () => launch.watchReportQuiet();
     registerCleanup(() => launch.dispose());
