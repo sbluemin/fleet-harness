@@ -8,6 +8,7 @@ import {
   AnthropicMessagesGateway,
   CHATGPT_CODEX_RESPONSES_URL,
   CodexResponsesAdapter,
+  OpenAIResponsesAdapter,
   encodeAnthropicSse,
   encodeReasoningSignature,
   setWireLogTarget,
@@ -233,51 +234,86 @@ describe("codex responses adapter", () => {
     ).not.toHaveProperty("pattern");
   });
 
-  it("keeps a schema's own null apart from strict mode's omission null", async () => {
+  it("rewrites and decodes only tools that opt into strict, sending the rest as written", async () => {
     // `dueDate: null` clears a due date and `member: null` assigns the Commander. Strict mode
     // turns every unused optional key into a null the strip must remove, so those nulls need
     // their own spelling or the call silently loses them.
     // `note` never offered the spelling, so the same text there is the model's data.
+    // A tool that leaves `strict` unset, or opts in with a schema strict cannot take, goes out
+    // with its original schema, so its arguments come back exactly as the model wrote them.
     const args = JSON.stringify({ dueDate: "<null>", member: null, note: "<null>" });
-    const call = { type: "function_call", id: "fc_1", call_id: "call_1", name: "edit" };
+    const looseArgs = JSON.stringify({ data: { key: null }, note: "<null>" });
+    const call = (id: string, name: string) => ({ type: "function_call", id, call_id: `call_${id}`, name });
+    const callEvents = (index: number, id: string, name: string, callArgs: string) => [
+      `data: ${JSON.stringify({ type: "response.output_item.added", output_index: index, item: { ...call(id, name), arguments: "" } })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.function_call_arguments.done", item_id: id, output_index: index, arguments: callArgs })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.output_item.done", output_index: index, item: { ...call(id, name), arguments: callArgs } })}\n\n`,
+    ];
     const fetchMock = vi.fn<typeof fetch>(async () => sse(
-      `data: ${JSON.stringify({ type: "response.output_item.added", output_index: 0, item: { ...call, arguments: "" } })}\n\n`,
-      `data: ${JSON.stringify({ type: "response.function_call_arguments.done", item_id: "fc_1", output_index: 0, arguments: args })}\n\n`,
-      `data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: { ...call, arguments: args } })}\n\n`,
+      ...callEvents(0, "fc_1", "edit", args),
+      ...callEvents(1, "fc_2", "plain", args),
+      ...callEvents(2, "fc_3", "loose", looseArgs),
     ));
+    const editParameters = {
+      type: "object",
+      properties: {
+        dueDate: { anyOf: [{ type: "string" }, { type: "null" }], description: "null clears the due date." },
+        member: { type: ["string", "null"] },
+        note: { type: "string" },
+      },
+      required: ["dueDate"],
+    };
+    // A free-form object is outside strict mode's subset.
+    const looseParameters = {
+      type: "object",
+      properties: { data: { type: "object" }, note: { type: "string" } },
+    };
     const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
-      tools: [{
-        type: "function",
-        name: "edit",
-        parameters: {
-          type: "object",
-          properties: {
-            dueDate: { anyOf: [{ type: "string" }, { type: "null" }], description: "null clears the due date." },
-            member: { type: ["string", "null"] },
-            note: { type: "string" },
-          },
-          required: ["dueDate"],
-        },
-      }],
+      tools: [
+        { type: "function", name: "edit", parameters: editParameters, strict: true },
+        { type: "function", name: "plain", parameters: editParameters },
+        { type: "function", name: "loose", parameters: looseParameters, strict: true },
+      ],
+      native_tools: [{ type: "web_search" }],
     }), { apiKey: "k" });
     if (!response.ok) throw new Error("expected success");
     const events: CanonicalResponseEvent[] = [];
     for await (const event of response.events) events.push(event);
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
-      tools: Array<{ strict?: boolean; parameters: { properties: Record<string, { anyOf?: unknown[] }> } }>;
+      tools: Array<{ type: string; strict?: boolean; parameters: { properties: Record<string, { anyOf?: unknown[] }> } }>;
     };
-    expect(body.tools[0]!.strict).toBe(true);
+    const [edit, plain, loose, webSearch] = body.tools;
+    expect(edit!.strict).toBe(true);
     const nullSpelling = { type: "string", enum: ["<null>"] };
     // Required: the spelling replaces null outright. Optional: a bare null still means absent.
-    expect(body.tools[0]!.parameters.properties.dueDate!.anyOf).toEqual([{ type: "string" }, nullSpelling]);
-    expect(body.tools[0]!.parameters.properties.member!.anyOf).toEqual([{ type: "string" }, nullSpelling, { type: "null" }]);
+    expect(edit!.parameters.properties.dueDate!.anyOf).toEqual([{ type: "string" }, nullSpelling]);
+    expect(edit!.parameters.properties.member!.anyOf).toEqual([{ type: "string" }, nullSpelling, { type: "null" }]);
+    expect(plain).toEqual({ type: "function", name: "plain", parameters: editParameters, strict: false });
+    expect(loose).toEqual({ type: "function", name: "loose", parameters: looseParameters, strict: true });
+    expect(webSearch).toEqual({ type: "web_search" });
 
     const decoded = JSON.stringify({ dueDate: null, note: "<null>" });
-    expect(events.find((event) => event.type === "response.function_call_arguments.done"))
-      .toMatchObject({ arguments: decoded });
-    expect(events.find((event) => event.type === "response.output_item.done"))
-      .toMatchObject({ item: { type: "function_call", arguments: decoded } });
+    const argumentsOf = (id: string) => events
+      .filter((event) => (event.type === "response.function_call_arguments.done" && event.item_id === id)
+        || (event.type === "response.output_item.done" && event.item.type === "function_call" && event.item.id === id))
+      .map((event) => event.type === "response.function_call_arguments.done"
+        ? event.arguments
+        : (event as { item: { arguments: string } }).item.arguments);
+    expect(argumentsOf("fc_1")).toEqual([decoded, decoded]);
+    expect(argumentsOf("fc_2")).toEqual([args, args]);
+    expect(argumentsOf("fc_3")).toEqual([looseArgs, looseArgs]);
+
+    // The public Platform API surface keeps rewriting every compatible tool by default.
+    const publicFetch = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new OpenAIResponsesAdapter({ fetch: publicFetch }).stream(request({
+      tools: [{ type: "function", name: "plain", parameters: editParameters }],
+    }), { apiKey: "k" });
+    const publicBody = JSON.parse(String(publicFetch.mock.calls[0]?.[1]?.body)) as {
+      tools: Array<{ strict?: boolean; parameters: { properties: Record<string, { anyOf?: unknown[] }> } }>;
+    };
+    expect(publicBody.tools[0]!.strict).toBe(true);
+    expect(publicBody.tools[0]!.parameters.properties.dueDate!.anyOf).toEqual([{ type: "string" }, nullSpelling]);
   });
 
   it("does not retry UND_ERR_SOCKET after caller-visible output was yielded", async () => {
