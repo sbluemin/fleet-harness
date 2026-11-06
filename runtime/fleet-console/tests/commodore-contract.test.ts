@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
+import { commodoreTranscriptEntrySchema } from "../features/commodore/shared/contracts/types.js";
 import type { ConsoleResidentAgentHost as AgentHost, ConsoleResidentOptions as AgentSessionOptions } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
@@ -2974,6 +2975,27 @@ describe("commodore supervisor", () => {
       expect(entries.at(-1)).toMatchObject({ kind: "result" });
       expect(entries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["settled:1"] }, { kind: "wake-scope", woke: [{ id: "o3", codes: ["settled"] }] }]);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      // 사령관이 만든 목표와 사령관이 고른 후속도 같은 길이다 — 나타나도 깨우지 않고, 선 대기는 같이 깨운다.
+      const made = { id: "o4", theaterId: "t1", title: "Made by Commodore", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], addedBy: { kind: "commodore", commodoreId: "t1" } } as unknown as Objective;
+      const origin = { id: "o6", theaterId: "t1", title: "Followup origin", createdAt: Date.now(), done: { at: Date.now(), by: "human" }, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [{ by: { kind: "commodore", commodoreId: "t1" }, items: [{ candidateId: "c1" }] }], personHolds: [], missions: [{ id: "m1", text: "x", done: true }] } as unknown as Objective;
+      const chosen = { id: "o5", theaterId: "t1", title: "Chosen followup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], origin: { objectiveId: "o6", candidateId: "c1" } } as unknown as Objective;
+      objectives.push(made, chosen, origin);
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o4" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o6" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(tokens().at(-1)).toEqual(["settled:2"]);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
+      const secondEntries = h.store.transcriptRead("t1").entries;
+      expect(secondEntries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["settled:2"] }, { kind: "wake-scope", woke: [{ id: "o4", codes: ["settled"] }, { id: "o5", codes: ["settled"] }] }]);
+      Object.assign(made, { done: { at: Date.now(), by: "human" } });
+      Object.assign(chosen, { done: { at: Date.now(), by: "human" } });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o4" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
       Object.assign(objectives[0]!, { awaitingReview: false, personHolds: [] });
       (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
       commanderActivity.delete("o2");
@@ -3126,4 +3148,18 @@ describe("commodore supervisor", () => {
       expect(runs.at(-1)).toMatchObject({ op: "run", run: { phase: "off", reason: "Console stopping" } });
     } finally { vi.useRealTimers(); }
   });
+});
+
+it("reads pre-removal wake-scope rows with operator and held", () => {
+  const legacy = commodoreTranscriptEntrySchema.safeParse({ seq: 1, at: 2, kind: "wake-scope",
+    woke: [{ id: "o1", operator: "commodore", codes: ["status"] }],
+    held: [{ id: "o3", operator: "human", codes: ["pending", "status"] }] });
+  expect(legacy.success).toBe(true);
+  if (legacy.success) {
+    expect(legacy.data).toMatchObject({ kind: "wake-scope",
+      woke: [{ id: "o1", operator: "commodore", codes: ["status"] }],
+      held: [{ id: "o3", operator: "human", codes: ["pending", "status"] }] });
+  }
+  const current = commodoreTranscriptEntrySchema.safeParse({ seq: 1, at: 2, kind: "wake-scope", woke: [{ id: "o1", codes: ["status"] }] });
+  expect(current.success).toBe(true);
 });
