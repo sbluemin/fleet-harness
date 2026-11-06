@@ -68,7 +68,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly showBar?: boolean;
   /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
   readonly heading?: ReactNode;
-  /** 작업 탭 카드의 행 팝업(아바타·임무 게이지) — 목표 행에만 건넨다. 없으면 지금 행 그대로다. */
+  /** 작업 탭 카드의 행 단추(아바타 대화 열기·임무 게이지 팝업) — 목표 행에만 건넨다. 없으면 지금 행 그대로다. */
   readonly popups?: ((item: SideBarRowItem, objectiveId: string) => RowPopups) | undefined;
 }) {
   const t = useT();

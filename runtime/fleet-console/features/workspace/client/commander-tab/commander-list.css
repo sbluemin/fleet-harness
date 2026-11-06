@@ -209,8 +209,6 @@
 /* 작업 탭 카드 — 행 펼침은 없다. 카드 안 행은 같은 배경 위에 hairline으로만 나뉜다. 카드 밖 시작 전·완료에는 적용하지 않는다. */
 .commander-tab--card .commander-tab-groups .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
 .commander-tab--card .commander-tab-groups .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
-/* 목표 팝업이 열린 행 — 가리킴과 같은 옅은 면을 붙들어 어느 행의 팝업인지 말한다. 고름(가운데 대화)의 면이 있으면 그대로 둔다. */
-.commander-tab--card .side-bar-cluster-row.is-open:not(.side-bar-cluster-row--active) { background: var(--wash-hover); }
 
 /* 상태 줄은 줄바꿈하지 않고 상태 문구는 말줄임한다 — 게이지·분수는 기존 @container 규칙을 그대로 따른다. */
 .commander-tab--card .side-bar-cluster-row-line { flex-wrap: nowrap; white-space: nowrap; }

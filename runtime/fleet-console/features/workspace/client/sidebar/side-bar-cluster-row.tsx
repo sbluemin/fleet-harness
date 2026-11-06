@@ -240,17 +240,16 @@ interface SideBarClusterRowProps {
   /** 시작 전·완료 통합 목록의 줄 — 아바타 대신 날짜, 둘째 줄 없이 제목 한 줄로 선다. */
   readonly settled?: boolean;
   /**
-   * 우측 작업 탭 카드의 팝업 — 아바타는 목표 팝업을 여는 단추가 되고, 임무 게이지·분수는 행 본문과 나란한 별도 단추가 되어
-   * 임무 팝업을 연다. 행 본문 누름(`onFocus`)도 목표 팝업을 연다(목록이 정한다). 없으면 지금 행 그대로다.
+   * 우측 작업 탭 카드의 행 단추 — 아바타는 지휘관 대화를 여는 단추가 되고, 임무 게이지·분수는 행 본문과 나란한 별도 단추가 되어
+   * 임무 팝업을 연다. 없으면 지금 행 그대로다.
    */
   readonly popups?: RowPopups | undefined;
 }
 
 export interface RowPopups {
-  readonly onAvatar: (opener: HTMLElement) => void;
+  /** 아바타 단추를 누르면 지휘관 대화가 열린다 — 행 본문 선택과 같다. */
+  readonly onAvatar: () => void;
   readonly onProgress: (opener: HTMLElement) => void;
-  /** 이 행의 목표 팝업이 열려 있다 — 아바타·본문 단추의 `aria-expanded`. */
-  readonly open: boolean;
   readonly avatarLabel: string;
   readonly progressLabel: (done: number, total: number) => string;
   /** 안 읽은 임무 기록 — 임무 게이지 단추에 점으로 선다(임무 팝업에서 읽는다). 지난 행 글리프의 점을 대신한다. */
@@ -414,8 +413,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       type="button"
       className="side-bar-cluster-row-main"
       aria-current={active ? "true" : undefined}
-      aria-expanded={popups ? popups.open : undefined}
-      aria-haspopup={popups ? "dialog" : onContextMenu ? "menu" : undefined}
+      aria-haspopup={onContextMenu ? "menu" : undefined}
       aria-label={[layout.cluster.title, label, toolUseLabel ?? "", ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
       onClick={open}
       onKeyDown={(event) => {
@@ -446,7 +444,6 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         "side-bar-cluster-row--conversation",
         settled ? "side-bar-cluster-row--settled" : "",
         settled && state === "done" ? "is-done" : "",
-        popups?.open ? "is-open" : "",
       ].filter(Boolean).join(" ")}
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}
@@ -469,9 +466,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
           type="button"
           className="side-bar-cluster-row-glyph is-actionable"
           aria-label={popups.avatarLabel}
-          aria-haspopup="dialog"
-          aria-expanded={popups.open}
-          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onAvatar(event.currentTarget); }}
+          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onAvatar(); }}
         >
           <ClusterRowAvatar item={item} rowState={state} label={label} decorative />
         </button>
