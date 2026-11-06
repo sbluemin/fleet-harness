@@ -472,8 +472,13 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-intel-add textarea[readonly] { opacity: 0.6; }
 
 /* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 정보 칸의 다른 섹션과 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
-   색은 검증 경과(warn 점) 하나만 상태를 말하고, 나머지는 글자 층위로만 나눈다. */
+   색은 검증 경과(warn 점) 하나만 상태를 말하고, 나머지는 글자 층위로만 나눈다.
+   머리(기억 · 개수 · 갱신 · 검색)와 첫 갈래 사이의 선만 뺀다. 갈래와 갈래 사이 선은 그대로다. */
 .objectives-commodore-memory { display: grid; gap: 14px; min-width: 0; }
+.objectives-commodore-memory > .objectives-commodore-section:first-child + .objectives-commodore-memory-branch {
+  border-top: 0;
+  padding-top: 0;
+}
 /* 머리 줄은 찾기를 접든 펼치든 22px 그대로다 — 펼치고 접을 때 아래 갈래가 움직이지 않는다. */
 .objectives-commodore-memory-head { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 22px; }
 .objectives-commodore-memory-meta { margin-left: auto; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
