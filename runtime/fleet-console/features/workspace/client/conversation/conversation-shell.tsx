@@ -44,7 +44,6 @@ import { setChatReadingWidthDefault } from "../../../execution/client/terminal/s
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
 import { isCommanderObjective, keptCommodoreOwnerOf } from "../commander-tab/commander-rows.js";
-import { readCommanderPlacement, useCommanderPlacement } from "../commander-tab/commander-placement.js";
 import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
@@ -152,7 +151,7 @@ function useToggleDetails(objectiveRecordConversation: boolean): () => void {
 }
 
 /**
- * 지금 가운데가 이 사령관의 지휘관인가 — 시작 전·완료 포함. 우측 펼침의 레일 유지와 행 펼치기가 함께 읽는 판정이다.
+ * 지금 가운데가 이 사령관의 지휘관인가 — 시작 전·완료 포함. 작업 탭의 레일 유지와 행 펼치기가 함께 읽는 판정이다.
  * cleanup은 저장소가 바뀐 뒤 커밋에 딸려 돌므로 새 가운데를 읽는다.
  */
 function centerCommanderOf(clusterIndex: ClusterIndex, commodoreId: string): string | null {
@@ -164,15 +163,14 @@ function centerCommanderOf(clusterIndex: ClusterIndex, commodoreId: string): str
 }
 
 function shouldKeepCommodoreTabs(clusterIndex: ClusterIndex, commodoreId: string): boolean {
-  return readCommanderPlacement() === "right" && centerCommanderOf(clusterIndex, commodoreId) !== null;
+  return centerCommanderOf(clusterIndex, commodoreId) !== null;
 }
 
 /**
- * 우측 펼침의 유지 주인 — 레일이 이 사령관의 작업 탭에 머물고 가운데가 그 지휘관일 때 그 사령관 id.
+ * 작업 탭의 유지 주인 — 레일이 이 사령관의 작업 탭에 머물고 가운데가 그 지휘관일 때 그 사령관 id.
  * 머리(사령관 머리·작업 탭 3개)가 가운데 대상이 아니라 레일을 따르는 길이다.
  */
 function useKeptCommodoreOwner(): string | null {
-  const placement = useCommanderPlacement();
   const clusterIndex = useClusterIndex();
   const tabs = useConversationObjectiveTabPanels();
   const activePanelId = useRailActivePanelId();
@@ -181,7 +179,7 @@ function useKeptCommodoreOwner(): string | null {
   const ownerTab = tabs.find((tab) => tab.id === activePanelId);
   const panelOwner = ownerTab?.section?.theaterId ?? null;
   const centerId = subject?.id ?? standIn ?? null;
-  return keptCommodoreOwnerOf(placement, panelOwner, centerId !== null && panelOwner !== null && isCommanderObjective(clusterIndex.clusters, panelOwner, centerId));
+  return keptCommodoreOwnerOf(panelOwner, centerId !== null && panelOwner !== null && isCommanderObjective(clusterIndex.clusters, panelOwner, centerId));
 }
 
 /**
@@ -191,15 +189,14 @@ function useKeptCommodoreOwner(): string | null {
  * 그 탭이 대상과 함께 걷히며 패널을 이미 닫았어도(대화 칸의 cleanup 은 이 effect 보다 먼저 돈다) 다시 연다. Theater 를 연 채 대상이
  * 바뀌면 Theater 는 곧 걷히므로 그 경우도 Objective 대화로 다룬다. 대상의 탭이 아닌 패널(설정, 목표 등 도구)과 목표 도구가 없는
  * 경우는 그대로 둔다.
- * 우측 배치에서 지금 사령관 패널 주인의 지휘관이 가운데로 오면 사령관 패널(작업 탭)에 머문다 — 레일을 지휘관 화면으로 넘기지 않는다.
- * 다른 사령관의 지휘관이 오거나 좌측 배치이면 지금 규칙을 그대로 따른다.
- * 유지 조건이 깨진 보관 등록(다른 사령관·새 세션·좌측 배치)은 여기서 걷는다.
+ * 지금 사령관 패널 주인의 지휘관이 가운데로 오면 사령관 패널(작업 탭)에 머문다 — 레일을 지휘관 화면으로 넘기지 않는다.
+ * 다른 사령관의 지휘관이 오면 지금 규칙을 그대로 따른다.
+ * 유지 조건이 깨진 보관 등록(다른 사령관·새 세션)은 여기서 걷는다.
  */
 function usePanelFollowsSubject(subjectId: string | null): void {
   const bindings = useDesktopRailEntries();
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
-  const placement = useCommanderPlacement();
   const clusterIndex = useClusterIndex();
   const clustersRef = useRef(clusterIndex);
   clustersRef.current = clusterIndex;
@@ -215,7 +212,7 @@ function usePanelFollowsSubject(subjectId: string | null): void {
     const active = getRailStoreSnapshot().activePanelId;
     const ownerTab = tabsRef.current.find((tab) => tab.id === active);
     const panelOwner = ownerTab?.section?.theaterId ?? null;
-    const survivor = keptCommodoreOwnerOf(placement, panelOwner, panelOwner !== null && centerCommanderOf(clustersRef.current, panelOwner) !== null);
+    const survivor = keptCommodoreOwnerOf(panelOwner, panelOwner !== null && centerCommanderOf(clustersRef.current, panelOwner) !== null);
     releaseKeptConversationObjectiveTabs(survivor);
     if (subjectId === null || !openBeforeRef.current) return;
     if (active === SETTINGS_RAIL_ENTRY_ID) return;
@@ -228,7 +225,7 @@ function usePanelFollowsSubject(subjectId: string | null): void {
     if (activeBinding !== null && !activeBinding.core) return;
     const lead = firstConversationTab(current);
     if (lead) openRailPanel(lead.entry.id);
-  }, [subjectId, placement]);
+  }, [subjectId]);
 }
 
 // ── 사이드바 위·아래 줄 ────────────────────────────────────────────────────

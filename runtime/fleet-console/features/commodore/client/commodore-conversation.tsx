@@ -18,7 +18,7 @@ import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, Com
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, readCommodoreTasksPlacement, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getConversationSurface, subscribeConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
@@ -577,10 +577,10 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
       return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} language={ctx.language} /> : null;
     },
   })),
-  // 사령관 대화의 기본 문맥은 정보다. 목록이 오른쪽에 서면 작업 탭이 기본이다 — 사람이 고른 탭 기억이 있으면 그 기억이 먼저다.
+  // 사령관 대화의 기본 문맥은 정보다. 작업 탭이 목표 목록을 함께 두므로 작업 탭이 기본이다 — 사람이 고른 탭 기억이 있으면 그 기억이 먼저다.
   defaultTab: TAB_IDS.info,
   railContinuityGroup: "commodore-taskforce",
-  resolveDefaultTab: () => readCommodoreTasksPlacement() === "right" ? TAB_IDS.routines : TAB_IDS.info,
+  resolveDefaultTab: () => TAB_IDS.routines,
   onLeaveDesktop: ({ params, tabId }) => {
     const target = readParams(params);
     if (!target || target.readOnly) return;

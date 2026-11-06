@@ -184,8 +184,6 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     sideBarDoubleClickOpen: payload.sideBarDoubleClickOpen === true,
     reduceMotion: payload.reduceMotion === true,
     calmAvatars: payload.calmAvatars === true,
-    // 키 없음·손상값은 null이다 — 구서버 응답을 포함한 "저장된 적 없음"과 명시 "left"를 구분한다.
-    commanderPlacement: payload.commanderPlacement === "right" ? "right" : payload.commanderPlacement === "left" ? "left" : null,
     // 키 없음·손상값은 null이다 — "저장된 적 없음"과 명시 저장을 구분한다.
     commanderSort: toCommanderSortPreference(payload.commanderSort),
     commanderFolds: toCommanderFolds(payload.commanderFolds),

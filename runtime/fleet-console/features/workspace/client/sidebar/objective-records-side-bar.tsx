@@ -49,8 +49,7 @@ import { useLongPress } from "../long-press.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { useConversationSurface } from "../conversation/conversation-surface-store.js";
-import { CommanderPlacementNoticeHost, CommodoreCommanderList } from "../commander-tab/commander-list.js";
-import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
+import { CommodoreCommanderList } from "../commander-tab/commander-list.js";
 import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
 import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
@@ -177,7 +176,6 @@ export function ObjectiveRecordsSideBar({
   const compact = sideBar.compact;
   const width = compact ? sideBar.compactWidth : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const surface = useConversationSurface();
-  const placement = useCommanderPlacement();
   const expandedCommanders = useCommanderExpanded();
   const sidebarSections = useCommodoreSidebarSections();
   const sidebarSectionsRef = useRef(sidebarSections);
@@ -395,10 +393,10 @@ export function ObjectiveRecordsSideBar({
 
   // 활성 사령관을 한 번 더 골랐다 — 머리의 이름 쪽이든 아바타(표식) 쪽이든 같은 규칙이다. 펼침 유지가 켜진 대화 중심
   // 화면에서는 그 사령관 대화가 이미 서 있을 때만 목록을 접는다 — 지휘관 대화를 보다가 머리를 누른 것은 사령관 대화로
-  // 돌아가는 이동이므로 펼침을 유지한다(접혀 있으면 펼친다). 꺼져 있으면 바뀌지 않는다. 목록이 오른쪽이면 사이드바에
-  // 접을 목록이 없고, 대화 중심 화면이 아니면(모바일) 예전 토글을 둔다.
+  // 돌아가는 이동이므로 펼침을 유지한다(접혀 있으면 펼친다). 꺼져 있으면 바뀌지 않는다. 대화 중심 화면이 아니면(모바일)
+  // 예전 토글을 둔다.
   const reselectActiveCommodore = (commodoreId: string) => {
-    if (commodoreId !== owningCommodoreId || placement !== "left") return;
+    if (commodoreId !== owningCommodoreId) return;
     const keepExpanded = readCommanderKeepExpanded();
     if (keepExpanded && isCommodoreConversationActive() && !isCommodoreConversationOpen(commodoreId)) {
       ensureCommanderExpanded(commodoreId);
@@ -528,8 +526,8 @@ export function ObjectiveRecordsSideBar({
           };
           const commanderRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theater.id);
           const waitingCount = countAwaitingObjectiveRecords(commanderRecords, objectiveRecordRuntime);
-          // 사령관 섹션의 지휘관 목록 펼침 — 왼쪽 배치일 때만 그린다. 펼침 묶음은 사령관을 옮길 때 정해진다. 접힌 섹션은 마운트하지 않는다.
-          const sectionExpanded = placement === "left" && expandedCommanders.has(theater.id);
+          // 사령관 섹션의 지휘관 목록 펼침 — 펼침 묶음은 사령관을 옮길 때 정해진다. 접힌 섹션은 마운트하지 않는다.
+          const sectionExpanded = expandedCommanders.has(theater.id);
           // 가운데 채팅이 가리키는 지휘관 — 왼쪽 목록·좁은 창 팝오버가 같은 선택을 말한다.
           const selectedCommanderId =
             typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === theater.id
@@ -550,8 +548,8 @@ export function ObjectiveRecordsSideBar({
                 theater={theater}
                 active={theater.id === owningCommodoreId}
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
-                // ⋯ 호버 독은 왼쪽 배치일 때만 단다 — 우측 배치에서는 좌측 사령관 행에 ⋯가 나오지 않는다. 목록 위치는 우측 막대의 글리프에서 옮긴다.
-                dock={placement === "left"}
+                // ⋯ 호버 독은 사령관 행에 단다.
+                dock
                 onReselect={() => reselectActiveCommodore(theater.id)}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
@@ -628,9 +626,6 @@ export function ObjectiveRecordsSideBar({
 
       {compact ? <ConsoleSectionSlot compact /> : null}
       {bottomAccessory}
-      {/* 옮기기 알림 한 곳 — 목록이 반대쪽으로 넘어가며 언마운트돼도 살아남는다. */}
-      <CommanderPlacementNoticeHost />
-
       <SideBarResizeHandle onPointerDown={onResizePointerDown} />
 
       {activeContextMenu && contextMenuFace?.kind === "commodore" ? (

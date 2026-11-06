@@ -108,12 +108,6 @@ export interface ConsoleGeneralSettings {
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태(답을 기다림·결정 요청·오류)만 움직인다. 부재는 꺼짐(몽글)이다. */
   readonly calmAvatars?: boolean;
   /**
-   * 지휘관 목록이 서는 사이드바. 왼쪽이 기본이다. 부재는 한 번도 저장된 적 없음이다.
-   * localStorage 키(`fleet-console.commanderList.place`)는 같은 origin의 첫 그리기용 캐시로만 쓰고,
-   * 원천은 이 값이다 — Console 포트가 바뀌면 origin이 바뀌어 캐시가 사라지기 때문이다.
-   */
-  readonly commanderPlacement?: "left" | "right";
-  /**
    * 지휘관 목록 정렬. 부재는 한 번도 저장된 적 없음이다.
    * localStorage 키(`fleet-console.commanderTab.sort`)는 같은 origin의 첫 그리기용 캐시로만 쓰고,
    * 원천은 이 값이다 — Console 포트가 바뀌면 origin이 바뀌어 캐시가 사라지기 때문이다.
@@ -389,7 +383,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
   const reduceMotion = typeof value.reduceMotion === "boolean" ? value.reduceMotion : undefined;
   const calmAvatars = typeof value.calmAvatars === "boolean" ? value.calmAvatars : undefined;
-  const commanderPlacement = value.commanderPlacement === "left" || value.commanderPlacement === "right" ? value.commanderPlacement : undefined;
   const commanderSort = readCommanderSortPreference(value.commanderSort);
   const commanderFolds = readCommanderFolds(value.commanderFolds);
   const commanderKeepExpanded = typeof value.commanderKeepExpanded === "boolean" ? value.commanderKeepExpanded : undefined;
@@ -410,7 +403,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(sideBarDoubleClickOpen !== undefined ? { sideBarDoubleClickOpen } : {}),
     ...(reduceMotion !== undefined ? { reduceMotion } : {}),
     ...(calmAvatars !== undefined ? { calmAvatars } : {}),
-    ...(commanderPlacement !== undefined ? { commanderPlacement } : {}),
     ...(commanderSort !== undefined ? { commanderSort } : {}),
     ...(commanderFolds !== undefined ? { commanderFolds } : {}),
     ...(commanderKeepExpanded !== undefined ? { commanderKeepExpanded } : {}),
@@ -567,7 +559,6 @@ interface GlobalSettingsBody {
   readonly sideBarDoubleClickOpen?: unknown;
   readonly reduceMotion?: unknown;
   readonly calmAvatars?: unknown;
-  readonly commanderPlacement?: unknown;
   readonly commanderSort?: unknown;
   readonly commanderFolds?: unknown;
   readonly commanderKeepExpanded?: unknown;
@@ -707,11 +698,6 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_calm_avatars" });
     return;
   }
-  // 구서버 응답·손상 값은 모두 왼쪽으로 읽지만, 쓰기는 잘못된 값을 조용히 기본값으로 접지 않는다.
-  if (body.commanderPlacement !== undefined && body.commanderPlacement !== "left" && body.commanderPlacement !== "right") {
-    deps.writeJson(res, 400, { error: "invalid_commander_placement" });
-    return;
-  }
   // 정렬·접힘도 잘못된 값을 조용히 기본값으로 접지 않는다 — 형태가 틀리면 400이다.
   const commanderSort = body.commanderSort === undefined ? undefined : readCommanderSortPreference(body.commanderSort);
   if (body.commanderSort !== undefined && commanderSort === undefined) {
@@ -789,7 +775,6 @@ async function mutateGlobalSettings(
       ...(typeof body.sideBarDoubleClickOpen === "boolean" ? { sideBarDoubleClickOpen: body.sideBarDoubleClickOpen } : {}),
       ...(typeof body.reduceMotion === "boolean" ? { reduceMotion: body.reduceMotion } : {}),
       ...(typeof body.calmAvatars === "boolean" ? { calmAvatars: body.calmAvatars } : {}),
-      ...(body.commanderPlacement === "left" || body.commanderPlacement === "right" ? { commanderPlacement: body.commanderPlacement } : {}),
       ...(commanderSort !== undefined ? { commanderSort } : {}),
       ...(commanderFolds !== undefined ? { commanderFolds } : {}),
       ...(typeof body.commanderKeepExpanded === "boolean" ? { commanderKeepExpanded: body.commanderKeepExpanded } : {}),
@@ -867,8 +852,6 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
     reduceMotion: general.reduceMotion ?? false,
     calmAvatars: general.calmAvatars ?? false,
-    // 키 없음·손상 값은 null이다 — "한 번도 저장된 적 없음"과 명시 저장 "left"를 구분한다.
-    commanderPlacement: general.commanderPlacement === "right" ? "right" : general.commanderPlacement === "left" ? "left" : null,
     // 키 없음·손상 값은 null이다 — "한 번도 저장된 적 없음"과 명시 저장을 구분한다.
     commanderSort: readCommanderSortPreference(general.commanderSort) ?? null,
     commanderFolds: readCommanderFolds(general.commanderFolds) ?? null,

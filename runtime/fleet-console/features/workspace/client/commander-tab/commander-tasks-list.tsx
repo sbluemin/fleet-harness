@@ -11,7 +11,6 @@ import { CommanderObjectivePopover } from "../../../objectives/client/commander-
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
 import { useObjectivesToolUse } from "../../../computer-use/client/computer-screen-share.js";
 import { useGroupTimeline } from "../../../execution/client/agent/chat/group-timeline-store.js";
-import { readCommanderPlacement, useCommanderPlacement } from "./commander-placement.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
 import { unseenRecords } from "../../../objectives/shared/types.js";
@@ -27,22 +26,20 @@ const rowElement = (opener: HTMLElement, clusterId: string): HTMLElement =>
 /**
  * 작업 탭 「목표」 섹션이 쓰는 목록 — 조립(호스트)이 commodore feature에 넘기는 렌더러다.
  * commodore feature가 workspace 목록을 직접 가져오면 순환이 생기므로, 이 모듈 한 곳에서만 잇는다.
- * 우측 배치에서는 행 펼침이 없다 — 행이나 아바타를 누르면 목표 팝업이, 임무 게이지를 누르면 임무 팝업(구성원 로스터 + 임무 그래프)이
- * 뜬다. 지휘관 대화는 목표 팝업의 「대화 열기」로 간다. 왼쪽 배치는 행을 누르면 지금처럼 대화로 간다.
+ * 행 펼침이 없다 — 행이나 아바타를 누르면 목표 팝업이, 임무 게이지를 누르면 임무 팝업(구성원 로스터 + 임무 그래프)이
+ * 뜬다. 지휘관 대화는 목표 팝업의 「대화 열기」로 간다.
  */
 export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect }: CommodoreTasksListProps) {
   const state = useConsoleState();
   const t = useT();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const objectivesT = getObjectivesT(language);
-  const placement = useCommanderPlacement();
-  const right = placement === "right";
   const [popover, setPopover] = useState<Popover | null>(null);
   const [missions, setMissions] = useState<Missions | null>(null);
   // 게이지 단추의 안 읽은 기록 점이 읽는 보드 — 팝업을 한 번도 열지 않은 행의 점도 보여야 하므로 목록이 함께 올린다.
   const board = useObjectiveBoard(commodoreId);
   const api = objectivesApi();
-  useEffect(() => { if (right && api !== null) void loadBoard(api, commodoreId); }, [right, api, commodoreId]);
+  useEffect(() => { if (api !== null) void loadBoard(api, commodoreId); }, [api, commodoreId]);
   const unseenOf = (objectiveId: string) => board.loaded && (board.objectives.find((candidate) => candidate.id === objectiveId)?.missions.some((mission) => unseenRecords(mission) > 0) ?? false);
 
   const openConversation = (item: SideBarRowItem) => {
@@ -65,7 +62,7 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
 
   const handleSelect = (item: SideBarRowItem) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
-    if (right && objectiveId !== null) {
+    if (objectiveId !== null) {
       // 행 본문 단추가 연 것 — 초점을 돌려줄 자리는 그 행의 본문 단추다.
       const main = document.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(item.layout.cluster.id)}"] .side-bar-cluster-row-main`);
       if (main) { togglePopover(item, objectiveId, main); return; }
@@ -83,7 +80,7 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
       card
       heading={heading}
       onSelect={handleSelect}
-      popups={right ? (item, objectiveId) => ({
+      popups={(item, objectiveId) => ({
         open: popover?.objectiveId === objectiveId,
         avatarLabel: objectivesT("objectives.popover.open", { title: item.layout.cluster.title }),
         progressLabel: (done, total) => objectivesT("objectives.popover.missions", { done, total }),
@@ -91,14 +88,14 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
         unseenLabel: objectivesT("objectives.tabs.unseenDot"),
         onAvatar: (opener) => togglePopover(item, objectiveId, opener),
         onProgress: (opener) => { setPopover(null); setMissions({ objectiveId, title: item.layout.cluster.title, opener }); },
-      }) : undefined}
+      })}
     />
-    {right && popover ? (
+    {popover ? (
       <ObjectivePopoverForRow commodoreId={commodoreId} selectedId={selectedId} popover={popover} language={language} t={t}
         onOpenConversation={(item) => openConversation(item)}
         onClose={(restoreFocus) => { const opener = popover.opener; setPopover(null); if (restoreFocus && opener.isConnected) opener.focus(); }} />
     ) : null}
-    {right && missions ? (
+    {missions ? (
       <CommanderMissionsDialog commodoreId={commodoreId} objectiveId={missions.objectiveId} title={missions.title} language={language}
         onOpenObjective={(id) => openCommanderConversation(commodoreId, id)}
         onClose={() => { const opener = missions.opener; setMissions(null); if (opener.isConnected) opener.focus(); }} />
@@ -146,6 +143,3 @@ function ObjectivePopoverForRow({ commodoreId, selectedId, popover, language, t,
     />
   );
 }
-
-export const readTasksCommanderPlacement = readCommanderPlacement;
-export const useTasksCommanderPlacement = useCommanderPlacement;

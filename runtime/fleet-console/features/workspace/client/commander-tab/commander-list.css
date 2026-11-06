@@ -33,25 +33,6 @@
 
 .commander-tab-sort-button { padding: 0 4px; }
 .commander-tab-direction { width: 26px; padding: 0; }
-.commander-place { display: inline-flex; gap: 2px; margin-left: auto; }
-/* 제목이 있는 막대에서는 위치 버튼 묶음을 정렬·+ 바로 옆에 둔다 — 남는 폭을 반씩 나누지 않는다. */
-.commander-tab-heading ~ .commander-place { margin-left: 0; }
-.commander-place-button {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-.commander-place-button svg { width: 15px; height: 15px; }
-.commander-place-button:hover { background: var(--wash-hover); color: var(--text-primary); }
-.commander-place-button[aria-pressed="true"] { color: var(--text-primary); background: var(--wash-selected); border-color: var(--hairline); }
-.commander-place-button:focus-visible { box-shadow: var(--focus-face); }
 /* 사이드바만 상·하단을 조인다. 채팅 레일·폰 시트의 .commander-tab 여백(10px 10px 16px)은 그대로다.
    높이 상한과 안쪽 스크롤은 없다 — 줄은 사이드바 목록(objective-records-side-bar-chips)이 스크롤한다. */
 .side-bar-commander-list {
@@ -225,7 +206,7 @@
   overflow: clip;
 }
 .commander-tab--card .commander-tab-groups .commander-tab-list { gap: 0; }
-/* 우측 작업 탭 카드 — 행 펼침은 없다. 카드 안 행은 같은 배경 위에 hairline으로만 나뉜다. 카드 밖 시작 전·완료에는 적용하지 않는다. */
+/* 작업 탭 카드 — 행 펼침은 없다. 카드 안 행은 같은 배경 위에 hairline으로만 나뉜다. 카드 밖 시작 전·완료에는 적용하지 않는다. */
 .commander-tab--card .commander-tab-groups .commander-tab-list > .side-bar-cluster-row { margin: 0; border: 0; border-radius: 0; }
 .commander-tab--card .commander-tab-groups .commander-tab-list > .side-bar-cluster-row + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
 /* 목표 팝업이 열린 행 — 가리킴과 같은 옅은 면을 붙들어 어느 행의 팝업인지 말한다. 고름(가운데 대화)의 면이 있으면 그대로 둔다. */
@@ -279,7 +260,7 @@
 .commander-tab-list.side-bar-group-chips { gap: 2px; }
 .commander-tab-group-title { display: flex; gap: 6px; align-items: baseline; margin: 0; padding: 8px 8px 2px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-secondary); }
 .commander-tab-group-title > span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-/* 우측 작업 탭 카드 밖 — 시작 전·완료 구역. 머리 전체가 토글이고, › 는 펼치면 90° 돈다. */
+/* 작업 탭 카드 밖 — 시작 전·완료 구역. 머리 전체가 토글이고, › 는 펼치면 90° 돈다. */
 .commander-tab--card .commander-tab-outside { margin-top: 10px; }
 .commander-tab-outside-head {
   display: flex;

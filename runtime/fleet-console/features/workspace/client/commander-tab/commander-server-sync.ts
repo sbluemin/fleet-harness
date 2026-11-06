@@ -7,7 +7,7 @@ import {
 } from "../../../settings/client/global-settings-store.js";
 
 /**
- * commander-tab 상태(정렬·접힘)의 서버 동기화 — `commander-placement.ts`(#2282)와 같은 의미다.
+ * commander-tab 상태(정렬·접힘)의 서버 동기화.
  * 같은 origin의 localStorage는 첫 그리기 캐시로만 쓰고, 서버 값을 받으면 그 값이 이긴다.
  * 서버 키가 null이고 캐시가 기본값과 다르면 세션당 한 번 옮기고, 서버 값이 오기 전에 사람이
  * 먼저 골랐으면 그 선택을 앞세운다. 저장은 하나씩 순서대로 보내 마지막 의도를 보낸다.
