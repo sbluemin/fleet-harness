@@ -11,7 +11,6 @@ import {
   normalizeAiGatewaySettings,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
-  type DelegationRoutingMode,
   type XaiEndpointPreference,
 } from "./index.js";
 
@@ -34,12 +33,6 @@ export interface AiGatewaySettingsStore {
   readonly write: (value: AiGatewayUpdateValue | undefined) => AiGatewayStoredSettings;
   /** `undefined`는 wireLogEnabled 키를 제거해 env 폴백으로 돌아간다. */
   readonly writeWireLogEnabled: (enabled: boolean | undefined) => AiGatewayStoredSettings;
-  readonly writeDelegationRoutingModel: (model: string | undefined) => AiGatewayStoredSettings;
-  /** `undefined`는 키를 지워 기본 강도(low 우선)로 돌아간다. */
-  readonly writeDelegationRoutingEffort: (effort: string | undefined) => AiGatewayStoredSettings;
-  readonly writeDelegationRoutingEnabled: (enabled: boolean) => AiGatewayStoredSettings;
-  /** 배정 방식만 갱신하고 모델 선별을 보존한다. */
-  readonly writeDelegationRoutingMode: (mode: DelegationRoutingMode) => AiGatewayStoredSettings;
   /** `undefined`는 Auto(키 제거). models 선별은 보존한다. */
   readonly writeCompactCeiling: (ceiling: CompactCeiling | undefined) => AiGatewayStoredSettings;
   /** `undefined`는 xaiEndpoint 키를 제거해 기본(direct)으로 돌아간다. */
@@ -163,11 +156,7 @@ export function createAiGatewaySettingsStore(
     },
     write: (value) => update((current) => normalizeAiGatewaySettings({
       version: 1,
-      ...(current.delegationRoutingModel ? { delegationRoutingModel: current.delegationRoutingModel } : {}),
-      ...(current.delegationRoutingEffort ? { delegationRoutingEffort: current.delegationRoutingEffort } : {}),
       ...(typeof current.wireLogEnabled === "boolean" ? { wireLogEnabled: current.wireLogEnabled } : {}),
-      ...(current.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
-      ...((current.delegationRoutingMode === "jev" || current.delegationRoutingMode === "model") ? { delegationRoutingMode: current.delegationRoutingMode } : {}),
       // 우선순위는 이 update 계약이 나르지 않는 별도 표면의 설정이다. 이월하지 않으면
       // 무관한 모델 노출 저장 한 번이 사용자의 소진 순서를 지운다.
       ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
@@ -224,15 +213,6 @@ export function createAiGatewaySettingsStore(
       });
       return seeded;
     },
-    writeDelegationRoutingModel: (model) => update(current => normalizeAiGatewaySettings({ ...current, delegationRoutingModel: model })),
-    writeDelegationRoutingEffort: (effort) => update(current => normalizeAiGatewaySettings({ ...current, delegationRoutingEffort: effort })),
-    writeDelegationRoutingEnabled: (enabled) => update((current) => normalizeAiGatewaySettings({
-      ...current,
-      delegationRoutingEnabled: enabled,
-    })),
-    writeDelegationRoutingMode: (mode) => update(current => normalizeAiGatewaySettings({
-      ...current, delegationRoutingMode: mode,
-    })),
     writeWireLogEnabled: (enabled) => update((current) => {
       const next = normalizeAiGatewaySettings({
         ...current,
@@ -276,10 +256,6 @@ function hasStoredValue(settings: AiGatewayStoredSettings): boolean {
   return settings.models !== undefined
     || settings.wireLogEnabled !== undefined
     || settings.providerPriority !== undefined
-    || settings.delegationRoutingEnabled !== undefined
-    || settings.delegationRoutingMode !== undefined
-    || settings.delegationRoutingModel !== undefined
-    || settings.delegationRoutingEffort !== undefined
     || settings.compactCeiling !== undefined
     || settings.xaiEndpoint !== undefined;
 }

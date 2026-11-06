@@ -54,7 +54,7 @@ interface GatewayStartContext {
    * installation; absent leaves them unresolved and native alias relays are refused.
    */
   readonly resolveClaudeExecutable?: () => Promise<string | undefined>;
-  /** Console's owned-process port. The routing model's CLI must be a child the Console's deadline ends. */
+  /** Console's owned-process port. The Claude CLI queried for supported models must be a child the Console's deadline ends. */
   readonly spawnAgentProcess: ClaudeProcessSpawner;
 }
 import { registerAiGatewayRoutes } from "./routes.js";
@@ -184,8 +184,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
     const selection = resolveAiGatewaySelection(aiGatewayStore.read());
     const allowance = parseGatewayQuotaSnapshot(quota.peekSummary());
     return {
-      delegationRoutingEnabled: selection.delegationRoutingEnabled,
-      delegationRoutingMode: selection.delegationRoutingMode,
       delegationModels: selection.delegationModels,
       ...(selection.effortExposure === undefined ? {} : { effortExposure: selection.effortExposure }),
       ...(selection.providerPriority === undefined ? {} : { providerPriority: selection.providerPriority }),
@@ -205,44 +203,11 @@ export function startAiGateway(ctx: GatewayStartContext) {
       "muse-code": summary.providers["muse-code"].status,
     };
   };
-  function assign(request: unknown, test = false) {
+  function assign(request: unknown) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
       void quota.getSummary().catch(() => undefined);
-      const parsed = parseGatewayAssignmentRequest(request);
-      const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad), distribution: new GatewayRoutingDistribution() } : currentExposure();
-      return decideGatewayRoutingAssignment(parsed, exposure);
+      return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), currentExposure());
   }
-  let testing = false;
-  ctx.registerRouter("ai-gateway/routing-test", async ({ req, res }) => {
-    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
-    if (testing) { ctx.host.http.writeJson(res, 409, { error: "routing_test_in_progress" }); return true; }
-    const body = await ctx.host.http.readJsonBody<{ prompt?: unknown }>(req);
-    if (typeof body?.prompt !== "string" || !body.prompt.trim() || body.prompt.length > 65536) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_prompt" }); return true;
-    }
-    const selection = currentExposure();
-    if (!selection.delegationRoutingEnabled || !selection.delegationModels.length) {
-      ctx.host.http.writeJson(res, 409, { error: "routing_disabled_or_no_candidates" }); return true;
-    }
-    if (testing) { ctx.host.http.writeJson(res, 409, { error: "routing_test_in_progress" }); return true; }
-    testing = true;
-    const controller = new AbortController();
-    const abort = () => { if (!res.writableEnded) controller.abort(); };
-    res.once("close", abort);
-    const started = Date.now();
-    try {
-      const decision = assign({ surface: "agent", prompt: body.prompt, providerPlugin: "engine" }, true);
-      if (!res.destroyed) ctx.host.http.writeJson(res, 200, {
-        mode: selection.delegationRoutingMode, elapsedMs: Date.now() - started,
-        ...decision, fallback: decision.model === undefined,
-      });
-    } catch {
-      if (!res.destroyed) ctx.host.http.writeJson(res, 502, { error: "routing_test_failed" });
-    } finally { testing = false; res.off("close", abort); }
-    return true;
-  }, [{ method: "POST", path: "", summary: "Test the configured routing decision with a real provider request.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
   ctx.registerRouter("ai-gateway/candidates", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -257,16 +222,13 @@ export function startAiGateway(ctx: GatewayStartContext) {
     const items = parseRoutingAssignItems(await ctx.host.http.readJsonBody<unknown>(req));
     if (!items) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     const selection = currentExposure();
-    if (!selection.delegationRoutingEnabled || selection.delegationModels.length === 0) {
+    if (selection.delegationModels.length === 0) {
       ctx.host.http.writeJson(res, 409, { error: "routing_disabled_or_no_candidates" }); return true;
     }
     void quota.getSummary().catch(() => undefined);
     const decisions = decideGatewayRoutingBatch(items, selection);
     if (!res.destroyed) {
-      ctx.host.http.writeJson(res, 200, {
-        mode: selection.delegationRoutingMode === "jev" ? "jev" : "model",
-        decisions,
-      });
+      ctx.host.http.writeJson(res, 200, { decisions });
     }
     return true;
   }, [{ method: "POST", path: "", summary: "Assign a model and reasoning effort to each of several tasks by the code rule.", category: "Console Execution", gate: "origin-write", transport: "http" }]);

@@ -10,7 +10,6 @@ import { evaluateGatewayCandidateModels } from "./routing-allowance.js";
 export type GatewayAssignmentSurface = "agent" | "stage";
 export interface GatewayAssignmentRequest {
   readonly surface: GatewayAssignmentSurface;
-  readonly prompt?: string;
   /** Agent 도구가 붙인 짧은 설명. 원장이 그대로 쓴다. */
   readonly description?: string;
   /** 호스트가 적은 모델. 명시된 Gateway 모델은 존중한다. */
@@ -45,10 +44,7 @@ export interface GatewayAssignmentDecision {
   readonly because: string;
 }
 
-export type GatewayDelegationRoutingMode = "jev" | "model";
 export interface GatewayAssignmentExposure {
-  readonly delegationRoutingEnabled?: boolean;
-  readonly delegationRoutingMode?: GatewayDelegationRoutingMode;
   readonly delegationModels: readonly GatewayModel[];
   readonly effortExposure?: GatewayEffortExposure;
   readonly providerPriority?: readonly GatewayProvider[];
@@ -98,8 +94,6 @@ export function guardGatewayRoutingAssignment(request: GatewayAssignmentRequest,
   }
   return undefined;
 }
-const MAX_PROMPT_CHARS = 64 * 1024;
-
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
@@ -110,13 +104,11 @@ function asString(value: unknown): string | undefined {
  */
 export function parseGatewayAssignmentRequest(body: unknown): GatewayAssignmentRequest {
   const raw = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
-  const prompt = asString(raw.prompt);
   const unreachable = Array.isArray(raw.unreachable)
     ? raw.unreachable.filter((entry): entry is string => typeof entry === "string")
     : undefined;
   return {
     surface: raw.surface === "stage" ? "stage" : "agent",
-    ...(prompt === undefined ? {} : { prompt: prompt.slice(0, MAX_PROMPT_CHARS) }),
     ...(asString(raw.description) === undefined ? {} : { description: asString(raw.description) as string }),
     ...(asString(raw.requestedModel) === undefined ? {} : { requestedModel: asString(raw.requestedModel) as string }),
     ...(asString(raw.requestedEffort) === undefined ? {} : { requestedEffort: asString(raw.requestedEffort) as string }),

@@ -200,9 +200,8 @@ internal class LoopbackGateway(
     websocketKey: String?,
   ) {
     val input = BufferedInputStream(upstream.inputStream)
-    // Response headers may legitimately arrive late: ai-gateway/routing-test holds them until
-    // the routing-model agent (host/routing-model.ts, 30s budget) answers. The 8s connect budget
-    // inherited from openPinnedSocket would cut such decisions, so only the header wait is widened;
+    // Response headers may legitimately arrive late. The 8s connect budget inherited from
+    // openPinnedSocket would cut such responses, so only the header wait is widened;
     // prepare() below restores the connect budget for body reads.
     ResponseSocketPolicy.prepareForHeaders(upstream)
     val response = HttpCodec.readResponse(input, requestMethod)
@@ -294,9 +293,8 @@ internal object ResponseSocketPolicy {
   /** Connect-phase budget (RemoteConnection's 8s). Restored for body reads after headers arrive. */
   const val BODY_TIMEOUT_MS = 8_000
   /**
-   * Response-header wait budget. ai-gateway/routing-test holds headers until the routing-model
-   * agent (host/routing-model.ts, 30s budget) answers, so the connect budget would cut legitimate
-   * slow decisions. A stalled upstream is still bounded.
+   * Response-header wait budget for every proxied response, wider than the connect budget so a
+   * response whose headers arrive late is not cut. A stalled upstream is still bounded.
    */
   const val HEADER_TIMEOUT_MS = 60_000
 

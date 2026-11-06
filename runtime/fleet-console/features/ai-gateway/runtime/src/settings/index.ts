@@ -12,7 +12,7 @@ import {
   buildGatewayModelConstraints,
   findGatewayModel,
 } from "../models.js";
-import { findClaudeGatewayModel, toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
+import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type {
   GatewayEffortExposure,
   GatewayModel,
@@ -88,23 +88,6 @@ export interface AiGatewayStoredSettings {
    * 토글이 꺼지지 않는 결함이 된다.
    */
   readonly wireLogEnabled?: boolean;
-  /** AI 판단은 명시적으로 켠 경우에만 사용한다. 부재·false는 로컬 규칙 기반 fallback이다. */
-  readonly delegationRoutingEnabled?: boolean;
-  /**
-   * How delegated runs are assigned a model when {@link delegationRoutingEnabled}
-   * is on. Absent means AI model — Console asks the selected model
-   * using the complete model data. `"jev"` opts into TypeSafe/Jev choice selection;
-   * The default mode is "model"; the default decision model is Sonnet.
-   */
-  readonly delegationRoutingMode?: DelegationRoutingMode;
-  readonly delegationRoutingModel?: string;
-  /**
-   * Reasoning effort of the routing judge. Absent keeps the default: `low` when
-   * the launched model's ladder has it, otherwise that ladder's first rung.
-   * A rung the launched model does not offer is clamped when the turn starts, not here,
-   * so a later model change does not discard the stored choice.
-   */
-  readonly delegationRoutingEffort?: GatewayReasoningEffort;
   /**
    * The user's opt-in ordered preference for which provider allowances to spend
    * first. It weights the allowance axis of run distribution only and never
@@ -133,11 +116,6 @@ export interface AiGatewayStoredSettings {
 }
 
 /** Where an xAI subscription turn is sent first. */
-/** How Fleet assigns a model to each delegated run when routing is on. */
-export type DelegationRoutingMode = "jev" | "model";
-
-export const DELEGATION_ROUTING_MODES: readonly DelegationRoutingMode[] = ["jev", "model"];
-
 export type XaiEndpointPreference = "direct" | "cli-proxy";
 
 export const XAI_ENDPOINT_PREFERENCES: readonly XaiEndpointPreference[] = ["direct", "cli-proxy"];
@@ -183,16 +161,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(Array.isArray(value.models) ? { models } : {}),
     ...(rosterSeedVersion > 0 ? { rosterSeedVersion } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
-    // 라우팅 모델은 카탈로그가 아는 id(정준 실행 id·scoped·레거시 `claude-gateway--` 표기)만 남긴다. 켰는지는
-    // 실행 시점에 로스터가 정한다 — 끈 모델의 저장값을 지우면 다시 켰을 때 사용자의 선택이 돌아오지 않는다.
-    ...(typeof value.delegationRoutingModel === "string" && findClaudeGatewayModel(value.delegationRoutingModel)
-      ? { delegationRoutingModel: canonicalRoutingModel(value.delegationRoutingModel) }
-      : {}),
-    ...(isGatewayReasoningEffort(value.delegationRoutingEffort)
-      ? { delegationRoutingEffort: value.delegationRoutingEffort }
-      : {}),
-    ...(value.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
-    ...((value.delegationRoutingMode === "jev" || value.delegationRoutingMode === "model") ? { delegationRoutingMode: value.delegationRoutingMode } : {}),
+    // 옛 위임 라우팅 키(delegationRouting*)는 옮겨 적지 않는다 — 읽을 때 무시되고 다음 저장에서 사라진다.
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
     ...(compactCeiling !== undefined ? { compactCeiling } : {}),
     ...(xaiEndpoint !== undefined ? { xaiEndpoint } : {}),
@@ -202,12 +171,6 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
 /** 저장할 모델 id. Claude 가족은 bare·200k scoped·1M 어느 표기든 가족의 단일 1M id(`claude--sonnet-1m`)다. */
 function storedModelId(model: GatewayModel, id: string): string {
   return model.provider === "claude" ? model.id : id;
-}
-
-/** 라우팅 판정 모델의 저장값. Claude 가족은 실행 정준 alias(`sonnet[1m]`)로 접고, 다른 공급자의 표기는 그대로 둔다. */
-function canonicalRoutingModel(id: string): string {
-  const model = findClaudeGatewayModel(id);
-  return model?.provider === "claude" ? toClaudeGatewayModelId(model) : id;
 }
 
 /**
@@ -308,10 +271,6 @@ function sanitizeProviderPriority(value: unknown): readonly GatewayProvider[] | 
   return cleaned.length > 0 ? cleaned : undefined;
 }
 
-function isGatewayReasoningEffort(value: unknown): value is GatewayReasoningEffort {
-  return typeof value === "string" && (GATEWAY_REASONING_EFFORTS as readonly string[]).includes(value);
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -334,10 +293,6 @@ export interface AiGatewaySelection {
   readonly effortExposure: GatewayEffortExposure;
   /** Opt-in provider allowance spend order; absent means no preference. */
   readonly providerPriority: readonly GatewayProvider[] | undefined;
-  /** AI 판단 활성화 여부. Off여도 로컬 fallback은 모델을 배정한다. */
-  readonly delegationRoutingEnabled: boolean;
-  /** Resolved routing mode when delegation is on. Absent stored value uses the AI model. */
-  readonly delegationRoutingMode: DelegationRoutingMode;
 }
 
 export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | undefined): AiGatewaySelection {
@@ -359,8 +314,6 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
     delegationModels: models,
     effortExposure,
     providerPriority: settings?.providerPriority,
-    delegationRoutingEnabled: settings?.delegationRoutingEnabled === true,
-    delegationRoutingMode: settings?.delegationRoutingMode ?? "model",
   };
 }
 

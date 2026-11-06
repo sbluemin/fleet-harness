@@ -185,7 +185,6 @@ describe("Claude Codex compaction routing", () => {
 describe("delegation assignment", () => {
   const MOD_TOKEN = "mod-token";
   const exposure = {
-    delegationRoutingEnabled: true,
     delegationModels: [requireGatewayModel("codex--gpt-6.1-terra")],
   };
   const assigningRouter = () => createAiGatewayRouter({
@@ -206,12 +205,10 @@ describe("delegation assignment", () => {
     return res;
   };
 
-  it("assigns subagents and workflow stages by code rule without invoking Jev or an AI routing model", async () => {
+  it("assigns subagents and workflow stages by the code rule without an AI routing-model call", async () => {
     const now = Date.now();
     const hour = 3_600_000;
     const exposure: GatewayAssignmentExposure = {
-      delegationRoutingEnabled: true,
-      delegationRoutingMode: "jev",
       delegationModels: [
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-4.7"),
@@ -249,20 +246,18 @@ describe("delegation assignment", () => {
     ]);
 
     const agentDecision = decideGatewayRoutingAssignment(
-      { surface: "agent", prompt: "review this code", subagentType: "general-purpose", providerPlugin: "engine" },
+      { surface: "agent", subagentType: "general-purpose", providerPlugin: "engine" },
       exposure,
     );
     expect(agentDecision.model).toBe("claude-gateway--antigravity--gemini-4-argon[1m]");
     expect(agentDecision.effort).toBe("medium");
-    expect(agentDecision.because).not.toContain("jev");
     expect(agentDecision.because).not.toContain("fallback");
 
     const stageDecision = decideGatewayRoutingAssignment(
-      { surface: "stage", prompt: "verify stage" },
+      { surface: "stage" },
       exposure,
     );
     expect(stageDecision.model).toBe("claude-gateway--antigravity--gemini-4-argon[1m]");
-    expect(stageDecision.because).not.toContain("jev");
   });
 
   it("orders candidates within the same pressure class by sustainableHeadroom first and falls back to remainingPercent only when headroom is absent", () => {
@@ -401,7 +396,6 @@ describe("delegation assignment", () => {
     const now = Date.now();
     const providerLoad = new Map<string, number>();
     const spread = {
-      delegationRoutingEnabled: true,
       delegationModels: [
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
@@ -428,7 +422,6 @@ describe("delegation assignment", () => {
     const now = Date.now();
     const providerLoad = new Map<string, number>();
     const even = {
-      delegationRoutingEnabled: true,
       delegationModels: [
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
@@ -457,7 +450,6 @@ describe("delegation assignment", () => {
     // 않는다 — 실려 온 모델을 그대로 돌려주는 길이 그 옆에 있으면 거기로 샌다.
     const reserved = "claude-gateway--xai--grok-4.6";
     const hostOnly = {
-      delegationRoutingEnabled: true,
       delegationModels: [requireGatewayModel("codex--gpt-6.1-terra")],
     } satisfies GatewayAssignmentExposure;
 
@@ -482,7 +474,6 @@ describe("delegation assignment", () => {
   it("drops a not-connected Codex model from delegation and keeps a consent-off Claude model", () => {
     const models = [requireGatewayModel("claude--sonnet-1m"), requireGatewayModel("codex--gpt-6.1-sol")];
     const hidden = {
-      delegationRoutingEnabled: true,
       delegationModels: models,
       quota: { claude: { status: "not_connected" }, codex: { status: "not_connected" } },
     } satisfies GatewayAssignmentExposure;
@@ -503,7 +494,6 @@ describe("delegation assignment", () => {
     const providerLoad = new Map<string, number>();
     const inherited = "claude-gateway--xai--grok-4.6";
     const exposure = {
-      delegationRoutingEnabled: true,
       delegationModels: [
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
@@ -563,7 +553,7 @@ describe("delegation assignment", () => {
     // 위임 훅은 CLI alias 해석을 거치지 않는다. 배정 ID를 그대로 보내도 API ID와 1M 헤더가 맞아야 한다.
     const decision = decideGatewayRoutingAssignment(
       { surface: "agent", requestedModel: "opus" },
-      { delegationRoutingEnabled: true, delegationModels: [requireGatewayModel("claude--opus-1m")] },
+      { delegationModels: [requireGatewayModel("claude--opus-1m")] },
     );
     expect(decision.model).toBe("opus[1m]");
     const nativeRouter = createAiGatewayRouter({ fetch: vi.fn<typeof fetch>(async (_url, init) => {
@@ -586,7 +576,6 @@ describe("delegation assignment", () => {
   it("routes delegation to Claude native models without gateway prefix", () => {
     const sonnet = requireGatewayModel("claude--sonnet-1m");
     const exposure = {
-      delegationRoutingEnabled: true,
       delegationModels: [sonnet],
       quota: { claude: { status: "ok" } },
     } satisfies GatewayAssignmentExposure;
@@ -680,7 +669,6 @@ describe("delegation assignment", () => {
       },
     ];
     const exposure: GatewayAssignmentExposure = {
-      delegationRoutingEnabled: true,
       delegationModels: [
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
@@ -722,122 +710,6 @@ describe("delegation assignment", () => {
     expect(evaluateGatewayCandidateModels(allHiddenExposure)).toEqual([]);
     const unassignedHidden = decideGatewayRoutingAssignment({ surface: "agent" }, allHiddenExposure);
     expect(unassignedHidden.model).toBeUndefined();
-  });
-
-  it("completes a normal POST assign request without premature abort during delayed Jev", async () => {
-    let seenSignal: AbortSignal | undefined;
-    const router = createAiGatewayRouter({
-      readAuth,
-      modHookToken: MOD_TOKEN,
-      assignRouting: async (_request, options) => {
-        seenSignal = options?.signal;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        return {
-          model: "claude-gateway--codex--gpt-6.1-terra",
-          label: "composer",
-          because: "test · jev",
-        };
-      },
-    });
-
-    const server = http.createServer((req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      void router.handle({ req, res, pathname: url.pathname });
-    });
-
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const port = (server.address() as net.AddressInfo).port;
-    try {
-      const resp = await fetch(`http://127.0.0.1:${port}${BASE}/v1/fleet/routing/assign`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-fleet-mod-token": MOD_TOKEN,
-        },
-        body: JSON.stringify({
-          surface: "agent",
-          prompt: "map the delegation surfaces",
-          description: "map surfaces",
-          subagentType: "general-purpose",
-          providerPlugin: "engine",
-        }),
-      });
-
-      expect(resp.status).toBe(200);
-      const data = (await resp.json()) as Record<string, unknown>;
-      expect(data.model).toBe("claude-gateway--codex--gpt-6.1-terra");
-      expect(data.because).toBe("test · jev");
-      expect(seenSignal?.aborted).toBe(false);
-    } finally {
-      server.close();
-    }
-  });
-
-  it("aborts an in-flight Jev assign on real HTTP disconnect", async () => {
-    let seenSignal: AbortSignal | undefined;
-    let abortPromiseResolve!: () => void;
-    const abortPromise = new Promise<void>((resolve) => {
-      abortPromiseResolve = resolve;
-    });
-
-    const router = createAiGatewayRouter({
-      readAuth,
-      modHookToken: MOD_TOKEN,
-      assignRouting: async (_request, options) => {
-        seenSignal = options?.signal;
-        options?.signal?.addEventListener("abort", () => {
-          abortPromiseResolve();
-        }, { once: true });
-        await new Promise<never>((_resolve, reject) => {
-          if (options?.signal?.aborted) {
-            reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
-            return;
-          }
-          options?.signal?.addEventListener("abort", () => {
-            reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
-          }, { once: true });
-        });
-      },
-    });
-
-    const server = http.createServer((req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      void router.handle({ req, res, pathname: url.pathname });
-    });
-
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const port = (server.address() as net.AddressInfo).port;
-    try {
-      const payload = JSON.stringify({
-        surface: "agent",
-        prompt: "map the delegation surfaces",
-        description: "map surfaces",
-        subagentType: "general-purpose",
-        providerPlugin: "engine",
-      });
-
-      const client = net.connect({ port, host: "127.0.0.1" }, () => {
-        client.write(
-          `POST ${BASE}/v1/fleet/routing/assign HTTP/1.1\r\n` +
-          `Host: 127.0.0.1:${port}\r\n` +
-          `x-fleet-mod-token: ${MOD_TOKEN}\r\n` +
-          `Content-Type: application/json\r\n` +
-          `Content-Length: ${Buffer.byteLength(payload)}\r\n\r\n` +
-          payload,
-        );
-        const check = setInterval(() => {
-          if (seenSignal !== undefined) {
-            clearInterval(check);
-            client.destroy();
-          }
-        }, 10);
-      });
-
-      await abortPromise;
-      expect(seenSignal?.aborted).toBe(true);
-    } finally {
-      server.close();
-    }
   });
 });
 

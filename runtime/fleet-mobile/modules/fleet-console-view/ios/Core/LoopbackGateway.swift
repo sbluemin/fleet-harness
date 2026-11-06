@@ -14,10 +14,9 @@ public final class LoopbackGateway {
   public static let cookieName = "fleet_mobile_gateway"
   public static let maxConnections = 16
   public static let socketTimeoutMs = 30_000
-  /// 응답 헤더 대기 예산. ai-gateway/routing-test는 모델 모드에서 판단 에이전트
-  /// (host/routing-model.ts, 30초 예산)가 끝날 때까지 헤더를 보내지 않으므로 연결
-  /// 단계의 8초(RemoteConnection.timeoutMs)로는 정상 판단을 끊는다. 멈춘
-  /// 업스트림에 대한 상한은 유지된다.
+  /// 응답 헤더 대기 예산. 프록시하는 모든 응답에 적용된다 — 헤더를 늦게 보내는 정상
+  /// 응답을 연결 단계의 8초(RemoteConnection.timeoutMs)로 끊지 않도록 넓혀 둔 값이다.
+  /// 멈춘 업스트림에 대한 상한은 유지된다.
   public static let headerTimeoutMs = 60_000
   /// 본문 읽기 예산 — 연결 단계와 같은 값으로 복원한다.
   public static let bodyTimeoutMs = RemoteConnection.timeoutMs

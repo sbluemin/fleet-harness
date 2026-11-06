@@ -19,7 +19,7 @@ export interface GatewayRoutingBatchDecision {
 }
 
 /**
- * 하위 에이전트·Workflow 단계의 코드 규칙 배정. Jev·AI 판단 모델을 호출하지 않는다.
+ * 하위 에이전트·Workflow 단계의 코드 규칙 배정. AI 판단 모델을 호출하지 않는다.
  */
 export function decideGatewayRoutingAssignment(
   request: GatewayAssignmentRequest,
