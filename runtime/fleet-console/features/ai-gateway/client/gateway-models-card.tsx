@@ -523,7 +523,6 @@ export function AiGatewayModelsCard(): React.ReactElement {
           <div className="ai-gateway-group-head">
             <span className="ai-gateway-provider-glyph" aria-hidden="true">{serviceGlyph("typesafe")}</span>
             <span className="ai-gateway-provider-name">{services[0]?.displayName}</span>
-            <span className="ai-gateway-provider-sub is-strong">{t("terminal.settings.aiGatewayServiceBadge")}</span>
           </div>
           {services.map((service) => <ServiceLogin key={service.provider} service={service} busy={auth.busyProvider === service.provider} />)}
         </section>

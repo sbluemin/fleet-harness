@@ -53,10 +53,6 @@
   white-space: nowrap;
 }
 
-.ai-gateway-provider-sub.is-strong {
-  color: var(--text-secondary);
-}
-
 /* 머리 줄의 축 이름(우선 소진·xAI 엔드포인트) — 행 보조 줄과 같은 크기·잉크의 문장형 글자다. */
 .ai-gateway-field-label {
   color: var(--text-tertiary);
