@@ -167,12 +167,8 @@ export async function prepareClaudeSession(
         ...(options.workspaceHookExec ? { cwdHook: options.workspaceHookExec } : {}),
         // 출처 차단과 vendor 공백의 한 이름 보완을 함께 적용한다.
         disableBundledSkills: true,
-<<<<<<< HEAD
-        ...(options.disableAutoMemory !== undefined ? { autoMemoryEnabled: !options.disableAutoMemory } : {}),
-=======
         skillOverrides: SDK_CLAUDE_SKILL_OVERRIDES,
-        ...(options.disableAutoMemory ? { autoMemoryEnabled: false as const } : {}),
->>>>>>> 2bdc7c230 (fix(console): block residual bundled plugin-authoring skill)
+        ...(options.disableAutoMemory !== undefined ? { autoMemoryEnabled: !options.disableAutoMemory } : {}),
       },
       request: {
         ...toSdkSessionCoordinate(coordinate),
