@@ -397,8 +397,7 @@
   height: 30px;
   padding: 0;
   border: 0;
-  /* 레일 칩(58×64, 어두운 면·색 점)이 투명한 단추 틈으로 비치지 않게 대화 바탕을 깐다. */
-  background: var(--conversation-surface, var(--canvas-abyss));
+  background: none;
 }
 
 .conversation-pill-tools-items,
