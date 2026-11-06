@@ -648,6 +648,8 @@ describe("delegation assignment", () => {
       (candidate) => candidate.model === "codex--gpt-6.1-terra",
     )!;
     expect(expired.pressure).toBe("unknown");
+    // 만료된 창이 있어도 다른 유효한 창이 critical 이면 unknown 으로 되살아나지 않고 제외된다.
+    expect(run({ codex: { ...quota, windows: [window("session", 40, 5, -1 / 60), window("week", 100, 168, 72)] } }).candidates.map((candidate) => candidate.model)).not.toContain("codex--gpt-6.1-terra");
 
     const future = run({ codex: { ...quota, fetchedAt: now + hour } }).candidates.find(
       (candidate) => candidate.model === "codex--gpt-6.1-terra",

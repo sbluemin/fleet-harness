@@ -68,6 +68,8 @@ export function evaluateModelAllowance(
   const at = typeof fetchedAt === "number" && Number.isFinite(fetchedAt) ? fetchedAt : now;
 
   let worst: QuotaWindowPressure | undefined;
+  // 만료됐거나 사용률이 무효한 창 — 그것만으로는 판정하지 않는다. 다른 유효한 창이 critical 이면 그 판정이 앞선다.
+  let unreadable = false;
   const facts: Array<{
     readonly remaining: number;
     readonly reset?: number;
@@ -76,7 +78,8 @@ export function evaluateModelAllowance(
 
   for (const window of binding) {
     if (typeof window.usedPercent !== "number" || !Number.isFinite(window.usedPercent) || window.usedPercent < 0) {
-      return { pressure: "unknown" };
+      unreadable = true;
+      continue;
     }
     const duration = window.period?.durationMs;
     const validDuration = typeof duration === "number" && Number.isFinite(duration) && duration > 0 ? duration : undefined;
@@ -87,7 +90,8 @@ export function evaluateModelAllowance(
     );
     const reset = typeof rawReset === "number" && Number.isFinite(rawReset) ? rawReset : undefined;
     if (reset !== undefined && reset <= now) {
-      return { pressure: "unknown" };
+      unreadable = true;
+      continue;
     }
     const { pressure } = deriveQuotaWindowRisk(window, at);
     if (worst === undefined || SEVERITY[pressure] > SEVERITY[worst]) worst = pressure;
@@ -106,6 +110,7 @@ export function evaluateModelAllowance(
     });
   }
 
+  if (unreadable) return { pressure: worst === "critical" ? "critical" : "unknown" };
   if (worst === undefined) return { pressure: "unknown" };
   const remaining = Math.min(...facts.map((fact) => fact.remaining));
   const remainingPercent = round(remaining * 100);
