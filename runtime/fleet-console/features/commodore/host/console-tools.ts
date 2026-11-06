@@ -59,7 +59,7 @@ export function createCommodoreManagementTools(options: {
       } catch (error) {
         const code = error instanceof Error ? error.message : "commodore_failed";
         // 모델·강도 거절은 고칠 수 있게 후보 강도까지 돌려준다.
-        const details = error instanceof CommodoreStoreError && (code === "invalid_effort" || code === "model_not_in_roster") ? error.details ?? {} : {};
+        const details = error instanceof CommodoreStoreError && (code === "invalid_effort" || code === "model_not_in_roster" || code === "model_not_enabled") ? error.details ?? {} : {};
         return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed", details);
       }
     },

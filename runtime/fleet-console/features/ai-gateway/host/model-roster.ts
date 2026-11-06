@@ -17,11 +17,13 @@ import {
   gatewayModelContextWindow,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_PROVIDERS,
+  resolveAiGatewaySelection,
   toClaudeGatewayModelId,
   visibleGatewayModels,
   type GatewayModel,
   type GatewayProvider,
   type GatewayReasoningEffort,
+  type AiGatewayStoredSettings,
   type ProviderStatusMap,
 } from "@fleet-console/ai-gateway";
 
@@ -179,6 +181,8 @@ export function createModelRosterHost(deps: {
    */
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
   readonly subscribe?: (listener: () => void) => () => void;
+  /** Gateway 저장 설정. 켠 모델 목록(`enabled`)을 읽는다. 없거나 읽기에 실패하면 `enabled`는 null이다. */
+  readonly readGatewaySettings?: () => AiGatewayStoredSettings | undefined;
   /** 설치된 Claude Code에게 별칭이 가리키는 버전을 묻는다. 없으면 별칭 고정은 받은 값을 돌려준다. */
   readonly ensureClaudeNativeModels?: () => Promise<void>;
 }): ModelRosterHost {
@@ -211,6 +215,14 @@ export function createModelRosterHost(deps: {
     ...(deps.ensureClaudeNativeModels ? {
       warmClaudeVersions: () => { void deps.ensureClaudeNativeModels?.().catch(() => undefined); },
     } : {}),
+    enabled: (): ReadonlySet<string> | null => {
+      try {
+        const settings = deps.readGatewaySettings?.();
+        return settings ? new Set(resolveAiGatewaySelection(settings).models.map(canonicalGatewayModelId)) : null;
+      } catch {
+        return null;
+      }
+    },
     ...(deps.subscribe ? { subscribe: deps.subscribe } : {}),
   };
 }

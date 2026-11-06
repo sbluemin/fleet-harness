@@ -60,6 +60,7 @@ const HINTS: Readonly<Record<string, string>> = {
   followup_changed: "That candidate was revised since you read it; read the board again and name it with its current rev.",
   held_for_person: "You handed this to the person. It is theirs until they answer it or return it to you; either wakes you.",
   model_not_in_catalog: "Pick an available model id from the models action.",
+  model_not_enabled: "That model is off in the person's AI Gateway settings; pick an available model from the models action.",
   invalid_effort: "Pick one of efforts for that model, or omit commanderEffort.",
   commander_model_required: "commanderEffort needs commanderModel.",
 };
@@ -82,7 +83,7 @@ const listTool = defineConsoleTool({
     // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관의 fleet-objectives search 와 같은 핵심·같은 입력이다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
     add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan."),
-      commanderModel: z.string().trim().min(1).max(128).optional().describe("Commander model from the models action, only when asked; omitted keeps your Commander setting or the board default."),
+      commanderModel: z.string().trim().min(1).max(128).optional().describe("An available model from the models action, only when asked; omitted keeps your Commander setting or the board default."),
       commanderEffort: z.string().trim().min(1).max(32).optional().describe("Commander effort from that model's efforts; needs commanderModel. Omitted uses the model's default.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
@@ -446,29 +447,26 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     return text({ ok: true, scheduled, warning });
   }
 
-  /** 생성 호출이 고른 지휘관을 models 목록(사람의 선택기와 같은 카탈로그)으로 확인한다. 목록을 읽지 못하면 추측으로 통과시키지 않는다. */
+  /** 생성 호출이 고른 지휘관을 models 목록과 같은 기준(실행 카탈로그와 사람이 켠 모델)으로 확인한다. 목록을 읽지 못하면 추측으로 통과시키지 않는다. */
   async function chosenCommander(model: string | undefined, effort: string | undefined, signal: AbortSignal | undefined) {
     if (model === undefined) {
       if (effort !== undefined) throw new ObjectiveStoreError("commander_model_required");
       return null;
     }
-    const catalog = await modelCatalog.load(signal);
-    if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
-    const wanted = canonicalModelId(model);
-    const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
-    if (!row || !row.available) throw new ObjectiveStoreError("model_not_in_catalog", undefined, { model, ...(row?.reason ? { reason: row.reason } : {}) });
-    if (effort !== undefined && !row.efforts.includes(effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.model, efforts: row.efforts });
-    return { model: wanted, ...(effort !== undefined ? { effort } : {}) };
+    return await modelCatalog.checkCommander({ model, effort }, signal);
   }
 
   async function models(commodoreId: string | null, signal: AbortSignal | undefined) {
-    const [catalog, quota] = await Promise.all([modelCatalog.load(signal), modelCatalog.quota(signal)]);
+    const [catalog, enabled, quota] = await Promise.all([modelCatalog.load(signal), modelCatalog.enabledModels(signal), modelCatalog.quota(signal)]);
     if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
+    if (!enabled) throw new ObjectiveStoreError("gateway_models_unavailable");
+    // available 은 실제로 새로 고를 수 있는지다 — 사람이 AI Gateway에서 끈 모델은 실행 카탈로그에 있어도 고를 수 없다.
+    const rows = catalog.map((row) => row.available && !enabled.has(canonicalModelId(row.model)) ? { ...row, available: false, reason: "not_enabled" } : row);
     // 바꾸지 못한 전환(곧바로든 턴 뒤든) — 그 모델로 다시 고르기 전에 볼 사유다. cause 는 자식이 거절하며 던진 원문이다.
     const failedSwitches = commodoreId ? store.list(commodoreId).filter((objective) => !objective.done && !objective.removed).flatMap((objective) => objective.members.flatMap((member) => member.next?.failed
       ? [{ objectiveId: objective.id, memberId: member.id, role: member.role, model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}), failed: member.next.failed, ...(member.next.cause ? { cause: member.next.cause } : {}) }]
       : [])) : [];
-    return { models: catalog, quota, failedSwitches };
+    return { models: rows, quota, failedSwitches };
   }
 
   /**

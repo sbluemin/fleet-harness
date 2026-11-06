@@ -9,6 +9,7 @@ import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { commanderRoutingPrompt, memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
+import { createModelCatalog } from "./catalog.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
 import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
@@ -243,6 +244,7 @@ export interface LaunchServiceOptions {
 }
 
 export function createLaunchService(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, serviceOptions: LaunchServiceOptions = {}): LaunchService {
+  const modelCatalog = createModelCatalog(ctx);
   const control = () => {
     const capability = ctx.consoleControl;
     if (!capability) throw new ObjectiveStoreError("launch_unavailable");
@@ -1605,6 +1607,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 생성 호출이 고른 지휘관이 사령관 설정보다 앞선다. 고르지 않으면 지금처럼 사령관 설정, 그다음 보드 기본이다.
       const commander = chosen ?? (byCommodore ? serviceOptions.commodoreCommander?.(input.commodoreId) ?? null : null);
       if (byCommodore && actor.commodoreId !== input.commodoreId) throw new ObjectiveStoreError("other_commodore");
+      // 사령관이 고르지 않은 새 목표도 사람이 AI Gateway에서 켠 모델로만 시작한다 — 꺼진 사령관 기본값·보드 기본으로 만들지 않는다.
+      // 고른 지휘관은 생성 호출이 이미 같은 기준으로 확인했고, 라우팅은 켠 후보 안에서 고른다. 기본값의 강도는 여기서 다시 따지지 않는다.
+      if (byCommodore && !chosen && !(commander && "route" in commander)) await modelCatalog.checkCommander({ model: (commander ?? COMMANDER_PRESET).model }, undefined);
       const requested = typeof input.theaterId === "string" ? input.theaterId : "";
       const owned = ctx.ownedTheaterIds?.(input.commodoreId);
       const known = requested !== "" && (!owned || owned.includes(requested));

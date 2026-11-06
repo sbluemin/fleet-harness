@@ -26,8 +26,8 @@ export interface CommodoreCreateInput {
 export function createCommodoreCreator(deps: {
   readonly ownership: ReturnType<typeof createCommodoreOwnership>;
   readonly store: CommodoreStore;
-  /** 화면 선택기와 같은 로스터. 사령관은 agent, 지휘관은 launch 사다리로 모델·강도를 확인한다. */
-  readonly models?: Pick<ModelRosterHost, "roster">;
+  /** 화면 선택기와 같은 로스터. 사령관은 agent, 지휘관은 launch 사다리로 모델·강도를 확인한다. 지휘관 모델은 사람이 켠 목록(enabled)으로도 확인한다. */
+  readonly models?: Pick<ModelRosterHost, "roster" | "enabled">;
   readonly created?: (commodoreId: string) => void;
 }) {
   return (sourceId: string, input: CommodoreCreateInput) => {
@@ -65,6 +65,12 @@ export function createCommodoreCreator(deps: {
     const own = coordinate("agent", input.model, input.effort, CREATE_DEFAULTS.effort);
     const ownEffort = isAgentEffort(own.effort) ? own.effort : undefined;
     const commander = coordinate("launch", input.commanderModel, input.commanderEffort, CREATE_DEFAULTS.commanderEffort);
+    // 사령관이 넘긴 지휘관 모델은 사람이 AI Gateway에서 켠 것만 받는다. 켠 목록을 읽지 못하면 추측으로 통과시키지 않는다.
+    if (input.commanderModel !== undefined && deps.models?.enabled) {
+      const enabled = deps.models.enabled();
+      if (!enabled) throw new CommodoreStoreError("gateway_settings_unavailable");
+      if (!enabled.has(commander.model)) throw new CommodoreStoreError("model_not_enabled", undefined, { model: input.commanderModel });
+    }
     const id = entities.create(undefined, (newId, directory) => {
       let rows: readonly { readonly path: string }[] = [];
       const staged = createCommodoreStore({
