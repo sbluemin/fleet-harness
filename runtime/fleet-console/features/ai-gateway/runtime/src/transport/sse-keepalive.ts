@@ -10,6 +10,7 @@ type NextResult<T> =
 export async function* withSseKeepAlive(
   chunks: AsyncIterable<Uint8Array>,
   intervalMs = ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS,
+  initialKeepAlive = false,
 ): AsyncGenerator<Uint8Array> {
   const iterator = chunks[Symbol.asyncIterator]();
   let next = iterator.next();
@@ -17,6 +18,11 @@ export async function* withSseKeepAlive(
   let atFrameBoundary = true;
 
   try {
+    if (initialKeepAlive) {
+      // 첫 comment를 소비하는 동안 생긴 거절도 아래 대기에서 전달하며 미처리 rejection으로 남기지 않는다.
+      void next.catch(() => undefined);
+      yield KEEPALIVE_FRAME;
+    }
     for (;;) {
       const result = atFrameBoundary
         ? await waitForChunk(next, intervalMs)

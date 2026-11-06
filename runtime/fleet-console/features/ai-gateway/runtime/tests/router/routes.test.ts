@@ -99,13 +99,22 @@ describe("Claude Codex compaction routing", () => {
     const failed = { type: "response.failed", response: { error: overflow } };
     const text = { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "recovered" };
     const completed = { type: "response.completed", response: { id: "r", model: "gpt-6.1-sol", usage: { input_tokens: 1, output_tokens: 1 } } };
-    let mode: "http" | "early" | "summary" | "late" | "success" = "http";
+    let mode: "http" | "early" | "summary" | "late" | "success" | "quiet" = "http";
     let finish: (() => void) | undefined;
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
       const payload = JSON.parse(String(init?.body));
       if (mode === "http" || mode === "summary") {
         const native = payload.input.some((item: { type: string }) => item.type === "compaction_trigger");
         return new Response(JSON.stringify({ error: native ? { type: "invalid_request_error", message: "Unsupported compaction trigger" } : overflow }), { status: 400 });
+      }
+      if (mode === "quiet") {
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+          controller.enqueue(new TextEncoder().encode(frame(created)));
+          setTimeout(() => {
+            controller.enqueue(new TextEncoder().encode(frame(text) + frame(completed)));
+            controller.close();
+          }, 15_000);
+        } }), { headers: { "content-type": "text/event-stream" } });
       }
       if (mode === "success") {
         return new Response(new ReadableStream<Uint8Array>({ start(controller) {
@@ -170,7 +179,26 @@ describe("Claude Codex compaction routing", () => {
       finish!();
       await pending;
       expect(live.body).toContain("message_stop");
+
+      // Codex may buffer response.created until actual output; silence must still get heartbeats.
+      vi.useFakeTimers();
+      mode = "quiet";
+      const quiet = response();
+      const delayed = router.handle(ctx({ res: quiet, token: ANTHROPIC_CRED }));
+      await vi.advanceTimersByTimeAsync(999);
+      expect(quiet.headersSent).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(quiet.status).toBe(200);
+      expect(quiet.body).toContain(": keep-alive\n\n");
+      expect(quiet.body).not.toContain("recovered");
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(quiet.body.match(/: keep-alive/g)).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(4_000);
+      await delayed;
+      expect(quiet.body).toContain("recovered");
+      expect(quiet.body).toContain("message_stop");
     } finally {
+      vi.useRealTimers();
       router.dispose();
     }
   });

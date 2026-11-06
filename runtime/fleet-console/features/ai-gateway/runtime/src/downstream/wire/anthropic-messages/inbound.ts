@@ -136,16 +136,17 @@ export class AnthropicMessagesGateway {
       : upstream.events;
 
     if (request.stream === true) {
+      const deferred = await deferCreatedEvents(events);
       return {
         status: upstream.status,
         headers: new Headers({
           "cache-control": "no-cache",
           "content-type": "text/event-stream; charset=utf-8"
         }),
-        body: withSseKeepAlive(encodeAnthropicSse(await deferCreatedEvents(events), {
+        body: withSseKeepAlive(encodeAnthropicSse(deferred.events, {
           model: request.model,
           estimatedInputTokens,
-        }))
+        }), undefined, deferred.timedOut)
       };
     }
 
@@ -162,33 +163,58 @@ export class AnthropicMessagesGateway {
   }
 }
 
-/** Keep an input rejection after response.created recoverable before HTTP headers commit. */
-async function deferCreatedEvents(events: AsyncIterable<CanonicalResponseEvent>): Promise<AsyncIterable<CanonicalResponseEvent>> {
+// One second retains early input refusals while leaving ample headroom before the 10s heartbeat.
+const INITIAL_OVERFLOW_LOOKAHEAD_MS = 1_000;
+
+/** Keep early input refusals recoverable without withholding heartbeats during long reasoning. */
+async function deferCreatedEvents(events: AsyncIterable<CanonicalResponseEvent>): Promise<{
+  readonly events: AsyncIterable<CanonicalResponseEvent>;
+  readonly timedOut: boolean;
+}> {
   const iterator = events[Symbol.asyncIterator]();
   const pending: CanonicalResponseEvent[] = [];
+  let next: Promise<IteratorResult<CanonicalResponseEvent>> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const deadline = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), INITIAL_OVERFLOW_LOOKAHEAD_MS);
+  });
   try {
     for (;;) {
-      const next = await iterator.next();
-      if (next.done) break;
-      pending.push(next.value);
-      if (next.value.type !== "response.created") break;
+      next = iterator.next();
+      const result = await Promise.race([next, deadline]);
+      if (result === undefined) {
+        timedOut = true;
+        break;
+      }
+      next = undefined;
+      if (result.done) break;
+      pending.push(result.value);
+      if (result.value.type !== "response.created") break;
     }
   } catch (error) {
     await iterator.return?.();
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  return (async function* () {
-    try {
-      yield* pending;
-      for (;;) {
-        const next = await iterator.next();
-        if (next.done) return;
-        yield next.value;
+  return {
+    timedOut,
+    events: (async function* () {
+      try {
+        yield* pending;
+        for (;;) {
+          // A timed-out read still belongs to this consumer: never discard it or read concurrently.
+          const result = await (next ?? iterator.next());
+          next = undefined;
+          if (result.done) return;
+          yield result.value;
+        }
+      } finally {
+        await iterator.return?.();
       }
-    } finally {
-      await iterator.return?.();
-    }
-  })();
+    })(),
+  };
 }
 
 async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
