@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ClaudeGatewaySystemPrompt } from "../../claude/index.js";
 
 import { buildClaudeDenyRules } from "./claude-agent-rules.js";
-import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
+import { GATEWAY_DISABLED_CLAUDE_SKILLS, SDK_CLAUDE_SKILL_OVERRIDES, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
 import type { AgentCliPlugin, ClaudeSessionCoordinate, FleetHookExec } from "./types.js";
 
 /**
@@ -35,6 +35,7 @@ export interface ClaudeSessionSdkOptions {
   readonly allowAmbientMcpServers: boolean;
   readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
   readonly disableBundledSkills: true;
+  readonly skillOverrides: typeof SDK_CLAUDE_SKILL_OVERRIDES;
   readonly autoMemoryEnabled?: boolean;
 }
 
@@ -164,9 +165,14 @@ export async function prepareClaudeSession(
         settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
         ...(options.workspaceHookExec ? { cwdHook: options.workspaceHookExec } : {}),
-        // SDK는 이름이 아니라 번들 출처를 끈다. 동명 사용자·프로젝트·플러그인 스킬은 남는다.
+        // 출처 차단과 vendor 공백의 한 이름 보완을 함께 적용한다.
         disableBundledSkills: true,
+<<<<<<< HEAD
         ...(options.disableAutoMemory !== undefined ? { autoMemoryEnabled: !options.disableAutoMemory } : {}),
+=======
+        skillOverrides: SDK_CLAUDE_SKILL_OVERRIDES,
+        ...(options.disableAutoMemory ? { autoMemoryEnabled: false as const } : {}),
+>>>>>>> 2bdc7c230 (fix(console): block residual bundled plugin-authoring skill)
       },
       request: {
         ...toSdkSessionCoordinate(coordinate),

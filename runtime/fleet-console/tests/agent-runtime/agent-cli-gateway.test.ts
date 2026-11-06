@@ -122,7 +122,7 @@ describe("claude-gateway argument composition", () => {
     const untouched = await prepareClaudeSession({ cliId: "claude", cwd: root, plugin: pluginStub, origin: { kind: "new" } });
     expect(untouched.sdk.request).not.toHaveProperty("disallowedTools");
     expect(untouched.sdk.options.disableBundledSkills).toBe(true);
-    expect(untouched.sdk.options).not.toHaveProperty("skillOverrides");
+    expect(untouched.sdk.options.skillOverrides).toEqual({ "plugin-authoring": "off" });
   });
 
   /**

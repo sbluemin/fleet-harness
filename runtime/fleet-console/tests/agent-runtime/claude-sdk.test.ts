@@ -100,11 +100,11 @@ describe("turn assembly", () => {
 it("relays explicit skill and memory policy while aligning the child memory environment", async () => {
   for (const enabled of [false, true]) {
     const sdk = await createClaudeGatewaySdk({ modelPolicy: claudeGatewayModelPolicy, baseUrl: BASE_URL, models: [LUNA],
-      autoMemoryEnabled: enabled, disableBundledSkills: true, env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: enabled ? "1" : "0" } });
+      autoMemoryEnabled: enabled, disableBundledSkills: true, skillOverrides: { "plugin-authoring": "off" }, env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: enabled ? "1" : "0" } });
     try {
       const session = await sdk.openSession({ model: LUNA });
       expect(runVendorSession.mock.calls.at(-1)?.[0].options).toMatchObject({
-        settings: { autoMemoryEnabled: enabled, disableBundledSkills: true },
+        settings: { autoMemoryEnabled: enabled, disableBundledSkills: true, skillOverrides: { "plugin-authoring": "off" } },
         env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: enabled ? "0" : "1" },
         settingSources: [],
       });

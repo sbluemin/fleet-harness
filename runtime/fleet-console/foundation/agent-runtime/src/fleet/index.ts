@@ -99,6 +99,7 @@ export { reclaimLegacyTrees } from "./agent-cli/plugin/legacy-trees.js";
 
 export {
   GATEWAY_DISABLED_CLAUDE_SKILLS,
+  SDK_CLAUDE_SKILL_OVERRIDES,
   buildDisabledSkillOverrides,
   type ClaudeSkillOverride,
 } from "./agent-cli/gateway-skills.js";
