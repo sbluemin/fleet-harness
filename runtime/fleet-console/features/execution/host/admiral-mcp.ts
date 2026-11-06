@@ -39,6 +39,8 @@ export interface ReservedAdmiralMcpRegistration {
   readonly refusal: string;
   /** 이 서버의 도구를 도구 검색 뒤로 미루지 않는다. */
   readonly alwaysLoad?: boolean;
+  /** MCP initialize 의 instructions — 이 서버를 받은 세션에만 실린다. */
+  readonly instructions?: string;
 }
 
 /** 호스트 인스턴스가 소유한다. 플러그인 번들의 모듈 사본과 상태를 공유하지 않는다. */
@@ -97,7 +99,7 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
           },
         });
       }
-      const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore });
+      const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore, ...(reserved?.instructions ? { instructions: reserved.instructions } : {}) });
       const manager = createExecutorSessionManager({ runtimes: [{ name, runtime: { registry, snapshotStore, server, onFailure: options.onFailure } }] });
       const entry: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); }, commodoreTools: registration.commodoreScoped ? runners : null, reserved };
       registrations.set(name, entry);

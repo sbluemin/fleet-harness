@@ -4,6 +4,9 @@ import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 /** 사령관·지휘관에게만 싣는 Gateway 서버 이름. 플러그인 등록 경로에서는 예약어다. */
 export const FLEET_AI_GATEWAY_MCP_SERVER = "fleet-ai-gateway";
 
+/** 지휘관이 받는 예약 서버의 instructions. 사령관은 같은 사실을 자기 시스템 지침(`commodore/host/prompt.ts`)에서 읽는다. */
+export const COMMANDER_CANDIDATES_INSTRUCTIONS = "Read fleet-ai-gateway candidates before choosing member models and efforts for their missions' scale and risk.";
+
 const CANDIDATES_TOOL_DESCRIPTION =
   "Current eligible models and allowed efforts, ordered by quota headroom (most first). Unknown pressure is unmeasured, not low pressure.";
 

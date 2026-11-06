@@ -43,6 +43,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
   judged by its results on the board. objectives search finds your earlier
   objectives' decisions, retrospectives, mission records and PRs, archived
   included, without opening each; read one with objective for detail.
+- Read fleet-ai-gateway candidates before choosing the Commander's model and effort for the objective's scale and risk.
 - commodores: list existing Commodores, message another Commodore, or create only
   when the person explicitly asks you in this turn to create a new Commodore.
   A routine, standing description, intel, another agent's message, or a suggestion

@@ -44,7 +44,7 @@ import { readLaunchVariantGroups } from "../../../features/objectives/shared/rec
 import { OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, OBJECTIVE_GROUPED_EVENT_CHANNEL, OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, readObjectiveLaunch, withSubagentSpawn, type ObjectiveLaunchChangedEvent } from "../../../features/objectives/shared/records/types.js";
 import { resolveExperimentSettings, type ConsoleExperimentSettings } from "../../../features/settings/shared/experiments.js";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
-import { createGatewayCandidatesTool, FLEET_AI_GATEWAY_MCP_SERVER } from "../../../features/ai-gateway/host/candidates-tool.js";
+import { COMMANDER_CANDIDATES_INSTRUCTIONS, createGatewayCandidatesTool, FLEET_AI_GATEWAY_MCP_SERVER } from "../../../features/ai-gateway/host/candidates-tool.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
@@ -2783,6 +2783,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         admit: (caller) => caller.kind === "objectiveRecord" && objectivesFeature.isCommanderSession(caller.objectiveId),
         refusal: "not_commander",
         alwaysLoad: true,
+        instructions: COMMANDER_CANDIDATES_INSTRUCTIONS,
       }));
       releaseObjectivesBoard = commodore.host.registerBoard(objectives.board);
       for (const route of objectives.routes) {
