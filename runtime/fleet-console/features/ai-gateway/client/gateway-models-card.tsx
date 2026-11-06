@@ -103,7 +103,7 @@ export function AiGatewayModelsEntry(): React.ReactElement {
   const state = useSystemPromptSettingsStore().state;
   const counts = delegationFamilyCounts(state);
   const summary = [
-    t("terminal.settings.aiGatewayDelegationCount", { count: counts.candidates }),
+    t("terminal.settings.aiGatewayOnCount", { count: counts.candidates }),
     counts.waiting > 0 ? t("terminal.settings.aiGatewayWaitingLogin", { count: counts.waiting }) : null,
     counts.unknown > 0 ? t("terminal.settings.aiGatewayLoginChecking") : null,
   ].filter(Boolean).join(" · ");
@@ -408,7 +408,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
       <div className="ai-gateway-find">
         <input className="ai-gateway-find-input" value={query} placeholder={t("terminal.settings.aiGatewayFindModel")} aria-label={t("terminal.settings.aiGatewayFindModel")} onChange={(event) => setQuery(event.target.value)} />
         <span className="ai-gateway-roster-count">
-          {t("terminal.settings.aiGatewayDelegationCount", { count: counts.candidates })}
+          {t("terminal.settings.aiGatewayOnCount", { count: counts.candidates })}
           {counts.waiting > 0 ? ` · ${t("terminal.settings.aiGatewayWaitingLogin", { count: counts.waiting })}` : ""}
           {counts.unknown > 0 ? ` · ${t("terminal.settings.aiGatewayLoginChecking")}` : ""}
         </span>
