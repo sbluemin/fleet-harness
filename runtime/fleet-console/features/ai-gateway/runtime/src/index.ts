@@ -185,6 +185,8 @@ export {
   type GatewayEffortExposure,
 } from "./fleet/gateway-agents.js";
 export {
+  delegationCandidateModels,
+  visibleDelegationModels,
   parseGatewayAssignmentRequest,
   type GatewayAssignmentDecision,
   type GatewayAssignmentExposure,
@@ -192,16 +194,21 @@ export {
   type GatewayAssignmentSurface,
   type GatewayDelegationRoutingMode,
 } from "./fleet/routing-assignment.js";
+export {
+  allowanceUnreadable,
+  compareModelAllowance,
+  evaluateGatewayCandidateModels,
+  evaluateModelAllowance,
+  modelPressure,
+  type EvaluatedGatewayCandidateModel,
+  type GatewayCandidatePressure,
+  type GatewayModelAllowance,
+} from "./fleet/routing-allowance.js";
 export { buildGatewayLoadout } from "./fleet/model-loadout.js";
 export {
-  JEV_ROUTING_TIMEOUT_MS,
-  JEV_ROUTING_BATCH_TIMEOUT_MS,
   decideGatewayRoutingAssignment,
   decideGatewayRoutingBatch,
-  difficultyQuestionId,
   type GatewayRoutingDecisionOptions,
-  type RoutingChoice,
-  type RoutingDifficultyQuestion,
   type GatewayRoutingBatchItem,
   type GatewayRoutingBatchDecision,
   type GatewayRoutingBatchOptions,

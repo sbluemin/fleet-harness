@@ -1,4 +1,4 @@
-import { delegationCandidateModels, type GatewayAssignmentExposure } from "./routing-assignment.js";
+import { visibleDelegationModels, type GatewayAssignmentExposure } from "./routing-assignment.js";
 import type { GatewayProvider } from "../models.js";
 
 /** 쿼터 관측 이후 확정된 배정을 보완한다. 병렬 판단은 같은 스냅샷을 읽을 수 있다. */
@@ -7,7 +7,7 @@ export class GatewayRoutingDistribution {
 
   snapshot(exposure: GatewayAssignmentExposure) {
     const providers: Partial<Record<GatewayProvider, { observedAt?: number; assignments: number }>> = {};
-    for (const provider of new Set(delegationCandidateModels(exposure).map(model => model.provider))) {
+    for (const provider of new Set(visibleDelegationModels(exposure).map(model => model.provider))) {
       const observedAt = exposure.quota?.[provider]?.fetchedAt;
       const previous = this.providers.get(provider);
       // 캐시 재조회나 stale 반환이 아니라 더 새로운 관측이 들어온 경우에만 집계를 초기화한다.

@@ -34,17 +34,14 @@ import {
   XAI_RESPONSES_URL,
   buildAnthropicModelList,
   createAiGatewayRouter as createCoreAiGatewayRouter,
-  fallbackGatewayRoutingAssignment as decideGatewayRoutingAssignment,
-  decideGatewayRoutingAssignment as decideGatewayRoutingAssignmentWithJev,
+  decideGatewayRoutingAssignment,
+  evaluateGatewayCandidateModels,
   errorMessage,
   applyClaudeNativeModels,
   findGatewayModel,
   GATEWAY_MODELS,
-  GatewayRoutingDistribution,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
-  SystemOneClient,
-  SystemOneError,
 } from "../../src/index.js";
 import {
   pickSeat,
@@ -209,70 +206,114 @@ describe("delegation assignment", () => {
     return res;
   };
 
-  it("uses local fallback and provider priority without invoking an AI when routing is off", async () => {
-    const choose = vi.fn(async () => { throw new Error("must not call AI"); });
-    const decision = await decideGatewayRoutingAssignmentWithJev(
-      { surface: "agent", prompt: "review this code" },
-      {
-        delegationRoutingEnabled: false, delegationRoutingMode: "model",
-        delegationModels: [...exposure.delegationModels, requireGatewayModel("xai--grok-4.7")],
-        providerPriority: ["xai", "codex"],
+  it("assigns subagents and workflow stages by code rule without invoking Jev or an AI routing model", async () => {
+    const now = Date.now();
+    const hour = 3_600_000;
+    const exposure: GatewayAssignmentExposure = {
+      delegationRoutingEnabled: true,
+      delegationRoutingMode: "jev",
+      delegationModels: [
+        requireGatewayModel("codex--gpt-6.1-terra"),
+        requireGatewayModel("xai--grok-4.7"),
+        requireGatewayModel("antigravity--gemini-4-argon"),
+        requireGatewayModel("muse-code--muse-spark-1.3-contributor"),
+      ],
+      quota: {
+        // critical: 제외되어야 함
+        codex: {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "session", usedPercent: 96, resetsAt: now + hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
+        },
+        // elevated: 84% 사용, 경과 70%(남은 기간 30%) → paceRatio 1.2 < 1.5, sustainableHeadroom = 0.16 / 0.3 = 0.533333
+        xai: {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "session", usedPercent: 84, resetsAt: now + 1.5 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
+        },
+        // ok: 20% 사용, 경과 50%(남은 기간 50%) → paceRatio 0.4, sustainableHeadroom 1.6
+        antigravity: {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "session", usedPercent: 20, resetsAt: now + 2.5 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
+        },
+        // muse-code: 쿼터 미상(unknown) → elevated 뒤 끝에 놓여야 함
       },
-      { choose },
+    };
+
+    const evaluated = evaluateGatewayCandidateModels(exposure, now);
+    expect(evaluated.map((entry) => [entry.model.provider, entry.allowance.pressure])).toEqual([
+      ["antigravity", "ok"],
+      ["xai", "elevated"],
+      ["muse-code", "unknown"],
+    ]);
+
+    const agentDecision = decideGatewayRoutingAssignment(
+      { surface: "agent", prompt: "review this code", subagentType: "general-purpose", providerPlugin: "engine" },
+      exposure,
     );
-    expect(decision.model).toBe("claude-gateway--xai--grok-4.7");
-    expect(decision.effort).toBe("medium");
-    expect(decision.because).toContain("fallback");
-    expect(choose).not.toHaveBeenCalled();
+    expect(agentDecision.model).toBe("claude-gateway--antigravity--gemini-4-argon[1m]");
+    expect(agentDecision.effort).toBe("medium");
+    expect(agentDecision.because).not.toContain("jev");
+    expect(agentDecision.because).not.toContain("fallback");
+
+    const stageDecision = decideGatewayRoutingAssignment(
+      { surface: "stage", prompt: "verify stage" },
+      exposure,
+    );
+    expect(stageDecision.model).toBe("claude-gateway--antigravity--gemini-4-argon[1m]");
+    expect(stageDecision.because).not.toContain("jev");
   });
 
-  it("runs burst decisions in parallel and reports committed assignments per quota observation", async () => {
-    const distribution = new GatewayRoutingDistribution();
-    const at = Date.now();
-    let current: GatewayAssignmentExposure = {
-      delegationRoutingEnabled: true, delegationRoutingMode: "model", distribution,
-      delegationModels: [requireGatewayModel("codex--gpt-6.1-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
-      quota: { codex: { status: "ok", fetchedAt: at, windows: [] }, xai: { status: "ok", fetchedAt: at, windows: [] } },
-    };
-    let release!: () => void;
-    const barrier = new Promise<void>(resolve => { release = resolve; });
-    const seen: number[] = [];
-    let calls = 0;
-    const choose = vi.fn(async ({ state, criteria }: any) => {
-      // 동일 스냅샷으로 병렬 판단하되 이후 호출은 확정된 배정을 보아야 한다.
-      expect(Object.values(criteria).some((value: any) => value.includes("codex"))).toBe(true);
-      expect(Object.values(criteria).some((value: any) => value.includes("xai"))).toBe(true);
-      seen.push(state.gateway_models.recentAssignments.providers.codex.assignments);
-      calls++;
-      if (calls === 1) await barrier;
-      return { seat: Object.keys(criteria).find(key => criteria[key].includes("codex"))! };
-    });
-    const options = { choose, refreshExposure: () => current };
-    const first = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
-    const controller = new AbortController();
-    const cancelled = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, { ...options, signal: controller.signal });
-    const rejected = expect(cancelled).rejects.toThrow();
-    controller.abort();
-    const second = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
-    await rejected;
-    expect(calls).toBe(3);
-    expect(seen).toEqual([0, 0, 0]);
-    release();
-    await Promise.all([first, second]);
-    expect(seen).toEqual([0, 0, 0]);
-    await decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
-    expect(seen).toEqual([0, 0, 0, 2]);
-    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(3);
-    current = { ...current, quota: { ...current.quota, xai: { status: "ok", fetchedAt: at + 1, windows: [] } } };
-    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(3);
-    current = { ...current, quota: { ...current.quota, codex: { status: "stale", fetchedAt: at, windows: [] } } };
-    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(3);
-    current = { ...current, quota: { ...current.quota, codex: { status: "ok", fetchedAt: at + 1, windows: [] } } };
-    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(0);
-    await decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
-    expect(seen).toEqual([0, 0, 0, 2, 0]);
-    distribution.snapshot({ ...current, quota: { codex: { status: "ok", fetchedAt: at, windows: [] } } });
-    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(1);
+  it("orders candidates within the same pressure class by sustainableHeadroom first and falls back to remainingPercent only when headroom is absent", () => {
+    const now = Date.now();
+    const hour = 3_600_000;
+    const day = 24 * hour;
+    const evaluated = evaluateGatewayCandidateModels({
+      delegationModels: [
+        requireGatewayModel("codex--gpt-6.1-terra"),
+        requireGatewayModel("xai--grok-4.7"),
+        requireGatewayModel("antigravity--gemini-4-argon"),
+        requireGatewayModel("muse-code--muse-spark-1.3-contributor"),
+        requireGatewayModel("claude--sonnet-1m"),
+      ],
+      quota: {
+        // codex(주간): used 35%(remaining 65%), 남은 기간 3.5/7일(elapsed 0.5, paceRatio 0.7 → ok) → sustainableHeadroom = 0.65 / 0.5 = 1.3
+        codex: {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "weekly", usedPercent: 35, resetsAt: now + 3.5 * day, period: { durationMs: 7 * day, durationBasis: "upstream" } }],
+        },
+        // xai(5시간): used 40%(remaining 60% < 65%), 남은 기간 1/5시간(elapsed 0.8, paceRatio 0.5 → ok) → sustainableHeadroom = 0.60 / 0.2 = 3.0
+        // remainingPercent는 codex(65%)가 크지만 sustainableHeadroom은 xai(3.0 > 1.3)가 크므로 xai가 앞서야 한다.
+        xai: {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "session", usedPercent: 40, resetsAt: now + 1 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
+        },
+        // antigravity(elevated): used 88%(remaining 12%), 경과 80%(남은 기간 20%, paceRatio 1.1 → elevated) → sustainableHeadroom = 0.12 / 0.2 = 0.6
+        antigravity: {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "session", usedPercent: 88, resetsAt: now + 1 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
+        },
+        // muse-code(elevated): used 85%(remaining 15%), 경과 90%(남은 기간 10%, paceRatio 0.94, used>=80 → elevated) → sustainableHeadroom = 0.15 / 0.1 = 1.5
+        "muse-code": {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "session", usedPercent: 85, resetsAt: now + 0.5 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
+        },
+        // claude: 미상(unknown)
+      },
+    }, now);
+
+    expect(evaluated.map((entry) => entry.model.provider)).toEqual([
+      "xai",
+      "codex",
+      "muse-code",
+      "antigravity",
+      "claude",
+    ]);
   });
 
   it("refuses an assignment request that carries no mod credential", async () => {
@@ -313,6 +354,7 @@ describe("delegation assignment", () => {
   it("spreads a fan across providers instead of piling onto one, and steps over a spent allowance", async () => {
     // 고정 목록의 머리만 집으면 같은 등급의 팬아웃이 전원 한 모델로 간다. 공급자별 부하를
     // 세는 것이 그 몰림을 막는 유일한 상태이므로, 그 상태가 실제로 돌아가는지 본다.
+    const now = Date.now();
     const providerLoad = new Map<string, number>();
     const spread = {
       delegationRoutingEnabled: true,
@@ -320,10 +362,10 @@ describe("delegation assignment", () => {
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
-      // xai는 소진 직전이다. 읽을 수 있는 대안이 있는 한 그쪽으로 보내지 않는다.
+      // xai는 소진 직전이다. critical은 후보에서 제외된다.
       quota: {
-        codex: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
-        xai: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 99, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
+        codex: { status: "ok", fetchedAt: now, windows: [{ id: "cycle", usedPercent: 4, resetsAt: now + 1_296_000_000, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: now - 1_296_000_000 } }] },
+        xai: { status: "ok", fetchedAt: now, windows: [{ id: "cycle", usedPercent: 99, resetsAt: now + 1_296_000_000, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: now - 1_296_000_000 } }] },
       },
       providerLoad,
     } satisfies GatewayAssignmentExposure;
@@ -339,6 +381,7 @@ describe("delegation assignment", () => {
   });
 
   it("alternates between providers whose allowances read the same", async () => {
+    const now = Date.now();
     const providerLoad = new Map<string, number>();
     const even = {
       delegationRoutingEnabled: true,
@@ -347,8 +390,8 @@ describe("delegation assignment", () => {
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       quota: {
-        codex: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
-        xai: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
+        codex: { status: "ok", fetchedAt: now, windows: [{ id: "cycle", usedPercent: 4, resetsAt: now + 1_296_000_000, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: now - 1_296_000_000 } }] },
+        xai: { status: "ok", fetchedAt: now, windows: [{ id: "cycle", usedPercent: 4, resetsAt: now + 1_296_000_000, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: now - 1_296_000_000 } }] },
       },
       providerLoad,
     } satisfies GatewayAssignmentExposure;
@@ -520,261 +563,47 @@ describe("delegation assignment", () => {
     expect(decision.label).toBe("session model");
   });
 
-  it("shares normalized routing evidence with Jev and AI models and preserves fallback lifecycle", async () => {
-    const providerLoad = new Map<string, number>();
-    const jevExposure = {
-      delegationRoutingEnabled: true,
-      delegationRoutingMode: "jev",
-      delegationModels: [
-        requireGatewayModel("codex--gpt-6.1-terra"),
-        requireGatewayModel("xai--grok-composer-2.5-fast"),
-      ],
-      providerLoad,
-      providerPriority: ["codex", "xai"],
-    } satisfies GatewayAssignmentExposure;
-    const request = {
-      surface: "agent" as const,
-      description: "map surfaces",
-      prompt: "map the delegation surfaces",
-      subagentType: "general-purpose",
-      providerPlugin: "engine",
-    };
-
-    let jevState: unknown;
-    let jevInstructions: unknown;
-    let jevCriteria: unknown;
-    let xaiChoice = "";
-    const picking = new SystemOneClient({
-      readApiKey: async () => "tsv_test",
-      maxAttempts: 1,
-      timeoutMs: 2_000,
-      fetch: async (_url, init) => {
-        const body = JSON.parse(String(init?.body));
-        expect(body.state).not.toHaveProperty("tier");
-        expect(body.state.prompt).toBe(request.prompt);
-        jevState = body.state;
-        jevInstructions = body.questions.seat.instructions;
-        jevCriteria = body.questions.seat.criteria;
-        xaiChoice = Object.keys(jevCriteria as Record<string, string>).find((key) => (jevCriteria as Record<string, string>)[key]!.includes("--xai--"))!;
-        expect(body.state.gateway_models.models[0]).toMatchObject({ preferenceRank: 1, quotaPool: "codex:shared" });
-        expect(body.state.gateway_models.quotaPools["xai:shared"]).toEqual({ observation: "unknown" });
-        expect(body.state).not.toHaveProperty("candidates");
-        // 좌석은 모델만 고르고, 강도는 xhigh를 상한으로 하는 난이도 질문이 정한다.
-        expect(Object.keys(body.questions.difficulty.criteria)).toEqual(["low", "medium", "high", "xhigh"]);
-        expect(Object.values(jevCriteria as Record<string, string>).some((value) => value.includes("effort"))).toBe(false);
-        return new Response(JSON.stringify({
-        model: "jev-latest",
-        answers: {
-          difficulty: { type: "choice", choice: "high" },
-          seat: {
-            type: "choice",
-            choice: xaiChoice,
-            confidence: 0.91,
-          },
-        },
-        usage: { input_tokens: 1, output_tokens: 1 },
-      }), { status: 200 });
-      },
-    });
-    const picked = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, { client: picking });
-    expect(picked.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
-    expect(picked.because).toContain("· jev");
-    expect(providerLoad.get("xai")).toBe(1);
-    expect(providerLoad.get("codex")).toBeUndefined();
-
-    const aiPicked = await decideGatewayRoutingAssignmentWithJev(request, {
-      ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
-    }, { choose: async ({ state, criteria, instructions }) => {
-      expect(state).toEqual(jevState);
-      expect(instructions).toEqual(jevInstructions);
-      expect(criteria).toEqual(jevCriteria);
-      expect(criteria[xaiChoice]).toContain("claude-gateway--xai--grok-composer-2.5-fast");
-      return { seat: xaiChoice };
-    } });
-    expect(aiPicked.model).toBe(picked.model);
-    expect(aiPicked.because).toContain("AI model");
-
-    // 난이도는 고른 모델의 사다리 위에서 강도가 된다. 난이도가 없으면 등급 강도(work → medium)로 물러선다.
-    const rated = await decideGatewayRoutingAssignmentWithJev(request, {
-      ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
-    }, { choose: async ({ criteria }) => ({
-      seat: Object.keys(criteria).find((key) => criteria[key]!.includes("--codex--"))!, difficulty: "high",
-    }) });
-    expect(rated).toMatchObject({ model: "claude-gateway--codex--gpt-6.1-terra", effort: "high" });
-    expect(rated.because).toContain("difficulty high");
-    const unrated = await decideGatewayRoutingAssignmentWithJev(request, {
-      ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
-    }, { choose: async ({ criteria }) => ({
-      seat: Object.keys(criteria).find((key) => criteria[key]!.includes("--codex--"))!, difficulty: "max",
-    }) });
-    expect(unrated.effort).toBe("medium");
-
-    const unsigned = new SystemOneClient({
-      readApiKey: async () => undefined,
-      maxAttempts: 1,
-      timeoutMs: 2_000,
-      fetch: async () => {
-        throw new Error("TypeSafe must not be called while signed out");
-      },
-    });
-    const fallback = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, { client: unsigned });
-    expect(fallback.model).toBe("claude-gateway--codex--gpt-6.1-terra");
-    expect(fallback.because).toContain("fallback: routing decision failed: not signed in");
-    expect(providerLoad.get("codex")).toBe(1);
-    expect(providerLoad.get("xai")).toBe(1);
-
-    // await 중 host-only로 바뀌면 옛 후보로 결정론 확정하지 않는다.
-    const refreshed = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, {
-      client: unsigned,
-      refreshExposure: () => ({
-        delegationRoutingEnabled: true,
-        delegationRoutingMode: "jev",
-        delegationModels: [requireGatewayModel("xai--grok-composer-2.5-fast")],
-        providerLoad,
-      }),
-    });
-    expect(refreshed.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
-    expect(refreshed.because).toContain("fallback: routing decision failed: not signed in");
-    expect(refreshed.because).not.toContain("· jev");
-    expect(providerLoad.get("xai")).toBe(2);
-
-    // 유효한 후보 선택은 부가 확률이 없거나 서로 맞지 않아도 수락한다.
-    for (const metadata of [{}, { confidence: 2, probabilities: { c0: 0.9, c1: 0.2 } }]) {
-      const chosen = await decideGatewayRoutingAssignmentWithJev(request, {
-        ...jevExposure, providerLoad: new Map(),
-      }, {
-        client: new SystemOneClient({
-          readApiKey: async () => "tsv_test", maxAttempts: 1,
-          fetch: async () => new Response(JSON.stringify({
-            answers: { difficulty: { type: "choice", choice: "low" }, seat: { type: "choice", choice: xaiChoice, ...metadata } },
-          })),
-        }),
-      });
-      expect(chosen.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
-      expect(chosen.because).toContain("· jev");
-      expect(chosen.because).not.toContain("fallback");
-    }
-    // 확률 검증 제거가 후보 경계를 넓히지는 않는다.
-    const invalid = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, {
-      client: new SystemOneClient({
-        readApiKey: async () => "tsv_test", maxAttempts: 1,
-        fetch: async () => new Response(JSON.stringify({
-          answers: { difficulty: { type: "choice", choice: "low" }, seat: { type: "choice", choice: "not-offered" } },
-        })),
-      }),
-    });
-    expect(invalid.because).toContain("fallback: routing decision failed: invalid choice");
-
-    // 좌석이 하나면 Jev를 부르지 않으므로 원장도 그렇게 말한다.
-    const sole = await decideGatewayRoutingAssignmentWithJev(request, {
-      delegationRoutingEnabled: true,
-      delegationRoutingMode: "jev",
-      delegationModels: [requireGatewayModel("xai--grok-composer-2.5-fast")],
-      providerLoad: new Map(),
-    }, {
-      client: new SystemOneClient({
-        readApiKey: async () => "tsv_test",
-        fetch: async () => {
-          throw new Error("Jev must not run for a sole candidate");
-        },
-      }),
-    });
-    expect(sole.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
-    expect(sole.because).toContain("· sole candidate");
-    expect(sole.because).not.toContain("· jev");
-
-    const abort = new AbortController();
-    abort.abort();
-    const cancelled = new SystemOneClient({
-      readApiKey: async () => "tsv_test",
-      maxAttempts: 1,
-      timeoutMs: 2_000,
-      fetch: async () => {
-        throw new Error("fetch must not run after caller abort");
-      },
-    });
-    await expect(decideGatewayRoutingAssignmentWithJev(request, jevExposure, {
-      client: cancelled,
-      signal: abort.signal,
-    })).rejects.toMatchObject({ name: "AbortError" });
-    // unsigned + invalid-choice 두 결정론 fallback이 codex를 올렸다.
-    expect(providerLoad.get("codex")).toBe(2);
-    expect(providerLoad.get("xai")).toBe(2);
-  });
-
-  it("keeps simultaneous quota bottlenecks and uncertain observations in routing evidence", async () => {
+  it("keeps simultaneous quota bottlenecks and uncertain observations in routing evidence", () => {
     const now = Date.now();
     const hour = 3_600_000;
     const window = (id: string, usedPercent: number, durationHours: number, remainingHours: number) => ({
       id, usedPercent, resetsAt: now + remainingHours * hour,
       period: { durationMs: durationHours * hour, durationBasis: "upstream" },
     });
-    const windows = [window("session", 60, 5, 1), window("week", 70, 168, 100.8)];
-    const run = async (quota: GatewayAssignmentExposure["quota"]) => {
-      let data: any;
-      const decision = await decideGatewayRoutingAssignmentWithJev({ surface: "agent", prompt: "review authentication" }, {
-        delegationRoutingEnabled: true, delegationRoutingMode: "model", quota,
-        delegationModels: [requireGatewayModel("codex--gpt-6.1-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
-      }, { choose: async ({ state }) => { data = (state as Record<string, unknown>).gateway_models; return { seat: "c0" }; } });
-      expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra");
-      return data;
-    };
+    // session: 60% used, 80% elapsed (paceRatio 0.75, remaining 40%, headroom 2.0)
+    // week: 70% used, 60% elapsed (remainingHours = 67.2, paceRatio 1.17 -> elevated, remaining 30%, headroom 0.75)
+    const windows = [window("session", 60, 5, 1), window("week", 70, 168, 67.2)];
+    const run = (quota: GatewayAssignmentExposure["quota"]) => buildGatewayLoadout({
+      delegationRoutingEnabled: true,
+      quota,
+      delegationModels: [requireGatewayModel("codex--gpt-6.1-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+    }, now);
     const quota = { status: "ok", fetchedAt: now, windows };
-    const data = await run({ codex: quota });
+    const data = run({ codex: quota });
     expect(Object.keys(data.quotaPools)).toEqual(["codex:shared", "xai:shared"]);
     expect(data.quotaPools["codex:shared"]).toMatchObject({
-      observation: "fresh", remainingPercent: 30, sustainableHeadroom: 0.5,
+      observation: "fresh", remainingPercent: 30, sustainableHeadroom: 0.75,
       recovery: { remainingPercent: 100 },
     });
-    expect(data.quotaPools["codex:shared"].recovery.inSeconds).toBeGreaterThan(100 * 3600);
-    expect(data.quotaPools["codex:shared"].recovery.inSeconds).toBeLessThanOrEqual(100.8 * 3600);
+    expect(data.quotaPools["codex:shared"]!.recovery!.inSeconds).toBeGreaterThan(67 * 3600);
+    expect(data.quotaPools["codex:shared"]!.recovery!.inSeconds).toBeLessThanOrEqual(67.2 * 3600);
     expect(data.quotaPools["codex:shared"]).not.toHaveProperty("windows");
 
-    const expired = (await run({ codex: { ...quota, windows: [window("expired", 100, 5, -0.01)] } })).quotaPools["codex:shared"];
+    const expired = run({ codex: { ...quota, windows: [window("expired", 100, 5, -0.01)] } }).quotaPools["codex:shared"]!;
     expect(expired.observation).toBe("stale");
     expect(expired).not.toHaveProperty("remainingPercent");
-    const retained = (await run({ codex: { ...quota, status: "stale", fetchedAt: now - 4 * 60_000 } })).quotaPools["codex:shared"];
+    const retained = run({ codex: { ...quota, status: "stale", fetchedAt: now - 4 * 60_000 } }).quotaPools["codex:shared"]!;
     expect(retained).toMatchObject({ observation: "stale", remainingPercent: 30 });
-    const partial = (await run({ codex: { ...quota, windows: [{ id: "session", usedPercent: 100 }] } })).quotaPools["codex:shared"];
-    expect(partial).toMatchObject({ observation: "partial", remainingPercent: 0 });
+    const partial = run({ codex: { ...quota, windows: [{ id: "session", usedPercent: 70 }] } }).quotaPools["codex:shared"]!;
+    expect(partial).toMatchObject({ observation: "partial", remainingPercent: 30 });
     expect(partial).not.toHaveProperty("sustainableHeadroom");
-    const invalid = (await run({ codex: { ...quota, windows: [{ id: "session", usedPercent: NaN }] } })).quotaPools["codex:shared"];
+    const invalid = run({ codex: { ...quota, windows: [{ id: "session", usedPercent: NaN }] } }).quotaPools["codex:shared"]!;
     expect(invalid).not.toHaveProperty("remainingPercent");
-    const exhausted = (await run({ codex: { ...quota, windows: [window("week", 105, 168, 1)] } })).quotaPools["codex:shared"];
-    expect(exhausted).toMatchObject({ remainingPercent: 0, sustainableHeadroom: 0 });
-    const future = (await run({ codex: { ...quota, fetchedAt: now + hour } })).quotaPools["codex:shared"];
+    const future = run({ codex: { ...quota, fetchedAt: now + hour } }).quotaPools["codex:shared"]!;
     expect(future).toEqual({ observation: "unknown" });
   });
 
-  it("falls back for a stage that carries no work text instead of guessing quietly", async () => {
-    const providerLoad = new Map<string, number>();
-    const decision = await decideGatewayRoutingAssignmentWithJev(
-      { surface: "stage", requestedModel: "claude-gateway--xai--grok-composer-2.5-fast" },
-      {
-        delegationRoutingEnabled: true,
-        delegationRoutingMode: "jev",
-        delegationModels: [
-          requireGatewayModel("codex--gpt-6.1-terra"),
-          requireGatewayModel("xai--grok-composer-2.5-fast"),
-        ],
-        providerLoad,
-      },
-      {
-        client: new SystemOneClient({
-          readApiKey: async () => "tsv_test",
-          fetch: async () => {
-            throw new SystemOneError("Jev must not be called without stage work text", undefined);
-          },
-        }),
-      },
-    );
-
-    expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra");
-    expect(decision.because).toContain("fallback: Workflow stage");
-    expect(providerLoad.get("codex")).toBe(1);
-  });
-
-  it("puts quota ahead of the spend order: a critical provider yields unless every one is critical", () => {
+  it("excludes critical providers without falling back to critical or hidden providers when empty", () => {
     const reachable = [
       {
         model: "claude-gateway--codex--gpt-6.1-terra",
@@ -802,65 +631,34 @@ describe("delegation assignment", () => {
       },
     };
 
-    // 쿼터가 1순위다. 소진 순서의 머리라도 critical인 codex는 건너뛴다.
+    // critical인 codex는 제외되고 xai가 선택된다.
     const seat = pickSeat(reachable, exposure);
-    expect(seat.model.provider).toBe("xai");
-    expect(seat.suffix).toBe(" · spend order");
+    expect(seat?.model.provider).toBe("xai");
 
-    // 전부 critical이면 위임을 죽이지 않고 소진 순서대로 간다.
-    const allCritical = pickSeat(reachable, {
+    // 전부 critical이면 critical로 폴백하지 않고 배정하지 않는다.
+    const allCriticalExposure: GatewayAssignmentExposure = {
       ...exposure,
       quota: { ...exposure.quota, xai: { status: "ok", windows: [{ id: "monthly", usedPercent: 100 }] } },
-    });
-    expect(allCritical.model.provider).toBe("codex");
-    expect(allCritical.suffix).toBe(" · spend order · every allowance is critical");
-  });
+    };
+    expect(pickSeat(reachable, allCriticalExposure)).toBeUndefined();
+    const unassignedCritical = decideGatewayRoutingAssignment({ surface: "agent" }, allCriticalExposure);
+    expect(unassignedCritical.model).toBeUndefined();
+    expect(unassignedCritical.because).toContain("critical");
 
-  it("spreads provider load across concurrent Jev assignments resolving at the same barrier", async () => {
-    const providerLoad = new Map<string, number>();
-    const jevExposure = {
-      delegationRoutingEnabled: true,
-      delegationRoutingMode: "jev",
+    // 전부 숨긴 공급자(not_connected / signed_out)여도 숨긴 공급자로 폴백하지 않는다.
+    const allHiddenExposure: GatewayAssignmentExposure = {
       delegationModels: [
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
-      providerLoad,
-    } satisfies GatewayAssignmentExposure;
-
-    let releaseBarrier!: () => void;
-    const barrier = new Promise<void>((resolve) => {
-      releaseBarrier = resolve;
-    });
-
-    let inFlight = 0;
-    const barrierClient = new SystemOneClient({
-      readApiKey: async () => "tsv_test",
-      maxAttempts: 1,
-      timeoutMs: 5_000,
-      fetch: async () => {
-        inFlight++;
-        await barrier;
-        throw new Error("simulated barrier fallback");
+      quota: {
+        codex: { status: "not_connected" },
+        xai: { status: "signed_out" },
       },
-    });
-
-    const req1 = { surface: "agent" as const, prompt: "task 1", description: "work 1" };
-    const req2 = { surface: "agent" as const, prompt: "task 2", description: "work 2" };
-
-    const p1 = decideGatewayRoutingAssignmentWithJev(req1, jevExposure, { client: barrierClient });
-    const p2 = decideGatewayRoutingAssignmentWithJev(req2, jevExposure, { client: barrierClient });
-
-    while (inFlight < 2) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
-    }
-
-    releaseBarrier();
-
-    const [d1, d2] = await Promise.all([p1, p2]);
-    expect(d1.model).not.toBe(d2.model);
-    expect(providerLoad.get("codex")).toBe(1);
-    expect(providerLoad.get("xai")).toBe(1);
+    };
+    expect(evaluateGatewayCandidateModels(allHiddenExposure)).toEqual([]);
+    const unassignedHidden = decideGatewayRoutingAssignment({ surface: "agent" }, allHiddenExposure);
+    expect(unassignedHidden.model).toBeUndefined();
   });
 
   it("completes a normal POST assign request without premature abort during delayed Jev", async () => {

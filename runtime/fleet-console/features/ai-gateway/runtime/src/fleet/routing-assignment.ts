@@ -1,17 +1,15 @@
-/** 위임 요청 계약과 실행 소유권 가드. 모델 판단은 routing-decision이 담당한다. */
+/** 위임 요청 계약과 실행 소유권 가드. 모델 배정은 코드 규칙이 담당한다. */
 import { isProviderCatalogVisible } from "../model-family.js";
 import { toRoutingLabel } from "./routing-table.js";
 import { FLEET_EXECUTION_AGENT_TYPE } from "@fleet-console/agent-runtime/fleet";
 import type { GatewayModel, GatewayEffortExposure, GatewayProvider, GatewayReasoningEffort } from "../models.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type { GatewayQuotaSnapshot } from "./quota-snapshot.js";
+import { evaluateGatewayCandidateModels } from "./routing-allowance.js";
+
 export type GatewayAssignmentSurface = "agent" | "stage";
 export interface GatewayAssignmentRequest {
   readonly surface: GatewayAssignmentSurface;
-  /**
-   * 호스트가 이 위임에 발행한 원문. 판단 모델에 전달한다.
-   * 훅이 상한을 넘겨 보내지 않으며, 여기서도 저장하지 않는다.
-   */
   readonly prompt?: string;
   /** Agent 도구가 붙인 짧은 설명. 원장이 그대로 쓴다. */
   readonly description?: string;
@@ -47,10 +45,9 @@ export interface GatewayAssignmentDecision {
   readonly because: string;
 }
 
-
 export type GatewayDelegationRoutingMode = "jev" | "model";
 export interface GatewayAssignmentExposure {
-  readonly delegationRoutingEnabled: boolean;
+  readonly delegationRoutingEnabled?: boolean;
   readonly delegationRoutingMode?: GatewayDelegationRoutingMode;
   readonly delegationModels: readonly GatewayModel[];
   readonly effortExposure?: GatewayEffortExposure;
@@ -68,17 +65,26 @@ export interface GatewayRoutingCandidate {
 export function unassigned(because: string): GatewayAssignmentDecision {
   return { label: "session model", because };
 }
-/**
- * 위임 후보. 켠 모델 가운데 메뉴·라우터와 같은 로그인 술어를 통과한 것이다.
- * 상태 미상은 후보로 남는다. 동의만 꺼진 Claude도 남고, `not_connected`인 다른 공급자는 빠진다.
- */
-export function delegationCandidateModels(exposure: Pick<GatewayAssignmentExposure, "delegationModels" | "quota">): readonly GatewayModel[] {
+
+/** 로그인 술어를 통과한 노출 모델. `critical` 제외 전의 가시 집합이다. */
+export function visibleDelegationModels(exposure: Pick<GatewayAssignmentExposure, "delegationModels" | "quota">): readonly GatewayModel[] {
   return exposure.delegationModels.filter((model) =>
     isProviderCatalogVisible(exposure.quota?.[model.provider]?.status, model.provider));
 }
 
-export function isDelegableGatewayModel(id: string, exposure: GatewayAssignmentExposure): boolean {
-  return delegationCandidateModels(exposure).some(model => toClaudeGatewayModelId(model) === id);
+/**
+ * 위임 후보. 켠 모델 가운데 로그인 술어를 통과하고 `critical`이 아닌 모델을 여유 순(`unknown`은 끝 무순위)으로 돌려준다.
+ * 후보가 비어도 숨긴 공급자나 `critical` 모델로 폴백하지 않는다.
+ */
+export function delegationCandidateModels(
+  exposure: Pick<GatewayAssignmentExposure, "delegationModels" | "quota">,
+  now = Date.now(),
+): readonly GatewayModel[] {
+  return evaluateGatewayCandidateModels(exposure, now).map((entry) => entry.model);
+}
+
+export function isDelegableGatewayModel(id: string, exposure: GatewayAssignmentExposure, now = Date.now()): boolean {
+  return delegationCandidateModels(exposure, now).some(model => toClaudeGatewayModelId(model) === id);
 }
 export function guardGatewayRoutingAssignment(request: GatewayAssignmentRequest, exposure: GatewayAssignmentExposure): GatewayAssignmentDecision | undefined {
   if (request.fork) return unassigned("a fork inherits the parent's context and model");

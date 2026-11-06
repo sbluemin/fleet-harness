@@ -7,7 +7,6 @@ import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import path from "node:path";
 import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
-import { chooseRoutingModel, chooseRoutingModels } from "./routing-model.js";
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
   DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
@@ -24,8 +23,6 @@ import {
   decideGatewayRoutingAssignment,
   decideGatewayRoutingBatch,
   buildGatewayLoadout,
-  JEV_ROUTING_TIMEOUT_MS,
-  JEV_ROUTING_BATCH_TIMEOUT_MS,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
   createAiGatewaySettingsStore,
@@ -34,8 +31,6 @@ import {
   DEFAULT_ROSTER_SEED_MODEL_IDS,
   setWireLogTarget,
   wireLogEnabled,
-  SystemOneClient,
-  TYPESAFE_AUTH_PROVIDER_ID,
   type AiGatewayStoredSettings,
   type GatewayAssignmentExposure,
   type ProviderStatusMap,
@@ -199,18 +194,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
       distribution,
     };
   }
-  // 배정 경로 전용. 기본 30s·3재시도를 그대로 쓰면 spawn이 멈춘다.
-  const jevClient = new SystemOneClient({
-    readApiKey: () => authService.getApiKey(TYPESAFE_AUTH_PROVIDER_ID),
-    timeoutMs: JEV_ROUTING_TIMEOUT_MS,
-    maxAttempts: 1,
-  });
-  // 배치 판단은 한 건 배정보다 길다. 클라이언트를 나누어 짧은 예산이 배치를 끊지 않게 한다.
-  const jevBatchClient = new SystemOneClient({
-    readApiKey: () => authService.getApiKey(TYPESAFE_AUTH_PROVIDER_ID),
-    timeoutMs: JEV_ROUTING_BATCH_TIMEOUT_MS,
-    maxAttempts: 1,
-  });
   const readProviderStatuses = (): ProviderStatusMap | undefined => {
     const summary = quota.peekSummary();
     if (!summary) return undefined;
@@ -227,18 +210,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       void quota.getSummary().catch(() => undefined);
       const parsed = parseGatewayAssignmentRequest(request);
       const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad), distribution: new GatewayRoutingDistribution() } : currentExposure();
-      return await decideGatewayRoutingAssignment(parsed, exposure, {
-        ...(exposure.delegationRoutingMode === "model" ? {
-          choose: (input, signal) => chooseRoutingModel({
-            ...input, signal,
-            settings: aiGatewayStore.read(),
-            baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
-            directory: path.join(ctx.dataDir, "routing-model"),
-            spawnProcess: ctx.spawnAgentProcess,
-            readProviderStatuses,
-          }),
-        } : { client: jevClient }),
-        forceDecision: test,
+      return decideGatewayRoutingAssignment(parsed, exposure, {
         refreshExposure: () => test ? { ...currentExposure(), providerLoad: exposure.providerLoad, distribution: exposure.distribution } : currentExposure(),
         ...(signal === undefined ? {} : { signal }),
       });
@@ -267,7 +239,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       const decision = await assign({ surface: "agent", prompt: body.prompt, providerPlugin: "engine" }, controller.signal, true);
       if (!res.destroyed) ctx.host.http.writeJson(res, 200, {
         mode: selection.delegationRoutingMode, elapsedMs: Date.now() - started,
-        ...decision, fallback: decision.because.includes("fallback"),
+        ...decision, fallback: decision.model === undefined,
       });
     } catch {
       if (!res.destroyed) ctx.host.http.writeJson(res, 502, { error: "routing_test_failed" });
@@ -298,17 +270,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     const abort = () => { if (!res.writableEnded) controller.abort(); };
     res.once("close", abort);
     try {
-      const decisions = await decideGatewayRoutingBatch(items, selection, {
-        ...(selection.delegationRoutingMode === "model" ? {
-          choose: (input, signal) => chooseRoutingModels({
-            ...input, signal,
-            settings: aiGatewayStore.read(),
-            baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
-            directory: path.join(ctx.dataDir, "routing-model"),
-            spawnProcess: ctx.spawnAgentProcess,
-            readProviderStatuses,
-          }),
-        } : { client: jevBatchClient }),
+      const decisions = decideGatewayRoutingBatch(items, selection, {
         refreshExposure: () => currentExposure(),
         signal: controller.signal,
       });
@@ -319,7 +281,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
         });
       }
     } catch (error) {
-      // 호출자가 끊기면 본문 없이 끝낸다. 판단 실패는 항목별 fallback으로 이미 돌아온다.
+      // 호출자가 끊기면 본문 없이 끝낸다.
       if (res.destroyed || controller.signal.aborted) return true;
       throw error;
     } finally { res.off("close", abort); }
