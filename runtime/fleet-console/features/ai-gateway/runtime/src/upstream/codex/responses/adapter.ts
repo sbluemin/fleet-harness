@@ -403,7 +403,7 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         }
         return retried.events;
       }, callController, unlinkCallAbort, retryAvailable,
-      (activeRequest.tools ?? []).some((tool) => strictCompatible(readablePatternParameters(tool.parameters)))),
+      (forChatGptBackend(activeRequest).tools ?? []).some((tool) => strictCompatible(readablePatternParameters(tool.parameters)))),
     };
   }
 }

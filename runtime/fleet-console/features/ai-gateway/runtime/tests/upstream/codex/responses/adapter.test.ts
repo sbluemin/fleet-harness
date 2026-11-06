@@ -309,7 +309,7 @@ describe("codex responses adapter", () => {
       },
     })}\n\n`;
     const tools = [{ type: "function" as const, name: "read", parameters: { type: "object", properties: {} } }];
-    for (const scenario of ["inference", "committed", "no-tools", "spent-budget", "fallback-fails"] as const) {
+    for (const scenario of ["inference", "committed", "no-tools", "tools-disabled", "suggestion", "spent-budget", "fallback-fails"] as const) {
       const fetchMock = vi.fn<typeof fetch>(async () => sse(
         ...(scenario === "committed" ? ['data: {"type":"response.output_text.delta","item_id":"m","output_index":0,"content_index":0,"delta":"partial"}\n\n'] : []),
         terminal(scenario === "inference" ? 12 : 0),
@@ -319,6 +319,11 @@ describe("codex responses adapter", () => {
       });
       const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
         ...(scenario === "no-tools" ? {} : { tools }),
+        ...(scenario === "tools-disabled" ? { tool_choice: "none" as const } : {}),
+        ...(scenario === "suggestion" ? { input: [{
+          type: "message" as const, role: "user" as const,
+          content: "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]\nReply with ONLY the suggestion.",
+        }] } : {}),
       }), { apiKey: "k" });
       if (!response.ok) throw new Error("expected success");
       const events = [];
@@ -326,6 +331,9 @@ describe("codex responses adapter", () => {
       expect(fetchMock).toHaveBeenCalledTimes(
         scenario === "spent-budget" || scenario === "fallback-fails" ? 2 : 1,
       );
+      if (scenario === "tools-disabled" || scenario === "suggestion") {
+        expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).not.toHaveProperty("tools");
+      }
       expect(events.at(-1)).toMatchObject({ type: "response.completed", response: { incomplete: { reason: "max_output_tokens" } } });
     }
   });
