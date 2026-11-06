@@ -514,6 +514,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           ...({ launchedBy: { kind: "feature", featureId: "objectives" }, dormantBorn: true, restoredDormant: true,
             chatMode: true, chatBorn: true,
             session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
+              ...(config.disableAutoMemory !== undefined ? { disableAutoMemory: config.disableAutoMemory } : {}),
               ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}) } }) });
         if (created.id !== id) throw new ObjectiveStoreError("objectiveRecord_id_taken");
       } catch (error) { asStoreError(error); }

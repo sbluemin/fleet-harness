@@ -1127,7 +1127,8 @@ describe("Objectives contract", () => {
   });
 
   it("keeps merge sources in the receiving record and archives all objectives restorably through Console Use until public purge", async () => {
-    const { ctx, store, launch, add, workspace, consoleTool, consoleDetail, objectiveRecords, archivedObjectiveRecords, route, savedIds, launches, objectiveFile } = harness();
+    let autoMemoryEnabled = true;
+    const { ctx, store, launch, add, workspace, consoleTool, consoleDetail, objectiveRecords, archivedObjectiveRecords, route, savedIds, launches, objectiveFile } = harness(() => null, { commodoreAutoMemoryEnabled: () => autoMemoryEnabled });
     const caller = add("tidy-caller", { title: "Tidy caller" });
     const use = async (args: Record<string, unknown>, tool = consoleTool) => (await tool.execute(args, { cwd: workspace, caller: { kind: "objectiveRecord" as const, objectiveId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
     const waiting = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
@@ -1208,15 +1209,23 @@ describe("Objectives contract", () => {
     const launchedBefore = launches.length;
     expect((await route("objective/complete", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, hasSession: false, done: expect.any(Object) });
     expect(launches).toHaveLength(launchedBefore);
+    expect(store.pending(pendingCompletion.id)?.disableAutoMemory).toBe(false);
     expect((await route("objective/archive", { objectiveId: pendingCompletion.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, done: expect.any(Object) } });
+    expect(archivedObjectiveRecords.get(pendingCompletion.id)?.session).toMatchObject({ disableAutoMemory: false });
     expect(launches).toHaveLength(launchedBefore);
     // 보관 복원은 도메인 경로로 확인한다 — HTTP 라우트는 제거됐다.
     expect(await launch.restore(pendingCompletion.id)).toMatchObject({ archived: false, done: expect.any(Object) });
+    expect(objectiveRecords.get(pendingCompletion.id)?.session).toMatchObject({ disableAutoMemory: false });
     // 사람이 「보관」을 고른 기동 전 목표(restorable)는 지우지 않는다 — 무기동 지휘관 Objective 으로 보관되고, 복원하면 기록과 함께 돌아온다.
+    autoMemoryEnabled = false;
     const shelved = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Shelve before starting", groupId: null, note: "keep the brief" });
+    autoMemoryEnabled = true;
+    expect(store.pending(shelved.id)?.disableAutoMemory).toBe(true);
     expect((await route("objective/archive", { objectiveId: shelved.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, note: "keep the brief" } });
+    expect(archivedObjectiveRecords.get(shelved.id)?.session).toMatchObject({ disableAutoMemory: true });
     expect(launches).toHaveLength(launchedBefore);
     expect(await launch.restore(shelved.id)).toMatchObject({ archived: false, hasSession: true, note: "keep the brief" });
+    expect(objectiveRecords.get(shelved.id)?.session).toMatchObject({ disableAutoMemory: true });
     // 플래그가 없어도 보관만 한다. 영구 삭제는 이 라우트에서 할 수 없다.
     const discarded = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Archive before starting", groupId: null });
     expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: false });
