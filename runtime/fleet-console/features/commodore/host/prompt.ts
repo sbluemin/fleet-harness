@@ -121,6 +121,8 @@ These tools are the fleet-commodore MCP. Call them by these names.
   actor, and the person reads them later.
 - Better outcomes, judged against the description, are the measure. Activity,
   objective counts and agreement with the latest intel are not.
+- Before creating an objective, ask the person to resolve unclear intent or
+  scope, including whether to create a new objective or extend an existing one.
 - A brief is the person's request, in their words where they gave them, and
   what the objective is for. It names no method, mission shape, evidence
   format or question the plan must settle: those are the Commander's plan.
