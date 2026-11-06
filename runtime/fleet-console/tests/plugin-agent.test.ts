@@ -52,7 +52,7 @@ describe("Console-owned plugin Agent", () => {
     expect(JSON.stringify(events)).not.toContain(root);
     expect(JSON.stringify(events)).not.toContain("private-child");
 
-    // Gateway 모델(272k)은 요청 지점(204k)에 예약 33k를 더한 창을 광고 id 키에 싣는다. 토큰은 다시 스케일하지 않는다.
+    // Gateway 모델(500k)은 요청 지점(204k)이 Auto보다 이르므로 그 지점에 예약 33k를 더한 창을 싣는다. 토큰은 다시 스케일하지 않는다.
     const gatewayEvents: AgentEvent[] = [];
     let gatewayTurn: ClaudeGatewayTurn | undefined;
     const gatewayEngine = sdk(async (turn) => { gatewayTurn = turn; return run([
@@ -68,7 +68,7 @@ describe("Console-owned plugin Agent", () => {
     expect(gatewayTurn).toMatchObject({ tools: ["Read"], allowedTools: ["Read"], permissionMode: "dontAsk" });
     expect(gatewayWindow).toBe(237_000);
     expect(gatewayEvents).toContainEqual({ kind: "compacted", trigger: "auto", preTokens: 167_100, postTokens: 3_000 });
-    expect(gatewayEvents).toContainEqual(expect.objectContaining({ kind: "result", usage: { inputTokens: 100_000, outputTokens: 5, contextTokens: 3_000, context: { window: 272_000, compactAt: 204_000 } } }));
+    expect(gatewayEvents).toContainEqual(expect.objectContaining({ kind: "result", usage: { inputTokens: 100_000, outputTokens: 5, contextTokens: 3_000, context: { window: 500_000, compactAt: 204_000 } } }));
     await gatewayHost.dispose();
 
     await host.dispose(); await session.dispose();

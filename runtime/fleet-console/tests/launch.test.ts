@@ -248,7 +248,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const settings = JSON.parse(spec.args[spec.args.indexOf("--settings") + 1] ?? "{}") as {
       modelSettings: Record<string, { autoCompactWindow: number }>;
     };
-    expect(settings.modelSettings["claude-gateway--codex--gpt-6.1-sol[1m]"]?.autoCompactWindow).toBe(289_000);
+    expect(settings.modelSettings["claude-gateway--codex--gpt-6.1-sol[1m]"]?.autoCompactWindow).toBe(517_000);
   });
 
   it("accepts the gateway spelling of an enabled model", async () => {
