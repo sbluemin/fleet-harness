@@ -216,21 +216,38 @@
 .commander-tab--card .side-bar-cluster-row-line { flex-wrap: nowrap; white-space: nowrap; }
 .commander-tab--card .side-bar-cluster-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 임무 게이지 단추 — 행 본문 단추 안이 아니라 형제로 서서(단추 안 단추를 피한다) 본문 상태 줄 끝에 겹친다.
-   상태 줄은 단추 폭만큼 오른쪽을 비워 두어 문구가 단추 밑으로 깔리지 않는다. 폭은 게이지 @container 단계와 함께 줄어든다. */
-.commander-tab--card .side-bar-cluster-row.has-progress-button { --row-progress-room: 92px; }
-.commander-tab--card .side-bar-cluster-row.has-progress-button .side-bar-cluster-row-line { grid-column: 1; padding-right: var(--row-progress-room); }
+/* 본문 단추와 별도 상태 줄이 두 행을 공유한다. 상태 줄은 정상 흐름에서 문구·임무 단추를 나란히 두고,
+   문구 자리는 뒤의 본문 단추로 누른다. 임무 단추만 독립된 포인터·키보드 대상으로 남는다. */
+.commander-tab--card .workspace-cluster-row-body {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  min-width: 0;
+}
+.commander-tab--card .workspace-cluster-row-body > .side-bar-cluster-row-main {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: subgrid;
+}
+.commander-tab--card .workspace-cluster-row-body > .side-bar-cluster-row-line {
+  grid-column: 1;
+  grid-row: 2;
+  position: relative;
+  pointer-events: none;
+}
 .side-bar-cluster-row-progress {
   position: relative;
   z-index: 1;
-  grid-column: 2;
-  grid-row: 1;
-  align-self: end;
-  justify-self: end;
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 0 -4px -2px 0;
+  margin: -2px -4px;
+  pointer-events: auto;
   padding: 2px 4px;
   border: 0;
   border-radius: var(--radius-xs);
@@ -243,8 +260,6 @@
 .side-bar-cluster-row-progress:hover { background: var(--wash-hover); }
 .side-bar-cluster-row-progress:hover .side-bar-cluster-row-fraction { color: var(--text-primary); }
 .side-bar-cluster-row-progress:focus-visible { outline: none; box-shadow: var(--focus-face); }
-@container (max-width: 300px) { .commander-tab--card .side-bar-cluster-row.has-progress-button { --row-progress-room: 68px; } }
-@container (max-width: 260px) { .commander-tab--card .side-bar-cluster-row.has-progress-button { --row-progress-room: 34px; } }
 /* 글리프·위임 토글은 같은 칸의 정상 흐름에 둔다. 좁아지면 제목 열이 먼저 줄고 도구 폭은 보존한다.
    시작 전·완료 한 줄 행은 이전 크기와 높이를 그대로 둔다. */
 .commander-tab--card .side-bar-cluster-row:not(.side-bar-cluster-row--settled) { grid-template-columns: 30px minmax(0, 1fr) auto; }
