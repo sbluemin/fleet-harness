@@ -1,5 +1,5 @@
 import { CONTEXT_RESERVED_NAME, CONTEXT_UNSPENT, skillRowsOf } from "./context-breakdown.js";
-import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
+import { claudeGatewayModelPolicy, claudeModelAutoCompactWindows, GATEWAY_MODELS } from "@fleet-console/ai-gateway";
 import { resolveNativeClaudeModelAlias } from "@fleet-console/agent-runtime/fleet";
 import { randomUUID } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
@@ -26,7 +26,6 @@ import {
   CLAUDE_DEFAULT_CONTEXT_WINDOW,
   compactThresholdTokens,
   hasClaudeOneMillionMarker,
-  unprojectClaudeContextInputTokens,
   type CompactCeiling,
 } from "@fleet-console/ai-gateway";
 
@@ -121,17 +120,15 @@ export interface AgentChatSessionSeed {
   readonly modHookToken?: string;
   readonly model: string;
   /**
-   * 이 모델의 **실제** 문맥 창(카탈로그 값). 자식이 재는 창이 아니다 — 자식은 좌표가 둘뿐이라
-   * 500k 모델도 200k라고 답하고, 그 답을 그대로 그리면 화면이 남의 자를 인쇄한다.
+   * 이 모델의 **실제** 문맥 창(카탈로그 값). 자식이 재는 창이 아니다 — 광고는 `[1m]`(1M 좌표)이고
+   * 그 답을 그대로 그리면 500k 모델도 1M으로 보인다.
    *
-   * 부재는 두 가지 뜻이고 둘 다 "손대지 않는다"로 같다: 네이티브 Claude 모델(투영이 애초에 없다)과
-   * 카탈로그에 없는 id(무엇으로 되돌릴지 알 수 없다).
+   * 부재는 카탈로그에 없는 id다. 그때는 자식이 말한 수를 그대로 둔다.
    */
   readonly contextWindow?: number;
   /**
-   * 자동 압축 시점 정책. 게이트웨이가 usage를 투영할 때 쓴 값과 **같아야** 되돌릴 수 있으므로,
-   * 세션이 열릴 때 한 번 고정한다 — 도중에 바뀐 정책으로 이전 정책이 투영한 값을 되돌리면
-   * 그 세션의 남은 수명 내내 어긋난다.
+   * 자동 압축 시점 정책. 자식이 태어날 때의 `modelSettings`와 화면의 압축 지점이 같은 값을 읽는다.
+   * 세션이 열릴 때 한 번 고정한다.
    */
   readonly compactCeiling?: CompactCeiling | null;
   readonly effort?: ClaudeGatewayEffort;
@@ -2345,7 +2342,7 @@ class AgentChatSession {
     const spent = usage.categories.filter((category) =>
       !category.deferred && category.tokens > 0 && !CONTEXT_UNSPENT.has(category.name));
     const reserved = usage.categories.find((category) => category.name === CONTEXT_RESERVED_NAME);
-    const window = this.realWindow(usage.max);
+    const window = this.realWindow();
     const slices = spent.map((category) => ({
       name: category.name,
       tokens: window ? window.unproject(category.tokens) : category.tokens,
@@ -2406,9 +2403,8 @@ class AgentChatSession {
     if (!isRecord(event) || event.type !== "message_delta") return;
     const total = readClaudeOccupiedInputTokens(event.usage);
     if (total === null) return;
-    // 자식 좌표의 총량이므로 스냅숏과 같은 자로 되돌린다.
     const claudeCoordinate = this.claudeCoordinate();
-    const window = this.realWindow(claudeCoordinate);
+    const window = this.realWindow();
     const live = window ? window.unproject(total) : total;
     // 같은 수를 다시 실으면 구독자가 같은 렌더를 한 번 더 한다. 델타는 모델 호출마다 오므로
     // 도구 하나가 아무것도 더하지 않은 호출에서 그런 일이 실제로 생긴다.
@@ -2439,30 +2435,22 @@ class AgentChatSession {
   }
 
   /**
-   * 자식이 보고한 좌표를 이 모델의 실제 창으로 되돌리는 자.
+   * 카탈로그 창과 그 창의 압축 지점. 토큰은 다시 스케일하지 않는다.
    *
-   * `null`은 되돌릴 것이 없다는 뜻이며 세 경우가 여기로 온다: 시드에 카탈로그 창이 없는 세션
-   * (네이티브 Claude 모델·카탈로그 밖 id), 그리고 자식이 자기 두 좌표가 아닌 값을 말한 세션 —
-   * 후자는 역함수가 스스로 항등으로 접는다. 어느 경우든 오늘의 숫자가 그대로 나간다.
+   * `null`은 시드에 카탈로그 창이 없다는 뜻이다. 그때는 자식이 말한 수를 그대로 둔다.
    */
-  private realWindow(claudeCoordinate: number): {
+  private realWindow(): {
     readonly max: number;
     readonly compactAt: number;
     readonly unproject: (tokens: number) => number;
   } | null {
     const max = this.coordinates.contextWindow;
     if (typeof max !== "number" || !Number.isFinite(max) || max <= 0) return null;
-    // 창만 바꿔 싣고 점유는 자식 좌표에 남겨 두는 것이 이 결함의 가장 나쁜 형태다 — 분모는 500k인데
-    // 분자는 200k 자의 값이어서 점유율이 실제의 1/3로 보인다. 되돌릴 수 없는 좌표면 둘 다 놓아둔다.
-    if (claudeCoordinate !== CLAUDE_DEFAULT_CONTEXT_WINDOW
-      && claudeCoordinate !== CLAUDE_COMPAT_CONTEXT_WINDOW) {
-      return null;
-    }
     const ceiling = this.seed.compactCeiling ?? null;
     return {
       max,
       compactAt: compactThresholdTokens(max, ceiling),
-      unproject: (tokens) => unprojectClaudeContextInputTokens(tokens, max, claudeCoordinate, ceiling),
+      unproject: (tokens) => tokens,
     };
   }
 
@@ -2539,6 +2527,7 @@ class AgentChatSession {
             this.push({ kind: "error", code: "chat_cli_unavailable" });
             throw error;
           });
+          const modelAutoCompactWindows = claudeModelAutoCompactWindows(GATEWAY_MODELS, this.seed.compactCeiling ?? null);
           const sdk = await this.createSdk({
       modelPolicy: claudeGatewayModelPolicy,
             ...(executablePath === undefined ? {} : { executablePath }),
@@ -2549,6 +2538,7 @@ class AgentChatSession {
             // 플러그인 트리·스킬 억제·설정 층은 admiral이 확정해 준 그대로 싣는다. 여기서 다시
             // 조립하면 PTY 런치와 갈리고, 그 차이는 화면 어디에도 드러나지 않는다.
             ...claudeSession.sdk.options,
+            ...(Object.keys(modelAutoCompactWindows).length > 0 ? { modelAutoCompactWindows } : {}),
             // 세션을 연 뒤의 변경은 `applySessionSettings`가 진다. 여기는 자식이 태어날 때의 값이다.
             ...(this.coordinates.ultracode ? { ultracode: true } : {}),
             // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가

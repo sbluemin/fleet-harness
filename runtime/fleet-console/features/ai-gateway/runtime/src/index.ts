@@ -2,6 +2,7 @@
 // folders; this file only re-exports the public surface from their new locations.
 export * from "./downstream/wire/anthropic-messages/protocol.js";
 export * from "./downstream/harness/claude-code/context.js";
+export * from "./downstream/harness/claude-code/auto-compact-window.js";
 export * from "./downstream/harness/claude-code/discovery.js";
 export * from "./downstream/wire/anthropic-messages/inbound.js";
 export * from "./upstream/anthropic/native.js";

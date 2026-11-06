@@ -29,7 +29,7 @@ describe("Console-owned plugin Agent", () => {
     ]); });
     const connection = { embeddedServer: { type: "sdk", name: "fleet-console-use", instance: {} }, dispose: vi.fn(async () => undefined) };
     const connect = vi.fn(() => connection as never);
-    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse: { connect }, resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { root = sdkOptions.tempRoot!; executable = sdkOptions.executablePath; autoCompactWindow = sdkOptions.autoCompactWindow; roots.push(root); return engine; } });
+    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse: { connect }, resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { root = sdkOptions.tempRoot!; executable = sdkOptions.executablePath; autoCompactWindow = sdkOptions.modelAutoCompactWindows?.["sonnet[1m]"]; roots.push(root); return engine; } });
     const session = await host.createSession({ ...options, compactAt: 150_000, tools: { consoleUse: { tools: ["console_launcher"], allowControl: true }, builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
     await session.send("one");
     const imageInput = [{ type: "text" as const, text: "two" }, { type: "image" as const, source: { type: "base64" as const, media_type: "image/png" as const, data: "iVBORw0KGgo=" } }];
@@ -44,7 +44,7 @@ describe("Console-owned plugin Agent", () => {
     expect(turns[1]!.cwd).toBe(root);
     // SDK 동봉 바이너리가 아니라 설치된 Claude Code로 뜬다 — 새 모델은 동봉본이 모르는 버전에서 400이 난다.
     expect(executable).toBe("/installed/claude");
-    // 압축 지점은 자식의 자동 압축 창으로 옮겨진다 — Claude Code는 창에서 출력 예약 20k와 여유 13k를 빼고 압축한다.
+    // 세션이 고른 지점(150k)이 카탈로그 Auto보다 이르면 그 지점에 예약 33k를 더한 창이 그 모델 키에 실린다.
     expect(autoCompactWindow).toBe(183_000);
     expect(events).toContainEqual({ kind: "compacted", trigger: "auto", preTokens: 90_010, postTokens: 3_000 });
     expect(events).toContainEqual(expect.objectContaining({ kind: "result", usage: { inputTokens: 94_010, outputTokens: 5, contextTokens: 4_000 } }));
@@ -52,8 +52,7 @@ describe("Console-owned plugin Agent", () => {
     expect(JSON.stringify(events)).not.toContain(root);
     expect(JSON.stringify(events)).not.toContain("private-child");
 
-    // Gateway 모델(272k)은 요청 지점을 Claude 좌표(200k)로 투영해 자식 창에 싣는다 — 204k 요청은 133,875 투영에 33k
-    // 예약을 더한 166,875창이 되고, 보고되는 실제 압축 지점도 요청(204k)이다. 자식이 말한 좌표 토큰은 공급자 토큰으로 되돌린다.
+    // Gateway 모델(272k)은 요청 지점(204k)에 예약 33k를 더한 창을 광고 id 키에 싣는다. 토큰은 다시 스케일하지 않는다.
     const gatewayEvents: AgentEvent[] = [];
     let gatewayTurn: ClaudeGatewayTurn | undefined;
     const gatewayEngine = sdk(async (turn) => { gatewayTurn = turn; return run([
@@ -62,14 +61,14 @@ describe("Console-owned plugin Agent", () => {
       { type: "result", is_error: false, usage: { input_tokens: 100_000, output_tokens: 5 } },
     ]); });
     let gatewayWindow: number | undefined = -1;
-    const gatewayHost = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, createSdk: async (sdkOptions) => { roots.push(sdkOptions.tempRoot!); gatewayWindow = sdkOptions.autoCompactWindow; return gatewayEngine; } });
+    const gatewayHost = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, createSdk: async (sdkOptions) => { roots.push(sdkOptions.tempRoot!); gatewayWindow = sdkOptions.modelAutoCompactWindows?.["claude-gateway--codex--gpt-6-luna[1m]"]; return gatewayEngine; } });
     const gatewaySession = await gatewayHost.createSession({ ...options, model: "codex--gpt-6-luna", compactAt: 204_000, tools: { builtins: ["Read"] }, onEvent: event => gatewayEvents.push(event) });
     await gatewaySession.send("one");
     // 내장 Read는 요청한 세션에만 실리고, 위의 WebFetch 세션에는 더해지지 않는다.
     expect(gatewayTurn).toMatchObject({ tools: ["Read"], allowedTools: ["Read"], permissionMode: "dontAsk" });
-    expect(gatewayWindow).toBe(166_875);
-    expect(gatewayEvents).toContainEqual({ kind: "compacted", trigger: "auto", preTokens: 254_629, postTokens: 4_571 });
-    expect(gatewayEvents).toContainEqual(expect.objectContaining({ kind: "result", usage: { inputTokens: 100_000, outputTokens: 5, contextTokens: 4_571, context: { window: 272_000, compactAt: 204_000 } } }));
+    expect(gatewayWindow).toBe(237_000);
+    expect(gatewayEvents).toContainEqual({ kind: "compacted", trigger: "auto", preTokens: 167_100, postTokens: 3_000 });
+    expect(gatewayEvents).toContainEqual(expect.objectContaining({ kind: "result", usage: { inputTokens: 100_000, outputTokens: 5, contextTokens: 3_000, context: { window: 272_000, compactAt: 204_000 } } }));
     await gatewayHost.dispose();
 
     await host.dispose(); await session.dispose();

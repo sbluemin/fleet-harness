@@ -456,7 +456,7 @@ describe("delegation assignment", () => {
 
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({
-      model: "claude-gateway--codex--gpt-6.1-terra",
+      model: "claude-gateway--codex--gpt-6.1-terra[1m]",
       because: "no model named → work",
     });
   });
@@ -470,7 +470,7 @@ describe("delegation assignment", () => {
       providerPlugin: "fleet",
     });
 
-    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--codex--gpt-6.1-terra" });
+    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--codex--gpt-6.1-terra[1m]" });
   });
 
   it("spreads a fan across providers instead of piling onto one, and steps over a spent allowance", async () => {
@@ -496,7 +496,7 @@ describe("delegation assignment", () => {
       spread,
     ).model);
 
-    expect(carried.every((model) => model === "claude-gateway--codex--gpt-6.1-terra")).toBe(true);
+    expect(carried.every((model) => model === "claude-gateway--codex--gpt-6.1-terra[1m]")).toBe(true);
     expect(providerLoad.get("codex")).toBe(4);
     expect(providerLoad.get("xai")).toBeUndefined();
   });
@@ -542,7 +542,7 @@ describe("delegation assignment", () => {
     );
 
     expect(decision.model).not.toBe(reserved);
-    expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra");
+    expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra[1m]");
     // hostOnly는 위임 후보를 더 이상 갈라내지 않는다. 구 200k 좌표는 가족의 1M 항목으로 접힌다.
     // 표식이 있던 항목을 켠 목록에서 빼는 것은 저장 이행(4판)이 한다.
     const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] } as unknown as Parameters<typeof resolveAiGatewaySelection>[0]);

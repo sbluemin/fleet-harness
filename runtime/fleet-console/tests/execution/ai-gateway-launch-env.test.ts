@@ -72,10 +72,10 @@ describe("Claude gateway launch environment", () => {
       readonly models: readonly { readonly id: string }[];
     };
     expect(cache.models.map((model) => model.id)).toEqual([
-      "claude-gateway--codex--gpt-6.1-sol-fast",
-      "claude-gateway--codex--gpt-6-luna-fast",
-      "claude-gateway--xai--grok-4.7",
-      "claude-gateway--xai--grok-4.7-fast",
+      "claude-gateway--codex--gpt-6.1-sol-fast[1m]",
+      "claude-gateway--codex--gpt-6-luna-fast[1m]",
+      "claude-gateway--xai--grok-4.7[1m]",
+      "claude-gateway--xai--grok-4.7-fast[1m]",
     ]);
   });
 

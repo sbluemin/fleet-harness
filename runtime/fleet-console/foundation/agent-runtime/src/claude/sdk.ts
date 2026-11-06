@@ -38,8 +38,12 @@ export async function createClaudeGatewaySdk(
   if (options.executablePath !== undefined && (typeof options.executablePath !== "string" || !path.isAbsolute(options.executablePath) || options.executablePath.includes("\0"))) {
     throw new TypeError("executablePath must be an absolute executable path.");
   }
-  if (options.autoCompactWindow !== undefined && (!Number.isSafeInteger(options.autoCompactWindow) || options.autoCompactWindow <= 0)) {
-    throw new TypeError("autoCompactWindow must be a positive integer token count.");
+  if (options.modelAutoCompactWindows !== undefined) {
+    for (const [id, window] of Object.entries(options.modelAutoCompactWindows)) {
+      if (id.length === 0 || !Number.isSafeInteger(window) || window < 100_000 || window > 1_000_000) {
+        throw new TypeError("modelAutoCompactWindows entries must be non-empty model ids mapped to integers from 100000 to 1000000.");
+      }
+    }
   }
   const baseUrl = normalizeBaseUrl(options.baseUrl);
   const accepted = resolveModels(options.models, options.modelPolicy.resolve);
@@ -91,7 +95,6 @@ export async function createClaudeGatewaySdk(
       baseUrl,
       configDir: configDir.path,
       homeKind: options.home?.kind === "shared" ? "shared" : "isolated",
-      ...(options.autoCompactWindow === undefined ? {} : { autoCompactWindow: options.autoCompactWindow }),
     }));
   };
 
@@ -364,6 +367,11 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
   if (options.claudeMdExcludes && options.claudeMdExcludes.length > 0) settings.claudeMdExcludes = [...options.claudeMdExcludes];
   if (options.ultracode === true) settings.ultracode = true;
   if (options.autoMemoryEnabled !== undefined) settings.autoMemoryEnabled = options.autoMemoryEnabled;
+  if (options.modelAutoCompactWindows && Object.keys(options.modelAutoCompactWindows).length > 0) {
+    settings.modelSettings = Object.fromEntries(
+      Object.entries(options.modelAutoCompactWindows).map(([id, autoCompactWindow]) => [id, { autoCompactWindow }]),
+    );
+  }
   if (options.cwdHook) {
     const hook = { type: "command", command: options.cwdHook.command, args: [...options.cwdHook.args] };
     settings.hooks = {

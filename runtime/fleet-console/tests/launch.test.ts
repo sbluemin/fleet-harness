@@ -237,7 +237,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
     codex = "ok";
     const spec = await launch("gateway-signed-in");
-    expect(spec.args).toContain("claude-gateway--codex--gpt-6.1-sol");
+    expect(spec.args).toContain("claude-gateway--codex--gpt-6.1-sol[1m]");
   });
 
   it("accepts the gateway spelling of an enabled model", async () => {
@@ -258,7 +258,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     await resolve("/work/project", { sessionId: "gateway-roster-model", cliId: "claude", model: "claude-gateway--codex--gpt-6.1-sol" });
 
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--codex--gpt-6.1-sol" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--codex--gpt-6.1-sol[1m]" }));
   });
 
   it("launches the user's shell without Agent CLI injection for shell sessions", async () => {

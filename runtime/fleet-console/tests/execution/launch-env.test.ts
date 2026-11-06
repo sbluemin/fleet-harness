@@ -96,7 +96,7 @@ describe("standalone Claude Code CLI launch", () => {
           FLEET_MOD_TOKEN: "mod-token",
           FLEET_COMPACT_HOOK_TOKEN: "compact-token",
           FLEET_CONSOLE_OWNER_KIND: "desktop",
-          // 사용자가 셸에서 고른 Claude Code 설정은 남는다.
+          // 이 env는 settings보다 우선하므로 Fleet 자식에서는 지운다.
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000",
         },
         aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100", compactHookToken: "compact-token", modHookToken: "mod-token" },
@@ -109,7 +109,7 @@ describe("standalone Claude Code CLI launch", () => {
       expect(spec.args).toEqual([]);
       expect(spec.cwd).toBe(theater);
       expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:4100/api/v1/ai-gateway");
-      expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("200000");
+      expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
       expect(spec.env.HOME).toBe(home);
       for (const key of ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_SESSION_ACCESS_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "FLEET_CONSOLE_SESSION_ID", "FLEET_MOD_TOKEN", "FLEET_MOD_BASE_URL", "FLEET_COMPACT_HOOK_TOKEN", "FLEET_COMPACT_BASE_URL", "FLEET_CONSOLE_OWNER_KIND", "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS"]) {
         expect(spec.env[key], key).toBeUndefined();

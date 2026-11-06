@@ -12,8 +12,7 @@ export const CONTEXT_RESERVED_NAME = "Autocompact buffer";
 export const CONTEXT_UNSPENT: ReadonlySet<string> = new Set([CONTEXT_RESERVED_NAME, "Free space"]);
 
 /**
- * 자식 좌표를 실제 창으로 되돌리는 자. Gateway 모델 세션의 자식은 공급자 창을 Claude 좌표로 투영해 말하므로, 채팅의 문맥 표시와
- * 같은 함수·같은 정책 값으로 되돌린다. 예약분은 되돌리지 않고 실제 창과 실제 압축 지점의 차이로 갈아 끼운다.
+ * 화면이 쓰는 실제 창. 토큰은 호출자가 이미 그 창의 단위로 넘긴다. 예약분은 실제 창과 실제 압축 지점의 차이다.
  */
 export interface ContextFrame {
   readonly max: number;

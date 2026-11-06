@@ -29,6 +29,7 @@ describe("prepareAiGatewayLaunchProfile", () => {
 		const profile = makeProfile({
 			ANTHROPIC_AUTH_TOKEN: "token",
 			ANTHROPIC_API_KEY: "key",
+			CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000",
 		});
 
 		const prepared = prepareAiGatewayLaunchProfile(profile, {
@@ -43,12 +44,12 @@ describe("prepareAiGatewayLaunchProfile", () => {
 			ANTHROPIC_AUTH_TOKEN: "token",
 			ANTHROPIC_API_KEY: "key",
 		});
+		expect(prepared.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
 		expect(prepared.env).toMatchObject({
 			ANTHROPIC_AUTH_TOKEN: "token",
 			ANTHROPIC_API_KEY: "key",
 			ANTHROPIC_BASE_URL: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
 			CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
-			CLAUDE_CODE_AUTO_COMPACT_WINDOW: "1000000",
 			ENABLE_TOOL_SEARCH: "true",
 			FLEET_COMPACT_BASE_URL: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
 			FLEET_COMPACT_HOOK_TOKEN: "compact-token",

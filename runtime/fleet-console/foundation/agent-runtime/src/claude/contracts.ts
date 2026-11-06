@@ -218,14 +218,14 @@ export interface ClaudeGatewaySdkOptions {
    * 지정한 경로가 실패해도 다른 실행기로 폴백하지 않는다. 턴 입력으로는 바꿀 수 없다. */
   readonly executablePath?: string;
   /**
-   * 자식의 자동 압축 창(토큰, Claude Code `CLAUDE_CODE_AUTO_COMPACT_WINDOW`의 단위). 주면 상속 환경의 값과
-   * 기본 1M ceiling을 모두 이 값으로 덮는다. 생략하면 지금과 같다(상속값, 없으면 1M).
+   * 광고 모델 id별 자동 압축 창(토큰). flag settings의 `modelSettings.<id>.autoCompactWindow`로 실린다.
    *
-   * 자식은 이 창에서 `min(maxOutputTokens, 20k) + 13k`를 뺀 지점에서 대화를 요약해 이어 가고, 창을
-   * 100k–1M과 모델 창 안으로 clamp한다(2.1.293·2.1.296 실측). 압축 비율 override
-   * (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`)는 이 값이 명시된 창이므로 그대로 듣는다.
+   * 최상위 `autoCompactWindow`는 프로세스에 하나라, 모델을 바꾸면 다른 최대 창의 지점을 덮어쓴다.
+   * 모델별 값은 같은 설정 파일 안에서 최상위를 대신한다. 키는 자식이 뜨는 광고 id(`[1m]` 포함)다.
+   * 값은 100_000–1_000_000이다. 자식은 이 창에서 33_000을 뺀 지점에서 압축한다(2.1.319 실측).
+   * `CLAUDE_CODE_AUTO_COMPACT_WINDOW`는 이 설정보다 우선하므로 자식 환경에서 지운다.
    */
-  readonly autoCompactWindow?: number;
+  readonly modelAutoCompactWindows?: Readonly<Record<string, number>>;
   /**
    * 자식 CLI를 띄우는 호스트의 포트. 호스트가 자식의 수명을 직접 책임질 때(자기 process group에 두고 소유
    * 등록부에 올리는 Console) 넘긴다. 생략하면 SDK가 스스로 띄운다 — 지금까지와 같다.

@@ -29,10 +29,6 @@ export function prepareAiGatewayLaunchProfile(
 		ANTHROPIC_BASE_URL: options.baseUrl,
 		// 이게 있어야 /model picker가 게이트웨이의 GET /v1/models를 조회한다.
 		CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
-		// 1M ceiling은 `[1m]` 모델의 선제 압축을 켜고, unmarked custom model에서는
-		// Claude Code의 200k 좌표로 clamp된다. 명시적 운영자 override는 보존한다.
-		CLAUDE_CODE_AUTO_COMPACT_WINDOW:
-			profile.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? "1000000",
 		// Gateway가 tool_reference 계약을 보존하고 공급자 경계에서 각자의 wire 형식으로 정규화한다.
 		ENABLE_TOOL_SEARCH: "true",
 		// 함수 훅 모듈(Mod)을 싣는다. 좌석 라우팅과 Fleet Routing 판이 이 표면에서 돈다.
@@ -55,6 +51,9 @@ export function prepareAiGatewayLaunchProfile(
 			}
 			: {}),
 	};
+	// 압축 창은 --settings의 modelSettings로 간다. 이 env는 settings보다 우선하므로
+	// 주입하지 않고, 셸에서 상속된 값도 지운다.
+	delete env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
 	writeClaudeGatewayModelCache(
 		options.baseUrl,
 		env,
