@@ -9,12 +9,12 @@ import type { ClientModelsCapability } from "../../ai-gateway/shared/model-ports
 import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 
 import { memberFailureReason } from "../shared/signals.js";
-import { COMMANDER_PRESET, type Objective, type ObjectiveMember } from "../shared/types.js";
+import { COMMANDER_PRESET, type MemberLaunch, type Objective, type ObjectiveMember } from "../shared/types.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
  * 지휘관·구성원의 모델·강도 — 한 줄의 글("Opus · HIGH")이고, 누르면 Console 공유 선택기(`ModelCoordinatePicker`)의
- * 메뉴가 뜬다. 이 파일은 Objectives 고유 부분(시작 뷰·서브에이전트·실행 낱말·라우팅 사유)만 갖는 어댑터다.
+ * 메뉴가 뜬다. 이 파일은 Objectives 고유 부분(시작 뷰·서브에이전트·실행 낱말·기동 거절 사유)만 갖는 어댑터다.
  */
 
 /** 지휘관 기본 좌표 — 사령관 설정의 지휘관 선택기와 같은 원천(COMMANDER_PRESET)이다. */
@@ -67,7 +67,7 @@ export function useLaunchGroups(): readonly LaunchGroup[] {
 }
 export const useLaunchRows = (): readonly ObjectiveLaunchVariantRow[] => useLaunchGroups().flatMap((group) => group.rows);
 
-/** 모델 id 의 공급자 — 카탈로그 행이 있으면 그 밴드, 없으면 id 에서. 라우팅의 "codex/gpt-…"·게이트웨이 접두 표기도 같은 공급자로 읽는다. */
+/** 모델 id 의 공급자 — 카탈로그 행이 있으면 그 밴드, 없으면 id 에서. "codex/gpt-…"·게이트웨이 접두 표기도 같은 공급자로 읽는다. */
 function providerOfModel(groups: readonly LaunchGroup[], model: string): LaunchProviderGlyphId | null {
   const row = findLaunchRow(groups.flatMap((group) => group.rows), model);
   const group = row ? groups.find((candidate) => candidate.rows.includes(row)) : undefined;
@@ -103,12 +103,12 @@ export function LaunchedText({ model, words }: { readonly model: string | null; 
     </>
   );
 }
-/** 라우팅 폴백·기동 거절의 사유 코드 → 사람의 말. 모르는 코드는 코드 그대로 보인다. */
+/** 모델 전환·기동 거절의 사유 코드 → 사람의 말. 모르는 코드는 코드 그대로 보인다. */
 /** 사유 코드에 번역된 문면이 있는가 — 없으면 화면은 코드를 그대로 싣는 일반 실패 문면을 쓴다. */
-export const hasRoutingReason = (code: string): boolean => `objectives.routing.reason.${code}` in objectivesEn;
-export function routingReason(t: Translate<ObjectiveMessageKey>, code: string): string {
-  const key = `objectives.routing.reason.${code}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey) : t("objectives.routing.reason.other", { code });
+export const hasLaunchReason = (code: string): boolean => `objectives.reason.${code}` in objectivesEn;
+export function launchReason(t: Translate<ObjectiveMessageKey>, code: string): string {
+  const key = `objectives.reason.${code}`;
+  return key in objectivesEn ? t(key as ObjectiveMessageKey) : t("objectives.reason.other", { code });
 }
 
 /** "Opus" / "HIGH" — 카드·행·메뉴가 같은 낱말을 쓴다. 카탈로그에 없는 모델은 id 그대로. */
@@ -121,12 +121,12 @@ export function launchWords(rows: readonly ObjectiveLaunchVariantRow[], model: s
 }
 
 const GATEWAY_PREFIX = "claude-gateway--";
-/** SDK 정준 id에, 라우팅의 "codex/gpt-…" 와 카탈로그의 "codex--gpt-…" 만 맞춘다. */
+/** SDK 정준 id에, "codex/gpt-…" 표기와 카탈로그의 "codex--gpt-…" 만 맞춘다. */
 function canonicalModelId(model: string): string {
   const canonical = sdkCanonicalModelId(model);
   return canonical.includes("--") || !canonical.includes("/") ? canonical : canonical.replace(/\//g, "--");
 }
-/** 라우팅·스코프·bare 표기가 달라도 같은 모델의 행을 찾는다. */
+/** 스코프·bare 표기가 달라도 같은 모델의 행을 찾는다. */
 function findLaunchRow(rows: readonly ObjectiveLaunchVariantRow[], model: string): ObjectiveLaunchVariantRow | undefined {
   const id = canonicalModelId(model);
   return rows.find((candidate) => canonicalModelId(candidate.launch.model ?? candidate.id) === id);
@@ -139,7 +139,7 @@ function bareModelId(model: string): string {
 /** "Codex GPT-5.3 Codex" / "Claude Opus" — 임무 아래 dim 줄의 풀네임. 게이트웨이 접두는 벗기고, 카탈로그 행이 있으면 그 이름, 없으면 id 를 읽을 수 있게 다듬는다. */
 export function modelFullName(rows: readonly ObjectiveLaunchVariantRow[], model: string | undefined | null): string {
   if (!model || model === "default") return "";
-  // 라우팅은 "codex/gpt-…", 카탈로그는 "codex--gpt-…" — 같은 모델의 두 표기.
+  // "codex/gpt-…" 와 "codex--gpt-…" — 같은 모델의 두 표기.
   const id = canonicalModelId(model);
   const row = findLaunchRow(rows, model);
   const group = row ? lastGroups.find((candidate) => candidate.rows.includes(row)) : undefined;
@@ -168,14 +168,12 @@ interface LaunchControlProps {
   /** 트리거를 글리프 하나로 — 모델 낱말을 쓸 자리가 없을 때. */
   readonly trigger?: ReactNode;
   readonly triggerLabel?: string;
-  /** 모델 id가 아닌 표시 낱말. 라우팅이 활성일 때는 선택기가 글리프와 낱말을 그린다. */
+  /** 모델 id가 아닌 표시 낱말. */
   readonly triggerText?: ReactNode;
   /** triggerText 의 풀네임 — 좁은 칸에서 잘린 모델 이름을 hover 로 읽는다. */
   readonly triggerTitle?: string;
-  /** 모델 목록 위의 선택 방식. 고르면 메뉴가 닫힌다. 하나라도 active 면 모델 행은 선택으로 서지 않는다. */
-  readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
-  /** 메뉴 맨 위 라우팅. 활성일 때 트리거는 글리프와 「라우팅」이다. */
-  readonly routing?: { readonly active: boolean; readonly hint: string; readonly onPick: () => void };
+  /** 모델을 아직 고르지 않았다 — 메뉴는 기본 좌표를 선택으로 추정하지 않는다. */
+  readonly unset?: boolean;
   /** 메뉴 맨 위의 한 줄 — 개시한 구성원은 지금 실행 중인 모델과 고르면 언제 바뀌는지를 말한다. */
   readonly head?: ReactNode;
   /** 열 때 모델 목록(1단계)부터 — 배정 메뉴는 특별 항목을 먼저 보여야 한다. */
@@ -194,7 +192,7 @@ function useLaunchRoster(): ModelRoster | null {
   return useModelRoster(models, "launch");
 }
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, trigger, triggerLabel, triggerText, triggerTitle, extras, routing, startAtList = false, subagents, head, reconfirm = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, trigger, triggerLabel, triggerText, triggerTitle, unset = false, startAtList = false, subagents, head, reconfirm = false }: LaunchControlProps) {
   const roster = useLaunchRoster();
   const viewPrefix = viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : undefined;
   const footer = subagents ? (
@@ -215,8 +213,8 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, tr
     <ModelCoordinatePicker
       roster={roster}
       value={{ ...(model ? { model } : {}), ...(effort ? { effort } : {}) }}
-      // 비어 있으면 Console 기본 좌표를 보인다. 라우팅처럼 선택 방식이 있는 메뉴는 기본 모델을 추정하지 않는다.
-      {...(extras?.length || routing ? {} : { fallback: DEFAULT_LAUNCH })}
+      // 비어 있으면 Console 기본 좌표를 보인다. 아직 고르지 않은 메뉴는 기본 모델을 추정하지 않는다.
+      {...(unset ? {} : { fallback: DEFAULT_LAUNCH })}
       onChange={onChange}
       startAt={startAtList ? "list" : "focused"}
       locked={locked}
@@ -233,7 +231,6 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, tr
         chooseAnotherModel: t("objectives.launch.chooseAnotherModel"),
         fallback: t("objectives.launch.fallback"),
         locked: t("objectives.commander.locked"),
-        ...(routing ? { route: t("objectives.memberSelection.route"), routeHint: routing.hint } : {}),
       }}
       trigger={{
         variant: trigger ? "glyph" : "inline",
@@ -245,35 +242,34 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, tr
         className: `objectives-launch${trigger ? " objectives-glyph" : ""}`,
       }}
       {...(head ? { head } : {})}
-      {...(extras ? { extras } : {})}
-      {...(routing ? { routing: { active: routing.active, onPick: routing.onPick } } : {})}
       {...(footer ? { footer } : {})}
       {...(subagents ? { menuWidth: 232 } : {})}
     />
   );
 }
 
+/** 사람이 고른 기동 모델 — 고르지 않았으면 null(띄울 때 지휘관이 정한다). */
+export const pickedLaunch = (member: ObjectiveMember): MemberLaunch | null => (member.launch && member.launch.mode === "model" ? member.launch : null);
+
 /**
  * 구성원 트리거의 표시 — 실행과 설정을 가른다. 띄운 Objective 이 있으면 어떤 방식이든 그 Objective 의 모델이 실제 실행값이다(연결 뒤
- * 설정을 바꿔도 기존 Objective 은 옛 모델로 재개된다). 띄우기 전에는 라우팅은 선택 낱말, 모델 지정은 선택값 그대로.
+ * 설정을 바꿔도 기존 Objective 은 옛 모델로 재개된다). 띄우기 전에는 고른 값 그대로, 고르지 않았으면 「지휘관이 지정」.
  * 메뉴의 선택 표시(model·effort·active)는 이 값이 아니라 member.launch 만 따른다.
  */
 export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, rows: readonly ObjectiveLaunchVariantRow[]): { text?: ReactNode; title: string; label: string } {
   const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
   if (launched) {
     const running = launchedWords(rows, member.model, member.effort, labels);
-    // 라우팅으로 떴으면 그 근거, 폴백이면 사유가 풀네임 뒤에 붙는다 — 같은 「모델 · 강도」 줄이 어떻게 정해졌는지 말한다.
-    const title = member.routed?.via === "route" ? t("objectives.members.routedBecause", { model: running.title, because: member.routed.because })
-      : member.routed?.via === "fallback" ? t("objectives.members.fallbackBecause", { model: running.title, reason: routingReason(t, member.routed.reason) }) : running.title;
-    return { text: <LaunchedText model={running.model} words={running.words} />, title, label: `${running.words.model} · ${running.words.effort}` };
+    return { text: <LaunchedText model={running.model} words={running.words} />, title: running.title, label: `${running.words.model} · ${running.words.effort}` };
   }
-  if (member.launch.mode === "route") return { title: t("objectives.members.routeHint"), label: t("objectives.memberSelection.route") };
-  const chosen = launchedWords(rows, member.launch.model, member.launch.effort, labels);
+  const picked = pickedLaunch(member);
+  if (!picked) return { title: t("objectives.members.assignedHint"), label: t("objectives.members.assigned") };
+  const chosen = launchedWords(rows, picked.model, picked.effort, labels);
   return { title: chosen.title, label: `${chosen.words.model} · ${chosen.words.effort}` };
 }
 /**
- * 대화 명부(오른쪽 「구성원」 탭)가 보이는 구성원 모델 줄 — 보드 행 트리거가 실제로 그리는 낱말과 같다. 띄운 구성원·라우팅은
- * 위 표시의 낱말, 모델 지정은 공유 선택기의 트리거 낱말(메뉴처럼 기본 좌표 없이)이다. hover 글은 보드 트리거의 title 그대로다.
+ * 대화 명부(오른쪽 「구성원」 탭)가 보이는 구성원 모델 줄 — 보드 행 트리거가 실제로 그리는 낱말과 같다. 띄운 구성원·지휘관이 지정할
+ * 구성원은 위 표시의 낱말, 모델 지정은 공유 선택기의 트리거 낱말(메뉴처럼 기본 좌표 없이)이다. hover 글은 보드 트리거의 title 그대로다.
  */
 export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
   const groups = toLaunchGroups(roster);
@@ -283,14 +279,14 @@ export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t:
     const running = launchedWords(groups.flatMap((group) => group.rows), member.model, member.effort, { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") });
     return { label: running.words.model, effort: running.words.effort || null, title: display.title, provider: running.model ? providerOfModel(groups, running.model) : null, struck: false, badge: null };
   }
-  if (member.launch.mode !== "model") return { label: display.label, effort: null, title: display.title, provider: null, struck: false, badge: null, route: true };
-  const shown = modelCoordinateDisplay(roster, { model: member.launch.model, ...(member.launch.effort ? { effort: member.launch.effort } : {}) }, undefined, pickerLabels(t));
+  const picked = pickedLaunch(member);
+  if (!picked) return { label: display.label, effort: null, title: display.title, provider: null, struck: false, badge: null };
+  const shown = modelCoordinateDisplay(roster, { model: picked.model, ...(picked.effort ? { effort: picked.effort } : {}) }, undefined, pickerLabels(t));
   return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, ...(shown.struck && shown.removedProvider ? { providerName: shown.removedProvider } : {}), struck: shown.struck, badge: shown.badge };
 }
 
 /** 지휘관 행의 모델 줄 — 보드의 지휘관 트리거(기본 좌표를 둔 공유 선택기)가 그리는 낱말과 hover 글. */
 export function commanderLaunchShown(objective: Objective, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
-  if (objective.commander.routing) return { label: t("objectives.memberSelection.route"), effort: null, title: t("objectives.commander.routeHint"), provider: null, struck: false, badge: null, route: true };
   const { model, effort } = objective.commander;
   const shown = modelCoordinateDisplay(roster, { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, DEFAULT_LAUNCH, pickerLabels(t));
   return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, ...(shown.struck && shown.removedProvider ? { providerName: shown.removedProvider } : {}), struck: shown.struck, badge: shown.badge };
@@ -301,10 +297,9 @@ export function commanderLaunchShown(objective: Objective, t: Translate<Objectiv
  * 「꺼짐」, 로스터가 비어 최후 폴백으로 서면 「폴백」 표식(badge).
  */
 export interface LaunchShown {
-  /** 모델 낱말 — 라우팅이면 그 낱말. 취소선은 이 낱말에만 긋는다(보드 트리거와 같게). */
-  readonly route?: boolean;
+  /** 모델 낱말. 취소선은 이 낱말에만 긋는다(보드 트리거와 같게). */
   readonly label: string;
-  /** 강도 낱말 — 말하지 않는 행(선택 방식·강도 사다리 없는 모델)이면 null. */
+  /** 강도 낱말 — 말하지 않는 행(지휘관이 지정·강도 사다리 없는 모델)이면 null. */
   readonly effort: string | null;
   readonly title: string;
   readonly provider: LaunchProviderGlyphId | null;
@@ -313,34 +308,11 @@ export interface LaunchShown {
   readonly badge: string | null;
 }
 
-/** 라우팅 사유 중 「켜져 있지 않거나 후보가 없음」 — 사유 줄과 표식 hover 가 같은 문장으로 접는다. */
-export const ROUTING_OFF_REASONS: ReadonlySet<string> = new Set(["routing_disabled", "routing_off", "no_candidate"]);
-
-/** 띄운 구성원의 「라우팅」·「폴백」 표식 — 보드 행의 모델 칩 곁과 대화 명부가 같은 낱말·hover 를 쓴다. 띄우기 전이면 없다. */
-export function memberRoutedTag(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>): { readonly via: "route" | "fallback"; readonly label: string; readonly title: string } | null {
-  const routed = launched ? member.routed : null;
-  if (!routed) return null;
-  return {
-    via: routed.via,
-    label: t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback"),
-    title: t(routed.via === "route" ? "objectives.members.routedTitle" : ROUTING_OFF_REASONS.has(routed.reason) ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle"),
-  };
-}
-
-/** 폴백으로 띄운 구성원의 사유 한 줄 — hover 는 자식이 남긴 원문(detail)이다. 폴백이 아니면 없다. */
-function memberFallbackNote(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>): { readonly text: string; readonly title?: string } | null {
-  const routed = launched ? member.routed : null;
-  if (routed?.via !== "fallback") return null;
-  const text = routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) });
-  return { text, ...(routed.detail !== undefined ? { title: routed.detail } : {}) };
-}
-
 /**
- * 구성원 행 아래의 진단 줄 — 보드 행과 대화 명부가 같은 낱말·순서를 쓴다. 직전 턴 실패, 바꾸지 못한 모델 전환, 보고 경로 없음,
- * 라우팅 폴백 사유. `title` 은 보드가 펼침 안에 싣는 원문이다(번역하지 않는다). 없으면 빈 목록이다.
+ * 구성원 행 아래의 진단 줄 — 보드 행과 대화 명부가 같은 낱말·순서를 쓴다. 직전 턴 실패, 바꾸지 못한 모델 전환, 보고 경로 없음. `title` 은 보드가 펼침 안에 싣는 원문이다(번역하지 않는다). 없으면 빈 목록이다.
  */
 export interface MemberNote {
-  readonly kind: "failure" | "switch" | "noReportTool" | "fallback";
+  readonly kind: "failure" | "switch" | "noReportTool";
   readonly text: string;
   readonly title?: string;
   readonly tone: "danger" | "warn";
@@ -356,8 +328,6 @@ export function memberNotes(member: ObjectiveMember, launched: boolean, t: Trans
   }
   if (launched && member.next?.failed && member.next.cause) notes.push({ kind: "switch", tone: "danger", text: t("objectives.members.next.causeSummary"), ...raw([member.next.cause.message]) });
   if (member.noReportTool) notes.push({ kind: "noReportTool", tone: "warn", text: t("objectives.members.noReportTool") });
-  const fallback = memberFallbackNote(member, launched, t);
-  if (fallback) notes.push({ kind: "fallback", tone: "warn", ...fallback });
   return notes;
 }
 
@@ -405,14 +375,14 @@ interface MemberLaunchControlProps {
   readonly touchable: boolean;
   /** 띄운 구성원의 선택 — 휴면·유휴면 곧바로, 일하는 중이면 이번 턴 뒤 바뀐다. 한 번의 선택에 한 번 불린다. */
   readonly onPickLaunched: (choice: MemberLaunchChoice) => void;
-  /** 띄우기 전 선택 — 저장값만 바꾼다. null 은 라우팅. */
-  readonly onPatchLaunch: (choice: MemberLaunchChoice | null) => void;
+  /** 띄우기 전 선택 — 저장값만 바꾼다. */
+  readonly onPatchLaunch: (choice: MemberLaunchChoice) => void;
   readonly onToggleSubagents: () => void;
 }
 
 /**
  * 구성원 한 명의 기동 선택 — 데스크톱 명단과 모바일 보드가 같은 이 컨트롤을 쓴다. 띄운 구성원은 실행값과 모델 목록만 보인다
- * (라우팅은 새로 띄울 때만 판단한다). 띄우기 전에는 공유 선택기의 라우팅이 선다. 폰에서는 그 선택기가 호스트의
+ * 띄우기 전에는 사람이 고른 값(없으면 「지휘관이 지정」)을 보인다. 폰에서는 그 선택기가 호스트의
  * 좌표 시트로 서고, 머리·사유 줄·서브에이전트 footer 는 메뉴 밖(보드의 행·묶음)이 맡는다.
  */
 export function MemberLaunchControl({ t, objective: _objective, member, state, rows, touchable, onPickLaunched, onPatchLaunch, onToggleSubagents }: MemberLaunchControlProps) {
@@ -431,12 +401,11 @@ export function MemberLaunchControl({ t, objective: _objective, member, state, r
         onChange={(choice) => { const model = choice.model ?? reserved?.model ?? member.model; if (model) onPickLaunched({ mode: "model", model, effort: choice.effort }); }} />
     );
   }
-  const routing = member.launch.mode === "route";
+  const picked = pickedLaunch(member);
   return (
-    <LaunchControl t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={routing} reconfirm triggerLabel={triggerLabel}
-      {...(routing ? {} : display.text ? { triggerText: display.text } : {})} triggerTitle={display.title}
-      routing={{ active: routing, hint: t("objectives.members.routeHint"), onPick: () => onPatchLaunch(null) }}
+    <LaunchControl t={t} model={picked?.model} effort={picked?.effort} locked={!touchable} startAtList={!picked} unset={!picked} reconfirm triggerLabel={triggerLabel}
+      triggerText={picked ? display.text : <span className="objectives-launch-model">{display.label}</span>} triggerTitle={display.title}
       {...(subagents ? { subagents } : {})}
-      onChange={(next) => { const model = next.model ?? (member.launch.mode === "model" ? member.launch.model : undefined); if (model) onPatchLaunch({ mode: "model", model, effort: next.effort }); }} />
+      onChange={(next) => { const model = next.model ?? picked?.model; if (model) onPatchLaunch({ mode: "model", model, effort: next.effort }); }} />
   );
 }

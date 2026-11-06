@@ -58,7 +58,8 @@ describe("Admiral MCP registry", () => {
       expect(rejected).toEqual({ content: [{ type: "text", text: JSON.stringify({ error: "Invalid MCP arguments", issues: [{ path: ["text"], code: "too_big", maximum: 50 }] }) }], isError: true });
       expect(JSON.stringify(rejected)).not.toContain(oversized);
       first.cleanup();
-      expect((await call(one.token)).body).toMatchObject({ error: { code: -32602 } });
+      // 회수한 토큰은 그 서버의 세션이 아니다 — 요청 전체가 거절된다.
+      expect((await call(one.token)).status).toBe(401);
       expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1|cmd-a" }] } });
       unregister();
       expect((await second.getEndpoint()).servers).toEqual([]);
@@ -70,4 +71,44 @@ describe("Admiral MCP registry", () => {
     }
   });
 
+  it("serves the reserved fleet-ai-gateway server only to admitted callers and refuses others before the tool runs", async () => {
+    let origin = "";
+    const transport = createMcpHttpTransport(() => origin);
+    const listener = http.createServer((req, res) => { if (!transport.handle(req, res)) { res.writeHead(404); res.end(); } });
+    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+    origin = `http://127.0.0.1:${(listener.address() as { port: number }).port}`;
+    const commanders = new Set(["obj-1"]);
+    const mcp = createAdmiralMcpHost(transport.transport, { resolveCaller: (label) => ({ kind: "objectiveRecord", objectiveId: label.replace(/^chat:/, "") }) });
+    let runs = 0;
+    const tool = { name: "candidates", description: "candidates", inputSchema: { type: "object", properties: {} },
+      execute: async () => { runs += 1; return { content: [{ type: "text", text: "{\"candidates\":[]}" }], isError: false }; } };
+    // 예약 이름은 플러그인 등록 경로로 열리지 않는다.
+    expect(() => mcp.register("fleet-ai-gateway", [tool])).toThrow("Invalid Admiral MCP name");
+    mcp.registerReserved("fleet-ai-gateway", [tool], { admit: (caller) => caller.kind === "objectiveRecord" && commanders.has(caller.objectiveId), refusal: "not_commander", alwaysLoad: true, instructions: "commander only" });
+    mcp.register("fleet-demo", [{ ...tool, name: "demo" }]);
+    const session = mcp.connect();
+    try {
+      const endpoint = await session.getEndpoint();
+      expect(endpoint.servers).toEqual([expect.objectContaining({ name: "fleet-ai-gateway", alwaysLoad: true }), expect.not.objectContaining({ alwaysLoad: true })]);
+      // 구성원 세션에는 토큰이 없어 설정에 서버가 실리지 않는다. 다른 서버에 발급된 토큰은 initialize 부터 거절되고 지침도 보이지 않는다.
+      const member = session.issueSessionToken({ label: "chat:member-1", cwd: "/m" });
+      expect(member.map((entry) => entry.name)).toEqual(["fleet-demo"]);
+      const foreign = await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${member[0]!.token}` },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "member", version: "1" } } }) });
+      expect(foreign.status).toBe(401);
+      expect(await foreign.text()).not.toContain("commander only");
+      const [commander] = session.issueSessionToken({ label: "chat:obj-1", cwd: "/c" });
+      const call = async () => (await (await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${commander!.token}` },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "candidates", arguments: {} } }) })).json()).result;
+      expect(await call()).toMatchObject({ content: [{ text: "{\"candidates\":[]}" }] });
+      expect(runs).toBe(1);
+      // 발급 뒤 받지 않게 된 호출자는 실행 때 다시 막힌다 — 도구는 돌지 않는다.
+      commanders.delete("obj-1");
+      expect(await call()).toMatchObject({ isError: true, structuredContent: { error: "not_commander" } });
+      expect(runs).toBe(1);
+    } finally {
+      session.cleanup(); await mcp.dispose(); await transport.dispose();
+      await new Promise<void>((resolve) => { listener.close(() => resolve()); listener.closeAllConnections(); });
+    }
+  });
 });

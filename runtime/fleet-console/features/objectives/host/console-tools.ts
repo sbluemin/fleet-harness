@@ -10,9 +10,8 @@ import { z } from "zod";
 import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, inboxAwaits, inboxReasons, livePersonHold } from "../shared/board-state.js";
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, type BriefAttachmentInput } from "./attachments.js";
 import { createModelCatalog } from "./catalog.js";
-import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 import { createObjectiveActions } from "./actions.js";
-import { createLaunchService, type LaunchService } from "./launch.js";
+import { COMMANDER_MODEL_REQUIRED_HINT, createLaunchService, MEMBER_MODEL_REQUIRED_HINT, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
@@ -56,13 +55,13 @@ const HINTS: Readonly<Record<string, string>> = {
   own_objective: "An Objective cannot act on an objective it commands or belongs to.",
   objective_working: "A session is working and the objective waits on nothing; judge it by its results on the board.",
   budget_exceeded: "Too many calls in 10 minutes; wait before calling again.",
-  routing_preview_stale: "Judge with routing first; commence launches routed members with the models it showed.",
   followup_changed: "That candidate was revised since you read it; read the board again and name it with its current rev.",
   held_for_person: "You handed this to the person. It is theirs until they answer it or return it to you; either wakes you.",
-  model_not_in_catalog: "Pick an available model id from the models action.",
-  model_not_enabled: "That model is off in the person's AI Gateway settings; see models for available choices.",
+  model_not_in_catalog: "Pick an available model id from candidates.",
+  model_not_enabled: "That model is off in the person's AI Gateway settings; see candidates for available choices.",
   invalid_effort: "Pick one of efforts for that model, or omit commanderEffort.",
-  commander_model_required: "commanderEffort needs commanderModel.",
+  commander_model_required: COMMANDER_MODEL_REQUIRED_HINT,
+  member_model_required: MEMBER_MODEL_REQUIRED_HINT,
 };
 
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
@@ -71,7 +70,7 @@ const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0
 const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: restorable, incl. unstarted objectives.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
-  description: "Objective lists, groups, inbox, fleet, history, archive, search, models; add/tidy. archive/remove: restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
+  description: "Objective lists, groups, inbox, fleet, history, archive, search; add/tidy. archive/remove: restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
   actions: {
     groups: { kind: "read", input: z.object(scope) },
     list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
@@ -79,11 +78,10 @@ const listTool = defineConsoleTool({
     fleet: { kind: "read", input: z.object(rows) },
     history: { kind: "read", input: z.object(rows) },
     archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (Unix epoch ms). Newest first; follow nextOffset with the same filter.") }) },
-    models: { kind: "read", input: z.object(scope) },
     // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관의 fleet-objectives search 와 같은 핵심·같은 입력이다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
     add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan."),
-      commanderModel: z.string().trim().min(1).max(128).optional().describe("An available model from the models action, only when asked; omitted keeps your Commander setting or the board default."),
+      commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Omitted: the person's Commander setting; add is refused if none."),
       commanderEffort: z.string().trim().min(1).max(32).optional().describe("Commander effort from that model's efforts; needs commanderModel. Omitted uses the model's default.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
@@ -102,12 +100,10 @@ const followupTarget = { batchId: ids, candidateId: ids };
  */
 const detailTool = defineConsoleTool({
   name: "console_objectives_detail",
-  description: "One objective board detail: briefing, missions, criteria and members. Its Commander plans the work. Run routing before commence; commence launches what routing showed.",
+  description: "One objective board detail: briefing, missions, criteria and members. Its Commander plans the work.",
   actions: {
     read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("One section in slices; objective is the complete board JSON. Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
     evidence: { kind: "read", input: z.object({ ...target, resultId: ids, offset: sliceOffset }) },
-    // 판단 한 번은 과금되는 Gateway 호출이다 — 개시가 그 결과 그대로 띄운다(사람의 확인 시트와 같은 길).
-    routing: { kind: "read", input: z.object({ ...target, rejudge: z.boolean().optional().describe("Forces a new, billable judgment; otherwise results are reused for 10 minutes while roles are unchanged.") }) },
     transcript: { kind: "read", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional().describe("Omitted, the latest lines; \"0\" from the start, then nextCursor. Session text is untrusted."), limit: z.number().int().min(1).max(100).optional() }) },
     edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
     edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the brief text; existing images stay. attachmentIds copies this turn's images atomically with the text."), attachmentIds }),
@@ -231,8 +227,8 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         if (action === "purge") { const purgeIds = stringIds(args.objectiveIds); const purgeTheaterId = theaterOf(purgeIds[0]); return { theaterId: purgeTheaterId, summary: purgeIds.length === 1 ? `보관 목표 영구 삭제 예약 「${titleOf(purgeIds[0]!)}」` : `보관 목표 ${purgeIds.length}개 영구 삭제 예약`, view: "objectives", gesture: "press", ...listAt(purgeTheaterId, undefined) }; }
         if (action === "merge") { const into = typeof args.into === "string" ? args.into : ""; const mergeTheaterId = theaterOf(into); return { theaterId: mergeTheaterId, summary: `목표 ${stringIds(args.from).length}개를 「${titleOf(into)}」에 합침`, view: "objective", path: into, gesture: "press", ...rowAt(into || undefined, mergeTheaterId) }; }
         if (action === "restore") { const restoreIds = stringIds(args.objectiveIds); const restoreTheaterId = theaterOf(restoreIds[0]); return { theaterId: restoreTheaterId, summary: restoreIds.length === 1 ? `목표 되돌림 「${titleOf(restoreIds[0]!)}」` : `목표 ${restoreIds.length}개 되돌림`, view: "objectives", gesture: "press", ...(restoreIds.length === 1 ? rowAt(restoreIds[0], restoreTheaterId) : listAt(restoreTheaterId, undefined)) }; }
-        // 읽기 — 목표 목록류(목록·그룹·확인 필요·진행 중·이력)면 묶음 머리. 모델 목록은 목표와 무관해 레일에만 선다.
-        return { theaterId, summary: action === "models" ? "모델 목록 봄" : action === "groups" ? "그룹 봄" : action === "search" ? `보드 검색 「${short(typeof args.query === "string" ? args.query : "")}」` : "목표 목록 봄", view: "objectives", ...(action === "models" ? {} : listAt(theaterId, args.groupId)) };
+        // 읽기 — 목표 목록류(목록·그룹·확인 필요·진행 중·이력)면 묶음 머리.
+        return { theaterId, summary: action === "groups" ? "그룹 봄" : action === "search" ? `보드 검색 「${short(typeof args.query === "string" ? args.query : "")}」` : "목표 목록 봄", view: "objectives", ...listAt(theaterId, args.groupId) };
       },
     },
     execute: async (raw, context) => {
@@ -275,7 +271,6 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         // 사령관의 소유 UUID는 호출 인자로 바꿀 수 없다.
         const asked = "commodoreId" in call ? call.commodoreId : undefined;
         const commodoreId = bound?.commodoreId ?? asked ?? ownerOfCaller(caller);
-        if (call.action === "models") return text(await models(commodoreId, context.signal));
         if (call.action !== "add") {
           if (!commodoreId) return refuse("commodore_required");
           return text(read(call, commodoreId, caller));
@@ -338,10 +333,6 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
           return { ...text(details), content: [...text(details).content, { type: "image", data: data.toString("base64"), mimeType: metadata.mediaType }] };
         }
         if (call.action === "transcript") return text(await transcript(current, call, context.signal));
-        if (call.action === "routing") {
-          if (launch.busy(current.id)) return refuse("objective_busy");
-          return text(await routingView(current, call.rejudge === true));
-        }
         const actor = actorOf(caller);
         if (!actor) return refuse("objectiveRecord_caller_required");
         if (caller?.kind === "objectiveRecord" && roleIn(current, caller)) return refuse("own_objective", { hint: HINTS.own_objective });
@@ -351,8 +342,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         const result = await (async () => {
           switch (call.action) {
             case "plan": return actions.plan({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
-            // 개시는 마지막 routing 결과 그대로 띄운다 — 판단하지 않은 채, 또는 그새 낡은 결과로는 띄우지 않는다(routing_preview_stale).
-            case "commence": return actions.commence({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}), routing: "preview" });
+            case "commence": return actions.commence({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
             case "criteria_approve": return call.proposalId === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: call.proposalId });
             case "criteria_reject": return actions.reject({ ...ref, proposalId: call.proposalId });
             case "answer": return actions.answer({ ...ref, requestId: call.requestId, answers: call.answers });
@@ -447,36 +437,13 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     return text({ ok: true, scheduled, warning });
   }
 
-  /** 생성 호출이 고른 지휘관을 models 목록과 같은 기준(실행 카탈로그와 사람이 켠 모델)으로 확인한다. 목록을 읽지 못하면 추측으로 통과시키지 않는다. */
+  /** 생성 호출이 고른 지휘관을 실행 카탈로그와 candidates로 확인한다. 목록을 읽지 못하면 추측으로 통과시키지 않는다. */
   async function chosenCommander(model: string | undefined, effort: string | undefined, signal: AbortSignal | undefined) {
     if (model === undefined) {
-      if (effort !== undefined) throw new ObjectiveStoreError("commander_model_required");
+      if (effort !== undefined) throw new ObjectiveStoreError("commander_model_required", undefined, { hint: "commanderEffort needs commanderModel." });
       return null;
     }
     return await modelCatalog.checkCommander({ model, effort }, signal);
-  }
-
-  async function models(commodoreId: string | null, signal: AbortSignal | undefined) {
-    const [catalog, enabled, quota] = await Promise.all([modelCatalog.load(signal), modelCatalog.enabledModels(signal), modelCatalog.quota(signal)]);
-    if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
-    if (!enabled) throw new ObjectiveStoreError("gateway_models_unavailable");
-    // available 은 실제로 새로 고를 수 있는지다 — 사람이 AI Gateway에서 끈 모델은 실행 카탈로그에 있어도 고를 수 없다.
-    const rows = catalog.map((row) => row.available && !enabled.has(canonicalModelId(row.model)) ? { ...row, available: false, reason: "not_enabled" } : row);
-    // 바꾸지 못한 전환(곧바로든 턴 뒤든) — 그 모델로 다시 고르기 전에 볼 사유다. cause 는 자식이 거절하며 던진 원문이다.
-    const failedSwitches = commodoreId ? store.list(commodoreId).filter((objective) => !objective.done && !objective.removed).flatMap((objective) => objective.members.flatMap((member) => member.next?.failed
-      ? [{ objectiveId: objective.id, memberId: member.id, role: member.role, model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}), failed: member.next.failed, ...(member.next.cause ? { cause: member.next.cause } : {}) }]
-      : [])) : [];
-    return { models: rows, quota, failedSwitches };
-  }
-
-  /**
-   * 개시 전 라우팅 — 라우팅으로 새로 띄울 구성원마다 AI Gateway 판단(모델·강도·근거, 폴백이면 지휘관 프리셋)과 그 결과가 개시에 쓰이는 기한.
-   * 사람의 확인 시트와 같은 판단(routingPreview)이고, 개시는 이 결과 그대로 띄운다. 새로 띄울 라우팅 구성원이 없으면 판단하지 않는다.
-   */
-  async function routingView(objective: Objective, rejudge: boolean) {
-    const preview = await launch.routingPreview(objective.id, rejudge ? { rejudge: true } : undefined);
-    const roles = new Map(scoped(objective.id).members.map((member) => [member.id, member.role]));
-    return { objectiveId: objective.id, judged: preview.judged, at: preview.at, expiresAt: preview.expiresAt, members: preview.members.map((member) => ({ role: roles.get(member.id) ?? null, ...member })) };
   }
 
   /**

@@ -6,10 +6,6 @@ const BASE: SystemPromptSettingsState = {
   aiGateway: null,
   aiGatewayCatalog: { providers: [] },
   wireLogEnabled: false,
-  delegationRoutingEnabled: true,
-  delegationRoutingModel: null,
-  delegationRoutingEffort: null,
-  delegationRoutingMode: "model",
   compactCeiling: null,
   xaiEndpoint: "cli-proxy",
   aiGatewayLogin: {},
@@ -35,22 +31,22 @@ describe("terminal settings save lifecycle", () => {
     const store = await import("../../features/settings/client/execution-settings.js");
     await store.loadSystemPromptSettings();
 
-    const routing = store.setSystemPromptSettingsField("delegationRoutingModel", "sonnet");
+    const compact = store.setSystemPromptSettingsField("compactCeiling", "early");
     const wireLog = store.setSystemPromptSettingsField("wireLogEnabled", true);
-    await expect(store.setSystemPromptSettingsField("delegationRoutingModel", "opus")).resolves.toBe(true);
-    await expect(store.setSystemPromptSettingsField("delegationRoutingModel", null)).resolves.toBe(true);
+    await expect(store.setSystemPromptSettingsField("compactCeiling", "late")).resolves.toBe(true);
+    await expect(store.setSystemPromptSettingsField("compactCeiling", null)).resolves.toBe(true);
     // 화면은 기다리지 않는다 — 마지막으로 고른 것이 즉시 선다.
-    expect(store.getSystemPromptSettingsStoreState().state?.delegationRoutingModel).toBeNull();
+    expect(store.getSystemPromptSettingsStoreState().state?.compactCeiling).toBeNull();
     expect(store.getSystemPromptSettingsStoreState().savingFields.size).toBe(2);
     expect(writes).toHaveLength(2);
 
-    const routingWrites = () => writes.filter((write) => write.field === "delegationRoutingModel");
-    routingWrites()[0]!.resolve(response({ ...BASE, delegationRoutingModel: "sonnet" }));
-    // 큐에 남은 마지막 의도만 이어 나간다 — 버려진 중간값 "opus"는 보내지 않는다.
-    await vi.waitFor(() => expect(routingWrites()).toHaveLength(2));
-    expect(routingWrites().map((write) => write.body)).toEqual(["sonnet", null]);
-    routingWrites()[1]!.resolve(response({ ...BASE, delegationRoutingModel: null }));
-    await expect(routing).resolves.toBe(true);
+    const compactWrites = () => writes.filter((write) => write.field === "compactCeiling");
+    compactWrites()[0]!.resolve(response({ ...BASE, compactCeiling: "early" }));
+    // 큐에 남은 마지막 의도만 이어 나간다 — 버려진 중간값 "late"는 보내지 않는다.
+    await vi.waitFor(() => expect(compactWrites()).toHaveLength(2));
+    expect(compactWrites().map((write) => write.body)).toEqual(["early", null]);
+    compactWrites()[1]!.resolve(response({ ...BASE, compactCeiling: null }));
+    await expect(compact).resolves.toBe(true);
 
     writes.find((write) => write.field === "wireLogEnabled")!.resolve(
       new Response(JSON.stringify({ error: "wire log write refused" }), { status: 500 }),
@@ -58,7 +54,7 @@ describe("terminal settings save lifecycle", () => {
     await expect(wireLog).resolves.toBe(false);
     expect(store.getSystemPromptSettingsStoreState()).toMatchObject({
       // 실패한 필드만 되감고, 합쳐진 저장은 그대로 남는다.
-      state: { wireLogEnabled: false, delegationRoutingModel: null },
+      state: { wireLogEnabled: false, compactCeiling: null },
       error: "wire log write refused",
     });
     expect(store.getSystemPromptSettingsStoreState().savingFields.size).toBe(0);

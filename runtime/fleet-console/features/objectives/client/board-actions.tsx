@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import type { GroupBoardAction, GroupBoardActions, GroupBoardPanelContext, GroupBoardRunResult } from "../../execution/shared/conversation/types.js";
 import type { LocalizedText, Translate } from "@fleet-console/i18n";
 
-import { MAX_CONTEXT, ROUTING_PREVIEW_TTL_MS, type Objective, type ObjectiveEditKind, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
+import { MAX_CONTEXT, type Objective, type ObjectiveEditKind } from "../shared/types.js";
 import { nonHumanEditors } from "./actors.js";
 import { commodoreLanguage } from "./board-commodore.js";
 import {
@@ -22,8 +22,7 @@ import {
 } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { LaunchControl, LaunchedText, launchedWords, localized, routingReason, useLaunchRows } from "./launch-control.js";
-import { memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
+import { localized } from "./launch-control.js";
 import { findAnyObjective, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, post, readBoard, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
@@ -31,7 +30,7 @@ type T = Translate<ObjectiveMessageKey>;
 /**
  * 목표의 보드 동작 — 사람이 지금 할 일을 고르는 상태 사다리와, 그 결과를 구성원 채팅 입력창(`GroupConversationActions.board`)에
  * 건네는 일. 입력창 위 제안 줄의 칩·입력창 안 동작 칩·＋ 메뉴의 압축 행은 호스트가 그리고, 여기서는 무엇을 언제 어느 서버 경로로
- * 보내는지만 정한다. 라우팅 확인과 후속 후보 고르기는 입력창 바로 위 칸(`renderPanel`)에 이 플러그인이 그린다.
+ * 보내는지만 정한다. 후속 후보 고르기는 입력창 바로 위 칸(`renderPanel`)에 이 플러그인이 그린다.
  *
  * 우선순위 — 사람이 지금 무엇을 해야 하나: 완료됨 > 지휘관 결정 대기 > 작업 중(구성원 실행 포함) > 구성원 결정 대기 >
  * 검토 대기 > 인계 대기 > 깨운 뒤 유휴 > 개시 전. 인계 대기에서 쉬는 지휘관 대신 사람이 「검토로 넘기기」를 쓸 수 있다 — 한 번 누름으로
@@ -77,7 +76,6 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   steer_required: "objectives.band.reason.steerRequired",
   not_in_review: "objectives.band.reason.notInReview",
   not_awaiting_handoff: "objectives.band.reason.notAwaitingHandoff",
-  routing_preview_stale: "objectives.band.reason.routingStale",
 };
 
 /** 메시지의 거절은 지휘관이 아니라 받는 이의 사정이다. */
@@ -174,8 +172,6 @@ function liveOf(objective: Objective): BoardLive {
 
 /** 살아 있는 목록에서, 없으면 읽어 둔 끝난 목표(보관)에서 — 완료 화면의 범위 넓히기도 같은 레코드로 보낸다. */
 const findObjective = (objectiveId: string): Objective | null => findAnyObjective(objectiveId);
-const memberLaunchedIn = (live: BoardLive) => (member: ObjectiveMember): boolean => member.sessionName !== null && live.member(member.id) !== "closed";
-const routingTargetsOf = (objective: Objective, live: BoardLive): readonly ObjectiveMember[] => objective.members.filter((member) => member.launch.mode === "route" && !memberLaunchedIn(live)(member));
 
 function choicesOf(objective: Objective, live: BoardLive) {
   const done = objective.done;
@@ -192,22 +188,6 @@ function choicesOf(objective: Objective, live: BoardLive) {
 export function followupPickable(objective: Objective): boolean {
   return choicesOf(objective, liveOf(objective)).followupAvailable;
 }
-
-// ── 이어받는 칸(라우팅 확인) ───────────────────────────────────────────────
-
-/** 라우팅 확인을 기다리는 개시 — 목표 id → 덧붙일 말. 플러그인 번들 안의 보기 상태다. */
-const sheets = new Map<string, { readonly intent: IntentKey; readonly context: string }>();
-const sheetListeners = new Set<() => void>();
-const setSheet = (objectiveId: string, value: { readonly intent: IntentKey; readonly context: string } | null) => {
-  if (value) sheets.set(objectiveId, value); else sheets.delete(objectiveId);
-  for (const listener of sheetListeners) listener();
-};
-const subscribeSheets = (listener: () => void) => { sheetListeners.add(listener); return () => { sheetListeners.delete(listener); }; };
-/**
- * 칸이 「이대로 개시」를 보내는 중인 목표 — 그 응답 전에는 같은 목표의 개시를 다시 받지 않는다. 다시 받으면 앞선 개시의 정산이 새로 쓴
- * 말의 판을 걷어 버린다(입력창은 동작 id 로 정산한다). 거절은 실패로 돌려 입력창이 쓴 말과 기억한 판을 그대로 둔다.
- */
-const sheetsSending = new Set<string>();
 
 // ── 계약 ──────────────────────────────────────────────────────────────────
 
@@ -325,12 +305,6 @@ async function runAction(objectiveId: string, key: IntentKey, context: string): 
       case "extend": await request("/objective/extend", { objectiveId, context }); return { outcome: "done" };
       case "steer": await request("/commander/steer", { objectiveId, ...withContext }); return { outcome: "done" };
       case "start": case "resume": case "steerIdle": {
-        // 라우팅으로 띄울 구성원이 있으면 개시는 늘 판단 → 확인 → 기동으로 나뉜다 — 여기서는 칸만 열고 말은 칸이 이어받는다.
-        if (routingTargetsOf(objective, live).length > 0) {
-          if (sheetsSending.has(objectiveId)) return { outcome: "failed", notice: { tone: "info", text: localized((t) => t("objectives.band.sending")) } };
-          setSheet(objectiveId, { intent: key, context });
-          return { outcome: "held" };
-        }
         return started(await request("/commander/start", { objectiveId, ...withContext }));
       }
       case "complete": {
@@ -363,22 +337,15 @@ async function runCompact(objectiveId: string): Promise<GroupBoardRunResult> {
 
 // ── 입력창 위 칸 ───────────────────────────────────────────────────────────
 
-const Spinner = () => <span className="objectives-routing-spinner" aria-hidden="true" />;
-/** 대상 전원에 걸친 사유 — 항목별 사유가 아니라 판단 자체가 돌지 못했다. 칸 위에 띠로 선다. */
-const SET_WIDE_REASONS = new Set(["routing_disabled", "routing_timeout", "routing_unavailable", "routing_failed"]);
-
 const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
-const useSheet = (objectiveId: string) => useSyncExternalStore(subscribeSheets, () => sheets.get(objectiveId) ?? null, () => null);
 
-/** 입력창 바로 위 칸 — 라우팅 확인이 먼저, 그다음 후속 후보 고르기. 띄울 것이 없으면 아무것도 그리지 않는다. */
+/** 입력창 바로 위 칸 — 후속 후보 고르기. 띄울 것이 없으면 아무것도 그리지 않는다. */
 function BoardPanel({ objectiveId, ctx }: { readonly objectiveId: string; readonly ctx: GroupBoardPanelContext }) {
   const objective = useObjective(objectiveId);
-  const sheet = useSheet(objectiveId);
   const followupOpen = useFollowupOpen(objectiveId);
   useSyncExternalStore(subscribeObjective, listedObjectiveSummaries, listedObjectiveSummaries);
   const t = getT(ctx.language, ctx.layout === "mobile");
   if (!objective) return null;
-  if (sheet) return <RoutingPanel key={objectiveId} objective={objective} t={t} intent={sheet.intent} context={sheet.context} settle={ctx.settle} />;
   if (followupOpen && choicesOf(objective, liveOf(objective)).followupAvailable) return <FollowupPanel key={objectiveId} objective={objective} t={t} settle={ctx.settle} />;
   return null;
 }
@@ -439,7 +406,7 @@ function FollowupPanel({ objective, t, settle }: { readonly objective: Objective
     <div ref={rootRef} className="objectives-composer-panel" role="dialog" aria-label={t("objectives.followup.pick")} onKeyDown={onPanelKey(close)}>
       <div className="objectives-composer-panel-head">
         <span>{t("objectives.followup.pick")} · <span aria-live="polite">{t("objectives.followup.count", { k: picked, n: candidates.length })}</span></span>
-        <button type="button" className="objectives-glyph" aria-label={t("objectives.routing.close")} title={t("objectives.routing.close")} onClick={close}><CloseGlyph /></button>
+        <button type="button" className="objectives-glyph" aria-label={t("objectives.panel.close")} title={t("objectives.panel.close")} onClick={close}><CloseGlyph /></button>
       </div>
       <FollowupCandidateList
         candidates={candidates}
@@ -458,152 +425,6 @@ function FollowupPanel({ objective, t, settle }: { readonly objective: Objective
         <span>{picked === 0 ? t("objectives.followup.sendEmpty", { n: candidates.length }) : t("objectives.followup.sendSome", { k: picked })}</span>
         {/* 보내는 중은 aria-disabled로만 막는다 — native disabled는 막 누른 버튼의 포커스를 문서로 떨군다. */}
         <button type="button" className="objectives-btn is-primary" aria-disabled={sending || undefined} aria-busy={sending || undefined} onClick={() => void complete()}>{t("objectives.review.complete")}</button>
-      </div>
-    </div>
-  );
-}
-
-/** 라우팅 확인 칸 — 판단 중(judging)·본 결과를 갱신 중(refreshing)·결과(ready). overridden 은 칸에서 직접 지정으로 바꾼 구성원이다. */
-interface RoutingState {
-  readonly phase: "judging" | "refreshing" | "ready";
-  readonly preview: RoutingPreview | null;
-  /** 칸에서 직접 지정한 값 — 저장이 방송으로 돌아오기 전에도 행이 그 모델을 말한다. */
-  readonly overridden: ReadonlyMap<string, { readonly model: string; readonly effort?: string }>;
-  /** 이 칸에서 본 판단 결과 — 다시 읽어도 직접 지정으로 대상에서 빠진 구성원의 결과를 남긴다. */
-  readonly known: ReadonlyMap<string, RoutingPreview["members"][number]>;
-  readonly error: string | null;
-}
-
-function RoutingPanel({ objective, t, intent, context, settle }: { readonly objective: Objective; readonly t: T; readonly intent: IntentKey; readonly context: string; readonly settle: GroupBoardPanelContext["settle"] }) {
-  const objectiveId = objective.id;
-  const live = liveOf(objective);
-  const targets = routingTargetsOf(objective, live);
-  const launched = memberLaunchedIn(live);
-  const rows = useLaunchRows();
-  const [state, setState] = useState<RoutingState>({ phase: "judging", preview: null, overridden: new Map(), known: new Map(), error: null });
-  const [sending, setSending] = useState(false);
-  // 판단 응답이 칸을 닫은 뒤에 닿으면 버린다.
-  const token = useRef(0);
-  const ttlMinutes = Math.round(ROUTING_PREVIEW_TTL_MS / 60_000);
-  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
-  /** 판단(또는 캐시) — rejudge 면 다시 판단한다. 결과를 이미 보고 있으면 그대로 두고 갱신만 한다(refreshing). */
-  const load = (rejudge: boolean) => {
-    const mine = ++token.current;
-    setState((current) => ({ ...current, phase: current.preview && !rejudge ? "refreshing" : "judging", known: rejudge ? new Map() : current.known, error: null }));
-    void request<{ preview?: RoutingPreview } | undefined>("/routing/preview", { objectiveId, ...(rejudge ? { rejudge: true } : {}) }).then((result) => {
-      if (mine !== token.current) return;
-      const preview = result?.preview ?? null;
-      // 직접 지정으로 대상에서 빠진 구성원의 앞선 결과도 남긴다 — 「라우팅 결과 쓰기」가 무엇으로 돌아가는지 계속 말한다.
-      setState((current) => ({ ...current, phase: "ready", preview, known: new Map([...current.known, ...(preview?.members ?? []).map((entry) => [entry.id, entry] as const)]) }));
-    }, (failure: unknown) => {
-      if (mine !== token.current) return;
-      setState((current) => ({ ...current, phase: "ready", error: codeOf(failure) }));
-    });
-  };
-  useEffect(() => { load(false); return () => { token.current += 1; }; }, [objectiveId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const close = () => {
-    if (state.preview) settle({ outcome: "held", actionId: intent, notice: { tone: "info", text: localized((tt) => tt("objectives.routing.kept", { minutes: ttlMinutes })) } });
-    setSheet(objectiveId, null);
-  };
-  /** 직접 지정 — 구성원 선택을 바꾸고(라우팅으로 되돌리기 포함) 결과를 다시 읽는다. */
-  const pick = (member: ObjectiveMember, launch: { mode: "model"; model: string; effort?: string } | null) => {
-    const previous = state.overridden.get(member.id);
-    const overridden = new Map(state.overridden);
-    if (launch) overridden.set(member.id, launch); else overridden.delete(member.id);
-    setState((current) => ({ ...current, overridden }));
-    void request("/member/patch", { objectiveId, memberId: member.id, patch: { launch } }).then(() => load(false), (failure: unknown) => {
-      // 저장되지 않은 선택을 행에 남기지 않는다 — 「이대로 개시」는 저장된 설정으로 띄우므로 행도 지정 전 값으로 돌아간다.
-      setState((current) => {
-        const restored = new Map(current.overridden);
-        if (previous) restored.set(member.id, previous); else restored.delete(member.id);
-        return { ...current, overridden: restored, error: codeOf(failure) };
-      });
-    });
-  };
-  const settling = state.phase !== "ready";
-  /** 「이대로 개시」 — 본 결과 그대로 띄운다. 그새 결과를 쓸 수 없게 됐으면 다시 읽어 보여 준다(바뀐 대상만 판단). */
-  const go = async () => {
-    if (sending || settling) return;
-    setSending(true);
-    sheetsSending.add(objectiveId);
-    try {
-      const result = await request("/commander/start", { objectiveId, routing: "preview", ...(context ? { context } : {}) });
-      token.current += 1;
-      setSheet(objectiveId, null);
-      // 칸은 개시를 누를 때 넘겨받은 말을 보낸다 — 칸이 열린 사이 입력창에 새로 쓴 말은 입력창이 남긴다(actionId 의 판 비교).
-      settle({ ...started(result), actionId: intent });
-    } catch (failure) {
-      const code = codeOf(failure);
-      if (code === "routing_preview_stale") load(false);
-      setState((current) => ({ ...current, error: code }));
-    } finally {
-      sheetsSending.delete(objectiveId);
-      setSending(false);
-    }
-  };
-  const judging = state.phase === "judging";
-  const rowLocked = judging || sending;
-  const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
-  const wide = (state.preview?.members ?? []).flatMap((entry) => (entry.via === "fallback" && SET_WIDE_REASONS.has(entry.reason) ? [entry.reason] : []))[0];
-  const minutes = state.preview ? Math.floor((Date.now() - state.preview.at) / 60_000) : 0;
-  const status = judging ? t("objectives.routing.judging") : !state.preview ? "" : state.preview.judged ? t("objectives.routing.judgedNow") : minutes <= 0 ? t("objectives.routing.cachedNow") : t("objectives.routing.cached", { minutes });
-  const words = (model: string | undefined, effort: string | undefined) => { const shownWords = launchedWords(rows, model, effort, labels); return <span className="objectives-routing-words" title={shownWords.title}><LaunchedText model={shownWords.model} words={shownWords.words} /></span>; };
-  const mark = (member: ObjectiveMember) => <ObjectiveAvatar objectiveId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? live.member(member.id) : "closed")} />;
-  const memberRow = (member: ObjectiveMember) => {
-    const result = state.known.get(member.id);
-    const target = targets.some((candidate) => candidate.id === member.id);
-    const picked = state.overridden.get(member.id);
-    const row = (label: string, control: ReactNode, why?: { readonly text: string; readonly warn?: boolean }, fixed = false) => (
-      <div key={member.id} className={`objectives-routing-row${fixed ? " is-fixed" : ""}`}>
-        {mark(member)}
-        <span className="objectives-routing-who"><span className="objectives-routing-role">{member.role}</span><small>{label}</small></span>
-        <span className="objectives-routing-pick">{control}</span>
-        {why ? <span className={`objectives-routing-why${why.warn ? " is-warn" : ""}`}>{why.text}</span> : null}
-      </div>
-    );
-    // 예약이 걸린 구성원은 예약값으로 재개를 시도한다 — 칸도 그 모델을 보인다.
-    if (launched(member)) return member.next && !member.next.failed
-      ? row(t("objectives.routing.fixedReserved"), words(member.next.model, member.next.effort), undefined, true)
-      : row(t("objectives.routing.fixedResume"), words(member.model, member.effort), undefined, true);
-    // 폴백은 띄우는 순간의 지휘관 프리셋으로 뜬다 — 칸을 연 사이 프리셋을 바꿔도 보이는 모델이 실제 기동과 같게 지금 값을 보인다.
-    const shownModel = result?.via === "fallback" ? objective.commander : result;
-    const resultWords = result ? `${launchedWords(rows, shownModel?.model, shownModel?.effort, labels).title}${result.via === "fallback" ? ` · ${t("objectives.members.fallback")}` : ""}` : t("objectives.routing.atLaunch");
-    const useResult = { id: "route", label: t("objectives.routing.useResult"), hint: resultWords };
-    const onModel = (next: { model?: string; effort?: string }) => { if (next.model) pick(member, { mode: "model", model: next.model, ...(next.effort ? { effort: next.effort } : {}) }); };
-    if (picked) {
-      return row(t("objectives.routing.viaPicked"), <LaunchControl t={t} model={picked.model} effort={picked.effort} locked={rowLocked} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })}
-        extras={[{ ...useResult, active: false, onPick: () => pick(member, null) }]} onChange={onModel} />, { text: t("objectives.routing.picked") });
-    }
-    if (target) {
-      const trigger = judging && !result ? <span className="objectives-routing-judging"><Spinner />{t("objectives.routing.judgingRow")}</span>
-        : result ? <>{words(shownModel?.model, shownModel?.effort)}{result.via === "fallback" ? <span className="objectives-member-via is-fallback">{t("objectives.members.fallback")}</span> : null}</>
-        : <span className="objectives-launch-model">{t("objectives.routing.atLaunch")}</span>;
-      const why = !result || judging ? undefined : result.via === "route" ? (result.because ? { text: result.because } : undefined) : { text: t("objectives.routing.fallbackWhy", { reason: routingReason(t, result.reason) }), warn: true };
-      return row(t("objectives.routing.viaRoute"), <LaunchControl t={t} model={undefined} effort={undefined} locked={rowLocked} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })} triggerText={trigger}
-        extras={[{ ...useResult, active: true, onPick: () => undefined }]} onChange={onModel} />, why);
-    }
-    if (member.launch.mode === "model") return row(t("objectives.routing.fixedModel"), words(member.launch.model, member.launch.effort), undefined, true);
-    return row(t("objectives.memberSelection.route"), <span className="objectives-launch-model">{t("objectives.memberSelection.route")}</span>, undefined, true);
-  };
-  const model = `${commanderWords.words.model} · ${commanderWords.words.effort}`;
-  return (
-    <div className="objectives-composer-panel objectives-routing" role="dialog" aria-label={t("objectives.routing.title")} aria-busy={judging || undefined} tabIndex={-1} onKeyDown={onPanelKey(close)} data-intent={intent}>
-      <div className="objectives-composer-panel-head">
-        <span className="objectives-routing-head"><b>{t("objectives.routing.title")}</b><span aria-live="polite">{judging ? <><Spinner />{status}</> : status}</span></span>
-        <button type="button" className="objectives-glyph" aria-label={t("objectives.routing.close")} title={t("objectives.routing.close")} onClick={close}><CloseGlyph /></button>
-      </div>
-      {wide && !judging ? <div className="objectives-routing-banner" role="note">{wide === "routing_disabled" ? t("objectives.routing.banner.disabled", { model }) : t("objectives.routing.banner.other", { reason: routingReason(t, wide), model })}</div> : null}
-      <div className="objectives-routing-list">{objective.members.map(memberRow)}</div>
-      {state.error ? <p className="objectives-composer-panel-error" role="alert">{state.error === "routing_preview_stale" ? reasonText(t, state.error) : t("objectives.routing.failed", { reason: reasonText(t, state.error) })}</p> : null}
-      <div className="objectives-routing-foot">
-        <span>{targets.length ? t("objectives.routing.foot", { count: targets.length, minutes: ttlMinutes }) : t("objectives.routing.footNone")}</span>
-        {/* 재판단 대기·보내는 중은 일시 상태라 aria-disabled로 막는다(onClick이 거른다) — 키보드로 막 누른 「다시 판단」의 포커스를 지킨다. */}
-        <button type="button" className="objectives-btn is-small" disabled={targets.length === 0} aria-disabled={settling || sending || undefined} aria-busy={settling || undefined} onClick={() => { if (settling || sending || targets.length === 0) return; load(true); }}>{t("objectives.routing.rejudge")}</button>
-      </div>
-      <div className="objectives-composer-panel-foot">
-        <span>{sending ? t("objectives.band.sending") : null}</span>
-        {/* 판단 대기·보내는 중은 저절로 끝나는 일시 상태라 aria-disabled로만 막는다(go가 둘 다 거른다). */}
-        <button type="button" className="objectives-btn is-primary" aria-disabled={settling || sending || undefined} aria-busy={sending || undefined} onClick={() => void go()}>{t("objectives.routing.go")}</button>
       </div>
     </div>
   );

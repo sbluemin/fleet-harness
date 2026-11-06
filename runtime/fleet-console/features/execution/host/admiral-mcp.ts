@@ -26,6 +26,23 @@ const unscopedLabel = (label: string | undefined): string | null => {
   return at > 0 ? label.slice(at + 1) : null;
 };
 
+/** Console 조립부만 등록하는 예약 서버 이름. 플러그인 경로(`register`)로는 열리지 않는다. */
+const RESERVED_ADMIRAL_MCP_NAMES = new Set(["fleet-ai-gateway"]);
+
+/**
+ * 예약 서버의 접근 규칙. 세션 라벨로 푼 호출자를 `admit`이 받는 세션에만 토큰을 내고, 실행 때 다시 확인해 거절한다.
+ * 호출자를 못 풀면 받지 않는다(fail-closed).
+ */
+export interface ReservedAdmiralMcpRegistration {
+  readonly admit: (caller: ConsoleCaller) => boolean;
+  /** 받지 않은 호출자에게 돌려줄 거절 코드. */
+  readonly refusal: string;
+  /** 이 서버의 도구를 도구 검색 뒤로 미루지 않는다. */
+  readonly alwaysLoad?: boolean;
+  /** MCP initialize 의 instructions — 이 서버를 받은 세션에만 실린다. */
+  readonly instructions?: string;
+}
+
 /** 호스트 인스턴스가 소유한다. 플러그인 번들의 모듈 사본과 상태를 공유하지 않는다. */
 export function createAdmiralMcpHost(transport?: McpHttpTransport, options: AdmiralMcpHostOptions = {}) {
   type ToolRunner = { readonly tool: ConsoleMcpTool; readonly run: (args: unknown, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> };
@@ -34,14 +51,20 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
     stop(): Promise<void>;
     /** 사령관에 묶어 내줄 수 있는 서버면 그 도구 — 실행은 서빙 경로와 같은 검증을 지난다. 아니면 null. */
     commodoreTools: readonly ToolRunner[] | null;
+    /** 예약 서버의 접근 규칙. 플러그인 서버에는 없다. */
+    reserved: ReservedAdmiralMcpRegistration | null;
   };
   const registrations = new Map<string, Registration>();
   const retiring = new Set<Promise<void>>();
   let disposed = false;
-  return {
-    register(name: string, tools: readonly ConsoleMcpTool[], registration: AdmiralMcpRegistration = {}): () => void {
+  const callerOf = (label: string | null): ConsoleCaller | null => (label && options.resolveCaller ? options.resolveCaller(label) : null);
+  const admitted = (entry: Registration, label: string): boolean => {
+    if (!entry.reserved) return true;
+    const caller = callerOf(label.trim());
+    return caller !== null && entry.reserved.admit(caller);
+  };
+  const add = (name: string, tools: readonly ConsoleMcpTool[], registration: AdmiralMcpRegistration, reserved: ReservedAdmiralMcpRegistration | null): () => void => {
       if (disposed) throw new Error("Admiral MCP host is disposed");
-      if (!/^fleet-[a-z0-9][a-z0-9-]*$/.test(name) || name === "fleet-console-use" || name === "fleet-core" || name === "fleet-ai-gateway" || name === "fleet-computer-use") throw new Error("Invalid Admiral MCP name");
       if (registrations.has(name)) throw new Error(`Admiral MCP already registered: ${name}`);
       if (!tools.length || new Set(tools.map((tool) => tool.name)).size !== tools.length) throw new Error("Admiral MCP tools must be nonempty and unique");
       const registry = createMcpToolRegistry();
@@ -64,16 +87,21 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
           promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], parameters: tool.inputSchema,
           execute: async (args, context) => {
             const label = unscopedLabel(context.sessionLabel);
-            const caller = label && options.resolveCaller ? options.resolveCaller(label) : null;
+            const caller = callerOf(label);
+            // 예약 서버는 토큰 발급 때 받은 세션이라도 실행 때 다시 확인한다 — 받지 않은 호출자는 도구에 닿지 않는다.
+            if (reserved && (!caller || !reserved.admit(caller))) {
+              const refusal = { error: reserved.refusal };
+              return { content: [{ type: "text", text: JSON.stringify(refusal) }], structuredContent: refusal, isError: true };
+            }
             // 사령관은 호출자 소속에서만 나온다 — 모델 인자로 고를 수 없다.
             const commodoreId = registration.commodoreScoped && caller && options.resolveCommodore ? options.resolveCommodore(caller) : null;
             return run(args, { ...context, ...(caller ? { caller } : {}), ...(commodoreId ? { commodoreId } : {}) });
           },
         });
       }
-      const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore });
+      const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore, ...(reserved?.instructions ? { instructions: reserved.instructions } : {}) });
       const manager = createExecutorSessionManager({ runtimes: [{ name, runtime: { registry, snapshotStore, server, onFailure: options.onFailure } }] });
-      const entry: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); }, commodoreTools: registration.commodoreScoped ? runners : null };
+      const entry: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); }, commodoreTools: registration.commodoreScoped ? runners : null, reserved };
       registrations.set(name, entry);
       return () => {
         if (registrations.get(name) !== entry) return;
@@ -84,6 +112,18 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
         retiring.add(closing);
         void closing.then(() => retiring.delete(closing), () => {});
       };
+  };
+  return {
+    register(name: string, tools: readonly ConsoleMcpTool[], registration: AdmiralMcpRegistration = {}): () => void {
+      if (!/^fleet-[a-z0-9][a-z0-9-]*$/.test(name) || name === "fleet-console-use" || name === "fleet-core" || RESERVED_ADMIRAL_MCP_NAMES.has(name) || name === "fleet-computer-use") throw new Error("Invalid Admiral MCP name");
+      return add(name, tools, registration, null);
+    },
+    /**
+     * 예약 이름의 서버를 등록한다. Console 조립부만 부른다 — 플러그인에 넘기는 포트(`AdmiralMcpHost`)에는 이 메서드가 없다.
+     */
+    registerReserved(name: string, tools: readonly ConsoleMcpTool[], reserved: ReservedAdmiralMcpRegistration): () => void {
+      if (!RESERVED_ADMIRAL_MCP_NAMES.has(name)) throw new Error("Invalid reserved Admiral MCP name");
+      return add(name, tools, {}, reserved);
     },
     /**
      * `commodoreScoped` 서버들의 도구를 사령관 하나(호스트가 정한 id와 그 디렉터리)에 묶는다. 부르는 쪽이 넘긴 cwd·사령관은 버리고
@@ -106,13 +146,14 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
       return {
         async getEndpoint() {
           if (disposed) throw new Error("Admiral MCP host is disposed");
-          const endpoints = await Promise.all([...registrations.values()].map(({ manager }) => manager.getEndpoint()));
-          return { servers: endpoints.flatMap((endpoint) => endpoint.servers) };
+          const endpoints = await Promise.all([...registrations.values()].map(async ({ manager, reserved }) => ({ endpoint: await manager.getEndpoint(), alwaysLoad: reserved?.alwaysLoad === true })));
+          return { servers: endpoints.flatMap(({ endpoint, alwaysLoad }) => endpoint.servers.map((server) => (alwaysLoad ? { ...server, alwaysLoad: true } : server))) };
         },
         issueSessionToken(request) {
           if (disposed) throw new Error("Admiral MCP host is disposed");
           if (labels.has(request.label.trim())) throw new Error("Admiral MCP session label already in use");
-          const active = [...registrations.values()];
+          // 예약 서버는 받는 호출자의 세션에만 토큰을 낸다 — 받지 않은 세션의 설정에는 그 서버가 실리지 않는다.
+          const active = [...registrations.values()].filter((entry) => admitted(entry, request.label));
           try {
             const tokens = active.flatMap(({ manager }) => manager.issueSessionToken({ ...request, label: scopedLabel(request.label) }));
             labels.set(request.label.trim(), active);

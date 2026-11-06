@@ -135,7 +135,6 @@ export interface ObjectiveEdits {
 export interface ObjectiveCompletion { readonly at: number; readonly by?: ObjectiveActor }
 
 export type MemberLaunch = { readonly mode: "model"; readonly model: string; readonly effort?: string };
-export type MemberSelection = MemberLaunch | { readonly mode: "route" };
 
 /** 모델·강도 한 쌍 — 강도가 없으면 그 모델의 기본이다. */
 export interface MemberPreset {
@@ -144,21 +143,8 @@ export interface MemberPreset {
 }
 
 /**
- * 라우팅 판단 한 자리. route 는 판단이 모델을 줬고, fallback 은 지휘관 프리셋으로 뜬다 — 모델은 띄우는 순간의 지휘관 값이라
- * 담지 않는다. reason 은 사유 코드(화면이 번역한다), detail 은 Gateway·호스트가 준 원문 한 줄이다.
- */
-export type RoutingDecision =
-  | { readonly via: "route"; readonly model: string; readonly effort?: string; readonly because: string }
-  | { readonly via: "fallback"; readonly reason: string; readonly detail?: string };
-
-/** 띄운 구성원의 기동 근거 — 라우팅으로 떴으면 그 근거, 폴백이면 사유. 다른 모델로 재개하면 지운다. */
-export type MemberRouted =
-  | { readonly via: "route"; readonly because: string }
-  | { readonly via: "fallback"; readonly reason: string; readonly detail?: string };
-
-/**
  * 개시한 구성원의 「이번 턴 뒤」 예약 — 일하는 동안 고른 모델이다. 세션 좌표(payload)는 고치지 않았다(미리 고치면 패널이 옛 프로세스를
- * 새 모델로 말한다). from 은 예약할 때의 실행값, was 는 예약 전의 선택(없으면 라우팅)이라 취소하면 그리로 돌아간다. failed 는 이 모델로
+ * 새 모델로 말한다). from 은 예약할 때의 실행값, was 는 예약 전의 선택(없으면 선택 없음)이라 취소하면 그리로 돌아간다. failed 는 이 모델로
  * 바꾸지 못했다는 표시다(세션 좌표는 실행값 그대로다).
  */
 export interface MemberNext {
@@ -224,7 +210,6 @@ export interface StoredMember {
   /** 서브에이전트 허용. 없거나 false면 강제 차단이다. true만 저장한다. */
   readonly subagents?: true;
   readonly by: ObjectiveActor;
-  readonly routed?: MemberRouted;
   readonly next?: MemberNext;
   /** 공개 관측의 직전 실패와 연속 횟수 — 재시작 뒤에도 명단·inbox 에 남는다. 정상 턴이 거두고, 재발주는 inbox 만 해소한다. */
   readonly failure?: ObjectiveMemberFailure;
@@ -248,15 +233,15 @@ export interface SettledTurn {
   readonly revision: number;
 }
 
-export interface ObjectiveMember extends Omit<StoredMember, "launch" | "launchBy" | "subagents" | "routed" | "next" | "settledTurn" | "deliveredAt" | "dispatchedAt" | "receivedAt" | "unreportedNoticeFor"> {
-  readonly launch: MemberSelection;
+export interface ObjectiveMember extends Omit<StoredMember, "launch" | "launchBy" | "subagents" | "next" | "settledTurn" | "deliveredAt" | "dispatchedAt" | "receivedAt" | "unreportedNoticeFor"> {
+  /** 고른 모델·강도. null 은 아직 고르지 않음 — 그 구성원은 모델을 정하기 전까지 띄우지 않는다. */
+  readonly launch: MemberLaunch | null;
   /** 저장된 허용. 키 없음은 false. */
   readonly subagents: boolean;
   readonly sessionName: string | null;
   /** 지금 프로세스의 실행값 — 세션 좌표다. */
   readonly model?: string;
   readonly effort?: string;
-  readonly routed: MemberRouted | null;
   /**
    * 떠 있는 동안 고른 모델을 곧바로(유휴) 또는 이번 턴 뒤(작업 중) 바꾼다 — 채팅은 호스트가, 터미널은 재웠다 깨워서. 호스트가 그 능력을
    * 내놓지 않으면 false. 휴면 여부는 화면이 구성원의 지금 활동으로 가른다.
@@ -291,20 +276,6 @@ export interface ObjectiveMessage {
   readonly attachments?: readonly { readonly id: string }[];
   readonly delivery: ObjectiveMessageDelivery;
 }
-
-/** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */
-export const ROUTING_PREVIEW_TTL_MS = 10 * 60_000;
-
-/** 개시 전 라우팅 확인 시트 — 판단 결과의 화면 모양. 폴백은 지금 지휘관 프리셋을 함께 싣는다. */
-export interface RoutingPreview {
-  /** 이 응답에서 새로 판단한 구성원이 있다. */
-  readonly judged: boolean;
-  /** 가장 오래된 결과의 판단 시각과, 결과가 다음 개시에 쓰이지 않게 되는 시각. */
-  readonly at: number;
-  readonly expiresAt: number;
-  readonly members: readonly ({ readonly id: string } & RoutingDecision & MemberPreset)[];
-}
-
 
 /**
  * 메모에 붙인 이미지 — 파일은 그 목표의 디렉터리 안 `attachments/<attachmentId>.<확장자>` 에 있다. 브라우저에 가는 항목에는
@@ -591,18 +562,12 @@ export interface PendingCommander {
   readonly sessionName: string;
   readonly model?: string;
   readonly effort?: string;
-  /** 모델을 두지 않고, 첫 기동 때 한 번 라우팅으로 고른다. */
-  readonly routing?: true;
   readonly viewMode: "terminal" | "chat";
 }
 
 export interface StoredObjective {
   /** 아직 지휘관 Objective 이 없다 — 첫 기동 때 제거한다. */
   readonly pending?: true;
-  /** 띄우기 전 지휘관을 라우팅으로 둔다. 모델을 고르면 지운다. */
-  readonly commanderRouting?: true;
-  /** 첫 기동 때 한 번 판단한 지휘관 라우팅 근거. 사람이 모델을 바꾸면 지운다. */
-  readonly commanderRouted?: MemberRouted;
   readonly title?: string;
   readonly commodoreId?: string;
   readonly cwd?: string;
@@ -815,7 +780,7 @@ export interface Objective {
   readonly title: string;
   readonly createdAt: number;
   /** 지휘관 세션 — 이름·모델·강도·한 번이라도 깨었는지는 지휘관 Objective 에서 읽는다. */
-  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean; readonly outcome?: "failed"; readonly routing?: true; readonly routed?: MemberRouted };
+  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean; readonly outcome?: "failed" };
   readonly note: string;
   readonly attachments: readonly ObjectiveAttachment[];
   readonly results: readonly ObjectiveResult[];
@@ -1140,15 +1105,13 @@ export const patchObjectiveSchema = z.object({
   today: z.boolean().optional(),
   groupId: ids.nullable().optional(),
   /** 지휘관 모델·강도 — 지휘관 Objective 에 쓴다. */
-  launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional(), routing: z.literal(true).optional() }).strict().optional(),
+  launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional() }).strict().optional(),
 }).strict();
 
 export const memberLaunchSchema = z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().max(32).optional() }).strict();
 export interface MemberProposal { readonly model: string; readonly effort?: string }
 export const memberAddSchema = z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional(), launch: memberLaunchSchema.optional(), subagents: z.boolean().optional() }).strict();
 export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.optional(), brief: z.string().max(300).nullable().optional(), launch: memberLaunchSchema.nullable().optional(), subagents: z.boolean().optional() }).strict();
-export const memberBatchLaunchSchema = z.object({ mode: z.literal("route") }).strict();
-export type MemberBatchLaunchInput = z.infer<typeof memberBatchLaunchSchema>;
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
 
 export const criterionAddSchema = z.object({ text: criterionText }).strict();
@@ -1183,7 +1146,7 @@ export const planSchema = z.object({
     /** 구성원 id 또는 역할 이름. 없으면 지휘관 직접. */
     member: ids.optional(),
   })).min(1).max(MAX_MISSIONS).optional(),
-  /** 지휘관이 짠 구성원 — gateway_models로 확인한 모델은 launch에 저장하고, 없으면 라우팅 선택으로 남는다. */
+  /** 지휘관이 짠 구성원 — candidates로 확인한 모델을 launch에 저장한다. */
   members: z.array(memberAddSchema.pick({ role: true, brief: true, launch: true })).max(MAX_MISSIONS).optional(),
   criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
 }).strict();

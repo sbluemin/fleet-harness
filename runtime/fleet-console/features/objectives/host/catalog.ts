@@ -5,21 +5,24 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { ObjectiveStoreError } from "./store.js";
 
 /**
- * 구성원 모델 목록의 출처 — Console 이 내놓는 실행 카탈로그와 Gateway 한도 요약. 둘 다 루프백 HTTP 로만 읽는다.
- * 모델 목록 화면(console_objectives models)은 실행 카탈로그에 사람이 켠 목록을 겹쳐 내고, 지휘관의 구성원 모델 제안(fleet-objectives models·plan·enlist)은
- * gateway_models 를 읽는다 — 지휘관의 기동 모델 선택도 라우팅과 같은 후보로 확인한다.
+ * 모델 선택 확인의 출처 — Gateway `candidates` 응답과 실행 카탈로그. 둘 다 루프백 HTTP로 읽는다.
+ * 빈 후보 목록(`candidates: []`)과 조회 실패(`null` → `gateway_models_unavailable`)를 구분한다.
  */
 const CATALOG_PATH = "/api/v1/objectives/records/catalog";
-const QUOTA_PATH = "/api/v1/ai-gateway/quota";
+const CANDIDATES_PATH = "/api/v1/ai-gateway/candidates";
 const CATALOG_TIMEOUT_MS = 5_000;
-const QUOTA_TIMEOUT_MS = 5_000;
-const QUOTA_MAX_BYTES = 65_536;
-const GATEWAY_MODELS_PATH = "/api/v1/ai-gateway/gateway-models";
-const GATEWAY_MODELS_MAX_BYTES = 131_072;
+const CANDIDATES_MAX_BYTES = 131_072;
 
-/** 라우팅 판단이 보는 후보 한 줄(gateway_models.models). modelId 가 판단과 제안이 같이 쓰는 이름이다. */
-export interface GatewayModel { readonly modelId: string; readonly efforts: readonly string[]; readonly [key: string]: unknown }
-export interface GatewayModels { readonly routing: unknown; readonly models: readonly GatewayModel[]; readonly [key: string]: unknown }
+export interface GatewayCandidateEntry {
+  readonly model: string;
+  readonly efforts: readonly string[];
+  readonly summary: string;
+  readonly pressure: "ok" | "elevated" | "unknown";
+}
+
+export interface GatewayCandidates {
+  readonly candidates: readonly GatewayCandidateEntry[];
+}
 
 export interface CatalogModel {
   readonly model: string;
@@ -33,6 +36,18 @@ export interface CatalogModel {
 }
 
 export type ModelCatalog = ReturnType<typeof createModelCatalog>;
+
+function parseCandidateEntry(entry: unknown): GatewayCandidateEntry[] {
+  if (!isRecord(entry)) return [];
+  if (typeof entry.model !== "string" || entry.model === "") return [];
+  const model = canonicalModelId(entry.model);
+  const efforts = Array.isArray(entry.efforts)
+    ? entry.efforts.filter((effort): effort is string => typeof effort === "string")
+    : [];
+  const summary = typeof entry.summary === "string" ? entry.summary : "";
+  const pressure = entry.pressure === "ok" || entry.pressure === "elevated" ? entry.pressure : "unknown";
+  return [{ model, efforts, summary, pressure }];
+}
 
 export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
   /** Console 의 루프백 GET — origin 이 없거나 실패·시간 초과면 null. */
@@ -74,68 +89,50 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
     return rows;
   }
 
-  /** Gateway 한도 요약(공급자별 창의 사용률) — 읽지 못하면 null 이고 목록은 그대로 낸다. */
-  async function loadQuota(signal: AbortSignal | undefined) {
-    const body = await loopback(`${QUOTA_PATH}?stale=1`, QUOTA_TIMEOUT_MS, signal);
-    const providers = isRecord(body) && isRecord(body.providers) ? body.providers : null;
-    if (!providers || JSON.stringify(providers).length > QUOTA_MAX_BYTES) return null;
-    const quota: Record<string, { status: string; windows?: { id: string; label?: string; usedPercent: number; resetsAt?: number; scope?: string; isAggregate?: boolean }[] }> = {};
-    for (const [provider, entry] of Object.entries(providers)) {
-      if (!isRecord(entry) || typeof entry.status !== "string") continue;
-      const windows = Array.isArray(entry.windows) ? entry.windows.flatMap((window) => isRecord(window) && typeof window.id === "string" && typeof window.usedPercent === "number" && Number.isFinite(window.usedPercent)
-        ? [{ id: window.id, ...(typeof window.label === "string" ? { label: window.label.slice(0, 80) } : {}), usedPercent: window.usedPercent, ...(typeof window.resetsAt === "number" ? { resetsAt: window.resetsAt } : {}), ...(typeof window.scope === "string" ? { scope: window.scope } : {}), ...(typeof window.isAggregate === "boolean" ? { isAggregate: window.isAggregate } : {}) }]
-        : []) : [];
-      quota[provider] = { status: entry.status, ...(windows.length ? { windows } : {}) };
-    }
-    return Object.keys(quota).length ? quota : null;
-  }
-
-  /** 라우팅 판단이 보는 gateway_models 그대로 — 읽지 못하면 null. */
-  async function gatewayModels(signal: AbortSignal | undefined): Promise<GatewayModels | null> {
-    const body = await loopback(GATEWAY_MODELS_PATH, CATALOG_TIMEOUT_MS, signal);
-    if (!isRecord(body) || !Array.isArray(body.models) || JSON.stringify(body).length > GATEWAY_MODELS_MAX_BYTES) return null;
-    const models = body.models.flatMap((entry): GatewayModel[] => isRecord(entry) && typeof entry.modelId === "string"
-      ? [{ ...entry, modelId: entry.modelId, efforts: Array.isArray(entry.efforts) ? entry.efforts.filter((effort): effort is string => typeof effort === "string") : [] }] : []);
-    return { ...body, routing: body.routing ?? null, models };
-  }
-
-  /** 지휘관의 모델 제안을 gateway_models 로 확인한다 — 그 후보의 모델과 강도만 받고, 목록을 읽지 못하면 추측으로 통과시키지 않는다. */
-  async function checkProposal(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined, loaded?: GatewayModels | null): Promise<{ readonly model: string; readonly effort?: string }> {
-    const loadout = loaded === undefined ? await gatewayModels(signal) : loaded;
-    if (!loadout) throw new ObjectiveStoreError("gateway_models_unavailable");
-    const wanted = canonicalModelId(choice.model);
-    const row = loadout.models.find((entry) => canonicalModelId(entry.modelId) === wanted);
-    if (!row) throw new ObjectiveStoreError("model_not_in_gateway_models", undefined, { model: choice.model });
-    if (choice.effort !== undefined && !row.efforts.includes(choice.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.modelId, efforts: row.efforts });
-    return { model: row.modelId, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
-  }
-
   /**
-   * 사람이 AI Gateway에서 켠 모델(정준 id) — 부를 때마다 gateway_models 의 후보 목록을 다시 읽어 그 멤버십만 쓴다.
-   * 로그인이 끊긴 공급자의 모델도 빠지는데, 실행 카탈로그도 그 모델을 고를 수 없게 낸다. 라우팅 선호·한도·위임 강도 노출은 보지 않는다(강도는 실행 카탈로그 사다리가 정한다). 읽지 못하면 null.
+   * Gateway `candidates` 응답. 빈 배열(`candidates: []`)은 유효한 빈 후보 목록으로 돌려주고,
+   * 조회 자체가 실패했거나 형식이 깨진 경우에만 `null`을 돌려준다.
    */
-  async function enabledModels(signal: AbortSignal | undefined): Promise<ReadonlySet<string> | null> {
-    const loadout = await gatewayModels(signal);
-    return loadout ? new Set(loadout.models.map((entry) => canonicalModelId(entry.modelId))) : null;
+  async function candidates(signal: AbortSignal | undefined): Promise<GatewayCandidates | null> {
+    const body = await loopback(CANDIDATES_PATH, CATALOG_TIMEOUT_MS, signal);
+    if (!isRecord(body) || !Array.isArray(body.candidates) || JSON.stringify(body).length > CANDIDATES_MAX_BYTES) return null;
+    return { candidates: body.candidates.flatMap(parseCandidateEntry) };
+  }
+
+  /** 사령관·지휘관의 모델 선택을 candidates로 확인한다 — 후보의 모델과 허용 강도만 받고, 조회 실패는 추측으로 통과시키지 않는다. */
+  async function checkProposal(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined, loaded?: GatewayCandidates | null): Promise<{ readonly model: string; readonly effort?: string }> {
+    const loadout = loaded === undefined ? await candidates(signal) : loaded;
+    if (!loadout) throw new ObjectiveStoreError("gateway_models_unavailable", undefined, { hint: "fleet-ai-gateway candidates could not be read; retry." });
+    const wanted = canonicalModelId(choice.model);
+    const row = loadout.candidates.find((entry) => canonicalModelId(entry.model) === wanted);
+    if (!row) throw new ObjectiveStoreError("model_not_in_gateway_models", undefined, { model: choice.model, hint: "Choose a model from fleet-ai-gateway candidates." });
+    if (choice.effort !== undefined && !row.efforts.includes(choice.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.model, efforts: row.efforts });
+    return { model: row.model, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
   }
 
   /**
-   * 사령관 쪽 지휘관 모델 선택(명시 지정·사령관 기본값·보드 기본)을 확인한다 — 실행 카탈로그에서 고를 수 있고 사람이 켠 모델만 받는다.
-   * 어느 목록이든 읽지 못하면 추측으로 통과시키지 않는다. 강도는 그 모델의 카탈로그 사다리로 확인한다.
+   * 사령관 쪽 지휘관 모델 선택(명시 지정·사령관 기본값·보드 기본)을 확인한다 — 실행 카탈로그에서 고를 수 있고 candidates에 있는 모델만 받는다.
+   * 어느 목록이든 읽지 못하면 추측으로 통과시키지 않는다. 사람이 직접 고른 지휘관은 이 확인을 거치지 않는다.
    */
   async function checkCommander(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined): Promise<{ readonly model: string; readonly effort?: string }> {
-    const [catalog, enabled] = await Promise.all([loadCatalog(signal), enabledModels(signal)]);
-    if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
-    if (!enabled) throw new ObjectiveStoreError("gateway_models_unavailable");
-    const wanted = canonicalModelId(choice.model);
-    const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
-    if (!row || !row.available) throw new ObjectiveStoreError("model_not_in_catalog", undefined, { model: choice.model, ...(row?.reason ? { reason: row.reason } : {}) });
-    if (!enabled.has(wanted)) throw new ObjectiveStoreError("model_not_enabled", undefined, { model: choice.model });
-    if (choice.effort !== undefined && !row.efforts.includes(choice.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.model, efforts: row.efforts });
-    return { model: wanted, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
+    const [catalog, loaded] = await Promise.all([loadCatalog(signal), candidates(signal)]);
+    availableIn(catalog, choice.model);
+    return checkProposal(choice, signal, loaded);
   }
 
-  return { load: loadCatalog, quota: loadQuota, gatewayModels, enabledModels, checkProposal, checkCommander };
+  /** 사람이 명시한 모델(사령관의 지휘관 설정)은 candidates 로 막지 않고 실행 카탈로그 가용성만 본다. */
+  async function checkAvailable(choice: { readonly model: string }, signal: AbortSignal | undefined): Promise<void> {
+    availableIn(await loadCatalog(signal), choice.model);
+  }
+
+  return { candidates, checkProposal, checkCommander, checkAvailable };
+}
+
+function availableIn(catalog: readonly CatalogModel[] | null, model: string): void {
+  if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
+  const wanted = canonicalModelId(model);
+  const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
+  if (!row || !row.available) throw new ObjectiveStoreError("model_not_in_catalog", undefined, { model, ...(row?.reason ? { reason: row.reason } : {}) });
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);

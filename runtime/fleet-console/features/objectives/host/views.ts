@@ -133,9 +133,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
         return {
           id: member.id,
           role: member.role,
-          launch: member.launch.mode === "model"
-            ? { mode: member.launch.mode, model: member.launch.model, ...withoutEmpty({ effort: member.launch.effort }) }
-            : { mode: member.launch.mode },
+          launch: member.launch ? { mode: member.launch.mode, model: member.launch.model, ...withoutEmpty({ effort: member.launch.effort }) } : null,
           ...withoutEmpty({ brief: member.brief, model: member.model, effort: member.effort }),
           by: member.by,
           subagents: member.subagents,

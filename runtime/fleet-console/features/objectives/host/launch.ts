@@ -8,11 +8,10 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
-import { commanderRoutingPrompt, memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { createModelCatalog } from "./catalog.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
-import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
+import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
 import { deriveFailedOutcome } from "./views.js";
 
 /**
@@ -92,17 +91,9 @@ export interface LaunchService {
   rename(objectiveId: string, title: string): Promise<Objective>;
   regroup(objectiveId: string, groupId: string | null): Promise<Objective>;
   /** 지휘관의 모델·강도 — 지휘관 Objective 에 쓴다(다음 깨움부터 쓰인다). */
-  setPreset(objectiveId: string, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly routing?: true }): Promise<Objective>;
-  /**
-   * 개시 — 구성원을 모은 뒤 지휘관에게 첫 알림을 보낸다. routing "preview" 는 사람이 확인 시트에서 본 판단 결과 그대로 띄운다(다시
-   * 판단하지 않고, 그새 결과를 쓸 수 없게 됐으면 routing_preview_stale). 띄우지 못한 구성원은 failed 로 알리고 개시는 이어 간다.
-   */
-  startCommander(objectiveId: string, options?: LaunchOptions & { readonly routing?: "preview" }): Promise<{ readonly objective: Objective; readonly objectiveId: string; readonly failed: readonly { readonly id: string; readonly role: string; readonly error: string }[] }>;
-  /**
-   * 개시 전 라우팅 확인 — 라우팅으로 새로 띄울 구성원의 판단 결과. 캐시가 쓸 수 있으면 다시 판단하지 않고, rejudge 면 모두 다시 판단한다.
-   * 같은 목표의 판단이 이미 진행 중이면 그 결과를 함께 기다린다(판단은 한 번).
-   */
-  routingPreview(objectiveId: string, options?: { readonly rejudge?: boolean }): Promise<RoutingPreview>;
+  setPreset(objectiveId: string, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Promise<Objective>;
+  /** 개시 — 구성원을 모은 뒤 지휘관에게 첫 알림을 보낸다. 띄우지 못한 구성원은 failed 로 알리고 개시는 이어 간다. */
+  startCommander(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string; readonly failed: readonly { readonly id: string; readonly role: string; readonly error: string }[] }>;
   /** 「이번 턴 뒤」 예약을 거둔다 — 세션은 실행값 그대로이고 예약 전 선택으로 돌아간다. 실패 표시도 같은 길로 닫는다. */
   memberNextCancel(objectiveId: string, memberId: string): Promise<Objective>;
   /**
@@ -118,19 +109,14 @@ export interface LaunchService {
   planApplied(objectiveId: string, plan: PlanInput): Objective;
   /**
    * 구성원 명단을 대기 기동하거나 휴면 세션째 재개한다. 호스트가 한 구성원의 기동·재개를 거절하면 그 구성원만 failed(코드와 함께)로
-   * 알리고 나머지는 이어 간다. reviewed 는 사람이 확인한 라우팅 결과다 — 없으면 쓸 수 있는 캐시를 쓰고 나머지를 판단한다.
+   * 알리고 나머지는 이어 간다. 모델을 고르지 않은 구성원은 띄우지 않고 member_model_required 로 알린다.
    */
-  muster(objectiveId: string, reviewed?: ReadonlyMap<string, RoutingDecision>): Promise<readonly MusterMember[]>;
+  muster(objectiveId: string): Promise<readonly MusterMember[]>;
   /**
    * 사람·지휘관 경로의 구성원 수정. 지휘관은 사람의 기동 선택을 바꾸지 못한다. 서브에이전트 허용 변경은 다음 기동 정책만 호스트에 알린다.
    * 이미 띄운 구성원의 모델 선택은 곧바로(휴면·유휴) 또는 이번 턴 뒤(작업 중) 그 세션의 모델이 된다.
    */
   memberPatched(objectiveId: string, memberId: string, patch: MemberPatchInput, by?: "human" | "commander"): Promise<Objective>;
-  /**
-   * 구성원 일괄 「라우팅」. 개별 지정(model)은 보존하고, 띄운 구성원은 건너뛴다(라우팅은 새로 띄울 때만 판단한다).
-   * changed 는 선택이 바뀐 구성원 수, edits 는 그 가운데 띄우기 전 구성원(보드 편집) 수, preserved 는 직접 지정과 건너뛴 구성원 수다.
-   */
-  memberBatchLaunch(objectiveId: string, mode: "route"): Promise<{ readonly objective: Objective; readonly changed: number; readonly edits: number; readonly preserved: number }>;
   /** 필요하면 부모를 휴면 복원한 뒤 자식 세션을 즉시 삭제하고 명단에서 뺀다. */
   memberRemoved(objectiveId: string, memberId: string): Promise<{ readonly objective: Objective; readonly missionIds: readonly string[] }>;
   /** 지휘관 Objective 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
@@ -210,25 +196,11 @@ export interface LaunchOptions {
 }
 
 const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.language === "ko" ? "ko" : "en");
-/** 호스트가 모델·강도를 받지 않은 기동 거절 — 이때만 라우팅 구성원을 지휘관 프리셋으로 다시 띄운다. */
-const MODEL_REFUSALS = new Set(["gateway_model_not_enabled", "invalid_effort", "invalid_model"]);
-/** 라우팅 판단 한 번을 기다리는 상한 — Gateway 의 model 모드 판단(30초)보다 넉넉하다. */
-const ROUTING_TIMEOUT_MS = 45_000;
-/** Gateway 가 `because` 꼬리(`· fallback: <사유>`)로 주는 폴백 사유 → 화면이 번역할 코드. 모르는 사유는 원문만 남긴다. */
-const FALLBACK_REASONS: readonly (readonly [RegExp, string])[] = [
-  [/AI routing is off/i, "routing_off"],
-  [/unassigned/i, "no_candidate"],
-  [/routing decision failed: timeout/i, "decision_timeout"],
-  [/not signed in/i, "not_signed_in"],
-  [/routing decision failed/i, "decision_failed"],
-  [/settings changed/i, "settings_changed"],
-  [/stale or invalid routing choice/i, "invalid_choice"],
-];
-function fallbackReason(because: string): { readonly reason: string; readonly detail?: string } {
-  const at = because.lastIndexOf("fallback:");
-  const tail = (at >= 0 ? because.slice(at + "fallback:".length) : because).trim();
-  return { reason: FALLBACK_REASONS.find(([pattern]) => pattern.test(tail))?.[1] ?? "gateway_fallback", ...(tail ? { detail: tail.slice(0, 300) } : {}) };
-}
+/** 모델을 고르지 않은 구성원 — 판단기로 대신 고르지 않는다. */
+/** 사령관이 지휘관 모델을 고르지 않았고 사람이 정한 사령관 설정도 없다. */
+export const COMMANDER_MODEL_REQUIRED_HINT = "Choose the Commander model with commanderModel from fleet-ai-gateway candidates.";
+export const MEMBER_MODEL_REQUIRED_HINT = "Set this member's model with set_member_launch, choosing from fleet-ai-gateway candidates.";
+const memberModelRequired = () => new ObjectiveStoreError("member_model_required", undefined, { hint: MEMBER_MODEL_REQUIRED_HINT });
 /** 지휘관 기본값 — Opus · high. 카탈로그가 다르면 깨울 때 호스트가 거절한다. */
 /** 세션 이름 — 다른 세션이 이 세션을 부르는 주소. 담당 이름은 지휘관 이름의 머리를 잇는다. */
 const commanderSession = () => `objective-${randomUUID().slice(0, 6)}-cmdr`;
@@ -236,8 +208,8 @@ const commanderSession = () => `objective-${randomUUID().slice(0, 6)}-cmdr`;
 const memberSession = (objectiveId: string, commander: string | null, index: number) => `${commander ? commander.replace(/-cmdr$/, "") : `objective-${objectiveId.slice(0, 6)}`}-member-${index}`;
 
 export interface LaunchServiceOptions {
-  /** 사령관이 만드는 목표의 지휘관 — 모델·강도, 또는 첫 기동 때 한 번 판단하는 라우팅. 없으면 보드 기본값(COMMANDER_PRESET)이다. */
-  readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | { readonly route: true } | null;
+  /** 사람이 그 사령관에 정한 지휘관 모델·강도. 없으면 null — 사령관이 만드는 목표는 지휘관 모델을 직접 골라야 한다. */
+  readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null;
   /** 무보고 깨움까지 기다리는 시간. 기본은 25분. 테스트가 짧은 값을 넣는다. */
   readonly reportQuietMs?: number;
   readonly now?: () => number;
@@ -245,13 +217,6 @@ export interface LaunchServiceOptions {
 
 export function createLaunchService(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, serviceOptions: LaunchServiceOptions = {}): LaunchService {
   const modelCatalog = createModelCatalog(ctx);
-  /** 라우팅이 자리를 주지 못해 대체 좌표로 띄울 때도 사람이 AI Gateway에서 켠 모델로만 선다 — 꺼졌거나 켠 목록을 읽지 못하면 던진다. 강도는 보지 않는다. */
-  const checkFallback = (preset: MemberPreset): void => {
-    if (!preset.model || !ctx.enabledModels) return;
-    const enabled = ctx.enabledModels();
-    if (!enabled) throw new ObjectiveStoreError("gateway_settings_unavailable");
-    if (!enabled.has(canonicalModelId(preset.model))) throw new ObjectiveStoreError("model_not_enabled", undefined, { model: preset.model });
-  };
   const control = () => {
     const capability = ctx.consoleControl;
     if (!capability) throw new ObjectiveStoreError("launch_unavailable");
@@ -444,16 +409,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
 
   // 최초 기동은 목표의 UUID 에 묶는다. 실패 후 재시도는 기존 Objective 을 되찾는다.
-  // 라우팅 판단은 아래 assignRouting 이 준비된 뒤에만 호출된다(이 함수 자신은 그때까지 실행되지 않는다).
   const ensureCommander = async (objectiveId: string): Promise<void> => {
     // 에이전트가 지운 목표는 사람이 되돌리기 전에는 기동하지 않는다.
     if (store.find(objectiveId)?.removed) throw new ObjectiveStoreError("objective_removed");
-    const wantsRouting = store.find(objectiveId)?.commander.routing === true;
     const pendingCommander = store.pending(objectiveId);
     const existing = referenceNode(objectiveId);
-    // 이미 세션이 있고 라우팅이 남아 있지 않으면 판단하지 않는다. 다시구상·확장·재개·재시작이 이 길이다.
-    // 보관이 만든 휴면 메타데이터는 세션이 있어도 라우팅이 남아 있으면 아직 첫 기동이 아니다.
-    if (existing && !wantsRouting) {
+    // 이미 세션이 있으면 새로 띄우지 않는다. 다시구상·확장·재개·재시작이 이 길이다.
+    if (existing) {
       await accessObjective(objectiveId);
       if (pendingCommander) {
         if (existing.commodoreId !== pendingCommander.commodoreId || readObjectiveLaunch(existing).sessionName !== pendingCommander.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
@@ -461,163 +423,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
       return;
     }
-    if (!existing && !pendingCommander) throw new ObjectiveStoreError("unknown_objectiveRecord");
-    if (existing && pendingCommander && (existing.commodoreId !== pendingCommander.commodoreId || readObjectiveLaunch(existing).sessionName !== pendingCommander.sessionName)) throw new ObjectiveStoreError("objectiveRecord_id_taken");
+    if (!pendingCommander) throw new ObjectiveStoreError("unknown_objectiveRecord");
     // 지휘관은 늘 채팅으로 선다 — 구성원 채팅 입력창이 보드 동작을 받는다. 옛 터미널 프리셋이 저장된 목표도 채팅으로 띄운다.
-    const pendingRest = pendingCommander ? (({ routing: _routing, ...rest }) => rest)(pendingCommander) : null;
-    let model = pendingRest?.model ?? (existing ? readObjectiveLaunch(existing).model : undefined);
-    let effort = pendingRest?.effort ?? (existing ? readObjectiveLaunch(existing).effort : undefined);
-    if (wantsRouting) {
-      // 보관된 노드는 describe 에만 있다. 되돌리기 전에 판단하면 get 이 비어 좌표를 못 심은 채 라우팅 표시만 걷긴다.
-      if (existing) await accessObjective(objectiveId);
-      const choice = await judgeCommanderOnce(objectiveId);
-      await rememberCommanderDecision(objectiveId, choice);
-      model = choice.model;
-      effort = choice.effort;
-    }
-    if (!existing) {
-      const launchedId = await launch({ ...pendingRest!, ...(model ? { model } : {}), ...(effort ? { effort } : {}), viewMode: "chat", objectiveId, dormant: true, newObjectiveId: objectiveId }).catch(asStoreError);
-      if (launchedId !== objectiveId) throw new ObjectiveStoreError("objectiveRecord_id_taken");
-    }
+    const launchedId = await launch({ ...pendingCommander, viewMode: "chat", objectiveId, dormant: true, newObjectiveId: objectiveId }).catch(asStoreError);
+    if (launchedId !== objectiveId) throw new ObjectiveStoreError("objectiveRecord_id_taken");
     if (store.pending(objectiveId)) store.launched(objectiveId);
   };
 
-  /**
-   * routing-assign 한 번. 항목은 이미 상한 안의 prompt 다. 판단이 자리를 준 경우만 route 이고, 폴백·실패·없는 키·
-   * origin 없음은 사유 코드다. 구성원과 지휘관이 이 경로만 쓴다. 개시를 막지 않는다.
-   */
-  const assignRouting = async (items: readonly { readonly key: string; readonly prompt: string }[]): Promise<Map<string, RoutingDecision>> => {
-    const decisions = new Map<string, RoutingDecision>();
-    const settle = (keys: readonly string[], reason: string, detail?: string) => { for (const key of keys) if (!decisions.has(key)) decisions.set(key, { via: "fallback", reason, ...(detail ? { detail } : {}) }); };
-    if (items.length === 0) return decisions;
-    const origin = ctx.server.origin();
-    if (!origin) { settle(items.map((item) => item.key), "routing_unavailable"); return decisions; }
-    for (let start = 0; start < items.length; start += ROUTING_ASSIGN_MAX_ITEMS) {
-      const chunk = items.slice(start, start + ROUTING_ASSIGN_MAX_ITEMS);
-      const keys = chunk.map((item) => item.key);
-      try {
-        const response = await fetch(`${origin}/api/v1/ai-gateway/routing-assign`, {
-          method: "POST",
-          headers: { "content-type": "application/json", origin },
-          body: JSON.stringify({ items: chunk.map((item) => ({ key: item.key, prompt: item.prompt })) }),
-          signal: AbortSignal.timeout(ROUTING_TIMEOUT_MS),
-        });
-        // 라우팅이 꺼졌거나 후보가 없으면 Gateway 는 항목별 사유 없이 409 하나로 답한다.
-        if (response.status === 409) { settle(keys, "routing_disabled"); continue; }
-        if (!response.ok) { settle(keys, "routing_failed", `http ${response.status}`); continue; }
-        const body = await response.json() as { decisions?: readonly { key?: string; model?: string; effort?: string; because?: string; fallback?: boolean }[] };
-        if (!Array.isArray(body?.decisions)) { settle(keys, "routing_failed", "invalid response"); continue; }
-        const known = new Set(keys);
-        for (const decision of body.decisions) {
-          if (!decision?.key || !known.has(decision.key) || decisions.has(decision.key)) continue;
-          const because = typeof decision.because === "string" ? decision.because.slice(0, 300) : "";
-          if (decision.fallback === false && typeof decision.model === "string" && decision.model) {
-            decisions.set(decision.key, { via: "route", model: decision.model, ...(typeof decision.effort === "string" && decision.effort ? { effort: decision.effort } : {}), because });
-          } else decisions.set(decision.key, { via: "fallback", ...fallbackReason(because) });
-        }
-        settle(keys, "routing_failed", "missing decision");
-      } catch (error) {
-        // 이 묶음은 프리셋 그대로 — 개시를 막지 않는다.
-        settle(keys, error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError") ? "routing_timeout" : "routing_failed");
-      }
-    }
-    return decisions;
-  };
-
-  /** 대기 중인 지휘관 라우팅을 한 번 판단한다. 결과는 호출부가 대기 설정에 남긴다. */
-  const judgeCommanderOnce = async (objectiveId: string): Promise<{ readonly model: string; readonly effort?: string; readonly routed: MemberRouted }> => {
-    const decision = (await assignRouting([{ key: objectiveId, prompt: commanderRoutingPrompt(objective(objectiveId)) }])).get(objectiveId) ?? { via: "fallback" as const, reason: "routing_failed" };
-    if (decision.via === "route") return { model: decision.model, ...(decision.effort ? { effort: decision.effort } : {}), routed: { via: "route", because: decision.because } };
-    // 대체도 새 선택이다 — 꺼진 보드 기본으로 띄우지 않는다. 판단 결과를 남기지 않으므로 다음 기동이 다시 묻는다.
-    checkFallback(COMMANDER_PRESET);
-    return { model: COMMANDER_PRESET.model, effort: COMMANDER_PRESET.effort, routed: { via: "fallback", reason: decision.reason, ...(decision.detail ? { detail: decision.detail } : {}) } };
-  };
-  /**
-   * 판단 결과를 대기 설정과 다음 기동 좌표에 남기고 라우팅 표시를 걷는다. 다음 기동은 이 좌표를 다시 판단하지 않는다.
-   * 이미 있는 채팅은 기록만 고치면 다음 프로세스가 옛 기본 모델로 뜬다 — 모델 메뉴와 같은 미시작 좌표 경로를 쓴다.
-   */
-  const rememberCommanderDecision = async (objectiveId: string, choice: { readonly model: string; readonly effort?: string; readonly routed: MemberRouted }) => {
-    const node = ctx.objectiveRecords.get(objectiveId);
-    const pendingCommander = store.pending(objectiveId);
-    if (node?.chatMode === true) {
-      const apply = ctx.consoleControl?.setUnstartedPreset;
-      if (!apply) throw new ObjectiveStoreError("capability_unavailable");
-      const result = await apply(objectiveId, { model: choice.model, effort: choice.effort ?? null });
-      if (!result.ok) throw coordinatesError(result);
-    } else if (node) patchObjective(objectiveId, withObjectiveLaunchPreset(node, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }));
-    else if (!pendingCommander) throw new ObjectiveStoreError("unknown_objectiveRecord");
-    if (pendingCommander) store.patchPending(objectiveId, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}), routing: undefined });
-    else store.setCommanderRouting(objectiveId, false);
-    store.setCommanderRouted(objectiveId, choice.routed);
-  };
-
-  /**
-   * 새로 띄울 라우팅 구성원에게 모델을 한 번에 묻는다. 판단이 자리를 준 경우만 그 모델과 그 강도를 쓰고, 폴백·실패·없는 키·
-   * origin 없음은 지휘관 프리셋(모델과 강도를 함께)이다 — 그 사유를 코드로 남겨 보드가 말할 수 있게 한다. 개시를 막지 않는다.
-   */
-  const judgeRouting = async (current: Objective, launching: readonly ObjectiveMember[]): Promise<Map<string, RoutingDecision>> => {
-    const items: { key: string; prompt: string }[] = [];
-    // 요청 한도(항목 수·prompt 합계)를 넘으면 그 묶음이 폴백된다. 한도만큼 나누고, 항목마다 합계를 나눠 가진다(노트만 줄어든다).
-    for (let start = 0; start < launching.length; start += ROUTING_ASSIGN_MAX_ITEMS) {
-      const chunk = launching.slice(start, start + ROUTING_ASSIGN_MAX_ITEMS);
-      const max = Math.floor(ROUTING_ASSIGN_MAX_PROMPT_SUM / chunk.length);
-      for (const member of chunk) items.push({ key: member.id, prompt: memberRoutingPrompt(current, member, max) });
-    }
-    return assignRouting(items);
-  };
-
-  /**
-   * 라우팅 판단 캐시 — 목표마다 하나. 결과는 구성원별 라우팅 prompt 지문과 판단 시각을 지니고, 함께 판단한 집합(set)을 기억한다.
-   * 지금 대상이 그 집합 안에 있고 지문이 같으며 TTL 안이면 다시 판단하지 않는다(배치 판단이라 새 대상이 끼면 전원을 다시 판단한다).
-   * 메모리에만 둔다 — 재시작하면 다시 판단한다. 띄운 구성원의 결과는 쓰는 즉시 거둔다.
-   */
-  const routingCache = new Map<string, { set: Set<string>; results: Map<string, { readonly fingerprint: string; readonly at: number; readonly decision: RoutingDecision }> }>();
-  const routingFingerprint = (current: Objective, member: ObjectiveMember) => createHash("sha256").update(memberRoutingPrompt(current, member)).digest("hex");
-  const cachedRouting = (current: Objective, targets: readonly ObjectiveMember[], member: ObjectiveMember) => {
-    const cache = routingCache.get(current.id);
-    if (!cache || !targets.every((target) => cache.set.has(target.id))) return null;
-    const entry = cache.results.get(member.id);
-    return entry && entry.fingerprint === routingFingerprint(current, member) && Date.now() - entry.at < ROUTING_PREVIEW_TTL_MS ? entry : null;
-  };
-  /**
-   * 대상의 판단 — 캐시에서 쓸 수 있는 결과는 다시 판단하지 않는다. reuse 가 "route" 이면 판단이 모델을 준 결과만 다시 쓴다(사람이 보지 않은
-   * 폴백은 다시 판단한다), "any" 는 사람이 본 결과 그대로, "none" 은 모두 다시 판단한다.
-   */
-  const routeMembers = async (current: Objective, targets: readonly ObjectiveMember[], reuse: "route" | "any" | "none"): Promise<{ readonly decisions: Map<string, RoutingDecision>; readonly judged: boolean }> => {
-    const decisions = new Map<string, RoutingDecision>();
-    if (reuse !== "none") {
-      for (const member of targets) {
-        const entry = cachedRouting(current, targets, member);
-        if (entry && (reuse === "any" || entry.decision.via === "route")) decisions.set(member.id, entry.decision);
-      }
-    }
-    const need = targets.filter((member) => !decisions.has(member.id));
-    if (need.length === 0) return { decisions, judged: false };
-    const judged = await judgeRouting(current, need);
-    const previous = routingCache.get(current.id);
-    const cache = previous && targets.every((target) => previous.set.has(target.id)) ? previous : { set: new Set<string>(), results: new Map() };
-    const at = Date.now();
-    for (const member of need) {
-      const decision = judged.get(member.id) ?? { via: "fallback" as const, reason: "routing_failed" };
-      cache.set.add(member.id);
-      cache.results.set(member.id, { fingerprint: routingFingerprint(current, member), at, decision });
-      decisions.set(member.id, decision);
-    }
-    routingCache.set(current.id, cache);
-    return { decisions, judged: true };
-  };
-  /** 사람이 확인 시트에서 본 결과 — 대상마다 쓸 수 있는 결과가 있어야 한다. 그새 설명이 바뀌었거나 만료됐으면 시트가 다시 판단해야 한다. */
-  const reviewedRouting = (current: Objective): Map<string, RoutingDecision> => {
-    const targets = routingTargets(current, assignedMembers(current));
-    const decisions = new Map<string, RoutingDecision>();
-    for (const member of targets) {
-      const entry = cachedRouting(current, targets, member);
-      if (!entry) throw new ObjectiveStoreError("routing_preview_stale");
-      decisions.set(member.id, entry.decision);
-    }
-    return decisions;
-  };
-  const previewTasks = new Map<string, Promise<RoutingPreview>>();
   /** 확장을 청한 손과 말 — 그 회차의 개시를 그 손으로 남긴다. 메모리에만 둔다. */
   const extensionStarts = new Map<string, LaunchOptions | undefined>();
   /** 재시작 뒤 잇지 못한 목표 — 사령관이 꺼내 갈 때까지 메모리에만 둔다. */
@@ -634,24 +446,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const resumable = (current: Objective): boolean => !!current.commenced && !current.done && !current.removed && !current.archived && !current.planning
     && current.stoppedAt === null && !current.awaitingReview && !current.decisionRequest && !current.criteriaProposals.length
     && (current.missions.some((mission) => !mission.done) || current.awaitingHandoff);
-  /**
-   * 루프가 새로 띄울 라우팅 구성원 — Objective 이 있으면 살렸거나 재개하거나 관측 불가로 건너뛰고, 다른 Theater 면 루프가 거기서
-   * 멈춘다. 보관된 Objective(reference 만 있음)은 루프가 복원해 재개하므로 좌석을 받지 않는다.
-   */
-  const routingTargets = (current: Objective, scope?: ReadonlySet<string>): ObjectiveMember[] => {
-    const launching: ObjectiveMember[] = [];
-    for (const member of current.members) {
-      if (scope && !scope.has(member.id)) continue;
-      const sessionId = member.id;
-      const reference = sessionId ? referenceNode(sessionId) : null;
-      if (reference && reference.commodoreId !== current.commodoreId) break;
-      const node = sessionId ? ctx.objectiveRecords.get(sessionId) : null;
-      if (node && node.commodoreId !== current.commodoreId) break;
-      if (sessionId && (node || reference)) continue;
-      if (member.launch.mode === "route") launching.push(member);
-    }
-    return launching;
-  };
   /** 개시가 세울 구성원 — 임무를 하나라도 맡은 구성원만. 맡은 일이 없는 구성원은 지휘관이 muster 로 부를 때 선다. */
   const assignedMembers = (current: Objective): ReadonlySet<string> => new Set(current.missions.flatMap((mission) => mission.member ? [mission.member] : []));
   /** 세션 좌표의 모델·강도를 그대로 이 값으로 — 강도가 없으면 그 모델의 기본으로 뜨도록 지운다. */
@@ -674,9 +468,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const rememberSubagentSpawn = (sessionId: string, allowed: boolean) => {
     ctx.consoleControl?.setSubagentSpawn?.(sessionId, allowed ? "default" : "blocked");
   };
-  const memberPreset = (current: Objective, member: ObjectiveMember) => member.launch.mode === "model"
-    ? { model: member.launch.model, effort: member.launch.effort }
-    : { model: current.commander.model, effort: current.commander.effort };
 
   const WORKING = new Set(["running", "background"]);
   const working = (sessionId: string): boolean => {
@@ -779,7 +570,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     };
     tick();
   };
-  const muster = (objectiveId: string, reviewed?: ReadonlyMap<string, RoutingDecision>, scope?: (current: Objective) => ReadonlySet<string>): ReturnType<LaunchService["muster"]> => claim(`${objectiveId}:muster`, async () => {
+  const muster = (objectiveId: string, scope?: (current: Objective) => ReadonlySet<string>): ReturnType<LaunchService["muster"]> => claim(`${objectiveId}:muster`, async () => {
     let current = objective(objectiveId);
     if (current.planning) throw new ObjectiveStoreError("planning_only");
     if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
@@ -787,11 +578,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     await accessObjective(objectiveId);
     current = editableObjective(objectiveId);
     const only = scope?.(current);
-    const launching = routingTargets(current, only);
-    // 사람이 확인한 결과로 띄운다 — 그사이 새로 끼었거나 바뀐 대상이 있으면 본 것과 다르게 뜨므로 띄우기 전에 멈춘다.
-    if (reviewed && launching.some((member) => !reviewed.has(member.id))) throw new ObjectiveStoreError("routing_preview_stale");
-    const routed = reviewed ?? (await routeMembers(current, launching, "route")).decisions;
-    const commanderPreset = presetOf(current.commander);
     const members: MusterMember[] = [];
     for (let index = 0; index < current.members.length; index += 1) {
       const member = current.members[index]!;
@@ -846,15 +632,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       let number = index + 1;
       let session = memberSession(current.id, current.commander.sessionName, number);
       while (used.has(session)) session = memberSession(current.id, current.commander.sessionName, ++number);
-      const decision = member.launch.mode === "route" ? routed.get(member.id) ?? { via: "fallback" as const, reason: "routing_failed" } : null;
-      const preset = decision ? (decision.via === "route" ? presetOf(decision) : commanderPreset) : memberPreset(current, member);
-      // 라우팅 대체는 지휘관 좌표로 뜬다 — 그 모델이 꺼졌으면 이 구성원만 실패로 알린다.
-      const fallbackRefusal = (): string | null => { try { checkFallback(commanderPreset); return null; } catch (error) { return failureCode(error); } };
-      if (decision && decision.via !== "route") {
-        const refused = fallbackRefusal();
-        if (refused) { members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: refused }); continue; }
-      }
-      let provenance: MemberRouted | null = decision ? (decision.via === "route" ? { via: "route", because: decision.because } : { via: "fallback", reason: decision.reason, ...(decision.detail ? { detail: decision.detail } : {}) }) : null;
+      // 모델을 고르지 않은 구성원은 띄우지 않는다 — 판단기로 대신 고르지 않고, 그 구성원만 실패로 알린다.
+      if (!member.launch) { members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: "member_model_required" }); continue; }
+      const preset = presetOf(member.launch);
       // 앞선 기동을 기다리는 동안 바뀐 허용값도 이번 기동부터 반영한다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다.
@@ -865,31 +645,17 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       try { launchedId = await spawn(preset); }
       catch (error) {
         if (error instanceof ObjectiveStoreError) throw error;
-        const code = failureCode(error);
         // 시한(request_timeout)은 거절이 아니다 — 호스트는 기동을 이어 가므로, 그새 자식이 섰으면 고른 모델로 뜬 것이다.
         if (ctx.objectiveRecords.get(member.id)) launchedId = member.id;
-        else if (decision?.via !== "route" || !MODEL_REFUSALS.has(code)) {
-          // 아직 서지 않았다 — 이 구성원만 실패로 알린다. 늦게 서면 다음 muster 가 그 Objective 을 그대로 쓰므로 근거는 미리 남긴다.
-          if (code === "request_timeout" && provenance) store.memberLaunchState(objectiveId, member.id, { routed: provenance });
-          members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: code });
-          continue;
-        }
-        // 라우팅이 고른 모델을 호스트가 거절했다(그새 노출이 꺼짐 등) — 그 구성원만 지휘관 프리셋으로 다시 띄우고 폴백으로 남긴다.
         else {
-          const refused = fallbackRefusal();
-          if (refused) { members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: refused }); continue; }
-          try { launchedId = await spawn(commanderPreset); provenance = { via: "fallback", reason: "launch_rejected", detail: code }; }
-          catch (retry) {
-            if (retry instanceof ObjectiveStoreError) throw retry;
-            members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: failureCode(retry) });
-            continue;
-          }
+          // 아직 서지 않았다 — 이 구성원만 실패로 알린다. 늦게 서면 다음 muster 가 그 Objective 을 그대로 쓴다.
+          members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: failureCode(error) });
+          continue;
         }
       }
       rememberLanguage(launchedId, ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en");
-      routingCache.get(objectiveId)?.results.delete(member.id);
-      store.memberLaunchState(objectiveId, member.id, { routed: provenance, next: null });
-      // 라우팅·기동 중 변경된 허용값도 다음 기동 정책에는 반영한다. 첫 프로세스는 중단하지 않는다.
+      store.memberLaunchState(objectiveId, member.id, { next: null });
+      // 기동 중 변경된 허용값도 다음 기동 정책에는 반영한다. 첫 프로세스는 중단하지 않는다.
       const linked = objective(objectiveId).members.find((candidate) => candidate.id === member.id);
       if (linked) rememberSubagentSpawn(linked.id, linked.subagents === true);
       try {
@@ -997,7 +763,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 떠 있는 채팅은 호스트에 맡긴다 — 유휴면 곧바로, 턴이 돌면 그 턴이 닫히는 경계에서 바뀌고 세션 좌표도 그때 호스트가 고친다. 떠 있는
    * 터미널은 유휴면 재웠다 새 좌표로 깨우고(switchLive), 일하는 중이면 이번 턴 뒤 예약으로 들고 감시자가 유휴를 보면 같은 길로 바꾼다.
    * 일하는 동안에는 세션 좌표를 미리 고치지 않는다 — 고치면 패널이 옛 프로세스를 새 모델로 말한다. 실행값과 같은 값을 고르면 예약을
-   * 거두고, 라우팅은 새로 띄울 때만 판단하므로 띄운 구성원이 라우팅으로 돌아가면 예약만 거둔다. 바꾸지 못한 변경은 오류 코드로 던진다.
+   * 거두고, 선택을 비우면 예약만 거둔다. 바꾸지 못한 변경은 오류 코드로 던진다.
    */
   const reserve = async (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }) => {
     const node = ctx.objectiveRecords.get(memberId);
@@ -1006,13 +772,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const target = selection === null ? null : presetOf(selection);
     const was = before.next ? before.next.was : before.launch;
     if (target?.model) assertSwitchable(node);
-    // 바뀌었다 — 이제 그것이 실행값이고, 라우팅이 고른 모델도 아니다. 실행값은 세션 좌표에만 있어 저장할 것이 없을 수 있다 — 행이 새
+    // 바뀌었다 — 이제 그것이 실행값이다. 실행값은 세션 좌표에만 있어 저장할 것이 없을 수 있다 — 행이 새
     // 실행값을 말하도록 합친 모양을 다시 방송한다.
-    const applied = () => { store.memberLaunchState(current.id, memberId, { next: null, routed: null }); store.refresh(current.id); };
+    const applied = () => { store.memberLaunchState(current.id, memberId, { next: null }); store.refresh(current.id); };
     const host = hostCoordinates(memberId);
     if (host) {
       const live = { model: host.model, ...(host.effort ? { effort: host.effort } : {}) };
-      // 고른 값이 없으면(라우팅으로 되돌림) 지금 실행값을 다시 고른다 — 호스트는 그것을 예약을 거두는 것으로 받는다.
+      // 고른 값이 없으면(선택 비움) 지금 실행값을 다시 고른다 — 호스트는 그것을 예약을 거두는 것으로 받는다.
       let goal = target?.model ? { ...target, model: target.model } : live;
       let result = await setCoordinates(memberId, goal);
       // 행만 고르면 메뉴가 지금 강도를 이어 싣는다 — 그 강도가 새 모델의 칩에 없으면 모델 기본으로 보낸다. 사람이 고른 칩은 언제나 그 모델의 것이다.
@@ -1054,7 +820,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const next = store.storedMember(objectiveId, memberId)?.next;
     if (!next || next.failed || !next.held) return false;
     patchMemberPreset(memberId, goalOf(next));
-    store.memberLaunchState(objectiveId, memberId, { next: null, routed: null });
+    store.memberLaunchState(objectiveId, memberId, { next: null });
     watched.delete(memberId);
     return true;
   };
@@ -1101,12 +867,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const node = ctx.objectiveRecords.get(memberId);
     if (!next || next.failed || !next.held || !node) { watched.delete(memberId); return; }
     const goal = goalOf(next);
-    const done = (patch: { readonly next: MemberNext | null; readonly routed?: null }) => { store.memberLaunchState(objectiveId, memberId, patch); store.refresh(objectiveId); watched.delete(memberId); };
+    const done = (patch: { readonly next: MemberNext | null }) => { store.memberLaunchState(objectiveId, memberId, patch); store.refresh(objectiveId); watched.delete(memberId); };
     const failed = (code: string, cause?: MemberNext["cause"]) => done({ next: { ...next, failed: code, ...(cause ? { cause } : {}) } });
     const host = hostCoordinates(memberId);
     if (next.held === "host" && host) {
       const outcome = heldNextOutcome(next, host);
-      if (outcome === "applied") done({ next: null, routed: null });
+      if (outcome === "applied") done({ next: null });
       // 경계에서 자식이 이 예약을 거절했으면 그 원 예외를 사유로 남긴다. 다른 까닭으로 사라진 예약은 지금처럼 not_applied 다.
       else if (outcome === "not_applied") { const reason = notAppliedFailure(next, host); failed(reason.failed, reason.cause); }
       return;
@@ -1118,7 +884,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const result = await setCoordinates(memberId, goal);
       if (!result.ok) { if (result.error !== "chat_not_active") failed(result.error, result.error === "coordinates_apply_failed" ? result.cause : undefined); return; }
       if (result.applied === "scheduled") store.memberLaunchState(objectiveId, memberId, { next: { ...next, from: { model: host.model, ...(host.effort ? { effort: host.effort } : {}) }, held: "host" } });
-      else done({ next: null, routed: null });
+      else done({ next: null });
       return;
     }
     if (node.chatMode === true) { failed("chat_not_active"); return; }
@@ -1126,7 +892,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (observation.activity !== "idle") { entry.idle = 0; return; }
     if (++entry.idle < IDLE_TICKS) return;
     entry.idle = 0;
-    try { if (await switchLive(memberId, goal, presetOf(readObjectiveLaunch(node))) === "applied") done({ next: null, routed: null }); }
+    try { if (await switchLive(memberId, goal, presetOf(readObjectiveLaunch(node))) === "applied") done({ next: null }); }
     catch (error) { failed(failureCode(error)); }
   };
 
@@ -1462,7 +1228,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           await ensureCommander(objectiveId);
           if (ctx.consoleControl?.observe(targetId)?.lifecycle === "dormant") await control().request({ kind: "resume", objectiveId: targetId });
         } else {
-          await muster(objectiveId, undefined, () => new Set([memberId]));
+          const mustered = await muster(objectiveId, () => new Set([memberId]));
+          // 모델을 고르지 않은 구성원에게는 전달하지 않는다 — 보낸 쪽이 그 구성원의 모델을 먼저 정해야 한다.
+          if (mustered.some((entry) => entry.id === memberId && entry.error === "member_model_required")) throw memberModelRequired();
         }
       } catch (error) {
         if (holdableDelivery(error)) return "held";
@@ -1621,12 +1389,17 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 보드 동작이 구성원 채팅 입력창에 서므로 보기 선택은 없다(옛 요청의 viewMode 는 받되 쓰지 않는다).
       const actor = options?.actor ?? init.by;
       const byCommodore = !!actor && typeof actor === "object" && actor.kind === "commodore";
-      // 생성 호출이 고른 지휘관이 사령관 설정보다 앞선다. 고르지 않으면 지금처럼 사령관 설정, 그다음 보드 기본이다.
-      const commander = chosen ?? (byCommodore ? serviceOptions.commodoreCommander?.(input.commodoreId) ?? null : null);
       if (byCommodore && actor.commodoreId !== input.commodoreId) throw new ObjectiveStoreError("other_commodore");
-      // 사령관이 고르지 않은 새 목표도 사람이 AI Gateway에서 켠 모델로만 시작한다 — 꺼진 사령관 기본값·보드 기본으로 만들지 않는다.
-      // 고른 지휘관은 생성 호출이 이미 같은 기준으로 확인했고, 라우팅은 켠 후보 안에서 고른다. 기본값의 강도는 여기서 다시 따지지 않는다.
-      if (byCommodore && !chosen && !(commander && "route" in commander)) await modelCatalog.checkCommander({ model: (commander ?? COMMANDER_PRESET).model }, undefined);
+      // 사령관이 만드는 목표의 지휘관 — 생성 호출이 고른 모델(호출이 candidates 로 이미 확인했다), 아니면 사람이 그 사령관에 정한
+      // 지휘관 모델(사람의 명시 선택이라 실행 카탈로그 가용성만 본다). 둘 다 없으면 보드 기본으로 넘어가지 않고 거절한다.
+      // 사람이 화면에서 만드는 목표는 사람이 고른 모델, 없으면 보드 기본이다.
+      let commander = chosen ?? null;
+      if (byCommodore && !chosen) {
+        const configured = serviceOptions.commodoreCommander?.(input.commodoreId) ?? null;
+        if (!configured) throw new ObjectiveStoreError("commander_model_required", undefined, { hint: COMMANDER_MODEL_REQUIRED_HINT });
+        await modelCatalog.checkAvailable({ model: configured.model }, undefined);
+        commander = configured;
+      }
       const requested = typeof input.theaterId === "string" ? input.theaterId : "";
       const owned = ctx.ownedTheaterIds?.(input.commodoreId);
       const known = requested !== "" && (!owned || owned.includes(requested));
@@ -1642,7 +1415,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         theaterId: bound ? requested : ctx.paths.workspaceHash(cwd),
         ...(bound ? { theaterIdExplicit: true as const } : {}),
         cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
-        sessionName: commanderSession(), ...(commander && "route" in commander ? { routing: true as const } : commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
+        sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
       });
     },
 
@@ -1849,16 +1622,15 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return objective(objectiveId);
     }),
 
-    setPreset: (objectiveId, { viewMode: _view, routing, ...preset }) => orderedObjectiveRequest(objectiveId, async () => {
+    setPreset: (objectiveId, { viewMode: _view, ...preset }) => orderedObjectiveRequest(objectiveId, async () => {
       // 지휘관의 뷰는 채팅으로 고정이다 — 옛 클라이언트가 보내는 viewMode 는 받되 쓰지 않는다.
-      if (routing && preset.model) throw new ObjectiveStoreError("invalid_arguments");
       editableObjective(objectiveId);
       const node = referenceNode(objectiveId);
       if (!node && store.pending(objectiveId)) {
         if (pending.has(objectiveId)) throw new ObjectiveStoreError("objective_busy");
-        return routing ? store.patchPending(objectiveId, { routing: true, model: undefined, effort: undefined }) : store.patchPending(objectiveId, { ...preset, routing: undefined });
+        return store.patchPending(objectiveId, preset);
       }
-      // 보관이 만든 휴면 메타데이터는 세션이 있어도 아직 첫 기동 전이다. 라우팅으로 되돌리거나 모델을 고를 수 있다.
+      // 보관이 만든 휴면 메타데이터는 세션이 있어도 아직 첫 기동 전이다. 모델을 고를 수 있다.
       if (!node) throw new ObjectiveStoreError("unknown_objective");
       // 캡처된 세션의 프리셋 금지는 복원 전에 확인한다. 복원으로 기존 제약을 우회하지 않는다.
       if (readObjectiveLaunch(node).started || pending.has(objectiveId) || (node.chatMode !== true && control().observe(objectiveId)?.lifecycle === "live") || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
@@ -1867,16 +1639,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const active = ctx.objectiveRecords.get(objectiveId);
       if (!active) throw new ObjectiveStoreError("unknown_objective");
       if (readObjectiveLaunch(active).started || (active.chatMode !== true && control().observe(objectiveId)?.lifecycle === "live") || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
-      if (routing) {
-        const session = { ...(active.session as Record<string, unknown> | undefined) };
-        delete session.model;
-        delete session.effort;
-        patchObjective(objectiveId, { session });
-        store.setCommanderRouting(objectiveId, true);
-        store.setCommanderRouted(objectiveId, null);
-        store.refresh(objectiveId);
-        return objective(objectiveId);
-      }
       if (active.chatMode === true) {
         const session = readObjectiveLaunch(active);
         const apply = ctx.consoleControl?.setUnstartedPreset;
@@ -1884,8 +1646,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         const result = await apply(objectiveId, { model: preset.model ?? session.model ?? "opus[1m]", effort: preset.effort ?? session.effort ?? null });
         if (!result.ok) throw coordinatesError(result);
       } else patchObjective(objectiveId, { ...(withObjectiveLaunchPreset(active, preset)) });
-      store.setCommanderRouting(objectiveId, false);
-      store.setCommanderRouted(objectiveId, null);
       store.refresh(objectiveId);
       return objective(objectiveId);
     }),
@@ -1896,8 +1656,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
       if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
-      // 본 결과를 쓸 수 없으면 지휘관을 세우거나 구상을 끝내기 전에 멈춘다 — 시트가 다시 판단한 뒤 다시 개시한다.
-      const reviewed = options?.routing === "preview" ? reviewedRouting(current) : undefined;
       await ensureCommander(objectiveId);
       // 따로 만든 Objective 도 지휘관이 될 수 있다 — 보드를 읽고 쓰려면 콘솔 사용이 켜져 있어야 한다.
       rememberLanguage(objectiveId, language);
@@ -1905,7 +1663,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (current.planning) current = store.setPlanning(objectiveId, false);
       if (current.criteriaOpen) current = store.setCriteriaOpen(objectiveId, false);
       // 맡은 임무가 없는 구성원은 세우지 않는다 — 일 없이 떠 있는 세션을 만들지 않는다.
-      const failed = (await muster(objectiveId, reviewed, assignedMembers)).flatMap((member) => (member.state === "failed" ? [{ id: member.id, role: member.role, error: member.error ?? "launch_failed" }] : []));
+      const failed = (await muster(objectiveId, assignedMembers)).flatMap((member) => (member.state === "failed" ? [{ id: member.id, role: member.role, error: member.error ?? "launch_failed" }] : []));
       current = objective(objectiveId);
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       const firstWake = neverStarted(objectiveId);
@@ -1919,35 +1677,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
       return { objective: store.setEdited(objectiveId, null), objectiveId: objectiveId, failed };
     }, "start"),
-
-    routingPreview(objectiveId, options) {
-      const running = previewTasks.get(objectiveId);
-      if (running) return running;
-      const task = (async (): Promise<RoutingPreview> => {
-        let current = objective(objectiveId);
-        if (current.done) throw new ObjectiveStoreError("objective_done");
-        if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
-        // 지휘관이 아직 라우팅이면 구성원 폴백보다 먼저 한 번 판단해 대기 설정에 남긴다. 개시·첫 기동은 그 좌표를 다시 묻지 않는다.
-        if (current.commander.routing) await rememberCommanderDecision(objectiveId, await judgeCommanderOnce(objectiveId));
-        current = objective(objectiveId);
-        const targets = routingTargets(current, assignedMembers(current));
-        const { decisions, judged } = await routeMembers(current, targets, options?.rejudge ? "none" : "any");
-        // 판단을 기다리는 동안 지휘관 프리셋이 바뀌었을 수 있다 — 폴백이 뜰 모델은 지금 값으로 보인다.
-        const latest = objective(objectiveId);
-        const times = targets.map((member) => routingCache.get(objectiveId)?.results.get(member.id)?.at ?? Date.now());
-        const at = times.length ? Math.min(...times) : Date.now();
-        return {
-          judged, at, expiresAt: at + ROUTING_PREVIEW_TTL_MS,
-          members: targets.map((member) => {
-            const decision = decisions.get(member.id) ?? { via: "fallback" as const, reason: "routing_failed" };
-            return decision.via === "route" ? { id: member.id, ...decision } : { id: member.id, ...decision, ...presetOf(latest.commander) };
-          }),
-        };
-      })();
-      previewTasks.set(objectiveId, task);
-      void task.finally(() => { if (previewTasks.get(objectiveId) === task) previewTasks.delete(objectiveId); }).catch(() => undefined);
-      return task;
-    },
 
     resumeReservations(sessionId) {
       const scope = sessionId === undefined ? store.all() : [store.find(sessionId) ?? store.findMember(sessionId)?.objective].filter((entry): entry is Objective => !!entry);
@@ -1967,7 +1696,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             continue;
           }
           // 「다음 재개」 시절의 옛 예약 — 세션 좌표는 이미 그 값이고, 떠 있던 프로세스는 Console 재시작과 함께 끝났다. 다음 깨움이 그 값으로 선다.
-          store.memberLaunchState(current.id, member.id, { next: null, routed: null });
+          store.memberLaunchState(current.id, member.id, { next: null });
         }
       }
     },
@@ -1983,7 +1712,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const host = !record.next.failed && record.next.held === "host" ? hostCoordinates(memberId) : null;
       if (host) {
         // 그새 경계에서 이미 바뀌었다 — 거둘 예약이 없고, 바뀐 값이 그대로 실행값이다.
-        if (heldNextOutcome(record.next, host) === "applied") { unwatch(memberId); store.memberLaunchState(objectiveId, memberId, { next: null, routed: null }); store.refresh(objectiveId); return objective(objectiveId); }
+        if (heldNextOutcome(record.next, host) === "applied") { unwatch(memberId); store.memberLaunchState(objectiveId, memberId, { next: null }); store.refresh(objectiveId); return objective(objectiveId); }
         const result = await setCoordinates(memberId, { model: host.model, ...(host.effort ? { effort: host.effort } : {}) });
         if (!result.ok && result.error !== "chat_not_active") throw coordinatesError(result);
       }
@@ -2005,7 +1734,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 카탈로그를 기다리는 동안 사람이 고를 수도 있다 — 같은 직렬화 경계에서 출처를 다시 확인하고, 거절할 세션은 깨우지 않는다.
       const before = store.storedMember(objectiveId, memberId)!;
       if (by === "commander" && patch.launch !== undefined && before.launchBy !== "commander") {
-        throw new ObjectiveStoreError("member_launch_person_chosen", undefined, { reason: "The person's launch selection, including routing, and legacy members without ownership are protected. Newly added members without a launch selection can be changed. Do not enlist a replacement to bypass this protection; use request_decision to ask the person to change this member's model chip on the board." });
+        throw new ObjectiveStoreError("member_launch_person_chosen", undefined, { reason: "The person's launch selection and legacy members without ownership are protected. Newly added members without a launch selection can be changed. Do not enlist a replacement to bypass this protection; use request_decision to ask the person to change this member's model chip on the board." });
       }
       // 같은 실행값·예약을 확정한 사람은 세션을 깨우거나 예약을 다시 걸지 않는다. 미기동 구성원은 저장 선택만 비교한다.
       const reaffirmed = by === "human" && patch.launch !== undefined && matchingSelection(current, memberId, patch.launch, before);
@@ -2018,7 +1747,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         watch(objectiveId, memberId);
         next = objective(objectiveId);
       } else if (reaffirmed && !reaffirmed.preserveNext) {
-        store.memberLaunchState(objectiveId, memberId, { next: null, ...(!keepSelection || reaffirmed.appliedNext ? { routed: null } : {}) });
+        store.memberLaunchState(objectiveId, memberId, { next: null });
         next = objective(objectiveId);
       }
       if (patch.subagents !== undefined) {
@@ -2033,18 +1762,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         next = objective(objectiveId);
       }
       return next;
-    }),
-
-    memberBatchLaunch: (objectiveId, mode) => orderedObjectiveRequest(objectiveId, async () => {
-      const current = editableObjective(objectiveId);
-      const launched = current.members.filter((member) => !!referenceNode(member.id));
-      const launchedIds = new Set(launched.map((member) => member.id));
-      // 띄운 구성원은 건너뛴다 — 라우팅은 새로 띄울 때만 뜻이 있다. 직접 지정은 저장소가 보존한다.
-      const skipped = launched.filter((member) => member.launch.mode !== "model" && member.launch.mode !== mode);
-      const result = store.memberBatchLaunch(objectiveId, mode, launchedIds);
-      const final = objective(objectiveId);
-      const preserved = final.members.filter((member) => member.launch.mode === "model").length + skipped.length;
-      return { objective: final, changed: result.changed, edits: result.changed, preserved };
     }),
 
     memberRemoved: (objectiveId, memberId) => orderedObjectiveRequest(objectiveId, async () => {
@@ -2394,7 +2111,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 실행값이 예약과 다르면 실패 표시를 그대로 둔다.
       const next = store.storedMember(current.id, sessionId)?.next;
       const host = next?.failed && next.held === "host" ? hostCoordinates(sessionId) : null;
-      if (host && heldNextOutcome(next!, host) === "applied") store.memberLaunchState(current.id, sessionId, { next: null, routed: null });
+      if (host && heldNextOutcome(next!, host) === "applied") store.memberLaunchState(current.id, sessionId, { next: null });
       store.refresh(current.id);
       touchLive(sessionId);
     },

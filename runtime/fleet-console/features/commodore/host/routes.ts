@@ -325,12 +325,8 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       // 실행만 폴백한다(감독자가 턴마다 로스터에 대조한다).
       return view(commodoreId, store.setCoordinates(commodoreId, model !== null && effort !== null ? { model: canonicalModelId(model), effort } : null));
     }) },
-    { name: "commodore/commander", method: "POST", summary: "Set, route, or clear the Commander for objectives the Commodore creates. A model keeps that coordinate; route lets the first launch choose; cleared falls back to the board's Commander default.", handler: json(commodoreRef.extend({ model: z.string().trim().min(1).max(128).nullable().optional(), effort: z.string().trim().min(1).max(32).nullable().optional(), route: z.literal(true).optional() }).strict(), ({ commodoreId, model, effort, route }) => {
+    { name: "commodore/commander", method: "POST", summary: "Set or clear the Commander model for objectives the Commodore creates. A model keeps that coordinate; cleared, the Commodore chooses the Commander model for each objective.", handler: json(commodoreRef.extend({ model: z.string().trim().min(1).max(128).nullable().optional(), effort: z.string().trim().min(1).max(32).nullable().optional() }).strict(), ({ commodoreId, model, effort }) => {
       read(commodoreId);
-      if (route) {
-        if (model || effort) throw new CommodoreStoreError("invalid_request");
-        return view(commodoreId, store.setCommander(commodoreId, { route: true }));
-      }
       if (model === undefined) throw new CommodoreStoreError("invalid_request");
       if (model === null && effort) throw new CommodoreStoreError("invalid_request");
       return view(commodoreId, store.setCommander(commodoreId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}) }));

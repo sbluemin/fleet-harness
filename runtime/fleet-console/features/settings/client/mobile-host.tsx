@@ -131,8 +131,6 @@ export interface MobileCoordinateChoiceProps {
   readonly providerRemovedLabel?: string;
   readonly chooseAnotherModelLabel?: string;
   readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
-  /** 시트 맨 위의 라우팅. 글리프는 시트가 그린다. */
-  readonly routing?: { readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void };
   readonly reset?: MobileModelReset;
   readonly onClose: () => void;
 }

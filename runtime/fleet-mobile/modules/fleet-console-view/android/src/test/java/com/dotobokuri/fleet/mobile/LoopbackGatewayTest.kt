@@ -83,8 +83,7 @@ class LoopbackGatewayTest {
   }
 
   @Test fun responseSocketPolicyBudgetsSlowHeadersAndKeepsStreamsUnlimited() {
-    // ai-gateway/routing-test holds headers until the routing-model agent (30s budget) answers,
-    // so the header wait must outlast it while a stalled upstream stays bounded.
+    // The header wait outlasts the connect budget for late headers while a stalled upstream stays bounded.
     val upstream = Socket().apply { soTimeout = 8_000 }
     try {
       ResponseSocketPolicy.prepareForHeaders(upstream)

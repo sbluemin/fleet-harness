@@ -132,42 +132,10 @@ export {
 export {
   TYPESAFE_API_BASE_URL,
   TYPESAFE_AUTH_PROVIDER_ID,
-  TYPESAFE_DEFAULT_MODEL,
-  TYPESAFE_MODELS,
   validateTypesafeAuthKey,
 } from "./fleet/auth.js";
 export type { AuthKeyValidationResult } from "./fleet/auth.js";
 
-// TypeSafe System One — 라우터를 거치지 않고 Fleet 코드가 직접 부르는 공급자 wire.
-export {
-  SystemOneClient,
-  SystemOneError,
-  choice,
-  defineDecision,
-  noul,
-  runDecision,
-  score,
-} from "./upstream/typesafe/index.js";
-export type {
-  AnswerFor,
-  AnswersFor,
-  ChoiceAnswer,
-  ChoiceQuestion,
-  NoulAnswer,
-  NoulQuestion,
-  ScoreAnswer,
-  ScoreQuestion,
-  SystemOneAskInput,
-  SystemOneClientDeps,
-  SystemOneDecision,
-  SystemOneDecisionOutcome,
-  SystemOneModelCard,
-  SystemOneQuestion,
-  SystemOneQuestions,
-  SystemOneResult,
-  SystemOneState,
-  SystemOneUsage,
-} from "./upstream/typesafe/index.js";
 export {
   prepareAiGatewayLaunchProfile,
   writeGatewayModelCacheForHome,
@@ -185,26 +153,32 @@ export {
   type GatewayEffortExposure,
 } from "./fleet/gateway-agents.js";
 export {
+  delegationCandidateModels,
+  visibleDelegationModels,
   parseGatewayAssignmentRequest,
   type GatewayAssignmentDecision,
   type GatewayAssignmentExposure,
   type GatewayAssignmentRequest,
   type GatewayAssignmentSurface,
-  type GatewayDelegationRoutingMode,
 } from "./fleet/routing-assignment.js";
-export { buildGatewayLoadout } from "./fleet/model-loadout.js";
 export {
-  JEV_ROUTING_TIMEOUT_MS,
-  JEV_ROUTING_BATCH_TIMEOUT_MS,
+  allowanceUnreadable,
+  compareModelAllowance,
+  evaluateGatewayCandidateModels,
+  evaluateModelAllowance,
+  modelPressure,
+  type EvaluatedGatewayCandidateModel,
+  type GatewayCandidatePressure,
+  type GatewayModelAllowance,
+} from "./fleet/routing-allowance.js";
+export {
+  buildGatewayCandidates,
+  canonicalGatewayCandidateId,
+  type GatewayCandidate,
+  type GatewayCandidatesResponse,
+} from "./fleet/model-loadout.js";
+export {
   decideGatewayRoutingAssignment,
-  decideGatewayRoutingBatch,
-  difficultyQuestionId,
-  type GatewayRoutingDecisionOptions,
-  type RoutingChoice,
-  type RoutingDifficultyQuestion,
-  type GatewayRoutingBatchItem,
-  type GatewayRoutingBatchDecision,
-  type GatewayRoutingBatchOptions,
 } from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 

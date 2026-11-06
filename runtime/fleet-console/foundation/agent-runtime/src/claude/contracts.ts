@@ -71,6 +71,8 @@ export interface ClaudeGatewayServedMcpServer {
   readonly url: string;
   readonly headers?: readonly { readonly name: string; readonly value: string }[];
   readonly toolTimeoutSeconds?: number;
+  /** true면 이 서버의 도구를 도구 검색 뒤로 미루지 않는다(vendor `alwaysLoad`). 생략은 vendor 기본이다. */
+  readonly alwaysLoad?: boolean;
 }
 
 /**

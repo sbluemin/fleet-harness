@@ -15,15 +15,11 @@ import type { CommodoreSystemPromptService } from "./agent-options.js";
 
 import {
   buildAiGatewayCatalog,
-  findClaudeGatewayModel,
   normalizeCompactCeiling,
   parseAiGatewayUpdate,
   DEFAULT_XAI_ENDPOINT_PREFERENCE,
-  DELEGATION_ROUTING_MODES,
-  GATEWAY_REASONING_EFFORTS,
   XAI_ENDPOINT_PREFERENCES,
   type AiGatewayCatalog,
-  type DelegationRoutingMode,
   type AiGatewaySettingsStore,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
@@ -50,10 +46,6 @@ interface TerminalSettingsRouteDeps {
 interface TerminalSettingsBody {
   readonly aiGateway?: unknown;
   readonly wireLogEnabled?: unknown;
-  readonly delegationRoutingEnabled?: unknown;
-  readonly delegationRoutingMode?: unknown;
-  readonly delegationRoutingModel?: unknown;
-  readonly delegationRoutingEffort?: unknown;
   readonly compactCeiling?: unknown;
   readonly xaiEndpoint?: unknown;
 }
@@ -61,10 +53,6 @@ interface TerminalSettingsBody {
 type TerminalSettingsUpdate =
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly wireLogEnabled: boolean }
-  | { readonly delegationRoutingEnabled: boolean }
-  | { readonly delegationRoutingMode: DelegationRoutingMode }
-  | { readonly delegationRoutingModel: string | null }
-  | { readonly delegationRoutingEffort: string | null }
   | { readonly compactCeiling: CompactCeiling | undefined }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -72,13 +60,6 @@ export interface TerminalSettingsState {
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly wireLogEnabled: boolean;
-  /** AI 판단 활성화 여부. Off는 로컬 규칙 기반 fallback을 사용한다. */
-  readonly delegationRoutingEnabled: boolean;
-  /** 활성화했을 때 사용할 AI 판단 방식. */
-  readonly delegationRoutingMode: DelegationRoutingMode;
-  readonly delegationRoutingModel: string | null;
-  /** 저장된 판정 강도. null은 아직 고르지 않음(실행은 low 우선). */
-  readonly delegationRoutingEffort: string | null;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
   /** 공급자별 로그인 상태. null은 아직 모름(숨기지 않음). */
@@ -128,30 +109,6 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
         // AI Gateway 선별은 Fleet 전역 옵션이 아니라 core-ai-gateway가 소유하는 자기 축이다.
         const stored = deps.aiGatewayStore.write(update.aiGateway);
         deps.onAiGatewayChanged?.();
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
-        ));
-        return true;
-      }
-      if ("delegationRoutingEnabled" in update) {
-        const stored = deps.aiGatewayStore.writeDelegationRoutingEnabled(update.delegationRoutingEnabled);
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
-        ));
-        return true;
-      }
-      if ("delegationRoutingModel" in update) {
-        const stored = deps.aiGatewayStore.writeDelegationRoutingModel(update.delegationRoutingModel ?? undefined);
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses));
-        return true;
-      }
-      if ("delegationRoutingEffort" in update) {
-        const stored = deps.aiGatewayStore.writeDelegationRoutingEffort(update.delegationRoutingEffort ?? undefined);
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses));
-        return true;
-      }
-      if ("delegationRoutingMode" in update) {
-        const stored = deps.aiGatewayStore.writeDelegationRoutingMode(update.delegationRoutingMode);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
           stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
         ));
@@ -305,10 +262,6 @@ function toTerminalSettingsState(
       : null,
     aiGatewayCatalog: buildAiGatewayCatalog(),
     wireLogEnabled,
-    delegationRoutingEnabled: aiGateway.delegationRoutingEnabled === true,
-    delegationRoutingModel: aiGateway.delegationRoutingModel ?? null,
-    delegationRoutingEffort: aiGateway.delegationRoutingEffort ?? null,
-    delegationRoutingMode: aiGateway.delegationRoutingMode ?? "model",
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
     aiGatewayLogin: aiGatewayLogin(readProviderStatuses),
@@ -334,25 +287,6 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "aiGateway") {
     const parsed = parseAiGatewayUpdate(body.aiGateway);
     return parsed.ok ? { aiGateway: parsed.value } : null;
-  }
-  if (keys[0] === "delegationRoutingEnabled") {
-    return typeof body.delegationRoutingEnabled === "boolean"
-      ? { delegationRoutingEnabled: body.delegationRoutingEnabled }
-      : null;
-  }
-  if (keys[0] === "delegationRoutingModel") {
-    return body.delegationRoutingModel === null || (typeof body.delegationRoutingModel === "string" && findClaudeGatewayModel(body.delegationRoutingModel))
-      ? { delegationRoutingModel: body.delegationRoutingModel as string | null } : null;
-  }
-  if (keys[0] === "delegationRoutingEffort") {
-    return body.delegationRoutingEffort === null || (typeof body.delegationRoutingEffort === "string" && (GATEWAY_REASONING_EFFORTS as readonly string[]).includes(body.delegationRoutingEffort))
-      ? { delegationRoutingEffort: body.delegationRoutingEffort as string | null } : null;
-  }
-  if (keys[0] === "delegationRoutingMode") {
-    return typeof body.delegationRoutingMode === "string"
-      && DELEGATION_ROUTING_MODES.includes(body.delegationRoutingMode as DelegationRoutingMode)
-      ? { delegationRoutingMode: body.delegationRoutingMode as DelegationRoutingMode }
-      : null;
   }
   if (keys[0] === "wireLogEnabled") {
     return typeof body.wireLogEnabled === "boolean"

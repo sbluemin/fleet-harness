@@ -42,19 +42,10 @@ export interface AiGatewayCatalog {
 /** Which xAI endpoint a subscription turn opens on. Mirrors the gateway's own vocabulary. */
 export type XaiEndpointPreference = "direct" | "cli-proxy";
 
-/** How Fleet assigns models to delegated runs when routing is on. */
-export type DelegationRoutingMode = "jev" | "model";
-
 export interface SystemPromptSettingsState {
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly wireLogEnabled: boolean;
-  /** AI 판단 활성화 여부. Off는 로컬 규칙 기반 fallback을 사용한다. */
-  readonly delegationRoutingEnabled: boolean;
-  readonly delegationRoutingMode: DelegationRoutingMode;
-  readonly delegationRoutingModel: string | null;
-  /** 판정 모델의 추론 강도. null은 미선택 — 화면과 실행 모두 low(없으면 가장 낮은 단). */
-  readonly delegationRoutingEffort: string | null;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
   /** 공급자 로그인 상태. null·부재는 아직 모름이라 로그인 필요로 보지 않는다. */
@@ -64,10 +55,6 @@ export interface SystemPromptSettingsState {
 export type SystemPromptSettingsUpdate =
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly wireLogEnabled: boolean }
-  | { readonly delegationRoutingEnabled: boolean }
-  | { readonly delegationRoutingMode: DelegationRoutingMode }
-  | { readonly delegationRoutingModel: string | null }
-  | { readonly delegationRoutingEffort: string | null }
   | { readonly compactCeiling: CompactCeiling | null }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -120,8 +107,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     !payload
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.wireLogEnabled !== "boolean"
-    || typeof payload.delegationRoutingEnabled !== "boolean"
-    || !isDelegationRoutingMode(payload.delegationRoutingMode)
     || !isCompactCeiling(payload.compactCeiling)
     || !isXaiEndpointPreference(payload.xaiEndpoint)
   ) {
@@ -131,10 +116,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
     wireLogEnabled: payload.wireLogEnabled,
-    delegationRoutingEnabled: payload.delegationRoutingEnabled,
-    delegationRoutingModel: payload.delegationRoutingModel ?? null,
-    delegationRoutingEffort: typeof payload.delegationRoutingEffort === "string" ? payload.delegationRoutingEffort : null,
-    delegationRoutingMode: payload.delegationRoutingMode,
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
     aiGatewayLogin: isAiGatewayLogin(payload.aiGatewayLogin) ? payload.aiGatewayLogin : {},
@@ -148,10 +129,6 @@ function isAiGatewayLogin(value: unknown): value is SystemPromptSettingsState["a
 
 function isXaiEndpointPreference(value: unknown): value is XaiEndpointPreference {
   return value === "direct" || value === "cli-proxy";
-}
-
-function isDelegationRoutingMode(value: unknown): value is DelegationRoutingMode {
-  return value === "jev" || value === "model";
 }
 
 function isAiGatewayCatalog(value: unknown): value is AiGatewayCatalog {
@@ -171,7 +148,7 @@ import * as React from "react";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "delegationRoutingEffort" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -285,14 +262,6 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
   if (field === "wireLogEnabled") {
     return { wireLogEnabled: state.wireLogEnabled };
-  }
-  if (field === "delegationRoutingEnabled") {
-    return { delegationRoutingEnabled: state.delegationRoutingEnabled };
-  }
-  if (field === "delegationRoutingModel") return { delegationRoutingModel: state.delegationRoutingModel };
-  if (field === "delegationRoutingEffort") return { delegationRoutingEffort: state.delegationRoutingEffort };
-  if (field === "delegationRoutingMode") {
-    return { delegationRoutingMode: state.delegationRoutingMode };
   }
   if (field === "compactCeiling") {
     return { compactCeiling: state.compactCeiling };

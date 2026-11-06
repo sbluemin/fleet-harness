@@ -1,7 +1,6 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import { launchProviderGlyph } from "../../../../../ai-gateway/client/components/launch-provider-glyphs.js";
-import { RoutingGlyph } from "../../../../../ai-gateway/client/components/routing-glyph.js";
 import * as React from "react";
 
 import { objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
@@ -21,7 +20,7 @@ import "./group-chat.css";
  * 보고 있는 줄을 다시 누르면 대화로 돌아간다. 원장이 없는 참여자(사람·Objective 이 아직 없는 구성원)의 줄은 단추가 아니다.
  * 제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다. 정지는 작업 줄과 입력창에 있다.
  * 제거는 지휘관에게 서지 않는다. 지휘관을 빼면 목표가 서지 않는다.
- * 보드 사실(`participant.profile`)이 오면 보드 행과 같은 글 — 제안 표식, 모델·강도(라우팅·꺼짐 표식), 브리프, 상태 낱말, 진단 줄 — 을 그대로 싣는다.
+ * 보드 사실(`participant.profile`)이 오면 보드 행과 같은 글 — 제안 표식, 모델·강도(꺼짐 표식), 브리프, 상태 낱말, 진단 줄 — 을 그대로 싣는다.
  * 글은 플러그인이 지어 보낸 것이라 이 탭은 로케일로 풀기만 한다. 상태 점은 언제나 관측한 활동이다.
  */
 export interface GroupMembersPanelProps {
@@ -135,7 +134,7 @@ function MemberRow({ participant, language, notStarted, showing, onLedger, onRem
 }
 
 /**
- * 모델·강도 한 줄 — [라우팅·폴백 표식] [공급자 글리프] 낱말 [꺼짐·폴백 표식]. 좁은 칸에서는 낱말만 줄임표로 접고(풀네임은 hover),
+ * 모델·강도 한 줄 — [공급자 글리프] 낱말 [꺼짐·폴백 표식]. 좁은 칸에서는 낱말만 줄임표로 접고(풀네임은 hover),
  * 표식은 자리를 지킨다. 다음 기동에 쓰이지 않는 값(struck)은 보드처럼 취소선을 긋는다.
  */
 function MemberLaunch({ launch, text }: {
@@ -146,9 +145,7 @@ function MemberLaunch({ launch, text }: {
   const effort = launch.effort ? text(launch.effort) : "";
   return (
     <span className="group-members-launch">
-      {launch.via ? <span className={`group-members-via${launch.via.tone === "warn" ? " is-warn" : ""}`} title={launch.via.title ? text(launch.via.title) : undefined}>{launch.via.route ? <span className="fc-coord-route"><RoutingGlyph /></span> : null}{text(launch.via.label)}</span> : null}
       <span className="group-members-launch-coord" title={launch.title ? text(launch.title) : [label, effort].filter(Boolean).join(" · ")}>
-        {launch.route ? <span className="fc-coord-route"><RoutingGlyph /></span> : null}
         {launch.providerName ? <span className="fc-coord-provider-name">{launch.providerName}</span> : null}
         {launch.provider ? <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${launch.provider}`} aria-hidden="true">{launchProviderGlyph(launch.provider)}</span> : null}
         <span className={`group-members-launch-label${launch.struck ? " is-off" : ""}`}>{label}</span>

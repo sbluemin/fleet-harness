@@ -72,6 +72,8 @@ export interface CommodoreFeatureDeps {
   readonly claudeHome?: ClaudeHomeLocation;
   /** 콘솔 승인 코어. 있으면 설명 변경 제안을 등록한다. 실험 스위치가 아니다. */
   readonly approvals?: ApprovalCore;
+  /** 사령관 세션에만 싣는 Gateway 도구 묶음(`fleet-ai-gateway`). Console 조립부가 정한다. */
+  readonly gatewayTools?: import("../../execution/shared/agent.js").AgentToolGroup;
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -169,6 +171,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     }),
     plugins: (ids) => plugins.resolve(effectiveCommodorePlugins(plugins.listGlobal(), ids).effective),
     ...(deps.claudeHome ? { claudeHome: deps.claudeHome } : {}),
+    ...(deps.gatewayTools ? { gatewayTools: deps.gatewayTools } : {}),
     emit,
     taskforce: taskforce.store,
     onTaskforceEvent: (event) => emit(event),
@@ -227,7 +230,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     },
     commander(id) {
       const state = id ? store.read(id) : null;
-      if (state?.commanderRouting) return { route: true as const };
       return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : null;
     },
   };

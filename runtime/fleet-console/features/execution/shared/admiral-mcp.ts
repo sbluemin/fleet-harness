@@ -1,7 +1,7 @@
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 /** 서버 내부 연결 계약. URL과 토큰은 브라우저 DTO에 포함하지 않는다. */
 export interface AdmiralMcpSession {
-  getEndpoint(): Promise<{ readonly servers: readonly { readonly name: string; readonly url: string }[] }>;
+  getEndpoint(): Promise<{ readonly servers: readonly { readonly name: string; readonly url: string; readonly alwaysLoad?: boolean }[] }>;
   issueSessionToken(request: {
     readonly label: string;
     readonly cwd: string;

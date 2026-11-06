@@ -281,7 +281,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
             return result as { content: readonly Readonly<Record<string, unknown>>[]; isError?: boolean };
           });
         });
-        servers[group.name] = createEmbeddedMcpServer({ name: group.name, tools });
+        servers[group.name] = createEmbeddedMcpServer({ name: group.name, tools, ...(group.alwaysLoad ? { alwaysLoad: true } : {}) });
       }
       if (options.tools?.consoleUse) {
         const consoleOptions = options.tools.consoleUse;

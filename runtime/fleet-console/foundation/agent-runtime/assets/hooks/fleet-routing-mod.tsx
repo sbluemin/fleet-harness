@@ -87,8 +87,6 @@ function isAnyAgentRunning(): boolean {
 interface SpawnInput {
   readonly tool_use_id: string;
   readonly description: string;
-
-  readonly prompt?: string;
   readonly subagentType: string;
   readonly fork: boolean;
   readonly model?: string;
@@ -125,13 +123,6 @@ async function requestAssignment($: Engine, request: Record<string, unknown>): P
     throw new Error("routing assignment carried no label");
   }
   return assignment;
-}
-
-const MAX_PROMPT_CHARS = 64 * 1024;
-
-function boundedPrompt(prompt: string | undefined): string | undefined {
-  if (typeof prompt !== "string" || prompt === "") return undefined;
-  return prompt.length > MAX_PROMPT_CHARS ? prompt.slice(0, MAX_PROMPT_CHARS) : prompt;
 }
 
 const EXECUTION_AGENT = "execute";
@@ -369,7 +360,6 @@ async function assignSpawn($: Engine, e: SpawnInput): Promise<Decision> {
   try {
     const assignment = await requestAssignment($, {
       surface: "agent",
-      ...(boundedPrompt(e.prompt) === undefined ? {} : { prompt: boundedPrompt(e.prompt) }),
       description: e.description,
       ...(e.model === undefined ? {} : { requestedModel: e.model }),
 

@@ -1,17 +1,15 @@
-import { isProviderCatalogVisible } from "@fleet-console/ai-gateway/model-family";
 import { AiGatewayModelsCard as GatewayModelsCard, AiGatewayModelsEntry as GatewayModelsEntry } from "./gateway-models-card.js";
+import { AiGatewayCandidatesCard } from "./gateway-candidates-card.js";
 import { launchProviderGlyph, serviceGlyph } from "./components/launch-provider-glyphs.js";
 import * as React from "react";
 import { SegmentedThumb } from "@fleet-console/ui/react";
 import { Select } from "../../settings/client/mobile-host.js";
-import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSubScreenRow, SettingsToggle, defineSettingsSection } from "../../settings/client/preferences-context.js";
+import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../settings/client/preferences-context.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
-import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
-import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
-import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
-import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
-import { ModelCoordinatePicker, modelCoordinateDisplay, type ModelCoordinatePickerLabels } from "./components/model-coordinate-picker.js";
-import { ROSTER_FALLBACK_MODEL, clampRosterEffort, findRosterRow, isAgentEffort, rosterRowEfforts, rosterRows, type ModelRoster } from "../shared/models.js";
+import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
+import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling } from "../../settings/client/execution-settings.js";
+import { ModelCoordinatePicker, type ModelCoordinatePickerLabels } from "./components/model-coordinate-picker.js";
+import { findRosterRow, rosterRows } from "../shared/models.js";
 import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
@@ -41,12 +39,11 @@ export const aiGatewaySettingsSection = defineSettingsSection({
     (locale) => [
       getT(locale)("terminal.settings.aiGatewayModels"),
       getT(locale)("terminal.settings.compactTiming"),
-      getT(locale)("terminal.settings.aiGatewayRouting"),
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex xai routing delegation subagent workflow diagnostics wire log compact",
-    "게이트웨이 공급자 모델 키 라우팅 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
+    "gateway provider model api key codex xai delegation subagent workflow diagnostics wire log compact",
+    "게이트웨이 공급자 모델 키 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
   // 폰의 설정 목록 보조 줄 — 켠 모델이 하나라도 있으면 켜짐(데스크톱은 이 필드를 읽지 않는다).
@@ -67,7 +64,7 @@ function AiGatewaySection() {
   useLoadSystemPromptSettings();
   const mobile = useMobileSettingsHost() !== null;
   // 폰: 모델 카드는 길어서 「모델 목록」 행 하나로 접고, 그 하위 화면에서 연다(키트 어댑터가 적용된 같은 카드).
-  return <>{mobile ? <GatewayModelsEntry /> : <GatewayModelsCard />}<AiGatewayRoutingCard /><AiGatewayCompactTimingCard /><AiGatewayDiagnosticsCard /></>;
+  return <>{mobile ? <GatewayModelsEntry /> : <GatewayModelsCard />}<AiGatewayCandidatesCard /><AiGatewayCompactTimingCard /><AiGatewayDiagnosticsCard /></>;
 }
 const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   antigravity: "terminal.settings.aiGatewayProviderAntigravity",
@@ -325,275 +322,6 @@ function AiGatewayCompactTimingCard() {
       )}
     </SettingsGroup>
   );
-}
-
-/**
- * 배정 카드. 모델 카드 바로 아래에 놓는다 — 여기서 켜는 것은 그 위에서 노출한 모델을
- * 쓰는 방식이고, 노출을 정하기 전에 배정을 묻는 순서는 읽는 사람에게 거꾸로다.
- */
-function AiGatewayRoutingCard() {
-  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
-  const settings = useSystemPromptSettingsStore();
-  const auth = useModelAuthStore();
-  const routingRoster = useModelRoster("agent");
-  const mobileHost = useMobileSettingsHost();
-  const [testOpen, setTestOpen] = React.useState(false);
-  const testPanelId = React.useId();
-  const state = settings.state;
-  const saving = settings.savingFields;
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadModelAuth(controller.signal);
-    return () => controller.abort();
-  }, []);
-
-  if (!state) {
-    return <section className="global-settings-card"><p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p></section>;
-  }
-  const typesafeSignedIn = auth.state?.providers.some(entry => entry.provider === "typesafe" && entry.signedIn) === true;
-  const mode = state.delegationRoutingMode;
-  const modeSaving = saving.has("delegationRoutingMode");
-  const routingSaving = saving.has("delegationRoutingEnabled");
-  const jevStored = mode === "jev";
-  const jevActive = jevStored && typesafeSignedIn;
-  const jevFallback = jevStored && !typesafeSignedIn;
-  const routingPickerLabels = rosterPickerLabels(t, t("terminal.settings.aiGatewayRoutingModel"));
-  // 저장한 강도가 있으면 그 값을, 없으면 실행과 같은 기본(low 우선)을 표시에 실어 표기가 갈리지 않게 한다.
-  const routingValue = state.delegationRoutingModel
-    ? { model: state.delegationRoutingModel, ...withEffort(routingJudgeEffort(routingRoster, state.delegationRoutingModel, state.delegationRoutingEffort)) }
-    : {};
-  const routingFallback = { model: ROSTER_FALLBACK_MODEL, effort: "low" };
-  // 폰의 선택기 행은 「모델 · 강도」를 한 문자열로 그려 CSS가 강도만 내릴 수 없다 — 설정의 데스크톱
-  // 트리거(settings-pane.css)처럼 강도를 소문자로 읽히게 문구를 여기서 넘긴다.
-  const routingPickerText = (() => {
-    if (!mobileHost) return undefined;
-    const display = modelCoordinateDisplay(routingRoster, routingValue, routingFallback, routingPickerLabels);
-    const effort = display.words.effort && display.words.effort !== routingPickerLabels.auto ? display.words.effort.toLowerCase() : display.words.effort;
-    return [display.words.model, effort, display.badge].filter(Boolean).join(" · ");
-  })();
-  const saveMode = (next: DelegationRoutingMode): void => {
-    if (next === "jev" && !typesafeSignedIn) return;
-    void setSystemPromptSettingsField("delegationRoutingMode", next);
-  };
-  // 안내는 행 사이의 문단이 아니라 그 행의 보조 줄이다 — 문단이 끼면 한 묶음의 면이 조각난다.
-  const lines = (key: TerminalMessageKey): string => t(key).split("\n").join(" ");
-  const modeHint = jevActive
-    ? lines("terminal.settings.aiGatewayDelegationRoutingJevNotice")
-    : jevFallback
-      ? `${t("terminal.settings.aiGatewayDelegationRoutingJevFallback")} ${t("terminal.settings.aiGatewayDelegationRoutingJevSignIn")}`
-      : !typesafeSignedIn
-        ? t("terminal.settings.aiGatewayDelegationRoutingJevSignIn")
-        : undefined;
-  return (
-    <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayRouting")}>
-      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-      <SettingToggleRow
-        title={t("terminal.settings.aiGatewayRouting")}
-        help={t("terminal.settings.aiGatewayRoutingHelp")}
-        value={state.delegationRoutingEnabled}
-        busy={routingSaving}
-        onToggle={() => void setSystemPromptSettingsField("delegationRoutingEnabled", !state.delegationRoutingEnabled)}
-      />
-      {state.delegationRoutingEnabled ? (
-        <>
-          <SettingsItem
-            label={t("terminal.settings.aiGatewayDelegationRoutingMode")}
-            labelId="delegation-routing-mode-label"
-            hint={modeHint}
-            helpTip={(
-              <SettingsHelp title={t("terminal.settings.aiGatewayDelegationRoutingMode")}>
-                <p>{t("terminal.settings.aiGatewayDelegationRoutingModeHelp")}</p>
-              </SettingsHelp>
-            )}
-          >
-            <SettingsSegments
-              ariaLabelledBy="delegation-routing-mode-label"
-              value={jevStored ? "jev" : mode}
-              disabled={modeSaving}
-              options={[
-                { value: "jev", label: t("terminal.settings.aiGatewayDelegationRoutingJev"), disabled: !typesafeSignedIn },
-                { value: "model", label: t("terminal.settings.aiGatewayRoutingModel") },
-              ] as const}
-              onChange={saveMode}
-            />
-          </SettingsItem>
-          {mode === "model" ? (
-            <SettingsItem label={t("terminal.settings.aiGatewayRoutingModel")} labelId="routing-model-label" hint={lines("terminal.settings.aiGatewayRoutingModelNotice")}>
-              {/* 다른 화면과 같은 강도 게이지. 고르지 않으면 저장하지 않고, 실행은 low(없으면 가장 낮은 단)다. */}
-              <ModelCoordinatePicker
-                roster={routingRoster}
-                value={routingValue}
-                fallback={routingFallback}
-                effort="track"
-                disabled={saving.has("delegationRoutingModel") || saving.has("delegationRoutingEffort")}
-                onChange={(next) => { saveRoutingCoordinate(state.delegationRoutingModel, state.delegationRoutingEffort, next); }}
-                labels={routingPickerLabels}
-                trigger={{ variant: "field", className: "ai-gateway-field-trigger", ...(routingPickerText ? { text: routingPickerText } : {}) }}
-              />
-            </SettingsItem>
-          ) : null}
-          {/* 테스트는 사용량이 드는 실제 요청이라 펼쳐야 보낸다. 폰은 하위 화면으로 연다. */}
-          {mobileHost ? (
-            <SettingsSubScreenRow
-              label={t("terminal.settings.routingTest")}
-              summary={t("terminal.settings.routingTestUsage")}
-              render={() => <RoutingTestPanel />}
-            />
-          ) : (
-            <div className={`global-settings-row is-stack ai-gateway-routing-test-row${testOpen ? " is-open" : ""}`}>
-              <button
-                type="button"
-                className="ai-gateway-routing-test-toggle"
-                aria-expanded={testOpen}
-                aria-controls={testOpen ? testPanelId : undefined}
-                onClick={() => setTestOpen((open) => !open)}
-              >
-                <span className="global-settings-row-text">
-                  <span className="global-settings-resp-title">{t("terminal.settings.routingTest")}</span>
-                  <span className="global-settings-help">{t("terminal.settings.routingTestHint")}</span>
-                </span>
-                <span className="ai-gateway-glyph ai-gateway-model-chevron" aria-hidden="true">{testOpen ? "▾" : "▸"}</span>
-              </button>
-              {testOpen ? <div id={testPanelId}><RoutingTestPanel /></div> : null}
-            </div>
-          )}
-        </>
-      ) : null}
-    </SettingsGroup>
-  );
-}
-
-/**
- * 트리거가 말하는 강도. 저장값이 그 모델 사다리에 있으면 그대로, 없으면 실행과 같이 사다리 안으로 맞춘다.
- * 저장값이 없으면 low(사다리에 없으면 첫 단). 사다리가 없으면 생략한다 — host/routing-model.ts와 같다.
- */
-function routingJudgeEffort(roster: ModelRoster | null, model: string, stored: string | null): string | undefined {
-  const ladder = rosterRowEfforts(findRosterRow(roster, model));
-  if (ladder.length === 0) return undefined;
-  return clampRosterEffort(ladder, stored && isAgentEffort(stored) ? stored : "low");
-}
-
-/** 선택기가 확정한 모델과 강도를 각각 저장한다. 강도 없는 모델은 저장 강도를 지워 기본 규칙으로 되돌린다. */
-function saveRoutingCoordinate(
-  model: string | null,
-  effort: string | null,
-  next: { readonly model?: string; readonly effort?: string },
-): void {
-  if (!next.model) return;
-  if (next.model !== model) void setSystemPromptSettingsField("delegationRoutingModel", next.model);
-  const chosen = next.effort && isAgentEffort(next.effort) ? next.effort : null;
-  if (chosen !== effort) void setSystemPromptSettingsField("delegationRoutingEffort", chosen);
-}
-
-function withEffort(effort: string | undefined): { readonly effort?: string } {
-  return effort ? { effort } : {};
-}
-
-/** 라우팅 테스트의 자리 — 데스크톱 펼침 행과 폰 하위 화면이 같은 패널을 쓴다. 스토어에서 지금 방식과 후보를 다시 읽는다. */
-function RoutingTestPanel() {
-  const settings = useSystemPromptSettingsStore();
-  const auth = useModelAuthStore();
-  // 폰에서는 이 패널이 하위 화면으로 따로 마운트되고 라우팅 카드는 내려가며 자기 인증 요청을 끊는다 — 인증 상태가 아직
-  // 없으면 패널이 직접 불러온다. 카드가 이미 불러 둔 데스크톱 펼침에서는 요청하지 않는다.
-  const authLoaded = auth.state !== null;
-  React.useEffect(() => {
-    if (authLoaded) return undefined;
-    const controller = new AbortController();
-    void loadModelAuth(controller.signal);
-    return () => controller.abort();
-  }, [authLoaded]);
-  const state = settings.state;
-  if (!state) return null;
-  const typesafeSignedIn = auth.state?.providers.some(entry => entry.provider === "typesafe" && entry.signedIn) === true;
-  const mode = state.delegationRoutingMode;
-  const delegable = (state.aiGateway?.models ?? []).filter((entry) => {
-    const provider = state.aiGatewayCatalog.providers.find((group) => group.models.some((model) => model.id === entry.id));
-    const status = provider ? state.aiGatewayLogin[provider.id] : null;
-    return isProviderCatalogVisible(status, provider?.id);
-  }).length;
-  return (
-    <RoutingTest
-      key={`${mode}:${state.delegationRoutingModel ?? ROSTER_FALLBACK_MODEL}`}
-      mode={mode}
-      disabled={settings.savingFields.has("delegationRoutingMode") || delegable === 0 || (mode === "jev" && !typesafeSignedIn)}
-    />
-  );
-}
-
-type RoutingTestPreset = "Light" | "Medium" | "Heavy";
-
-function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode; readonly disabled: boolean }) {
-  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
-  const [prompt, setPrompt] = React.useState("");
-  const [preset, setPreset] = React.useState<RoutingTestPreset | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const [result, setResult] = React.useState<{ model?: string; label?: string; effort?: string; elapsedMs: number; fallback: boolean; because: string } | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const active = React.useRef<AbortController | null>(null);
-  React.useEffect(() => () => active.current?.abort(), []);
-  const run = async () => {
-    if (active.current) return;
-    const controller = new AbortController(); active.current = controller;
-    setBusy(true); setError(null); setResult(null);
-    try {
-      const response = await fetch("/api/v1/ai-gateway/routing-test", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt }), signal: controller.signal,
-      });
-      // 게이트웨이는 장애를 JSON이 아닌 텍스트(예: 502 "Bad gateway")로 돌려줄 수 있다 —
-      // response.json()은 그 본문에서 SyntaxError를 내고 상태·본문을 삼킨다. 텍스트로
-      // 읽어 JSON이면 파싱하고, 아니면 상태와 본문을 그대로 보여 준다.
-      const text = await response.text();
-      let data: unknown;
-      try {
-        data = text ? JSON.parse(text) : undefined;
-      } catch {
-        throw new Error(`HTTP ${response.status}: ${text.trim().slice(0, 200)}`);
-      }
-      const record = (typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>;
-      if (!response.ok) throw new Error(record.error === "routing_disabled_or_no_candidates" ? t("terminal.settings.aiGatewayRoutingNoCandidates") : typeof record.error === "string" ? record.error : `HTTP ${response.status}`);
-      if (!controller.signal.aborted) setResult(data as { model?: string; label?: string; effort?: string; elapsedMs: number; fallback: boolean; because: string });
-    } catch (e) {
-      if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      if (!controller.signal.aborted) setBusy(false);
-      if (active.current === controller) active.current = null;
-    }
-  };
-  return <section className="ai-gateway-routing-test" aria-label={`${t("terminal.settings.routingTest")} · ${mode === "jev" ? "Jev" : t("terminal.settings.aiGatewayRoutingModel")}`}>
-    <div className="ai-gateway-routing-presets" role="group" aria-label={t("terminal.settings.routingTestPresets")}>
-      <span className="ai-gateway-routing-presets-label" aria-hidden="true">{t("terminal.settings.routingTestPresets")}</span>
-      {(["Light", "Medium", "Heavy"] as const).map(level => (
-        <button key={level} type="button" className="ai-gateway-chip-button" aria-pressed={preset === level} disabled={busy}
-          onClick={() => { setPrompt(t(`terminal.settings.routingTest${level}Prompt`)); setPreset(level); setResult(null); setError(null); }}>
-          {t(`terminal.settings.routingTest${level}`)}
-        </button>
-      ))}
-    </div>
-    <SyncedTextarea className="ai-gateway-routing-task" aria-label={t("terminal.settings.routingTestTask")} rows={3} maxLength={65536}
-      value={prompt} disabled={busy}
-      placeholder={t("terminal.settings.routingTestTask")} onChange={event => { setPrompt(event.target.value); setPreset(null); setResult(null); }} />
-    {/* 사용량이 드는 요청은 이 버튼 하나뿐이다 — 예시 칩과 같은 모양이면 무엇이 요청을 보내는지 가려지지 않는다. */}
-    <div className="ai-gateway-routing-foot">
-      <p className="ai-gateway-routing-cost">{t("terminal.settings.routingTestHelp")}</p>
-      <button type="button" className="ai-gateway-run-button" disabled={disabled || busy || !prompt.trim()} onClick={() => void run()}>
-        {busy ? t("terminal.settings.routingTestRunning") : t("terminal.settings.routingTestRun")}
-      </button>
-    </div>
-    {error ? <p className="global-settings-error" role="alert">{error}</p> : null}
-    {result ? <div role="status" className="ai-gateway-routing-result">
-      <p className="ai-gateway-routing-result-head">{result.fallback ? t("terminal.settings.routingTestFallback") : t("terminal.settings.routingTestSuccess")}</p>
-      <dl>
-        <dt>{t("terminal.settings.routingTestAssignedModel")}</dt>
-        <dd>{result.label ?? t("terminal.settings.routingTestNoAssignment")}</dd>
-        {result.effort ? <><dt>{t("terminal.settings.routingTestAssignedEffort")}</dt><dd>{result.effort}</dd></> : null}
-        <dt>{t("terminal.settings.routingTestDuration")}</dt>
-        <dd>{result.elapsedMs} ms</dd>
-      </dl>
-      {result.fallback ? <p className="ai-gateway-routing-because">{result.because}</p> : null}
-    </div> : null}
-  </section>;
 }
 
 function AiGatewayDiagnosticsCard() {

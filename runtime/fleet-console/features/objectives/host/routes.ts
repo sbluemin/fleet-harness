@@ -17,7 +17,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { SHARED_FOLDER_LIMITS, type SharedFolderEntry, type SharedFolderKind, type SharedFolderList } from "../shared/shared-folder.js";
 import { ObjectiveArchiveError } from "../../workspace/host/objective-archive-storage.js";
-import { decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
+import { decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchObjectiveSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -371,9 +371,6 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     // 띄운 구성원의 모델만 바꾸면 그 세션의 좌표 변경이다(곧바로 또는 이번 턴 뒤) — 지휘관의 일과 무관한 값이라 편집으로 쌓지 않는다.
     { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in. For a member whose session exists, a launch selection switches that session's model now (dormant or idle) or after its current turn (working).", handler: json(objectiveRef.extend({ memberId: ids, patch: memberPatchSchema }), actions.memberPatch) },
     { name: "member/next-cancel", method: "POST", summary: "Cancel a member's after-turn model reservation (or dismiss its failure): the session keeps its running model and the earlier selection returns.", handler: json(objectiveRef.extend({ memberId: ids }), steerable(() => true, async ({ objectiveId, memberId }) => objective(await launch.memberNextCancel(objectiveId, memberId)))) },
-    // 판단 한 번의 비용이 든다 — 같은 설명·같은 대상이면 10분 동안 다시 판단하지 않고, 개시가 그 결과를 그대로 쓴다.
-    { name: "routing/preview", method: "POST", summary: "Judge (or reuse, within 10 minutes and unchanged roles) the AI Gateway model for each member Commence would newly launch by routing; rejudge forces one new judgment.", handler: json(objectiveRef.extend({ rejudge: z.boolean().optional() }), unlessBusy(async ({ objectiveId, rejudge }) => ({ preview: await launch.routingPreview(objectiveId, { rejudge }) }))) },
-    { name: "member/batch-launch", method: "POST", summary: "Set every member who does not have a custom model to routing. Launched members are left unchanged.", handler: json(objectiveRef.merge(memberBatchLaunchSchema), actions.memberBatchLaunch) },
     { name: "member/remove", method: "POST", summary: "Remove a member and return its mission ids for undo.", handler: json(objectiveRef.extend({ memberId: ids }), actions.memberRemove) },
     { name: "mission/add", method: "POST", summary: "Add a mission.", handler: json(objectiveRef.extend({ mission: missionAddSchema }), actions.missionAdd) },
     { name: "mission/patch", method: "POST", summary: "Edit a mission (text, done, dependencies, member).", handler: json(missionRef.extend({ patch: missionPatchSchema }), actions.missionPatch) },
@@ -384,7 +381,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the objective.", handler: json(objectiveRef.extend({ context }), actions.plan) },
     { name: "commander/compact", method: "POST", summary: "Send /compact to the Commander and every member Objective of an objective through the normal delivery path; returns per-target outcomes.", handler: json(objectiveRef, actions.compact) },
     { name: "commander/stop", method: "POST", summary: "Interrupt the Commander and every member Objective of an objective (roster stays).", handler: json(objectiveRef, actions.stop) },
-    { name: "commander/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once. routing \"preview\" launches routed members with the judgment the person just reviewed. Members the host refused are listed in failed.", handler: json(objectiveRef.extend({ context, routing: z.literal("preview").optional() }), actions.commence) },
+    { name: "commander/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once. Members the host refused or that have no model are listed in failed.", handler: json(objectiveRef.extend({ context }), actions.commence) },
     // 결정 요청에 대한 사람의 답 — 보드 편집이 아니다(edited 를 쌓지 않는다). 지휘관이 일하는 중에도 받고, 기준 제안이 남아도 보낸다.
     { name: "decision/answer", method: "POST", summary: "Answer the Commander's current decision request: every question at once. The answers reach the same Commander conversation (starting an SDK child only when needed); once delivered they stay as decisions and the request clears.", handler: json(decisionAnswersSchema.extend({ objectiveId: ids, language }), actions.answer) },
     // 「결정 안 함」 닫기 — 요청 전체를 선택·입력 없이 닫는다. 답과 같은 전달·잠금·중복 규칙을 쓰고, 결정에는 질문마다 「결정 안 함」 표시가 남는다.

@@ -9,6 +9,7 @@ import { AGENT_RESERVED_TOOL_GROUPS, type ConsoleResidentAgentHost, type Console
 import { stageClaudeHomeOverlay, type ClaudeHomeLocation, type ClaudeHomeOverlay } from "./home-overlay.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { AgentToolGroup } from "../../execution/shared/agent.js";
 
 import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
@@ -39,6 +40,8 @@ export interface CommodoreSessionOptions {
   readonly coordinates: CommodoreSessionCoordinates;
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 목록·목표 화면 도구. action 선언(actionSchema)으로 쓰기를 가른다. */
   readonly boardTools: readonly ConsoleMcpTool[];
+  /** 호스트가 사령관 세션에만 싣는 Gateway 도구 묶음(`fleet-ai-gateway`). 없으면 싣지 않는다. */
+  readonly gatewayTools?: AgentToolGroup;
   /** 호스트가 이 사령관에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindCommodore`) — 서버 이름 그대로 도구 그룹이 된다. */
   /** 세션을 여는 순간 이 사령관이 고른 플러그인 — 로컬 경로와 호스트가 대신 여는 MCP 선언. */
   readonly plugins?: () => readonly ResolvedPlugin[];
@@ -299,7 +302,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     // 사람의 Claude 홈에서 더하는 것 — 세션마다 새로 읽는다. 읽거나 세우지 못하면 홈 없이 연다(Fleet 기동을 막지 않는다).
     if (options.claudeHome) {
       try {
-        home = await stageClaudeHomeOverlay(options.claudeHome, { plugins: selected, reservedGroups: [...AGENT_RESERVED_TOOL_GROUPS, FLEET_COMMODORE_TOOL_GROUP] });
+        home = await stageClaudeHomeOverlay(options.claudeHome, { plugins: selected, reservedGroups: [...AGENT_RESERVED_TOOL_GROUPS, FLEET_COMMODORE_TOOL_GROUP, ...(options.gatewayTools ? [options.gatewayTools.name] : [])] });
         if (home.skipped.length) console.warn(`[commodore] home overlay skipped ${home.skipped.map(({ kind, name, reason }) => `${kind} ${name}: ${reason}`).join(", ")}`);
       } catch (error) {
         console.warn(`[commodore] home overlay unavailable: ${(error as NodeJS.ErrnoException)?.code ?? "home_overlay_failed"}`);
@@ -329,6 +332,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
           browser: { scopeId: `commodore:${options.commodoreId}` },
           custom: [
             { name: FLEET_COMMODORE_TOOL_GROUP, tools: [...tools.map(observed), ...options.boardTools.map(observed)] },
+            ...(options.gatewayTools ? [{ ...options.gatewayTools, tools: options.gatewayTools.tools.map(observed) }] : []),
           ],
         },
         onEvent,

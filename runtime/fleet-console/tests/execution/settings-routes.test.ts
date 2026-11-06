@@ -33,8 +33,6 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.body).toMatchObject({
       aiGateway: null,
       wireLogEnabled: false,
-      delegationRoutingEnabled: false,
-      delegationRoutingMode: "model",
       compactCeiling: null,
     });
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
@@ -104,41 +102,21 @@ describe("terminal settings routes", () => {
     })).toEqual({ data: {}, changed: true });
   });
 
-  it("GET /api/v1/agent/settings resolves stored Jev routing mode", async () => {
-    const harness = createRouteHarness({
-      aiGateway: { version: 1, delegationRoutingMode: "jev" },
-    });
+  it("ignores retired delegation routing keys on read and drops them on the next save", async () => {
+    const legacy = {
+      version: 1, models: [{ id: "codex--gpt-6.1-sol" }],
+      delegationRoutingEnabled: true, delegationRoutingMode: "model", delegationRoutingModel: "sonnet", delegationRoutingEffort: "low",
+    } as AiGatewayStoredSettings;
+    const harness = createRouteHarness({ aiGateway: legacy, body: { delegationRoutingMode: "model" } });
     await harness.handle({ req: req("GET"), res: res(), pathname: "/api/v1/agent/settings" });
-    expect(harness.writes[0]?.body).toMatchObject({
-      delegationRoutingMode: "jev",
-    });
-  });
-
-  it("PUT /api/v1/agent/settings stores delegation routing mode independently", async () => {
-    const harness = createRouteHarness({
-      body: { delegationRoutingMode: "jev" },
-      aiGateway: { version: 1, models: [{ id: "codex--gpt-6.1-sol" }] },
-    });
+    expect(Object.keys(harness.writes[0]?.body as object).filter((key) => key.startsWith("delegationRouting"))).toEqual([]);
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
-    expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.writes[0]?.body).toMatchObject({ delegationRoutingMode: "jev" });
-    expect(harness.currentAiGateway()).toEqual({
-      version: 1,
-      models: [{ id: "codex--gpt-6.1-sol" }],
-      delegationRoutingMode: "jev",
-    });
+    expect(harness.writes[1]?.status).toBe(400);
 
-    const cleared = createRouteHarness({
-      body: { delegationRoutingMode: "model" },
-      aiGateway: harness.currentAiGateway(),
-    });
-    await cleared.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
-    expect(cleared.writes[0]?.body).toMatchObject({ delegationRoutingMode: "model" });
-    expect(cleared.currentAiGateway()).toEqual({
-      version: 1,
-      delegationRoutingMode: "model",
-      models: [{ id: "codex--gpt-6.1-sol" }],
-    });
+    const saved = createRouteHarness({ aiGateway: legacy, body: { wireLogEnabled: true } });
+    await saved.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
+    expect(saved.writes[0]?.status).toBe(200);
+    expect(saved.currentAiGateway()).toEqual({ version: 1, models: [{ id: "codex--gpt-6.1-sol" }], wireLogEnabled: true });
   });
 
   it("PUT /api/v1/agent/settings rejects payloads with unknown extra keys", async () => {
@@ -205,9 +183,6 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(typeof aiGateway.wireLogEnabled === "boolean"
             ? { wireLogEnabled: aiGateway.wireLogEnabled }
             : {}),
-          ...(aiGateway.delegationRoutingEnabled === true
-            ? { delegationRoutingEnabled: true }
-            : {}),
           ...(aiGateway.providerPriority
             ? { providerPriority: aiGateway.providerPriority }
             : {}),
@@ -217,44 +192,12 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(aiGateway.xaiEndpoint !== undefined
             ? { xaiEndpoint: aiGateway.xaiEndpoint }
             : {}),
-          ...(aiGateway.delegationRoutingMode === "jev"
-            ? { delegationRoutingMode: "jev" }
-            : {}),
-          ...(aiGateway.delegationRoutingModel
-            ? { delegationRoutingModel: aiGateway.delegationRoutingModel }
-            : {}),
-          ...(aiGateway.delegationRoutingEffort
-            ? { delegationRoutingEffort: aiGateway.delegationRoutingEffort }
-            : {}),
           models: [],
           ...(value ?? {}),
         });
         return aiGateway;
       },
       seedModels: () => false,
-      writeDelegationRoutingEnabled: (enabled) => {
-        updateCalls += 1;
-        aiGateway = normalizeAiGatewaySettings({
-          ...aiGateway,
-          delegationRoutingEnabled: enabled,
-        });
-        return aiGateway;
-      },
-      writeDelegationRoutingModel: (model) => {
-        updateCalls += 1;
-        aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingModel: model });
-        return aiGateway;
-      },
-      writeDelegationRoutingEffort: (effort) => {
-        updateCalls += 1;
-        aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingEffort: effort });
-        return aiGateway;
-      },
-      writeDelegationRoutingMode: (mode) => {
-        updateCalls += 1;
-        aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingMode: mode });
-        return aiGateway;
-      },
       writeWireLogEnabled: (enabled) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({

@@ -52,6 +52,8 @@ export interface ExecutorMcpRuntimeProviderRuntime extends ExecutorMcpRuntimePro
 export interface ExecutorServerEndpoint {
   readonly name: string;
   readonly url: string;
+  /** 이 서버의 도구를 도구 검색 뒤로 미루지 않고 첫 턴부터 싣는다(vendor HTTP 서버 설정의 `alwaysLoad`). */
+  readonly alwaysLoad?: boolean;
 }
 
 export interface ExecutorEndpoint {

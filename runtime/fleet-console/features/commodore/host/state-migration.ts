@@ -2,7 +2,8 @@
 export function migrateCommodoreState(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const record = value as Record<string, unknown>;
-  const { autonomy: _autonomy, patrolMinutes: _patrol, stopAt: _stop, directive: _directive, description: _description, routines, ...rest } = record;
+  // 이관 D: 지휘관 라우팅(`commanderRouting`)은 판단기와 함께 사라졌다. 선택 없음으로 읽는다(멱등).
+  const { autonomy: _autonomy, patrolMinutes: _patrol, stopAt: _stop, directive: _directive, description: _description, commanderRouting: _routing, routines, ...rest } = record;
   // 이관 C: 사람 요청 출처(`requestedBy`)는 보드 보관 권한과 함께 사라졌다. 옛 루틴에서 걷어낸다(멱등).
   const migratedRoutines = Array.isArray(routines) ? routines.map((entry) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry) || !("requestedBy" in entry)) return entry;

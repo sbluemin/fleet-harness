@@ -44,6 +44,7 @@ import { readLaunchVariantGroups } from "../../../features/objectives/shared/rec
 import { OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, OBJECTIVE_GROUPED_EVENT_CHANNEL, OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, readObjectiveLaunch, withSubagentSpawn, type ObjectiveLaunchChangedEvent } from "../../../features/objectives/shared/records/types.js";
 import { resolveExperimentSettings, type ConsoleExperimentSettings } from "../../../features/settings/shared/experiments.js";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
+import { COMMANDER_CANDIDATES_INSTRUCTIONS, createGatewayCandidatesTool, FLEET_AI_GATEWAY_MCP_SERVER } from "../../../features/ai-gateway/host/candidates-tool.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
@@ -2624,6 +2625,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       resumeArchivedObjective = execution.actions.resume;
       stopForArchive = execution.stopForArchive;
       purgeCoreObjective = execution.purgeObjective;
+      // 사령관·지휘관만 받는 Gateway 후보 도구 — 사령관은 세션 묶음으로, 지휘관은 예약 HTTP 서버로 받는다.
+      const gatewayCandidatesTool = createGatewayCandidatesTool(execution.readGatewayCandidates);
       consoleUse.activate({ ...consoleActions, ...execution.actions });
       const deletedOwnerKeys = new Map<string, { objectives: Set<string>; avatars: Set<string> }>();
       const ownerRecords = (id: string) => [...new Map([
@@ -2632,6 +2635,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
       commodore = createCommodoreFeature({
         approvals,
+        gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayCandidatesTool], alwaysLoad: true },
         ownership,
         folderGrants,
         // 사령관 세션만 사람의 Claude 홈에서 MCP·스킬·켜 둔 플러그인을 더한다 — 설정·훅·CLAUDE.md 는 싣지 않는다.
@@ -2771,9 +2775,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools) => pluginMcp.register(name, tools),
         commodoreCommander: commodore.host.commander,
-        enabledModels: () => consoleFeaturePorts.models?.enabled?.() ?? null,
       });
       consoleAgentOwners.add("objectives");
+      // 구성원 세션에는 토큰을 내지 않고, 직접 불러도 실행 전에 거절한다.
+      const objectivesFeature = objectives;
+      featureCleanupCallbacks.add(pluginMcp.registerReserved(FLEET_AI_GATEWAY_MCP_SERVER, [gatewayCandidatesTool], {
+        admit: (caller) => caller.kind === "objectiveRecord" && objectivesFeature.isCommanderSession(caller.objectiveId),
+        refusal: "not_commander",
+        alwaysLoad: true,
+        instructions: COMMANDER_CANDIDATES_INSTRUCTIONS,
+      }));
       releaseObjectivesBoard = commodore.host.registerBoard(objectives.board);
       for (const route of objectives.routes) {
         const routePath = `/api/v1/objectives/${route.name}`;

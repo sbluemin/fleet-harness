@@ -18,8 +18,8 @@ TypeSafe takes an API key there.
 Codex and xAI use their own subscription credentials.
 Run fleet gateway status to see whether each one was found.
 
-TypeSafe holds no routable model: its key lets Console features ask Jev
-for structured decisions, and signing out only disables those features.
+TypeSafe holds no routable model: Console only validates and stores its
+key, and no model is routed to it.
 `;
 
 export async function dispatchAuthCommand(

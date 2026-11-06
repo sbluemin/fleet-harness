@@ -52,6 +52,8 @@ export type AgentEvent =
 export interface AgentToolGroup {
   readonly name: string;
   readonly tools: readonly ConsoleMcpTool[];
+  /** true면 이 묶음의 도구를 도구 검색 뒤로 미루지 않고 첫 턴부터 싣는다. */
+  readonly alwaysLoad?: boolean;
 }
 
 export interface AgentSessionOptions {

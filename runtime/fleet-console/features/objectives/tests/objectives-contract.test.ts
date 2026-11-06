@@ -58,7 +58,14 @@ type Saved = {
 
 const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId: "t1", legacyCwd: path.resolve(".fleet/isolated/fixture"), theaterIdOf: () => "t1" });
 
-function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | { readonly route: true } | null; readonly enabledModels?: () => ReadonlySet<string> | null }) {
+/** 사람이 고른 구성원 모델 — 모델 없는 구성원은 띄우지 않으므로 띄울 구성원에는 이 선택을 준다. */
+const SONNET = { mode: "model" as const, model: "sonnet[1m]" };
+/** 지휘관이 구성원 모델을 확인하는 candidates — 루프백 origin 이 있는 harness 와 함께 쓴다. */
+const stubCandidates = () => vi.stubGlobal("fetch", async (url: string) => url.endsWith("/api/v1/ai-gateway/candidates")
+  ? Response.json({ candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] })
+  : new Response("", { status: 404 }));
+
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null }) {
   // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
@@ -222,7 +229,6 @@ title: input.title});
     security: { isTerminalAuthorized: () => authorized },
     http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
     server: { origin: routingOrigin },
-    ...(options?.enabledModels ? { enabledModels: options.enabledModels } : {}),
     objectiveRecords: objectiveRecordsHost,
     consoleControl: {
       request: async (input: ConsoleActionInput) => {
@@ -563,11 +569,10 @@ describe("Objectives contract", () => {
   });
 
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
-    let routingOrigin: string | null = null;
-    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, savedObjective, objectiveRecords, objectiveRecordsHost, surfaces } = harness(() => routingOrigin);
+    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, savedObjective, objectiveRecords, objectiveRecordsHost, surfaces } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Opt in", groupId: null, note: "brief" });
-    const allowed = store.memberAdd(objective.id, { role: "build", subagents: true }, "human").members[0]!;
-    const blocked = store.memberAdd(objective.id, { role: "research" }, "human").members[1]!;
+    const allowed = store.memberAdd(objective.id, { role: "build", subagents: true, launch: SONNET }, "human").members[0]!;
+    const blocked = store.memberAdd(objective.id, { role: "research", launch: SONNET }, "human").members[1]!;
     expect(store.find(objective.id)!.members.map((member) => member.subagents)).toEqual([true, false]);
     await launch.requestPlan(objective.id);
     store.setPlanning(objective.id, false);
@@ -606,21 +611,11 @@ describe("Objectives contract", () => {
     expect(refused.isError).toBe(true);
     expect(refused.structuredContent.error).toBe("invalid_arguments");
 
-    // 라우팅 응답을 기다리는 동안 해제한 허용은 아직 뜨지 않은 구성원의 첫 기동부터 반영한다.
-    const routed = store.memberAdd(objective.id, { role: "review", subagents: true }, "human").members.at(-1)!;
-    let finishRouting!: (response: Response) => void;
-    const routingResponse = new Promise<Response>((resolve) => { finishRouting = resolve; });
-    let enteredRouting!: () => void;
-    const routingStarted = new Promise<void>((resolve) => { enteredRouting = resolve; });
-    vi.stubGlobal("fetch", () => { enteredRouting(); return routingResponse; });
-    routingOrigin = "http://routing.invalid";
-    // 휴면 지휘관이 채팅으로 저장돼 있어도 새 구성원은 채팅으로 태어난다.
+    // 아직 뜨지 않은 구성원의 허용 해제는 첫 기동부터 반영한다. 휴면 지휘관이 채팅으로 저장돼 있어도 새 구성원은 채팅으로 태어난다.
+    const routed = store.memberAdd(objective.id, { role: "review", subagents: true, launch: SONNET }, "human").members.at(-1)!;
     objectiveRecords.get(objective.id)!.chatMode = true;
-    const pendingMuster = launch.muster(objective.id);
-    await routingStarted;
     await launch.memberPatched(objective.id, routed.id, { subagents: false });
-    finishRouting(Response.json({ mode: "model", decisions: [{ key: routed.id, model: "sonnet", label: "sonnet", because: "sonnet · AI model", fallback: false }] }));
-    await pendingMuster;
+    await launch.muster(objective.id);
     expect(launches.at(-1)?.disableSubagents).toBe(true);
     expect(launches.at(-1)?.viewMode).toBe("chat");
 
@@ -634,11 +629,9 @@ describe("Objectives contract", () => {
     expect(savedObjective(objective.id).memberHistory).toEqual(store.find(objective.id)!.memberHistory);
 
     // 살아 있는 지휘관이 터미널로 떠 있어도 새 구성원은 채팅으로 태어난다.
-    vi.unstubAllGlobals();
-    routingOrigin = null;
     activity.set(objective.id, "idle");
     surfaces.set(objective.id, "terminal");
-    const late = store.memberAdd(objective.id, { role: "late" }, "human").members.at(-1)!;
+    const late = store.memberAdd(objective.id, { role: "late", launch: SONNET }, "human").members.at(-1)!;
     await launch.muster(objective.id);
     expect(launches.at(-1)?.viewMode).toBe("chat");
     await launch.memberRemoved(objective.id, late.id);
@@ -653,7 +646,7 @@ describe("Objectives contract", () => {
 
   // 개시한 구성원의 모델은 세션 좌표가 권위다. 고른 순간 바뀌고(일하는 중이면 그 턴 뒤), 호스트가 한 구성원을 거절해도 개시는 이어져야 한다.
   it("switches a launched member's model now or after its turn and keeps one refused member from stopping the muster", async () => {
-    const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, slept, hostFault, hostChat, surfaces, events } = harness();
+    const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, slept, hostFault, hostChat, surfaces, events, objectiveFile, objectivesDir } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
     // 개시는 임무를 맡은 구성원만 세운다.
@@ -674,15 +667,29 @@ describe("Objectives contract", () => {
 
     // 그새 노출이 꺼졌다 — 새로 띄울 구성원 하나가 거절돼도 나머지와 지휘관 알림은 이어진다.
     const late = store.memberAdd(objective.id, { role: "late", launch: { mode: "model", model: "fable" } }, "human").members.at(-1)!;
-    const routed = store.memberAdd(objective.id, { role: "routed" }, "human").members.at(-1)!;
-    assign(late.id); assign(routed.id);
+    // 사람이 모델 없이 더한 구성원은 라우팅으로 띄우지 않는다 — 그 구성원만 member_model_required 로 알린다.
+    const unchosen = store.memberAdd(objective.id, { role: "unchosen" }, "human").members.at(-1)!;
+    assign(late.id); assign(unchosen.id);
     hostFault.rejectModel = "fable[1m]";
     const started = await launch.startCommander(objective.id);
-    expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }]);
+    expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }, { id: unchosen.id, role: "unchosen", error: "member_model_required" }]);
     expect(resumed).toEqual([reviewer.id]);
     expect(store.find(objective.id)!.members.find((member) => member.id === late.id)!.sessionName).toBeNull();
-    // 라우팅이 닿지 않은 구성원은 지휘관 프리셋으로 뜨고, 그 사유가 행에 남는다.
-    expect(store.find(objective.id)!.members.find((member) => member.id === routed.id)).toMatchObject({ sessionName: expect.any(String), routed: { via: "fallback", reason: "routing_unavailable" } });
+    expect(objectiveRecords.has(unchosen.id)).toBe(false);
+    // 사람이 고른 모델을 다시 비우면 지휘관이 지정할 자리다 — 사람 보호로 남기지 않는다.
+    await route("member/patch", { objectiveId: objective.id, memberId: unchosen.id, patch: { launch: SONNET } });
+    await route("member/patch", { objectiveId: objective.id, memberId: unchosen.id, patch: { launch: null } });
+    expect(store.storedMember(objective.id, unchosen.id)).toMatchObject({ launch: undefined, launchBy: "commander" });
+    // 옛 판의 라우팅 기록(구성원 route 선택·기동 근거, 지휘관 라우팅)은 오류 없이 선택 없음으로 읽는다.
+    const legacy = JSON.parse(fs.readFileSync(objectiveFile(objective.id), "utf8")) as { commanderRouting?: true; members: { id: string; launch?: unknown; routed?: unknown }[] };
+    legacy.commanderRouting = true;
+    Object.assign(legacy.members.find((member) => member.id === unchosen.id)!, { launch: { mode: "route" }, routed: { via: "route", because: "old" } });
+    fs.writeFileSync(objectiveFile(objective.id), JSON.stringify(legacy));
+    const legacyRead = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(objective.id)!;
+    expect(legacyRead.members.find((member) => member.id === unchosen.id)).toMatchObject({ launch: null });
+    expect(legacyRead.members.find((member) => member.id === unchosen.id)).not.toHaveProperty("routed");
+    expect(legacyRead.commander).not.toHaveProperty("routing");
+    await launch.memberRemoved(objective.id, unchosen.id);
 
     vi.useFakeTimers();
     try {
@@ -754,20 +761,6 @@ describe("Objectives contract", () => {
       launch.objectiveRecordChanged(reviewer.id);
       expect(shown()).toMatchObject({ model: "sonnet[1m]", next: null });
       expect(store.storedMember(objective.id, reviewer.id)?.next).toBeUndefined();
-      // routing에서 명시 모델로 건 예약이 적용된 직후, 감시자보다 먼저 재확정해도 옛 routing 사유는 되살아나지 않는다.
-      const routedSession = objectiveRecords.get(routed.id)!.session as { model?: string; effort?: string };
-      Object.assign(routedSession, { model: "sonnet[1m]", effort: "low" });
-      hostChat.set(routed.id, { model: "sonnet[1m]", effort: "low", pending: null });
-      activity.set(routed.id, "running");
-      expect((await route("member/patch", { objectiveId: objective.id, memberId: routed.id, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } })).status).toBe(200);
-      expect(store.storedMember(objective.id, routed.id)?.routed).toMatchObject({ via: "fallback" });
-      expect(store.storedMember(objective.id, routed.id)?.next).toMatchObject({ model: "opus[1m]", held: "host" });
-      Object.assign(hostChat.get(routed.id)!, { model: "opus[1m]", effort: "high", pending: null });
-      Object.assign(routedSession, { model: "opus[1m]", effort: "high" });
-      expect((await route("member/patch", { objectiveId: objective.id, memberId: routed.id, patch: { launch: { mode: "model", model: "opus", effort: "high" } } })).status).toBe(200);
-      expect(store.storedMember(objective.id, routed.id)?.next).toBeUndefined();
-      expect(store.storedMember(objective.id, routed.id)?.routed).toBeUndefined();
-      expect(store.find(objective.id)!.members.find((member) => member.id === routed.id)).toMatchObject({ model: "opus[1m]", next: null, routed: null });
     } finally { vi.useRealTimers(); }
     // 유휴 채팅은 곧바로 바뀐다 — 실행값은 호스트가 고친 세션 좌표에만 있어도, 방송된 행이 새 실행값을 말한다.
     activity.set(reviewer.id, "idle");
@@ -782,170 +775,6 @@ describe("Objectives contract", () => {
     store.memberLaunchState(objective.id, reviewer.id, { next: { model: "fable", from: { model: "sonnet" } } });
     launch.resumeReservations();
     expect(store.storedMember(objective.id, reviewer.id)?.next).toBeUndefined();
-  });
-
-  // 판단 한 번은 비용과 공유 배분 기록을 남긴다 — 사람이 확인한 결과는 다시 판단하지 않고 그대로 띄우고, 설명이 바뀌면 띄우기 전에 멈춘다.
-  it("launches the routing the person reviewed without judging again and stops before launching when a role changed", async () => {
-    const { store, launch, route, objectiveRecords, launches } = harness(() => "http://routing.invalid");
-    let judgments = 0;
-    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
-      judgments += 1;
-      const items = (JSON.parse(init.body) as { items: { key: string }[] }).items;
-      return Response.json({ mode: "model", decisions: items.map((item) => ({ key: item.key, model: "sonnet", effort: "low", label: "Sonnet", because: "Sonnet @low · AI model · difficulty low", fallback: false })) });
-    });
-    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Review first", groupId: null, note: "brief" });
-    const analyst = store.memberAdd(objective.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
-    store.missionAdd(objective.id, { text: "read", member: analyst.id });
-    // 맡은 임무가 없는 구성원은 개시 판단에도, 기동에도 들지 않는다.
-    const idle = store.memberAdd(objective.id, { role: "idle" }, "human").members.at(-1)!;
-
-    const first = await route("routing/preview", { objectiveId: objective.id });
-    expect((first.value.preview as { judged: boolean; members: unknown[] })).toMatchObject({ judged: true, members: [{ id: analyst.id, via: "route", model: "sonnet", effort: "low", because: "Sonnet @low · AI model · difficulty low" }] });
-    // 시트를 닫고 다시 열어도 같은 결과다.
-    expect((await route("routing/preview", { objectiveId: objective.id })).value.preview).toMatchObject({ judged: false });
-    expect(judgments).toBe(1);
-
-    store.memberPatch(objective.id, analyst.id, { brief: "reads the code and the gateway contract" });
-    expect((await route("commander/start", { objectiveId: objective.id, routing: "preview" })).value).toEqual({ error: "routing_preview_stale" });
-    expect(launches).toEqual([]);
-
-    await route("routing/preview", { objectiveId: objective.id });
-    expect(judgments).toBe(2);
-    expect((await route("commander/start", { objectiveId: objective.id, routing: "preview" })).status).toBe(200);
-    expect(judgments).toBe(2);
-    expect(objectiveRecords.get(analyst.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
-    expect(objectiveRecords.get(idle.id)).toBeUndefined();
-    expect(store.find(objective.id)!.members[0]).toMatchObject({ routed: { via: "route", because: "Sonnet @low · AI model · difficulty low" } });
-  });
-
-  it("batch-updates member launch mode to route while preserving custom models", async () => {
-    const { store, launch, route, call, savedObjective, objectiveFile, objectivesDir, objectiveRecordsHost } = harness();
-    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Batch Launch Test", groupId: null, note: "brief" });
-    const m1 = store.memberAdd(objective.id, { role: "architect" }, "commander").members[0]!;
-    const m2 = store.memberAdd(objective.id, { role: "backend" }, "commander").members[1]!;
-    const m3 = store.memberAdd(objective.id, { role: "frontend", launch: { mode: "model", model: "sonnet[1m]", effort: "high" } }, "human").members[2]!;
-
-    const resRoute = await route("member/batch-launch", { objectiveId: objective.id, mode: "route" });
-    expect(resRoute.status).toBe(200);
-    const updated2 = store.find(objective.id)!;
-    expect(updated2.members.find((m) => m.id === m1.id)!.launch).toEqual({ mode: "route" });
-    expect(updated2.members.find((m) => m.id === m2.id)!.launch).toEqual({ mode: "route" });
-    expect(updated2.members.find((m) => m.id === m3.id)!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "high" });
-    expect(store.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
-    expect((await call("set_member_launch", { objectiveId: objective.id, member: m1.id, mode: "route" }, objective.id)).structuredContent.error).toBe("member_launch_person_chosen");
-    // 구성원 생성자가 지휘관이어도 출처 없는 옛 선택은 뒤이은 사람의 편집일 수 있다.
-    const legacy = savedObjective(objective.id) as unknown as { members: { launchBy?: string }[] };
-    delete legacy.members[0]!.launchBy;
-    fs.writeFileSync(objectiveFile(objective.id), JSON.stringify(legacy));
-    const reloaded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
-    expect(reloaded.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
-    // launch가 없는 옛 구성원도 다른 필드 저장으로 소유를 추론해 풀지 않는다.
-    reloaded.patch(objective.id, { note: "Saved after loading legacy members" });
-    const savedAgain = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
-    expect(savedAgain.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
-    // 디스크에 남은 옛 same 은 다시 쓰지 않고, 읽을 때 라우팅으로 접힌다.
-    const legacySame = savedAgain.find(objective.id)!;
-    const raw = JSON.parse(fs.readFileSync(objectiveFile(objective.id), "utf8")) as { members: { id: string; launch?: unknown }[] };
-    const backend = raw.members.find((member) => member.id === m2.id)!;
-    backend.launch = { mode: "same" };
-    fs.writeFileSync(objectiveFile(objective.id), JSON.stringify(raw));
-    const folded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
-    expect(folded.find(objective.id)!.members.find((member) => member.id === m2.id)!.launch).toEqual({ mode: "route" });
-    expect(legacySame.members.find((member) => member.id === m3.id)!.launch.mode).toBe("model");
-  });
-
-  it("judges a routed Commander once on the first launch and not again when the lineup is replanned", async () => {
-    // 사람이 AI Gateway에서 켠 모델 — 라우팅 대체 좌표는 이 목록 안에서만 뜬다.
-    const enabled = new Set(["sonnet[1m]"]);
-    const { store, launch, route, objectiveRecords, woken } = harness(() => "http://routing.invalid", { commodoreCommander: () => ({ route: true }), enabledModels: () => enabled });
-    let judgments = 0;
-    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
-      judgments += 1;
-      const items = (JSON.parse(init.body) as { items: { key: string; prompt: string }[] }).items;
-      expect(items).toHaveLength(1);
-      expect(items[0]!.prompt).toContain("Objective: Routed commander");
-      expect(items[0]!.prompt).toContain("briefing text");
-      expect(items[0]!.prompt).toContain("Role: Commander — plans the lineup, delegates to members, integrates results, and stays for later rounds.");
-      expect(items[0]!.prompt.length).toBeLessThanOrEqual(16_384);
-      return Response.json({ decisions: items.map((item) => item.prompt.includes("Role: Commander")
-        ? { key: item.key, model: "sonnet", effort: "low", because: "fits the brief", fallback: false }
-        : { key: item.key, because: "AI routing is off", fallback: true }) });
-    });
-    const routed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
-    expect(store.find(routed.id)!.commander).toMatchObject({ routing: true });
-    expect(store.find(routed.id)!.commander.model).toBeUndefined();
-    expect((await route("plan/request", { objectiveId: routed.id })).status).toBe(200);
-    expect(judgments).toBe(1);
-    expect(objectiveRecords.get(routed.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
-    expect(store.find(routed.id)!.commander).toMatchObject({ model: "sonnet[1m]", effort: "low", routed: { via: "route", because: "fits the brief" } });
-    expect(store.find(routed.id)!.commander.routing).toBeUndefined();
-    expect((await route("plan/request", { objectiveId: routed.id })).status).toBe(200);
-    expect(judgments).toBe(1);
-    const plain = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Person", groupId: null, note: "kept" });
-    expect(plain.commander.routing).toBeUndefined();
-    expect(plain.commander.model).toBe("opus[1m]");
-    expect((await route("plan/request", { objectiveId: plain.id })).status).toBe(200);
-    expect(judgments).toBe(1);
-
-    const shelved = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
-    await launch.archive(shelved.id);
-    expect(store.find(shelved.id)!.commander.routing).toBe(true);
-    expect(store.find(shelved.id)!.commander.model).toBeUndefined();
-    await launch.restore(shelved.id);
-    expect(store.find(shelved.id)!.commander.routing).toBe(true);
-    expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
-    expect(judgments).toBe(2);
-    expect(objectiveRecords.get(shelved.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
-    // 기록의 session 이 아니라, 복원된 휴면 채팅을 깨운 그 send 가 읽은 기동 좌표다. 보관은 모델 없이 만들어 기본 opus 로 심는다.
-    expect(woken.filter((entry) => entry.objectiveId === shelved.id)).toEqual([{ objectiveId: shelved.id, model: "sonnet", effort: "low" }]);
-    expect(store.find(shelved.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route", because: "fits the brief" } });
-    expect(store.find(shelved.id)!.commander.routing).toBeUndefined();
-    expect((await route("plan/request", { objectiveId: shelved.id })).status).toBe(200);
-    expect(judgments).toBe(2);
-
-    const buried = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
-    await launch.archive(buried.id);
-    expect(store.find(buried.id)!.commander.routing).toBe(true);
-    expect((await route("plan/request", { objectiveId: buried.id })).status).toBe(200);
-    expect(judgments).toBe(3);
-    expect(objectiveRecords.get(buried.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
-    expect(woken.filter((entry) => entry.objectiveId === buried.id)).toEqual([{ objectiveId: buried.id, model: "sonnet", effort: "low" }]);
-    expect(store.find(buried.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route", because: "fits the brief" } });
-    expect(store.find(buried.id)!.commander.routing).toBeUndefined();
-    expect(store.find(buried.id)!.archived).toBe(false);
-    expect((await route("plan/request", { objectiveId: buried.id })).status).toBe(200);
-    expect(judgments).toBe(3);
-
-    const previewed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Routed commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
-    const analyst = store.memberAdd(previewed.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
-    store.missionAdd(previewed.id, { text: "read", member: analyst.id });
-    const preview = (await route("routing/preview", { objectiveId: previewed.id })).value.preview as { members: { id: string; via: string; model?: string; reason?: string }[] };
-    expect(judgments).toBe(5);
-    expect(store.find(previewed.id)!.commander).toMatchObject({ model: "sonnet[1m]", routed: { via: "route" } });
-    expect(store.find(previewed.id)!.commander.routing).toBeUndefined();
-    expect(preview.members).toEqual([expect.objectContaining({ id: analyst.id, via: "fallback", model: "sonnet[1m]" })]);
-    expect((await route("commander/start", { objectiveId: previewed.id, routing: "preview" })).status).toBe(200);
-    expect(judgments).toBe(5);
-    expect(objectiveRecords.get(analyst.id)!.session).toMatchObject({ model: "sonnet[1m]" });
-
-    // 라우팅이 꺼져 대체될 때도 새 선택이다 — 꺼진 보드 기본(Opus)으로 지휘관을 띄우지 않고, 판단도 남기지 않아 켠 뒤 다시 묻는다.
-    vi.stubGlobal("fetch", async () => new Response("routing off", { status: 409 }));
-    const fallback = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Fallback commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
-    expect((await route("plan/request", { objectiveId: fallback.id })).value).toMatchObject({ error: "model_not_enabled" });
-    expect(objectiveRecords.has(fallback.id)).toBe(false);
-    expect(store.find(fallback.id)!.commander.routing).toBe(true);
-    enabled.add("opus[1m]");
-    expect((await route("plan/request", { objectiveId: fallback.id })).status).toBe(200);
-    expect(objectiveRecords.get(fallback.id)!.session).toMatchObject({ model: "opus[1m]", effort: "high" });
-    expect(store.find(fallback.id)!.commander).toMatchObject({ model: "opus[1m]", routed: { via: "fallback", reason: "routing_disabled" } });
-    // 구성원의 라우팅 대체는 지휘관 좌표로 뜬다 — 그 모델이 꺼졌으면 그 구성원만 실패로 알린다.
-    const scout = store.memberAdd(fallback.id, { role: "scout", brief: "reads the code" }, "human").members[0]!;
-    store.missionAdd(fallback.id, { text: "scout", member: scout.id });
-    enabled.delete("opus[1m]");
-    const started = await route("commander/start", { objectiveId: fallback.id });
-    expect(started.status).toBe(200);
-    expect(started.value.failed).toEqual([{ id: scout.id, role: "scout", error: "model_not_enabled" }]);
-    expect(objectiveRecords.has(scout.id)).toBe(false);
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
@@ -977,8 +806,8 @@ describe("Objectives contract", () => {
     await launch.rename(objective.id, "Release renamed");
     expect(store.find(objective.id)!.title).toBe("Release renamed");
     // 구성원 명단 — 임무는 구성원만 가리킨다. 두 임무가 한 구성원을 나눠 쓴다.
-    const research = store.memberAdd(objective.id, { role: "research" }, "human").members[0]!.id;
-    const build = store.memberAdd(objective.id, { role: "build" }, "human").members[1]!.id;
+    const research = store.memberAdd(objective.id, { role: "research", launch: SONNET }, "human").members[0]!.id;
+    const build = store.memberAdd(objective.id, { role: "build", launch: SONNET }, "human").members[1]!.id;
     store.missionPatch(objective.id, a!.id, { member: research });
     store.missionPatch(objective.id, b!.id, { member: build }, { by: "human" });
     store.missionPatch(objective.id, c!.id, { member: build });
@@ -1474,7 +1303,7 @@ describe("Objectives contract", () => {
   it("keeps the group on the parent without adding group metadata to children", async () => {
     const { store, launch, objectiveRecords } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Ship", groupId: "g-review", missions: [{ text: "a" }] });
-    store.memberAdd(objective.id, { role: "build" }, "human");
+    store.memberAdd(objective.id, { role: "build", launch: SONNET }, "human");
     await launch.requestPlan(objective.id);
     store.setPlanning(objective.id, false);
     const worker = (await launch.muster(objective.id))[0]!.objectiveId;
@@ -1487,7 +1316,13 @@ describe("Objectives contract", () => {
   });
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
-    const { ctx, store, call, launch, workspace, events, objectiveFile, objectiveRecords, objectiveRecordsHost, objectivesDir } = harness();
+    const { ctx, store, call, launch, workspace, events, objectiveFile, objectiveRecords, objectiveRecordsHost, objectivesDir } = harness(() => "http://console.invalid");
+    // 지휘관의 구성원 모델은 candidates 로 확인한다. 라우팅 배정은 부르지 않는다.
+    const fetched: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      fetched.push(url);
+      return url.endsWith("/api/v1/ai-gateway/candidates") ? Response.json({ candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] }) : new Response("", { status: 404 });
+    });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -1503,24 +1338,29 @@ describe("Objectives contract", () => {
     expect(((await opened.find((tool) => tool.name === "read")!.execute({ objectiveId: objective.id }, { cwd: workspace, caller: { kind: "objectiveRecord", objectiveId: other } })) as { structuredContent: { error?: string; hint?: string } }).structuredContent).toMatchObject({ error: "invalid_arguments", hint: "objectiveId is no longer accepted. Call again without it." });
     expect((await call("read", {}, other)).structuredContent.objective).toMatchObject({ id: other });
     expect(store.find(objective.id)!.missions.map((mission) => mission.text)).toEqual(["one", "two"]);
-    // 구상 중에는 편성만 — 명단이 비었을 때만 지휘관이 구성원을 제안하고(모델은 고르지 않아 라우팅), 임무에 구성원을 표시한다.
-    // 임무 수행 쓰기와 구성원 기동은 거절된다.
+    // 구상 중에는 편성만 — 명단이 비었을 때만 지휘관이 구성원을 제안하고, 임무에 구성원을 표시한다.
+    // 구성원마다 모델이 필요하다 — 빠지면 라우팅으로 넘기지 않고 아무도 더하지 않은 채 거절한다. 임무 수행 쓰기와 구성원 기동은 거절된다.
     store.setPlanning(objective.id, true);
-    const planned = await call("plan", { objectiveId: objective.id, missions: [{ title: "p1", text: "p1", member: "build" }, { title: "p2", text: "p2", prerequisites: [{ n: 1 }] }], members: [{ role: "build", brief: "implements" }] }, commander);
+    const lineup = { objectiveId: objective.id, missions: [{ title: "p1", text: "p1", member: "build" }, { title: "p2", text: "p2", prerequisites: [{ n: 1 }] }] };
+    expect((await call("plan", { ...lineup, members: [{ role: "build", brief: "implements" }] }, commander)).structuredContent).toMatchObject({ error: "member_model_required", roles: ["build"], hint: expect.stringContaining("candidates") });
+    expect(store.find(objective.id)!.members).toEqual([]);
+    const planned = await call("plan", { ...lineup, members: [{ role: "build", brief: "implements", model: "sonnet" }] }, commander);
     expect(planned.isError).toBe(false);
     expect(planned.structuredContent).toMatchObject({ stored: { members: [{ role: "build", brief: "implements" }] } });
-    expect(store.find(objective.id)!.members).toMatchObject([{ role: "build", by: "commander", launch: { mode: "route" } }]);
+    expect(store.find(objective.id)!.members).toMatchObject([{ role: "build", by: "commander", launch: { mode: "model", model: "sonnet[1m]" } }]);
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["early"] }, commander)).structuredContent.error).toBe("planning_only");
     expect((await call("muster", { objectiveId: objective.id }, commander)).structuredContent.error).toBe("planning_only");
     // 명단이 있으면 지휘관은 명단을 다시 쓰지 못한다(빈 명단으로 지우는 것도).
     expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "p3", text: "p3" }], members: [] }, commander)).structuredContent.error).toBe("members_exist");
     // 명단이 선 뒤의 일손은 enlist 로 더한다 — 서브에이전트 호출을 대신하는 자리다.
-    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review" }] }, commander)).structuredContent.members).toMatchObject([{ role: "review" }]);
+    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review" }] }, commander)).structuredContent.error).toBe("member_model_required");
+    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review", model: "sonnet" }] }, commander)).structuredContent.members).toMatchObject([{ role: "review" }]);
     expect(store.find(objective.id)!.members).toMatchObject([{ role: "build" }, { role: "review", by: "commander" }]);
     store.setPlanning(objective.id, false);
     const mustered = await call("muster", { objectiveId: objective.id }, commander);
     const member = (mustered.structuredContent.members as { id: string; state: string }[])[0]!;
     expect(member.state).toBe("launched");
+    expect(fetched.some((url) => url.includes("routing-assign"))).toBe(false);
     const addedMission = await call("add_mission", { objectiveId: objective.id, title: "  Build  ", text: "  padded  " }, commander);
     expect(addedMission.structuredContent).toMatchObject({ stored: { text: store.find(objective.id)!.missions.find((entry) => entry.id === addedMission.structuredContent.missionId)!.text } });
     expect(addedMission.structuredContent.stored).toEqual({ title: "Build", text: "padded" });
@@ -1682,11 +1522,12 @@ describe("Objectives contract", () => {
   });
 
   it("keeps the person's answers to a decision request as decisions only once delivered, and clears a request the board no longer supports without recording one", async () => {
-    const { ctx, store, call, launch, route, sent, activity, hostFault, objectiveRecordsHost, objectivesDir } = harness();
+    const { ctx, store, call, launch, route, sent, activity, hostFault, objectiveRecordsHost, objectivesDir } = harness(() => "http://console.invalid");
+    stubCandidates();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Ask", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
-    await call("plan", { objectiveId: commander, missions: [{ title: "ship", text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
+    await call("plan", { objectiveId: commander, missions: [{ title: "ship", text: "ship", member: "build" }], members: [{ role: "build", model: "sonnet" }] }, commander);
     store.setPlanning(commander, false);
     const member = store.find(commander)!.members[0]!.id;
     const missionId = store.find(commander)!.missions[0]!.id;
@@ -1698,9 +1539,9 @@ describe("Objectives contract", () => {
     const first = await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander);
     expect(first.isError).toBe(false);
     expect((await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander)).structuredContent.error).toBe("decision_request_changed");
-    // 활성 라우팅을 다시 고르는 것은 보드 편집이 아니다 — 요청과 편집 기록을 그대로 둔다.
+    // 같은 모델을 다시 고르는 것은 보드 편집이 아니다 — 요청과 편집 기록을 그대로 둔다.
     const beforeReselect = store.find(commander)!;
-    expect((await route("member/patch", { objectiveId: commander, memberId: member, patch: { launch: null } })).status).toBe(200);
+    expect((await route("member/patch", { objectiveId: commander, memberId: member, patch: { launch: SONNET } })).status).toBe(200);
     expect(store.find(commander)!.decisionRequest).toEqual(beforeReselect.decisionRequest);
     expect(store.find(commander)!.actionCounts?.edit).toBe(beforeReselect.actionCounts?.edit);
     // 실제 역할 설명 변경은 옛 보드에 대한 요청을 정리하고, 결정은 남기지 않는다.
@@ -1822,11 +1663,12 @@ describe("Objectives contract", () => {
   });
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
-    const { store, call, launch, route, sent, deliveries, activity, hostFault, objectiveRecords, objectiveRecordsHost } = harness();
+    const { store, call, launch, route, sent, deliveries, activity, hostFault, objectiveRecords, objectiveRecordsHost } = harness(() => "http://console.invalid");
+    stubCandidates();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Talk", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
-    await call("plan", { objectiveId: commander, missions: [{ title: "ship", text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
+    await call("plan", { objectiveId: commander, missions: [{ title: "ship", text: "ship", member: "build" }], members: [{ role: "build", model: "sonnet" }] }, commander);
     store.setPlanning(commander, false);
     const member = ((await call("muster", { objectiveId: commander }, commander)).structuredContent.members as { id: string }[])[0]!.id;
     // 구성원에게는 말 그대로, 지휘관에게는 누구에게 말했는지와 그 말의 인용.
@@ -2152,7 +1994,9 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid");
+    // 사람이 이 사령관에 정한 지휘관 모델 — 처음에는 없다.
+    let configured: { readonly model: string; readonly effort?: string } | null = null;
+    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid", { commodoreCommander: () => configured });
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
@@ -2163,12 +2007,12 @@ describe("Objectives contract", () => {
     const quota = { providers: { xai: { status: "ok", windows: [
       { id: "weekly", usedPercent: 20 },
     ] } } };
-    // gateway_models — 라우팅 판단이 보는 후보. 지휘관이 고른 구성원 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
-    const gatewayModels = { routing: { enabled: true, mode: "jev" }, quotaPools: {}, models: [{ modelId: "sonnet[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["low"] }] };
+    // candidates — 지휘관이 고른 구성원 모델과 사령관 쪽 지휘관 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
+    const candidates = { candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] };
     const judged: string[] = [];
     vi.stubGlobal("fetch", async (url: string, init?: { body?: string }) => {
       if (url.endsWith("/api/v1/objectives/records/catalog")) return Response.json(catalog);
-      if (url.endsWith("/api/v1/ai-gateway/gateway-models")) return Response.json(gatewayModels);
+      if (url.endsWith("/api/v1/ai-gateway/candidates")) return Response.json(candidates);
       if (url.endsWith("/api/v1/ai-gateway/routing-assign")) { judged.push(String(init?.body ?? "")); return new Response("unavailable", { status: 503 }); }
       return Response.json(quota);
     });
@@ -2194,26 +2038,21 @@ describe("Objectives contract", () => {
       expect(result.isError).toBe(false);
       return result.structuredContent;
     };
-    // 모델 선택의 공개 경계가 호스트의 풀 판정과 한도 창의 범위를 잃지 않는다. 네이티브 행에는 추측한 풀을 넣지 않는다.
-    // available 은 실제 새 선택 허용과 같다 — 사람이 AI Gateway에서 끈 모델은 실행 카탈로그에 있어도 고를 수 없다.
-    const loadout = await board({ action: "models" });
-    expect(loadout.models).toEqual([
-      { model: "sonnet[1m]", label: "Sonnet", provider: "claude", efforts: ["low"], available: true },
-      { model: "opus[1m]", label: "Opus", provider: "claude", efforts: ["high"], available: false, reason: "not_enabled" },
-      { model: "xai--grok-4.7", label: "Grok", provider: "xai", efforts: [], available: false, reason: "not_enabled", quotaPool: "xai:shared" },
-    ]);
-    expect(loadout.quota).toEqual(quota.providers);
-    // 사령관이 끈 모델을 고르거나, 고르지 않았는데 쓰일 기본값(여기서는 보드 기본 Opus)이 꺼져 있으면 목표를 만들지 않는다.
+    // 사령관이 candidates 밖의 모델을 고르면, 또는 고르지 않았고 사람의 설정도 없으면 목표를 만들지 않는다 — 보드 기본이나 라우팅으로 넘어가지 않는다.
     const offAdd = async (args: Record<string, unknown>) => ((await commodoreList.execute({ action: "add", theaterId: "t1", title: "Off model", ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
-    expect(await offAdd({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_enabled", model: "xai--grok-4.7" });
-    expect(await offAdd({})).toMatchObject({ error: "model_not_enabled", model: "opus[1m]" });
+    expect(await offAdd({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7" });
+    expect(await offAdd({})).toMatchObject({ error: "commander_model_required", hint: expect.stringContaining("candidates") });
     expect(store.list("c1")).toEqual([]);
-    gatewayModels.models.push({ modelId: "opus[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["high"] });
+    expect(judged).toEqual([]);
+    // 사람이 정한 사령관 설정은 사람의 명시 선택이다 — candidates 에 없어도 실행 카탈로그에서 고를 수 있으면 그 모델로 만든다.
+    configured = { model: "opus[1m]", effort: "high" };
     const actor = { kind: "commodore", commodoreId: "c1" };
     const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
     const created = await board({ action: "add", theaterId: "t1", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage], requestSource });
     expect(created).toMatchObject({ stored: { dueDate: "2026-10-31", requestSource } });
     const id = created.objectiveId as string;
+    expect(store.find(id)!.commander).toMatchObject({ model: "opus[1m]", effort: "high" });
+    candidates.candidates.push({ model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" });
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor, requestSource });
     expect((await board({ action: "list", filter: "all" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor, requestSource }));
     const reloadObjective = () => createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(id);
@@ -2288,9 +2127,9 @@ describe("Objectives contract", () => {
     const lineup = { missions: [{ title: "verify", text: "verify", member: "worker" }], criteria: [{ text: "Output preserved" }, { text: "Decision applied" }] };
     expect((await call("plan", { objectiveId: id, ...lineup, members: [{ role: "worker", model: "unlisted" }] }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
     expect(store.find(id)!.members).toEqual([]);
-    await command("plan", { ...lineup, missions: [...lineup.missions, { title: "review", text: "review", member: "reviewer" }], members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
+    await command("plan", { ...lineup, missions: [...lineup.missions, { title: "review", text: "review", member: "reviewer" }], members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer", model: "sonnet" }] }, id);
     // 맡은 일 없는 구성원만 지휘관이 거둔다 — 임무를 맡은 구성원과 사람이 더한 구성원은 남는다.
-    await command("enlist", { members: [{ role: "spare" }] }, id);
+    await command("enlist", { members: [{ role: "spare", model: "sonnet" }] }, id);
     expect((await call("discharge", { objectiveId: id, member: "reviewer" }, id)).structuredContent.error).toBe("member_has_missions");
     const handPicked = store.memberAdd(id, { role: "personal" }, "human").members.at(-1)!;
     expect((await call("discharge", { objectiveId: id, member: handPicked.id }, id)).structuredContent.error).toBe("member_person_added");
@@ -2300,9 +2139,7 @@ describe("Objectives contract", () => {
     // 개시 전에도 기존 구성원은 도구로 바뀐다 — 사람의 편집 흔적을 만들거나 지우지 않는다.
     const beforeLaunchEdit = { edited: store.find(id)!.edited, actions: store.find(id)!.actions };
     expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "model", model: "unlisted" }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
-    expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "route" }, "outsider")).structuredContent.error).toBe("not_participant");
-    await command("set_member_launch", { member: "worker", mode: "route" }, id);
-    expect(store.find(id)!.members[0]!.launch).toEqual({ mode: "route" });
+    expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "model", model: "sonnet" }, "outsider")).structuredContent.error).toBe("not_participant");
     await command("set_member_launch", { member: store.find(id)!.members[0]!.id, mode: "model", model: "sonnet", effort: "low" }, id);
     expect(store.find(id)!.members[0]!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "low" });
     expect({ edited: store.find(id)!.edited, actions: store.find(id)!.actions }).toEqual(beforeLaunchEdit);
@@ -2313,7 +2150,6 @@ describe("Objectives contract", () => {
     expect(store.storedMember(id, observer.id)).toMatchObject({ by: "human", launchBy: "commander" });
     await command("set_member_launch", { member: observer.id, mode: "model", model: "sonnet" }, id);
     expect(store.find(id)!.members.at(-1)!.launch).toEqual({ mode: "model", model: "sonnet[1m]" });
-    await command("set_member_launch", { member: observer.id, mode: "route" }, id);
     expect(createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).storedMember(id, observer.id)).toMatchObject({ by: "human", launchBy: "commander" });
     expect((await route("member/remove", { objectiveId: id, memberId: observer.id })).status).toBe(200);
     const beforeStart = (await board({ action: "read", objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
@@ -2360,17 +2196,12 @@ describe("Objectives contract", () => {
     expect((await commodore.execute({ action: "commence", objectiveId: id }, { cwd: workspace }) as { structuredContent: Record<string, unknown> }).structuredContent).toEqual({ error: "objective_busy", retryWhen: "commander_turn_end", commander: { state: "running" } });
     activity.set(id, "idle");
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
-    // 라우팅으로 뜰 구성원은 개시 전 routing 판단을 거친다 — 판단 없이는 띄우지 않고, 개시는 보여 준 결과 그대로 띄운다.
-    expect(await refusal(commodore, { action: "commence", objectiveId: id })).toBe("routing_preview_stale");
-    // 지휘관은 기동 전 보드 읽기에서 고른 설정과 라우팅을 구별한다. 설정을 실행값 model/effort로 가장하지 않는다.
+    // 지휘관은 기동 전 보드 읽기에서 고른 설정을 실행값 model/effort로 가장하지 않는다.
     const memberBoard = (await command("read", {}, id)).objective as { members: readonly Record<string, unknown>[] };
     expect(memberBoard.members.map(({ launch, model, effort }) => ({ launch, model, effort }))).toEqual([
       { launch: { mode: "model", model: "sonnet[1m]", effort: "low" }, model: undefined, effort: undefined },
-      { launch: { mode: "route" }, model: undefined, effort: undefined },
+      { launch: { mode: "model", model: "sonnet[1m]" }, model: undefined, effort: undefined },
     ]);
-    const routed = await board({ action: "routing", objectiveId: id });
-    expect(routed.members).toEqual([expect.objectContaining({ role: "reviewer" })]);
-    expect(judged.join("\n")).not.toContain("Commander's proposed model");
     expect(await board({ action: "commence", objectiveId: id })).toMatchObject({ objectiveId: id, failed: [] });
     // 구상 요청과 개시도 부른 손으로 남는다. 개시한 손은 행위 기록이 접혀도 commencedBy 로 남아 사이드바가 읽는다.
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ commencedBy: actor, actions: expect.arrayContaining([expect.objectContaining({ kind: "plan", by: actor }), expect.objectContaining({ kind: "commence", by: actor })]) });
@@ -2386,9 +2217,9 @@ describe("Objectives contract", () => {
     expect(recoveredView.objective.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
     const recoveredState = (await route("state", { commodoreId: "c1" })).value as { objectives: readonly Objective[] };
     expect(recoveredState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
-    // 지휘관이 고른 구성원은 라우팅 없이 그 모델로 뜨고, 생략한 구성원은 판단이 보여 준 값으로 뜬다(이 하네스에서는 판단이 실패해 지휘관 프리셋).
+    // 지휘관이 고른 구성원은 그 모델로 뜨고, 라우팅 배정은 부르지 않는다.
     expect(objectiveRecords.get(workerId)!.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
-    expect((routed.members as readonly { via: string }[])[0]!.via).toBe("fallback");
+    expect(judged).toEqual([]);
     // 떠 있는 채팅의 자식이 모델 변경을 거절하면 — 사람의 모델 칩(member/patch)은 코드만 답하고, 자식이 던진 원 예외는 사령관의 failedSwitches 와
     // 사람의 행에 같은 사유로 남는다. 곧바로 거절된 전환도 턴 뒤 실패와 같은 자리다. 자동 재시도는 없다.
     const running = objectiveRecords.get(workerId)!.session as { model: string; effort?: string };
@@ -2401,15 +2232,14 @@ describe("Objectives contract", () => {
     hostFault.coordinates = { ok: false, error: "coordinates_apply_failed", cause };
     expect(await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } })).toMatchObject({ value: { error: "coordinates_apply_failed" } });
     expect(hostFault.coordinates).toBeNull();
-    expect((await board({ action: "models" })).failedSwitches).toEqual([{ objectiveId: id, memberId: workerId, role: "worker", model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause }]);
     expect(((await route("objective/get", { objectiveId: id })).value as { objective: Objective }).objective.members.find((m) => m.id === workerId)?.next).toEqual({ model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause });
     await route("member/next-cancel", { objectiveId: id, memberId: workerId });
-    // 작업 중 도구 선택은 호스트의 턴 뒤 예약을 쓰며, 라우팅 복귀는 그 예약을 거둔다.
+    // 작업 중 도구 선택은 호스트의 턴 뒤 예약을 쓰며, 실행 중인 모델로 다시 고르면 그 예약을 거둔다.
     activity.set(workerId, "running");
     await command("set_member_launch", { member: workerId, mode: "model", model: "opus", effort: "high" }, id);
     expect(store.find(id)!.members.find((member) => member.id === workerId)).toMatchObject({ launch: { mode: "model", model: "opus[1m]", effort: "high" }, next: { model: "opus[1m]", effort: "high" } });
     expect(objectiveRecords.get(workerId)!.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
-    await command("set_member_launch", { member: workerId, mode: "route" }, id);
+    await command("set_member_launch", { member: workerId, mode: "model", model: "sonnet", effort: "low" }, id);
     expect(hostChat.get(workerId)?.pending).toBeNull();
     // 사람의 같은 좌표 확정은 예약을 다시 걸지 않고 소유만 굳힌다 — 별칭도 같은 저장 선택이다.
     await command("set_member_launch", { member: workerId, mode: "model", model: "opus", effort: "high" }, id);
@@ -2435,12 +2265,12 @@ describe("Objectives contract", () => {
     expect((await route("member/next-cancel", { objectiveId: id, memberId: workerId })).status).toBe(200);
     expect(hostChat.get(workerId)?.pending).toBeNull();
     expect(store.storedMember(id, workerId)).toMatchObject({ launchBy: "human" });
-    expect(store.storedMember(id, workerId)?.launch).toBeUndefined();
-    expect((await call("set_member_launch", { objectiveId: id, member: workerId, mode: "route" }, id)).structuredContent.error).toBe("member_launch_person_chosen");
+    // 취소하면 예약 전 선택(지휘관이 앞서 고른 실행 모델)으로 돌아간다.
+    expect(store.storedMember(id, workerId)?.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "low" });
+    expect((await call("set_member_launch", { objectiveId: id, member: workerId, mode: "model", model: "sonnet" }, id)).structuredContent.error).toBe("member_launch_person_chosen");
     activity.set(workerId, "idle");
     hostChat.delete(workerId);
-    // 사람의 명시적 라우팅 복귀도 선택이다 — 지휘관이 읽어 편집 표시를 거둬도, 재시작해도 보호가 남는다.
-    expect((await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: null } })).status).toBe(200);
+    // 사람이 고른 모델은 지휘관이 읽어 편집 표시를 거둬도, 재시작해도 보호가 남는다.
     await command("read", {}, id);
     const personSelection = store.storedMember(id, workerId)!;
     expect(personSelection.launchBy).toBe("human");
@@ -3102,11 +2932,12 @@ describe("Objectives contract", () => {
 
   it("wakes the commander once when an assigned ready mission stays unreported and never steers", async () => {
     const reportQuietMs = 25 * 60_000;
-    const { store, launch, call, sent, activity, advanceClock, restart } = harness(() => null, { reportQuietMs });
+    const { store, launch, call, sent, activity, advanceClock, restart } = harness(() => "http://console.invalid", { reportQuietMs });
+    stubCandidates();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
-    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "worker" }] }, commander)).isError).toBe(false);
+    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "worker", model: "sonnet" }] }, commander)).isError).toBe(false);
     const before = new Set(store.find(objective.id)!.missions.map((mission) => mission.id));
     activity.set(commander, "idle");
     const quietSends = () => sent.filter((entry) => entry.text.includes("No report for") || entry.text.includes("배정 후 보고 없이"));
@@ -3201,13 +3032,14 @@ describe("Objectives contract", () => {
   });
 
   it("retries held messages once in order after restart, and does not keep retrying one that can no longer be delivered", async () => {
-    const h = harness();
+    const h = harness(() => "http://console.invalid");
+    stubCandidates();
     const { store, launch, call, ctx, sent, activity, surfaces, restart, hostFault } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Held once", groupId: null });
     const id = objective.id;
     await launch.requestPlan(id);
     activity.set(id, "idle");
-    expect((await call("enlist", { members: [{ role: "worker" }] }, id)).isError).toBe(false);
+    expect((await call("enlist", { members: [{ role: "worker", model: "sonnet" }] }, id)).isError).toBe(false);
     const memberId = store.find(id)!.members[0]!.id;
     surfaces.set(memberId, "terminal");
     activity.set(memberId, "dormant");

@@ -346,7 +346,7 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
       return;
     }
 
-    handleAuthorizedRequest(req, res, processJsonRpc);
+    handleAuthorizedRequest(req, res, processJsonRpc, (token) => snapshotStore.hasSession(token));
   }
 
   return {
@@ -356,7 +356,7 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
       if (activeStartPromise) return activeStartPromise;
 
       if (deps.transport) {
-        hosted ??= deps.transport.mount((req, res) => handleAuthorizedRequest(req, res, processJsonRpc));
+        hosted ??= deps.transport.mount((req, res) => handleAuthorizedRequest(req, res, processJsonRpc, (token) => snapshotStore.hasSession(token)));
         return hosted.url();
       }
       activeOpaquePath = `/${crypto.randomUUID()}`;
@@ -457,6 +457,8 @@ function handleAuthorizedRequest(
     token: string,
     options?: ProcessJsonRpcOptions,
   ) => Promise<JsonRpcResponse | null>,
+  /** 이 엔드포인트가 발급한(아직 회수하지 않은) 세션 토큰인가. 다른 서버의 토큰도 initialize 를 포함해 거절한다. */
+  isSession: (token: string) => boolean,
 ): void {
   if (req.method !== "POST") {
     res.writeHead(405);
@@ -466,7 +468,7 @@ function handleAuthorizedRequest(
 
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) {
+  if (!token || !isSession(token)) {
     res.writeHead(401, JSON_CONTENT_TYPE);
     res.end(JSON.stringify({ error: "Unauthorized" }));
     return;

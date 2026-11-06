@@ -7,7 +7,6 @@ import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import path from "node:path";
 import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
-import { chooseRoutingModel, chooseRoutingModels } from "./routing-model.js";
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
   DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
@@ -22,10 +21,7 @@ import {
   GATEWAY_PROVIDERS,
   GatewayRoutingDistribution,
   decideGatewayRoutingAssignment,
-  decideGatewayRoutingBatch,
-  buildGatewayLoadout,
-  JEV_ROUTING_TIMEOUT_MS,
-  JEV_ROUTING_BATCH_TIMEOUT_MS,
+  buildGatewayCandidates,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
   createAiGatewaySettingsStore,
@@ -34,8 +30,6 @@ import {
   DEFAULT_ROSTER_SEED_MODEL_IDS,
   setWireLogTarget,
   wireLogEnabled,
-  SystemOneClient,
-  TYPESAFE_AUTH_PROVIDER_ID,
   type AiGatewayStoredSettings,
   type GatewayAssignmentExposure,
   type ProviderStatusMap,
@@ -59,7 +53,7 @@ interface GatewayStartContext {
    * installation; absent leaves them unresolved and native alias relays are refused.
    */
   readonly resolveClaudeExecutable?: () => Promise<string | undefined>;
-  /** Console's owned-process port. The routing model's CLI must be a child the Console's deadline ends. */
+  /** Console's owned-process port. The Claude CLI queried for supported models must be a child the Console's deadline ends. */
   readonly spawnAgentProcess: ClaudeProcessSpawner;
 }
 import { registerAiGatewayRoutes } from "./routes.js";
@@ -189,8 +183,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
     const selection = resolveAiGatewaySelection(aiGatewayStore.read());
     const allowance = parseGatewayQuotaSnapshot(quota.peekSummary());
     return {
-      delegationRoutingEnabled: selection.delegationRoutingEnabled,
-      delegationRoutingMode: selection.delegationRoutingMode,
       delegationModels: selection.delegationModels,
       ...(selection.effortExposure === undefined ? {} : { effortExposure: selection.effortExposure }),
       ...(selection.providerPriority === undefined ? {} : { providerPriority: selection.providerPriority }),
@@ -199,18 +191,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
       distribution,
     };
   }
-  // 배정 경로 전용. 기본 30s·3재시도를 그대로 쓰면 spawn이 멈춘다.
-  const jevClient = new SystemOneClient({
-    readApiKey: () => authService.getApiKey(TYPESAFE_AUTH_PROVIDER_ID),
-    timeoutMs: JEV_ROUTING_TIMEOUT_MS,
-    maxAttempts: 1,
-  });
-  // 배치 판단은 한 건 배정보다 길다. 클라이언트를 나누어 짧은 예산이 배치를 끊지 않게 한다.
-  const jevBatchClient = new SystemOneClient({
-    readApiKey: () => authService.getApiKey(TYPESAFE_AUTH_PROVIDER_ID),
-    timeoutMs: JEV_ROUTING_BATCH_TIMEOUT_MS,
-    maxAttempts: 1,
-  });
   const readProviderStatuses = (): ProviderStatusMap | undefined => {
     const summary = quota.peekSummary();
     if (!summary) return undefined;
@@ -222,109 +202,22 @@ export function startAiGateway(ctx: GatewayStartContext) {
       "muse-code": summary.providers["muse-code"].status,
     };
   };
-  async function assign(request: unknown, signal?: AbortSignal, test = false) {
+  function assign(request: unknown) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
       void quota.getSummary().catch(() => undefined);
-      const parsed = parseGatewayAssignmentRequest(request);
-      const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad), distribution: new GatewayRoutingDistribution() } : currentExposure();
-      return await decideGatewayRoutingAssignment(parsed, exposure, {
-        ...(exposure.delegationRoutingMode === "model" ? {
-          choose: (input, signal) => chooseRoutingModel({
-            ...input, signal,
-            settings: aiGatewayStore.read(),
-            baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
-            directory: path.join(ctx.dataDir, "routing-model"),
-            spawnProcess: ctx.spawnAgentProcess,
-            readProviderStatuses,
-          }),
-        } : { client: jevClient }),
-        forceDecision: test,
-        refreshExposure: () => test ? { ...currentExposure(), providerLoad: exposure.providerLoad, distribution: exposure.distribution } : currentExposure(),
-        ...(signal === undefined ? {} : { signal }),
-      });
+      return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), currentExposure());
   }
-  let testing = false;
-  ctx.registerRouter("ai-gateway/routing-test", async ({ req, res }) => {
-    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
-    if (testing) { ctx.host.http.writeJson(res, 409, { error: "routing_test_in_progress" }); return true; }
-    const body = await ctx.host.http.readJsonBody<{ prompt?: unknown }>(req);
-    if (typeof body?.prompt !== "string" || !body.prompt.trim() || body.prompt.length > 65536) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_prompt" }); return true;
-    }
-    const selection = currentExposure();
-    if (!selection.delegationRoutingEnabled || !selection.delegationModels.length) {
-      ctx.host.http.writeJson(res, 409, { error: "routing_disabled_or_no_candidates" }); return true;
-    }
-    if (testing) { ctx.host.http.writeJson(res, 409, { error: "routing_test_in_progress" }); return true; }
-    testing = true;
-    const controller = new AbortController();
-    const abort = () => { if (!res.writableEnded) controller.abort(); };
-    res.once("close", abort);
-    const started = Date.now();
-    try {
-      const decision = await assign({ surface: "agent", prompt: body.prompt, providerPlugin: "engine" }, controller.signal, true);
-      if (!res.destroyed) ctx.host.http.writeJson(res, 200, {
-        mode: selection.delegationRoutingMode, elapsedMs: Date.now() - started,
-        ...decision, fallback: decision.because.includes("fallback"),
-      });
-    } catch {
-      if (!res.destroyed) ctx.host.http.writeJson(res, 502, { error: "routing_test_failed" });
-    } finally { testing = false; res.off("close", abort); }
-    return true;
-  }, [{ method: "POST", path: "", summary: "Test the configured routing decision with a real provider request.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
-  // 라우팅 판단이 보는 그 목록(gateway_models) — 판단에 모델을 제안하는 세션(지휘관)이 같은 후보·한도·선호를 읽는다. 원시 쿼터는 싣지 않는다.
-  ctx.registerRouter("ai-gateway/gateway-models", async ({ req, res }) => {
+  /** HTTP 라우트와 `fleet-ai-gateway` candidates 도구가 같은 본문을 읽는다. 갱신은 비동기로, 응답은 현재 캐시로 낸다. */
+  const readCandidates = () => {
+    void quota.getSummary().catch(() => undefined);
+    return buildGatewayCandidates(currentExposure());
+  };
+  ctx.registerRouter("ai-gateway/candidates", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-    void quota.getSummary().catch(() => undefined);
-    const selection = currentExposure();
-    ctx.host.http.writeJson(res, 200, { routing: { enabled: selection.delegationRoutingEnabled, mode: selection.delegationRoutingMode }, ...buildGatewayLoadout(selection) });
+    ctx.host.http.writeJson(res, 200, readCandidates());
     return true;
-  }, [{ method: "GET", path: "", summary: "Read gateway_models, the candidate models, quota pools and recent assignments the routing decision sees.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
-  ctx.registerRouter("ai-gateway/routing-assign", async ({ req, res }) => {
-    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
-    const items = parseRoutingAssignItems(await ctx.host.http.readJsonBody<unknown>(req));
-    if (!items) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
-    const selection = currentExposure();
-    if (!selection.delegationRoutingEnabled || selection.delegationModels.length === 0) {
-      ctx.host.http.writeJson(res, 409, { error: "routing_disabled_or_no_candidates" }); return true;
-    }
-    void quota.getSummary().catch(() => undefined);
-    const controller = new AbortController();
-    const abort = () => { if (!res.writableEnded) controller.abort(); };
-    res.once("close", abort);
-    try {
-      const decisions = await decideGatewayRoutingBatch(items, selection, {
-        ...(selection.delegationRoutingMode === "model" ? {
-          choose: (input, signal) => chooseRoutingModels({
-            ...input, signal,
-            settings: aiGatewayStore.read(),
-            baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
-            directory: path.join(ctx.dataDir, "routing-model"),
-            spawnProcess: ctx.spawnAgentProcess,
-            readProviderStatuses,
-          }),
-        } : { client: jevBatchClient }),
-        refreshExposure: () => currentExposure(),
-        signal: controller.signal,
-      });
-      if (!res.destroyed && !controller.signal.aborted) {
-        ctx.host.http.writeJson(res, 200, {
-          mode: selection.delegationRoutingMode === "jev" ? "jev" : "model",
-          decisions,
-        });
-      }
-    } catch (error) {
-      // 호출자가 끊기면 본문 없이 끝낸다. 판단 실패는 항목별 fallback으로 이미 돌아온다.
-      if (res.destroyed || controller.signal.aborted) return true;
-      throw error;
-    } finally { res.off("close", abort); }
-    return true;
-  }, [{ method: "POST", path: "", summary: "Assign a model and reasoning effort to each of several tasks in one routing decision.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
   // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
   const claudeNativeListeners = new Set<() => void>();
@@ -355,7 +248,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,
-    assignRouting: (request, options) => assign(request, options?.signal),
+    assignRouting: async (request) => assign(request),
     readAuth: codex.readSubscription,
     readXaiToken: xai.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,
@@ -363,36 +256,5 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus };
-}
-
-const ROUTING_ASSIGN_MAX_ITEMS = 20;
-const ROUTING_ASSIGN_MAX_KEY_CHARS = 64;
-const ROUTING_ASSIGN_MAX_PROMPT_CHARS = 16_384;
-const ROUTING_ASSIGN_MAX_PROMPT_SUM_CHARS = 131_072;
-const ROUTING_ASSIGN_KEY = /^[A-Za-z0-9._:-]+$/;
-
-/** 아는 필드만 읽는다. 모르는 필드는 버리고, 깨진 항목이 하나라도 있으면 요청 전체를 거절한다. */
-function parseRoutingAssignItems(body: unknown): readonly { readonly key: string; readonly prompt: string }[] | undefined {
-  if (typeof body !== "object" || body === null) return undefined;
-  const items = (body as { items?: unknown }).items;
-  if (!Array.isArray(items) || items.length < 1 || items.length > ROUTING_ASSIGN_MAX_ITEMS) return undefined;
-  const seen = new Set<string>();
-  let total = 0;
-  const parsed: { key: string; prompt: string }[] = [];
-  for (const entry of items) {
-    if (typeof entry !== "object" || entry === null) return undefined;
-    const record = entry as { key?: unknown; prompt?: unknown };
-    const key = record.key;
-    const prompt = record.prompt;
-    if (typeof key !== "string" || key.length < 1 || key.length > ROUTING_ASSIGN_MAX_KEY_CHARS || !ROUTING_ASSIGN_KEY.test(key) || seen.has(key)) {
-      return undefined;
-    }
-    if (typeof prompt !== "string" || prompt.trim() === "" || prompt.length > ROUTING_ASSIGN_MAX_PROMPT_CHARS) return undefined;
-    total += prompt.length;
-    if (total > ROUTING_ASSIGN_MAX_PROMPT_SUM_CHARS) return undefined;
-    seen.add(key);
-    parsed.push({ key, prompt });
-  }
-  return parsed;
+  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates };
 }

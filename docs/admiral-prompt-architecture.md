@@ -35,21 +35,17 @@ operations; they are not delegated.
 ## 2. Delegation Policy Surface
 
 Fleet contributes no host-routing prompt. The `<fleet_gateway_routing>` system-prompt
-append, the `fleet://ai-gateway/*` resources (routing guides and the models roster
-alike), the `fleet-ai-gateway` MCP server, the `assets/ai-gateway/` prose, and the
-`gateway_models` tool are all retired. Their purpose was to persuade a host to choose
-gateway models; assignment is now decided in code per dispatch (section 2.1), so a
-served copy of that doctrine would only publish stale claims at runtime. The routing
-loadout itself remains readable to an Objectives Commander (fleet-objectives `models`),
-which may select a model and effort from it for a member it plans or enlists, or change
-an existing member through `set_member_launch` (including returning to routing). That
-selection becomes the member's launch setting, shown on the board and used at muster
-without a routing decision; a member planned without one is routed per dispatch.
-Existing sessions apply a model selection when idle or after their current turn;
-returning to routing cancels pending switches and takes effect at a later launch.
-The Commander cannot overwrite a person's launch selection, including routing;
-legacy selections without recorded ownership are conservatively protected as
-person-chosen.
+append, the `fleet://ai-gateway/*` resources, the `assets/ai-gateway/` prose, and the
+`gateway_models` tool are retired; subagent and Workflow assignment is the code rule
+in section 2.1. The `fleet-ai-gateway` MCP server serves one tool, `candidates`, only to
+Commodore sessions (an in-process group) and Objective Commander sessions (a reserved HTTP
+server whose token is issued, and whose calls are re-checked, only for Commanders).
+A Commodore chooses each objective's Commander model from it unless the person set one for
+that Commodore. A Commander must give every member it plans or enlists a model from it, and
+changes a member through `set_member_launch`; a member without a model is not launched.
+Existing sessions apply a model selection when idle or after their current turn. The
+Commander cannot overwrite a person's chosen model; legacy selections without recorded
+ownership are conservatively protected as person-chosen.
 
 `claudeCodeSystemPrompt` (`on` | `off`, default `on`) chooses whether a session loads
 Claude Code's own base prompt; `off` runs it without a system prompt. It is a per-Commodore
