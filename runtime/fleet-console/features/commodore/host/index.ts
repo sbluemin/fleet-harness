@@ -230,7 +230,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     },
     commander(id) {
       const state = id ? store.read(id) : null;
-      if (state?.commanderRouting) return { route: true as const };
       return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : null;
     },
   };

@@ -2775,7 +2775,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools) => pluginMcp.register(name, tools),
         commodoreCommander: commodore.host.commander,
-        enabledModels: () => consoleFeaturePorts.models?.enabled?.() ?? null,
       });
       consoleAgentOwners.add("objectives");
       // 구성원 세션에는 토큰을 내지 않고, 직접 불러도 실행 전에 거절한다.

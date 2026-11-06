@@ -116,7 +116,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
       if (body.context !== undefined) store.patch(body.objectiveId, { planRequest: body.context, planRequestBy: actor });
       return launch.requestPlan(body.objectiveId, options(body));
     })),
-    commence: (body: ContextRef & { routing?: "preview" }) => {
+    commence: (body: ContextRef) => {
       if (store.find(body.objectiveId)?.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
       // 지휘관 턴 중에는 개시하지 않는다(쓰고 있는 계획·기준과 겹친다). 대신 언제 다시 부르면 되는지와 지금 상태를 말한다 —
       // 다시 부를지는 호출자가 정하고, 여기서 예약하거나 다시 부르지 않는다.
@@ -124,7 +124,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
         const state = ctx.consoleControl?.observe(body.objectiveId)?.activity;
         throw new ObjectiveStoreError("objective_busy", undefined, { retryWhen: "commander_turn_end", ...(state ? { commander: { state } } : {}) });
       }
-      return launch.startCommander(body.objectiveId, { ...options(body), ...(body.routing ? { routing: body.routing } : {}) });
+      return launch.startCommander(body.objectiveId, options(body));
     },
     answer: holding(() => ["decision"], (body: Ref & DecisionAnswersInput) => launch.answerDecision(body.objectiveId, { requestId: body.requestId, answers: body.answers }, options(body)).then(objective)),
     // 「결정 안 함」 닫기 — 요청 전체를 질문 없이 닫는다. 답과 같은 holding 으로 전달·잠금·중복 규칙을 함께 쓴다.
@@ -141,11 +141,6 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
     memberPatch: steerable(() => true, ({ objectiveId, memberId, patch }: Ref & { memberId: string; patch: MemberPatchInput }) => {
       const reservation = only(patch, ["launch"]) && !!(ctx.objectiveRecords.describe ? ctx.objectiveRecords.describe(memberId) : ctx.objectiveRecords.get(memberId));
       return edited(objectiveId, reservation ? [] : ["members"], () => launch.memberPatched(objectiveId, memberId, patch));
-    }),
-    memberBatchLaunch: steerable(() => true, async ({ objectiveId, mode }: Ref & { mode: "route" }) => {
-      const result = await launch.memberBatchLaunch(objectiveId, mode);
-      const body = objective(result.edits > 0 ? markEdited(objectiveId, ["members"]) : result.objective);
-      return { ...body, changed: result.changed, preserved: result.preserved };
     }),
     memberRemove: steerable(() => true, async ({ objectiveId, memberId }: Ref & { memberId: string }) => {
       const result = await launch.memberRemoved(objectiveId, memberId);

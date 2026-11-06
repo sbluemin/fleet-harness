@@ -21,7 +21,6 @@ import {
   GATEWAY_PROVIDERS,
   GatewayRoutingDistribution,
   decideGatewayRoutingAssignment,
-  decideGatewayRoutingBatch,
   buildGatewayCandidates,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
@@ -219,23 +218,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
     ctx.host.http.writeJson(res, 200, readCandidates());
     return true;
   }, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
-  ctx.registerRouter("ai-gateway/routing-assign", async ({ req, res }) => {
-    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
-    const items = parseRoutingAssignItems(await ctx.host.http.readJsonBody<unknown>(req));
-    if (!items) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
-    const selection = currentExposure();
-    if (selection.delegationModels.length === 0) {
-      ctx.host.http.writeJson(res, 409, { error: "routing_disabled_or_no_candidates" }); return true;
-    }
-    void quota.getSummary().catch(() => undefined);
-    const decisions = decideGatewayRoutingBatch(items, selection);
-    if (!res.destroyed) {
-      ctx.host.http.writeJson(res, 200, { decisions });
-    }
-    return true;
-  }, [{ method: "POST", path: "", summary: "Assign a model and reasoning effort to each of several tasks by the code rule.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
   const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
   // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
   const claudeNativeListeners = new Set<() => void>();
@@ -275,27 +257,4 @@ export function startAiGateway(ctx: GatewayStartContext) {
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
   return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates };
-}
-
-const ROUTING_ASSIGN_MAX_ITEMS = 20;
-const ROUTING_ASSIGN_MAX_KEY_CHARS = 64;
-const ROUTING_ASSIGN_KEY = /^[A-Za-z0-9._:-]+$/;
-
-/** 아는 필드(`key`)만 읽는다. 모르는 필드는 버리고, 깨진 항목이 하나라도 있으면 요청 전체를 거절한다. */
-function parseRoutingAssignItems(body: unknown): readonly { readonly key: string }[] | undefined {
-  if (typeof body !== "object" || body === null) return undefined;
-  const items = (body as { items?: unknown }).items;
-  if (!Array.isArray(items) || items.length < 1 || items.length > ROUTING_ASSIGN_MAX_ITEMS) return undefined;
-  const seen = new Set<string>();
-  const parsed: { key: string }[] = [];
-  for (const entry of items) {
-    if (typeof entry !== "object" || entry === null) return undefined;
-    const key = (entry as { key?: unknown }).key;
-    if (typeof key !== "string" || key.length < 1 || key.length > ROUTING_ASSIGN_MAX_KEY_CHARS || !ROUTING_ASSIGN_KEY.test(key) || seen.has(key)) {
-      return undefined;
-    }
-    seen.add(key);
-    parsed.push({ key });
-  }
-  return parsed;
 }

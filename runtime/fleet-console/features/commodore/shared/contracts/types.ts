@@ -126,13 +126,11 @@ export const commodoreStateSchema = z.object({
   model: modelId.optional(),
   effort: effort.optional(),
   /**
-   * 사령관이 만드는 목표(직접 추가·후속 선택)의 지휘관 모델·강도. 없으면 보드의 지휘관 기본값이다. 강도는 모델 행의 사다리에서
+   * 사람이 정한, 사령관이 만드는 목표(직접 추가·후속 선택)의 지휘관 모델·강도. 없으면 사령관이 목표마다 지휘관 모델을 고른다. 강도는 모델 행의 사다리에서
    * 고르므로 낱말만 검사한다(보드의 지휘관 프리셋과 같은 경계).
    */
   commanderModel: z.string().trim().min(1).max(128).optional(),
   commanderEffort: z.string().trim().min(1).max(32).optional(),
-  /** 사령관이 만드는 목표의 지휘관을 첫 기동 때 라우팅으로 고른다. 모델·강도와 함께 두지 않는다. */
-  commanderRouting: z.literal(true).optional(),
   /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관 세션이 다음 턴부터 싣는다. 목표 세션은 `objectiveExcluded` 로 한 번 더 거른다. */
   plugins: commodorePluginsSchema.optional(),
   /** 이 사령관 자신의 SDK 자동 메모리. 없으면 켬이며, 변경은 다음 턴의 새 세션부터 적용된다. */

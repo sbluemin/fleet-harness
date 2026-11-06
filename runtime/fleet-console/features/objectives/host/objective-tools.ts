@@ -38,7 +38,8 @@ const rosterMember = z.object({
   model: z.string().trim().min(1).max(128).optional(),
   effort: z.string().trim().min(1).max(32).optional(),
 }).strict();
-const MODEL_FACT = "A member may select a model and effort from candidates; without one, AI Gateway routing chooses.";
+const MODEL_FACT = "Each member needs a model (and optional effort) from candidates.";
+const ROSTER_MODEL_HINT = "Give each member a model from fleet-ai-gateway candidates.";
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
 const PLANNING_ONLY = "The objective is in planning: its lineup can change, but missions are not carried out and members are not launched until the person commences.";
 const BOARD_CHANGED = "The person edited the objective after your last read.";
@@ -165,12 +166,11 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
   const modelCatalog = createModelCatalog(ctx);
   /** 지휘관의 구성원 편성 — candidates로 확인한 모델·강도를 기동 선택에 저장한다. 목록은 한 번만 읽는다. */
   const rosterOf = async (members: readonly z.output<typeof rosterMember>[], signal: AbortSignal | undefined) => {
-    if (members.some((member) => member.effort !== undefined && member.model === undefined)) throw new ObjectiveStoreError("effort_needs_model");
-    const loadout = members.some((member) => member.model !== undefined) ? await modelCatalog.candidates(signal) : null;
-    return Promise.all(members.map(async ({ model, effort, ...member }) => {
-      if (model === undefined) return member;
-      return { ...member, launch: { mode: "model" as const, ...await modelCatalog.checkProposal({ model, effort }, signal, loadout) } };
-    }));
+    // 모델 없는 구성원은 받지 않는다 — 판단기로 대신 고르지 않는다.
+    const missing = members.filter((member) => member.model === undefined).map((member) => member.role);
+    if (missing.length) throw new ObjectiveStoreError("member_model_required", undefined, { roles: missing, hint: ROSTER_MODEL_HINT });
+    const loadout = await modelCatalog.candidates(signal);
+    return Promise.all(members.map(async ({ model, effort, ...member }) => ({ ...member, launch: { mode: "model" as const, ...await modelCatalog.checkProposal({ model: model!, effort }, signal, loadout) } })));
   };
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Objective 에게는 참여자가 아님을 말한다. */
   const commanderTool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, objective: Objective, caller: ConsoleCaller, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> | unknown) =>
@@ -315,7 +315,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         const withdrawn = store.decisionWithdraw(objective.id, requestId);
         return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
       }),
-    commanderTool("enlist", `Add members to the roster, each a role and an optional brief; plan accepts members only while the roster is empty. A new member has no session until muster brings it up. ${MODEL_FACT} Change an existing member with set_member_launch. The person's launch selections, including routing, and legacy members without ownership are protected; do not enlist a replacement to bypass that protection — use request_decision to ask the person to change that member's model chip on the board.`,
+    commanderTool("enlist", `Add members to the roster, each a role and an optional brief; plan accepts members only while the roster is empty. A new member has no session until muster brings it up. ${MODEL_FACT} Change an existing member with set_member_launch. The person's launch selections and legacy members without ownership are protected; do not enlist a replacement to bypass that protection — use request_decision to ask the person to change that member's model chip on the board.`,
       z.object({ members: z.array(rosterMember).min(1).max(MAX_MISSIONS) }).strict(),
       async ({ members }, before, _caller, context) => {
         // 모델 제안을 모두 확인한 뒤에 더한다 — 한 명이라도 거절되면 아무도 더하지 않는다.
@@ -328,14 +328,13 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         for (const member of roster) current = store.memberAdd(objective.id, member, "commander");
         return text({ ok: true, members: current.members.filter((member) => !existing.has(member.id)).map((member) => ({ id: member.id, role: member.role, launch: member.launch })) });
       }),
-    commanderTool("set_member_launch", "Change an existing member's launch setting, named by id or role. mode model takes a model and optional effort from candidates; mode route returns to AI Gateway routing and takes neither. Available while planning too. A model selection switches a chat immediately when idle, or after its running turn; without an SDK child it saves the next launch coordinates. Dormant terminal sessions keep their terminal resume behavior. Returning to routing cancels a pending switch; routing judges at a later launch, not for the current session. Host refusals keep the previous selection. A member the person added without a launch selection can be changed; the person's selection, including a same-value confirmation or a routing return, and legacy members without ownership cannot (member_launch_person_chosen).",
-      z.object({ member: memberReference, mode: z.enum(["model", "route"]), model: rosterMember.shape.model, effort: rosterMember.shape.effort }).strict(),
-      async ({ member, mode, model, effort }, before, _caller, context) => {
-        if (mode === "route" && (model !== undefined || effort !== undefined)) return refuse("invalid_arguments");
-        if (mode === "model" && model === undefined) return refuse("model_required");
+    commanderTool("set_member_launch", "Change an existing member's launch setting, named by id or role. mode model takes a model and optional effort from candidates. Available while planning too. A model selection switches a chat immediately when idle, or after its running turn; without an SDK child it saves the next launch coordinates. Dormant terminal sessions keep their terminal resume behavior. Host refusals keep the previous selection. A member the person added without a launch selection can be changed; the person's selection, including a same-value confirmation, and legacy members without ownership cannot (member_launch_person_chosen).",
+      z.object({ member: memberReference, mode: z.literal("model"), model: rosterMember.shape.model, effort: rosterMember.shape.effort }).strict(),
+      async ({ member, model, effort }, before, _caller, context) => {
+        if (model === undefined) return refuse("model_required", { hint: ROSTER_MODEL_HINT });
         const memberId = resolveMember(find(before.id), member);
-        const [proposal] = mode === "model" ? await rosterOf([{ role: "member", model, effort }], context.signal) : [];
-        const updated = await launch.memberPatched(before.id, memberId, { launch: proposal && "launch" in proposal ? proposal.launch : null }, "commander");
+        const [proposal] = await rosterOf([{ role: "member", model, effort }], context.signal);
+        const updated = await launch.memberPatched(before.id, memberId, { launch: proposal!.launch }, "commander");
         return text({ ok: true, memberId, launch: updated.members.find((entry) => entry.id === memberId)!.launch });
       }),
     tool("message", `Send one message to the Commander (to: "commander") or, for the Commander, to a roster member by id or role. The record is kept before delivery. A running turn is steered; an idle session gets a new turn; a dormant or absent session is woken; a session that is relaunching or waiting on a permission prompt holds the message until it can be delivered. Nothing is dropped. SendMessage and ListAgents are not a channel. Addresses are roster ids and roles, not session names.`,

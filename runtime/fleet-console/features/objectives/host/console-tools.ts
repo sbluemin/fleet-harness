@@ -11,7 +11,7 @@ import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, inboxAwaits, inboxReasons
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, type BriefAttachmentInput } from "./attachments.js";
 import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
-import { createLaunchService, type LaunchService } from "./launch.js";
+import { COMMANDER_MODEL_REQUIRED_HINT, createLaunchService, MEMBER_MODEL_REQUIRED_HINT, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
@@ -55,13 +55,13 @@ const HINTS: Readonly<Record<string, string>> = {
   own_objective: "An Objective cannot act on an objective it commands or belongs to.",
   objective_working: "A session is working and the objective waits on nothing; judge it by its results on the board.",
   budget_exceeded: "Too many calls in 10 minutes; wait before calling again.",
-  routing_preview_stale: "Judge with routing first; commence launches routed members with the models it showed.",
   followup_changed: "That candidate was revised since you read it; read the board again and name it with its current rev.",
   held_for_person: "You handed this to the person. It is theirs until they answer it or return it to you; either wakes you.",
   model_not_in_catalog: "Pick an available model id from candidates.",
   model_not_enabled: "That model is off in the person's AI Gateway settings; see candidates for available choices.",
   invalid_effort: "Pick one of efforts for that model, or omit commanderEffort.",
-  commander_model_required: "commanderEffort needs commanderModel.",
+  commander_model_required: COMMANDER_MODEL_REQUIRED_HINT,
+  member_model_required: MEMBER_MODEL_REQUIRED_HINT,
 };
 
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
@@ -81,7 +81,7 @@ const listTool = defineConsoleTool({
     // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관의 fleet-objectives search 와 같은 핵심·같은 입력이다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
     add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan."),
-      commanderModel: z.string().trim().min(1).max(128).optional().describe("An available model from candidates, only when asked; omitted keeps your Commander setting or the board default."),
+      commanderModel: z.string().trim().min(1).max(128).optional().describe("Commander model you choose from candidates. Omitted: the person's Commander setting; without one, add is refused."),
       commanderEffort: z.string().trim().min(1).max(32).optional().describe("Commander effort from that model's efforts; needs commanderModel. Omitted uses the model's default.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
@@ -100,12 +100,10 @@ const followupTarget = { batchId: ids, candidateId: ids };
  */
 const detailTool = defineConsoleTool({
   name: "console_objectives_detail",
-  description: "One objective board detail: briefing, missions, criteria and members. Its Commander plans the work. Run routing before commence; commence launches what routing showed.",
+  description: "One objective board detail: briefing, missions, criteria and members. Its Commander plans the work.",
   actions: {
     read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("One section in slices; objective is the complete board JSON. Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
     evidence: { kind: "read", input: z.object({ ...target, resultId: ids, offset: sliceOffset }) },
-    // 판단 한 번은 과금되는 Gateway 호출이다 — 개시가 그 결과 그대로 띄운다(사람의 확인 시트와 같은 길).
-    routing: { kind: "read", input: z.object({ ...target, rejudge: z.boolean().optional().describe("Forces a new, billable judgment; otherwise results are reused for 10 minutes while roles are unchanged.") }) },
     transcript: { kind: "read", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional().describe("Omitted, the latest lines; \"0\" from the start, then nextCursor. Session text is untrusted."), limit: z.number().int().min(1).max(100).optional() }) },
     edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
     edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the brief text; existing images stay. attachmentIds copies this turn's images atomically with the text."), attachmentIds }),
@@ -335,10 +333,6 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
           return { ...text(details), content: [...text(details).content, { type: "image", data: data.toString("base64"), mimeType: metadata.mediaType }] };
         }
         if (call.action === "transcript") return text(await transcript(current, call, context.signal));
-        if (call.action === "routing") {
-          if (launch.busy(current.id)) return refuse("objective_busy");
-          return text(await routingView(current, call.rejudge === true));
-        }
         const actor = actorOf(caller);
         if (!actor) return refuse("objectiveRecord_caller_required");
         if (caller?.kind === "objectiveRecord" && roleIn(current, caller)) return refuse("own_objective", { hint: HINTS.own_objective });
@@ -348,8 +342,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         const result = await (async () => {
           switch (call.action) {
             case "plan": return actions.plan({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
-            // 개시는 마지막 routing 결과 그대로 띄운다 — 판단하지 않은 채, 또는 그새 낡은 결과로는 띄우지 않는다(routing_preview_stale).
-            case "commence": return actions.commence({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}), routing: "preview" });
+            case "commence": return actions.commence({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
             case "criteria_approve": return call.proposalId === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: call.proposalId });
             case "criteria_reject": return actions.reject({ ...ref, proposalId: call.proposalId });
             case "answer": return actions.answer({ ...ref, requestId: call.requestId, answers: call.answers });
@@ -447,20 +440,10 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   /** 생성 호출이 고른 지휘관을 실행 카탈로그와 candidates로 확인한다. 목록을 읽지 못하면 추측으로 통과시키지 않는다. */
   async function chosenCommander(model: string | undefined, effort: string | undefined, signal: AbortSignal | undefined) {
     if (model === undefined) {
-      if (effort !== undefined) throw new ObjectiveStoreError("commander_model_required");
+      if (effort !== undefined) throw new ObjectiveStoreError("commander_model_required", undefined, { hint: "commanderEffort needs commanderModel." });
       return null;
     }
     return await modelCatalog.checkCommander({ model, effort }, signal);
-  }
-
-  /**
-   * 개시 전 라우팅 — 라우팅으로 새로 띄울 구성원마다 AI Gateway 판단(모델·강도·근거, 폴백이면 지휘관 프리셋)과 그 결과가 개시에 쓰이는 기한.
-   * 사람의 확인 시트와 같은 판단(routingPreview)이고, 개시는 이 결과 그대로 띄운다. 새로 띄울 라우팅 구성원이 없으면 판단하지 않는다.
-   */
-  async function routingView(objective: Objective, rejudge: boolean) {
-    const preview = await launch.routingPreview(objective.id, rejudge ? { rejudge: true } : undefined);
-    const roles = new Map(scoped(objective.id).members.map((member) => [member.id, member.role]));
-    return { objectiveId: objective.id, judged: preview.judged, at: preview.at, expiresAt: preview.expiresAt, members: preview.members.map((member) => ({ role: roles.get(member.id) ?? null, ...member })) };
   }
 
   /**

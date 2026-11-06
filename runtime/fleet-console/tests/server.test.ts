@@ -182,7 +182,7 @@ describe("console terminal observability", () => {
     const commodoreId = fs.readdirSync(ownerRoot).find((id) => /^[a-f0-9-]{36}$/.test(id))!;
     const objective = { id: "11111111-1111-4111-8111-111111111111" };
     await post("objectives/plan/request", { objectiveId: objective.id });
-    const added = await post("objectives/member/add", { objectiveId: objective.id, member: { role: "Verifier" } });
+    const added = await post("objectives/member/add", { objectiveId: objective.id, member: { role: "Verifier", launch: { mode: "model", model: "opus[1m]", effort: "high" } } });
     // 개시는 임무를 맡은 구성원만 세운다.
     await post("objectives/mission/add", { objectiveId: objective.id, mission: { text: "Verify", member: added.objective.members[0].id } });
     await post("objectives/commander/start", { objectiveId: objective.id });

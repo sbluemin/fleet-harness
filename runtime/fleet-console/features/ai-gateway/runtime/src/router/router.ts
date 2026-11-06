@@ -184,8 +184,8 @@ export interface AiGatewayRouteDeps {
    * 라우팅 Mod가 배정을 물을 때 제시하는 자격. 압축 훅과 다른 값을 쓴다 — 두 소비자가 같은
    * 비밀을 공유하면 하나를 회수할 때 다른 하나가 같이 끊긴다.
    *
-   * 이 자격은 편의가 아니라 권한 게이트다. 배정 요청은 호스트가 발행한 원문 프롬프트를
-   * 싣고 오므로, 같은 기계의 아무 프로세스나 이 경로를 두드릴 수 있으면 안 된다.
+   * 이 자격은 편의가 아니라 권한 게이트다. 배정은 Console의 모델 노출과 공급자 배정 수를
+   * 바꾸므로, 같은 기계의 아무 프로세스나 이 경로를 두드릴 수 있으면 안 된다.
    */
   readonly modHookToken?: string;
   /**
@@ -357,7 +357,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       try {
-        // 원문 프롬프트가 실려 오므로 본문이 클 수 있다. 상한은 훅이 먼저 자르지만 여기서도
         // 받는 쪽의 상한을 둔다 — 보내는 쪽의 선의에 서버의 메모리를 걸지 않는다.
         const request = await readJsonBody<Record<string, unknown>>(req, 1024 * 1024);
         if (!request) {

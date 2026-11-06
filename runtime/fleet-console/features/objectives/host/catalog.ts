@@ -116,14 +116,23 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
    */
   async function checkCommander(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined): Promise<{ readonly model: string; readonly effort?: string }> {
     const [catalog, loaded] = await Promise.all([loadCatalog(signal), candidates(signal)]);
-    if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
-    const wanted = canonicalModelId(choice.model);
-    const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
-    if (!row || !row.available) throw new ObjectiveStoreError("model_not_in_catalog", undefined, { model: choice.model, ...(row?.reason ? { reason: row.reason } : {}) });
+    availableIn(catalog, choice.model);
     return checkProposal(choice, signal, loaded);
   }
 
-  return { candidates, checkProposal, checkCommander };
+  /** 사람이 명시한 모델(사령관의 지휘관 설정)은 candidates 로 막지 않고 실행 카탈로그 가용성만 본다. */
+  async function checkAvailable(choice: { readonly model: string }, signal: AbortSignal | undefined): Promise<void> {
+    availableIn(await loadCatalog(signal), choice.model);
+  }
+
+  return { candidates, checkProposal, checkCommander, checkAvailable };
+}
+
+function availableIn(catalog: readonly CatalogModel[] | null, model: string): void {
+  if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
+  const wanted = canonicalModelId(model);
+  const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
+  if (!row || !row.available) throw new ObjectiveStoreError("model_not_in_catalog", undefined, { model, ...(row?.reason ? { reason: row.reason } : {}) });
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);

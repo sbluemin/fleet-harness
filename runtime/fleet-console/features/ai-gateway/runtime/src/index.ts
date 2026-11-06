@@ -179,9 +179,6 @@ export {
 } from "./fleet/model-loadout.js";
 export {
   decideGatewayRoutingAssignment,
-  decideGatewayRoutingBatch,
-  type GatewayRoutingBatchItem,
-  type GatewayRoutingBatchDecision,
 } from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 
