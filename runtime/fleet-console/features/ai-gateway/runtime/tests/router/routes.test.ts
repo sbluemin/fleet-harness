@@ -316,38 +316,47 @@ describe("delegation assignment", () => {
     ]);
 
     // 양쪽 sustainableHeadroom이 같으면 remainingPercent가 달라도 0(원래 순서 유지)이고,
-    // 한쪽이라도 sustainableHeadroom이 없을 때만 remainingPercent로 비교한다.
+    // 한쪽만 sustainableHeadroom이 있으면 있는 쪽이 앞서며,
+    // 양쪽 모두 sustainableHeadroom이 없을 때만 remainingPercent로 비교한다.
     const tiedAndClockless = evaluateGatewayCandidateModels({
       delegationModels: [
+        requireGatewayModel("antigravity--gemini-4-argon"),
+        requireGatewayModel("muse-code--muse-spark-1.3-contributor"),
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-4.7"),
-        requireGatewayModel("antigravity--gemini-4-argon"),
       ],
       quota: {
-        // codex: used 50%(remaining 50%), 남은 기간 2.5/5시간 → sustainableHeadroom = 1.0
+        // antigravity: 시계 없는 창(sustainableHeadroom 없음), used 40%(remaining 60%)
+        antigravity: {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "cycle", usedPercent: 40 }],
+        },
+        // muse-code: 시계 없는 창(sustainableHeadroom 없음), used 10%(remaining 90% > 60%) → 양쪽 모두 headroom이 없으므로 antigravity보다 앞
+        "muse-code": {
+          status: "ok",
+          fetchedAt: now,
+          windows: [{ id: "cycle", usedPercent: 10 }],
+        },
+        // codex: used 50%(remaining 50%), 남은 기간 2.5/5시간 → sustainableHeadroom = 1.0 (headroom이 있으므로 시계 없는 창들보다 앞)
         codex: {
           status: "ok",
           fetchedAt: now,
           windows: [{ id: "session", usedPercent: 50, resetsAt: now + 2.5 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
         },
-        // xai: used 20%(remaining 80% > 50%), 남은 기간 4/5시간 → sustainableHeadroom = 1.0 (동률이므로 codex 뒤 유지)
+        // xai: used 20%(remaining 80% > 50%), 남은 기간 4/5시간 → sustainableHeadroom = 1.0 (codex와 동률이므로 codex 뒤 유지)
         xai: {
           status: "ok",
           fetchedAt: now,
           windows: [{ id: "session", usedPercent: 20, resetsAt: now + 4 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
         },
-        // antigravity: 시계 없는 창(sustainableHeadroom 없음), used 10%(remaining 90% > 50%, 80%) → remainingPercent로 비교되어 맨 앞
-        antigravity: {
-          status: "ok",
-          fetchedAt: now,
-          windows: [{ id: "cycle", usedPercent: 10 }],
-        },
       },
     }, now);
     expect(tiedAndClockless.map((entry) => entry.model.provider)).toEqual([
-      "antigravity",
       "codex",
       "xai",
+      "muse-code",
+      "antigravity",
     ]);
   });
 

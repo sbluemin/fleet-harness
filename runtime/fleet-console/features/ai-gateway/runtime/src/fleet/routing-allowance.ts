@@ -142,8 +142,9 @@ export function evaluateModelAllowance(
  *
  * - 측정된 후보(`ok`, `elevated`)가 `unknown`보다 앞선다.
  * - `ok`가 `elevated`보다 앞선다.
- * - 같은 압박 등급 안에서는 양쪽 모두 지속 가능 여유(`sustainableHeadroom`)가 있으면 그것만 비교한다(동률이면 `0`).
- * - 한쪽이라도 `sustainableHeadroom`이 없을 때만 `remainingPercent`로 비교한다.
+ * - 같은 압박 등급 안에서는 지속 가능 여유(`sustainableHeadroom`)가 1순위다: 양쪽 모두 있으면 그 값만 비교하고(동률이면 `0`),
+ *   한쪽만 있으면 `sustainableHeadroom`이 있는 쪽이 앞선다.
+ * - 양쪽 모두 `sustainableHeadroom`이 없을 때만 `remainingPercent`로 비교한다.
  * - `unknown`끼리는 순위를 매기지 않는다(`0`).
  */
 export function compareModelAllowance(
@@ -157,6 +158,8 @@ export function compareModelAllowance(
   if (left.sustainableHeadroom !== undefined && right.sustainableHeadroom !== undefined) {
     return right.sustainableHeadroom - left.sustainableHeadroom;
   }
+  if (left.sustainableHeadroom !== undefined) return -1;
+  if (right.sustainableHeadroom !== undefined) return 1;
   const leftRemaining = left.remainingPercent ?? -1;
   const rightRemaining = right.remainingPercent ?? -1;
   if (leftRemaining !== rightRemaining) return rightRemaining - leftRemaining;
