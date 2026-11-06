@@ -60,7 +60,7 @@ const HINTS: Readonly<Record<string, string>> = {
   followup_changed: "That candidate was revised since you read it; read the board again and name it with its current rev.",
   held_for_person: "You handed this to the person. It is theirs until they answer it or return it to you; either wakes you.",
   model_not_in_catalog: "Pick an available model id from the models action.",
-  model_not_enabled: "That model is off in the person's AI Gateway settings; pick an available model from the models action.",
+  model_not_enabled: "That model is off in the person's AI Gateway settings; see models for available choices.",
   invalid_effort: "Pick one of efforts for that model, or omit commanderEffort.",
   commander_model_required: "commanderEffort needs commanderModel.",
 };

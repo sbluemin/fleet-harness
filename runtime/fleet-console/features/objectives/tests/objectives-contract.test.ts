@@ -58,7 +58,7 @@ type Saved = {
 
 const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId: "t1", legacyCwd: path.resolve(".fleet/isolated/fixture"), theaterIdOf: () => "t1" });
 
-function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | { readonly route: true } | null }) {
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | { readonly route: true } | null; readonly enabledModels?: () => ReadonlySet<string> | null }) {
   // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
@@ -222,6 +222,7 @@ title: input.title});
     security: { isTerminalAuthorized: () => authorized },
     http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
     server: { origin: routingOrigin },
+    ...(options?.enabledModels ? { enabledModels: options.enabledModels } : {}),
     objectiveRecords: objectiveRecordsHost,
     consoleControl: {
       request: async (input: ConsoleActionInput) => {
@@ -854,7 +855,9 @@ describe("Objectives contract", () => {
   });
 
   it("judges a routed Commander once on the first launch and not again when the lineup is replanned", async () => {
-    const { store, launch, route, objectiveRecords, woken } = harness(() => "http://routing.invalid", { commodoreCommander: () => ({ route: true }) });
+    // 사람이 AI Gateway에서 켠 모델 — 라우팅 대체 좌표는 이 목록 안에서만 뜬다.
+    const enabled = new Set(["sonnet[1m]"]);
+    const { store, launch, route, objectiveRecords, woken } = harness(() => "http://routing.invalid", { commodoreCommander: () => ({ route: true }), enabledModels: () => enabled });
     let judgments = 0;
     vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
       judgments += 1;
@@ -924,6 +927,25 @@ describe("Objectives contract", () => {
     expect((await route("commander/start", { objectiveId: previewed.id, routing: "preview" })).status).toBe(200);
     expect(judgments).toBe(5);
     expect(objectiveRecords.get(analyst.id)!.session).toMatchObject({ model: "sonnet[1m]" });
+
+    // 라우팅이 꺼져 대체될 때도 새 선택이다 — 꺼진 보드 기본(Opus)으로 지휘관을 띄우지 않고, 판단도 남기지 않아 켠 뒤 다시 묻는다.
+    vi.stubGlobal("fetch", async () => new Response("routing off", { status: 409 }));
+    const fallback = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Fallback commander", groupId: null, note: "briefing text", by: { kind: "commodore", commodoreId: "c1" } });
+    expect((await route("plan/request", { objectiveId: fallback.id })).value).toMatchObject({ error: "model_not_enabled" });
+    expect(objectiveRecords.has(fallback.id)).toBe(false);
+    expect(store.find(fallback.id)!.commander.routing).toBe(true);
+    enabled.add("opus[1m]");
+    expect((await route("plan/request", { objectiveId: fallback.id })).status).toBe(200);
+    expect(objectiveRecords.get(fallback.id)!.session).toMatchObject({ model: "opus[1m]", effort: "high" });
+    expect(store.find(fallback.id)!.commander).toMatchObject({ model: "opus[1m]", routed: { via: "fallback", reason: "routing_disabled" } });
+    // 구성원의 라우팅 대체는 지휘관 좌표로 뜬다 — 그 모델이 꺼졌으면 그 구성원만 실패로 알린다.
+    const scout = store.memberAdd(fallback.id, { role: "scout", brief: "reads the code" }, "human").members[0]!;
+    store.missionAdd(fallback.id, { text: "scout", member: scout.id });
+    enabled.delete("opus[1m]");
+    const started = await route("commander/start", { objectiveId: fallback.id });
+    expect(started.status).toBe(200);
+    expect(started.value.failed).toEqual([{ id: scout.id, role: "scout", error: "model_not_enabled" }]);
+    expect(objectiveRecords.has(scout.id)).toBe(false);
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
