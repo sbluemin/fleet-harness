@@ -189,6 +189,15 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
     return {};
   }
 
+  /**
+   * Whether a function tool that leaves `strict` unset is rewritten into strict mode. The public
+   * Platform API surface does so for every compatible schema; a subclass may instead send such a
+   * tool non-strict with its original schema.
+   */
+  protected strictToolsByDefault(): boolean {
+    return true;
+  }
+
   async stream(
     request: CanonicalResponseRequest,
     options: AdapterCallOptions
@@ -199,7 +208,12 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
 
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
-    const payload = forOpenAIResponsesBackend(request, this.dropSamplingParams, this.reasoningReplayOrigin);
+    const { payload, rewrittenTools } = forOpenAIResponsesBackend(
+      request,
+      this.dropSamplingParams,
+      this.reasoningReplayOrigin,
+      this.strictToolsByDefault(),
+    );
     if (this.dropSamplingParams && request.model === "gpt-6-astra"
       && request.parallel_tool_calls !== false && request.tool_choice !== "none") {
       let hasAsyncTools = false;
@@ -266,7 +280,7 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
         idleTimeoutMs: this.idleTimeoutMs,
         maxBodyBytes: this.maxBodyBytes,
         onClose: unlinkAbort
-      }, argumentDecoding(payload.tools))
+      }, argumentDecoding(rewrittenTools))
     };
   }
 }
@@ -311,6 +325,14 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
     });
     this.isMarkedFetchFailure = fetchFailureTracker.isMarkedFailure;
+  }
+
+  /**
+   * Codex는 strict를 opt-in으로만 쓴다. strict를 생략한 도구는 원본 스키마 그대로 `strict: false`로
+   * 나가고, 재작성과 null 복원은 호출자가 명시적으로 `strict: true`를 준 호환 도구에만 적용된다.
+   */
+  protected override strictToolsByDefault(): boolean {
+    return false;
   }
 
   protected override perRequestHeaders(request: CanonicalResponseRequest): Record<string, string> {
@@ -671,7 +693,8 @@ function forOpenAIResponsesBackend(
   request: CanonicalResponseRequest,
   dropSamplingParams: boolean,
   reasoningReplayOrigin: string | undefined,
-): OpenAIResponsesWireRequest {
+  strictByDefault: boolean,
+): { payload: OpenAIResponsesWireRequest; rewrittenTools: OpenAIResponsesWireFunctionTool[] } {
   const source = dropSamplingParams ? forChatGptBackend(request) : { ...request };
   const {
     tools: canonicalTools,
@@ -712,22 +735,35 @@ function forOpenAIResponsesBackend(
     payload.input.push(withoutReplayMetadata(item));
   }
 
+  // Only these tools' arguments are decoded on the way back: the null strip and the
+  // `NULL_ARGUMENT` spelling invert the rewrite, so a tool sent with its original schema keeps
+  // its arguments exactly as the model wrote them.
+  const rewrittenTools: OpenAIResponsesWireFunctionTool[] = [];
   const wireTools: OpenAIResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
     const { defer_loading: _deferLoading, ...wireTool } = tool;
     // Runs on every tool, strict or not: the backend compiles `pattern` before it reads
     // `strict`, so an unreadable one fails the request either way.
     const parameters = readablePatternParameters(wireTool.parameters);
+    const readable = parameters === wireTool.parameters ? wireTool : { ...wireTool, parameters };
+    // Without the default, only a caller's explicit `strict: true` opts a tool in; anything
+    // else goes out non-strict with its original schema.
+    if (!strictByDefault && wireTool.strict !== true) {
+      return { ...readable, strict: false };
+    }
     // A schema outside strict mode's subset is rejected with a 400 that fails the whole
     // request, not just that tool, so an incompatible tool keeps its original schema and
-    // forfeits the guarantee rather than taking every other tool down with it.
+    // forfeits the guarantee rather than taking every other tool down with it. A caller's own
+    // `strict` flag on it is still sent as given.
     if (!strictCompatible(parameters)) {
-      return parameters === wireTool.parameters ? wireTool : { ...wireTool, parameters };
+      return readable;
     }
-    return {
+    const rewritten: OpenAIResponsesWireFunctionTool = {
       ...wireTool,
       parameters: strictParameters(parameters),
       strict: true,
     };
+    rewrittenTools.push(rewritten);
+    return rewritten;
   });
 
   // native_tools is canonical-only: it must never reach the OpenAI wire body as-is.
@@ -778,7 +814,7 @@ function forOpenAIResponsesBackend(
     payload.include = Array.from(new Set([...existingInclude, ...includes]));
   }
 
-  return payload;
+  return { payload, rewrittenTools };
 }
 
 /** The item's reasoning blob when this surface replays blobs of its origin; otherwise nothing. */
@@ -1354,9 +1390,11 @@ function withoutNull(schema: Record<string, unknown>): Record<string, unknown>[]
  * an explicit null. Anthropic tool schemas treat absence — not null — as "not provided".
  * A `NULL_ARGUMENT` string becomes the null the client asked for, but only at a path whose schema
  * offered that spelling: anywhere else — `Edit.new_string`, say — the same text is the model's data.
+ * Without `nullPaths` the call's tool went out with its original schema, so no rewrite exists to
+ * invert: an explicit null there is the model's value, and the arguments pass through untouched.
  */
 function stripNullArguments(raw: string, nullPaths: ReadonlySet<string> | undefined): string {
-  if (raw.length === 0 || !raw.includes("null")) return raw;
+  if (nullPaths === undefined || raw.length === 0 || !raw.includes("null")) return raw;
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -1369,14 +1407,14 @@ function stripNullArguments(raw: string, nullPaths: ReadonlySet<string> | undefi
 
 function withoutNulls(
   value: Record<string, unknown>,
-  nullPaths: ReadonlySet<string> | undefined,
+  nullPaths: ReadonlySet<string>,
   prefix: string,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
     if (entry === null) continue;
     const path = prefix === "" ? key : `${prefix}.${key}`;
-    out[key] = entry === NULL_ARGUMENT && nullPaths?.has(path) ? null : withoutNullMembers(entry, nullPaths, path);
+    out[key] = entry === NULL_ARGUMENT && nullPaths.has(path) ? null : withoutNullMembers(entry, nullPaths, path);
   }
   return out;
 }
@@ -1384,7 +1422,7 @@ function withoutNulls(
 // strict 재작성의 정확한 역변환: 재작성이 표현 가능하게 만든 것은 객체 프로퍼티 위치의
 // null뿐이므로 배열 속 객체까지 내려가 그 null만 제거하고, 배열 원소 자체의 null은
 // 재작성이 만든 값이 아니라 모델이 실제로 보낸 데이터이므로 보존한다.
-function withoutNullMembers(entry: unknown, nullPaths: ReadonlySet<string> | undefined, path: string): unknown {
+function withoutNullMembers(entry: unknown, nullPaths: ReadonlySet<string>, path: string): unknown {
   if (isRecord(entry)) return withoutNulls(entry, nullPaths, path);
   if (Array.isArray(entry)) return entry.map((member) => withoutNullMembers(member, nullPaths, `${path}[]`));
   return entry;
@@ -1392,21 +1430,20 @@ function withoutNullMembers(entry: unknown, nullPaths: ReadonlySet<string> | und
 
 /**
  * One response's view of where `NULL_ARGUMENT` is a null. Paths come from the strict schemas this
- * request sent; `function_call_arguments.done` names only its item, so the tool is remembered from
- * the item events that carry both.
+ * request rewrote; `function_call_arguments.done` names only its item, so the tool is remembered from
+ * the item events that carry both. A call to any other tool has no paths: it is not decoded at all.
  */
 interface ArgumentDecoding {
   named(itemId: string, toolName: string): void;
   nullPathsOf(itemId: string): ReadonlySet<string> | undefined;
 }
 
-function argumentDecoding(tools: readonly unknown[] | undefined): ArgumentDecoding {
+function argumentDecoding(rewrittenTools: readonly OpenAIResponsesWireFunctionTool[]): ArgumentDecoding {
   const pathsByTool = new Map<string, Set<string>>();
-  for (const tool of tools ?? []) {
-    if (!isRecord(tool) || tool.type !== "function" || tool.strict !== true || typeof tool.name !== "string") continue;
+  for (const tool of rewrittenTools) {
     const paths = new Set<string>();
     collectNullPaths(tool.parameters, "", paths);
-    if (paths.size > 0) pathsByTool.set(tool.name, paths);
+    pathsByTool.set(tool.name, paths);
   }
   const toolByItem = new Map<string, string>();
   return {
