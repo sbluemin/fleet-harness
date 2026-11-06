@@ -204,7 +204,14 @@ export {
   type GatewayCandidatePressure,
   type GatewayModelAllowance,
 } from "./fleet/routing-allowance.js";
-export { buildGatewayLoadout } from "./fleet/model-loadout.js";
+export {
+  GATEWAY_CANDIDATES_TOOL_DESCRIPTION_DRAFT,
+  buildGatewayCandidates,
+  buildGatewayLoadout,
+  canonicalGatewayCandidateId,
+  type GatewayCandidate,
+  type GatewayCandidatesResponse,
+} from "./fleet/model-loadout.js";
 export {
   decideGatewayRoutingAssignment,
   decideGatewayRoutingBatch,

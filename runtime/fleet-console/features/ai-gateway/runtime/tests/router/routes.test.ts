@@ -46,7 +46,7 @@ import {
 import {
   pickSeat,
 } from "../../src/fleet/routing-fallback.js";
-import { buildGatewayLoadout } from "../../src/fleet/model-loadout.js";
+import { buildGatewayCandidates, buildGatewayLoadout, GATEWAY_CANDIDATES_TOOL_DESCRIPTION_DRAFT } from "../../src/fleet/model-loadout.js";
 import type { AiGatewayRouteDeps, GatewayAssignmentExposure } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
@@ -473,9 +473,9 @@ describe("delegation assignment", () => {
     const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] } as unknown as Parameters<typeof resolveAiGatewaySelection>[0]);
     expect(claude.models.map((model) => model.id)).toEqual(["claude--opus-1m", "claude--sonnet-1m"]);
     expect(claude.delegationModels.map((model) => model.id)).toEqual(claude.models.map((model) => model.id));
-    expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: claude.delegationModels }).models).toEqual([
-      expect.objectContaining({ modelId: "opus[1m]", provider: "claude", contextWindow: 1_000_000 }),
-      expect.objectContaining({ modelId: "sonnet[1m]", provider: "claude", contextWindow: 1_000_000 }),
+    expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: claude.delegationModels }).candidates).toEqual([
+      expect.objectContaining({ model: "opus[1m]", pressure: "unknown", summary: expect.any(String) }),
+      expect.objectContaining({ model: "sonnet[1m]", pressure: "unknown", summary: expect.any(String) }),
     ]);
   });
 
@@ -486,12 +486,15 @@ describe("delegation assignment", () => {
       delegationModels: models,
       quota: { claude: { status: "not_connected" }, codex: { status: "not_connected" } },
     } satisfies GatewayAssignmentExposure;
-    expect(buildGatewayLoadout(hidden).models.map((model) => model.provider)).toEqual(["claude"]);
+    expect(buildGatewayLoadout(hidden).candidates.map((candidate) => candidate.model)).toEqual(["sonnet[1m]"]);
     expect(decideGatewayRoutingAssignment(
       { surface: "agent", subagentType: "general-purpose", providerPlugin: "engine" },
       hidden,
     ).model).toBe("sonnet[1m]");
-    expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: models }).models.map((model) => model.provider)).toEqual(["claude", "codex"]);
+    expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: models }).candidates.map((candidate) => candidate.model)).toEqual([
+      "sonnet[1m]",
+      "codex--gpt-6.1-sol",
+    ]);
   });
 
   it("routes a workflow stage instead of letting it keep the model it inherited", async () => {
@@ -589,7 +592,7 @@ describe("delegation assignment", () => {
     } satisfies GatewayAssignmentExposure;
 
     const loadout = buildGatewayLoadout(exposure);
-    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["sonnet[1m]"]);
+    expect(loadout.candidates.map((candidate) => candidate.model)).toEqual(["sonnet[1m]"]);
 
     const decision = decideGatewayRoutingAssignment(
       { surface: "agent", requestedModel: "sonnet" },
@@ -607,7 +610,7 @@ describe("delegation assignment", () => {
     expect(decision.label).toBe("session model");
   });
 
-  it("keeps simultaneous quota bottlenecks and uncertain observations in routing evidence", () => {
+  it("shapes candidates with canonical ids, allowed efforts, summary, pressure, and resetsInSeconds only", () => {
     const now = Date.now();
     const hour = 3_600_000;
     const window = (id: string, usedPercent: number, durationHours: number, remainingHours: number) => ({
@@ -617,34 +620,62 @@ describe("delegation assignment", () => {
     // session: 60% used, 80% elapsed (paceRatio 0.75, remaining 40%, headroom 2.0)
     // week: 70% used, 60% elapsed (remainingHours = 67.2, paceRatio 1.17 -> elevated, remaining 30%, headroom 0.75)
     const windows = [window("session", 60, 5, 1), window("week", 70, 168, 67.2)];
-    const run = (quota: GatewayAssignmentExposure["quota"]) => buildGatewayLoadout({
-      delegationRoutingEnabled: true,
+    const run = (quota: GatewayAssignmentExposure["quota"]) => buildGatewayCandidates({
       quota,
-      delegationModels: [requireGatewayModel("codex--gpt-6.1-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+      effortExposure: { "codex--gpt-6.1-terra": ["low", "medium", "high"] },
+      delegationModels: [
+        requireGatewayModel("codex--gpt-6.1-terra"),
+        requireGatewayModel("xai--grok-composer-2.5-fast"),
+        requireGatewayModel("claude--opus-1m"),
+      ],
     }, now);
     const quota = { status: "ok", fetchedAt: now, windows };
-    const data = run({ codex: quota });
-    expect(Object.keys(data.quotaPools)).toEqual(["codex:shared", "xai:shared"]);
-    expect(data.quotaPools["codex:shared"]).toMatchObject({
-      observation: "fresh", remainingPercent: 30, sustainableHeadroom: 0.75,
-      recovery: { remainingPercent: 100 },
+    const data = run({
+      codex: quota,
+      // claude는 critical → 응답에서 제외되어야 함
+      claude: { status: "ok", fetchedAt: now, windows: [window("session", 96, 5, 1)] },
     });
-    expect(data.quotaPools["codex:shared"]!.recovery!.inSeconds).toBeGreaterThan(67 * 3600);
-    expect(data.quotaPools["codex:shared"]!.recovery!.inSeconds).toBeLessThanOrEqual(67.2 * 3600);
-    expect(data.quotaPools["codex:shared"]).not.toHaveProperty("windows");
 
-    const expired = run({ codex: { ...quota, windows: [window("expired", 100, 5, -0.01)] } }).quotaPools["codex:shared"]!;
-    expect(expired.observation).toBe("stale");
-    expect(expired).not.toHaveProperty("remainingPercent");
-    const retained = run({ codex: { ...quota, status: "stale", fetchedAt: now - 4 * 60_000 } }).quotaPools["codex:shared"]!;
-    expect(retained).toMatchObject({ observation: "stale", remainingPercent: 30 });
-    const partial = run({ codex: { ...quota, windows: [{ id: "session", usedPercent: 70 }] } }).quotaPools["codex:shared"]!;
-    expect(partial).toMatchObject({ observation: "partial", remainingPercent: 30 });
-    expect(partial).not.toHaveProperty("sustainableHeadroom");
-    const invalid = run({ codex: { ...quota, windows: [{ id: "session", usedPercent: NaN }] } }).quotaPools["codex:shared"]!;
-    expect(invalid).not.toHaveProperty("remainingPercent");
-    const future = run({ codex: { ...quota, fetchedAt: now + hour } }).quotaPools["codex:shared"]!;
-    expect(future).toEqual({ observation: "unknown" });
+    expect(Object.keys(data)).toEqual(["candidates"]);
+    expect(data.candidates.map((candidate) => candidate.model)).toEqual([
+      "codex--gpt-6.1-terra",
+      "xai--grok-composer-2.5-fast",
+    ]);
+    const codexCandidate = data.candidates[0]!;
+    expect(Object.keys(codexCandidate).sort()).toEqual(["efforts", "model", "pressure", "resetsInSeconds", "summary"]);
+    expect(codexCandidate).toMatchObject({
+      model: "codex--gpt-6.1-terra",
+      efforts: ["low", "medium", "high"],
+      pressure: "elevated",
+      summary: "Balanced coding and implementation model (500K context).",
+    });
+    expect(codexCandidate.resetsInSeconds).toBeGreaterThan(67 * 3600);
+    expect(codexCandidate.resetsInSeconds).toBeLessThanOrEqual(Math.ceil(67.2 * 3600));
+
+    const xaiCandidate = data.candidates[1]!;
+    expect(Object.keys(xaiCandidate).sort()).toEqual(["efforts", "model", "pressure", "summary"]);
+    expect(xaiCandidate).toEqual({
+      model: "xai--grok-composer-2.5-fast",
+      efforts: [],
+      pressure: "unknown",
+      summary: "Fast code editing and implementation model (200K context).",
+    });
+
+    // 리셋이 지난 창이나 미래 시각 관측은 ok로 오인하지 않고 unknown으로 처리한다.
+    const expired = run({ codex: { ...quota, windows: [window("expired", 50, 5, -0.01)] } }).candidates.find(
+      (candidate) => candidate.model === "codex--gpt-6.1-terra",
+    )!;
+    expect(expired.pressure).toBe("unknown");
+    expect(expired).not.toHaveProperty("resetsInSeconds");
+
+    const future = run({ codex: { ...quota, fetchedAt: now + hour } }).candidates.find(
+      (candidate) => candidate.model === "codex--gpt-6.1-terra",
+    )!;
+    expect(future.pressure).toBe("unknown");
+
+    expect(GATEWAY_CANDIDATES_TOOL_DESCRIPTION_DRAFT).toBe(
+      "Current eligible models and allowed efforts, ordered by quota headroom (most first). Unknown pressure is unmeasured, not low pressure.",
+    );
   });
 
   it("excludes critical providers without falling back to critical or hidden providers when empty", () => {

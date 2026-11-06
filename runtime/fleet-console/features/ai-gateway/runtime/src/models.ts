@@ -138,13 +138,14 @@ const CLAUDE_PROVIDER_NAME = "Claude";
  * spellings of that same entry, never entries of their own.
  */
 const CLAUDE_NATIVE_FAMILIES = [
-  { alias: "fable", name: "Fable" },
-  { alias: "opus", name: "Opus" },
-  { alias: "sonnet", name: "Sonnet" },
-  { alias: "haiku", name: "Haiku" },
+  { alias: "fable", name: "Fable", description: "Deepest reasoning and architecture model in the Claude lineup (1M context)." },
+  { alias: "opus", name: "Opus", description: "High-capability reasoning, planning, and coding model (1M context)." },
+  { alias: "sonnet", name: "Sonnet", description: "Balanced coding and general agent execution model (1M context)." },
+  { alias: "haiku", name: "Haiku", description: "Lightweight, fast model for simple tasks and scans (1M context)." },
 ] as const satisfies readonly {
   readonly alias: string;
   readonly name: string;
+  readonly description: string;
 }[];
 const CLAUDE_DEFAULT_ALIAS = "sonnet";
 const CLAUDE_ONE_MILLION_CONTEXT_WINDOW = 1_000_000;
@@ -234,6 +235,7 @@ function buildGatewayModels(): readonly GatewayModel[] {
       displayName: `${CLAUDE_PROVIDER_NAME}-${resolution?.displayName ?? family.name}`,
       provider: "claude",
       ...(resolution ? { upstreamId: resolution.model } : {}),
+      description: family.description,
       contextWindow: CLAUDE_ONE_MILLION_CONTEXT_WINDOW,
       effort,
       aliases: Object.freeze([...claudeFamilyAliases(family.alias)]),
@@ -380,6 +382,28 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
 /** The catalog and routing loadout share the model's allowance-pool identity. */
 export function buildGatewayModelQuota(model: GatewayModel) {
   return { quotaPool: `${model.provider}:shared` };
+}
+
+function formatCatalogWindowLabel(tokens: number | undefined): string {
+  if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens <= 0) return "";
+  if (tokens >= 1_000_000) return "1M context";
+  return `${Math.round(tokens / 1_000)}K context`;
+}
+
+/**
+ * 카탈로그가 관리하는 한 줄 모델 요약(성능 보증이 아닌 관리 메타데이터).
+ */
+export function gatewayModelSummary(model: GatewayModel): string {
+  if (model.description && model.description.trim().length > 0) return model.description.trim();
+  const windowLabel = formatCatalogWindowLabel(model.contextWindow);
+  const tierLabel = model.serviceTier === "priority" ? "priority tier" : "";
+  const qualifiers = [tierLabel, windowLabel].filter((part) => part.length > 0).join(", ");
+  const qualifiersSuffix = qualifiers.length > 0 ? ` (${qualifiers})` : "";
+  if (model.id.includes("gpt-6-astra")) return `Flagship coding and reasoning model${qualifiersSuffix}.`;
+  if (model.id.includes("gpt-6.1-sol")) return `Deep reasoning and architecture model${qualifiersSuffix}.`;
+  if (model.id.includes("gpt-6-luna")) return `Lightweight, fast coding model${qualifiersSuffix}.`;
+  if (model.id.includes("gpt-6.1-terra")) return `Balanced coding and implementation model${qualifiersSuffix}.`;
+  return `${model.displayName}${qualifiersSuffix}.`;
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
