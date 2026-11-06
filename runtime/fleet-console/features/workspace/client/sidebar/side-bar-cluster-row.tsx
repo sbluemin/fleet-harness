@@ -239,17 +239,23 @@ interface SideBarClusterRowProps {
   readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null, focusFirst?: boolean) => void;
   /** 시작 전·완료 통합 목록의 줄 — 아바타 대신 날짜, 둘째 줄 없이 제목 한 줄로 선다. */
   readonly settled?: boolean;
-  /** 펼침 패널이 라벨로 가리키는 제목 id — 우측 카드의 펼친 행에만 둔다. */
-  readonly titleId?: string | undefined;
-  /** 행 아래 펼침의 열림 — 펼침을 그리는 목록만 건넨다. 없으면 버튼에 달지 않는다. */
-  readonly ariaExpanded?: boolean | undefined;
   /**
-   * 펼침 글리프(우측 작업 탭 카드) — 행 오른쪽 끝(위임 표식 왼쪽)에 선다. 없으면 기존 aside 그대로다.
-   * 글리프는 스스로 초점 자리를 가지므로, 있으면 aside를 장식으로 숨기지 않는다.
+   * 우측 작업 탭 카드의 팝업 — 아바타는 목표 팝업을 여는 단추가 되고, 임무 게이지·분수는 행 본문과 나란한 별도 단추가 되어
+   * 임무 팝업을 연다. 행 본문 누름(`onFocus`)도 목표 팝업을 연다(목록이 정한다). 없으면 지금 행 그대로다.
    */
-  readonly rowGlyphs?: ReactNode | undefined;
-  /** 펼친 행 — 쉬는 행과 같은 자리에 글리프를 보이게 하는 갈고리다(`is-open`). */
-  readonly expanded?: boolean | undefined;
+  readonly popups?: RowPopups | undefined;
+}
+
+export interface RowPopups {
+  readonly onAvatar: (opener: HTMLElement) => void;
+  readonly onProgress: (opener: HTMLElement) => void;
+  /** 이 행의 목표 팝업이 열려 있다 — 아바타·본문 단추의 `aria-expanded`. */
+  readonly open: boolean;
+  readonly avatarLabel: string;
+  readonly progressLabel: (done: number, total: number) => string;
+  /** 안 읽은 임무 기록 — 임무 게이지 단추에 점으로 선다(임무 팝업에서 읽는다). 지난 행 글리프의 점을 대신한다. */
+  readonly unseen: boolean;
+  readonly unseenLabel: string;
 }
 
 /** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. */
@@ -278,7 +284,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu, settled = false, titleId, ariaExpanded, rowGlyphs, expanded = false }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu, settled = false, popups }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -380,7 +386,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       rename.begin();
     }
     : undefined;
-  const titleNode = <span className="side-bar-cluster-row-title" id={titleId} onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
+  const titleNode = <span className="side-bar-cluster-row-title" onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
   const style = accentValue ? ({ "--user-accent": accentValue } as CSSProperties) : undefined;
   return (
     <li
@@ -392,7 +398,8 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         "side-bar-cluster-row--conversation",
         settled ? "side-bar-cluster-row--settled" : "",
         settled && state === "done" ? "is-done" : "",
-        expanded ? "is-open" : "",
+        popups?.open ? "is-open" : "",
+        popups && progress ? "has-progress-button" : "",
       ].filter(Boolean).join(" ")}
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}
@@ -410,6 +417,17 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         <span className="side-bar-cluster-row-glyph">
           <ClusterRowDate item={item} />
         </span>
+      ) : popups ? (
+        <button
+          type="button"
+          className="side-bar-cluster-row-glyph is-actionable"
+          aria-label={popups.avatarLabel}
+          aria-haspopup="dialog"
+          aria-expanded={popups.open}
+          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onAvatar(event.currentTarget); }}
+        >
+          <ClusterRowAvatar item={item} rowState={state} label={label} decorative />
+        </button>
       ) : state === "review" && row.review ? (
         <button
           type="button"
@@ -429,8 +447,8 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         type="button"
         className="side-bar-cluster-row-main"
         aria-current={active ? "true" : undefined}
-        aria-expanded={ariaExpanded}
-        aria-haspopup={onContextMenu ? "menu" : undefined}
+        aria-expanded={popups ? popups.open : undefined}
+        aria-haspopup={popups ? "dialog" : onContextMenu ? "menu" : undefined}
         aria-label={[layout.cluster.title, label, toolUseLabel ?? "", ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
         onClick={open}
         onKeyDown={(event) => {
@@ -453,13 +471,24 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
             <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
             <RowToolUse tool={toolUse?.tool ?? null} label={toolUseLabel} />
           </span>
-          <ClusterRowProgress progress={progress} />
+          {popups ? null : <ClusterRowProgress progress={progress} />}
         </span>}
       </button>
-      {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식만 숨긴다.
-          행 글리프(우측 카드)가 있으면 그 안에 초점 자리가 있으므로 칸을 숨기지 않는다. */}
-      <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle || rowGlyphs ? {} : { "aria-hidden": true })}>
-        {rowGlyphs}
+      {/* 임무 게이지 단추 — 행 본문 단추 안에 두지 않는다(단추 안 단추). 본문의 상태 줄과 같은 줄에 겹쳐 선다(카드 CSS). */}
+      {popups && progress && !settled ? (
+        <button
+          type="button"
+          className="side-bar-cluster-row-progress"
+          aria-label={`${popups.progressLabel(progress.done, progress.total)}${popups.unseen ? ` · ${popups.unseenLabel}` : ""}`}
+          aria-haspopup="dialog"
+          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onProgress(event.currentTarget); }}
+        >
+          <ClusterRowProgress progress={progress} />
+          {popups.unseen ? <i className="side-bar-cluster-row-progress-dot" aria-hidden="true" /> : null}
+        </button>
+      ) : null}
+      {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식만 숨긴다. */}
+      <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle ? {} : { "aria-hidden": true })}>
         {row.mark ? (row.mark.toggle ? <ClusterRowMarkToggle mark={row.mark} toggle={row.mark.toggle} /> : <ClusterRowMark mark={row.mark} />) : null}
       </span>
     </li>
@@ -467,7 +496,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
 }
 
 /** 줄이 대신하는 Objective — 뿌리(지휘관)와 구성원. 자리표시 구성원은 아직 세션이 없다. */
-function rowUseIds(item: SideBarRowItem): readonly string[] {
+export function rowUseIds(item: SideBarRowItem): readonly string[] {
   const { layout, anchor } = item;
   const ids = [anchor?.objectiveRecord.id, layout.cluster.root, ...layout.cluster.members.filter((member) => !member.pending).map((member) => member.objectiveId)];
   return ids.filter((id): id is string => typeof id === "string");
@@ -476,7 +505,7 @@ function rowUseIds(item: SideBarRowItem): readonly string[] {
 const ROW_TOOL_USE_KEY = { browser: "sidebar.row.use.browser", console: "sidebar.row.use.console", computer: "sidebar.row.use.computer" } as const;
 
 /** 쓰는 이가 구성원이면 그 이름을 앞에 단다. 지휘관 자신이면 도구만 말한다. */
-function rowToolUseLabel(item: SideBarRowItem, use: { readonly tool: ObjectiveUseTool; readonly actor: string | null }, t: ReturnType<typeof useT>): string {
+export function rowToolUseLabel(item: SideBarRowItem, use: { readonly tool: ObjectiveUseTool; readonly actor: string | null }, t: ReturnType<typeof useT>): string {
   const phrase = t(ROW_TOOL_USE_KEY[use.tool]);
   const rootIds = new Set([item.anchor?.objectiveRecord.id, item.layout.cluster.root]);
   const member = use.actor !== null && !rootIds.has(use.actor) ? item.layout.cluster.members.find((entry) => entry.objectiveId === use.actor) : undefined;

@@ -1,40 +1,52 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CommodoreTasksListProps } from "../../../commodore/client/deps.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
+import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { CommodoreCommanderList } from "./commander-list.js";
 import { openCommanderConversation } from "./commander-navigation.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
-import { CommanderRowPanel } from "../../../objectives/client/objectives-panel.js";
+import { CommanderMissionsDialog } from "../../../objectives/client/objectives-panel.js";
+import { CommanderObjectivePopover } from "../../../objectives/client/commander-objective-popover.js";
+import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
+import { useObjectivesToolUse } from "../../../computer-use/client/computer-screen-share.js";
+import { useGroupTimeline } from "../../../execution/client/agent/chat/group-timeline-store.js";
 import { readCommanderPlacement, useCommanderPlacement } from "./commander-placement.js";
-import { useCommanderRowGlyphBoard, type CommanderRowGlyphTab } from "./commander-row-glyphs.js";
-import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
+import { useCommanderRows } from "./commander-rows.js";
+import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
+import { unseenRecords } from "../../../objectives/shared/types.js";
+import { ClusterRowAvatar, clusterRowSummary, rowToolUseLabel, rowUseIds, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
+
+type Popover = { readonly objectiveId: string; readonly clusterId: string; readonly opener: HTMLElement };
+type Missions = { readonly objectiveId: string; readonly title: string; readonly opener: HTMLElement };
+
+/** 카드 안에서 그 행 요소를 찾는다 — 팝업이 행 전체를 기준으로 선다. */
+const rowElement = (opener: HTMLElement, clusterId: string): HTMLElement =>
+  opener.closest<HTMLElement>(`[data-cluster-row-id="${CSS.escape(clusterId)}"]`) ?? opener;
 
 /**
  * 작업 탭 「목표」 섹션이 쓰는 목록 — 조립(호스트)이 commodore feature에 넘기는 렌더러다.
  * commodore feature가 workspace 목록을 직접 가져오면 순환이 생기므로, 이 모듈 한 곳에서만 잇는다.
- * 우측 배치에서는 행의 글리프(목표·구성원·라이브러리)를 누르면 그 내용만 그 행 아래에 펼쳐진다(아코디언).
- * 글리프 펼침은 가운데 채팅과 무관하고, 제목을 누르면 채팅만 옮긴다. 펼침·선택 상태는 화면 메모리로만 둔다.
+ * 우측 배치에서는 행 펼침이 없다 — 행이나 아바타를 누르면 목표 팝업이, 임무 게이지를 누르면 임무 팝업(구성원 로스터 + 임무 그래프)이
+ * 뜬다. 지휘관 대화는 목표 팝업의 「대화 열기」로 간다. 왼쪽 배치는 행을 누르면 지금처럼 대화로 간다.
  */
 export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect }: CommodoreTasksListProps) {
   const state = useConsoleState();
+  const t = useT();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
+  const objectivesT = getObjectivesT(language);
   const placement = useCommanderPlacement();
-  const [expanded, setExpanded] = useState<{ readonly objectiveId: string; readonly tab: CommanderRowGlyphTab } | null>(null);
-  // 행 글리프의 점(결정 요청·안 읽은 기록)이 읽는 보드 — 펼침 패널이 올리기 전에도 점이 보여야 한다.
-  useCommanderRowGlyphBoard(commodoreId);
+  const right = placement === "right";
+  const [popover, setPopover] = useState<Popover | null>(null);
+  const [missions, setMissions] = useState<Missions | null>(null);
+  // 게이지 단추의 안 읽은 기록 점이 읽는 보드 — 팝업을 한 번도 열지 않은 행의 점도 보여야 하므로 목록이 함께 올린다.
+  const board = useObjectiveBoard(commodoreId);
+  const api = objectivesApi();
+  useEffect(() => { if (right && api !== null) void loadBoard(api, commodoreId); }, [right, api, commodoreId]);
+  const unseenOf = (objectiveId: string) => board.loaded && (board.objectives.find((candidate) => candidate.id === objectiveId)?.missions.some((mission) => unseenRecords(mission) > 0) ?? false);
 
-  const handleGlyphTab = (objectiveId: string, tab: CommanderRowGlyphTab) => {
-    // 펼친 글리프를 다시 누르면 접히고, 다른 글리프를 누르면 내용만 바뀐다. 가운데 채팅은 그대로 둔다.
-    // 다른 행의 글리프를 누르면 펼침이 그 행으로 옮겨 간다(한 번에 한 행).
-    setExpanded((current) => current !== null && current.objectiveId === objectiveId && current.tab === tab ? null : { objectiveId, tab });
-  };
-
-  const handleSelect = (item: SideBarRowItem) => {
+  const openConversation = (item: SideBarRowItem) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
-    // 선택된 행을 다시 누르면 사령관 대화로 돌아간다(#2252) — 펼침은 바꾸지 않는다.
-    if (objectiveId !== null && selectedId === objectiveId) { openCommodoreConversation(commodoreId); return; }
     if (onSelect) {
       onSelect({
         objectiveId,
@@ -47,25 +59,92 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
     else item.layout.cluster.open?.();
   };
 
-  return <CommodoreCommanderList
-    commodoreId={commodoreId}
-    selectedId={selectedId}
-    sortNameOnly
-    card
-    heading={heading}
-    onSelect={handleSelect}
-    expansion={placement === "right" ? {
-      expanded,
-      onGlyphTab: handleGlyphTab,
-      renderPanel: (item, tab) => {
-        const objectiveId = commanderObjectiveId(item.layout.cluster);
-        if (objectiveId === null) return null;
-        // 펼침 안의 길(임무·결정·결과물로 가기)은 그 탭을 고르기만 한다 — 이미 열린 탭으로 가도 접지 않는다.
-        // 다시 눌러 접기는 행 글리프만의 동작이다.
-        return <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={(next) => setExpanded({ objectiveId, tab: next })} onOpenObjective={(id) => openCommanderConversation(commodoreId, id)} />;
-      },
-    } : undefined}
-  />;
+  const togglePopover = (item: SideBarRowItem, objectiveId: string, opener: HTMLElement) => {
+    setPopover((current) => current?.objectiveId === objectiveId ? null : { objectiveId, clusterId: item.layout.cluster.id, opener });
+  };
+
+  const handleSelect = (item: SideBarRowItem) => {
+    const objectiveId = commanderObjectiveId(item.layout.cluster);
+    if (right && objectiveId !== null) {
+      // 행 본문 단추가 연 것 — 초점을 돌려줄 자리는 그 행의 본문 단추다.
+      const main = document.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(item.layout.cluster.id)}"] .side-bar-cluster-row-main`);
+      if (main) { togglePopover(item, objectiveId, main); return; }
+    }
+    // 선택된 행을 다시 누르면 사령관 대화로 돌아간다(#2252).
+    if (objectiveId !== null && selectedId === objectiveId) { openCommodoreConversation(commodoreId); return; }
+    openConversation(item);
+  };
+
+  return <>
+    <CommodoreCommanderList
+      commodoreId={commodoreId}
+      selectedId={selectedId}
+      sortNameOnly
+      card
+      heading={heading}
+      onSelect={handleSelect}
+      popups={right ? (item, objectiveId) => ({
+        open: popover?.objectiveId === objectiveId,
+        avatarLabel: objectivesT("objectives.popover.open", { title: item.layout.cluster.title }),
+        progressLabel: (done, total) => objectivesT("objectives.popover.missions", { done, total }),
+        unseen: unseenOf(objectiveId),
+        unseenLabel: objectivesT("objectives.tabs.unseenDot"),
+        onAvatar: (opener) => togglePopover(item, objectiveId, opener),
+        onProgress: (opener) => { setPopover(null); setMissions({ objectiveId, title: item.layout.cluster.title, opener }); },
+      }) : undefined}
+    />
+    {right && popover ? (
+      <ObjectivePopoverForRow commodoreId={commodoreId} selectedId={selectedId} popover={popover} language={language} t={t}
+        onOpenConversation={(item) => openConversation(item)}
+        onClose={(restoreFocus) => { const opener = popover.opener; setPopover(null); if (restoreFocus && opener.isConnected) opener.focus(); }} />
+    ) : null}
+    {right && missions ? (
+      <CommanderMissionsDialog commodoreId={commodoreId} objectiveId={missions.objectiveId} title={missions.title} language={language}
+        onOpenObjective={(id) => openCommanderConversation(commodoreId, id)}
+        onClose={() => { const opener = missions.opener; setMissions(null); if (opener.isConnected) opener.focus(); }} />
+    ) : null}
+  </>;
+}
+
+/** 목표 팝업에 행 쪽 사실(아바타·상태·상태 문구·도구 사용)을 건넨다 — 행이 바뀌면 팝업도 따라 그린다. */
+function ObjectivePopoverForRow({ commodoreId, selectedId, popover, language, t, onOpenConversation, onClose }: {
+  readonly commodoreId: string;
+  readonly selectedId: string | null;
+  readonly popover: Popover;
+  readonly language: "en" | "ko";
+  readonly t: ReturnType<typeof useT>;
+  readonly onOpenConversation: (item: SideBarRowItem) => void;
+  readonly onClose: (restoreFocus: boolean) => void;
+}) {
+  const locale = useConsoleLocale();
+  const { sorted } = useCommanderRows(commodoreId, selectedId);
+  const item = sorted.find((candidate) => candidate.layout.cluster.id === popover.clusterId) ?? null;
+  const toolUse = useObjectivesToolUse(item ? rowUseIds(item) : []);
+  // 「지금」 — 지휘관이 그 목표 대화에서 마지막으로 한 말. 팝업이 열린 목표의 대화만 청한다.
+  const timeline = useGroupTimeline(popover.objectiveId);
+  const lastWords = (() => {
+    for (let index = timeline.entries.length - 1; index >= 0; index -= 1) {
+      const entry = timeline.entries[index]!;
+      if (entry.kind === "message" && entry.speaker.kind === "commander" && entry.text.trim()) return { text: entry.text.replace(/\s+/g, " ").trim(), at: entry.at };
+    }
+    return null;
+  })();
+  if (!item) return null;
+  const { state, label, conversationLine } = clusterRowSummary(item, locale, t);
+  return (
+    <CommanderObjectivePopover
+      commodoreId={commodoreId}
+      objectiveId={popover.objectiveId}
+      anchor={rowElement(popover.opener, popover.clusterId)}
+      language={language}
+      avatar={<ClusterRowAvatar item={item} rowState={state} label={label} decorative size={40} />}
+      lastWords={lastWords}
+      statusLine={conversationLine}
+      toolLabel={toolUse ? rowToolUseLabel(item, toolUse, t) : null}
+      onOpenConversation={() => onOpenConversation(item)}
+      onClose={onClose}
+    />
+  );
 }
 
 export const readTasksCommanderPlacement = readCommanderPlacement;
