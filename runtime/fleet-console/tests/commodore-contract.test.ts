@@ -2953,29 +2953,35 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
 
-      // 사람이 만든 목표도 깨운다 — 단계 이동은 다음 턴 요약에 실리고, 개시 대기는 그룹이 대기 중이 되면 깨운다.
+      // 사람이 만든 목표는 live로 나타나면 한 번 깨운다 — 일하는 이가 없어 settles로 이어질 수 없기 때문이다.
+      // 단계 이동은 다음 턴 요약에 실리고, 개시 대기는 그룹이 대기 중이 되면 깨운다.
       // 범위 줄에는 목표 id·코드만 남는다.
       const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { planning: boolean; missions: { id: string; text: string; done: boolean }[] };
       objectives.push(human);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["status:1"]);
+      expect(sessions[0]!.sent.at(-1)).toContain('"Person\'s own" new → not started');
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
       human.planning = true;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
       human.planning = false;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       human.missions.push({ id: "m1", text: "x", done: false });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(tokens().at(-1)).toEqual(["settled:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain('"Person\'s own"');
       const entries = h.store.transcriptRead("t1").entries;
       expect(entries.at(-1)).toMatchObject({ kind: "result" });
       expect(entries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["settled:1"] }, { kind: "wake-scope", woke: [{ id: "o3", codes: ["settled"] }] }]);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
-      // 사령관이 만든 목표와 사령관이 고른 후속도 같은 길이다 — 나타나도 깨우지 않고, 선 대기는 같이 깨운다.
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
+      // 사령관이 만든 목표와 사령관이 고른 후속은 제가 한 일이라 나타나도 깨우지 않고, 선 대기는 같이 깨운다.
+      // 끝난 채로 나타난 목표도 moves에만 싣는다.
       const made = { id: "o4", theaterId: "t1", title: "Made by Commodore", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], addedBy: { kind: "commodore", commodoreId: "t1" } } as unknown as Objective;
       const origin = { id: "o6", theaterId: "t1", title: "Followup origin", createdAt: Date.now(), done: { at: Date.now(), by: "human" }, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [{ by: { kind: "commodore", commodoreId: "t1" }, items: [{ candidateId: "c1" }] }], personHolds: [], missions: [{ id: "m1", text: "x", done: true }] } as unknown as Objective;
       const chosen = { id: "o5", theaterId: "t1", title: "Chosen followup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], origin: { objectiveId: "o6", candidateId: "c1" } } as unknown as Objective;
@@ -2984,10 +2990,10 @@ describe("commodore supervisor", () => {
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o6" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(tokens().at(-1)).toEqual(["settled:2"]);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 9);
       const secondEntries = h.store.transcriptRead("t1").entries;
       expect(secondEntries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["settled:2"] }, { kind: "wake-scope", woke: [{ id: "o4", codes: ["settled"] }, { id: "o5", codes: ["settled"] }] }]);
       Object.assign(made, { done: { at: Date.now(), by: "human" } });
@@ -2995,7 +3001,7 @@ describe("commodore supervisor", () => {
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o4" });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 9);
       Object.assign(objectives[0]!, { awaitingReview: false, personHolds: [] });
       (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
       commanderActivity.delete("o2");

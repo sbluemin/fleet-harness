@@ -175,9 +175,15 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
     runner.emptyReported = empty;
     // 상태 변화 — 목표가 한 단계 옮겨 갈 때마다(새 목표·지워짐 포함). 사령관 자신의 쓰기와 그 쓰기로
     // 생긴 목표는 뺀다. 관측이 없으면 모두 깨우고, 나머지는 다음 턴의 보드 요약에 싣는다.
+    // 기동 뒤에 live로 나타난 목표는 한 번 깨운다 — 단, 지휘관이 일하는 중이면 moves·settle로
+    // 이어지므로 일하는 이가 없는(미착수·대기) 새 목표만 깨운다. 재시작은 statuses를 미리 심어
+    // 두어 이 갈래로 오지 않으므로 폭풍이 없고, 끝난·지워진 채로 나타난 것은 moves에만 싣는다.
     for (const change of statusChanges(runner, objectives)) {
       if (!deps.observe) wake(runner, "status", { bump: true, detail: change.text, objectiveId: change.id });
-      else runner.moves.set(change.id, [...(runner.moves.get(change.id) ?? []), change.move]);
+      else {
+        runner.moves.set(change.id, [...(runner.moves.get(change.id) ?? []), change.move]);
+        if (change.fresh && change.status !== "done" && change.status !== "removed" && !commanderWorking(deps.observe, change.id)) wake(runner, "status", { bump: true, detail: change.text, objectiveId: change.id });
+      }
     }
   };
   cleanups.push(deps.subscribeObjectives((event) => {
@@ -307,7 +313,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
     },
   });
 
-  const statusChanges = (runner: Runner, objectives: readonly Objective[]): { readonly id: string; readonly text: string; readonly move: string }[] => {
+  const statusChanges = (runner: Runner, objectives: readonly Objective[]): { readonly id: string; readonly text: string; readonly move: string; readonly fresh: boolean; readonly status: ObjectiveStatus }[] => {
     const at = now();
     for (const [id, until] of runner.selfWrites) if (until < at) runner.selfWrites.delete(id);
     const tracked = statusMap(objectives);
@@ -322,7 +328,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
         typeof batch.by === "object" && batch.by !== null && "kind" in batch.by && batch.by.kind === "commodore" &&
         batch.items.some((item) => item.candidateId === origin.candidateId));
     };
-    const changes: { id: string; text: string; move: string }[] = [];
+    const changes: { id: string; text: string; move: string; fresh: boolean; status: ObjectiveStatus }[] = [];
     for (const objective of objectives) {
       const next = tracked.get(objective.id)!;
       const previous = runner.statuses.get(objective.id);
@@ -335,7 +341,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       if (next.status === "missions-done") continue;
       if (previous === undefined && createdHere(objective)) continue;
       const move = `${STATUS_WORDS[previous?.status ?? "new"]} → ${STATUS_WORDS[next.status]}`;
-      changes.push({ id: objective.id, text: `"${objective.title}" ${move}`, move });
+      changes.push({ id: objective.id, text: `"${objective.title}" ${move}`, move, fresh: previous === undefined, status: next.status });
     }
     // 보드에서 영영 사라진 목표(영구 삭제)도 지워짐이다.
     for (const [id, previous] of [...runner.statuses]) {
@@ -343,7 +349,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       runner.statuses.delete(id);
       if (previous.status === "removed" || runner.selfWrites.has(id)) continue;
       const move = `${STATUS_WORDS[previous.status]} → ${STATUS_WORDS.removed}`;
-      changes.push({ id, text: `${id} ${move}`, move });
+      changes.push({ id, text: `${id} ${move}`, move, fresh: false, status: previous.status });
     }
     return changes;
   };
