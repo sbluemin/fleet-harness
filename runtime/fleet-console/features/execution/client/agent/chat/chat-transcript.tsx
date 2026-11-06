@@ -64,7 +64,7 @@ function turnStartedAt(turn: AgentChatTurn): number | undefined {
 }
 
 /** 그 시각에 돌던 턴으로 데려가 잠깐 표시한다 — 기록 면과 원장 면이 같은 규칙을 쓴다. 표시는 그 턴의 줄 하나에만 선다. */
-export function useTranscriptReveal(rootRef: React.RefObject<HTMLElement | null>, reveal: AgentChatTranscriptProps["reveal"], onReveal?: () => void): void {
+export function useTranscriptReveal(rootRef: React.RefObject<HTMLElement | null>, reveal: AgentChatTranscriptProps["reveal"], onReveal?: () => void, scrollContainerRef?: React.RefObject<HTMLElement | null>): void {
   React.useEffect(() => {
     if (!reveal) return;
     const nodes = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-transcript-at]") ?? []);
@@ -76,7 +76,16 @@ export function useTranscriptReveal(rootRef: React.RefObject<HTMLElement | null>
     target ??= nodes[0];
     if (!target) return;
     onReveal?.();
-    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    const container = scrollContainerRef?.current;
+    if (container) {
+      // 원장은 로그만 움직인다 — scrollIntoView는 overflow:hidden인 바깥 대화까지 밀어 올린다.
+      const rect = target.getBoundingClientRect();
+      const top = container.scrollTop + rect.top - container.getBoundingClientRect().top - container.clientTop
+        - (container.clientHeight - rect.height) / 2;
+      container.scrollTo({ top, behavior: "smooth" });
+    } else {
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
     target.classList.remove("is-revealed");
     void target.offsetWidth;
     target.classList.add("is-revealed");

@@ -50,7 +50,7 @@ export function AgentLedger({ speaker, commodoreId, language, onBack, entries, r
     const node = logRef.current;
     if (node && follow.current) node.scrollTop = node.scrollHeight;
   }, [entries]);
-  useTranscriptReveal(logRef, reveal, () => { follow.current = false; });
+  useTranscriptReveal(logRef, reveal, () => { follow.current = false; }, logRef);
 
   return (
     <OpenUIPluginBoundary port={openUIOpen} language={language}><ConversationCommodoreContext.Provider value={commodoreId ?? null}>
