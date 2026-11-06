@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
+import { commodoreTranscriptEntrySchema } from "../features/commodore/shared/contracts/types.js";
 import type { ConsoleResidentAgentHost as AgentHost, ConsoleResidentOptions as AgentSessionOptions } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
@@ -279,7 +280,7 @@ it("delivers peer messages to a resting Commodore without person authority and r
   } };
   const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
     experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
-    board: () => ({ tools: (_id, turn) => { personAuthority = turn.hasPersonMessage; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    board: () => ({ tools: (_id, turn) => { personAuthority = turn.hasPersonMessage; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
     managementTools: (_id, turn) => createCommodoreManagementTools({ hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: () => [], create: created }), emit: () => {},
   });
   let supervisor = make();
@@ -365,7 +366,7 @@ it("forwards turn and objective images through commodore messages into the recip
   }) };
   const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
     experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
-    board: () => ({ tools: (_id, turn) => { capturedTurn = turn; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    board: () => ({ tools: (_id, turn) => { capturedTurn = turn; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
     emit: () => {},
   });
   let supervisor = make();
@@ -432,7 +433,7 @@ it("shares the turn image budget across human and commodore mail", async () => {
   const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
     attachments: { read: () => [humanImage], release: () => {}, claim: () => 0, rollbackClaim: () => {} } as never,
     experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
-    board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
     emit: () => {},
   });
   let supervisor = make();
@@ -489,7 +490,7 @@ it("delivers later mail when an earlier mail image expired", async () => {
   }) };
   const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
     experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
-    board: () => ({ tools: (_id, turn) => { capturedTurn = turn; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    board: () => ({ tools: (_id, turn) => { capturedTurn = turn; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
     emit: () => {},
   });
   let supervisor = make();
@@ -542,7 +543,7 @@ it("rejects mail when pending images would exceed the retained budget and trims 
   }) };
   const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
     experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
-    board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
     emit: () => {},
   });
   let supervisor = make();
@@ -2312,7 +2313,7 @@ describe("commodore supervisor", () => {
       steer: () => false, cancel() { finishTurn?.(); }, dispose: async () => {},
     }) };
     const make = (store = h.store) => createHostSupervisor({ store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
-      board: () => ({ tools: (_id, bindings) => { turn = bindings; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
+      board: () => ({ tools: (_id, bindings) => { turn = bindings; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
       managementTools: (_id, bindings) => createCommodoreManagementTools({ hasPersonMessage: bindings.hasPersonMessage, stopping: bindings.stopping, list: () => [], create: createCommodore }),
     });
     const call = async (name: string, args: Record<string, unknown>) => (await routineTools.get(name)!.execute(args, { cwd: h.objectivesDir }) as { structuredContent: Record<string, unknown> }).structuredContent;
@@ -2552,7 +2553,7 @@ describe("commodore supervisor", () => {
       await supervisor.dispose();
 
       // 재기동 당시 진행·구상·인계 대기만 남은 목표는 스스로 잇는다. 시간이 지나거나 live 로 복원된 것만으로는 깨우지 않는다.
-      const running = { id: "o1", theaterId: "t1", title: "Resuming", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective;
+      const running = { id: "o1", theaterId: "t1", title: "Resuming", createdAt: Date.now(), done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective;
       objectives.push(running, { ...running, id: "o2", commenced: false, planning: true, missions: [] }, { ...running, id: "o3", awaitingHandoff: true, missions: [{ ...running.missions[0]!, done: true }] });
       const settleWait = SETTLE_MS + SETTLE_CHECK_MS + COALESCE_MS + 10;
       const beforeRestart = sessions.length;
@@ -2644,7 +2645,7 @@ describe("commodore supervisor", () => {
       return { send: async () => { sent(); }, steer: () => false, cancel() {}, dispose: async () => { disposed(); } };
     } };
     const supervisor = createHostSupervisor({ store: h.store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
-      board: () => available ? ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }) : null, emit: () => {},
+      board: () => available ? ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }) : null, emit: () => {},
     });
     try {
       supervisor.sync("restart");
@@ -2679,7 +2680,7 @@ describe("commodore supervisor", () => {
       };
     } };
     const supervisor = createHostSupervisor({ store: h.store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
-      board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
+      board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
     });
     const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
     const sessionEvents = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "session" ? [entry.event] : []);
@@ -2740,7 +2741,7 @@ describe("commodore supervisor", () => {
       };
     } };
     const supervisor = createHostSupervisor({ store: h.store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
-      board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
+      board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
     });
     try {
       // 경계 — 상한 이하의 창은 지점을 덮지 않고 모델 기본 정책을 따른다. 상한을 넘는 창만 상한 지점을 받는다.
@@ -2885,7 +2886,7 @@ describe("commodore supervisor", () => {
       const turnsBeforeBoard = sessions[0]!.sent.length;
       commanderActivity.set("o1", "running");
       const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
-      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", requestSource, createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: false, planning: true, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [{ id: "c1" }], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", requestSource, createdAt: Date.now(), done: null, removed: null, commenced: false, planning: true, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [{ id: "c1" }], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard);
@@ -2932,7 +2933,7 @@ describe("commodore supervisor", () => {
 
       // 다른 목표의 단계 이동은 깨우지 않고 다음 턴 요약에 실린다. 사람에게 넘긴 항목만 기다리며 멈춘 그룹도 깨우지 않는다.
       commanderActivity.set("o2", "running");
-      objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o2" });
       (objectives[1] as unknown as { commenced: boolean }).commenced = true;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o2" });
@@ -2952,31 +2953,55 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
 
-      // 사람이 운영하는 목표 — 생기고 옮겨 가도 깨우지 않는다(다음 턴의 범위 줄에만 남는다). 사람이 맡기면 한 번 바로 깨우고,
-      // 그 턴의 범위 줄에 목표 id·운영 판정·코드가 남는다. 돌려받은 뒤의 변화는 다시 깨우지 않는다.
-      sessionless.add("o3");
-      const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { commodoreOperated?: boolean; planning: boolean; missions: { id: string; text: string; done: boolean }[] };
+      // 사람이 만든 목표는 live로 나타나면 한 번 깨운다 — 일하는 이가 없어 settles로 이어질 수 없기 때문이다.
+      // 단계 이동은 다음 턴 요약에 실리고, 개시 대기는 그룹이 대기 중이 되면 깨운다.
+      // 범위 줄에는 목표 id·코드만 남는다.
+      const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { planning: boolean; missions: { id: string; text: string; done: boolean }[] };
       objectives.push(human);
-      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
-      human.planning = true;
-      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
-      human.planning = false;
-      human.commodoreOperated = true;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["status:1"]);
-      expect(sessions[0]!.sent.at(-1)).toContain('"Person\'s own" handed to you by the person (not started)');
-      const entries = h.store.transcriptRead("t1").entries;
-      expect(entries.at(-1)).toMatchObject({ kind: "result" });
-      expect(entries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["status:1"] }, { kind: "wake-scope", woke: [{ id: "o3", operator: "commodore", codes: ["status"] }], held: [{ id: "o3", operator: "human", codes: ["pending", "status"] }] }]);
-      human.commodoreOperated = false;
+      expect(sessions[0]!.sent.at(-1)).toContain('"Person\'s own" new → not started');
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      human.planning = true;
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      human.planning = false;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       human.missions.push({ id: "m1", text: "x", done: false });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
-      await vi.advanceTimersByTimeAsync(settleWait);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(tokens().at(-1)).toEqual(["settled:1"]);
+      expect(sessions[0]!.sent.at(-1)).toContain('"Person\'s own"');
+      const entries = h.store.transcriptRead("t1").entries;
+      expect(entries.at(-1)).toMatchObject({ kind: "result" });
+      expect(entries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["settled:1"] }, { kind: "wake-scope", woke: [{ id: "o3", codes: ["settled"] }] }]);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
+      // 사령관이 만든 목표와 사령관이 고른 후속은 제가 한 일이라 나타나도 깨우지 않고, 선 대기는 같이 깨운다.
+      // 끝난 채로 나타난 목표도 moves에만 싣는다.
+      const made = { id: "o4", theaterId: "t1", title: "Made by Commodore", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], addedBy: { kind: "commodore", commodoreId: "t1" } } as unknown as Objective;
+      const origin = { id: "o6", theaterId: "t1", title: "Followup origin", createdAt: Date.now(), done: { at: Date.now(), by: "human" }, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [{ by: { kind: "commodore", commodoreId: "t1" }, items: [{ candidateId: "c1" }] }], personHolds: [], missions: [{ id: "m1", text: "x", done: true }] } as unknown as Objective;
+      const chosen = { id: "o5", theaterId: "t1", title: "Chosen followup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], origin: { objectiveId: "o6", candidateId: "c1" } } as unknown as Objective;
+      objectives.push(made, chosen, origin);
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o4" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o6" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(tokens().at(-1)).toEqual(["settled:2"]);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 9);
+      const secondEntries = h.store.transcriptRead("t1").entries;
+      expect(secondEntries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["settled:2"] }, { kind: "wake-scope", woke: [{ id: "o4", codes: ["settled"] }, { id: "o5", codes: ["settled"] }] }]);
+      Object.assign(made, { done: { at: Date.now(), by: "human" } });
+      Object.assign(chosen, { done: { at: Date.now(), by: "human" } });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o4" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 9);
       Object.assign(objectives[0]!, { awaitingReview: false, personHolds: [] });
       (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
       commanderActivity.delete("o2");
@@ -3129,4 +3154,18 @@ describe("commodore supervisor", () => {
       expect(runs.at(-1)).toMatchObject({ op: "run", run: { phase: "off", reason: "Console stopping" } });
     } finally { vi.useRealTimers(); }
   });
+});
+
+it("reads pre-removal wake-scope rows with operator and held", () => {
+  const legacy = commodoreTranscriptEntrySchema.safeParse({ seq: 1, at: 2, kind: "wake-scope",
+    woke: [{ id: "o1", operator: "commodore", codes: ["status"] }],
+    held: [{ id: "o3", operator: "human", codes: ["pending", "status"] }] });
+  expect(legacy.success).toBe(true);
+  if (legacy.success) {
+    expect(legacy.data).toMatchObject({ kind: "wake-scope",
+      woke: [{ id: "o1", operator: "commodore", codes: ["status"] }],
+      held: [{ id: "o3", operator: "human", codes: ["pending", "status"] }] });
+  }
+  const current = commodoreTranscriptEntrySchema.safeParse({ seq: 1, at: 2, kind: "wake-scope", woke: [{ id: "o1", codes: ["status"] }] });
+  expect(current.success).toBe(true);
 });

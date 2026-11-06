@@ -74,7 +74,7 @@ const listTool = defineConsoleTool({
   description: "Objective lists, groups, inbox, fleet, history, archive, search, models; add/tidy. archive/remove: restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
   actions: {
     groups: { kind: "read", input: z.object(scope) },
-    list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
+    list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
     inbox: { kind: "read", input: z.object(rows) },
     fleet: { kind: "read", input: z.object(rows) },
     history: { kind: "read", input: z.object(rows) },
@@ -545,7 +545,6 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
       if (filter !== "all" && objective.removed) return false;
       if (filter === "today") return objective.today && !objective.done;
       if (filter === "due") return !!objective.dueDate && !objective.done;
-      if (filter === "agent") return !!objective.addedBy;
       // 모두 — 완료한 목표와 지우거나 합친 목표까지. 필터가 없으면 끝나지 않은 목표만이다.
       if (filter === "all") return true;
       return !objective.done;

@@ -1152,7 +1152,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     setPhase(runner, "idle");
     scheduleRoutines(runner);
     // 끊긴 빈 보드 알림은 Clear 뒤에도 다시 낸다 — 감시는 기동 때의 빈 보드를 들은 것으로 두므로 여기서 놓치면 다시 오지 않는다.
-    if (unheard?.empty && runner.board?.emptyOperated()) wake(runner, "empty");
+    if (unheard?.empty && runner.board?.empty()) wake(runner, "empty");
     // Clear 뒤에는 기존 기록을 되살리지 않는다. 재시작 자체는 깨움 이유가 아니다.
     if (!wakeImmediately) { if (reason === "message") requeueUndelivered(runner); return; }
     requeueUndelivered(runner);

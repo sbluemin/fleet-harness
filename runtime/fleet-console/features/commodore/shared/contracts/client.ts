@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type { CommodoreAsk, CommodoreStateView } from "./types.js";
 export interface CommodoreClientSnapshot {
   readonly commodoreId: string | null;
@@ -23,5 +22,4 @@ export interface CommodoreClientHost {
   language(): "en" | "ko" | undefined;
   conversationActive(): boolean;
   subscribeConversation(listener: () => void): () => void;
-  renderRowGlyph(commodoreId: string, operated?: boolean): ReactNode;
 }

@@ -78,8 +78,8 @@ export interface CommodoreTurnInput {
   readonly openUIFeedback?: string;
   /** 깨움 노트 아래에 싣는 보드 요약(모델 입력). */
   readonly board?: string;
-  /** wake 줄 바로 뒤에 남는 보드 범위(목표 id·운영 판정·코드) — 기록에만 남고 모델에게는 가지 않는다. */
-  readonly scope?: Pick<Extract<CommodoreTranscriptEntry, { kind: "wake-scope" }>, "woke" | "held">;
+  /** wake 줄 바로 뒤에 남는 보드 범위(목표 id·코드) — 기록에만 남고 모델에게는 가지 않는다. */
+  readonly scope?: Pick<Extract<CommodoreTranscriptEntry, { kind: "wake-scope" }>, "woke">;
   /** 교대·재시작 세션의 첫 턴 — 최근 행위 요약. 깨움 문장 앞에 선다. */
   readonly replacementSummary?: readonly string[];
   /** 사람이 사령관에게 보낸 메시지 — 도구가 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. */
@@ -361,10 +361,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; quietText = !!input.quietText; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); toolResultObjectives.clear(); createdCommodores.length = 0;
       record({ kind: "wake", reasons: input.reasons });
       if (input.scope) {
-        // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
-        const { woke, held } = input.scope;
-        record({ kind: "wake-scope", woke: woke.slice(0, MAX_SCOPE_ITEMS), held: held.slice(0, MAX_SCOPE_ITEMS),
-          ...(woke.length > MAX_SCOPE_ITEMS ? { wokeMore: woke.length - MAX_SCOPE_ITEMS } : {}), ...(held.length > MAX_SCOPE_ITEMS ? { heldMore: held.length - MAX_SCOPE_ITEMS } : {}) });
+        // 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
+        const { woke } = input.scope;
+        record({ kind: "wake-scope", woke: woke.slice(0, MAX_SCOPE_ITEMS),
+          ...(woke.length > MAX_SCOPE_ITEMS ? { wokeMore: woke.length - MAX_SCOPE_ITEMS } : {}) });
       }
       const mailById = new Map((input.mailImages ?? []).map(({ messageId, images }) => [messageId, images] as const));
       const mailLines = (input.mail ?? []).map((entry) => {

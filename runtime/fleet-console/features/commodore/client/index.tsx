@@ -16,7 +16,6 @@ import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from 
 import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, commodoreTabOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { registerCommodoreContextRail } from "./commodore-context-rail.js";
 import { CommodoreZoneHost, commodoreConversationSurface, commodoreHomeTheater, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
-import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { installCommodoreBoard } from "./board.js";
 import { getT } from "./i18n/index.js";
 import { connectTaskforceConversation, TaskforceHost, taskforceConversationSurface } from "./taskforce/taskforce.js";
@@ -78,7 +77,6 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     language: commodoreLanguage,
     conversationActive: isCommodoreConversationActive,
     subscribeConversation: subscribeCommodoreConversationActive,
-    renderRowGlyph: (_commodoreId, operated = true) => operated ? renderCommodoreRowGlyph() : renderCommodoreRowGlyphOff(),
   };
   const install = (ctx: CommodoreClientDeps): (() => void) => {
       const offRemoved = subscribeCommodoreLifecycle((event) => { if (event.op === "removed") snapshots.delete(event.commodoreId); });

@@ -184,7 +184,7 @@ function runtimeHarness(extraBoardTools: readonly ConsoleMcpTool[] = []) {
   };
   const board: CommodoreBoardAdapter = {
     tools: () => [...extraBoardTools],
-    watch: () => ({ recount: () => new Map<CommodoreBoardWakeCode, number>(), scope: () => null, brief: () => null, attribute: (tool) => tool, emptyOperated: () => false, dispose: () => {} }),
+    watch: () => ({ recount: () => new Map<CommodoreBoardWakeCode, number>(), scope: () => null, brief: () => null, attribute: (tool) => tool, empty: () => false, dispose: () => {} }),
     objective: () => null,
   };
   const supervisor = createCommodoreSupervisor({

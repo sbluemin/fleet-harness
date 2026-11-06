@@ -2,7 +2,7 @@ import type { ConversationMemberProfile, GroupBoardActions } from "../../executi
 import type { LocalizedText } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import type { ConsoleObjectiveSummary } from "../../execution/shared/client-contract.js";
-import type { ObjectiveCluster, ObjectiveClusterMember, ObjectiveClusterProgress, ObjectiveClusterRow, ObjectiveClusterRowMark, ObjectiveClusterRowNote, ObjectiveClusterRowProvenance, ObjectiveClusterSource } from "../shared/objective-clusters.js";
+import type { ObjectiveCluster, ObjectiveClusterMember, ObjectiveClusterProgress, ObjectiveClusterRow, ObjectiveClusterRowNote, ObjectiveClusterRowProvenance, ObjectiveClusterSource } from "../shared/objective-clusters.js";
 
 import { inboxReasons, livePersonHold, stalledObjectives, type BoardObservation, type BoardObserver } from "../shared/board-state.js";
 import { memberFailureReason } from "../shared/signals.js";
@@ -12,7 +12,6 @@ import { objectiveConversation } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation, openCommodoreLog } from "./board-commodore.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
-import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./board-commodore.js";
 import { answeringText, askObjectiveTitle, commodoreAliasOf, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskOwners, personTurnAt, readCommodore, subscribeCommodore } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
@@ -117,18 +116,16 @@ function ageOf(at: number, now: number): { readonly unit: "now" } | { readonly u
 
 /**
  * 줄 둘째 줄의 출처 — 사람이 아닌 손이 더한 목표면 그 손(사람은 기본 주인이라 적지 않고, 후속은 `followup` 이 원천을 말한다),
- * 그리고 마지막으로 손댄 이와 그 행위·때. 사령관이 더한 목표는 줄 끝 표식이 사령관 운영으로 서 있는 동안 그 표식이 말하므로 숨기고,
- * 실험 기능이 꺼졌거나 사람이 돌려받았으면 글로 적는다(돌려받은 줄에서 사령관이 만들었다는 단서가 사라지지 않게). 사령관의 손은
- * brass 글자로만 선다.
+ * 그리고 마지막으로 손댄 이와 그 행위·때. 사령관의 손은 brass 글자로만 선다.
  */
-function provenanceOf(objective: Objective, board: CommodoreBoard, now: number): ObjectiveClusterRowProvenance[] {
+function provenanceOf(objective: Objective, now: number): ObjectiveClusterRowProvenance[] {
   const out: ObjectiveClusterRowProvenance[] = [];
   // 출처 줄의 사령관 이름 — 별칭이 있으면 별칭을, 없으면 지금처럼 역할 이름(「사령관」)을 쓴다.
   const alias = commodoreAliasOf(objective.commodoreId);
   const added = objective.addedBy;
   if (added && !objective.origin) {
     if (!("kind" in added)) out.push({ text: (locale) => { const t = getT(locale); return t("objectives.prov.addedBy", { who: added.title ?? t("objectives.actor.agent") }); } });
-    else if (!board.enabled || objective.operator !== "commodore") out.push({ text: (locale) => { const t = getT(locale); return alias ? t("objectives.prov.addedBy", { who: alias }) : t("objectives.prov.addedByCommodore"); }, tone: "accent" });
+    else out.push({ text: (locale) => { const t = getT(locale); return alias ? t("objectives.prov.addedBy", { who: alias }) : t("objectives.prov.addedByCommodore"); }, tone: "accent" });
   }
   const last = lastAct(objective);
   if (last) {
@@ -145,45 +142,13 @@ function provenanceOf(objective: Objective, board: CommodoreBoard, now: number):
   return out;
 }
 
-/**
- * 줄 끝 사령관 표식 — 그 자체가 맡김 스위치다. 기준은 서버가 판정해 보낸 운영 주체(`operator`) 하나이고(깨움과 같은 값),
- * 누르면 사람 전용 라우트로 맡기거나 돌려받는다. 표식의 활성 잉크는 루틴 설정과 무관하며,
- * 꺼진 표식은 외곽선이다. 실험 기능이 꺼져 있으면 서지 않는다.
- */
-function commodoreMarkOf(objective: Objective, board: CommodoreBoard): ObjectiveClusterRowMark | undefined {
-  if (!board.enabled) return undefined;
-  const operated = objective.operator === "commodore";
-  return {
-    square: "filled",
-    renderGlyph: operated ? renderCommodoreRowGlyph : renderCommodoreRowGlyphOff,
-    ...(board.peek && operated ? { emphasized: true } : {}),
-    label: (locale) => getT(locale)(operated ? "objectives.mark.commodore.onTip" : "objectives.mark.commodore.offTip"),
-    toggle: {
-      pressed: operated,
-      label: (locale) => getT(locale)("objectives.mark.commodore.toggle", { title: objective.title }),
-      onToggle: (language) => setOperator(objective, !operated, language),
-    },
-  };
-}
-
-/** 맡기기·돌려받기 — 사람만 바꾸는 라우트. 결과는 목표 보기 갱신으로 돌아와 표식이 따라 바뀐다. */
-function setOperator(objective: Objective, commodore: boolean, language: "en" | "ko"): void {
-  const api = objectivesApi();
-  if (api) void post(api, "/objective/operator", { objectiveId: objective.id, commodore, language }).catch(() => undefined);
-}
-
-/**
- * 구성원 실패와 정체는 자율 운영과 상관없이 사람의 줄에 선다. 자율 운영이 돌면 감독자가 본 정체를 그대로 쓰고(깨움과 같은 값), 꺼져
- * 있으면 보드가 같은 판정(`stalledObjectives`)으로 직접 센 값을 쓴다 — 한 줄에 정체 메모는 언제나 한 출처에서 하나다.
- */
 function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean): Pick<ObjectiveClusterRow, "notes"> {
   const failureNote = memberFailureNote(objective);
   const failed = failureNote === null ? [] : [failureNote === "objectives.note.memberLimited" ? NOTE_MEMBER_LIMITED : failureNote === "objectives.note.memberRateLimited" ? NOTE_MEMBER_RATE_LIMITED : NOTE_MEMBER_FAILED];
   if (!board.active) return stalled || failed.length ? { notes: [...failed, ...(stalled ? [NOTE_STALLED] : [])] } : {};
-  // 답하는 중·검토하는 중은 사령관이 운영하고 사람에게 넘기지 않은 항목에만 — 사람의 목표의 결정·검토로는 사령관이 깨어나지 않는다(서버 판정 `operator`).
-  const handles = objective.operator !== "human";
+  // 답하는 중·검토하는 중은 사람에게 넘기지 않은 항목에만 선다.
   const notes: ObjectiveClusterRowNote[] = [...failed];
-  if (handles && objective.awaitingReview && !livePersonHold(objective, "review")) notes.push(NOTE_REVIEWING);
+  if (objective.awaitingReview && !livePersonHold(objective, "review")) notes.push(NOTE_REVIEWING);
   if (board.stalled.includes(objective.id)) notes.push(NOTE_STALLED);
   return notes.length ? { notes } : {};
 }
@@ -212,8 +177,7 @@ function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<Objec
 function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined, board: CommodoreBoard = NO_COMMODORE, stalled = false, now = Date.now()): ObjectiveClusterRow | null {
   if (objective.removed) return null;
   const done = !!objective.done;
-  const provenance = provenanceOf(objective, board, now);
-  const mark = commodoreMarkOf(objective, board);
+  const provenance = provenanceOf(objective, now);
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
   const review = objective.awaitingReview;
@@ -232,7 +196,6 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     activityAt: objective.boardUpdatedAt ?? objective.createdAt,
     ...(originTitle !== undefined ? { followup: { originTitle } } : {}),
     ...(provenance.length ? { provenance } : {}),
-    ...(mark ? { mark } : {}),
     ...rowNotes(objective, board, stalled),
     ...(selected ? { selected: true } : {}),
     ...(review ? { review: (language: "en" | "ko") => reviewObjective(objective, language) } : {}),
