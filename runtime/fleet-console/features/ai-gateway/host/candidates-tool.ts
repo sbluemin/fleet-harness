@@ -8,7 +8,7 @@ export const FLEET_AI_GATEWAY_MCP_SERVER = "fleet-ai-gateway";
 export const COMMANDER_CANDIDATES_INSTRUCTIONS = "Read fleet-ai-gateway candidates before choosing member models and efforts for their missions' scale and risk.";
 
 const CANDIDATES_TOOL_DESCRIPTION =
-  "Current eligible models and allowed efforts, ordered by quota headroom (most first). Unknown pressure is unmeasured, not low pressure.";
+  "Eligible models and allowed efforts, most quota headroom first. Unknown pressure is unmeasured, not low.";
 
 /**
  * `candidates` 도구. 결과는 `GET /api/v1/ai-gateway/candidates` 본문과 같은 함수가 만든 값 그대로다.
