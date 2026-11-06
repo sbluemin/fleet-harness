@@ -676,6 +676,10 @@ describe("Objectives contract", () => {
     expect(resumed).toEqual([reviewer.id]);
     expect(store.find(objective.id)!.members.find((member) => member.id === late.id)!.sessionName).toBeNull();
     expect(objectiveRecords.has(unchosen.id)).toBe(false);
+    // 사람이 고른 모델을 다시 비우면 지휘관이 지정할 자리다 — 사람 보호로 남기지 않는다.
+    await route("member/patch", { objectiveId: objective.id, memberId: unchosen.id, patch: { launch: SONNET } });
+    await route("member/patch", { objectiveId: objective.id, memberId: unchosen.id, patch: { launch: null } });
+    expect(store.storedMember(objective.id, unchosen.id)).toMatchObject({ launch: undefined, launchBy: "commander" });
     // 옛 판의 라우팅 기록(구성원 route 선택·기동 근거, 지휘관 라우팅)은 오류 없이 선택 없음으로 읽는다.
     const legacy = JSON.parse(fs.readFileSync(objectiveFile(objective.id), "utf8")) as { commanderRouting?: true; members: { id: string; launch?: unknown; routed?: unknown }[] };
     legacy.commanderRouting = true;
@@ -2266,8 +2270,7 @@ describe("Objectives contract", () => {
     expect((await call("set_member_launch", { objectiveId: id, member: workerId, mode: "model", model: "sonnet" }, id)).structuredContent.error).toBe("member_launch_person_chosen");
     activity.set(workerId, "idle");
     hostChat.delete(workerId);
-    // 사람의 명시적 선택 해제도 선택이다 — 지휘관이 읽어 편집 표시를 거둬도, 재시작해도 보호가 남는다.
-    expect((await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: null } })).status).toBe(200);
+    // 사람이 고른 모델은 지휘관이 읽어 편집 표시를 거둬도, 재시작해도 보호가 남는다.
     await command("read", {}, id);
     const personSelection = store.storedMember(id, workerId)!;
     expect(personSelection.launchBy).toBe("human");
