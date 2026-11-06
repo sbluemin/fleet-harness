@@ -85,8 +85,9 @@ export function CommanderObjectivePopover({ commodoreId, objectiveId, anchor, la
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // 날짜 선택기가 떠 있으면 그 Esc는 선택기의 것이다 — 선택기가 먼저 닫힌다.
+      // 날짜 선택기가 떠 있으면 그 Esc는 선택기의 것이다 — 선택기가 먼저 닫힌다. 팝업에서 연 결과물 창 안의 Esc도 그 창의 것이다.
       if (event.key !== "Escape" || document.querySelector(".objectives-cal")) return;
+      if (event.target instanceof Element && event.target.closest(".objectives-result-window")) return;
       event.preventDefault();
       event.stopPropagation();
       onCloseRef.current(true);

@@ -1013,7 +1013,7 @@ a.objectives-result-open:focus-visible { color: var(--brass-ink); box-shadow: va
 .commander-objective-popover-head { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; }
 .commander-objective-popover-avatar { display: grid; place-items: center; width: 40px; height: 40px; }
 .commander-objective-popover-heading { display: flex; flex-direction: column; min-width: 0; }
-.commander-objective-popover-heading b { font-size: var(--t-md, 14px); font-weight: var(--weight-bold); line-height: 1.3; overflow-wrap: anywhere; }
+.commander-objective-popover-heading b { font-size: var(--t-md); font-weight: var(--weight-bold); line-height: 1.3; overflow-wrap: anywhere; }
 .commander-objective-popover-heading small { color: var(--text-tertiary); font-size: var(--t-xs); }
 .commander-objective-popover-sec { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--hairline); }
 .commander-objective-popover-sec h4 { margin: 0 0 4px; color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
