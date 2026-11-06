@@ -6,6 +6,7 @@ import {
 } from "../downstream/wire/anthropic-messages/inbound.js";
 import {
   anthropicNativeHeaders,
+  withAnthropicContextOverflow,
   ANTHROPIC_MESSAGES_URL,
 } from "../upstream/anthropic/native.js";
 import { claudeCodeHarnessProfile } from "../downstream/harness/claude-code/profile.js";
@@ -720,14 +721,16 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       upstream ??= await gateway.stream(body, callOptions);
       // 갱신 뒤에 남은 업스트림 401·403. 네이티브 Anthropic 패스스루는 이 분기에 오지 않는다.
       const clientStatus = harness.decisiveRefusalStatus?.(upstream.status) ?? upstream.status;
-      res.writeHead(clientStatus, applyDecisiveRefusalHeaders(
+      const responseHeaders = applyDecisiveRefusalHeaders(
         clientStatus,
         headerEntries(upstream.headers),
         harness.decisiveRefusalHeaders,
-      ));
+      );
       for await (const chunk of upstream.body) {
+        if (!res.headersSent) res.writeHead(clientStatus, responseHeaders);
         if (!res.write(chunk)) await drain(res, controller.signal);
       }
+      if (!res.headersSent) res.writeHead(clientStatus, responseHeaders);
       res.end();
       clock?.finish("ok");
     } catch (error) {
@@ -835,7 +838,7 @@ async function proxyToAnthropic(
     ...(retryableStatus ? { retryableStatus } : {}),
     ...(decisiveRefusalHeaders ? { decisiveRefusalHeaders } : {}),
     keepAlive: true,
-    fetchImpl,
+    fetchImpl: withAnthropicContextOverflow(fetchImpl),
     headers,
     signal,
     url: ANTHROPIC_MESSAGES_URL,

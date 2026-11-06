@@ -65,8 +65,9 @@ export async function proxyAnthropicMessages(
   // would strand a transient upstream failure that one attempt would have cleared.
   // Native Anthropic's 401 belongs to the caller's own credential and stays unchanged.
   const status = options.retryableStatus?.(upstream.status) ?? upstream.status;
-  res.writeHead(status, applyDecisiveRefusalHeaders(status, responseHeaders, options.decisiveRefusalHeaders));
+  const clientHeaders = applyDecisiveRefusalHeaders(status, responseHeaders, options.decisiveRefusalHeaders);
   if (!upstream.body) {
+    res.writeHead(status, clientHeaders);
     res.end();
     return;
   }
@@ -90,8 +91,10 @@ export async function proxyAnthropicMessages(
     ? withSseKeepAlive(observedBody)
     : observedBody;
   for await (const chunk of responseBody) {
+    if (!res.headersSent) res.writeHead(status, clientHeaders);
     if (!res.write(chunk)) await drain(res, options.signal);
   }
+  if (!res.headersSent) res.writeHead(status, clientHeaders);
   res.end();
 }
 

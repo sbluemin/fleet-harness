@@ -5,6 +5,9 @@
  * 이 모듈이 그 경로의 엔드포인트와 헤더 정책을 소유하고, 런타임은 본문/응답 펌핑만 담당한다.
  */
 
+import { ContextWindowExceededError } from "../../canonical/index.js";
+import { linkAbortSignal, parseSseFrameFields, parseUpstreamSseStream, readBoundedBody } from "../../transport/upstream-sse.js";
+
 /** Native Anthropic Messages 엔드포인트. */
 export const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 
@@ -35,4 +38,67 @@ export function anthropicNativeHeaders(
     headers["anthropic-beta"] = [...betas].join(",");
   }
   return headers;
+}
+
+/** 원문 중계에서도 입력 초과만 복구 가능한 413으로 올린다. 바이트 제한 413은 그대로다. */
+export function withAnthropicContextOverflow(fetchImpl: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const response = await fetchImpl(input, init);
+    const streaming = response.ok && response.headers.get("content-type")?.includes("text/event-stream") === true;
+    if (response.status !== 400 && !streaming) return response;
+    const controller = new AbortController();
+    const unlink = linkAbortSignal(init?.signal ?? undefined, controller);
+    if (streaming) {
+      const events = parseUpstreamSseStream(response.body, {
+        controller, idleTimeoutMs: 300_000, maxBodyBytes: 64 * 1024 * 1024,
+        onClose: unlink, missingBodyMessage: "Anthropic streaming response had no body",
+      }, (frame) => {
+        const { data } = parseSseFrameFields(frame);
+        let value: unknown;
+        try { value = JSON.parse(data); } catch { /* 원문이 JSON이 아닌 SSE 주석도 보존한다. */ }
+        refuseAnthropicContextOverflow(value);
+        return new TextEncoder().encode(`${frame}\n\n`);
+      });
+      const iterator = events[Symbol.asyncIterator]();
+      return new Response(new ReadableStream<Uint8Array>({
+        async pull(destination) {
+          try {
+            const next = await iterator.next();
+            if (next.done) destination.close();
+            else destination.enqueue(next.value);
+          } catch (error) {
+            destination.error(error);
+          }
+        },
+        async cancel() {
+          controller.abort(new DOMException("stream cancelled", "AbortError"));
+          await iterator.return?.(undefined);
+        },
+      }), { status: response.status, headers: response.headers });
+    }
+    try {
+      const body = await readBoundedBody(response.body, {
+        controller,
+        idleTimeoutMs: 300_000,
+        maxBodyBytes: 64 * 1024 * 1024,
+      });
+      let value: unknown;
+      try { value = JSON.parse(new TextDecoder().decode(body)); } catch { /* 원문 비JSON 오류는 보존한다. */ }
+      refuseAnthropicContextOverflow(value);
+      return new Response(Uint8Array.from(body), { status: response.status, statusText: response.statusText, headers: response.headers });
+    } finally {
+      unlink();
+    }
+  };
+}
+
+function refuseAnthropicContextOverflow(value: unknown): void {
+  if (!value || typeof value !== "object" || !("error" in value)) return;
+  const error = value.error;
+  if (error && typeof error === "object" && "type" in error && "message" in error
+    && error.type === "invalid_request_error" && typeof error.message === "string"
+    && /^prompt is too long\b/i.test(error.message)) {
+    const tokens = /^prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i.exec(error.message);
+    throw new ContextWindowExceededError(tokens ? Number(tokens[1]) : undefined, tokens ? Number(tokens[2]) : undefined);
+  }
 }

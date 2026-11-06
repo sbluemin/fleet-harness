@@ -92,6 +92,89 @@ describe("Claude Codex compaction routing", () => {
     expect(res.status).toBe(401);
   });
 
+  it("recovers input overflow before commit and preserves streaming after output starts", async () => {
+    const overflow = { type: "invalid_request_error", code: "context_length_exceeded", message: "Your input exceeds the context window of this model." };
+    const frame = (event: unknown) => `data: ${JSON.stringify(event)}\n\n`;
+    const created = { type: "response.created", response: { id: "r", model: "gpt-6.1-sol", usage: null } };
+    const failed = { type: "response.failed", response: { error: overflow } };
+    const text = { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "recovered" };
+    const completed = { type: "response.completed", response: { id: "r", model: "gpt-6.1-sol", usage: { input_tokens: 1, output_tokens: 1 } } };
+    let mode: "http" | "early" | "summary" | "late" | "success" = "http";
+    let finish: (() => void) | undefined;
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      if (mode === "http" || mode === "summary") {
+        const native = payload.input.some((item: { type: string }) => item.type === "compaction_trigger");
+        return new Response(JSON.stringify({ error: native ? { type: "invalid_request_error", message: "Unsupported compaction trigger" } : overflow }), { status: 400 });
+      }
+      if (mode === "success") {
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+          controller.enqueue(new TextEncoder().encode(frame(created) + frame(text)));
+          finish = () => { controller.enqueue(new TextEncoder().encode(frame(completed))); controller.close(); };
+        } }), { headers: { "content-type": "text/event-stream" } });
+      }
+      return new Response(frame(created) + (mode === "late" ? frame(text) : "") + frame(failed), { headers: { "content-type": "text/event-stream" } });
+    });
+    const router = createAiGatewayRouter({
+      readAuth, fetch: fetchMock,
+      compactionStore: {
+        path: "unused", recordPreCompact() {}, recordPostCompact() {}, clearPending() {}, writeReady() {}, clear() {},
+        readReady: () => undefined,
+        readPending: () => ({ trigger: "auto", customInstructions: "", updatedAt: Date.now() }),
+      },
+    });
+    const run = async (messages?: ReadonlyArray<Record<string, unknown>>) => {
+      const res = response();
+      await router.handle(ctx({ res, token: ANTHROPIC_CRED, messages }));
+      return res;
+    };
+    const expectOverflow = (res: ResponseStub) => {
+      expect(res.status).toBe(413);
+      const error = JSON.parse(res.body).error;
+      expect(error.type).toBe("invalid_request_error");
+      expect(error.message).toMatch(/^Prompt is too long:.*context window/);
+    };
+    try {
+      const guarded = await run([{ role: "user", content: "x".repeat(2_400_000) }]);
+      expectOverflow(guarded);
+      const numericOverflow = /^Prompt is too long: (\d+) tokens > (\d+) maximum context window$/.exec(JSON.parse(guarded.body).error.message);
+      expect(Number(numericOverflow?.[1])).toBeGreaterThan(500_000);
+      expect(Number(numericOverflow?.[2])).toBe(500_000);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expectOverflow(await run());
+      mode = "early";
+      expectOverflow(await run());
+      mode = "summary";
+      const summary = response();
+      await router.handle(ctx({ res: summary, token: ANTHROPIC_CRED,
+        metadata: { user_id: JSON.stringify({ session_id: "4d7c1b52-3f7e-4f0a-9d55-2b8f6a1c0e91" }) },
+        messages: [{ role: "user", content: `${CLAUDE_COMPACT_PROMPT_MARKER} Summarize.` }],
+      }));
+      expectOverflow(summary);
+      mode = "late";
+      const late = await run();
+      expect(late.status).toBe(200);
+      expect(late.body).toContain("recovered");
+      expect(late.body).toContain("event: error");
+      expect(late.body).toContain("Prompt is too long");
+      mode = "success";
+      const live = response();
+      let firstOutput!: () => void;
+      const first = new Promise<void>((resolve) => { firstOutput = resolve; });
+      const write = live.write.bind(live);
+      live.write = (chunk) => { const result = write(chunk); if (live.body.includes("recovered")) firstOutput(); return result; };
+      const pending = router.handle(ctx({ res: live, token: ANTHROPIC_CRED }));
+      await first;
+      expect(live.status).toBe(200);
+      expect(live.body).not.toContain("message_stop");
+      finish!();
+      await pending;
+      expect(live.body).toContain("message_stop");
+    } finally {
+      router.dispose();
+    }
+  });
+
   // 압축 다음 턴은 체크포인트를 앞에 실은 채 업스트림에 닿아야 한다. 한때 입력 토큰 추정이
   // 그 항목을 도구 결과로 읽어 TypeError를 냈고, 압축 뒤 모든 턴이 500으로 끝났다.
   it("continues the turn after a compaction with the checkpoint replayed upstream", async () => {

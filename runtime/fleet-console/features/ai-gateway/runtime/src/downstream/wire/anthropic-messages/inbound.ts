@@ -8,6 +8,7 @@ import type {
   AiGatewayAdapter,
   CanonicalFunctionTool,
   CanonicalResponseRequest,
+  CanonicalResponseEvent,
 } from "../../../canonical/index.js";
 import { OpenAIResponsesAdapter } from "../../../upstream/codex/responses/adapter.js";
 import { withSseKeepAlive } from "../../../transport/sse-keepalive.js";
@@ -141,7 +142,7 @@ export class AnthropicMessagesGateway {
           "cache-control": "no-cache",
           "content-type": "text/event-stream; charset=utf-8"
         }),
-        body: withSseKeepAlive(encodeAnthropicSse(events, {
+        body: withSseKeepAlive(encodeAnthropicSse(await deferCreatedEvents(events), {
           model: request.model,
           estimatedInputTokens,
         }))
@@ -161,6 +162,35 @@ export class AnthropicMessagesGateway {
   }
 }
 
+/** Keep an input rejection after response.created recoverable before HTTP headers commit. */
+async function deferCreatedEvents(events: AsyncIterable<CanonicalResponseEvent>): Promise<AsyncIterable<CanonicalResponseEvent>> {
+  const iterator = events[Symbol.asyncIterator]();
+  const pending: CanonicalResponseEvent[] = [];
+  try {
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      pending.push(next.value);
+      if (next.value.type !== "response.created") break;
+    }
+  } catch (error) {
+    await iterator.return?.();
+    throw error;
+  }
+  return (async function* () {
+    try {
+      yield* pending;
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) return;
+        yield next.value;
+      }
+    } finally {
+      await iterator.return?.();
+    }
+  })();
+}
+
 async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
   yield body;
 }
@@ -168,10 +198,10 @@ async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
 /**
  * Pre-flight overflow guard.
  *
- * Upstream providers report an overflow in provider-specific wire shapes we do not
- * translate, so a turn that exceeds the model window can die without any text Claude
- * Code can classify. Refusing the turn locally with the literal `Prompt is too long:`
- * prefix keeps reactive compaction reachable.
+ * Adapters normalize explicit provider overflows too, but this local backstop avoids
+ * sending a request that already exceeds the real catalog window. It never uses the
+ * larger window advertised to the client. The same recoverable refusal keeps reactive
+ * compaction reachable without spending another upstream turn.
  *
  * The estimate is a conservative character-based heuristic (see `estimateTokens`), not
  * a tokenizer. It is a last-resort backstop behind correct window accounting, never the

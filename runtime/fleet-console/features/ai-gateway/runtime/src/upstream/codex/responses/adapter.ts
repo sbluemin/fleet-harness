@@ -16,7 +16,7 @@ import type {
   CanonicalWebSearchSource,
   WithoutReplayMetadata
 } from "../../../canonical/index.js";
-import { withoutReplayMetadata } from "../../../canonical/index.js";
+import { ContextWindowExceededError, withoutReplayMetadata } from "../../../canonical/index.js";
 import {
   UpstreamBodyLimitError,
   UpstreamIdleTimeoutError,
@@ -260,6 +260,14 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
           idleTimeoutMs: this.idleTimeoutMs,
           maxBodyBytes: this.maxBodyBytes
         });
+        let parsedError: unknown;
+        try { parsedError = JSON.parse(new TextDecoder().decode(body)); } catch { /* Preserve non-JSON failures. */ }
+        if ((response.status === 400 || response.status === 413) && isRecord(parsedError) && isRecord(parsedError.error)) {
+          const error = parsedError.error;
+          if (error.code === "context_length_exceeded" || error.type === "context_length_exceeded") {
+            throw new ContextWindowExceededError();
+          }
+        }
         return {
           ok: false,
           status: response.status,
@@ -1030,11 +1038,12 @@ function canonicalEvent(value: unknown, decoding: ArgumentDecoding): CanonicalRe
       return { type: "response.completed", response: terminalSnapshot(value.response, value.type) };
     case "response.failed": {
       const response = record(value.response, "response.failed.response");
+      const error = canonicalError(response.error);
       return {
         type: value.type,
         response: {
           ...responseSnapshot(response),
-          error: canonicalError(response.error)
+          error
         }
       };
     }
@@ -1583,6 +1592,9 @@ function webSearchSources(value: unknown): CanonicalWebSearchSource[] | undefine
 
 function canonicalError(value: unknown): CanonicalError {
   const error = record(value, "error");
+  if (error.code === "context_length_exceeded" || error.type === "context_length_exceeded") {
+    throw new ContextWindowExceededError();
+  }
   const message = string(error.message, "error.message");
   const type =
     typeof error.type === "string" && error.type !== "error"
