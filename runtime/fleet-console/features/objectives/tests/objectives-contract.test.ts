@@ -2173,13 +2173,20 @@ describe("Objectives contract", () => {
       return result.structuredContent;
     };
     // 모델 선택의 공개 경계가 호스트의 풀 판정과 한도 창의 범위를 잃지 않는다. 네이티브 행에는 추측한 풀을 넣지 않는다.
+    // available 은 실제 새 선택 허용과 같다 — 사람이 AI Gateway에서 끈 모델은 실행 카탈로그에 있어도 고를 수 없다.
     const loadout = await board({ action: "models" });
     expect(loadout.models).toEqual([
       { model: "sonnet[1m]", label: "Sonnet", provider: "claude", efforts: ["low"], available: true },
-      { model: "opus[1m]", label: "Opus", provider: "claude", efforts: ["high"], available: true },
-      { model: "xai--grok-4.7", label: "Grok", provider: "xai", efforts: [], available: true, quotaPool: "xai:shared" },
+      { model: "opus[1m]", label: "Opus", provider: "claude", efforts: ["high"], available: false, reason: "not_enabled" },
+      { model: "xai--grok-4.7", label: "Grok", provider: "xai", efforts: [], available: false, reason: "not_enabled", quotaPool: "xai:shared" },
     ]);
     expect(loadout.quota).toEqual(quota.providers);
+    // 사령관이 끈 모델을 고르거나, 고르지 않았는데 쓰일 기본값(여기서는 보드 기본 Opus)이 꺼져 있으면 목표를 만들지 않는다.
+    const offAdd = async (args: Record<string, unknown>) => ((await commodoreList.execute({ action: "add", theaterId: "t1", title: "Off model", ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
+    expect(await offAdd({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_enabled", model: "xai--grok-4.7" });
+    expect(await offAdd({})).toMatchObject({ error: "model_not_enabled", model: "opus[1m]" });
+    expect(store.list("c1")).toEqual([]);
+    gatewayModels.models.push({ modelId: "opus[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["high"] });
     const actor = { kind: "commodore", commodoreId: "c1" };
     const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
     const created = await board({ action: "add", theaterId: "t1", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage], requestSource });
@@ -2379,7 +2386,6 @@ describe("Objectives contract", () => {
     expect(((await route("objective/get", { objectiveId: id })).value as { objective: Objective }).objective.members.find((m) => m.id === workerId)?.next).toEqual({ model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause });
     await route("member/next-cancel", { objectiveId: id, memberId: workerId });
     // 작업 중 도구 선택은 호스트의 턴 뒤 예약을 쓰며, 라우팅 복귀는 그 예약을 거둔다.
-    gatewayModels.models.push({ modelId: "opus[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["high"] });
     activity.set(workerId, "running");
     await command("set_member_launch", { member: workerId, mode: "model", model: "opus", effort: "high" }, id);
     expect(store.find(id)!.members.find((member) => member.id === workerId)).toMatchObject({ launch: { mode: "model", model: "opus[1m]", effort: "high" }, next: { model: "opus[1m]", effort: "high" } });

@@ -35,7 +35,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   });
   // 모든 모델 선택지가 읽는 로스터 — 같은 Gateway 설정 파일의 투영이다. 저장 직후 열린 화면 전부에 다시 읽으라고 알린다.
   // Claude 별칭의 버전 이름도 같은 CLI 표에서 온다. 표가 바뀌면(어느 경로가 물었든) 열린 화면이 다시 읽는다.
-  const models = createModelRosterHost({ readProviderStatuses, ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}) });
+  const models = createModelRosterHost({ readProviderStatuses, readGatewaySettings: aiGatewayStore.read, ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}) });
   const modelRoster = registerModelRosterRoutes(ctx, models);
   ctx.host.lifecycle.registerCleanup(onClaudeNativeModelsChanged(modelRoster.notify));
   ctx.host.lifecycle.registerCleanup(subscribeProviderStatus(modelRoster.notify));
@@ -116,6 +116,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     resolveClaudeExecutable,
     /** Gateway의 compact 정책. 플러그인 에이전트가 Gateway 모델 세션의 문맥을 실제 공급자 창으로 되돌릴 때 읽는다. */
     readGatewayCompactCeiling: () => aiGatewayStore.read().compactCeiling ?? null,
+    /** Gateway 저장 설정. 플러그인 로스터 포트가 사람이 켠 모델 목록을 실행 쪽과 같은 파일에서 읽는다. */
+    readGatewaySettings: aiGatewayStore.read,
     /** 설치된 Claude Code가 별칭을 푸는 버전 조회. 플러그인 로스터 포트의 별칭 고정이 쓴다. */
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     /** 플러그인 로스터가 실행 쪽과 같은 로그인 판정을 쓰도록 넘긴다. 캐시가 비면 미상(전체 노출)이다. */

@@ -598,6 +598,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let resolveClaudeExecutable: (() => Promise<string | undefined>) | undefined;
   let readGatewayCompactCeiling: Awaited<ReturnType<typeof startConsoleExecution>>["readGatewayCompactCeiling"] | undefined;
   let readGatewayProviderStatuses: Awaited<ReturnType<typeof startConsoleExecution>>["readProviderStatuses"] | undefined;
+  let readGatewaySettings: Awaited<ReturnType<typeof startConsoleExecution>>["readGatewaySettings"] | undefined;
   let attachmentsForPlugin: Awaited<ReturnType<typeof startConsoleExecution>>["attachmentsForPlugin"] | undefined;
   const executionCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginLaunchCatalogProviders = new Map<string, ObjectiveLaunchCatalogProvider[]>();
@@ -1199,6 +1200,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 플러그인의 모델 좌표 해석. Gateway 설정 파일을 플러그인이 직접 열지 않도록 같은 파일의 로스터 투영만 내준다.
     models: createModelRosterHost({
       readProviderStatuses: () => readGatewayProviderStatuses?.(),
+      readGatewaySettings: () => readGatewaySettings?.(),
       ensureClaudeNativeModels: async () => { await ensureClaudeNativeModels?.(); },
     }),
     experiments: {
@@ -2617,6 +2619,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       resolveClaudeExecutable = execution.resolveClaudeExecutable;
       readGatewayCompactCeiling = execution.readGatewayCompactCeiling;
       readGatewayProviderStatuses = execution.readProviderStatuses;
+      readGatewaySettings = execution.readGatewaySettings;
       sleepObjective = execution.actions.sleep;
       resumeArchivedObjective = execution.actions.resume;
       stopForArchive = execution.stopForArchive;

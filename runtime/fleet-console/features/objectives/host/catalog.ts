@@ -6,7 +6,7 @@ import { ObjectiveStoreError } from "./store.js";
 
 /**
  * 구성원 모델 목록의 출처 — Console 이 내놓는 실행 카탈로그와 Gateway 한도 요약. 둘 다 루프백 HTTP 로만 읽는다.
- * 모델 목록 화면(console_objectives models)은 실행 카탈로그를, 지휘관의 구성원 모델 제안(fleet-objectives models·plan·enlist)은
+ * 모델 목록 화면(console_objectives models)은 실행 카탈로그에 사람이 켠 목록을 겹쳐 내고, 지휘관의 구성원 모델 제안(fleet-objectives models·plan·enlist)은
  * gateway_models 를 읽는다 — 지휘관의 기동 모델 선택도 라우팅과 같은 후보로 확인한다.
  */
 const CATALOG_PATH = "/api/v1/objectives/records/catalog";
@@ -110,7 +110,32 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
     return { model: row.modelId, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
   }
 
-  return { load: loadCatalog, quota: loadQuota, gatewayModels, checkProposal };
+  /**
+   * 사람이 AI Gateway에서 켠 모델(정준 id) — 부를 때마다 gateway_models 의 후보 목록을 다시 읽어 그 멤버십만 쓴다.
+   * 로그인이 끊긴 공급자의 모델도 빠지는데, 실행 카탈로그도 그 모델을 고를 수 없게 낸다. 라우팅 선호·한도·위임 강도 노출은 보지 않는다(강도는 실행 카탈로그 사다리가 정한다). 읽지 못하면 null.
+   */
+  async function enabledModels(signal: AbortSignal | undefined): Promise<ReadonlySet<string> | null> {
+    const loadout = await gatewayModels(signal);
+    return loadout ? new Set(loadout.models.map((entry) => canonicalModelId(entry.modelId))) : null;
+  }
+
+  /**
+   * 사령관 쪽 지휘관 모델 선택(명시 지정·사령관 기본값·보드 기본)을 확인한다 — 실행 카탈로그에서 고를 수 있고 사람이 켠 모델만 받는다.
+   * 어느 목록이든 읽지 못하면 추측으로 통과시키지 않는다. 강도는 그 모델의 카탈로그 사다리로 확인한다.
+   */
+  async function checkCommander(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined): Promise<{ readonly model: string; readonly effort?: string }> {
+    const [catalog, enabled] = await Promise.all([loadCatalog(signal), enabledModels(signal)]);
+    if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
+    if (!enabled) throw new ObjectiveStoreError("gateway_models_unavailable");
+    const wanted = canonicalModelId(choice.model);
+    const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
+    if (!row || !row.available) throw new ObjectiveStoreError("model_not_in_catalog", undefined, { model: choice.model, ...(row?.reason ? { reason: row.reason } : {}) });
+    if (!enabled.has(wanted)) throw new ObjectiveStoreError("model_not_enabled", undefined, { model: choice.model });
+    if (choice.effort !== undefined && !row.efforts.includes(choice.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.model, efforts: row.efforts });
+    return { model: wanted, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
+  }
+
+  return { load: loadCatalog, quota: loadQuota, gatewayModels, enabledModels, checkProposal, checkCommander };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);

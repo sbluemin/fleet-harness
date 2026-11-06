@@ -609,13 +609,18 @@ it("creates a Commodore with owned Theaters and selected context atomically, rol
   const memory = store.memory.save(sourceId, { branch: "lessons", topic: "Browser", slug: "isolation", title: "Isolation", description: "Use disposable state", why: "Protect user data", how: "Use an isolated root", sources: [{ objectiveId: "o1", title: "Browser work" }], links: ["lessons/Browser/unselected"] });
   const sourceBytes = fs.readFileSync(path.join(entities.dirOf(sourceId)!, "state.json"), "utf8");
   const created = vi.fn();
-  const create = createCommodoreCreator({ ownership, store, created });
+  // 화면 선택기와 같은 로스터에는 Haiku가 있지만 사람이 AI Gateway에서 켠 지휘관 모델은 Opus뿐이다.
+  const models = { roster: () => [{ id: "gateway:claude", label: "Claude", rows: [{ id: "haiku[1m]", label: "Haiku", launch: { model: "haiku[1m]" } }] }], enabled: () => new Set(["opus[1m]"]) };
+  const create = createCommodoreCreator({ ownership, store, created, models });
   const tool = createCommodoreManagementTools({ hasPersonMessage: () => true, stopping: () => false, list: () => entities.ids().map((id) => ({ commodoreId: id, theaters: entities.theatersOf(id) })), create: (input) => create(sourceId, input) })[0]!;
   const input = { action: "create", alias: "Browser", theaters: [theater], description: "Own Browser work", intel: ["Keep work isolated"], memoryRefs: [memory.ref] };
   const call = (args: unknown) => tool.execute(args, { cwd: dir }) as Promise<{ isError: boolean; structuredContent: Record<string, any> }>;
   events.length = 0;
   // 소유하지 않은 실제 폴더도 새 세션 경계로 넘기지 않는다.
   expect(await call({ ...input, theaters: [dir] })).toMatchObject({ isError: true, structuredContent: { error: "theater_not_owned" } });
+  // 사령관이 넘긴 지휘관 모델은 켠 것만 받는다 — 거절된 생성은 UUID·사건을 남기지 않는다.
+  expect(await call({ ...input, commanderModel: "haiku[1m]" })).toMatchObject({ isError: true, structuredContent: { error: "model_not_enabled", model: "haiku[1m]" } });
+  expect(entities.ids()).toEqual([sourceId]);
   // 기억 항목을 쓴 뒤 인덱스 쓰기를 실패시킨다. 일부 파일·UUID·사건도 남아서는 안 된다.
   const rename = fs.renameSync;
   const fault = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {

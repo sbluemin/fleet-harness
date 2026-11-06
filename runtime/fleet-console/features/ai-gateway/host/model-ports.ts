@@ -18,6 +18,11 @@ export interface ModelRosterHost {
    * 열린 선택기가 버전 이름(`Opus 5.5`)으로 다시 읽는다. 처음 읽는 목록이 가족 이름(`Opus`)으로 굳지 않게 하는 통로다.
    */
   warmClaudeVersions?(): void;
+  /**
+   * 사람이 AI Gateway에서 켠 모델의 정준 id(`opus[1m]`, `codex--gpt-6-luna`). 부를 때마다 저장값을 읽는다. 로스터와 달리 로그인은 보지 않는다.
+   * 설정을 읽지 못하면 null이다 — 에이전트의 모델 선택을 확인하는 쪽은 추측으로 통과시키지 않는다.
+   */
+  enabled?(): ReadonlySet<string> | null;
   /** 로스터가 바뀐 직후 울린다. 요청마다 읽지 않는 상주 작업이 쓰는 통로다. */
   subscribe?(listener: () => void): () => void;
 }
