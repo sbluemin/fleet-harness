@@ -642,7 +642,7 @@ describe("delegation assignment", () => {
       fast: true,
       efforts: [],
       pressure: "unknown",
-      summary: "Fast code editing and implementation model (200K context).",
+      summary: "Code editing and implementation model.",
     });
 
     // 리셋이 지난 창이나 미래 시각 관측은 ok로 오인하지 않고 unknown으로 처리한다.

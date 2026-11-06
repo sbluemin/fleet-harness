@@ -43,7 +43,6 @@ import {
  */
 export const GATEWAY_MODEL_ALIAS_PREFIX = "claude-gateway--";
 const CLAUDE_ONE_MILLION_MARKER = "[1m]";
-const CLAUDE_ONE_MILLION_DISPLAY_SUFFIX = " (1M Context)";
 
 export function toGatewayModelAlias(modelId: string): string {
   return `${GATEWAY_MODEL_ALIAS_PREFIX}${modelId}`;
@@ -71,13 +70,6 @@ export function toClaudeGatewayModelId(model: GatewayModel): string {
     ? `${alias}${CLAUDE_ONE_MILLION_MARKER}`
     : alias;
 }
-
-function toClaudeGatewayModelDisplayName(model: GatewayModel): string {
-  return isClaudeOneMillionContextWindow(model.contextWindow)
-    ? `${model.displayName}${CLAUDE_ONE_MILLION_DISPLAY_SUFFIX}`
-    : model.displayName;
-}
-
 
 /**
  * A catalog entry by the id Claude Code actually sends.
@@ -118,7 +110,7 @@ export function buildAnthropicModelList(
     createdAt,
     (model) => ({
       id: toClaudeGatewayModelId(model),
-      displayName: toClaudeGatewayModelDisplayName(model),
+      displayName: model.displayName,
     }),
     (model) => anthropicModelCapabilities(model.effort),
   );

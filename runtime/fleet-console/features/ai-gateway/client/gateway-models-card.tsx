@@ -32,53 +32,14 @@ const PROVIDER_LABEL = {
 
 const OPT_IN = ["xhigh", "max"] as const;
 
-interface FamilyVariant {
-  readonly model: AiGatewayCatalogModel;
-  readonly fast: boolean;
-  readonly windowLabel: string;
-}
-
 interface ModelFamily {
   readonly key: string;
   readonly name: string;
-  readonly variants: readonly FamilyVariant[];
-}
-
-function windowLabel(contextWindow: number | null): string {
-  if (contextWindow === null) return "";
-  return contextWindow >= 1_000_000 ? "1M" : `${Math.round(contextWindow / 1000)}K`;
+  readonly model: AiGatewayCatalogModel;
 }
 
 function groupFamilies(models: readonly AiGatewayCatalogModel[]): ModelFamily[] {
-  const groups = new Map<string, FamilyVariant[]>();
-  for (const model of models) {
-    const key = aiGatewayModelFamilyKey(model.id);
-    const variant = { model, fast: model.fast, windowLabel: windowLabel(model.contextWindow) };
-    const list = groups.get(key);
-    if (list) list.push(variant);
-    else groups.set(key, [variant]);
-  }
-  return [...groups.entries()].map(([key, variants]) => {
-    const ordered = [...variants].sort((a, b) =>
-      (a.model.contextWindow ?? 0) - (b.model.contextWindow ?? 0) || Number(a.fast) - Number(b.fast));
-    const named = ordered.find((variant) => !variant.fast) ?? ordered[0];
-    const name = ordered.length > 1 && named
-      ? named.model.name.replace(/-fast$/i, "").replace(/-(\d+[km])$/i, "")
-      : named?.model.name ?? key;
-    return { key, name, variants: ordered };
-  });
-}
-
-function windowsOf(family: ModelFamily): string[] {
-  const labels: string[] = [];
-  for (const variant of family.variants) {
-    if (variant.windowLabel && !labels.includes(variant.windowLabel)) labels.push(variant.windowLabel);
-  }
-  return labels;
-}
-
-function hasFastPair(family: ModelFamily): boolean {
-  return family.variants.some((variant) => variant.fast) && family.variants.some((variant) => !variant.fast);
+  return models.map((model) => ({ key: model.id, name: model.name, model }));
 }
 
 /**
@@ -125,7 +86,7 @@ function delegationFamilyCounts(state: ReturnType<typeof useSystemPromptSettings
   let waiting = 0;
   let unknown = 0;
   for (const provider of orderProviders(state.aiGatewayCatalog.providers)) {
-    const on = groupFamilies(provider.models).filter((family) => family.variants.some((variant) => ids.has(variant.model.id))).length;
+    const on = groupFamilies(provider.models).filter((family) => ids.has(family.model.id)).length;
     const status = state.aiGatewayLogin[provider.id];
     if (isProviderCatalogVisible(status, provider.id)) candidates += on;
     else waiting += on;
@@ -303,7 +264,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
   const providers = orderProviders(state.aiGatewayCatalog.providers);
   const families = providers.map((provider) => ({ provider, families: groupFamilies(provider.models) }));
   const enabledIds = new Set(enabled.map((entry) => entry.id));
-  const providerHasEnabled = (provider: AiGatewayCatalogProvider) => groupFamilies(provider.models).some((family) => family.variants.some((variant) => enabledIds.has(variant.model.id)));
+  const providerHasEnabled = (provider: AiGatewayCatalogProvider) => groupFamilies(provider.models).some((family) => enabledIds.has(family.model.id));
   const enabledProviders = providers.filter(providerHasEnabled);
   const priority = (selection.providerPriority ?? []).filter((id): id is AiGatewayProviderId => enabledProviders.some((provider) => provider.id === id));
   const loginOf = (id: string) => state.aiGatewayLogin[id as AiGatewayProviderId] ?? null;
@@ -313,28 +274,19 @@ export function AiGatewayModelsCard(): React.ReactElement {
   const saveModels = (models: AiGatewaySettings["models"], providerPriority?: readonly AiGatewayProviderId[]): void => {
     void setSystemPromptSettingsField("aiGateway", providerPriority !== undefined ? { models: models ?? [], providerPriority } : { models: models ?? [] });
   };
-  const replaceVariant = (family: ModelFamily, nextId: string): void => {
-    const current = family.variants.find((variant) => enabledIds.has(variant.model.id));
-    if (!current || current.model.id === nextId) return;
-    saveModels(enabled.map((entry) => entry.id === current.model.id ? { ...entry, id: nextId } : entry));
-  };
   const turnOn = (family: ModelFamily): void => {
-    if (family.variants.some((variant) => enabledIds.has(variant.model.id))) return;
-    const chosen = family.variants.find((variant) => !variant.fast) ?? family.variants[0];
-    if (!chosen) return;
-    const efforts = defaultEffortSelection(chosen.model.effort?.levels ?? []);
-    saveModels([...enabled, { id: chosen.model.id, ...(efforts ? { efforts } : {}) }]);
+    if (enabledIds.has(family.model.id)) return;
+    const efforts = defaultEffortSelection(family.model.effort?.levels ?? []);
+    saveModels([...enabled, { id: family.model.id, ...(efforts ? { efforts } : {}) }]);
   };
   const turnOff = (provider: AiGatewayCatalogProvider, family: ModelFamily): void => {
-    const current = family.variants.find((variant) => enabledIds.has(variant.model.id));
-    if (!current) return;
-    const removed = enabled.find((entry) => entry.id === current.model.id);
+    const removed = enabled.find((entry) => entry.id === family.model.id);
     if (!removed) return;
     const removedIndex = enabled.findIndex((entry) => entry.id === removed.id);
-    const removedEntry = { id: removed.id, ...(removed.efforts ? { efforts: [...removed.efforts] } : {}) };
+    const removedEntry = { ...removed, ...(removed.efforts ? { efforts: [...removed.efforts] } : {}) };
     const remaining = enabled.filter((entry) => entry.id !== removed.id);
     const providerId = provider.id as AiGatewayProviderId;
-    const still = groupFamilies(provider.models).some((other) => other.variants.some((variant) => remaining.some((entry) => entry.id === variant.model.id)));
+    const still = groupFamilies(provider.models).some((other) => remaining.some((entry) => entry.id === other.model.id));
     const dropPriority = !still && priority.includes(providerId);
     const priorityIndex = priority.indexOf(providerId);
     const nextPriority = dropPriority ? priority.filter((id) => id !== providerId) : undefined;
@@ -359,18 +311,18 @@ export function AiGatewayModelsCard(): React.ReactElement {
     });
   };
   const setOptIn = (family: ModelFamily, level: string, on: boolean): void => {
-    const current = enabled.find((entry) => family.variants.some((variant) => variant.model.id === entry.id));
-    const ladder = current ? family.variants.find((variant) => variant.model.id === current.id)?.model.effort?.levels ?? [] : [];
+    const current = enabled.find((entry) => family.model.id === entry.id);
+    const ladder = family.model.effort?.levels ?? [];
     if (!current) return;
     const opted = OPT_IN.filter((entry) => entry === level ? on : (current.efforts ?? ladder).includes(entry));
     const efforts = canonicalEffortSelection(ladder, [...ladder.filter((entry) => !OPT_IN.includes(entry as typeof OPT_IN[number])), ...opted]);
-    saveModels(enabled.map((entry) => entry.id === current.id ? { id: entry.id, ...(efforts ? { efforts } : {}) } : entry));
+    saveModels(enabled.map((entry) => entry.id === current.id ? { id: entry.id, ...(entry.fast ? { fast: true } : {}), ...(efforts ? { efforts } : {}) } : entry));
   };
 
   const tokens = query.trim().toLowerCase().split(/\s+/).filter((token) => token.length > 0);
   const visible = (provider: AiGatewayCatalogProvider, family: ModelFamily) => {
     if (tokens.length === 0) return true;
-    const haystack = `${provider.id} ${t(PROVIDER_LABEL[provider.id as AiGatewayProviderId])} ${family.name} ${family.variants.map((variant) => `${variant.model.name} ${variant.model.id} ${variant.windowLabel}`).join(" ")}`.toLowerCase();
+    const haystack = `${provider.id} ${t(PROVIDER_LABEL[provider.id as AiGatewayProviderId])} ${family.name} ${family.model.id}`.toLowerCase();
     return tokens.every((token) => haystack.includes(token));
   };
 
@@ -420,7 +372,7 @@ export function AiGatewayModelsCard(): React.ReactElement {
           const id = provider.id as AiGatewayProviderId;
           const name = t(PROVIDER_LABEL[id]);
           const open = query.trim().length > 0 || !collapsed.has(provider.id);
-          const onCount = rows.filter((family) => family.variants.some((variant) => enabledIds.has(variant.model.id))).length;
+          const onCount = rows.filter((family) => enabledIds.has(family.model.id)).length;
           const kind = gatewayLoginKind(provider.id, loginOf(provider.id));
           const signedOut = kind === "out";
           return (
@@ -458,41 +410,23 @@ export function AiGatewayModelsCard(): React.ReactElement {
                     </p>
                   ) : null}
                   {shown.map((family) => {
-                    const current = family.variants.find((variant) => enabledIds.has(variant.model.id));
+                    const current = enabled.find((entry) => entry.id === family.model.id);
                     const on = current !== undefined;
-                    const ladder = current?.model.effort?.levels ?? family.variants[0]?.model.effort?.levels ?? [];
-                    const storedEfforts = current ? enabled.find((entry) => entry.id === current.model.id)?.efforts : undefined;
+                    const ladder = family.model.effort?.levels ?? [];
+                    const storedEfforts = current?.efforts;
                     const exposed = storedEfforts ?? ladder;
-                    const wins = windowsOf(family);
                     return (
                       <div key={family.key} className={on ? "ai-gateway-family" : "ai-gateway-family is-off"}>
                         <SettingsToggle checked={on} disabled={saving} ariaLabel={family.name} onChange={() => (on ? turnOff(provider, family) : turnOn(family))} />
                         <div className="ai-gateway-family-name">
                           <span>{family.name}</span>
-                          {on ? null : <span className="ai-gateway-model-meta">{[wins.length > 1 ? `${wins[0]}–${wins[wins.length - 1]}` : wins[0], hasFastPair(family) ? t("terminal.settings.aiGatewayFastAvailable") : null].filter(Boolean).join(" · ")}</span>}
+
                         </div>
                         {on ? (
                           <div className="ai-gateway-family-controls">
-                            {wins.length > 1 ? (
-                              <Select
-                                compact
-                                className="ai-gateway-window"
-                                popupClassName="ai-gateway-window-menu"
-                                label={`${family.name} ${t("terminal.settings.aiGatewayWindow")}`}
-                                disabled={saving}
-                                value={current.windowLabel}
-                                options={wins.map((label) => ({ value: label, label }))}
-                                onChange={(value) => {
-                                  const next = family.variants.find((variant) => variant.windowLabel === value && variant.fast === current.fast)
-                                    ?? family.variants.find((variant) => variant.windowLabel === value);
-                                  if (next) replaceVariant(family, next.model.id);
-                                }}
-                              />
-                            ) : <span className="ai-gateway-window-fixed">{wins[0]}</span>}
-                            {hasFastPair(family) ? (
-                              <button type="button" className={current.fast ? "ai-gateway-fast is-on" : "ai-gateway-fast"} aria-pressed={current.fast} disabled={saving} onClick={() => {
-                                const next = family.variants.find((variant) => variant.windowLabel === current.windowLabel && variant.fast !== current.fast);
-                                if (next) replaceVariant(family, next.model.id);
+                            {family.model.fast ? (
+                              <button type="button" className={current.fast ? "ai-gateway-fast is-on" : "ai-gateway-fast"} aria-pressed={current.fast === true} disabled={saving} onClick={() => {
+                                saveModels(enabled.map((entry) => entry.id === current.id ? { ...entry, fast: entry.fast !== true } : entry));
                               }}>{current.fast ? "✓ Fast" : "Fast"}</button>
                             ) : null}
                             {ladder.length === 0 ? <span className="ai-gateway-inline-hint">{t("terminal.settings.aiGatewayNoEffort")}</span> : OPT_IN.some((level) => ladder.includes(level)) ? (

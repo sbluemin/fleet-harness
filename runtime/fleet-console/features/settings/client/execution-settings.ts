@@ -25,7 +25,6 @@ export interface AiGatewayCatalogModel {
   readonly id: string;
   readonly name: string;
   readonly contextWindow: number | null;
-  readonly oneMillion: boolean;
   readonly fast: boolean;
   readonly description: string | null;
   readonly effort: { readonly levels: readonly string[] } | null;

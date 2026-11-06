@@ -10,7 +10,7 @@
         {
           "modelId": "gemini-3.8-flash",
           "name": "Gemini-3.8-Flash",
-          "description": "Fast multimodal coding and scan model (1M context).",
+          "description": "multimodal coding and scan model.",
           "providerModelId": "gemini-3.8-flash-high",
           "contextWindow": 1048576,
           "effort": {
@@ -30,7 +30,7 @@
         {
           "modelId": "gemini-4-argon",
           "name": "Gemini-4-Argon",
-          "description": "General-purpose coding and reasoning model (1M context).",
+          "description": "General-purpose coding and reasoning model.",
           "providerModelId": "gemini-4-argon-medium",
           "contextWindow": 1048576,
           "effort": {
@@ -144,7 +144,7 @@
         {
           "modelId": "grok-4.7",
           "name": "Grok-4.7",
-          "description": "General-purpose coding and reasoning model (500K context).",
+          "description": "General-purpose coding and reasoning model.",
           "wire": "responses",
           "contextWindow": 500000,
           "effort": {
@@ -161,8 +161,8 @@
         },
         {
           "modelId": "grok-composer-2.5-fast",
-          "name": "Grok-Composer-2.5-Fast",
-          "description": "Fast code editing and implementation model (200K context).",
+          "name": "Grok-Composer-2.5",
+          "description": "Code editing and implementation model.",
           "wire": "responses",
           "contextWindow": 200000,
           "fast": true
@@ -177,7 +177,7 @@
         {
           "modelId": "muse-spark-1.3",
           "name": "Muse-Spark-1.3",
-          "description": "General-purpose coding and reasoning model (1M context).",
+          "description": "General-purpose coding and reasoning model.",
           "wire": "responses",
           "contextWindow": 1048576,
           "effort": {
@@ -194,7 +194,7 @@
         {
           "modelId": "muse-spark-1.3-contributor",
           "name": "Muse-Spark-1.3-Contributor",
-          "description": "Contributor-tier coding and reasoning model (1M context).",
+          "description": "Contributor-tier coding and reasoning model.",
           "wire": "responses",
           "contextWindow": 1048576,
           "effort": {

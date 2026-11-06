@@ -145,10 +145,10 @@ const CLAUDE_PROVIDER_NAME = "Claude";
  * spellings of that same entry, never entries of their own.
  */
 const CLAUDE_NATIVE_FAMILIES = [
-  { alias: "fable", name: "Fable", description: "Deepest reasoning and architecture model in the Claude lineup (1M context)." },
-  { alias: "opus", name: "Opus", description: "High-capability reasoning, planning, and coding model (1M context)." },
-  { alias: "sonnet", name: "Sonnet", description: "Balanced coding and general agent execution model (1M context)." },
-  { alias: "haiku", name: "Haiku", description: "Lightweight, fast model for simple tasks and scans (1M context)." },
+  { alias: "fable", name: "Fable", description: "Deepest reasoning and architecture model in the Claude lineup." },
+  { alias: "opus", name: "Opus", description: "High-capability reasoning, planning, and coding model." },
+  { alias: "sonnet", name: "Sonnet", description: "Balanced coding and general agent execution model." },
+  { alias: "haiku", name: "Haiku", description: "Lightweight, fast model for simple tasks and scans." },
 ] as const satisfies readonly {
   readonly alias: string;
   readonly name: string;
@@ -390,19 +390,12 @@ export function buildGatewayModelQuota(model: GatewayModel) {
   return { quotaPool: `${model.provider}:shared` };
 }
 
-function formatCatalogWindowLabel(tokens: number | undefined): string {
-  if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens <= 0) return "";
-  if (tokens >= 1_000_000) return "1M context";
-  return `${Math.round(tokens / 1_000)}K context`;
-}
-
 /**
  * 카탈로그가 관리하는 한 줄 모델 요약(성능 보증이 아닌 관리 메타데이터).
  */
 export function gatewayModelSummary(model: GatewayModel): string {
   if (model.description && model.description.trim().length > 0) return model.description.trim();
-  const windowLabel = formatCatalogWindowLabel(model.contextWindow);
-  return windowLabel.length > 0 ? `${model.displayName} (${windowLabel}).` : `${model.displayName}.`;
+  return `${model.displayName}.`;
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {

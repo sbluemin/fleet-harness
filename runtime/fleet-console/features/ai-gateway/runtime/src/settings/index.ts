@@ -1,6 +1,5 @@
 import {
   CLAUDE_DEFAULT_CONTEXT_WINDOW,
-  hasClaudeOneMillionMarker,
   normalizeCompactCeiling,
   type CompactCeiling,
 } from "../downstream/harness/claude-code/context.js";
@@ -13,7 +12,6 @@ import {
   findGatewayModel,
   withGatewayModelFast,
 } from "../models.js";
-import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type {
   GatewayEffortExposure,
   GatewayModel,
@@ -469,8 +467,6 @@ export interface AiGatewayCatalogModel {
   /** Bare model label without the provider prefix. */
   readonly name: string;
   readonly contextWindow: number | null;
-  /** True when Claude Code accounts this model on its 1M coordinate (`[1m]` alias). */
-  readonly oneMillion: boolean;
   /** Whether the model supports the optional priority service tier. */
   readonly fast: boolean;
   readonly description: string | null;
@@ -500,7 +496,6 @@ function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
     id: model.id,
     name: bareModelName(model),
     contextWindow: gatewayModelContextWindow(model),
-    oneMillion: hasClaudeOneMillionMarker(toClaudeGatewayModelId(model)),
     fast: model.fastSupported === true,
     description: model.description ?? null,
     effort: levels.length > 0 ? { levels } : null,

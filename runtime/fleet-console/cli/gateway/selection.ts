@@ -69,7 +69,8 @@ export function withModelEfforts(
 ): readonly AiGatewayStoredModel[] {
   return models.map((entry) => {
     if (entry.id !== id) return entry;
-    return efforts.length === 0 ? { id: entry.id } : { id: entry.id, efforts };
+    const { efforts: _previousEfforts, ...selection } = entry;
+    return efforts.length === 0 ? selection : { ...selection, efforts };
   });
 }
 
@@ -84,8 +85,6 @@ export function effortLadderFor(id: string): readonly string[] {
 
 function describeCatalogModel(model: AiGatewayCatalogModel): string {
   const axes = [
-    model.oneMillion ? "1M" : undefined,
-    model.fast ? "fast" : undefined,
     model.effort ? `effort ${model.effort.levels.join("·")}` : undefined,
   ].filter((axis): axis is string => axis !== undefined);
   return axes.join(" · ");
