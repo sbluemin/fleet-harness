@@ -245,6 +245,13 @@ export interface LaunchServiceOptions {
 
 export function createLaunchService(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, serviceOptions: LaunchServiceOptions = {}): LaunchService {
   const modelCatalog = createModelCatalog(ctx);
+  /** 라우팅이 자리를 주지 못해 대체 좌표로 띄울 때도 사람이 AI Gateway에서 켠 모델로만 선다 — 꺼졌거나 켠 목록을 읽지 못하면 던진다. 강도는 보지 않는다. */
+  const checkFallback = (preset: MemberPreset): void => {
+    if (!preset.model || !ctx.enabledModels) return;
+    const enabled = ctx.enabledModels();
+    if (!enabled) throw new ObjectiveStoreError("gateway_settings_unavailable");
+    if (!enabled.has(canonicalModelId(preset.model))) throw new ObjectiveStoreError("model_not_enabled", undefined, { model: preset.model });
+  };
   const control = () => {
     const capability = ctx.consoleControl;
     if (!capability) throw new ObjectiveStoreError("launch_unavailable");
@@ -521,6 +528,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const judgeCommanderOnce = async (objectiveId: string): Promise<{ readonly model: string; readonly effort?: string; readonly routed: MemberRouted }> => {
     const decision = (await assignRouting([{ key: objectiveId, prompt: commanderRoutingPrompt(objective(objectiveId)) }])).get(objectiveId) ?? { via: "fallback" as const, reason: "routing_failed" };
     if (decision.via === "route") return { model: decision.model, ...(decision.effort ? { effort: decision.effort } : {}), routed: { via: "route", because: decision.because } };
+    // 대체도 새 선택이다 — 꺼진 보드 기본으로 띄우지 않는다. 판단 결과를 남기지 않으므로 다음 기동이 다시 묻는다.
+    checkFallback(COMMANDER_PRESET);
     return { model: COMMANDER_PRESET.model, effort: COMMANDER_PRESET.effort, routed: { via: "fallback", reason: decision.reason, ...(decision.detail ? { detail: decision.detail } : {}) } };
   };
   /**
@@ -839,6 +848,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       while (used.has(session)) session = memberSession(current.id, current.commander.sessionName, ++number);
       const decision = member.launch.mode === "route" ? routed.get(member.id) ?? { via: "fallback" as const, reason: "routing_failed" } : null;
       const preset = decision ? (decision.via === "route" ? presetOf(decision) : commanderPreset) : memberPreset(current, member);
+      // 라우팅 대체는 지휘관 좌표로 뜬다 — 그 모델이 꺼졌으면 이 구성원만 실패로 알린다.
+      const fallbackRefusal = (): string | null => { try { checkFallback(commanderPreset); return null; } catch (error) { return failureCode(error); } };
+      if (decision && decision.via !== "route") {
+        const refused = fallbackRefusal();
+        if (refused) { members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: refused }); continue; }
+      }
       let provenance: MemberRouted | null = decision ? (decision.via === "route" ? { via: "route", because: decision.because } : { via: "fallback", reason: decision.reason, ...(decision.detail ? { detail: decision.detail } : {}) }) : null;
       // 앞선 기동을 기다리는 동안 바뀐 허용값도 이번 기동부터 반영한다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
@@ -861,6 +876,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         }
         // 라우팅이 고른 모델을 호스트가 거절했다(그새 노출이 꺼짐 등) — 그 구성원만 지휘관 프리셋으로 다시 띄우고 폴백으로 남긴다.
         else {
+          const refused = fallbackRefusal();
+          if (refused) { members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: refused }); continue; }
           try { launchedId = await spawn(commanderPreset); provenance = { via: "fallback", reason: "launch_rejected", detail: code }; }
           catch (retry) {
             if (retry instanceof ObjectiveStoreError) throw retry;

@@ -65,11 +65,12 @@ export function createCommodoreCreator(deps: {
     const own = coordinate("agent", input.model, input.effort, CREATE_DEFAULTS.effort);
     const ownEffort = isAgentEffort(own.effort) ? own.effort : undefined;
     const commander = coordinate("launch", input.commanderModel, input.commanderEffort, CREATE_DEFAULTS.commanderEffort);
-    // 사령관이 넘긴 지휘관 모델은 사람이 AI Gateway에서 켠 것만 받는다. 켠 목록을 읽지 못하면 추측으로 통과시키지 않는다.
-    if (input.commanderModel !== undefined && deps.models?.enabled) {
+    // 새 사령관의 지휘관 모델은 넘긴 것이든 생략해 정해진 기본값이든 사람이 AI Gateway에서 켠 것만 받는다. 다른 모델로 바꾸지 않고,
+    // 켠 목록을 읽지 못하면 추측으로 통과시키지 않는다.
+    if (deps.models?.enabled) {
       const enabled = deps.models.enabled();
       if (!enabled) throw new CommodoreStoreError("gateway_settings_unavailable");
-      if (!enabled.has(commander.model)) throw new CommodoreStoreError("model_not_enabled", undefined, { model: input.commanderModel });
+      if (!enabled.has(commander.model)) throw new CommodoreStoreError("model_not_enabled", undefined, { model: input.commanderModel ?? commander.model });
     }
     const id = entities.create(undefined, (newId, directory) => {
       let rows: readonly { readonly path: string }[] = [];

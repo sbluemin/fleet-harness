@@ -26,5 +26,7 @@ export interface ObjectivesFeatureDeps {
   readonly consoleUse: Pick<ConsoleUseMcpHost, "contribute">;
   readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[]) => () => void;
   readonly commodoreCommander?: CommodoreFeature["host"]["commander"];
+  /** 사람이 AI Gateway에서 켠 모델(정준 id) — 라우팅 대체 좌표가 이 목록 밖이면 띄우지 않는다. null은 읽지 못한 것이다. 없으면(테스트 대역) 확인하지 않는다. */
+  readonly enabledModels?: () => ReadonlySet<string> | null;
   readonly experiments?: ExperimentsHost;
 }
