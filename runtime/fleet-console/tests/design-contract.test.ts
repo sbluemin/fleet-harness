@@ -133,8 +133,6 @@ const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 const TEXT_BASE_BRASS = /var\(\s*--brass\s*\)/;
 const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
-  // Commander-row TSX injects each Objective's identity accent through an inline style.
-  "--user-accent",
   // 아바타 책의 같은 키가 대화 패널·말풍선에 주입하는 정체성 색이다(avatar-accent.ts).
   "--conversation-accent",
   "--conversation-accent-body",
@@ -922,24 +920,12 @@ describe("Console core design contract", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps user identity on the commander row title ink and off the spine and state border channel", () => {
+  it("does not paint a user accent on the commander row title ink", () => {
     const row = source("../../../features/workspace/client/sidebar/side-bar-cluster-row.tsx");
     const components = source("styles/components.css");
-    const idleBlock = components.match(/\.side-bar-cluster-row\[style\*="--user-accent"\] \.side-bar-cluster-row-title \{[^}]*\}/)?.[0] ?? "";
-    const activeBlock = components.match(/\.side-bar-cluster-row\[style\*="--user-accent"\]:hover \.side-bar-cluster-row-title,\n\.side-bar-cluster-row\[style\*="--user-accent"\]\.side-bar-cluster-row--active \.side-bar-cluster-row-title \{[^}]*\}/)?.[0] ?? "";
-
-    expect(row).toContain('{ "--user-accent": accentValue }');
-    // 캡션 명판·스파인·미니맵 도트는 캔버스와 함께 떠났다. 정체성은 지휘관 줄 제목 잉크다.
-    expect(components).not.toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel))");
-    // 정체성은 보더 채널을 소유하지 않는다 — 보더는 상태(brass/aurora/coral) 전용.
-    expect(components).not.toContain("border-color: var(--user-accent)");
-    expect(components).not.toContain('.side-bar-cluster-row[style*="--user-accent"]::before');
-    expect(idleBlock).toContain("color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));");
-    expect(idleBlock).not.toContain("var(--surface-panel)");
-    // hover/active도 원색이 아니라 2티어 글자색 쪽 믹스 — Whites chrome 워시 위 본문 AA의 하한이다.
-    expect(activeBlock).toContain("color: color-mix(in oklab, var(--user-accent) 75%, var(--text-secondary));");
-    // 소비처는 지휘관 줄 제목 잉크 두 단(언포커스·hover/active)뿐이다.
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(2);
+    // 목표 액센트 제거 — 지휘관 줄 제목 잉크 주입도 함께 떠났다.
+    expect(row).not.toContain("--user-accent");
+    expect(components).not.toContain("--user-accent");
     expect([row, components].join("\n")).not.toMatch(/--op-accent|--chip-accent/);
   });
 

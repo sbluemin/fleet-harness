@@ -511,8 +511,7 @@ export function ObjectiveSearch({
         break;
       }
       case "rename-objectiveRecord":
-      case "assign-objective-group":
-      case "set-objective-accent": {
+      case "assign-objective-group": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
         requestSideBarObjectiveAction(action.objectiveId, paletteActionToSideBarAction(action.kind));
@@ -1003,12 +1002,11 @@ interface RowAction {
 }
 
 function paletteActionToSideBarAction(
-  kind: "rename-objectiveRecord" | "assign-objective-group" | "set-objective-accent",
+  kind: "rename-objectiveRecord" | "assign-objective-group",
 ): SideBarObjectiveAction {
   switch (kind) {
     case "rename-objectiveRecord": return "rename";
     case "assign-objective-group": return "assign-group";
-    case "set-objective-accent": return "set-accent";
   }
 }
 

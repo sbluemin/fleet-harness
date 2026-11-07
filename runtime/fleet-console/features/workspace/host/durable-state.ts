@@ -166,7 +166,6 @@ export function sanitizeObjectiveRecord(value: unknown): ObjectiveRecord | null 
   // 흔한 이름을 쓴 남의 플러그인의 Objective이 재시작마다 조용히 지워진다. 예전 `shell`
   // 플러그인 id는 remapTerminalPluginId가 이미 terminal로 옮겨 주므로 옛 상태도 걸린다.
   if (type === "shell" && pluginId === "terminal") return null;
-  const accent = readOptionalAccent(value.accent);
   const groupId = readOptionalGroupId(value.groupId);
   const order = readNonNegativeInteger(value.order);
   const childRows = value.sessions ?? value.childSessions;
@@ -176,13 +175,14 @@ export function sanitizeObjectiveRecord(value: unknown): ObjectiveRecord | null 
     const childTs = sanitizeObjectiveTimestamps(entry.ts);
     return childId && childId !== id && childTs ? [{ id: childId, ...(readRecord(entry.payload ?? entry)), ts: childTs }] : [];
   }) : [];
+  // 퇴역한 목표 액센트는 복원하지 않는다 — 저장 파일에 남아도 읽는 시점에 버린다(마이그레이션 없음).
+  const { accent: _droppedAccent, ...rest } = readRecord(value.payload ?? value);
   return {
     id,
     theaterId,
     commodoreId: readNonEmptyString(value.commodoreId) ?? "",
     title,
-    ...(readRecord(value.payload ?? value)),
-    ...(accent ? { accent } : {}),
+    ...rest,
     ...(groupId !== undefined ? { groupId } : {}),
     ...(order !== null ? { order } : {}),
     ...(sessions.length ? { sessions } : {}),
@@ -228,12 +228,6 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function remapTerminalPluginId(pluginId: string | null): string | null {
   return pluginId === "agent" || pluginId === "shell" ? "terminal" : pluginId;
-}
-
-function readOptionalAccent(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed.slice(0, 64) : undefined;
 }
 
 function readFiniteNumber(value: unknown): number | null {

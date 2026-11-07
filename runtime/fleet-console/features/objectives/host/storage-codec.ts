@@ -22,7 +22,7 @@ export interface ObjectiveDocumentContext {
 }
 const executionKeys = ["cwd", "session", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "launchedBy", "consoleUse", "computerUse", "labelSource", "providerTitle", "objectiveLanguage"] as const;
 const sessionKeys = ["harness", "model", "effort", "sessionName", "id", "transcriptPath", "source", "capturedAt", "disableSubagents", "disableAutoMemory", "modelSpeed", "previousSessions"] as const;
-const surfaceKeys = ["title", "groupId", "order", "accent", "ts", "sessions", ...executionKeys];
+const surfaceKeys = ["title", "groupId", "order", "ts", "sessions", ...executionKeys];
 export const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 function pick(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
   return Object.fromEntries(keys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]));
@@ -93,7 +93,7 @@ export function boardFromDocument(doc: ObjectiveDocument, context: ObjectiveDocu
 export function documentFromObjective(node: ObjectiveRecord, previous?: ObjectiveDocument): ObjectiveDocument {
   const board = previous ? { ...previous } : { rank: -(node.ts.createdAt), note: "", missions: [], enlisted: true };
   for (const key of [...surfaceKeys, "pending"]) delete (board as Record<string, unknown>)[key];
-  return { ...board, id: node.id, title: node.title, ts: node.ts, ...pick(node as unknown as Record<string, unknown>, ["groupId", "order", "accent"]), ...execution(node),
+  return { ...board, id: node.id, title: node.title, ts: node.ts, ...pick(node as unknown as Record<string, unknown>, ["groupId", "order"]), ...execution(node),
     ...(previous?.cwd !== undefined ? { cwd: previous.cwd } : {}),
     ...(node.sessions?.length ? { sessions: node.sessions.map((child) => ({ id: child.id, ts: child.ts, ...execution(child) })) } : {}),
   } as ObjectiveDocument;

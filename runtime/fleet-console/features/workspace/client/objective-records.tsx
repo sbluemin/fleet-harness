@@ -17,8 +17,7 @@ import { addCommodoreTheaterFromPath } from "../../commodore/client/theaters-api
 import { refreshCommodoreList, readCommodoreList } from "../../commodore/client/commodore-list.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
 import { CommanderRowMenuLayer } from "./commander-tab/commander-row-menu.js";
-import { objectiveRecordAccentFromNode } from "./objective-accent.js";
-import { getTheaterGroupCollapse, pruneObjectiveAccents } from "./sidebar/group-collapse-store.js";
+import { getTheaterGroupCollapse } from "./sidebar/group-collapse-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/feature-capabilities.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
@@ -135,12 +134,6 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
       resumeDormantOnOpen(objectiveId, stateRef.current.objectiveRecords, registry.providers);
     }
   }, [registry.providers, state.objectiveRecordRuntimeHydration]);
-
-  useEffect(() => {
-    if (!state.objectiveRecordsHydrated) return;
-    const theaters = readCommodoreList().flatMap((owner) => owner.theaters.map((theater) => theater.theaterId));
-    for (const theaterId of new Set([...theaters, ...state.objectiveRecords.map((objectiveRecord) => objectiveRecord.theaterId)])) pruneObjectiveAccents(theaterId, new Set(state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theaterId).map((objectiveRecord) => objectiveRecord.id)));
-  }, [state.objectiveRecords, state.objectiveRecordsHydrated]);
 
   // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다.
   useEffect(() => {
@@ -290,13 +283,6 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
     [refreshGroups, refreshObjectiveRecords],
   );
 
-  const handleSetAccent = useCallback((objectiveId: string, accentKey: string | null) => {
-    runMutation(
-      () => patchObjective(objectiveId, { accent: accentKey }).then(refreshObjectiveRecords),
-      refreshObjectiveRecords,
-    );
-  }, [refreshObjectiveRecords, runMutation]);
-
   const handleRename = useCallback((objectiveId: string, title: string) => {
     runMutation(
       () => renameObjective(objectiveId, title).then(refreshObjectiveRecords),
@@ -407,12 +393,9 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
       kind="chip"
       objectiveRecord={menuObjective}
       groups={state.groups.filter((group) => group.commodoreId === menuObjective.commodoreId)}
-      accentKey={getTheaterGroupCollapse(menuObjective.theaterId).objectiveRecordAccent[menuObjective.id]
-        ?? objectiveRecordAccentFromNode(menuObjective)}
       anchor={objectiveRecordMenu.anchor}
       align={objectiveRecordMenu.align}
       actions={{
-        onSetAccent: (key) => handleSetAccent(menuObjective.id, key),
         onSetGroupId: (groupId) => handleSetGroupId(menuObjective.id, groupId),
         onCreateGroup: (name) => handleCreateGroup(menuObjective.commodoreId, name, menuObjective.id),
         onCloseObjective: () => handleClose(menuObjective.id),
@@ -437,7 +420,6 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
       <ConversationRightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchObjective={handleRailLaunchObjective} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
       {objectiveRecordMenuLayer}
       <CommanderRowMenuLayer
-        onSetAccent={handleSetAccent}
         onSetGroupId={handleSetGroupId}
         onCreateGroup={handleCreateGroup}
         onArchiveObjective={handleClose}

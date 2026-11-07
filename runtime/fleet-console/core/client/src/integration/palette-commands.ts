@@ -51,7 +51,7 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
  */
 export type PaletteGlyphId =
   | "theater" | "theater-add" | "objective-new" | "taskforce-new"
-  | "objective-open" | "objective-resume" | "objective-archive" | "objective-rename" | "objective-group" | "objective-accent"
+  | "objective-open" | "objective-resume" | "objective-archive" | "objective-rename" | "objective-group"
   | "view-status-axis"
   | "rail-entry" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
 
@@ -72,7 +72,6 @@ export type PaletteCommandAction =
   | { readonly kind: "open-keyboard-shortcuts" }
   | { readonly kind: "rename-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "assign-objective-group"; readonly objectiveId: string }
-  | { readonly kind: "set-objective-accent"; readonly objectiveId: string }
   | { readonly kind: "whats-new" }
   | { readonly kind: "open-commissioning" };
 
@@ -175,7 +174,6 @@ export function buildPaletteCommands(
     }
     push({ commandId: "rename-objectiveRecord", label: t("palette.renameObjective"), aliasLabel: alias("palette.renameObjective"), action: { kind: "rename-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-rename", subject });
     push({ commandId: "assign-objective-group", label: t("palette.assignGroup"), aliasLabel: alias("palette.assignGroup"), action: { kind: "assign-objective-group", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-group", subject });
-    push({ commandId: "set-objective-accent", label: t("palette.setAccent"), aliasLabel: alias("palette.setAccent"), action: { kind: "set-objective-accent", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-accent", subject });
     // 보관은 되돌릴 수 있고 보관함에서 다시 꺼낼 수 있다 — 파괴 명령이 아니므로 coral로 세우지 않는다.
     push({ commandId: `archive-objectiveRecord:${activeObjective.id}`, label: t("palette.archiveObjective", { title: subject }), aliasLabel: alias("palette.archiveObjective", { title: subject }), action: { kind: "archive-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-archive", subject, undoable: true });
   }

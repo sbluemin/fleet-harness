@@ -199,8 +199,6 @@ export interface ObjectiveRecord {
   readonly theaterId: string;
   readonly order?: number;
   readonly title: string;
-  // 사용자 지정 accent 키(서버 영속). 미설정 시 부재. Dock 칩 perimeter 링 색의 SSoT다.
-  readonly accent?: string | null;
   // 사용자 지정 그룹 id(서버 영속). null이면 Ungrouped, 미설정 시 부재(Ungrouped와 동일 취급).
   readonly groupId?: string | null;
   // 부모 sessions에서 만든 자식 표시 뷰에만 있다. 최상위 Objective에는 영속하지 않는다.

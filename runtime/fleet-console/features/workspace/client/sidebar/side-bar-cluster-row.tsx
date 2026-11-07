@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -228,8 +228,6 @@ function formatDueShort(date: string): string {
 
 interface SideBarClusterRowProps {
   readonly item: SideBarRowItem;
-  /** 뿌리 Objective 의 사용자 accent — 제목 잉크만 소유한다. */
-  readonly accentValue?: string | null;
   /** 뿌리가 선 줄을 누르면 그 지휘관으로 간다 — 사령관의 지휘관 목록은 그룹 대화로 전환한다. */
   readonly onFocus: (objectiveId: string) => void;
   readonly selected: boolean;
@@ -305,7 +303,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu, settled = false, popups, rowGlyphs, expanded = false }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, settled = false, popups, rowGlyphs, expanded = false }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -409,7 +407,6 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
     }
     : undefined;
   const titleNode = <span className="side-bar-cluster-row-title" onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
-  const style = accentValue ? ({ "--user-accent": accentValue } as CSSProperties) : undefined;
   const hasProgressButton = !!popups && !!progress && !settled;
   const statusLine = settled ? null : (
     <span className="side-bar-cluster-row-line" aria-hidden={hasProgressButton ? undefined : true}>
@@ -471,7 +468,6 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       ].filter(Boolean).join(" ")}
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}
-      style={style}
       onContextMenu={onContextMenu ? openAtCursor : undefined}
       onPointerDown={(event) => {
         pointerTypeRef.current = event.pointerType;

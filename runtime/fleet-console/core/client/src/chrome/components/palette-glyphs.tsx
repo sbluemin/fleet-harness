@@ -28,7 +28,6 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "rail-entry">, ReactN
   "objective-archive": <ArchiveGlyph strokeWidth={1.125} />,
   "objective-rename": <Glyph><path d="M3 13l.9-3.4L10.6 2.9a1.3 1.3 0 0 1 1.8 0l.7.7a1.3 1.3 0 0 1 0 1.8L6.4 12.1z" /><path d="M9.7 3.8l2.5 2.5" /></Glyph>,
   "objective-group": <Glyph><path d="M2.5 8.2V3.5a1 1 0 0 1 1-1h4.7l5.3 5.3-5.7 5.7z" /><circle cx="5.5" cy="5.5" r=".9" fill="currentColor" stroke="none" /></Glyph>,
-  "objective-accent": <Glyph><path d="M8 2.5s4 4.2 4 7a4 4 0 0 1-8 0c0-2.8 4-7 4-7z" /></Glyph>,
   "view-status-axis": <Glyph><rect x="2.5" y="2.5" width="11" height="3.2" rx="1" /><rect x="2.5" y="6.4" width="11" height="3.2" rx="1" /><rect x="2.5" y="10.3" width="11" height="3.2" rx="1" /></Glyph>,
   "console-rail": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M10.5 2.5v11" /></Glyph>,
   "console-band": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M2.5 5.5h11" /></Glyph>,

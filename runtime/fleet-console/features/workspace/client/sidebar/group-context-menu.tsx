@@ -15,7 +15,6 @@ import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js
 import { objectivesApi, post, useObjectiveBoard, useObjectiveSummaries } from "../../../objectives/client/objectives-state.js";
 
 export interface GroupContextMenuChipActions {
-  readonly onSetAccent: (key: string | null) => void;
   readonly onSetGroupId: (groupId: string | null) => void;
   readonly onCreateGroup: (name: string) => void;
   /** 창 닫기 — 캡션 X와 같은 닫기(유예 삭제 + 실행 취소 토스트). 두 번 눌러 확정한 뒤에만 부른다. */
@@ -26,7 +25,7 @@ export interface GroupContextMenuChipActions {
   readonly onRename?: () => void;
 }
 
-/** Objective 이 아직 없는 사이드바 줄(시작 전 목표) — 줄 제목 고치기와 보관만 뜻이 있다(그룹·액센트·종류 스위치는 Objective 의 것). */
+/** Objective 이 아직 없는 사이드바 줄(시작 전 목표) — 줄 제목 고치기와 보관만 뜻이 있다(그룹·종류 스위치는 Objective 의 것). */
 export interface GroupContextMenuRowActions {
   readonly onRename?: () => void;
   /** 보관 — 뿌리 있는 줄의 「보관」과 같은 자리·같은 항목이다. 보관함에서 복원할 수 있다. */
@@ -58,7 +57,6 @@ type GroupContextMenuProps =
       readonly kind: "chip";
       readonly objectiveRecord: ObjectiveRecord;
       readonly groups: readonly ObjectiveGroup[];
-      readonly accentKey: string | null;
       readonly anchor: DOMRect;
       readonly align?: GroupContextMenuAlign;
       readonly actions: GroupContextMenuChipActions;
@@ -157,13 +155,11 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
 function ChipMenuContent({
   objectiveRecord,
   groups,
-  accentKey,
   actions,
   onClose,
 }: {
   objectiveRecord: ObjectiveRecord;
   groups: readonly ObjectiveGroup[];
-  accentKey: string | null;
   actions: GroupContextMenuChipActions;
   onClose: () => void;
 }) {
@@ -253,14 +249,6 @@ function ChipMenuContent({
           <span className="group-context-menu-item__name">{t("sidebar.groupMenu.newGroup")}</span>
         </button>
       )}
-      <div className="group-context-menu-divider" aria-hidden="true" />
-      <AccentToneList
-        label={t("sidebar.groupMenu.sectionAccent")}
-        accentKey={accentKey}
-        includeNone
-        labels={accentToneLabels(t)}
-        onSelect={(key) => { actions.onSetAccent(key); onClose(); }}
-      />
       <div className="group-context-menu-divider" aria-hidden="true" />
       <CloseWindowItem onCloseObjective={actions.onCloseObjective} onClose={onClose} />
     </>
