@@ -3,7 +3,8 @@
    대화에 넘긴다. 맨 위 줄(pill·도구모음·사용량 캡슐, 그리고 Desktop 의 신호등·캡션 버튼)은 분할·펼친 칸·시트 어느 때든 칸이 덮지
    않는다 — 두 플랫폼이 같은 모양이다(conversation.css .conversation-band).
    칸은 대화 바탕보다 한 단 밝은 면 · 1px 테두리 · 둥근 모서리이고, 머리 줄(36px)은 모든 도구가 같은 문법이다(시안 v2 규칙 e).
-   브라우저 칸만 예외다 — 머리 없이 대화와 같은 면으로 서고, 탭 줄은 맨 위 줄의 지구본 앞으로 올라간다(.workbench-band-chrome). */
+   브라우저 칸만 예외다 — 머리 없이 대화와 같은 면으로 서고, 주소줄 줄은 맨 위 줄의 브라우저 영역으로 올라가며(.workbench-band-nav-wrap),
+   탭은 본문 왼쪽의 세로 레일이 가진다. */
 .conversation-workbench {
   position: absolute;
   top: var(--conversation-top-row, 52px);
@@ -85,8 +86,12 @@
   pointer-events: auto;
 }
 
-.workbench-band-chrome.is-enter { animation: workbench-band-in 200ms ease-out both; }
-.workbench-band-chrome.is-leave { animation: workbench-band-out 160ms ease-in both; }
+.workbench-band-chrome.is-enter, .workbench-band-nav-wrap.is-enter { animation: workbench-band-in 200ms ease-out both; }
+.workbench-band-chrome.is-leave, .workbench-band-nav-wrap.is-leave { animation: workbench-band-out 160ms ease-in both; }
+
+/* 주소줄 줄의 자리(맨 위 줄의 주소줄 영역) — 왼쪽은 칩 묶음 오른쪽 끝 + space-3(--conversation-chip-end, 분할 x 는 측정 전 대비값),
+   오른쪽은 지구본 왼쪽(주소줄 자리의 끝)이다. 줄 자체는 .op-browser__nav.is-top 이 그린다. 펼쳐도 이 영역은 그대로다. */
+.workbench-band-nav-wrap { position: absolute; top: 0; right: 0; bottom: 0; left: var(--conversation-chip-end, var(--browser-split-x, 0px)); display: flex; align-items: center; pointer-events: none; }
 
 @keyframes workbench-band-in {
   from { opacity: 0; }

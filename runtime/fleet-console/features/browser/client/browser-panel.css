@@ -87,6 +87,16 @@
 .op-browser__menu-item:hover, .op-browser__menu-item:focus-visible { background: var(--wash-hover); color: var(--text-primary); outline: none; box-shadow: none; }
 
 .op-browser__nav { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); background: var(--ink-deep); }
+/* 맨 위 줄로 올라간 주소줄 줄(.op-browser__nav.is-top) — 맨 위 줄(52px)의 브라우저 영역에 세로 가운데로 선다. 면·이음매·헤어라인이 없고, 알약과 아이콘
+   단추가 30px 이다. 빈 곳은 창 끌기(drag) 몫이라 줄 자체는 포인터를 받지 않고 컨트롤만 받는다. 이 줄은 .op-browser 밖(맨 위 줄)에 portal 된다. */
+.op-browser__nav.is-top { flex: 1; min-width: 0; box-sizing: border-box; height: 100%; padding: 0 0 0 var(--space-2); border-bottom: 0; background: none; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); pointer-events: none; }
+.op-browser__nav.is-top > * { pointer-events: auto; }
+.op-browser__nav.is-top :is(.op-browser__icon, .workbench-tile-button) { width: 30px; height: 30px; }
+.op-browser__nav.is-top .op-browser__url { min-width: 120px; height: 30px; }
+html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region: no-drag; }
+/* 접힌 도구(「⋯」) — 팝오버는 줄 아래 본문 위로 내려온다. */
+.op-browser__fold { position: relative; flex: none; align-self: center; }
+.op-browser__fold .op-browser__menu--row { right: 0; width: auto; }
 .op-browser__icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-secondary); font: inherit; font-size: var(--t-md); text-decoration: none; cursor: pointer; }
 .op-browser__icon:hover:not(:disabled), .op-browser__icon:focus-visible { color: var(--brass-ink); background: var(--ink-veil); outline: none; }
 .op-browser__icon:disabled { opacity: 0.35; cursor: default; }

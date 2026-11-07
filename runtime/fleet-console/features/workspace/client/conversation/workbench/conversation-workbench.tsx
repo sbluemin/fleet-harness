@@ -20,13 +20,13 @@ import type { RailEntryBinding } from "../../../../../core/client/src/chrome/pan
 import type { RailToolContext } from "../../../../../core/client/src/chrome/rail/right-rail.js";
 import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
-import { BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
+import { BrowserNavHostContext, BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
 import { resolveSessionBrowserTarget, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
 import { announceNativeViewResize, getNativeViewResize } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
 import { PluginObjectiveRenderer } from "../../objective-renderer.js";
 import { type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
-import { useBrowserBandGlobe, useBrowserBandSlot } from "./browser-band-slot.js";
+import { retainBrowserNav, useBrowserBandGlobe, useBrowserBandSlot, useBrowserNavSlot } from "./browser-band-slot.js";
 import {
   bindWorkbenchCloseGuard,
   cancelWorkbenchClose,
@@ -496,6 +496,13 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
   // 브라우저 칸이 남아 있을 때)에서는 다른 칸과 같은 틀이다 — 닫기 단추가 그 칸을 닫는 길이다.
   const seamless = tile.kind === "browser" && geometry.mode !== "sheet" && isDesktopShell();
   const frameRect = seamless ? seamlessRect(entry, rect, geometry, expanded) : rect;
+  // 머리 없는 브라우저 칸의 주소줄은 맨 위 줄의 브라우저 영역으로 올라간다 — 영역의 왼쪽 끝은 칸의 원래 왼쪽(분할 x)이라 펼쳐도 움직이지 않는다.
+  const navSlot = useBrowserNavSlot();
+  const [navHost, setNavHost] = useState<HTMLElement | null>(null);
+  const navHostValue = !seamless ? undefined : hidden || navSlot === null ? null : navHost;
+  // 주소줄이 맨 위 줄에 서 있는 동안 대화 머리 줄에 알린다 — 한 줄 배분에서 주소줄 최소 폭을 지켜 준다.
+  const navStanding = navHostValue !== undefined && navHostValue !== null;
+  useLayoutEffect(() => (navStanding ? retainBrowserNav() : undefined), [navStanding]);
   const expandLabel = expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand");
   const expandButton = (
     <button
@@ -530,9 +537,15 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
       onFocusCapture={(event) => { if (!isInHead(event.target)) focusWorkbenchTile(tile.id); }}
     >
       {seamless ? (
-        <BrowserBandChrome motion={motion} hidden={hidden}>
-          <BrowserBandClose tileId={tile.id} title={parts.title} />
-        </BrowserBandChrome>
+        <>
+          <BrowserBandChrome motion={motion} hidden={hidden}>
+            <BrowserBandClose tileId={tile.id} title={parts.title} />
+          </BrowserBandChrome>
+          {navSlot !== null && !hidden ? createPortal(
+            <span className={`workbench-band-nav-wrap${motion === null ? "" : ` is-${motion}`}`} ref={setNavHost} style={{ "--browser-split-x": `${entry.rect.x}px` } as CSSProperties} data-keep-objective-active />,
+            navSlot,
+          ) : null}
+        </>
       ) : (
         <header className="workbench-tile-head">
           <span className="workbench-tile-title">
@@ -562,8 +575,11 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
         </div>
       ) : null}
       <div className="workbench-tile-body" ref={parts.bodyRef}>
-        {/* 머리 없는 브라우저 칸의 펼치기는 머리가 없으므로 주소줄 끝(도구모음 옆)에 선다 — 본문이 그 자리를 그린다. */}
-        {seamless ? <BrowserNavTailContext.Provider value={expandButton}>{parts.body}</BrowserNavTailContext.Provider> : parts.body}
+        {/* 머리 없는 브라우저 칸의 펼치기는 머리가 없으므로 주소줄 끝(도구모음 옆)에 선다 — 본문이 그 자리를 그린다. 주소줄 줄도 본문이 그리되,
+            자리는 맨 위 줄이다(BrowserNavHostContext). */}
+        {seamless
+          ? <BrowserNavHostContext.Provider value={navHostValue}><BrowserNavTailContext.Provider value={expandButton}>{parts.body}</BrowserNavTailContext.Provider></BrowserNavHostContext.Provider>
+          : parts.body}
       </div>
     </section>
   );
