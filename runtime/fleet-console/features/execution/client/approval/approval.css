@@ -118,10 +118,10 @@
 .approval-surface-sub { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); }
 .approval-close { margin-left: auto; border: 0; background: none; color: var(--text-tertiary); width: 26px; height: 26px; border-radius: 50%; cursor: pointer; }
 .approval-close:hover { background: color-mix(in oklch, var(--text-primary) 6%, transparent); color: var(--text-primary); }
-.approval-surface-scroll { overflow: auto; padding: 0 10px 12px; display: grid; gap: 14px; align-content: start; }
+.approval-surface-scroll { overflow: auto; padding: 0 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
 .approval-group { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 0 6px; color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
 .approval-group span { font-weight: var(--weight-regular); }
-.approval-stack { display: grid; gap: 8px; }
+.approval-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .approval-empty { margin: 0; padding: 28px 16px 8px; text-align: center; display: grid; gap: 6px; color: var(--text-secondary); font-size: var(--t-base); }
 .approval-empty p { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
 
