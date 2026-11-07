@@ -11,6 +11,10 @@
     "./store": {
       "types": "./store.ts",
       "default": "./store.ts"
+    },
+    "./native-view": {
+      "types": "./native-view.ts",
+      "default": "./native-view.ts"
     }
   },
   "dependencies": {
