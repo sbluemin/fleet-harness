@@ -3019,7 +3019,7 @@
   pointer-events: none;
 }
 
-.objective-records-side-bar[data-resizing="true"] {
+.objective-records-side-bar[data-resizing="true"]:not([data-snapping="true"]) {
   transition: none;
 }
 

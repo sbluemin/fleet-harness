@@ -195,7 +195,7 @@ export function ObjectiveRecordsSideBar({
   const [aliasError, setAliasError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
-  const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
+  const { resizing, snapping, onPointerDown: onResizePointerDown } = useSideBarResize();
   const surfaceOwner = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
   const selectedTaskforceId = surface?.surfaceId === TASKFORCE_SURFACE_ID && typeof surface.params.taskforceId === "string" ? surface.params.taskforceId : null;
   const subjectOwner = useConversationSubject()?.commodoreId ?? null;
@@ -450,6 +450,7 @@ export function ObjectiveRecordsSideBar({
       className={`objective-records-side-bar${compact ? " is-compact" : ""}`}
       ref={rootRef}
       data-resizing={resizing ? "true" : undefined}
+      data-snapping={snapping ? "true" : undefined}
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
       onContextMenu={openNewSessionAtCursor}
     >

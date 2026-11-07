@@ -6,6 +6,7 @@ import { useCommodoreSidebarCommands } from "../../../commodore/client/sidebar-s
 import { MAX_SIDEBAR_SECTION_NAME, type CommodoreSidebarCommand, type CommodoreSidebarSection } from "../../../commodore/shared/contracts/sidebar-layout.js";
 import { useLongPress } from "../long-press.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
+import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { PencilIcon, PlusIcon, SectionMoveIcon, TrashIcon } from "./sidebar-menu-icons.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import "./commodore-sidebar-sections.css";
@@ -30,9 +31,11 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
   readonly dropTarget: boolean;
 }) {
   const t = useT();
+  // 좁은 열은 섹션 이름·안내 문구 없이 가는 구분선으로만 섹션을 가른다. 이름 머리가 없으니 접힘도 풀어 두고 행은 늘 보인다.
+  const compact = useSideBarState().compact;
   const section = controller.layout.sections.find((row) => row.id === id);
   const name = section?.name ?? t("sidebar.commodoreSection.none");
-  const collapsed = section?.collapsed ?? controller.layout.unsectionedCollapsed;
+  const collapsed = compact ? false : section?.collapsed ?? controller.layout.unsectionedCollapsed;
   const header = useRef<HTMLButtonElement>(null);
   const restoreNameFocus = useRef(false);
   useLayoutEffect(() => {
@@ -50,7 +53,7 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
   const index = controller.layout.sections.findIndex((row) => row.id === id);
   const action = (command: CommodoreSidebarCommand) => { closeMenu(); void controller.run(command); };
   return <li className={`workspace-commodore-section${dropTarget ? " is-drop-target" : ""}`} data-sidebar-section={id ?? ""}>
-    {section && controller.editing === id ? <SectionNameInput name={name} onDone={(value, viaKey) => {
+    {compact ? null : section && controller.editing === id ? <SectionNameInput name={name} onDone={(value, viaKey) => {
       restoreNameFocus.current = viaKey;
       controller.setEditing(null);
       if (value && value !== name) void controller.run({ op: "rename", sectionId: section.id, name: value });
@@ -68,7 +71,7 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
       <ChevronGlyph direction={collapsed ? "right" : "down"} className="workspace-commodore-section-chevron" />
     </button>}
     {!collapsed ? <ol className="workspace-commodore-section-rows">
-      {count ? children : <li className="workspace-commodore-section-empty" data-sidebar-section-drop={id ?? ""}>{t("sidebar.commodoreSection.empty")}</li>}
+      {count ? children : <li className="workspace-commodore-section-empty" data-sidebar-section-drop={id ?? ""} aria-hidden={compact ? true : undefined}>{compact ? null : t("sidebar.commodoreSection.empty")}</li>}
     </ol> : null}
     {menu && section ? <SectionMenu anchor={menu} focusFirst={menuFocusFirst} opener={header.current} label={t("sidebar.commodoreSection.actions", { name })} onClose={closeMenu}>
       <MenuItem icon={<PencilIcon />} onClick={() => { closeMenu(); controller.setEditing(section.id); }}>{t("sidebar.commodoreSection.rename")}</MenuItem>
