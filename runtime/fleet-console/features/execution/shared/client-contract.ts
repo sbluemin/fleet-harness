@@ -141,7 +141,7 @@ export interface ObjectiveKindDescriptor {
   /**
    * Fills the top of the host's Objective menu — the same card the caption's ··· button and the
    * sidebar's right-click open. The host owns the card, its grouping and
-   * accent sections and keyboard travel; this section stands first, above them, and is followed by
+   * keyboard travel; this section stands first, above them, and is followed by
    * the host's divider. Rows are `button.group-context-menu-item` with a `menuitem*` role so the
    * host's arrow-key travel and Escape reach them. Keep it to per-Objective switches and readouts
    * that belong to this Objective; nothing here may open another surface without closing the menu.

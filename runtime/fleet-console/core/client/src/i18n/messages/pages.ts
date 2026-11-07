@@ -365,7 +365,6 @@ export const pagesEn = {
   "palette.archiveObjective": "Archive · {title}",
   "palette.renameObjective": "Rename objective",
   "palette.assignGroup": "Assign group",
-  "palette.setAccent": "Set accent",
   "palette.openPanel": "Open panel: {title}",
 
   "objectiveRecords.addTheaterFailed": "Couldn't add the Theater",
@@ -947,7 +946,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "palette.archiveObjective": "보관 · {title}",
   "palette.renameObjective": "목표 이름 변경",
   "palette.assignGroup": "그룹 지정",
-  "palette.setAccent": "액센트 설정",
   "palette.openPanel": "패널 열기: {title}",
 
   "objectiveRecords.addTheaterFailed": "작전 구역을 추가하지 못했어요",

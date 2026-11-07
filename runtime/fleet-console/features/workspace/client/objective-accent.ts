@@ -2,7 +2,6 @@ import type { Translate } from "@fleet-console/i18n";
 import { normalizeIdentityTone, type IdentityTone } from "../shared/identity-tones.js";
 
 import type { CoreMessageKey } from "../../../core/client/src/i18n/index.js";
-import type { ObjectiveRecord } from "../../../core/client/src/integration/types.js";
 
 // 8톤 정체성 팔레트 — 키 목록은 SDK(`identity-tones`)가 한 벌로 소유하고, 여기서는 theme.css의 --id-* 토큰과
 // 호스트 문구만 잇는다. 정체성은 제목 잉크·틱·도트 채널만 소유하고, 보더/링/beacon/glow는 상태 신호 전용이다.
@@ -26,12 +25,8 @@ export function accentToneLabels(t: Translate<CoreMessageKey>) {
   };
 }
 
-/** 저장된 키(구 16키 포함)의 색 토큰 — 모르는 키는 null(accent 없음). */
+/** 저장된 키(구 16키 포함)의 색 토큰 — 모르는 키는 null(색 없음). */
 export function resolveAccentColor(accentKey: string): string | null {
   const normalized = normalizeIdentityTone(accentKey);
   return normalized ? `var(--id-${normalized})` : null;
-}
-
-export function objectiveRecordAccentFromNode(objectiveRecord: ObjectiveRecord): string | null {
-  return typeof objectiveRecord.accent === "string" ? objectiveRecord.accent : null;
 }

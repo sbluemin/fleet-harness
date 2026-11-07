@@ -178,7 +178,6 @@ export interface ObjectiveRecordCreateInput {
 export interface ObjectiveRecordPatchInput {
   [key: string]: unknown;
   readonly title?: string;
-  readonly accent?: string | null;
   /** 사이드바 그룹 — null 은 그룹 밖. 사람이 옮기는 것과 같은 저장 경로라 `objectiveRecord:grouped` 가 난다. */
   readonly groupId?: string | null;
 }
