@@ -1,6 +1,7 @@
 import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { NATIVE_VIEW_COVER_ATTRIBUTE, nativeViewCovered, observeNativeViewCover } from "@fleet-console/ui/native-view";
 import * as React from "react";
+import { createPortal } from "react-dom";
 import type { ObjectiveRenderContext } from "../../execution/shared/client-contract.js";
 import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
 import { CaptionBrowserUseGlyph } from "../../workspace/client/components/caption-actions.js";
@@ -13,7 +14,7 @@ import { commodoreOfBrowser, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind,
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
-import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavTailContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, BrowserNavTailContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import "./browser-panel.css";
 
@@ -379,6 +380,40 @@ export interface SessionBrowserPanelProps {
  * 세션·뷰포트 도구 — 주소줄 끝에 선다(주석 버튼 옆). 탭 줄의 폭은 탭들의 것이다. 상태와 손잡이는 본문이 올린 스냅샷에서 읽는다.
  * 메뉴는 본문 영역까지 내려오므로 열려 있는 동안 네이티브 뷰가 물러서도록 알린다.
  */
+/** 주소창이 줄어드는 하한 — 이보다 좁아지면 접히는 단추(캡처·주석·세션·뷰포트)가 「⋯」로 모인다. */
+const NAV_URL_MIN_PX = 120;
+/** 줄의 아이콘 단추 폭(CSS `.op-browser__nav.is-top` 의 30px 과 같다) — 새로고침 단추를 못 잴 때의 값. */
+const NAV_ICON_PX = 30;
+
+/**
+ * 좁은 맨 위 줄에서 접힌 주소줄 도구 — 「⋯」 하나가 캡처·주석·세션·뷰포트를 가로 한 줄의 팝오버로 모은다. 안의 단추는 펼쳤을 때와 같은 것이라
+ * 각자의 메뉴(세션·뷰포트)도 그대로 열린다. 바깥을 누르거나 Esc 로 닫는다. 팝오버는 본문 위로 내려오므로 네이티브 뷰 가림 표면으로 알린다.
+ */
+function NavFoldMenu({ objectiveId, label, children }: { readonly objectiveId: string; readonly label: string; readonly children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    publishBrowserCaptionOverlay(objectiveId, "fold", open);
+    return () => publishBrowserCaptionOverlay(objectiveId, "fold", false);
+  }, [objectiveId, open]);
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) setOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onPointer, true); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  return (
+    <div className="op-browser__fold" ref={rootRef}>
+      <button type="button" className="op-browser__icon" aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((current) => !current)}>
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
+      </button>
+      {open ? <div className="op-browser__menu op-browser__menu--row" role="menu" aria-label={label} {...COVERS_NATIVE_VIEW}>{children}</div> : null}
+    </div>
+  );
+}
+
 function BrowserTools({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
   const t = getT(language ?? "en");
   const panel = useBrowserPanel(objectiveId);
@@ -1365,98 +1400,148 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const hoverInfo = draftPin?.element ?? hover;
   const hoverBox = highlightBox(hoverInfo);
   const navTail = React.useContext(BrowserNavTailContext);
+  // 작업대가 주소줄 줄을 맨 위 줄에 세우라고 하면(`navHost` 가 요소이거나 null) 칸 안에는 그리지 않는다. 맨 위 줄의 영역 폭은 칸 폭이 아니므로
+  // 좁아지면 캡처·주석·세션·뷰포트가 「⋯」 하나로 모인다(`navFolded`) — 줄의 실제 폭을 재어 정한다.
+  const navHost = React.useContext(BrowserNavHostContext);
+  const navTop = navHost !== undefined;
+  const navRef = React.useRef<HTMLDivElement | null>(null);
+  const [navFolded, setNavFolded] = React.useState(false);
+  const hasCapture = activeTab !== null && activeTab.url !== "about:blank";
+  React.useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!navTop || nav === null) { setNavFolded(false); return; }
+    const measure = () => {
+      const style = getComputedStyle(nav);
+      const avail = nav.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
+      if (avail <= 0) return;
+      const gap = Number.parseFloat(style.columnGap) || 0;
+      const kids = Array.from(nav.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+      // 접히지 않는 줄의 폭 — 주소창은 최소 폭(NAV_URL_MIN_PX)으로 센다.
+      let used = gap * Math.max(0, kids.length - 1);
+      let foldWidth = 0;
+      for (const kid of kids) {
+        const width = kid.classList.contains("op-browser__url") ? NAV_URL_MIN_PX : kid.getBoundingClientRect().width;
+        used += width;
+        if (kid.classList.contains("op-browser__fold")) foldWidth = width;
+      }
+      // 접혀 있으면 펼쳤을 때의 폭을 센다(「⋯」 하나가 단추 n 개로 바뀐다) — 접힘 여부가 판정을 흔들지 않는다.
+      const unit = kids.find((kid) => kid.classList.contains("op-browser__reload"))?.getBoundingClientRect().width ?? NAV_ICON_PX;
+      const count = 3 + (hasCapture ? 1 : 0);
+      const need = navFolded ? used - foldWidth + count * unit + (count - 1) * gap : used;
+      const next = need > avail + 0.5;
+      setNavFolded((current) => current === next ? current : next);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(nav);
+    return () => observer?.disconnect();
+  }, [navTop, navHost, navFolded, hasCapture, navTail !== null]);
   const closedDoor = !available ? unavailableText(t, state?.reason ?? null, services.isDesktopShell()) : null;
+
+  const navBar = (
+    <div ref={navRef} className={`op-browser__nav${navTop ? " is-top" : ""}`}>
+      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
+      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
+      <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
+      <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setEditingUrl(false); dismissSuggestions(); } }}
+        onSubmit={(event) => { event.preventDefault(); if (!composingUrlRef.current) submitUrl(); }}>
+        {!editingUrl && urlDraft ? <span className="op-browser__url-display" aria-hidden="true"><UrlParts url={urlDraft} /></span> : null}
+        <input
+          id={`op-browser-url-${objectiveId}`}
+          className="op-browser__url-input"
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={t("terminal.browser.urlPlaceholder")}
+          aria-label={t("terminal.browser.pageUrl")}
+          value={urlDraft}
+          disabled={!available}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={suggestionsOpen}
+          aria-controls={suggestionsOpen ? suggestionsId : undefined}
+          aria-activedescendant={suggestionsOpen && selectedSuggestion >= 0 ? `${suggestionsId}-${selectedSuggestion}` : undefined}
+          onFocus={(event) => { setEditingUrl(true); event.currentTarget.select(); }}
+          aria-describedby={suggestionPromptOpen ? `${suggestionsId}-disclosure` : undefined}
+          onChange={(event) => {
+            suggestionRequest.current?.abort();
+            setEditingUrl(true);
+            setUrlDraft(event.target.value);
+            setSuggestions([]);
+            setHistorySuggestions([]);
+            setSelectedSuggestion(-1);
+            setSuggestQuery(event.target.value);
+          }}
+          onCompositionStart={() => { composingUrlRef.current = true; setComposingUrl(true); dismissSuggestions(); }}
+          onCompositionEnd={(event) => { composingUrlRef.current = false; setComposingUrl(false); setUrlDraft(event.currentTarget.value); setSuggestQuery(event.currentTarget.value); }}
+          onKeyDown={(event) => {
+            if (composingUrlRef.current || event.nativeEvent.isComposing || event.keyCode === 229) {
+              if (event.key === "Enter") event.preventDefault();
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault(); dismissSuggestions(); setEditingUrl(false); event.currentTarget.blur();
+            } else if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+              event.preventDefault();
+              setSelectedSuggestion((index) => event.key === "ArrowDown"
+                ? (index + 1) % suggestions.length
+                : (index <= 0 ? suggestions.length : index) - 1);
+            } else if (event.key === "Enter" && suggestionsOpen && selectedSuggestion >= 0) {
+              event.preventDefault(); submitUrl(suggestions[selectedSuggestion]?.value);
+            }
+          }}
+        />
+        {suggestionPromptOpen ? (
+          <div className="op-browser__suggestions op-browser__suggestion-prompt" {...COVERS_NATIVE_VIEW}>
+            <span id={`${suggestionsId}-disclosure`}>{t("terminal.browser.suggestions.disclosure")}</span>
+            <div className="op-browser__suggestion-actions">
+              <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(true); }}>{t("terminal.browser.suggestions.enable")}</button>
+              <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(false); }}>{t("terminal.browser.suggestions.dismiss")}</button>
+            </div>
+            {suggestionSettings.failed ? <span role="alert">{t("terminal.browser.suggestions.settingsFailed")}</span> : null}
+          </div>
+        ) : null}
+        {suggestionsOpen ? (
+          <div id={suggestionsId} className="op-browser__suggestions" role="listbox" {...COVERS_NATIVE_VIEW} aria-label={t("terminal.browser.suggestions.title")}>
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={`${suggestion.historyId ?? "search"}:${suggestion.value}`}
+                id={`${suggestionsId}-${index}`}
+                type="button"
+                role="option"
+                tabIndex={-1}
+                aria-selected={selectedSuggestion === index}
+                className="op-browser__suggestion op-browser__suggestion-result"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => { if (!composingUrlRef.current) submitUrl(suggestion.value); }}
+              ><SuggestionIcon objectiveId={objectiveId} suggestion={suggestion} /><span className="op-browser__suggestion-label">{suggestion.title}{suggestion.historyId ? <small>{suggestion.value}</small> : null}</span></button>
+            ))}
+          </div>
+        ) : null}
+        {activeTab && activeTab.url !== "about:blank" ? <a className="op-browser__url-external" href={activeTab.url} target="_blank" rel="noreferrer noopener" data-fleet-link={FLEET_LINK_NATIVE} aria-label={t("terminal.browser.openExternal")} title={t("terminal.browser.openExternal")}><ExternalGlyph /></a> : null}
+      </form>
+      {navFolded ? (
+        <NavFoldMenu objectiveId={objectiveId} label={t("terminal.browser.moreTools")}>
+          {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
+          <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
+          <BrowserTools objectiveId={objectiveId} language={language} />
+        </NavFoldMenu>
+      ) : (
+        <>
+          {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
+          <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
+          <BrowserTools objectiveId={objectiveId} language={language} />
+        </>
+      )}
+      {navTail}
+    </div>
+  );
 
   return (
     <div className={`op-browser${state?.driving ? " is-driving" : ""}`}>
-      <div className="op-browser__nav">
-        <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
-        <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
-        <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
-        <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`}
-          onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setEditingUrl(false); dismissSuggestions(); } }}
-          onSubmit={(event) => { event.preventDefault(); if (!composingUrlRef.current) submitUrl(); }}>
-          {!editingUrl && urlDraft ? <span className="op-browser__url-display" aria-hidden="true"><UrlParts url={urlDraft} /></span> : null}
-          <input
-            id={`op-browser-url-${objectiveId}`}
-            className="op-browser__url-input"
-            type="text"
-            inputMode="url"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={t("terminal.browser.urlPlaceholder")}
-            aria-label={t("terminal.browser.pageUrl")}
-            value={urlDraft}
-            disabled={!available}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={suggestionsOpen}
-            aria-controls={suggestionsOpen ? suggestionsId : undefined}
-            aria-activedescendant={suggestionsOpen && selectedSuggestion >= 0 ? `${suggestionsId}-${selectedSuggestion}` : undefined}
-            onFocus={(event) => { setEditingUrl(true); event.currentTarget.select(); }}
-            aria-describedby={suggestionPromptOpen ? `${suggestionsId}-disclosure` : undefined}
-            onChange={(event) => {
-              suggestionRequest.current?.abort();
-              setEditingUrl(true);
-              setUrlDraft(event.target.value);
-              setSuggestions([]);
-              setHistorySuggestions([]);
-              setSelectedSuggestion(-1);
-              setSuggestQuery(event.target.value);
-            }}
-            onCompositionStart={() => { composingUrlRef.current = true; setComposingUrl(true); dismissSuggestions(); }}
-            onCompositionEnd={(event) => { composingUrlRef.current = false; setComposingUrl(false); setUrlDraft(event.currentTarget.value); setSuggestQuery(event.currentTarget.value); }}
-            onKeyDown={(event) => {
-              if (composingUrlRef.current || event.nativeEvent.isComposing || event.keyCode === 229) {
-                if (event.key === "Enter") event.preventDefault();
-                return;
-              }
-              if (event.key === "Escape") {
-                event.preventDefault(); dismissSuggestions(); setEditingUrl(false); event.currentTarget.blur();
-              } else if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-                event.preventDefault();
-                setSelectedSuggestion((index) => event.key === "ArrowDown"
-                  ? (index + 1) % suggestions.length
-                  : (index <= 0 ? suggestions.length : index) - 1);
-              } else if (event.key === "Enter" && suggestionsOpen && selectedSuggestion >= 0) {
-                event.preventDefault(); submitUrl(suggestions[selectedSuggestion]?.value);
-              }
-            }}
-          />
-          {suggestionPromptOpen ? (
-            <div className="op-browser__suggestions op-browser__suggestion-prompt" {...COVERS_NATIVE_VIEW}>
-              <span id={`${suggestionsId}-disclosure`}>{t("terminal.browser.suggestions.disclosure")}</span>
-              <div className="op-browser__suggestion-actions">
-                <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(true); }}>{t("terminal.browser.suggestions.enable")}</button>
-                <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(false); }}>{t("terminal.browser.suggestions.dismiss")}</button>
-              </div>
-              {suggestionSettings.failed ? <span role="alert">{t("terminal.browser.suggestions.settingsFailed")}</span> : null}
-            </div>
-          ) : null}
-          {suggestionsOpen ? (
-            <div id={suggestionsId} className="op-browser__suggestions" role="listbox" {...COVERS_NATIVE_VIEW} aria-label={t("terminal.browser.suggestions.title")}>
-              {suggestions.map((suggestion, index) => (
-                <button
-                  key={`${suggestion.historyId ?? "search"}:${suggestion.value}`}
-                  id={`${suggestionsId}-${index}`}
-                  type="button"
-                  role="option"
-                  tabIndex={-1}
-                  aria-selected={selectedSuggestion === index}
-                  className="op-browser__suggestion op-browser__suggestion-result"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => { if (!composingUrlRef.current) submitUrl(suggestion.value); }}
-                ><SuggestionIcon objectiveId={objectiveId} suggestion={suggestion} /><span className="op-browser__suggestion-label">{suggestion.title}{suggestion.historyId ? <small>{suggestion.value}</small> : null}</span></button>
-              ))}
-            </div>
-          ) : null}
-          {activeTab && activeTab.url !== "about:blank" ? <a className="op-browser__url-external" href={activeTab.url} target="_blank" rel="noreferrer noopener" data-fleet-link={FLEET_LINK_NATIVE} aria-label={t("terminal.browser.openExternal")} title={t("terminal.browser.openExternal")}><ExternalGlyph /></a> : null}
-        </form>
-        {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
-        <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
-        <BrowserTools objectiveId={objectiveId} language={language} />
-        {navTail}
-      </div>
+      {navTop ? (navHost === null ? null : createPortal(navBar, navHost)) : navBar}
       <div className="op-browser__body">
         {available ? <BrowserTabRail objectiveId={objectiveId} language={language} /> : null}
         <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>

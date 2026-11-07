@@ -60,7 +60,7 @@ import { requestCommodoreCreate } from "../../../commodore/client/commodore-crea
 import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
-import { releaseBrowserBandSlot, setBrowserBandGlobe, setBrowserBandSlot } from "./workbench/browser-band-slot.js";
+import { releaseBrowserBandSlot, releaseBrowserNavSlot, setBrowserBandGlobe, setBrowserBandSlot, setBrowserNavSlot } from "./workbench/browser-band-slot.js";
 import type { WorkbenchTile } from "../../shared/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
@@ -994,13 +994,22 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
   useConversationSidebarCompact(stageElement, viewport, insets.right);
+  // 맨 위 줄의 주소줄 자리 — 열린 브라우저 칸이 자기 주소줄을 여기로 올린다(browser-band-slot.ts). 이 자리는 대화를 바꿔도 남는다.
+  const navSlotRef = useRef<HTMLSpanElement | null>(null);
+  const bindNavSlot = useCallback((element: HTMLSpanElement | null) => {
+    if (element !== null) { navSlotRef.current = element; setBrowserNavSlot(element); return; }
+    if (navSlotRef.current !== null) releaseBrowserNavSlot(navSlotRef.current);
+    navSlotRef.current = null;
+  }, []);
   const tools = (lead: ReactNode = null, trail: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} trail={trail} band={band} />;
 
   return (
     <>
     {/* 맨 위 줄은 작업 영역 전체 폭이다. 오른쪽 끝 묶음(지구본)은 이 줄 오른쪽 끝(Windows 캡션 바로 왼쪽)으로 portal 되며,
         도구 분할은 그 아래만 쓴다. pill 줄은 실제 그 폭 앞에서 drag 상자를 끝낸다. 칩 옆 도구는 pill 줄 안에 선다. */}
-    <div ref={setBand} className="conversation-band" style={{ left: insets.left, right: insets.right }} />
+    <div ref={setBand} className="conversation-band" style={{ left: insets.left, right: insets.right }}>
+      <span className="conversation-band-nav" ref={bindNavSlot} />
+    </div>
     <section
       ref={setStageElement}
       className="conversation-stage"
@@ -1255,7 +1264,8 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       // 뻗을 때만 비운다(오른쪽 끝 묶음의 오른쪽 여백·캡션 몫 포함). 칩 옆 묶음의 몫(tools-space)은 폭에 칩과의 틈을 더해 양쪽에 같이 비워
       // 칩이 줄의 가운데에 남게 한다. 브라우저 칸 자리는 늘 브라우저 칸 위에 서므로 지구본 몫에 세지 않는다.
       const reserve = () => {
-        const right = Number.parseFloat(getComputedStyle(end).right) || 0;
+        // 오른쪽 끝 묶음의 오른쪽 여백(+ Windows 캡션 몫)은 맨 위 줄의 오른쪽 안쪽 여백이다.
+        const right = end.parentElement === null ? 0 : Number.parseFloat(getComputedStyle(end.parentElement).paddingRight) || 0;
         const leadWidth = leadRef.current?.getBoundingClientRect().width ?? 0;
         row.style.setProperty("--conversation-quota-space", leadWidth > 0 ? `${Math.ceil(leadWidth + right + 12)}px` : "0px");
         row.style.setProperty("--conversation-tools-space", `${Math.ceil(tools.getBoundingClientRect().width + TOOLS_CHIP_GAP)}px`);

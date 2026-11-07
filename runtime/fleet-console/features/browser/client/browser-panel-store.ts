@@ -144,6 +144,12 @@ export function useBrowserCaptionOverlay(objectiveId: string): boolean {
  */
 export const BrowserNavTailContext = React.createContext<React.ReactNode>(null);
 
+/**
+ * 주소줄 줄을 어디에 그릴지 — 작업대가 머리 없는 브라우저 칸을 그릴 때 내려 준다. `undefined`(기본)는 칸 안(본문 맨 위)이고, 요소는 맨 위 줄의
+ * 브라우저 영역에 portal 할 자리, `null` 은 그 자리가 아직 없거나 칸이 숨어 있어 그리지 않는다는 뜻이다. 칸 안과 맨 위 줄에 동시에 서지 않는다.
+ */
+export const BrowserNavHostContext = React.createContext<HTMLElement | null | undefined>(undefined);
+
 // ---------- 세로 탭 레일의 고정 ----------
 
 /** 세로 탭 레일 폭 — 접힘은 아이콘 한 열, 펼침은 탭 제목과 닫기까지. 값은 CSS 의 `--op-rail-*` 와 짝이다(펼침 폭은 거기서만 읽힌다). */

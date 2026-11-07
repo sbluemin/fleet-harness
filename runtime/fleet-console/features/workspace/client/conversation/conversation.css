@@ -415,6 +415,9 @@
    하고, 묶음 자체는 표식에서 오른쪽으로 뻗는다. 뻗은 폭은 ConversationToolbar 가 줄의 양쪽 여백(--conversation-tools-space)으로 예약한다. */
 .conversation-pill-tools-anchor { position: relative; flex: none; align-self: center; width: 0; height: 30px; margin-left: calc(-1 * var(--space-2)); }
 .conversation-pill-tools.conversation-pill-tools-chip { top: 0; right: auto; left: var(--space-2); }
+/* 오른쪽 끝 묶음은 맨 위 줄(.conversation-band)의 flex 끝 자식이다 — 열림·닫힘과 무관하게 같은 자리, 지구본 왼쪽이 주소줄 자리다. */
+.conversation-pill-tools.conversation-pill-tools-end { position: relative; top: auto; right: auto; }
+.conversation-band-nav { position: relative; flex: 1; align-self: stretch; min-width: 0; margin-right: var(--space-2); }
 
 .conversation-pill-tools-items,
 .conversation-pill-tools-items .right-rail-tabs { display: contents; }
@@ -1485,8 +1488,15 @@
 .conversation-band {
   position: absolute;
   top: 0;
-  z-index: 1;
+  /* 도구 분할 레이어(z-index 1)보다 위 — 맨 위 줄로 올라간 주소줄의 제안·메뉴가 줄 아래 칸 위로 내려와도 가려지지 않는다. */
+  z-index: 2;
   height: var(--conversation-top-row);
+  /* 오른쪽 끝에서부터 쌓인다 — 오른쪽 끝 묶음(지구본, 오른쪽 여백·Windows 캡션 몫 앞)과 그 왼쪽의 주소줄 자리(남는 폭 전부). */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  padding-right: calc(var(--space-3) + var(--conversation-caption-reserve));
   pointer-events: none;
   transition: left var(--duration-base) ease, right var(--duration-base) var(--ease-spring);
 }
