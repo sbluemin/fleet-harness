@@ -65,7 +65,7 @@ const stubCandidates = () => vi.stubGlobal("fetch", async (url: string) => url.e
   ? Response.json({ candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] })
   : new Response("", { status: 404 }));
 
-function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null }) {
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null }) {
   // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
@@ -302,6 +302,7 @@ title: input.title});
         return { ok: true, applied: "now" };
       },
     },
+    ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}),
     paths: { workspaceHash: () => "t1", resolveCommodoreTheaterPath: () => theaterPath, resolveObjectiveOwner: () => "c1", listCommodoreTheaters: () => [{ id: "t1", label: "Project" }], resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
   const launchOptions = { now: () => clock, commodoreAutoMemoryEnabled: options?.commodoreAutoMemoryEnabled, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}), ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}) };
@@ -2022,7 +2023,7 @@ describe("Objectives contract", () => {
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
     // 사람이 이 사령관에 정한 지휘관 모델 — 처음에는 없다.
-    let configured: { readonly model: string; readonly effort?: string } | null = null;
+    let configured: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = null;
     const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid", { commodoreCommander: () => configured });
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
@@ -2072,13 +2073,19 @@ describe("Objectives contract", () => {
     expect(store.list("c1")).toEqual([]);
     expect(judged).toEqual([]);
     // 사람이 정한 사령관 설정은 사람의 명시 선택이다 — candidates 에 없어도 실행 카탈로그에서 고를 수 있으면 그 모델로 만든다.
-    configured = { model: "opus[1m]", effort: "high" };
+    configured = { model: "opus[1m]", effort: "high", fast: true };
     const actor = { kind: "commodore", commodoreId: "c1" };
     const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
     const created = await board({ action: "add", theaterId: "t1", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage], requestSource });
     expect(created).toMatchObject({ stored: { dueDate: "2026-10-31", requestSource } });
     const id = created.objectiveId as string;
     expect(store.find(id)!.commander).toMatchObject({ model: "opus[1m]", effort: "high" });
+    // 사람이 정한 지휘관 모델이 있으면 사령관이 넘긴 모델·effort는 검증 없이 버리고 설정 모델과 속도로 만들며, 응답이 그 사실을 알린다.
+    const overridden = await board({ action: "add", theaterId: "t1", title: "Overridden", commanderModel: "not-a-model", commanderEffort: "low" });
+    expect(overridden).toMatchObject({ notice: expect.stringContaining("ignored") });
+    expect(store.find(overridden.objectiveId as string)!.commander).toMatchObject({ model: "opus[1m]", effort: "high" });
+    expect(store.pending(overridden.objectiveId as string)).toMatchObject({ model: "opus[1m]", effort: "high", modelSpeed: { model: "opus[1m]", fast: true } });
+    expect(created).not.toHaveProperty("notice");
     candidates.candidates.push({ model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" });
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor, requestSource });
     expect((await board({ action: "list", filter: "all" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor, requestSource }));

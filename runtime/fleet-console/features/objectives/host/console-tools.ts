@@ -81,8 +81,8 @@ const listTool = defineConsoleTool({
     // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관의 fleet-objectives search 와 같은 핵심·같은 입력이다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
     add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan."),
-      commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Omitted: the person's Commander setting; add is refused if none."),
-      commanderEffort: z.string().trim().min(1).max(32).optional().describe("Commander effort from that model's efforts; needs commanderModel. Omitted uses the model's default.") }) },
+      commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates; ignored if the person set a Commander model. Otherwise required."),
+      commanderEffort: z.string().trim().min(1).max(32).optional().describe("Ignored if the person set a Commander model. Otherwise from commanderModel's efforts; omitted uses its default.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
@@ -282,14 +282,17 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         // 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
         const inherited = caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId : undefined;
         const specified = call.theaterId !== undefined;
-        const commander = await chosenCommander(call.commanderModel, call.commanderEffort, context.signal);
+        // 사람이 사령관 설정에 지휘관 모델을 정했으면 사령관이 넘긴 모델·effort는 검증 없이 버리고, 생성이 설정 모델과 속도로 시작한다.
+        const personChose = caller?.kind === "commodore" && !!ctx.commodoreCommander?.(commodoreId);
+        const overridden = personChose && (call.commanderModel !== undefined || call.commanderEffort !== undefined);
+        const commander = personChose ? null : await chosenCommander(call.commanderModel, call.commanderEffort, context.signal);
         const objective = await launch.create({
           commodoreId, theaterId: call.theaterId ?? inherited ?? "", theaterIdSpecified: specified, groupId, title: call.title, requestSource: call.requestSource, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
           ...(caller?.kind === "objectiveRecord" ? { addedBy: caller.objectiveId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
           ...(commander ? { commander } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
-        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, requestSource: kept.requestSource, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
+        return text({ ok: true, objectiveId: objective.id, ...(overridden ? { notice: "Supplied model/effort ignored; using person's Commander setting." } : {}), stored: { title: kept.title, dueDate: kept.dueDate, requestSource: kept.requestSource, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
         return refuse("objectives_failed");
