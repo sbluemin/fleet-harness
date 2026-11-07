@@ -1057,7 +1057,7 @@ function CommanderCompactPopover({ commodoreId, selectedId, anchor, onClose }: {
   }, [onClose]);
   const select = (item: SideBarRowItem) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
-    if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
+    if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId, { fromSideBar: true });
     else item.layout.cluster.open?.();
     onClose();
   };
