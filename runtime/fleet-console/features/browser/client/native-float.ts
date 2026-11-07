@@ -38,7 +38,8 @@ type SurfaceMessage =
   | { readonly type: "shown"; readonly revision: number }
   | { readonly type: "hover"; readonly inside: boolean }
   | { readonly type: "activate"; readonly revision: number; readonly path: number }
-  | { readonly type: "wheel"; readonly revision: number; readonly path: number; readonly dx: number; readonly dy: number };
+  | { readonly type: "wheel"; readonly revision: number; readonly path: number; readonly dx: number; readonly dy: number }
+  | { readonly type: "pointer"; readonly revision: number; readonly kind: "over" | "out"; readonly path: number; readonly related: number | null };
 
 interface FloatState {
   target: string | null;
@@ -157,6 +158,8 @@ const overlaps = (a: DOMRect, b: DOMRect): boolean => a.right > b.left && a.left
 
 /** 지금 떠야 하는 표면들 — 비모달이고, 보이고, 다른 표면 안에 들어 있지 않고, 네이티브 자리와 겹치는 것. */
 function candidates(): { readonly target: string | null; readonly elements: HTMLElement[] } {
+  // 모달이 열리면 그 아래의 떠 있는 표면도 막과 함께 물러난다 — 따로 선 자식 창은 막 위에 남아 버린다.
+  if (document.querySelector('[aria-modal="true"]')) return { target: null, elements: [] };
   const covers = [...document.querySelectorAll<HTMLElement>(COVER_SELECTOR)].filter((element) => {
     if (element.getAttribute("aria-modal") === "true" || element.closest('[aria-modal="true"]')) return false;
     if (element.parentElement?.closest(COVER_SELECTOR)) return false;
@@ -245,13 +248,33 @@ function receive(message: SurfaceMessage): void {
   }
   // 표면이 낡은 그림을 보고 누른 것은 버린다 — 같은 번호가 다른 항목을 가리킬 수 있다.
   if (message.revision !== state.revision || !Number.isInteger(message.path)) return;
-  const node = state.nodes[message.path];
-  if (!(node instanceof HTMLElement) || !state.elements.some((element) => element.contains(node))) return;
+  // 누른 것이 글리프(SVG)여도 그 둘레의 HTML 요소가 동작을 가진다.
+  const node = originalAt(message.path);
+  if (!node) return;
+  if (message.type === "pointer") { hover(node, message.kind, message.related === null ? null : originalAt(message.related)); return; }
   if (message.type === "activate") activate(node);
   else if (message.type === "wheel") scrollFrom(node, Number(message.dx) || 0, Number(message.dy) || 0);
 }
 
-const pointerInit = (x: number, y: number) => ({ bubbles: true, cancelable: true, composed: true, button: 0, clientX: x, clientY: y, view: window });
+/** 자식 창 번호의 원본 — 글리프(SVG)를 눌러도 그 둘레의 HTML 요소가 동작을 가진다. 떠 있는 표면 밖이면 없다. */
+function originalAt(path: number): HTMLElement | null {
+  let node: Element | null = state.nodes[path] ?? null;
+  while (node && !(node instanceof HTMLElement)) node = node.parentElement;
+  return node instanceof HTMLElement && state.elements.some((element) => element.contains(node)) ? node : null;
+}
+
+/**
+ * 자식 창 안의 포인터 진입·이탈을 원본에 그대로 낸다. 호버로 열리고 떠나면 닫히는 표면(원격 콘솔 목록, 옆 하위 메뉴)은
+ * 표면에 들어온 것을 원본의 enter 처리기로 알아야 닫힘 타이머를 거둔다. `related` 가 없으면 창 밖과 오간 것이다.
+ */
+function hover(node: HTMLElement, kind: "over" | "out", related: HTMLElement | null): void {
+  const rect = node.getBoundingClientRect();
+  const init = { ...pointerInit(rect.left + rect.width / 2, rect.top + rect.height / 2), relatedTarget: related };
+  node.dispatchEvent(new PointerEvent(kind === "over" ? "pointerover" : "pointerout", { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+  node.dispatchEvent(new MouseEvent(kind === "over" ? "mouseover" : "mouseout", init));
+}
+
+const pointerInit = (x: number, y: number) => ({ bubbles: true, cancelable: true, composed: true, button: 0, clientX: x, clientY: y });
 
 /** 사람이 누른 것과 같은 순서로 원본 요소에 포인터·마우스 사건을 낸다 — mousedown 에서 동작하는 항목도 있다. */
 function activate(node: HTMLElement): void {

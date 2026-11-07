@@ -110,6 +110,14 @@ export function startFloatSurface(): void {
     const path = pathOf(event.target);
     if (path !== null && revision >= 0) channel.postMessage({ type: "wheel", revision, path, dx: event.deltaX, dy: event.deltaY });
   }, { capture: true, passive: false });
+  // 표면 안의 진입·이탈을 번호로 알린다 — 원본의 enter·leave 처리기(호버로 열린 표면의 닫힘 타이머 등)가 같은 순서로 듣는다.
+  for (const kind of ["over", "out"] as const) {
+    document.addEventListener(kind === "over" ? "pointerover" : "pointerout", (event) => {
+      const path = pathOf(event.target);
+      if (path === null || revision < 0) return;
+      channel.postMessage({ type: "pointer", revision, kind, path, related: pathOf(event.relatedTarget) });
+    }, true);
+  }
   document.addEventListener("pointerenter", () => channel.postMessage({ type: "hover", inside: true }), true);
   document.documentElement.addEventListener("pointerleave", () => channel.postMessage({ type: "hover", inside: false }));
   document.addEventListener("visibilitychange", () => {
