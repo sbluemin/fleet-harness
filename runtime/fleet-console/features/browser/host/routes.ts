@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
+import { commodoreBrowserId, commodoreOfBrowser, COMMODORE_SPACE_ID, SESSION_SPACE_ID } from "../shared/spaces.js";
 import { writeImageToClipboard } from "./clipboard.js";
 import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
 
@@ -20,7 +21,7 @@ interface BrowserRouteDeps {
     resolveSessionOwner?(pluginId: string, scopeId: string): string | null;
     isSessionOwner?(id: string): boolean;
   };
-  readonly objectiveRecords: { get(id: string): { id: string; [key: string]: unknown } | null };
+  readonly objectiveRecords: { get(id: string): { id: string; commodoreId: string; [key: string]: unknown } | null };
   /** 자식 세션 → 브라우저의 주인(루트). 자식 세션은 자기 브라우저를 갖지 않고 루트의 것을 함께 쓴다. 없으면 자기 자신이다. */
   readonly browserOwnerOf?: (objectiveId: string) => string | null;
   readonly isWriteAdmitted: (req: IncomingMessage) => boolean;
@@ -127,17 +128,19 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|import|profile|clear-profile)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|import|profile|clear-profile|space)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
     // 예약 id "global" 은 Objective 경로로도 열리지 않는다. 옛 전역 요청이 Session 에 붙지 않게 한다.
     const requested = requestedId === GLOBAL_BROWSER_OWNER_ID ? null : objectiveRecords.get(requestedId);
-    // 자식 세션의 경로는 루트의 브라우저로 간다 — 상태·탭·중단이 모두 그 하나에 선다.
-    const objectiveId = requested ? deps.browserOwnerOf?.(requested.id) ?? requested.id : requestedId;
-    const objectiveRecord = requested ? objectiveRecords.get(objectiveId) : null;
-    const sessionOwner = objectiveId !== GLOBAL_BROWSER_OWNER_ID && browserMcp.isSessionOwner?.(objectiveId) === true;
+    // Objective(자식 세션 포함)의 경로는 그 사령관의 브라우저로 가고, 스페이스는 루트 Objective 의 것이다.
+    const rootId = requested ? deps.browserOwnerOf?.(requested.id) ?? requested.id : null;
+    const objectiveRecord = rootId ? objectiveRecords.get(rootId) : null;
+    const sessionOwner = !requested && requestedId !== GLOBAL_BROWSER_OWNER_ID && browserMcp.isSessionOwner?.(requestedId) === true;
     if (!objectiveRecord && !sessionOwner) { writeJson(res, 404, { error: "objectiveRecord_not_found" }); return true; }
+    const objectiveId = objectiveRecord ? commodoreBrowserId(objectiveRecord.commodoreId) : requestedId;
+    const homeSpaceId = objectiveRecord ? objectiveRecord.id : commodoreOfBrowser(requestedId) ? COMMODORE_SPACE_ID : SESSION_SPACE_ID;
     // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.
     if (action !== "state" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
     const fail = (error: unknown) => {
@@ -147,7 +150,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     };
     if (req.method === "GET" && action === "state") {
       // 뒤따르는 변화는 Objective 스트림의 browser:state 로 간다 — 이 답은 그 스트림에 붙는 화면의 출발점이다.
-      writeJson(res, 200, browserService.state(objectiveId));
+      writeJson(res, 200, { ...browserService.state(objectiveId), homeSpaceId });
       return true;
     }
     if (req.method === "GET" && action === "favicon") {
@@ -199,10 +202,14 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       }
       if (action === "tabs") {
         const tabId = typeof body.tabId === "string" ? body.tabId : null;
-        if (body.action === "create") { const tab = await browserService.createTab(objectiveId, typeof body.url === "string" ? body.url : null, "user"); writeJson(res, 200, { tab }); return true; }
+        if (body.action === "create") { const tab = await browserService.createTab(objectiveId, typeof body.url === "string" ? body.url : null, "user", { spaceId: typeof body.spaceId === "string" && body.spaceId ? body.spaceId : homeSpaceId }); writeJson(res, 200, { tab }); return true; }
         if (body.action === "close" && tabId) { await browserService.closeTab(objectiveId, tabId); writeJson(res, 200, { closed: tabId }); return true; }
         if (body.action === "select" && tabId) { await browserService.selectTab(objectiveId, tabId); writeJson(res, 200, { selected: tabId }); return true; }
         writeJson(res, 400, { error: "invalid_request" }); return true;
+      }
+      if (action === "space") {
+        if (typeof body.spaceId !== "string" || !body.spaceId || body.spaceId.length > 256) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        writeJson(res, 200, await browserService.showSpace(objectiveId, body.spaceId)); return true;
       }
       if (action === "navigate") {
         if (typeof body.url !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
@@ -235,7 +242,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) { writeJson(res, 400, { error: "invalid_request" }); return true; }
         try { await writeImageToClipboard(png); }
         catch (error) { process.stdout.write(`[fleet-browser] paste: clipboard write failed: ${error instanceof Error ? error.message : "unknown"}\n`); writeJson(res, 500, { error: "clipboard_failed" }); return true; }
-        if (!browserMcp.pasteIntoTerminal(objectiveId)) { writeJson(res, 409, { error: "terminal_not_running" }); return true; }
+        if (!browserMcp.pasteIntoTerminal(objectiveRecord.id)) { writeJson(res, 409, { error: "terminal_not_running" }); return true; }
         writeJson(res, 200, { pasted: true }); return true;
       }
       writeJson(res, 404, { error: "not_found" });

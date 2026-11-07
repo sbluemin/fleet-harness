@@ -141,6 +141,13 @@ export class DesktopEngine implements CdpClient {
     this.publish();
   }
 
+  /** 그 브라우저의 어느 탭도 띄우지 않는다 — 사람이 탭이 없는 스페이스를 화면에 띄웠을 때. */
+  deactivate(objectiveId: string): void {
+    let changed = false;
+    for (const view of this.views.values()) if (view.objectiveId === objectiveId && view.active) { view.active = false; changed = true; }
+    if (changed) this.publish();
+  }
+
   /** 셸이 알려 준 **그 뷰**의 실제 크기 — 다른 탭 pane 과 섞지 않는다. */
   viewSize(viewId: string): { width: number; height: number; scale: number } | null { return this.views.get(viewId)?.size ?? null; }
   viewOwner(viewId: string): string | null { return this.views.get(viewId)?.objectiveId ?? null; }
