@@ -89,9 +89,10 @@
 .workbench-band-chrome.is-enter, .workbench-band-nav-wrap.is-enter { animation: workbench-band-in 200ms ease-out both; }
 .workbench-band-chrome.is-leave, .workbench-band-nav-wrap.is-leave { animation: workbench-band-out 160ms ease-in both; }
 
-/* 주소줄 줄의 자리(맨 위 줄의 주소줄 영역) — 왼쪽은 칩 묶음 오른쪽 끝 + space-3(--conversation-chip-end, 분할 x 는 측정 전 대비값),
-   오른쪽은 지구본 왼쪽(주소줄 자리의 끝)이다. 줄 자체는 .op-browser__nav.is-top 이 그린다. 펼쳐도 이 영역은 그대로다. */
-.workbench-band-nav-wrap { position: absolute; top: 0; right: 0; bottom: 0; left: var(--conversation-chip-end, var(--browser-split-x, 0px)); display: flex; align-items: center; pointer-events: none; }
+/* 주소줄 줄의 자리(맨 위 줄의 주소줄 영역) — 왼쪽은 브라우저 칸의 왼쪽 끝(--browser-split-x)에서 시작해 대화 칸 위에는 칩과 컨텍스트·알림 단추만 남긴다.
+   칩 묶음이 그 끝을 넘어서면(좁은 칸) 그 오른쪽 끝(--conversation-chip-end, 대화 머리 줄이 잰다)이 한계다. 오른쪽은 지구본 왼쪽(주소줄 자리의 끝)이다.
+   줄 자체는 .op-browser__nav.is-top 이 그린다. 펼쳐도 이 영역은 그대로다. */
+.workbench-band-nav-wrap { position: absolute; top: 0; right: 0; bottom: 0; left: max(var(--conversation-chip-end, 0px), var(--browser-split-x, 0px)); display: flex; align-items: center; pointer-events: none; }
 
 @keyframes workbench-band-in {
   from { opacity: 0; }
