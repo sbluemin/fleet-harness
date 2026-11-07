@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.287.0] - 2026-11-07
+
+### fleet-console
+
+#### Changed
+- Each Codex model is one choice with a 500,000-token window, and Fast is a switch on that model instead of a second model or a context-window picker.
+- Model lists no longer add 1M, Fast, or "(1M Context)" labels.
+- Compact timing follows each model's real window and your compact point in Claude Code settings, instead of an environment variable.
+
+#### Fixed
+- A conversation that outgrows a model's real window can compact and continue instead of staying stuck.
+
 ## [1.286.0] - 2026-11-06
 
 ### fleet-console

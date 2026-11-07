@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.287.0] - 2026-11-07
+
+### fleet-console
+
+#### Changed
+- Codex 모델은 하나당 500,000토큰 창의 선택지 하나이고, Fast는 별도 모델이나 창 선택이 아니라 그 모델의 스위치입니다.
+- 모델 목록에 1M, Fast, "(1M Context)" 표기를 더하지 않습니다.
+- 압축 시점은 환경 변수가 아니라, 모델의 실제 창과 설정한 압축 시점으로 Claude Code 설정에 들어갑니다.
+
+#### Fixed
+- 대화가 모델의 실제 창을 넘어도 막히지 않고 압축한 뒤 이어갈 수 있습니다.
+
 ## [1.286.0] - 2026-11-06
 
 ### fleet-console
