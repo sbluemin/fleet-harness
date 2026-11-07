@@ -43,8 +43,9 @@ import { isDesktopShell } from "../../../../core/client/src/integration/desktop-
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
-import { isCommanderObjective, keptCommodoreOwnerOf } from "../commander-tab/commander-rows.js";
-import { clearCommanderSideBarPick, readCommanderSideBarPick } from "../commander-tab/commander-navigation.js";
+import { commanderOwnerOf, isCommanderObjective } from "../commander-tab/commander-rows.js";
+import { ObjectiveChipCommodore, ObjectiveChipGlyphs } from "./objective-chip-glyphs.js";
+import { toggleObjectiveWindow } from "../../../objectives/client/objective-window.js";
 import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
@@ -163,37 +164,44 @@ function centerCommanderOf(clusterIndex: ClusterIndex, commodoreId: string): str
   return centerId !== null && isCommanderObjective(clusterIndex.clusters, commodoreId, centerId) ? centerId : null;
 }
 
-/** 좌측 사이드바 목록에서 고른 지휘관은 예외다 — 레일을 작업 탭에 붙들지 않고 열려 있던 패널을 목표 보드로 넘긴다(#2380 이전 좌측 규칙). */
 function shouldKeepCommodoreTabs(clusterIndex: ClusterIndex, commodoreId: string): boolean {
-  const center = centerCommanderOf(clusterIndex, commodoreId);
-  return center !== null && center !== readCommanderSideBarPick();
+  return centerCommanderOf(clusterIndex, commodoreId) !== null;
 }
 
 /**
- * 작업 탭의 유지 주인 — 레일이 이 사령관의 작업 탭에 머물고 가운데가 그 지휘관일 때 그 사령관 id.
- * 머리(사령관 머리·작업 탭 3개)가 가운데 대상이 아니라 레일을 따르는 길이다.
+ * 떠나는 화면의 사령관 탭이 연 패널을 그대로 둘까 — 다음 화면도 사령관 탭을 싣는다면(어느 사령관의 지휘관·사령관 대화·새 목표 화면) 같은 탭
+ * id 가 이어 서므로 닫지 않는다. 목표는 우측 사이드바의 맥락을 바꾸지 않는다 — 열린 사이드바는 열린 채, 닫힌 사이드바는 닫힌 채다.
+ */
+function nextScreenKeepsCommodoreTabs(clusterIndex: ClusterIndex): boolean {
+  const surface = getConversationSurface();
+  if (surface?.surfaceId === COMMODORE_SURFACE_ID || getState().newSession !== null) return true;
+  const params = surface?.params as { readonly objectiveId?: unknown } | undefined;
+  const freshId = surface?.surfaceId === FRESH_SURFACE_ID && typeof params?.objectiveId === "string" ? params.objectiveId : null;
+  const centerId = freshId ?? (surface === null ? getState().activeObjectiveId : null);
+  if (centerId === null) return false;
+  const state = getState();
+  const record = state.objectiveRecords.find((candidate) => candidate.id === centerId) ?? state.nestedObjectiveRecords.find((candidate) => candidate.id === centerId);
+  return commanderOwnerOf(clusterIndex.clusters, record?.parentObjectiveId ?? centerId) !== null;
+}
+
+/**
+ * 가운데 대화(지휘관·구성원·시작 전 목표)의 사령관 — 우측 사이드바는 목표 대화에서도 이 사령관의 탭(작업·정보·설정)과 머리만 싣는다.
+ * 목표·구성원·라이브러리는 채팅 머리의 목표 창과 작업 탭 행 펼침이 보인다. 사령관 묶음의 지휘관이 아니면 null 이다.
  */
 function useKeptCommodoreOwner(): string | null {
   const clusterIndex = useClusterIndex();
-  const tabs = useConversationObjectiveTabPanels();
-  const activePanelId = useRailActivePanelId();
   const subject = useConversationSubject();
   const standIn = useConversationStandIn();
-  const ownerTab = tabs.find((tab) => tab.id === activePanelId);
-  const panelOwner = ownerTab?.section?.theaterId ?? null;
-  const centerId = subject?.id ?? standIn ?? null;
-  return keptCommodoreOwnerOf(panelOwner, centerId !== null && panelOwner !== null && isCommanderObjective(clusterIndex.clusters, panelOwner, centerId));
+  const centerId = subject ? subject.parentObjectiveId ?? subject.id : standIn ?? null;
+  return centerId === null ? null : commanderOwnerOf(clusterIndex.clusters, centerId);
 }
 
 /**
  * 가운데 칸의 대상이 Objective(아직 서지 않은 Objective 을 대신하는 시작 전 목표 포함)으로 바뀌면(Objective 을 고르거나 사령관 같은
- * 플러그인 대화가 걷히면) 오른쪽 패널의 열림/닫힘을 잇는다.
- * 닫혀 있었으면 열지 않는다. 열려 있었고 앞 대상의 탭(구성원·사령관 탭·Theater 설정)을 보이던 중이면 탭 줄 맨 앞의 목표로 돌린다 —
- * 그 탭이 대상과 함께 걷히며 패널을 이미 닫았어도(대화 칸의 cleanup 은 이 effect 보다 먼저 돈다) 다시 연다. Theater 를 연 채 대상이
- * 바뀌면 Theater 는 곧 걷히므로 그 경우도 Objective 대화로 다룬다. 대상의 탭이 아닌 패널(설정, 목표 등 도구)과 목표 도구가 없는
- * 경우는 그대로 둔다.
- * 지금 사령관 패널 주인의 지휘관이 가운데로 오면 사령관 패널(작업 탭)에 머문다 — 레일을 지휘관 화면으로 넘기지 않는다.
- * 다른 사령관의 지휘관이 오거나 좌측 사이드바 목록에서 고른 지휘관이면 지금 규칙을 그대로 따른다.
+ * 플러그인 대화가 걷히면) 오른쪽 패널의 열림/닫힘을 잇는다. 닫혀 있었으면 열지 않는다.
+ * 사령관의 지휘관이 가운데로 오면 목표는 우측 사이드바의 맥락을 바꾸지 않는다 — 그 사령관의 탭(작업·정보·설정)이 서 있고, 보던 사령관 탭이면
+ * 그 탭에 머문다. 앞 대상의 탭(구성원·Theater 설정)을 보이던 중이었으면 사령관 대화에서 마지막으로 선 탭(없으면 작업 탭)으로 돌린다.
+ * 사령관 묶음이 아닌 Objective 은 예전 규칙대로 탭 줄 맨 앞의 목표로 돌린다. 설정과 도구 패널은 그대로 둔다.
  * 유지 조건이 깨진 보관 등록(다른 사령관·새 세션)은 여기서 걷는다.
  */
 function usePanelFollowsSubject(subjectId: string | null): void {
@@ -203,9 +211,10 @@ function usePanelFollowsSubject(subjectId: string | null): void {
   const clusterIndex = useClusterIndex();
   const clustersRef = useRef(clusterIndex);
   clustersRef.current = clusterIndex;
-  const objectiveTabs = useConversationObjectiveTabPanels();
-  const tabsRef = useRef(objectiveTabs);
-  tabsRef.current = objectiveTabs;
+  const { conversationSurfaces } = useFeatureRegistry();
+  const commodoreTabIds = (conversationSurfaces.find((descriptor) => descriptor.id === COMMODORE_SURFACE_ID)?.tabs ?? []).map((tab) => tab.id);
+  const commodoreTabIdsRef = useRef(commodoreTabIds);
+  commodoreTabIdsRef.current = commodoreTabIds;
   // 대상이 바뀌는 렌더는 앞 대상의 탭이 걷히기(cleanup) 전에 돈다 — 이 렌더가 읽은 것이 바뀌기 직전 패널의 열림이다. 등록 목록에
   // 없는 id(내려간 플러그인)는 레일이 그리지 않으므로 닫힌 것이다.
   const openBeforeRef = useRef(false);
@@ -213,20 +222,19 @@ function usePanelFollowsSubject(subjectId: string | null): void {
   openBeforeRef.current = activeAtRender !== null && bindings.some((binding) => binding.entry.id === activeAtRender && binding.panes.length > 0);
   useEffect(() => {
     const active = getRailStoreSnapshot().activePanelId;
-    const ownerTab = tabsRef.current.find((tab) => tab.id === active);
-    const panelOwner = ownerTab?.section?.theaterId ?? null;
-    const survivor = keptCommodoreOwnerOf(panelOwner, panelOwner !== null && shouldKeepCommodoreTabs(clustersRef.current, panelOwner));
-    // 좌측 목록 선택 표시는 이 대상 전환 한 번에만 쓴다.
-    clearCommanderSideBarPick();
-    releaseKeptConversationObjectiveTabs(survivor);
+    const owner = subjectId === null ? null : commanderOwnerOf(clustersRef.current.clusters, subjectId);
+    releaseKeptConversationObjectiveTabs(owner);
     if (subjectId === null || !openBeforeRef.current) return;
     if (active === SETTINGS_RAIL_ENTRY_ID) return;
-    if (survivor !== null) {
-      openRailPanel(COMMODORE_ROUTINES_TAB_ID);
-      return;
-    }
     const current = bindingsRef.current;
     const activeBinding = active === null ? null : current.find((binding) => binding.entry.id === active) ?? null;
+    if (owner !== null) {
+      const tabIds = commodoreTabIdsRef.current;
+      if (active !== null && tabIds.includes(active)) return;
+      if (activeBinding !== null && !activeBinding.core && !isConversationTab(activeBinding.entry)) return;
+      openRailPanel(conversationRailTab(COMMODORE_SURFACE_ID, tabIds, COMMODORE_ROUTINES_TAB_ID));
+      return;
+    }
     if (activeBinding !== null && !activeBinding.core) return;
     const lead = firstConversationTab(current);
     if (lead) openRailPanel(lead.entry.id);
@@ -855,8 +863,12 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const stageInbox = useTheaterInboxState();
   // 아직 서지 않은 Objective 을 대신하는 플러그인 대화(시작 전 목표)도 Objective 대화처럼 「목표」가 먼저다.
   const objectiveRecordConversation = (surfaceDescriptor === null ? stageSubject !== null : standInId !== null) && stageInbox === null;
-  const toggleDetails = useToggleDetails(objectiveRecordConversation);
-  usePanelFollowsSubject(surfaceDescriptor ? standInId : stageSubject?.id ?? null);
+  // 가운데 목표 대화의 사령관 — 우측 사이드바는 이 사령관의 탭만 싣는다(목표는 사이드바 맥락을 바꾸지 않는다).
+  const shellClusters = useClusterIndex();
+  const centerObjectiveId = surfaceDescriptor ? standInId : stageSubject ? stageSubject.parentObjectiveId ?? stageSubject.id : null;
+  const objectiveCommodoreId = objectiveRecordConversation && centerObjectiveId !== null ? commanderOwnerOf(shellClusters.clusters, centerObjectiveId) : null;
+  const toggleDetails = useToggleDetails(objectiveRecordConversation && objectiveCommodoreId === null);
+  usePanelFollowsSubject(centerObjectiveId);
 
   // ── 도구 분할 — 목표·구성원도 소유 사령관의 배치·문서·Shell을 그대로 쓴다 ──
   // 브라우저만 지금 대화의 세션을 따른다. 기존 사령관 키를 유지하므로 배치를 옮길 필요는 없다.
@@ -985,10 +997,13 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       aria-label={t("conversation.stage.aria")}
     >
       <ConversationDockHost.Provider value={stageElement}>
+      {!newSession && objectiveCommodoreId !== null && newSessionRailDescriptor !== null
+        ? <CommodoreRailTabs descriptor={newSessionRailDescriptor} commodoreId={objectiveCommodoreId} language={language} theme={state.activeTheme} />
+        : null}
       {newSession ? (
         <>
           {newSessionCommodoreId !== null && newSessionRailDescriptor !== null
-            ? <NewSessionRailTabs descriptor={newSessionRailDescriptor} commodoreId={newSessionCommodoreId} language={language} theme={state.activeTheme} />
+            ? <CommodoreRailTabs descriptor={newSessionRailDescriptor} commodoreId={newSessionCommodoreId} language={language} theme={state.activeTheme} />
             : null}
           <NewSessionColumn state={state} target={newSession} tools={tools(null)} />
         </>
@@ -1377,12 +1392,12 @@ function useNewSessionCommodoreId(): string | null {
 }
 
 /**
- * 「새 목표」 화면의 오른쪽 사이드바 — 화면에 실린 사령관의 탭(작업·정보·설정)을 사령관 대화와 같은 자리에 세운다.
+ * 「새 목표」 화면과 목표 대화(지휘관·구성원·시작 전 목표)의 오른쪽 사이드바 — 그 사령관의 탭(작업·정보·설정)을 사령관 대화와 같은 자리에 세운다.
  * 앞 화면에서 사이드바가 열려 있었으면 이어서 연다: 보던 사령관 탭이면 그 탭, 아니면 사령관 대화의 마지막 탭(없으면 기본 탭)이다.
  * 닫혀 있었으면 닫힌 채 둔다. 여닫음은 사령관 대화의 기억에 함께 남는다 — 여기서 닫고 사령관으로 돌아가도 닫힌 채다.
  * 앞 화면이 남긴 도구·설정 패널은 그대로 둔다.
  */
-function NewSessionRailTabs({ descriptor, commodoreId, language, theme }: {
+function CommodoreRailTabs({ descriptor, commodoreId, language, theme }: {
   readonly descriptor: ResolvedConversationSurface;
   readonly commodoreId: string;
   readonly language: "en" | "ko";
@@ -1410,8 +1425,9 @@ function NewSessionRailTabs({ descriptor, commodoreId, language, theme }: {
     };
   }, [commodoreId, context, descriptor, section]);
   // 화면을 떠나면 이 탭이 연 패널도 걷힌다 — 다음 화면이 자기 규칙(사령관 대화의 기억, Objective 대화의 이어 열기)으로 다시 연다.
+  // 다음 화면도 사령관 탭을 싣는다면(다른 목표 대화·사령관 대화·새 목표) 같은 탭 id 가 이어 서므로 열린 채 둔다.
   useEffect(() => () => {
-    if (shouldKeepCommodoreTabs(clustersRef.current, commodoreId)) return;
+    if (shouldKeepCommodoreTabs(clustersRef.current, commodoreId) || nextScreenKeepsCommodoreTabs(clustersRef.current)) return;
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && tabIdsRef.current.includes(active)) closeRailPanel(active);
   }, [commodoreId]);
@@ -1505,7 +1521,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // (usePanelFollowsSubject). 우측 배치에서 이 사령관의 지휘관으로 옮기면 패널을 닫지 않고 작업 탭에 머문다.
   useEffect(() => () => {
     const commodoreId = surfaceCommodoreRef.current;
-    if (commodoreId !== null && shouldKeepCommodoreTabs(clustersRef.current, commodoreId)) return;
+    if (commodoreId !== null && (shouldKeepCommodoreTabs(clustersRef.current, commodoreId) || nextScreenKeepsCommodoreTabs(clustersRef.current))) return;
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && tabIdsRef.current.includes(active)) closeRailPanel(active);
   }, []);
@@ -1718,11 +1734,15 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const memberIds = new Set([...roster.flatMap((member) => (member.objectiveId ? [member.objectiveId] : [])), ...nested.map((candidate) => candidate.id)]);
   memberIds.delete(objectiveRecord.id);
   const memberCount = memberIds.size;
+  // 사령관 묶음의 지휘관이면 칩이 「사령관 ⇄ 목표」로 선다 — 목표 쪽을 누르면 목표 창(목표 항목)을 열고, 옆 글리프가 그 창의 항목을 바꾼다.
+  const chipCommodoreId = commanderOwnerOf(clusterIndex.clusters, objectiveRecord.id);
+  const pressObjective = chipCommodoreId === null ? onToggleDetails : () => toggleObjectiveWindow({ objectiveId: objectiveRecord.id, commodoreId: chipCommodoreId, tab: "goal" });
 
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}>
+        <ConversationPill takeover={pill.takeover} onPress={pressObjective} label={chipCommodoreId === null ? t("conversation.pill.detailsAria", { title: objectiveRecord.title }) : t("commanderTab.chatGlyph.open", { tab: t("commanderTab.rowGlyph.goal"), title: objectiveRecord.title })} controls={viewSwitch}
+          lead={chipCommodoreId === null ? undefined : <ObjectiveChipCommodore commodoreId={chipCommodoreId} onPress={onToggleDetails} />}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
             {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
@@ -1730,6 +1750,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
             ) : null}
         </ConversationPill>
+        {chipCommodoreId !== null ? <ObjectiveChipGlyphs commodoreId={chipCommodoreId} objectiveId={objectiveRecord.id} title={objectiveRecord.title} /> : null}
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
         {tools(toolsLead, <span ref={setRailSlot} className="conversation-rail-slot" />)}

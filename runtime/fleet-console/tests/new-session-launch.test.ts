@@ -212,14 +212,6 @@ it("opens a registry goal as a full conversation before and after its session ar
 });
 
 describe("kept commodore owner", () => {
-  // 레일 머리가 가운데가 아니라 레일을 따르는 조건 — 유지 상태일 때만 사령관 주인이다.
-  it("keeps the panel owner only when its commander is centered", async () => {
-    const { keptCommodoreOwnerOf } = await import("../features/workspace/client/commander-tab/commander-rows.js");
-    expect(keptCommodoreOwnerOf("c1", true)).toBe("c1");
-    expect(keptCommodoreOwnerOf(null, true)).toBeNull();
-    expect(keptCommodoreOwnerOf("c1", false)).toBeNull();
-  });
-
   // 유지 상태의 탭 줄은 사령관 탭 3개뿐 — 기본 「구성원」 탭은 펼친 행 패널의 「구성원」 탭이 대신한다.
   it("hides the core members tab while the kept panel stands", async () => {
     const { hidesCoreMembersTab } = await import("../features/workspace/client/conversation/conversation-shell.js");

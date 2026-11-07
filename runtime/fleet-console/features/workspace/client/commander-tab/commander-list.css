@@ -357,3 +357,31 @@
 .side-bar-cluster-row-date.is-glyph > svg { width: 15px; height: 15px; }
 /* 안 읽은 임무 기록 — 지난 행 글리프의 점과 같은 뜻·색(brass)이다. 분수 오른쪽 위에 카드 배경 테두리를 두르고 선다. */
 .side-bar-cluster-row-progress-dot { position: absolute; top: 0; right: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); border: 1px solid var(--surface-panel); }
+
+/* 우측 작업 탭의 행 아래 펼침 — 카드 안 행과 같은 배경 위에 hairline으로만 나뉜다. */
+.commander-tab--card .commander-row-panel { min-width: 0; padding: 4px 8px 10px; border-top: 1px solid var(--hairline); list-style: none; }
+.commander-tab--card .commander-row-panel + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
+.commander-row-panel .commander-missions-dialog-schedule + .objectives-detail .objectives-tab-body { padding-top: 0; }
+/* 펼친 행 — 가리킴과 같은 옅은 면을 붙들어 어느 행의 펼침인지 말한다. 고름(가운데 대화)의 면이 있으면 그대로 둔다. */
+.commander-tab--card .side-bar-cluster-row.is-open:not(.side-bar-cluster-row--active) { background: var(--wash-hover); }
+
+/* 행 글리프(우측 카드) — 쉬는 행에서는 세 글리프를 숨기고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만 함께 나타난다.
+   쉬는 행의 결정 요청 점은 ★ 옆 작은 점(.commander-row-pips)으로 둔다. */
+.commander-tab--card .commander-row-glyphs { display: none; flex: none; align-items: center; gap: 1px; }
+.commander-tab--card .side-bar-cluster-row:hover .commander-row-glyphs,
+.commander-tab--card .side-bar-cluster-row:focus-within .commander-row-glyphs,
+.commander-tab--card .side-bar-cluster-row.is-open .commander-row-glyphs { display: inline-flex; }
+.commander-tab--card .side-bar-cluster-row--settled .commander-row-glyphs { gap: 0; }
+.commander-tab--card .side-bar-cluster-row--settled .commander-row-glyph { width: 22px; height: 22px; }
+.commander-row-glyph { position: relative; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-tertiary); cursor: pointer; }
+.commander-row-glyph svg { width: 14px; height: 14px; }
+.commander-row-glyph:hover { background: var(--wash-hover); color: var(--text-primary); }
+.commander-row-glyph:is([aria-expanded="true"], [aria-pressed="true"]) { background: var(--wash-selected); color: var(--text-primary); }
+.commander-row-glyph:focus-visible { outline: none; box-shadow: var(--focus-face); }
+/* 글리프 위의 점 — 결정 요청(aurora), 안 읽은 기록(brass). 버튼 모서리에 두고 카드 배경 테두리를 두른다. */
+.commander-row-glyph-dot { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--surface-panel); }
+.commander-row-glyph-dot.is-attention { background: var(--aurora); }
+.commander-row-glyph-dot.is-unseen { background: var(--brass); }
+.commander-tab--card .commander-row-pips { display: none; align-items: center; gap: 3px; padding: 0 3px; }
+.commander-tab--card .side-bar-cluster-row:not(:hover):not(:focus-within):not(.is-open) .commander-row-pips { display: inline-flex; }
+.commander-row-pips i { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--aurora); }

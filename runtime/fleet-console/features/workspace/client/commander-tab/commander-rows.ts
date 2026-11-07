@@ -25,15 +25,6 @@ export interface CommanderSection {
 }
 
 /**
- * 작업 탭의 유지 주인 — 레일이 이 사령관의 작업 탭에 머물 때 그 사령관 id. 펼침 행의 패널과 레일 머리가 함께 읽는다.
- * 레일이 보여 주는 패널 주인의 지휘관이 가운데일 때만 그 주인이다.
- */
-export function keptCommodoreOwnerOf(panelOwner: string | null, centerIsOwnerCommander: boolean): string | null {
-  if (panelOwner === null || !centerIsOwnerCommander) return null;
-  return panelOwner;
-}
-
-/**
  * 가운데 objectiveId가 이 사령관의 지휘관인가 — 시작 전(avatarObjectiveId)·완료 포함.
  * 작업 탭의 행 펼치기와 레일 유지가 함께 읽는 판정이다. 묶음 선언이 없는 Objective 은 지휘관이 아니다.
  */
@@ -43,6 +34,17 @@ export function isCommanderObjective(clusters: readonly ObjectiveCluster[], comm
     if (layout.cluster.commodoreId === undefined || layout.cluster.commodoreId === commodoreId) return true;
   }
   return false;
+}
+
+/**
+ * objectiveId 가 지휘관인 사령관 — 시작 전·완료 포함. 사령관 묶음이 아니거나 지휘관이 아니면 null 이다.
+ * 목표 대화의 우측 사이드바가 이 사령관의 탭(작업·정보·설정)을 싣는다.
+ */
+export function commanderOwnerOf(clusters: readonly ObjectiveCluster[], objectiveId: string): string | null {
+  for (const layout of indexClusters(clusters).rows) {
+    if (commanderObjectiveId(layout.cluster) === objectiveId) return layout.cluster.commodoreId ?? null;
+  }
+  return null;
 }
 
 /**

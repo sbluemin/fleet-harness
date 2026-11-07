@@ -106,8 +106,10 @@ function usePillMorphWidth(ref: RefObject<HTMLDivElement | null>, key: string | 
 }
 
 /** 주인의 아바타·이름 DOM 은 바꾸지 않는다. 상대와 부가 제어만 같은 pill 안에서 접고 편다. */
-export function ConversationPill({ takeover, label, onPress, children, controls, mobile = false }: {
+export function ConversationPill({ takeover, label, onPress, children, controls, lead, mobile = false }: {
   readonly takeover: ConversationPillTakeover | null;
+  /** 주인 단추 앞에 서는 머리(「사령관 ⇄」) — 대화가 pill 을 넓히는 동안(전언 상대가 붙는 동안)에는 접힌다. */
+  readonly lead?: ReactNode;
   readonly label: string;
   readonly onPress: () => void;
   readonly children: ReactNode;
@@ -125,6 +127,7 @@ export function ConversationPill({ takeover, label, onPress, children, controls,
   }, [taken, shown?.key]);
   return (
     <div ref={ref} className={`${mobile ? "mobile-conv-pill" : "conversation-pill"} conversation-pill-host`} data-takeover={taken || undefined} data-phase={phase} id={shown?.id} role={shown ? "group" : undefined} aria-label={shown?.label} onKeyDown={taken ? shown?.onKeyDown : undefined}>
+      {lead ? <span className="conversation-pill-lead" hidden={taken || undefined}>{lead}</span> : null}
       <button type="button" className="conversation-pill-details" aria-label={taken ? shown?.ownerLabel : label} onClick={taken ? shown?.onOwnerPress : onPress} inert={(taken && !shown?.onOwnerPress) || undefined}>
         {children}
       </button>

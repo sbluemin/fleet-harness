@@ -6,21 +6,23 @@ import { commanderObjectiveId } from "../objective-clusters.js";
 import { CommodoreCommanderList } from "./commander-list.js";
 import { openCommanderConversation } from "./commander-navigation.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
-import { CommanderMissionsDialog } from "../../../objectives/client/objectives-panel.js";
+import { CommanderMissionsDialog, CommanderRowPanel } from "../../../objectives/client/objectives-panel.js";
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
 import { unseenRecords } from "../../../objectives/shared/types.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { useAvatarAccent } from "../avatar-accent.js";
 import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
+import type { CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 
 type Missions = { readonly objectiveId: string; readonly title: string; readonly opener: HTMLElement };
 
 /**
  * 작업 탭 「목표」 섹션이 쓰는 목록 — 조립(호스트)이 commodore feature에 넘기는 렌더러다.
  * commodore feature가 workspace 목록을 직접 가져오면 순환이 생기므로, 이 모듈 한 곳에서만 잇는다.
- * 행 펼침이 없다 — 행이나 아바타를 누르면 지휘관 대화가 바로 열리고, 임무 게이지를 누르면
- * 임무 팝업(구성원 로스터 + 임무 그래프)이 뜬다.
+ * 행이나 아바타를 누르면 지휘관 대화가 바로 열리고, 임무 게이지를 누르면 임무 팝업(구성원 로스터 + 임무 그래프)이 뜬다.
+ * 행의 글리프(목표·구성원·라이브러리)를 누르면 그 내용만 그 행 아래에 펼쳐진다(아코디언). 글리프 펼침은 가운데 채팅과 무관하다.
+ * 펼침 상태는 화면 메모리로만 둔다.
  */
 export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect }: CommodoreTasksListProps) {
   const state = useConsoleState();
@@ -29,6 +31,11 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
   const [missions, setMissions] = useState<Missions | null>(null);
   // 임무 팝업은 body 포털이라 오른쪽 패널의 지휘관 강조색을 물려받지 못한다 — 같은 값을 팝업에 직접 건넨다.
   const accent = useAvatarAccent(commodoreAvatarKey(commodoreId));
+  const [expanded, setExpanded] = useState<{ readonly objectiveId: string; readonly tab: CommanderRowGlyphTab } | null>(null);
+  // 펼친 글리프를 다시 누르면 접히고, 다른 글리프를 누르면 내용만 바뀐다. 다른 행의 글리프를 누르면 펼침이 그 행으로 옮겨 간다(한 번에 한 행).
+  const handleGlyphTab = (objectiveId: string, tab: CommanderRowGlyphTab) => {
+    setExpanded((current) => current !== null && current.objectiveId === objectiveId && current.tab === tab ? null : { objectiveId, tab });
+  };
   // 게이지 단추의 안 읽은 기록 점이 읽는 보드 — 목록이 함께 올린다.
   const board = useObjectiveBoard(commodoreId);
   const api = objectivesApi();
@@ -73,6 +80,16 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
         onAvatar: () => handleSelect(item),
         onProgress: (opener) => { setMissions({ objectiveId, title: item.layout.cluster.title, opener }); },
       })}
+      expansion={{
+        expanded,
+        onGlyphTab: handleGlyphTab,
+        renderPanel: (item, tab) => {
+          const objectiveId = commanderObjectiveId(item.layout.cluster);
+          if (objectiveId === null) return null;
+          // 펼침 안의 길(임무·결정·결과물로 가기)은 그 탭을 고르기만 한다 — 다시 눌러 접기는 행 글리프만의 동작이다.
+          return <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={(next) => setExpanded({ objectiveId, tab: next })} onOpenObjective={(id) => openCommanderConversation(commodoreId, id)} />;
+        },
+      }}
     />
     {missions ? (
       <CommanderMissionsDialog commodoreId={commodoreId} objectiveId={missions.objectiveId} title={missions.title} language={language} {...(accent ? { accent } : {})}
