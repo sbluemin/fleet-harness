@@ -28,7 +28,7 @@ import "./commander-list.css";
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
 /**
  * 우측 작업 탭 카드의 행 아래 펼침 — 한 번에 한 행, 그 행의 글리프(목표·구성원·라이브러리)가 고른 내용.
- * 다른 목록(좌측·팝오버·폰)은 두지 않는다. 제목을 누르면 채팅만 옮기고 펼침은 그대로 둔다.
+ * 다른 목록(좌측·팝오버·폰)은 두지 않는다. 펼친 행은 호출자가 정한다(작업 탭은 활성 목표의 행).
  */
 export interface CommanderListExpansion {
   readonly expanded: { readonly objectiveId: string; readonly tab: CommanderRowGlyphTab } | null;
@@ -117,7 +117,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   const renderItems = (rows: readonly SideBarRowItem[], settled: boolean) => rows.map((item) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
     const selected = objectiveId !== null && selectedId === objectiveId;
-    // 글리프 펼침은 제목 선택과 무관하다 — 펼친 행의 글리프만이 그 행의 펼침을 연다.
     const openTab = expansion !== undefined && objectiveId !== null && expansion.expanded?.objectiveId === objectiveId ? expansion.expanded.tab : null;
     const panelId = `${groupsId}-${item.layout.cluster.id}-panel`;
     return <Fragment key={item.layout.cluster.id}>
