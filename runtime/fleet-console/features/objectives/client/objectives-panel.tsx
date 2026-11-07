@@ -21,7 +21,7 @@ import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { launchProviderGlyph } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
-import { commanderLaunchShown, hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberLaunchShown, readLaunchRoster, subscribeLaunchRoster, memberNotes, memberStatus, memberSubagents, launchReason, useLaunchRows, type LaunchShown, type MemberLaunchChoice } from "./launch-control.js";
+import { hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, patchOwnerView, post, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner, objectivesApi } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./board-commodore.js";
@@ -222,63 +222,6 @@ export function CommanderMissionsDialog({ commodoreId, objectiveId, title, langu
     document.body,
   );
 }
-/** 로스터 카드의 모델 줄 — 오른쪽 사이드바 「사령관 모델」 줄(공유 선택기 트리거)과 같은 글리프·낱말·강도·표식이다. */
-function RosterModel({ shown }: { readonly shown: LaunchShown }) {
-  return (
-    <span className="commander-roster-model" title={shown.title}>
-      {shown.struck && shown.providerName ? <span className="fc-coord-provider-name">{shown.providerName}</span> : shown.provider ? <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${shown.provider}`} aria-hidden="true">{launchProviderGlyph(shown.provider)}</span> : null}
-      <span className={`fc-coord-trigger-model${shown.struck ? " is-off" : ""}${shown.struck && shown.providerName ? " is-removed" : ""}`}>{shown.label}</span>
-      {shown.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{shown.effort}</span></> : null}
-      {shown.badge ? <span className={`fc-coord-trigger-badge${shown.struck ? " is-off" : ""}`}>{shown.badge}</span> : null}
-    </span>
-  );
-}
-
-/**
- * 임무 팝업의 구성원 로스터 — 지휘관과 구성원을 가로 카드로 한 줄에 둔다. 카드마다 이름·모델·강도·상태·맡은 임무 번호를 싣고,
- * 누르면 그 담당의 임무만 그래프에서 밝힌다(aria-pressed). 구성원 추가는 지휘관이 맡는다.
- */
-function MissionRoster({ objective, t, objectiveRecordState, memberStateWord, focus, onFocus }: {
-  readonly objective: Objective;
-  readonly t: T;
-  readonly objectiveRecordState: (objectiveId: string) => string;
-  readonly memberStateWord: (state: string, outcome?: string) => string;
-  readonly focus: { readonly member: string | null } | null;
-  readonly onFocus: (next: { readonly member: string | null } | null) => void;
-}) {
-  const roster = useSyncExternalStore(subscribeLaunchRoster, readLaunchRoster, readLaunchRoster);
-  const missionsOf = (member: string | null) => objective.missions.flatMap((mission, index) => ((mission.member ?? null) === member ? [index + 1] : []));
-  const commanderState = objectiveRecordState(objective.id);
-  const people = [
-    { key: "commander", member: null, name: t("objectives.commander.title"), mark: <CommanderMark objective={objective} objectiveRecordState={objectiveRecordState} size={22} />, shown: commanderLaunchShown(objective, t, roster), state: commanderState, word: memberStateWord(commanderState, objective.commander.outcome) },
-    ...objective.members.map((member) => {
-      const state = objectiveRecordState(member.id);
-      return { key: member.id, member: member.id as string | null, name: member.role, mark: <MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} size={22} />, shown: memberLaunchShown(member, memberLaunched(member, objectiveRecordState), t, roster), state, word: memberStateWord(state, member.outcome) };
-    }),
-  ];
-  return (
-    <div className="objectives-group commander-roster-group">
-      <div className="commander-roster" role="group" aria-label={t("objectives.roster.label")}>
-        {people.map((person) => {
-          const missions = missionsOf(person.member);
-          const pressed = focus !== null && focus.member === person.member;
-          return (
-            <button key={person.key} type="button" className="commander-roster-card" aria-pressed={pressed} title={person.shown.title}
-              onClick={() => onFocus(pressed ? null : { member: person.member })}>
-              <span className="commander-roster-mark" aria-hidden="true">{person.mark}</span>
-              <span className="commander-roster-head">
-                <span className="commander-roster-name">{person.name}</span>
-                <span className={`commander-roster-state is-${person.state}`}>{person.word}{missions.length ? ` · ${t("objectives.roster.missions", { list: missions.join(", ") })}` : ""}</span>
-              </span>
-              <RosterModel shown={person.shown} />
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /** 임무 팝업 카드 최소 폭 — 로스터 한 줄(이름·모델·상태)이 접히지 않는 폭. 좁은 창에서는 100%로 줄어든다. */
 const COMMANDER_MISSIONS_WIDTH = 880;
 
@@ -1342,7 +1285,6 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   const canEditMission = (missionId: string) => { if (editable) return true; const target = objective.missions.find((candidate) => candidate.id === missionId); return touchable && !!target && notStarted(target); };
   const [zoomOpen, setZoomOpen] = useState(false);
   // 임무 팝업 로스터가 고른 담당 — 구성원 id, 지휘관은 null. 다시 누르면 풀린다.
-  const [focusOwner, setFocusOwner] = useState<{ readonly member: string | null } | null>(null);
   // 확대 카드 폭 — 확대 그래프가 스크롤 없이 들어가는 폭을 알려 준다.
   const [zoomWidth, setZoomWidth] = useState<number | null>(null);
   // 그래프 형상(가로 기본 · 세로) — 확대는 가로에만 있다. 다른 창에서 세로로 바뀌면 열린 확대를 닫고 초점을 스위치로 돌린다.
@@ -1633,7 +1575,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     const member = objective.members.find((candidate) => candidate.id === memberId);
     return member ? <MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} /> : null;
   };
-  const graphProps = { objective, t, states: missionStates, ownerMark, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: closePopupRecords, onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal, orientation, ...(embedded ? { focusOwner } : {}) };
+  const graphProps = { objective, t, states: missionStates, ownerMark, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: closePopupRecords, onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal, orientation };
   // 형상 스위치(켜면 세로) 옆의 크게 보기는 가로에서만 선다 — 세로는 높이가 자라 상세가 스크롤하므로 확대할 것이 없다.
   const graphTools = <>
     <button ref={orientationRef} type="button" role="switch" aria-checked={verticalGraph} className="objectives-graph-orient" aria-label={t("objectives.graph.verticalAria")} title={t("objectives.graph.verticalAria")} onClick={() => setGraphOrientation(verticalGraph ? "horizontal" : "vertical")}><span className="objectives-graph-orient-track" aria-hidden="true" /><span className="objectives-graph-orient-label" aria-hidden="true">{t("objectives.graph.vertical")}</span></button>
@@ -1721,10 +1663,8 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   ) : null;
   // 상세 aside > 탭 칸(스크롤). 넘긴 이유와 돌려주기는 구성원 채팅 카드에서 보인다.
   // 탭 칸(.objectives-detail-scroll)이 상세의 스크롤 컨테이너다 — 그래프의 드래그 자동 스크롤·팝업 앵커가 이 칸을 기준으로 삼는다.
-  // 임무 팝업 — 로스터는 가로 카드 한 줄(지휘관·구성원·구성원 추가)이고, 카드를 누르면 그 담당의 임무만 그래프에서 밝힌다.
-  const sRoster = embedded ? <MissionRoster objective={objective} t={t} objectiveRecordState={objectiveRecordState} memberStateWord={memberStateWord} focus={focusOwner} onFocus={setFocusOwner} /> : null;
   const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}</>
-    : tab === "crew" ? <>{embedded ? sRoster : sCrew}{sMissions}</>
+    : tab === "crew" ? <>{sCrew}{sMissions}</>
     : <>{sResults}{sResultFolds}</>;
   return (
     <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}`} aria-label={objective.title}>
