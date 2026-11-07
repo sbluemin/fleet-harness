@@ -266,13 +266,16 @@ export interface RowPopups {
 }
 
 /**
- * 일하는 줄이 지금 하는 일의 계열 — 지휘관의 계열이 먼저고, 지휘관이 쉬는 동안 구성원만 일하면 줄에 선 구성원의 계열이다.
- * 진행 줄과 같은 계열 낱말이 「작업하는 중」 자리에 선다. 아무도 계열을 싣지 않으면(터미널 세션) null 이다.
+ * 일하는 줄이 지금 하는 일의 계열 — 지휘관의 계열이 먼저고, 지휘관이 쉬는 동안 구성원만 일하면 그 구성원의 계열이다.
+ * 진행 줄과 같은 계열 낱말이 「작업하는 중」 자리에 선다. 지휘관의 공개 축은 구성원 활동을 끌어올려 `background` 가 되므로,
+ * 누군가 실제로 하는 일이 있으면 그것을 먼저 말하고 남은 작업만 돌 때에만 `background` 다. 아무도 계열을 싣지 않으면
+ * (터미널 세션) null 이다.
  */
 export function useClusterRowActivity(item: SideBarRowItem): MongleActivity | null {
   const commanderId = item.anchor?.objectiveRecord?.id ?? item.layout.cluster.root;
-  const activities = useObjectiveMongleActivities([commanderId, ...item.fold.map((entry) => entry.objectiveRecord.id).filter((id) => id !== commanderId)]);
-  return activities.find((activity) => activity !== null) ?? null;
+  const memberIds = item.layout.cluster.members.filter((member) => !member.pending && member.objectiveId !== commanderId).map((member) => member.objectiveId);
+  const activities = useObjectiveMongleActivities([commanderId, ...memberIds]);
+  return activities.find((activity) => activity !== null && activity !== "background") ?? activities.find((activity) => activity !== null) ?? null;
 }
 
 /** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. 일하는 줄은 `activity`(지금 하는 일의 계열)를 낱말로 말한다. */
