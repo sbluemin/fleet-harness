@@ -216,7 +216,8 @@ export function CommanderMissionsDialog({ commodoreId, objectiveId, title, langu
   return createPortal(
     <LineupZoom t={t} title={title} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
       tools={tab === "crew" ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab("crew")}>{t("objectives.missions.back")}</button>}>
-      <div className={`commander-missions-dialog is-${tab}`} {...(accent ? { style: accent } : {})}>
+      {/* workspace-avatar-panel 이 --conversation-accent* 를 --brass* 행동 강조 토큰에 묶는다 — 변수만 건네면 이 팝업은 중립으로 남는다. */}
+      <div className={`commander-missions-dialog is-${tab}${accent ? " workspace-avatar-panel" : ""}`} {...(accent ? { style: accent } : {})}>
         <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setTab} onGraphFitWidth={setFitWidth} onOpenObjective={(id) => { onClose(); onOpenObjective(id); }} />
       </div>
     </LineupZoom>,
