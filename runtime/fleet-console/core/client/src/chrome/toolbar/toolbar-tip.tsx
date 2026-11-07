@@ -24,7 +24,8 @@ const ARROW_INSET = 12;
 
 // 캡션 동작(.fleet-caption-action) — 도구 캡슐 맨 앞의 지구본처럼 도구 줄에 선 캡션 버튼도 같은 말풍선으로 말한다.
 // 캡션 자리의 CSS 이름표(.fleet-caption-tip)는 도구 줄 안에서 걷힌다(conversation.css).
-const ITEM_SELECTOR = ".right-rail-ico, .command-band-button, .fleet-caption-action";
+// `[data-toolbar-tip]`는 칸 클래스가 없는 자리(우측 사이드바 컴팩트 명단 줄)가 같은 말풍선을 입는 표식이다.
+const ITEM_SELECTOR = ".right-rail-ico, .command-band-button, .fleet-caption-action, [data-toolbar-tip]";
 /** 캡션 동작을 감싼 자리 — disabled 버튼은 겨눔을 받지 않을 수 있어 자리가 대신 받는다(닫힌 문도 까닭을 말한다). */
 const CAPTION_SLOT_SELECTOR = ".fleet-caption-slot";
 const POPUP_SELECTOR = '[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]';
@@ -193,7 +194,10 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
     };
     const onFocusIn = (event: FocusEvent) => {
       const item = toolbarItemOf(event.target, root);
-      if (item === null || item === quietFocusTarget || !item.matches(":focus-visible")) return;
+      // 포커스는 칸 자신이거나 칸 안의 조작(컴팩트 명단 줄 안의 입력·원장 단추)일 수 있다 — 실제 포커스를 받은 요소가 키보드 포커스일 때 말한다.
+      if (item === null || item === quietFocusTarget) return;
+      const focused = event.target instanceof HTMLElement ? event.target : item;
+      if (!focused.matches(":focus-visible")) return;
       request(item);
     };
     const onFocusOut = (event: FocusEvent) => {

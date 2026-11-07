@@ -203,9 +203,11 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row.is-rule.is-named { justify-content: space-between; }
 /* 구분선 줄 자체가 접힘 머리(읽기 전용 펼침) — 선 끝의 작은 셰브런만 서고 별도 행 높이는 없다. 머리가 선을 그리므로 구획의 윗선·윗여백은 걷는다. */
 .objectives-row.is-rule.is-fold { min-height: 0; height: 18px; gap: 8px; }
-.objectives-row.is-rule.is-fold::before, .objectives-row.is-rule.is-fold:not(:first-child)::before { content: ""; position: static; flex: 1; min-width: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
+/* 셈·도구만 있는 정적 머리도 같은 문법 — 구분선 줄 끝에 오른쪽 도구만 붙고 빈 머리 띠는 없다(사이드바 펼침·임무 팝업). */
+.objectives-row.is-rule.is-line { min-height: 0; height: 22px; gap: 8px; }
+.objectives-row.is-rule:is(.is-fold, .is-line)::before, .objectives-row.is-rule:is(.is-fold, .is-line):not(:first-child)::before { content: ""; position: static; flex: 1; min-width: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
 .objectives-row.is-rule.is-fold .objectives-section-chev { margin-left: 0; }
-.objectives-group:has(> .objectives-row.is-fold:first-child) { padding-top: 0; border-top: 0; }
+.objectives-group:is(:has(> .objectives-row.is-fold:first-child), :has(> .objectives-row.is-line:first-child), :has(> .objectives-section-head-bar.is-line:first-child), :has(> .objectives-criteria-head > .objectives-row.is-line:first-child)) { padding-top: 0; border-top: 0; }
 .objectives-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .objectives-section-head-bar { display: flex; align-items: center; position: relative; }
 .objectives-section-head-bar > .objectives-row { flex: 1; min-width: 0; padding-right: 6px; }
@@ -341,6 +343,12 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-status { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-ui); color: var(--text-tertiary); }
 .objectives-member-subagents { color: var(--text-secondary); }
 .objectives-member-slot { display: contents; }
+/* 컴팩트 명단(우측 사이드바 펼침) — 아바타·역할·모델·상태 한 줄. 설명은 hover 말풍선이 말한다. 가리킨 면은 행에 꼭 맞는다. */
+.objectives-members.is-compact { padding: 2px 0; border-top: 0; }
+.objectives-members.is-compact .objectives-member { grid-template-columns: 22px minmax(0, max-content) minmax(0, 1fr); grid-template-areas: "mark name meta"; gap: 0 10px; min-height: 30px; padding: 3px 8px 3px 10px; border-radius: var(--radius-xs); }
+.objectives-members.is-compact .objectives-member .objectives-avatar { width: 22px; height: 22px; }
+.objectives-members.is-compact .objectives-member-name { min-height: 22px; }
+.objectives-members.is-compact .objectives-member-meta { flex-wrap: nowrap; white-space: nowrap; }
 .objectives-member-note { margin: 0 14px 6px 62px; padding: 6px 10px; border: 1px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
 .objectives-member-note.is-error { border-color: color-mix(in oklch, var(--coral) 35%, transparent); background: color-mix(in oklch, var(--coral) 8%, transparent); }
 .objectives-member-note.is-warn { border-color: color-mix(in oklch, var(--warn) 35%, transparent); background: color-mix(in oklch, var(--warn) 8%, transparent); }
