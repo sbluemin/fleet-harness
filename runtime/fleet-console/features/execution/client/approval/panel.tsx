@@ -14,6 +14,8 @@ export function ApprovalCapsule() {
   const t = useT();
   const open = useSyncExternalStore(subscribeApprovals, approvalOpen, approvalOpen);
   const items = useSyncExternalStore(subscribeApprovals, approvalItems, approvalItems);
+  const decisions = useSyncExternalStore(subscribeObjective, decisionRows, decisionRows);
+  const pending = items.length + decisions.length;
   const clock = useClock(items.some((item) => item.expiresAt !== undefined));
   const urgent = items.filter((item) => item.expiresAt !== undefined).sort((a, b) => a.expiresAt! - b.expiresAt!)[0];
   const left = urgent ? approvalSecondsLeft(urgent.expiresAt, clock) : undefined;
@@ -22,18 +24,18 @@ export function ApprovalCapsule() {
   return (
     <button
       type="button"
-      className={`approval-entry${items.length === 0 ? " is-idle" : ""}${urgent ? " is-urgent" : ""}${arrive ? " is-arrive" : ""}`}
+      className={`approval-entry${pending === 0 ? " is-idle" : ""}${urgent ? " is-urgent" : ""}${arrive ? " is-arrive" : ""}`}
       aria-expanded={open}
       aria-haspopup="dialog"
-      aria-label={items.length === 0
+      aria-label={pending === 0
         ? t("approval.capsuleAriaEmpty")
         : left !== undefined
-          ? t("approval.capsuleAriaUrgent", { count: String(items.length), time: formatApprovalTime(left) })
-          : t("approval.capsuleAriaCount", { count: String(items.length) })}
+          ? t("approval.capsuleAriaUrgent", { count: String(pending), time: formatApprovalTime(left) })
+          : t("approval.capsuleAriaCount", { count: String(pending) })}
       onClick={() => toggleApprovalList()}
     >
       <BellGlyph />
-      {items.length > 0 ? <span className="approval-count num">{items.length}</span> : null}
+      {pending > 0 ? <span className="approval-count num">{pending}</span> : null}
       {urgent && left !== undefined ? <><span className="approval-entry-sep" /><span className={`approval-entry-urgent${low ? " is-low" : ""}`}><LifeRing seconds={left} /><span>{t("approval.capsuleUrgent")}</span><span className="num">{formatApprovalTime(left)}</span></span></> : null}
     </button>
   );
@@ -78,11 +80,11 @@ function ApprovalList() {
       <span ref={nibRef} className="approval-nib" aria-hidden="true" />
       <header className="approval-surface-head">
         <h2 id="approval-surface-title">{t("approval.title")}</h2>
-        {items.length > 0 ? <p className="approval-surface-sub">{t("approval.headCount", { count: String(items.length) })}</p> : null}
+        {items.length + decisions.length > 0 ? <p className="approval-surface-sub">{t("approval.headCount", { count: String(items.length + decisions.length) })}</p> : null}
         <button type="button" className="approval-close" aria-label={t("approval.close")} onClick={() => closeApprovalList()}>✕</button>
       </header>
       <div className="approval-surface-scroll">
-        {urgent.length === 0 && waiting.length === 0 ? <div className="approval-empty"><strong>{t("approval.empty")}</strong><p>{t("approval.emptyMore")}</p></div> : null}
+        {urgent.length === 0 && waiting.length === 0 && decisions.length === 0 ? <div className="approval-empty"><strong>{t("approval.empty")}</strong><p>{t("approval.emptyMore")}</p></div> : null}
         {urgent.length > 0 ? (
           <section>
             <h3 className="approval-group">{t("approval.now")}<span>{t("approval.nowNote")}</span></h3>
