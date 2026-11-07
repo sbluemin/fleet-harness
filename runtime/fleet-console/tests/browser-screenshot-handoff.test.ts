@@ -44,6 +44,7 @@ function screenshotTool(bytes: Buffer, screenshots: ReturnType<typeof createBrow
       return run(controller.signal);
     },
     screenshot: () => Promise.resolve({ ...screenshotResult(), data: bytes.toString("base64") }),
+    agentTab: (_id: string, _caller: unknown, tabId: string | null | undefined) => tabId ?? "tab-1",
   };
   const specs = createBrowserToolSpecs({ service: service as never, screenshots, screenshotDelivery });
   const computer = specs.find((spec) => spec.id === "computer")!;
@@ -343,8 +344,8 @@ describe("objectiveRecord browser service contracts", () => {
       await service.setViewport(OBJECTIVE, { preset: "mobile" }, "agent");
       // 에뮬레이션을 직접 걷어 layout 만 desktop 크기로 두고, 저장 뷰포트는 mobile 로 남겨 stale 을 재현한다.
       desktop.setLayout({ width: 1386, height: 1163 });
-      const op = (service as unknown as { objectiveRecords: Map<string, { viewportFollowsPane: boolean }> }).objectiveRecords.get(OBJECTIVE)!;
-      op.viewportFollowsPane = true;
+      const op = (service as unknown as { objectiveRecords: Map<string, { spaces: Map<string, { viewportFollowsPane: boolean }> }> }).objectiveRecords.get(OBJECTIVE)!;
+      for (const space of op.spaces.values()) space.viewportFollowsPane = true;
 
       const shot = await service.screenshot(OBJECTIVE, { format: "jpeg" });
       expect(shot.staleViewport).toBe(true);
@@ -414,7 +415,8 @@ describe("objectiveRecord browser tool target admission", () => {
         calls.push({ name: "clickRef", signalAborted: options.signal?.aborted === true });
         return { dispatched: true as const, x: 3, y: 4, button: "left" as const, clickCount: 1, ref: "ref_1", hit: null, note: null };
       },
-      state: () => ({ viewport: { width: 1404, height: 1177 } }),
+      agentTab: (_id: string, _caller: unknown, tabId: string | null | undefined) => tabId ?? "tab-1",
+      agentTabs: () => ({ viewport: { width: 1404, height: 1177 } }),
     };
     const computer = createBrowserToolSpecs({ service: service as never, screenshots }).find((spec) => spec.id === "computer")!;
 

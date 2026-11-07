@@ -7,7 +7,7 @@ import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/protocol/desktop";
-import { BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
+import { BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
 
 /**
  * Session Browser — Objective마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
@@ -912,8 +912,8 @@ export class BrowserService {
    */
   async createTab(objectiveId: string, url: string | null, actor: "user" | "agent", options: { spaceId?: string; participantId?: string; show?: boolean } = {}): Promise<BrowserTabState> {
     const op = this.objectiveRecord(objectiveId);
-    const spaceId = options.spaceId ?? this.displayedSpace(op)?.id ?? null;
-    if (!spaceId) throw new BrowserPolicyError("browser_space_required", "Choose a space for the new tab.");
+    // 스페이스를 정하지 않은 열기는 사람이 띄운 스페이스로, 그것도 없으면 세션 스페이스로 간다(사령관에 묶이지 않은 브라우저의 유일한 스페이스).
+    const spaceId = options.spaceId ?? this.displayedSpace(op)?.id ?? SESSION_SPACE_ID;
     const pendingInSpace = (op.pendingSpaces.get(spaceId) ?? 0);
     if (this.spaceTabs(op, spaceId).length + pendingInSpace >= BROWSER_SPACE_TAB_LIMIT) throw new BrowserPolicyError("browser_tab_limit", `Your space has ${BROWSER_SPACE_TAB_LIMIT} tabs, the most it can hold. Close one before opening another.`);
     if (op.tabs.size + op.pendingTabs >= BROWSER_TOTAL_TAB_LIMIT) throw new BrowserPolicyError("browser_tab_limit", `This browser has ${BROWSER_TOTAL_TAB_LIMIT} tabs across all spaces, the most it can hold. Close one before opening another.`);
