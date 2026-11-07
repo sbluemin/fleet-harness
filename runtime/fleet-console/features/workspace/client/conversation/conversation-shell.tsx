@@ -153,6 +153,17 @@ function useToggleDetails(objectiveRecordConversation: boolean): () => void {
 }
 
 /**
+ * 가운데 시작·완료 화면이 사령관과 함께 열렸으면 그 사령관 — 보관된 완료 목표는 사이드바 묶음에 없어 묶음으로는 주인을 찾을 수 없다.
+ * 출처를 따라가 연 화면도 그 목표를 가진 사령관의 사이드바를 그대로 둔다.
+ */
+function freshSurfaceCommodore(objectiveId: string): string | null {
+  const surface = getConversationSurface();
+  if (surface?.surfaceId !== FRESH_SURFACE_ID) return null;
+  const params = surface.params as { readonly objectiveId?: unknown; readonly commodoreId?: unknown };
+  return params.objectiveId === objectiveId && typeof params.commodoreId === "string" ? params.commodoreId : null;
+}
+
+/**
  * 지금 가운데가 이 사령관의 지휘관인가 — 시작 전·완료 포함. 작업 탭의 레일 유지와 행 펼치기가 함께 읽는 판정이다.
  * cleanup은 저장소가 바뀐 뒤 커밋에 딸려 돌므로 새 가운데를 읽는다.
  */
@@ -161,7 +172,7 @@ function centerCommanderOf(clusterIndex: ClusterIndex, commodoreId: string): str
   const params = surface?.params as { readonly objectiveId?: unknown } | undefined;
   const freshId = surface?.surfaceId === FRESH_SURFACE_ID && typeof params?.objectiveId === "string" ? params.objectiveId : null;
   const centerId = freshId ?? getState().activeObjectiveId;
-  return centerId !== null && isCommanderObjective(clusterIndex.clusters, commodoreId, centerId) ? centerId : null;
+  return centerId !== null && (isCommanderObjective(clusterIndex.clusters, commodoreId, centerId) || freshSurfaceCommodore(centerId) === commodoreId) ? centerId : null;
 }
 
 function shouldKeepCommodoreTabs(clusterIndex: ClusterIndex, commodoreId: string): boolean {
@@ -181,7 +192,7 @@ function nextScreenKeepsCommodoreTabs(clusterIndex: ClusterIndex): boolean {
   if (centerId === null) return false;
   const state = getState();
   const record = state.objectiveRecords.find((candidate) => candidate.id === centerId) ?? state.nestedObjectiveRecords.find((candidate) => candidate.id === centerId);
-  return commanderOwnerOf(clusterIndex.clusters, record?.parentObjectiveId ?? centerId) !== null;
+  return commanderOwnerOf(clusterIndex.clusters, record?.parentObjectiveId ?? centerId) !== null || freshSurfaceCommodore(centerId) !== null;
 }
 
 /**
@@ -193,7 +204,7 @@ function useKeptCommodoreOwner(): string | null {
   const subject = useConversationSubject();
   const standIn = useConversationStandIn();
   const centerId = subject ? subject.parentObjectiveId ?? subject.id : standIn ?? null;
-  return centerId === null ? null : commanderOwnerOf(clusterIndex.clusters, centerId);
+  return centerId === null ? null : commanderOwnerOf(clusterIndex.clusters, centerId) ?? freshSurfaceCommodore(centerId);
 }
 
 /**
@@ -222,7 +233,7 @@ function usePanelFollowsSubject(subjectId: string | null): void {
   openBeforeRef.current = activeAtRender !== null && bindings.some((binding) => binding.entry.id === activeAtRender && binding.panes.length > 0);
   useEffect(() => {
     const active = getRailStoreSnapshot().activePanelId;
-    const owner = subjectId === null ? null : commanderOwnerOf(clustersRef.current.clusters, subjectId);
+    const owner = subjectId === null ? null : commanderOwnerOf(clustersRef.current.clusters, subjectId) ?? freshSurfaceCommodore(subjectId);
     releaseKeptConversationObjectiveTabs(owner);
     if (subjectId === null || !openBeforeRef.current) return;
     if (active === SETTINGS_RAIL_ENTRY_ID) return;
@@ -866,7 +877,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 가운데 목표 대화의 사령관 — 우측 사이드바는 이 사령관의 탭만 싣는다(목표는 사이드바 맥락을 바꾸지 않는다).
   const shellClusters = useClusterIndex();
   const centerObjectiveId = surfaceDescriptor ? standInId : stageSubject ? stageSubject.parentObjectiveId ?? stageSubject.id : null;
-  const objectiveCommodoreId = objectiveRecordConversation && centerObjectiveId !== null ? commanderOwnerOf(shellClusters.clusters, centerObjectiveId) : null;
+  const objectiveCommodoreId = objectiveRecordConversation && centerObjectiveId !== null ? commanderOwnerOf(shellClusters.clusters, centerObjectiveId) ?? freshSurfaceCommodore(centerObjectiveId) : null;
   const toggleDetails = useToggleDetails(objectiveRecordConversation && objectiveCommodoreId === null);
   usePanelFollowsSubject(centerObjectiveId);
 

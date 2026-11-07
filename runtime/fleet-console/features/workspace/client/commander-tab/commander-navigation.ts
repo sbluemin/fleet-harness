@@ -7,7 +7,7 @@ import { openLedger } from "../../../execution/client/agent/chat/group/index.js"
 export function openCommanderConversation(commodoreId: string, objectiveId: string): void {
   closeNewSession();
   const record = getState().objectiveRecords.find((item) => item.id === objectiveId && item.commodoreId === commodoreId);
-  if (!record) { openFreshConversation(objectiveId); return; }
+  if (!record) { openFreshConversation(objectiveId, undefined, commodoreId); return; }
   revealObjectiveStage();
   closeConversationSurface();
   selectNestedBody(objectiveId, null);
