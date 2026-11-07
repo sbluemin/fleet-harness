@@ -10,6 +10,8 @@ import { CommanderMissionsDialog } from "../../../objectives/client/objectives-p
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
 import { unseenRecords } from "../../../objectives/shared/types.js";
+import { commodoreAvatarKey } from "../../shared/avatars.js";
+import { useAvatarAccent } from "../avatar-accent.js";
 import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 
 type Missions = { readonly objectiveId: string; readonly title: string; readonly opener: HTMLElement };
@@ -25,6 +27,8 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const objectivesT = getObjectivesT(language);
   const [missions, setMissions] = useState<Missions | null>(null);
+  // 임무 팝업은 body 포털이라 오른쪽 패널의 지휘관 강조색을 물려받지 못한다 — 같은 값을 팝업에 직접 건넨다.
+  const accent = useAvatarAccent(commodoreAvatarKey(commodoreId));
   // 게이지 단추의 안 읽은 기록 점이 읽는 보드 — 목록이 함께 올린다.
   const board = useObjectiveBoard(commodoreId);
   const api = objectivesApi();
@@ -71,7 +75,7 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
       })}
     />
     {missions ? (
-      <CommanderMissionsDialog commodoreId={commodoreId} objectiveId={missions.objectiveId} title={missions.title} language={language}
+      <CommanderMissionsDialog commodoreId={commodoreId} objectiveId={missions.objectiveId} title={missions.title} language={language} {...(accent ? { accent } : {})}
         onOpenObjective={(id) => openCommanderConversation(commodoreId, id)}
         onClose={() => { const opener = missions.opener; setMissions(null); if (opener.isConnected) opener.focus(); }} />
     ) : null}

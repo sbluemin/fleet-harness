@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { MenuCheckGlyph, PlusGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 
@@ -20,7 +20,8 @@ import { CoordinationGraph, MissionNodeIcon, graphMissionStates, setGraphOrienta
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { commanderLaunchShown, hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberLaunchShown, readLaunchRoster, subscribeLaunchRoster, memberNotes, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { launchProviderGlyph } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
+import { commanderLaunchShown, hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberLaunchShown, readLaunchRoster, subscribeLaunchRoster, memberNotes, memberStatus, memberSubagents, launchReason, useLaunchRows, type LaunchShown, type MemberLaunchChoice } from "./launch-control.js";
 import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, objectiveRecordSummaries, patchOwnerView, post, subscribeObjective, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner, objectivesApi } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./board-commodore.js";
@@ -243,11 +244,13 @@ function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective
  * 우측 작업 탭의 임무 팝업 — 행의 임무 게이지가 연다. 구성원 로스터(지휘관·구성원·구성원 추가)를 위에, 임무 그래프를 아래에 두는
  * 구성원 탭을 편성 확대본과 같은 오버레이에 담는다. 안의 길이 결과물·목표로 가면 같은 팝업에서 그 내용을 보이고 「임무로」가 되돌린다.
  */
-export function CommanderMissionsDialog({ commodoreId, objectiveId, title, language, onClose, onOpenObjective }: {
+export function CommanderMissionsDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective }: {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly title: string;
   readonly language: "en" | "ko";
+  /** 지휘관 강조색 변수 — 모델 줄의 강도가 오른쪽 사이드바와 같은 색으로 보이게 한다. */
+  readonly accent?: CSSProperties;
   readonly onClose: () => void;
   readonly onOpenObjective: (objectiveId: string) => void;
 }) {
@@ -258,13 +261,25 @@ export function CommanderMissionsDialog({ commodoreId, objectiveId, title, langu
   return createPortal(
     <LineupZoom t={t} title={title} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
       tools={tab === "crew" ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab("crew")}>{t("objectives.missions.back")}</button>}>
-      <div className={`commander-missions-dialog is-${tab}`}>
+      <div className={`commander-missions-dialog is-${tab}`} {...(accent ? { style: accent } : {})}>
         <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setTab} onGraphFitWidth={setFitWidth} onOpenObjective={(id) => { onClose(); onOpenObjective(id); }} />
       </div>
     </LineupZoom>,
     document.body,
   );
 }
+/** 로스터 카드의 모델 줄 — 오른쪽 사이드바 「사령관 모델」 줄(공유 선택기 트리거)과 같은 글리프·낱말·강도·표식이다. */
+function RosterModel({ shown }: { readonly shown: LaunchShown }) {
+  return (
+    <span className="commander-roster-model" title={shown.title}>
+      {shown.struck && shown.providerName ? <span className="fc-coord-provider-name">{shown.providerName}</span> : shown.provider ? <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${shown.provider}`} aria-hidden="true">{launchProviderGlyph(shown.provider)}</span> : null}
+      <span className={`fc-coord-trigger-model${shown.struck ? " is-off" : ""}${shown.struck && shown.providerName ? " is-removed" : ""}`}>{shown.label}</span>
+      {shown.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{shown.effort}</span></> : null}
+      {shown.badge ? <span className={`fc-coord-trigger-badge${shown.struck ? " is-off" : ""}`}>{shown.badge}</span> : null}
+    </span>
+  );
+}
+
 /**
  * 임무 팝업의 구성원 로스터 — 지휘관과 구성원을 가로 카드로 한 줄에 둔다. 카드마다 이름·모델·강도·상태·맡은 임무 번호를 싣고,
  * 누르면 그 담당의 임무만 그래프에서 밝힌다(aria-pressed). 끝 카드는 구성원 추가다. 모델 편집은 지휘관 화면의 구성원 탭이 맡는다.
@@ -300,9 +315,11 @@ function MissionRoster({ objective, t, objectiveRecordState, memberStateWord, fo
             <button key={person.key} type="button" className="commander-roster-card" aria-pressed={pressed} title={person.shown.title}
               onClick={() => onFocus(pressed ? null : { member: person.member })}>
               <span className="commander-roster-mark" aria-hidden="true">{person.mark}</span>
-              <span className="commander-roster-name">{person.name}</span>
-              <span className="commander-roster-model">{person.shown.label}{person.shown.effort ? ` · ${person.shown.effort}` : ""}</span>
-              <span className={`commander-roster-state is-${person.state}`}>{person.word}{missions.length ? ` · ${t("objectives.roster.missions", { list: missions.join(", ") })}` : ""}</span>
+              <span className="commander-roster-head">
+                <span className="commander-roster-name">{person.name}</span>
+                <span className={`commander-roster-state is-${person.state}`}>{person.word}{missions.length ? ` · ${t("objectives.roster.missions", { list: missions.join(", ") })}` : ""}</span>
+              </span>
+              <RosterModel shown={person.shown} />
             </button>
           );
         })}
@@ -321,7 +338,6 @@ function MissionRoster({ objective, t, objectiveRecordState, memberStateWord, fo
           </button>
         )) : null}
       </div>
-      <p className="commander-roster-hint">{t("objectives.roster.hint")}</p>
     </div>
   );
 }
@@ -1053,10 +1069,11 @@ function SharedFolderSection({ objective, t, language, open, onToggle }: { reado
   </>;
 }
 
-function SectionHead({ glyph, label, tools, controls, expanded, onToggle }: {
+function SectionHead({ glyph, label, tools, actions, controls, expanded, onToggle }: {
   readonly glyph: ReactNode;
   readonly label: string;
   readonly tools?: ReactNode;
+  readonly actions?: ReactNode;
   /** 접히는 본문의 id — 없으면 정적 머리. */
   readonly controls?: string;
   readonly expanded?: boolean;
@@ -1067,11 +1084,18 @@ function SectionHead({ glyph, label, tools, controls, expanded, onToggle }: {
     <span className="objectives-row-lab">{label}</span>
     {tools ? <span className="objectives-row-tools">{tools}</span> : null}
   </>;
-  return !controls ? <div className="objectives-row is-static">{inner}</div> : (
+  const head = !controls ? <div className="objectives-row is-static">{inner}</div> : (
     <button type="button" className="objectives-row objectives-acc-hd" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}>
       {inner}
       <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
     </button>
+  );
+  if (!actions) return head;
+  return (
+    <div className="objectives-section-head-bar">
+      {head}
+      <div className="objectives-section-head-actions">{actions}</div>
+    </div>
   );
 }
 
