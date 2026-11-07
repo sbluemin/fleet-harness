@@ -447,7 +447,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
   );
   const paneEntries = listedBindings.filter((binding) => binding.panes.length > 0);
   // 합성 순서가 곧 레일 순서다(feature-registry). 동작 엔트리를 종류별로 앞세우면 등록
-  // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
+  // 순서가 렌더에서 뒤집히므로, 순서는 바인딩 그대로 두고 연속한
   // 페인 토글 구간만 role=group으로 묶는다 — 동작은 패널 그룹의 구성원이 아니다.
   // 범위(entry.scope)만은 순서 위에 선다: Theater를 다루는 도구가 먼저, Console 전체의 도구가
   // 구분선 아래 — 각 범위 안에서는 합성 순서 그대로다.
@@ -767,4 +767,4 @@ function RailConversationTabs({ entry, tabs, context, language, isActive }: {
   );
 }
 
-/** Console Use 시선 — 에이전트가 이 레일 패널(저장소·파일)을 읽으면 아이콘 모서리에 점이 선다. */
+/** Console Use 시선 — 에이전트가 레일 패널을 읽으면 아이콘 모서리에 점이 선다. */

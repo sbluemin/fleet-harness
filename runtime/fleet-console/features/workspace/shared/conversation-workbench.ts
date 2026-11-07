@@ -5,12 +5,12 @@
  * (최대 2칸), 대화와 분할 영역의 폭 비율, 아래 줄의 높이 비율, 펼친 칸. 오른쪽 사이드바(세부 정보)의 열림은 여기 없다 — 그것은
  * 지금처럼 Console 전체에 하나다.
  *
- * 칸이 담는 것은 세 가지다: 레일 엔트리가 세우는 페인 묶음(`entry`: 파일·스킬 등), 확대 표면 서술자 하나(`surface`: 저장소·Shell
- * 등 — params 를 함께 든다), 그 대화의 Session 브라우저(`browser`). 무엇을 어디서 여는지(작업 위치 컨텍스트)는 이 모델의 몫이 아니라
+ * 칸이 담는 것은 세 가지다: 레일 엔트리가 세우는 페인 묶음(`entry`), 확대 표면 서술자 하나(`surface`
+ * — params 를 함께 든다), 그 대화의 Session 브라우저(`browser`). 무엇을 어디서 여는지(작업 위치 컨텍스트)는 이 모델의 몫이 아니라
  * 그리는 쪽이 소유 사령관에서 파생한다. 브라우저 자원만 지금 대화의 세션을 따른다.
  *
  * 저장 경계: 서버는 이 모양을 검증해 그대로 둔다. 절대 경로처럼 보이는 params 값은 저장하지 않는다(브라우저 DTO 에 원시 경로를 싣지
- * 않는 Console 계약). Shell 인스턴스·브라우저 탭 같은 런타임 상태는 저장하지 않는다.
+ * 않는 Console 계약). 런타임에 바뀌는 인스턴스·탭 상태는 저장하지 않는다.
  */
 
 export const CONVERSATION_WORKBENCH_API_PATH = "/api/v1/conversation-workbench";
@@ -117,14 +117,30 @@ export function sanitizeWorkbenchParams(value: unknown): Readonly<Record<string,
 }
 
 /** 퇴역한 레일 엔트리 — 저장된 배치에서 걷어낸다(rail-store의 퇴역 id 정규화와 같은 취지). */
-const RETIRED_WORKBENCH_ENTRY_IDS: ReadonlySet<string> = new Set(["codex"]);
+const RETIRED_WORKBENCH_ENTRY_IDS: ReadonlySet<string> = new Set([
+  "codex",
+  // #2343에서 걷은 Files·Repository·Shell 진입점과 #2035에서 걷은 Skills 진입점.
+  // "files"는 관측된 저장 배치(빈 패널 증상)에 남은 짧은 id라 함께 걷는다.
+  "file-explorer",
+  "files",
+  "repository",
+  "global-shell",
+  "skills",
+]);
+
+/** 퇴역한 확대 표면 — 저장된 배치에서 걷어낸다. 등록된 서술자가 없어 빈 표면 안내로 남는다. */
+const RETIRED_WORKBENCH_SURFACE_IDS: ReadonlySet<string> = new Set([
+  // #2343에서 걷은 Repository·Shell 표면.
+  "repository",
+  "shell",
+]);
 
 function sanitizeTile(value: unknown, seen: Set<string>): WorkbenchTile | null {
   if (!isRecord(value) || !validId(value.id) || seen.has(value.id)) return null;
   const id = value.id;
   let tile: WorkbenchTile | null = null;
   if (value.kind === "entry" && validId(value.entryId) && !RETIRED_WORKBENCH_ENTRY_IDS.has(value.entryId)) tile = { id, kind: "entry", entryId: value.entryId };
-  else if (value.kind === "surface" && validId(value.surfaceId)) tile = { id, kind: "surface", surfaceId: value.surfaceId, params: sanitizeWorkbenchParams(value.params) };
+  else if (value.kind === "surface" && validId(value.surfaceId) && !RETIRED_WORKBENCH_SURFACE_IDS.has(value.surfaceId)) tile = { id, kind: "surface", surfaceId: value.surfaceId, params: sanitizeWorkbenchParams(value.params) };
   else if (value.kind === "browser") tile = { id, kind: "browser" };
   if (tile !== null) seen.add(id);
   return tile;

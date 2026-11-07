@@ -24,7 +24,7 @@ interface ShortcutRow {
 
 /**
  * 홈 아래 왼쪽 바로가기 단추의 시트 — 옛 칩 줄의 목적지를 한 장에 세로로 모았다. `RailEntryDescriptor.mobile.destination`을 선언한 플러그인
- * 목적지(파일·위키·Shell 등, `shown`이 허락하고 `chip: false`가 아닌 것을 order 순으로, `trailing` 값과 확인 필요 건수를 행 끝에 그대로 단다)와 보관함이 서고,
+ * 목적지(`RailEntryDescriptor.mobile.destination`을 선언한 플러그인 중 `shown`이 허락하고 `chip: false`가 아닌 것을 order 순으로, `trailing` 값과 확인 필요 건수를 행 끝에 그대로 단다)와 보관함이 서고,
  * 상태를 말하는 목적지(사령관 — 홈 목록 자체가 그 입구다)는 빠진다. 목적지가 아닌 도구가 있으면 끝에 「더보기」가 「플러그인」 화면으로 이어 준다. 설정은 프로필 시트가 맡는다.
  */
 export function MobileShortcutSheet({ onClose }: { readonly onClose: () => void }) {
