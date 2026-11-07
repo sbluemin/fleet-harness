@@ -3,7 +3,9 @@ import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { DetailTab } from "../../../objectives/client/objectives-panel.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
 import { unseenRecords } from "../../../objectives/shared/types.js";
-import { useEffect, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
+import { objectiveTabHasContent } from "../../../objectives/client/detail-content.js";
+import { useSharedFileCount } from "../../../objectives/client/shared-folder-count.js";
 
 /** 우측 작업 탭 카드의 행 글리프가 여는 펼침 — 목표·구성원·라이브러리. 상세 탭과 같은 집합이다. */
 export type CommanderRowGlyphTab = DetailTab;
@@ -47,13 +49,27 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, expandedTa
   const objective = board.loaded ? board.objectives.find((candidate) => candidate.id === objectiveId) ?? null : null;
   const decision = objective !== null && !!objective.decisionRequest && !objective.done;
   const unseen = objective !== null && objective.missions.some((mission) => unseenRecords(mission) > 0);
+  // 공유 폴더 파일 수는 이 행을 가리키거나 초점을 둘 때(또는 펼친 행에서) 읽는다 — 쉬는 행마다 읽지 않는다.
+  const groupRef = useRef<HTMLSpanElement | null>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const row = groupRef.current?.closest<HTMLElement>(".side-bar-cluster-row");
+    if (!row) return;
+    const on = () => setNear(true), off = () => setNear(false);
+    row.addEventListener("pointerenter", on); row.addEventListener("pointerleave", off);
+    row.addEventListener("focusin", on); row.addEventListener("focusout", off);
+    return () => { row.removeEventListener("pointerenter", on); row.removeEventListener("pointerleave", off); row.removeEventListener("focusin", on); row.removeEventListener("focusout", off); };
+  }, []);
+  const sharedFiles = useSharedFileCount(objective, near || expandedTab !== null);
   return <>
-    <span className="commander-row-glyphs" role="group" aria-label={t("commanderTab.rowGlyphs.label")}>
+    <span ref={groupRef} className="commander-row-glyphs" role="group" aria-label={t("commanderTab.rowGlyphs.label")}>
       {GLYPH_TABS.map((tab) => {
         const expanded = expandedTab === tab;
         const tabLabel = t(TAB_LABEL_KEY[tab]);
         const dotLabel = [decision && tab === "goal" ? t("commanderTab.rowGlyph.decision") : null, unseen && tab === "crew" ? t("commanderTab.rowGlyph.unseen") : null].filter((part) => part !== null).join(" · ");
         const Glyph = TAB_GLYPH[tab];
+        // 보여 줄 것이 하나도 없는 탭은 흐리고 열리지 않는다 — 안내 문구는 두지 않는다. 보드를 읽기 전에는 비었다고 단정하지 않는다.
+        const empty = objective !== null && !objectiveTabHasContent(objective, tab, sharedFiles);
         return (
           <button
             key={tab}
@@ -61,6 +77,7 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, expandedTa
             className="commander-row-glyph"
             aria-expanded={expanded}
             aria-controls={panelId}
+            disabled={empty}
             aria-label={`${t(expanded ? "commanderTab.rowGlyph.collapse" : "commanderTab.rowGlyph.expand", { tab: tabLabel, title })}${dotLabel ? ` · ${dotLabel}` : ""}`}
             title={tabLabel}
             onClick={() => onGlyphTab(objectiveId, tab)}

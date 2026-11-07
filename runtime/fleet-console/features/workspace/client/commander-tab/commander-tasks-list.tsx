@@ -10,6 +10,8 @@ import { CommanderMissionsDialog, CommanderRowPanel } from "../../../objectives/
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
 import { unseenRecords } from "../../../objectives/shared/types.js";
+import { objectiveTabHasContent } from "../../../objectives/client/detail-content.js";
+import { useSharedFileCount } from "../../../objectives/client/shared-folder-count.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { useAvatarAccent } from "../avatar-accent.js";
 import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
@@ -45,16 +47,19 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
   // 임무 팝업은 body 포털이라 오른쪽 패널의 지휘관 강조색을 물려받지 못한다 — 같은 값을 팝업에 직접 건넨다.
   const accent = useAvatarAccent(commodoreAvatarKey(commodoreId));
   const tab = useSyncExternalStore(subscribeExpandedTab, readExpandedTab, readExpandedTab);
-  // 활성(선택) 목표의 행만 펼친다 — 선택은 좌·우 목록이 같이 읽는 가운데 대화의 목표다.
-  const expanded = selectedId !== null && tab !== null ? { objectiveId: selectedId, tab } : null;
+  // 게이지 단추의 안 읽은 기록 점이 읽는 보드 — 목록이 함께 올린다.
+  const board = useObjectiveBoard(commodoreId);
+  const selectedObjective = selectedId === null || !board.loaded ? null : board.objectives.find((candidate) => candidate.id === selectedId) ?? null;
+  const sharedFiles = useSharedFileCount(selectedObjective, true);
+  // 활성(선택) 목표의 행만 펼친다 — 선택은 좌·우 목록이 같이 읽는 가운데 대화의 목표다. 기억한 탭이 그 목표에서 비어 있으면 접힌 채 둔다
+  // (기억은 지우지 않아, 내용이 있는 다른 목표로 옮기면 같은 탭이 다시 펼쳐진다).
+  const expanded = selectedId !== null && tab !== null && (selectedObjective === null || objectiveTabHasContent(selectedObjective, tab, sharedFiles)) ? { objectiveId: selectedId, tab } : null;
   // 활성 행의 펼친 글리프를 다시 누르면 접히고, 다른 글리프를 누르면 내용만 바뀐다. 활성이 아닌 행의 글리프는 그 목표를 열고 함께 펼친다.
   const handleGlyphTab = (objectiveId: string, next: CommanderRowGlyphTab) => {
     if (selectedId === objectiveId) { setExpandedTab(expandedTab === next ? null : next); return; }
     setExpandedTab(next);
     openCommanderConversation(commodoreId, objectiveId);
   };
-  // 게이지 단추의 안 읽은 기록 점이 읽는 보드 — 목록이 함께 올린다.
-  const board = useObjectiveBoard(commodoreId);
   const api = objectivesApi();
   useEffect(() => { if (api !== null) void loadBoard(api, commodoreId); }, [api, commodoreId]);
   const unseenOf = (objectiveId: string) => board.loaded && (board.objectives.find((candidate) => candidate.id === objectiveId)?.missions.some((mission) => unseenRecords(mission) > 0) ?? false);
@@ -104,7 +109,7 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
           const objectiveId = commanderObjectiveId(item.layout.cluster);
           if (objectiveId === null) return null;
           // 펼침 안의 길(임무·결정·결과물로 가기)은 그 탭을 고르기만 한다 — 다시 눌러 접기는 행 글리프만의 동작이다.
-          return <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setExpandedTab} onOpenObjective={(id) => openCommanderConversation(commodoreId, id)} />;
+          return <CommanderRowPanel readOnly commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setExpandedTab} onOpenObjective={(id) => openCommanderConversation(commodoreId, id)} />;
         },
       }}
     />
