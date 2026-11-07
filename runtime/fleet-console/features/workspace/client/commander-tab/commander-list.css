@@ -377,6 +377,8 @@
 .commander-row-glyph:hover { background: var(--wash-hover); color: var(--text-primary); }
 .commander-row-glyph:is([aria-expanded="true"], [aria-pressed="true"]) { background: var(--wash-selected); color: var(--text-primary); }
 .commander-row-glyph:focus-visible { outline: none; box-shadow: var(--focus-face); }
+/* 보여 줄 것이 없는 탭 — 흐리고 눌러도 열리지 않는다(disabled). */
+.commander-row-glyph:disabled { opacity: 0.35; cursor: default; background: none; color: var(--text-tertiary); }
 /* 글리프 위의 점 — 결정 요청(aurora), 안 읽은 기록(brass). 버튼 모서리에 두고 카드 배경 테두리를 두른다. */
 .commander-row-glyph-dot { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--surface-panel); }
 .commander-row-glyph-dot.is-attention { background: var(--aurora); }
