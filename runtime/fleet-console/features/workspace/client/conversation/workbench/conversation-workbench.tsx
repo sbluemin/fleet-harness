@@ -20,13 +20,13 @@ import type { RailEntryBinding } from "../../../../../core/client/src/chrome/pan
 import type { RailToolContext } from "../../../../../core/client/src/chrome/rail/right-rail.js";
 import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
-import { BrowserNavHostContext, BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
-import { resolveSessionBrowserTarget, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
-import { announceNativeViewResize, getNativeViewResize } from "../../../../browser/client/browser-panel-store.js";
+import { BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
+import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
+import { announceNativeViewResize, getNativeViewResize, useHoldNativeViewsWhile } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
 import { PluginObjectiveRenderer } from "../../objective-renderer.js";
-import { type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
-import { retainBrowserNav, useBrowserBandGlobe, useBrowserBandSlot, useBrowserNavSlot } from "./browser-band-slot.js";
+import { WORKBENCH_GAP, type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
+import { useBrowserBandGlobe, useBrowserBandSlot } from "./browser-band-slot.js";
 import {
   bindWorkbenchCloseGuard,
   cancelWorkbenchClose,
@@ -93,6 +93,9 @@ const BROWSER_CLOSE_EASE = "cubic-bezier(0.3, 0, 0.15, 1)";
 const BROWSER_FRAME_WAIT_MS = 900;
 /** 정지 화면이 깔린 뒤 셸이 뷰를 실제로 물리기까지 두는 여유. */
 const BROWSER_PARK_SETTLE_MS = 60;
+/** 맨 위 줄 탭 줄의 양 끝 여백. */
+const BAND_INSET = 8;
+
 type TileMotion = "enter" | "leave";
 
 interface BrowserSettled {
@@ -174,7 +177,9 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
         ? { key: workbenchKey, entry: settled.entry, rect: settled.rect, expanded: settled.expanded } : null;
 
   // 끌기(경계)와 닫기 확인, 브라우저가 열리고 닫히는 동안 네이티브 브라우저 뷰를 정지 화면 뒤로 물린다 — 뷰는 페이지 위를 덮어 포인터를 가린다.
-  const holdViews = resizing || pendingClose !== null || revealId !== null || ghost !== null;
+  // 경계를 끄는 동안은 좌·우 사이드바와 같은 하나의 길로 물러난다. 아래 `holdViews` 는 칸 자신의 닫기 확인과 열림·닫힘 전환만 맡는다.
+  useHoldNativeViewsWhile(resizing);
+  const holdViews = pendingClose !== null || revealId !== null || ghost !== null;
   useEffect(() => {
     const element = elementRef.current;
     if (!holdViews || element === null) return;
@@ -482,6 +487,7 @@ function WorkbenchTileView(props: WorkbenchTileViewProps) {
 
 interface FrameParts {
   readonly title: string;
+  readonly titleNode?: ReactNode;
   readonly icon?: ReactNode;
   readonly tools?: ReactNode;
   readonly body: ReactNode;
@@ -491,18 +497,12 @@ interface FrameParts {
 function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClose, geometry, parts }: WorkbenchTileViewProps & { readonly parts: FrameParts }) {
   const t = useT();
   const tile = entry.tile;
-  // 브라우저는 따로 떠 있는 패널이 아니라 대화와 같은 면이다 — 머리 없이 맨 위 줄 밑에서 작업 영역 끝까지 채운다. 맨 위 줄은 탭 영역이
-  // 아니며, 펼치기는 주소줄 끝(BrowserNavTailContext)에 선다. 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
+  const rootRef = useRef<HTMLElement | null>(null);
+  // 브라우저는 따로 떠 있는 패널이 아니라 대화와 같은 면이다 — 머리 없이 맨 위 줄 밑에서 작업 영역 끝까지 채우고, 탭 줄과 펼치기는
+  // 맨 위 줄의 지구본 바로 앞으로 올라간다. 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
   // 브라우저 칸이 남아 있을 때)에서는 다른 칸과 같은 틀이다 — 닫기 단추가 그 칸을 닫는 길이다.
   const seamless = tile.kind === "browser" && geometry.mode !== "sheet" && isDesktopShell();
   const frameRect = seamless ? seamlessRect(entry, rect, geometry, expanded) : rect;
-  // 머리 없는 브라우저 칸의 주소줄은 맨 위 줄의 브라우저 영역으로 올라간다 — 영역의 왼쪽 끝은 칸의 원래 왼쪽(분할 x)이라 펼쳐도 움직이지 않는다.
-  const navSlot = useBrowserNavSlot();
-  const [navHost, setNavHost] = useState<HTMLElement | null>(null);
-  const navHostValue = !seamless ? undefined : hidden || navSlot === null ? null : navHost;
-  // 주소줄이 맨 위 줄에 서 있는 동안 대화 머리 줄에 알린다 — 한 줄 배분에서 주소줄 최소 폭을 지켜 준다.
-  const navStanding = navHostValue !== undefined && navHostValue !== null;
-  useLayoutEffect(() => (navStanding ? retainBrowserNav() : undefined), [navStanding]);
   const expandLabel = expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand");
   const expandButton = (
     <button
@@ -521,6 +521,7 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
 
   return (
     <section
+      ref={rootRef}
       className={`workbench-tile${focused ? " is-focused" : ""}${expanded ? " is-expanded" : ""}${hidden ? " is-hidden" : ""}`}
       style={rectStyle(frameRect)}
       data-tile-id={tile.id}
@@ -537,20 +538,19 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
       onFocusCapture={(event) => { if (!isInHead(event.target)) focusWorkbenchTile(tile.id); }}
     >
       {seamless ? (
-        <>
-          <BrowserBandChrome motion={motion} hidden={hidden}>
-            <BrowserBandClose tileId={tile.id} title={parts.title} />
-          </BrowserBandChrome>
-          {navSlot !== null && !hidden ? createPortal(
-            <span className={`workbench-band-nav-wrap${motion === null ? "" : ` is-${motion}`}`} ref={setNavHost} style={{ "--browser-split-x": `${entry.rect.x}px` } as CSSProperties} data-keep-objective-active />,
-            navSlot,
-          ) : null}
-        </>
+        <BrowserBandChrome frameRef={rootRef} geometry={geometry} motion={motion} hidden={hidden} expanded={expanded}>
+          {parts.titleNode ?? null}
+          <BrowserBandClose tileId={tile.id} title={parts.title} />
+        </BrowserBandChrome>
       ) : (
         <header className="workbench-tile-head">
           <span className="workbench-tile-title">
-            {parts.icon ? <span className="workbench-tile-icon" aria-hidden="true">{parts.icon}</span> : null}
-            <span className="workbench-tile-name">{parts.title}</span>
+            {parts.titleNode ?? (
+              <>
+                {parts.icon ? <span className="workbench-tile-icon" aria-hidden="true">{parts.icon}</span> : null}
+                <span className="workbench-tile-name">{parts.title}</span>
+              </>
+            )}
           </span>
           {parts.tools ? <span className="workbench-tile-tools">{parts.tools}</span> : null}
           <span className="workbench-tile-actions">
@@ -575,11 +575,8 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
         </div>
       ) : null}
       <div className="workbench-tile-body" ref={parts.bodyRef}>
-        {/* 머리 없는 브라우저 칸의 펼치기는 머리가 없으므로 주소줄 끝(도구모음 옆)에 선다 — 본문이 그 자리를 그린다. 주소줄 줄도 본문이 그리되,
-            자리는 맨 위 줄이다(BrowserNavHostContext). */}
-        {seamless
-          ? <BrowserNavHostContext.Provider value={navHostValue}><BrowserNavTailContext.Provider value={expandButton}>{parts.body}</BrowserNavTailContext.Provider></BrowserNavHostContext.Provider>
-          : parts.body}
+        {/* 머리 없는 브라우저 칸의 펼치기는 머리가 없으므로 주소줄 끝(도구모음 옆)에 선다 — 본문이 그 자리를 그린다. */}
+        {seamless ? <BrowserNavTailContext.Provider value={expandButton}>{parts.body}</BrowserNavTailContext.Provider> : parts.body}
       </div>
     </section>
   );
@@ -609,18 +606,38 @@ function seamlessRect(entry: TileGeometry, rect: Rect, geometry: WorkbenchGeomet
 }
 
 /**
- * 맨 위 줄의 브라우저 칸 자리 — 지구본 바로 앞 자리(browser-band-slot)로 portal 된다. 탭은 이 줄에 서지 않는다(탭은 브라우저 본문 왼쪽의
- * 세로 레일이 가진다). 여기 서는 것은 지구본이 닫는 길이 아닐 때의 닫기뿐이다. 펼친 동안에도 분할 영역 위에 남아 대화 pill 을 덮지 않는다.
+ * 맨 위 줄로 올라간 브라우저 탭 줄 — 지구본 바로 앞 자리(browser-band-slot)로 portal 되어 분할 영역 위의 폭만 쓴다.
+ * 펼친 동안에도 분할 영역 위에 남아 대화 pill 을 덮지 않는다.
  */
-function BrowserBandChrome({ motion, hidden, children }: {
+function BrowserBandChrome({ frameRef, geometry, motion, hidden, expanded, children }: {
+  readonly frameRef: RefObject<HTMLElement | null>;
+  readonly geometry: WorkbenchGeometry;
   readonly motion: TileMotion | null;
   readonly hidden: boolean;
+  readonly expanded: boolean;
   readonly children: ReactNode;
 }) {
   const slot = useBrowserBandSlot();
+  const [width, setWidth] = useState<number | null>(null);
+  const splitX = geometry.split?.x ?? null;
+  useLayoutEffect(() => {
+    if (slot === null || splitX === null) return;
+    const measure = () => {
+      const layer = frameRef.current?.parentElement;
+      if (!layer) return;
+      const left = layer.getBoundingClientRect().left + splitX + WORKBENCH_GAP + BAND_INSET;
+      const next = Math.max(0, Math.floor(slot.getBoundingClientRect().right - BAND_INSET - left));
+      setWidth((current) => (current === next ? current : next));
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(slot.parentElement ?? slot);
+    window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
+  }, [frameRef, slot, splitX]);
   if (slot === null || hidden) return null;
   return createPortal(
-    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}`} data-keep-objective-active>
+    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}${expanded ? " is-expanded" : ""}`} style={width === null ? undefined : { width }} data-keep-objective-active>
       {children}
     </span>,
     slot,
@@ -786,12 +803,17 @@ function ObjectiveBrowserTile(props: WorkbenchTileViewProps & { readonly objecti
     // 다른 칸이 펼쳐져 이 칸이 숨은 동안은 네이티브 뷰도 물린다 — 숨은 칸의 뷰가 펼친 칸 위를 덮지 않게.
     bodyLive: !hidden,
   } as const;
+  const titleNode = companion.caption === undefined ? <span className="workbench-tile-name">{resolveLocalizedText(companion.title, language)}</span> : (
+    <FeatureErrorBoundary fallback={<></>}>
+      <PluginObjectiveRenderer {...shared} render={companion.caption} />
+    </FeatureErrorBoundary>
+  );
   const body = (
     <FeatureErrorBoundary fallback={null}>
       <PluginObjectiveRenderer {...shared} render={companion.render} />
     </FeatureErrorBoundary>
   );
-  return <TileFrame {...props} parts={{ title, body, bodyRef }} />;
+  return <TileFrame {...props} parts={{ title, titleNode, body, bodyRef }} />;
 }
 
 function SessionBrowserTile(props: WorkbenchTileViewProps & { readonly session: WorkbenchSessionBrowser; readonly title: string }) {
@@ -817,6 +839,7 @@ function SessionBrowserTile(props: WorkbenchTileViewProps & { readonly session: 
       {...props}
       parts={{
         title,
+        titleNode: <SessionBrowserCaption ownerId={ownerId} language={language} />,
         body: <SessionBrowserPanel key={ownerId} ownerId={ownerId} language={language} theme={state.activeTheme} bodyLive={!hidden} services={SESSION_BROWSER_SERVICES} {...(session.attach ? { onAttach: session.attach } : {})} />,
       }}
     />

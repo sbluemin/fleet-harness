@@ -7,6 +7,7 @@ import { readChromeHistory } from "../src/chrome-history.js";
 import { createBrowserHistoryStorage } from "../src/browser-history-storage.js";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, type DesktopBrowserRelay, type DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 import type { WebContentsView } from "electron";
+import { parkedNativeBounds } from "../src/shell-window.js";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -134,5 +135,21 @@ describe("desktop native browser views across a Console restart", () => {
     await vi.waitFor(() => expect(relays.flatMap((relay) => relay.results ?? []).some((result) => result.id === 1 && result.error === undefined)).toBe(true));
     expect(relays.flatMap((relay) => relay.results ?? []).filter((result) => result.error !== undefined)).toEqual([]);
     views.stop();
+  });
+
+  it("parks a hidden native view on one pixel of the window's bottom-right corner so it cannot take input elsewhere", () => {
+    const content = { x: 0, y: 0, width: 1200, height: 800 };
+    const bounds = parkedNativeBounds({ width: 900, height: 700 }, content);
+    expect(bounds.width).toBe(900);
+    expect(bounds.height).toBe(700);
+    // 창과 겹치는 부분은 오른쪽 아래 한 픽셀뿐이다 — 왼쪽 위(캡션 단추) 쪽에는 걸치지 않는다.
+    expect(Math.max(0, Math.min(content.width, bounds.x + bounds.width) - Math.max(0, bounds.x))).toBe(1);
+    expect(Math.max(0, Math.min(content.height, bounds.y + bounds.height) - Math.max(0, bounds.y))).toBe(1);
+    expect(bounds.x).toBe(content.width - 1);
+    expect(bounds.y).toBe(content.height - 1);
+    // 창보다 큰 viewport 도 크기는 content 안으로 줄고, 겹침은 여전히 한 픽셀이다.
+    const clamped = parkedNativeBounds({ width: 5000, height: 5000 }, content);
+    expect([clamped.width, clamped.height]).toEqual([1200, 800]);
+    expect([clamped.x, clamped.y]).toEqual([1199, 799]);
   });
 });

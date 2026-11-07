@@ -14,7 +14,7 @@ export interface DesktopViewStack {
   readonly consoleView: WebContentsView;
   /** Console 이 전체 콘텐츠 영역을 불투명하게 덮도록 bounds 를 맞춘다. */
   layoutConsole(): Rectangle;
-  /** CDP 는 살아 있지만 Console 뒤에 둔다 — 입력이 새어 나가지 않게 Console 이 위에 있다. */
+  /** CDP 는 살아 있지만 Console 뒤에 두고, 창 오른쪽 아래 모서리 한 픽셀에만 걸쳐 입력을 받을 자리를 없앤다(`parkedNativeBounds`). */
   parkBrowser(view: WebContentsView): void;
   /** Console 앞, picker 아래 — 사용자가 보고 만지는 자리. */
   presentBrowser(view: WebContentsView): void;
@@ -205,16 +205,18 @@ export function defaultParkViewport(content: Rectangle): ParkViewport {
 }
 
 /**
- * Parking native bounds: viewport 크기는 유지하고 origin 만 (0,0) 으로 옮긴다.
+ * Parking native bounds: viewport 크기는 유지하고, 창 콘텐츠 오른쪽 아래 모서리에 한 픽셀만 걸치도록 origin 을 옮긴다.
+ * 뷰가 창에 붙어 있고 창과 겹쳐야 CDP 가 살아 있고(0×0·창 밖 전체는 불안정), 겹친 한 픽셀 밖은 창이 그리지도 입력을 받지도 않는다.
+ * origin 이 (0,0) 이던 때는 Console 뒤에 숨은 뷰가 창 왼쪽 위(캡션 단추 자리)의 입력을 간헐적으로 가로챘다 — 그 자리는 어떤 단추도 없는 모서리여야 한다.
  * width/height 는 항상 ≥1 — 0×0 은 이 통합에서 CDP 를 불안정하게 만든다.
- * 창보다 큰 viewport 는 content 안으로 clamp — Console coverage 를 벗어나지 않게.
+ * 창보다 큰 viewport 는 content 안으로 clamp — 크기가 Console coverage 를 벗어나지 않게.
  */
 export function parkedNativeBounds(viewport: ParkViewport, content: Rectangle): Rectangle {
   const maxW = Math.max(1, content.width);
   const maxH = Math.max(1, content.height);
   return {
-    x: 0,
-    y: 0,
+    x: maxW - 1,
+    y: maxH - 1,
     width: Math.max(1, Math.min(Math.max(1, viewport.width), maxW)),
     height: Math.max(1, Math.min(Math.max(1, viewport.height), maxH)),
   };

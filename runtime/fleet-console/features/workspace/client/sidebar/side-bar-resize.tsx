@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
+import { useHoldNativeViewsWhile } from "../../../browser/client/browser-panel-store.js";
 import {
   MIN_EXPANDED_PX,
   getSideBarState,
@@ -32,6 +33,8 @@ export function useSideBarResize(): {
     removeListenersRef.current?.();
     window.clearTimeout(snapTimerRef.current);
   }, []);
+  // 사이드바 폭을 끄는 동안 네이티브 브라우저 뷰는 같은 길(채팅창/브라우저 경계·오른쪽 사이드바와 공유)로 정지 화면 뒤로 물러난다.
+  useHoldNativeViewsWhile(resizing);
 
   const onPointerDown = useCallback((event: ReactPointerEvent) => {
     event.preventDefault();
