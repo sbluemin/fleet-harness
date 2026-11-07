@@ -79,9 +79,9 @@
 .op-browser__menu--row { flex-direction: row; gap: 2px; min-width: 0; }
 .op-browser__icon.is-set { color: var(--brass-ink); }
 /* 툴팁 — data-tip 을 단 컨트롤 아래에 짧은 한 줄. 포인터를 받지 않고 지연 없이 뜬다. */
-.op-browser [data-tip], .op-browser__nav.is-top [data-tip] { position: relative; }
-.op-browser [data-tip]:hover::after, .op-browser [data-tip]:focus-visible::after, .op-browser__nav.is-top [data-tip]:hover::after, .op-browser__nav.is-top [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 7; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); }
-.op-browser [data-tip][aria-expanded="true"]::after, .op-browser__nav.is-top [data-tip][aria-expanded="true"]::after { display: none; }
+.op-browser [data-tip] { position: relative; }
+.op-browser [data-tip]:hover::after, .op-browser [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 7; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); }
+.op-browser [data-tip][aria-expanded="true"]::after { display: none; }
 .op-browser__menu-item { text-align: start; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--popover-font-size); min-height: var(--popover-row); padding: 6px var(--popover-row-inline); border-radius: var(--popover-row-radius); cursor: pointer; gap: var(--popover-row-gap); line-height: var(--popover-line-height); letter-spacing: 0; }
 .op-browser__menu-item[aria-checked="true"] { color: var(--brass-ink); }
 .op-browser__menu-item:hover, .op-browser__menu-item:focus-visible { background: var(--wash-hover); color: var(--text-primary); outline: none; box-shadow: none; }

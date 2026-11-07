@@ -93,7 +93,9 @@ function startManager(): () => void {
     for (const record of records) {
       if (record.type === "attributes" && record.attributeName === NATIVE_FLOAT_ATTRIBUTE) continue;
       if (record.type === "attributes" && (record.attributeName === NATIVE_VIEW_COVER_ATTRIBUTE || record.attributeName === "aria-modal")) { schedule(); return; }
-      if (inside(record.target) || [...record.addedNodes, ...record.removedNodes].some(relevantNode)) { schedule(); return; }
+      // 표면이 사라지는 변경은 다음 프레임을 기다리지 않는다 — 같은 틱(그림 전)에 자식 창을 내려 닫힌 메뉴의 잔상이 한 프레임도 남지 않게 한다.
+      if ([...record.removedNodes].some(relevantNode)) { renderNow(); return; }
+      if (inside(record.target) || [...record.addedNodes].some(relevantNode)) { schedule(); return; }
     }
   });
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
@@ -141,6 +143,13 @@ function ensureChannel(): BroadcastChannel {
 function schedule(): void {
   if (scheduled || retained === 0) return;
   scheduled = requestAnimationFrame(() => { scheduled = 0; render(); });
+}
+
+/** 예약된 그림을 접고 지금 그린다 — 표면이 사라진 변경을 곧바로 반영할 때. */
+function renderNow(): void {
+  if (retained === 0) return;
+  if (scheduled) { cancelAnimationFrame(scheduled); scheduled = 0; }
+  render();
 }
 
 function coverRectsKey(): string {

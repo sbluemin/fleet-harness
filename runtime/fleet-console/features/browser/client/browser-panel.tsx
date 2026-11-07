@@ -376,10 +376,6 @@ export interface SessionBrowserPanelProps {
   readonly terminalPaste?: boolean;
 }
 
-/**
- * 세션·뷰포트 도구 — 주소줄 끝에 선다(주석 버튼 옆). 탭 줄의 폭은 탭들의 것이다. 상태와 손잡이는 본문이 올린 스냅샷에서 읽는다.
- * 메뉴는 본문 영역까지 내려오므로 열려 있는 동안 네이티브 뷰가 물러서도록 알린다.
- */
 /** 주소창이 줄어드는 하한 — 이보다 좁아지면 접히는 단추(캡처·주석·세션·뷰포트)가 「⋯」로 모인다. */
 const NAV_URL_MIN_PX = 120;
 /** 줄의 아이콘 단추 폭(CSS `.op-browser__nav.is-top` 의 30px 과 같다) — 새로고침 단추를 못 잴 때의 값. */
@@ -414,6 +410,12 @@ function NavFoldMenu({ objectiveId, label, children }: { readonly objectiveId: s
   );
 }
 
+/**
+ * 세션·뷰포트 도구 — 이름은 CSS 말풍선(data-tip)이 아니라 네이티브 title 이 말한다. data-tip 말풍선은 단추 아래 DOM 에 그려지는데, 맨 위 줄의 단추 아래는
+ * 네이티브 뷰 자리라 뷰 뒤로 가려져 윗변 한 줄만 「빈 상자」로 남는다(닫힌 메뉴의 잔상으로 보였다).
+ * 주소줄 끝에 선다(주석 버튼 옆). 탭 줄의 폭은 탭들의 것이다. 상태와 손잡이는 본문이 올린 스냅샷에서 읽는다.
+ * 메뉴는 본문 영역까지 내려오므로 열려 있는 동안 네이티브 뷰가 물러서도록 알린다.
+ */
 function BrowserTools({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
   const t = getT(language ?? "en");
   const panel = useBrowserPanel(objectiveId);
@@ -424,6 +426,23 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
     publishBrowserCaptionOverlay(objectiveId, "tools", viewportMenu || profileMenu);
     return () => publishBrowserCaptionOverlay(objectiveId, "tools", false);
   }, [objectiveId, viewportMenu, profileMenu]);
+  // 메뉴는 바깥을 누르거나 Esc 로 닫는다 — 바깥 누름은 셸이 float 표면 밖(브라우저 쪽)을 누른 것도 같은 길(문서 pointerdown)로 알린다.
+  const profileRef = React.useRef<HTMLDivElement | null>(null);
+  const viewportRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!viewportMenu && !profileMenu) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target instanceof Node ? event.target : null;
+      if (target !== null && profileRef.current?.contains(target)) return;
+      if (target !== null && viewportRef.current?.contains(target)) return;
+      setProfileMenu(false);
+      setViewportMenu(false);
+    };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setProfileMenu(false); setViewportMenu(false); } };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onPointer, true); document.removeEventListener("keydown", onKey); };
+  }, [viewportMenu, profileMenu]);
   const ready = panel !== null && panel.available && !panel.busy;
   const persistent = (panel?.profile ?? null) !== null;
   const defaultProfile = panel?.defaultProfile ?? null;
@@ -434,14 +453,14 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
     <>
       {/* 세션 표식 — 글리프 하나가 지금 어떤 세션인지 말한다. 가져오기도 이 메뉴에 산다: 쿠키가 들어가는 곳이
           바로 이 세션이므로, 캡션에 버튼을 하나 더 두는 것보다 세션을 다루는 자리에 함께 있는 편이 옳다. */}
-      <div className="op-browser__profile">
+      <div className="op-browser__profile" ref={profileRef}>
         <button
           type="button"
           className={`op-browser__icon op-browser__pchip${persistent ? " is-persistent" : ""}`}
           aria-haspopup="menu"
           aria-expanded={profileMenu}
           aria-label={t(persistent ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}
-          data-tip={t(persistent ? "terminal.browser.profile.persistentTip" : "terminal.browser.profile.ephemeralTip")}
+          title={profileMenu ? undefined : t(persistent ? "terminal.browser.profile.persistentTip" : "terminal.browser.profile.ephemeralTip")}
           disabled={!ready}
           onClick={() => setProfileMenu((open) => !open)}
         >
@@ -507,8 +526,8 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
           </div>
         ) : null}
       </div>
-      <div className="op-browser__viewport-menu">
-        <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} data-tip={viewportTip} disabled={!panel || !panel.available} onClick={() => setViewportMenu((open) => !open)}>
+      <div className="op-browser__viewport-menu" ref={viewportRef}>
+        <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} title={viewportMenu ? undefined : viewportTip} disabled={!panel || !panel.available} onClick={() => setViewportMenu((open) => !open)}>
           {presetGlyph(viewport?.preset ?? "responsive")}
         </button>
         {viewportMenu ? (
