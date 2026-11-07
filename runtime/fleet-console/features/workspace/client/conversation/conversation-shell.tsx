@@ -1287,7 +1287,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
         const leadWidth = leadRef.current?.getBoundingClientRect().width ?? 0;
         row.style.setProperty("--conversation-quota-space", leadWidth > 0 ? `calc(${Math.ceil(leadWidth) + 12}px + var(--space-3) + var(--conversation-caption-reserve))` : "0px");
         row.style.setProperty("--conversation-nav-space", navActive ? `${BROWSER_NAV_MIN_PX + 8}px` : "0px");
-        // 주소줄이 맨 위 줄에 서 있으면 칩 묶음은 가운데가 아니라 왼쪽 정렬이다 — 남는 폭은 주소줄 영역이 쓴다(conversation.css `data-nav-standing`).
+        // 주소줄은 브라우저 칸 위에서 시작하므로 칩 묶음은 채팅 화면 폭 안에서 가운데에 선다(conversation.css `data-nav-standing`).
         row.toggleAttribute("data-nav-standing", navActive);
         row.style.setProperty("--conversation-tools-space", `${Math.ceil(tools.getBoundingClientRect().width + TOOLS_CHIP_GAP)}px`);
       };

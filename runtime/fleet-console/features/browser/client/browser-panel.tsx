@@ -153,6 +153,8 @@ function useBrowserStream(objectiveId: string, enabled: boolean, subscribeConsol
 
 /** 네이티브 뷰 자리를 다시 재는 간격 — 패널 드래그·리사이즈는 이벤트로도 오지만 캔버스 이동·덮개의 등장은 오지 않는다. */
 const NATIVE_PLACE_POLL_MS = 200;
+/** 칸의 자리가 움직이는 동안(무엇이 움직였든) 매 프레임 다시 알리고, 이만큼 멈춰 있으면 움직임이 끝난 것으로 본다. */
+const NATIVE_PLACE_SETTLE_MS = 160;
 /** 칸 끌기 예고 동안 미리 찍는 정지 화면 — 이 간격으로 새로 찍고, 이보다 오래된 장은 끌기에 쓰지 않는다. */
 const RESIZE_FRAME_REFRESH_MS = 1000;
 const RESIZE_FRAME_MAX_AGE_MS = 1500;
@@ -1136,11 +1138,41 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     measure();
     const unsubscribeResizeIntent = subscribeNativeViewResize(onResizeIntent);
     onResizeIntent();
-    const observer = new ResizeObserver(measure);
+    // 칸의 자리가 바뀌는 길은 하나다 — 어떤 레이아웃(좌·우 사이드바, 채팅창/브라우저 경계, 창 크기)이 움직였든 칸의 자리(x·y·폭·높이)가 달라지면
+    // 같은 길로 다시 알린다. 칸 자신의 크기는 그대로인 채 자리만 옮겨 가는 변화는 칸을 보는 것만으로는 알 수 없어, 조상들의 크기 변화로 알아채고
+    // 움직임이 이어지는 동안은 매 프레임 자리를 확인한다(폴링만으로는 한참 늦는다).
+    let rectKey = "";
+    let motionFrame = 0;
+    let motionStillSince = 0;
+    const readRectKey = () => {
+      const rect = element.getBoundingClientRect();
+      return `${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)},${Math.round(rect.height)}`;
+    };
+    const watchMotion = () => {
+      motionFrame = 0;
+      if (disposed) return;
+      const key = readRectKey();
+      const now = performance.now();
+      if (key !== rectKey) {
+        rectKey = key;
+        motionStillSince = now;
+        measure();
+      }
+      if (now - motionStillSince < NATIVE_PLACE_SETTLE_MS) motionFrame = requestAnimationFrame(watchMotion);
+    };
+    const noteMotion = () => {
+      if (disposed) return;
+      motionStillSince = performance.now();
+      if (motionFrame === 0) motionFrame = requestAnimationFrame(watchMotion);
+    };
+    rectKey = readRectKey();
+    const observer = new ResizeObserver(() => { measure(); noteMotion(); });
     observer.observe(element);
+    for (let ancestor = element.parentElement; ancestor !== null; ancestor = ancestor.parentElement) observer.observe(ancestor);
+    window.addEventListener("resize", noteMotion);
     window.addEventListener("resize", measure);
     document.addEventListener("visibilitychange", measure);
-    const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
+    const timer = setInterval(() => { measure(); if (readRectKey() !== rectKey) noteMotion(); }, NATIVE_PLACE_POLL_MS);
     // 가림 표면(모달·승인 팝오버처럼 `data-covers-native-view` 를 단 것)이 붙고 떨어지는 순간 곧바로 재는다 — 폴링을 기다리면 그동안 가려진다.
     const unobserveCover = observeNativeViewCover(measure);
 
@@ -1155,6 +1187,8 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         restoreTimer = null;
       }
       observer.disconnect();
+      if (motionFrame !== 0) cancelAnimationFrame(motionFrame);
+      window.removeEventListener("resize", noteMotion);
       window.removeEventListener("resize", measure);
       document.removeEventListener("visibilitychange", measure);
       clearInterval(timer);

@@ -32,6 +32,7 @@ import {
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { openOtherSurfaceLink } from "../../../../../features/browser/client/global-link.js";
+import { useHoldNativeViewsWhile } from "../../../../../features/browser/client/browser-panel-store.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
 
@@ -150,6 +151,8 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
   const [cardWidth, setCardWidthState] = useState(() => Math.min(maxPanelWidth, desiredWidth));
   const cardWidthRef = useRef(cardWidth);
   const [isDragging, setIsDragging] = useState(false);
+  // 폭을 끄는 동안 네이티브 브라우저 뷰는 같은 길(왼쪽 사이드바·채팅창/브라우저 경계와 공유)로 정지 화면 뒤로 물러난다.
+  useHoldNativeViewsWhile(isDragging);
   const extraWidthRef = useRef(extraWidth);
   extraWidthRef.current = extraWidth;
   const resizeBudgetRef = useRef(widthBudget);
