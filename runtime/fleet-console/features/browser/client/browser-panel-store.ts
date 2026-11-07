@@ -12,6 +12,8 @@ export interface BrowserPanelSnapshot {
   readonly activeTabId: string | null;
   /** 사령관 브라우저의 스페이스들 — 탭이 있거나 에이전트가 쓰는 중인 것만 온다. 캡션이 칩 줄로 그린다. */
   readonly spaces: readonly BrowserSpaceState[];
+  /** 사령관 브라우저 id(`commodore:<id>`) — 스페이스 색이 사령관 아바타를 찾는 데 쓴다. 모르면 null. */
+  readonly browserId: string | null;
   /** 이 대화의 스페이스. 스트림 프레임에는 없고 처음 읽을 때만 알려지므로 모르면 null. */
   readonly homeSpaceId: string | null;
   /** 사람 화면에 표시된 탭이 속한 스페이스. 탭이 없으면 null. */

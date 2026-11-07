@@ -6,7 +6,9 @@ import { CaptionBrowserUseGlyph } from "../../workspace/client/components/captio
 
 import { getT } from "./i18n.js";
 import { suggestionSkipReason } from "../shared/suggestions.js";
-import { HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
+import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../workspace/shared/avatars.js";
+import { useAvatarToneOf } from "../../workspace/client/avatar-accent.js";
+import { commodoreOfBrowser, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
@@ -322,13 +324,15 @@ function unavailableText(t: ReturnType<typeof getT>, reason: UnavailableReason |
   return { title: t("terminal.browser.desktopMissing"), body: null };
 }
 
-/** 스페이스 색 칸 — 사령관·세션은 무채 잉크, Objective 는 id 해시로 4색 가운데 하나에 고정된다(같은 Objective 는 늘 같은 색). */
-const SPACE_HUES = 4;
-function spaceHue(space: { readonly id: string; readonly kind: BrowserSpaceKind }): "ink" | "1" | "2" | "3" | "4" {
-  if (space.kind !== "objective") return "ink";
-  let hash = 2166136261;
-  for (const char of space.id) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
-  return String((hash >>> 0) % SPACE_HUES + 1) as "1" | "2" | "3" | "4";
+/**
+ * 스페이스 색 — 그 스페이스의 아바타 정체성 톤이다(사령관 스페이스는 사령관 아바타, Objective 스페이스는 그 Objective 의 아바타).
+ * 아바타를 모르는 스페이스(세션·사람)는 CSS 의 무채 잉크가 남는다. 톤 규칙은 대화 강조색과 같은 `avatarToneOf` 하나다.
+ */
+function spaceAvatarKey(space: { readonly id: string; readonly kind: BrowserSpaceKind }, browserId: string | null): string | null {
+  if (space.kind === "objective") return objectiveRecordAvatarKey(space.id);
+  if (space.kind !== "commodore" || browserId === null) return null;
+  const commodoreId = commodoreOfBrowser(browserId);
+  return commodoreId === null ? null : commodoreAvatarKey(commodoreId);
 }
 
 function AgentGlyph() {
@@ -503,6 +507,11 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
   const home = panel?.homeSpaceId ?? null;
   const displayed = panel?.displayedSpaceId ?? null;
   // 이름을 가진 것은 그룹뿐이다 — 사람 스페이스(`human`)는 그룹이 아니라 이름이 없다.
+  const toneOf = useAvatarToneOf();
+  const spaceColor = (space: BrowserSpaceState): React.CSSProperties | undefined => {
+    const key = spaceAvatarKey(space, panel?.browserId ?? null);
+    return key === null ? undefined : ({ "--browser-space-c": `var(--id-${toneOf(key)})` } as React.CSSProperties);
+  };
   const spaceName = (space: BrowserSpaceState) => space.label || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
   // 사람이 직접 연 탭은 그룹 없이 따로 그린다. 그룹은 탭이 있는 스페이스만이다 — 프레임이 싣지 않은 스페이스(탭만 아는 것)는 여기서 채운다.
   const humanTabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId === HUMAN_SPACE_ID);
@@ -599,7 +608,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
           const isHome = space.id === home;
           const count = String(group.tabs.length);
           return (
-            <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} data-hue={spaceHue(space)} data-space-kind={space.kind}>
+            <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} style={spaceColor(space)} data-space-kind={space.kind}>
               <button
                 type="button"
                 className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
@@ -608,7 +617,6 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
                 disabled={!panel?.available}
                 onClick={() => pickSpace(space, group.open)}
               >
-                <span className="op-browser__space-swatch" aria-hidden="true" />
                 <span className="op-browser__space-name">{name}</span>
                 {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
                 {space.driving ? <span className="op-browser__space-driving" role="img" aria-label={t("terminal.browser.space.driving")} /> : null}
@@ -631,9 +639,8 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
           {moreOpen ? (
             <div className="op-browser__menu op-browser__menu--spaces" role="menu" aria-label={t("terminal.browser.space.moreMenu")}>
               {hiddenGroups.map((group) => (
-                <button key={group.space.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__space-item" data-hue={spaceHue(group.space)} onClick={() => { setMoreMenu(false); pickSpace(group.space, false); }}>
-                  <span className="op-browser__space-swatch" aria-hidden="true" />
-                  <span className="op-browser__space-name">{spaceName(group.space)}</span>
+                <button key={group.space.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__space-item" onClick={() => { setMoreMenu(false); pickSpace(group.space, false); }}>
+                    <span className="op-browser__space-name">{spaceName(group.space)}</span>
                   <span className="op-browser__space-count">{group.tabs.length}</span>
                   {group.space.driving ? <span className="op-browser__space-driving" role="img" aria-label={t("terminal.browser.space.driving")} /> : null}
                 </button>
@@ -1288,7 +1295,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   React.useEffect(() => {
     publishBrowserPanel(objectiveId, {
       tabs: available ? state?.tabs ?? [] : [], activeTabId: available ? state?.activeTabId ?? null : null, driving: state?.driving === true,
-      spaces: available ? state?.spaces ?? [] : [], homeSpaceId, displayedSpaceId: available ? state?.displayedSpaceId ?? null : null,
+      spaces: available ? state?.spaces ?? [] : [], browserId: state?.browserId ?? null, homeSpaceId, displayedSpaceId: available ? state?.displayedSpaceId ?? null : null,
       viewport: state ? { width: state.viewport.width, height: state.viewport.height, preset: state.viewport.preset, setBy: state.viewport.setBy } : null,
       busy,
       available,
