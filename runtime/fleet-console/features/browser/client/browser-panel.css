@@ -6,7 +6,9 @@
 
 /* ---- 탭 스트립. 대화 분할 머리가 호스트다. ---- */
 .op-browser-cap { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); height: 100%; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-primary); }
-.op-browser-cap__tabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.op-browser-cap__tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--space-1); overflow: hidden; }
+.op-browser-cap__spacer { flex: 1 1 0; min-width: 0; }
+.op-browser-cap > .op-browser__icon { flex: none; }
 /* 에이전트 세션 — 탭 줄 자리(분할 머리, 또는 맨 위 줄로 올라간 탭 줄)의 틴트와 2px 레일. reduced-motion 은 균일 채움으로 단락한다. */
 .workbench-band-chrome:has(> .op-browser-cap.is-driving) { position: relative; border-radius: var(--radius-xs); background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, transparent), transparent 70%); }
 .workbench-band-chrome:has(> .op-browser-cap.is-driving)::after,
@@ -15,7 +17,7 @@
   animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel); }
 .workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
 @media (prefers-reduced-motion: reduce) { :is(.workbench-band-chrome:has(> .op-browser-cap.is-driving), .workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving))::after { animation: none; background: var(--agent-control-badge); } }
-.op-browser__tab { display: inline-flex; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 0; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
+.op-browser__tab { position: relative; display: inline-flex; flex: 0 1 auto; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 72px; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
 .op-browser__tab:hover { background: var(--ink-veil); }
 .op-browser__tab.is-active { background: var(--ink-veil); color: var(--text-primary); border-color: var(--hairline-strong); }
 .op-browser__tab-icon { flex: none; width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
@@ -27,6 +29,44 @@
 .op-browser__tab-close { flex: none; background: transparent; border: 0; color: var(--text-tertiary); font: inherit; line-height: 1; padding: 0 2px; cursor: pointer; border-radius: var(--radius-xs); }
 .op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--ink-rim); outline: none; }
 .op-browser__viewport-menu { position: relative; align-self: center; }
+/* ---- 스페이스 — 칩 뒤에 그 스페이스의 탭이 붙는 탭 그룹. 색은 스페이스를 가리키는 표식일 뿐 상태가 아니다. ----
+   그룹의 data-hue 가 --browser-space-c 를 정하고, 칩·스와치·탭 밑줄이 그 한 값을 읽는다. 에이전트 표식은 배지 채널. */
+.op-browser__space-group, .op-browser__space-item { --browser-space-c: var(--id-space-ink); }
+.op-browser__space-group[data-hue="1"], .op-browser__space-item[data-hue="1"] { --browser-space-c: var(--id-space-sky); }
+.op-browser__space-group[data-hue="2"], .op-browser__space-item[data-hue="2"] { --browser-space-c: var(--id-space-clay); }
+.op-browser__space-group[data-hue="3"], .op-browser__space-item[data-hue="3"] { --browser-space-c: var(--id-space-orchid); }
+.op-browser__space-group[data-hue="4"], .op-browser__space-item[data-hue="4"] { --browser-space-c: var(--id-space-olive); }
+.op-browser__space-group { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; }
+.op-browser__space-tabs { min-width: 0; display: flex; align-items: center; gap: 2px; }
+.op-browser__space { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); max-width: 140px; height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 12%, transparent); color: var(--text-primary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.op-browser__space.is-open { background: color-mix(in oklch, var(--browser-space-c) 24%, transparent); }
+.op-browser__space:hover:not(:disabled) { background-image: linear-gradient(var(--wash-hover), var(--wash-hover)); }
+.op-browser__space:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.op-browser__space:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.op-browser__space-swatch { flex: none; width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--browser-space-c); }
+.op-browser__space-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-browser__space-count { flex: none; color: var(--text-secondary); font-size: var(--t-2xs); }
+.op-browser__space-driving { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 2px color-mix(in oklch, var(--agent-control-badge) 28%, transparent); }
+/* 탭 밑줄 — 어느 스페이스의 탭인지 색으로 읽힌다. 포커스 면(box-shadow)과 겹치지 않게 의사 요소로 긋는다. */
+.op-browser__space-group .op-browser__tab::after { content: ""; position: absolute; left: var(--space-1); right: var(--space-1); bottom: 0; height: 2px; border-radius: var(--radius-pill); background: var(--browser-space-c); opacity: 0.55; pointer-events: none; }
+.op-browser__space-group .op-browser__tab.is-active::after { opacity: 1; }
+/* 에이전트 작업 표식 — 이 탭이 어느 참가자의 작업 탭이다. 배지 채널(--agent-control-badge)만 쓴다. */
+.op-browser__tab-agent { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: var(--radius-xs); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
+.op-browser__tab-agent svg { width: 10px; height: 10px; }
+/* 「내 스페이스로」 — 다른 스페이스를 보는 동안만 서는 작은 띠. */
+.op-browser__space-home { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); white-space: nowrap; cursor: pointer; }
+.op-browser__space-home svg { width: 12px; height: 12px; }
+.op-browser__space-home:hover { background: var(--wash-hover); color: var(--text-primary); }
+.op-browser__space-home:focus-visible { box-shadow: var(--focus-face); outline: none; color: var(--text-primary); }
+/* 「+N」 — 넘친 스페이스를 모은 메뉴. 메뉴는 띠 아래로 내려오므로 열려 있는 동안 캡션이 네이티브 뷰를 물러서게 한다. */
+.op-browser__more { position: relative; flex: none; }
+.op-browser__more-button { display: inline-flex; align-items: center; gap: var(--space-1); height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.op-browser__more-button:hover, .op-browser__more-button[aria-expanded="true"] { background: var(--wash-hover); color: var(--text-primary); }
+.op-browser__more-button:focus-visible { box-shadow: var(--focus-face); outline: none; color: var(--text-primary); }
+.op-browser__more .op-browser__menu { left: 0; right: auto; }
+.op-browser__space-item { display: flex; align-items: center; }
+.op-browser__space-item .op-browser__space-name { flex: 1; text-align: start; }
+
 .op-browser__chip { background: transparent; border: 1px solid var(--hairline); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); padding: 2px var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
 .op-browser__chip.is-set { color: var(--brass-ink); border-color: var(--brass); }
 .op-browser__chip:hover, .op-browser__chip:focus-visible { color: var(--text-primary); border-color: var(--brass); outline: none; }
