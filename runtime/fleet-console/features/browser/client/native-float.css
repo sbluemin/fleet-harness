@@ -1,0 +1,2 @@
+/* 자식 창 표면이 같은 모양을 보이고 있는 동안 원본은 자리만 지킨다 — 두 겹으로 그려 그림자가 짙어지지 않게. */
+[data-native-float="shown"] { opacity: 0 !important; }

@@ -14,6 +14,7 @@ import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-sett
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
 import { dropBrowserOpenRequest, getNativeViewResize, BrowserNavTailContext, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_TARGET_ATTRIBUTE, useNativeFloat } from "./native-float.js";
 import "./browser-panel.css";
 
 export interface BrowserClientServices {
@@ -169,8 +170,9 @@ function visibleRect(host: HTMLElement, rect: DOMRect): Rect | null {
   const inside = (x: number, y: number): boolean => {
     let hit = document.elementFromPoint(x, y);
     // 투명한 클릭 캐처만 건너뛴다. 그 자식인 메뉴 카드는 여전히 네이티브 뷰를 가린다.
-    if (hit?.hasAttribute("data-native-browser-transparent")) {
-      hit = document.elementsFromPoint(x, y).find((element) => !element.hasAttribute("data-native-browser-transparent")) ?? null;
+    // 자식 창에 떠 있는 메뉴는 뷰 위에 따로 그려지므로 덮개가 아니다 — 그 아래를 본다.
+    if (hit?.hasAttribute("data-native-browser-transparent") || insideNativeFloat(hit)) {
+      hit = document.elementsFromPoint(x, y).find((element) => !element.hasAttribute("data-native-browser-transparent") && !insideNativeFloat(element)) ?? null;
     }
     return hit !== null && host.contains(hit);
   };
@@ -388,6 +390,10 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
   const importUnavailable = chromeImportUnavailable();
   const [viewportMenu, setViewportMenu] = React.useState(false);
   const [profileMenu, setProfileMenu] = React.useState(false);
+  const profileMenuRef = React.useRef<HTMLDivElement>(null);
+  const viewportMenuRef = React.useRef<HTMLDivElement>(null);
+  useNativeFloat(profileMenuRef, profileMenu, () => setProfileMenu(false));
+  useNativeFloat(viewportMenuRef, viewportMenu, () => setViewportMenu(false));
   React.useEffect(() => {
     publishBrowserCaptionOverlay(objectiveId, "tools", viewportMenu || profileMenu);
     return () => publishBrowserCaptionOverlay(objectiveId, "tools", false);
@@ -416,7 +422,7 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
           {persistent ? <ProfileGlyph /> : <EphemeralGlyph />}
         </button>
         {profileMenu ? (
-          <div className="op-browser__menu" role="menu">
+          <div ref={profileMenuRef} className="op-browser__menu" role="menu">
             {/* 세션 행은 button 이 아니다 — 행 끝의 핀이 자기 버튼을 가져야 하고, button 안의 button 은 HTML 이 허용하지 않는다.
                 기본인 행은 끝에 「기본」 한 낱말을 늘 보이고, 다른 행은 올렸을 때만 핀을 내민다. 핀은 기본만 옮기고
                 이 Objective 의 세션은 건드리지 않는다 — 그래서 메뉴도 닫지 않는다. 표식이 옮겨 가는 것이 곧 답이다. */}
@@ -480,7 +486,7 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
           {presetGlyph(viewport?.preset ?? "responsive")}
         </button>
         {viewportMenu ? (
-          <div className="op-browser__menu op-browser__menu--row" role="menu">
+          <div ref={viewportMenuRef} className="op-browser__menu op-browser__menu--row" role="menu">
             {(["responsive", "mobile", "tablet"] as const).map((preset) => (
               <button key={preset} type="button" role="menuitemradio" aria-checked={viewport?.preset === preset} className="op-browser__icon op-browser__tool" aria-pressed={viewport?.preset === preset} aria-label={t(`terminal.browser.preset.${preset}`)} data-tip={t(`terminal.browser.preset.${preset}`)} onClick={() => { setViewportMenu(false); panel?.actions.setViewport(preset); }}>{presetGlyph(preset)}</button>
             ))}
@@ -541,6 +547,8 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
   const shownGroups = groups.filter((group) => shownIds.has(group.space.id));
   const hiddenGroups = groups.filter((group) => !shownIds.has(group.space.id));
   const moreOpen = moreMenu && hiddenGroups.length > 0;
+  const moreMenuRef = React.useRef<HTMLDivElement>(null);
+  useNativeFloat(moreMenuRef, moreOpen, () => setMoreMenu(false));
   const away = homeGroup && displayed !== null && displayed !== home;
 
   const fitKey = `${capWidth}|${humanTabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}|${groups.map((group) => `${group.space.id}:${spaceName(group.space)}:${group.open ? 1 : 0}:${group.tabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}`).join("|")}`;
@@ -639,7 +647,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
             +{hiddenGroups.length}
           </button>
           {moreOpen ? (
-            <div className="op-browser__menu op-browser__menu--spaces" role="menu" aria-label={t("terminal.browser.space.moreMenu")}>
+            <div ref={moreMenuRef} className="op-browser__menu op-browser__menu--spaces" role="menu" aria-label={t("terminal.browser.space.moreMenu")}>
               {hiddenGroups.map((group) => (
                 <button key={group.space.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__space-item" title={drivingTip(group.space).slice(3) || undefined} onClick={() => { setMoreMenu(false); pickSpace(group.space, false); }}>
                   <span className="op-browser__space-name">{spaceName(group.space)}</span>
@@ -691,6 +699,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const suggestionsId = React.useId();
   const suggestionsOpen = available && editingUrl && !composingUrl && suggestions.length > 0;
   const suggestionPromptOpen = available && editingUrl && !composingUrl && !suggestionsOpen && suggestionSettings.settings?.enabled === false && !suggestionSettings.settings.prompted;
+  const suggestionsRef = React.useRef<HTMLDivElement>(null);
+  const suggestionPromptRef = React.useRef<HTMLDivElement>(null);
+  useNativeFloat(suggestionsRef, suggestionsOpen);
+  useNativeFloat(suggestionPromptRef, suggestionPromptOpen);
   const addressOverlayOpen = suggestionsOpen || suggestionPromptOpen;
   const dismissSuggestions = () => { suggestionRequest.current?.abort(); setSuggestQuery(null); setSuggestions([]); setHistorySuggestions([]); setSelectedSuggestion(-1); };
   React.useEffect(() => {
@@ -935,7 +947,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       // 끄는 포인터를 뷰가 가져가지 않게 하고, 놓은 뒤 정착한 자리에 한 번 다시 놓는다.
       const intent = getNativeViewResize();
       const held = (intent !== null && intent.held && intent.container.contains(element)) || element.closest('[data-resizing="true"]') !== null;
-      const covered = nativeViewCovered() || captionOverlay || addressOverlayOpen || held;
+      // 셸이 메뉴를 자식 창에 띄울 수 있으면 비모달 가림 표면(패널 메뉴·주소 제안·승인 팝오버 등)은 뷰 위에 따로 그려진다 —
+      // 그때는 모달 대화상자만 뷰를 물린다. 옛 셸에서는 지금처럼 가림 표면이 있으면 물러선다.
+      const floats = nativeFloatAvailable();
+      const covered = (floats ? document.querySelector('[aria-modal="true"]') !== null : nativeViewCovered() || captionOverlay || addressOverlayOpen) || held;
       const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
       const visible = shown ? visibleRect(host, rect) : null;
@@ -1416,7 +1431,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             }}
           />
           {suggestionPromptOpen ? (
-            <div className="op-browser__suggestions op-browser__suggestion-prompt">
+            <div ref={suggestionPromptRef} className="op-browser__suggestions op-browser__suggestion-prompt">
               <span id={`${suggestionsId}-disclosure`}>{t("terminal.browser.suggestions.disclosure")}</span>
               <div className="op-browser__suggestion-actions">
                 <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(true); }}>{t("terminal.browser.suggestions.enable")}</button>
@@ -1426,7 +1441,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             </div>
           ) : null}
           {suggestionsOpen ? (
-            <div id={suggestionsId} className="op-browser__suggestions" role="listbox" aria-label={t("terminal.browser.suggestions.title")}>
+            <div ref={suggestionsRef} id={suggestionsId} className="op-browser__suggestions" role="listbox" aria-label={t("terminal.browser.suggestions.title")}>
               {suggestions.map((suggestion, index) => (
                 <button
                   key={`${suggestion.historyId ?? "search"}:${suggestion.value}`}
@@ -1562,7 +1577,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
           </div>
         ) : activeTab ? (
           // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
-          <div className="op-browser__native" ref={nativeRef} aria-hidden="true">
+          <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: objectiveId }}>
             {shownBackdrop ? (
               <img
                 className="op-browser__backdrop"

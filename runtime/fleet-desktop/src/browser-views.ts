@@ -13,6 +13,7 @@ import {
 } from "@fleet-console/protocol/desktop";
 
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
+import type { DesktopBrowserFloatWindow } from "./browser-float.js";
 import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
 import { defaultParkViewport, parkedNativeBounds, type DesktopShellWindow, type ParkViewport } from "./shell-window.js";
 
@@ -55,6 +56,8 @@ export interface DesktopBrowserViewsDeps {
    * Chromium 의 캡처 에뮬레이션 없이 수행한다 — 없으면 명령을 그대로 보낸다.
    */
   readonly composeCapture?: (png: Buffer, plan: CapturePlan) => string;
+  /** 브라우저 자리를 덮는 Console 메뉴를 띄우는 자식 창. 없으면 스냅샷의 `float` 를 무시한다. */
+  readonly float?: DesktopBrowserFloatWindow;
 }
 
 export interface CaptureRect { x: number; y: number; width: number; height: number }
@@ -602,6 +605,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       place(entry);
     }
     for (const command of snapshot.commands) run(command);
+    deps.float?.apply(snapshot.float ?? null, origin);
   };
 
   const stream: DesktopEventStream = createDesktopEventStream<DesktopBrowserSnapshot>({
@@ -625,7 +629,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       await stream.start(origin);
     },
     stop,
-    refresh(): void { for (const entry of live.values()) place(entry); },
+    refresh(): void { for (const entry of live.values()) place(entry); deps.float?.refresh(); },
   };
 
   function stop(): void {
@@ -634,6 +638,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     for (const browserSession of markedSessions) browserSession.webRequest.onBeforeSendHeaders(null);
     markedSessions.clear();
     registeredShortcuts.clear();
+    deps.float?.apply(null, null);
     origin = null;
   }
 
