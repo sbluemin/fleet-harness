@@ -130,7 +130,7 @@ describe("session browser host contract", () => {
       },
     });
 
-    const objectiveRecords = new Map<string, { id: string; payload: Record<string, unknown> }>();
+    const objectiveRecords = new Map<string, { id: string; commodoreId: string; payload: Record<string, unknown> }>();
     let exactOrigin = true;
     let writeAdmitted = true;
 
@@ -160,7 +160,7 @@ describe("session browser host contract", () => {
     expect((stateRes as unknown as { status: number }).status).toBe(404);
 
     // 옛 상태·복원으로 id "global"인 Objective이 들어와 있어도 Session 경로에 붙지 않는다.
-    objectiveRecords.set("global", { id: "global", payload: {} });
+    objectiveRecords.set("global", { id: "global", commodoreId: "c", payload: {} });
     const spoofRes = {} as ServerResponse;
     await router({ req: { method: "GET" } as IncomingMessage, res: spoofRes, pathname: "/api/v1/browser/objectives/global/state" });
     expect((spoofRes as unknown as { status: number }).status).toBe(404);
@@ -247,7 +247,7 @@ describe("session browser host contract", () => {
     });
 
     const released: string[] = [];
-    const browser = createBrowserMcpHost({ service, objectiveRecords: () => [], screenshots: { release: (id: string) => released.push(id), cleanup: () => {} } as never });
+    const browser = createBrowserMcpHost({ service, objectiveRecords: () => [], commodoreExists: () => true, screenshots: { release: (id: string) => released.push(id), cleanup: () => {} } as never });
     try {
       await expect(service.createTab(GLOBAL_BROWSER_OWNER_ID, "https://example.com/reserved", "user")).rejects.toMatchObject({ code: "browser_owner_reserved" });
       expect(service.status().objectiveRecords).not.toContain(GLOBAL_BROWSER_OWNER_ID);
@@ -324,6 +324,13 @@ describe("session browser host contract", () => {
       expect(engine.snapshot().views.map((view) => view.id)).toEqual(viewsBeforeReset);
       expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
 
+      // Objective 스페이스를 거두는 일이 같은 브라우저의 진행 중 생성과 겹쳐도 그 스페이스가 되살아나지 않는다(다른 스페이스는 남는다).
+      await service.createTab("op-shared", null, "user", { spaceId: "keep" });
+      const closing = service.createTab("op-shared", null, "agent", { spaceId: "obj-closed", participantId: "p" }).catch((error: unknown) => error);
+      await service.closeSpace("obj-closed");
+      expect(await closing).toMatchObject({ code: "browser_call_interrupted" });
+      expect(service.state("op-shared").tabs.map((tab) => tab.spaceId)).toEqual(["keep"]);
+
       // 사령관은 실제 AgentHost가 실은 MCP로 자기 탭만 다룬다. 전역 탭 id를 알아도 넘어갈 수 없다.
       let client: Client | null = null;
       let browserTurn: (turn: ClaudeGatewayTurn) => Promise<void>;
@@ -355,8 +362,26 @@ describe("session browser host contract", () => {
           expect((await client.listTools()).tools.some((tool) => tool.name === "capture")).toBe(true);
           expect((await client.callTool({ name: "tabs_create", arguments: {} })).isError).not.toBe(true);
           expect(service.state(owner).tabs).toHaveLength(1);
+          const own = service.state(owner).tabs[0]!;
+          expect(own.spaceId).toBe("commodore");
+          // 다른 사령관의 브라우저 탭은 id 를 알아도 닿지 않는다.
           expect((await client.callTool({ name: "tabs_select", arguments: { tabId: foreign.id } })).isError).toBe(true);
+          expect((await client.callTool({ name: "get_page_text", arguments: { tabId: foreign.id } })).isError).toBe(true);
           expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
+          // 같은 사령관의 Objective 스페이스 탭은 읽기만 된다(P1). 사람이 그 탭을 띄워도 사령관의 작업 탭은 그대로다.
+          const objectiveTab = await service.createTab(owner, "https://example.com/objective", "user", { spaceId: "op-space" });
+          expect(service.state(owner).activeTabId).toBe(objectiveTab.id);
+          const context = JSON.parse(String(((await client.callTool({ name: "tabs_context", arguments: { all: true } })).content as { text: string }[])[0]!.text)) as { currentTabId: string; spaces: { id: string }[] };
+          expect(context.currentTabId).toBe(own.id);
+          expect(context.spaces.map((space) => space.id).sort()).toEqual(["commodore", "op-space"]);
+          expect((await client.callTool({ name: "read_console_messages", arguments: { tabId: objectiveTab.id } })).isError).not.toBe(true);
+          const write = await client.callTool({ name: "navigate", arguments: { url: "https://example.com/hijack", tabId: objectiveTab.id } });
+          expect(write.isError).toBe(true);
+          expect(JSON.stringify(write.content)).toContain("browser_space_read_only");
+          const close = await client.callTool({ name: "tabs_close", arguments: { tabId: objectiveTab.id } });
+          expect(JSON.stringify(close.content)).toContain("browser_space_foreign");
+          await service.closeSpace("op-space");
+          expect(service.state(owner).tabs.map((tab) => tab.id)).toEqual([own.id]);
         };
         await session.send("open isolated tab");
         expect(service.state(owner).driving).toBe(false);
@@ -371,8 +396,9 @@ describe("session browser host contract", () => {
         shared = false;
         await session.dispose();
         expect((await client!.callTool({ name: "tabs_context", arguments: {} })).isError).toBe(true);
-        expect(service.state(owner).tabs).toHaveLength(0);
-        expect(released).toContain(owner);
+        // 사령관 브라우저는 Console 이 도는 동안 남는다 — 세션이 끝나도 공유 탭은 닫지 않는다.
+        expect(service.state(owner).tabs).toHaveLength(1);
+        expect(released).not.toContain(owner);
         expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
         const reconnected = browser.connectPlugin({ pluginId: "commodore", scopeId: "commodore:00000000-0000-0000-0000-000000000001", enabled: () => true });
         expect(browser.resolveSessionOwner("commodore", "commodore:00000000-0000-0000-0000-000000000001")).toBe(owner);
@@ -384,7 +410,7 @@ describe("session browser host contract", () => {
       const router = createBrowserRouter({
         browserService: service,
         browserMcp: browser,
-        objectiveRecords: { get: (id: string) => id === GLOBAL_BROWSER_OWNER_ID ? { id, payload: {} } : null },
+        objectiveRecords: { get: (id: string) => id === GLOBAL_BROWSER_OWNER_ID ? { id, commodoreId: "c", payload: {} } : null },
         isWriteAdmitted: () => true,
         isExactConsoleOrigin: () => true,
         writeJson: (res, status, body) => { Object.assign(res, { status, body }); },

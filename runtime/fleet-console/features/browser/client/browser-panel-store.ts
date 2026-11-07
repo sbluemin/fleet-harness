@@ -1,14 +1,21 @@
 import * as React from "react";
+import type { BrowserSpaceState } from "../shared/spaces.js";
 
 /**
  * 패널 ↔ 캡션 공유 — companion 의 캡션과 본문은 호스트가 따로 그리므로, 본문(BrowserPanel)이 자기 상태와
  * 손잡이를 여기 올리고 캡션(BrowserCaption)이 읽는다. 탭 스트립이 캡션 밴드에 살기 위한 다리다.
  */
 
-export interface BrowserCaptionTab { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean }
+export interface BrowserCaptionTab { readonly id: string; readonly spaceId: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean }
 export interface BrowserPanelSnapshot {
   readonly tabs: readonly BrowserCaptionTab[];
   readonly activeTabId: string | null;
+  /** 사령관 브라우저의 스페이스들 — 탭이 있거나 에이전트가 쓰는 중인 것만 온다. 캡션이 칩 줄로 그린다. */
+  readonly spaces: readonly BrowserSpaceState[];
+  /** 이 대화의 스페이스. 스트림 프레임에는 없고 처음 읽을 때만 알려지므로 모르면 null. */
+  readonly homeSpaceId: string | null;
+  /** 사람 화면에 표시된 탭이 속한 스페이스. 탭이 없으면 null. */
+  readonly displayedSpaceId: string | null;
   readonly driving: boolean;
   readonly viewport: { readonly width: number; readonly height: number; readonly preset: "responsive" | "mobile" | "tablet"; readonly setBy: "user" | "agent" | null } | null;
   readonly busy: boolean;
@@ -21,7 +28,10 @@ export interface BrowserPanelSnapshot {
   readonly actions: {
     readonly selectTab: (tabId: string) => void;
     readonly closeTab: (tabId: string) => void;
+    /** 지금 표시 중인 스페이스에 새 탭을 연다(표시 중인 스페이스가 없으면 이 대화의 스페이스). */
     readonly createTab: () => void;
+    /** 그 스페이스를 사람 화면에 띄운다 — 화면만 바뀌고 에이전트의 작업 탭은 그대로다. */
+    readonly selectSpace: (spaceId: string) => void;
     readonly openImport: () => void;
     readonly setViewport: (preset: "responsive" | "mobile" | "tablet") => void;
     /** 세션을 바꾼다. 열린 탭이 있으면 패널이 먼저 확인을 받는다 — 세션은 뷰에 바꿔 끼울 수 없다. */

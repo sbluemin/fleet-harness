@@ -6,8 +6,10 @@ import { CaptionBrowserUseGlyph } from "../../workspace/client/components/captio
 
 import { getT } from "./i18n.js";
 import { suggestionSkipReason } from "../shared/suggestions.js";
+import { spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
+import type { BrowserCaptionTab } from "./browser-panel-store.js";
 import { dropBrowserOpenRequest, getNativeViewResize, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import "./browser-panel.css";
 
@@ -36,12 +38,18 @@ interface BrowserProps { readonly context: ObjectiveRenderContext; readonly serv
  * Google Chrome 프로필에서 쿠키로 가져올 수 있다 — Desktop 셸이 읽어 지금 쓰는 세션에만 넣는다.
  */
 
-interface TabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
+interface TabState { readonly id: string; readonly spaceId: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
 interface Viewport { readonly width: number; readonly height: number; readonly scale: number; readonly preset: "responsive" | "mobile" | "tablet"; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 type UnavailableReason = "desktop_required" | "shared";
 interface BrowserState {
-  /** 한 스트림에 모든 Objective 의 상태가 흐르므로 프레임이 자기 주인을 싣는다. */
-  readonly objectiveId: string;
+  /** 한 스트림에 모든 사령관 브라우저의 상태가 흐르므로 프레임이 자기 브라우저를 싣는다(`browserId`). `objectiveId` 도 같은 값이다. */
+  readonly browserId: string;
+  readonly spaces: readonly BrowserSpaceState[];
+  /** 표시 탭이 속한 스페이스. 탭이 없으면 null. */
+  readonly displayedSpaceId: string | null;
+  /** 이 대화의 스페이스 — `GET …/state` 응답에만 실린다. 스트림 프레임에는 없다. */
+  readonly homeSpaceId?: string;
+  /** 사람 화면에 표시된 탭. */
   readonly tabs: readonly TabState[]; readonly activeTabId: string | null; readonly viewport: Viewport; readonly driving: boolean;
   readonly consoleErrors: number; readonly engine: "idle" | "starting" | "ready" | "failed"; readonly engineError: string | null;
   readonly available: boolean; readonly reason: UnavailableReason | null;
@@ -95,19 +103,23 @@ function base64Of(blob: Blob): Promise<string> {
  */
 function useBrowserStream(objectiveId: string, enabled: boolean, subscribeConsoleChannel: BrowserClientServices["subscribeConsoleChannel"]) {
   const [state, setState] = React.useState<BrowserState | null>(null);
+  const [homeSpaceId, setHomeSpaceId] = React.useState<string | null>(null);
   const [connection, setConnection] = React.useState<Connection>(enabled ? "connecting" : "disabled");
   React.useEffect(() => {
-    if (!enabled) { setConnection("disabled"); setState(null); return; }
+    if (!enabled) { setConnection("disabled"); setState(null); setHomeSpaceId(null); return; }
     let disposed = false;
-    // 스트림이 먼저 말을 걸었는가. 출발점을 읽는 동안 도착한 프레임을 뒤늦은 응답이 되돌리지 않게 한다 —
-    // 그 응답은 이미 낡았고, 바뀌지 않은 사실은 다시 오지 않으므로 한 번 뒤집히면 그대로 남는다.
-    let streamed = false;
+    // 내 브라우저의 id. 요청에 쓰는 id(Objective id 또는 `commodore:<id>`)와 다르고, 처음 읽은 상태에서만 알 수 있다.
+    let browserId: string | null = null;
+    // 출발점을 읽는 동안 도착한 프레임. 한 스트림에 모든 사령관 브라우저의 프레임이 흐르므로 내 것인지 아직 모른다 —
+    // 브라우저마다 가장 새 프레임을 쥐었다가, 출발점이 내 browserId 를 알려 주면 그 프레임이 응답보다 새것이므로 그것을 쓴다.
+    const early = new Map<string, BrowserState>();
     setConnection("connecting");
     const receive = (payload: unknown) => {
       const next = payload as BrowserState | null;
-      // 한 스트림에 모든 Objective 의 상태가 흐른다 — 내 것만 받는다.
-      if (disposed || !next || next.objectiveId !== objectiveId) return;
-      streamed = true;
+      if (disposed || !next || typeof next.browserId !== "string") return;
+      if (browserId === null) { early.set(next.browserId, next); return; }
+      // 한 스트림에 모든 사령관 브라우저의 상태가 흐른다 — 내 브라우저의 것만 받는다.
+      if (next.browserId !== browserId) return;
       setState(next);
       setConnection("open");
     };
@@ -116,12 +128,19 @@ function useBrowserStream(objectiveId: string, enabled: boolean, subscribeConsol
       .then(async (response) => {
         if (!response.ok) { if (!disposed) setConnection("closed"); return; }
         const body = await response.json() as BrowserState;
-        if (!streamed) receive(body);
+        if (disposed || typeof body.browserId !== "string") return;
+        browserId = body.browserId;
+        setHomeSpaceId(body.homeSpaceId ?? null);
+        // 바뀌지 않은 사실은 다시 오지 않으므로, 먼저 도착한 프레임이 있으면 낡은 응답이 그것을 되돌리지 않게 한다.
+        const newer = early.get(browserId);
+        early.clear();
+        setState(newer ?? body);
+        setConnection("open");
       })
       .catch(() => { if (!disposed) setConnection("closed"); });
     return () => { disposed = true; unsubscribe(); };
   }, [objectiveId, enabled, subscribeConsoleChannel]);
-  return { state, connection };
+  return { state, connection, homeSpaceId };
 }
 
 /** 네이티브 뷰 자리를 다시 재는 간격 — 패널 드래그·리사이즈는 이벤트로도 오지만 캔버스 이동·덮개의 등장은 오지 않는다. */
@@ -303,6 +322,28 @@ function unavailableText(t: ReturnType<typeof getT>, reason: UnavailableReason |
   return { title: t("terminal.browser.desktopMissing"), body: null };
 }
 
+/** 스페이스 색 칸 — 사령관·세션은 무채 잉크, Objective 는 id 해시로 4색 가운데 하나에 고정된다(같은 Objective 는 늘 같은 색). */
+const SPACE_HUES = 4;
+function spaceHue(space: { readonly id: string; readonly kind: BrowserSpaceKind }): "ink" | "1" | "2" | "3" | "4" {
+  if (space.kind !== "objective") return "ink";
+  let hash = 2166136261;
+  for (const char of space.id) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+  return String((hash >>> 0) % SPACE_HUES + 1) as "1" | "2" | "3" | "4";
+}
+
+function AgentGlyph() {
+  return (
+    <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" focusable="false">
+      <path d="M6 1.2 7.2 4.8 10.8 6 7.2 7.2 6 10.8 4.8 7.2 1.2 6 4.8 4.8Z" fill="currentColor" />
+    </svg>
+  );
+}
+function BackGlyph() {
+  return glyph('<path d="M6.5 3.5 2.5 7l4 3.5"/><path d="M2.5 7h7a3 3 0 0 1 3 3v1.5"/>');
+}
+
+interface SpaceGroup { readonly space: BrowserSpaceState; readonly tabs: readonly BrowserCaptionTab[]; readonly open: boolean }
+
 /**
  * companion 캡션 = 브라우저 탭 스트립. 「브라우저」 한 단어 대신 지구본 + 탭 + 새 탭, 오른쪽에 뷰포트.
  * 에이전트 세션 중이면 지구본이 agent-control 채움이 되고 「사용 중 · 중단」이 선다. 본문이 올린 스냅샷을 읽는다.
@@ -338,11 +379,92 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
   const importUnavailable = chromeImportUnavailable();
   const [viewportMenu, setViewportMenu] = React.useState(false);
   const [profileMenu, setProfileMenu] = React.useState(false);
+  const [moreMenu, setMoreMenu] = React.useState(false);
+  // 사람이 펼친 스페이스들. 이 대화의 스페이스(home)와 지금 화면에 띄운 스페이스는 따로 꼽지 않아도 펼쳐진다.
+  const [expanded, setExpanded] = React.useState<readonly string[]>([]);
+  // 칩 줄이 넘칠 때 띠에 남기는 스페이스 수. 크기나 내용이 바뀌면 전부 놓고 다시 줄여 나간다.
+  const [fitLimit, setFitLimit] = React.useState(Number.MAX_SAFE_INTEGER);
+  const [capWidth, setCapWidth] = React.useState(0);
+  const capRef = React.useRef<HTMLDivElement | null>(null);
+  const stripRef = React.useRef<HTMLDivElement | null>(null);
+  const moreRef = React.useRef<HTMLDivElement | null>(null);
+  const fitKeyRef = React.useRef("");
+
+  const home = panel?.homeSpaceId ?? null;
+  const displayed = panel?.displayedSpaceId ?? null;
+  const spaceName = (space: BrowserSpaceState) => space.label || t(`terminal.browser.space.${space.kind}`);
+  // 탭이 없는 스페이스는 숨기되 home 은 예외다. 프레임이 싣지 않은 스페이스(탭만 아는 것, 비어 있는 home)는 여기서 채운다.
+  const groups: readonly SpaceGroup[] = (() => {
+    const tabs = panel?.tabs ?? [];
+    const byId = new Map<string, BrowserSpaceState>();
+    for (const space of panel?.spaces ?? []) byId.set(space.id, space);
+    const blank = (id: string): BrowserSpaceState => ({ id, kind: spaceKindOf(id), label: "", driving: false, agentTabIds: [], lastShownTabId: null });
+    for (const tab of tabs) if (!byId.has(tab.spaceId)) byId.set(tab.spaceId, blank(tab.spaceId));
+    if (home !== null && !byId.has(home)) byId.set(home, blank(home));
+    const ordered = [...byId.values()].sort((a, b) => Number(b.id === home) - Number(a.id === home));
+    return ordered
+      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 좁은 띠에서 보는 스페이스의 탭이 읽히게. home 칩을 누르면 돌아온다.
+      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || expanded.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
+      .filter((group) => group.tabs.length > 0 || group.space.id === home);
+  })();
+  // 띠에 남길 스페이스: 지금 보는 스페이스, home, 나머지 순 — 화면에 뜬 탭의 스페이스가 숨으면 무엇을 보는지 알 수 없다.
+  // home 은 「내 스페이스로」로 언제나 돌아갈 수 있다. 그려지는 순서는 그대로 두어 칩이 뛰어다니지 않게 한다.
+  const shownCount = Math.min(fitLimit, groups.length);
+  const priority = [...groups].sort((a, b) => Number(b.space.id === home) - Number(a.space.id === home)).sort((a, b) => Number(b.space.id === displayed) - Number(a.space.id === displayed));
+  const shownIds = new Set(priority.slice(0, shownCount).map((group) => group.space.id));
+  const shownGroups = groups.filter((group) => shownIds.has(group.space.id));
+  const hiddenGroups = groups.filter((group) => !shownIds.has(group.space.id));
+  const moreOpen = moreMenu && hiddenGroups.length > 0;
+  const away = home !== null && displayed !== null && displayed !== home;
+
+  const fitKey = `${capWidth}|${groups.map((group) => `${group.space.id}:${group.space.label}:${group.open ? 1 : 0}:${group.tabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}`).join("|")}`;
+  React.useLayoutEffect(() => {
+    if (fitKeyRef.current !== fitKey) {
+      fitKeyRef.current = fitKey;
+      if (fitLimit !== Number.MAX_SAFE_INTEGER) { setFitLimit(Number.MAX_SAFE_INTEGER); return; }
+    }
+    const strip = stripRef.current;
+    if (!strip || shownCount <= 1) return;
+    if (strip.scrollWidth > strip.clientWidth + 1) setFitLimit(shownCount - 1);
+  }, [fitKey, fitLimit, shownCount]);
+  React.useEffect(() => {
+    const cap = capRef.current;
+    if (!cap) return;
+    const observer = new ResizeObserver(() => setCapWidth(Math.round(cap.getBoundingClientRect().width)));
+    observer.observe(cap);
+    return () => observer.disconnect();
+  }, []);
+
   // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
   React.useEffect(() => {
-    publishBrowserCaptionOverlay(context.objectiveId, viewportMenu || profileMenu);
+    publishBrowserCaptionOverlay(context.objectiveId, viewportMenu || profileMenu || moreOpen);
     return () => publishBrowserCaptionOverlay(context.objectiveId, false);
-  }, [context.objectiveId, viewportMenu, profileMenu]);
+  }, [context.objectiveId, viewportMenu, profileMenu, moreOpen]);
+  // 「+N」 메뉴는 바깥을 누르거나 Esc 로 닫는다. 캡션이 포인터를 삼키므로 문서에서 캡처 단계로 듣는다.
+  React.useEffect(() => {
+    if (!moreOpen) return;
+    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !moreRef.current?.contains(event.target)) setMoreMenu(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setMoreMenu(false); };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onPointer, true); document.removeEventListener("keydown", onKey); };
+  }, [moreOpen]);
+
+  /** 스페이스를 펼치고 화면에 띄운다. 이미 보이는 스페이스를 접으면 내 스페이스로 돌아간다. */
+  const pickSpace = (space: BrowserSpaceState, open: boolean) => {
+    if (space.id === home) {
+      setExpanded([]);
+      if (displayed !== null && displayed !== home) panel?.actions.selectSpace(space.id);
+      return;
+    }
+    if (open) {
+      setExpanded((current) => current.filter((id) => id !== space.id));
+      if (displayed === space.id && home !== null) panel?.actions.selectSpace(home);
+      return;
+    }
+    setExpanded((current) => current.includes(space.id) ? current : [...current, space.id]);
+    panel?.actions.selectSpace(space.id);
+  };
   const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
   const driving = panel?.driving === true;
   const ready = panel !== null && panel.available && !panel.busy;
@@ -352,17 +474,75 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
   const viewportTip = viewport ? `${viewport.width}×${viewport.height} · ${t(`terminal.browser.preset.${viewport.preset}`)}${viewport.setBy === "agent" ? ` · ${t("terminal.browser.setByAgent")}` : ""}` : t("terminal.browser.viewport");
   const presetGlyph = (preset: "responsive" | "mobile" | "tablet") => preset === "mobile" ? <PhoneGlyph /> : preset === "tablet" ? <TabletGlyph /> : <MonitorGlyph />;
   return (
-    <div className={`op-browser-cap${driving ? " is-driving" : ""}`} onPointerDown={stop} onWheel={stop} {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : {})}>
-      <div className="op-browser-cap__tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>
-        {(panel?.tabs ?? []).map((tab) => (
-          <div key={tab.id} role="tab" aria-selected={tab.id === panel?.activeTabId} className={`op-browser__tab${tab.id === panel?.activeTabId ? " is-active" : ""}`} onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }} onClick={() => { if (tab.id !== panel?.activeTabId) panel?.actions.selectTab(tab.id); }} title={tab.url}>
-            <TabIcon objectiveId={context.objectiveId} tab={tab} />
-            <span className="op-browser__tab-title">{tab.title || hostOf(tab.url) || t("terminal.browser.newTab")}</span>
-            <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
-          </div>
-        ))}
-        <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
+    <div ref={capRef} className={`op-browser-cap${driving ? " is-driving" : ""}`} onPointerDown={stop} onWheel={stop} {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : {})}>
+      <div ref={stripRef} className="op-browser-cap__tabs">
+        {shownGroups.map((group) => {
+          const { space } = group;
+          const name = spaceName(space);
+          const isHome = space.id === home;
+          const count = String(group.tabs.length);
+          return (
+            <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} data-hue={spaceHue(space)} data-space-kind={space.kind}>
+              <button
+                type="button"
+                className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
+                aria-expanded={group.open}
+                title={t(isHome ? "terminal.browser.space.chipHome" : "terminal.browser.space.chip", { name, count })}
+                disabled={!panel?.available}
+                onClick={() => pickSpace(space, group.open)}
+              >
+                <span className="op-browser__space-swatch" aria-hidden="true" />
+                <span className="op-browser__space-name">{name}</span>
+                {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
+                {space.driving ? <span className="op-browser__space-driving" role="img" aria-label={t("terminal.browser.space.driving")} /> : null}
+              </button>
+              {group.open && group.tabs.length > 0 ? (
+                <div className="op-browser__space-tabs" role="tablist" aria-label={`${name} — ${t("terminal.browser.tabs")}`}>
+                  {group.tabs.map((tab) => {
+                    const agentTab = space.agentTabIds.includes(tab.id);
+                    return (
+                      <div key={tab.id} role="tab" aria-selected={tab.id === panel?.activeTabId} className={`op-browser__tab${tab.id === panel?.activeTabId ? " is-active" : ""}`} onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }} onClick={() => { if (tab.id !== panel?.activeTabId) panel?.actions.selectTab(tab.id); }} title={agentTab ? `${tab.url} · ${t("terminal.browser.space.agentTab")}` : tab.url}>
+                        <TabIcon objectiveId={context.objectiveId} tab={tab} />
+                        <span className="op-browser__tab-title">{tab.title || hostOf(tab.url) || t("terminal.browser.newTab")}</span>
+                        {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
+                        <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
+      {hiddenGroups.length > 0 ? (
+        <div className="op-browser__more" ref={moreRef}>
+          <button type="button" className="op-browser__more-button" aria-haspopup="menu" aria-expanded={moreOpen} aria-label={t("terminal.browser.space.more", { count: String(hiddenGroups.length) })} onClick={() => setMoreMenu((open) => !open)}>
+            +{hiddenGroups.length}
+            {hiddenGroups.some((group) => group.space.driving) ? <span className="op-browser__space-driving" aria-hidden="true" /> : null}
+          </button>
+          {moreOpen ? (
+            <div className="op-browser__menu op-browser__menu--spaces" role="menu" aria-label={t("terminal.browser.space.moreMenu")}>
+              {hiddenGroups.map((group) => (
+                <button key={group.space.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__space-item" data-hue={spaceHue(group.space)} onClick={() => { setMoreMenu(false); pickSpace(group.space, false); }}>
+                  <span className="op-browser__space-swatch" aria-hidden="true" />
+                  <span className="op-browser__space-name">{spaceName(group.space)}</span>
+                  <span className="op-browser__space-count">{group.tabs.length}</span>
+                  {group.space.driving ? <span className="op-browser__space-driving" role="img" aria-label={t("terminal.browser.space.driving")} /> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {away && home !== null && !shownIds.has(home) ? (
+        <button type="button" className="op-browser__space-home" title={t("terminal.browser.space.backHomeTip")} onClick={() => { if (home !== null) panel?.actions.selectSpace(home); }}>
+          <BackGlyph />
+          <span>{t("terminal.browser.space.backHome")}</span>
+        </button>
+      ) : null}
+      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
+      <span className="op-browser-cap__spacer" />
       {/* 세션 표식 — 글리프 하나가 지금 어떤 세션인지 말한다. 가져오기도 이 메뉴에 산다: 쿠키가 들어가는 곳이
           바로 이 세션이므로, 캡션에 버튼을 하나 더 두는 것보다 세션을 다루는 자리에 함께 있는 편이 옳다. */}
       <div className="op-browser__profile">
@@ -465,7 +645,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const t = getT(language ?? "en");
   // 브라우저 탭·모바일에는 뷰를 그릴 셸이 없다 — 서버에 묻지 않고 닫힌 문만 보인다.
   const desktop = isDesktopShell();
-  const { state, connection } = useBrowserStream(objectiveId, desktop, services.subscribeConsoleChannel);
+  const { state, connection, homeSpaceId } = useBrowserStream(objectiveId, desktop, services.subscribeConsoleChannel);
   const available = desktop && state?.available === true;
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
@@ -1088,6 +1268,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   React.useEffect(() => {
     publishBrowserPanel(objectiveId, {
       tabs: available ? state?.tabs ?? [] : [], activeTabId: available ? state?.activeTabId ?? null : null, driving: state?.driving === true,
+      spaces: available ? state?.spaces ?? [] : [], homeSpaceId, displayedSpaceId: available ? state?.displayedSpaceId ?? null : null,
       viewport: state ? { width: state.viewport.width, height: state.viewport.height, preset: state.viewport.preset, setBy: state.viewport.setBy } : null,
       busy,
       available,
@@ -1096,7 +1277,9 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       actions: {
         selectTab: (tabId) => { void run("tabs", { action: "select", tabId }); },
         closeTab: (tabId) => { void run("tabs", { action: "close", tabId }); },
-        createTab: () => { void run("tabs", { action: "create" }); setEditingUrl(true); },
+        // 사람은 지금 보는 스페이스에 새 탭을 연다 — 보는 스페이스가 없으면 서버가 이 대화의 스페이스에 연다.
+        createTab: () => { void run("tabs", { action: "create", ...(state?.displayedSpaceId ? { spaceId: state.displayedSpaceId } : {}) }); setEditingUrl(true); },
+        selectSpace: (spaceId) => { void run("space", { spaceId }); },
         openImport: () => { void openImport(); },
         setViewport,
         chooseProfile,
@@ -1105,8 +1288,20 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 손잡이는 매 렌더 새로 만들어도 같은 뜻이다; 상태·busy 가 바뀔 때만 올린다.
-  }, [objectiveId, state, busy, available]);
+  }, [objectiveId, state, busy, available, homeSpaceId]);
   React.useEffect(() => () => publishBrowserPanel(objectiveId, null), [objectiveId]);
+  // 대화를 열면 그 대화의 스페이스를 띄운다 — 다른 대화에서 보던 스페이스가 화면에 남아 있어도 이 대화의 탭으로 돌아온다.
+  // 열 때 한 번뿐이다: 그 뒤 사람이 다른 스페이스를 고르면 그대로 둔다.
+  const homedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!available || !state || homeSpaceId === null) return;
+    const key = `${objectiveId}|${homeSpaceId}`;
+    if (homedRef.current === key) return;
+    homedRef.current = key;
+    // 탭이 없어도 띄운다 — 사람의 새 탭·주소 입력이 이 대화의 스페이스에 열리도록.
+    if (state.displayedSpaceId !== homeSpaceId) void run("space", { spaceId: homeSpaceId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run 은 매 렌더 새로 만들어도 같은 뜻이다.
+  }, [available, state, homeSpaceId, objectiveId]);
 
   // CLI·채팅에서 고른 주소. 문을 누른 순간 이 패널이 마운트되므로 요청이 먼저 놓여 있고, 엔진이 아직
   // 뜨는 중이면 열 수 있게 될 때까지 기다린다. 링크는 새 탭에서 열고, 빈 탭만 그 자리에서 쓴다 —
@@ -1115,7 +1310,8 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   React.useEffect(() => {
     if (!openRequest || !available) return;
     takeBrowserOpenRequest(objectiveId, openRequest.serial);
-    const intoActiveTab = activeTab === null || activeTab.url === "about:blank";
+    // 링크는 이 대화의 스페이스로 간다 — 사람이 다른 스페이스를 보는 중이면 그 스페이스의 빈 탭을 쓰지 않고 새 탭을 연다.
+    const intoActiveTab = activeTab === null || (activeTab.url === "about:blank" && (homeSpaceId === null || activeTab.spaceId === homeSpaceId));
     void run(intoActiveTab ? "navigate" : "tabs", intoActiveTab ? { url: openRequest.url } : { action: "create", url: openRequest.url });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 탭 상태는 요청이 도착한 그 순간의 것으로 읽는다; 탭이 바뀔 때마다 다시 열지 않는다.
   }, [openRequest?.serial, available, objectiveId]);
