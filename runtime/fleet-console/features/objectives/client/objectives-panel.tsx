@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { MenuCheckGlyph, PlusGlyph } from "@fleet-console/ui/react";
+import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
@@ -22,7 +22,7 @@ import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { launchProviderGlyph } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { commanderLaunchShown, hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberLaunchShown, readLaunchRoster, subscribeLaunchRoster, memberNotes, memberStatus, memberSubagents, launchReason, useLaunchRows, type LaunchShown, type MemberLaunchChoice } from "./launch-control.js";
-import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, objectiveRecordSummaries, patchOwnerView, post, subscribeObjective, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner, objectivesApi } from "./objectives-state.js";
+import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, patchOwnerView, post, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner, objectivesApi } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./board-commodore.js";
 import { ObjectiveSwitcher } from "./switcher.js";
@@ -39,7 +39,6 @@ import {
 import { FollowupBatchResults, FollowupCandidateList, FollowupForkGlyph } from "./followups-view.js";
 import { criterionSources, MergedTrail } from "./merged.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
-import { DatePicker } from "./date-picker.js";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 
 export interface ObjectiveContext {
@@ -59,7 +58,7 @@ const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentCol
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
 
 /**
- * 상세 탭 — Console 오른쪽 패널 머리(아바타·이름 아래)에 두 줄로 선다: 첫 줄은 오늘·기한, 둘째 줄은 「목표 · 구성원 · 결과물」 세 낱말이다
+ * 상세 탭 — Console 오른쪽 패널 머리(아바타·이름 아래)에 「목표 · 구성원 · 결과물」 세 낱말 한 줄로 선다
  * (head-tabs.tsx). 결정 내역은 목표 탭 맨 아래, 임무 그래프는 구성원 탭 맨 아래에 섹션 머리로 이어 붙는다. 「구성원」은 대상의 구성원 탭을 대신한다. 탭은 요청한 내용만 담고,
  * 목표 전체의 상태는 머리에, 지금 할 일은 하단 띠에 둔다. 고른 탭은 Theater 별 보기 상태에 하나로 남는다(목표를 바꿔도 그 탭으로 연다).
  * 목록 칸은 없다 — 목표는 Console 사이드바 그룹 트리의 줄로 서고, 사이드바가 접힌 자리에서는 제목 ⌄ 전환 목록이 대신한다.
@@ -124,40 +123,8 @@ export const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="curre
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const CrewGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M2 13c0-2.2 1.8-3.8 4-3.8s4 1.6 4 3.8M10.6 3.6a2.1 2.1 0 0 1 0 3.9M11.6 9.4c1.4.4 2.4 1.8 2.4 3.6" /></svg>;
 const GraphGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.6" /><circle cx="12.5" cy="4" r="1.6" /><circle cx="12.5" cy="12" r="1.6" /><path d="M5 7.3l6-2.6M5 8.7l6 2.6" /></svg>;
-/**
- * 머리 「오늘까지 · 기한」 줄 — ObjectivesHeadTools와 같은 구성요소·모양이다. 목표를 직접 받으므로
- * 패널 선택 상태를 읽지 않는다. 행 아래 펼침과 오른쪽 패널 머리가 함께 쓴다.
- */
-export function ObjectiveScheduleRow({ objective, language }: { readonly objective: Objective; readonly language: "en" | "ko" }) {
-  const lang = language === "ko" ? "ko" : "en";
-  const t = getT(lang);
-  const readActivity = () => objectiveRecordSummaries().find((objectiveRecord) => objectiveRecord.id === objective.id)?.activity ?? null;
-  const activity = useSyncExternalStore(subscribeObjective, readActivity, readActivity);
-  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
-  const dueButton = useRef<HTMLButtonElement | null>(null);
-  // 지휘관이 일하는 동안에는 잠긴다 — 상세의 편집 잠금과 같은 기준이다(서버도 같은 기준으로 거절한다).
-  const editable = !objective.done && activity !== "running" && activity !== "background";
-  const patch = (next: Record<string, unknown>) => {
-    const api = objectivesApi();
-    if (api) void post(api, "/objective/patch", { objectiveId: objective.id, patch: next, language: lang }).catch(() => undefined);
-  };
-  const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
-  const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
-  const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, lang) }) : t("objectives.schedule.setDue");
-  return (
-    <span className="objectives-head-tools" role="group" aria-label={t("objectives.schedule.title")}>
-      <button type="button" className={`objectives-tab-glyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} title={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /><span aria-hidden="true">{t("objectives.tabs.today")}</span></button>
-      <button ref={dueButton} type="button" className={`objectives-tab-glyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} title={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
-        <CalGlyph /><span aria-hidden="true">{t("objectives.schedule.due")}{objective.dueDate ? <span> · {dueShort(objective.dueDate, lang)}</span> : null}</span>
-      </button>
-      {dateAnchor ? <DatePicker anchor={dateAnchor} trigger={dueButton} value={objective.dueDate} language={lang} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
-    </span>
-  );
-}
-
-/**
- * 한 목표의 상세 한 탭을 그린다 — 우측 작업 탭의 임무 팝업·행 펼침과 채팅의 목표 창(objective-window)이 함께 쓴다.
- * 탭 줄은 두지 않고, 「오늘까지·기한」은 목표 탭 맨 위에 중앙 정렬로 둔다. 팝업 안의 길(결정·결과물로 가기)이 탭을 바꾼다.
+/** 한 목표의 상세 한 탭을 그린다 — 우측 작업 탭의 임무 팝업·행 펼침과 채팅의 목표 창(objective-window)이 함께 쓴다.
+ * 탭 줄은 두지 않는다. 팝업 안의 길(결정·결과물로 가기)이 탭을 바꾼다.
  */
 export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab, onGlyphTab, onGraphFitWidth }: {
   readonly commodoreId: string;
@@ -209,7 +176,6 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
   // 지휘관이 일하는 동안 카드는 잠긴다 — 편집 대신 「중단」 하나만 남긴다(서버도 같은 기준으로 거절한다).
   const busy = !objective.done && WORKING.has(objectiveRecordState(objective.id));
   return <>
-    {tab === "goal" ? <div className="commander-missions-dialog-schedule"><ObjectiveScheduleRow objective={objective} language={language} /></div> : null}
     <ObjectiveDetail
       objective={objective}
       t={t}
@@ -282,20 +248,17 @@ function RosterModel({ shown }: { readonly shown: LaunchShown }) {
 
 /**
  * 임무 팝업의 구성원 로스터 — 지휘관과 구성원을 가로 카드로 한 줄에 둔다. 카드마다 이름·모델·강도·상태·맡은 임무 번호를 싣고,
- * 누르면 그 담당의 임무만 그래프에서 밝힌다(aria-pressed). 끝 카드는 구성원 추가다. 모델 편집은 지휘관 화면의 구성원 탭이 맡는다.
+ * 누르면 그 담당의 임무만 그래프에서 밝힌다(aria-pressed). 구성원 추가는 지휘관이 맡는다.
  */
-function MissionRoster({ objective, t, objectiveRecordState, memberStateWord, focus, onFocus, touchable, call }: {
+function MissionRoster({ objective, t, objectiveRecordState, memberStateWord, focus, onFocus }: {
   readonly objective: Objective;
   readonly t: T;
   readonly objectiveRecordState: (objectiveId: string) => string;
   readonly memberStateWord: (state: string, outcome?: string) => string;
   readonly focus: { readonly member: string | null } | null;
   readonly onFocus: (next: { readonly member: string | null } | null) => void;
-  readonly touchable: boolean;
-  readonly call: DetailProps["call"];
 }) {
   const roster = useSyncExternalStore(subscribeLaunchRoster, readLaunchRoster, readLaunchRoster);
-  const [adding, setAdding] = useState(false);
   const missionsOf = (member: string | null) => objective.missions.flatMap((mission, index) => ((mission.member ?? null) === member ? [index + 1] : []));
   const commanderState = objectiveRecordState(objective.id);
   const people = [
@@ -323,20 +286,6 @@ function MissionRoster({ objective, t, objectiveRecordState, memberStateWord, fo
             </button>
           );
         })}
-        {touchable ? (adding ? (
-          <span className="commander-roster-card is-add">
-            <input autoFocus maxLength={40} aria-label={t("objectives.members.add")} placeholder={t("objectives.members.rolePlaceholder")}
-              onBlur={() => setAdding(false)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setAdding(false); return; }
-                if (submitKey(event) && event.currentTarget.value.trim()) { const role = event.currentTarget.value.trim(); setAdding(false); void call("/member/add", { objectiveId: objective.id, member: { role } }); }
-              }} />
-          </span>
-        ) : (
-          <button type="button" className="commander-roster-card is-add" onClick={() => setAdding(true)}>
-            <span aria-hidden="true">＋</span><span>{t("objectives.members.add")}</span>
-          </button>
-        )) : null}
       </div>
     </div>
   );
@@ -820,12 +769,6 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
         </div>
       );
     })}
-    {touchable ? (
-      <div className="objectives-row objectives-mission-add">
-        <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
-        <input aria-label={t("objectives.members.add")} placeholder={t("objectives.members.add")} maxLength={40} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const role = target.value.trim(); target.value = ""; void call("/member/add", { objectiveId: objective.id, member: { role } }); } }} />
-      </div>
-    ) : null}
     </div>
     <p className="objectives-sr" aria-live="polite">{announce}</p>
   </div>;
@@ -881,7 +824,7 @@ interface DetailProps {
 }
 
 /**
- * 세부 — 입력 폼이 아니라 행의 목록이다. 머리 줄(오늘·기한 글리프 | 탭) 아래 고른 탭 하나가 선다. 보드 동작은 구성원 채팅 입력창(board-actions)이 받는다.
+ * 세부 — 입력 폼이 아니라 행의 목록이다. 탭 머리 아래 고른 탭 하나가 선다. 보드 동작은 구성원 채팅 입력창(board-actions)이 받는다.
  * 테두리 친 입력은 없다 — 제목·임무·메모 모두 글 위에 바로 쓴다.
  */
 const ZoomGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" /></svg>;
@@ -1629,12 +1572,6 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
             );
           })}
           {proposals.filter((proposal) => proposal.kind === "add").map((proposal) => <ProposalRow key={proposal.id} proposal={proposal} target={null} n={0} extension={extension?.n} {...proposalProps} />)}
-          {touchable ? (
-            <div className="objectives-row objectives-mission-add">
-              <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
-              <input aria-label={t("objectives.criteria.add")} placeholder={t("objectives.criteria.add")} maxLength={300} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const text = target.value.trim(); target.value = ""; void call("/criterion/add", { objectiveId: objective.id, criterion: { text } }); } }} />
-            </div>
-          ) : null}
         </div>
       </div>
   </>);
@@ -1709,23 +1646,20 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     return member ? <MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} /> : null;
   };
   const graphProps = { objective, t, states: missionStates, ownerMark, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: closePopupRecords, onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal, orientation, ...(embedded ? { focusOwner } : {}) };
-  const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {
-    if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget, value = target.value; void call("/mission/add", { objectiveId: objective.id, mission: { text: value.trim() } }).then(result => { if (result && target.value === value) target.value = ""; }); }
-  }} /></div> : null;
   // 형상 스위치(켜면 세로) 옆의 크게 보기는 가로에서만 선다 — 세로는 높이가 자라 상세가 스크롤하므로 확대할 것이 없다.
   const graphTools = <>
     <button ref={orientationRef} type="button" role="switch" aria-checked={verticalGraph} className="objectives-graph-orient" aria-label={t("objectives.graph.verticalAria")} title={t("objectives.graph.verticalAria")} onClick={() => setGraphOrientation(verticalGraph ? "horizontal" : "vertical")}><span className="objectives-graph-orient-track" aria-hidden="true" /><span className="objectives-graph-orient-label" aria-hidden="true">{t("objectives.graph.vertical")}</span></button>
     {verticalGraph || embedded ? null : <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>}
   </>;
-  // 임무 섹션 — 구성원 탭 맨 아래. 섹션 머리(글리프 · 「임무」 · 안 읽은 점 · 상태 셈 | 형상 스위치 · 크게 보기), 허용 대기 줄, 그래프,
-  // 그 아래 「+ 임무 추가」. 임무 목록은 없다 — 조작은 그래프 팝업이 맡으므로 머리는 접히지 않는다.
+  // 임무 섹션 — 구성원 탭 맨 아래. 섹션 머리(글리프 · 「임무」 · 안 읽은 점 · 상태 셈 | 형상 스위치 · 크게 보기), 허용 대기 줄, 그래프.
+  // 임무 목록은 없다 — 조작은 그래프 팝업이 맡으므로 머리는 접히지 않는다. 임무 추가는 지휘관이 맡는다.
   const unseenAny = objective.missions.some((mission) => unseenRecords(mission) > 0);
   const sMissions = <div className="objectives-group objectives-missions-group">
     <SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.tabs.unseenDot")} /> : null}{renderCounts()}</>}
       {...(objective.missions.length ? { actions: graphTools } : {})} />
     {missionAttention}
-    <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} {...(embedded ? { zoom: true, onFitWidth: onGraphFitWidth } : {})} suspended={zoomOpen && !verticalGraph} /> : null}{missionAdd}</div>
-    {zoomOpen && !verticalGraph && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}>{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} />{missionAdd}</LineupZoom>, document.body) : null}
+    <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} {...(embedded ? { zoom: true, onFitWidth: onGraphFitWidth } : {})} suspended={zoomOpen && !verticalGraph} /> : null}</div>
+    {zoomOpen && !verticalGraph && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}>{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} /></LineupZoom>, document.body) : null}
   </div>;
   // 결정 섹션 — 목표 탭 맨 아래, 결정 내역만. 지금 답할 결정 요청은 가운데 대화의 결정 카드가 받고, 목표 탭에는 점만 선다.
   // 답이 없으면 서지 않는다(목표 탭 맨 아래의 빈 문구는 소음이다).
@@ -1800,7 +1734,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   // 상세 aside > 탭 칸(스크롤). 넘긴 이유와 돌려주기는 구성원 채팅 카드에서 보인다.
   // 탭 칸(.objectives-detail-scroll)이 상세의 스크롤 컨테이너다 — 그래프의 드래그 자동 스크롤·팝업 앵커가 이 칸을 기준으로 삼는다.
   // 임무 팝업 — 로스터는 가로 카드 한 줄(지휘관·구성원·구성원 추가)이고, 카드를 누르면 그 담당의 임무만 그래프에서 밝힌다.
-  const sRoster = embedded ? <MissionRoster objective={objective} t={t} objectiveRecordState={objectiveRecordState} memberStateWord={memberStateWord} focus={focusOwner} onFocus={setFocusOwner} touchable={touchable} call={call} /> : null;
+  const sRoster = embedded ? <MissionRoster objective={objective} t={t} objectiveRecordState={objectiveRecordState} memberStateWord={memberStateWord} focus={focusOwner} onFocus={setFocusOwner} /> : null;
   const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}</>
     : tab === "crew" ? <>{embedded ? sRoster : sCrew}{sMissions}</>
     : <>{sResults}{sResultFolds}</>;

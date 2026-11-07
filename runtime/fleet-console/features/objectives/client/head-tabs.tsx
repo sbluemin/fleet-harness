@@ -1,4 +1,3 @@
-import { useRef, useState, useSyncExternalStore } from "react";
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import type { RailEntryConversationPane, RailEntryConversationTab, RailEntryConversationTabs, RailEntryConversationTabsState } from "../../workspace/shared/rail.js";
 
@@ -6,12 +5,12 @@ import { unseenRecords, type Objective } from "../shared/types.js";
 import { freshConversationObjectiveId, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { objectiveOfObjective } from "./mobile.js";
-import { DETAIL_TABS, detailTabOf, ObjectiveScheduleRow, type DetailTab } from "./objectives-panel.js";
+import { DETAIL_TABS, detailTabOf, type DetailTab } from "./objectives-panel.js";
 import { findAnyObjective, followedObjectiveId, isObjectiveSurfaceOpen, objectiveDisplayOwnerId, patchOwnerView, readOwnerView, readBoard, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
- * 목표 상세의 탭과 오늘·기한은 Console 오른쪽 패널 머리(아바타·이름 아래)에 두 줄로 선다 — 첫 줄은 오늘·기한(사령관 패널의 섹션 줄 자리),
- * 둘째 줄은 목표·구성원·결과물 글자 탭이다. 상세는 고른 탭의 본문만 그린다. 「구성원」은 대상의 구성원 탭을 대신한다(한 머리에 둘 서지 않는다).
+ * 목표 상세의 탭은 Console 오른쪽 패널 머리(아바타·이름 아래)에 한 줄로 선다 —
+ * 「목표·구성원·결과물」 글자 탭이다. 상세는 고른 탭의 본문만 그린다. 「구성원」은 대상의 구성원 탭을 대신한다(한 머리에 둘 서지 않는다).
  */
 
 const T = (key: ObjectiveMessageKey): LocalizedText => (locale: ConsoleLocale) => getT(locale)(key);
@@ -88,19 +87,8 @@ export const objectiveMobileConversationTabs: NonNullable<RailEntryConversationP
   },
 };
 
-/**
- * 탭 줄 위 한 줄의 오늘·기한 — 목표를 직접 받는 행을 objectives-panel의 공용 줄로 둔다.
- */
-function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonly theaterId: string | null; readonly language: ConsoleLocale }) {
-  const read = () => headObjective(contextTheaterId).objective;
-  const objective = useSyncExternalStore(subscribeHead, read, read);
-  if (!objective) return null;
-  return <ObjectiveScheduleRow objective={objective} language={language} />;
-}
-
 export const objectiveConversationTabs: RailEntryConversationTabs = {
   subscribe: subscribeHead,
   read: readHeadTabs,
   select: (tabId, contextTheaterId) => patchOwnerView(objectiveDisplayOwnerId(contextTheaterId), () => ({ detailTab: detailTabOf(tabId) })),
-  renderTools: ({ theaterId, language }) => <ObjectiveHeadTools theaterId={theaterId} language={language} />,
 };

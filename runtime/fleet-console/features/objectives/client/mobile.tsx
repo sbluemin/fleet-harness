@@ -26,8 +26,7 @@ import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } f
 import { ObjectiveResults } from "./results.js";
 import { MobileSharedFolder } from "./shared-folder.js";
 import { Retrospective } from "./retrospective.js";
-import { DatePicker } from "./date-picker.js";
-import { CalGlyph, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
+import { detailTabOf, type DetailTab } from "./objectives-panel.js";
 import { viewedCommodoreId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, objectiveRecordSummaries, openObjectiveOnPhone, patchOwnerView, post, returnPersonHold, readAllTheaters, readBoard, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
@@ -542,38 +541,18 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const tab = detailTabOf(useOwnerView(objective?.commodoreId ?? null).detailTab);
   const strip = ctx.params.mobileFace === "strip";
   const activeTab: DetailTab | null = embedded ? (strip ? null : tab) : section;
-  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
-  const dueButton = useRef<HTMLButtonElement | null>(null);
   const rootClass = embedded ? "objectives-m is-embedded" : "objectives-m";
   // 단독 목표 화면은 호스트 상단 막대 뒤로 흐른다 — 스크롤 영역이 막대 몫(--m-chrome-top)을 위에 비운다. 정보 화면에 심긴 상세는 그 화면이 맡는다.
   const flow = embedded ? {} : { "data-mobile-chrome": "flow" };
   if (!objective || !actions) return <div ref={rootRef} className={rootClass} {...flow} />;
   const locale = language === "ko" ? "ko" : "en";
-  const editable = !objective.done && !WORKING.has(activityOf(objectiveRecords, objective.id));
-  const patch = (value: Record<string, unknown>) => { void post(api, "/objective/patch", { objectiveId: objective.id, patch: value, language }).catch((error: unknown) => say(bandFailure(t, error, { message: false, talk: false }))); };
-  const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
-  const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
-  const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, locale) }) : t("objectives.schedule.setDue");
   const pickTab = (next: DetailTab) => {
     if (embedded) patchOwnerView(objective.commodoreId, () => ({ detailTab: next }));
     else setSection(next);
   };
-  const schedule = (
-    <div className="objectives-m-schedule" role="group" aria-label={t("objectives.schedule.title")}>
-      <button type="button" className={objective.today ? "is-on" : undefined} aria-pressed={objective.today} aria-label={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}>
-        <SunGlyph /><span>{t(objective.today ? "objectives.mobile.today" : "objectives.mobile.addToday")}</span>
-      </button>
-      <button ref={dueButton} type="button" className={`${objective.dueDate ? "is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
-        <CalGlyph /><span>{objective.dueDate ? t(overdue ? "objectives.mobile.overdueDate" : "objectives.mobile.dueDate", { date: dueShort(objective.dueDate, locale) }) : t("objectives.mobile.setDue")}</span>
-      </button>
-      {dateAnchor ? <DatePicker anchor={dateAnchor} trigger={dueButton} value={objective.dueDate} language={locale} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
-    </div>
-  );
   // 동작 줄도 같다 — 모두 흐리면 줄을 세우지 않아 첫 시선이 누를 수 없는 단추에 가지 않게 한다.
   const embeddedActions = embedded ? personActions(actions) : [];
   const rowActions = embeddedActions.some((item) => !item.disabled) ? embeddedActions : [];
-  // 오늘·마감은 목표 구역 맨 위에만. 프로필에는 두지 않는다 — 첫 화면에 행이 바로 보이게.
-  const showSchedule = activeTab === "goal";
   const rows = readObjectiveMobileRowValues(objective.id, locale);
   const heroStatus = fresh ? t("objectives.state.fresh") : objective.done ? t("objectives.mobile.state.done") : memberActivityWord(ownActivityOf(objectiveRecords, objective.id), t);
   const overlays = (
@@ -627,7 +606,6 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   return (
     <div ref={rootRef} className={rootClass} {...flow}>
       <div className="objectives-m-pad">
-        {showSchedule ? schedule : null}
         {attention}
         {activeTab === "goal" ? <>
           <BriefCard objective={objective} t={t} language={language} api={api} say={say} />
