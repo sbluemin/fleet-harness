@@ -98,7 +98,7 @@ export function DatePicker({ anchor, trigger, value, language, t, onPick, onClos
   ];
 
   return createPortal(
-    <div ref={cardRef} className="objectives-cal" role="dialog" aria-label={t("objectives.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
+    <div ref={cardRef} className="objectives-cal" data-keep-objective-active role="dialog" aria-label={t("objectives.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
       <div className="objectives-cal-quick">
         {quick.map((entry) => <button key={entry.key} type="button" className={`objectives-cal-chip${value === entry.value ? " is-on" : ""}`} onClick={() => { onPick(entry.value === value ? null : entry.value); onClose(); }}>{t(entry.key)}</button>)}
         {value ? <button type="button" className="objectives-cal-chip is-clear" onClick={() => { onPick(null); onClose(); }}>{t("objectives.date.clear")}</button> : null}

@@ -363,7 +363,9 @@ function ObjectiveDueMenuSection({ objectiveRecord, onClose }: { objectiveRecord
   const dueButton = useRef<HTMLButtonElement | null>(null);
   const objective = board.loaded ? board.objectives.find((candidate) => candidate.id === objectiveRecord.id) ?? null : null;
   if (!objective || objective.done) return null;
-  const activity = summaries.find((summary) => summary.id === objective.id)?.activity ?? null;
+  // 지휘관 자신의 활동만 본다 — 구성원이 일하는 것은 서버도 거절하지 않는다(끌어올리기 전 값 ownActivity).
+  const summary = summaries.find((candidate) => candidate.id === objective.id);
+  const activity = summary ? summary.ownActivity ?? summary.activity : null;
   const locked = activity === "running" || activity === "background";
   const patch = (next: Record<string, unknown>) => {
     const api = objectivesApi();
