@@ -17,6 +17,7 @@ import { CommodoreTasks } from "./commodore-tasks.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo, CommodoreSettings } from "./commodore-inbox-section.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
+import { useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getConversationSurface, subscribeConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
@@ -314,6 +315,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const [peerLedger, setPeerLedger] = useState<ConversationSpeaker | null>(null);
   useEffect(() => setPeerLedger(null), [commodoreId]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
+  // 진행 줄의 이름 뒤 낱말 — 아바타가 연기하는 것과 같은 턴의 계열이다.
+  const activity = useCommodoreMongleActivity(turning ? commodoreId : null);
   const dockRef = useRef<HTMLElement | null>(null);
   useConversationDockHeight(dockRef);
 
@@ -435,6 +438,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
             working={working}
             language={language}
             commodoreId={commodoreId}
+            commodoreActivity={activity}
             loading={!transcriptLoaded}
             empty={t("commodore.log.empty")}
             older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}

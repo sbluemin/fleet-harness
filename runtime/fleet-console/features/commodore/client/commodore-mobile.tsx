@@ -25,7 +25,7 @@ import { commodoreChatEntries, commodoreConversationEntries, commodoreConversati
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
 import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
-import { CommodoreAvatar } from "./commodore-avatar.js";
+import { CommodoreAvatar, useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
@@ -459,6 +459,8 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   const participants = useMemo<readonly ConversationParticipant[]>(() => commodoreParticipants(speaker, turning, confirmed), [speaker, turning, confirmed]);
   const [peerLedger, setPeerLedger] = useState<ConversationSpeaker | null>(null);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
+  // 진행 줄의 이름 뒤 낱말 — 아바타가 연기하는 것과 같은 턴의 계열이다.
+  const activity = useCommodoreMongleActivity(turning ? commodoreId : null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const readOlder = useCallback(() => {
     setLoadingOlder(true);
@@ -494,6 +496,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
           working={working}
           language={language}
           commodoreId={commodoreId}
+          commodoreActivity={activity}
           loading={!loaded}
           empty={t("commodore.log.empty")}
           older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}

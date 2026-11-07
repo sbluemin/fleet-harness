@@ -4,7 +4,9 @@ import * as React from "react";
 import { MenuCheckGlyph, ChevronGlyph, useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
 import { useAvatarAccent } from "../../../../../workspace/client/avatar-accent.js";
-import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
+import { commodoreAvatarKey, objectiveRecordAvatarKey, type MongleActivity } from "../../../../../workspace/shared/avatars.js";
+import { getT as getCoreT } from "../../../../../../core/client/src/i18n/index.js";
+import { conversationActivityPhrase, useObjectiveMongleActivities } from "../../../avatar-activity.js";
 
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
@@ -84,6 +86,8 @@ export interface GroupConversationProps {
   readonly overlay?: React.ReactNode;
   /** 컴퓨터를 지금 조작하는 참여자 — 진행 줄의 그 사람 뒤에 「· 컴퓨터 사용」 꼬리가 붙는다. */
   readonly computerActor?: string | null;
+  /** 일하는 사령관이 지금 하는 일의 계열 — 진행 줄의 사령관 이름 뒤 낱말이 된다. Objective 참여자는 세션에서 읽는다. */
+  readonly commodoreActivity?: MongleActivity | null;
   /**
    * 사람이 누른 OpenUI 답을 이 말의 화자에게 기존 전송 경로로 보낸다. 초안은 건드리지 않는다.
    * 포트 없는 읽기 전용 대화는 정적 칩이다.
@@ -105,7 +109,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, commodoreActivity = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -279,7 +283,7 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
     .map((id) => findSpeaker(snapshot, id)?.name)
     .filter((name): name is string => typeof name === "string");
   const inlineWorking = Boolean(renderComposerWithWorking || (composerTopEntries && composer));
-  const workingLine = <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} inline={inlineWorking} />;
+  const workingLine = <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} inline={inlineWorking} commodoreActivity={commodoreActivity} />;
 
   return (
     <div ref={chatRef} className="group-chat" style={accent} onClick={onCodeCopyClick}>
@@ -1153,8 +1157,11 @@ const WORKING_NAME_SLOT = "\u0000";
  * 지휘관 원장으로 연다. 원장이 없는 참여자와 콜백이 없는 대화에서는 눌리는 척하지 않는다. 진행 줄은 아무도 멈추지 않는다
  * (정지는 입력창과 「구성원」 탭의 몫이다). 표식은 32px 로 서서 사이드바처럼 지금 하는 일(생각·읽기·편집…)을 연기한다.
  * 별도 줄에서는 일하는 이가 없어도 높이를 지킨다. 요약과 같은 줄(inline)에서는 빈 진행 DOM을 만들지 않고 요약이 높이를 지킨다.
+ * 이름 뒤에는 지금 하는 일의 계열 낱말(「파일 읽는 중」)이 선다 — 도구 이름·인자 원문은 싣지 않는다. 표식이 연기하는 것과 같은
+ * 계열이고, Objective 참여자는 그 세션의 계열을, 사령관은 대화가 넘긴 `commodoreActivity`를 읽는다. 아무의 계열도 모르면 예전
+ * 낱말(「작업하는 중」) 그대로다.
  */
-export function GroupWorkingLine({ working, participants, language, onOpenLedger, computerActor = null, inline = false }: {
+export function GroupWorkingLine({ working, participants, language, onOpenLedger, computerActor = null, inline = false, commodoreActivity = null }: {
   readonly working: readonly ConversationSpeaker[];
   readonly participants: readonly ConversationParticipant[];
   readonly language: ConsoleLocale | undefined;
@@ -1163,10 +1170,16 @@ export function GroupWorkingLine({ working, participants, language, onOpenLedger
   readonly computerActor?: string | null;
   /** 같은 줄에서는 빈 높이를 예약하지 않고, 좁아져 이름이 접혀도 표식으로 원장을 열 수 있다. */
   readonly inline?: boolean;
+  /** 일하는 사령관이 지금 하는 일의 계열(`run.step`). Objective 참여자의 계열은 여기서 세션으로 읽는다. */
+  readonly commodoreActivity?: MongleActivity | null;
 }) {
   const t = getGroupT(language);
   const ledgerOf = React.useContext(LedgerTargetContext);
+  const objectiveActivities = useObjectiveMongleActivities(working.map((speaker) => (speaker.kind !== "commodore" && speaker.kind !== "human" ? speaker.objectiveId : null)));
   if (working.length === 0) return inline ? null : <div className="group-chat-working is-empty" aria-hidden="true" />;
+  const activities = working.map((speaker, index) => (speaker.kind === "commodore" ? commodoreActivity : objectiveActivities[index] ?? null));
+  const coreT = getCoreT(language ?? "en");
+  const phrases = activities.some(Boolean) ? activities.map((activity) => conversationActivityPhrase(coreT, activity)) : null;
   const targets = working.map((speaker) => (onOpenLedger ? ledgerOf(speaker, participants) : null));
   const openLabel = (speaker: ConversationSpeaker) => t("group.speaker.openLedger", { name: speaker.name });
   // 별도 줄의 표식은 마우스·터치용 복제다. 통합 줄은 이름이 0폭까지 접힐 수 있어 표식에도 원장 이름과 탭 정지를 둔다.
@@ -1181,7 +1194,7 @@ export function GroupWorkingLine({ working, participants, language, onOpenLedger
   return (
     <div className={`group-chat-working${inline ? " is-inline" : ""}`} role="status" style={inline ? { "--group-working-marks": `${32 + (working.length - 1) * 24}px` } as React.CSSProperties : undefined}>
       <span className="group-chat-working-stack">{marks}</span>
-      <WorkingText working={working} targets={targets} t={t} openLabel={openLabel} onOpenLedger={onOpenLedger} />
+      <WorkingText working={working} targets={targets} phrases={phrases} t={t} openLabel={openLabel} onOpenLedger={onOpenLedger} />
       {toolTail(working, computerActor, t)}
     </div>
   );
@@ -1197,14 +1210,17 @@ function toolTail(working: readonly ConversationSpeaker[], actor: string | null,
 /**
  * 진행 줄 낱말. 한 명이면 낱말 전체가 그 원장을 여는 단추다. 여럿이면 이름마다 제 원장을 여는 단추가 되고 나머지 글자는 그대로
  * 선다. 물결(`agent-chat-live-text`)은 낱말 상자 하나에 걸어 이름 단추를 지나도 한 물결로 흐른다.
+ * 계열 낱말(`phrases`)이 있으면 사람마다 「이름 · 하는 일」로 서고, 여럿이면 쉼표로 잇는다.
  */
-function WorkingText({ working, targets, t, openLabel, onOpenLedger }: {
+function WorkingText({ working, targets, phrases, t, openLabel, onOpenLedger }: {
   readonly working: readonly ConversationSpeaker[];
   readonly targets: readonly (string | null)[];
+  readonly phrases: readonly string[] | null;
   readonly t: ReturnType<typeof getGroupT>;
   readonly openLabel: (speaker: ConversationSpeaker) => string;
   readonly onOpenLedger: ((objectiveId: string) => void) | undefined;
 }) {
+  if (phrases) return <WorkingActivityText working={working} targets={targets} phrases={phrases} t={t} openLabel={openLabel} onOpenLedger={onOpenLedger} />;
   if (working.length === 1) {
     const speaker = working[0]!;
     const target = targets[0];
@@ -1232,6 +1248,44 @@ function WorkingText({ working, targets, t, openLabel, onOpenLedger }: {
         );
       })}
       {after ? <span className="group-chat-working-part is-rest">{after}</span> : null}
+    </span>
+  );
+}
+
+/** 계열 낱말이 있는 진행 줄 — 「지휘관 · 파일 고치는 중, 구현 · 명령 실행 중」. 한 명이면 줄 전체가, 여럿이면 이름이 원장 단추다. */
+function WorkingActivityText({ working, targets, phrases, t, openLabel, onOpenLedger }: {
+  readonly working: readonly ConversationSpeaker[];
+  readonly targets: readonly (string | null)[];
+  readonly phrases: readonly string[];
+  readonly t: ReturnType<typeof getGroupT>;
+  readonly openLabel: (speaker: ConversationSpeaker) => string;
+  readonly onOpenLedger: ((objectiveId: string) => void) | undefined;
+}) {
+  if (working.length === 1) {
+    const speaker = working[0]!;
+    const target = targets[0];
+    const label = t("group.working.activity", { name: speaker.name, activity: phrases[0] ?? "" });
+    return target
+      ? <button type="button" className="group-chat-working-text agent-chat-live-text group-chat-working-hit is-text" data-ledger-speaker={speaker.kind} title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>{label}</button>
+      : <span className="group-chat-working-text agent-chat-live-text">{label}</span>;
+  }
+  const [before = "", middle = "", after = ""] = t("group.working.activity", { name: WORKING_NAME_SLOT, activity: WORKING_NAME_SLOT }).split(WORKING_NAME_SLOT);
+  const between = t("group.working.activitySeparator");
+  return (
+    <span className="group-chat-working-text agent-chat-live-text is-parts">
+      {working.map((speaker, index) => {
+        const target = targets[index];
+        return (
+          <React.Fragment key={speakerKey(speaker)}>
+            {index > 0 ? <span className="group-chat-working-part is-sep">{between}</span> : null}
+            {before ? <span className="group-chat-working-part is-rest">{before}</span> : null}
+            {target
+              ? <button type="button" className="group-chat-working-part group-chat-working-hit is-text" data-ledger-speaker={speaker.kind} title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>{speaker.name}</button>
+              : <span className="group-chat-working-part">{speaker.name}</span>}
+            <span className="group-chat-working-part is-rest">{`${middle}${phrases[index] ?? ""}${after}`}</span>
+          </React.Fragment>
+        );
+      })}
     </span>
   );
 }

@@ -5,6 +5,7 @@ import type { ComponentType, ReactNode } from "react";
 
 import type { ConversationReference } from "./conversation/references.js";
 import type { ConversationDecision, ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "./conversation/types.js";
+import type { MongleActivity } from "../../workspace/shared/avatars.js";
 
 /**
  * Agent chat transcript — the Objective chat view's turn renderer, offered to plugins that keep their own agent transcript.
@@ -123,6 +124,11 @@ export interface AgentConversationProps {
   readonly language: "en" | "ko";
   /** The commodore UUID whose face a `commodore` speaker's mongle shows — the same face as the card and list. */
   readonly commodoreId?: string;
+  /**
+   * What a working `commodore` speaker is doing in its turn (its `run.step`). The working line names it in plain words after the
+   * speaker's name instead of tool names. Objective speakers' activity comes from their own sessions; omitted, the line says "working".
+   */
+  readonly commodoreActivity?: MongleActivity | null;
   /** Still reading the first page — the empty line says so instead of `empty`. */
   readonly loading?: boolean;
   /** The line shown when there are no entries. */

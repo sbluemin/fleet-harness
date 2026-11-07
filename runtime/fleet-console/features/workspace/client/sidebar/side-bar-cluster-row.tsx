@@ -8,6 +8,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { objectiveRecordMarkLabel, resolveObjectiveActivity, resolveObjectiveMarkVisual, type ObjectiveActivityVisual, type ObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
 import { getIdleArrivalIds } from "../../../execution/client/objective-marks.js";
+import { conversationActivityPhrase, useObjectiveMongleActivities } from "../../../execution/client/avatar-activity.js";
 import type { ObjectiveRuntimeState } from "../../../execution/shared/client-contract.js";
 import type { ObjectiveNotification, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
 import { sortObjectiveRecordsByOrder } from "../../../../core/client/src/integration/store.js";
@@ -18,7 +19,7 @@ import { useLongPress } from "../long-press.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { commanderObjectiveId, type ClusterIndex, type ClusterLayout } from "../objective-clusters.js";
 import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
-import { commodoreAvatarKey, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
+import { commodoreAvatarKey, objectiveRecordAvatarKey, type MongleActivity, type MongleState } from "../../shared/avatars.js";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 import { useObjectivesToolUse, type ObjectiveUseTool } from "../../../computer-use/client/computer-screen-share.js";
 import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../components/caption-actions.js";
@@ -264,8 +265,21 @@ export interface RowPopups {
   readonly unseenLabel: string;
 }
 
-/** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. */
-export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t: ReturnType<typeof useT>) {
+/**
+ * 일하는 줄이 지금 하는 일의 계열 — 지휘관의 계열이 먼저고, 지휘관이 쉬는 동안 구성원만 일하면 그 구성원의 계열이다.
+ * 진행 줄과 같은 계열 낱말이 「작업하는 중」 자리에 선다. 지휘관의 공개 축은 구성원 활동을 끌어올려 `background` 가 되므로,
+ * 누군가 실제로 하는 일이 있으면 그것을 먼저 말하고 남은 작업만 돌 때에만 `background` 다. 아무도 계열을 싣지 않으면
+ * (터미널 세션) null 이다.
+ */
+export function useClusterRowActivity(item: SideBarRowItem): MongleActivity | null {
+  const commanderId = item.anchor?.objectiveRecord?.id ?? item.layout.cluster.root;
+  const memberIds = item.layout.cluster.members.filter((member) => !member.pending && member.objectiveId !== commanderId).map((member) => member.objectiveId);
+  const activities = useObjectiveMongleActivities([commanderId, ...memberIds]);
+  return activities.find((activity) => activity !== null && activity !== "background") ?? activities.find((activity) => activity !== null) ?? null;
+}
+
+/** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. 일하는 줄은 `activity`(지금 하는 일의 계열)를 낱말로 말한다. */
+export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t: ReturnType<typeof useT>, activity: MongleActivity | null = null) {
   const { row, anchor } = item;
   const state = rowGlyphState(item);
   // 사령관이 직접 묻는 줄(`commodore`)은 접힌 Objective 도 글리프도 없어 활동 축이 「종료」로 떨어진다 — 그 축 대신 사람의 답을 기다린다고 읽는다.
@@ -286,6 +300,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   const conversationLine = handlingStatus || (row.decisionRequestedAt !== undefined
     ? `${t("commanderTab.status.awaiting")}${row.decisionQuestions ? ` ${row.decisionQuestions}` : ""}`
     : state === "review" ? t("commanderTab.status.review")
+      : state === "running" ? conversationActivityPhrase(t, activity)
       : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
@@ -298,7 +313,8 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
   // 지휘관이나 구성원이 브라우저·컴퓨터를 쓰는 동안 상태 줄이 그 도구를 말한다. 호스트가 콘솔 사용을 알리면 그 표시도 남긴다.
   const toolUse = useObjectivesToolUse(rowUseIds(item));
   const toolUseLabel = toolUse ? rowToolUseLabel(item, toolUse, t) : null;
-  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, locale, t);
+  const activity = useClusterRowActivity(item);
+  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, locale, t, activity);
   const active = selected;
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
