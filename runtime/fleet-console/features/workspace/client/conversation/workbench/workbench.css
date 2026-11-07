@@ -58,17 +58,15 @@
   user-select: none;
 }
 
-/* ── 머리 없는 브라우저 칸: 대화와 같은 면, 대화 쪽 1px 이음매 하나 + 맨 위 줄(탭 줄)과의 가로 이음매 ──
-   세로 이음매는 맨 위 줄 높이까지 이어진다(.workbench-band-chrome::before). */
+/* ── 머리 없는 브라우저 칸: 대화와 같은 면, 대화 쪽 1px 이음매 하나 ── */
 .workbench-tile[data-seamless="true"] {
   --workbench-tile-face: var(--workbench-canvas);
   border: 0;
   border-left: 1px solid var(--hairline);
-  border-top: 1px solid var(--hairline);
   border-radius: 0;
 }
 
-.workbench-tile[data-seamless="true"].is-expanded { border-left: 0; border-top: 0; }
+.workbench-tile[data-seamless="true"].is-expanded { border-left: 0; }
 .workbench-tile[data-seamless="true"].is-focused { border-color: var(--hairline); }
 /* 지구본에서 번지고 접히는 동안은 자리 전이를 멈춘다 — 원이 칸을 따라 미끄러지지 않게. */
 .workbench-tile[data-motion] { transition: none; }
@@ -78,7 +76,6 @@
 .conversation-browser-slot:empty { display: none; }
 
 .workbench-band-chrome {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -89,31 +86,18 @@
 }
 
 .workbench-band-chrome > .op-browser-cap { flex: 1; min-width: 0; }
-/* 칸의 왼쪽 이음매를 맨 위 줄 높이(탭 줄)까지 잇는다 — 칸의 왼쪽 가장자리는 탭 줄보다 BAND_INSET(8px) 왼쪽이다.
-   칸이 펼쳐지면 그 이음매도 없으므로 함께 거둔다. */
-.workbench-band-chrome::before {
-  content: "";
-  position: absolute;
-  left: -8px;
-  top: calc((30px - var(--conversation-top-row, 52px)) / 2);
-  width: 1px;
-  height: var(--conversation-top-row, 52px);
-  background: var(--hairline);
-  pointer-events: none;
-}
-.workbench-band-chrome.is-expanded::before { display: none; }
 .workbench-band-chrome.is-enter { animation: workbench-band-in 340ms var(--ease-spring) both; }
 .workbench-band-chrome.is-leave { animation: workbench-band-out 160ms ease-in both; }
 
 /* 탭 줄은 지구본 쪽(오른쪽)에서 왼쪽으로 펼쳐진다. */
 @keyframes workbench-band-in {
-  from { opacity: 0; clip-path: inset(-60px 0 -60px 100%); transform: translateX(16px); }
-  to { opacity: 1; clip-path: inset(-60px -12px -60px -12px); transform: none; }
+  from { opacity: 0; clip-path: inset(0 0 0 100%); transform: translateX(16px); }
+  to { opacity: 1; clip-path: inset(0); transform: none; }
 }
 
 @keyframes workbench-band-out {
-  from { opacity: 1; clip-path: inset(-60px -12px -60px -12px); }
-  to { opacity: 0; clip-path: inset(-60px 0 -60px 100%); }
+  from { opacity: 1; clip-path: inset(0); }
+  to { opacity: 0; clip-path: inset(0 0 0 100%); }
 }
 
 /* ── 칸 머리 ── */

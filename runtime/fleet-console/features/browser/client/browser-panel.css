@@ -94,7 +94,7 @@
 .op-browser__url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 28px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
 .op-browser__url:hover { background: var(--ink-rim); }
 .op-browser__url:focus-within { box-shadow: var(--field-focus-edge); }
-.op-browser__url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-ui); font-size: var(--t-sm); }
+.op-browser__url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-code); font-size: var(--font-code-size); }
 .op-browser__url.is-display .op-browser__url-input { color: transparent; caret-color: transparent; }
 .op-browser__url-input:focus { outline: none; }
 /* 제안은 주소창 아래에 선다. 네이티브 뷰의 가림은 패널의 기존 주차 경로가 맡는다. */

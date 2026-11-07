@@ -496,8 +496,8 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
   const t = useT();
   const tile = entry.tile;
   const rootRef = useRef<HTMLElement | null>(null);
-  // 브라우저는 따로 떠 있는 패널이 아니라 대화와 같은 면이다 — 머리 없이 맨 위 줄 밑에서 작업 영역 끝까지 채우고, 탭 줄과 펼치기는
-  // 맨 위 줄의 지구본 바로 앞으로 올라간다. 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
+  // 브라우저는 따로 떠 있는 패널이 아니라 대화와 같은 면이다 — 머리 없이 맨 위 줄 밑에서 작업 영역 끝까지 채운다. 맨 위 줄은 탭 영역이
+  // 아니며, 펼치기는 주소줄 끝(BrowserNavTailContext)에 선다. 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
   // 브라우저 칸이 남아 있을 때)에서는 다른 칸과 같은 틀이다 — 닫기 단추가 그 칸을 닫는 길이다.
   const seamless = tile.kind === "browser" && geometry.mode !== "sheet" && isDesktopShell();
   const frameRect = seamless ? seamlessRect(entry, rect, geometry, expanded) : rect;
@@ -536,8 +536,7 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
       onFocusCapture={(event) => { if (!isInHead(event.target)) focusWorkbenchTile(tile.id); }}
     >
       {seamless ? (
-        <BrowserBandChrome frameRef={rootRef} geometry={geometry} motion={motion} hidden={hidden} expanded={expanded}>
-          {parts.titleNode ?? null}
+        <BrowserBandChrome frameRef={rootRef} geometry={geometry} motion={motion} hidden={hidden}>
           <BrowserBandClose tileId={tile.id} title={parts.title} />
         </BrowserBandChrome>
       ) : (
@@ -604,15 +603,14 @@ function seamlessRect(entry: TileGeometry, rect: Rect, geometry: WorkbenchGeomet
 }
 
 /**
- * 맨 위 줄로 올라간 브라우저 탭 줄 — 지구본 바로 앞 자리(browser-band-slot)로 portal 되어 분할 영역 위의 폭만 쓴다.
+ * 맨 위 줄의 브라우저 칸 자리 — 지구본 바로 앞 자리(browser-band-slot)로 portal 되어 분할 영역 위의 폭만 쓴다. 탭은 이 줄에 서지 않는다.
  * 펼친 동안에도 분할 영역 위에 남아 대화 pill 을 덮지 않는다.
  */
-function BrowserBandChrome({ frameRef, geometry, motion, hidden, expanded, children }: {
+function BrowserBandChrome({ frameRef, geometry, motion, hidden, children }: {
   readonly frameRef: RefObject<HTMLElement | null>;
   readonly geometry: WorkbenchGeometry;
   readonly motion: TileMotion | null;
   readonly hidden: boolean;
-  readonly expanded: boolean;
   readonly children: ReactNode;
 }) {
   const slot = useBrowserBandSlot();
@@ -635,7 +633,7 @@ function BrowserBandChrome({ frameRef, geometry, motion, hidden, expanded, child
   }, [frameRef, slot, splitX]);
   if (slot === null || hidden) return null;
   return createPortal(
-    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}${expanded ? " is-expanded" : ""}`} style={width === null ? undefined : { width }} data-keep-objective-active>
+    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}`} style={width === null ? undefined : { width }} data-keep-objective-active>
       {children}
     </span>,
     slot,
