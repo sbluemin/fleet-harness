@@ -1,6 +1,6 @@
 import { contextBreakdownOf } from "./context-breakdown.js";
 import { SDK_CLAUDE_SKILL_OVERRIDES } from "@fleet-console/agent-runtime/fleet";
-import { CLAUDE_AUTO_COMPACT_RESERVE, claudeAutoCompactWindowTokens, claudeGatewayModelPolicy, claudeModelAutoCompactWindows, compactThresholdTokens, findGatewayModel, GATEWAY_MODELS, type CompactCeiling } from "@fleet-console/ai-gateway";
+import { CLAUDE_AUTO_COMPACT_RESERVE, claudeAutoCompactTarget, claudeAutoCompactWindowTokens, claudeGatewayModelPolicy, claudeModelAutoCompactWindows, compactThresholdTokens, findGatewayModel, GATEWAY_MODELS, type CompactCeiling } from "@fleet-console/ai-gateway";
 import path from "node:path";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
@@ -342,6 +342,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
 
 /**
  * 카탈로그 전 모델의 자동 압축 창. 세션이 `compactAt`을 주면 그 모델만 정책 지점과 그 중 이른 쪽으로 덮는다.
+ * 덮는 것은 그 모델의 모든 이름이다 — 이름마다 값이 다르면 먼저 나온 키가 이긴다.
  * `compactAt`이 없어도 정책(없으면 Auto)으로 넣는다 — env 기본 1M에 기대지 않는다.
  */
 function sessionModelAutoCompactWindows(model: string, compactAt: number | undefined, ceiling: CompactCeiling | null): Readonly<Record<string, number>> {
@@ -350,11 +351,13 @@ function sessionModelAutoCompactWindows(model: string, compactAt: number | undef
   let id: string;
   try { id = claudeGatewayModelPolicy.resolve(model).id; }
   catch { return windows; }
-  const catalogWindow = findGatewayModel(model)?.contextWindow;
+  const target = claudeAutoCompactTarget(id, GATEWAY_MODELS);
+  const catalogWindow = target.model?.contextWindow ?? findGatewayModel(model)?.contextWindow;
   const override = typeof catalogWindow === "number"
     ? claudeAutoCompactWindowTokens(catalogWindow, ceiling, compactAt)
     : Math.min(1_000_000, Math.max(100_000, compactAt + CLAUDE_AUTO_COMPACT_RESERVE));
-  if (override !== undefined) windows[id] = override;
+  if (override === undefined) return windows;
+  for (const key of target.keys) windows[key] = override;
   return windows;
 }
 

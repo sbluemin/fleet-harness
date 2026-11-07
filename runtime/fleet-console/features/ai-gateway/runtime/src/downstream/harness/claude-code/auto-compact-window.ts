@@ -1,6 +1,6 @@
 import type { GatewayModel } from "../../../models.js";
-import { compactThresholdTokens, type CompactCeiling } from "./context.js";
-import { toClaudeGatewayModelId } from "./discovery.js";
+import { compactThresholdTokens, hasClaudeOneMillionMarker, type CompactCeiling } from "./context.js";
+import { findClaudeGatewayModel, toClaudeGatewayModelId } from "./discovery.js";
 
 /**
  * Claude Code가 `autoCompactWindow`에서 빼는 몫 — 출력 예약 `min(maxOutputTokens, 20k)`과 여유 13k.
@@ -41,10 +41,39 @@ export function claudeAutoCompactWindowTokens(
 }
 
 /**
- * 광고 id(`toClaudeGatewayModelId`, 항상 `[1m]`)별 자동 압축 창.
+ * 한 모델이 Claude Code에서 불리는 모든 이름 — 광고 id(`toClaudeGatewayModelId`, 항상 `[1m]`)와,
+ * 네이티브 Claude 가족이면 CLI가 푼 정식 id(`claude-opus-5-5[1m]`).
+ *
+ * 자식은 `modelSettings` 키를 모델로 정규화하고, 같은 모델로 모이는 키가 여럿이면 정규형과 같은 키가 아닌 한
+ * 먼저 나온 키를 쓴다(2.1.319). 이름마다 값이 다르면 객체 순서가 압축 시점을 정하므로, 한 모델의 이름은 늘 같은 값을 받는다.
+ */
+export function claudeModelAutoCompactKeys(model: GatewayModel): readonly string[] {
+  const advertised = toClaudeGatewayModelId(model);
+  if (model.provider !== "claude" || model.upstreamId === undefined) return [advertised];
+  const resolved = hasClaudeOneMillionMarker(model.upstreamId) ? model.upstreamId : `${model.upstreamId}[1m]`;
+  return resolved === advertised ? [advertised] : [advertised, resolved];
+}
+
+/**
+ * 세션이 요청한 모델 id(광고 id든 정식 id든)가 가리키는 카탈로그 모델과 그 모델의 모든 이름(요청한 이름 포함).
+ * 카탈로그가 아직 모르는 정식 id(`claude-opus-5-6[1m]`)도 가족 접두로 그 가족에 모은다 — 세션 도중 CLI가 올라가
+ * 카탈로그의 정식 id가 바뀌어도 가족의 별칭 키가 다른 값으로 남지 않는다. 가족을 모르는 원문 모델은 요청한 이름 하나다.
+ */
+export function claudeAutoCompactTarget(
+  requested: string,
+  models: readonly GatewayModel[],
+): { readonly model?: GatewayModel; readonly keys: readonly string[] } {
+  const model = models.find((candidate) => claudeModelAutoCompactKeys(candidate).includes(requested))
+    ?? findClaudeGatewayModel(requested, models)
+    ?? models.find((candidate) => candidate.provider === "claude" && candidate.claudeAlias !== undefined && requested.startsWith(`claude-${candidate.claudeAlias}-`));
+  return model ? { model, keys: [...new Set([...claudeModelAutoCompactKeys(model), requested])] } : { keys: [requested] };
+}
+
+/**
+ * 카탈로그 전 모델의 이름별 자동 압축 창. 한 모델의 모든 이름({@link claudeModelAutoCompactKeys})이 같은 값을 받는다.
  *
  * 최상위 `autoCompactWindow`는 프로세스에 하나라 모델 전환 때 다른 창을 덮어쓴다.
- * `modelSettings.<id>.autoCompactWindow`는 그 모델만 대체한다. 키는 자식이 실제로 뜨는 광고 id다.
+ * `modelSettings.<name>.autoCompactWindow`는 그 모델만 대체한다.
  */
 export function claudeModelAutoCompactWindows(
   models: readonly GatewayModel[],
@@ -55,7 +84,7 @@ export function claudeModelAutoCompactWindows(
     if (model.contextWindow === undefined) continue;
     const window = claudeAutoCompactWindowTokens(model.contextWindow, ceiling);
     if (window === undefined) continue;
-    windows[toClaudeGatewayModelId(model)] = window;
+    for (const key of claudeModelAutoCompactKeys(model)) windows[key] = window;
   }
   return windows;
 }
