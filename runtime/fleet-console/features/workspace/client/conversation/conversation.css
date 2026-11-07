@@ -365,11 +365,6 @@
 .conversation-pill:has(.conversation-pill-commodore-part:hover) { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); }
 .conversation-pill-swap { flex: none; color: var(--text-tertiary); }
 .conversation-pill[data-compact="true"] .conversation-pill-commodore-part { flex: none; }
-/* 칩 옆 목표 창 글리프 — 우측 작업 탭 행 글리프와 같은 글리프·점이다. 칩 높이에 맞춰 조금 크다. */
-.conversation-objective-glyphs { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: var(--space-2); }
-.conversation-objective-glyphs .conversation-objective-glyph { width: 30px; height: 30px; border-radius: var(--radius-pill); }
-.conversation-objective-glyphs .conversation-objective-glyph svg { width: 16px; height: 16px; }
-.conversation-objective-glyphs .commander-row-glyph-dot { top: 4px; right: 4px; border-color: var(--surface-base, var(--surface-panel)); }
 .conversation-pill:not(:has(.conversation-pill-controls button)) { padding-right: var(--space-4); }
 
 /* 이름을 걷어도 pill 안의 동작은 남는다. 표식과 동작의 폭만큼만 쓰는 마지막 축약 단계다. */

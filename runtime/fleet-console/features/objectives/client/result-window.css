@@ -104,10 +104,3 @@
 .objectives-result-window.is-shared .objectives-rw-download { padding-bottom: 0; }
 .objectives-result-window.is-shared.is-narrow :is(.objectives-rw-heading, .objectives-rw-objective) { display: revert; }
 .objectives-result-window.is-shared.is-narrow .objectives-rw-grip { display: none; }
-
-/* 지휘관·구성원 채팅의 목표 창 — 결과물 창과 같은 틀(떠 있는 창·끌기·크기·쌓임)에 목표·구성원·라이브러리 중 하나를 담는다. 머리의 세 낱말이 항목을 바꾼다. */
-.objectives-ow-tabs { display: flex; flex: none; align-items: center; gap: 2px; }
-.objectives-rw-head .objectives-ow-tab { width: auto; padding: 0 10px; border-radius: var(--radius-pill); color: var(--text-tertiary); font-size: var(--t-xs); }
-.objectives-rw-head .objectives-ow-tab[aria-selected=true] { background: var(--control-rest-hover); color: var(--text-primary); font-weight: var(--weight-medium); }
-.objectives-objective-window .objectives-rw-objective { padding-left: 4px; }
-.objectives-ow-body { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 4px 12px 12px; overscroll-behavior: contain; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }

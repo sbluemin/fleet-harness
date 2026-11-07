@@ -1057,35 +1057,19 @@ export function openObjectiveFromCluster(theaterId?: string, objectiveId?: strin
       // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다. 보이는 Theater 는 같은 커밋의 더 이른 effect 에서 바뀌므로,
       // 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 패널을 연다. 목표의 theaterId 는 사령관 목표 폴더의 해시라 보이는 Theater 와
       // 같아질 일이 없다 — 보이는 Theater 가 움직였는지, 움직이지 않아도(같은 사령관) 다음 커밋이 지났는지를 기다린다.
-      whenViewMoves(viewed, () => { setTimeout(() => openObjectivePanel(objectiveId), 0); });
+      whenViewMoves(viewed, () => { setTimeout(openObjectivePanel, 0); });
       return;
     }
     installed.consoleState.viewTheater?.(theaterId);
   }
-  openObjectivePanel(objectiveId);
-}
-
-/** 데스크톱 대화 중심 화면의 목표 창 — 설치가 objective-window 의 열기를 건넨다(이 모듈이 창 모듈을 가져오면 순환이 생긴다). */
-let objectiveWindowOpener: ((target: { readonly objectiveId: string; readonly commodoreId: string; readonly tab: "goal" | "crew" }) => void) | null = null;
-export function setObjectiveWindowOpener(opener: typeof objectiveWindowOpener): void {
-  objectiveWindowOpener = opener;
+  openObjectivePanel();
 }
 
 /**
  * 이미 열려 있어도 다시 연다: 호스트의 열기는 여닫기가 아니라 드러내기이고, 폰에서는 레일 스토어가 열림으로 남아 있어도
  * 목적지 화면으로 옮기는 것이 이 열기다.
- * 데스크톱 대화 중심 화면에서는 목표가 우측 사이드바의 맥락을 바꾸지 않는다 — 레일 대신 채팅의 목표 창을 그 목표로 연다(임무로 가는 길이면 구성원).
- * 창은 사령관 보드의 목표만 그린다 — 보관된 완료 목표와 후속 후보 선택기(reveal.followups)는 그것을 다루는 레일 패널로 연다.
  */
-function openObjectivePanel(objectiveId?: string): void {
-  const target = objectiveId ?? reveal?.objectiveId ?? null;
-  const objective = target === null ? null : findAnyObjective(target);
-  const desktop = typeof document !== "undefined" && document.documentElement.getAttribute("data-view-mode") !== "mobile";
-  const onBoard = objective !== null && readBoard(objective.commodoreId).objectives.some((candidate) => candidate.id === objective.id);
-  if (objective !== null && onBoard && !reveal?.followups && desktop && objectiveWindowOpener !== null && installed?.conversation?.isActive()) {
-    objectiveWindowOpener({ objectiveId: objective.id, commodoreId: objective.commodoreId, tab: reveal?.missionId ? "crew" : "goal" });
-    return;
-  }
+function openObjectivePanel(): void {
   installed?.rail.open(OBJECTIVE_PANEL_ID);
 }
 

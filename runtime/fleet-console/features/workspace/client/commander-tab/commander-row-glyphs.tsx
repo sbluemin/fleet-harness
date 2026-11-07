@@ -8,7 +8,7 @@ import { useEffect, type ReactElement } from "react";
 /** 우측 작업 탭 카드의 행 글리프가 여는 펼침 — 목표·구성원·라이브러리. 상세 탭과 같은 집합이다. */
 export type CommanderRowGlyphTab = DetailTab;
 
-export const GLYPH_TABS: readonly CommanderRowGlyphTab[] = ["goal", "crew", "results"];
+const GLYPH_TABS: readonly CommanderRowGlyphTab[] = ["goal", "crew", "results"];
 
 export const TAB_LABEL_KEY: Record<CommanderRowGlyphTab, CoreMessageKey> = {
   goal: "commanderTab.rowGlyph.goal",
@@ -20,15 +20,14 @@ const GoalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColo
 const CrewGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M2 13c0-2.2 1.8-3.8 4-3.8s4 1.6 4 3.8M10.6 3.6a2.1 2.1 0 0 1 0 3.9M11.6 9.4c1.4.4 2.4 1.8 2.4 3.6" /></svg>;
 const LibraryGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true"><path d="M8 1.8 13.6 5v6L8 14.2 2.4 11V5Z" /><path d="M2.6 5.1 8 8.2l5.4-3.1M8 8.2v5.8" /></svg>;
 
-export const TAB_GLYPH: Record<CommanderRowGlyphTab, () => ReactElement> = {
+const TAB_GLYPH: Record<CommanderRowGlyphTab, () => ReactElement> = {
   goal: GoalGlyph,
   crew: CrewGlyph,
   results: LibraryGlyph,
 };
 
 /**
- * 위임(★) 왼쪽의 목표·구성원·라이브러리 글리프 — 우측 작업 탭 카드의 행에만 선다(좌측·팝오버·폰은 두지 않는다). 채팅 머리의 같은 글리프는
- * conversation/objective-chip-glyphs.tsx 가 그린다.
+ * 위임(★) 왼쪽의 목표·구성원·라이브러리 글리프 — 우측 작업 탭 카드의 행에만 선다(좌측·팝오버·폰은 두지 않는다).
  * 쉬는 행에서는 숨고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만 셋이 함께 나타난다 — 그 가림은
  * 카드 CSS가 맡는다. 결정 요청(목표 쪽)과 안 읽은 기록(구성원 쪽)은 쉬는 행에서 ★ 옆의 작은 점으로 보이고,
  * 글리프가 나타나면 해당 글리프 위의 점으로 옮겨 간다.
