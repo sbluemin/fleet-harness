@@ -81,7 +81,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
     const selected = objectiveId !== null && selectedId === objectiveId;
     return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected} settled={settled}
       popups={popups !== undefined && objectiveId !== null ? popups(item, objectiveId) : undefined}
-      onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
+      onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id, { fromSideBar: true }); }}
       onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />;
   });
   // 우측 작업 탭 카드만 시작 전·완료를 카드 밖 구역으로 나눈다. 줄 순서는 통합 목록(기한·최근 완료)을 유지하고, 접힘은 fresh/done 키다.

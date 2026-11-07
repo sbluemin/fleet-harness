@@ -44,6 +44,7 @@ import { setChatReadingWidthDefault } from "../../../execution/client/terminal/s
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
 import { isCommanderObjective, keptCommodoreOwnerOf } from "../commander-tab/commander-rows.js";
+import { clearCommanderSideBarPick, readCommanderSideBarPick } from "../commander-tab/commander-navigation.js";
 import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
@@ -162,8 +163,10 @@ function centerCommanderOf(clusterIndex: ClusterIndex, commodoreId: string): str
   return centerId !== null && isCommanderObjective(clusterIndex.clusters, commodoreId, centerId) ? centerId : null;
 }
 
+/** 좌측 사이드바 목록에서 고른 지휘관은 예외다 — 레일을 작업 탭에 붙들지 않고 열려 있던 패널을 목표 보드로 넘긴다(#2380 이전 좌측 규칙). */
 function shouldKeepCommodoreTabs(clusterIndex: ClusterIndex, commodoreId: string): boolean {
-  return centerCommanderOf(clusterIndex, commodoreId) !== null;
+  const center = centerCommanderOf(clusterIndex, commodoreId);
+  return center !== null && center !== readCommanderSideBarPick();
 }
 
 /**
@@ -190,7 +193,7 @@ function useKeptCommodoreOwner(): string | null {
  * 바뀌면 Theater 는 곧 걷히므로 그 경우도 Objective 대화로 다룬다. 대상의 탭이 아닌 패널(설정, 목표 등 도구)과 목표 도구가 없는
  * 경우는 그대로 둔다.
  * 지금 사령관 패널 주인의 지휘관이 가운데로 오면 사령관 패널(작업 탭)에 머문다 — 레일을 지휘관 화면으로 넘기지 않는다.
- * 다른 사령관의 지휘관이 오면 지금 규칙을 그대로 따른다.
+ * 다른 사령관의 지휘관이 오거나 좌측 사이드바 목록에서 고른 지휘관이면 지금 규칙을 그대로 따른다.
  * 유지 조건이 깨진 보관 등록(다른 사령관·새 세션)은 여기서 걷는다.
  */
 function usePanelFollowsSubject(subjectId: string | null): void {
@@ -212,7 +215,9 @@ function usePanelFollowsSubject(subjectId: string | null): void {
     const active = getRailStoreSnapshot().activePanelId;
     const ownerTab = tabsRef.current.find((tab) => tab.id === active);
     const panelOwner = ownerTab?.section?.theaterId ?? null;
-    const survivor = keptCommodoreOwnerOf(panelOwner, panelOwner !== null && centerCommanderOf(clustersRef.current, panelOwner) !== null);
+    const survivor = keptCommodoreOwnerOf(panelOwner, panelOwner !== null && shouldKeepCommodoreTabs(clustersRef.current, panelOwner));
+    // 좌측 목록 선택 표시는 이 대상 전환 한 번에만 쓴다.
+    clearCommanderSideBarPick();
     releaseKeptConversationObjectiveTabs(survivor);
     if (subjectId === null || !openBeforeRef.current) return;
     if (active === SETTINGS_RAIL_ENTRY_ID) return;
