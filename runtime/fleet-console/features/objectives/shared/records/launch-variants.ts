@@ -34,6 +34,7 @@ function readLaunchVariantRow(value: unknown): ObjectiveLaunchVariantRow | null 
     launch,
     ...(typeof value.quotaPool === "string" && value.quotaPool.length > 0 ? { quotaPool: value.quotaPool } : {}),
     ...(typeof value.quotaScope === "string" && value.quotaScope.length > 0 ? { quotaScope: value.quotaScope } : {}),
+    ...(value.fastSupported === true ? { fastSupported: true } : {}),
     ...(typeof value.contextWindow === "number" && Number.isFinite(value.contextWindow) && value.contextWindow > 0
       ? { contextWindow: value.contextWindow }
       : {}),

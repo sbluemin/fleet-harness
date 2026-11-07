@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildAgentCliLaunchKinds } from "../../features/execution/host/agent/agent-cli-launch-kinds.js";
 import { buildModelRoster, createModelRosterHost } from "../../features/ai-gateway/host/model-roster.js";
+import { parseModelRoster } from "../../features/ai-gateway/shared/models.js";
 
 describe("buildModelRoster login filter", () => {
   it("shows a signed-in provider's whole catalog and ladder, hides signed-out providers, and keeps unknown providers", () => {
@@ -35,6 +36,9 @@ describe("buildModelRoster login filter", () => {
     expect(sol?.effortAxis).toEqual([...ladder.filter((effort) => effort !== "max" || ladder.includes("max")), "ultra"]);
     expect(sol?.chips?.map((chip) => chip.id)).toEqual([...ladder, "ultra"]);
     expect(sol?.gatedEfforts).toEqual(ladder.includes("max") ? ["max", "ultra"] : ["ultra"]);
+    // 브라우저가 받는 로스터는 클라이언트 파서를 거친다 — Fast 지원 표식이 빠지면 선택기에 Fast 행이 서지 않고 고른 속도가 실행에 닿지 않는다.
+    const parsedSol = parseModelRoster(JSON.parse(JSON.stringify(signedIn))).find((group) => group.id === "gateway:codex")?.rows.find((row) => row.launch.model === "codex--gpt-6.1-sol");
+    expect(parsedSol?.fastSupported).toBe(true);
 
     expect(buildAgentCliLaunchKinds(
       [{ id: "claude", label: "Claude", available: true, signedIn: true }],
