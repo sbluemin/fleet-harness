@@ -7,7 +7,7 @@ import type { CommodoreClientHost, CommodoreClientSnapshot } from "../shared/con
 import type { PaneDescriptor } from "../../workspace/shared/pane.js";
 import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 import { commodoreInboxSection } from "./commodore-inbox-section.js";
-import { commodoreMarketplaceSettingsSection, GlobalPluginsHost, GlobalPluginsEntry } from "./commodore-plugins.js";
+import { GlobalPluginsHost, GlobalPluginsEntry } from "./commodore-plugins.js";
 import { installGlobalPlugins } from "./global-plugins.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
@@ -100,8 +100,6 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     subscribeMentionTargets: subscribeCommodoreMentions,
     messageMentionTarget: messageCommodoreMention,
     theaterInboxSections: [{ ...commodoreInboxSection, omitsRailEntries: board?.railEntryIds ?? [] }],
-    // Console 설정 작업 묶음의 「마켓플레이스」 — 사령관들이 함께 보는 등록부. 설치는 사령관마다 그 설정 칸에서 고른다.
-    settingsSections: [commodoreMarketplaceSettingsSection],
     sidebarFooterEntries: [{ id: "global-plugins", layout: "fill", render: () => <GlobalPluginsEntry /> }],
     persistentComponents: [
       { id: "global-plugins", render: () => <GlobalPluginsHost /> },
