@@ -13,8 +13,7 @@ import { objectiveConversationTabs, objectiveMobileConversationTabs } from "./he
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfObjective, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { ResultWindowHost, resetResultWindow } from "./result-window.js";
-import { closeObjectiveWindow, ObjectiveWindowHost, openObjectiveWindow } from "./objective-window.js";
-import { focusObjective, setObjectiveWindowOpener, viewedCommodoreId, handleMapObjectiveSelected, installObjectiveState, loadBoard, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
+import { viewedCommodoreId, handleMapObjectiveSelected, installObjectiveState, loadBoard, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
 import "./objectives.css";
 
 const OBJECTIVES_ENTRY_ID = "objectives";
@@ -123,8 +122,7 @@ export function createObjectivesClient(commodore: CommodoreClientHost) {
       const disposeFresh = connectFreshConversation(ctx.conversation);
       // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
       const disposeRoster = installLaunchRoster(ctx.models);
-      setObjectiveWindowOpener((target) => openObjectiveWindow(target));
-      return () => { setObjectiveWindowOpener(null); resetResultWindow(); closeObjectiveWindow(); disposeRoster(); disposeFresh(); disposeCommodore(); dispose(); };
+      return () => { resetResultWindow(); disposeRoster(); disposeFresh(); disposeCommodore(); dispose(); };
 
   };
   const surface: ClientFeatureDescriptor = {
@@ -135,8 +133,6 @@ export function createObjectivesClient(commodore: CommodoreClientHost) {
     // 레일·목표·탭을 바꿔도 연 목표의 결과물 창은 남는다. 폰에서는 같은 내용을 전체 화면으로 그린다.
     persistentComponents: [
       { id: "objectives-result-window", render: ({ language, layout }) => <ResultWindowHost language={language} mobile={layout === "mobile"} /> },
-      // 지휘관·구성원 채팅의 목표 창 — 목표·구성원·라이브러리를 결과물 창과 같은 떠 있는 창 하나에 보인다(데스크톱).
-      { id: "objectives-objective-window", render: ({ language, layout }) => <ObjectiveWindowHost language={language} mobile={layout === "mobile"} onOpenObjective={focusObjective} /> },
     ],
     // 지휘관과 담당 Objective은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.
     objectiveRecordClusters: objectivesClusterSource,

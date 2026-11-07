@@ -44,8 +44,7 @@ import { setChatReadingWidthDefault } from "../../../execution/client/terminal/s
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
 import { commanderOwnerOf, isCommanderObjective } from "../commander-tab/commander-rows.js";
-import { ObjectiveChipCommodore, ObjectiveChipGlyphs } from "./objective-chip-glyphs.js";
-import { toggleObjectiveWindow } from "../../../objectives/client/objective-window.js";
+import { ObjectiveChipCommodore } from "./objective-chip-commodore.js";
 import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
@@ -1766,14 +1765,13 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const memberIds = new Set([...roster.flatMap((member) => (member.objectiveId ? [member.objectiveId] : [])), ...nested.map((candidate) => candidate.id)]);
   memberIds.delete(objectiveRecord.id);
   const memberCount = memberIds.size;
-  // 사령관 묶음의 지휘관이면 칩이 「사령관 ⇄ 목표」로 선다 — 목표 쪽을 누르면 목표 창(목표 항목)을 열고, 옆 글리프가 그 창의 항목을 바꾼다.
+  // 사령관 묶음의 지휘관이면 칩이 「사령관 ⇄ 목표」로 선다 — 두 쪽 모두 누르면 우측 사이드바를 여닫는다.
   const chipCommodoreId = commanderOwnerOf(clusterIndex.clusters, objectiveRecord.id);
-  const pressObjective = chipCommodoreId === null ? onToggleDetails : () => toggleObjectiveWindow({ objectiveId: objectiveRecord.id, commodoreId: chipCommodoreId, tab: "goal" });
 
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <ConversationPill takeover={pill.takeover} onPress={pressObjective} label={chipCommodoreId === null ? t("conversation.pill.detailsAria", { title: objectiveRecord.title }) : t("commanderTab.chatGlyph.open", { tab: t("commanderTab.rowGlyph.goal"), title: objectiveRecord.title })} controls={viewSwitch}
+        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}
           lead={chipCommodoreId === null ? undefined : <ObjectiveChipCommodore commodoreId={chipCommodoreId} onPress={onToggleDetails} />}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
@@ -1782,7 +1780,6 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
             ) : null}
         </ConversationPill>
-        {chipCommodoreId !== null ? <ObjectiveChipGlyphs commodoreId={chipCommodoreId} objectiveId={objectiveRecord.id} title={objectiveRecord.title} /> : null}
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
         {tools(toolsLead, <span ref={setRailSlot} className="conversation-rail-slot" />)}
