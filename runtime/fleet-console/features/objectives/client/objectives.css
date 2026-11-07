@@ -196,6 +196,9 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row-lab { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
 
 .objectives-row-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+/* 섹션 머리 — 글리프·문구 없이 구분선 한 줄. 셈·도구·셰브런은 오른쪽에 모이고, 중간 머리는 자기 위에 얇은 선을 긋는다. */
+.objectives-row.is-rule { min-height: 32px; justify-content: flex-end; gap: 8px; }
+.objectives-row.is-rule:not(:first-child)::before { content: ""; position: absolute; left: 22px; right: 20px; top: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
 .objectives-section-head-bar { display: flex; align-items: center; position: relative; }
 .objectives-section-head-bar > .objectives-row { flex: 1; min-width: 0; padding-right: 6px; }
 .objectives-section-head-actions { flex: none; display: inline-flex; align-items: center; padding-right: 14px; }
@@ -560,8 +563,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-criteria-head > .objectives-row { flex: 1; min-width: 0; }
 .objectives-approve-all { flex: none; margin-right: 14px; }
 .objectives-criteria-count.is-pending { color: var(--brass-ink); }
-/* 좁은 패널에서 「제안 N건 · 승인 대기」와 「모두 승인」이 라벨 폭을 빼앗지 않게 — 라벨은 줄지 않고, 셈이 먼저 감긴다. */
-.objectives-criteria-head .objectives-row-lab { flex: 0 0 auto; white-space: nowrap; }
 .objectives-criteria-head .objectives-row-tools { min-width: 0; }
 .objectives-criteria-head .objectives-criteria-count.is-pending { white-space: normal; word-break: keep-all; text-align: right; }
 /* 아주 좁은 상세, 또는 제자리에서 세 줄 넘게 감기는 셈(is-stacked — 실제 감김을 JS 가 잰다) — 라벨·승인 버튼은 첫 줄에 두고,
@@ -922,28 +923,3 @@ a.objectives-result-open:focus-visible { color: var(--brass-ink); box-shadow: va
 .commander-missions-dialog .objectives-tab-body { padding-top: 0; }
 .commander-missions-dialog .objectives-tab-body > .objectives-group:first-child { padding-top: 0; }
 .commander-missions-dialog-empty { margin: 0; padding: 8px 4px; color: var(--text-tertiary); font-size: var(--t-sm); text-align: center; }
-
-/* 임무 팝업의 구성원 로스터 — 가로 카드 한 줄(넘치면 가로로 민다). 고른 카드는 테두리로, 그 담당 밖의 임무는 그래프에서 흐려진다. */
-.commander-roster-group { padding-bottom: 4px; }
-.commander-roster { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; }
-.commander-roster-card { flex: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 0 8px; align-items: center; width: 184px; padding: 5px 10px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel); color: var(--text-primary); font: inherit; font-size: var(--t-xs); text-align: left; cursor: pointer; }
-.commander-roster-card:hover { background: var(--wash-hover); }
-.commander-roster-card[aria-pressed="true"] { border-color: var(--text-secondary); box-shadow: inset 0 0 0 1px var(--text-secondary); }
-.commander-roster-card:focus-visible { outline: none; box-shadow: var(--focus-face); }
-.commander-roster-mark { grid-row: 1 / span 2; align-self: start; display: grid; place-items: center; width: 22px; height: 22px; }
-.commander-roster-head { grid-column: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.commander-roster-name { flex: none; max-width: 60%; font-size: var(--t-sm); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commander-roster-model { grid-column: 2; display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; }
-.commander-missions-dialog { --conversation-add-ink: var(--conversation-accent-body, var(--brass-ink)); }
-:root[data-theme="light"] .commander-missions-dialog { --conversation-add-ink: var(--conversation-accent, var(--brass-ink)); }
-.commander-roster-model .fc-coord-trigger-effort { color: var(--conversation-add-ink); }
-.commander-roster-model .fc-coord-trigger-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.commander-roster-model .fc-coord-trigger-model.is-removed { display: none; }
-.commander-roster-model > :not(.fc-coord-trigger-model) { flex: none; }
-.commander-roster-state { flex: 1 1 auto; min-width: 0; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commander-roster-state.is-running { color: var(--aurora); }
-.commander-roster-state.is-awaiting { color: var(--brass-ink); }
-.commander-roster-card.is-add { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-tertiary); border-style: dashed; }
-.commander-roster-card.is-add input { width: 100%; border: 0; background: none; color: var(--text-primary); font: inherit; font-size: var(--t-sm); outline: none; }
-.objectives-graph-focus-out { opacity: 0.28; transition: opacity var(--duration-fast) ease; }
-@media (prefers-reduced-motion: reduce) { .objectives-graph-focus-out { transition: none; } }

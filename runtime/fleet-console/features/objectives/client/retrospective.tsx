@@ -48,5 +48,3 @@ export function Retrospective({ t, by, good, regret }: RetrospectiveProps) {
   );
 }
 
-/** 회고 구획 머리 글리프 — 되돌아보는 화살. */
-export const RetroGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.5h2.5M8 5.5V8l1.8 1.3" /></svg>;

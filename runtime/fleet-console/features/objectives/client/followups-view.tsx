@@ -13,7 +13,6 @@ import { LinkText } from "./link-text.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
-export const FollowupForkGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="4" cy="4" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="4" r="1.6" /><path d="M4 5.6V8a4 4 0 0 0 4 4h2.4M5.6 4h4.8" /></svg>;
 const FollowupChevGlyph = () => <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>;
 
 function evidenceKindLabel(t: T, evidence: FollowupEvidence): string {

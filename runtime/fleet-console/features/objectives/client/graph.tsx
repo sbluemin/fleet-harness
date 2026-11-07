@@ -67,7 +67,6 @@ interface GraphProps {
   /** 확대 전용 — 그래프가 읽기 좋은 확대 카드의 폭(border-box). 가로는 그래프가 스크롤 없이 들어가는 폭, 세로는 높이를 카드가 스크롤한다. */
   onFitWidth?: (width: number) => void;
   /** 이 담당(구성원 id, 지휘관은 null)의 임무만 밝힌다 — 나머지 노드·이름은 흐려진다. 없으면 모두 그대로다. */
-  focusOwner?: { readonly member: string | null } | null;
 }
 /** 이 폭부터 이름 오른쪽에 담당 역할을 함께 적고 노드·글자를 한 단계 키운다(시안의 넓은 폭 680, 좁은 폭 380). */
 const WIDE = 560;
@@ -85,7 +84,7 @@ interface Drag { from: string; x0: number; y0: number; x: number; y: number; ove
 interface Popup { id: string; pinned: boolean; closing: boolean; focus: boolean }
 const nodeId = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>("[data-graph-node], [data-graph-label]")?.dataset.graphNode ?? target.closest<HTMLElement>("[data-graph-label]")?.dataset.graphLabel ?? null : null;
 
-export function CoordinationGraph({ objective, t, states, onEdge, canEdit, renderDetail, ownerMark, onShowing, reveal, zoom = false, suspended = false, orientation = "horizontal", onFitWidth, focusOwner = null }: GraphProps) {
+export function CoordinationGraph({ objective, t, states, onEdge, canEdit, renderDetail, ownerMark, onShowing, reveal, zoom = false, suspended = false, orientation = "horizontal", onFitWidth }: GraphProps) {
   const box = useRef<HTMLDivElement>(null), scroll = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320);
   const vertical = orientation === "vertical";
@@ -337,7 +336,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     <svg className="objectives-graph-edges" width={layout.width} height={layout.height} aria-hidden="true">{layout.edges.map(e => <path key={`${e.from}-${e.to}`} data-from={e.from ?? undefined} data-to={e.to} className={`objectives-graph-edge${e.from ? "" : " is-root"}${lit?.id === e.to ? " is-up" : lit && lit.id === e.from ? " is-down" : ""}`} d={e.d} onClick={() => select(e.to)} />)}</svg>
     <span className="objectives-graph-root" style={{ left: layout.root.x, top: layout.root.y, "--graph-root": `${layout.g.rootR * 2}px` } as CSSProperties} aria-hidden="true">{ownerMark(null)}</span><span className="objectives-graph-label is-root" style={rootLabel}><span className="objectives-graph-name">{t("objectives.graph.commander")}</span></span>
     {/* 세로 — 이름은 모든 레인 오른쪽의 같은 칸에 제 줄의 높이로 선다(두 줄까지, 넓은 폭은 담당 역할을 함께). 가로 — 이름은 노드 아래 제 열 안에 선다. 나머지는 팝업에 있다. */}
-    {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, extension = extensionLabels.get(m.id); return <span key={m.id} className={focusOwner && (m.member ?? null) !== focusOwner.member ? "objectives-graph-focus-out" : undefined}>{node(m, { left: p.x, top: p.y })}<span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${litLabel(m) ? " is-lit" : ""}`} style={placedLabel(m.id, p.y)} onPointerDown={e => start(m.id, e)}>{extension ? <span className="objectives-extension-chip">{extension}</span> : null}<span className="objectives-graph-text"><span className="objectives-graph-name">{missionTitle(m)}</span><span className="objectives-graph-owner">{owner(m)}</span></span></span></span>; })}
+    {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, extension = extensionLabels.get(m.id); return <span key={m.id}>{node(m, { left: p.x, top: p.y })}<span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${litLabel(m) ? " is-lit" : ""}`} style={placedLabel(m.id, p.y)} onPointerDown={e => start(m.id, e)}>{extension ? <span className="objectives-extension-chip">{extension}</span> : null}<span className="objectives-graph-text"><span className="objectives-graph-name">{missionTitle(m)}</span><span className="objectives-graph-owner">{owner(m)}</span></span></span></span>; })}
   </div>;
   return <div ref={box} className={`objectives-branch-graph${vertical ? "" : " is-horizontal"}${zoom ? " is-zoom" : ""}${layout.wide ? " is-wide" : ""}${drag?.moved ? " is-dragging" : ""}`} style={{ "--graph-r": `${layout.g.r}px`, "--graph-label-line": `${layout.g.llh}px` } as CSSProperties} onPointerMove={hover} onPointerLeave={() => { setHot(null); if (!dragRef.current) leave(); }}>
     <div ref={scroll} className={`objectives-graph-scroll${pannable ? " is-pannable" : ""}`} onPointerDown={startPan} onScroll={() => { if (popupRef.current && !popupRef.current.pinned) close(); }}>
