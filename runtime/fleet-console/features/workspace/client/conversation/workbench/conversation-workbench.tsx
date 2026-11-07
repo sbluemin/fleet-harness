@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 
-import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ObjectiveKindDescriptor } from "../../../../execution/shared/client-contract.js";
 import { findAgentObjectiveKind } from "../../../../execution/shared/objective-kind.js";
@@ -13,7 +14,6 @@ import { useHostCapabilities } from "../../../../../core/client/src/integration/
 import { useExpandedSurfaceDescriptors } from "../../../../../core/client/src/integration/feature-registry.js";
 import { isDesktopShell } from "../../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../../core/client/src/integration/objective-records-sse.js";
-import { useMenuButtonKeyboard } from "../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { MissingSurface, SurfacePanePart, safeExpandedSurfaceTitle, useExpandedSurfaceContext } from "../../../../../core/client/src/chrome/expanded-surface/layer.js";
 import { RailSurface } from "../../../../../core/client/src/chrome/pane/rail-surface.js";
 import type { RailEntryBinding } from "../../../../../core/client/src/chrome/pane/pane-registry.js";
@@ -24,17 +24,14 @@ import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel
 import { announceNativeViewResize, getNativeViewResize } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
 import { PluginObjectiveRenderer } from "../../objective-renderer.js";
-import { resolveDropPreview, type DropPreview, type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
+import { WORKBENCH_GAP, type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
+import { useBrowserBandGlobe, useBrowserBandSlot } from "./browser-band-slot.js";
 import {
   bindWorkbenchCloseGuard,
   cancelWorkbenchClose,
   closeWorkbenchTile,
-  findWorkbenchTile,
   focusWorkbenchTile,
-  moveWorkbenchTile,
-  moveWorkbenchTileBelow,
-  moveWorkbenchTileToSplit,
-  nudgeWorkbenchTile,
+  getWorkbenchKey,
   persistWorkbench,
   replaceWorkbenchTileParams,
   setWorkbenchBelowRatio,
@@ -42,18 +39,17 @@ import {
   setWorkbenchSplitRatio,
   setWorkbenchWeights,
   useWorkbenchPendingClose,
-  type WorkbenchNudge,
 } from "./workbench-store.js";
 import "./workbench.css";
 
 /**
- * 대화 칸 안의 도구 분할 — 대화 오른쪽 분할 영역(열·칸)과 대화 아래 한 줄에 도구 칸이 선다(시안 v2 규칙 a·e·f·h).
+ * 대화 칸 안의 도구 분할 — 대화 오른쪽 한 열에 도구 칸이 연 순서대로 쌓인다. 칸을 옮기는 길은 없다(폭 경계와 펼치기만 있다).
  *
- * 레이어 하나가 작업 영역(왼쪽 사이드바와 오른쪽 사이드바 사이)을 덮고, 칸은 모두 이 레이어 위에 절대 배치된다. 자리를 옮기거나
- * 펼쳐도 칸은 같은 부모·같은 key 에 남으므로 Shell·브라우저·파일 트리가 다시 서지 않는다. 오른쪽 사이드바는 이 레이어 밖이다.
+ * 레이어 하나가 작업 영역(왼쪽 사이드바와 오른쪽 사이드바 사이)을 덮고, 칸은 모두 이 레이어 위에 절대 배치된다. 펼쳐도 칸은 같은
+ * 부모·같은 key 에 남으므로 Shell·브라우저·파일 트리가 다시 서지 않는다. 오른쪽 사이드바는 이 레이어 밖이다.
  *
- * 칸 머리 한 문법: [아이콘·제목 또는 탭 줄] · 가운데 이동 손잡이 · ⋮ · 펼치기 · 닫기. 손잡이는 마우스를 올리거나 키보드 초점이
- * 왔을 때만 보인다. ⋮ 의 「위로·아래로·왼쪽 열로·오른쪽 열로」는 끌기의 키보드 대안이고 머리에서 ⌥+화살표로도 된다.
+ * 칸 머리 한 문법: [아이콘·제목] · 펼치기 · 닫기. 브라우저는 예외다 — 열의 맨 위에서 머리 없이 대화와 같은 면으로 서고, 탭 줄과
+ * 펼치기는 맨 위 줄의 지구본 바로 앞으로 올라간다. 지구본을 누르면 그 자리에서 번져 열리고, 닫으면 그 자리로 접혀 들어간다.
  */
 
 /** 대화의 Session 브라우저(사령관 같은 플러그인 대화) — 호스트 등록 플러그인 id 와 그 대화가 돌려준 세션 scope. */
@@ -86,7 +82,52 @@ export interface ConversationWorkbenchProps {
 
 const KEY_STEP = 16;
 const KEY_STEP_LARGE = 64;
-const DRAG_THRESHOLD = 4;
+
+/** 브라우저가 지구본에서 번져 열리고 접혀 닫히는 시간과 곡선 — 대화 칸이 비키는 스프링(--ease-spring)과 같은 곡선이다. */
+const BROWSER_OPEN_MS = 340;
+const BROWSER_CLOSE_MS = 240;
+const BROWSER_OPEN_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+const BROWSER_CLOSE_EASE = "cubic-bezier(0.3, 0, 0.15, 1)";
+/** 닫을 때 네이티브 뷰 대신 깔 정지 화면을 기다리는 한도 — 패널의 캡처 예산(800ms)을 조금 넘긴다. */
+const BROWSER_FRAME_WAIT_MS = 900;
+/** 정지 화면이 깔린 뒤 셸이 뷰를 실제로 물리기까지 두는 여유. */
+const BROWSER_PARK_SETTLE_MS = 60;
+/** 맨 위 줄 탭 줄의 양 끝 여백. */
+const BAND_INSET = 8;
+
+type TileMotion = "enter" | "leave";
+
+interface BrowserSettled {
+  readonly key: string;
+  readonly id: string | null;
+  readonly entry: TileGeometry | null;
+  readonly rect: Rect | null;
+  readonly expanded: boolean;
+}
+
+interface BrowserLeaving {
+  readonly key: string;
+  readonly entry: TileGeometry;
+  readonly rect: Rect;
+  readonly expanded: boolean;
+}
+
+function motionAllowed(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches !== true;
+}
+
+/** 지구본 가운데를 중심으로 칸을 덮는 원 — 열 때는 지구본 크기에서 칸 전체로, 닫을 때는 그 반대로. */
+function glyphClip(element: HTMLElement, direction: "open" | "close"): Keyframe[] {
+  const box = element.getBoundingClientRect();
+  const glyph = document.querySelector<HTMLElement>('.conversation-pill-tools [data-caption-action="browser"]')?.getBoundingClientRect() ?? null;
+  const cx = glyph === null ? box.width - 24 : glyph.left + glyph.width / 2 - box.left;
+  const cy = glyph === null ? -24 : glyph.top + glyph.height / 2 - box.top;
+  const start = glyph === null ? 12 : glyph.width / 2;
+  const far = Math.ceil(Math.max(...[[0, 0], [box.width, 0], [0, box.height], [box.width, box.height]].map(([x, y]) => Math.hypot(x! - cx, y! - cy)))) + 2;
+  const small = { clipPath: `circle(${start}px at ${cx}px ${cy}px)` };
+  const large = { clipPath: `circle(${far}px at ${cx}px ${cy}px)` };
+  return direction === "open" ? [small, large] : [large, small];
+}
 
 function rectStyle(rect: Rect): CSSProperties {
   return { left: rect.x, top: rect.y, width: rect.w, height: rect.h };
@@ -100,8 +141,6 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
     layerRef(element);
   }, [layerRef]);
   const [resizing, setResizing] = useState(false);
-  const [drag, setDrag] = useState<{ readonly tileId: string; readonly title: string; readonly x: number; readonly y: number; readonly preview: DropPreview | null } | null>(null);
-  const [menuTileId, setMenuTileId] = useState<string | null>(null);
   const descriptors = useExpandedSurfaceDescriptors();
   const pendingClose = useWorkbenchPendingClose();
 
@@ -118,8 +157,26 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
     }
   }), [descriptors, language]);
 
-  // 끌기(경계·칸)와 ⋮ 메뉴가 열린 동안 네이티브 브라우저 뷰를 정지 화면 뒤로 물린다 — 뷰는 페이지 위를 덮어 포인터와 메뉴를 가린다.
-  const holdViews = resizing || drag !== null || menuTileId !== null || pendingClose !== null;
+  // ── 브라우저가 지구본에서 열리고 닫힌다 ──
+  // 같은 대화에서 브라우저 칸이 새로 서면 번져 열리고, 사라지면 그 칸을 잠시 붙들어 접혀 닫히게 한다. 대화를 바꾸거나 처음 그릴 때,
+  // 동작 줄이기 설정에서는 바로 바뀐다. 움직이는 동안은 네이티브 뷰를 정지 화면 뒤로 물린다 — 뷰는 잘라 그릴 수 없다.
+  // 새로 섰는지·사라졌는지는 그리는 동안 판정한다. 그래야 첫 그림부터 뷰가 물러나 있고, 떠나는 칸이 같은 key 로 남아 다시 서지 않는다.
+  const workbenchKey = getWorkbenchKey();
+  const browserEntry = geometry.tiles.find((entry) => entry.tile.kind === "browser") ?? null;
+  const settledRef = useRef<BrowserSettled | null>(null);
+  const [entering, setEntering] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState<BrowserLeaving | null>(null);
+  const settled = settledRef.current;
+  const sameConversation = settled !== null && settled.key === workbenchKey;
+  const revealId = browserEntry === null ? null
+    : entering === browserEntry.tile.id || (sameConversation && settled.id !== browserEntry.tile.id && motionAllowed()) ? browserEntry.tile.id : null;
+  const ghost: BrowserLeaving | null = browserEntry !== null ? null
+    : leaving !== null && leaving.key === workbenchKey ? leaving
+      : sameConversation && settled.entry !== null && settled.rect !== null && motionAllowed()
+        ? { key: workbenchKey, entry: settled.entry, rect: settled.rect, expanded: settled.expanded } : null;
+
+  // 끌기(경계)와 닫기 확인, 브라우저가 열리고 닫히는 동안 네이티브 브라우저 뷰를 정지 화면 뒤로 물린다 — 뷰는 페이지 위를 덮어 포인터를 가린다.
+  const holdViews = resizing || pendingClose !== null || revealId !== null || ghost !== null;
   useEffect(() => {
     const element = elementRef.current;
     if (!holdViews || element === null) return;
@@ -144,58 +201,57 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
     return () => window.removeEventListener("keydown", onKey);
   }, [expandedId]);
 
+  const browserRect = browserEntry === null ? null : expandedId === browserEntry.tile.id && geometry.expanded !== null ? geometry.expanded : browserEntry.rect;
+  useLayoutEffect(() => {
+    settledRef.current = { key: workbenchKey, id: browserEntry?.tile.id ?? null, entry: browserEntry, rect: browserRect, expanded: browserEntry !== null && expandedId === browserEntry.tile.id };
+  });
+  // 그린 판정을 상태로 붙든다 — 다음 그림부터는 settledRef 가 지금 칸을 가리킨다.
+  useLayoutEffect(() => {
+    if (ghost !== null && ghost !== leaving) setLeaving(ghost);
+    else if (ghost === null && leaving !== null) setLeaving(null);
+  }, [ghost, leaving]);
+
+  useLayoutEffect(() => {
+    if (revealId === null) return;
+    setEntering(revealId);
+    const element = elementRef.current?.querySelector<HTMLElement>(`[data-tile-id="${CSS.escape(revealId)}"]`) ?? null;
+    if (element === null) { setEntering(null); return; }
+    let live = true;
+    const animation = element.animate(glyphClip(element, "open"), { duration: BROWSER_OPEN_MS, easing: BROWSER_OPEN_EASE });
+    void animation.finished.then(() => { if (live) setEntering(null); }, () => undefined);
+    return () => { live = false; animation.cancel(); };
+  }, [revealId]);
+
+  // 닫힘 — 네이티브 뷰가 정지 화면으로 물러난 뒤(또는 띄운 뷰가 없으면 곧바로) 지구본으로 접는다.
+  const leavingId = leaving?.entry.tile.id ?? null;
+  useEffect(() => {
+    if (leavingId === null) return;
+    const element = elementRef.current?.querySelector<HTMLElement>(`[data-tile-id="${CSS.escape(leavingId)}"]`) ?? null;
+    if (element === null) { setLeaving(null); return; }
+    let live = true;
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let animation: Animation | null = null;
+    const began = performance.now();
+    const collapse = () => {
+      if (!live) return;
+      animation = element.animate(glyphClip(element, "close"), { duration: BROWSER_CLOSE_MS, easing: BROWSER_CLOSE_EASE, fill: "forwards" });
+      void animation.finished.then(() => { if (live) setLeaving(null); }, () => undefined);
+    };
+    const wait = () => {
+      if (!live) return;
+      const native = element.querySelector(".op-browser__native");
+      if (native === null) { collapse(); return; }
+      if (native.querySelector(".op-browser__backdrop") !== null) { timer = setTimeout(collapse, BROWSER_PARK_SETTLE_MS); return; }
+      if (performance.now() - began > BROWSER_FRAME_WAIT_MS) { collapse(); return; }
+      frame = requestAnimationFrame(wait);
+    };
+    frame = requestAnimationFrame(wait);
+    return () => { live = false; cancelAnimationFrame(frame); if (timer !== null) clearTimeout(timer); animation?.cancel(); };
+  }, [leavingId]);
+
   const geometryRef = useRef(geometry);
   geometryRef.current = geometry;
-
-  const beginTileDrag = useCallback((tileId: string, title: string, event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return;
-    const element = elementRef.current;
-    if (element === null) return;
-    event.preventDefault();
-    const handle = event.currentTarget;
-    const { pointerId, clientX: startX, clientY: startY } = event;
-    let started = false;
-    let preview: DropPreview | null = null;
-    try { handle.setPointerCapture(pointerId); } catch { /* 붙들지 못해도 창 전체의 움직임으로 따라간다. */ }
-    const local = (clientX: number, clientY: number) => {
-      const box = element.getBoundingClientRect();
-      return { x: clientX - box.left, y: clientY - box.top };
-    };
-    const onMove = (move: PointerEvent) => {
-      if (move.pointerId !== pointerId) return;
-      if (!started && Math.hypot(move.clientX - startX, move.clientY - startY) < DRAG_THRESHOLD) return;
-      started = true;
-      const point = local(move.clientX, move.clientY);
-      preview = resolveDropPreview(geometryRef.current, tileId, point.x, point.y);
-      setDrag({ tileId, title, x: point.x, y: point.y, preview });
-    };
-    const finish = (end: PointerEvent | null) => {
-      if (end !== null && end.pointerId !== pointerId) return;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onCancel);
-      window.removeEventListener("keydown", onKey, true);
-      try { if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId); } catch { /* 이미 풀렸다. */ }
-      setDrag(null);
-    };
-    const onUp = (up: PointerEvent) => {
-      if (up.pointerId !== pointerId) return;
-      if (started && preview !== null) moveWorkbenchTile(tileId, preview.target);
-      finish(up);
-    };
-    const onCancel = (cancel: PointerEvent) => finish(cancel);
-    const onKey = (key: KeyboardEvent) => {
-      if (key.key !== "Escape") return;
-      key.preventDefault();
-      key.stopPropagation();
-      preview = null;
-      finish(null);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onCancel);
-    window.addEventListener("keydown", onKey, true);
-  }, []);
 
   const bindingOf = useCallback((entryId: string) => bindings.find((binding) => binding.entry.id === entryId) ?? null, [bindings]);
   const surfaceBinding = useCallback((surfaceId: string) => bindings.find((binding) => binding.entry.surfaceId === surfaceId) ?? null, [bindings]);
@@ -205,9 +261,9 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
   return (
     <div
       ref={setRef}
-      className={`conversation-workbench${resizing ? " is-resizing" : ""}${drag !== null ? " is-dragging" : ""}${expandedId !== null ? " has-expanded" : ""}`}
+      className={`conversation-workbench${resizing ? " is-resizing" : ""}${expandedId !== null ? " has-expanded" : ""}`}
       data-mode={geometry.mode}
-      data-resizing={resizing || drag !== null ? "true" : undefined}
+      data-resizing={holdViews && pendingClose === null ? "true" : undefined}
       style={{ left: insets.left, right: insets.right }}
       role={tileCount > 0 ? "region" : undefined}
       aria-label={tileCount > 0 ? t("conversation.workbench.aria") : undefined}
@@ -216,22 +272,27 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
       {expandedId === null ? geometry.gutters.map((gutter) => (
         <WorkbenchGutter key={gutterKey(gutter)} gutter={gutter} geometry={geometry} layout={layout} onResizingChange={setResizing} />
       )) : null}
-      {geometry.tiles.map((entry) => {
-        const hidden = expandedId !== null && entry.tile.id !== expandedId;
-        const rect = expandedId === entry.tile.id && geometry.expanded !== null ? geometry.expanded : entry.rect;
+      {[
+        ...geometry.tiles.map((entry) => ({
+          entry,
+          rect: expandedId === entry.tile.id && geometry.expanded !== null ? geometry.expanded : entry.rect,
+          hidden: expandedId !== null && entry.tile.id !== expandedId,
+          expanded: expandedId === entry.tile.id,
+          motion: entry.tile.id === revealId ? "enter" as const : null,
+        })),
+        // 떠나는 브라우저 칸 — 같은 key 로 남아 패널이 다시 서지 않고, 접히는 동안만 그려진다.
+        ...(ghost === null ? [] : [{ entry: ghost.entry, rect: ghost.rect, hidden: false, expanded: ghost.expanded, motion: "leave" as const }]),
+      ].map(({ entry, rect, hidden, expanded, motion }) => {
         return (
           <WorkbenchTileView
             key={entry.tile.id}
             entry={entry}
             rect={rect}
             hidden={hidden}
-            expanded={expandedId === entry.tile.id}
+            expanded={expanded}
             focused={focusedTileId === entry.tile.id}
-            dragging={drag?.tileId === entry.tile.id}
-            menuOpen={menuTileId === entry.tile.id}
+            motion={motion}
             pendingClose={pendingClose?.tileId === entry.tile.id ? pendingClose.message : null}
-            onMenuOpenChange={(open) => setMenuTileId(open ? entry.tile.id : null)}
-            layout={layout}
             geometry={geometry}
             binding={entry.tile.kind === "entry" ? bindingOf(entry.tile.entryId) : entry.tile.kind === "surface" ? surfaceBinding(entry.tile.surfaceId) : null}
             toolContext={toolContext}
@@ -239,14 +300,9 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
             state={state}
             language={language}
             objectiveRecordKinds={objectiveRecordKinds}
-            onBeginDrag={beginTileDrag}
           />
         );
       })}
-      {drag?.preview ? <div className="conversation-workbench-drop" style={rectStyle(drag.preview.rect)} aria-hidden="true" /> : null}
-      {drag !== null ? (
-        <div className="conversation-workbench-ghost" style={{ left: drag.x + 12, top: drag.y + 10 }} aria-hidden="true">{drag.title}</div>
-      ) : null}
     </div>
   );
 }
@@ -404,12 +460,10 @@ interface WorkbenchTileViewProps {
   readonly hidden: boolean;
   readonly expanded: boolean;
   readonly focused: boolean;
-  readonly dragging: boolean;
-  readonly menuOpen: boolean;
+  /** 브라우저 칸이 지구본에서 번져 열리는 중(enter)이거나 접혀 닫히는 중(leave). */
+  readonly motion: TileMotion | null;
   /** 이 칸을 닫기 전에 묻는 말 — 사람이 닫기를 눌렀고 표면이 물어야 한다고 답했을 때만. */
   readonly pendingClose: string | null;
-  readonly onMenuOpenChange: (open: boolean) => void;
-  readonly layout: WorkbenchLayout;
   readonly geometry: WorkbenchGeometry;
   readonly binding: RailEntryBinding | null;
   readonly toolContext: RailToolContext;
@@ -417,7 +471,6 @@ interface WorkbenchTileViewProps {
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
   readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
-  readonly onBeginDrag: (tileId: string, title: string, event: ReactPointerEvent<HTMLElement>) => void;
 }
 
 /** 칸 하나 — 출처별 본문을 고르고, 머리·자리는 공통 틀(TileFrame)이 진다. */
@@ -438,155 +491,80 @@ interface FrameParts {
   readonly bodyRef?: (element: HTMLDivElement | null) => void;
 }
 
-function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen, pendingClose, onMenuOpenChange, layout, geometry, onBeginDrag, parts }: WorkbenchTileViewProps & { readonly parts: FrameParts }) {
+function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClose, geometry, parts }: WorkbenchTileViewProps & { readonly parts: FrameParts }) {
   const t = useT();
   const tile = entry.tile;
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const setMenuOpen = useCallback((next: boolean | ((current: boolean) => boolean)) => {
-    onMenuOpenChange(typeof next === "function" ? next(menuOpen) : next);
-  }, [menuOpen, onMenuOpenChange]);
-  useMenuButtonKeyboard(rootRef, menuButtonRef, menuRef, menuOpen, setMenuOpen);
-  useViewportFit(menuRef, menuOpen);
-
-  const place = findWorkbenchTile(layout, tile.id)?.place ?? null;
-  const inBelow = place?.area === "below";
-  const columns = layout.columns.length;
-  const column = place?.area === "column" ? layout.columns[place.column] : undefined;
-  const can = {
-    up: place?.area === "column" ? place.index > 0 : inBelow,
-    down: place?.area === "column" && column !== undefined ? place.index < column.tiles.length - 1 : false,
-    left: place?.area === "column"
-      ? (place.column > 0 ? (layout.columns[place.column - 1]?.tiles.length ?? 3) < 3 : (column?.tiles.length ?? 0) > 1 && columns < 3)
-      : place?.area === "below" ? place.index > 0 : false,
-    right: place?.area === "column"
-      ? (place.column < columns - 1 ? (layout.columns[place.column + 1]?.tiles.length ?? 3) < 3 : (column?.tiles.length ?? 0) > 1 && columns < 3)
-      : place?.area === "below" ? place.index < layout.below.tiles.length - 1 : false,
-    below: !inBelow && layout.below.tiles.length < 2,
-  };
-  const nudge = (direction: WorkbenchNudge) => { nudgeWorkbenchTile(tile.id, direction); };
-  const onHeadKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (!event.altKey || event.metaKey || event.ctrlKey) return;
-    const direction = ({ ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" } as const)[event.key as "ArrowUp"];
-    if (direction === undefined) return;
-    event.preventDefault();
-    nudge(direction);
-  };
-  const onGripKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    const direction = ({ ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" } as const)[event.key as "ArrowUp"];
-    if (direction === undefined) return;
-    event.preventDefault();
-    nudge(direction);
-    // 옮긴 뒤에도 손잡이에 초점을 둔다 — 같은 칸이 새 자리에서 다시 그려진다.
-    queueMicrotask(() => rootRef.current?.querySelector<HTMLElement>(".workbench-tile-grip")?.focus());
-  };
-
-  const menuItems: { readonly key: string; readonly label: string; readonly hint?: string; readonly enabled: boolean; readonly run: () => void }[] = inBelow
-    ? [
-      { key: "left", label: t("conversation.workbench.moveLeftBelow"), hint: "⌥←", enabled: can.left, run: () => nudge("left") },
-      { key: "right", label: t("conversation.workbench.moveRightBelow"), hint: "⌥→", enabled: can.right, run: () => nudge("right") },
-      { key: "split", label: t("conversation.workbench.toSplit"), hint: "⌥↑", enabled: true, run: () => { moveWorkbenchTileToSplit(tile.id); } },
-    ]
-    : [
-      { key: "up", label: t("conversation.workbench.moveUp"), hint: "⌥↑", enabled: can.up, run: () => nudge("up") },
-      { key: "down", label: t("conversation.workbench.moveDown"), hint: "⌥↓", enabled: can.down, run: () => nudge("down") },
-      { key: "left", label: t("conversation.workbench.moveLeft"), hint: "⌥←", enabled: can.left && !geometry.collapsedColumns, run: () => nudge("left") },
-      { key: "right", label: t("conversation.workbench.moveRight"), hint: "⌥→", enabled: can.right && !geometry.collapsedColumns, run: () => nudge("right") },
-      { key: "below", label: t("conversation.workbench.toBelow"), enabled: can.below, run: () => { moveWorkbenchTileBelow(tile.id); } },
-    ];
+  const rootRef = useRef<HTMLElement | null>(null);
+  // 브라우저는 따로 떠 있는 패널이 아니라 대화와 같은 면이다 — 머리 없이 맨 위 줄 밑에서 작업 영역 끝까지 채우고, 탭 줄과 펼치기는
+  // 맨 위 줄의 지구본 바로 앞으로 올라간다. 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
+  // 브라우저 칸이 남아 있을 때)에서는 다른 칸과 같은 틀이다 — 닫기 단추가 그 칸을 닫는 길이다.
+  const seamless = tile.kind === "browser" && geometry.mode !== "sheet" && isDesktopShell();
+  const frameRect = seamless ? seamlessRect(entry, rect, geometry, expanded) : rect;
+  const expandLabel = expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand");
+  const expandButton = (
+    <button
+      type="button"
+      className="workbench-tile-button"
+      aria-pressed={expanded}
+      aria-label={expandLabel}
+      title={expandLabel}
+      onClick={() => setWorkbenchExpanded(expanded ? null : tile.id)}
+    >
+      {expanded
+        ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 2.5v4h-4M9.5 13.5v-4h4M6.5 6.5 2.5 2.5M9.5 9.5l4 4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        : <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6.5v-4h4M13.5 9.5v4h-4M2.5 2.5l4 4M13.5 13.5l-4-4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+    </button>
+  );
 
   return (
     <section
       ref={rootRef}
-      className={`workbench-tile${focused ? " is-focused" : ""}${expanded ? " is-expanded" : ""}${dragging ? " is-dragging" : ""}${hidden ? " is-hidden" : ""}`}
-      style={rectStyle(rect)}
+      className={`workbench-tile${focused ? " is-focused" : ""}${expanded ? " is-expanded" : ""}${hidden ? " is-hidden" : ""}`}
+      style={rectStyle(frameRect)}
+      data-tile-id={tile.id}
       data-tile-kind={tile.kind}
       data-tile-area={entry.area}
+      data-seamless={seamless ? "true" : undefined}
+      data-motion={motion ?? undefined}
       data-keep-objective-active
       aria-label={parts.title}
       aria-hidden={hidden ? true : undefined}
-      inert={hidden || undefined}
-      // 본문을 만질 때만 이 칸이 포커스를 얻는다 — 머리(손잡이·⋮·펼치기)의 초점이 본문을 깨우면 터미널 같은 본문이 초점을 가져가
-      // 손잡이의 화살표·⋮ 메뉴가 본문으로 새어 든다.
+      inert={hidden || motion === "leave" || undefined}
+      // 본문을 만질 때만 이 칸이 포커스를 얻는다 — 머리(펼치기·닫기)의 초점이 본문을 깨우면 터미널 같은 본문이 초점을 가져간다.
       onPointerDownCapture={(event) => { if (!isInHead(event.target)) focusWorkbenchTile(tile.id); }}
       onFocusCapture={(event) => { if (!isInHead(event.target)) focusWorkbenchTile(tile.id); }}
     >
-      <header className="workbench-tile-head" onKeyDown={onHeadKeyDown}>
-        <span className="workbench-tile-title">
-          {parts.titleNode ?? (
-            <>
-              {parts.icon ? <span className="workbench-tile-icon" aria-hidden="true">{parts.icon}</span> : null}
-              <span className="workbench-tile-name">{parts.title}</span>
-            </>
-          )}
-        </span>
-        {parts.tools ? <span className="workbench-tile-tools">{parts.tools}</span> : null}
-        <button
-          type="button"
-          className="workbench-tile-grip"
-          aria-label={t("conversation.workbench.move", { title: parts.title })}
-          title={t("conversation.workbench.moveHint")}
-          onPointerDown={(event) => onBeginDrag(tile.id, parts.title, event)}
-          onKeyDown={onGripKeyDown}
-        >
-          <svg viewBox="0 0 18 10" aria-hidden="true"><circle cx="5" cy="3" r="1.1" fill="currentColor" /><circle cx="9" cy="3" r="1.1" fill="currentColor" /><circle cx="13" cy="3" r="1.1" fill="currentColor" /><circle cx="5" cy="7" r="1.1" fill="currentColor" /><circle cx="9" cy="7" r="1.1" fill="currentColor" /><circle cx="13" cy="7" r="1.1" fill="currentColor" /></svg>
-        </button>
-        <span className="workbench-tile-actions">
-          <span className="workbench-tile-menu-wrap">
+      {seamless ? (
+        <BrowserBandChrome frameRef={rootRef} geometry={geometry} motion={motion} hidden={hidden}>
+          {parts.titleNode ?? null}
+          {expandButton}
+          <BrowserBandClose tileId={tile.id} title={parts.title} />
+        </BrowserBandChrome>
+      ) : (
+        <header className="workbench-tile-head">
+          <span className="workbench-tile-title">
+            {parts.titleNode ?? (
+              <>
+                {parts.icon ? <span className="workbench-tile-icon" aria-hidden="true">{parts.icon}</span> : null}
+                <span className="workbench-tile-name">{parts.title}</span>
+              </>
+            )}
+          </span>
+          {parts.tools ? <span className="workbench-tile-tools">{parts.tools}</span> : null}
+          <span className="workbench-tile-actions">
+            {expandButton}
             <button
               type="button"
-              ref={menuButtonRef}
               className="workbench-tile-button"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              aria-label={t("conversation.workbench.menu", { title: parts.title })}
-              title={t("conversation.workbench.menu", { title: parts.title })}
-              onClick={() => setMenuOpen((open) => !open)}
+              aria-label={t("conversation.workbench.close", { title: parts.title })}
+              title={t("conversation.workbench.close", { title: parts.title })}
+              onClick={() => closeWorkbenchTile(tile.id)}
             >
-              <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="3.5" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="12.5" r="1.2" fill="currentColor" /></svg>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
             </button>
-            {menuOpen ? (
-              <div ref={menuRef} className="workbench-tile-menu" role="menu" aria-label={t("conversation.workbench.menu", { title: parts.title })}>
-                {menuItems.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    role="menuitem"
-                    className="workbench-tile-menu-item"
-                    disabled={!item.enabled}
-                    onClick={() => { onMenuOpenChange(false); item.run(); menuButtonRef.current?.focus(); }}
-                  >
-                    <span>{item.label}</span>
-                    {item.hint ? <kbd>{item.hint}</kbd> : null}
-                  </button>
-                ))}
-              </div>
-            ) : null}
           </span>
-          <button
-            type="button"
-            className="workbench-tile-button"
-            aria-pressed={expanded}
-            aria-label={expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand")}
-            title={expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand")}
-            onClick={() => setWorkbenchExpanded(expanded ? null : tile.id)}
-          >
-            {expanded
-              ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 2.5v4h-4M9.5 13.5v-4h4M6.5 6.5 2.5 2.5M9.5 9.5l4 4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              : <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6.5v-4h4M13.5 9.5v4h-4M2.5 2.5l4 4M13.5 13.5l-4-4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-          </button>
-          <button
-            type="button"
-            className="workbench-tile-button"
-            aria-label={t("conversation.workbench.close", { title: parts.title })}
-            title={t("conversation.workbench.close", { title: parts.title })}
-            onClick={() => closeWorkbenchTile(tile.id)}
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-          </button>
-        </span>
-      </header>
+        </header>
+      )}
       {pendingClose !== null ? (
         <div className="workbench-tile-confirm" role="alertdialog" aria-label={pendingClose}>
           <span>{pendingClose}</span>
@@ -598,6 +576,67 @@ function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen,
         {parts.body}
       </div>
     </section>
+  );
+}
+
+/**
+ * 지구본이 닫는 길이 아닐 때만 서는 닫기 — 이 대화가 지구본을 세우지 않거나(작업대는 사령관 단위로 공유되므로 다른 대화에서 연 칸이
+ * 남는다), 다른 화면이 붙어 브라우저가 멈춰 지구본이 꺼지면, 열려 있던 칸을 닫을 다른 길이 없다.
+ */
+function BrowserBandClose({ tileId, title }: { readonly tileId: string; readonly title: string }) {
+  const t = useT();
+  const globe = useBrowserBandGlobe();
+  if (globe) return null;
+  const label = t("conversation.workbench.close", { title });
+  return (
+    <button type="button" className="workbench-tile-button" aria-label={label} title={label} onClick={() => closeWorkbenchTile(tileId)}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+    </button>
+  );
+}
+
+/** 머리 없는 브라우저 칸의 자리 — 맨 위 줄 밑에서 시작해 작업 영역 오른쪽 끝까지, 아래에 다른 칸이 없으면 바닥까지 채운다. */
+function seamlessRect(entry: TileGeometry, rect: Rect, geometry: WorkbenchGeometry, expanded: boolean): Rect {
+  if (expanded) return { x: 0, y: 0, w: geometry.width, h: geometry.height };
+  const below = geometry.tiles.some((other) => other.area === entry.area && other.column === entry.column && other.index > entry.index);
+  return { x: rect.x, y: 0, w: Math.max(0, geometry.width - rect.x), h: below ? rect.y + rect.h : geometry.height };
+}
+
+/**
+ * 맨 위 줄로 올라간 브라우저 탭 줄 — 지구본 바로 앞 자리(browser-band-slot)로 portal 되어 분할 영역 위의 폭만 쓴다.
+ * 펼친 동안에도 분할 영역 위에 남아 대화 pill 을 덮지 않는다.
+ */
+function BrowserBandChrome({ frameRef, geometry, motion, hidden, children }: {
+  readonly frameRef: RefObject<HTMLElement | null>;
+  readonly geometry: WorkbenchGeometry;
+  readonly motion: TileMotion | null;
+  readonly hidden: boolean;
+  readonly children: ReactNode;
+}) {
+  const slot = useBrowserBandSlot();
+  const [width, setWidth] = useState<number | null>(null);
+  const splitX = geometry.split?.x ?? null;
+  useLayoutEffect(() => {
+    if (slot === null || splitX === null) return;
+    const measure = () => {
+      const layer = frameRef.current?.parentElement;
+      if (!layer) return;
+      const left = layer.getBoundingClientRect().left + splitX + WORKBENCH_GAP + BAND_INSET;
+      const next = Math.max(0, Math.floor(slot.getBoundingClientRect().right - BAND_INSET - left));
+      setWidth((current) => (current === next ? current : next));
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(slot.parentElement ?? slot);
+    window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
+  }, [frameRef, slot, splitX]);
+  if (slot === null || hidden) return null;
+  return createPortal(
+    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}`} style={width === null ? undefined : { width }} data-keep-objective-active>
+      {children}
+    </span>,
+    slot,
   );
 }
 

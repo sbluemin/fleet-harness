@@ -2,13 +2,16 @@
    작업 영역(왼쪽 사이드바와 오른쪽 사이드바 사이)의 맨 위 줄 아래를 덮는 레이어 하나에 칸이 절대 배치된다. 빈 자리는 클릭을 아래
    대화에 넘긴다. 맨 위 줄(pill·도구모음·사용량 캡슐, 그리고 Desktop 의 신호등·캡션 버튼)은 분할·펼친 칸·시트 어느 때든 칸이 덮지
    않는다 — 두 플랫폼이 같은 모양이다(conversation.css .conversation-band).
-   칸은 대화 바탕보다 한 단 밝은 면 · 1px 테두리 · 둥근 모서리이고, 머리 줄(36px)은 모든 도구가 같은 문법이다(시안 v2 규칙 e). */
+   칸은 대화 바탕보다 한 단 밝은 면 · 1px 테두리 · 둥근 모서리이고, 머리 줄(36px)은 모든 도구가 같은 문법이다(시안 v2 규칙 e).
+   브라우저 칸만 예외다 — 머리 없이 대화와 같은 면으로 서고, 탭 줄은 맨 위 줄의 지구본 앞으로 올라간다(.workbench-band-chrome). */
 .conversation-workbench {
   position: absolute;
   top: var(--conversation-top-row, 52px);
   bottom: 0;
   z-index: 1;
   pointer-events: none;
+  /* 대화의 바탕 — 칸 면으로 덮어쓰기 전에 붙들어 둔다. 머리 없는 브라우저 칸이 이 면을 쓴다. */
+  --workbench-canvas: var(--conversation-surface);
   /* 칸 안 본문(오른쪽 사이드바에서 옮겨 온 페인)은 열 바탕을 읽는다 — 칸 면으로 다시 준다. */
   --workbench-tile-face: var(--surface-panel);
 }
@@ -49,12 +52,52 @@
 /* 펼친 칸은 맨 위 줄 아래의 대화와 분할 영역 전체를 덮는다 — 다른 칸은 닫지 않고 숨긴다(Shell 은 계속 돈다). */
 .workbench-tile.is-expanded { z-index: 3; }
 .workbench-tile.is-hidden { visibility: hidden; }
-.workbench-tile.is-dragging { opacity: 0.55; }
 
-.conversation-workbench.is-resizing .workbench-tile,
-.conversation-workbench.is-dragging .workbench-tile {
+.conversation-workbench.is-resizing .workbench-tile {
   transition: none;
   user-select: none;
+}
+
+/* ── 머리 없는 브라우저 칸: 대화와 같은 면, 대화 쪽 1px 이음매 하나 ── */
+.workbench-tile[data-seamless="true"] {
+  --workbench-tile-face: var(--workbench-canvas);
+  border: 0;
+  border-left: 1px solid var(--hairline);
+  border-radius: 0;
+}
+
+.workbench-tile[data-seamless="true"].is-expanded { border-left: 0; }
+.workbench-tile[data-seamless="true"].is-focused { border-color: var(--hairline); }
+/* 지구본에서 번지고 접히는 동안은 자리 전이를 멈춘다 — 원이 칸을 따라 미끄러지지 않게. */
+.workbench-tile[data-motion] { transition: none; }
+
+/* ── 맨 위 줄의 브라우저 탭 줄 — 지구본 바로 앞, 분할 영역 위의 폭만 쓴다 ── */
+.conversation-browser-slot { display: inline-flex; align-items: center; min-width: 0; }
+.conversation-browser-slot:empty { display: none; }
+
+.workbench-band-chrome {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 30px;
+  margin-right: var(--space-2);
+  pointer-events: auto;
+}
+
+.workbench-band-chrome > .op-browser-cap { flex: 1; min-width: 0; }
+.workbench-band-chrome.is-enter { animation: workbench-band-in 340ms var(--ease-spring) both; }
+.workbench-band-chrome.is-leave { animation: workbench-band-out 160ms ease-in both; }
+
+/* 탭 줄은 지구본 쪽(오른쪽)에서 왼쪽으로 펼쳐진다. */
+@keyframes workbench-band-in {
+  from { opacity: 0; clip-path: inset(0 0 0 100%); transform: translateX(16px); }
+  to { opacity: 1; clip-path: inset(0); transform: none; }
+}
+
+@keyframes workbench-band-out {
+  from { opacity: 1; clip-path: inset(0); }
+  to { opacity: 0; clip-path: inset(0 0 0 100%); }
 }
 
 /* ── 칸 머리 ── */
@@ -117,34 +160,6 @@
   min-width: 0;
 }
 
-/* 가운데 이동 손잡이 — 마우스를 올리거나 키보드 초점이 왔을 때만 보인다. */
-.workbench-tile-grip {
-  position: absolute;
-  top: 2px;
-  left: 50%;
-  width: 36px;
-  height: 12px;
-  margin-left: -18px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: grab;
-  touch-action: none;
-  opacity: 0;
-  transition: opacity var(--duration-fast);
-}
-
-.workbench-tile-grip svg { width: 18px; height: 10px; }
-.workbench-tile:hover .workbench-tile-grip,
-.workbench-tile-grip:focus-visible { opacity: 1; }
-.workbench-tile-grip:hover { background: var(--control-rest-hover); color: var(--text-primary); }
-.workbench-tile-grip:focus-visible { box-shadow: var(--focus-face); }
-.workbench-tile.is-expanded .workbench-tile-grip { display: none; }
-
 .workbench-tile-actions {
   flex: none;
   display: inline-flex;
@@ -166,54 +181,8 @@
 }
 
 .workbench-tile-button svg { width: 14px; height: 14px; }
-.workbench-tile-button:hover,
-.workbench-tile-button[aria-expanded="true"] { background: var(--control-rest-hover); color: var(--text-primary); }
+.workbench-tile-button:hover { background: var(--control-rest-hover); color: var(--text-primary); }
 .workbench-tile-button:focus-visible { box-shadow: var(--focus-face); }
-
-.workbench-tile-menu-wrap { position: relative; display: inline-flex; }
-
-.workbench-tile-menu {
-  position: absolute;
-  top: 28px;
-  right: 0;
-  z-index: 20;
-  min-width: var(--popover-min-width);
-  display: grid;
-  padding: var(--popover-pad);
-  box-sizing: border-box;
-  border: 0;
-  border-radius: var(--popover-radius);
-  background: var(--popover-face);
-  box-shadow: var(--popover-surface-shadow);
-  width: var(--popover-width);
-  gap: var(--popover-list-gap);
-  --focus-face: inset 0 0 0 100vmax var(--wash-hover);
-}
-
-.workbench-tile-menu-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--popover-row-gap);
-  padding: 0 var(--popover-row-inline);
-  border: 0;
-  border-radius: var(--popover-row-radius);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--popover-font-size);
-  text-align: left;
-  cursor: pointer;
-  min-height: var(--popover-row);
-  font-weight: var(--weight-regular);
-  line-height: var(--popover-line-height);
-  letter-spacing: 0;
-}
-
-.workbench-tile-menu-item:hover:not(:disabled),
-.workbench-tile-menu-item:focus-visible { background: var(--wash-hover); outline: none; box-shadow: none; }
-.workbench-tile-menu-item:disabled { color: var(--text-tertiary); cursor: default; }
-.workbench-tile-menu-item kbd { font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); }
 
 /* 닫기 전에 묻는 한 줄 — 머리 바로 아래에 선다(Shell 에서 명령이 돌고 있을 때). */
 .workbench-tile-confirm {
@@ -307,34 +276,6 @@
 .conversation-workbench-gutter:focus-visible { outline: none; }
 .conversation-workbench-gutter:focus-visible::after { opacity: 1; background: var(--brass); }
 
-/* ── 끌어 옮기기 ── */
-.conversation-workbench-drop {
-  position: absolute;
-  z-index: 5;
-  box-sizing: border-box;
-  border: 1.5px solid var(--aurora);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--aurora) 18%, transparent);
-  pointer-events: none;
-  transition: left 90ms, top 90ms, width 90ms, height 90ms;
-}
-
-.conversation-workbench-ghost {
-  position: absolute;
-  z-index: 6;
-  padding: 6px 12px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-capsule);
-  box-shadow: var(--shadow-floating);
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--t-md);
-  font-weight: var(--weight-bold);
-  white-space: nowrap;
-  pointer-events: none;
-}
-
 /* 터미널(Shell)은 대화 본문의 터미널처럼 상자 없이 칸 바탕 위에 놓이고, 격자는 칸 경계에서 가로 여백만큼 물러나 시작한다. */
 .workbench-tile .terminal-shell {
   padding-inline: var(--conversation-surface-gutter);
@@ -354,6 +295,7 @@ html[data-desktop-shell="true"] .conversation-workbench-gutter {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workbench-tile,
-  .conversation-workbench-drop { transition: none; }
+  .workbench-tile { transition: none; }
+  .workbench-band-chrome.is-enter,
+  .workbench-band-chrome.is-leave { animation: none; }
 }

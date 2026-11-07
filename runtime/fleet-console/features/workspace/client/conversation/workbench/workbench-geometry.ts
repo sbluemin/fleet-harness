@@ -1,7 +1,5 @@
 import type { WorkbenchLayout, WorkbenchStack, WorkbenchTile } from "../../../shared/conversation-workbench.js";
 
-import type { WorkbenchDropTarget } from "./workbench-store.js";
-
 /**
  * 작업대 기하 — 왼쪽·오른쪽 사이드바 사이, 맨 위 줄 아래(작업 영역) 안에서 대화·분할 영역·아래 줄·칸의 자리를 정한다. 순수 함수다.
  *
@@ -220,55 +218,4 @@ export function computeWorkbenchGeometry(layout: WorkbenchLayout, width: number,
     expanded,
     collapsedColumns,
   };
-}
-
-/** 끄는 칸을 놓을 자리와 그 미리보기. 놓을 수 없는 자리면 null. */
-export interface DropPreview {
-  readonly target: WorkbenchDropTarget;
-  readonly rect: Rect;
-}
-
-const EDGE_SHARE = 0.32;
-
-/**
- * 포인터 아래의 놓을 자리 — 칸 위면 가장 가까운 가장자리 쪽(위·아래는 같은 열, 왼쪽·오른쪽은 새 열), 대화 위면 아래쪽은 「대화 아래」,
- * 오른쪽 가장자리는 첫 열 앞의 새 열이다. 열이 쌓인 동안(물러남)에는 열 단위 자리를 내지 않는다.
- */
-export function resolveDropPreview(geometry: WorkbenchGeometry, draggedId: string, x: number, y: number): DropPreview | null {
-  for (const entry of geometry.tiles) {
-    const { rect } = entry;
-    if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h) continue;
-    if (entry.tile.id === draggedId) return null;
-    const rx = (x - rect.x) / Math.max(1, rect.w);
-    const ry = (y - rect.y) / Math.max(1, rect.h);
-    if (entry.area === "below") {
-      const before = rx < 0.5;
-      return {
-        target: { area: "below", index: entry.index + (before ? 0 : 1) },
-        rect: before ? { ...rect, w: rect.w / 2 } : { ...rect, x: rect.x + rect.w / 2, w: rect.w / 2 },
-      };
-    }
-    const edges = [
-      { side: "top", distance: ry },
-      { side: "bottom", distance: 1 - ry },
-      ...(geometry.collapsedColumns ? [] : [{ side: "left", distance: rx }, { side: "right", distance: 1 - rx }]),
-    ].sort((a, b) => a.distance - b.distance);
-    const side = edges[0]!.side;
-    const { place } = entry;
-    if (side === "top") return { target: { area: "column", column: place.column, index: place.index }, rect: { ...rect, h: rect.h * EDGE_SHARE * 1.5 } };
-    if (side === "bottom") return { target: { area: "column", column: place.column, index: place.index + 1 }, rect: { ...rect, y: rect.y + rect.h * (1 - EDGE_SHARE * 1.5), h: rect.h * EDGE_SHARE * 1.5 } };
-    if (side === "left") return { target: { area: "new-column", at: place.column }, rect: { ...rect, w: rect.w * EDGE_SHARE * 1.5 } };
-    return { target: { area: "new-column", at: place.column + 1 }, rect: { ...rect, x: rect.x + rect.w * (1 - EDGE_SHARE * 1.5), w: rect.w * EDGE_SHARE * 1.5 } };
-  }
-  const conversationWidth = geometry.width - geometry.conversationRight;
-  const conversationHeight = geometry.height - geometry.conversationBottom;
-  if (x < 0 || x > conversationWidth || y < 0 || y > geometry.height) return null;
-  if (y > conversationHeight * 0.62) {
-    const top = Math.max(conversationHeight * 0.62, conversationHeight - geometry.height * DEFAULT_BELOW_RATIO);
-    return { target: { area: "below", index: Number.MAX_SAFE_INTEGER }, rect: { x: WORKBENCH_PAD, y: top, w: conversationWidth - WORKBENCH_PAD * 2, h: geometry.height - top - WORKBENCH_PAD } };
-  }
-  if (!geometry.collapsedColumns && x > conversationWidth - 120) {
-    return { target: { area: "new-column", at: 0 }, rect: { x: conversationWidth - 160, y: WORKBENCH_PAD, w: 152, h: geometry.height - WORKBENCH_PAD * 2 } };
-  }
-  return null;
 }
