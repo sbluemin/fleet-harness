@@ -13,7 +13,7 @@ import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, P
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
-import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, commodoreTabOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
+import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, commodoreTabOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { registerCommodoreContextRail } from "./commodore-context-rail.js";
 import { CommodoreZoneHost, commodoreConversationSurface, commodoreHomeTheater, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { installCommodoreBoard } from "./board.js";
@@ -65,7 +65,6 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     subscribe: (listener) => { const offState = subscribeCommodore(listener); const offList = subscribeCommodoreList(listener); return () => { offState(); offList(); }; },
     ids: () => readCommodoreList().map((row) => row.commodoreId),
     revision: commodoreRevision,
-    askOwners: openAskOwners,
     load: (commodoreId) => loadCommodore(commodoreId),
     open(commodoreId, options) {
       const theaterId = commodoreHomeTheater(commodoreId) ?? null;

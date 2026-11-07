@@ -705,11 +705,6 @@ export function openAsks(commodoreId: string | null): readonly CommodoreAsk[] {
   return open;
 }
 
-/** 답을 기다리는 질문의 소유 사령관 UUID — 화면 문맥 수와 관계없이 질문마다 한 줄만 세운다. */
-export function openAskOwners(): readonly string[] {
-  return [...theaters.keys()].filter((commodoreId) => openAsks(commodoreId).length > 0);
-}
-
 /* ── 폰 화면이 읽는 콘솔 사실 ───────────────────────────────────────── */
 
 /** 실험 기능 켜짐을 아는가 — 전역 설정을 읽기 전이면 「꺼짐」 화면 대신 불러오는 중으로 둔다. */

@@ -10,13 +10,13 @@ import { latestRecord, missionReady, missionTitle, type Objective } from "../sha
 import { actorKind, actorName, lastAct } from "./actors.js";
 import { objectiveConversation } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
-import { openCommodoreConversation, openCommodoreLog } from "./board-commodore.js";
+import { openCommodoreConversation } from "./board-commodore.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
-import { answeringText, askObjectiveTitle, commodoreAliasOf, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskOwners, personTurnAt, readCommodore, subscribeCommodore } from "./board-commodore.js";
+import { answeringText, commodoreAliasOf, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, personTurnAt, subscribeCommodore } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
-import { activeObjectiveId, viewedCommodoreId, findFinishedObjective, finishedObjectivesRevision, focusObjective, isObjectiveSurfaceOpen, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, readBoard, readOwnerView, revealObjective, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
+import { activeObjectiveId, viewedCommodoreId, findFinishedObjective, finishedObjectivesRevision, focusObjective, isObjectiveSurfaceOpen, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, readOwnerView, revealObjective, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -334,21 +334,6 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       openObjectiveFromCluster(objective.theaterId, objective.id);
     };
     out.push({ id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, root: commander, members, conversation, open, ...(personDecision ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
-  }
-  // 사령관의 질문 — 소유자마다 한 번만 읽는다. 행의 문맥도 소유 UUID로 고정해 Theater가 늘거나 바뀌어도 같은 줄·기록을 연다.
-  for (const commodoreId of openAskOwners()) {
-    const served = readCommodore(commodoreId).view?.asks?.objectives;
-    const board = readBoard(commodoreId);
-    for (const ask of openAsks(commodoreId)) {
-      const objectiveTitle = ask.objectiveId ? askObjectiveTitle(board, served, ask.objectiveId) : null;
-      out.push({
-        id: `commodore-ask:${ask.id}`, theaterId: commodoreId, commodoreId, title: ask.questions[0]?.text ?? "", members: [], open: () => openCommodoreLog(commodoreId),
-        row: {
-          groupId: null, order: -1, fold: [], commodore: true, decisionRequestedAt: ask.at, decisionQuestions: ask.questions.length,
-          decisionNote: (locale) => { const t = getT(locale); return objectiveTitle ? `${t("objectives.ask.title")} · ${objectiveTitle}` : t("objectives.ask.title"); },
-        },
-      });
-    }
   }
   return out;
 }
