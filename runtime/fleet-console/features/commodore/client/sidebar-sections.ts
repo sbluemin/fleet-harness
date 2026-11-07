@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { ConversationSpeaker } from "../../execution/shared/conversation/types.js";
 import type { CommodoreSidebarCommand, CommodoreSidebarLayout } from "../shared/contracts/sidebar-layout.js";
 import { refreshCommodoreList, replaceCommodoreList, replaceCommodoreSidebarLayout, replaceSidebarOrder, useCommodoreSidebarLayout } from "./commodore-list.js";
 import { updateCommodoreSidebar } from "./theaters-api.js";
@@ -26,6 +27,25 @@ export function useCommodoreSidebarCommands() {
     }
   }, []);
   return { layout, error, busy, run };
+}
+
+/** 사령관이 속한 섹션 이름 — 섹션이 없거나 「섹션 없음」이면 null. */
+export function commodoreSectionName(layout: CommodoreSidebarLayout, commodoreId: string): string | null {
+  const sectionId = layout.membership[commodoreId];
+  return sectionId ? layout.sections.find((section) => section.id === sectionId)?.name ?? null : null;
+}
+
+/**
+ * 사령관·TF 대화의 말풍선 머리 소속 칩 — 사령관 발화자의 섹션 이름. 사이드바 배치 스토어를 구독하므로 섹션 이름 변경·이동이
+ * 열린 대화에 바로 반영된다. 발화자에 사령관 UUID가 없으면(1:1 대화의 자기 말) 이 대화의 사령관으로 읽는다.
+ */
+export function useCommodoreSpeakerSection(conversationCommodoreId: string | null = null): (speaker: ConversationSpeaker) => string | null {
+  const layout = useCommodoreSidebarLayout();
+  return useMemo(() => (speaker: ConversationSpeaker) => {
+    if (speaker.kind !== "commodore") return null;
+    const id = speaker.commodoreId ?? conversationCommodoreId;
+    return id ? commodoreSectionName(layout, id) : null;
+  }, [layout, conversationCommodoreId]);
 }
 
 /** 원래 행 순서를 보존한다. 섹션이 없으면 제목 없는 평평한 목록 하나를 돌려준다. */

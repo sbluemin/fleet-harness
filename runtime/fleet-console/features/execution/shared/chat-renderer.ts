@@ -125,6 +125,11 @@ export interface AgentConversationProps {
   /** The commodore UUID whose face a `commodore` speaker's mongle shows — the same face as the card and list. */
   readonly commodoreId?: string;
   /**
+   * The group a speaker belongs to, shown as a chip in the speaker's own tone before the name on its bubble heads. Return null to
+   * show nothing. Omitted, names stand alone.
+   */
+  readonly speakerSection?: ((speaker: ConversationSpeaker) => string | null) | null;
+  /**
    * What a working `commodore` speaker is doing in its turn (its `run.step`). The working line names it in plain words after the
    * speaker's name instead of tool names. Objective speakers' activity comes from their own sessions; omitted, the line says "working".
    */

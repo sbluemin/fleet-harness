@@ -31,6 +31,7 @@ import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
+import { useCommodoreSpeakerSection } from "./sidebar-sections.js";
 import { CommodoreComposer, CommodoreDescription, CommodoreSessionSettings, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   commodoreComposerTopEntriesRenderer,
@@ -439,6 +440,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   readonly onOpenLog: () => void;
 }) {
   const Conversation = commodoreConversationRenderer();
+  const speakerSection = useCommodoreSpeakerSection(commodoreId);
   const TopEntries = commodoreComposerTopEntriesRenderer();
   const board = useObjectiveTheater(commodoreId);
   const asks = view?.state.asks;
@@ -496,6 +498,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
           working={working}
           language={language}
           commodoreId={commodoreId}
+          speakerSection={speakerSection}
           commodoreActivity={activity}
           loading={!loaded}
           empty={t("commodore.log.empty")}

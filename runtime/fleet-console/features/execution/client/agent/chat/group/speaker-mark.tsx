@@ -124,8 +124,14 @@ export function speakerNameStyle(tone: string | null): React.CSSProperties | und
   return tone ? { "--speaker-name-ink": `var(--id-${tone})`, "--speaker-name-face": `var(--mongle-${tone})` } as React.CSSProperties : undefined;
 }
 
+/**
+ * 발화자의 소속(사령관의 사이드바 섹션) — 대화가 준 경우에만 말풍선 머리 이름 앞에 그 이름 잉크의 칩으로 선다.
+ * 주지 않는 대화(지휘관·구성원)는 이름만이다.
+ */
+export const ConversationSpeakerSection = React.createContext<((speaker: ConversationSpeaker) => string | null) | null>(null);
+
 /** 발화자 이름 — 말풍선 머리의 사령관·지휘관만 자기 아바타 톤을 읽고, TF·구성원의 명시된 톤은 보존한다. */
-export function SpeakerName({ speaker, className = "", avatarTone = false }: { readonly speaker: ConversationSpeaker; readonly className?: string; readonly avatarTone?: boolean }) {
+export function SpeakerName({ speaker, className = "", avatarTone = false, section = null }: { readonly speaker: ConversationSpeaker; readonly className?: string; readonly avatarTone?: boolean; readonly section?: string | null }) {
   const book = useAvatarBook();
   const commodoreKey = useCommodoreSpeakerKey();
   const key = !avatarTone || speaker.mark?.tone ? null
@@ -134,7 +140,10 @@ export function SpeakerName({ speaker, className = "", avatarTone = false }: { r
   const look = key ? resolveMongleLook(book, key) : null;
   const tone = look ? look.tone ?? mongleBase(look.base).tone : speakerTone(speaker);
   const style = speakerNameStyle(tone);
-  return <span className={`group-chat-name${tone ? ` is-tone-${tone}` : ` is-${speaker.kind}`}${look ? " is-avatar-tone" : ""}${className ? ` ${className}` : ""}`} style={style}>{speaker.name}</span>;
+  const classes = `group-chat-name${tone ? ` is-tone-${tone}` : ` is-${speaker.kind}`}${look ? " is-avatar-tone" : ""}${section ? " has-section" : ""}${className ? ` ${className}` : ""}`;
+  // 칩은 이름 앞(왼쪽)에, 이름 안에 서서 이름의 지금 잉크(테마·TF 혼합 포함)를 그대로 읽는다.
+  if (section) return <span className={classes} style={style}><span className="group-chat-section-tag" title={section}>{section}</span><span className="group-chat-name-text">{speaker.name}</span></span>;
+  return <span className={classes} style={style}>{speaker.name}</span>;
 }
 
 /**
