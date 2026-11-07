@@ -71,7 +71,7 @@
 /* 지구본에서 번지고 접히는 동안은 자리 전이를 멈춘다 — 원이 칸을 따라 미끄러지지 않게. */
 .workbench-tile[data-motion] { transition: none; }
 
-/* ── 맨 위 줄의 브라우저 탭 줄 — 지구본 바로 앞, 분할 영역 위의 폭만 쓴다 ── */
+/* ── 맨 위 줄의 브라우저 칸 자리 — 지구본 바로 앞. 탭은 여기 서지 않는다(탭은 브라우저 본문 왼쪽의 세로 레일). 지구본이 닫는 길이 아닐 때의 닫기만 선다. ── */
 .conversation-browser-slot { display: inline-flex; align-items: center; min-width: 0; }
 .conversation-browser-slot:empty { display: none; }
 
@@ -85,19 +85,17 @@
   pointer-events: auto;
 }
 
-.workbench-band-chrome > .op-browser-cap { flex: 1; min-width: 0; }
-.workbench-band-chrome.is-enter { animation: workbench-band-in 340ms var(--ease-spring) both; }
+.workbench-band-chrome.is-enter { animation: workbench-band-in 200ms ease-out both; }
 .workbench-band-chrome.is-leave { animation: workbench-band-out 160ms ease-in both; }
 
-/* 탭 줄은 지구본 쪽(오른쪽)에서 왼쪽으로 펼쳐진다. */
 @keyframes workbench-band-in {
-  from { opacity: 0; clip-path: inset(0 0 0 100%); transform: translateX(16px); }
-  to { opacity: 1; clip-path: inset(0); transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes workbench-band-out {
-  from { opacity: 1; clip-path: inset(0); }
-  to { opacity: 0; clip-path: inset(0 0 0 100%); }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* ── 칸 머리 ── */
@@ -144,11 +142,6 @@
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
 }
-
-/* 브라우저 칸은 머리가 곧 탭 줄이다 — 캡션이 남은 폭을 채운다. */
-.workbench-tile-title > .op-browser-cap { flex: 1; min-width: 0; }
-/* 캡션 메뉴는 본문 위로 내려온다 — 제목에서 자르면 메뉴의 z-index와 무관하게 클릭도 잘린다. 탭 줄은 자체적으로 자른다. */
-.workbench-tile-title:has(> .op-browser-cap) { overflow: visible; }
 
 .workbench-tile-tools {
   flex: 0 1 auto;
