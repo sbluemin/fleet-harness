@@ -521,7 +521,7 @@ function LedgerMark({ rootId, objectiveId, name, open, available, t, children }:
 }
 
 /** 구성원 탭의 명단 — 머리(셈) 아래 첫 줄에 지휘관 실행 설정(lead)이 같은 줄 문법으로 서고, 이어서 구성원 줄이다. 탭이 접힘을 대신하므로 머리는 접지 않는다. */
-function MemberRoster({ objective, t, call, request, objectiveRecordState, rows, touchable, readOnly = false, headless = false, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; objectiveRecordState: DetailProps["objectiveRecordState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; readOnly?: boolean; headless?: boolean; lead: ReactNode }) {
+function MemberRoster({ objective, t, call, request, objectiveRecordState, rows, touchable, readOnly = false, compact = false, headless = false, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; objectiveRecordState: DetailProps["objectiveRecordState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; readOnly?: boolean; headless?: boolean; compact?: boolean; lead: ReactNode }) {
   const ledger = useLedgerObjective(objective.id);
   const ledgerReady = canOpenLedger();
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
@@ -616,7 +616,9 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
   };
 
   const rosterRef = useRef<HTMLDivElement | null>(null);
-  return <div ref={rosterRef} className={`objectives-members${readOnly ? " is-compact" : ""}`}>
+  // 임무 팝업의 컴팩트 줄 — 한 줄에 이름 오른쪽으로 역할 문구를 두고, 사람이 고치는 칸(역할 입력·설명 편집)은 없다. 휴지통은 남는다.
+  const popupLine = compact && !readOnly;
+  return <div ref={rosterRef} className={`objectives-members${readOnly ? " is-compact" : popupLine ? " is-popup-line" : ""}`}>
     {/* 머리는 임무 섹션과 같은 문법 — 글리프 · 「구성원」 · 수. 이름만 있는 빈 머리 띠는 컴팩트 자리에서 그리지 않는다. */}
     {headless ? null : <SectionHead label={`${t("objectives.members.title")} ${objective.members.length}`} />}
     <div id="objectives-sec-members">
@@ -647,13 +649,13 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
             <span className="objectives-member-name">
               {/* 너비는 글자 수가 아니라 실제 글자 폭으로 — 숨은 복제(data-value)가 칸을 잡는다(한글처럼 넓은 글자도 잘리지 않게). */}
               <span key={`role:${member.role}`} className="objectives-member-role-fit" data-value={member.role}>
-                <input className="objectives-member-role" aria-label={t("objectives.members.roleAria", { n: index + 1 })} defaultValue={member.role} readOnly={!touchable} maxLength={40} size={1}
+                <input className="objectives-member-role" aria-label={t("objectives.members.roleAria", { n: index + 1 })} defaultValue={member.role} readOnly={!touchable || popupLine} maxLength={40} size={1}
                   onInput={(event) => { event.currentTarget.parentElement!.dataset.value = event.currentTarget.value; }}
                   onKeyDown={inlineKeys(member.role)} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== member.role) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { role: value } }); else { event.target.value = member.role; event.target.parentElement!.dataset.value = member.role; } }} />
               </span>
               {member.by === "commander" && !readOnly ? <span className="objectives-member-by">{t("objectives.members.proposed")}</span> : null}
             </span>
-            {readOnly ? (member.brief ? <span className="objectives-sr">{member.brief}</span> : null) : <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={readOnly ? "" : touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
+            {readOnly ? (member.brief ? <span className="objectives-sr">{member.brief}</span> : null) : popupLine ? (member.brief ? <span className="objectives-member-brief">{member.brief}</span> : null) : <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={readOnly ? "" : touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />}
           </div>
           <div className="objectives-member-meta">
@@ -1452,7 +1454,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   );
   const sCrew = (
       <div className="objectives-group objectives-crew-group">
-        <MemberRoster objective={objective} t={t} call={call} request={request} objectiveRecordState={objectiveRecordState} rows={launchRows} touchable={touchable} readOnly={readOnly} headless={line} lead={commanderRow} />
+        <MemberRoster objective={objective} t={t} call={call} request={request} objectiveRecordState={objectiveRecordState} rows={launchRows} touchable={touchable} readOnly={readOnly} compact={compact} headless={line} lead={commanderRow} />
       </div>
   );
   const sOrigin = (<>
@@ -1600,7 +1602,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   // 임무 섹션 — 구성원 탭 맨 아래. 섹션 머리(글리프 · 「임무」 · 안 읽은 점 · 상태 셈 | 형상 스위치 · 크게 보기), 허용 대기 줄, 그래프.
   // 임무 목록은 없다 — 조작은 그래프 팝업이 맡으므로 머리는 접히지 않는다. 임무 추가는 지휘관이 맡는다.
   const unseenAny = objective.missions.some((mission) => unseenRecords(mission) > 0);
-  const sMissions = readOnly && objective.missions.length === 0 ? null : <div className="objectives-group objectives-missions-group">
+  const sMissions = readOnly && objective.missions.length === 0 ? null : <div className={`objectives-group objectives-missions-group${line && awaitingMissions.length === 0 ? " is-tight" : ""}`}>
     <SectionHead line={line} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.tabs.unseenDot")} /> : null}{renderCounts()}</>}
       {...(objective.missions.length ? { actions: graphTools } : {})} />
     {missionAttention}
@@ -1630,7 +1632,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
       <div className="objectives-group objectives-result-folds">
         {/* 회고 — 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
         {objective.handoff ? <>
-          <SectionHead label={t("objectives.retro.title")} controls="objectives-sec-retro" fold={readOnly} expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
+          <SectionHead label={t("objectives.retro.title")} controls="objectives-sec-retro" named={readOnly} expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
           <div id="objectives-sec-retro" hidden={!sectionOpen("detail:retro")}>
             <Retrospective
               t={t}
@@ -1642,7 +1644,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         </> : null}
         {/* 후속 목표 — 진행 중에 모인 후보(읽기만), 완료 때 고른 후보의 배치 요약과 줄 상태, 남긴 후보. */}
         {showFollowupResults ? <>
-          <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" fold={readOnly} expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
+          <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" named={readOnly} expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
           <div id="objectives-sec-followup-results" hidden={!sectionOpen("detail:followupResults")}>
             {followupCollected.length ? <div className="objectives-followup-collected">
               <p className="objectives-followup-caption">{t("objectives.followup.collected", { n: followupCollected.length })}</p>
@@ -1669,7 +1671,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
           </div>
         </> : null}
         {objective.extensions.length ? <>
-          <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" fold={readOnly} expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
+          <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" named={readOnly} expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
           <div id="objectives-sec-extensions" hidden={!sectionOpen("detail:extensions")}>
             <ExtensionHistory objective={objective} t={t} language={language} />
           </div>

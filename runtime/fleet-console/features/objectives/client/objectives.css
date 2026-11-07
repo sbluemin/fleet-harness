@@ -207,6 +207,8 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row.is-rule.is-line { min-height: 0; height: 22px; gap: 8px; }
 .objectives-row.is-rule:is(.is-fold, .is-line)::before, .objectives-row.is-rule:is(.is-fold, .is-line):not(:first-child)::before { content: ""; position: static; flex: 1; min-width: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
 .objectives-row.is-rule.is-fold .objectives-section-chev { margin-left: 0; }
+/* 구분선 줄 머리 바로 아래 그래프 — 배치가 위쪽에 둔 여분(첫 줄 위 여백)을 걷어 머리와 지휘관 레인 사이의 빈 띠를 없앤다. 허용 대기 줄이 있을 때는 겹치지 않게 그대로 둔다. */
+.objectives-missions-group.is-tight > #objectives-sec-missions { margin-top: -14px; }
 .objectives-group:is(:has(> .objectives-row.is-fold:first-child), :has(> .objectives-row.is-line:first-child), :has(> .objectives-section-head-bar.is-line:first-child), :has(> .objectives-criteria-head > .objectives-row.is-line:first-child)) { padding-top: 0; border-top: 0; }
 .objectives-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .objectives-section-head-bar { display: flex; align-items: center; position: relative; }
@@ -349,6 +351,18 @@ span.objectives-row-main { cursor: default; }
 .objectives-members.is-compact .objectives-member .objectives-avatar { width: 22px; height: 22px; }
 .objectives-members.is-compact .objectives-member-name { min-height: 22px; }
 .objectives-members.is-compact .objectives-member-meta { flex-wrap: nowrap; white-space: nowrap; }
+/* 임무 팝업의 컴팩트 줄 — 아바타 · 이름 · 역할 문구(이름 오른쪽) · 모델·임무 수 · 휴지통 한 줄. */
+.objectives-members.is-popup-line { padding: 2px 0; }
+.objectives-members.is-popup-line .objectives-member { grid-template-columns: 22px minmax(0, max-content) minmax(0, 1fr) auto; grid-template-areas: "mark name brief meta"; gap: 0 12px; min-height: 30px; padding: 3px 14px 3px 22px; }
+.objectives-members.is-popup-line .objectives-member:has(> .objectives-member-remove) { grid-template-columns: 22px minmax(0, max-content) minmax(0, 1fr) auto auto; grid-template-areas: "mark name brief meta remove"; }
+.objectives-members.is-popup-line .objectives-member .objectives-avatar { width: 22px; height: 22px; }
+.objectives-members.is-popup-line .objectives-member-name { min-height: 22px; }
+.objectives-members.is-popup-line .objectives-member-brief { grid-area: brief; align-self: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-members.is-popup-line .objectives-member-meta { flex-wrap: nowrap; white-space: nowrap; }
+/* 모델 변경 말풍선(예약·실패·적용)은 컴팩트 줄에서도 칩 아래 둘째 줄의 제 칸에 선다 — 이 칸이 없으면 말풍선이 묵시 트랙으로 밀려 줄이 옆으로 늘어난다. */
+.objectives-members.is-compact .objectives-member:has(> .objectives-member-bubble) { grid-template-areas: "mark name meta" ". . bubble"; }
+.objectives-members.is-popup-line .objectives-member:has(> .objectives-member-bubble) { grid-template-areas: "mark name brief meta" ". . . bubble"; }
+.objectives-members.is-popup-line .objectives-member:has(> .objectives-member-remove):has(> .objectives-member-bubble) { grid-template-areas: "mark name brief meta remove" ". . . bubble bubble"; }
 .objectives-member-note { margin: 0 14px 6px 62px; padding: 6px 10px; border: 1px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
 .objectives-member-note.is-error { border-color: color-mix(in oklch, var(--coral) 35%, transparent); background: color-mix(in oklch, var(--coral) 8%, transparent); }
 .objectives-member-note.is-warn { border-color: color-mix(in oklch, var(--warn) 35%, transparent); background: color-mix(in oklch, var(--warn) 8%, transparent); }
