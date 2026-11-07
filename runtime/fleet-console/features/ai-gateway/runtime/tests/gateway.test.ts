@@ -7,6 +7,8 @@ import {
   CODEX_SUBSCRIPTION_MODELS,
   buildAnthropicModelList,
   clampReasoningEffort,
+  claudeAutoCompactTarget,
+  claudeModelAutoCompactWindows,
   encodeReasoningSignature,
   findClaudeGatewayModel,
   findGatewayModel,
@@ -181,6 +183,20 @@ describe("model catalog", () => {
       },
     };
     expect(() => parseGatewayModelsRegistry(invalidOverride)).toThrow(/override is not an advertised level/);
+  });
+
+  it("gives every name of a Claude model the same auto-compact window", () => {
+    // Claude Code takes the first of several keys that name one model, so a window that differs by name
+    // would make object order decide when a session compacts.
+    const opus = { ...GATEWAY_MODELS.find((model) => model.claudeAlias === "opus")!, upstreamId: "claude-opus-5-5" };
+    const models = [opus];
+    const windows = claudeModelAutoCompactWindows(models, null);
+    expect(Object.keys(windows).sort()).toEqual(["claude-opus-5-5[1m]", "opus[1m]"]);
+    expect(windows["opus[1m]"]).toBe(windows["claude-opus-5-5[1m]"]);
+    // A session's alias, its pinned id, and an id the catalog has not learned yet all reach the same names.
+    for (const requested of ["opus[1m]", "claude-opus-5-5[1m]", "claude-opus-5-6[1m]"]) {
+      expect(claudeAutoCompactTarget(requested, models).keys).toEqual(expect.arrayContaining(["opus[1m]", "claude-opus-5-5[1m]", requested]));
+    }
   });
 });
 
