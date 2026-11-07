@@ -109,7 +109,7 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
           const objectiveId = commanderObjectiveId(item.layout.cluster);
           if (objectiveId === null) return null;
           // 펼침 안의 길(임무·결정·결과물로 가기)은 그 탭을 고르기만 한다 — 다시 눌러 접기는 행 글리프만의 동작이다.
-          return <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setExpandedTab} onOpenObjective={(id) => openCommanderConversation(commodoreId, id)} />;
+          return <CommanderRowPanel readOnly commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setExpandedTab} onOpenObjective={(id) => openCommanderConversation(commodoreId, id)} />;
         },
       }}
     />

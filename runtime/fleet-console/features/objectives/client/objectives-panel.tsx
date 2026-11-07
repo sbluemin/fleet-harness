@@ -110,7 +110,7 @@ function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: st
 /** 한 목표의 상세 한 탭을 그린다 — 우측 작업 탭의 임무 팝업·행 펼침이 쓴다.
  * 탭 줄은 두지 않는다. 팝업 안의 길(결정·결과물로 가기)이 탭을 바꾼다.
  */
-export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab, onGlyphTab, onGraphFitWidth }: {
+export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab, onGlyphTab, onGraphFitWidth, readOnly = false }: {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly language: "en" | "ko";
@@ -121,6 +121,8 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
   /** 내용 안의 길(결정·임무·결과물로 가기)이 탭을 바꿀 때 알린다. */
   readonly onGlyphTab: (tab: DetailTab) => void;
   readonly onGraphFitWidth?: (width: number) => void;
+  /** 우측 사이드바 펼침만 읽기 전용이다 — 임무 팝업은 같은 패널을 편집 가능하게 쓴다. */
+  readonly readOnly?: boolean;
 }) {
   const t = getT(language);
   const board = useObjectiveBoard(commodoreId);
@@ -175,7 +177,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
       request={request}
       tab={tab}
       onTab={onGlyphTab}
-      readOnly
+      readOnly={readOnly}
       sectionOpen={(key) => key in collapsed ? !collapsed[key] : false}
       onToggleSection={(key) => setCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
       groupOpen={(key) => key in groupCollapsed ? !groupCollapsed[key] : false}
@@ -1598,7 +1600,6 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         <SectionHead
           label={`${t("objectives.decisions.title")} ${objective.decisions.length}`}
           controls="objectives-sec-decisions"
-          named={readOnly}
           expanded={sectionOpen("detail:decisions")}
           onToggle={() => onToggleSection("detail:decisions")}
         />
@@ -1614,7 +1615,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
       <div className="objectives-group objectives-result-folds">
         {/* 회고 — 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
         {objective.handoff ? <>
-          <SectionHead label={t("objectives.retro.title")} controls="objectives-sec-retro" named={readOnly} expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
+          <SectionHead label={t("objectives.retro.title")} controls="objectives-sec-retro" expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
           <div id="objectives-sec-retro" hidden={!sectionOpen("detail:retro")}>
             <Retrospective
               t={t}
@@ -1626,7 +1627,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         </> : null}
         {/* 후속 목표 — 진행 중에 모인 후보(읽기만), 완료 때 고른 후보의 배치 요약과 줄 상태, 남긴 후보. */}
         {showFollowupResults ? <>
-          <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" named={readOnly} expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
+          <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
           <div id="objectives-sec-followup-results" hidden={!sectionOpen("detail:followupResults")}>
             {followupCollected.length ? <div className="objectives-followup-collected">
               <p className="objectives-followup-caption">{t("objectives.followup.collected", { n: followupCollected.length })}</p>
@@ -1653,7 +1654,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
           </div>
         </> : null}
         {objective.extensions.length ? <>
-          <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" named={readOnly} expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
+          <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
           <div id="objectives-sec-extensions" hidden={!sectionOpen("detail:extensions")}>
             <ExtensionHistory objective={objective} t={t} language={language} />
           </div>
