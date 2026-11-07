@@ -403,7 +403,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 시작 전 표면이 새로 서거나 그 목표가 보드에 늦게 들어올 때 한 번만 맞춘다. 사람이 고친 선택은 표면이 바뀔 때까지 둔다.
   useEffect(() => {
     if (!state.loaded) return;
-    const standingOnBoard = standingId !== null && state.objectives.some((objective) => objective.id === standingId);
+    // 가운데 완료 화면이 읽어 둔 끝난 목표도 보드 밖의 서 있는 목표다 — 출처를 따라 들어와도 레일이 그 목표를 보인다.
+    const standingOnBoard = standingId !== null && (state.objectives.some((objective) => objective.id === standingId) || shownDone?.id === standingId);
     if (standingId !== followedStandingId) {
       if (!standingOnBoard) {
         if (standingId === null) followedStandingId = null;
@@ -413,8 +414,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         return;
       }
     }
-    if (selected && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
-  }, [state.loaded, state.objectives, selected, setSelected, standingId]);
+    if (selected && selected !== shownDone?.id && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
+  }, [state.loaded, state.objectives, selected, setSelected, standingId, shownDone]);
 
   // 중앙 하단 알림은 두지 않는다 — 결과는 화면 자체가 말한다(행·비콘·목록). 호출부는 남겨 두되 아무것도 띄우지 않는다.
   const toast = useCallback((_text: string, _undo?: () => Promise<void>) => undefined, []);
