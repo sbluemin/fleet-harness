@@ -15,7 +15,7 @@ import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-sett
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
 import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, BrowserNavTailContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
-import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
+import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import "./browser-panel.css";
 
 export interface BrowserClientServices {
@@ -544,6 +544,12 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
 
 /** 호버가 레일을 떠난 뒤 접기까지의 유예 — 레일에서 뷰 위로 겹친 펼침 쪽(자식 창)으로 넘어가는 순간의 빈틈과 가장자리 스침을 흡수한다. */
 const RAIL_LEAVE_MS = 160;
+/** 펼침·접힘 전환 길이 — `browser-panel.css` 의 `op-browser-rail-reveal` 과 같아야 한다. */
+const RAIL_MOTION_MS = 180;
+/** 펼침 표지(`is-opening`)를 붙들어 두는 시간 — 자식 창이 늦게 떠도 전환이 한 번은 재생되도록 전환 길이보다 길게 둔다. */
+const RAIL_OPENING_HOLD_MS = 420;
+
+type RailPhase = "closed" | "opening" | "open" | "closing";
 
 /**
  * 세로 탭 레일 — Chrome 「세로로 탭 표시」 모양의 브라우저 탭 줄. 기본은 아이콘 한 열로 접혀 있고(`BROWSER_RAIL_COLLAPSED_PX`),
@@ -563,8 +569,37 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
   // 사람이 펼친 스페이스들. 이 대화의 스페이스(home)와 지금 화면에 띄운 스페이스는 따로 꼽지 않아도 펼쳐진다.
   const [openSpaces, setOpenSpaces] = React.useState<readonly string[]>([]);
 
+  const railRef = React.useRef<HTMLDivElement | null>(null);
   const open = pinned || hovered || keyboardFocus;
+  // 펼침·접힘은 클래스(`is-opening`/`is-closing`)가 CSS 전환을 일으킨다. 접히는 동안에도 폭은 펼친 채로 남아 가림 표면의 자리가
+  // 흔들리지 않고, 끝난 뒤에 한 번에 접힌다 — 자식 창은 자리가 바뀌는 순간마다 다시 그려지므로 폭을 움직이지 않고 잘라 보이게만 한다.
+  const [phase, setPhase] = React.useState<RailPhase>(open ? "open" : "closed");
+  React.useLayoutEffect(() => {
+    if (open) {
+      setPhase((current) => pinned || current === "open" ? "open" : "opening");
+      if (pinned) return undefined;
+      const timer = setTimeout(() => setPhase("open"), RAIL_OPENING_HOLD_MS);
+      return () => clearTimeout(timer);
+    }
+    setPhase((current) => current === "closed" ? "closed" : "closing");
+    const timer = setTimeout(() => setPhase("closed"), RAIL_MOTION_MS);
+    return () => clearTimeout(timer);
+  }, [open, pinned]);
+  const expanded = open || phase === "closing";
   React.useEffect(() => () => { if (leaveTimer.current !== null) clearTimeout(leaveTimer.current); }, []);
+  // 자식 창이 포인터를 넘겨받으면 Console 창은 실제 leave 를 받는다 — 그 leave 는 닫으라는 뜻이 아니다. 자식 창에서 실제로 벗어난 것은
+  // 자식 창이 전하는 합성 leave 나, Console 쪽에서 레일 밖으로 움직이는 진짜 포인터가 알린다(여기서 닫는다).
+  React.useEffect(() => {
+    if (!hovered) return undefined;
+    const onMove = (event: PointerEvent) => {
+      if (!event.isTrusted || event.pointerType === "touch") return;
+      if (event.target instanceof Node && railRef.current?.contains(event.target)) return;
+      if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
+      leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
+    };
+    document.addEventListener("pointermove", onMove, true);
+    return () => document.removeEventListener("pointermove", onMove, true);
+  }, [hovered]);
 
   const home = panel?.homeSpaceId ?? null;
   const displayed = panel?.displayedSpaceId ?? null;
@@ -621,6 +656,9 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
   };
   const onPointerLeave = (event: React.PointerEvent) => {
     if (event.pointerType === "touch") return;
+    // 레일이 자식 창에 떠 있는 동안 Console 창이 받는 진짜 leave 는 자식 창이 포인터를 넘겨받았다는 뜻일 뿐이다. 이걸 닫음으로 읽으면
+    // 접힌 레일 위에서 가만히 있는 포인터가 접힘→펼침→접힘을 되풀이한다(깜빡임).
+    if (event.nativeEvent.isTrusted && railRef.current?.hasAttribute(NATIVE_FLOAT_ATTRIBUTE)) return;
     if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
     leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
   };
@@ -657,10 +695,13 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
   return (
     <div className={`op-browser-rail-slot${pinned ? " is-pinned" : ""}`} style={widths}>
       <div
-        className={`op-browser-rail${open ? " is-open" : ""}${pinned ? " is-pinned" : ""}${driving ? " is-driving" : ""}`}
+        ref={railRef}
+        className={`op-browser-rail${expanded ? " is-open" : ""}${pinned ? " is-pinned" : ""}${driving ? " is-driving" : ""}${!pinned && phase === "opening" ? " is-opening" : ""}${!pinned && phase === "closing" ? " is-closing" : ""}`}
         {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : { role: "group", "aria-label": t("terminal.browser.tabs") })}
-        // 고정하지 않은 펼침은 본문 위에 겹쳐 그려진다 — 네이티브 뷰가 가리지 않게 가림 표면으로 알린다.
-        {...(open && !pinned ? COVERS_NATIVE_VIEW : {})}
+        // 전환은 자식 창에서도 재생된다 — 표지가 있는 표면만 자식 창의 애니메이션 차단에서 빠진다.
+        {...{ [NATIVE_FLOAT_MOTION_ATTRIBUTE]: "" }}
+        // 고정하지 않은 펼침은 본문 위에 겹쳐 그려진다 — 네이티브 뷰가 가리지 않게 가림 표면으로 알린다. 접히는 전환 동안에도 유지한다.
+        {...(expanded && !pinned ? COVERS_NATIVE_VIEW : {})}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
         onFocus={onFocus}

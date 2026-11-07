@@ -13,6 +13,14 @@
 .op-browser-rail-slot.is-pinned { width: var(--op-rail-expanded); }
 .op-browser-rail { position: absolute; top: 0; bottom: 0; left: 0; width: var(--op-rail-collapsed); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--ink-deep); border-right: 1px solid var(--hairline); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); }
 .op-browser-rail.is-open { width: var(--op-rail-expanded); }
+/* 펼침·접힘 전환 — 폭은 늘 펼친 값에서 시작하고 끝나며, 오른쪽 가장자리만 잘라 움직인다(레이아웃과 가림 표면의 자리가 전환 동안 변하지 않는다).
+   접힘은 전환이 끝난 뒤 한 번에 폭이 줄어든다(`RAIL_MOTION_MS`). 자식 창에 떠 있는 동안에는 원본이 아니라 자식 창의 사본이 재생한다. */
+@keyframes op-browser-rail-reveal { from { clip-path: inset(-24px calc(var(--op-rail-expanded) - var(--op-rail-collapsed)) -24px -24px); } to { clip-path: inset(-24px); } }
+@keyframes op-browser-rail-conceal { from { clip-path: inset(-24px); } to { clip-path: inset(-24px calc(var(--op-rail-expanded) - var(--op-rail-collapsed)) -24px -24px); } }
+.op-browser-rail.is-opening:not([data-native-float]) { animation: op-browser-rail-reveal 180ms cubic-bezier(0.2, 0, 0, 1) both; }
+.op-browser-rail.is-closing:not([data-native-float]) { animation: op-browser-rail-conceal 180ms cubic-bezier(0.4, 0, 1, 1) both; }
+.op-browser-rail.is-opening[data-native-float], .op-browser-rail.is-closing[data-native-float] { animation: none; }
+@media (prefers-reduced-motion: reduce) { .op-browser-rail.is-opening, .op-browser-rail.is-closing { animation: none !important; } }
 .op-browser-rail.is-open:not(.is-pinned) { box-shadow: var(--popover-surface-shadow); }
 .op-browser-rail:focus-visible, .op-browser-rail :focus-visible { box-shadow: var(--focus-face); outline: none; }
 /* 에이전트 세션 — 레일의 틴트와 2px 선. reduced-motion 은 균일 채움으로 단락한다. */

@@ -28,6 +28,8 @@ const FLOAT_TRACK_MS = 200;
 const FLOAT_BLUR_GRACE_MS = 180;
 /** 원본 요소가 자식 창에 떠 있음을 나타내는 표지 — 가림 판정도 이 안의 요소는 덮개로 세지 않는다. */
 export const NATIVE_FLOAT_ATTRIBUTE = "data-native-float";
+/** 자식 창에서도 자기 CSS 전환·애니메이션을 재생하는 표면에 다는 표지 — 달지 않은 표면은 자식 창에서 정지한 채 그려진다(`float-surface.ts`). */
+export const NATIVE_FLOAT_MOTION_ATTRIBUTE = "data-float-motion";
 /** 브라우저 네이티브 자리를 가진 요소에 다는 표지 — 값은 그 브라우저의 키(`/api/v1/browser/objectives/:id`). */
 export const NATIVE_FLOAT_TARGET_ATTRIBUTE = "data-native-float-target";
 
@@ -350,7 +352,7 @@ function serialize(element: HTMLElement, rect: DOMRect, left: number, top: numbe
   }
   const pin = `position:fixed!important;left:${rect.left - left + FLOAT_PAD}px!important;top:${rect.top - top + FLOAT_PAD}px!important;right:auto!important;bottom:auto!important;margin:0!important;`
     + `width:${rect.width}px!important;height:${rect.height}px!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;`
-    + "transform:none!important;translate:none!important;inset-inline:auto;animation:none!important;opacity:1!important;visibility:visible!important;";
+    + `transform:none!important;translate:none!important;inset-inline:auto;${element.hasAttribute(NATIVE_FLOAT_MOTION_ATTRIBUTE) ? "" : "animation:none!important;"}opacity:1!important;visibility:visible!important;`;
   clone.setAttribute("style", `${clone.getAttribute("style") ?? ""};${pin}`);
   let html = clone.outerHTML;
   for (let ancestor = element.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {

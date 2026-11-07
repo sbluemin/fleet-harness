@@ -386,7 +386,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const hasPanelSize = panelBounds !== null && panelBounds.width > 0 && panelBounds.height > 0;
     // `visible` 은 사용자에게 보여 줄지(presentation)이지, 네이티브 setVisible 이 아니다.
     const presented = entry.spec.visible && hasPanelSize;
-    if (presented && panelBounds) entry.parkViewport = { width: panelBounds.width, height: panelBounds.height };
+    // 띄우지 않은 뷰도 패널 자리 크기로 parking 한다 — 한 브라우저의 뷰 자리는 하나다. 자리가 없을 때 만들어져 기본 크기(800×600)로
+    // 놓인 뒤 한 번도 띄워지지 않은 에이전트 탭이, 사람 화면이 보고하는 크기와 따로 노는 것을 막는다.
+    if (hasPanelSize && panelBounds) entry.parkViewport = { width: panelBounds.width, height: panelBounds.height };
     const nextBounds = presented && panelBounds
       ? panelBounds
       : parkedNativeBounds(entry.parkViewport, contentBounds);
