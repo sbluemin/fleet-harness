@@ -5,6 +5,38 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.289.0] - 2026-11-07
+
+### fleet-console
+
+#### Added
+- Mark an objective for Today or set its due date from the objective's right-click menu.
+
+#### Changed
+- Fleet Browser now opens as part of the conversation screen instead of a separate panel: it unfolds from the globe button at the top, its tabs sit beside that button, and closing folds it back in. The conversation title stays centered over the chat.
+- Each Commodore now has one Fleet Browser shared with its Objectives, divided into spaces shown like Chrome tab groups: the Commodore has its own space, and each Objective's Commander and members share one. Opening the browser from any of these conversations shows every space, so you can look at another space's pages, while other Commodores' browsers stay separate.
+- Agents keep working in their own space: what you open on screen no longer changes which tab they act on, their actions no longer switch the tab you are looking at, and pages in other spaces are read-only to them.
+- Commodore browser tabs now stay open after the Commodore's conversation ends, until Console stops; signing in or choosing a saved profile applies to the whole browser.
+- Show what the Commodore, Commander, and members are doing (thinking, reading files, running a command, and so on) in the conversation's working line and the sidebar, instead of only "Working".
+- Objective detail sections now share a single divider line instead of icons and titles, and collapsible sections open and close when you press their divider.
+- The member list in objective detail now uses the same member rows everywhere.
+- The Objective, Members, or Library section you expand on the right sidebar's Tasks rows now follows the active objective, so it stays open as you switch objectives or commanders.
+
+#### Fixed
+- Long approval and board-decision titles no longer make the notification popover scroll sideways, and board decision requests now count on the bell badge.
+- Removed Files, Repository, and Shell panels no longer linger as empty panels; saved layouts with those panels open cleanly instead.
+
+#### Removed
+- Tool panels beside the conversation can no longer be dragged or moved between columns or below the conversation. They stack in one column on the right, and existing arrangements open in that column.
+- The objective window no longer shows manual add or schedule controls. Missions, members, criteria, and deadlines are managed through the commander.
+- The Objective, Members, and Library buttons and their floating window are gone from the top of commander and member chats; use the buttons on the right sidebar's Tasks rows instead.
+- The per-objective accent color is gone, including its sidebar menu picker, palette command, and Console Use action. Previously saved accent colors are ignored.
+
+### fleet-desktop
+
+#### Fixed
+- Menus and popovers that open over the Fleet Browser now appear on top of the page while it keeps rendering, instead of freezing it or hiding behind it.
+
 ## [1.288.0] - 2026-11-07
 
 ### fleet-console
