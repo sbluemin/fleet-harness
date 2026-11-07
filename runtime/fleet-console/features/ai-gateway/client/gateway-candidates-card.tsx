@@ -159,7 +159,7 @@ export function AiGatewayCandidatesCard(): React.ReactElement {
           <SettingsItem
             key={candidate.model}
             label={nameOf(candidate.model)}
-            hint={<><code className="ai-gateway-candidate-id">{candidate.model}</code>{candidate.summary ? ` ${candidate.summary}` : ""}</>}
+            hint={candidate.summary || undefined}
           >
             <span className="ai-gateway-candidate-state">
               <span className={`ai-gateway-candidate-pressure is-${candidate.pressure}`}>{t(PRESSURE_LABEL_KEYS[candidate.pressure])}</span>
@@ -179,7 +179,7 @@ export function AiGatewayCandidatesCard(): React.ReactElement {
           titleHelp={help(t("terminal.settings.candidatesOutHelp"), t("terminal.settings.candidatesOut"))}
         >
           {leftOut.map((entry) => (
-            <SettingsItem key={entry.id} label={entry.name} hint={<code className="ai-gateway-candidate-id">{canonicalModelId(entry.id)}</code>}>
+            <SettingsItem key={entry.id} label={entry.name}>
               <span className="ai-gateway-candidate-state">
                 <span className="ai-gateway-candidate-pressure is-out">{t("terminal.settings.candidatesOutBadge")}</span>
               </span>

@@ -1165,14 +1165,6 @@
   line-height: 1.45;
 }
 
-/* 응답이 준 모델 ID 그대로 — 사령관·지휘관이 고르는 문자열이다. */
-.ai-gateway-candidate-id {
-  margin-right: 0.4em;
-  font-family: var(--font-code);
-  font-size: 0.95em;
-  overflow-wrap: anywhere;
-}
-
 .ai-gateway-candidate-notice {
   display: grid;
   gap: var(--space-2);
