@@ -61,6 +61,7 @@ import { requestCommodoreCreate } from "../../../commodore/client/commodore-crea
 import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
+import { releaseBrowserBandSlot, setBrowserBandSlot } from "./workbench/browser-band-slot.js";
 import type { WorkbenchTile } from "../../shared/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
@@ -1148,6 +1149,13 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
   const toolsRef = useRef<HTMLSpanElement | null>(null);
   const itemsRef = useRef<HTMLSpanElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
+  // 지구본 바로 앞의 빈 자리 — 열린 브라우저 칸의 탭 줄이 여기로 올라온다(browser-band-slot.ts).
+  const browserSlotRef = useRef<HTMLSpanElement | null>(null);
+  const bindBrowserSlot = useCallback((element: HTMLSpanElement | null) => {
+    if (element !== null) { browserSlotRef.current = element; setBrowserBandSlot(element); return; }
+    if (browserSlotRef.current !== null) releaseBrowserBandSlot(browserSlotRef.current);
+    browserSlotRef.current = null;
+  }, []);
   const [hidden, setHidden] = useState<readonly HiddenTool[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1223,9 +1231,11 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       // pill 폭을 옮기는 중(pill-takeover)에는 붙든 일시 폭 때문에 안이 넘쳐 보인다 — 재판정을 멈추고, 끝나면(클래스 변화) 한 번 잰다.
       if (row.querySelector(`:scope > .conversation-pill.${PILL_MORPHING_CLASS}`) !== null) return;
       // 이전 사용량 자리를 도구모음이 차지한다. 이 줄에 현재 도구 폭을 예약하고, 머리 줄의 여백은 CSS 를 따른다.
+      // 브라우저 탭 줄 자리는 늘 브라우저 칸 위(분할 영역)에 서므로 대화 줄의 예약에서 뺀다.
       const reserve = () => {
         const right = Number.parseFloat(getComputedStyle(tools).right) || 0;
-        row.style.setProperty("--conversation-quota-space", `${Math.ceil(tools.getBoundingClientRect().width + right + 12)}px`);
+        const slot = browserSlotRef.current?.getBoundingClientRect().width ?? 0;
+        row.style.setProperty("--conversation-quota-space", `${Math.ceil(tools.getBoundingClientRect().width - slot + right + 12)}px`);
       };
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico")];
       for (const item of items) item.removeAttribute("data-overflow");
@@ -1311,6 +1321,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
   const showLead = lead !== null && lead !== false;
   return band === null ? null : createPortal(
     <span className="conversation-pill-tools" ref={toolsRef} role="toolbar" aria-label={t("conversation.tools.aria")}>
+      <span className="conversation-browser-slot" ref={bindBrowserSlot} />
       {showLead ? <span className="conversation-pill-tools-lead">{lead}</span> : null}
       <span className="conversation-pill-tools-items" ref={itemsRef}>
         <RailToolIcons context={context} variant="icons" scope="tools" toolFilter={(entry) => isCommonTool(entry)} toolActive={workbenchToolActive} />

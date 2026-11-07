@@ -9,8 +9,6 @@ import {
   isWorkbenchEmpty,
   sanitizeLayoutBook,
   sanitizeWorkbenchParams,
-  WORKBENCH_MAX_BELOW,
-  WORKBENCH_MAX_COLUMNS,
   WORKBENCH_MAX_TILES_PER_COLUMN,
   workbenchTiles,
   type WorkbenchLayout,
@@ -30,16 +28,8 @@ import {
 
 type Listener = () => void;
 
-/** 칸을 놓는 자리 — 분할 영역의 기존 열, 새 열, 또는 대화 아래 줄. index 는 그 묶음 안에서 끼워 넣을 자리다. */
-export type WorkbenchDropTarget =
-  | { readonly area: "column"; readonly column: number; readonly index: number }
-  | { readonly area: "new-column"; readonly at: number }
-  | { readonly area: "below"; readonly index: number };
-
-export type WorkbenchNudge = "up" | "down" | "left" | "right";
-
 /** 칸의 지금 자리. */
-export type WorkbenchTilePlace =
+type WorkbenchTilePlace =
   | { readonly area: "column"; readonly column: number; readonly index: number }
   | { readonly area: "below"; readonly index: number };
 
@@ -130,7 +120,7 @@ export function loadWorkbenchLayouts(): void {
     })
     .then((body) => {
       const book = sanitizeLayoutBook(body !== null && typeof body === "object" ? (body as { readonly layouts?: unknown }).layouts : null);
-      layouts = new Map(Object.entries(book).filter(([key]) => !forgottenKeys.has(key)).map(([key, stored]) => [key, stored.layout]));
+      layouts = new Map(Object.entries(book).filter(([key]) => !forgottenKeys.has(key)).map(([key, stored]) => [key, singleColumnLayout(stored.layout)]));
       loadState = "loaded";
       const activeKey = currentKey;
       const focusByKey = new Map<string, string | null>([[activeKey, focusedTileId]]);
@@ -277,7 +267,7 @@ function averageWeight(weights: readonly number[]): number {
   return weights.length === 0 ? 1 : weights.reduce((sum, weight) => sum + weight, 0) / weights.length;
 }
 
-export function findWorkbenchTile(layout: WorkbenchLayout, tileId: string): { readonly tile: WorkbenchTile; readonly place: WorkbenchTilePlace } | null {
+function findWorkbenchTile(layout: WorkbenchLayout, tileId: string): { readonly tile: WorkbenchTile; readonly place: WorkbenchTilePlace } | null {
   tileId = resolvedTileId(tileId);
   for (let column = 0; column < layout.columns.length; column += 1) {
     const index = layout.columns[column]!.tiles.findIndex((tile) => tile.id === tileId);
@@ -315,66 +305,63 @@ function removeTile(draft: MutableLayout, tileId: string): { readonly tile: Work
   return { tile: tile!, weight: weight ?? 1 };
 }
 
-/** 빈 열을 걷어 내며 열 번호가 어떻게 바뀌는지 돌려준다(걷힌 열은 -1). */
-function dropEmptyColumns(draft: MutableLayout): number[] {
-  const mapping: number[] = [];
+/** 빈 열을 걷어 낸다. */
+function dropEmptyColumns(draft: MutableLayout): void {
   const columns: MutableStack[] = [];
   const weights: number[] = [];
   draft.columns.forEach((column, index) => {
-    if (column.tiles.length === 0) { mapping.push(-1); return; }
-    mapping.push(columns.length);
+    if (column.tiles.length === 0) return;
     columns.push(column);
     weights.push(draft.columnWeights[index] ?? 1);
   });
   draft.columns = columns;
   draft.columnWeights = weights;
-  return mapping;
 }
 
-function insertAt(draft: MutableLayout, tile: WorkbenchTile, target: WorkbenchDropTarget): boolean {
-  if (target.area === "below") {
-    if (draft.below.tiles.length >= WORKBENCH_MAX_BELOW) return false;
-    const at = Math.max(0, Math.min(draft.below.tiles.length, target.index));
-    draft.below.tiles.splice(at, 0, tile);
-    draft.below.weights.splice(at, 0, averageWeight(draft.below.weights));
+/**
+ * 작업대는 대화 오른쪽 한 열이다 — 칸을 옮기는 길은 없다. 브라우저는 그 열 맨 위에 서고(탭 줄이 맨 위 줄의 지구본 옆으로 올라간다),
+ * 다른 칸은 연 순서대로 아래에 쌓인다. 열이 차 있으면 false.
+ */
+function insertIntoColumn(draft: MutableLayout, tile: WorkbenchTile): boolean {
+  if (draft.columns.length === 0) {
+    draft.columns.push({ tiles: [tile], weights: [1] });
+    draft.columnWeights = [1];
     return true;
   }
-  if (target.area === "new-column") {
-    if (draft.columns.length >= WORKBENCH_MAX_COLUMNS) return false;
-    const at = Math.max(0, Math.min(draft.columns.length, target.at));
-    draft.columns.splice(at, 0, { tiles: [tile], weights: [1] });
-    draft.columnWeights.splice(at, 0, averageWeight(draft.columnWeights));
-    return true;
-  }
-  const column = draft.columns[target.column];
-  if (column === undefined || column.tiles.length >= WORKBENCH_MAX_TILES_PER_COLUMN) return false;
-  const at = Math.max(0, Math.min(column.tiles.length, target.index));
+  const column = draft.columns[0]!;
+  if (column.tiles.length >= WORKBENCH_MAX_TILES_PER_COLUMN) return false;
+  const at = tile.kind === "browser" ? 0 : column.tiles.length;
   column.tiles.splice(at, 0, tile);
   column.weights.splice(at, 0, averageWeight(column.weights));
   return true;
 }
 
-/** 새 칸의 기본 자리 — 첫 칸은 전체 높이 한 열, 다음 칸은 포커스한(없으면 마지막) 열 아래로 쌓고, 열이 차면 새 열, 그다음 대화 아래. */
-function defaultTarget(draft: MutableLayout, placement: "split" | "below"): WorkbenchDropTarget | null {
-  if (placement === "below" && draft.below.tiles.length < WORKBENCH_MAX_BELOW) return { area: "below", index: draft.below.tiles.length };
-  if (draft.columns.length === 0) return { area: "new-column", at: 0 };
-  let column = draft.columns.length - 1;
-  if (focusedTileId !== null) {
-    const focused = draft.columns.findIndex((stack) => stack.tiles.some((tile) => tile.id === focusedTileId));
-    if (focused !== -1) column = focused;
-  }
-  if (draft.columns[column]!.tiles.length < WORKBENCH_MAX_TILES_PER_COLUMN) return { area: "column", column, index: draft.columns[column]!.tiles.length };
-  const open = draft.columns.findIndex((stack) => stack.tiles.length < WORKBENCH_MAX_TILES_PER_COLUMN);
-  if (draft.columns.length < WORKBENCH_MAX_COLUMNS) return { area: "new-column", at: draft.columns.length };
-  if (open !== -1) return { area: "column", column: open, index: draft.columns[open]!.tiles.length };
-  if (draft.below.tiles.length < WORKBENCH_MAX_BELOW) return { area: "below", index: draft.below.tiles.length };
-  return null;
+/**
+ * 저장된 배치를 한 열 모양으로 읽는다 — 이동 기능이 있던 때의 여러 열·대화 아래 줄은 열 순서, 그다음 아래 줄 순서로 한 열에 모으고
+ * 브라우저를 맨 위로 올린다. 칸마다 가중치는 따라간다. 한 열에 들지 못한 칸은 닫힌 채로 읽는다. 이미 그 모양이면 같은 배치를 돌려준다.
+ */
+function singleColumnLayout(layout: WorkbenchLayout): WorkbenchLayout {
+  const first = layout.columns[0];
+  const browserAt = first?.tiles.findIndex((tile) => tile.kind === "browser") ?? -1;
+  if (layout.columns.length <= 1 && layout.below.tiles.length === 0 && browserAt <= 0) return layout;
+  const entries = [...layout.columns, layout.below].flatMap((stack) => stack.tiles.map((tile, index) => ({ tile, weight: stack.weights[index] ?? 1 })));
+  entries.sort((a, b) => Number(b.tile.kind === "browser") - Number(a.tile.kind === "browser"));
+  const kept = entries.slice(0, WORKBENCH_MAX_TILES_PER_COLUMN);
+  if (kept.length === 0) return EMPTY_WORKBENCH_LAYOUT;
+  const ids = new Set(kept.map(({ tile }) => tile.id));
+  return {
+    columns: [{ tiles: kept.map(({ tile }) => tile), weights: kept.map(({ weight }) => weight) }],
+    columnWeights: [1],
+    below: EMPTY_WORKBENCH_STACK,
+    splitRatio: layout.splitRatio,
+    belowRatio: layout.belowRatio,
+    expandedTileId: layout.expandedTileId !== null && ids.has(layout.expandedTileId) ? layout.expandedTileId : null,
+  };
 }
 
 // ── 조작 ──────────────────────────────────────────────────────────────────
 
 export interface OpenTileOptions {
-  readonly placement?: "split" | "below";
   /** 같은 출처의 칸이 있으면 그 칸을 쓴다(기본). false 면 하나 더 연다. */
   readonly reuse?: boolean;
 }
@@ -406,13 +393,11 @@ function openLoadedWorkbenchTile(source: WorkbenchTileSource, options: OpenTileO
     }
   }
   const draft = thaw(layout);
-  const target = defaultTarget(draft, options.placement ?? "split");
-  if (target === null) return null;
   const id = reservedId ?? nextTileId();
   const tile: WorkbenchTile = source.kind === "surface"
     ? { id, kind: "surface", surfaceId: source.surfaceId, params: sanitizeWorkbenchParams(source.params) }
     : source.kind === "entry" ? { id, kind: "entry", entryId: source.entryId } : { id, kind: "browser" };
-  if (!insertAt(draft, tile, target)) return null;
+  if (!insertIntoColumn(draft, tile)) return null;
   draft.expandedTileId = null;
   focusedTileId = id;
   commit(freeze(draft));
@@ -508,87 +493,6 @@ function closeWhere(predicate: (tile: WorkbenchTile) => boolean): void {
   const targets = workbenchTiles(getWorkbenchLayout()).filter(predicate);
   for (const tile of targets) closeWorkbenchTile(tile.id);
 }
-
-export function moveWorkbenchTile(tileId: string, target: WorkbenchDropTarget): boolean {
-  if (deferUntilLoaded(() => moveWorkbenchTile(tileId, target))) return false;
-  tileId = resolvedTileId(tileId);
-  const layout = getWorkbenchLayout();
-  const found = findWorkbenchTile(layout, tileId);
-  if (found === null) return false;
-  const draft = thaw(layout);
-  const removed = removeTile(draft, tileId)!;
-  let adjusted: WorkbenchDropTarget = target;
-  // 같은 열 안에서 아래로 옮기면 빠진 자리만큼 끼울 자리가 당겨진다.
-  if (target.area === "column" && found.place.area === "column" && found.place.column === target.column && found.place.index < target.index) {
-    adjusted = { ...target, index: target.index - 1 };
-  }
-  if (target.area === "below" && found.place.area === "below" && found.place.index < target.index) {
-    adjusted = { ...target, index: target.index - 1 };
-  }
-  const mapping = dropEmptyColumns(draft);
-  if (adjusted.area === "column") {
-    const column = mapping[adjusted.column];
-    // 혼자 있던 열에 다시 놓으면(빠진 뒤 사라진 열) 제자리다.
-    if (column === undefined || column === -1) return false;
-    adjusted = { ...adjusted, column };
-  } else if (adjusted.area === "new-column") {
-    const at = adjusted.at;
-    let shifted = at;
-    for (let index = 0; index < Math.min(at, mapping.length); index += 1) if (mapping[index] === -1) shifted -= 1;
-    adjusted = { area: "new-column", at: shifted };
-  }
-  if (!insertAt(draft, removed.tile, adjusted)) return false;
-  focusedTileId = tileId;
-  commit(freeze(draft));
-  return true;
-}
-
-/** ⌥+화살표·⋮ 메뉴의 한 걸음 이동. 움직일 수 없으면 false. */
-export function nudgeWorkbenchTile(tileId: string, direction: WorkbenchNudge): boolean {
-  if (deferUntilLoaded(() => nudgeWorkbenchTile(tileId, direction))) return false;
-  tileId = resolvedTileId(tileId);
-  const layout = getWorkbenchLayout();
-  const found = findWorkbenchTile(layout, tileId);
-  if (found === null) return false;
-  const { place } = found;
-  if (place.area === "below") {
-    if (direction === "left" && place.index > 0) return moveWorkbenchTile(tileId, { area: "below", index: place.index - 1 });
-    if (direction === "right" && place.index < layout.below.tiles.length - 1) return moveWorkbenchTile(tileId, { area: "below", index: place.index + 2 });
-    if (direction === "up") return moveToSplit(tileId);
-    return false;
-  }
-  const column = layout.columns[place.column]!;
-  if (direction === "up") return place.index > 0 && moveWorkbenchTile(tileId, { area: "column", column: place.column, index: place.index - 1 });
-  if (direction === "down") return place.index < column.tiles.length - 1 && moveWorkbenchTile(tileId, { area: "column", column: place.column, index: place.index + 2 });
-  const step = direction === "left" ? -1 : 1;
-  const neighbour = layout.columns[place.column + step];
-  if (neighbour !== undefined) {
-    return neighbour.tiles.length < WORKBENCH_MAX_TILES_PER_COLUMN && moveWorkbenchTile(tileId, { area: "column", column: place.column + step, index: neighbour.tiles.length });
-  }
-  // 끝 열에서 바깥으로 — 그 열에 다른 칸이 있을 때만 새 열을 낸다(혼자면 제자리다).
-  if (column.tiles.length < 2 || layout.columns.length >= WORKBENCH_MAX_COLUMNS) return false;
-  return moveWorkbenchTile(tileId, { area: "new-column", at: direction === "left" ? 0 : layout.columns.length });
-}
-
-/** 「대화 아래로」. */
-export function moveWorkbenchTileBelow(tileId: string): boolean {
-  if (deferUntilLoaded(() => moveWorkbenchTileBelow(tileId))) return false;
-  const layout = getWorkbenchLayout();
-  return moveWorkbenchTile(tileId, { area: "below", index: layout.below.tiles.length });
-}
-
-/** 「오른쪽 분할로」 — 마지막 열 아래(차 있으면 새 열). */
-function moveToSplit(tileId: string): boolean {
-  if (deferUntilLoaded(() => moveToSplit(tileId))) return false;
-  const layout = getWorkbenchLayout();
-  const last = layout.columns.length - 1;
-  if (last >= 0 && layout.columns[last]!.tiles.length < WORKBENCH_MAX_TILES_PER_COLUMN) {
-    return moveWorkbenchTile(tileId, { area: "column", column: last, index: layout.columns[last]!.tiles.length });
-  }
-  return moveWorkbenchTile(tileId, { area: "new-column", at: layout.columns.length });
-}
-
-export const moveWorkbenchTileToSplit = moveToSplit;
 
 export function focusWorkbenchTile(tileId: string | null): void {
   if (deferUntilLoaded(() => focusWorkbenchTile(tileId))) return;

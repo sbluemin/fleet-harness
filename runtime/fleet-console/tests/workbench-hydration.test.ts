@@ -7,9 +7,9 @@ const key = "session:commodore:commodore:owner";
 const stored: WorkbenchLayout = {
   ...EMPTY_WORKBENCH_LAYOUT,
   columns: [{ tiles: [
-    { id: "objectives", kind: "entry", entryId: "objectives" },
     { id: "browser", kind: "browser" },
-  ], weights: [1, 3] }],
+    { id: "objectives", kind: "entry", entryId: "objectives" },
+  ], weights: [3, 1] }],
   columnWeights: [1],
   splitRatio: 0.6,
 };
@@ -70,7 +70,7 @@ it("applies startup edits to the saved workbench before persisting, including a 
     stored.columns[0]!.tiles[1],
     expect.objectContaining({ kind: "entry", entryId: "commodore" }),
   ]);
-  expect(layout.columns[0]!.weights).toEqual([1, 3, 2]);
+  expect(layout.columns[0]!.weights).toEqual([3, 1, 2]);
   expect(layout.splitRatio).toBe(0.7);
   workbench.flushWorkbenchSaves();
   expect(api.writes.find((write) => write.key === key)?.layout).toEqual(layout);
