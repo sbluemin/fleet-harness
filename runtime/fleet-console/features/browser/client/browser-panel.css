@@ -29,23 +29,30 @@
 .op-browser__tab-close { flex: none; background: transparent; border: 0; color: var(--text-tertiary); font: inherit; line-height: 1; padding: 0 2px; cursor: pointer; border-radius: var(--radius-xs); }
 .op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--ink-rim); outline: none; }
 .op-browser__viewport-menu { position: relative; align-self: center; }
-/* ---- 스페이스 — 칩 뒤에 그 스페이스의 탭이 붙는 탭 그룹. 색은 스페이스를 가리키는 표식일 뿐 상태가 아니다. ----
-   그룹의 --browser-space-c 를 칩·탭 밑줄이 읽는다. 값은 그 스페이스(사령관·Objective)의 아바타 정체성 톤(--id-<tone>)이고
-   패널이 인라인으로 준다 — 아바타를 모르는 스페이스는 이 무채 잉크다. 에이전트 표식은 배지 채널. */
-.op-browser__space-group { --browser-space-c: var(--id-space-ink); }
-/* 좁은 띠에서는 칩과 탭이 그룹 안에서 함께 줄어든다 — 그룹이 내용보다 좁아져 옆 그룹·「+N」 위로 겹쳐 그려지지 않게 넘침을 자른다. */
-.op-browser__space-group { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+/* ---- 스페이스 — 크롬 탭 그룹 모양: 그룹 색 칩 + 탭들 + 칩부터 마지막 탭까지 이어지는 그룹 색 밑줄. 색은 스페이스를 가리키는 표식일 뿐 상태가 아니다. ----
+   그룹의 --browser-space-c 를 칩·밑줄·선택 탭 외곽이 읽는다. 값은 그 스페이스(사령관·Objective)의 아바타 정체성 톤(--id-<tone>)이고
+   패널이 인라인으로 준다 — 아바타를 모르는 스페이스는 이 무채 잉크다. 에이전트 표식은 배지 채널.
+   칩 글자(--browser-space-ink)는 톤 위에서 읽혀야 한다: 다크 테마의 톤은 밝은 파스텔(L≈71–76%)이라 어두운 바탕색(--ink-deep, 대비 7.3–8.9),
+   라이트 테마의 톤은 중간 명도(L≈50–56%)라 밝은 글자(--text-on-identity, 대비 4.5–5.8)다. */
+.op-browser__space-group { --browser-space-c: var(--id-space-ink); --browser-space-ink: var(--ink-deep); --browser-line: 2px; --browser-line-gap: 3px; }
+:root[data-theme="light"] .op-browser__space-group { --browser-space-ink: var(--text-on-identity); }
+/* 좁은 띠에서는 칩과 탭이 그룹 안에서 함께 줄어든다 — 그룹이 내용보다 좁아져 옆 그룹·「+N」 위로 겹쳐 그려지지 않게 넘침을 자른다.
+   그룹은 아래에 밑줄 자리(--browser-line-gap)를 늘 두어(접고 펴도 칩이 움직이지 않게) 그 줄이 칩 왼쪽 끝부터 마지막 탭 오른쪽 끝까지 이어진다. */
+.op-browser__space-group { position: relative; flex: 0 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 2px; box-sizing: border-box; min-height: calc(24px + var(--browser-line-gap)); padding-bottom: var(--browser-line-gap); overflow: hidden; }
+.op-browser__space-group.is-open::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--browser-line); border-radius: var(--radius-pill); background: var(--browser-space-c); pointer-events: none; }
 .op-browser__space-tabs, .op-browser__human-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
-.op-browser__space { flex: 0 1 auto; min-width: 44px; display: inline-flex; align-items: center; gap: var(--space-1); max-width: 140px; height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 12%, transparent); color: var(--text-primary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
-.op-browser__space.is-open { background: color-mix(in oklch, var(--browser-space-c) 24%, transparent); }
+/* 그룹 안의 탭 줄은 위로 정렬하고 넘침을 자르지 않는다 — 선택 탭이 아래 밑줄 자리로 내려와 그 줄을 덮는다(바깥 잘림은 그룹이 맡는다). */
+.op-browser__space-group .op-browser__space-tabs { align-items: flex-start; overflow: visible; }
+.op-browser__space { flex: 0 1 auto; min-width: 44px; display: inline-flex; align-items: center; gap: var(--space-1); max-width: 140px; height: 22px; margin-top: 1px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 92%, var(--ink-deep)); color: var(--browser-space-ink); font: inherit; font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer; }
+.op-browser__space.is-open { background: var(--browser-space-c); }
 .op-browser__space:hover:not(:disabled) { background-image: linear-gradient(var(--wash-hover), var(--wash-hover)); }
 .op-browser__space:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .op-browser__space:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .op-browser__space-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.op-browser__space-count { flex: none; color: var(--text-secondary); font-size: var(--t-2xs); }
-/* 탭 밑줄 — 어느 스페이스의 탭인지 색으로 읽힌다. 포커스 면(box-shadow)과 겹치지 않게 의사 요소로 긋는다. */
-.op-browser__space-group .op-browser__tab::after { content: ""; position: absolute; left: var(--space-1); right: var(--space-1); bottom: 0; height: 2px; border-radius: var(--radius-pill); background: var(--browser-space-c); opacity: 0.55; pointer-events: none; }
-.op-browser__space-group .op-browser__tab.is-active::after { opacity: 1; }
+.op-browser__space-count { flex: none; color: inherit; opacity: 0.7; font-size: var(--t-2xs); }
+/* 그룹 안의 탭 — 위 모서리만 둥글다. 선택 탭은 그룹 색 외곽선이 위·옆을 두르고 아래는 밑줄과 이어진다(밑줄 자리까지 내려와 그 줄을 덮는다). */
+.op-browser__space-group .op-browser__tab { border-radius: var(--radius-xs) var(--radius-xs) 0 0; }
+.op-browser__space-group .op-browser__tab.is-active { z-index: 1; border-color: var(--browser-space-c); border-bottom-width: 0; padding-bottom: calc(2px + var(--browser-line-gap) + 1px); margin-bottom: calc(-1 * var(--browser-line-gap)); }
 /* 에이전트 작업 표식 — 이 탭이 어느 참가자의 작업 탭이다. 배지 채널(--agent-control-badge)만 쓴다. */
 .op-browser__tab-agent { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: var(--radius-xs); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
 .op-browser__tab-agent svg { width: 10px; height: 10px; }
