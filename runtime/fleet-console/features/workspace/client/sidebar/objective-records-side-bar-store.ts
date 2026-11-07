@@ -19,9 +19,12 @@ interface SideBarState {
   readonly compact: boolean;
   /** 대화 폭 요청을 제외한 창 자체의 compact 판정. 목록 위치의 순환을 끊는 기준이다. */
   readonly viewportCompact: boolean;
+  /** 사람이 사이드바를 끌어 임계 아래로 밀어 넣어 고른 좁은 열. 창 폭과 무관하게 기억된다. */
+  readonly manualCompact: boolean;
 }
 
 const STORAGE_KEY_WIDTH = "fleet-console.objectiveRecords.side-width";
+const STORAGE_KEY_MANUAL_COMPACT = "fleet-console.objectiveRecords.side-compact";
 export const MIN_EXPANDED_PX = 280;
 /** 브라우저·비-macOS의 좁은 사령관 열 폭. macOS Desktop은 네이티브 신호등 양옆 여백을 맞춘다. */
 const COMPACT_SIDE_BAR_PX = 72;
@@ -43,11 +46,13 @@ const DEFAULT_WIDTH = MIN_EXPANDED_PX;
 const sideBarListeners = new Set<() => void>();
 let conversationCompact = false;
 
+const initialManualCompact = readInitialManualCompact();
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
   compactWidth: readCompactWidth(),
-  compact: readCompact(),
+  compact: readCompact() || initialManualCompact,
   viewportCompact: readCompact(),
+  manualCompact: initialManualCompact,
 };
 if (typeof window !== "undefined") {
   subscribeDesktopZoomFactor(() => {
@@ -59,7 +64,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("resize", () => {
     const viewportCompact = readCompact();
     if (sideBarState.viewportCompact === viewportCompact) return;
-    sideBarState = { ...sideBarState, viewportCompact, compact: viewportCompact || conversationCompact };
+    sideBarState = { ...sideBarState, viewportCompact, compact: viewportCompact || conversationCompact || sideBarState.manualCompact };
     notifyListeners();
   });
 }
@@ -87,10 +92,25 @@ export function setSideBarWidth(width: number): void {
 /** 펼친 채팅 목록의 자리 요청. 사람이 정한 폭은 저장소·메모리 어느 쪽에서도 바꾸지 않는다. */
 export function setSideBarConversationCompact(compact: boolean): void {
   conversationCompact = compact;
-  const next = sideBarState.viewportCompact || compact;
+  const next = sideBarState.viewportCompact || sideBarState.manualCompact || compact;
   if (sideBarState.compact === next) return;
   sideBarState = { ...sideBarState, compact: next };
   notifyListeners();
+}
+
+/** 끌기로 좁은 열에 들어가거나 나온다. 사람의 선택이라 저장하고, 사람이 정한 폭은 건드리지 않는다. */
+export function setSideBarManualCompact(manualCompact: boolean): void {
+  if (sideBarState.manualCompact === manualCompact) return;
+  sideBarState = { ...sideBarState, manualCompact, compact: sideBarState.viewportCompact || conversationCompact || manualCompact };
+  try {
+    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_MANUAL_COMPACT, manualCompact ? "1" : "0");
+  } catch { /* ignore */ }
+  notifyListeners();
+}
+
+/** 끌기로 폭이나 좁은 열을 바꿀 수 있는가 — 창 폭이나 열린 패널 때문에 물러난 좁은 열은 끌어서 풀 수 없다. */
+export function sideBarDragCanResize(state: SideBarState): boolean {
+  return !state.compact || state.manualCompact;
 }
 
 /** 카드가 실제로 차지하는 폭 — 좁은 창에서는 아바타 열, 그 밖에는 사용자가 정한 폭. */
@@ -166,6 +186,12 @@ export function subscribeObjectiveActivityTracking(): () => void {
 
 function getMaxPx(): number {
   return typeof window !== "undefined" ? Math.max(MIN_EXPANDED_PX, window.innerWidth - 480) : 800;
+}
+
+function readInitialManualCompact(): boolean {
+  try {
+    return typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_MANUAL_COMPACT) === "1";
+  } catch { return false; }
 }
 
 function readInitialWidth(): number {

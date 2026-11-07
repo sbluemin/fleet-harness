@@ -2,6 +2,15 @@
 .workspace-commodore-section:first-child { margin-top: 4px; }
 .workspace-commodore-section-rows { display: flex; flex-direction: column; gap: 2px; list-style: none; padding: 0; margin: 0; }
 .objective-records-side-bar.is-compact .workspace-commodore-section-rows { gap: calc(12px / var(--compact-layout-zoom, 1)); }
+/* 좁은 열 — 섹션은 이름 없이 가는 구분선으로만 갈린다. 빈 섹션은 안내 문구 대신 끌어 놓을 얇은 자리만 남긴다. */
+.objective-records-side-bar.is-compact .workspace-commodore-section + .workspace-commodore-section {
+  margin-top: 0; padding-top: 12px; position: relative;
+}
+.objective-records-side-bar.is-compact .workspace-commodore-section + .workspace-commodore-section::before {
+  content: ""; position: absolute; top: 0; right: 14px; left: 14px; height: 0;
+  border-top: 1px solid var(--surface-rim);
+}
+.objective-records-side-bar.is-compact .workspace-commodore-section-empty { height: 12px; margin: 0; padding: 0; border-radius: var(--radius-xs); }
 .workspace-commodore-section-head {
   display: flex; align-items: center; gap: 6px; width: calc(100% - 8px); height: 28px;
   margin: 0 4px; padding: 0 8px 0 10px; border: 0; border-radius: var(--radius-xs);

@@ -270,6 +270,9 @@ const PlusGlyph = () => (
 export function ConversationSideBarActions() {
   const t = useT();
   const { enabled } = useTaskforceExperiment();
+  const compact = useSideBarState().compact;
+  // 좁은 열은 아바타 열만 남긴다 — 찾기(⌘K)와 만들기는 팔레트·단축키로 닿는다.
+  if (compact) return <span className="conversation-side-actions"><span className="remote-console-anchor" data-remote-console-anchor /></span>;
   return (
     <span className="conversation-side-actions">
       <span className="remote-console-anchor" data-remote-console-anchor />
@@ -1105,7 +1108,7 @@ function useConversationSidebarCompact(
     }
     // RightRail은 대화 최소 폭을 예약하되 패널 하한(240px) 아래로는 줄지 않는다. 그 하한이 예약을 침범할 때만 물러난다.
     // compact 뒤 넓어진 패널 실측을 복귀 판정에 쓰지 않는다. 저장 사이드바 폭과 같은 패널 하한으로 왕복을 막는다.
-    const panelNeedsCompact = !sideBar.viewportCompact && railWidth > 0
+    const panelNeedsCompact = !sideBar.viewportCompact && !sideBar.manualCompact && railWidth > 0
       && viewport.width - sideBar.width - MIN_PANEL_WIDTH < CONVERSATION_MIN_WIDTH;
     setSideBarConversationCompact(panelNeedsCompact);
   }, [stage, panelId, sideBar, viewport.width, viewport.height, railWidth]);
