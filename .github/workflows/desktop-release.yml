@@ -33,7 +33,7 @@ jobs:
   # macOS arm64 — dmg/zip 셸 설치본만 초안 Release에 명시적으로 업로드한다.
   macos:
     name: macOS arm64
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: write
     steps:
