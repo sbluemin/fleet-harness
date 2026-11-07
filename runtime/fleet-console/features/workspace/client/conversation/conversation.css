@@ -247,7 +247,7 @@
   /* 양쪽을 같게 비워 pill 이 가운데에 남는다 — 도구모음이 이 줄 오른쪽 끝에서 대화 칸 위로 들어오는 몫이다. 그 몫은 도구모음의 오른쪽
      여백·Windows 캡션 버튼 몫까지 이미 센 폭이라 캡션 몫을 다시 더하지 않는다. 도구가 없을 때만 캡션 몫이 남는다. 분할이 열려
      도구모음이 분할 위로 비키면 그만큼 덜 비운다. */
-  padding: 0 calc(max(0px, max(var(--conversation-quota-space), var(--conversation-caption-reserve)) - var(--conversation-split-right, 0px)) + var(--conversation-tools-space, 0px));
+  padding: 0 calc(max(0px, max(var(--conversation-quota-space) + var(--conversation-nav-space, 0px), var(--conversation-caption-reserve)) - var(--conversation-split-right, 0px)) + var(--conversation-tools-space, 0px));
   box-sizing: border-box;
   pointer-events: none;
 }
@@ -417,7 +417,7 @@
 .conversation-pill-tools.conversation-pill-tools-chip { top: 0; right: auto; left: var(--space-2); }
 /* 오른쪽 끝 묶음은 맨 위 줄(.conversation-band)의 flex 끝 자식이다 — 열림·닫힘과 무관하게 같은 자리, 지구본 왼쪽이 주소줄 자리다. */
 .conversation-pill-tools.conversation-pill-tools-end { position: relative; top: auto; right: auto; }
-.conversation-band-nav { position: relative; flex: 1; align-self: stretch; min-width: 0; margin-right: var(--space-2); }
+.conversation-band-nav { position: relative; flex: 1; align-self: stretch; min-width: 0; }
 
 .conversation-pill-tools-items,
 .conversation-pill-tools-items .right-rail-tabs { display: contents; }
@@ -1488,15 +1488,29 @@
 .conversation-band {
   position: absolute;
   top: 0;
-  /* 도구 분할 레이어(z-index 1)보다 위 — 맨 위 줄로 올라간 주소줄의 제안·메뉴가 줄 아래 칸 위로 내려와도 가려지지 않는다. */
   z-index: 2;
   height: var(--conversation-top-row);
-  /* 오른쪽 끝에서부터 쌓인다 — 오른쪽 끝 묶음(지구본, 오른쪽 여백·Windows 캡션 몫 앞)과 그 왼쪽의 주소줄 자리(남는 폭 전부). */
+  /* 오른쪽 끝에서부터 쌓인다 — 오른쪽 끝 묶음(지구본, 오른쪽 여백·Windows 캡션 몫 앞). */
   display: flex;
   align-items: center;
   justify-content: flex-end;
   box-sizing: border-box;
   padding-right: calc(var(--space-3) + var(--conversation-caption-reserve));
+  pointer-events: none;
+  transition: left var(--duration-base) ease, right var(--duration-base) var(--ease-spring);
+}
+
+/* 주소줄 자리의 맨 위 줄 — 맨 위 줄과 같은 가로 범위(작업 영역 전체). 왼쪽 끝은 칩 묶음 오른쪽 끝(--conversation-chip-end, 대화 머리 줄이 잰다),
+   오른쪽 끝은 지구본 왼쪽(오른쪽 끝 묶음의 폭 --conversation-end-width + 오른쪽 여백·Windows 캡션 몫 + 틈)이다. 도구 분할 레이어(z-index 1)보다 위 —
+   주소줄의 제안·메뉴가 줄 아래 칸 위로 내려와도 가려지지 않는다. 빈 곳은 포인터를 아래에 넘기고, 창 끌기는 맨 위 줄이 맡는다. */
+.conversation-nav-band {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  height: var(--conversation-top-row);
+  box-sizing: border-box;
+  padding-right: calc(var(--space-3) + var(--conversation-caption-reserve) + var(--conversation-end-width, 0px) + var(--space-2));
   pointer-events: none;
   transition: left var(--duration-base) ease, right var(--duration-base) var(--ease-spring);
 }
@@ -1719,7 +1733,7 @@ html[data-desktop-shell="true"] :is([role="dialog"], [role="alertdialog"], [role
 html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conversation-pill-row {
   right: max(0px, var(--conversation-quota-space) - var(--conversation-split-right, 0px));
   padding-right: calc(
-    max(0px, max(var(--conversation-quota-space), var(--conversation-caption-reserve)) - var(--conversation-split-right, 0px))
+    max(0px, max(var(--conversation-quota-space) + var(--conversation-nav-space, 0px), var(--conversation-caption-reserve)) - var(--conversation-split-right, 0px))
     - max(0px, var(--conversation-quota-space) - var(--conversation-split-right, 0px))
     + var(--conversation-tools-space, 0px)
   );
@@ -1791,7 +1805,7 @@ html[data-desktop-shell="true"][data-view-mode="desktop"] {
 
 @media (prefers-reduced-motion: reduce) {
   .conversation-stage,
-  .conversation-band { transition: none; }
+  :is(.conversation-band, .conversation-nav-band) { transition: none; }
 }
 
 .side-bar-cluster-row-line .side-bar-cluster-row-preview { flex: 0 1 auto; line-height: 1.4; font-weight: var(--weight-regular); }

@@ -150,6 +150,15 @@ export const BrowserNavTailContext = React.createContext<React.ReactNode>(null);
  */
 export const BrowserNavHostContext = React.createContext<HTMLElement | null | undefined>(undefined);
 
+// ---------- 맨 위 줄의 주소줄 ----------
+
+/**
+ * 맨 위 줄로 올라간 주소줄 영역이 줄지 않는 최소 폭 — 대화 머리 줄이 한 줄 배분에서 이만큼을 지켜 준다. 구성: 왼쪽 안쪽 여백 8 + 뒤로·앞으로·새로고침·
+ * 「⋯」(접힌 도구)·확대 단추 다섯 개 30px×5 + 주소창 최소 120 + 사이 틈 4px×5 = 298 → 여유 2 로 300. 단추 크기·틈은 browser-panel.css 의
+ * `.op-browser__nav.is-top` 과 짝이다.
+ */
+export const BROWSER_NAV_MIN_PX = 300;
+
 // ---------- 세로 탭 레일의 고정 ----------
 
 /** 세로 탭 레일 폭 — 접힘은 아이콘 한 열, 펼침은 탭 제목과 닫기까지. 값은 CSS 의 `--op-rail-*` 와 짝이다(펼침 폭은 거기서만 읽힌다). */

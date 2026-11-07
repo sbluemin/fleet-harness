@@ -6,7 +6,8 @@ import { useSyncExternalStore } from "react";
  *   도구모음은 지금 눌러서 브라우저를 닫을 수 있는 지구본이 있는지도 함께 알린다. 없으면(그 대화가 지구본을 세우지 않거나, 브라우저를
  *   못 써서 지구본이 꺼졌으면) 칸이 이 자리에 닫기 단추를 세운다. 도구모음은 한 번에 하나라 이 자리도 하나다.
  * - 주소줄 자리: 맨 위 줄의 지구본 왼쪽 빈 영역 전체(대화 칸 위 포함) — 브라우저 칸이 자기 주소줄을 그 자리의 칸 왼쪽 가장자리부터 portal 한다.
- *   이 자리는 맨 위 줄이 세우므로 대화를 바꿔도 남는다.
+ *   이 자리는 맨 위 줄이 세우므로 대화를 바꿔도 남는다. 주소줄이 서 있는 동안은 한 줄 배분(칩 묶음 │ 주소줄 │ 지구본)에
+ *   그 몫이 들어가므로 `retainBrowserNav` 로 알린다.
  * 브라우저 칸은 머리 없이 대화와 같은 면에 서고, 탭은 이 줄이 아니라 브라우저 본문 왼쪽의 세로 레일이 가진다.
  */
 
@@ -14,6 +15,8 @@ type Listener = () => void;
 
 let slot: HTMLElement | null = null;
 let navSlot: HTMLElement | null = null;
+/** 주소줄이 맨 위 줄에 서 있는 칸의 수 — 대화 머리 줄이 그 영역의 몫(최소 폭)을 한 줄 배분에 센다. */
+let navActive = 0;
 let globe = false;
 const listeners = new Set<Listener>();
 
@@ -50,6 +53,19 @@ export function releaseBrowserNavSlot(element: HTMLElement): void {
   notify();
 }
 
+/** 주소줄이 맨 위 줄에 서 있는 동안 붙든다(칸이 그 자리를 잡을 때). 반환값으로 놓는다. */
+export function retainBrowserNav(): () => void {
+  navActive += 1;
+  notify();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    navActive -= 1;
+    notify();
+  };
+}
+
 /** 도구모음에 눌리는 지구본이 있는가. */
 export function setBrowserBandGlobe(next: boolean): void {
   if (globe === next) return;
@@ -68,6 +84,10 @@ export function useBrowserBandSlot(): HTMLElement | null {
 
 export function useBrowserNavSlot(): HTMLElement | null {
   return useSyncExternalStore(subscribe, () => navSlot, () => null);
+}
+
+export function useBrowserNavActive(): boolean {
+  return useSyncExternalStore(subscribe, () => navActive > 0, () => false);
 }
 
 export function useBrowserBandGlobe(): boolean {

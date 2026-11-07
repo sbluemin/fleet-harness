@@ -26,7 +26,7 @@ import { announceNativeViewResize, getNativeViewResize } from "../../../../brows
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
 import { PluginObjectiveRenderer } from "../../objective-renderer.js";
 import { type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
-import { useBrowserBandGlobe, useBrowserBandSlot, useBrowserNavSlot } from "./browser-band-slot.js";
+import { retainBrowserNav, useBrowserBandGlobe, useBrowserBandSlot, useBrowserNavSlot } from "./browser-band-slot.js";
 import {
   bindWorkbenchCloseGuard,
   cancelWorkbenchClose,
@@ -500,6 +500,9 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
   const navSlot = useBrowserNavSlot();
   const [navHost, setNavHost] = useState<HTMLElement | null>(null);
   const navHostValue = !seamless ? undefined : hidden || navSlot === null ? null : navHost;
+  // 주소줄이 맨 위 줄에 서 있는 동안 대화 머리 줄에 알린다 — 한 줄 배분에서 주소줄 최소 폭을 지켜 준다.
+  const navStanding = navHostValue !== undefined && navHostValue !== null;
+  useLayoutEffect(() => (navStanding ? retainBrowserNav() : undefined), [navStanding]);
   const expandLabel = expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand");
   const expandButton = (
     <button
@@ -539,7 +542,7 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
             <BrowserBandClose tileId={tile.id} title={parts.title} />
           </BrowserBandChrome>
           {navSlot !== null && !hidden ? createPortal(
-            <span className={`workbench-band-nav-wrap${motion === null ? "" : ` is-${motion}`}`} ref={setNavHost} style={{ left: entry.rect.x }} data-keep-objective-active />,
+            <span className={`workbench-band-nav-wrap${motion === null ? "" : ` is-${motion}`}`} ref={setNavHost} style={{ "--browser-split-x": `${entry.rect.x}px` } as CSSProperties} data-keep-objective-active />,
             navSlot,
           ) : null}
         </>
