@@ -257,6 +257,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
 
   return createPortal(
     <span
+      {...(visible ? { "data-covers-native-view": "" } : {})}
       ref={tipRef}
       id={tipId}
       className={`console-toolbar-tip${visible ? " is-visible" : ""}`}

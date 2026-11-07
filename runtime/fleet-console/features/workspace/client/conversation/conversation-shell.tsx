@@ -564,7 +564,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
           </button>
           {menuOpen && overflow.length > 0 ? (
-            <div ref={moreMenuRef} className="conversation-panel-more-menu" role="menu">
+            <div data-covers-native-view="" ref={moreMenuRef} className="conversation-panel-more-menu" role="menu">
               {overflow.map((tab) => (
                 <button
                   key={tab.label}
@@ -1351,7 +1351,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
         </button>
         {menuOpen && hidden.length > 0 ? (
-          <div ref={toolsMenuRef} className="conversation-pill-tools-menu" role="menu" aria-label={moreLabel}>
+          <div data-covers-native-view="" ref={toolsMenuRef} className="conversation-pill-tools-menu" role="menu" aria-label={moreLabel}>
             {hidden.map((tool) => {
               const entry = bindings.find((binding) => binding.entry.id === tool.entryId)?.entry ?? null;
               const icon = entry === null ? null : typeof entry.icon === "function" ? entry.icon() : entry.icon;

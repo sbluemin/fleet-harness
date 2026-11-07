@@ -185,7 +185,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
       {menuItem ? <><span className="conversation-dock-label">{t("chrome.system.help")}</span><ChevronGlyph direction="right" className="conversation-dock-next" /></> : null}
       {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>
-    {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")} onPointerEnter={side.onPanelPointerEnter} onPointerLeave={side.onPanelPointerLeave}>
+    {open ? <div data-covers-native-view="" ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")} onPointerEnter={side.onPanelPointerEnter} onPointerLeave={side.onPanelPointerLeave}>
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); openFleetAtAGlance(); }}><FleetGlanceGlyph /><span>{t("chrome.system.fleetAtAGlance")}</span></button>

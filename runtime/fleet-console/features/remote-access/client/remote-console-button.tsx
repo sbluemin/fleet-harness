@@ -81,7 +81,7 @@ export function RemoteConsoleButton({ state, command, compact }: {
       <ConsoleGlyph remote={current?.kind === "remote"} />
       {current?.status && ["slow", "untrusted", "unreachable"].includes(current.status) ? <span className="remote-console-dot" aria-hidden="true" /> : null}
     </button>
-    {open ? createPortal(<div ref={panel} id={id} role="dialog" aria-label={t("chrome.hosts.aria")} className={`remote-console-panel${compact ? " is-side" : ""}`} style={position}
+    {open ? createPortal(<div data-covers-native-view="" ref={panel} id={id} role="dialog" aria-label={t("chrome.hosts.aria")} className={`remote-console-panel${compact ? " is-side" : ""}`} style={position}
       onPointerEnter={() => clearTimeout(closing.current)} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(); }}
       onKeyDown={(event) => {
         if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;

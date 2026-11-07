@@ -267,7 +267,7 @@ function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, mobile, onClo
 
   if (api === null) return null;
   return createPortal(
-    <div
+    <div data-covers-native-view=""
       ref={popoverRef}
       id={id}
       className={`quota-popover${placement?.bottom !== undefined ? " quota-popover--above" : ""}`}

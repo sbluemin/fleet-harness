@@ -101,7 +101,7 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
         </button>
         {/* 설정의 aria-labelledby 닻은 닫혀 있을 때도 남긴다. 닫힌 닻은 열린 오버레이가 아니므로 메뉴 역할은 열렸을 때만 단다.
             다시 열면 자식 메뉴는 닫힌 상태로 시작한다. */}
-        <div key={String(open)} ref={menuRef} id="conversation-host-menu" className="conversation-dock-menu" role={open ? "menu" : undefined} aria-label={label} hidden={!open}>
+        <div {...(open ? { "data-covers-native-view": "" } : {})} key={String(open)} ref={menuRef} id="conversation-host-menu" className="conversation-dock-menu" role={open ? "menu" : undefined} aria-label={label} hidden={!open}>
           <ArchiveMenuItem onBeforeOpen={() => { setOpen(false); triggerRef.current?.focus({ preventScroll: true }); }} />
           <div className="conversation-dock-divider" role="separator" />
           {/* Desktop에는 보기 모드가 없다. 브라우저에서만 보기 설정과 도움말·설정을 구분한다. */}

@@ -127,6 +127,7 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
     // 방금까지 보던 Objective의 활성을 풀어 버린다(패널 포털 메뉴들과 같은 계약).
     <div className="link-open-overlay" data-keep-objective-active role="presentation" onPointerDown={onClose}>
       <div
+        data-covers-native-view=""
         className="link-open-card"
         {...(keyboard ? {} : { "data-quiet-focus": "true" })}
         ref={cardRef}
