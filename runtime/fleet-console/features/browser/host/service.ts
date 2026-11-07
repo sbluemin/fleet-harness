@@ -7,7 +7,7 @@ import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/protocol/desktop";
-import { BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
+import { BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, HUMAN_SPACE_ID, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
 
 /**
  * Session Browser — Objective마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
@@ -910,13 +910,13 @@ export class BrowserService {
   }
 
   /**
-   * 탭을 연다. 스페이스를 주지 않으면 사람이 띄운 스페이스다. 사람이 연 탭은 화면에 뜨고, 에이전트가 연 탭은 그 참가자의 작업 탭이
+   * 탭을 연다. 스페이스를 주지 않으면 사람이 연 탭은 사람 스페이스(그룹 없음)에, 에이전트의 탭은 세션 스페이스에 선다. 사람이 연 탭은 화면에 뜨고, 에이전트가 연 탭은 그 참가자의 작업 탭이
    * 될 뿐 사람 화면을 바꾸지 않는다(`show` 를 주면 띄운다).
    */
-  async createTab(objectiveId: string, url: string | null, actor: "user" | "agent", options: { spaceId?: string; participantId?: string; show?: boolean; fallbackSpaceId?: string } = {}): Promise<BrowserTabState> {
+  async createTab(objectiveId: string, url: string | null, actor: "user" | "agent", options: { spaceId?: string; participantId?: string; show?: boolean } = {}): Promise<BrowserTabState> {
     const op = this.objectiveRecord(objectiveId);
-    // 스페이스를 정하지 않은 열기는 사람이 띄운 스페이스로, 그것도 없으면 세션 스페이스로 간다(사령관에 묶이지 않은 브라우저의 유일한 스페이스).
-    const spaceId = options.spaceId ?? this.displayedSpace(op)?.id ?? options.fallbackSpaceId ?? SESSION_SPACE_ID;
+    // 스페이스를 정하지 않은 사람의 열기는 그룹 없는 사람 스페이스로 간다. 에이전트는 호출 계층이 늘 스페이스를 주므로, 없는 경우만 세션 스페이스다.
+    const spaceId = options.spaceId ?? (actor === "user" ? HUMAN_SPACE_ID : SESSION_SPACE_ID);
     const pendingInSpace = (op.pendingSpaces.get(spaceId) ?? 0);
     if (this.spaceTabs(op, spaceId).length + pendingInSpace >= BROWSER_SPACE_TAB_LIMIT) throw new BrowserPolicyError("browser_tab_limit", `Your space has ${BROWSER_SPACE_TAB_LIMIT} tabs, the most it can hold. Close one before opening another.`);
     if (op.tabs.size + op.pendingTabs >= BROWSER_TOTAL_TAB_LIMIT) throw new BrowserPolicyError("browser_tab_limit", `This browser has ${BROWSER_TOTAL_TAB_LIMIT} tabs across all spaces, the most it can hold. Close one before opening another.`);
@@ -1052,13 +1052,13 @@ export class BrowserService {
    * 탭을 이동한다. 사람은 tabId 가 없으면 띄운 탭을, 에이전트는 호출 계층이 정한 작업 탭을 준다. 대상 탭이 없으면 새 탭을 연다 —
    * 에이전트의 새 탭은 자기 스페이스에 열리고 작업 탭이 된다.
    */
-  async navigate(objectiveId: string, target: string, actor: "user" | "agent", tabId?: string | null, caller?: { participantId: string; spaceId: string }, fallbackSpaceId?: string): Promise<{ tab: BrowserTabState; ok: boolean; error: string | null }> {
+  async navigate(objectiveId: string, target: string, actor: "user" | "agent", tabId?: string | null, caller?: { participantId: string; spaceId: string }): Promise<{ tab: BrowserTabState; ok: boolean; error: string | null }> {
     const op = this.objectiveRecord(objectiveId);
     const existing = tabId ? this.tab(op, tabId) : actor === "user" && op.activeTabId ? op.tabs.get(op.activeTabId) ?? null : null;
     if (!existing && (target === "back" || target === "forward" || target === "reload")) throw new BrowserPolicyError("browser_tab_not_found", "No tab is open.");
     const tab = existing;
-    // 사람의 새 탭은 띄운 스페이스에, 띄운 스페이스가 없으면 그 패널 대화의 스페이스(fallbackSpaceId)에 열린다.
-    if (!tab) { const created = await this.createTab(objectiveId, target, actor, caller ? { spaceId: caller.spaceId, participantId: caller.participantId } : { ...(fallbackSpaceId ? { fallbackSpaceId } : {}) }); return { tab: created, ok: true, error: null }; }
+    // 사람의 새 탭은 사람 스페이스(그룹 없음)에 열린다.
+    if (!tab) { const created = await this.createTab(objectiveId, target, actor, caller ? { spaceId: caller.spaceId, participantId: caller.participantId } : {}); return { tab: created, ok: true, error: null }; }
     if (caller && tab.spaceId === caller.spaceId) { op.currentTabs.set(caller.participantId, tab.id); op.participantSpaces.set(caller.participantId, caller.spaceId); }
     const client = await this.engineClient();
     let outcome: { ok: boolean; error: string | null } = { ok: true, error: null };

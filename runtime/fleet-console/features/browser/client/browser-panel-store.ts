@@ -28,7 +28,7 @@ export interface BrowserPanelSnapshot {
   readonly actions: {
     readonly selectTab: (tabId: string) => void;
     readonly closeTab: (tabId: string) => void;
-    /** 지금 표시 중인 스페이스에 새 탭을 연다(표시 중인 스페이스가 없으면 이 대화의 스페이스). */
+    /** 새 탭을 연다 — 사람이 연 탭은 그룹 없이 사람 스페이스에 선다. */
     readonly createTab: () => void;
     /** 그 스페이스를 사람 화면에 띄운다 — 화면만 바뀌고 에이전트의 작업 탭은 그대로다. */
     readonly selectSpace: (spaceId: string) => void;

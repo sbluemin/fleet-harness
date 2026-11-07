@@ -38,7 +38,7 @@
 .op-browser__space-group[data-hue="4"], .op-browser__space-item[data-hue="4"] { --browser-space-c: var(--id-space-olive); }
 /* 좁은 띠에서는 칩과 탭이 그룹 안에서 함께 줄어든다 — 그룹이 내용보다 좁아져 옆 그룹·「+N」 위로 겹쳐 그려지지 않게 넘침을 자른다. */
 .op-browser__space-group { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
-.op-browser__space-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.op-browser__space-tabs, .op-browser__human-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
 .op-browser__space { flex: 0 1 auto; min-width: 44px; display: inline-flex; align-items: center; gap: var(--space-1); max-width: 140px; height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 12%, transparent); color: var(--text-primary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
 .op-browser__space.is-open { background: color-mix(in oklch, var(--browser-space-c) 24%, transparent); }
 .op-browser__space:hover:not(:disabled) { background-image: linear-gradient(var(--wash-hover), var(--wash-hover)); }
