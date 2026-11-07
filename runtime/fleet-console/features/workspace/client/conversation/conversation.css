@@ -244,13 +244,22 @@
   gap: var(--space-2);
   min-width: 0;
   height: var(--conversation-top-row);
-  /* 양쪽을 같게 비워 pill 이 가운데에 남는다 — 도구모음이 이 줄 오른쪽 끝에서 대화 칸 위로 들어오는 몫이다. 그 몫은 도구모음의 오른쪽
+  /* 오른쪽 예약 A(--conv-a) — 지구본(+주소줄 최소 폭)이 이 줄 오른쪽 끝에서 대화 칸 위로 들어오는 몫이다. 그 몫은 오른쪽 끝 묶음의 오른쪽
      여백·Windows 캡션 버튼 몫까지 이미 센 폭이라 캡션 몫을 다시 더하지 않는다. 도구가 없을 때만 캡션 몫이 남는다. 분할이 열려
-     도구모음이 분할 위로 비키면 그만큼 덜 비운다. */
-  padding: 0 calc(max(0px, max(var(--conversation-quota-space) + var(--conversation-nav-space, 0px), var(--conversation-caption-reserve)) - var(--conversation-split-right, 0px)) + var(--conversation-tools-space, 0px));
+     도구모음이 분할 위로 비키면 그만큼 덜 비운다. 칩 옆 도구 몫(tools-space)은 양쪽에 같이 비운다.
+     pill 은 가운데가 "선호"일 뿐 필수가 아니다 — 왼쪽 여백은 A 를 min(A, 64px)까지만 대칭으로 비우고, 그 이상은 pill 이 가운데에서 왼쪽으로 쏠리게
+     둔다(예약을 양쪽에 두 번 먹이지 않는다). 주소줄이 맨 위 줄에 서 있으면(data-nav-standing) 칩 묶음은 왼쪽 정렬이고 남는 폭은 주소줄이 쓴다. */
+  --conv-a: max(0px, max(var(--conversation-quota-space) + var(--conversation-nav-space, 0px), var(--conversation-caption-reserve)) - var(--conversation-split-right, 0px));
+  --conv-shift: 0px;
+  padding: 0 calc(var(--conv-a) + var(--conversation-tools-space, 0px)) 0 calc(min(var(--conv-a), 64px) + var(--conversation-tools-space, 0px));
   box-sizing: border-box;
   pointer-events: none;
 }
+
+.conversation-pill-row[data-nav-standing] { justify-content: flex-start; padding-left: var(--space-4); }
+/* 마지막 수단 — 칩이 아바타만 남고 「⋯」까지 접어도 들어가지 않으면(예약이 극단) 칩 묶음이 지구본·주소줄 몫 앞에서 잘린다. 겹침보다 잘림이 낫다.
+   오른쪽 자름선은 줄 오른쪽 끝에서 (A − 지구본 앞 drag 이동분)이고, 아래·왼쪽·위로는 자르지 않는다(「⋯」 메뉴·말풍선이 줄 밖으로 내려온다). */
+.conversation-pill-row[data-clip] { clip-path: inset(-100vh calc(var(--conv-a) - var(--conv-shift)) -100vh -100vw); }
 
 .conversation-pill-row > * { pointer-events: auto; }
 /* 새 세션 화면(new-session.css)의 카드 칸은 투명한 맨 위 줄 밑에서 시작한다 — 줄 높이가 이 시트의 토큰이라 여기서 비운다. */
@@ -1728,15 +1737,12 @@ html[data-desktop-shell="true"] :is([role="dialog"], [role="alertdialog"], [role
 }
 
 /* 오른쪽 끝 묶음(지구본)은 맨 위 줄로 portal 된다. 뒤 DOM 인 pill 줄의 drag 사각형을 대화 칸 위로 들어온 그 폭 앞에서 끝내,
-   지구본의 no-drag 를 덮지 않게 한다(#1966·#1967). 오른쪽 안쪽 여백은 왼쪽 여백에서 끝을 당긴 만큼을 뺀 값이라 내용 상자의 중심은
-   대화 칸의 가운데로 그대로다. */
+   지구본의 no-drag 를 덮지 않게 한다(#1966·#1967). 오른쪽 안쪽 여백은 오른쪽 예약에서 끝을 당긴 만큼(--conv-shift)을 뺀 값이라 내용 상자의
+   오른쪽 끝(줄 오른쪽 끝 − 예약 − 도구 몫)은 그대로다. */
 html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conversation-pill-row {
-  right: max(0px, var(--conversation-quota-space) - var(--conversation-split-right, 0px));
-  padding-right: calc(
-    max(0px, max(var(--conversation-quota-space) + var(--conversation-nav-space, 0px), var(--conversation-caption-reserve)) - var(--conversation-split-right, 0px))
-    - max(0px, var(--conversation-quota-space) - var(--conversation-split-right, 0px))
-    + var(--conversation-tools-space, 0px)
-  );
+  --conv-shift: max(0px, var(--conversation-quota-space) - var(--conversation-split-right, 0px));
+  right: var(--conv-shift);
+  padding-right: calc(var(--conv-a) - var(--conv-shift) + var(--conversation-tools-space, 0px));
 }
 
 html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conversation-pill-tools,

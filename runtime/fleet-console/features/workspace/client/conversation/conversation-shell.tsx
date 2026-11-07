@@ -1215,6 +1215,8 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       observedRow?.style.removeProperty("--conversation-quota-space");
       observedRow?.style.removeProperty("--conversation-tools-space");
       observedRow?.style.removeProperty("--conversation-nav-space");
+      observedRow?.removeAttribute("data-nav-standing");
+      observedRow?.removeAttribute("data-clip");
       const pill = observedRow?.querySelector<HTMLElement>(":scope > .conversation-pill");
       pill?.removeAttribute("data-compact");
       for (const text of pill?.querySelectorAll<HTMLElement>(".conversation-pill-title, .conversation-pill-sub") ?? []) text.style.minWidth = "";
@@ -1281,6 +1283,8 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
         const leadWidth = leadRef.current?.getBoundingClientRect().width ?? 0;
         row.style.setProperty("--conversation-quota-space", leadWidth > 0 ? `calc(${Math.ceil(leadWidth) + 12}px + var(--space-3) + var(--conversation-caption-reserve))` : "0px");
         row.style.setProperty("--conversation-nav-space", navActive ? `${BROWSER_NAV_MIN_PX + 8}px` : "0px");
+        // 주소줄이 맨 위 줄에 서 있으면 칩 묶음은 가운데가 아니라 왼쪽 정렬이다 — 남는 폭은 주소줄 영역이 쓴다(conversation.css `data-nav-standing`).
+        row.toggleAttribute("data-nav-standing", navActive);
         row.style.setProperty("--conversation-tools-space", `${Math.ceil(tools.getBoundingClientRect().width + TOOLS_CHIP_GAP)}px`);
       };
       // 맨 위 줄의 주소줄 자리에 알린다 — 주소줄의 왼쪽 끝(칩 묶음 오른쪽 끝 + space-3)과 그 오른쪽 끝을 정하는 오른쪽 끝 묶음의 폭.
@@ -1292,6 +1296,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       };
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico")];
       for (const item of items) item.removeAttribute("data-overflow");
+      row.removeAttribute("data-clip");
       // 컨텍스트 단추 — 도구가 다 걷힌 뒤에도 모자랄 때 「⋯」 메뉴로 들어간다(승인 종은 끝까지 남는다).
       const contextSlot = tools.querySelector<HTMLElement>(".conversation-pill-tools-trail > .conversation-rail-slot");
       contextSlot?.removeAttribute("data-overflow");
@@ -1358,6 +1363,13 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
         // 말줄임한 이름이 읽을 수 없을 만큼 좁아질 때만 표식(아바타)으로 접는다. 표식이 없으면 유일한 단서인 이름은 남긴다.
         if (pill !== null && title !== null && title.getBoundingClientRect().width + 0.01 < Math.min(TITLE_COMPACT_MIN, titleNatural)
           && pill.querySelector(".conversation-pill-details > .conversation-pill-mark, .conversation-pill-details > .conversation-pill-surface-mark") !== null) pill.dataset.compact = "true";
+        // 극단(예약 폭이 큰 좁은 줄) — 아바타만 남고도 들어가지 않으면 「⋯」(걷은 도구·컨텍스트의 메뉴)까지 접고 종만 남긴다. 그래도 안 되면 칩 묶음을
+        // 지구본·주소줄 몫 앞에서 자른다(겹침보다 잘림이 낫다).
+        if (!fits(row, pill, title, true)) {
+          tools.dataset.more = "hidden";
+          reserve();
+          if (!fits(row, pill, title, true)) row.dataset.clip = "true";
+        }
       }
       placeNav();
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
