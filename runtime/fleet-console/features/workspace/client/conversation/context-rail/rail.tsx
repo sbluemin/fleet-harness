@@ -182,7 +182,7 @@ function ContextRail({ sessions, slot }: {
             </div>
           ) : null}
           {open ? (
-            <div className="context-rail-fly" style={{ top: flyTop, maxHeight: `calc(100% - ${flyTop}px)` }} data-context-rail-keep>
+            <div data-covers-native-view="" className="context-rail-fly" style={{ top: flyTop, maxHeight: `calc(100% - ${flyTop}px)` }} data-context-rail-keep>
               <ContextCard session={open} open forced state={state} t={t} />
             </div>
           ) : null}

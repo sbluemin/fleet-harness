@@ -93,6 +93,11 @@ function getSnapshot(): DesktopShellHome {
   return snapshot;
 }
 
+/** 렌더 밖(이벤트·효과)에서 셸이 게시한 능력을 읽는다. 아직 모르면 비어 있다. */
+export function desktopShellCapabilities(): readonly string[] {
+  return snapshot.capabilities;
+}
+
 /** 이미 게시된 집만 읽는다. 종료 안내는 세션 없는 서버에 새 요청을 보내지 않는다. */
 export function useDesktopShellHome(): DesktopShellHome {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

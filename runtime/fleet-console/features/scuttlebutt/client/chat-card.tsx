@@ -259,6 +259,7 @@ export function ChatCard({
   return (
     <ChatSurfaceContext.Provider value="floating">
     <div
+      data-covers-native-view=""
       ref={cardRef}
       className={`scuttlebutt-chat-card${docked ? " is-docked" : ""}`}
       style={style}
@@ -341,6 +342,7 @@ export function ChatCard({
         </span>
         {menuOpen && menuAnchor ? createPortal(
           <div
+            data-covers-native-view=""
             ref={menuRef}
             className="scuttlebutt-menu"
             data-scuttlebutt-surface="floating"

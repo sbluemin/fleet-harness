@@ -128,7 +128,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|import|profile|clear-profile|space)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|float|import|profile|clear-profile|space)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -226,6 +226,14 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         if (body.visible === false && x === null) { browserService.place(objectiveId, null); writeJson(res, 200, { ok: true }); return true; }
         if (x === null || y === null || width === null || height === null || width < 0 || height < 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
         browserService.place(objectiveId, { bounds: { x, y, width, height }, visible: body.visible !== false });
+        writeJson(res, 200, { ok: true }); return true;
+      }
+      if (action === "float") {
+        const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+        if (body.clear === true) { browserService.float(objectiveId, null); writeJson(res, 200, { ok: true }); return true; }
+        const revision = num(body.revision), x = num(body.x), y = num(body.y), width = num(body.width), height = num(body.height);
+        if (revision === null || x === null || y === null || width === null || height === null || width < 1 || height < 1 || width > 4096 || height > 4096) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        browserService.float(objectiveId, { revision, bounds: { x, y, width, height } });
         writeJson(res, 200, { ok: true }); return true;
       }
       if (action === "inspect") {

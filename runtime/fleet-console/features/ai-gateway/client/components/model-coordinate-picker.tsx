@@ -521,6 +521,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
       {open ? createPortal(
         <>
           <div
+            data-covers-native-view=""
             ref={menuRef}
             className={["fc-coord-menu", showTrack ? "is-focused" : "", props.menuClassName ?? ""].filter(Boolean).join(" ")}
             role="menu"

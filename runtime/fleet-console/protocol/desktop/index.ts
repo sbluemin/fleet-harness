@@ -208,6 +208,24 @@ export interface DesktopBrowserSnapshot {
    * 선택 필드이므로 옛 Console 은 싣지 않고, 옛 셸은 이를 무시한다.
    */
   readonly epoch?: string;
+  /**
+   * 브라우저 자리를 덮는 Console 메뉴의 자리(Console 뷰 CSS px). 셸은 이 자리에 메뉴만 그리는 작은 투명 자식 창을 띄워,
+   * 네이티브 뷰를 물리지 않고 라이브로 둔 채 그 위에 메뉴를 보인다. `null`·없음이면 자식 창을 감춘다.
+   * `DESKTOP_BROWSER_FLOAT_CAPABILITY` 를 게시한 셸만 해석한다. 옛 Console 은 싣지 않고, 옛 셸은 이를 무시한다.
+   */
+  readonly float?: DesktopBrowserFloat | null;
+}
+
+/** 셸이 이 신호를 게시해야 Console 이 메뉴를 자식 창으로 띄운다 — 아니면 지금처럼 뷰를 물리고 정지 화면을 깐다. */
+export const DESKTOP_BROWSER_FLOAT_CAPABILITY = "browser-float";
+/** 자식 창이 여는 Console 소유 표면. `/console/` 아래 정적 문서이며 질의·조각 없이 연다. */
+export const DESKTOP_BROWSER_FLOAT_PAGE = "/console/browser-float.html";
+/** 같은 출처·같은 세션의 두 렌더러(Console 창 ↔ 자식 창)가 메뉴 그림과 고른 항목을 주고받는 채널 이름. */
+export const DESKTOP_BROWSER_FLOAT_CHANNEL = "fleet-browser-float";
+export interface DesktopBrowserFloat {
+  /** 메뉴가 바뀔 때마다 오른다 — 표면이 낡은 그림의 클릭을 보내지 않게. */
+  readonly revision: number;
+  readonly bounds: DesktopBrowserBounds;
 }
 
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
@@ -247,7 +265,12 @@ export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowse
   return isRecord(value) && isFiniteNumber(value.generation) && Array.isArray(value.views) && value.views.every(isDesktopBrowserView)
     && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand)
     && (value.shortcuts === undefined || (Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string")))
-    && (value.epoch === undefined || typeof value.epoch === "string");
+    && (value.epoch === undefined || typeof value.epoch === "string")
+    && (value.float === undefined || value.float === null || isDesktopBrowserFloat(value.float));
+}
+
+export function isDesktopBrowserFloat(value: unknown): value is DesktopBrowserFloat {
+  return isRecord(value) && isFiniteNumber(value.revision) && isDesktopBrowserBounds(value.bounds) && value.bounds.width >= 1 && value.bounds.height >= 1;
 }
 
 export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRelay {

@@ -331,7 +331,7 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
         </div>
       ) : null}
       {draft ? (
-        <div ref={pickerWrapRef} className={`avatar-editor-popover is-${layout}`} role="dialog" aria-label={labels.heading}>
+        <div data-covers-native-view="" ref={pickerWrapRef} className={`avatar-editor-popover is-${layout}`} role="dialog" aria-label={labels.heading}>
           <MongleAvatarPicker
             className="avatar-editor-picker"
             role={role}

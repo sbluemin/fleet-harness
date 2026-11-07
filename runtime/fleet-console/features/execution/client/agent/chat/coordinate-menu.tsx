@@ -290,6 +290,7 @@ export function SessionCoordinateMenu({
       ) : null}
       {open && !mobile ? createPortal(
         <div
+          data-covers-native-view=""
           ref={menuRef}
           className={`agent-chat-coord-pop${showEffort ? " is-focused" : ""}`}
           role="menu"
