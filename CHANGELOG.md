@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.290.0] - 2026-11-07
+
+### fleet-console
+
+#### Added
+- Show each Commodore's sidebar section as a colored chip before its name in Commodore and TaskForce chats.
+
+#### Changed
+- The narrow left sidebar now shows only commodore avatars separated by thin dividers, and you can drag the sidebar edge to snap into it without shrinking the window.
+- The context and approval buttons now sit next to the chat name, centered with it in the chat column, so the browser gets more room.
+
 ## [1.289.0] - 2026-11-07
 
 ### fleet-console

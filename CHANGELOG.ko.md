@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.290.0] - 2026-11-07
+
+### fleet-console
+
+#### Added
+- 사령관·TaskForce 채팅방에서 각 사령관 이름 앞에 사이드바 섹션 이름이 색 칩으로 표시됩니다.
+
+#### Changed
+- 좁은 좌측 사이드바는 사령관 아바타와 가는 구분선만 보여 주며, 창을 줄이지 않아도 사이드바 가장자리를 끌어 좁은 열로 전환할 수 있어요.
+- 컨텍스트·승인 버튼이 대화 이름 옆으로 옮겨져 채팅 칸 안에서 이름과 함께 가운데에 서요. 그만큼 브라우저가 더 넓게 쓰여요.
+
 ## [1.289.0] - 2026-11-07
 
 ### fleet-console
