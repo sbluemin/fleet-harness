@@ -1217,6 +1217,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       observedRow?.style.removeProperty("--conversation-nav-space");
       observedRow?.removeAttribute("data-nav-standing");
       observedRow?.removeAttribute("data-clip");
+      observedRow?.removeAttribute("data-left-relax");
       const pill = observedRow?.querySelector<HTMLElement>(":scope > .conversation-pill");
       pill?.removeAttribute("data-compact");
       for (const text of pill?.querySelectorAll<HTMLElement>(".conversation-pill-title, .conversation-pill-sub") ?? []) text.style.minWidth = "";
@@ -1297,6 +1298,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico")];
       for (const item of items) item.removeAttribute("data-overflow");
       row.removeAttribute("data-clip");
+      row.removeAttribute("data-left-relax");
       // 컨텍스트 단추 — 도구가 다 걷힌 뒤에도 모자랄 때 「⋯」 메뉴로 들어간다(승인 종은 끝까지 남는다).
       const contextSlot = tools.querySelector<HTMLElement>(".conversation-pill-tools-trail > .conversation-rail-slot");
       contextSlot?.removeAttribute("data-overflow");
@@ -1335,6 +1337,9 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       if (title !== null) title.style.minWidth = `${titleNatural}px`;
       // 모든 도구를 세운 뒤, 이름이 제 폭을 지킬 때까지 오른쪽 끝부터 걷는다.
       const next: HiddenTool[] = [];
+      // 가운데를 지키려고 왼쪽에 비운 대칭 여백(오른쪽 도구 몫 + min(예약, 64px))은 가운데가 "선호"일 뿐이라, 부제·도구·이름을 줄이기 전에 이 여백부터
+      // space-4 까지 접어 칩이 왼쪽으로 쏠리며 폭을 얻게 한다(conversation.css `data-left-relax`). 정상 폭에서는 들어가므로 가운데가 유지된다.
+      if (!fits(row, pill, title)) row.setAttribute("data-left-relax", "");
       if (!fits(row, pill, title)) {
         // 오른쪽 끝(Console 도구)부터 하나씩 걷는다 — 「⋯」가 선 채로 들어갈 때까지.
         // 다 걷어도 모자라면 그때부터 이름이 하한까지 줄어든다.

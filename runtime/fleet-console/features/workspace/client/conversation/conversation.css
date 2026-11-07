@@ -257,6 +257,9 @@
 }
 
 .conversation-pill-row[data-nav-standing] { justify-content: flex-start; padding-left: var(--space-4); }
+/* 칩 묶음이 대칭 여백 안에 들어가지 않으면 가운데를 포기한다 — 왼쪽 여백(칩 옆 도구 몫 + min(A, 64px))을 space-4 로 접어 칩이 왼쪽으로 쏠리며 폭을 얻는다.
+   줄임 순서에서 제일 먼저 쓰이고(부제·도구·이름보다 앞), 측정이 매번 이 속성을 지우고 다시 판정한다. */
+.conversation-pill-row[data-left-relax] { padding-left: var(--space-4); }
 /* 마지막 수단 — 칩이 아바타만 남고 「⋯」까지 접어도 들어가지 않으면(예약이 극단) 칩 묶음이 지구본·주소줄 몫 앞에서 잘린다. 겹침보다 잘림이 낫다.
    오른쪽 자름선은 줄 오른쪽 끝에서 (A − 지구본 앞 drag 이동분)이고, 아래·왼쪽·위로는 자르지 않는다(「⋯」 메뉴·말풍선이 줄 밖으로 내려온다). */
 .conversation-pill-row[data-clip] { clip-path: inset(-100vh calc(var(--conv-a) - var(--conv-shift)) -100vh -100vw); }
