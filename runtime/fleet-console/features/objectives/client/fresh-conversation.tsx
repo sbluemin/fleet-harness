@@ -30,12 +30,13 @@ export function connectFreshConversation(next: ClientConversationCapability | un
  * 아니면 `params.commodoreId` 의 Theater 로 머리 도구모음·오른쪽 패널을 연다(이것이 없으면 오른쪽 패널이 서지 않는다).
  * `theaterId` 를 주면 보관된 완료 목표를 찾을 Theater 도 된다 — 읽어 둔 끝난 목표에 없으면(그 뒤에 완료로 보관됐다) 다시 읽고, 다 읽기 전에는 칸이 서 있다.
  */
-export function openFreshConversation(objectiveId: string, theaterId?: string): boolean {
+export function openFreshConversation(objectiveId: string, theaterId?: string, owner?: string): boolean {
   if (!port || !port.isActive()) return false;
   void loadObjective(objectiveId).catch(() => {});
   const known = findObjective(objectiveId);
   const target = theaterId ?? known?.theaterId;
-  const commodoreId = known?.commodoreId;
+  // 부르는 쪽이 사령관을 알면(출처 따라가기) 아직 읽지 못한 보관 목표에도 사령관의 사이드바를 그대로 둔다.
+  const commodoreId = owner ?? known?.commodoreId;
   return port.open(FRESH_SURFACE_ID, { objectiveId, ...(target ? { theaterId: target } : {}), ...(commodoreId ? { commodoreId } : {}) });
 }
 
