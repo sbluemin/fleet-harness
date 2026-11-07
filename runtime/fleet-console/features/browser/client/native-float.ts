@@ -86,7 +86,9 @@ export function retainNativeFloat(): () => void {
 function startManager(): () => void {
   ensureChannel();
   const inside = (node: Node | null): boolean => node instanceof Element ? node.closest(COVER_SELECTOR) !== null : node?.parentElement?.closest(COVER_SELECTOR) != null;
-  const relevantNode = (node: Node): boolean => node instanceof Element && (node.matches(COVER_SELECTOR) || node.querySelector(COVER_SELECTOR) !== null);
+  // 가림 표면뿐 아니라 모달이 붙고 떨어질 때도 다시 잰다 — 모달 동안은 아무것도 띄우지 않고, 닫히면 다시 띄운다.
+  const watched = `${COVER_SELECTOR}, [aria-modal="true"]`;
+  const relevantNode = (node: Node): boolean => node instanceof Element && (node.matches(watched) || node.querySelector(watched) !== null);
   const observer = new MutationObserver((records) => {
     for (const record of records) {
       if (record.type === "attributes" && record.attributeName === NATIVE_FLOAT_ATTRIBUTE) continue;
