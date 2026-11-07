@@ -610,7 +610,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
 
   return <div className="objectives-members">
     {/* 머리는 임무 섹션과 같은 문법 — 글리프 · 「구성원」 · 수. */}
-    <SectionHead label={t("objectives.members.title")} tools={<span className="objectives-criteria-count">{objective.members.length}</span>} />
+    <SectionHead label={`${t("objectives.members.title")} ${objective.members.length}`} />
     <div id="objectives-sec-members">
     {lead}
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
@@ -1500,7 +1500,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
       {/* 결과물 장부 — 임무 순서의 묶음과 마지막 기록 한 줄. 임무 밖 연결은 끝에 남기고, 그래프 팝업과 묶음 머리가 왕복한다.
           사람은 읽기만 한다. PR 관측은 SSE로 갱신하고 Artifact는 외부 링크만 연다. 결과물 0개도 유효하다. */}
       <div className="objectives-group objectives-results-group">
-        <SectionHead label={t("objectives.results.title")} {...(objective.results.length > 0 ? { tools: <span className="objectives-criteria-count">{objective.results.length}</span> } : {})} />
+        <SectionHead label={objective.results.length > 0 ? `${t("objectives.results.title")} ${objective.results.length}` : t("objectives.results.title")} />
         {objective.results.length > 0 ? <div id="objectives-sec-results"><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
       </div>
       {/* 공유 폴더 — 증거 아래 독립 섹션. 증거가 0건이어도 보이고, 기본 접힘이며, 머리에 개수·배지를 두지 않는다. */}
@@ -1587,8 +1587,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   const sDecisions = objective.decisions.length > 0 ? (
       <div className="objectives-group">
         <SectionHead
-          label={t("objectives.decisions.title")}
-          tools={<span className="objectives-criteria-count">{objective.decisions.length}</span>}
+          label={`${t("objectives.decisions.title")} ${objective.decisions.length}`}
           controls="objectives-sec-decisions"
           expanded={sectionOpen("detail:decisions")}
           onToggle={() => onToggleSection("detail:decisions")}
@@ -1617,7 +1616,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         </> : null}
         {/* 후속 목표 — 진행 중에 모인 후보(읽기만), 완료 때 고른 후보의 배치 요약과 줄 상태, 남긴 후보. */}
         {showFollowupResults ? <>
-          <SectionHead label={t("objectives.followup.results")} {...(followupCollected.length ? { tools: <span className="objectives-criteria-count">{followupCollected.length}</span> } : {})} controls="objectives-sec-followup-results" expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
+          <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
           <div id="objectives-sec-followup-results" hidden={!sectionOpen("detail:followupResults")}>
             {followupCollected.length ? <div className="objectives-followup-collected">
               <p className="objectives-followup-caption">{t("objectives.followup.collected", { n: followupCollected.length })}</p>
@@ -1644,7 +1643,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
           </div>
         </> : null}
         {objective.extensions.length ? <>
-          <SectionHead label={t("objectives.extend.previous")} tools={<span className="objectives-criteria-count">{objective.extensions.length}</span>} controls="objectives-sec-extensions" expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
+          <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
           <div id="objectives-sec-extensions" hidden={!sectionOpen("detail:extensions")}>
             <ExtensionHistory objective={objective} t={t} language={language} />
           </div>
