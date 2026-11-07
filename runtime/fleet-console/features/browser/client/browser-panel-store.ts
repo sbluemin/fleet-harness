@@ -164,6 +164,21 @@ export function announceNativeViewResize(next: NativeViewResize): void {
   for (const listener of nativeViewResizeListeners) listener();
 }
 
+/** 끄는 동안 모든 네이티브 뷰를 정지 화면 뒤로 물린다. 돌려주는 함수가 놓는다. */
+function holdNativeViewsForResize(): () => void {
+  const container = document.documentElement;
+  announceNativeViewResize({ container, held: true });
+  return () => { if (nativeViewResize?.container === container) announceNativeViewResize(null); };
+}
+
+/**
+ * 사람이 레이아웃 경계를 끄는 모든 조작(좌·우 사이드바의 폭, 채팅창/브라우저 사이의 경계)이 쓰는 하나의 길. 끄는 동안 켜 두면 네이티브 뷰가
+ * 정지 화면 뒤로 물러나 포인터를 가져가지 않고 칸을 따라가다 어긋나지도 않으며, 놓으면 정착한 자리에 한 번 다시 놓인다. 끌기마다 따로 처리하지 않는다.
+ */
+export function useHoldNativeViewsWhile(active: boolean): void {
+  React.useEffect(() => (active ? holdNativeViewsForResize() : undefined), [active]);
+}
+
 export function getNativeViewResize(): NativeViewResize {
   return nativeViewResize;
 }

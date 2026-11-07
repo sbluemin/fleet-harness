@@ -60,8 +60,7 @@ import { requestCommodoreCreate } from "../../../commodore/client/commodore-crea
 import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
-import { releaseBrowserBandSlot, releaseBrowserNavSlot, setBrowserBandGlobe, setBrowserBandSlot, setBrowserNavSlot, useBrowserNavActive, useBrowserNavSlot } from "./workbench/browser-band-slot.js";
-import { BROWSER_NAV_MIN_PX } from "../../../browser/client/browser-panel-store.js";
+import { releaseBrowserBandSlot, setBrowserBandGlobe, setBrowserBandSlot } from "./workbench/browser-band-slot.js";
 import type { WorkbenchTile } from "../../shared/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
@@ -765,8 +764,6 @@ const SUB_FLOOR = 28;
 const PILL_TITLE_CAP = 620;
 /** 칩과 그 오른쪽 도구 묶음 사이의 틈 — conversation.css `.conversation-pill-tools-chip` 의 left(--space-2)와 같다. */
 const TOOLS_CHIP_GAP = 8;
-/** 칩 묶음 오른쪽 끝과 맨 위 줄 주소줄 왼쪽 끝 사이의 틈 — `--space-3`(12px). */
-const NAV_CHIP_GAP = 12;
 
 interface OverflowTab {
   readonly label: string;
@@ -1000,13 +997,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
   useConversationSidebarCompact(stageElement, viewport, insets.right);
-  // 맨 위 줄의 주소줄 자리 — 열린 브라우저 칸이 자기 주소줄을 여기로 올린다(browser-band-slot.ts). 이 자리는 대화를 바꿔도 남는다.
-  const navSlotRef = useRef<HTMLSpanElement | null>(null);
-  const bindNavSlot = useCallback((element: HTMLSpanElement | null) => {
-    if (element !== null) { navSlotRef.current = element; setBrowserNavSlot(element); return; }
-    if (navSlotRef.current !== null) releaseBrowserNavSlot(navSlotRef.current);
-    navSlotRef.current = null;
-  }, []);
   const tools = (lead: ReactNode = null, trail: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} trail={trail} band={band} />;
 
   return (
@@ -1083,11 +1073,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       language={language}
       objectiveRecordKinds={objectiveRecordKinds}
     />
-    {/* 주소줄 자리 — 칩 묶음 오른쪽 끝에서 지구본 왼쪽까지(칸 폭이 아니라 맨 위 줄의 남는 폭 전부). 도구 분할 레이어 뒤의 DOM 이라 주소줄의
-        no-drag 가 앞선 drag 상자(맨 위 줄·pill 줄)에 덮이지 않는다. */}
-    <div className="conversation-nav-band" style={{ left: insets.left, right: insets.right }}>
-      <span className="conversation-band-nav" ref={bindNavSlot} />
-    </div>
     </>
   );
 }
@@ -1194,9 +1179,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
     observer?.observe(end, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
     return () => { observer?.disconnect(); setBrowserBandGlobe(false); };
   }, [band]);
-  // 주소줄이 맨 위 줄에 서 있는지, 그 자리 — 한 줄 배분(칩 묶음 │ 주소줄 │ 지구본)에 주소줄 몫을 세고 주소줄의 왼쪽 끝을 알린다.
-  const navActive = useBrowserNavActive();
-  const navSlot = useBrowserNavSlot();
   const [hidden, setHidden] = useState<readonly HiddenTool[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1217,8 +1199,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
     const releaseRow = () => {
       observedRow?.style.removeProperty("--conversation-quota-space");
       observedRow?.style.removeProperty("--conversation-tools-space");
-      observedRow?.style.removeProperty("--conversation-nav-space");
-      observedRow?.removeAttribute("data-nav-standing");
       observedRow?.removeAttribute("data-clip");
       observedRow?.removeAttribute("data-left-relax");
       const pill = observedRow?.querySelector<HTMLElement>(":scope > .conversation-pill");
@@ -1278,25 +1258,14 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       mutation?.observe(row, contentChanges);
       // pill 폭을 옮기는 중(pill-takeover)에는 붙든 일시 폭 때문에 안이 넘쳐 보인다 — 재판정을 멈추고, 끝나면(클래스 변화) 한 번 잰다.
       if (row.querySelector(`:scope > .conversation-pill.${PILL_MORPHING_CLASS}`) !== null) return;
-      // 이 줄에 세 몫을 예약하고, 머리 줄의 여백은 CSS 를 따른다. 값에 CSS 변수(--conversation-caption-reserve 등)를 그대로 실어 두어, 변수만 바뀌어도
+      // 이 줄에 두 몫을 예약하고, 머리 줄의 여백은 CSS 를 따른다. 값에 CSS 변수(--conversation-caption-reserve 등)를 그대로 실어 두어, 변수만 바뀌어도
       // 여백이 다시 계산되고 줄의 내용 상자가 바뀌어 이 측정도 다시 돈다(ResizeObserver).
       // - quota-space: 오른쪽 끝 지구본 몫(지구본 폭 + 틈 + 오른쪽 여백 + Windows 캡션 몫). 분할이 닫혀 줄이 맨 위 줄 끝까지 뻗을 때만 비운다.
-      // - nav-space: 맨 위 줄에 주소줄이 서 있을 때 그 최소 폭 몫. 주소줄은 칩 묶음 오른쪽에서 지구본 왼쪽까지라 이 몫 안에서 칩 묶음이 끝나야 겹치지 않는다.
       // - tools-space: 칩 옆 묶음의 폭 + 칩과의 틈. 양쪽에 같이 비워 칩이 줄의 가운데에 남게 한다.
       const reserve = () => {
         const leadWidth = leadRef.current?.getBoundingClientRect().width ?? 0;
         row.style.setProperty("--conversation-quota-space", leadWidth > 0 ? `calc(${Math.ceil(leadWidth) + 12}px + var(--space-3) + var(--conversation-caption-reserve))` : "0px");
-        row.style.setProperty("--conversation-nav-space", navActive ? `${BROWSER_NAV_MIN_PX + 8}px` : "0px");
-        // 주소줄은 브라우저 칸 위에서 시작하므로 칩 묶음은 채팅 화면 폭 안에서 가운데에 선다(conversation.css `data-nav-standing`).
-        row.toggleAttribute("data-nav-standing", navActive);
         row.style.setProperty("--conversation-tools-space", `${Math.ceil(tools.getBoundingClientRect().width + TOOLS_CHIP_GAP)}px`);
-      };
-      // 맨 위 줄의 주소줄 자리에 알린다 — 주소줄의 왼쪽 끝(칩 묶음 오른쪽 끝 + space-3)과 그 오른쪽 끝을 정하는 오른쪽 끝 묶음의 폭.
-      const placeNav = () => {
-        const overlay = navSlot?.parentElement ?? null;
-        if (overlay === null) return;
-        overlay.style.setProperty("--conversation-chip-end", `${Math.round(tools.getBoundingClientRect().right - overlay.getBoundingClientRect().left + NAV_CHIP_GAP)}px`);
-        overlay.style.setProperty("--conversation-end-width", `${Math.ceil(end.getBoundingClientRect().width)}px`);
       };
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico")];
       for (const item of items) item.removeAttribute("data-overflow");
@@ -1379,7 +1348,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
           if (!fits(row, pill, title, true)) row.dataset.clip = "true";
         }
       }
-      placeNav();
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
     };
     measure();
@@ -1388,12 +1356,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
     const fonts = typeof document !== "undefined" ? document.fonts : undefined;
     fonts?.addEventListener?.("loadingdone", schedule);
     return () => { resize?.disconnect(); mutation?.disconnect(); releaseRow(); fonts?.removeEventListener?.("loadingdone", schedule); if (frame !== 0) cancelAnimationFrame(frame); };
-  }, [band, navActive, navSlot]);
-  // 맨 위 줄의 주소줄 자리에 심은 값은 이 도구모음이 사라지면(대화 교체) 거둔다.
-  useLayoutEffect(() => {
-    const overlay = navSlot?.parentElement ?? null;
-    return () => { overlay?.style.removeProperty("--conversation-chip-end"); overlay?.style.removeProperty("--conversation-end-width"); };
-  }, [navSlot]);
+  }, [band]);
   useEffect(() => {
     if (!menuOpen) return;
     const close = (event: PointerEvent | KeyboardEvent) => {

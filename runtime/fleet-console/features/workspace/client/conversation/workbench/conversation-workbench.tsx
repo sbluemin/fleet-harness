@@ -22,7 +22,7 @@ import { pluginRuntimeState } from "../../../../execution/client/objective-activ
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
 import { BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
-import { announceNativeViewResize, getNativeViewResize } from "../../../../browser/client/browser-panel-store.js";
+import { announceNativeViewResize, getNativeViewResize, useHoldNativeViewsWhile } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
 import { PluginObjectiveRenderer } from "../../objective-renderer.js";
 import { WORKBENCH_GAP, type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
@@ -177,7 +177,9 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
         ? { key: workbenchKey, entry: settled.entry, rect: settled.rect, expanded: settled.expanded } : null;
 
   // 끌기(경계)와 닫기 확인, 브라우저가 열리고 닫히는 동안 네이티브 브라우저 뷰를 정지 화면 뒤로 물린다 — 뷰는 페이지 위를 덮어 포인터를 가린다.
-  const holdViews = resizing || pendingClose !== null || revealId !== null || ghost !== null;
+  // 경계를 끄는 동안은 좌·우 사이드바와 같은 하나의 길로 물러난다. 아래 `holdViews` 는 칸 자신의 닫기 확인과 열림·닫힘 전환만 맡는다.
+  useHoldNativeViewsWhile(resizing);
+  const holdViews = pendingClose !== null || revealId !== null || ghost !== null;
   useEffect(() => {
     const element = elementRef.current;
     if (!holdViews || element === null) return;
