@@ -54,7 +54,7 @@ function SettledCounts({ fresh, done }: { readonly fresh: number; readonly done:
   );
 }
 
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, showBar = true, heading, popups }: {
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, showBar = true, hideSettled = false, heading, popups }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
@@ -66,6 +66,8 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly card?: boolean;
   /** 정렬·새 목표 막대를 그린다. 사이드바는 사령관 머리의 호버 독이 같은 일을 하므로 끈다. */
   readonly showBar?: boolean;
+  /** 시작 전·완료 구역을 그리지 않는다 — 좌측 사이드바의 「시작 전·완료 보이기」를 끈 경우다. */
+  readonly hideSettled?: boolean;
   /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
   readonly heading?: ReactNode;
   /** 작업 탭 카드의 행 단추(아바타 대화 열기·임무 게이지 팝업) — 목표 행에만 건넨다. 없으면 지금 행 그대로다. */
@@ -73,7 +75,9 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
 }) {
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
-  const { sorted, listSections, preference } = useCommanderRows(commodoreId, selectedId);
+  const rows = useCommanderRows(commodoreId, selectedId);
+  const { sorted, preference } = rows;
+  const listSections = hideSettled ? rows.listSections.filter((group) => group.settled !== true) : rows.listSections;
   const folds = useCommanderFolds();
   const groupsId = useId();
   const renderItems = (rows: readonly SideBarRowItem[], settled: boolean) => rows.map((item) => {
