@@ -201,6 +201,11 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row.is-rule:not(:first-child)::before { content: ""; position: absolute; left: 22px; right: 20px; top: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
 /* 이름을 보이는 접힘 머리(읽기 전용 펼침) — 이름은 왼쪽, 셰브런은 맨 끝. */
 .objectives-row.is-rule.is-named { justify-content: space-between; }
+/* 구분선 줄 자체가 접힘 머리(읽기 전용 펼침) — 선 끝의 작은 셰브런만 서고 별도 행 높이는 없다. 머리가 선을 그리므로 구획의 윗선·윗여백은 걷는다. */
+.objectives-row.is-rule.is-fold { min-height: 0; height: 18px; gap: 8px; }
+.objectives-row.is-rule.is-fold::before, .objectives-row.is-rule.is-fold:not(:first-child)::before { content: ""; position: static; flex: 1; min-width: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
+.objectives-row.is-rule.is-fold .objectives-section-chev { margin-left: 0; }
+.objectives-group:has(> .objectives-row.is-fold:first-child) { padding-top: 0; border-top: 0; }
 .objectives-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .objectives-section-head-bar { display: flex; align-items: center; position: relative; }
 .objectives-section-head-bar > .objectives-row { flex: 1; min-width: 0; padding-right: 6px; }

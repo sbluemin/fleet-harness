@@ -944,10 +944,12 @@ function SharedFolderSection({ objective, t, language, open, onToggle, named }: 
   </>;
 }
 
-function SectionHead({ label, tools, actions, controls, expanded, onToggle, named = false }: {
+function SectionHead({ label, tools, actions, controls, expanded, onToggle, named = false, fold = false }: {
   readonly label: string;
   /** 접히는 머리가 이름 없는 셰브런만 남지 않게 이름을 보인다 — 읽기 전용 펼침에서 쓴다. */
   readonly named?: boolean;
+  /** 접히는 머리를 별도 행이 아니라 구분선 줄 자체로 그린다 — 선 끝에 작은 셰브런만 선다(읽기 전용 펼침). */
+  readonly fold?: boolean;
   readonly tools?: ReactNode;
   readonly actions?: ReactNode;
   /** 접히는 본문의 id — 없으면 정적 머리. */
@@ -960,7 +962,7 @@ function SectionHead({ label, tools, actions, controls, expanded, onToggle, name
     {tools ? <span className="objectives-row-tools">{tools}</span> : null}
   </>;
   const head = !controls ? <div className="objectives-row is-rule is-static">{inner}</div> : (
-    <button type="button" className={`objectives-row is-rule objectives-acc-hd${named ? " is-named" : ""}`} aria-expanded={expanded} aria-controls={controls} onClick={onToggle}>
+    <button type="button" className={`objectives-row is-rule objectives-acc-hd${named ? " is-named" : ""}${fold ? " is-fold" : ""}`} aria-expanded={expanded} aria-controls={controls} onClick={onToggle}>
       {inner}
       <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
     </button>
@@ -1257,7 +1259,7 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
 
 export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, objectiveRecordTitle, objectiveRecordState, objectiveRecordOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective, embedded = false, readOnly = false, onGraphFitWidth }: DetailProps) {
   const launchRows = useLaunchRows();
-  // 읽기 전용 펼침만 공유 폴더의 파일 수를 미리 읽는다 — 파일이 없으면 그 머리를 그리지 않는다.
+  // 읽기 전용 펼침만 공유 폴더의 파일 수를 미리 읽는다 — 비었다고 확인되면(0) 그 머리를 그리지 않고, 모르면(null) 열어 볼 수 있게 둔다.
   const sharedFiles = useSharedFileCount(readOnly ? objective : null, readOnly);
   const [quietNow, setQuietNow] = useState(() => Date.now());
   // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
@@ -1515,7 +1517,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         {objective.results.length > 0 ? <div id="objectives-sec-results"><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
       </div>}
       {/* 공유 폴더 — 증거 아래 독립 섹션. 증거가 0건이어도 보이고, 기본 접힘이며, 머리에 개수·배지를 두지 않는다. */}
-      {readOnly && !(sharedFiles !== null && sharedFiles > 0) ? null : <div className="objectives-group">
+      {readOnly && sharedFiles === 0 ? null : <div className="objectives-group">
         <SharedFolderSection objective={objective} t={t} language={language} open={sectionOpen("detail:shared")} onToggle={() => onToggleSection("detail:shared")} named={readOnly} />
       </div>}
   </>);
@@ -1600,6 +1602,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         <SectionHead
           label={`${t("objectives.decisions.title")} ${objective.decisions.length}`}
           controls="objectives-sec-decisions"
+          fold={readOnly}
           expanded={sectionOpen("detail:decisions")}
           onToggle={() => onToggleSection("detail:decisions")}
         />
@@ -1615,7 +1618,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
       <div className="objectives-group objectives-result-folds">
         {/* 회고 — 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
         {objective.handoff ? <>
-          <SectionHead label={t("objectives.retro.title")} controls="objectives-sec-retro" expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
+          <SectionHead label={t("objectives.retro.title")} controls="objectives-sec-retro" fold={readOnly} expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
           <div id="objectives-sec-retro" hidden={!sectionOpen("detail:retro")}>
             <Retrospective
               t={t}
@@ -1627,7 +1630,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         </> : null}
         {/* 후속 목표 — 진행 중에 모인 후보(읽기만), 완료 때 고른 후보의 배치 요약과 줄 상태, 남긴 후보. */}
         {showFollowupResults ? <>
-          <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
+          <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" fold={readOnly} expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
           <div id="objectives-sec-followup-results" hidden={!sectionOpen("detail:followupResults")}>
             {followupCollected.length ? <div className="objectives-followup-collected">
               <p className="objectives-followup-caption">{t("objectives.followup.collected", { n: followupCollected.length })}</p>
@@ -1654,7 +1657,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
           </div>
         </> : null}
         {objective.extensions.length ? <>
-          <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
+          <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" fold={readOnly} expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
           <div id="objectives-sec-extensions" hidden={!sectionOpen("detail:extensions")}>
             <ExtensionHistory objective={objective} t={t} language={language} />
           </div>
