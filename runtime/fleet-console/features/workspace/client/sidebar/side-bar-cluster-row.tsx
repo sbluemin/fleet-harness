@@ -244,6 +244,13 @@ interface SideBarClusterRowProps {
    * 임무 팝업을 연다. 없으면 지금 행 그대로다.
    */
   readonly popups?: RowPopups | undefined;
+  /**
+   * 펼침 글리프(우측 작업 탭 카드) — 행 오른쪽 끝(위임 표식 왼쪽)에 선다. 없으면 기존 aside 그대로다.
+   * 글리프는 스스로 초점 자리를 가지므로, 있으면 aside를 장식으로 숨기지 않는다.
+   */
+  readonly rowGlyphs?: ReactNode | undefined;
+  /** 펼친 행 — 쉬는 행과 같은 자리에 글리프를 보이게 하는 갈고리다(`is-open`). */
+  readonly expanded?: boolean | undefined;
 }
 
 export interface RowPopups {
@@ -283,7 +290,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu, settled = false, popups }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu, settled = false, popups, rowGlyphs, expanded = false }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -444,6 +451,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         "side-bar-cluster-row--conversation",
         settled ? "side-bar-cluster-row--settled" : "",
         settled && state === "done" ? "is-done" : "",
+        expanded ? "is-open" : "",
       ].filter(Boolean).join(" ")}
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}
@@ -487,8 +495,10 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       )}
       {/* 본문과 상태 줄은 같은 두 행을 공유한다. 임무 단추는 본문 밖에서 상태 문구 바로 뒤에 선다. */}
       {hasProgressButton ? <div className="workspace-cluster-row-body">{mainButton}{statusLine}</div> : mainButton}
-      {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식만 숨긴다. */}
-      <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle ? {} : { "aria-hidden": true })}>
+      {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식만 숨긴다.
+          행 글리프(우측 카드)가 있으면 그 안에 초점 자리가 있으므로 칸을 숨기지 않는다. */}
+      <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle || rowGlyphs ? {} : { "aria-hidden": true })}>
+        {rowGlyphs}
         {row.mark ? (row.mark.toggle ? <ClusterRowMarkToggle mark={row.mark} toggle={row.mark.toggle} /> : <ClusterRowMark mark={row.mark} />) : null}
       </span>
     </li>

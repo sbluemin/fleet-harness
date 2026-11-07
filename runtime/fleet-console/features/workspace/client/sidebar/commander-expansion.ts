@@ -58,6 +58,44 @@ export function useCommanderKeepExpanded(): boolean {
   return useSyncExternalStore(syncedKeep.subscribe, syncedKeep.get, syncedKeep.get);
 }
 
+// ── 시작 전·완료 보이기(기본 켜짐) — 좌측 사이드바 목록에만 적용되는 글로벌 설정이다 ───────────────────────────
+// 원천은 settings.json(`general.commanderShowSettled`)이고, 같은 origin의 localStorage는 첫 그리기용 캐시다.
+const SHOW_SETTLED_KEY = "fleet-console.sidebar.showSettled";
+
+function readShowSettledCache(): boolean {
+  try {
+    return typeof window === "undefined" || window.localStorage.getItem(SHOW_SETTLED_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function writeShowSettledCache(next: boolean): void {
+  try {
+    window.localStorage.setItem(SHOW_SETTLED_KEY, next ? "true" : "false");
+  } catch {
+    // 저장하지 못하면 이번 화면에서만 기억한다.
+  }
+}
+
+const syncedShowSettled = createServerSyncedValue<boolean>({
+  field: "commanderShowSettled",
+  defaultValue: true,
+  readCache: readShowSettledCache,
+  writeCache: writeShowSettledCache,
+  parseServerValue: parseKeep,
+  equal: (left, right) => left === right,
+  isDefault: (value) => value,
+});
+
+export function setCommanderShowSettled(next: boolean): void {
+  syncedShowSettled.set(next);
+}
+
+export function useCommanderShowSettled(): boolean {
+  return useSyncExternalStore(syncedShowSettled.subscribe, syncedShowSettled.get, syncedShowSettled.get);
+}
+
 // ── 펼침 묶음 ──────────────────────────────────────────────────────────────────────────────────────
 
 function readOpen(): ReadonlySet<string> {

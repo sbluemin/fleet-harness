@@ -54,7 +54,7 @@ import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
 import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
 import { commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
-import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded } from "./commander-expansion.js";
+import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded, useCommanderShowSettled } from "./commander-expansion.js";
 import { CommodoreHoverDock } from "./commodore-hover-dock.js";
 import type { SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
@@ -168,6 +168,7 @@ export function ObjectiveRecordsSideBar({
   bottomAccessory,
 }: ObjectiveRecordsSideBarProps) {
   const t = useT();
+  const showSettled = useCommanderShowSettled();
   const searchShortcut = useSearchShortcutLabel();
   const rootRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
@@ -567,6 +568,7 @@ export function ObjectiveRecordsSideBar({
                   <CommodoreCommanderList
                     sortNameOnly
                     showBar={false}
+                    hideSettled={!showSettled}
                     commodoreId={theater.id}
                     selectedId={selectedCommanderId}
                   />
@@ -1042,6 +1044,7 @@ function CommanderCompactPopover({ commodoreId, selectedId, anchor, onClose }: {
   readonly onClose: () => void;
 }) {
   const t = useT();
+  const showSettled = useCommanderShowSettled();
   const [position] = useState(() => ({
     left: Math.max(8, Math.min(anchor.right + 8, window.innerWidth - 296)),
     top: Math.max(8, Math.min(anchor.top, window.innerHeight - 200)),
@@ -1057,7 +1060,7 @@ function CommanderCompactPopover({ commodoreId, selectedId, anchor, onClose }: {
   }, [onClose]);
   const select = (item: SideBarRowItem) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
-    if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId, { fromSideBar: true });
+    if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
     else item.layout.cluster.open?.();
     onClose();
   };
@@ -1070,7 +1073,7 @@ function CommanderCompactPopover({ commodoreId, selectedId, anchor, onClose }: {
         style={{ left: position.left, top: position.top }}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <CommodoreCommanderList sortNameOnly commodoreId={commodoreId} selectedId={selectedId} onSelect={select} />
+        <CommodoreCommanderList sortNameOnly hideSettled={!showSettled} commodoreId={commodoreId} selectedId={selectedId} onSelect={select} />
       </div>
     </div>,
     document.body,

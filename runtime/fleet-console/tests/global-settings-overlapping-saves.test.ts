@@ -28,6 +28,7 @@ const BASE: GlobalSettingsState = {
   commanderSort: null,
   commanderFolds: null,
   commanderKeepExpanded: null,
+  commanderShowSettled: null,
   lowerUnfocusedFrameRate: true,
   taskforceBubbleColor: false,
   shortcuts: {},

@@ -320,6 +320,8 @@ export interface GlobalSettingsState {
   /** 시작 전·완료 구역의 접힘. null은 settings.json에 키 없음(한 번도 저장된 적 없음)이다. */
   readonly commanderFolds: CommanderFolds | null;
   readonly commanderKeepExpanded: boolean | null;
+  /** 좌측 사이드바의 시작 전·완료 목표 표시. null은 키 없음(기본 켜짐)이다. */
+  readonly commanderShowSettled: boolean | null;
   readonly lowerUnfocusedFrameRate: boolean;
   /** TaskForce 사령관 말풍선 테두리를 이름 색으로 그릴지 — 기본은 꺼짐. */
   readonly taskforceBubbleColor: boolean;

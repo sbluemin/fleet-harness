@@ -156,10 +156,10 @@ export function ObjectiveScheduleRow({ objective, language }: { readonly objecti
 }
 
 /**
- * 사령관 작업 탭에서 한 목표의 상세 한 탭을 그린다 — 지금은 우측 작업 탭의 임무 팝업(구성원 탭: 로스터 + 임무 그래프)이 쓴다.
+ * 한 목표의 상세 한 탭을 그린다 — 우측 작업 탭의 임무 팝업·행 펼침과 채팅의 목표 창(objective-window)이 함께 쓴다.
  * 탭 줄은 두지 않고, 「오늘까지·기한」은 목표 탭 맨 위에 중앙 정렬로 둔다. 팝업 안의 길(결정·결과물로 가기)이 탭을 바꾼다.
  */
-function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab, onGlyphTab, onGraphFitWidth }: {
+export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab, onGlyphTab, onGraphFitWidth }: {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly language: "en" | "ko";

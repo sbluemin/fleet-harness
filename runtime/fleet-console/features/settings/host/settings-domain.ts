@@ -123,6 +123,8 @@ export interface ConsoleGeneralSettings {
    * localStorage 키(`fleet-console.commanderTab.keepExpanded`)는 같은 origin의 첫 그리기용 캐시로만 쓴다.
    */
   readonly commanderKeepExpanded?: boolean;
+  /** 좌측 사이드바에 시작 전·완료 목표를 보일지. 부재는 기본 켜짐이다. */
+  readonly commanderShowSettled?: boolean;
   /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
   readonly lowerUnfocusedFrameRate?: boolean;
   /** TaskForce 사령관 말풍선 테두리를 이름 색으로 그릴지. 부재는 기본 꺼짐(중립 테두리)이다. */
@@ -386,6 +388,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const commanderSort = readCommanderSortPreference(value.commanderSort);
   const commanderFolds = readCommanderFolds(value.commanderFolds);
   const commanderKeepExpanded = typeof value.commanderKeepExpanded === "boolean" ? value.commanderKeepExpanded : undefined;
+  const commanderShowSettled = typeof value.commanderShowSettled === "boolean" ? value.commanderShowSettled : undefined;
   const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
   const taskforceBubbleColor = typeof value.taskforceBubbleColor === "boolean" ? value.taskforceBubbleColor : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
@@ -406,6 +409,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(commanderSort !== undefined ? { commanderSort } : {}),
     ...(commanderFolds !== undefined ? { commanderFolds } : {}),
     ...(commanderKeepExpanded !== undefined ? { commanderKeepExpanded } : {}),
+    ...(commanderShowSettled !== undefined ? { commanderShowSettled } : {}),
     ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
     ...(taskforceBubbleColor !== undefined ? { taskforceBubbleColor } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
@@ -562,6 +566,7 @@ interface GlobalSettingsBody {
   readonly commanderSort?: unknown;
   readonly commanderFolds?: unknown;
   readonly commanderKeepExpanded?: unknown;
+  readonly commanderShowSettled?: unknown;
   readonly lowerUnfocusedFrameRate?: unknown;
   readonly taskforceBubbleColor?: unknown;
   readonly uiFont?: unknown;
@@ -713,6 +718,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_commander_keep_expanded" });
     return;
   }
+  if (body.commanderShowSettled !== undefined && typeof body.commanderShowSettled !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_commander_show_settled" });
+    return;
+  }
   if (body.lowerUnfocusedFrameRate !== undefined && typeof body.lowerUnfocusedFrameRate !== "boolean") {
     deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
     return;
@@ -778,6 +787,7 @@ async function mutateGlobalSettings(
       ...(commanderSort !== undefined ? { commanderSort } : {}),
       ...(commanderFolds !== undefined ? { commanderFolds } : {}),
       ...(typeof body.commanderKeepExpanded === "boolean" ? { commanderKeepExpanded: body.commanderKeepExpanded } : {}),
+      ...(typeof body.commanderShowSettled === "boolean" ? { commanderShowSettled: body.commanderShowSettled } : {}),
       ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
       ...(typeof body.taskforceBubbleColor === "boolean" ? { taskforceBubbleColor: body.taskforceBubbleColor } : {}),
       // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
@@ -857,6 +867,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     commanderFolds: readCommanderFolds(general.commanderFolds) ?? null,
     // 키 없음·손상 값은 null이다 — 화면은 꺼짐으로 읽는다.
     commanderKeepExpanded: typeof general.commanderKeepExpanded === "boolean" ? general.commanderKeepExpanded : null,
+    // 키 없음·손상 값은 null이다 — 화면은 켜짐으로 읽는다.
+    commanderShowSettled: typeof general.commanderShowSettled === "boolean" ? general.commanderShowSettled : null,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     taskforceBubbleColor: general.taskforceBubbleColor ?? false,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
