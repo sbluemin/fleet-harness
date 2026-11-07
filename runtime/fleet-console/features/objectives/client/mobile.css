@@ -33,12 +33,6 @@
 .objectives-m-profile-foot { margin: 8px 18px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
 .objectives-m-profile .objectives-m-profile-actions { padding: 16px 0 0; }
 /* 일정은 프로필·목표 구역 맨 위 글자 줄 — 테두리·배경·세로 띠 없이 잉크와 굵기만 상태를 말한다. */
-.objectives-m-schedule { display: flex; flex-wrap: wrap; align-items: center; column-gap: 22px; padding: 0 4px; }
-.objectives-m .objectives-m-schedule button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0; color: var(--m-text-faint); font-size: var(--m-fs-meta); background: transparent; border: 0; }
-.objectives-m .objectives-m-schedule button svg { flex: none; width: 17px; height: 17px; }
-.objectives-m .objectives-m-schedule button.is-on { color: var(--m-text); font-weight: var(--weight-bold); }
-.objectives-m .objectives-m-schedule button.is-overdue { color: var(--m-danger); }
-.objectives-m .objectives-m-schedule button:disabled { opacity: .5; cursor: default; }
 /* 회고 — 데스크톱 표를 모바일 잉크로 읽는다. 카드 안쪽 여백은 카드가 준다. */
 .objectives-m-retro .objectives-retro { padding: 0; }
 .objectives-m-retro .objectives-retro-none { margin: 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }

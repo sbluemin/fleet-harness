@@ -10,6 +10,9 @@ import { useFeatureRegistry } from "../../../../core/client/src/integration/feat
 import type { ObjectiveGroup, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { accentToneLabels, resolveAccentColor } from "../objective-accent.js";
+import { DatePicker, dueShort } from "../../../objectives/client/date-picker.js";
+import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
+import { objectivesApi, post, useObjectiveBoard, useObjectiveSummaries } from "../../../objectives/client/objectives-state.js";
 
 export interface GroupContextMenuChipActions {
   readonly onSetAccent: (key: string | null) => void;
@@ -197,6 +200,7 @@ function ChipMenuContent({
           <div className="group-context-menu-divider" aria-hidden="true" />
         </>
       ) : null}
+      <ObjectiveDueMenuSection objectiveRecord={objectiveRecord} onClose={onClose} />
       <PluginObjectiveMenuSection objectiveRecord={objectiveRecord} onClose={onClose} />
       <div className="group-context-menu-section-label">{t("sidebar.groupMenu.sectionGroup")}</div>
       {groups.map((group) => {
@@ -342,6 +346,70 @@ function PluginObjectiveMenuSection({ objectiveRecord, onClose }: { objectiveRec
       <div className="group-context-menu-divider" aria-hidden="true" />
     </FeatureErrorBoundary>
   );
+}
+
+/**
+ * 기한 섹션 — 「오늘까지」 토글과 「기한」 날짜 선택(달력의 「기한 없음」·같은 날 다시 고르기로 해제).
+ * 목표 보드가 아직 없거나 끝난 목표에는 서지 않는다(사이드바 줄도 끝난 목표의 오늘까지·기한을 그리지 않는다).
+ * 지휘관이 일하는 동안에는 잠긴다 — 서버가 같은 기준으로 거절한다.
+ */
+function ObjectiveDueMenuSection({ objectiveRecord, onClose }: { objectiveRecord: ObjectiveRecord; onClose: () => void }) {
+  const language = useConsoleLocale();
+  const lang = language === "ko" ? "ko" : "en";
+  const t = getObjectivesT(lang);
+  const board = useObjectiveBoard(objectiveRecord.commodoreId);
+  const summaries = useObjectiveSummaries();
+  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
+  const dueButton = useRef<HTMLButtonElement | null>(null);
+  const objective = board.loaded ? board.objectives.find((candidate) => candidate.id === objectiveRecord.id) ?? null : null;
+  if (!objective || objective.done) return null;
+  const activity = summaries.find((summary) => summary.id === objective.id)?.activity ?? null;
+  const locked = activity === "running" || activity === "background";
+  const patch = (next: Record<string, unknown>) => {
+    const api = objectivesApi();
+    if (api) void post(api, "/objective/patch", { objectiveId: objective.id, patch: next, language: lang }).catch(() => undefined);
+  };
+  return (
+    <>
+      <div className="group-context-menu-section-label">{t("objectives.schedule.title")}</div>
+      <button
+        type="button"
+        className={`group-context-menu-item group-context-menu-item--switch${objective.today ? " is-selected" : ""}`}
+        role="menuitemcheckbox"
+        aria-checked={objective.today}
+        disabled={locked}
+        onClick={() => { patch({ today: !objective.today }); onClose(); }}
+      >
+        <span className="group-context-menu-item__glyph" aria-hidden="true"><TodayGlyph /></span>
+        <span className="group-context-menu-item__name">{t("objectives.tabs.today")}</span>
+        <CheckMark />
+      </button>
+      <button
+        ref={dueButton}
+        type="button"
+        className="group-context-menu-item"
+        role="menuitem"
+        aria-haspopup="dialog"
+        aria-expanded={dateAnchor !== null}
+        disabled={locked}
+        onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : new DOMRect(rect.right + 4, rect.top, 0, rect.height))); }}
+      >
+        <span className="group-context-menu-item__glyph" aria-hidden="true"><DueGlyph /></span>
+        <span className="group-context-menu-item__name">{t("objectives.schedule.due")}</span>
+        {objective.dueDate ? <span className="group-context-menu-item__key">{dueShort(objective.dueDate, lang)}</span> : null}
+      </button>
+      {dateAnchor ? <DatePicker anchor={dateAnchor} trigger={dueButton} value={objective.dueDate ?? null} language={lang} t={t} onPick={(next) => { patch({ dueDate: next }); onClose(); }} onClose={() => setDateAnchor(null)} /> : null}
+      <div className="group-context-menu-divider" aria-hidden="true" />
+    </>
+  );
+}
+
+function TodayGlyph() {
+  return <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M7 1.5v1.4M7 11.1v1.4M1.5 7h1.4M11.1 7h1.4M3.1 3.1l1 1M9.9 9.9l1 1M10.9 3.1l-1 1M4.1 9.9l-1 1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
+}
+
+function DueGlyph() {
+  return <svg viewBox="0 0 14 14"><rect x="2" y="3" width="10" height="9" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M2 6h10M4.8 1.8v2.4M9.2 1.8v2.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
 function GroupHeaderMenuContent({

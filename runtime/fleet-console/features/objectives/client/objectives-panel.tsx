@@ -70,7 +70,6 @@ const MERGED_TABS: Readonly<Record<string, DetailTab>> = { missions: "crew", dec
 export const detailTabOf = (value: string | undefined): DetailTab => (DETAIL_TABS as readonly string[]).includes(value ?? "") ? value as DetailTab : MERGED_TABS[value ?? ""] ?? "goal";
 /** 목록 칸 시절의 폭 기억 — 읽는 곳이 없으니 거둔다. */
 const RETIRED_WIDTH_KEYS = ["fleet.objectives.three-pane-width", "fleet.objectives.detail-width", "fleet.objectives.rail-detail-width"] as const;
-export function todayIso(): string { return new Date().toISOString().slice(0, 10); }
 /** 한글 IME 조합 중의 Return 은 확정이지 제출이 아니다 — 조합 확정과 제출로 두 번 오는 keydown 중 앞의 것을 거른다. */
 function submitKey(event: ReactKeyboardEvent<HTMLElement>): boolean { return event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229; }
 /** 기록 시각 — 오늘이면 시:분, 아니면 월·일과 시:분. 옛 결과에서 옮긴 기록은 시각이 없다. */
@@ -108,17 +107,6 @@ function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: st
   );
 }
 
-/** 탭 바 기한 글리프 곁의 짧은 날짜 — 월·일 숫자만(좁은 폭에서는 숨는다). */
-export function dueShort(iso: string, language: "en" | "ko"): string {
-  const [, month, day] = iso.split("-").map(Number);
-  return language === "ko" ? `${month}.${day}` : `${month}/${day}`;
-}
-export function dueLabel(iso: string, language: "en" | "ko"): string {
-  const date = new Date(`${iso}T00:00:00`);
-  return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", weekday: "short" }).format(date);
-}
-export const SunGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3" /></svg>;
-export const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></svg>;
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const CrewGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M2 13c0-2.2 1.8-3.8 4-3.8s4 1.6 4 3.8M10.6 3.6a2.1 2.1 0 0 1 0 3.9M11.6 9.4c1.4.4 2.4 1.8 2.4 3.6" /></svg>;
