@@ -21,11 +21,11 @@ import type { RailToolContext } from "../../../../../core/client/src/chrome/rail
 import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
-import { announceNativeViewResize, getNativeViewResize, useBrowserEngine } from "../../../../browser/client/browser-panel-store.js";
+import { announceNativeViewResize, getNativeViewResize } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
 import { PluginObjectiveRenderer } from "../../objective-renderer.js";
 import { WORKBENCH_GAP, type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
-import { useBrowserBandSlot } from "./browser-band-slot.js";
+import { useBrowserBandGlobe, useBrowserBandSlot } from "./browser-band-slot.js";
 import {
   bindWorkbenchCloseGuard,
   cancelWorkbenchClose,
@@ -580,13 +580,13 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
 }
 
 /**
- * 지구본이 닫는 길이 아닐 때만 서는 닫기 — Desktop 창 말고 다른 화면이 붙어 브라우저가 멈췄거나(지구본이 꺼진다) Desktop 브라우저가
- * 없으면, 열려 있던 칸을 닫을 다른 길이 없다.
+ * 지구본이 닫는 길이 아닐 때만 서는 닫기 — 이 대화가 지구본을 세우지 않거나(작업대는 사령관 단위로 공유되므로 다른 대화에서 연 칸이
+ * 남는다), 다른 화면이 붙어 브라우저가 멈춰 지구본이 꺼지면, 열려 있던 칸을 닫을 다른 길이 없다.
  */
 function BrowserBandClose({ tileId, title }: { readonly tileId: string; readonly title: string }) {
   const t = useT();
-  const engine = useBrowserEngine();
-  if (engine === null || engine.available) return null;
+  const globe = useBrowserBandGlobe();
+  if (globe) return null;
   const label = t("conversation.workbench.close", { title });
   return (
     <button type="button" className="workbench-tile-button" aria-label={label} title={label} onClick={() => closeWorkbenchTile(tileId)}>

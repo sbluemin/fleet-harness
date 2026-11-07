@@ -61,7 +61,7 @@ import { requestCommodoreCreate } from "../../../commodore/client/commodore-crea
 import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
-import { releaseBrowserBandSlot, setBrowserBandSlot } from "./workbench/browser-band-slot.js";
+import { releaseBrowserBandSlot, setBrowserBandGlobe, setBrowserBandSlot } from "./workbench/browser-band-slot.js";
 import type { WorkbenchTile } from "../../shared/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
@@ -1156,6 +1156,16 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
     if (browserSlotRef.current !== null) releaseBrowserBandSlot(browserSlotRef.current);
     browserSlotRef.current = null;
   }, []);
+  // 눌러서 브라우저를 닫을 수 있는 지구본이 있는지 탭 줄에 알린다 — 지구본은 대화 종류가 세우고, 브라우저를 못 쓰면 꺼진다.
+  useLayoutEffect(() => {
+    const tools = toolsRef.current;
+    if (tools === null) return;
+    const check = () => setBrowserBandGlobe(tools.querySelector('[data-caption-action="browser"]:not(:disabled)') !== null);
+    check();
+    const observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(check);
+    observer?.observe(tools, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
+    return () => { observer?.disconnect(); setBrowserBandGlobe(false); };
+  }, [band]);
   const [hidden, setHidden] = useState<readonly HiddenTool[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
