@@ -15,6 +15,7 @@ import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.
 import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
 import { SharedFolderRows, useSharedFolder } from "./shared-folder.js";
 import { briefHasContent, objectiveTabHasContent } from "./detail-content.js";
+import { ToolbarTipLayer } from "../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { useSharedFileCount } from "./shared-folder-count.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
@@ -178,6 +179,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
       tab={tab}
       onTab={onGlyphTab}
       readOnly={readOnly}
+      compact
       sectionOpen={(key) => key in collapsed ? !collapsed[key] : false}
       onToggleSection={(key) => setCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
       groupOpen={(key) => key in groupCollapsed ? !groupCollapsed[key] : false}
@@ -519,7 +521,7 @@ function LedgerMark({ rootId, objectiveId, name, open, available, t, children }:
 }
 
 /** 구성원 탭의 명단 — 머리(셈) 아래 첫 줄에 지휘관 실행 설정(lead)이 같은 줄 문법으로 서고, 이어서 구성원 줄이다. 탭이 접힘을 대신하므로 머리는 접지 않는다. */
-function MemberRoster({ objective, t, call, request, objectiveRecordState, rows, touchable, readOnly = false, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; objectiveRecordState: DetailProps["objectiveRecordState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; readOnly?: boolean; lead: ReactNode }) {
+function MemberRoster({ objective, t, call, request, objectiveRecordState, rows, touchable, readOnly = false, headless = false, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; objectiveRecordState: DetailProps["objectiveRecordState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; readOnly?: boolean; headless?: boolean; lead: ReactNode }) {
   const ledger = useLedgerObjective(objective.id);
   const ledgerReady = canOpenLedger();
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
@@ -613,9 +615,10 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
     else if (event.key === "Escape") { event.currentTarget.value = original; event.currentTarget.blur(); }
   };
 
-  return <div className="objectives-members">
-    {/* 머리는 임무 섹션과 같은 문법 — 글리프 · 「구성원」 · 수. */}
-    {readOnly ? null : <SectionHead label={`${t("objectives.members.title")} ${objective.members.length}`} />}
+  const rosterRef = useRef<HTMLDivElement | null>(null);
+  return <div ref={rosterRef} className={`objectives-members${readOnly ? " is-compact" : ""}`}>
+    {/* 머리는 임무 섹션과 같은 문법 — 글리프 · 「구성원」 · 수. 이름만 있는 빈 머리 띠는 컴팩트 자리에서 그리지 않는다. */}
+    {headless ? null : <SectionHead label={`${t("objectives.members.title")} ${objective.members.length}`} />}
     <div id="objectives-sec-members">
     {lead}
     {objective.members.length === 0 && !readOnly ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
@@ -636,7 +639,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
       const allowed = memberSubagents(member);
       return (
         <div key={member.id} className="objectives-member-slot">
-        <div className={`objectives-member${ledger === member.id ? " is-ledger" : ""}`}>
+        <div className={`objectives-member${ledger === member.id ? " is-ledger" : ""}`} {...(readOnly ? { "data-toolbar-tip": "", ...(member.brief ? { "data-tip": member.brief } : {}) } : {})}>
           <LedgerMark rootId={objective.id} objectiveId={member.id} name={member.role} open={ledger === member.id} available={ledgerReady && state !== "closed"} t={t}>
             <MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} still={false} size={28} />
           </LedgerMark>
@@ -650,8 +653,8 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
               </span>
               {member.by === "commander" && !readOnly ? <span className="objectives-member-by">{t("objectives.members.proposed")}</span> : null}
             </span>
-            <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={readOnly ? "" : touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
-              onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
+            {readOnly ? null : <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={readOnly ? "" : touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
+              onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />}
           </div>
           <div className="objectives-member-meta">
             <MemberLaunchControl key={member.id} t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
@@ -701,6 +704,8 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
     })}
     </div>
     <p className="objectives-sr" aria-live="polite">{announce}</p>
+    {/* 컴팩트 명단의 역할 문구는 채팅 머리 도구와 같은 한 장의 말풍선이 말한다. */}
+    {readOnly ? <ToolbarTipLayer rootRef={rosterRef} /> : null}
   </div>;
 }
 
@@ -749,6 +754,8 @@ interface DetailProps {
   readonly onOpenObjective: (objectiveId: string) => void;
   /** 우측 사이드바 펼침 — 사람이 고치는 장치를 모두 빼고, 내용 있는 구획만 그린다. 서버·지휘관 도구의 편집 경로는 그대로다. */
   readonly readOnly?: boolean;
+  /** 사이드바 펼침·임무 팝업 — 빈 머리 띠를 그리지 않고, 머리는 구분선 줄 끝에 셈·도구만 붙인다. 중앙 패널은 그대로다. */
+  readonly compact?: boolean;
   /** 팝업 안에 담긴 상세 — 그 자체가 확대 오버레이라 그래프의 「크게 보기」를 세우지 않고 그래프를 확대 배치로 그린다. */
   readonly embedded?: boolean;
   /** 확대 배치 그래프가 스크롤 없이 들어가는 카드 폭 — 팝업이 카드 폭을 맞춘다. */
@@ -944,12 +951,14 @@ function SharedFolderSection({ objective, t, language, open, onToggle, named }: 
   </>;
 }
 
-function SectionHead({ label, tools, actions, controls, expanded, onToggle, named = false, fold = false }: {
+function SectionHead({ label, tools, actions, controls, expanded, onToggle, named = false, fold = false, line = false }: {
   readonly label: string;
   /** 접히는 머리가 이름 없는 셰브런만 남지 않게 이름을 보인다 — 읽기 전용 펼침에서 쓴다. */
   readonly named?: boolean;
   /** 접히는 머리를 별도 행이 아니라 구분선 줄 자체로 그린다 — 선 끝에 작은 셰브런만 선다(읽기 전용 펼침). */
   readonly fold?: boolean;
+  /** 셈·도구만 있는 정적 머리를 구분선 줄 끝에 붙인다 — 별도 행 높이 없이 선 끝에 오른쪽 도구만 선다. */
+  readonly line?: boolean;
   readonly tools?: ReactNode;
   readonly actions?: ReactNode;
   /** 접히는 본문의 id — 없으면 정적 머리. */
@@ -961,7 +970,7 @@ function SectionHead({ label, tools, actions, controls, expanded, onToggle, name
     {named ? <span className="objectives-row-name">{label}</span> : <span className="objectives-sr">{label}</span>}
     {tools ? <span className="objectives-row-tools">{tools}</span> : null}
   </>;
-  const head = !controls ? <div className="objectives-row is-rule is-static">{inner}</div> : (
+  const head = !controls ? <div className={`objectives-row is-rule is-static${line ? " is-line" : ""}`}>{inner}</div> : (
     <button type="button" className={`objectives-row is-rule objectives-acc-hd${named ? " is-named" : ""}${fold ? " is-fold" : ""}`} aria-expanded={expanded} aria-controls={controls} onClick={onToggle}>
       {inner}
       <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
@@ -969,7 +978,7 @@ function SectionHead({ label, tools, actions, controls, expanded, onToggle, name
   );
   if (!actions) return head;
   return (
-    <div className="objectives-section-head-bar">
+    <div className={`objectives-section-head-bar${line ? " is-line" : ""}`}>
       {head}
       <div className="objectives-section-head-actions">{actions}</div>
     </div>
@@ -1257,7 +1266,7 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
   return describeQuietMission(elapsed / 60_000, language);
 }
 
-export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, objectiveRecordTitle, objectiveRecordState, objectiveRecordOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective, embedded = false, readOnly = false, onGraphFitWidth }: DetailProps) {
+export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, objectiveRecordTitle, objectiveRecordState, objectiveRecordOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective, embedded = false, readOnly = false, compact = false, onGraphFitWidth }: DetailProps) {
   const launchRows = useLaunchRows();
   // 읽기 전용 펼침만 공유 폴더의 파일 수를 미리 읽는다 — 비었다고 확인되면(0) 그 머리를 그리지 않고, 모르면(null) 열어 볼 수 있게 둔다.
   const sharedFiles = useSharedFileCount(readOnly ? objective : null, readOnly);
@@ -1286,6 +1295,8 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   const editable = !objective.done && !busy && !readOnly;
   // 지휘관이 일하는 동안에도 받는 편집 — 임무 추가, 끝나지 않은 임무의 문구·삭제·선행·담당, 메모. 구성원이 떠 있어도 임무는 끝나기 전까지 사람의 것이다. 서버가 같은 기준으로 가른다.
   const touchable = !objective.done && !readOnly;
+  // 머리 띠를 줄이는 자리 — 읽기 전용 펼침과 임무 팝업.
+  const line = compact || readOnly;
   const notStarted = (mission: ObjectiveMission) => !mission.done;
   const canEditMission = (missionId: string) => { if (editable) return true; const target = objective.missions.find((candidate) => candidate.id === missionId); return touchable && !!target && notStarted(target); };
   const [zoomOpen, setZoomOpen] = useState(false);
@@ -1424,13 +1435,13 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   const commanderState = objectiveRecordOwnState(objective.id);
   const ledger = useLedgerObjective(objective.id);
   const commanderRow = (
-    <div className={`objectives-member is-commander${ledger === objective.id ? " is-ledger" : ""}`}>
+    <div className={`objectives-member is-commander${ledger === objective.id ? " is-ledger" : ""}`} {...(readOnly ? { "data-toolbar-tip": "", "data-tip": t("objectives.commander.brief") } : {})}>
       <LedgerMark rootId={objective.id} objectiveId={objective.id} name={t("objectives.commander.title")} open={ledger === objective.id} available={canOpenLedger() && commanderState !== "closed"} t={t}>
         <CommanderMark objective={objective} objectiveRecordState={objectiveRecordState} size={28} />
       </LedgerMark>
       <div className="objectives-member-body">
         <span className="objectives-member-name"><span className="objectives-member-role-fit">{t("objectives.commander.title")}</span></span>
-        <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>
+        {readOnly ? null : <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>}
       </div>
       <div className="objectives-member-meta">
         <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={locked || !editable}
@@ -1441,7 +1452,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   );
   const sCrew = (
       <div className="objectives-group objectives-crew-group">
-        <MemberRoster objective={objective} t={t} call={call} request={request} objectiveRecordState={objectiveRecordState} rows={launchRows} touchable={touchable} readOnly={readOnly} lead={commanderRow} />
+        <MemberRoster objective={objective} t={t} call={call} request={request} objectiveRecordState={objectiveRecordState} rows={launchRows} touchable={touchable} readOnly={readOnly} headless={line} lead={commanderRow} />
       </div>
   );
   const sOrigin = (<>
@@ -1473,6 +1484,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
       <div className="objectives-group objectives-criteria-group">
         <div className="objectives-criteria-head" ref={criteriaHeadRef}>
           <SectionHead
+            line={line}
             label={t("objectives.criteria.title")}
             tools={pendingCount !== null ? <span className="objectives-criteria-count is-pending">{pendingCount}</span>
               : criteriaCollapsible ? <span className="objectives-criteria-count">{t("objectives.criteria.count", { met: objective.criteria.filter((criterion) => !!criterion.met).length, total: objective.criteria.length })}</span> : null}
@@ -1589,7 +1601,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   // 임무 목록은 없다 — 조작은 그래프 팝업이 맡으므로 머리는 접히지 않는다. 임무 추가는 지휘관이 맡는다.
   const unseenAny = objective.missions.some((mission) => unseenRecords(mission) > 0);
   const sMissions = readOnly && objective.missions.length === 0 ? null : <div className="objectives-group objectives-missions-group">
-    <SectionHead label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.tabs.unseenDot")} /> : null}{renderCounts()}</>}
+    <SectionHead line={line} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.tabs.unseenDot")} /> : null}{renderCounts()}</>}
       {...(objective.missions.length ? { actions: graphTools } : {})} />
     {missionAttention}
     <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} {...(embedded ? { zoom: true, onFitWidth: onGraphFitWidth } : {})} suspended={zoomOpen && !verticalGraph} /> : null}</div>

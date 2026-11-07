@@ -49,7 +49,7 @@ function ExpandedCommanderPanel({ item, tab, panelId, renderPanel }: {
   const accent = useAvatarAccent(objectiveId === null ? null : objectiveRecordAvatarKey(objectiveId));
   if (objectiveId === null) return null;
   return (
-    <li id={panelId} className="commander-row-panel workspace-avatar-panel" role="region" aria-label={t("commanderTab.rowGlyph.panel", { tab: t(TAB_LABEL_KEY[tab]), title: item.layout.cluster.title })} style={accent}>
+    <li id={panelId} className="commander-row-panel workspace-avatar-panel" data-keep-objective-active="" role="region" aria-label={t("commanderTab.rowGlyph.panel", { tab: t(TAB_LABEL_KEY[tab]), title: item.layout.cluster.title })} style={accent}>
       {renderPanel(item, tab)}
     </li>
   );
