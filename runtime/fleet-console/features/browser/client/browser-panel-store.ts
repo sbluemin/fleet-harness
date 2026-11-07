@@ -159,40 +159,6 @@ export const BrowserNavHostContext = React.createContext<HTMLElement | null | un
  */
 export const BROWSER_NAV_MIN_PX = 300;
 
-// ---------- 세로 탭 레일의 고정 ----------
-
-/** 세로 탭 레일 폭 — 접힘은 아이콘 한 열, 펼침은 탭 제목과 닫기까지. 값은 CSS 의 `--op-rail-*` 와 짝이다(펼침 폭은 거기서만 읽힌다). */
-export const BROWSER_RAIL_COLLAPSED_PX = 54;
-export const BROWSER_RAIL_EXPANDED_PX = 237;
-
-const RAIL_PINNED_KEY = "fleet.browser.tabRail.pinned";
-const railPinnedListeners = new Set<() => void>();
-let railPinned: boolean | null = null;
-
-function readRailPinned(): boolean {
-  if (railPinned !== null) return railPinned;
-  let stored = false;
-  try { stored = window.localStorage.getItem(RAIL_PINNED_KEY) === "1"; } catch { /* 저장소를 못 읽으면 기본(고정 안 함) */ }
-  railPinned = stored;
-  return stored;
-}
-
-/** 레일을 펼친 채로 두는가 — 이 브라우저 화면(localStorage)의 기억이다. 기본은 고정하지 않는다. 모든 패널이 같은 값을 본다. */
-export function setBrowserRailPinned(next: boolean): void {
-  if (readRailPinned() === next) return;
-  railPinned = next;
-  try { if (next) window.localStorage.setItem(RAIL_PINNED_KEY, "1"); else window.localStorage.removeItem(RAIL_PINNED_KEY); } catch { /* 기억하지 못해도 이 세션 안에서는 지켜진다 */ }
-  for (const listener of railPinnedListeners) listener();
-}
-
-export function useBrowserRailPinned(): boolean {
-  const subscribe = React.useCallback((listener: () => void) => {
-    railPinnedListeners.add(listener);
-    return () => { railPinnedListeners.delete(listener); };
-  }, []);
-  return React.useSyncExternalStore(subscribe, readRailPinned, () => false);
-}
-
 // ---------- 네이티브 뷰를 실은 칸의 끌기 ----------
 
 /**

@@ -8,14 +8,12 @@ import { CaptionBrowserUseGlyph } from "../../workspace/client/components/captio
 
 import { getT } from "./i18n.js";
 import { suggestionSkipReason } from "../shared/suggestions.js";
-import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../workspace/shared/avatars.js";
-import { useAvatarToneOf } from "../../workspace/client/avatar-accent.js";
-import { commodoreOfBrowser, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
+import { HUMAN_SPACE_ID, type BrowserSpaceState } from "../shared/spaces.js";
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
-import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, BrowserNavTailContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
-import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
+import { dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, BrowserNavTailContext, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import "./browser-panel.css";
 
 export interface BrowserClientServices {
@@ -333,17 +331,6 @@ function unavailableText(t: ReturnType<typeof getT>, reason: UnavailableReason |
   return { title: t("terminal.browser.desktopMissing"), body: null };
 }
 
-/**
- * 스페이스 색 — 그 스페이스의 아바타 정체성 톤이다(사령관 스페이스는 사령관 아바타, Objective 스페이스는 그 Objective 의 아바타).
- * 아바타를 모르는 스페이스(세션·사람)는 CSS 의 무채 잉크가 남는다. 톤 규칙은 대화 강조색과 같은 `avatarToneOf` 하나다.
- */
-function spaceAvatarKey(space: { readonly id: string; readonly kind: BrowserSpaceKind }, browserId: string | null): string | null {
-  if (space.kind === "objective") return objectiveRecordAvatarKey(space.id);
-  if (space.kind !== "commodore" || browserId === null) return null;
-  const commodoreId = commodoreOfBrowser(browserId);
-  return commodoreId === null ? null : commodoreAvatarKey(commodoreId);
-}
-
 function AgentGlyph() {
   return (
     <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" focusable="false">
@@ -351,12 +338,6 @@ function AgentGlyph() {
     </svg>
   );
 }
-function BackGlyph() {
-  return glyph('<path d="M6.5 3.5 2.5 7l4 3.5"/><path d="M2.5 7h7a3 3 0 0 1 3 3v1.5"/>');
-}
-
-interface SpaceGroup { readonly space: BrowserSpaceState; readonly tabs: readonly BrowserCaptionTab[]; readonly open: boolean }
-
 export interface SessionBrowserTarget { readonly pluginId: string; readonly scopeId: string }
 
 /** Console 실행 중에는 같은 scope가 같은 owner를 가리킨다. 아직 시작하지 않은 세션은 null이다. */
@@ -544,234 +525,109 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
   );
 }
 
-/** 호버가 레일을 떠난 뒤 접기까지의 유예 — 레일에서 뷰 위로 겹친 펼침 쪽(자식 창)으로 넘어가는 순간의 빈틈과 가장자리 스침을 흡수한다. */
-const RAIL_LEAVE_MS = 160;
-/** 펼침·접힘 전환 길이 — `browser-panel.css` 의 `op-browser-rail-reveal` 과 같아야 한다. */
-const RAIL_MOTION_MS = 180;
-/** 펼침 표지(`is-opening`)를 붙들어 두는 시간 — 자식 창이 늦게 떠도 전환이 한 번은 재생되도록 전환 길이보다 길게 둔다. */
-const RAIL_OPENING_HOLD_MS = 420;
+/** 주소 줄 옆에 늘어서는 다른 탭 칩의 수 — 이보다 많으면 나머지는 「+N」 하나로 묶어 펼친다. */
+const MAX_VISIBLE_TAB_CHIPS = 4;
+/** 칩 하나의 폭(CSS `.op-browser__chip-tab` 의 30px 과 같다). */
+const TAB_CHIP_PX = 30;
 
-type RailPhase = "closed" | "opening" | "open" | "closing";
-
-/** 화면 좌표(DIP)의 점이 요소 안에 있는가. 알 수 없는 좌표(0,0 이나 비유한 값)는 안에 있다고 보지 않는다. */
-function screenPointInside(element: HTMLElement | null, screenX: number, screenY: number): boolean {
-  if (element === null || !Number.isFinite(screenX) || !Number.isFinite(screenY) || (screenX === 0 && screenY === 0)) return false;
-  const rect = element.getBoundingClientRect();
-  const zoom = window.innerWidth > 0 && window.outerWidth > 0 ? window.outerWidth / window.innerWidth : 1;
-  const originX = window.screenX;
-  const originY = window.screenY + Math.max(0, window.outerHeight - window.innerHeight * zoom);
-  // 가장자리에서 한 칸 안쪽까지만 안으로 센다 — 천천히 레일 밖으로 나가는 진짜 이탈의 첫 위치(가장자리 바로 바깥·위)는 안이 아니다.
-  const inset = 1;
-  return screenX >= originX + rect.left * zoom + inset && screenX <= originX + rect.right * zoom - inset
-    && screenY >= originY + rect.top * zoom + inset && screenY <= originY + rect.bottom * zoom - inset;
+/** 「+N」 — 줄에 다 못 서는 탭을 펼쳐 고르는 메뉴. 팝오버는 본문 위로 내려오므로 네이티브 뷰 가림 표면으로 알린다. */
+function TabChipOverflow({ objectiveId, label, count, children }: { readonly objectiveId: string; readonly label: string; readonly count: number; readonly children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    publishBrowserCaptionOverlay(objectiveId, "tabs", open);
+    return () => publishBrowserCaptionOverlay(objectiveId, "tabs", false);
+  }, [objectiveId, open]);
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) setOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onPointer, true); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  return (
+    <div className="op-browser__chips-more" ref={rootRef}>
+      <button type="button" className="op-browser__chip-tab is-more" aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((current) => !current)}>+{count}</button>
+      {open ? <div className="op-browser__menu op-browser__tab-menu" role="menu" aria-label={label} onClick={() => setOpen(false)} {...COVERS_NATIVE_VIEW}>{children}</div> : null}
+    </div>
+  );
 }
 
 /**
- * 세로 탭 레일 — Chrome 「세로로 탭 표시」 모양의 브라우저 탭 줄. 기본은 아이콘 한 열로 접혀 있고(`BROWSER_RAIL_COLLAPSED_PX`),
- * 마우스를 올리거나 키보드 초점이 들어오면 탭 제목·닫기까지 펼쳐지며(`BROWSER_RAIL_EXPANDED_PX`), 벗어나면 접힌다. 고정하면 펼친 채로 남는다.
- *
- * 자리(`.op-browser-rail-slot`)는 접힘 폭(고정이면 펼침 폭)으로만 레이아웃을 차지한다 — 호버 펼침은 그 자리 위에 겹쳐 그려지므로
- * 본문 폭이 호버마다 바뀌지 않는다. 겹친 펼침은 네이티브 뷰를 덮으므로 가림 표면(`COVERS_NATIVE_VIEW`)으로 알린다: 셸이 자식 창을 지원하면
- * 뷰는 라이브로 남고 펼침이 그 위 창에 그려지며, 아니면 뷰가 정지 화면 뒤로 물러선다. 본문이 올린 스냅샷을 읽는다.
+ * 주소 줄 옆의 탭 칩 — 주소 줄이 곧 현재 탭이라 따로 활성 탭 칸이 없고, 나머지 탭만 아이콘 크기의 칩으로 선다(올리면 제목).
+ * 칩마다 그 탭을 쓰는 에이전트 표시(✦)와 작업 중 점을 단다. 많아지면 「+N」으로 묶어 펼친다. 칩의 수는 현재 탭을 바꿔도 변하지 않으므로
+ * 주소 줄 자리는 탭을 바꿔도 움직이지 않는다. 상태와 동작은 본문이 올린 스냅샷에서 읽는다.
  */
-function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
+function BrowserTabChips({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
   const t = getT(language ?? "en");
   const panel = useBrowserPanel(objectiveId);
-  const pinned = useBrowserRailPinned();
-  const [hovered, setHovered] = React.useState(false);
-  const [keyboardFocus, setKeyboardFocus] = React.useState(false);
-  const leaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 사람이 펼친 스페이스들. 이 대화의 스페이스(home)와 지금 화면에 띄운 스페이스는 따로 꼽지 않아도 펼쳐진다.
-  const [openSpaces, setOpenSpaces] = React.useState<readonly string[]>([]);
-
-  const railRef = React.useRef<HTMLDivElement | null>(null);
-  const open = pinned || hovered || keyboardFocus;
-  // 펼침·접힘은 클래스(`is-opening`/`is-closing`)가 CSS 전환을 일으킨다. 접히는 동안에도 폭은 펼친 채로 남아 가림 표면의 자리가
-  // 흔들리지 않고, 끝난 뒤에 한 번에 접힌다 — 자식 창은 자리가 바뀌는 순간마다 다시 그려지므로 폭을 움직이지 않고 잘라 보이게만 한다.
-  const [phase, setPhase] = React.useState<RailPhase>(open ? "open" : "closed");
+  const chipsRef = React.useRef<HTMLDivElement | null>(null);
+  // 줄에 실제로 들어가는 칩의 수 — 줄의 폭에서 주소줄 최소 폭과 다른 단추들의 폭을 빼고 남는 만큼만 센다(나머지는 「+N」).
+  const [fit, setFit] = React.useState(MAX_VISIBLE_TAB_CHIPS);
+  const showing = panel !== null && panel.available;
   React.useLayoutEffect(() => {
-    if (open) {
-      setPhase((current) => pinned || current === "open" ? "open" : "opening");
-      if (pinned) return undefined;
-      const timer = setTimeout(() => setPhase("open"), RAIL_OPENING_HOLD_MS);
-      return () => clearTimeout(timer);
-    }
-    setPhase((current) => current === "closed" ? "closed" : "closing");
-    const timer = setTimeout(() => setPhase("closed"), RAIL_MOTION_MS);
-    return () => clearTimeout(timer);
-  }, [open, pinned]);
-  const expanded = open || phase === "closing";
-  React.useEffect(() => () => { if (leaveTimer.current !== null) clearTimeout(leaveTimer.current); }, []);
-  // 자식 창이 포인터를 넘겨받으면 Console 창은 실제 leave 를 받는다 — 그 leave 는 닫으라는 뜻이 아니다. 자식 창에서 실제로 벗어난 것은
-  // 자식 창이 전하는 합성 leave 나, Console 쪽에서 레일 밖으로 움직이는 진짜 포인터가 알린다(여기서 닫는다).
-  React.useEffect(() => {
-    if (!hovered) return undefined;
-    const onMove = (event: PointerEvent) => {
-      if (!event.isTrusted || event.pointerType === "touch") return;
-      if (event.target instanceof Node && railRef.current?.contains(event.target)) return;
-      if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
-      leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
+    const chips = chipsRef.current;
+    const nav = chips?.parentElement;
+    if (!chips || !nav) return;
+    const measure = () => {
+      const style = getComputedStyle(nav);
+      const avail = nav.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
+      const gap = Number.parseFloat(style.columnGap) || 0;
+      const kids = Array.from(nav.children).filter((kid): kid is HTMLElement => kid instanceof HTMLElement && kid !== chips);
+      let used = gap * kids.length;
+      for (const kid of kids) used += kid.classList.contains("op-browser__url") ? NAV_URL_MIN_PX : kid.getBoundingClientRect().width;
+      // 칩 줄 자신의 고정 몫 — 현재 탭 닫기·새 탭·「+N」 단추.
+      const fixed = TAB_CHIP_PX * 3 + gap * 2;
+      const next = Math.max(0, Math.min(MAX_VISIBLE_TAB_CHIPS, Math.floor((avail - used - fixed) / (TAB_CHIP_PX + gap))));
+      setFit((current) => current === next ? current : next);
     };
-    document.addEventListener("pointermove", onMove, true);
-    return () => document.removeEventListener("pointermove", onMove, true);
-  }, [hovered]);
-
-  const home = panel?.homeSpaceId ?? null;
-  const displayed = panel?.displayedSpaceId ?? null;
-  // 이름을 가진 것은 그룹뿐이다 — 사람 스페이스(`human`)는 그룹이 아니라 이름이 없다.
-  const toneOf = useAvatarToneOf();
-  const spaceColor = (space: BrowserSpaceState): React.CSSProperties | undefined => {
-    const key = spaceAvatarKey(space, panel?.browserId ?? null);
-    return key === null ? undefined : ({ "--browser-space-c": `var(--id-${toneOf(key)})` } as React.CSSProperties);
-  };
-  // 에이전트가 쓰는 중인 스페이스는 칩 툴팁(접근성 설명)으로 말한다 — 별도 점 표식은 없다. 탭 단위는 ✦, 브라우저 전체는 레일의 사용 중 표시가 맡는다.
-  const drivingTip = (space: BrowserSpaceState) => space.driving ? ` · ${t("terminal.browser.space.driving")}` : "";
-  // 호스트 라벨이 이름이 되는 것은 Objective(제목)뿐이다. 사령관·세션 스페이스의 라벨은 호스트가 id 를 그대로 돌려주므로 읽지 않고 기본 낱말을 쓴다.
-  const spaceName = (space: BrowserSpaceState) => (space.kind === "objective" && space.label) || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
-  // 사람이 직접 연 탭은 그룹 없이 따로 그린다. 그룹은 탭이 있는 스페이스만이다 — 프레임이 싣지 않은 스페이스(탭만 아는 것)는 여기서 채운다.
-  const humanTabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId === HUMAN_SPACE_ID);
-  const groups: readonly SpaceGroup[] = (() => {
-    const tabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId !== HUMAN_SPACE_ID);
-    const byId = new Map<string, BrowserSpaceState>();
-    for (const space of panel?.spaces ?? []) if (space.id !== HUMAN_SPACE_ID) byId.set(space.id, space);
-    const blank = (id: string): BrowserSpaceState => ({ id, kind: spaceKindOf(id), label: "", driving: false, agentTabIds: [], lastShownTabId: null });
-    for (const tab of tabs) if (!byId.has(tab.spaceId)) byId.set(tab.spaceId, blank(tab.spaceId));
-    const ordered = [...byId.values()].sort((a, b) => Number(b.id === home) - Number(a.id === home));
-    return ordered
-      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 보는 스페이스의 탭이 먼저 읽히게. home 칩을 누르면 돌아온다.
-      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || openSpaces.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
-      .filter((group) => group.tabs.length > 0 || group.space.driving);
-  })();
-  // 이 대화의 그룹이 있을 때만 「내 스페이스」가 있다 — 없으면 돌아갈 곳은 사람 탭이다.
-  const homeGroup = home !== null && groups.some((group) => group.space.id === home);
-  const away = homeGroup && displayed !== null && displayed !== home;
-
-  /** 스페이스를 펼치고 화면에 띄운다. 이미 보이는 스페이스를 접으면 내 스페이스로 돌아간다. */
-  const pickSpace = (space: BrowserSpaceState, isOpen: boolean) => {
-    if (space.id === home) {
-      setOpenSpaces([]);
-      if (displayed !== null && displayed !== home) panel?.actions.selectSpace(space.id);
-      return;
-    }
-    if (isOpen) {
-      setOpenSpaces((current) => current.filter((id) => id !== space.id));
-      if (displayed === space.id) panel?.actions.selectSpace(homeGroup && home !== null ? home : HUMAN_SPACE_ID);
-      return;
-    }
-    setOpenSpaces((current) => current.includes(space.id) ? current : [...current, space.id]);
-    panel?.actions.selectSpace(space.id);
-  };
-  const driving = panel?.driving === true;
-  const ready = panel !== null && panel.available && !panel.busy;
-
-  const onPointerEnter = (event: React.PointerEvent) => {
-    if (event.pointerType === "touch") return;
-    if (leaveTimer.current !== null) { clearTimeout(leaveTimer.current); leaveTimer.current = null; }
-    setHovered(true);
-  };
-  const onPointerLeave = (event: React.PointerEvent) => {
-    if (event.pointerType === "touch") return;
-    // 레일이 자식 창에 떠 있는 동안 Console 창이 받는 진짜 leave 는 자식 창이 포인터를 넘겨받았다는 뜻일 뿐이다. 이걸 닫음으로 읽으면
-    // 접힌 레일 위에서 가만히 있는 포인터가 접힘→펼침→접힘을 되풀이한다(깜빡임).
-    if (event.nativeEvent.isTrusted && railRef.current?.hasAttribute(NATIVE_FLOAT_ATTRIBUTE)) return;
-    // 자식 창은 뜨고 자리를 옮기는 동안 포인터가 가만히 있어도 들어옴→나감을 잠깐 알린다. 나감이 알린 포인터 위치가 아직 레일 안이면 진짜 이탈이 아니다.
-    if (!event.nativeEvent.isTrusted && screenPointInside(railRef.current, event.nativeEvent.screenX, event.nativeEvent.screenY)) return;
-    if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
-    leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
-  };
-  // 키보드로 들어온 초점만 펼친다 — 탭을 눌러 생긴 초점(포인터)이 포인터를 뗀 뒤에도 펼침을 붙들지 않게.
-  const onFocus = (event: React.FocusEvent) => { if (event.target.matches(":focus-visible")) setKeyboardFocus(true); };
-  const onBlur = (event: React.FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setKeyboardFocus(false); };
-
-  const renderTab = (tab: BrowserCaptionTab, agentTab: boolean) => {
-    const active = tab.id === panel?.activeTabId;
-    const title = tab.title || hostOf(tab.url) || t("terminal.browser.newTab");
-    const select = () => { if (!active) panel?.actions.selectTab(tab.id); };
-    return (
-      <div
-        key={tab.id}
-        role="tab"
-        tabIndex={0}
-        aria-selected={active}
-        aria-label={title}
-        className={`op-browser__tab${active ? " is-active" : ""}`}
-        onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }}
-        onClick={select}
-        onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); select(); } }}
-        title={agentTab ? `${title} — ${tab.url} · ${t("terminal.browser.space.agentTab")}` : `${title} — ${tab.url}`}
-      >
-        <TabIcon objectiveId={objectiveId} tab={tab} />
-        <span className="op-browser__tab-title">{title}</span>
-        {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
-        <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
-      </div>
-    );
-  };
-  const pinLabel = t(pinned ? "terminal.browser.rail.unpin" : "terminal.browser.rail.pin");
-  const widths = { "--op-rail-collapsed": `${BROWSER_RAIL_COLLAPSED_PX}px`, "--op-rail-expanded": `${BROWSER_RAIL_EXPANDED_PX}px` } as React.CSSProperties;
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(nav);
+    return () => observer?.disconnect();
+  }, [showing]);
+  if (panel === null || !panel.available) return null;
+  const spaces = new Map(panel.spaces.map((space) => [space.id, space] as const));
+  const agentOf = (tab: BrowserCaptionTab) => spaces.get(tab.spaceId)?.agentTabIds.includes(tab.id) === true;
+  const workingOf = (tab: BrowserCaptionTab) => agentOf(tab) && spaces.get(tab.spaceId)?.driving === true;
+  // 지금 어느 에이전트가 무엇을 보는지가 먼저 읽히게 — 작업 중인 탭, 에이전트 탭, 나머지 순이고 같은 무리 안에서는 열린 순서를 지킨다.
+  const rank = (tab: BrowserCaptionTab) => workingOf(tab) ? 0 : agentOf(tab) ? 1 : 2;
+  const others = panel.tabs.filter((tab) => tab.id !== panel.activeTabId).map((tab, index) => ({ tab, index })).sort((a, b) => rank(a.tab) - rank(b.tab) || a.index - b.index).map((entry) => entry.tab);
+  const visible = others.slice(0, fit);
+  const rest = others.slice(fit);
+  const ready = !panel.busy;
+  const labelOf = (tab: BrowserCaptionTab) => tab.title || hostOf(tab.url) || t("terminal.browser.newTab");
+  const tip = (tab: BrowserCaptionTab) => `${labelOf(tab)} — ${tab.url}${agentOf(tab) ? ` · ${t("terminal.browser.space.agentTab")}` : ""}`;
+  const marks = (tab: BrowserCaptionTab) => (
+    <>
+      {agentOf(tab) ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
+      {workingOf(tab) ? <span className="op-browser__tab-dot is-working" aria-hidden="true" /> : null}
+    </>
+  );
+  const select = (tab: BrowserCaptionTab) => panel.actions.selectTab(tab.id);
+  const onAux = (event: React.MouseEvent, tab: BrowserCaptionTab) => { if (event.button === 1) { event.preventDefault(); panel.actions.closeTab(tab.id); } };
   return (
-    <div className={`op-browser-rail-slot${pinned ? " is-pinned" : ""}`} style={widths}>
-      <div
-        ref={railRef}
-        className={`op-browser-rail${expanded ? " is-open" : ""}${pinned ? " is-pinned" : ""}${driving ? " is-driving" : ""}${!pinned && phase === "opening" ? " is-opening" : ""}${!pinned && phase === "closing" ? " is-closing" : ""}`}
-        {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : { role: "group", "aria-label": t("terminal.browser.tabs") })}
-        // 전환은 자식 창에서도 재생된다 — 표지가 있는 표면만 자식 창의 애니메이션 차단에서 빠진다.
-        {...{ [NATIVE_FLOAT_MOTION_ATTRIBUTE]: "" }}
-        // 고정하지 않은 펼침은 본문 위에 겹쳐 그려진다 — 네이티브 뷰가 가리지 않게 가림 표면으로 알린다. 접히는 전환 동안에도 유지한다.
-        {...(expanded && !pinned ? COVERS_NATIVE_VIEW : {})}
-        onPointerEnter={onPointerEnter}
-        onPointerLeave={onPointerLeave}
-        onFocus={onFocus}
-        onBlur={onBlur}
-      >
-        <button type="button" className={`op-browser-rail__row op-browser-rail__pin${pinned ? " is-set" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} onClick={() => setBrowserRailPinned(!pinned)}>
-          <span className="op-browser-rail__glyph" aria-hidden="true"><PinGlyph /></span>
-          <span className="op-browser-rail__label">{pinLabel}</span>
+    <div ref={chipsRef} className="op-browser__chips" role="tablist" aria-label={t("terminal.browser.tabs")}>
+      {panel.activeTabId !== null ? <button type="button" className="op-browser__chip-tab is-close" aria-label={t("terminal.browser.closeTab")} title={t("terminal.browser.closeTab")} onClick={() => panel.actions.closeTab(panel.activeTabId as string)}>×</button> : null}
+      {visible.map((tab) => (
+        <button key={tab.id} type="button" role="tab" aria-selected={false} className={`op-browser__chip-tab${agentOf(tab) ? " is-agent" : ""}`} aria-label={labelOf(tab)} title={tip(tab)} onClick={() => select(tab)} onMouseDown={(event) => onAux(event, tab)}>
+          <TabIcon objectiveId={objectiveId} tab={tab} />
+          {marks(tab)}
         </button>
-        <div className="op-browser-rail__divider" role="separator" />
-        <div className="op-browser-rail__scroll">
-          {humanTabs.length > 0 ? <div className="op-browser__space-tabs op-browser__human-tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>{humanTabs.map((tab) => renderTab(tab, false))}</div> : null}
-          {groups.map((group) => {
-            const { space } = group;
-            const name = spaceName(space);
-            const isHome = space.id === home;
-            const count = String(group.tabs.length);
-            const chipTip = `${t(isHome ? "terminal.browser.space.chipHome" : "terminal.browser.space.chip", { name, count })}${drivingTip(space)}`;
-            return (
-              <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} style={spaceColor(space)} data-space-kind={space.kind}>
-                <button
-                  type="button"
-                  className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
-                  aria-expanded={group.open}
-                  aria-label={chipTip}
-                  title={chipTip}
-                  disabled={!panel?.available}
-                  onClick={() => pickSpace(space, group.open)}
-                >
-                  <span className="op-browser__space-initial" aria-hidden="true">{Array.from(name)[0] ?? ""}</span>
-                  <span className="op-browser__space-name">{name}</span>
-                  {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
-                </button>
-                {group.open && group.tabs.length > 0 ? (
-                  <div className="op-browser__space-tabs" role="tablist" aria-label={`${name} — ${t("terminal.browser.tabs")}`}>
-                    {group.tabs.map((tab) => renderTab(tab, space.agentTabIds.includes(tab.id)))}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-          {away && home !== null ? (
-            <button type="button" className="op-browser-rail__row op-browser__space-home" aria-label={t("terminal.browser.space.backHome")} title={t("terminal.browser.space.backHomeTip")} onClick={() => panel?.actions.selectSpace(home)}>
-              <span className="op-browser-rail__glyph" aria-hidden="true"><BackGlyph /></span>
-              <span className="op-browser-rail__label">{t("terminal.browser.space.backHome")}</span>
+      ))}
+      {rest.length > 0 ? (
+        <TabChipOverflow objectiveId={objectiveId} label={t("terminal.browser.moreTabs")} count={rest.length}>
+          {rest.map((tab) => (
+            <button key={tab.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__tab-menu-item" title={tip(tab)} onClick={() => select(tab)} onMouseDown={(event) => onAux(event, tab)}>
+              <TabIcon objectiveId={objectiveId} tab={tab} />
+              <span className="op-browser__tab-title">{labelOf(tab)}</span>
+              {marks(tab)}
             </button>
-          ) : null}
-          <button type="button" className="op-browser-rail__row op-browser-rail__new" aria-label={t("terminal.browser.newTab")} title={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>
-            <span className="op-browser-rail__glyph" aria-hidden="true">+</span>
-            <span className="op-browser-rail__label">{t("terminal.browser.newTab")}</span>
-          </button>
-        </div>
-      </div>
+          ))}
+        </TabChipOverflow>
+      ) : null}
+      <button type="button" className="op-browser__chip-tab is-new" aria-label={t("terminal.browser.newTab")} title={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel.actions.createTab()}>+</button>
     </div>
   );
 }
@@ -1631,6 +1487,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         ) : null}
         {activeTab && activeTab.url !== "about:blank" ? <a className="op-browser__url-external" href={activeTab.url} target="_blank" rel="noreferrer noopener" data-fleet-link={FLEET_LINK_NATIVE} aria-label={t("terminal.browser.openExternal")} title={t("terminal.browser.openExternal")}><ExternalGlyph /></a> : null}
       </form>
+      {available ? <BrowserTabChips objectiveId={objectiveId} language={language} /> : null}
       {navFolded ? (
         <NavFoldMenu objectiveId={objectiveId} label={t("terminal.browser.moreTools")}>
           {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
@@ -1652,7 +1509,6 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     <div className={`op-browser${state?.driving ? " is-driving" : ""}`}>
       {navTop ? (navHost === null ? null : createPortal(navBar, navHost)) : navBar}
       <div className="op-browser__body">
-        {available ? <BrowserTabRail objectiveId={objectiveId} language={language} /> : null}
         <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
           {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (
             <div className={`op-browser__toast${info.action ? " has-action" : ""}`} role="status">
