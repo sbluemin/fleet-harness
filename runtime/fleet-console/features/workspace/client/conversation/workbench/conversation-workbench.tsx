@@ -21,7 +21,7 @@ import type { RailToolContext } from "../../../../../core/client/src/chrome/rail
 import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
-import { announceNativeViewResize, getNativeViewResize } from "../../../../browser/client/browser-panel-store.js";
+import { announceNativeViewResize, getNativeViewResize, useBrowserEngine } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
 import { PluginObjectiveRenderer } from "../../objective-renderer.js";
 import { WORKBENCH_GAP, type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
@@ -496,8 +496,9 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
   const tile = entry.tile;
   const rootRef = useRef<HTMLElement | null>(null);
   // 브라우저는 따로 떠 있는 패널이 아니라 대화와 같은 면이다 — 머리 없이 맨 위 줄 밑에서 작업 영역 끝까지 채우고, 탭 줄과 펼치기는
-  // 맨 위 줄의 지구본 바로 앞으로 올라간다. 대화 위에 뜨는 시트(좁은 창)에서는 다른 칸과 같은 틀이다.
-  const seamless = tile.kind === "browser" && geometry.mode !== "sheet";
+  // 맨 위 줄의 지구본 바로 앞으로 올라간다. 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
+  // 브라우저 칸이 남아 있을 때)에서는 다른 칸과 같은 틀이다 — 닫기 단추가 그 칸을 닫는 길이다.
+  const seamless = tile.kind === "browser" && geometry.mode !== "sheet" && isDesktopShell();
   const frameRect = seamless ? seamlessRect(entry, rect, geometry, expanded) : rect;
   const expandLabel = expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand");
   const expandButton = (
@@ -537,6 +538,7 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
         <BrowserBandChrome frameRef={rootRef} geometry={geometry} motion={motion} hidden={hidden}>
           {parts.titleNode ?? null}
           {expandButton}
+          <BrowserBandClose tileId={tile.id} title={parts.title} />
         </BrowserBandChrome>
       ) : (
         <header className="workbench-tile-head">
@@ -574,6 +576,22 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
         {parts.body}
       </div>
     </section>
+  );
+}
+
+/**
+ * 지구본이 닫는 길이 아닐 때만 서는 닫기 — Desktop 창 말고 다른 화면이 붙어 브라우저가 멈췄거나(지구본이 꺼진다) Desktop 브라우저가
+ * 없으면, 열려 있던 칸을 닫을 다른 길이 없다.
+ */
+function BrowserBandClose({ tileId, title }: { readonly tileId: string; readonly title: string }) {
+  const t = useT();
+  const engine = useBrowserEngine();
+  if (engine === null || engine.available) return null;
+  const label = t("conversation.workbench.close", { title });
+  return (
+    <button type="button" className="workbench-tile-button" aria-label={label} title={label} onClick={() => closeWorkbenchTile(tileId)}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+    </button>
   );
 }
 
