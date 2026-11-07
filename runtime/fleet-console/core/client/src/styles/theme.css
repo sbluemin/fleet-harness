@@ -4,6 +4,13 @@
   /* OS 공유 표시를 본뜬 조작 허용 배지 전용 채널. 사용자 정체성이나 활동 상태 색이 아니다. */
   --agent-control-badge: oklch(57% 0.16 285);
   --agent-control-badge-ink: oklch(100% 0 0);
+  /* 플릿 브라우저 스페이스 표식 전용 채널 — 어느 스페이스의 탭인지만 말한다. 사령관 스페이스는 무채 잉크, Objective 스페이스는
+     채도 낮은 4색을 돌려 쓴다. 신호(aurora·warn·coral·positive)와 배지(285°)의 색상각을 피해 상태로 읽히지 않게 했다. */
+  --id-space-ink: oklch(80% 0.01 245);
+  --id-space-sky: oklch(74% 0.07 250);
+  --id-space-clay: oklch(76% 0.075 55);
+  --id-space-orchid: oklch(74% 0.07 335);
+  --id-space-olive: oklch(74% 0.075 125);
   --console-use-badge: oklch(76% 0.11 60);
   --console-use-badge-ink: oklch(22% 0.025 60);
   /* 같은 채널을 글자로 쓸 때의 잉크 — 면 위의 배지와 달리 본문 표면 위에서 읽혀야 하므로 텍스트 티어에 선다. */
@@ -566,6 +573,11 @@
   --text-console-use: oklch(52% 0.125 60);
   /* 다크의 채도 봉투 보정(base)은 라이트에 내려오지 않는다 — 배지 면은 지금 값을 그대로 잇는다. */
   --agent-control-badge: oklch(57% 0.24 285);
+  --id-space-ink: oklch(45% 0.012 245);
+  --id-space-sky: oklch(52% 0.09 250);
+  --id-space-clay: oklch(54% 0.095 55);
+  --id-space-orchid: oklch(52% 0.09 335);
+  --id-space-olive: oklch(50% 0.095 125);
   --console-use-badge: oklch(76% 0.15 60);
 
   --ink-abyss: oklch(97% 0 0);
@@ -1243,6 +1255,11 @@
 
   /* 테마와 무관한 정체성 표지(제공자 글리프·배지)는 극성만 맞춘다 — 다크는 base 값. */
   --agent-control-badge: oklch(57% 0.16 285);
+  --id-space-ink: oklch(80% 0.01 245);
+  --id-space-sky: oklch(74% 0.07 250);
+  --id-space-clay: oklch(76% 0.075 55);
+  --id-space-orchid: oklch(74% 0.07 335);
+  --id-space-olive: oklch(74% 0.075 125);
   --console-use-badge: oklch(76% 0.11 60);
   --provider-claude: oklch(76% 0.09 62);
   --provider-typesafe: oklch(73% 0.09 339);
@@ -1302,6 +1319,11 @@
 
   /* 라이트는 데스크톱 라이트의 극성 값 — 밝은 바탕에서 글리프가 읽히는 쪽. */
   --agent-control-badge: oklch(57% 0.24 285);
+  --id-space-ink: oklch(45% 0.012 245);
+  --id-space-sky: oklch(52% 0.09 250);
+  --id-space-clay: oklch(54% 0.095 55);
+  --id-space-orchid: oklch(52% 0.09 335);
+  --id-space-olive: oklch(50% 0.095 125);
   --console-use-badge: oklch(76% 0.15 60);
   --provider-claude: oklch(54% 0.135 62);
   --provider-typesafe: oklch(52% 0.135 339);
