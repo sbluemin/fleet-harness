@@ -551,9 +551,21 @@ export interface StoredPersonHold {
   readonly settled?: { readonly at: number; readonly by: ObjectiveReviewer; readonly outcome: "answered" | "returned" };
 }
 
+/** 세션에 고정한 모델 속도 — 그 모델 id에만 묶인다. */
+export interface ObjectiveModelSpeed { readonly model: string; readonly fast: boolean }
+
+/** 저장된 값의 모델 속도. 모양이 다르면 명시가 없는 것이다. */
+export function readObjectiveModelSpeed(value: unknown): ObjectiveModelSpeed | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { model, fast } = value as Record<string, unknown>;
+  return typeof model === "string" && model.length > 0 && typeof fast === "boolean" ? { model, fast } : undefined;
+}
+
 export interface PendingCommander {
   /** 생성 시 고정하는 자동 메모리 정책. 옛 레코드의 생략은 기존 설정을 보존한다. */
   readonly disableAutoMemory?: boolean;
+  /** 사람이 사령관 설정에서 그 지휘관 모델에 고른 속도. 그 모델 요청에만 AI Gateway의 Fast 토글보다 앞선다. */
+  readonly modelSpeed?: ObjectiveModelSpeed;
   readonly commodoreId: string;
   readonly cwd: string;
   readonly theaterId: string;

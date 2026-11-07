@@ -128,6 +128,7 @@ function toRosterRow(
     launch: { model: id },
     ...buildGatewayModelQuota(model),
     ...(contextWindow ? { contextWindow } : {}),
+    ...(model.fastSupported === true && model.fast !== true ? { fastSupported: true } : {}),
   };
   if (target === "agent") {
     // Agent SDK 세션은 ultra를 받지 않고 게이트도 없다 — 모델이 내놓는 사다리가 곧 전체다.

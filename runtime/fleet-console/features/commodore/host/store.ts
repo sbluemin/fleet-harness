@@ -68,8 +68,8 @@ export interface CommodoreStore {
   removeIntel(commodoreId: string, intelId: string): CommodoreState;
   setCoordinates(commodoreId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
   setAutoMemoryEnabled(commodoreId: string, enabled: boolean): CommodoreState;
-  /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
-  setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string } | null): CommodoreState;
+  /** 사령관이 만드는 목표의 지휘관 모델·강도·속도 — null 은 「사령관 판단」(사령관이 목표마다 지휘관 모델을 고른다)이다. */
+  setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null): CommodoreState;
   /** 사람이 고른 플러그인 목록 — 비면 필드를 지운다. 같으면 아무 일도 없다(세션을 헛되이 교체하지 않는다). 빠진 id는 목표 세션 제외 목록에서도 떨어진다. */
   setPlugins(commodoreId: string, plugins: readonly string[]): CommodoreState;
   /**
@@ -349,8 +349,8 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     setCoordinates(commodoreId, coordinates) {
       const current = load(commodoreId);
-      const { model: _model, effort: _effort, ...rest } = current;
-      return commit(commodoreId, coordinates ? { ...rest, model: coordinates.model, effort: coordinates.effort } : rest, "coordinates");
+      const { model: _model, effort: _effort, fast: _fast, ...rest } = current;
+      return commit(commodoreId, coordinates ? { ...rest, model: coordinates.model, effort: coordinates.effort, ...(coordinates.fast !== undefined ? { fast: coordinates.fast } : {}) } : rest, "coordinates");
     },
     setAutoMemoryEnabled(commodoreId, enabled) {
       const current = load(commodoreId);
@@ -359,9 +359,9 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     setCommander(commodoreId, commander) {
       const current = load(commodoreId);
-      const { commanderModel: _model, commanderEffort: _effort, ...rest } = current;
+      const { commanderModel: _model, commanderEffort: _effort, commanderFast: _fast, ...rest } = current;
       if (!commander) return commit(commodoreId, rest, "commander");
-      return commit(commodoreId, { ...rest, commanderModel: commander.model, ...(commander.effort ? { commanderEffort: commander.effort } : {}) }, "commander");
+      return commit(commodoreId, { ...rest, commanderModel: commander.model, ...(commander.effort ? { commanderEffort: commander.effort } : {}), ...(commander.fast !== undefined ? { commanderFast: commander.fast } : {}) }, "commander");
     },
     setPlugins(commodoreId, plugins) {
       const current = load(commodoreId);

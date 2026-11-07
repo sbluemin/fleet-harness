@@ -250,6 +250,8 @@ export interface ObjectiveLaunchVariantRow {
   /** Gateway가 판정한 한도 풀과 그 범위. Gateway 모델이 아니거나 모르면 생략한다. */
   readonly quotaPool?: string;
   readonly quotaScope?: string;
+  /** 같은 모델을 Fast로도 돌릴 수 있다(Codex·xAI). 행 id는 하나이고, 일반·Fast는 선택기가 속도로 따로 고른다. */
+  readonly fastSupported?: boolean;
 }
 
 export interface ObjectiveLaunchVariantGroup {

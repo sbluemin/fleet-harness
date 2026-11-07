@@ -36,6 +36,8 @@ export interface TerminalLaunchContext {
   readonly disableSubagents?: boolean;
   /** 명시한 auto-memory 정책(true=끔, false=켬). 생략은 기존 설정이며 spawn 인자로만 나간다. */
   readonly disableAutoMemory?: boolean;
+  /** 사람이 그 모델에 고른 속도 — spawn env의 요청 헤더로만 나간다. 생략은 AI Gateway의 Fast 토글을 따른다. */
+  readonly modelSpeed?: { readonly model: string; readonly fast: boolean };
   /** 목표 세션 — SendMessage·ListAgents를 deny 한다. spawn 인자로만 나간다. */
   readonly objectiveMessaging?: boolean;
   /** 콘솔 테마 극성 힌트 — spawn env COLORFGBG로만 소비된다. PTY는 최초 spawn 시점 값에 고정된다. */

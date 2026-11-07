@@ -29,7 +29,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
   readonly disabled?: boolean;
   readonly reset?: { readonly label: string; readonly onSelect: () => void };
   readonly judgment?: { readonly active: boolean; readonly onPick: () => void };
-  readonly onChange: (next: { readonly model?: string; readonly effort?: string }) => void;
+  readonly onChange: (next: { readonly model?: string; readonly effort?: string; readonly fast?: boolean }) => void;
 }) {
   const roster = useCommodoreRoster(target);
   const auto = t("commodore.board.commander.effortAuto");
@@ -47,6 +47,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
       fallback={fallback}
       onChange={onChange}
       startAt="list"
+      speed={{ fastLabel: t("commodore.settings.fast") }}
       {...(disabled ? { disabled } : {})}
       {...(reset ? { reset: { ...reset, description: [fallbackWords.model, fallbackWords.effort].filter(Boolean).join(" · ") } } : {})}
       labels={{
@@ -73,28 +74,31 @@ export type CommodoreStateFields = CommodoreView["state"];
 
 /** 사령관 좌표의 저장값 — 비어 있으면 선택기가 실험 기능 행의 기본값을 보인다. */
 export function commodoreValue(state: CommodoreStateFields): ModelCoordinateValue {
-  return { ...(state.model ? { model: state.model } : {}), ...(state.effort ? { effort: state.effort } : {}) };
+  return { ...(state.model ? { model: state.model } : {}), ...(state.effort ? { effort: state.effort } : {}), ...(state.model && typeof state.fast === "boolean" ? { fast: state.fast } : {}) };
 }
 
 /**
  * 고른 사령관 좌표 — 모델과 강도를 함께 저장한다. 트랙의 「자동」이나 강도를 받지 않는 모델이면 지금 강도(없으면 실험 기능
  * 행의 강도)를 남긴다: 실행은 행 사다리 안으로 클램프되고, 강도 있는 모델로 돌아오면 그 값이 산다.
  */
-export function commodoreCoordinates(state: CommodoreStateFields, defaults: CommodoreView["defaults"], next: { readonly model?: string; readonly effort?: string }) {
+export function commodoreCoordinates(state: CommodoreStateFields, defaults: CommodoreView["defaults"], next: { readonly model?: string; readonly effort?: string; readonly fast?: boolean }) {
   const model = next.model ?? state.model ?? defaults.model;
   const effort = isAgentEffort(next.effort) ? next.effort : state.effort ?? defaults.effort;
-  return { model, effort };
+  // 모델을 고르면 그 선택의 속도로 덮는다(Fast를 받지 않는 모델은 속도를 싣지 않는다).
+  const fast = next.model !== undefined ? next.fast : state.fast;
+  return { model, effort, ...(typeof fast === "boolean" ? { fast } : {}) };
 }
 
 /** 지휘관 좌표의 저장값 — 비어 있으면 「사령관 판단」이다(사령관이 목표마다 commanderModel을 고른다). */
 export function commanderValue(state: CommodoreStateFields): ModelCoordinateValue {
-  return state.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : {};
+  return state.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}), ...(typeof state.commanderFast === "boolean" ? { fast: state.commanderFast } : {}) } : {};
 }
 
 export const commanderByJudgment = (state: CommodoreStateFields): boolean => state.commanderModel === undefined;
 
-export function commanderCoordinates(state: CommodoreStateFields, next: { readonly model?: string; readonly effort?: string }) {
+export function commanderCoordinates(state: CommodoreStateFields, next: { readonly model?: string; readonly effort?: string; readonly fast?: boolean }) {
   const model = next.model ?? state.commanderModel ?? COMMANDER_PRESET.model;
   const effort = next.effort ?? (next.model ? undefined : state.commanderEffort);
-  return { model, ...(effort ? { effort } : {}) };
+  const fast = next.model !== undefined ? next.fast : state.commanderFast;
+  return { model, ...(effort ? { effort } : {}), ...(typeof fast === "boolean" ? { fast } : {}) };
 }

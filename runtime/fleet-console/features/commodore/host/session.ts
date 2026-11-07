@@ -1,5 +1,6 @@
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { mergePluginEnv, type ResolvedPlugin } from "./plugins.js";
+import { modelSpeedLaunchEnv, type ModelSpeedChoice } from "@fleet-console/ai-gateway";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { AgentWorkStep } from "../../execution/host/agent/types.js";
 import { createChatStepReporter, type ChatStepReporter } from "../../execution/host/agent/chat-step.js";
@@ -25,6 +26,8 @@ export interface CommodoreSessionCoordinates {
   readonly effort?: AgentEffort;
   /** 대화를 요약해 이어 갈 문맥 토큰 — 세션이 열릴 때 정해진다. */
   readonly compactAt?: number;
+  /** 사람이 고른 속도(일반·Fast) — 그 모델 요청에만 AI Gateway의 Fast 토글보다 앞선다. 없으면 토글을 따른다. */
+  readonly speed?: ModelSpeedChoice;
 }
 
 export interface CommodoreSessionOptions {
@@ -310,7 +313,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     }
     // 홈 서버는 Fleet 이름과 겹치지 않게 이미 걸렀다(Fleet 우선). 홈 플러그인은 Fleet 플러그인 뒤에 선다.
     for (const [name, config] of Object.entries(home?.mcpServers ?? {})) servers[name] = config;
-    const env = { ...home?.env, ...mergePluginEnv(selected) };
+    const env = { ...home?.env, ...mergePluginEnv(selected), ...(options.coordinates.speed ? modelSpeedLaunchEnv(process.env, options.coordinates.speed) : {}) };
     const plugins = [...selected.map((plugin) => ({ path: plugin.path, skipMcp: true })), ...(home?.plugins ?? [])];
     const releaseHome = async () => { const staged = home; home = null; await staged?.release().catch(() => undefined); };
     let created: ConsoleResidentSession;

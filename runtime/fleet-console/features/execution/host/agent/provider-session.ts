@@ -20,6 +20,7 @@ export function readAgentSession(payload: Record<string, unknown> | null | undef
     ...(readString(candidate.sessionName) ? { sessionName: readString(candidate.sessionName)! } : {}),
     ...(candidate.disableSubagents === true ? { disableSubagents: true } : {}),
     ...(typeof candidate.disableAutoMemory === "boolean" ? { disableAutoMemory: candidate.disableAutoMemory } : {}),
+    ...(readModelSpeed(candidate.modelSpeed) ? { modelSpeed: readModelSpeed(candidate.modelSpeed)! } : {}),
     ...(readString(candidate.id) ? { id: readString(candidate.id)! } : {}),
     ...(readString(candidate.transcriptPath) ? { transcriptPath: readString(candidate.transcriptPath)! } : {}),
     ...(readString(candidate.source) ? { source: readString(candidate.source)! } : {}),
@@ -77,12 +78,19 @@ export function mergeCapturedAgentSession(
     ...(existing?.sessionName ? { sessionName: existing.sessionName } : {}),
     ...(existing?.disableSubagents ? { disableSubagents: true } : {}),
     ...(existing?.disableAutoMemory !== undefined ? { disableAutoMemory: existing.disableAutoMemory } : {}),
+    ...(existing?.modelSpeed ? { modelSpeed: existing.modelSpeed } : {}),
     id: captured.id,
     ...(captured.transcriptPath ? { transcriptPath: captured.transcriptPath } : {}),
     ...(captured.source ? { source: captured.source } : {}),
     capturedAt: captured.capturedAt,
     ...(existing?.previousSessions ? { previousSessions: existing.previousSessions } : {}),
   };
+}
+
+function readModelSpeed(value: unknown): { readonly model: string; readonly fast: boolean } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { model, fast } = value as Record<string, unknown>;
+  return readString(model) && typeof fast === "boolean" ? { model: model as string, fast } : undefined;
 }
 
 function readString(value: unknown): string | undefined {

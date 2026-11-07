@@ -755,7 +755,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         assertCurrent();
         const source = readObjectiveLaunchSource(caller);
         if (!source) throw new ConsoleControlError("invalid_launch_source");
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, launchedBy: source, commodoreId: input.commodoreId, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), chatBorn: true, ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, launchedBy: source, commodoreId: input.commodoreId, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}), ...(input.modelSpeed ? { modelSpeed: input.modelSpeed } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), chatBorn: true, ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보는 생성 payload에 들어가 launch 스냅샷보다 먼저 내구화된다.
         const launchedId = response.value.sessionId as string;
@@ -1317,7 +1317,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly launchedBy?: NonNullable<ReturnType<typeof readObjectiveLaunchSource>>; readonly sourceObjectiveId?: string; readonly commodoreId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly launchedBy?: NonNullable<ReturnType<typeof readObjectiveLaunchSource>>; readonly sourceObjectiveId?: string; readonly commodoreId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly modelSpeed?: { readonly model: string; readonly fast: boolean }; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     // 보드가 먼저 만든 지휘관(newObjectiveId)은 pending에 저장한 값만 쓴다(legacy 생략도 보존).
     // 직접 생성은 첫 await 이전에 사령관 설정 또는 부모의 고정값을 스냅샷으로 잡는다.
@@ -1369,6 +1369,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
           // 태어날 때의 auto-memory 정책은 세션 스냅샷에 남아 재개·재기동·모델 변경이 그대로 따른다.
           ...(launchOptions.disableAutoMemory !== undefined ? { disableAutoMemory: launchOptions.disableAutoMemory } : {}),
+          // 사람이 그 모델에 고른 속도도 같은 스냅샷이다 — 그 모델 id에 묶여 채팅 중 모델을 바꿔도 다른 모델로 새지 않는다.
+          ...(launchOptions.modelSpeed ? { modelSpeed: launchOptions.modelSpeed } : {}),
         },
         // 채팅으로 태어난 Objective은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
         // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
@@ -2310,6 +2312,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const chatBasePromptEnabled = deps.commodoreSystemPrompts?.basePromptEnabled(node.commodoreId) ?? true;
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node) ? [ALL_SUBAGENTS] : [];
     const chatDisableAutoMemory = readAgentSession(node)?.disableAutoMemory;
+    const chatModelSpeed = readAgentSession(node)?.modelSpeed;
     const mcpTokenLabel = `chat:${node.id}`;
     let freshConsumed = false;
     return {
@@ -2390,6 +2393,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         },
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },
         ...(launchEffort?.ultracode ? { ultracode: true } : {}),
+        ...(chatModelSpeed ? { modelSpeed: chatModelSpeed } : {}),
         // 터미널 런치와 같은 함수에서 같은 옵션으로 받는다 — 두 표면이 한 세션의 두 얼굴이다.
         // 새로 태어나는 세션은 Objective id를 그대로 Claude 세션 id로 못박아, Objective의
         // 좌표와 Claude의 좌표가 태어날 때 하나가 된다. 이어 붙이는 세션은 그 id를 고를 수
@@ -2668,6 +2672,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const cliId = objectiveRecord ? CLAUDE_HARNESS_ID : undefined;
     const blockSubagents = objectiveRecord ? subagentSpawnBlocked(objectiveRecord) : context?.disableSubagents === true;
     const disableAutoMemory = objectiveRecord ? readAgentSession(objectiveRecord)?.disableAutoMemory : context?.disableAutoMemory;
+    const modelSpeed = readAgentSession(objectiveRecord)?.modelSpeed;
     const providerSession = readProviderSession(objectiveRecord)?.id;
     // prompt는 spawn-only. Objective payload·브라우저 DTO에 넣지 않는다(FORBIDDEN_BROWSER_PAYLOAD_KEYS).
     return launchResolver(cwd, {
@@ -2685,6 +2690,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ...(context?.sessionName ? { sessionName: context.sessionName } : {}),
       ...(blockSubagents ? { disableSubagents: true } : {}),
       ...(disableAutoMemory !== undefined ? { disableAutoMemory } : {}),
+      ...(modelSpeed ? { modelSpeed } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }

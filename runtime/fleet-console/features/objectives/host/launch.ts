@@ -11,7 +11,7 @@ import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDeci
 import { createModelCatalog } from "./catalog.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
-import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
+import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type ObjectiveModelSpeed, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
 import { deriveFailedOutcome } from "./views.js";
 
 /**
@@ -209,7 +209,7 @@ const memberSession = (objectiveId: string, commander: string | null, index: num
 
 export interface LaunchServiceOptions {
   /** 사람이 그 사령관에 정한 지휘관 모델·강도. 없으면 null — 사령관이 만드는 목표는 지휘관 모델을 직접 골라야 한다. */
-  readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null;
+  readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null;
   /** 지휘관 레코드 생성 시에만 읽는다. 지연 최초 기동·구성원 생성에는 저장값을 쓴다. */
   readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean;
   /** 무보고 깨움까지 기다리는 시간. 기본은 25분. 테스트가 짧은 값을 넣는다. */
@@ -364,7 +364,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (!groupId || !groups) return groupId ?? null;
     return groups.get(groupId)?.commodoreId === commodoreId ? groupId : null;
   };
-  const launch = async (input: { objectiveId: string; newObjectiveId?: string; commodoreId: string; cwd?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; disableAutoMemory?: boolean; parentObjectiveId?: string; childSessionId?: string }): Promise<string> => {
+  const launch = async (input: { objectiveId: string; newObjectiveId?: string; commodoreId: string; cwd?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; modelSpeed?: ObjectiveModelSpeed; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; disableAutoMemory?: boolean; parentObjectiveId?: string; childSessionId?: string }): Promise<string> => {
     const groupId = liveGroupId(input.commodoreId, input.groupId);
     const result = await control().request({
       kind: "launch",
@@ -380,6 +380,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}),
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
+      ...(input.modelSpeed && input.model === input.modelSpeed.model ? { modelSpeed: input.modelSpeed } : {}),
       ...(groupId ? { groupId } : {}),
       // 구성원은 태어날 때부터 지휘관 아래 선다 — 코어가 목록 표면에서 빼고 지휘관이 대표한다.
       ...(input.parentObjectiveId && input.childSessionId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}),
@@ -515,7 +516,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             chatMode: true, chatBorn: true,
             session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
               ...(config.disableAutoMemory !== undefined ? { disableAutoMemory: config.disableAutoMemory } : {}),
-              ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}) } }) });
+              ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}),
+              ...(config.modelSpeed ? { modelSpeed: config.modelSpeed } : {}) } }) });
         if (created.id !== id) throw new ObjectiveStoreError("objectiveRecord_id_taken");
       } catch (error) { asStoreError(error); }
       existing = referenceNode(id);
@@ -1399,7 +1401,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 사령관이 만드는 목표의 지휘관 — 생성 호출이 고른 모델(호출이 candidates 로 이미 확인했다), 아니면 사람이 그 사령관에 정한
       // 지휘관 모델(사람의 명시 선택이라 실행 카탈로그 가용성만 본다). 둘 다 없으면 보드 기본으로 넘어가지 않고 거절한다.
       // 사람이 화면에서 만드는 목표는 사람이 고른 모델, 없으면 보드 기본이다.
-      let commander = chosen ?? null;
+      let commander: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = chosen ?? null;
       if (byCommodore && !chosen) {
         const configured = serviceOptions.commodoreCommander?.(input.commodoreId) ?? null;
         if (!configured) throw new ObjectiveStoreError("commander_model_required", undefined, { hint: COMMANDER_MODEL_REQUIRED_HINT });
@@ -1423,6 +1425,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
         disableAutoMemory: !(serviceOptions.commodoreAutoMemoryEnabled?.(input.commodoreId) ?? true),
         sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
+        // 사람이 사령관 설정에서 고른 속도만 싣는다 — 사령관이 candidates로 고른 지휘관은 명시가 없어 토글을 따른다.
+        ...(commander && typeof commander.fast === "boolean" ? { modelSpeed: { model: commander.model, fast: commander.fast } } : {}),
       });
     },
 
