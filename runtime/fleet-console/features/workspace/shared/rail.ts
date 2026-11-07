@@ -117,7 +117,7 @@ export type RailPanelDescriptor = RailContributionBase & ({
  * 등록으로 쪼갤 수도 없었다. 엔트리는 이제 **여는 손짓**만 안다.
  *
  * 무엇이 열리는가는 두 가지 중 하나다: `panes`에 적힌 페인들이 레일 표면에 서거나,
- * `activate`가 직접 무언가를 연다(Shell처럼 확대 표면을 바로 여는 경우).
+ * `activate`가 직접 무언가를 연다.
  */
 export interface RailEntryDescriptor {
   readonly handles?: {
@@ -129,7 +129,7 @@ export interface RailEntryDescriptor {
   readonly side?: "right";
   /**
    * 이 도구가 다루는 범위. `theater`(기본)는 지금 서 있는 작전구역을 다루고,
-   * `fleet`은 스킬·사용 한도처럼 Console 전체에 걸친다. 레일은 두 범위를
+   * `fleet`은 Console 전체에 걸친다. 레일은 두 범위를
    * 구분선으로 갈라 세운다 — 순서는 범위 안에서 등록 순서 그대로다.
    */
   readonly scope?: "theater" | "fleet";

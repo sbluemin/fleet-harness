@@ -73,7 +73,7 @@ function projectPanel(panel: RailPanelDescriptor, core = false): RailEntryBindin
     ...(panel.opensWithoutTheater ? { opensWithoutTheater: true } : {}),
   };
 
-  // activate형(Shell)은 펼칠 본문이 없다 — 아이콘이 곧 동작이다.
+  // activate형은 펼칠 본문이 없다 — 아이콘이 곧 동작이다.
   if (panel.activate) return { entry, panes: [], projected: true, core };
 
   const pane: PaneDescriptor = {

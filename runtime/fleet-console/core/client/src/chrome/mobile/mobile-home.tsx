@@ -41,7 +41,7 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
   const fallbackName = t("sidebar.commodore.fallback");
   const open = (commodore: ConsoleCommodoreSummary) => {
     selectMobileCommodore(commodore.commodoreId);
-    // 바로가기(파일·위키 등)의 범위는 마지막으로 연 사령관의 Theater 목록 첫 줄이다 — 옛 사령관 고르기 시트와 같은 규칙.
+    // 바로가기의 범위는 마지막으로 연 사령관의 Theater 목록 첫 줄이다 — 옛 사령관 고르기 시트와 같은 규칙.
     const home = commodore.theaters.find((theater) => theater.status === "available")?.theaterId ?? null;
     if (home) setMobileListTheater({ commodoreId: commodore.commodoreId, theaterId: home });
     setMobileDestination({ kind: "plugin", entryId: "commodore", params: { commodoreId: commodore.commodoreId } });

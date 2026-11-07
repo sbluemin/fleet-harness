@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 
 import * as workbench from "../features/workspace/client/conversation/workbench/workbench-store.js";
-import { EMPTY_WORKBENCH_LAYOUT, workbenchTiles, type WorkbenchLayout, type WorkbenchWrite } from "../features/workspace/shared/conversation-workbench.js";
+import { EMPTY_WORKBENCH_LAYOUT, sanitizeWorkbenchLayout, workbenchTiles, type WorkbenchLayout, type WorkbenchWrite } from "../features/workspace/shared/conversation-workbench.js";
 
 const key = "session:commodore:commodore:owner";
 const stored: WorkbenchLayout = {
@@ -101,5 +101,38 @@ it("does not overwrite an unread layout after a failed load and retries the pend
   expect(workbenchTiles(api.writes[0]!.layout!)).toEqual([
     ...workbenchTiles(stored),
     expect.objectContaining({ kind: "entry", entryId: "commodore" }),
+  ]);
+});
+
+// 퇴역 진입점·표면(#2343 Files·Repository·Shell, #2035 Skills, 관측된 "files")은
+// 저장된 배치에서 걷어낸다 — 남은 칸이 빈 패널 안내로 그려지지 않게 저장 무결성을 지킨다.
+it("drops retired entry and surface tiles from saved layouts", () => {
+  const layout = sanitizeWorkbenchLayout({
+    columns: [
+      { tiles: [
+        { id: "r1", kind: "entry", entryId: "codex" },
+        { id: "r2", kind: "entry", entryId: "files" },
+        { id: "r3", kind: "entry", entryId: "skills" },
+      ], weights: [1, 1, 1] },
+      { tiles: [
+        { id: "r4", kind: "entry", entryId: "file-explorer" },
+        { id: "r5", kind: "entry", entryId: "repository" },
+        { id: "r6", kind: "entry", entryId: "global-shell" },
+      ], weights: [1, 1, 1] },
+      { tiles: [
+        { id: "r7", kind: "surface", surfaceId: "repository", params: {} },
+        { id: "r8", kind: "surface", surfaceId: "shell", params: {} },
+        { id: "live", kind: "entry", entryId: "objectives" },
+      ], weights: [1, 1, 1] },
+    ],
+    columnWeights: [1, 1, 1],
+    below: { tiles: [{ id: "live-below", kind: "entry", entryId: "commodore" }], weights: [1] },
+    splitRatio: null,
+    belowRatio: null,
+    expandedTileId: null,
+  });
+  expect(workbenchTiles(layout!)).toEqual([
+    { id: "live", kind: "entry", entryId: "objectives" },
+    { id: "live-below", kind: "entry", entryId: "commodore" },
   ]);
 });
