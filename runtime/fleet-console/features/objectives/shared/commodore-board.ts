@@ -57,5 +57,6 @@ export interface CommodoreBoardAdapter {
 
 export interface CommodoreBoardHost {
   registerBoard(adapter: CommodoreBoardAdapter): () => void;
-  commander(commodoreId: string): { readonly model: string; readonly effort?: string } | null;
+  /** `fast`: 사람이 그 모델에 고른 속도(일반·Fast). 없으면 AI Gateway의 Fast 토글을 따른다. */
+  commander(commodoreId: string): { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null;
 }

@@ -1121,3 +1121,10 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-market-detail-confirm p { margin: 0; }
 .commodore-market-detail-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .commodore-market-detail-remove { color: var(--coral-ink); }
+
+/* 「사령관 판단」 글리프 — 지휘관 모델 선택기의 행·트리거. 기다림·위임 신호의 --aurora 잉크이고 새 토큰은 두지 않는다. */
+.objectives-commodore-judgment { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--aurora); }
+.objectives-commodore-judgment svg { width: 16px; height: 16px; }
+.fc-coord-trigger .objectives-commodore-judgment, .fc-coord-trigger .objectives-commodore-judgment svg { width: 14px; height: 14px; }
+.fc-coord-trigger.is-mobile .objectives-commodore-judgment { vertical-align: -2px; margin-right: 6px; }
+.mobile-choice-icon .objectives-commodore-judgment, .mobile-choice-icon .objectives-commodore-judgment svg { width: 22px; height: 22px; }

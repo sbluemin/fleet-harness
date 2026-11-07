@@ -1,5 +1,5 @@
 import { CONTEXT_RESERVED_NAME, CONTEXT_UNSPENT, skillRowsOf } from "./context-breakdown.js";
-import { claudeGatewayModelPolicy, claudeModelAutoCompactWindows, GATEWAY_MODELS } from "@fleet-console/ai-gateway";
+import { claudeGatewayModelPolicy, claudeModelAutoCompactWindows, GATEWAY_MODELS, modelSpeedLaunchEnv, type ModelSpeedChoice } from "@fleet-console/ai-gateway";
 import { resolveNativeClaudeModelAlias } from "@fleet-console/agent-runtime/fleet";
 import { randomUUID } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
@@ -137,6 +137,8 @@ export interface AgentChatSessionSeed {
    * 같은 자리로 옮긴다. `effort`와 별개다 — SDK는 강도를 `xhigh`로 받고, 오케스트레이션은 이 플래그가 켠다.
    */
   readonly ultracode?: true;
+  /** 사람이 그 모델에 고른 속도 — 자식 env의 게이트웨이 요청 헤더로 실린다. 그 모델 요청에만 AI Gateway의 Fast 토글보다 앞선다. */
+  readonly modelSpeed?: ModelSpeedChoice;
   /**
    * 세션 도중 바꾼 모델의 카탈로그 창을 다시 읽는다. `contextWindow`와 같은 규칙이다 — 네이티브
    * Claude 모델과 카탈로그 밖 id는 `undefined`다.
@@ -2564,6 +2566,7 @@ class AgentChatSession {
               ...(this.seed.modHookToken
                 ? { FLEET_MOD_BASE_URL: this.seed.baseUrl, FLEET_MOD_TOKEN: this.seed.modHookToken }
                 : {}),
+              ...(this.seed.modelSpeed ? modelSpeedLaunchEnv(process.env, this.seed.modelSpeed) : {}),
             },
           });
           if (this.disposed) {

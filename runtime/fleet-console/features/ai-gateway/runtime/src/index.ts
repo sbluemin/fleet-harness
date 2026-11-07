@@ -138,6 +138,11 @@ export {
 export type { AuthKeyValidationResult } from "./fleet/auth.js";
 
 export {
+  FLEET_MODEL_SPEED_HEADER,
+  modelSpeedLaunchEnv,
+  type ModelSpeedChoice,
+} from "./fleet/model-speed.js";
+export {
   prepareAiGatewayLaunchProfile,
   writeGatewayModelCacheForHome,
   type AiGatewayLaunchEnvOptions,

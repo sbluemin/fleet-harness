@@ -11,7 +11,7 @@ import { resolvePathBinary } from "@fleet-console/process";
 import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId, visibleGatewayModels } from "@fleet-console/ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort, ProviderStatusMap } from "@fleet-console/ai-gateway";
 import { ALL_SUBAGENTS, OBJECTIVE_PEER_TOOLS, createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle, type LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
-import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
+import { modelSpeedLaunchEnv, prepareAiGatewayLaunchProfile, type ModelSpeedChoice } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
 
 import type { CommodoreSystemPromptService } from "../../../settings/host/agent-options.js";
@@ -249,6 +249,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       sessionName: context?.sessionName,
       ...(context?.disableSubagents ? { disableSubagents: true } : {}),
       ...(context?.disableAutoMemory !== undefined ? { disableAutoMemory: context?.disableAutoMemory } : {}),
+      ...(context?.modelSpeed ? { modelSpeed: context.modelSpeed } : {}),
       ...(context?.objectiveMessaging ? { objectiveMessaging: true } : {}),
       sessionId,
     });
@@ -293,6 +294,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly disableSubagents?: boolean;
   /** 명시한 auto-memory 정책(true=끔, false=켬) — Chat 표면과 같은 설정 키로 실린다. */
   readonly disableAutoMemory?: boolean;
+  /** 사람이 그 모델에 고른 속도 — 게이트웨이 요청 헤더로 실린다. */
+  readonly modelSpeed?: ModelSpeedChoice;
   /** 목표 세션이면 SendMessage·ListAgents를 deny 목록에 더한다. */
   readonly objectiveMessaging?: boolean;
   readonly sessionId: string;
@@ -429,6 +432,7 @@ async function createAgentCliLaunchSpec(options: {
         compactHookToken: options.aiGateway.compactHookToken,
         ...(options.aiGateway.modHookToken ? { modHookToken: options.aiGateway.modHookToken } : {}),
       });
+      if (options.modelSpeed) launchProfile = { ...launchProfile, env: { ...launchProfile.env, ...modelSpeedLaunchEnv(launchProfile.env, options.modelSpeed) } };
     }
     const workspaceHook = options.bindWorkspaceHook?.(options.sessionId, injectedProfile.session.sessionId);
     if (workspaceHook) {

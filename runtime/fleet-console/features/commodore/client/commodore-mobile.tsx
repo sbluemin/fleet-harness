@@ -24,7 +24,7 @@ import type { CommodoreMobileSessions } from "./deps.js";
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
-import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
+import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
@@ -732,9 +732,9 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
 function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
   const { state, defaults, run } = view;
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
-  // 좌표 두 칸은 데스크톱 서랍과 같은 공유 선택기 — 폰 설정 화면 안이라 호스트의 좌표 시트로 열린다. 비우면 기본값이다.
+  // 좌표 두 칸은 데스크톱 서랍과 같은 공유 선택기 — 폰 설정 화면 안이라 호스트의 좌표 시트로 열린다. 사령관 좌표를 비우면 기본값,
+  // 지휘관 좌표를 비우면 「사령관 판단」이다.
   const modelOverridden = state.model !== undefined;
-  const commanderOverridden = state.commanderModel !== undefined;
 
   const usage = [t("commodore.drawer.session", { n: run.totals.session }), t("commodore.drawer.cost", { cost: run.totals.costUsd.toFixed(2) })].join(" · ");
 
@@ -766,7 +766,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               value={commanderValue(state)}
               fallback={COMMANDER_PRESET}
               disabled={!online}
-              {...(commanderOverridden ? { reset: { label: t("commodore.settings.useDefault"), onSelect: () => act(() => setCommodoreCommander(theaterId, null)) } } : {})}
+              judgment={{ active: commanderByJudgment(state), onPick: () => act(() => setCommodoreCommander(theaterId, null)) }}
               onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
             />
           </SettingsRow>

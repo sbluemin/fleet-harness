@@ -58,6 +58,11 @@ export interface ConsoleActionInput {
   readonly disableSubagents?: boolean;
   /** launch 전용 — 생성 시 auto-memory를 고정한다(true=끔, false=켬). 생략은 생성자의 정책을 따르고, 저장값은 재개·재기동에도 보존된다. */
   readonly disableAutoMemory?: boolean;
+  /**
+   * launch 전용 — 사람이 그 모델에 고른 속도(일반·Fast). 세션 스냅샷에 남아 재개·재기동이 그대로 따르고, 그 모델 요청에만
+   * AI Gateway의 Fast 토글보다 앞선다. 생략은 토글을 따른다.
+   */
+  readonly modelSpeed?: { readonly model: string; readonly fast: boolean };
   /** @deprecated launch 전용 — 받아들이되 무시한다. Console이 띄우는 Claude 세션은 사람에게 묻는 도구(`AskUserQuestion`)를 늘 뺀다. */
   readonly disableUserQuestions?: boolean;
   /** launch 전용 — 자식 없이 등록한다. 터미널은 dormant, 채팅은 live/idle로 서며 첫 send가 자식을 연다. */

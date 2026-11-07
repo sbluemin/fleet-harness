@@ -351,9 +351,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const stored = state?.model && state.effort ? { model: state.model, effort: state.effort } : experimentAideSelection(settings(), "commodore");
     if (!deps.models) return { model: stored.model, effort: stored.effort, contextWindow: contextWindow(stored.model) };
     const resolved = deps.models.resolve(stored, "agent");
+    // 사람이 고른 속도는 그 모델이 그대로 설 때만 싣는다 — 폴백 모델이나 Fast를 받지 않는 모델에는 명시하지 않는다(토글을 따른다).
+    const speed = typeof state?.fast === "boolean" && state.model && !resolved.fallback && resolved.row?.fastSupported === true
+      ? { model: resolved.model, fast: state.fast }
+      : undefined;
     return {
       model: resolved.wireModel,
       ...(isAgentEffort(resolved.effort) ? { effort: resolved.effort } : {}),
+      ...(speed ? { speed } : {}),
       contextWindow: resolved.row?.contextWindow ?? contextWindow(resolved.model),
       // 실행 기록에는 사유와 실제로 도는 모델 id만 남긴다.
       ...(resolved.fallback ? { fallback: `fallback:${resolved.reason ?? "model_off"}:${resolved.model}` } : {}),
@@ -487,7 +492,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // 문맥이 길어져도 세션을 바꾸지 않는다 — 상한을 넘는 창은 상한 지점에서, 그 이하는 모델 기본 정책으로 같은 세션이 압축해 이어 간다.
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
-      commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), ...(compactAt === null ? {} : { compactAt }) },
+      commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), ...(compactAt === null ? {} : { compactAt }), ...(coordinates.speed ? { speed: coordinates.speed } : {}) },
       boardTools: boardTools(runner), now,
       ...(deps.gatewayTools ? { gatewayTools: deps.gatewayTools } : {}),
       onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },
@@ -1105,7 +1110,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   const coordinatesChanged = (runner: Runner) => {
     const coordinates = resolveCoordinates(runner.commodoreId);
-    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.commodoreId);
+    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.coordinates.speed?.fast !== coordinates.speed?.fast || runner.language !== resolveLanguage(runner.commodoreId);
   };
 
   /** clear 경계 뒤 최근 결말과 같은 턴의 성공한 보드 쓰기만 복원한다. 원시 대화는 읽지 않는다. */

@@ -42,6 +42,7 @@ import {
   GATEWAY_MODELS,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
+  FLEET_MODEL_SPEED_HEADER,
 } from "../../src/index.js";
 import {
   pickSeat,
@@ -904,6 +905,33 @@ describe("oversized skill payloads", () => {
 
     expect(sentText(streamSpy.mock.calls[1]?.[0], 0)).not.toContain("claude-api");
     expect(sentText(streamSpy.mock.calls[1]?.[0], 0)).toContain("- agent-browser:");
+  });
+});
+
+describe("session model speed", () => {
+  it("lets a session's explicit speed for its model override the Fast toggle, and keeps one catalog identity", async () => {
+    const tiers: Array<string | undefined> = [];
+    const send = async (fastToggle: boolean, speed?: string) => {
+      const router = createAiGatewayRouter({
+        gateway: stubGateway((request) => tiers.push(request.service_tier)),
+        readAuth,
+        readAiGatewaySettings: aiGatewaySettingsStub({ version: 1, models: [{ id: "codex--gpt-6.1-sol", ...(fastToggle ? { fast: true } : {}) }] }),
+      });
+      await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: "claude-gateway--codex--gpt-6.1-sol", ...(speed ? { headers: { [FLEET_MODEL_SPEED_HEADER]: speed } } : {}) }));
+    };
+    await send(true);
+    // 「일반」도 명시값이다 — 토글이 켜져 있어도 일반으로 돈다.
+    await send(true, "codex--gpt-6.1-sol=standard");
+    await send(false, "codex--gpt-6.1-sol=fast");
+    // 다른 모델에 대한 명시는 이 요청에 새지 않는다(위임·압축 요청).
+    await send(true, "codex--gpt-6.1-terra=standard");
+    expect(tiers).toEqual(["priority", undefined, "priority", "priority"]);
+
+    // Fast는 속도 선택일 뿐 새 모델 항목이 아니다.
+    expect(buildAnthropicModelList(GATEWAY_MODELS).data.filter((entry) => entry.id.includes("gpt-6.1-sol"))).toHaveLength(1);
+    expect(buildGatewayCandidates({ delegationModels: [requireGatewayModel("codex--gpt-6.1-sol")] }).candidates).toEqual([
+      expect.objectContaining({ model: "codex--gpt-6.1-sol", fast: false }),
+    ]);
   });
 });
 

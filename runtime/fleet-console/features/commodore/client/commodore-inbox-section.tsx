@@ -28,7 +28,7 @@ import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInb
 
 import type { CommodoreLiveEvent, CommodoreState, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
-import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
+import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
@@ -289,7 +289,6 @@ function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => voi
 export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const { state, defaults } = view;
   const modelOverridden = state.model !== undefined;
-  const commanderOverridden = state.commanderModel !== undefined;
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
     <div className="objectives-commodore-settings">
@@ -309,7 +308,7 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
       <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
         label={t("commodore.settings.commander")}
-        hint={<>{t("commodore.settings.commanderHint")}{commanderOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCommander(theaterId, null))} /> : null}</>}
+        hint={t("commodore.settings.commanderHint")}
       >
         <CommodoreCoordinateField
           t={t}
@@ -317,6 +316,7 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
           label={t("commodore.settings.commanderAria")}
           value={commanderValue(state)}
           fallback={COMMANDER_PRESET}
+          judgment={{ active: commanderByJudgment(state), onPick: () => act(() => setCommodoreCommander(theaterId, null)) }}
           onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
         />
       </SettingsRow>

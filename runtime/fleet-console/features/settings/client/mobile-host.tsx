@@ -130,7 +130,7 @@ export interface MobileCoordinateChoiceProps {
   readonly offLabel?: string;
   readonly providerRemovedLabel?: string;
   readonly chooseAnotherModelLabel?: string;
-  readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
+  readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly icon?: React.ReactNode; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
   readonly reset?: MobileModelReset;
   readonly onClose: () => void;
 }

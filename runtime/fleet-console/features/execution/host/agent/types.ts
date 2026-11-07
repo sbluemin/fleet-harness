@@ -47,6 +47,8 @@ export interface AgentSession {
   readonly disableSubagents?: boolean;
   /** 생성 시 고정한 auto-memory 정책(true=끔, false=켬). 생략은 기존 설정이며 재개·재기동도 그대로 따른다. */
   readonly disableAutoMemory?: boolean;
+  /** 사람이 그 모델에 고른 속도(일반·Fast). 그 모델 요청에만 AI Gateway의 Fast 토글보다 앞서고, 재개·재기동도 그대로 따른다. */
+  readonly modelSpeed?: { readonly model: string; readonly fast: boolean };
   readonly id?: string;
   readonly transcriptPath?: string;
   readonly source?: string;

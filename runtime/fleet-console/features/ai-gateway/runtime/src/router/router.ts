@@ -31,6 +31,7 @@ import {
   withGatewayModelFast,
 } from "../models.js";
 import type { GatewayModel } from "../models.js";
+import { FLEET_MODEL_SPEED_HEADER, readModelSpeedHeader } from "../fleet/model-speed.js";
 import { visibleGatewayModels, type ProviderStatusMap } from "../catalog-access.js";
 import { DEFAULT_XAI_ENDPOINT_PREFERENCE } from "../settings/index.js";
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
@@ -492,8 +493,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return true;
     }
     if (target) {
+      // 세션이 이 모델에 명시한 속도(선택기의 일반·Fast)가 AI Gateway 설정의 Fast 토글보다 앞선다. 다른 모델의 명시는 무시한다.
+      const explicit = readModelSpeedHeader(req.headers[FLEET_MODEL_SPEED_HEADER]);
+      const explicitFast = explicit && harness.findModel(explicit.model, GATEWAY_MODELS)?.id === target.id ? explicit.fast : undefined;
       const fast = target.fastSupported === true
-        && gatewaySettings()?.models?.some((entry) => entry.id === target!.id && entry.fast === true) === true;
+        && (explicitFast ?? gatewaySettings()?.models?.some((entry) => entry.id === target!.id && entry.fast === true) === true);
       target = withGatewayModelFast(target, fast);
       clock?.setTarget(target);
     }

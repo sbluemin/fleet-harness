@@ -65,6 +65,7 @@ import {
   type StoredEdge,
   type StoredObjective,
   type PendingCommander,
+  readObjectiveModelSpeed,
   type StoredRecord,
   type StoredMission,
   type FollowupBodyInput,
@@ -410,11 +411,12 @@ function pendingPreset(stored: StoredObjective): PendingCommander | null {
   return { commodoreId: stored.commodoreId ?? "", theaterId: stored.theaterId ?? "", ...(stored.theaterIdExplicit ? { theaterIdExplicit: true as const } : {}), cwd: stored.cwd ?? "", title: stored.title ?? stored.id, groupId: stored.groupId ?? null,
     createdAt: stored.ts?.createdAt ?? 0, sessionName: typeof session.sessionName === "string" ? session.sessionName : stored.id,
     ...(typeof session.disableAutoMemory === "boolean" ? { disableAutoMemory: session.disableAutoMemory } : {}),
+    ...(readObjectiveModelSpeed(session.modelSpeed) ? { modelSpeed: readObjectiveModelSpeed(session.modelSpeed)! } : {}),
     ...(typeof session.model === "string" ? { model: session.model } : {}), ...(typeof session.effort === "string" ? { effort: session.effort } : {}), viewMode: stored.chatMode ? "chat" : "terminal" };
 }
 function draftFields(preset: PendingCommander) {
   return { pending: true as const, commodoreId: preset.commodoreId, theaterId: preset.theaterId, ...(preset.theaterIdExplicit ? { theaterIdExplicit: true as const } : {}), cwd: preset.cwd, title: preset.title, groupId: preset.groupId,
-    ts: { createdAt: preset.createdAt, updatedAt: preset.createdAt }, session: { sessionName: preset.sessionName, model: preset.model, effort: preset.effort, ...(preset.disableAutoMemory !== undefined ? { disableAutoMemory: preset.disableAutoMemory } : {}) }, chatMode: preset.viewMode === "chat" };
+    ts: { createdAt: preset.createdAt, updatedAt: preset.createdAt }, session: { sessionName: preset.sessionName, model: preset.model, effort: preset.effort, ...(preset.disableAutoMemory !== undefined ? { disableAutoMemory: preset.disableAutoMemory } : {}), ...(preset.modelSpeed ? { modelSpeed: preset.modelSpeed } : {}) }, chatMode: preset.viewMode === "chat" };
 }
 const bareRecord = (objectiveId: string): StoredObjective => ({ id: objectiveId, rank: 0, note: "", enlisted: true, missions: [] });
 /** 실행만 있는 빈 파일은 옛 가상 목표와 같다. 저장 위치가 생겼다는 이유로 터미널을 채팅으로 바꾸지 않는다. */
