@@ -2,8 +2,8 @@ import * as React from "react";
 import type { BrowserSpaceState } from "../shared/spaces.js";
 
 /**
- * 패널 ↔ 캡션 공유 — companion 의 캡션과 본문은 호스트가 따로 그리므로, 본문(BrowserPanel)이 자기 상태와
- * 손잡이를 여기 올리고 캡션(BrowserCaption)이 읽는다. 탭 스트립이 캡션 밴드에 살기 위한 다리다.
+ * 패널 ↔ 탭 레일·도구 공유 — 본문(SessionBrowserPanel)이 자기 상태와 손잡이를 여기 올리고, 세로 탭 레일(BrowserTabRail)과
+ * 주소줄 끝의 도구(BrowserTools)가 읽는다.
  */
 
 export interface BrowserCaptionTab { readonly id: string; readonly spaceId: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean }
@@ -143,6 +143,40 @@ export function useBrowserCaptionOverlay(objectiveId: string): boolean {
  * 머리가 있는 칸에서는 그 동작이 머리에 있으므로 비어 있다.
  */
 export const BrowserNavTailContext = React.createContext<React.ReactNode>(null);
+
+// ---------- 세로 탭 레일의 고정 ----------
+
+/** 세로 탭 레일 폭 — 접힘은 아이콘 한 열, 펼침은 탭 제목과 닫기까지. 값은 CSS 의 `--op-rail-*` 와 짝이다(펼침 폭은 거기서만 읽힌다). */
+export const BROWSER_RAIL_COLLAPSED_PX = 54;
+export const BROWSER_RAIL_EXPANDED_PX = 237;
+
+const RAIL_PINNED_KEY = "fleet.browser.tabRail.pinned";
+const railPinnedListeners = new Set<() => void>();
+let railPinned: boolean | null = null;
+
+function readRailPinned(): boolean {
+  if (railPinned !== null) return railPinned;
+  let stored = false;
+  try { stored = window.localStorage.getItem(RAIL_PINNED_KEY) === "1"; } catch { /* 저장소를 못 읽으면 기본(고정 안 함) */ }
+  railPinned = stored;
+  return stored;
+}
+
+/** 레일을 펼친 채로 두는가 — 이 브라우저 화면(localStorage)의 기억이다. 기본은 고정하지 않는다. 모든 패널이 같은 값을 본다. */
+export function setBrowserRailPinned(next: boolean): void {
+  if (readRailPinned() === next) return;
+  railPinned = next;
+  try { if (next) window.localStorage.setItem(RAIL_PINNED_KEY, "1"); else window.localStorage.removeItem(RAIL_PINNED_KEY); } catch { /* 기억하지 못해도 이 세션 안에서는 지켜진다 */ }
+  for (const listener of railPinnedListeners) listener();
+}
+
+export function useBrowserRailPinned(): boolean {
+  const subscribe = React.useCallback((listener: () => void) => {
+    railPinnedListeners.add(listener);
+    return () => { railPinnedListeners.delete(listener); };
+  }, []);
+  return React.useSyncExternalStore(subscribe, readRailPinned, () => false);
+}
 
 // ---------- 네이티브 뷰를 실은 칸의 끌기 ----------
 

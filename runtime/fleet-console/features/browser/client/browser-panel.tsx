@@ -13,7 +13,7 @@ import { commodoreOfBrowser, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind,
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
-import { dropBrowserOpenRequest, getNativeViewResize, BrowserNavTailContext, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavTailContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import "./browser-panel.css";
 
@@ -354,10 +354,6 @@ function BackGlyph() {
 
 interface SpaceGroup { readonly space: BrowserSpaceState; readonly tabs: readonly BrowserCaptionTab[]; readonly open: boolean }
 
-/**
- * companion 캡션 = 브라우저 탭 스트립. 「브라우저」 한 단어 대신 지구본 + 탭 + 새 탭, 오른쪽에 뷰포트.
- * 에이전트 세션 중이면 지구본이 agent-control 채움이 되고 「사용 중 · 중단」이 선다. 본문이 올린 스냅샷을 읽는다.
- */
 export interface SessionBrowserTarget { readonly pluginId: string; readonly scopeId: string }
 
 /** Console 실행 중에는 같은 scope가 같은 owner를 가리킨다. 아직 시작하지 않은 세션은 null이다. */
@@ -377,10 +373,6 @@ export interface SessionBrowserPanelProps {
   readonly services: Pick<BrowserClientServices, "isDesktopShell" | "themePolarity" | "subscribeConsoleChannel">;
   readonly onAttach?: (files: readonly File[]) => void;
   readonly terminalPaste?: boolean;
-}
-
-export function SessionBrowserCaption({ ownerId, language }: Pick<SessionBrowserPanelProps, "ownerId" | "language">) {
-  return <BrowserCaption context={{ objectiveId: ownerId, language }} />;
 }
 
 /**
@@ -496,19 +488,29 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
   );
 }
 
-export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRenderContext, "objectiveId" | "language">; readonly services?: BrowserClientServices }) {
-  const t = getT(context.language ?? "en");
-  const panel = useBrowserPanel(context.objectiveId);
-  const [moreMenu, setMoreMenu] = React.useState(false);
+/** 호버가 레일을 떠난 뒤 접기까지의 유예 — 레일에서 뷰 위로 겹친 펼침 쪽(자식 창)으로 넘어가는 순간의 빈틈과 가장자리 스침을 흡수한다. */
+const RAIL_LEAVE_MS = 160;
+
+/**
+ * 세로 탭 레일 — Chrome 「세로로 탭 표시」 모양의 브라우저 탭 줄. 기본은 아이콘 한 열로 접혀 있고(`BROWSER_RAIL_COLLAPSED_PX`),
+ * 마우스를 올리거나 키보드 초점이 들어오면 탭 제목·닫기까지 펼쳐지며(`BROWSER_RAIL_EXPANDED_PX`), 벗어나면 접힌다. 고정하면 펼친 채로 남는다.
+ *
+ * 자리(`.op-browser-rail-slot`)는 접힘 폭(고정이면 펼침 폭)으로만 레이아웃을 차지한다 — 호버 펼침은 그 자리 위에 겹쳐 그려지므로
+ * 본문 폭이 호버마다 바뀌지 않는다. 겹친 펼침은 네이티브 뷰를 덮으므로 가림 표면(`COVERS_NATIVE_VIEW`)으로 알린다: 셸이 자식 창을 지원하면
+ * 뷰는 라이브로 남고 펼침이 그 위 창에 그려지며, 아니면 뷰가 정지 화면 뒤로 물러선다. 본문이 올린 스냅샷을 읽는다.
+ */
+function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
+  const t = getT(language ?? "en");
+  const panel = useBrowserPanel(objectiveId);
+  const pinned = useBrowserRailPinned();
+  const [hovered, setHovered] = React.useState(false);
+  const [keyboardFocus, setKeyboardFocus] = React.useState(false);
+  const leaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // 사람이 펼친 스페이스들. 이 대화의 스페이스(home)와 지금 화면에 띄운 스페이스는 따로 꼽지 않아도 펼쳐진다.
-  const [expanded, setExpanded] = React.useState<readonly string[]>([]);
-  // 칩 줄이 넘칠 때 띠에 남기는 스페이스 수. 크기나 내용이 바뀌면 전부 놓고 다시 줄여 나간다.
-  const [fitLimit, setFitLimit] = React.useState(Number.MAX_SAFE_INTEGER);
-  const [capWidth, setCapWidth] = React.useState(0);
-  const capRef = React.useRef<HTMLDivElement | null>(null);
-  const stripRef = React.useRef<HTMLDivElement | null>(null);
-  const moreRef = React.useRef<HTMLDivElement | null>(null);
-  const fitKeyRef = React.useRef("");
+  const [openSpaces, setOpenSpaces] = React.useState<readonly string[]>([]);
+
+  const open = pinned || hovered || keyboardFocus;
+  React.useEffect(() => () => { if (leaveTimer.current !== null) clearTimeout(leaveTimer.current); }, []);
 
   const home = panel?.homeSpaceId ?? null;
   const displayed = panel?.displayedSpaceId ?? null;
@@ -518,7 +520,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
     const key = spaceAvatarKey(space, panel?.browserId ?? null);
     return key === null ? undefined : ({ "--browser-space-c": `var(--id-${toneOf(key)})` } as React.CSSProperties);
   };
-  // 에이전트가 쓰는 중인 스페이스는 칩 툴팁(접근성 설명)으로 말한다 — 별도 점 표식은 없다. 탭 단위는 ✦, 브라우저 전체는 띠의 사용 중 표시가 맡는다.
+  // 에이전트가 쓰는 중인 스페이스는 칩 툴팁(접근성 설명)으로 말한다 — 별도 점 표식은 없다. 탭 단위는 ✦, 브라우저 전체는 레일의 사용 중 표시가 맡는다.
   const drivingTip = (space: BrowserSpaceState) => space.driving ? ` · ${t("terminal.browser.space.driving")}` : "";
   // 호스트 라벨이 이름이 되는 것은 Objective(제목)뿐이다. 사령관·세션 스페이스의 라벨은 호스트가 id 를 그대로 돌려주므로 읽지 않고 기본 낱말을 쓴다.
   const spaceName = (space: BrowserSpaceState) => (space.kind === "objective" && space.label) || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
@@ -532,137 +534,132 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
     for (const tab of tabs) if (!byId.has(tab.spaceId)) byId.set(tab.spaceId, blank(tab.spaceId));
     const ordered = [...byId.values()].sort((a, b) => Number(b.id === home) - Number(a.id === home));
     return ordered
-      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 좁은 띠에서 보는 스페이스의 탭이 읽히게. home 칩을 누르면 돌아온다.
-      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || expanded.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
+      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 보는 스페이스의 탭이 먼저 읽히게. home 칩을 누르면 돌아온다.
+      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || openSpaces.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
       .filter((group) => group.tabs.length > 0 || group.space.driving);
   })();
   // 이 대화의 그룹이 있을 때만 「내 스페이스」가 있다 — 없으면 돌아갈 곳은 사람 탭이다.
   const homeGroup = home !== null && groups.some((group) => group.space.id === home);
-  // 띠에 남길 스페이스: 지금 보는 스페이스, home, 나머지 순 — 화면에 뜬 탭의 스페이스가 숨으면 무엇을 보는지 알 수 없다.
-  // home 은 「내 스페이스로」로 언제나 돌아갈 수 있다. 그려지는 순서는 그대로 두어 칩이 뛰어다니지 않게 한다.
-  const shownCount = Math.min(fitLimit, groups.length);
-  const priority = [...groups].sort((a, b) => Number(b.space.id === home) - Number(a.space.id === home)).sort((a, b) => Number(b.space.id === displayed) - Number(a.space.id === displayed));
-  const shownIds = new Set(priority.slice(0, shownCount).map((group) => group.space.id));
-  const shownGroups = groups.filter((group) => shownIds.has(group.space.id));
-  const hiddenGroups = groups.filter((group) => !shownIds.has(group.space.id));
-  const moreOpen = moreMenu && hiddenGroups.length > 0;
   const away = homeGroup && displayed !== null && displayed !== home;
 
-  const fitKey = `${capWidth}|${humanTabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}|${groups.map((group) => `${group.space.id}:${spaceName(group.space)}:${group.open ? 1 : 0}:${group.tabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}`).join("|")}`;
-  React.useLayoutEffect(() => {
-    if (fitKeyRef.current !== fitKey) {
-      fitKeyRef.current = fitKey;
-      if (fitLimit !== Number.MAX_SAFE_INTEGER) { setFitLimit(Number.MAX_SAFE_INTEGER); return; }
-    }
-    const strip = stripRef.current;
-    if (!strip || shownCount <= 1) return;
-    if (strip.scrollWidth > strip.clientWidth + 1) setFitLimit(shownCount - 1);
-  }, [fitKey, fitLimit, shownCount]);
-  React.useEffect(() => {
-    const cap = capRef.current;
-    if (!cap) return;
-    const observer = new ResizeObserver(() => setCapWidth(Math.round(cap.getBoundingClientRect().width)));
-    observer.observe(cap);
-    return () => observer.disconnect();
-  }, []);
-
-  // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
-  React.useEffect(() => {
-    publishBrowserCaptionOverlay(context.objectiveId, "caption", moreOpen);
-    return () => publishBrowserCaptionOverlay(context.objectiveId, "caption", false);
-  }, [context.objectiveId, moreOpen]);
-  // 「+N」 메뉴는 바깥을 누르거나 Esc 로 닫는다. 캡션이 포인터를 삼키므로 문서에서 캡처 단계로 듣는다.
-  React.useEffect(() => {
-    if (!moreOpen) return;
-    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !moreRef.current?.contains(event.target)) setMoreMenu(false); };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setMoreMenu(false); };
-    document.addEventListener("pointerdown", onPointer, true);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onPointer, true); document.removeEventListener("keydown", onKey); };
-  }, [moreOpen]);
-
   /** 스페이스를 펼치고 화면에 띄운다. 이미 보이는 스페이스를 접으면 내 스페이스로 돌아간다. */
-  const pickSpace = (space: BrowserSpaceState, open: boolean) => {
+  const pickSpace = (space: BrowserSpaceState, isOpen: boolean) => {
     if (space.id === home) {
-      setExpanded([]);
+      setOpenSpaces([]);
       if (displayed !== null && displayed !== home) panel?.actions.selectSpace(space.id);
       return;
     }
-    if (open) {
-      setExpanded((current) => current.filter((id) => id !== space.id));
+    if (isOpen) {
+      setOpenSpaces((current) => current.filter((id) => id !== space.id));
       if (displayed === space.id) panel?.actions.selectSpace(homeGroup && home !== null ? home : HUMAN_SPACE_ID);
       return;
     }
-    setExpanded((current) => current.includes(space.id) ? current : [...current, space.id]);
+    setOpenSpaces((current) => current.includes(space.id) ? current : [...current, space.id]);
     panel?.actions.selectSpace(space.id);
   };
-  const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
   const driving = panel?.driving === true;
   const ready = panel !== null && panel.available && !panel.busy;
-  const renderTab = (tab: BrowserCaptionTab, agentTab: boolean) => (
-    <div key={tab.id} role="tab" aria-selected={tab.id === panel?.activeTabId} className={`op-browser__tab${tab.id === panel?.activeTabId ? " is-active" : ""}`} onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }} onClick={() => { if (tab.id !== panel?.activeTabId) panel?.actions.selectTab(tab.id); }} title={agentTab ? `${tab.url} · ${t("terminal.browser.space.agentTab")}` : tab.url}>
-      <TabIcon objectiveId={context.objectiveId} tab={tab} />
-      <span className="op-browser__tab-title">{tab.title || hostOf(tab.url) || t("terminal.browser.newTab")}</span>
-      {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
-      <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
-    </div>
-  );
-  return (
-    <div ref={capRef} className={`op-browser-cap${driving ? " is-driving" : ""}`} onPointerDown={stop} onWheel={stop} {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : {})}>
-      <div ref={stripRef} className="op-browser-cap__tabs">
-        {humanTabs.length > 0 ? <div className="op-browser__space-tabs op-browser__human-tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>{humanTabs.map((tab) => renderTab(tab, false))}</div> : null}
-        {shownGroups.map((group) => {
-          const { space } = group;
-          const name = spaceName(space);
-          const isHome = space.id === home;
-          const count = String(group.tabs.length);
-          return (
-            <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} style={spaceColor(space)} data-space-kind={space.kind}>
-              <button
-                type="button"
-                className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
-                aria-expanded={group.open}
-                title={`${t(isHome ? "terminal.browser.space.chipHome" : "terminal.browser.space.chip", { name, count })}${drivingTip(space)}`}
-                disabled={!panel?.available}
-                onClick={() => pickSpace(space, group.open)}
-              >
-                <span className="op-browser__space-name">{name}</span>
-                {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
-              </button>
-              {group.open && group.tabs.length > 0 ? (
-                <div className="op-browser__space-tabs" role="tablist" aria-label={`${name} — ${t("terminal.browser.tabs")}`}>
-                  {group.tabs.map((tab) => renderTab(tab, space.agentTabIds.includes(tab.id)))}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+
+  const onPointerEnter = (event: React.PointerEvent) => {
+    if (event.pointerType === "touch") return;
+    if (leaveTimer.current !== null) { clearTimeout(leaveTimer.current); leaveTimer.current = null; }
+    setHovered(true);
+  };
+  const onPointerLeave = (event: React.PointerEvent) => {
+    if (event.pointerType === "touch") return;
+    if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
+    leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
+  };
+  // 키보드로 들어온 초점만 펼친다 — 탭을 눌러 생긴 초점(포인터)이 포인터를 뗀 뒤에도 펼침을 붙들지 않게.
+  const onFocus = (event: React.FocusEvent) => { if (event.target.matches(":focus-visible")) setKeyboardFocus(true); };
+  const onBlur = (event: React.FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setKeyboardFocus(false); };
+
+  const renderTab = (tab: BrowserCaptionTab, agentTab: boolean) => {
+    const active = tab.id === panel?.activeTabId;
+    const title = tab.title || hostOf(tab.url) || t("terminal.browser.newTab");
+    const select = () => { if (!active) panel?.actions.selectTab(tab.id); };
+    return (
+      <div
+        key={tab.id}
+        role="tab"
+        tabIndex={0}
+        aria-selected={active}
+        aria-label={title}
+        className={`op-browser__tab${active ? " is-active" : ""}`}
+        onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }}
+        onClick={select}
+        onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); select(); } }}
+        title={agentTab ? `${title} — ${tab.url} · ${t("terminal.browser.space.agentTab")}` : `${title} — ${tab.url}`}
+      >
+        <TabIcon objectiveId={objectiveId} tab={tab} />
+        <span className="op-browser__tab-title">{title}</span>
+        {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
+        <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
       </div>
-      {hiddenGroups.length > 0 ? (
-        <div className="op-browser__more" ref={moreRef}>
-          <button type="button" className="op-browser__more-button" aria-haspopup="menu" aria-expanded={moreOpen} aria-label={t("terminal.browser.space.more", { count: String(hiddenGroups.length) })} onClick={() => setMoreMenu((open) => !open)}>
-            +{hiddenGroups.length}
-          </button>
-          {moreOpen ? (
-            <div className="op-browser__menu op-browser__menu--spaces" role="menu" {...COVERS_NATIVE_VIEW} aria-label={t("terminal.browser.space.moreMenu")}>
-              {hiddenGroups.map((group) => (
-                <button key={group.space.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__space-item" title={drivingTip(group.space).slice(3) || undefined} onClick={() => { setMoreMenu(false); pickSpace(group.space, false); }}>
-                  <span className="op-browser__space-name">{spaceName(group.space)}</span>
-                  <span className="op-browser__space-count">{group.tabs.length}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {away && home !== null && !shownIds.has(home) ? (
-        <button type="button" className="op-browser__space-home" title={t("terminal.browser.space.backHomeTip")} onClick={() => { if (home !== null) panel?.actions.selectSpace(home); }}>
-          <BackGlyph />
-          <span>{t("terminal.browser.space.backHome")}</span>
+    );
+  };
+  const pinLabel = t(pinned ? "terminal.browser.rail.unpin" : "terminal.browser.rail.pin");
+  const widths = { "--op-rail-collapsed": `${BROWSER_RAIL_COLLAPSED_PX}px`, "--op-rail-expanded": `${BROWSER_RAIL_EXPANDED_PX}px` } as React.CSSProperties;
+  return (
+    <div className={`op-browser-rail-slot${pinned ? " is-pinned" : ""}`} style={widths}>
+      <div
+        className={`op-browser-rail${open ? " is-open" : ""}${pinned ? " is-pinned" : ""}${driving ? " is-driving" : ""}`}
+        {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : { role: "group", "aria-label": t("terminal.browser.tabs") })}
+        // 고정하지 않은 펼침은 본문 위에 겹쳐 그려진다 — 네이티브 뷰가 가리지 않게 가림 표면으로 알린다.
+        {...(open && !pinned ? COVERS_NATIVE_VIEW : {})}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
+        onFocus={onFocus}
+        onBlur={onBlur}
+      >
+        <button type="button" className={`op-browser-rail__row op-browser-rail__pin${pinned ? " is-set" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} onClick={() => setBrowserRailPinned(!pinned)}>
+          <span className="op-browser-rail__glyph" aria-hidden="true"><PinGlyph /></span>
+          <span className="op-browser-rail__label">{pinLabel}</span>
         </button>
-      ) : null}
-      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
-      <span className="op-browser-cap__spacer" />
+        <div className="op-browser-rail__divider" role="separator" />
+        <div className="op-browser-rail__scroll">
+          {humanTabs.length > 0 ? <div className="op-browser__space-tabs op-browser__human-tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>{humanTabs.map((tab) => renderTab(tab, false))}</div> : null}
+          {groups.map((group) => {
+            const { space } = group;
+            const name = spaceName(space);
+            const isHome = space.id === home;
+            const count = String(group.tabs.length);
+            const chipTip = `${t(isHome ? "terminal.browser.space.chipHome" : "terminal.browser.space.chip", { name, count })}${drivingTip(space)}`;
+            return (
+              <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} style={spaceColor(space)} data-space-kind={space.kind}>
+                <button
+                  type="button"
+                  className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
+                  aria-expanded={group.open}
+                  aria-label={chipTip}
+                  title={chipTip}
+                  disabled={!panel?.available}
+                  onClick={() => pickSpace(space, group.open)}
+                >
+                  <span className="op-browser__space-initial" aria-hidden="true">{Array.from(name)[0] ?? ""}</span>
+                  <span className="op-browser__space-name">{name}</span>
+                  {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
+                </button>
+                {group.open && group.tabs.length > 0 ? (
+                  <div className="op-browser__space-tabs" role="tablist" aria-label={`${name} — ${t("terminal.browser.tabs")}`}>
+                    {group.tabs.map((tab) => renderTab(tab, space.agentTabIds.includes(tab.id)))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          {away && home !== null ? (
+            <button type="button" className="op-browser-rail__row op-browser__space-home" aria-label={t("terminal.browser.space.backHome")} title={t("terminal.browser.space.backHomeTip")} onClick={() => panel?.actions.selectSpace(home)}>
+              <span className="op-browser-rail__glyph" aria-hidden="true"><BackGlyph /></span>
+              <span className="op-browser-rail__label">{t("terminal.browser.space.backHome")}</span>
+            </button>
+          ) : null}
+          <button type="button" className="op-browser-rail__row op-browser-rail__new" aria-label={t("terminal.browser.newTab")} title={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>
+            <span className="op-browser-rail__glyph" aria-hidden="true">+</span>
+            <span className="op-browser-rail__label">{t("terminal.browser.newTab")}</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1460,138 +1457,141 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         <BrowserTools objectiveId={objectiveId} language={language} />
         {navTail}
       </div>
-      <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
-        {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (
-          <div className={`op-browser__toast${info.action ? " has-action" : ""}`} role="status">
-            {info.text}
-            {info.action ? <button type="button" className="op-browser__toast-action" onClick={() => { const action = info.action; if (!action) return; setInfo(null); action.run(); }}>{info.action.label}</button> : null}
-          </div>
-        ) : null}
-        {importSources ? <ChromeImportDialog t={t} sources={importSources} persistent={Boolean(state?.profile)} onClose={() => setImportSources(null)} onImport={runImport} /> : null}
-        {/* 세션 전환 — 전환은 열린 탭을 닫는 일이므로 무엇이 사라지는지 먼저 말한다. */}
-        {profileSwitch !== undefined ? (
-          <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setProfileSwitch(undefined); }}>
-            <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")} onClick={(event) => event.stopPropagation()}>
-              <div className="op-browser__dialog-head">
-                <div>
-                  <h3>{t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")}</h3>
-                  <p>{t("terminal.browser.profile.switchBody", { count: String(state?.tabs.length ?? 0) })}</p>
+      <div className="op-browser__body">
+        {available ? <BrowserTabRail objectiveId={objectiveId} language={language} /> : null}
+        <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
+          {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (
+            <div className={`op-browser__toast${info.action ? " has-action" : ""}`} role="status">
+              {info.text}
+              {info.action ? <button type="button" className="op-browser__toast-action" onClick={() => { const action = info.action; if (!action) return; setInfo(null); action.run(); }}>{info.action.label}</button> : null}
+            </div>
+          ) : null}
+          {importSources ? <ChromeImportDialog t={t} sources={importSources} persistent={Boolean(state?.profile)} onClose={() => setImportSources(null)} onImport={runImport} /> : null}
+          {/* 세션 전환 — 전환은 열린 탭을 닫는 일이므로 무엇이 사라지는지 먼저 말한다. */}
+          {profileSwitch !== undefined ? (
+            <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setProfileSwitch(undefined); }}>
+              <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")} onClick={(event) => event.stopPropagation()}>
+                <div className="op-browser__dialog-head">
+                  <div>
+                    <h3>{t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")}</h3>
+                    <p>{t("terminal.browser.profile.switchBody", { count: String(state?.tabs.length ?? 0) })}</p>
+                  </div>
+                </div>
+                <div className="op-browser__dialog-item">
+                  <span className="op-browser__dialog-glyph" aria-hidden="true">{profileSwitch ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
+                  <span>
+                    <strong>{t(profileSwitch ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
+                    <span className="op-browser__help">{t(profileSwitch ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
+                  </span>
+                </div>
+                <div className="op-browser__dialog-actions">
+                  <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setProfileSwitch(undefined)}>{t("terminal.browser.import.cancel")}</button>
+                  <button type="button" className="op-browser__button op-browser__button--primary" disabled={profileBusy} onClick={() => void applyProfile(profileSwitch)}>{t("terminal.browser.profile.switchRun")}</button>
                 </div>
               </div>
-              <div className="op-browser__dialog-item">
-                <span className="op-browser__dialog-glyph" aria-hidden="true">{profileSwitch ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
-                <span>
-                  <strong>{t(profileSwitch ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
-                  <span className="op-browser__help">{t(profileSwitch ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
-                </span>
-              </div>
-              <div className="op-browser__dialog-actions">
-                <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setProfileSwitch(undefined)}>{t("terminal.browser.import.cancel")}</button>
-                <button type="button" className="op-browser__button op-browser__button--primary" disabled={profileBusy} onClick={() => void applyProfile(profileSwitch)}>{t("terminal.browser.profile.switchRun")}</button>
-              </div>
             </div>
-          </div>
-        ) : null}
-        {/* 비우기 — 이 기계의 프로필 전체를 지운다. 되돌릴 수 없으므로 범위를 먼저 말한다. */}
-        {clearingProfile ? (
-          <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setClearingProfile(false); }}>
-            <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.profile.clearTitle")} onClick={(event) => event.stopPropagation()}>
-              <div className="op-browser__dialog-head">
-                <div><h3>{t("terminal.browser.profile.clearTitle")}</h3><p>{t("terminal.browser.profile.clearBody")}</p></div>
-              </div>
-              <div className="op-browser__dialog-item">
-                <span className="op-browser__dialog-glyph" aria-hidden="true"><ProfileGlyph /></span>
-                <span><strong>{t("terminal.browser.profile.persistent")}</strong><span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span></span>
-              </div>
-              <div className="op-browser__dialog-actions">
-                <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setClearingProfile(false)}>{t("terminal.browser.import.cancel")}</button>
-                <button type="button" className="op-browser__button op-browser__button--danger" disabled={profileBusy} onClick={() => void runClearProfile()}>{t("terminal.browser.profile.clearRun")}</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {mode === "annotate" && shownFrame ? (
-          // 찍은 한 장을 선언한 CSS 크기 그대로 놓는다 — 패널이 그보다 넓으면 가운데에 두고, 좁으면 줄인다.
-          <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `${shownFrame.width}px`, maxWidth: "100%" }}>
-            <img
-              ref={imageRef}
-              className="op-browser__frame"
-              src={`data:${shownFrame.mime};base64,${shownFrame.data}`}
-              alt={activeTab?.title ? `${activeTab.title} — ${t("terminal.browser.pageFrame")}` : t("terminal.browser.pageFrame")}
-              draggable={false}
-              onContextMenu={(event) => event.preventDefault()}
-              onLoad={() => redraw()}
-            />
-            <canvas ref={sketchRef} className={`op-browser__sketch${tool === "comment" ? " is-comment" : ""}`} aria-label={t("terminal.browser.annotate")} onPointerDown={sketchDown} onPointerMove={sketchMove} onPointerUp={sketchUp} onPointerCancel={sketchUp} onPointerLeave={() => { if (!drawing.current && !draftPin) setHover(null); }} />
-            {hoverBox ? <div className="op-browser__highlight" style={hoverBox} aria-hidden="true" /> : null}
-            {hoverBox && hoverInfo ? (
-              <div className="op-browser__hovercard" style={{ left: Math.max(4, hoverBox.left), ...(hoverBox.top > 92 ? { bottom: `calc(100% - ${hoverBox.top - 6}px)` } : { top: hoverBox.top + hoverBox.height + 6 }) }} aria-hidden="true">
-                <span className="op-browser__hovercard-name">{hoverInfo.tag}{hoverInfo.id ? `#${hoverInfo.id}` : hoverInfo.classes[0] ? `.${hoverInfo.classes[0]}` : ""}</span><span className="op-browser__hovercard-value">{hoverInfo.box.width}×{hoverInfo.box.height}</span>
-                {hoverInfo.component ? <><span className="op-browser__hovercard-key">{t("terminal.browser.hover.component")}</span><span className="op-browser__hovercard-value">{hoverInfo.component}</span></> : null}
-                <span className="op-browser__hovercard-key">{t("terminal.browser.hover.color")}</span><span className="op-browser__hovercard-value"><span className="op-browser__hovercard-swatch" style={{ background: hoverInfo.styles.color }} />{hexColor(hoverInfo.styles.color)}</span>
-                <span className="op-browser__hovercard-key">{t("terminal.browser.hover.font")}</span><span className="op-browser__hovercard-value">{hoverInfo.styles["font-size"]} {(hoverInfo.styles["font-family"] ?? "").split(",")[0]?.replace(/["']/g, "")}</span>
-              </div>
-            ) : null}
-            {marks.map((mark, index) => mark.kind === "pin" ? (
-              <span key={index} className="op-browser__pinwrap" style={stagePoint(mark.pin)}>
-                <button type="button" className="op-browser__pin" aria-label={t("terminal.browser.removePin", { n: String(index + 1) })} onClick={() => setMarks((prev) => prev.filter((_, i) => i !== index))}>{index + 1}</button>
-                <span className="op-browser__pin-label" role="tooltip">{mark.pin.text}</span>
-              </span>
-            ) : null)}
-            {draftPin ? (
-              <>
-                <span className="op-browser__pin is-anchor" style={stagePoint(draftPin)} aria-hidden="true">{marks.length + 1}</span>
-                <div className="op-browser__comment" style={commentStyle(draftPin)} role="dialog" aria-label={t("terminal.browser.tool.comment")}>
-                  <input
-                    className="op-browser__comment-input"
-                    autoFocus
-                    value={draftText}
-                    placeholder={t("terminal.browser.commentPlaceholder")}
-                    aria-label={t("terminal.browser.commentPlaceholder")}
-                    onChange={(event) => setDraftText(event.target.value)}
-                    onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); confirmPin(); } else if (event.key === "Escape") { event.preventDefault(); cancelPin(); } }}
-                  />
-                  <button type="button" className="op-browser__comment-ok" aria-label={t("terminal.browser.commentAdd")} title={t("terminal.browser.commentAdd")} disabled={!draftText.trim()} onClick={confirmPin}><MenuCheckGlyph /></button>
+          ) : null}
+          {/* 비우기 — 이 기계의 프로필 전체를 지운다. 되돌릴 수 없으므로 범위를 먼저 말한다. */}
+          {clearingProfile ? (
+            <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setClearingProfile(false); }}>
+              <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.profile.clearTitle")} onClick={(event) => event.stopPropagation()}>
+                <div className="op-browser__dialog-head">
+                  <div><h3>{t("terminal.browser.profile.clearTitle")}</h3><p>{t("terminal.browser.profile.clearBody")}</p></div>
                 </div>
-              </>
-            ) : null}
-            <div className="op-browser__sketchbar" role="toolbar" aria-label={t("terminal.browser.annotate")}>
-              {(["comment", "pen", "arrow", "rect"] as const).map((entry) => (
-                <button key={entry} type="button" className="op-browser__icon op-browser__tool" aria-pressed={tool === entry} aria-label={t(`terminal.browser.tool.${entry}`)} title={t(`terminal.browser.tool.${entry}`)} onClick={() => { setTool(entry); cancelPin(); }}>{entry === "comment" ? <CommentGlyph /> : entry === "pen" ? "✎" : entry === "arrow" ? "➚" : "▭"}</button>
-              ))}
-              <span className="op-browser__divider" />
-              {(["red", "blue", "green", "black"] as const).map((entry) => (
-                <button key={entry} ref={(node) => { swatchRefs.current[entry] = node; }} type="button" className={`op-browser__swatch op-browser__swatch--${entry}`} aria-pressed={colorKey === entry} aria-label={t(`terminal.browser.color.${entry}`)} title={t(`terminal.browser.color.${entry}`)} onClick={() => setColorKey(entry)} />
-              ))}
-              <span className="op-browser__divider" />
-              <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.undo")} title={t("terminal.browser.undo")} disabled={marks.length === 0} onClick={() => setMarks((prev) => prev.slice(0, -1))}>↶</button>
-              <button type="button" className="op-browser__button" disabled={marks.length === 0} onClick={() => setMarks([])}>{t("terminal.browser.clear")}</button>
-              <span className="op-browser__divider" />
-              <button type="button" className="op-browser__button op-browser__button--primary" disabled={marks.length === 0 || busy} onClick={() => void attachMarks()}>{t("terminal.browser.attachMarks", { count: String(marks.length) })}</button>
-              <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} title={t("terminal.browser.close")} onClick={() => setMode("none")}>×</button>
+                <div className="op-browser__dialog-item">
+                  <span className="op-browser__dialog-glyph" aria-hidden="true"><ProfileGlyph /></span>
+                  <span><strong>{t("terminal.browser.profile.persistent")}</strong><span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span></span>
+                </div>
+                <div className="op-browser__dialog-actions">
+                  <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setClearingProfile(false)}>{t("terminal.browser.import.cancel")}</button>
+                  <button type="button" className="op-browser__button op-browser__button--danger" disabled={profileBusy} onClick={() => void runClearProfile()}>{t("terminal.browser.profile.clearRun")}</button>
+                </div>
+              </div>
             </div>
-          </div>
-        ) : activeTab ? (
-          // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
-          <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: objectiveId }}>
-            {shownBackdrop ? (
+          ) : null}
+          {mode === "annotate" && shownFrame ? (
+            // 찍은 한 장을 선언한 CSS 크기 그대로 놓는다 — 패널이 그보다 넓으면 가운데에 두고, 좁으면 줄인다.
+            <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `${shownFrame.width}px`, maxWidth: "100%" }}>
               <img
-                className="op-browser__backdrop"
-                src={`data:${shownBackdrop.mime};base64,${shownBackdrop.data}`}
-                alt=""
+                ref={imageRef}
+                className="op-browser__frame"
+                src={`data:${shownFrame.mime};base64,${shownFrame.data}`}
+                alt={activeTab?.title ? `${activeTab.title} — ${t("terminal.browser.pageFrame")}` : t("terminal.browser.pageFrame")}
                 draggable={false}
+                onContextMenu={(event) => event.preventDefault()}
+                onLoad={() => redraw()}
               />
-            ) : null}
-          </div>
-        ) : (
-          <div className="op-browser__empty">
-            <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
-            <p className="op-browser__empty-title">{closedDoor ? closedDoor.title : state?.engine === "failed" ? t("terminal.browser.engineFailed") : connection === "connecting" ? t("terminal.browser.connecting") : t("terminal.browser.emptyTitle")}</p>
-            {closedDoor?.body ? <p className="op-browser__empty-body">{closedDoor.body}</p> : null}
-            {!closedDoor && state?.engine !== "failed" ? <p className="op-browser__empty-body">{t("terminal.browser.emptyBody")}</p> : null}
-            {!closedDoor && state?.engine === "failed" && state.engineError ? <p className="op-browser__empty-body">{state.engineError}</p> : null}
-          </div>
-        )}
+              <canvas ref={sketchRef} className={`op-browser__sketch${tool === "comment" ? " is-comment" : ""}`} aria-label={t("terminal.browser.annotate")} onPointerDown={sketchDown} onPointerMove={sketchMove} onPointerUp={sketchUp} onPointerCancel={sketchUp} onPointerLeave={() => { if (!drawing.current && !draftPin) setHover(null); }} />
+              {hoverBox ? <div className="op-browser__highlight" style={hoverBox} aria-hidden="true" /> : null}
+              {hoverBox && hoverInfo ? (
+                <div className="op-browser__hovercard" style={{ left: Math.max(4, hoverBox.left), ...(hoverBox.top > 92 ? { bottom: `calc(100% - ${hoverBox.top - 6}px)` } : { top: hoverBox.top + hoverBox.height + 6 }) }} aria-hidden="true">
+                  <span className="op-browser__hovercard-name">{hoverInfo.tag}{hoverInfo.id ? `#${hoverInfo.id}` : hoverInfo.classes[0] ? `.${hoverInfo.classes[0]}` : ""}</span><span className="op-browser__hovercard-value">{hoverInfo.box.width}×{hoverInfo.box.height}</span>
+                  {hoverInfo.component ? <><span className="op-browser__hovercard-key">{t("terminal.browser.hover.component")}</span><span className="op-browser__hovercard-value">{hoverInfo.component}</span></> : null}
+                  <span className="op-browser__hovercard-key">{t("terminal.browser.hover.color")}</span><span className="op-browser__hovercard-value"><span className="op-browser__hovercard-swatch" style={{ background: hoverInfo.styles.color }} />{hexColor(hoverInfo.styles.color)}</span>
+                  <span className="op-browser__hovercard-key">{t("terminal.browser.hover.font")}</span><span className="op-browser__hovercard-value">{hoverInfo.styles["font-size"]} {(hoverInfo.styles["font-family"] ?? "").split(",")[0]?.replace(/["']/g, "")}</span>
+                </div>
+              ) : null}
+              {marks.map((mark, index) => mark.kind === "pin" ? (
+                <span key={index} className="op-browser__pinwrap" style={stagePoint(mark.pin)}>
+                  <button type="button" className="op-browser__pin" aria-label={t("terminal.browser.removePin", { n: String(index + 1) })} onClick={() => setMarks((prev) => prev.filter((_, i) => i !== index))}>{index + 1}</button>
+                  <span className="op-browser__pin-label" role="tooltip">{mark.pin.text}</span>
+                </span>
+              ) : null)}
+              {draftPin ? (
+                <>
+                  <span className="op-browser__pin is-anchor" style={stagePoint(draftPin)} aria-hidden="true">{marks.length + 1}</span>
+                  <div className="op-browser__comment" style={commentStyle(draftPin)} role="dialog" aria-label={t("terminal.browser.tool.comment")}>
+                    <input
+                      className="op-browser__comment-input"
+                      autoFocus
+                      value={draftText}
+                      placeholder={t("terminal.browser.commentPlaceholder")}
+                      aria-label={t("terminal.browser.commentPlaceholder")}
+                      onChange={(event) => setDraftText(event.target.value)}
+                      onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); confirmPin(); } else if (event.key === "Escape") { event.preventDefault(); cancelPin(); } }}
+                    />
+                    <button type="button" className="op-browser__comment-ok" aria-label={t("terminal.browser.commentAdd")} title={t("terminal.browser.commentAdd")} disabled={!draftText.trim()} onClick={confirmPin}><MenuCheckGlyph /></button>
+                  </div>
+                </>
+              ) : null}
+              <div className="op-browser__sketchbar" role="toolbar" aria-label={t("terminal.browser.annotate")}>
+                {(["comment", "pen", "arrow", "rect"] as const).map((entry) => (
+                  <button key={entry} type="button" className="op-browser__icon op-browser__tool" aria-pressed={tool === entry} aria-label={t(`terminal.browser.tool.${entry}`)} title={t(`terminal.browser.tool.${entry}`)} onClick={() => { setTool(entry); cancelPin(); }}>{entry === "comment" ? <CommentGlyph /> : entry === "pen" ? "✎" : entry === "arrow" ? "➚" : "▭"}</button>
+                ))}
+                <span className="op-browser__divider" />
+                {(["red", "blue", "green", "black"] as const).map((entry) => (
+                  <button key={entry} ref={(node) => { swatchRefs.current[entry] = node; }} type="button" className={`op-browser__swatch op-browser__swatch--${entry}`} aria-pressed={colorKey === entry} aria-label={t(`terminal.browser.color.${entry}`)} title={t(`terminal.browser.color.${entry}`)} onClick={() => setColorKey(entry)} />
+                ))}
+                <span className="op-browser__divider" />
+                <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.undo")} title={t("terminal.browser.undo")} disabled={marks.length === 0} onClick={() => setMarks((prev) => prev.slice(0, -1))}>↶</button>
+                <button type="button" className="op-browser__button" disabled={marks.length === 0} onClick={() => setMarks([])}>{t("terminal.browser.clear")}</button>
+                <span className="op-browser__divider" />
+                <button type="button" className="op-browser__button op-browser__button--primary" disabled={marks.length === 0 || busy} onClick={() => void attachMarks()}>{t("terminal.browser.attachMarks", { count: String(marks.length) })}</button>
+                <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} title={t("terminal.browser.close")} onClick={() => setMode("none")}>×</button>
+              </div>
+            </div>
+          ) : activeTab ? (
+            // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
+            <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: objectiveId }}>
+              {shownBackdrop ? (
+                <img
+                  className="op-browser__backdrop"
+                  src={`data:${shownBackdrop.mime};base64,${shownBackdrop.data}`}
+                  alt=""
+                  draggable={false}
+                />
+              ) : null}
+            </div>
+          ) : (
+            <div className="op-browser__empty">
+              <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
+              <p className="op-browser__empty-title">{closedDoor ? closedDoor.title : state?.engine === "failed" ? t("terminal.browser.engineFailed") : connection === "connecting" ? t("terminal.browser.connecting") : t("terminal.browser.emptyTitle")}</p>
+              {closedDoor?.body ? <p className="op-browser__empty-body">{closedDoor.body}</p> : null}
+              {!closedDoor && state?.engine !== "failed" ? <p className="op-browser__empty-body">{t("terminal.browser.emptyBody")}</p> : null}
+              {!closedDoor && state?.engine === "failed" && state.engineError ? <p className="op-browser__empty-body">{state.engineError}</p> : null}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
