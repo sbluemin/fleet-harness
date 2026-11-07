@@ -194,7 +194,10 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
     };
     const onFocusIn = (event: FocusEvent) => {
       const item = toolbarItemOf(event.target, root);
-      if (item === null || item === quietFocusTarget || !item.matches(":focus-visible")) return;
+      // 포커스는 칸 자신이거나 칸 안의 조작(컴팩트 명단 줄 안의 입력·원장 단추)일 수 있다 — 실제 포커스를 받은 요소가 키보드 포커스일 때 말한다.
+      if (item === null || item === quietFocusTarget) return;
+      const focused = event.target instanceof HTMLElement ? event.target : item;
+      if (!focused.matches(":focus-visible")) return;
       request(item);
     };
     const onFocusOut = (event: FocusEvent) => {

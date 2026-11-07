@@ -653,7 +653,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
               </span>
               {member.by === "commander" && !readOnly ? <span className="objectives-member-by">{t("objectives.members.proposed")}</span> : null}
             </span>
-            {readOnly ? null : <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={readOnly ? "" : touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
+            {readOnly ? (member.brief ? <span className="objectives-sr">{member.brief}</span> : null) : <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={readOnly ? "" : touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />}
           </div>
           <div className="objectives-member-meta">
@@ -1441,7 +1441,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
       </LedgerMark>
       <div className="objectives-member-body">
         <span className="objectives-member-name"><span className="objectives-member-role-fit">{t("objectives.commander.title")}</span></span>
-        {readOnly ? null : <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>}
+        {readOnly ? <span className="objectives-sr">{t("objectives.commander.brief")}</span> : <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>}
       </div>
       <div className="objectives-member-meta">
         <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={locked || !editable}
