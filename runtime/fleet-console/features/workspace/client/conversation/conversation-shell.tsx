@@ -759,6 +759,8 @@ const TITLE_COMPACT_MIN = 48;
 const SUB_FLOOR = 28;
 /** 머리 pill 의 폭 상한(conversation.css `.conversation-pill` max-width) — 이 상한 때문에 잘린 이름은 자리 부족이 아니다. */
 const PILL_TITLE_CAP = 620;
+/** 칩과 그 오른쪽 도구 묶음 사이의 틈 — conversation.css `.conversation-pill-tools-chip` 의 left(--space-2)와 같다. */
+const TOOLS_CHIP_GAP = 8;
 
 interface OverflowTab {
   readonly label: string;
@@ -988,7 +990,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const workbenchConversationRef = useRef(workbenchConversation);
   if (workbenchKey === (conversationKey ?? "console")) workbenchConversationRef.current = workbenchConversation;
 
-  // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
+  // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구모음은 같다. 지구본은 칩 옆 도구와 따로 맨 위 줄 오른쪽 끝에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
   useConversationSidebarCompact(stageElement, viewport, insets.right);
@@ -996,8 +998,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
 
   return (
     <>
-    {/* 맨 위 줄은 작업 영역 전체 폭이다. 도구모음은 이 줄 오른쪽 끝(Windows 캡션 바로 왼쪽)으로 portal 되며,
-        도구 분할은 그 아래만 쓴다. pill 줄은 실제 도구 폭 앞에서 drag 상자를 끝낸다. */}
+    {/* 맨 위 줄은 작업 영역 전체 폭이다. 오른쪽 끝 묶음(지구본)은 이 줄 오른쪽 끝(Windows 캡션 바로 왼쪽)으로 portal 되며,
+        도구 분할은 그 아래만 쓴다. pill 줄은 실제 그 폭 앞에서 drag 상자를 끝낸다. 칩 옆 도구는 pill 줄 안에 선다. */}
     <div ref={setBand} className="conversation-band" style={{ left: insets.left, right: insets.right }} />
     <section
       ref={setStageElement}
@@ -1138,31 +1140,38 @@ function sameHiddenTools(a: readonly HiddenTool[], b: readonly HiddenTool[]): bo
 }
 
 /**
- * 가운데 대화 머리 줄의 공통 도구모음 — 대화 동작 오른쪽에 선다. 순서·켜짐·배지·말풍선·단축키 표기는 레일 도구(RailToolIcons ·
- * RailIcon) 그대로이고, Theater 도구 → 구분선 → Console 도구다. 문맥은 보이는 대화의 Theater 라 도구를 누르면 그 Theater 로 열린다.
- * 줄은 한 줄이다: 자리가 모자라면 오른쪽 끝 도구부터 걷어 「⋯」 메뉴에 모은다. 이름 pill 은
- * 도구가 모두 걷힌 다음에야 말줄임이 시작되고, 대화 동작은 걷히지 않는다.
+ * 가운데 대화 머리 줄의 공통 도구모음. 두 묶음으로 나뉜다.
+ * - 칩 옆 묶음: pill(칩) 오른쪽에 바로 이어 선다 — 도구(Theater 도구 → 구분선 → Console 도구), 「⋯」, 컨텍스트, 승인 종 순서. 칩은 줄의
+ *   가운데에 그대로 남는다(묶음은 폭 0 의 자리 표식에서 오른쪽으로 뻗고, 그 폭만큼 줄의 양쪽 여백이 같이 예약된다). 순서·켜짐·배지·말풍선·
+ *   단축키 표기는 레일 도구(RailToolIcons · RailIcon) 그대로이고, 문맥은 보이는 대화의 Theater 라 도구를 누르면 그 Theater 로 열린다.
+ * - 오른쪽 끝 묶음: 지구본(브라우저 문)과 그 앞의 브라우저 칸 자리. 작업 영역 맨 위 줄(.conversation-band)의 오른쪽 끝(Windows 캡션
+ *   바로 왼쪽)에 선다 — 도구 분할이 열리고 닫혀도 같은 자리다.
+ * 줄은 한 줄이다: 자리가 모자라면 칩 옆 묶음의 도구를 오른쪽 끝부터 걷어 「⋯」 메뉴에 모은다. 이름 pill 은 도구가 모두 걷힌 다음에야
+ * 말줄임이 시작되고, 컨텍스트·승인 종·지구본은 걷히지 않는다(승인 종이 가장 나중까지 남는다).
  */
 function ConversationToolbar({ context, lead = null, trail = null, band }: { readonly context: RailToolContext; readonly lead?: ReactNode; readonly trail?: ReactNode; readonly band: HTMLDivElement | null }) {
   const t = useT();
   const toolsRef = useRef<HTMLSpanElement | null>(null);
+  // 오른쪽 끝 묶음(지구본 + 브라우저 칸 자리)과 그 안의 지구본 자리 — 줄의 오른쪽 예약을 이 폭으로 센다.
+  const endRef = useRef<HTMLSpanElement | null>(null);
+  const leadRef = useRef<HTMLSpanElement | null>(null);
   const itemsRef = useRef<HTMLSpanElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
-  // 지구본 바로 앞의 빈 자리 — 열린 브라우저 칸의 탭 줄이 여기로 올라온다(browser-band-slot.ts).
+  // 지구본 바로 앞의 빈 자리 — 열린 브라우저 칸의 닫기 단추가 여기로 올라온다(browser-band-slot.ts).
   const browserSlotRef = useRef<HTMLSpanElement | null>(null);
   const bindBrowserSlot = useCallback((element: HTMLSpanElement | null) => {
     if (element !== null) { browserSlotRef.current = element; setBrowserBandSlot(element); return; }
     if (browserSlotRef.current !== null) releaseBrowserBandSlot(browserSlotRef.current);
     browserSlotRef.current = null;
   }, []);
-  // 눌러서 브라우저를 닫을 수 있는 지구본이 있는지 탭 줄에 알린다 — 지구본은 대화 종류가 세우고, 브라우저를 못 쓰면 꺼진다.
+  // 눌러서 브라우저를 닫을 수 있는 지구본이 있는지 칸에 알린다 — 지구본은 대화 종류가 세우고, 브라우저를 못 쓰면 꺼진다.
   useLayoutEffect(() => {
-    const tools = toolsRef.current;
-    if (tools === null) return;
-    const check = () => setBrowserBandGlobe(tools.querySelector('[data-caption-action="browser"]:not(:disabled)') !== null);
+    const end = endRef.current;
+    if (end === null) return;
+    const check = () => setBrowserBandGlobe(end.querySelector('[data-caption-action="browser"]:not(:disabled)') !== null);
     check();
     const observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(check);
-    observer?.observe(tools, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
+    observer?.observe(end, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
     return () => { observer?.disconnect(); setBrowserBandGlobe(false); };
   }, [band]);
   const [hidden, setHidden] = useState<readonly HiddenTool[]>([]);
@@ -1175,14 +1184,16 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
   useLayoutEffect(() => {
     const tools = toolsRef.current;
     const itemsBox = itemsRef.current;
-    const stage = band?.nextElementSibling;
-    if (!tools || !itemsBox || !(stage instanceof HTMLElement)) return;
+    const end = endRef.current;
+    const stage = tools?.closest<HTMLElement>(".conversation-stage") ?? null;
+    if (!tools || !itemsBox || !end || stage === null) return;
     let frame = 0;
     let observedRow: HTMLElement | null = null;
-    // 예약은 도구 캡슐 아래의 줄만 갖는다. 앞 대화가 stage 에 남긴 값은 다른 칸으로 물려주지 않는다.
+    // 예약은 도구모음이 선 줄만 갖는다. 앞 대화가 stage 에 남긴 값은 다른 칸으로 물려주지 않는다.
     stage.style.removeProperty("--conversation-quota-space");
     const releaseRow = () => {
       observedRow?.style.removeProperty("--conversation-quota-space");
+      observedRow?.style.removeProperty("--conversation-tools-space");
       const pill = observedRow?.querySelector<HTMLElement>(":scope > .conversation-pill");
       pill?.removeAttribute("data-compact");
       for (const text of pill?.querySelectorAll<HTMLElement>(".conversation-pill-title, .conversation-pill-sub") ?? []) text.style.minWidth = "";
@@ -1235,16 +1246,19 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       mutation?.disconnect();
       mutation?.observe(stage, { childList: true });
       mutation?.observe(tools, contentChanges);
-      if (row === null) return;
+      mutation?.observe(end, contentChanges);
+      if (row === null || !row.contains(tools)) return;
       mutation?.observe(row, contentChanges);
       // pill 폭을 옮기는 중(pill-takeover)에는 붙든 일시 폭 때문에 안이 넘쳐 보인다 — 재판정을 멈추고, 끝나면(클래스 변화) 한 번 잰다.
       if (row.querySelector(`:scope > .conversation-pill.${PILL_MORPHING_CLASS}`) !== null) return;
-      // 이전 사용량 자리를 도구모음이 차지한다. 이 줄에 현재 도구 폭을 예약하고, 머리 줄의 여백은 CSS 를 따른다.
-      // 브라우저 탭 줄 자리는 늘 브라우저 칸 위(분할 영역)에 서므로 대화 줄의 예약에서 뺀다.
+      // 이 줄에 두 몫을 예약하고, 머리 줄의 여백은 CSS 를 따른다. 오른쪽 끝의 지구본 몫(quota-space)은 분할이 닫혀 줄이 맨 위 줄 끝까지
+      // 뻗을 때만 비운다(오른쪽 끝 묶음의 오른쪽 여백·캡션 몫 포함). 칩 옆 묶음의 몫(tools-space)은 폭에 칩과의 틈을 더해 양쪽에 같이 비워
+      // 칩이 줄의 가운데에 남게 한다. 브라우저 칸 자리는 늘 브라우저 칸 위에 서므로 지구본 몫에 세지 않는다.
       const reserve = () => {
-        const right = Number.parseFloat(getComputedStyle(tools).right) || 0;
-        const slot = browserSlotRef.current?.getBoundingClientRect().width ?? 0;
-        row.style.setProperty("--conversation-quota-space", `${Math.ceil(tools.getBoundingClientRect().width - slot + right + 12)}px`);
+        const right = Number.parseFloat(getComputedStyle(end).right) || 0;
+        const leadWidth = leadRef.current?.getBoundingClientRect().width ?? 0;
+        row.style.setProperty("--conversation-quota-space", leadWidth > 0 ? `${Math.ceil(leadWidth + right + 12)}px` : "0px");
+        row.style.setProperty("--conversation-tools-space", `${Math.ceil(tools.getBoundingClientRect().width + TOOLS_CHIP_GAP)}px`);
       };
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico")];
       for (const item of items) item.removeAttribute("data-overflow");
@@ -1252,10 +1266,11 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       reserve();
       if (resize !== null) {
         resize.observe(tools);
+        resize.observe(end);
         // 줄의 내용 상자 — 도구모음 예약은 테두리 폭이 아니라 안쪽 여백을 바꾼다. 여백이 줄면 걷힌 도구를 다시 세운다.
         resize.observe(row, { box: "content-box" });
         // 테두리 상자로 본다 — 내용 상자만 보면 안쪽 여백·테두리만 바뀐 요소의 폭 변화를 놓친다.
-        for (const child of row.children) if (child !== tools) resize.observe(child, { box: "border-box" });
+        for (const child of row.children) resize.observe(child, { box: "border-box" });
         const titleElement = row.querySelector(":scope > .conversation-pill .conversation-pill-title");
         if (titleElement !== null) resize.observe(titleElement);
       }
@@ -1328,10 +1343,10 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
   const moreLabel = t("conversation.tools.more");
   // 지구본(lead)은 대화 동작이라 이 측정이 걷는 목록(.right-rail-ico) 밖에 선다 — 「⋯」로 걷히지 않는다.
   const showLead = lead !== null && lead !== false;
-  return band === null ? null : createPortal(
-    <span className="conversation-pill-tools" ref={toolsRef} role="toolbar" aria-label={t("conversation.tools.aria")}>
-      <span className="conversation-browser-slot" ref={bindBrowserSlot} />
-      {showLead ? <span className="conversation-pill-tools-lead">{lead}</span> : null}
+  return band === null ? null : (
+    <>
+    <span className="conversation-pill-tools-anchor">
+    <span className="conversation-pill-tools conversation-pill-tools-chip" ref={toolsRef} role="toolbar" aria-label={t("conversation.tools.aria")}>
       <span className="conversation-pill-tools-items" ref={itemsRef}>
         <RailToolIcons context={context} variant="icons" scope="tools" toolFilter={(entry) => isCommonTool(entry)} toolActive={workbenchToolActive} />
       </span>
@@ -1377,7 +1392,15 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       {trail !== null && trail !== false ? <span className="conversation-pill-tools-trail">{trail}</span> : null}
       <ApprovalCapsule />
       <ToolbarTipLayer rootRef={toolsRef} />
-    </span>, band
+    </span>
+    </span>
+    {createPortal(
+      <span className="conversation-pill-tools conversation-pill-tools-end" ref={endRef}>
+        <span className="conversation-browser-slot" ref={bindBrowserSlot} />
+        {showLead ? <span className="conversation-pill-tools-lead" ref={leadRef}>{lead}</span> : null}
+        <ToolbarTipLayer rootRef={endRef} />
+      </span>, band)}
+    </>
   );
 }
 
@@ -1498,7 +1521,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   readonly language: "en" | "ko";
   readonly theme: ConversationSurfaceContext["theme"];
   readonly onToggleDetails: () => void;
-  /** 머리 줄 도구 캡슐. 지구본(lead)을 넘기면 캡슐 맨 앞, 「⋯」 밖이다. */
+  /** 머리 줄 도구모음. 지구본(lead)을 넘기면 맨 위 줄 오른쪽 끝에 서고, trail 은 칩 옆 묶음의 「⋯」 뒤에 선다. */
   readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
   /** 이 대화의 에이전트 세션이 쓰는 Session 브라우저(descriptor.sessionBrowser) — 있으면 pill 바로 옆에 지구본이 선다. */
   readonly sessionBrowser: SurfaceSessionBrowser | null;
@@ -1593,7 +1616,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Objective 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.
-  // 지구본은 도구 캡슐 맨 앞이다. 플러그인 대화에는 CLI/채팅 전환이 없다.
+  // 지구본은 맨 위 줄 오른쪽 끝이다. 플러그인 대화에는 CLI/채팅 전환이 없다.
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
   // 플릿 브라우저는 Desktop 의 것이다 — 웹 브라우저 Console 에서는 지구본을 세우지 않는다(시안 v2 규칙 g).
@@ -1633,7 +1656,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   readonly onClose: (objectiveId: string) => void;
   /** 오른쪽 분할 칸에 브라우저(Fleet·Objective 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
   readonly browserSplitOpen: boolean;
-  /** 머리 줄 도구 캡슐. 지구본(lead)을 넘기면 캡슐 맨 앞, 「⋯」 밖이다. */
+  /** 머리 줄 도구모음. 지구본(lead)을 넘기면 맨 위 줄 오른쪽 끝에 서고, trail 은 칩 옆 묶음의 「⋯」 뒤에 선다. */
   readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
 }) {
   const t = useT();
