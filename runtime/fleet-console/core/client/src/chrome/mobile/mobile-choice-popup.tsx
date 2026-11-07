@@ -239,7 +239,7 @@ export function MobileCoordinateChoice({ title, roster, value, onSelect, effort,
   const row = findRosterRow(roster, value.model);
   const groups: MobileModelGroup[] = [];
   if (extras?.length) {
-    groups.push({ key: "extras", label: "", options: extras.filter((extra) => !extra.disabled).map((extra) => ({ value: `${EXTRA_VALUE_PREFIX}${extra.id}`, label: extra.label, ...(extra.hint ? { description: extra.hint } : {}) })) });
+    groups.push({ key: "extras", label: "", options: extras.filter((extra) => !extra.disabled).map((extra) => ({ value: `${EXTRA_VALUE_PREFIX}${extra.id}`, label: extra.label, ...(extra.hint ? { description: extra.hint } : {}), ...(extra.icon ? { icon: extra.icon } : {}) })) });
   }
   for (const group of roster ?? []) {
     const provider = launchProviderFromGroupId(group.id);

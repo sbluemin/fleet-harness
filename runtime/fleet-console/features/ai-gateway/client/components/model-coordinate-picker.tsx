@@ -30,6 +30,8 @@ export interface ModelCoordinatePickerExtra {
   readonly id: string;
   readonly label: string;
   readonly hint?: string;
+  /** 낱말 앞 글리프(장식). 색·크기는 호출부 CSS가 진다. */
+  readonly icon?: React.ReactNode;
   readonly active: boolean;
   readonly disabled?: boolean;
   readonly onPick: () => void;
@@ -512,6 +514,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
                   <div className="fc-coord-menu-group" onMouseEnter={() => setHoveredGroupId(null)}>
                     {extras?.map((extra) => (
                       <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} disabled={extra.disabled} className={`fc-coord-menu-item fc-coord-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { staged.current = null; extra.onPick(); setOpen(false); }}>
+                        {extra.icon ?? null}
                         <span className="fc-coord-menu-label">{extra.label}{extra.hint ? <span className="fc-coord-menu-hint">{extra.hint}</span> : null}</span>
                         {extra.active ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
                       </button>

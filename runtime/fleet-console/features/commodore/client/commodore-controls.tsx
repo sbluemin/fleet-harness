@@ -1,10 +1,11 @@
-import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
+import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinatePickerExtra, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import type { Translate } from "@fleet-console/i18n";
 import { isAgentEffort, type ModelRosterTarget } from "../../ai-gateway/shared/models.js";
 
 import { useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 import { COMMANDER_PRESET } from "../../objectives/shared/types.js";
+import { CommodoreJudgmentMark } from "./commodore-judgment-glyph.js";
 
 /**
  * 사령관 설정의 값과 선택기 — 데스크톱 Theater Inbox 의 사령관 「설정」 칸과 폰 사령관 화면이 함께 쓴다.
@@ -17,8 +18,9 @@ type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
  * 사령관·지휘관 좌표 한 칸 — Console 공유 선택기(설정 행의 선택 상자). 사령관 세션은 `agent` 대상이라 ULTRACODE가 서지 않고,
  * 지휘관은 Agent CLI 실행 대상이라 선다. 로스터 밖 저장값은 「꺼짐」으로 남아 보이고, 실행만 폴백한다. 폰 설정 화면 안에서는
  * 호스트의 좌표 시트로 열린다. 값이 비면 `fallback`(기본 좌표)을 보이고, `reset`은 그 기본값의 낱말을 설명으로 단다.
+ * `judgment`를 넘기면 메뉴 맨 위에 「사령관 판단」이 서고, 활성이면 트리거도 글리프와 그 낱말이다(`fallback`을 보이지 않는다).
  */
-export function CommodoreCoordinateField({ t, target, label, value, fallback, disabled, reset, onChange }: {
+export function CommodoreCoordinateField({ t, target, label, value, fallback, disabled, reset, judgment, onChange }: {
   readonly t: T;
   readonly target: ModelRosterTarget;
   readonly label: string;
@@ -26,11 +28,18 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
   readonly fallback: ModelCoordinateValue;
   readonly disabled?: boolean;
   readonly reset?: { readonly label: string; readonly onSelect: () => void };
+  readonly judgment?: { readonly active: boolean; readonly onPick: () => void };
   readonly onChange: (next: { readonly model?: string; readonly effort?: string }) => void;
 }) {
   const roster = useCommodoreRoster(target);
   const auto = t("commodore.board.commander.effortAuto");
   const fallbackWords = rosterCoordinateWords(roster, fallback, auto);
+  const judgmentLabel = t("commodore.settings.commanderJudgment");
+  const judgmentHint = t("commodore.settings.commanderJudgmentHint");
+  const extras: readonly ModelCoordinatePickerExtra[] | undefined = judgment
+    ? [{ id: "commodore-judgment", label: judgmentLabel, hint: judgmentHint, icon: <CommodoreJudgmentMark />, active: judgment.active, ...(disabled ? { disabled } : {}), onPick: judgment.onPick }]
+    : undefined;
+  const judgmentActive = judgment?.active === true;
   return (
     <ModelCoordinatePicker
       roster={roster}
@@ -52,7 +61,10 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
         chooseAnotherModel: t("commodore.board.launch.chooseAnotherModel"),
         fallback: t("commodore.board.launch.fallback"),
       }}
-      trigger={{ variant: "field" }}
+      {...(extras ? { extras } : {})}
+      trigger={judgmentActive
+        ? { variant: "field", title: judgmentHint, text: <><CommodoreJudgmentMark /><span className="fc-coord-trigger-model">{judgmentLabel}</span></> }
+        : { variant: "field" }}
     />
   );
 }
@@ -74,10 +86,12 @@ export function commodoreCoordinates(state: CommodoreStateFields, defaults: Comm
   return { model, effort };
 }
 
-/** 지휘관 좌표의 저장값 — 없으면 보드 기본값(COMMANDER_PRESET). */
+/** 지휘관 좌표의 저장값 — 비어 있으면 「사령관 판단」이다(사령관이 목표마다 commanderModel을 고른다). */
 export function commanderValue(state: CommodoreStateFields): ModelCoordinateValue {
   return state.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : {};
 }
+
+export const commanderByJudgment = (state: CommodoreStateFields): boolean => state.commanderModel === undefined;
 
 export function commanderCoordinates(state: CommodoreStateFields, next: { readonly model?: string; readonly effort?: string }) {
   const model = next.model ?? state.commanderModel ?? COMMANDER_PRESET.model;
