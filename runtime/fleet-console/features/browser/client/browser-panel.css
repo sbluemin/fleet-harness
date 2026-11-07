@@ -43,7 +43,6 @@
 .op-browser__space:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .op-browser__space-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-browser__space-count { flex: none; color: var(--text-secondary); font-size: var(--t-2xs); }
-.op-browser__space-driving { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 2px color-mix(in oklch, var(--agent-control-badge) 28%, transparent); }
 /* 탭 밑줄 — 어느 스페이스의 탭인지 색으로 읽힌다. 포커스 면(box-shadow)과 겹치지 않게 의사 요소로 긋는다. */
 .op-browser__space-group .op-browser__tab::after { content: ""; position: absolute; left: var(--space-1); right: var(--space-1); bottom: 0; height: 2px; border-radius: var(--radius-pill); background: var(--browser-space-c); opacity: 0.55; pointer-events: none; }
 .op-browser__space-group .op-browser__tab.is-active::after { opacity: 1; }
