@@ -551,6 +551,19 @@ const RAIL_OPENING_HOLD_MS = 420;
 
 type RailPhase = "closed" | "opening" | "open" | "closing";
 
+/** 화면 좌표(DIP)의 점이 요소 안에 있는가. 알 수 없는 좌표(0,0 이나 비유한 값)는 안에 있다고 보지 않는다. */
+function screenPointInside(element: HTMLElement | null, screenX: number, screenY: number): boolean {
+  if (element === null || !Number.isFinite(screenX) || !Number.isFinite(screenY) || (screenX === 0 && screenY === 0)) return false;
+  const rect = element.getBoundingClientRect();
+  const zoom = window.innerWidth > 0 && window.outerWidth > 0 ? window.outerWidth / window.innerWidth : 1;
+  const originX = window.screenX;
+  const originY = window.screenY + Math.max(0, window.outerHeight - window.innerHeight * zoom);
+  // 가장자리에서 한 칸 안쪽까지만 안으로 센다 — 천천히 레일 밖으로 나가는 진짜 이탈의 첫 위치(가장자리 바로 바깥·위)는 안이 아니다.
+  const inset = 1;
+  return screenX >= originX + rect.left * zoom + inset && screenX <= originX + rect.right * zoom - inset
+    && screenY >= originY + rect.top * zoom + inset && screenY <= originY + rect.bottom * zoom - inset;
+}
+
 /**
  * 세로 탭 레일 — Chrome 「세로로 탭 표시」 모양의 브라우저 탭 줄. 기본은 아이콘 한 열로 접혀 있고(`BROWSER_RAIL_COLLAPSED_PX`),
  * 마우스를 올리거나 키보드 초점이 들어오면 탭 제목·닫기까지 펼쳐지며(`BROWSER_RAIL_EXPANDED_PX`), 벗어나면 접힌다. 고정하면 펼친 채로 남는다.
@@ -659,6 +672,8 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
     // 레일이 자식 창에 떠 있는 동안 Console 창이 받는 진짜 leave 는 자식 창이 포인터를 넘겨받았다는 뜻일 뿐이다. 이걸 닫음으로 읽으면
     // 접힌 레일 위에서 가만히 있는 포인터가 접힘→펼침→접힘을 되풀이한다(깜빡임).
     if (event.nativeEvent.isTrusted && railRef.current?.hasAttribute(NATIVE_FLOAT_ATTRIBUTE)) return;
+    // 자식 창은 뜨고 자리를 옮기는 동안 포인터가 가만히 있어도 들어옴→나감을 잠깐 알린다. 나감이 알린 포인터 위치가 아직 레일 안이면 진짜 이탈이 아니다.
+    if (!event.nativeEvent.isTrusted && screenPointInside(railRef.current, event.nativeEvent.screenX, event.nativeEvent.screenY)) return;
     if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
     leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
   };

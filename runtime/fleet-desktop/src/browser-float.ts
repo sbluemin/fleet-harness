@@ -18,6 +18,11 @@ export interface DesktopBrowserFloatDeps {
   readonly createWindow: (shell: DesktopShellWindow) => BrowserWindow;
   /** 콘솔 렌더러의 줌 — 메뉴의 CSS px 를 DIP 로 바꾸고 표면도 같은 배율로 그린다. */
   readonly zoomFactor: () => number;
+  /**
+   * 지금 포인터의 화면 위치(DIP). 비활성 패널은 자리가 바뀌거나 처음 뜬 직후 AppKit 이 포인터 추적을 잃어(들어옴 없이 나감만 알리고 그 뒤로 입력이 끊긴다)
+   * 포인터가 안에 있는지를 사건으로 알 수 없다 — 떠 있는 동안 이 위치를 표면에 흘려 표면이 스스로 판정하게 한다.
+   */
+  readonly cursor?: () => { readonly x: number; readonly y: number };
   readonly log?: (message: string) => void;
 }
 
@@ -39,14 +44,35 @@ export function floatScreenBounds(float: DesktopBrowserFloat, content: Rectangle
   };
 }
 
+/** 표면에 포인터 위치를 흘리는 주기. 호버가 열고 닫는 표면의 판정이 이 주기보다 빠를 필요는 없다. */
+const FLOAT_CURSOR_POLL_MS = 40;
+
 export function createDesktopBrowserFloat(deps: DesktopBrowserFloatDeps): DesktopBrowserFloatWindow {
   let window: BrowserWindow | null = null;
+  let cursorTimer: ReturnType<typeof setInterval> | null = null;
   let owner: DesktopShellWindow | null = null;
   let loadedUrl: string | null = null;
   let current: DesktopBrowserFloat | null = null;
   let currentOrigin: string | null = null;
 
+  const stopCursorFeed = (): void => {
+    if (cursorTimer !== null) { clearInterval(cursorTimer); cursorTimer = null; }
+  };
+
+  /** 떠 있는 동안 포인터의 화면 위치를 표면의 문서에 알린다 — 표면 문서의 `fleet-float-cursor` 사건. */
+  const startCursorFeed = (): void => {
+    if (cursorTimer !== null || !deps.cursor) return;
+    const read = deps.cursor;
+    cursorTimer = setInterval(() => {
+      if (!window || window.isDestroyed() || !window.isVisible()) { stopCursorFeed(); return; }
+      const point = read();
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+      void window.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent("fleet-float-cursor",{detail:{x:${Math.round(point.x)},y:${Math.round(point.y)}}}))`).catch(() => undefined);
+    }, FLOAT_CURSOR_POLL_MS);
+  };
+
   const hide = (): void => {
+    stopCursorFeed();
     if (window && !window.isDestroyed() && window.isVisible()) window.hide();
   };
 
@@ -86,6 +112,7 @@ export function createDesktopBrowserFloat(deps: DesktopBrowserFloatDeps): Deskto
     if (target.webContents.getZoomFactor() !== zoom) target.webContents.setZoomFactor(zoom);
     target.setBounds(floatScreenBounds(current, shell.getContentBounds(), zoom));
     if (!target.isVisible()) target.showInactive();
+    startCursorFeed();
   };
 
   return {
@@ -99,6 +126,7 @@ export function createDesktopBrowserFloat(deps: DesktopBrowserFloatDeps): Deskto
       if (current) place();
     },
     dispose(): void {
+      stopCursorFeed();
       current = null;
       if (window && !window.isDestroyed()) window.destroy();
       window = null;

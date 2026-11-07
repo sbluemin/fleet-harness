@@ -41,7 +41,7 @@ type SurfaceMessage =
   | { readonly type: "hover"; readonly inside: boolean }
   | { readonly type: "activate"; readonly revision: number; readonly path: number }
   | { readonly type: "wheel"; readonly revision: number; readonly path: number; readonly dx: number; readonly dy: number }
-  | { readonly type: "pointer"; readonly revision: number; readonly kind: "over" | "out"; readonly path: number; readonly related: number | null };
+  | { readonly type: "pointer"; readonly revision: number; readonly kind: "over" | "out"; readonly path: number; readonly related: number | null; readonly sx?: number; readonly sy?: number };
 
 interface FloatState {
   target: string | null;
@@ -264,7 +264,7 @@ function receive(message: SurfaceMessage): void {
   // 누른 것이 글리프(SVG)여도 그 둘레의 HTML 요소가 동작을 가진다.
   const node = originalAt(message.path);
   if (!node) return;
-  if (message.type === "pointer") { hover(node, message.kind, message.related === null ? null : originalAt(message.related)); return; }
+  if (message.type === "pointer") { hover(node, message.kind, message.related === null ? null : originalAt(message.related), message.sx, message.sy); return; }
   if (message.type === "activate") activate(node);
   else if (message.type === "wheel") scrollFrom(node, Number(message.dx) || 0, Number(message.dy) || 0);
 }
@@ -280,9 +280,11 @@ function originalAt(path: number): HTMLElement | null {
  * 자식 창 안의 포인터 진입·이탈을 원본에 그대로 낸다. 호버로 열리고 떠나면 닫히는 표면(원격 콘솔 목록, 옆 하위 메뉴)은
  * 표면에 들어온 것을 원본의 enter 처리기로 알아야 닫힘 타이머를 거둔다. `related` 가 없으면 창 밖과 오간 것이다.
  */
-function hover(node: HTMLElement, kind: "over" | "out", related: HTMLElement | null): void {
+function hover(node: HTMLElement, kind: "over" | "out", related: HTMLElement | null, screenX?: number, screenY?: number): void {
   const rect = node.getBoundingClientRect();
-  const init = { ...pointerInit(rect.left + rect.width / 2, rect.top + rect.height / 2), relatedTarget: related };
+  // 포인터의 실제 화면 위치를 실어 보낸다 — 자식 창이 뜨고 옮겨지는 동안 만든 일시적인 이탈과 진짜 이탈을 원본이 위치로 가른다.
+  const screen = Number.isFinite(screenX) && Number.isFinite(screenY) ? { screenX, screenY } : {};
+  const init = { ...pointerInit(rect.left + rect.width / 2, rect.top + rect.height / 2), ...screen, relatedTarget: related };
   node.dispatchEvent(new PointerEvent(kind === "over" ? "pointerover" : "pointerout", { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true }));
   node.dispatchEvent(new MouseEvent(kind === "over" ? "mouseover" : "mouseout", init));
 }
