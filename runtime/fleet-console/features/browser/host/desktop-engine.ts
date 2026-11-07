@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserBounds, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserBounds, type DesktopBrowserCommand, type DesktopBrowserFloat, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
@@ -43,6 +43,8 @@ export class DesktopEngine implements CdpClient {
   private readonly subscribers = new Map<string, number>();
   private readonly identities = new Map<string, { product: string; userAgent: string }>();
   private shortcuts: readonly string[] | null = null;
+  /** 브라우저 자리를 덮는 메뉴의 자리 — 창 하나에 하나뿐이다. */
+  private float: DesktopBrowserFloat | null = null;
   private nextCommandId = 1;
   private generation = 0;
   /** 이 프로세스의 수명 표 — generation·명령 id 가 0 부터 다시 시작했음을 셸이 알아보게 한다. */
@@ -112,7 +114,18 @@ export class DesktopEngine implements CdpClient {
       views,
       commands: [...this.pending.values()].map((entry) => entry.command),
       ...(this.shortcuts !== null ? { shortcuts: this.shortcuts } : {}),
+      float: this.float,
     };
+  }
+
+  /** 메뉴 자식 창의 자리. 같은 revision·같은 자리면 다시 내보내지 않는다. */
+  setFloat(float: DesktopBrowserFloat | null): void {
+    const before = this.float;
+    if (before === float || (before && float && before.revision === float.revision
+      && before.bounds.x === float.bounds.x && before.bounds.y === float.bounds.y
+      && before.bounds.width === float.bounds.width && before.bounds.height === float.bounds.height)) return;
+    this.float = float;
+    this.publish();
   }
 
   /** Console 이 등록한 단축키 목록을 스냅샷에 싣는다. */

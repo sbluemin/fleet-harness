@@ -6,7 +6,7 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds, type DesktopBrowserFloat } from "@fleet-console/protocol/desktop";
 import { BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, HUMAN_SPACE_ID, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
 
 /**
@@ -662,6 +662,12 @@ export class BrowserService {
   place(objectiveId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean } | null): void {
     this.objectiveRecord(objectiveId);
     this.deps.desktop.place(objectiveId, placement);
+  }
+
+  /** 브라우저 자리를 덮는 메뉴의 자리 — 셸이 그 자리에 메뉴만 그리는 자식 창을 띄운다. null 이면 감춘다. */
+  float(objectiveId: string, float: DesktopBrowserFloat | null): void {
+    this.objectiveRecord(objectiveId);
+    this.deps.desktop.setFloat(float);
   }
 
   state(objectiveId: string): BrowserObjectiveState {

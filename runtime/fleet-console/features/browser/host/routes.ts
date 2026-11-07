@@ -228,6 +228,14 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         browserService.place(objectiveId, { bounds: { x, y, width, height }, visible: body.visible !== false });
         writeJson(res, 200, { ok: true }); return true;
       }
+      if (action === "float") {
+        const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+        if (body.clear === true) { browserService.float(objectiveId, null); writeJson(res, 200, { ok: true }); return true; }
+        const revision = num(body.revision), x = num(body.x), y = num(body.y), width = num(body.width), height = num(body.height);
+        if (revision === null || x === null || y === null || width === null || height === null || width < 1 || height < 1 || width > 4096 || height > 4096) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        browserService.float(objectiveId, { revision, bounds: { x, y, width, height } });
+        writeJson(res, 200, { ok: true }); return true;
+      }
       if (action === "inspect") {
         if (typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, { element: await browserService.inspectAt(objectiveId, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) }); return true;
