@@ -15,6 +15,11 @@ const parse = (value: string | null): Date | null => {
   const [y, m, d] = value.slice(0, 10).split("-").map(Number);
   return y && m && d ? new Date(y, m - 1, d) : null;
 };
+/** 기한 곁의 짧은 날짜 — 월·일 숫자만. */
+export function dueShort(iso: string, language: "en" | "ko"): string {
+  const [, month, day] = iso.split("-").map(Number);
+  return language === "ko" ? `${month}.${day}` : `${month}/${day}`;
+}
 const addDays = (date: Date, days: number) => { const next = new Date(date); next.setDate(next.getDate() + days); return next; };
 
 export function DatePicker({ anchor, trigger, value, language, t, onPick, onClose }: {
@@ -93,7 +98,7 @@ export function DatePicker({ anchor, trigger, value, language, t, onPick, onClos
   ];
 
   return createPortal(
-    <div ref={cardRef} className="objectives-cal" role="dialog" aria-label={t("objectives.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
+    <div ref={cardRef} className="objectives-cal" data-keep-objective-active role="dialog" aria-label={t("objectives.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
       <div className="objectives-cal-quick">
         {quick.map((entry) => <button key={entry.key} type="button" className={`objectives-cal-chip${value === entry.value ? " is-on" : ""}`} onClick={() => { onPick(entry.value === value ? null : entry.value); onClose(); }}>{t(entry.key)}</button>)}
         {value ? <button type="button" className="objectives-cal-chip is-clear" onClick={() => { onPick(null); onClose(); }}>{t("objectives.date.clear")}</button> : null}

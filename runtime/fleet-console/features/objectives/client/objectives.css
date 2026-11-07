@@ -22,17 +22,6 @@
     var(--float-underlay);
 }
 
-/* 오늘·기한 — Console 오른쪽 패널 머리의 탭 줄 위 한 줄(사령관 패널의 섹션 줄 자리)에 글리프와 낱말로 선다(head-tabs.tsx).
-   치수·글자·hover 는 섹션 줄(.conversation-panel-section)과 같다. 불리언이라 켜짐은 면 없이 잉크(brass-ink)로만, 기한이 지나면 coral(상태). */
-.objectives-head-tools { display: inline-flex; align-items: center; gap: 2px; }
-.objectives-tab-glyph { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border: 0; border-radius: var(--radius-pill); background: none; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring); }
-.objectives-tab-glyph svg { width: 13px; height: 13px; flex: none; }
-.objectives-tab-glyph:hover:not(:disabled) { background: var(--control-rest-hover); }
-.objectives-tab-glyph:not(.is-on):not(.is-overdue):hover:not(:disabled) { color: var(--text-primary); }
-.objectives-tab-glyph:focus-visible { box-shadow: var(--focus-face); }
-.objectives-tab-glyph:disabled { opacity: 0.6; cursor: default; }
-.objectives-tab-glyph.is-on { color: var(--brass-ink); }
-.objectives-tab-glyph.is-overdue { color: var(--coral); }
 /* 탭 칸 — 사이드바 폭을 그대로 채운다(폭 상한이 없다). 첫 묶음은 탭 바 밑선이 갈라 주므로 머리선을 겹쳐 긋지 않는다. */
 .objectives-tab-body { padding-top: 4px; }
 /* 오른쪽 사이드바 탭 본문 — 탭 줄과 첫 묶음 사이만 붙인다. 폰 상세는 레일 슬롯을 쓰지 않아 그대로다. */
@@ -932,7 +921,6 @@ a.objectives-result-open:focus-visible { color: var(--brass-ink); box-shadow: va
 .commander-missions-dialog .objectives-detail { background: none; }
 .commander-missions-dialog .objectives-tab-body { padding-top: 0; }
 .commander-missions-dialog .objectives-tab-body > .objectives-group:first-child { padding-top: 0; }
-.commander-missions-dialog-schedule { display: flex; justify-content: center; margin: 2px 0 0; }
 .commander-missions-dialog-empty { margin: 0; padding: 8px 4px; color: var(--text-tertiary); font-size: var(--t-sm); text-align: center; }
 
 /* 임무 팝업의 구성원 로스터 — 가로 카드 한 줄(넘치면 가로로 민다). 고른 카드는 테두리로, 그 담당 밖의 임무는 그래프에서 흐려진다. */

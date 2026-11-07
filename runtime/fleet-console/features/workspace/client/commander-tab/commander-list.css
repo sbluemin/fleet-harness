@@ -361,7 +361,6 @@
 /* 우측 작업 탭의 행 아래 펼침 — 카드 안 행과 같은 배경 위에 hairline으로만 나뉜다. */
 .commander-tab--card .commander-row-panel { min-width: 0; padding: 4px 8px 10px; border-top: 1px solid var(--hairline); list-style: none; }
 .commander-tab--card .commander-row-panel + .side-bar-cluster-row { border-top: 1px solid var(--hairline); }
-.commander-row-panel .commander-missions-dialog-schedule + .objectives-detail .objectives-tab-body { padding-top: 0; }
 /* 펼친 행 — 가리킴과 같은 옅은 면을 붙들어 어느 행의 펼침인지 말한다. 고름(가운데 대화)의 면이 있으면 그대로 둔다. */
 .commander-tab--card .side-bar-cluster-row.is-open:not(.side-bar-cluster-row--active) { background: var(--wash-hover); }
 
