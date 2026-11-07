@@ -514,7 +514,8 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
   };
   // 에이전트가 쓰는 중인 스페이스는 칩 툴팁(접근성 설명)으로 말한다 — 별도 점 표식은 없다. 탭 단위는 ✦, 브라우저 전체는 띠의 사용 중 표시가 맡는다.
   const drivingTip = (space: BrowserSpaceState) => space.driving ? ` · ${t("terminal.browser.space.driving")}` : "";
-  const spaceName = (space: BrowserSpaceState) => space.label || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
+  // 호스트 라벨이 이름이 되는 것은 Objective(제목)뿐이다. 사령관·세션 스페이스의 라벨은 호스트가 id 를 그대로 돌려주므로 읽지 않고 기본 낱말을 쓴다.
+  const spaceName = (space: BrowserSpaceState) => (space.kind === "objective" && space.label) || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
   // 사람이 직접 연 탭은 그룹 없이 따로 그린다. 그룹은 탭이 있는 스페이스만이다 — 프레임이 싣지 않은 스페이스(탭만 아는 것)는 여기서 채운다.
   const humanTabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId === HUMAN_SPACE_ID);
   const groups: readonly SpaceGroup[] = (() => {
@@ -541,7 +542,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
   const moreOpen = moreMenu && hiddenGroups.length > 0;
   const away = homeGroup && displayed !== null && displayed !== home;
 
-  const fitKey = `${capWidth}|${humanTabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}|${groups.map((group) => `${group.space.id}:${group.space.label}:${group.open ? 1 : 0}:${group.tabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}`).join("|")}`;
+  const fitKey = `${capWidth}|${humanTabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}|${groups.map((group) => `${group.space.id}:${spaceName(group.space)}:${group.open ? 1 : 0}:${group.tabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}`).join("|")}`;
   React.useLayoutEffect(() => {
     if (fitKeyRef.current !== fitKey) {
       fitKeyRef.current = fitKey;
