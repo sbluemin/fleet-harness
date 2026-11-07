@@ -25,7 +25,8 @@ interface RenderMessage {
 
 const SURFACE_STYLE = [
   "html,body{background:transparent!important;margin:0!important;padding:0!important;overflow:hidden!important;width:100%;height:100%}",
-  "*,*::before,*::after{animation:none!important;transition:none!important}",
+  // 정지한 채 그리되, 자기 전환을 표지(`data-float-motion`)한 표면만 재생한다. 그 표면의 펄스 같은 상시 애니메이션은 계속 멈춘다.
+  "*:not([data-float-motion]),*:not([data-float-motion])::before,*:not([data-float-motion])::after,[data-float-motion]::before,[data-float-motion]::after{animation:none!important;transition:none!important}",
   "[data-float-focus]{box-shadow:var(--focus-face)!important}",
 ].join("\n");
 
@@ -89,7 +90,7 @@ export function startFloatSurface(): void {
     const message = event.data as ({ readonly type?: string } & Partial<Omit<RenderMessage, "type">>) | null;
     if (!message || typeof message !== "object") return;
     if (message.type === "render" && typeof message.html === "string" && typeof message.revision === "number") render(message as RenderMessage);
-    else if (message.type === "clear") { host.replaceChildren(); revision = -1; }
+    else if (message.type === "clear") { host.replaceChildren(); revision = -1; feedPath = null; feedInside = false; }
   };
 
   const pathOf = (target: EventTarget | null): number | null => {
@@ -110,12 +111,40 @@ export function startFloatSurface(): void {
     const path = pathOf(event.target);
     if (path !== null && revision >= 0) channel.postMessage({ type: "wheel", revision, path, dx: event.deltaX, dy: event.deltaY });
   }, { capture: true, passive: false });
+  // 셸이 흘려 주는 포인터의 화면 위치(`browser-float.ts`)가 있으면 그것이 이 창 안의 위치를 가르는 기준이다. 비활성 패널은 뜨거나 자리가 바뀐 직후
+  // 포인터 추적을 잃어 들어옴 없이 나감만 알리고 그 뒤로 입력이 끊기므로, 사건만 믿으면 포인터가 안에 있는데 접거나 밖으로 나가도 못 알아챈다.
+  const CURSOR_FEED_FRESH_MS = 250;
+  let cursorFeedAt = -Infinity;
+  const feedFresh = (): boolean => performance.now() - cursorFeedAt < CURSOR_FEED_FRESH_MS;
+  let feedPath: number | null = null;
+  let feedInside = false;
+  const postPointer = (kind: "over" | "out", path: number, related: number | null, sx: number, sy: number): void => {
+    if (revision >= 0) channel.postMessage({ type: "pointer", revision, kind, path, related, sx, sy });
+  };
+  window.addEventListener("fleet-float-cursor", (event) => {
+    const point = (event as CustomEvent<{ readonly x?: number; readonly y?: number }>).detail;
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+    cursorFeedAt = performance.now();
+    const x = point.x as number;
+    const y = point.y as number;
+    const zoom = window.innerWidth > 0 && window.outerWidth > 0 ? window.outerWidth / window.innerWidth : 1;
+    const cx = (x - window.screenX) / zoom;
+    const cy = (y - window.screenY) / zoom;
+    const inside = cx >= 0 && cy >= 0 && cx < window.innerWidth && cy < window.innerHeight;
+    const path = inside ? pathOf(document.elementFromPoint(cx, cy)) : null;
+    if (path !== feedPath) {
+      if (feedPath !== null) postPointer("out", feedPath, path, x, y);
+      if (path !== null) postPointer("over", path, feedPath, x, y);
+      feedPath = path;
+    }
+    if (inside !== feedInside) { feedInside = inside; channel.postMessage({ type: "hover", inside }); }
+  });
   // 표면 안의 진입·이탈을 번호로 알린다 — 원본의 enter·leave 처리기(호버로 열린 표면의 닫힘 타이머 등)가 같은 순서로 듣는다.
   for (const kind of ["over", "out"] as const) {
     document.addEventListener(kind === "over" ? "pointerover" : "pointerout", (event) => {
       const path = pathOf(event.target);
-      if (path === null || revision < 0) return;
-      channel.postMessage({ type: "pointer", revision, kind, path, related: pathOf(event.relatedTarget) });
+      if (path === null || revision < 0 || feedFresh()) return;
+      channel.postMessage({ type: "pointer", revision, kind, path, related: pathOf(event.relatedTarget), sx: event.screenX, sy: event.screenY });
     }, true);
   }
   document.addEventListener("pointerenter", () => channel.postMessage({ type: "hover", inside: true }), true);

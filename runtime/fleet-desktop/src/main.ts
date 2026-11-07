@@ -362,6 +362,7 @@ async function boot(): Promise<void> {
    */
   const browserFloat = createDesktopBrowserFloat({
     shell: () => window,
+    cursor: () => screen.getCursorScreenPoint(),
     createWindow: (shellWindow) => new BrowserWindow({
       parent: shellWindow.base,
       show: false,

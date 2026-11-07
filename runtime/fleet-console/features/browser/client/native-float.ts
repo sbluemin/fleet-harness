@@ -28,6 +28,8 @@ const FLOAT_TRACK_MS = 200;
 const FLOAT_BLUR_GRACE_MS = 180;
 /** 원본 요소가 자식 창에 떠 있음을 나타내는 표지 — 가림 판정도 이 안의 요소는 덮개로 세지 않는다. */
 export const NATIVE_FLOAT_ATTRIBUTE = "data-native-float";
+/** 자식 창에서도 자기 CSS 전환·애니메이션을 재생하는 표면에 다는 표지 — 달지 않은 표면은 자식 창에서 정지한 채 그려진다(`float-surface.ts`). */
+export const NATIVE_FLOAT_MOTION_ATTRIBUTE = "data-float-motion";
 /** 브라우저 네이티브 자리를 가진 요소에 다는 표지 — 값은 그 브라우저의 키(`/api/v1/browser/objectives/:id`). */
 export const NATIVE_FLOAT_TARGET_ATTRIBUTE = "data-native-float-target";
 
@@ -39,7 +41,7 @@ type SurfaceMessage =
   | { readonly type: "hover"; readonly inside: boolean }
   | { readonly type: "activate"; readonly revision: number; readonly path: number }
   | { readonly type: "wheel"; readonly revision: number; readonly path: number; readonly dx: number; readonly dy: number }
-  | { readonly type: "pointer"; readonly revision: number; readonly kind: "over" | "out"; readonly path: number; readonly related: number | null };
+  | { readonly type: "pointer"; readonly revision: number; readonly kind: "over" | "out"; readonly path: number; readonly related: number | null; readonly sx?: number; readonly sy?: number };
 
 interface FloatState {
   target: string | null;
@@ -262,7 +264,7 @@ function receive(message: SurfaceMessage): void {
   // 누른 것이 글리프(SVG)여도 그 둘레의 HTML 요소가 동작을 가진다.
   const node = originalAt(message.path);
   if (!node) return;
-  if (message.type === "pointer") { hover(node, message.kind, message.related === null ? null : originalAt(message.related)); return; }
+  if (message.type === "pointer") { hover(node, message.kind, message.related === null ? null : originalAt(message.related), message.sx, message.sy); return; }
   if (message.type === "activate") activate(node);
   else if (message.type === "wheel") scrollFrom(node, Number(message.dx) || 0, Number(message.dy) || 0);
 }
@@ -278,9 +280,11 @@ function originalAt(path: number): HTMLElement | null {
  * 자식 창 안의 포인터 진입·이탈을 원본에 그대로 낸다. 호버로 열리고 떠나면 닫히는 표면(원격 콘솔 목록, 옆 하위 메뉴)은
  * 표면에 들어온 것을 원본의 enter 처리기로 알아야 닫힘 타이머를 거둔다. `related` 가 없으면 창 밖과 오간 것이다.
  */
-function hover(node: HTMLElement, kind: "over" | "out", related: HTMLElement | null): void {
+function hover(node: HTMLElement, kind: "over" | "out", related: HTMLElement | null, screenX?: number, screenY?: number): void {
   const rect = node.getBoundingClientRect();
-  const init = { ...pointerInit(rect.left + rect.width / 2, rect.top + rect.height / 2), relatedTarget: related };
+  // 포인터의 실제 화면 위치를 실어 보낸다 — 자식 창이 뜨고 옮겨지는 동안 만든 일시적인 이탈과 진짜 이탈을 원본이 위치로 가른다.
+  const screen = Number.isFinite(screenX) && Number.isFinite(screenY) ? { screenX, screenY } : {};
+  const init = { ...pointerInit(rect.left + rect.width / 2, rect.top + rect.height / 2), ...screen, relatedTarget: related };
   node.dispatchEvent(new PointerEvent(kind === "over" ? "pointerover" : "pointerout", { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true }));
   node.dispatchEvent(new MouseEvent(kind === "over" ? "mouseover" : "mouseout", init));
 }
@@ -350,7 +354,7 @@ function serialize(element: HTMLElement, rect: DOMRect, left: number, top: numbe
   }
   const pin = `position:fixed!important;left:${rect.left - left + FLOAT_PAD}px!important;top:${rect.top - top + FLOAT_PAD}px!important;right:auto!important;bottom:auto!important;margin:0!important;`
     + `width:${rect.width}px!important;height:${rect.height}px!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;`
-    + "transform:none!important;translate:none!important;inset-inline:auto;animation:none!important;opacity:1!important;visibility:visible!important;";
+    + `transform:none!important;translate:none!important;inset-inline:auto;${element.hasAttribute(NATIVE_FLOAT_MOTION_ATTRIBUTE) ? "" : "animation:none!important;"}opacity:1!important;visibility:visible!important;`;
   clone.setAttribute("style", `${clone.getAttribute("style") ?? ""};${pin}`);
   let html = clone.outerHTML;
   for (let ancestor = element.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {

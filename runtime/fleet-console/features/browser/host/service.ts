@@ -1646,7 +1646,9 @@ export class BrowserService {
     if (!ready || !layout || !pane) throw new BrowserPolicyError("browser_capture_not_ready", "Native pane geometry is not ready. Observe the page and request capture again; do not retry input.");
     // heal 전에 저장된 논리 뷰포트와 실측 layout 불일치를 잡는다 — 이전 스크린샷 좌표를 믿지 말라는 신호.
     const storedBeforeHeal = { width: space.viewport.width, height: space.viewport.height };
-    const staleViewport = !options.clip && layout !== null && (layout.width !== storedBeforeHeal.width || layout.height !== storedBeforeHeal.height);
+    // 저장된 뷰포트는 띄운(활성) 탭의 실측을 따라간다 — 띄우지 않은 탭(다른 스페이스의 뷰)은 자기 크기로 따로 놓일 수 있어, 그 탭과 비교하는 것은 낡은 좌표 신호가 아니다.
+    const ownsStored = !space.viewportFollowsPane || tab.id === op.activeTabId;
+    const staleViewport = ownsStored && !options.clip && layout !== null && (layout.width !== storedBeforeHeal.width || layout.height !== storedBeforeHeal.height);
     if (space.viewportFollowsPane && tab.id === op.activeTabId && layout && (layout.width !== space.viewport.width || layout.height !== space.viewport.height)) {
       space.viewport = { ...space.viewport, width: layout.width, height: layout.height };
       this.emitState(op);
@@ -1677,7 +1679,8 @@ export class BrowserService {
       mimeType: format === "png" ? "image/png" : "image/jpeg",
       width: clip.width,
       height: clip.height,
-      viewport: { width: space.viewport.width, height: space.viewport.height, preset: space.viewport.preset, followsPane: space.viewportFollowsPane },
+      // 띄우지 않은 탭이 pane 을 따르면 보고하는 크기는 그 탭의 실측이다 — 다른 탭의 크기를 이 탭의 것처럼 알리지 않는다.
+      viewport: { width: ownsStored ? space.viewport.width : layout.width, height: ownsStored ? space.viewport.height : layout.height, preset: space.viewport.preset, followsPane: space.viewportFollowsPane },
       layout,
       staleViewport,
     };
