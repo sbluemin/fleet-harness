@@ -1,7 +1,5 @@
 import { useEffect, type RefObject } from "react";
 
-import type { SideBarObjectiveMenuAction } from "./interaction.js";
-
 const MENU_ITEM_SELECTOR = 'button[role^="menuitem"]:not(:disabled)';
 // accent 섹션 판별은 data 마커로만 한다 — 접근 이름 문구는 다듬을 수 있는 표현이라 근거로 삼으면 조용히 깨진다.
 const ACCENT_OPTION_ATTRIBUTE = "data-accent-option";
@@ -10,7 +8,6 @@ interface ContextMenuKeyboardOptions {
   readonly open: boolean;
   readonly menuSelector: string;
   readonly returnFocusRef: RefObject<HTMLElement | null>;
-  readonly requestedAction?: SideBarObjectiveMenuAction;
   readonly focusFirst?: boolean;
   readonly onEscape: () => void;
 }
@@ -19,7 +16,6 @@ export function useContextMenuKeyboard({
   open,
   menuSelector,
   returnFocusRef,
-  requestedAction,
   focusFirst = false,
   onEscape,
 }: ContextMenuKeyboardOptions): void {
@@ -37,13 +33,9 @@ export function useContextMenuKeyboard({
         for (const [index, item] of currentItems.entries()) item.tabIndex = index === nextIndex ? 0 : -1;
         if (focus) currentItems[nextIndex]?.focus();
       };
-      const initialItems = items();
       if (!menu.contains(document.activeElement)) {
-        const requestedIndex = requestedAction === "set-accent"
-          ? initialItems.findIndex((item) => item.hasAttribute(ACCENT_OPTION_ATTRIBUTE))
-          : 0;
         // 포인터로 열면 카드가 키 입력을 받되 행은 고르지 않는다. ↓는 첫 항목부터 시작한다.
-        const initialIndex = focusFirst ? Math.max(0, requestedIndex) : -1;
+        const initialIndex = focusFirst ? 0 : -1;
         setCurrent(initialIndex, false);
         menu.tabIndex = -1;
         if (!focusFirst) menu.dataset.menuPointerIdle = "";
@@ -130,5 +122,5 @@ export function useContextMenuKeyboard({
       observer?.disconnect();
       cleanupMenu?.();
     };
-  }, [focusFirst, menuSelector, onEscape, open, requestedAction, returnFocusRef]);
+  }, [focusFirst, menuSelector, onEscape, open, returnFocusRef]);
 }

@@ -2,10 +2,9 @@ import type { ObjectiveCatalogPlugin, ObjectiveLaunchKind, ObjectiveRecord } fro
 
 export type SideBarObjectiveAction =
   | "rename"
-  | "assign-group"
-  | "set-accent";
+  | "assign-group";
 
-export type SideBarObjectiveMenuAction = Extract<SideBarObjectiveAction, "assign-group" | "set-accent">;
+export type SideBarObjectiveMenuAction = Extract<SideBarObjectiveAction, "assign-group">;
 
 interface PendingObjectiveAction {
   readonly objectiveId: string;

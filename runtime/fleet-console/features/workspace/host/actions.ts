@@ -80,7 +80,6 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
       publishPluginEvent(OBJECTIVE_RENAMED_EVENT_CHANNEL, { objectiveId: node.id, pluginId: null, type: "agent", title: node.title, previousTitle: before.title });
       return true;
     },
-    accent: (objectiveId, accent) => !!patchObjective(objectiveId, { accent }),
     group: ({ commodoreId, mode, theaterId, name, color, groupId, objectiveIds }) => {
       if (objectiveIds.some((id) => { const node = objectiveRecords.get(id); return !node || node.commodoreId !== commodoreId || node.theaterId !== theaterId; })) throw new Error("unknown_objectiveRecord");
       let group: ReturnType<typeof objectiveRecords.createGroup> | null = null;

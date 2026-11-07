@@ -947,7 +947,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return { console: consoleObjectiveRecords, computer: computerObjective, computerActor, browser: browserObjectiveRecords };
   };
   /**
-   * Console Use 확장면 중 서버가 소유하는 묶음 — Objective 저장소(이름·액센트·그룹), 삭제 유예(닫기), 사용 목록,
+   * Console Use 확장면 중 서버가 소유하는 묶음 — Objective 저장소(이름·그룹), 삭제 유예(닫기), 사용 목록,
    * 화면 사건(보이기). 재개·뷰·대화는 실행층이 같은 객체에 채운다(`ctx.consoleActions`).
    */
   const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });

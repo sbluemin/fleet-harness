@@ -42,7 +42,6 @@ export interface ConsoleUseActions {
   using?(): { readonly console: readonly string[]; readonly computer: string | null; readonly browser: readonly string[] };
   group?(input: { readonly commodoreId: string; readonly mode: "create" | "assign" | "remove"; readonly theaterId: string; readonly name?: string; readonly color?: string; readonly groupId?: string; readonly objectiveIds: readonly string[] }): { readonly group: { readonly id: string; readonly name: string; readonly color: string } | null; readonly members: readonly string[] };
   reorder?(input: { readonly commodoreId: string; readonly theaterId: string; readonly objectiveIds: readonly string[]; readonly position: SidebarPosition; readonly groupId: string | null }): { readonly objectiveIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };
-  accent?(objectiveId: string, accent: string | null): boolean;
   /** 사용자 화면에서 그 Objective을 앞에 세운다. 사유는 캡션 말풍선에 한 줄로 보인다. */
   reveal?(objectiveId: string, reason: string, caller: ConsoleCaller): void;
   /** 전사 한 쪽 — 커서부터 앞으로. `tail` 은 커서 없이 마지막 `limit` 줄을 읽고(그 앞이 남았으면 truncated), 다음 커서는 없다. */
@@ -180,12 +179,11 @@ const CONTEXT_TOOL = defineConsoleTool({
 
 const SIDEBAR_TOOL = defineConsoleTool({
   name: "console_sidebar",
-  description: "The sidebar: Objectives with activity, group, accent, lineage and order in their Theater, and groups in sidebar order. unknown is not idle.",
+  description: "The sidebar: Objectives with activity, group, lineage and order in their Theater, and groups in sidebar order. unknown is not idle.",
   actions: {
     list: { kind: "read", input: z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional().describe("Expires when the list or its order changes."), waitMs: z.number().int().min(0).max(25_000).optional().describe("Waits for a change."), nested: z.boolean().optional().describe("Includes Objectives their parent represents.") }) },
     rename: { kind: "write", input: z.object({ commodoreId: ids.optional(), ...target, title: TITLE }) },
-    // 강조색·그룹 색은 정체성 톤 키 SDK 한 벌을 쓴다(목록 밖 색의 그룹은 영속 상태에서 버려진다).
-    accent: { kind: "write", input: z.object({ commodoreId: ids.optional(), objectiveIds: z.array(ids).min(1).max(50), accent: z.enum(IDENTITY_TONES).nullable() }) },
+    // 그룹 색은 정체성 톤 키 SDK 한 벌을 쓴다(목록 밖 색의 그룹은 영속 상태에서 버려진다).
     move: { kind: "write", input: z.object({ commodoreId: ids.optional(), objectiveIds: z.array(ids).min(1).max(50), group: z.object({ id: ids.optional(), name: groupName.optional(), color: z.enum(IDENTITY_TONES).optional() }).strict().nullable().optional().describe("Existing group (id), new group (name, color), or null for ungrouped. Objectives move as one block, group first."), position: POSITION.optional() }) },
     group_edit: { kind: "write", input: z.object({ commodoreId: ids.optional(), groupId: ids, name: groupName.optional(), color: z.enum(IDENTITY_TONES).optional(), position: POSITION.optional() }) },
     group_delete: { kind: "write", input: z.object({ commodoreId: ids.optional(), groupId: ids }) },
@@ -345,13 +343,12 @@ ts: child.ts});
       const snapshotActivity = activities.get(op.id);
       const stale = !observation && !!current?.takenAt && (!Number.isFinite(Date.parse(current.takenAt)) || Date.now() - Date.parse(current.takenAt) > 60_000);
       const by = op.launchedBy;
-      const host = op as ObjectiveRecord & { readonly groupId?: string | null; readonly accent?: string };
+      const host = op as ObjectiveRecord & { readonly groupId?: string | null };
       const lastActiveAt = typeof op.ts.updatedAt === "number" ? new Date(op.ts.updatedAt).toISOString() : null;
       return {
         id: op.id, title: op.title, theaterId: op.theaterId, theater: names.get(op.theaterId) ?? op.theaterId, order: sidebarOrder,
         kind: "agent", activity: observation?.activity ?? (stale ? "unknown" : snapshotActivity ?? "unknown"),
         groupId: typeof host.groupId === "string" ? host.groupId : null,
-        accent: typeof host.accent === "string" ? host.accent : null,
         createdAt: new Date(op.ts.createdAt).toISOString(), lastActiveAt,
         ...(by && typeof by === "object" ? { launchedBy: by } : {}),
         ...(nested ? { parentObjectiveId: op.parentObjectiveId! } : {}),
@@ -459,12 +456,6 @@ ts: child.ts});
         if (!need("rename")(op!.id, call.title)) throw new ConsoleControlError("unknown_objectiveRecord");
         gesture(ctx, "console_sidebar", `${before} → 「${call.title}」 로 이름 바꿈`, "input", opTarget(op!.id));
         return { renamed: { objectiveId: op!.id, title: call.title, previousTitle: before } };
-      }
-      if (call.action === "accent") {
-        const nodes = sidebarNodes(commodoreId, call.objectiveIds);
-        for (const op of nodes) if (!need("accent")(op.id, call.accent)) throw new ConsoleControlError("unknown_objectiveRecord");
-        for (const op of nodes) gesture(ctx, "console_sidebar", `${op.title} 액센트 ${call.accent ?? "지움"}`, "press", opTarget(op.id));
-        return { accent: { objectiveIds: nodes.map((op) => op.id), accent: call.accent } };
       }
       if (call.action === "group_edit" || call.action === "group_delete") {
         // 쓰기는 전부 검증이 끝난 뒤에 — 실패 응답 뒤에 되돌릴 수 없는 쓰기가 남지 않게.

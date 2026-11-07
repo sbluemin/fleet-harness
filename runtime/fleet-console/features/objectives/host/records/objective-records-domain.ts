@@ -37,21 +37,18 @@ export interface ObjectiveGroupPatchInput {
 
 export interface ObjectiveRecord extends SdkObjectiveRecord {
   readonly [key: string]: unknown;
-  readonly accent?: string;
   readonly groupId?: string | null;
   readonly order?: number;
 }
 
 export interface ObjectiveRecordCreateInput extends SdkObjectiveRecordCreateInput {
   readonly [key: string]: unknown;
-  readonly accent?: string;
   readonly groupId?: string | null;
   readonly order?: number;
 }
 
 export interface ObjectiveRecordPatchInput extends SdkObjectiveRecordPatchInput {
   readonly [key: string]: unknown;
-  readonly accent?: string | null;
   readonly groupId?: string | null;
   readonly order?: number;
 }
@@ -103,7 +100,7 @@ const FIXED_SENSITIVE_OBJECTIVE_FIELDS = new Set([
 ]);
 
 export function createSanitizedOpDto(node: ObjectiveRecord, options: ObjectiveSanitizeOptions = {}): ObjectiveRecord {
-  const keys = ["id", "commodoreId", "theaterId", "title", "groupId", "order", "accent", "parentObjectiveId", "ts", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "consoleUse", "computerUse", "labelSource", "session"];
+  const keys = ["id", "commodoreId", "theaterId", "title", "groupId", "order", "parentObjectiveId", "ts", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "consoleUse", "computerUse", "labelSource", "session"];
   const fields = Object.fromEntries(keys.filter((key) => node[key] !== undefined).map((key) => [key, node[key]]));
   const sensitive = new Set([...FIXED_SENSITIVE_OBJECTIVE_FIELDS, ...(options.sensitiveFields ?? [])]);
   return { ...sanitizeChildPayload(fields, sensitive, options),
@@ -280,7 +277,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     if (!existing) {
       const found = getChild(id);
       if (!found) return null;
-      if (input.groupId !== undefined || input.order !== undefined || input.accent !== undefined) throw new Error("invalid_child_patch");
+      if (input.groupId !== undefined || input.order !== undefined) throw new Error("invalid_child_patch");
       const at = now();
       const child = { ...patchedFields(found.child, input), id, ts: options?.keepTimestamps ? found.child.ts : { ...found.child.ts, updatedAt: at } };
       nodes.set(found.parent.id, { ...found.parent, sessions: found.parent.sessions!.map((candidate) => candidate.id === id ? child : candidate), ts: options?.keepTimestamps ? found.parent.ts : { ...found.parent.ts, updatedAt: at } });
@@ -425,7 +422,6 @@ function normalizePatch(existing: ObjectiveRecord, input: ObjectiveRecordPatchIn
   return { ...patchedFields(existing, input),
     id: existing.id, commodoreId: existing.commodoreId, cwd: existing.cwd, theaterId: existing.theaterId,
     ...(title !== undefined ? { title: title || existing.title } : {}),
-    accent: input.accent === null ? undefined : input.accent ?? existing.accent,
     ts: { ...existing.ts, updatedAt: timestamp },
   };
 }
@@ -488,7 +484,6 @@ type ObjectiveRenameEvent = {
 type CreateObjectiveBody = Partial<ObjectiveRecordCreateInput>;
 type PatchObjectiveBody = {
   readonly title?: unknown;
-  readonly accent?: unknown;
   readonly groupId?: unknown;
 };
 type CreateGroupBody = Partial<ObjectiveGroupCreateInput>;
@@ -596,10 +591,6 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
     deps.writeJson(res, 400, { error: "invalid_objectiveRecord" });
     return;
   }
-  if (body.accent !== undefined && typeof body.accent !== "string") {
-    deps.writeJson(res, 400, { error: "invalid_objectiveRecord_accent" });
-    return;
-  }
   if (typeof body.id === "string" && deps.isPendingDeletion?.(body.id)) {
     deps.writeJson(res, 409, { error: "pending_deletion" });
     return;
@@ -610,7 +601,6 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
       commodoreId: body.commodoreId as string,
       theaterId: body.theaterId,
       title: body.title,
-      ...(typeof body.accent === "string" ? { accent: body.accent } : {}),
       ...executionFields(body),
     });
     deps.persist();
@@ -653,11 +643,7 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     deps.writeJson(res, 400, { error: "invalid_child_patch" });
     return;
   }
-  // accent/groupId는 문자열(설정)·null(해제)·생략(무변경)만 허용한다. geometry의 null-clear 계약과 동일하다.
-  if (body.accent !== undefined && body.accent !== null && typeof body.accent !== "string") {
-    deps.writeJson(res, 400, { error: "invalid_objectiveRecord_accent" });
-    return;
-  }
+  // groupId는 문자열(설정)·null(해제)·생략(무변경)만 허용한다. geometry의 null-clear 계약과 동일하다.
   if (body.groupId !== undefined && body.groupId !== null && typeof body.groupId !== "string") {
     deps.writeJson(res, 400, { error: "invalid_objectiveRecord_groupId" });
     return;
@@ -666,7 +652,6 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     const previousNode = typeof body.title === "string" ? deps.store.get(id) : null;
     const node = deps.store.patch(id, {
       ...(typeof body.title === "string" ? { title: body.title } : {}),
-      ...(typeof body.accent === "string" || body.accent === null ? { accent: body.accent } : {}),
       ...(typeof body.groupId === "string" || body.groupId === null ? { groupId: body.groupId } : {}),
       ...executionFields(body),
 
