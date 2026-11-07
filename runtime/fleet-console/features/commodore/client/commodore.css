@@ -796,7 +796,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-delete-question, .commodore-delete-prompt { overflow-wrap: anywhere; }
 .commodore-delete-who > div { min-width: 0; }
 
-/* ── 사령관 플러그인 — 설정 칸 목록(Theater 목록과 같은 줄 문법)과 추가 팔레트, Console 설정 「마켓플레이스」 ──
+/* ── 사령관 플러그인 — 설정 칸 목록(Theater 목록과 같은 줄 문법)과 추가 팔레트, 플러그인 관리 창 「마켓플레이스」 ──
    색은 채널 규칙을 따른다: 상태(받는 중·실패·설치함·꺼짐)만 signal 잉크, 추가·선택·포커스는 brass, 마켓플레이스·플러그인에 정체성 색을 입히지 않는다. */
 .commodore-plugins-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .commodore-plugins-list li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
@@ -996,6 +996,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-scope-fold-btn strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 .commodore-palette-scope-menu { display: grid; gap: 2px; padding: 0 8px 8px; }
 .commodore-palette .settings-modal-tab-label { flex: 1 1 auto; min-width: 0; }
+.commodore-palette-scope-divider { flex: none; height: 1px; margin: 6px 8px; background: var(--hairline); }
 .commodore-palette .settings-modal-tab-count { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
 .commodore-palette-tools { position: absolute; z-index: 2; top: 16px; right: 16px; display: flex; align-items: center; gap: 4px; }
 .commodore-palette-tools .settings-modal-close { position: static; }
@@ -1034,9 +1035,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .settings-modal .commodore-palette-row { flex-wrap: wrap; align-items: center; }
 .commodore-palette.is-phone .mobile-group { width: 100%; min-width: 0; }
 .commodore-palette.is-phone .mobile-group-row.commodore-plugins-phone-row { display: grid; background: var(--m-surface); }
-.commodore-palette-market { position: relative; }
-.commodore-palette-market.is-syncing .commodore-market-spin { position: absolute; inset: 5px; width: auto; height: auto; margin: 0; color: var(--aurora-ink); }
-.commodore-palette-market-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
 .commodore-plugin-reach { display: inline-flex; flex: none; align-items: center; gap: 4px; min-height: 22px; padding: 0 6px; border: 0; border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); white-space: nowrap; cursor: pointer; }
 .commodore-plugin-reach[aria-pressed="true"] { color: var(--brass-bright); }
 .commodore-plugin-reach[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
@@ -1109,18 +1107,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .commodore-plugin-detail-scroll { padding-left: 16px; padding-right: 16px; }
 @media (prefers-reduced-motion: reduce) { .commodore-palette-bar, .commodore-palette-bar.is-detail .commodore-palette-title { transition: none; } }
 .commodore-market-card-failure { margin: 0; font-size: var(--t-sm); line-height: 1.5; }
-/* 폰 마켓플레이스 행 — 행 전체를 덮는 열기 단추 위에 토글만 올린다(모바일 설정 행의 <label> 대신). 꺼진 행은 옅어짐으로 말한다. */
-.commodore-market-row { position: relative; }
-.commodore-market-row-open { position: absolute; inset: 0; z-index: 0; padding: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
-.commodore-market-row-open:focus-visible { box-shadow: var(--focus-face); }
-.commodore-market-row > :not(.commodore-market-row-open) { position: relative; z-index: 1; pointer-events: none; }
-.commodore-market-row > .commodore-market-row-glyph { pointer-events: auto; }
-.commodore-market-row.is-off .fc-settings-row__copy { opacity: 0.55; }
-.commodore-market-detail { display: grid; gap: var(--space-4); }
-.commodore-market-detail-confirm { display: grid; gap: 10px; padding: 14px 16px; border-radius: var(--radius-lg); background: color-mix(in oklab, var(--coral) 8%, transparent); color: var(--text-secondary); font-size: var(--t-sm); }
-.commodore-market-detail-confirm p { margin: 0; }
-.commodore-market-detail-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.commodore-market-detail-remove { color: var(--coral-ink); }
 
 /* 「사령관 판단」 글리프 — 지휘관 모델 선택기의 행·트리거. 기다림·위임 신호의 --aurora 잉크이고 새 토큰은 두지 않는다. */
 .objectives-commodore-judgment { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--aurora); }
