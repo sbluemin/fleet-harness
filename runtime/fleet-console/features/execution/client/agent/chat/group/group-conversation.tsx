@@ -19,7 +19,7 @@ import type { AgentConversationEntry, AgentConversationProps } from "../../../..
 import { getGroupT } from "./group-chat-i18n.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
 import { MentionChip } from "../../../composer-primitives/mention-chip.js";
-import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey, speakerNameStyle, speakerTone, useCommodoreSpeakerKey } from "./speaker-mark.js";
+import { ConversationSpeakerSection, LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey, speakerNameStyle, speakerTone, useCommodoreSpeakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
 import "./group-chat.css";
@@ -803,6 +803,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
 }) {
   const t = getGroupT(language);
   const content = React.useContext(ConversationMessageContent)?.(entry);
+  const sectionOf = React.useContext(ConversationSpeakerSection);
   // 답 단추는 이 말의 화자에게 보낸다 — 훅은 이른 반환보다 앞에 선다.
   const replySpeaker = entry.speaker;
   const reply = React.useMemo(() => (onOpenUISend ? (text: string) => onOpenUISend(text, replySpeaker) : undefined), [onOpenUISend, replySpeaker]);
@@ -860,9 +861,11 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   // 표식은 묶음 꼬리(마지막으로 서는 말풍선) 옆에 선다 — 묶음 왼쪽 아래.
   const mark = !tail ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />;
   // 보드 행위 줄(via)의 발화자는 사람·사령관뿐이라 원장 대상이 아니다 — 단추는 일반 머리 이름에만 선다.
+  // 소속 칩 — 사령관·TF 대화가 준 섹션만. 지휘관·구성원 대화는 주지 않아 이름만이다.
+  const section = sectionOf?.(speaker) ?? null;
   const name = open
-    ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" data-ledger-speaker={speaker.kind} aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} avatarTone /></button>
-    : <SpeakerName speaker={speaker} className="group-chat-agent-name" avatarTone />;
+    ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" data-ledger-speaker={speaker.kind} aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} avatarTone section={section} /></button>
+    : <SpeakerName speaker={speaker} className="group-chat-agent-name" avatarTone section={section} />;
   // 보고 꼬리표 — 은은한 보조 낱말. 말풍선과 문면이 다를 수 있으므로 누르면 보낸 보고 전문이 그 아래에 펼쳐진다.
   const reportTag = report ? (
     <button type="button" className="group-chat-report-tag" aria-expanded={reportOpen} aria-controls={reportOpen ? reportId : undefined} onClick={() => setReportOpen((current) => !current)}>

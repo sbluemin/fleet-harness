@@ -38,6 +38,7 @@ import { taskforceT } from "./i18n.js";
 import { MemberPicker } from "./member-picker.js";
 import { TaskforceChainLimitRow } from "./chain-limit.js";
 import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, readTaskforceExperiment, readTaskforces, subscribeTaskforces, useTaskforce, useTaskforceExperiment, useTaskforces, wasTaskforceRemoved } from "./state.js";
+import { useCommodoreSpeakerSection } from "../sidebar-sections.js";
 import "./taskforce.css";
 
 const SURFACE = "taskforce";
@@ -342,6 +343,7 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
   const participants: readonly ConversationParticipant[] = [...new Set([...(state?.members ?? []), ...entries.flatMap((entry) => entry.speaker.kind === "commodore" ? [entry.speaker.commodoreId] : [])])].map((id) => ({ speaker: speaker(id), activity: judging.includes(id) ? "running" : "idle" }));
   const run = async (route: "continue") => { if (busy) return; setBusy(true); setFailure(false); try { await mutateTaskforce(route, { taskforceId: id }); } catch { setFailure(true); } finally { setBusy(false); } };
   const Conversation = commodoreConversationRenderer();
+  const speakerSection = useCommodoreSpeakerSection();
   const messageContent: AgentConversationProps["messageContent"] = (message) => {
     const entry = bySeq.get(Number(message.id)); if (!entry) return;
     const actions = [...(entry.actions ?? []), ...(actionsByReply.get(entry.seq) ?? [])];
@@ -375,7 +377,7 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
       await mutateTaskforce("post", { taskforceId: state.id, text: plain, ...(mentions.length ? { mentions } : {}), ...(images.length ? { images } : {}) });
       for (const imageId of attachmentIds) taskforceImagePayloads.delete(imageId);
     }} onFail={() => setFailure(true)} onClear={() => setFailure(false)} /> : null}</div>;
-  return <div className="taskforce-conversation">{Conversation ? <Conversation entries={items} participants={participants} working={working} language={language} accessibleNames={{ log: t("taskforce.aria.log"), composer: t("taskforce.aria.composer") }} loading={!snapshot.loaded && !snapshot.error} empty={snapshot.error ? t("taskforce.failed") : t("taskforce.empty")} messageContent={messageContent} openBoardAction={{ label: t("taskforce.openNotice"), open: (entry) => { if (entry.speaker.commodoreId) openReferencedObjective(entry.speaker.commodoreId, entry.objectiveId); } }} older={snapshot.hasMore ? { label: t("taskforce.older"), loading: older, load: () => { setOlder(true); void loadTaskforce(id, true).finally(() => setOlder(false)); } } : null} cards={cards} composer={composer} composerTopEntries /> : <>{t("taskforce.loading")}{composer}</>}</div>;
+  return <div className="taskforce-conversation">{Conversation ? <Conversation entries={items} participants={participants} working={working} language={language} speakerSection={speakerSection} accessibleNames={{ log: t("taskforce.aria.log"), composer: t("taskforce.aria.composer") }} loading={!snapshot.loaded && !snapshot.error} empty={snapshot.error ? t("taskforce.failed") : t("taskforce.empty")} messageContent={messageContent} openBoardAction={{ label: t("taskforce.openNotice"), open: (entry) => { if (entry.speaker.commodoreId) openReferencedObjective(entry.speaker.commodoreId, entry.objectiveId); } }} older={snapshot.hasMore ? { label: t("taskforce.older"), loading: older, load: () => { setOlder(true); void loadTaskforce(id, true).finally(() => setOlder(false)); } } : null} cards={cards} composer={composer} composerTopEntries /> : <>{t("taskforce.loading")}{composer}</>}</div>;
 }
 
 // TF 원장의 도구 action 이름을 정보 탭의 보드 행위 분류에 맞춘다. 모르는 행위는 중립 편집으로 남는다.

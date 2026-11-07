@@ -28,6 +28,7 @@ import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { openRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { useTheaterInboxState } from "../../workspace/client/theater-inbox/store.js";
 import { readCommodoreList, setZoneCommodore, useZoneCommodore } from "./commodore-list.js";
+import { useCommodoreSpeakerSection } from "./sidebar-sections.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 
@@ -303,6 +304,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const run = view?.run;
   const { meta, routine } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
+  const speakerSection = useCommodoreSpeakerSection(commodoreId);
   const screenTheaterId = theaterId ?? "";
   const index = useCommodoreObjectiveIndex(commodoreId);
   const name = useCommodoreName(commodoreId, t);
@@ -438,6 +440,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
             working={working}
             language={language}
             commodoreId={commodoreId}
+            speakerSection={speakerSection}
             commodoreActivity={activity}
             loading={!transcriptLoaded}
             empty={t("commodore.log.empty")}
