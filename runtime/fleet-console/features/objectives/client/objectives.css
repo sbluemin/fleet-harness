@@ -196,6 +196,9 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row-lab { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
 
 .objectives-row-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+/* 섹션 머리 — 글리프·문구 없이 구분선 한 줄. 셈·도구·셰브런은 오른쪽에 모이고, 중간 머리는 자기 위에 얇은 선을 긋는다. */
+.objectives-row.is-rule { min-height: 32px; justify-content: flex-end; gap: 8px; }
+.objectives-row.is-rule:not(:first-child)::before { content: ""; position: absolute; left: 22px; right: 20px; top: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
 .objectives-section-head-bar { display: flex; align-items: center; position: relative; }
 .objectives-section-head-bar > .objectives-row { flex: 1; min-width: 0; padding-right: 6px; }
 .objectives-section-head-actions { flex: none; display: inline-flex; align-items: center; padding-right: 14px; }
@@ -560,8 +563,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-criteria-head > .objectives-row { flex: 1; min-width: 0; }
 .objectives-approve-all { flex: none; margin-right: 14px; }
 .objectives-criteria-count.is-pending { color: var(--brass-ink); }
-/* 좁은 패널에서 「제안 N건 · 승인 대기」와 「모두 승인」이 라벨 폭을 빼앗지 않게 — 라벨은 줄지 않고, 셈이 먼저 감긴다. */
-.objectives-criteria-head .objectives-row-lab { flex: 0 0 auto; white-space: nowrap; }
 .objectives-criteria-head .objectives-row-tools { min-width: 0; }
 .objectives-criteria-head .objectives-criteria-count.is-pending { white-space: normal; word-break: keep-all; text-align: right; }
 /* 아주 좁은 상세, 또는 제자리에서 세 줄 넘게 감기는 셈(is-stacked — 실제 감김을 JS 가 잰다) — 라벨·승인 버튼은 첫 줄에 두고,
