@@ -1075,12 +1075,14 @@ export function setObjectiveWindowOpener(opener: typeof objectiveWindowOpener): 
  * 이미 열려 있어도 다시 연다: 호스트의 열기는 여닫기가 아니라 드러내기이고, 폰에서는 레일 스토어가 열림으로 남아 있어도
  * 목적지 화면으로 옮기는 것이 이 열기다.
  * 데스크톱 대화 중심 화면에서는 목표가 우측 사이드바의 맥락을 바꾸지 않는다 — 레일 대신 채팅의 목표 창을 그 목표로 연다(임무로 가는 길이면 구성원).
+ * 창은 사령관 보드의 목표만 그린다 — 보관된 완료 목표와 후속 후보 선택기(reveal.followups)는 그것을 다루는 레일 패널로 연다.
  */
 function openObjectivePanel(objectiveId?: string): void {
   const target = objectiveId ?? reveal?.objectiveId ?? null;
   const objective = target === null ? null : findAnyObjective(target);
   const desktop = typeof document !== "undefined" && document.documentElement.getAttribute("data-view-mode") !== "mobile";
-  if (objective !== null && desktop && objectiveWindowOpener !== null && installed?.conversation?.isActive()) {
+  const onBoard = objective !== null && readBoard(objective.commodoreId).objectives.some((candidate) => candidate.id === objective.id);
+  if (objective !== null && onBoard && !reveal?.followups && desktop && objectiveWindowOpener !== null && installed?.conversation?.isActive()) {
     objectiveWindowOpener({ objectiveId: objective.id, commodoreId: objective.commodoreId, tab: reveal?.missionId ? "crew" : "goal" });
     return;
   }
