@@ -1400,6 +1400,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (byCommodore && actor.commodoreId !== input.commodoreId) throw new ObjectiveStoreError("other_commodore");
       // 사령관이 만드는 목표의 지휘관 — 생성 호출이 고른 모델(호출이 candidates 로 이미 확인했다), 아니면 사람이 그 사령관에 정한
       // 지휘관 모델(사람의 명시 선택이라 실행 카탈로그 가용성만 본다). 둘 다 없으면 보드 기본으로 넘어가지 않고 거절한다.
+      // 사람이 설정에 정했으면 Console 도구가 사령관의 지정을 버리고 넘기므로 여기엔 호출의 모델이 오지 않는다.
       // 사람이 화면에서 만드는 목표는 사람이 고른 모델, 없으면 보드 기본이다.
       let commander: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = chosen ?? null;
       if (byCommodore && !chosen) {
