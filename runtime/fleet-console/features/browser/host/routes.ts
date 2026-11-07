@@ -202,7 +202,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       }
       if (action === "tabs") {
         const tabId = typeof body.tabId === "string" ? body.tabId : null;
-        if (body.action === "create") { const tab = await browserService.createTab(objectiveId, typeof body.url === "string" ? body.url : null, "user", { spaceId: typeof body.spaceId === "string" && body.spaceId ? body.spaceId : homeSpaceId }); writeJson(res, 200, { tab }); return true; }
+        if (body.action === "create") { const tab = await browserService.createTab(objectiveId, typeof body.url === "string" ? body.url : null, "user", typeof body.spaceId === "string" && body.spaceId ? { spaceId: body.spaceId } : {}); writeJson(res, 200, { tab }); return true; }
         if (body.action === "close" && tabId) { await browserService.closeTab(objectiveId, tabId); writeJson(res, 200, { closed: tabId }); return true; }
         if (body.action === "select" && tabId) { await browserService.selectTab(objectiveId, tabId); writeJson(res, 200, { selected: tabId }); return true; }
         writeJson(res, 400, { error: "invalid_request" }); return true;
@@ -213,7 +213,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       }
       if (action === "navigate") {
         if (typeof body.url !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        writeJson(res, 200, await browserService.navigate(objectiveId, body.url, "user", typeof body.tabId === "string" ? body.tabId : null, undefined, homeSpaceId)); return true;
+        writeJson(res, 200, await browserService.navigate(objectiveId, body.url, "user", typeof body.tabId === "string" ? body.tabId : null)); return true;
       }
       if (action === "viewport") {
         const preset = body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? body.preset : undefined;

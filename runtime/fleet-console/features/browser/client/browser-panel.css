@@ -30,21 +30,17 @@
 .op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--ink-rim); outline: none; }
 .op-browser__viewport-menu { position: relative; align-self: center; }
 /* ---- 스페이스 — 칩 뒤에 그 스페이스의 탭이 붙는 탭 그룹. 색은 스페이스를 가리키는 표식일 뿐 상태가 아니다. ----
-   그룹의 data-hue 가 --browser-space-c 를 정하고, 칩·스와치·탭 밑줄이 그 한 값을 읽는다. 에이전트 표식은 배지 채널. */
-.op-browser__space-group, .op-browser__space-item { --browser-space-c: var(--id-space-ink); }
-.op-browser__space-group[data-hue="1"], .op-browser__space-item[data-hue="1"] { --browser-space-c: var(--id-space-sky); }
-.op-browser__space-group[data-hue="2"], .op-browser__space-item[data-hue="2"] { --browser-space-c: var(--id-space-clay); }
-.op-browser__space-group[data-hue="3"], .op-browser__space-item[data-hue="3"] { --browser-space-c: var(--id-space-orchid); }
-.op-browser__space-group[data-hue="4"], .op-browser__space-item[data-hue="4"] { --browser-space-c: var(--id-space-olive); }
+   그룹의 --browser-space-c 를 칩·탭 밑줄이 읽는다. 값은 그 스페이스(사령관·Objective)의 아바타 정체성 톤(--id-<tone>)이고
+   패널이 인라인으로 준다 — 아바타를 모르는 스페이스는 이 무채 잉크다. 에이전트 표식은 배지 채널. */
+.op-browser__space-group { --browser-space-c: var(--id-space-ink); }
 /* 좁은 띠에서는 칩과 탭이 그룹 안에서 함께 줄어든다 — 그룹이 내용보다 좁아져 옆 그룹·「+N」 위로 겹쳐 그려지지 않게 넘침을 자른다. */
 .op-browser__space-group { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
-.op-browser__space-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.op-browser__space-tabs, .op-browser__human-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
 .op-browser__space { flex: 0 1 auto; min-width: 44px; display: inline-flex; align-items: center; gap: var(--space-1); max-width: 140px; height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 12%, transparent); color: var(--text-primary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
 .op-browser__space.is-open { background: color-mix(in oklch, var(--browser-space-c) 24%, transparent); }
 .op-browser__space:hover:not(:disabled) { background-image: linear-gradient(var(--wash-hover), var(--wash-hover)); }
 .op-browser__space:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .op-browser__space:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
-.op-browser__space-swatch { flex: none; width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--browser-space-c); }
 .op-browser__space-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-browser__space-count { flex: none; color: var(--text-secondary); font-size: var(--t-2xs); }
 .op-browser__space-driving { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 2px color-mix(in oklch, var(--agent-control-badge) 28%, transparent); }
@@ -92,7 +88,7 @@
 .op-browser__url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 28px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
 .op-browser__url:hover { background: var(--ink-rim); }
 .op-browser__url:focus-within { box-shadow: var(--field-focus-edge); }
-.op-browser__url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-code); font-size: var(--font-code-size); }
+.op-browser__url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-ui); font-size: var(--t-sm); }
 .op-browser__url.is-display .op-browser__url-input { color: transparent; caret-color: transparent; }
 .op-browser__url-input:focus { outline: none; }
 /* 제안은 주소창 아래에 선다. 네이티브 뷰의 가림은 패널의 기존 주차 경로가 맡는다. */

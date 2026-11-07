@@ -20,6 +20,7 @@ import type { RailEntryBinding } from "../../../../../core/client/src/chrome/pan
 import type { RailToolContext } from "../../../../../core/client/src/chrome/rail/right-rail.js";
 import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
+import { BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
 import { announceNativeViewResize, getNativeViewResize } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
@@ -535,9 +536,8 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
       onFocusCapture={(event) => { if (!isInHead(event.target)) focusWorkbenchTile(tile.id); }}
     >
       {seamless ? (
-        <BrowserBandChrome frameRef={rootRef} geometry={geometry} motion={motion} hidden={hidden}>
+        <BrowserBandChrome frameRef={rootRef} geometry={geometry} motion={motion} hidden={hidden} expanded={expanded}>
           {parts.titleNode ?? null}
-          {expandButton}
           <BrowserBandClose tileId={tile.id} title={parts.title} />
         </BrowserBandChrome>
       ) : (
@@ -573,7 +573,8 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
         </div>
       ) : null}
       <div className="workbench-tile-body" ref={parts.bodyRef}>
-        {parts.body}
+        {/* 머리 없는 브라우저 칸의 펼치기는 머리가 없으므로 주소줄 끝(도구모음 옆)에 선다 — 본문이 그 자리를 그린다. */}
+        {seamless ? <BrowserNavTailContext.Provider value={expandButton}>{parts.body}</BrowserNavTailContext.Provider> : parts.body}
       </div>
     </section>
   );
@@ -606,11 +607,12 @@ function seamlessRect(entry: TileGeometry, rect: Rect, geometry: WorkbenchGeomet
  * 맨 위 줄로 올라간 브라우저 탭 줄 — 지구본 바로 앞 자리(browser-band-slot)로 portal 되어 분할 영역 위의 폭만 쓴다.
  * 펼친 동안에도 분할 영역 위에 남아 대화 pill 을 덮지 않는다.
  */
-function BrowserBandChrome({ frameRef, geometry, motion, hidden, children }: {
+function BrowserBandChrome({ frameRef, geometry, motion, hidden, expanded, children }: {
   readonly frameRef: RefObject<HTMLElement | null>;
   readonly geometry: WorkbenchGeometry;
   readonly motion: TileMotion | null;
   readonly hidden: boolean;
+  readonly expanded: boolean;
   readonly children: ReactNode;
 }) {
   const slot = useBrowserBandSlot();
@@ -633,7 +635,7 @@ function BrowserBandChrome({ frameRef, geometry, motion, hidden, children }: {
   }, [frameRef, slot, splitX]);
   if (slot === null || hidden) return null;
   return createPortal(
-    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}`} style={width === null ? undefined : { width }} data-keep-objective-active>
+    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}${expanded ? " is-expanded" : ""}`} style={width === null ? undefined : { width }} data-keep-objective-active>
       {children}
     </span>,
     slot,
