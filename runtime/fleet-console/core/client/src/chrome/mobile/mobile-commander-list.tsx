@@ -4,7 +4,7 @@ import { useLongPress } from "../../../../../features/workspace/client/long-pres
 import { useMobileCommanderActions } from "./mobile-commander-actions.js";
 import { toggleFold, useCommanderFolds, type CommanderFold } from "../../../../../features/workspace/client/commander-tab/commander-folds.js";
 import { SORTS, activityOf, setSort, useSortPreference, type SortPreference } from "../../../../../features/workspace/client/commander-tab/commander-sort.js";
-import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../../../../../features/workspace/client/sidebar/side-bar-cluster-row.js";
+import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, useClusterRowActivity, type SideBarRowItem } from "../../../../../features/workspace/client/sidebar/side-bar-cluster-row.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { focusObjective } from "../../integration/store.js";
 import { useConversationTime } from "./mobile-conversation-row.js";
@@ -61,7 +61,8 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
   const openActions = useMobileCommanderActions();
   const longPress = useLongPress<HTMLButtonElement>(() => openActions(item));
   const { layout, row } = item;
-  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, language, t);
+  const workActivity = useClusterRowActivity(item);
+  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, language, t, workActivity);
   const activity = activityOf(item);
   const open = () => leave(() => {
     // 뿌리 없는 목표는 시작 화면으로 — 가짜 세션 id로 focus하지 않는다.
