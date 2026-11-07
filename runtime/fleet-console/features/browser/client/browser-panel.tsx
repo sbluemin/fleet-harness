@@ -1298,7 +1298,8 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     const key = `${objectiveId}|${homeSpaceId}`;
     if (homedRef.current === key) return;
     homedRef.current = key;
-    if (state.displayedSpaceId !== homeSpaceId && state.tabs.some((tab) => tab.spaceId === homeSpaceId)) void run("space", { spaceId: homeSpaceId });
+    // 탭이 없어도 띄운다 — 사람의 새 탭·주소 입력이 이 대화의 스페이스에 열리도록.
+    if (state.displayedSpaceId !== homeSpaceId) void run("space", { spaceId: homeSpaceId });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- run 은 매 렌더 새로 만들어도 같은 뜻이다.
   }, [available, state, homeSpaceId, objectiveId]);
 

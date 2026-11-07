@@ -213,7 +213,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       }
       if (action === "navigate") {
         if (typeof body.url !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        writeJson(res, 200, await browserService.navigate(objectiveId, body.url, "user", typeof body.tabId === "string" ? body.tabId : null)); return true;
+        writeJson(res, 200, await browserService.navigate(objectiveId, body.url, "user", typeof body.tabId === "string" ? body.tabId : null, undefined, homeSpaceId)); return true;
       }
       if (action === "viewport") {
         const preset = body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? body.preset : undefined;

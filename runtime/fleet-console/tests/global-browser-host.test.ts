@@ -324,6 +324,13 @@ describe("session browser host contract", () => {
       expect(engine.snapshot().views.map((view) => view.id)).toEqual(viewsBeforeReset);
       expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
 
+      // Objective 스페이스를 거두는 일이 같은 브라우저의 진행 중 생성과 겹쳐도 그 스페이스가 되살아나지 않는다(다른 스페이스는 남는다).
+      await service.createTab("op-shared", null, "user", { spaceId: "keep" });
+      const closing = service.createTab("op-shared", null, "agent", { spaceId: "obj-closed", participantId: "p" }).catch((error: unknown) => error);
+      await service.closeSpace("obj-closed");
+      expect(await closing).toMatchObject({ code: "browser_call_interrupted" });
+      expect(service.state("op-shared").tabs.map((tab) => tab.spaceId)).toEqual(["keep"]);
+
       // 사령관은 실제 AgentHost가 실은 MCP로 자기 탭만 다룬다. 전역 탭 id를 알아도 넘어갈 수 없다.
       let client: Client | null = null;
       let browserTurn: (turn: ClaudeGatewayTurn) => Promise<void>;
