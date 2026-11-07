@@ -10,7 +10,7 @@ import { HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceSt
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
-import { dropBrowserOpenRequest, getNativeViewResize, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { dropBrowserOpenRequest, getNativeViewResize, BrowserNavTailContext, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import "./browser-panel.css";
 
 export interface BrowserClientServices {
@@ -373,178 +373,28 @@ export function SessionBrowserCaption({ ownerId, language }: Pick<SessionBrowser
   return <BrowserCaption context={{ objectiveId: ownerId, language }} />;
 }
 
-export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRenderContext, "objectiveId" | "language">; readonly services?: BrowserClientServices }) {
-  const t = getT(context.language ?? "en");
-  const panel = useBrowserPanel(context.objectiveId);
+/**
+ * 세션·뷰포트 도구 — 주소줄 끝에 선다(주석 버튼 옆). 탭 줄의 폭은 탭들의 것이다. 상태와 손잡이는 본문이 올린 스냅샷에서 읽는다.
+ * 메뉴는 본문 영역까지 내려오므로 열려 있는 동안 네이티브 뷰가 물러서도록 알린다.
+ */
+function BrowserTools({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
+  const t = getT(language ?? "en");
+  const panel = useBrowserPanel(objectiveId);
   const importUnavailable = chromeImportUnavailable();
   const [viewportMenu, setViewportMenu] = React.useState(false);
   const [profileMenu, setProfileMenu] = React.useState(false);
-  const [moreMenu, setMoreMenu] = React.useState(false);
-  // 사람이 펼친 스페이스들. 이 대화의 스페이스(home)와 지금 화면에 띄운 스페이스는 따로 꼽지 않아도 펼쳐진다.
-  const [expanded, setExpanded] = React.useState<readonly string[]>([]);
-  // 칩 줄이 넘칠 때 띠에 남기는 스페이스 수. 크기나 내용이 바뀌면 전부 놓고 다시 줄여 나간다.
-  const [fitLimit, setFitLimit] = React.useState(Number.MAX_SAFE_INTEGER);
-  const [capWidth, setCapWidth] = React.useState(0);
-  const capRef = React.useRef<HTMLDivElement | null>(null);
-  const stripRef = React.useRef<HTMLDivElement | null>(null);
-  const moreRef = React.useRef<HTMLDivElement | null>(null);
-  const fitKeyRef = React.useRef("");
-
-  const home = panel?.homeSpaceId ?? null;
-  const displayed = panel?.displayedSpaceId ?? null;
-  // 이름을 가진 것은 그룹뿐이다 — 사람 스페이스(`human`)는 그룹이 아니라 이름이 없다.
-  const spaceName = (space: BrowserSpaceState) => space.label || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
-  // 사람이 직접 연 탭은 그룹 없이 따로 그린다. 그룹은 탭이 있는 스페이스만이다 — 프레임이 싣지 않은 스페이스(탭만 아는 것)는 여기서 채운다.
-  const humanTabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId === HUMAN_SPACE_ID);
-  const groups: readonly SpaceGroup[] = (() => {
-    const tabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId !== HUMAN_SPACE_ID);
-    const byId = new Map<string, BrowserSpaceState>();
-    for (const space of panel?.spaces ?? []) if (space.id !== HUMAN_SPACE_ID) byId.set(space.id, space);
-    const blank = (id: string): BrowserSpaceState => ({ id, kind: spaceKindOf(id), label: "", driving: false, agentTabIds: [], lastShownTabId: null });
-    for (const tab of tabs) if (!byId.has(tab.spaceId)) byId.set(tab.spaceId, blank(tab.spaceId));
-    const ordered = [...byId.values()].sort((a, b) => Number(b.id === home) - Number(a.id === home));
-    return ordered
-      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 좁은 띠에서 보는 스페이스의 탭이 읽히게. home 칩을 누르면 돌아온다.
-      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || expanded.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
-      .filter((group) => group.tabs.length > 0 || group.space.driving);
-  })();
-  // 이 대화의 그룹이 있을 때만 「내 스페이스」가 있다 — 없으면 돌아갈 곳은 사람 탭이다.
-  const homeGroup = home !== null && groups.some((group) => group.space.id === home);
-  // 띠에 남길 스페이스: 지금 보는 스페이스, home, 나머지 순 — 화면에 뜬 탭의 스페이스가 숨으면 무엇을 보는지 알 수 없다.
-  // home 은 「내 스페이스로」로 언제나 돌아갈 수 있다. 그려지는 순서는 그대로 두어 칩이 뛰어다니지 않게 한다.
-  const shownCount = Math.min(fitLimit, groups.length);
-  const priority = [...groups].sort((a, b) => Number(b.space.id === home) - Number(a.space.id === home)).sort((a, b) => Number(b.space.id === displayed) - Number(a.space.id === displayed));
-  const shownIds = new Set(priority.slice(0, shownCount).map((group) => group.space.id));
-  const shownGroups = groups.filter((group) => shownIds.has(group.space.id));
-  const hiddenGroups = groups.filter((group) => !shownIds.has(group.space.id));
-  const moreOpen = moreMenu && hiddenGroups.length > 0;
-  const away = homeGroup && displayed !== null && displayed !== home;
-
-  const fitKey = `${capWidth}|${humanTabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}|${groups.map((group) => `${group.space.id}:${group.space.label}:${group.open ? 1 : 0}:${group.tabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}`).join("|")}`;
-  React.useLayoutEffect(() => {
-    if (fitKeyRef.current !== fitKey) {
-      fitKeyRef.current = fitKey;
-      if (fitLimit !== Number.MAX_SAFE_INTEGER) { setFitLimit(Number.MAX_SAFE_INTEGER); return; }
-    }
-    const strip = stripRef.current;
-    if (!strip || shownCount <= 1) return;
-    if (strip.scrollWidth > strip.clientWidth + 1) setFitLimit(shownCount - 1);
-  }, [fitKey, fitLimit, shownCount]);
   React.useEffect(() => {
-    const cap = capRef.current;
-    if (!cap) return;
-    const observer = new ResizeObserver(() => setCapWidth(Math.round(cap.getBoundingClientRect().width)));
-    observer.observe(cap);
-    return () => observer.disconnect();
-  }, []);
-
-  // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
-  React.useEffect(() => {
-    publishBrowserCaptionOverlay(context.objectiveId, viewportMenu || profileMenu || moreOpen);
-    return () => publishBrowserCaptionOverlay(context.objectiveId, false);
-  }, [context.objectiveId, viewportMenu, profileMenu, moreOpen]);
-  // 「+N」 메뉴는 바깥을 누르거나 Esc 로 닫는다. 캡션이 포인터를 삼키므로 문서에서 캡처 단계로 듣는다.
-  React.useEffect(() => {
-    if (!moreOpen) return;
-    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !moreRef.current?.contains(event.target)) setMoreMenu(false); };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setMoreMenu(false); };
-    document.addEventListener("pointerdown", onPointer, true);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onPointer, true); document.removeEventListener("keydown", onKey); };
-  }, [moreOpen]);
-
-  /** 스페이스를 펼치고 화면에 띄운다. 이미 보이는 스페이스를 접으면 내 스페이스로 돌아간다. */
-  const pickSpace = (space: BrowserSpaceState, open: boolean) => {
-    if (space.id === home) {
-      setExpanded([]);
-      if (displayed !== null && displayed !== home) panel?.actions.selectSpace(space.id);
-      return;
-    }
-    if (open) {
-      setExpanded((current) => current.filter((id) => id !== space.id));
-      if (displayed === space.id) panel?.actions.selectSpace(homeGroup && home !== null ? home : HUMAN_SPACE_ID);
-      return;
-    }
-    setExpanded((current) => current.includes(space.id) ? current : [...current, space.id]);
-    panel?.actions.selectSpace(space.id);
-  };
-  const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
-  const driving = panel?.driving === true;
+    publishBrowserCaptionOverlay(objectiveId, "tools", viewportMenu || profileMenu);
+    return () => publishBrowserCaptionOverlay(objectiveId, "tools", false);
+  }, [objectiveId, viewportMenu, profileMenu]);
   const ready = panel !== null && panel.available && !panel.busy;
   const persistent = (panel?.profile ?? null) !== null;
   const defaultProfile = panel?.defaultProfile ?? null;
   const viewport = panel?.viewport ?? null;
   const viewportTip = viewport ? `${viewport.width}×${viewport.height} · ${t(`terminal.browser.preset.${viewport.preset}`)}${viewport.setBy === "agent" ? ` · ${t("terminal.browser.setByAgent")}` : ""}` : t("terminal.browser.viewport");
   const presetGlyph = (preset: "responsive" | "mobile" | "tablet") => preset === "mobile" ? <PhoneGlyph /> : preset === "tablet" ? <TabletGlyph /> : <MonitorGlyph />;
-  const renderTab = (tab: BrowserCaptionTab, agentTab: boolean) => (
-    <div key={tab.id} role="tab" aria-selected={tab.id === panel?.activeTabId} className={`op-browser__tab${tab.id === panel?.activeTabId ? " is-active" : ""}`} onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }} onClick={() => { if (tab.id !== panel?.activeTabId) panel?.actions.selectTab(tab.id); }} title={agentTab ? `${tab.url} · ${t("terminal.browser.space.agentTab")}` : tab.url}>
-      <TabIcon objectiveId={context.objectiveId} tab={tab} />
-      <span className="op-browser__tab-title">{tab.title || hostOf(tab.url) || t("terminal.browser.newTab")}</span>
-      {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
-      <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
-    </div>
-  );
   return (
-    <div ref={capRef} className={`op-browser-cap${driving ? " is-driving" : ""}`} onPointerDown={stop} onWheel={stop} {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : {})}>
-      <div ref={stripRef} className="op-browser-cap__tabs">
-        {humanTabs.length > 0 ? <div className="op-browser__space-tabs op-browser__human-tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>{humanTabs.map((tab) => renderTab(tab, false))}</div> : null}
-        {shownGroups.map((group) => {
-          const { space } = group;
-          const name = spaceName(space);
-          const isHome = space.id === home;
-          const count = String(group.tabs.length);
-          return (
-            <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} data-hue={spaceHue(space)} data-space-kind={space.kind}>
-              <button
-                type="button"
-                className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
-                aria-expanded={group.open}
-                title={t(isHome ? "terminal.browser.space.chipHome" : "terminal.browser.space.chip", { name, count })}
-                disabled={!panel?.available}
-                onClick={() => pickSpace(space, group.open)}
-              >
-                <span className="op-browser__space-swatch" aria-hidden="true" />
-                <span className="op-browser__space-name">{name}</span>
-                {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
-                {space.driving ? <span className="op-browser__space-driving" role="img" aria-label={t("terminal.browser.space.driving")} /> : null}
-              </button>
-              {group.open && group.tabs.length > 0 ? (
-                <div className="op-browser__space-tabs" role="tablist" aria-label={`${name} — ${t("terminal.browser.tabs")}`}>
-                  {group.tabs.map((tab) => renderTab(tab, space.agentTabIds.includes(tab.id)))}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-      {hiddenGroups.length > 0 ? (
-        <div className="op-browser__more" ref={moreRef}>
-          <button type="button" className="op-browser__more-button" aria-haspopup="menu" aria-expanded={moreOpen} aria-label={t("terminal.browser.space.more", { count: String(hiddenGroups.length) })} onClick={() => setMoreMenu((open) => !open)}>
-            +{hiddenGroups.length}
-            {hiddenGroups.some((group) => group.space.driving) ? <span className="op-browser__space-driving" aria-hidden="true" /> : null}
-          </button>
-          {moreOpen ? (
-            <div className="op-browser__menu op-browser__menu--spaces" role="menu" aria-label={t("terminal.browser.space.moreMenu")}>
-              {hiddenGroups.map((group) => (
-                <button key={group.space.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__space-item" data-hue={spaceHue(group.space)} onClick={() => { setMoreMenu(false); pickSpace(group.space, false); }}>
-                  <span className="op-browser__space-swatch" aria-hidden="true" />
-                  <span className="op-browser__space-name">{spaceName(group.space)}</span>
-                  <span className="op-browser__space-count">{group.tabs.length}</span>
-                  {group.space.driving ? <span className="op-browser__space-driving" role="img" aria-label={t("terminal.browser.space.driving")} /> : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {away && home !== null && !shownIds.has(home) ? (
-        <button type="button" className="op-browser__space-home" title={t("terminal.browser.space.backHomeTip")} onClick={() => { if (home !== null) panel?.actions.selectSpace(home); }}>
-          <BackGlyph />
-          <span>{t("terminal.browser.space.backHome")}</span>
-        </button>
-      ) : null}
-      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
-      <span className="op-browser-cap__spacer" />
+    <>
       {/* 세션 표식 — 글리프 하나가 지금 어떤 세션인지 말한다. 가져오기도 이 메뉴에 산다: 쿠키가 들어가는 곳이
           바로 이 세션이므로, 캡션에 버튼을 하나 더 두는 것보다 세션을 다루는 자리에 함께 있는 편이 옳다. */}
       <div className="op-browser__profile">
@@ -632,6 +482,174 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
           </div>
         ) : null}
       </div>
+    </>
+  );
+}
+
+export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRenderContext, "objectiveId" | "language">; readonly services?: BrowserClientServices }) {
+  const t = getT(context.language ?? "en");
+  const panel = useBrowserPanel(context.objectiveId);
+  const [moreMenu, setMoreMenu] = React.useState(false);
+  // 사람이 펼친 스페이스들. 이 대화의 스페이스(home)와 지금 화면에 띄운 스페이스는 따로 꼽지 않아도 펼쳐진다.
+  const [expanded, setExpanded] = React.useState<readonly string[]>([]);
+  // 칩 줄이 넘칠 때 띠에 남기는 스페이스 수. 크기나 내용이 바뀌면 전부 놓고 다시 줄여 나간다.
+  const [fitLimit, setFitLimit] = React.useState(Number.MAX_SAFE_INTEGER);
+  const [capWidth, setCapWidth] = React.useState(0);
+  const capRef = React.useRef<HTMLDivElement | null>(null);
+  const stripRef = React.useRef<HTMLDivElement | null>(null);
+  const moreRef = React.useRef<HTMLDivElement | null>(null);
+  const fitKeyRef = React.useRef("");
+
+  const home = panel?.homeSpaceId ?? null;
+  const displayed = panel?.displayedSpaceId ?? null;
+  // 이름을 가진 것은 그룹뿐이다 — 사람 스페이스(`human`)는 그룹이 아니라 이름이 없다.
+  const spaceName = (space: BrowserSpaceState) => space.label || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
+  // 사람이 직접 연 탭은 그룹 없이 따로 그린다. 그룹은 탭이 있는 스페이스만이다 — 프레임이 싣지 않은 스페이스(탭만 아는 것)는 여기서 채운다.
+  const humanTabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId === HUMAN_SPACE_ID);
+  const groups: readonly SpaceGroup[] = (() => {
+    const tabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId !== HUMAN_SPACE_ID);
+    const byId = new Map<string, BrowserSpaceState>();
+    for (const space of panel?.spaces ?? []) if (space.id !== HUMAN_SPACE_ID) byId.set(space.id, space);
+    const blank = (id: string): BrowserSpaceState => ({ id, kind: spaceKindOf(id), label: "", driving: false, agentTabIds: [], lastShownTabId: null });
+    for (const tab of tabs) if (!byId.has(tab.spaceId)) byId.set(tab.spaceId, blank(tab.spaceId));
+    const ordered = [...byId.values()].sort((a, b) => Number(b.id === home) - Number(a.id === home));
+    return ordered
+      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 좁은 띠에서 보는 스페이스의 탭이 읽히게. home 칩을 누르면 돌아온다.
+      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || expanded.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
+      .filter((group) => group.tabs.length > 0 || group.space.driving);
+  })();
+  // 이 대화의 그룹이 있을 때만 「내 스페이스」가 있다 — 없으면 돌아갈 곳은 사람 탭이다.
+  const homeGroup = home !== null && groups.some((group) => group.space.id === home);
+  // 띠에 남길 스페이스: 지금 보는 스페이스, home, 나머지 순 — 화면에 뜬 탭의 스페이스가 숨으면 무엇을 보는지 알 수 없다.
+  // home 은 「내 스페이스로」로 언제나 돌아갈 수 있다. 그려지는 순서는 그대로 두어 칩이 뛰어다니지 않게 한다.
+  const shownCount = Math.min(fitLimit, groups.length);
+  const priority = [...groups].sort((a, b) => Number(b.space.id === home) - Number(a.space.id === home)).sort((a, b) => Number(b.space.id === displayed) - Number(a.space.id === displayed));
+  const shownIds = new Set(priority.slice(0, shownCount).map((group) => group.space.id));
+  const shownGroups = groups.filter((group) => shownIds.has(group.space.id));
+  const hiddenGroups = groups.filter((group) => !shownIds.has(group.space.id));
+  const moreOpen = moreMenu && hiddenGroups.length > 0;
+  const away = homeGroup && displayed !== null && displayed !== home;
+
+  const fitKey = `${capWidth}|${humanTabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}|${groups.map((group) => `${group.space.id}:${group.space.label}:${group.open ? 1 : 0}:${group.tabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}`).join("|")}`;
+  React.useLayoutEffect(() => {
+    if (fitKeyRef.current !== fitKey) {
+      fitKeyRef.current = fitKey;
+      if (fitLimit !== Number.MAX_SAFE_INTEGER) { setFitLimit(Number.MAX_SAFE_INTEGER); return; }
+    }
+    const strip = stripRef.current;
+    if (!strip || shownCount <= 1) return;
+    if (strip.scrollWidth > strip.clientWidth + 1) setFitLimit(shownCount - 1);
+  }, [fitKey, fitLimit, shownCount]);
+  React.useEffect(() => {
+    const cap = capRef.current;
+    if (!cap) return;
+    const observer = new ResizeObserver(() => setCapWidth(Math.round(cap.getBoundingClientRect().width)));
+    observer.observe(cap);
+    return () => observer.disconnect();
+  }, []);
+
+  // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
+  React.useEffect(() => {
+    publishBrowserCaptionOverlay(context.objectiveId, "caption", moreOpen);
+    return () => publishBrowserCaptionOverlay(context.objectiveId, "caption", false);
+  }, [context.objectiveId, moreOpen]);
+  // 「+N」 메뉴는 바깥을 누르거나 Esc 로 닫는다. 캡션이 포인터를 삼키므로 문서에서 캡처 단계로 듣는다.
+  React.useEffect(() => {
+    if (!moreOpen) return;
+    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !moreRef.current?.contains(event.target)) setMoreMenu(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setMoreMenu(false); };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onPointer, true); document.removeEventListener("keydown", onKey); };
+  }, [moreOpen]);
+
+  /** 스페이스를 펼치고 화면에 띄운다. 이미 보이는 스페이스를 접으면 내 스페이스로 돌아간다. */
+  const pickSpace = (space: BrowserSpaceState, open: boolean) => {
+    if (space.id === home) {
+      setExpanded([]);
+      if (displayed !== null && displayed !== home) panel?.actions.selectSpace(space.id);
+      return;
+    }
+    if (open) {
+      setExpanded((current) => current.filter((id) => id !== space.id));
+      if (displayed === space.id) panel?.actions.selectSpace(homeGroup && home !== null ? home : HUMAN_SPACE_ID);
+      return;
+    }
+    setExpanded((current) => current.includes(space.id) ? current : [...current, space.id]);
+    panel?.actions.selectSpace(space.id);
+  };
+  const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
+  const driving = panel?.driving === true;
+  const ready = panel !== null && panel.available && !panel.busy;
+  const renderTab = (tab: BrowserCaptionTab, agentTab: boolean) => (
+    <div key={tab.id} role="tab" aria-selected={tab.id === panel?.activeTabId} className={`op-browser__tab${tab.id === panel?.activeTabId ? " is-active" : ""}`} onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }} onClick={() => { if (tab.id !== panel?.activeTabId) panel?.actions.selectTab(tab.id); }} title={agentTab ? `${tab.url} · ${t("terminal.browser.space.agentTab")}` : tab.url}>
+      <TabIcon objectiveId={context.objectiveId} tab={tab} />
+      <span className="op-browser__tab-title">{tab.title || hostOf(tab.url) || t("terminal.browser.newTab")}</span>
+      {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
+      <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
+    </div>
+  );
+  return (
+    <div ref={capRef} className={`op-browser-cap${driving ? " is-driving" : ""}`} onPointerDown={stop} onWheel={stop} {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : {})}>
+      <div ref={stripRef} className="op-browser-cap__tabs">
+        {humanTabs.length > 0 ? <div className="op-browser__space-tabs op-browser__human-tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>{humanTabs.map((tab) => renderTab(tab, false))}</div> : null}
+        {shownGroups.map((group) => {
+          const { space } = group;
+          const name = spaceName(space);
+          const isHome = space.id === home;
+          const count = String(group.tabs.length);
+          return (
+            <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} data-hue={spaceHue(space)} data-space-kind={space.kind}>
+              <button
+                type="button"
+                className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
+                aria-expanded={group.open}
+                title={t(isHome ? "terminal.browser.space.chipHome" : "terminal.browser.space.chip", { name, count })}
+                disabled={!panel?.available}
+                onClick={() => pickSpace(space, group.open)}
+              >
+                <span className="op-browser__space-swatch" aria-hidden="true" />
+                <span className="op-browser__space-name">{name}</span>
+                {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
+                {space.driving ? <span className="op-browser__space-driving" role="img" aria-label={t("terminal.browser.space.driving")} /> : null}
+              </button>
+              {group.open && group.tabs.length > 0 ? (
+                <div className="op-browser__space-tabs" role="tablist" aria-label={`${name} — ${t("terminal.browser.tabs")}`}>
+                  {group.tabs.map((tab) => renderTab(tab, space.agentTabIds.includes(tab.id)))}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {hiddenGroups.length > 0 ? (
+        <div className="op-browser__more" ref={moreRef}>
+          <button type="button" className="op-browser__more-button" aria-haspopup="menu" aria-expanded={moreOpen} aria-label={t("terminal.browser.space.more", { count: String(hiddenGroups.length) })} onClick={() => setMoreMenu((open) => !open)}>
+            +{hiddenGroups.length}
+            {hiddenGroups.some((group) => group.space.driving) ? <span className="op-browser__space-driving" aria-hidden="true" /> : null}
+          </button>
+          {moreOpen ? (
+            <div className="op-browser__menu op-browser__menu--spaces" role="menu" aria-label={t("terminal.browser.space.moreMenu")}>
+              {hiddenGroups.map((group) => (
+                <button key={group.space.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__space-item" data-hue={spaceHue(group.space)} onClick={() => { setMoreMenu(false); pickSpace(group.space, false); }}>
+                  <span className="op-browser__space-swatch" aria-hidden="true" />
+                  <span className="op-browser__space-name">{spaceName(group.space)}</span>
+                  <span className="op-browser__space-count">{group.tabs.length}</span>
+                  {group.space.driving ? <span className="op-browser__space-driving" role="img" aria-label={t("terminal.browser.space.driving")} /> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {away && home !== null && !shownIds.has(home) ? (
+        <button type="button" className="op-browser__space-home" title={t("terminal.browser.space.backHomeTip")} onClick={() => { if (home !== null) panel?.actions.selectSpace(home); }}>
+          <BackGlyph />
+          <span>{t("terminal.browser.space.backHome")}</span>
+        </button>
+      ) : null}
+      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
+      <span className="op-browser-cap__spacer" />
     </div>
   );
 }
@@ -1327,6 +1345,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   };
   const hoverInfo = draftPin?.element ?? hover;
   const hoverBox = highlightBox(hoverInfo);
+  const navTail = React.useContext(BrowserNavTailContext);
   const closedDoor = !available ? unavailableText(t, state?.reason ?? null, services.isDesktopShell()) : null;
 
   return (
@@ -1416,6 +1435,8 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         </form>
         {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
         <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
+        <BrowserTools objectiveId={objectiveId} language={language} />
+        {navTail}
       </div>
       <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
         {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (

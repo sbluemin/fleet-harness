@@ -113,12 +113,15 @@ export function useBrowserOpenRequest(objectiveId: string): BrowserOpenRequest |
  * 그 아래가 가려지고 클릭도 받지 못한다. 대화상자는 `aria-modal` 로 그 사실을 스스로 말하지만 메뉴는 모달이
  * 아니므로(그렇게 만들면 보조기술에 거짓말이 된다) 여기로 알린다.
  */
-const captionOverlays = new Map<string, boolean>();
+// 열린 메뉴를 가진 쪽(캡션의 「+N」, 주소줄의 도구 메뉴)이 각자 자기 몫만 알린다 — 하나라도 열려 있으면 뷰가 물러선다.
+const captionOverlays = new Map<string, Set<string>>();
 const overlayListeners = new Map<string, Set<() => void>>();
 
-export function publishBrowserCaptionOverlay(objectiveId: string, open: boolean): void {
-  if ((captionOverlays.get(objectiveId) ?? false) === open) return;
-  if (open) captionOverlays.set(objectiveId, true); else captionOverlays.delete(objectiveId);
+export function publishBrowserCaptionOverlay(objectiveId: string, source: string, open: boolean): void {
+  const sources = captionOverlays.get(objectiveId) ?? new Set<string>();
+  if (sources.has(source) === open) return;
+  if (open) sources.add(source); else sources.delete(source);
+  if (sources.size > 0) captionOverlays.set(objectiveId, sources); else captionOverlays.delete(objectiveId);
   for (const listener of overlayListeners.get(objectiveId) ?? []) listener();
 }
 
@@ -128,8 +131,16 @@ export function useBrowserCaptionOverlay(objectiveId: string): boolean {
     set.add(listener); overlayListeners.set(objectiveId, set);
     return () => { set.delete(listener); if (set.size === 0) overlayListeners.delete(objectiveId); };
   }, [objectiveId]);
-  return React.useSyncExternalStore(subscribe, () => captionOverlays.get(objectiveId) ?? false, () => false);
+  return React.useSyncExternalStore(subscribe, () => (captionOverlays.get(objectiveId)?.size ?? 0) > 0, () => false);
 }
+
+// ---------- 주소줄 끝에 놓이는 칸의 동작 ----------
+
+/**
+ * 머리 없는 브라우저 칸을 그리는 작업대가 주소줄 끝에 이어 붙일 동작(펼치기)을 내려 준다 — 도구모음(세션·뷰포트)과 한 묶음으로 선다.
+ * 머리가 있는 칸에서는 그 동작이 머리에 있으므로 비어 있다.
+ */
+export const BrowserNavTailContext = React.createContext<React.ReactNode>(null);
 
 // ---------- 네이티브 뷰를 실은 칸의 끌기 ----------
 
