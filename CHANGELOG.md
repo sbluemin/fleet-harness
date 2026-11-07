@@ -5,6 +5,20 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.288.0] - 2026-11-07
+
+### fleet-console
+
+#### Added
+- The Commander model picker in Commodore settings offers "Commodore decides" again, so the Commodore picks the Commander model for each objective.
+- The Commodore and Commander model pickers list a Fast option separately for models that support it, and that choice applies to those sessions ahead of the AI Gateway Fast toggle.
+- Hide not-started and finished objectives in the left sidebar from a commodore's ... menu; they are shown by default.
+
+#### Changed
+- In a commander or member chat, the title chip now shows the commodore next to the objective, and its Objective, Members, and Library buttons open one floating window you can move and resize, like the results window.
+- Opening an objective no longer changes the right sidebar: it keeps showing that commodore's Tasks, Info, and Settings and stays open or closed as you left it.
+- Objective, Members, and Library buttons are back on the right sidebar's Tasks rows and expand that section under the row.
+
 ## [1.287.0] - 2026-11-07
 
 ### fleet-console
