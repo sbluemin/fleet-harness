@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-desktop",
-  "version": "0.30.2",
+  "version": "0.31.0",
   "description": "Fleet Console Electron main-process host.",
   "private": true,
   "type": "module",
