@@ -1,4 +1,5 @@
 import { MenuCheckGlyph } from "@fleet-console/ui/react";
+import { nativeViewCovered, observeNativeViewCover } from "@fleet-console/ui/native-view";
 import * as React from "react";
 import type { ObjectiveRenderContext } from "../../execution/shared/client-contract.js";
 import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
@@ -934,7 +935,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       // 끄는 포인터를 뷰가 가져가지 않게 하고, 놓은 뒤 정착한 자리에 한 번 다시 놓는다.
       const intent = getNativeViewResize();
       const held = (intent !== null && intent.held && intent.container.contains(element)) || element.closest('[data-resizing="true"]') !== null;
-      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay || addressOverlayOpen || held;
+      const covered = nativeViewCovered() || captionOverlay || addressOverlayOpen || held;
       const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
       const visible = shown ? visibleRect(host, rect) : null;
@@ -1025,6 +1026,8 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     window.addEventListener("resize", measure);
     document.addEventListener("visibilitychange", measure);
     const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
+    // 가림 표면(모달·승인 팝오버처럼 `data-covers-native-view` 를 단 것)이 붙고 떨어지는 순간 곧바로 재는다 — 폴링을 기다리면 그동안 가려진다.
+    const unobserveCover = observeNativeViewCover(measure);
 
     return () => {
       disposed = true;
@@ -1040,6 +1043,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       window.removeEventListener("resize", measure);
       document.removeEventListener("visibilitychange", measure);
       clearInterval(timer);
+      unobserveCover();
     };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.

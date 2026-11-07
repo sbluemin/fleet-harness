@@ -5,6 +5,8 @@ import { loadCommodore, useCommodore } from "../../../commodore/client/commodore
 import { readCommodoreList, subscribeCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { focusObjective, readAllTheaters, subscribeObjective } from "../../../objectives/client/objectives-state.js";
 
+import { NATIVE_VIEW_COVER_ATTRIBUTE } from "@fleet-console/ui/native-view";
+
 import "./approval.css";
 import { ApprovalActions, ApprovalCardFrame, ApprovalComputerCard, ApprovalDiff, DescriptionGlyph, IntelGlyph, LifeRing, announceText, approvalSecondsLeft, formatApprovalTime, toastText, useApprovalAnswer } from "./cards.js";
 import { approvalAnnounce, approvalArrival, approvalItems, approvalOpen, approvalToasts, closeApprovalList, installApprovals, subscribeApprovals, toggleApprovalList, type ApprovalItem } from "./store.js";
@@ -76,7 +78,7 @@ function ApprovalList() {
   const nibRef = useRef<HTMLSpanElement>(null);
   useAnchoredApprovalSurface(panelRef, nibRef);
   return (
-    <div ref={panelRef} className="approval-surface" role="dialog" aria-modal="false" aria-labelledby="approval-surface-title">
+    <div ref={panelRef} className="approval-surface" role="dialog" aria-modal="false" {...{ [NATIVE_VIEW_COVER_ATTRIBUTE]: "" }} aria-labelledby="approval-surface-title">
       <span ref={nibRef} className="approval-nib" aria-hidden="true" />
       <header className="approval-surface-head">
         <h2 id="approval-surface-title">{t("approval.title")}</h2>
