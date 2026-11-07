@@ -1036,8 +1036,6 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     const timer = setInterval(measure, NATIVE_PLACE_POLL_MS);
     // 가림 표면(모달·승인 팝오버처럼 `data-covers-native-view` 를 단 것)이 붙고 떨어지는 순간 곧바로 재는다 — 폴링을 기다리면 그동안 가려진다.
     const unobserveCover = observeNativeViewCover(measure);
-    // 셸이 표면을 자식 창에 띄울 수 있으면, 이 자리를 덮는 비모달 표면은 뷰를 물리지 않고 그 창에 그려진다.
-    const releaseFloat = retainNativeFloat();
 
     return () => {
       disposed = true;
@@ -1054,12 +1052,14 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       document.removeEventListener("visibilitychange", measure);
       clearInterval(timer);
       unobserveCover();
-      releaseFloat();
     };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
   // 주소 제안도 같은 가림 경로에 합친다. 캡션의 단일 발행 상태를 덮어쓰지 않는다.
   }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen]);
+  // 셸이 표면을 자식 창에 띄울 수 있으면, 이 자리를 덮는 비모달 표면은 뷰를 물리지 않고 그 창에 그려진다.
+  // 자리 재기와 따로 붙든다 — 재기 효과는 가림 신호마다 다시 걸리고, 그때마다 자식 창을 내렸다 올리면 깜빡인다.
+  React.useEffect(() => retainNativeFloat(), []);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => {
     if (placeRef.current) {

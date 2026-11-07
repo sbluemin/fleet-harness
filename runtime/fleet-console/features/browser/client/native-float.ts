@@ -163,7 +163,8 @@ function candidates(): { readonly target: string | null; readonly elements: HTML
     const rect = element.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return false;
     const style = getComputedStyle(element);
-    return style.visibility !== "hidden" && Number(style.opacity) > 0.01;
+    // 자식 창에 그려지는 동안 원본은 스스로 투명해진다(`native-float.css`) — 그 투명함은 닫힘이 아니다.
+    return style.visibility !== "hidden" && (element.getAttribute(NATIVE_FLOAT_ATTRIBUTE) === "shown" || Number(style.opacity) > 0.01);
   });
   if (covers.length === 0) return { target: null, elements: [] };
   for (const host of document.querySelectorAll<HTMLElement>(`[${NATIVE_FLOAT_TARGET_ATTRIBUTE}]`)) {
