@@ -17,7 +17,7 @@
   animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel); }
 .workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
 @media (prefers-reduced-motion: reduce) { :is(.workbench-band-chrome:has(> .op-browser-cap.is-driving), .workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving))::after { animation: none; background: var(--agent-control-badge); } }
-.op-browser__tab { position: relative; display: inline-flex; flex: 0 1 auto; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 72px; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
+.op-browser__tab { position: relative; display: inline-flex; flex: 0 1 auto; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 56px; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
 .op-browser__tab:hover { background: var(--ink-veil); }
 .op-browser__tab.is-active { background: var(--ink-veil); color: var(--text-primary); border-color: var(--hairline-strong); }
 .op-browser__tab-icon { flex: none; width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
@@ -36,9 +36,10 @@
 .op-browser__space-group[data-hue="2"], .op-browser__space-item[data-hue="2"] { --browser-space-c: var(--id-space-clay); }
 .op-browser__space-group[data-hue="3"], .op-browser__space-item[data-hue="3"] { --browser-space-c: var(--id-space-orchid); }
 .op-browser__space-group[data-hue="4"], .op-browser__space-item[data-hue="4"] { --browser-space-c: var(--id-space-olive); }
-.op-browser__space-group { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; }
-.op-browser__space-tabs { min-width: 0; display: flex; align-items: center; gap: 2px; }
-.op-browser__space { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); max-width: 140px; height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 12%, transparent); color: var(--text-primary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+/* 좁은 띠에서는 칩과 탭이 그룹 안에서 함께 줄어든다 — 그룹이 내용보다 좁아져 옆 그룹·「+N」 위로 겹쳐 그려지지 않게 넘침을 자른다. */
+.op-browser__space-group { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.op-browser__space-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.op-browser__space { flex: 0 1 auto; min-width: 44px; display: inline-flex; align-items: center; gap: var(--space-1); max-width: 140px; height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 12%, transparent); color: var(--text-primary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
 .op-browser__space.is-open { background: color-mix(in oklch, var(--browser-space-c) 24%, transparent); }
 .op-browser__space:hover:not(:disabled) { background-image: linear-gradient(var(--wash-hover), var(--wash-hover)); }
 .op-browser__space:focus-visible { box-shadow: var(--focus-face); outline: none; }

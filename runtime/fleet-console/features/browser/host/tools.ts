@@ -61,9 +61,9 @@ const TAB_ID = { type: "string", description: "Target tab ID." };
  */
 export const BROWSER_MCP_INSTRUCTIONS = [
   "Fleet Browser is one browser shared by everyone under your commodore and divided into spaces, like tab groups. The commodore has its own space; an objective's commander and members share that objective's space. Browsers of other commodores are never reachable.",
-  "Your current-tab selection is private; tabs are shared. A call without tabId acts on your current tab: the tab in your space that you last opened, navigated, or chose with tabs_select. Other agents and the person never change it. Closing the selected tab clears it. With no current tab, navigate opens one in your space; other tools ask for a tabId.",
+  "Your current-tab selection is private; tabs are shared. For tab-targeted calls, omitted tabId uses your current-tab selection: the tab in your space that you last opened, navigated, or chose with tabs_select. Other agents and the person never change it. Closing the selected tab clears it.",
   "Calls do not switch the displayed tab; tabs_select(show:true) reveals a tab.",
-  "tabs_context(all:true) lists the other spaces; their tabs are read-only to you.",
+  "tabs_context(all:true) lists the other spaces. Other spaces are read-only and require explicit tabId; JavaScript is refused there.",
 ].join("\n\n");
 
 export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
@@ -178,7 +178,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     type: "object", properties: { tabId: TAB_ID, region: { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4 } }, additionalProperties: false,
   }, "read", async (args, objectiveId, signal, caller) => ({ content: await screenshotBlock(objectiveId, args.tabId, signal, args.region ? { x: args.region[0], y: args.region[1], width: args.region[2], height: args.region[3] } : undefined, caller), isError: false }));
 
-  const navigate = spec("navigate", "Navigate a tab to a URL, or go back/forward/reload in its history. With no current tab, opens one in your space. A tab in your space becomes your current tab. Any http(s) URL is allowed.", {
+  const navigate = spec("navigate", "Navigate a tab to a URL, or go back/forward/reload in its history. With neither tabId nor a current tab, a URL opens a new tab in your space. A tab in your space becomes your current tab. Any http(s) URL is allowed.", {
     type: "object", properties: { url: { type: "string", description: "Absolute URL, or one of \"back\", \"forward\", \"reload\"." }, tabId: TAB_ID }, required: ["url"], additionalProperties: false,
   }, "open", async (args, objectiveId, _signal, caller) => {
     const result = await service.navigate(objectiveId, String(args.url), "agent", args.tabId ?? null, caller);

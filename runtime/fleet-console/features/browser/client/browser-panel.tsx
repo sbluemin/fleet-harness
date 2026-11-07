@@ -403,12 +403,14 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
     if (home !== null && !byId.has(home)) byId.set(home, blank(home));
     const ordered = [...byId.values()].sort((a, b) => Number(b.id === home) - Number(a.id === home));
     return ordered
-      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === home || space.id === displayed || expanded.includes(space.id) }))
+      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 좁은 띠에서 보는 스페이스의 탭이 읽히게. home 칩을 누르면 돌아온다.
+      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || expanded.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
       .filter((group) => group.tabs.length > 0 || group.space.id === home);
   })();
-  // 띠에 남길 스페이스: home, 지금 보는 스페이스, 나머지 순. 그려지는 순서는 그대로 두어 칩이 뛰어다니지 않게 한다.
+  // 띠에 남길 스페이스: 지금 보는 스페이스, home, 나머지 순 — 화면에 뜬 탭의 스페이스가 숨으면 무엇을 보는지 알 수 없다.
+  // home 은 「내 스페이스로」로 언제나 돌아갈 수 있다. 그려지는 순서는 그대로 두어 칩이 뛰어다니지 않게 한다.
   const shownCount = Math.min(fitLimit, groups.length);
-  const priority = [...groups].sort((a, b) => Number(b.space.id === displayed) - Number(a.space.id === displayed)).sort((a, b) => Number(b.space.id === home) - Number(a.space.id === home));
+  const priority = [...groups].sort((a, b) => Number(b.space.id === home) - Number(a.space.id === home)).sort((a, b) => Number(b.space.id === displayed) - Number(a.space.id === displayed));
   const shownIds = new Set(priority.slice(0, shownCount).map((group) => group.space.id));
   const shownGroups = groups.filter((group) => shownIds.has(group.space.id));
   const hiddenGroups = groups.filter((group) => !shownIds.has(group.space.id));
@@ -533,7 +535,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
           ) : null}
         </div>
       ) : null}
-      {away ? (
+      {away && home !== null && !shownIds.has(home) ? (
         <button type="button" className="op-browser__space-home" title={t("terminal.browser.space.backHomeTip")} onClick={() => { if (home !== null) panel?.actions.selectSpace(home); }}>
           <BackGlyph />
           <span>{t("terminal.browser.space.backHome")}</span>
@@ -1288,6 +1290,17 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 손잡이는 매 렌더 새로 만들어도 같은 뜻이다; 상태·busy 가 바뀔 때만 올린다.
   }, [objectiveId, state, busy, available, homeSpaceId]);
   React.useEffect(() => () => publishBrowserPanel(objectiveId, null), [objectiveId]);
+  // 대화를 열면 그 대화의 스페이스를 띄운다 — 다른 대화에서 보던 스페이스가 화면에 남아 있어도 이 대화의 탭으로 돌아온다.
+  // 열 때 한 번뿐이다: 그 뒤 사람이 다른 스페이스를 고르면 그대로 둔다.
+  const homedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!available || !state || homeSpaceId === null) return;
+    const key = `${objectiveId}|${homeSpaceId}`;
+    if (homedRef.current === key) return;
+    homedRef.current = key;
+    if (state.displayedSpaceId !== homeSpaceId && state.tabs.some((tab) => tab.spaceId === homeSpaceId)) void run("space", { spaceId: homeSpaceId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run 은 매 렌더 새로 만들어도 같은 뜻이다.
+  }, [available, state, homeSpaceId, objectiveId]);
 
   // CLI·채팅에서 고른 주소. 문을 누른 순간 이 패널이 마운트되므로 요청이 먼저 놓여 있고, 엔진이 아직
   // 뜨는 중이면 열 수 있게 될 때까지 기다린다. 링크는 새 탭에서 열고, 빈 탭만 그 자리에서 쓴다 —
