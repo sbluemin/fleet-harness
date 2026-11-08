@@ -1,5 +1,7 @@
 # Console observation and verification
 
+Data a run needs before the first navigation (commodores, theaters, objectives) is seeded by [Seed an owned Console](seed.md).
+
 ## Observe, act, observe
 
 1. Capture the target route, accessibility snapshot, console/errors, and relevant network evidence before acting: `snapshot -i`, `errors`, and `console` on agent-browser/CDP; `read_page`, `read_console_messages`, and `read_network_requests` on Fleet Browser.
