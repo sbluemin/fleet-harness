@@ -385,6 +385,8 @@ async function boot(): Promise<void> {
         refresher?.refresh();
       };
       base.once("closed", () => { refresher?.stop(); if (companionOverlayRefresher === refresher) companionOverlayRefresher = null; });
+      // 빈 탭에는 네이티브 뷰가 없어 browserViews.refresh()가 이 창의 Console 뷰를 다시 놓지 않는다 — 크기가 바뀌면 여기서 직접 맞춘다.
+      base.on("resize", () => { child.stack.layoutConsole(); });
       base.on("resize", refreshChrome);
       base.on("move", refreshChrome);
       child.consoleContents.on("zoom-changed", refreshChrome);
