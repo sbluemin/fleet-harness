@@ -1,7 +1,7 @@
 /* Objective Browser companion — 호스트는 머리만 그리고, 여기서는 탭 레일·탐색·화면·상태줄을 채운다.
    색은 채널 규약대로: 에이전트 조작은 --agent-control-badge(배지 채널), 오류는 coral, 라이브는 aurora,
    위치·포커스는 brass. */
-.op-browser { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--ink-deep); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); }
+.op-browser { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--conversation-surface, var(--canvas-abyss)); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); }
 @keyframes op-browser-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* ---- 세로 탭 레일 — 브라우저 본문 왼쪽, Chrome 「세로로 탭 표시」 모양. ----
@@ -11,7 +11,7 @@
 .op-browser__body > .op-browser__viewport { min-width: 0; }
 .op-browser-rail-slot { --op-rail-collapsed: 54px; --op-rail-expanded: 237px; position: relative; z-index: 4; flex: none; width: var(--op-rail-collapsed); }
 .op-browser-rail-slot.is-pinned { width: var(--op-rail-expanded); }
-.op-browser-rail { position: absolute; top: 0; bottom: 0; left: 0; width: var(--op-rail-collapsed); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--ink-deep); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); }
+.op-browser-rail { position: absolute; top: 0; bottom: 0; left: 0; width: var(--op-rail-collapsed); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--conversation-surface, var(--canvas-abyss)); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); }
 .op-browser-rail.is-open { width: var(--op-rail-expanded); }
 /* 펼침·접힘 전환 — 폭은 늘 펼친 값에서 시작하고 끝나며, 오른쪽 가장자리만 잘라 움직인다(레이아웃과 가림 표면의 자리가 전환 동안 변하지 않는다).
    접힘은 전환이 끝난 뒤 한 번에 폭이 줄어든다(`RAIL_MOTION_MS`). 자식 창에 떠 있는 동안에는 원본이 아니라 자식 창의 사본이 재생한다. */
@@ -24,7 +24,9 @@
 .op-browser-rail.is-open:not(.is-pinned) { box-shadow: var(--popover-surface-shadow); }
 .op-browser-rail:focus-visible, .op-browser-rail :focus-visible { box-shadow: var(--focus-face); outline: none; }
 /* 에이전트 세션 — 레일은 위쪽이 틴트로 물든다. 레일 양옆에는 이음매 선을 두지 않아 레일이 화면 영역으로 이어진다. */
-.op-browser-rail.is-driving { background: linear-gradient(180deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--ink-deep)), var(--ink-deep) 70%); }
+.op-browser-rail.is-driving { background: linear-gradient(180deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--conversation-surface, var(--canvas-abyss))), var(--conversation-surface, var(--canvas-abyss)) 70%); }
+/* 에이전트가 브라우저를 쓰는 동안 맨 위 줄의 지구본 버튼은 채워진 보라색으로만 말한다 — 바깥으로 퍼지는 링 맥동은 두지 않는다. */
+.fleet-caption-action.is-agent[data-caption-action="browser"]::before { animation: none; opacity: 0; }
 .op-browser-rail__divider { flex: none; height: 1px; margin: 2px 4px; background: var(--hairline); }
 .op-browser-rail__scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-1); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .op-browser-rail.is-open .op-browser-rail__scroll { scrollbar-width: thin; }
@@ -92,7 +94,7 @@
 .op-browser__menu-item[aria-checked="true"] { color: var(--brass-ink); }
 .op-browser__menu-item:hover, .op-browser__menu-item:focus-visible { background: var(--wash-hover); color: var(--text-primary); outline: none; box-shadow: none; }
 
-.op-browser__nav { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); background: var(--ink-deep); }
+.op-browser__nav { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); background: var(--conversation-surface, var(--canvas-abyss)); }
 /* 맨 위 줄로 올라간 주소줄 줄(.op-browser__nav.is-top) — 맨 위 줄(52px)의 브라우저 영역에 세로 가운데로 선다. 면·이음매·헤어라인이 없고, 알약과 아이콘
    단추가 30px 이다. 빈 곳은 창 끌기(drag) 몫이라 줄 자체는 포인터를 받지 않고 컨트롤만 받는다. 이 줄은 .op-browser 밖(맨 위 줄)에 portal 된다. */
 .op-browser__nav.is-top { flex: 1; min-width: 0; box-sizing: border-box; height: 100%; padding: 0 0 0 var(--space-2); border-bottom: 0; background: none; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); pointer-events: none; }
@@ -100,10 +102,9 @@
 .op-browser__nav.is-top :is(.op-browser__icon, .workbench-tile-button) { width: 30px; height: 30px; }
 .op-browser__nav.is-top .op-browser__url { min-width: 120px; height: 30px; }
 html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region: no-drag; }
-/* 같은 에이전트 세션이 주소줄 줄에도 이어진다 — 레일 꼭대기의 틴트가 줄의 왼쪽에서 시작해 오른쪽으로 옅어지고, 줄 아래 2px 선이 같은 말을 한다(움직이지 않는다).
+/* 같은 에이전트 세션이 주소줄 줄에도 이어진다 — 레일 꼭대기의 틴트가 줄의 왼쪽에서 시작해 오른쪽으로 옅어진다. 선은 없다.
    줄이 서는 자리(앱 맨 위 줄·분리 창·칸 안)에 상관없이 줄 자신이 가진 클래스라, 쓰는 중이 아니거나 줄이 없으면 아무것도 그려지지 않는다. */
 .op-browser__nav.is-driving { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, transparent), transparent 70%); }
-.op-browser__nav.is-driving::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none; background: var(--agent-control-badge); }
 /* 접힌 도구(「⋯」) — 팝오버는 줄 아래 본문 위로 내려온다. */
 .op-browser__fold { position: relative; flex: none; align-self: center; }
 .op-browser__fold .op-browser__menu--row { right: 0; width: auto; }
@@ -138,7 +139,7 @@ html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region
 .op-browser__url-external svg { width: 14px; height: 14px; }
 .op-browser__url:has(.op-browser__url-external) .op-browser__url-input { padding-inline-end: 32px; }
 
-.op-browser__viewport { position: relative; flex: 1; min-height: 0; overflow: auto; background: var(--ink-deep); display: flex; justify-content: center; align-items: flex-start; }
+.op-browser__viewport { position: relative; flex: 1; min-height: 0; overflow: auto; background: var(--conversation-surface, var(--canvas-abyss)); display: flex; justify-content: center; align-items: flex-start; }
 .op-browser__viewport.is-responsive { overflow: hidden; }
 .op-browser__stage { position: relative; width: 100%; }
 .op-browser__viewport.is-mobile .op-browser__stage, .op-browser__viewport.is-tablet .op-browser__stage { margin: var(--space-3) auto; box-shadow: 0 0 0 1px var(--hairline-strong); }
@@ -283,18 +284,16 @@ html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region
 
 /* 분리 창의 portal container는 새 레이아웃을 만들지 않는다. 창은 주소줄 줄(caption)과 본문(body)만 받는다. */
 .op-browser-caption-content, .op-browser-body-content { display: contents; }
-.browser-window-document { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--ink-deep); color: var(--text-primary); }
+.browser-window-document { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--conversation-surface, var(--canvas-abyss)); color: var(--text-primary); }
 #browser-window-caption { flex: none; box-sizing: border-box; min-width: 0; height: 52px; display: flex; align-items: center; padding: var(--space-2); border-bottom: 1px solid var(--hairline); }
 /* main Desktop과 같은 52px native controls 줄이다. 드래그는 빈 자리만, 탭·입력·메뉴는 no-drag다. */
 html[data-desktop-shell="true"] .browser-window-document #browser-window-caption { -webkit-app-region: drag; }
 html[data-desktop-shell="true"] .browser-window-document #browser-window-caption :is(button, a, input, select, textarea, [role="tab"], [role="button"], [role="menu"], [role="listbox"], [tabindex]) { -webkit-app-region: no-drag; }
 html[data-desktop-platform="darwin"] .browser-window-document #browser-window-caption { padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-2)); }
 html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
-/* 분리 창에서는 주소줄 줄이 곧 창의 맨 위 줄이다 — 신호등 자리까지 포함한 줄 전체가 틴트와 선을 가진다(줄 안쪽의 것은 거둔다). */
-#browser-window-caption:has(.op-browser__nav.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--ink-deep)), var(--ink-deep) 70%); }
-#browser-window-caption:has(.op-browser__nav.is-driving)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none; background: var(--agent-control-badge); }
+/* 분리 창에서는 주소줄 줄이 곧 창의 맨 위 줄이다 — 신호등 자리까지 포함한 줄 전체가 틴트를 가진다(줄 안쪽의 것은 거둔다). */
+#browser-window-caption:has(.op-browser__nav.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--conversation-surface, var(--canvas-abyss))), var(--conversation-surface, var(--canvas-abyss)) 70%); }
 #browser-window-caption .op-browser__nav.is-driving { background: none; }
-#browser-window-caption .op-browser__nav.is-driving::after { display: none; }
 #browser-window-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #browser-window-body .op-browser { flex: 1; }
 .op-browser__detached { display: flex; align-items: center; justify-content: center; height: 100%; font: inherit; color: var(--text-secondary); }

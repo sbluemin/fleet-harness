@@ -248,7 +248,7 @@
      여백·Windows 캡션 버튼 몫까지 이미 센 폭이라 캡션 몫을 다시 더하지 않는다. 도구가 없을 때만 캡션 몫이 남는다. 분할이 열려
      도구모음이 분할 위로 비키면 그만큼 덜 비운다. 칩 옆 도구 몫(tools-space)은 양쪽에 같이 비운다.
      pill 은 가운데가 "선호"일 뿐 필수가 아니다 — 왼쪽 여백은 A 를 min(A, 64px)까지만 대칭으로 비우고, 그 이상은 pill 이 가운데에서 왼쪽으로 쏠리게
-     둔다(예약을 양쪽에 두 번 먹이지 않는다). 주소줄이 맨 위 줄에 서 있으면(data-nav-standing) 칩 묶음은 왼쪽 정렬이고 남는 폭은 주소줄이 쓴다. */
+     둔다(예약을 양쪽에 두 번 먹이지 않는다). 주소줄이 맨 위 줄에 서 있어도 칩 묶음·컨텍스트·알림 단추는 채팅 칸의 가운데에 서고, 주소줄 몫(nav-space)은 그 칸 밖에서 모자랄 때만 오른쪽 예약으로 센다. */
   --conv-a: max(0px, max(var(--conversation-quota-space) + var(--conversation-nav-space, 0px), var(--conversation-caption-reserve)) - var(--conversation-split-right, 0px));
   --conv-shift: 0px;
   padding: 0 calc(var(--conv-a) + var(--conversation-tools-space, 0px)) 0 calc(min(var(--conv-a), 64px) + var(--conversation-tools-space, 0px));
@@ -256,7 +256,6 @@
   pointer-events: none;
 }
 
-.conversation-pill-row[data-nav-standing] { justify-content: flex-start; padding-left: var(--space-4); }
 /* 칩 묶음이 대칭 여백 안에 들어가지 않으면 가운데를 포기한다 — 왼쪽 여백(칩 옆 도구 몫 + min(A, 64px))을 space-4 로 접어 칩이 왼쪽으로 쏠리며 폭을 얻는다.
    줄임 순서에서 제일 먼저 쓰이고(부제·도구·이름보다 앞), 측정이 매번 이 속성을 지우고 다시 판정한다. */
 .conversation-pill-row[data-left-relax] { padding-left: var(--space-4); }

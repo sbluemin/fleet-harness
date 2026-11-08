@@ -1127,7 +1127,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       observedRow?.style.removeProperty("--conversation-quota-space");
       observedRow?.style.removeProperty("--conversation-tools-space");
       observedRow?.style.removeProperty("--conversation-nav-space");
-      observedRow?.removeAttribute("data-nav-standing");
       observedRow?.removeAttribute("data-clip");
       observedRow?.removeAttribute("data-left-relax");
       const pill = observedRow?.querySelector<HTMLElement>(":scope > .conversation-pill");
@@ -1196,8 +1195,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
         const leadWidth = leadRef.current?.getBoundingClientRect().width ?? 0;
         row.style.setProperty("--conversation-quota-space", leadWidth > 0 ? `calc(${Math.ceil(leadWidth) + 12}px + var(--space-3) + var(--conversation-caption-reserve))` : "0px");
         row.style.setProperty("--conversation-nav-space", navActive ? `${BROWSER_NAV_MIN_PX + 8}px` : "0px");
-        // 주소줄이 맨 위 줄에 서 있으면 칩 묶음은 가운데가 아니라 왼쪽 정렬이다 — 남는 폭은 주소줄 영역이 쓴다(conversation.css `data-nav-standing`).
-        row.toggleAttribute("data-nav-standing", navActive);
         row.style.setProperty("--conversation-tools-space", `${Math.ceil(tools.getBoundingClientRect().width + TOOLS_CHIP_GAP)}px`);
       };
       // 맨 위 줄의 주소줄 자리에 알린다 — 주소줄의 왼쪽 끝(칩 묶음 오른쪽 끝 + space-3)과 그 오른쪽 끝을 정하는 오른쪽 끝 묶음의 폭.
