@@ -9,7 +9,7 @@ import { isDeepStrictEqual } from "node:util";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 import { readObjectiveLaunch, type ObjectiveRecord } from "../shared/records/types.js";
 import { type ObjectiveDescription } from "../shared/records/archive.js";
-import type { ConsoleTurnFailure } from "../../console-use/shared/control.js";
+import type { ConsoleTurnFailure } from "../../execution/shared/control.js";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, attachmentName, imageInfo, type BriefAttachmentInput } from "./attachments.js";
 import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, heldItemStands, type HoldSubject } from "../shared/board-state.js";

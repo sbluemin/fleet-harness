@@ -9,10 +9,10 @@ import { ALL_SUBAGENTS, buildDisabledSkillOverrides, createDelayedPtyWriter, cre
 import { writeGatewayModelCacheForHome } from "@fleet-console/ai-gateway";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AgentOptionsService } from "@fleet-console/infra";
-import type { ConsoleCaller, ConsoleCoordinatesResult } from "../../../console-use/shared/control.js";
+import type { ConsoleCaller, ConsoleCoordinatesResult } from "../../shared/control.js";
 import { sessionRuntime } from "../../../objectives/shared/records/activity.js";
 import { createConsoleTerminalObserver } from "./console-terminal.js";
-import { ConsoleControlError } from "../../../console-use/host/console-control.js";
+import { ConsoleControlError } from "../console-control.js";
 import { readObjectiveLaunch, retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type ObjectiveGeometry, type ObjectiveLaunchKind, type ObjectiveRecord, type ObjectiveRecordPatchInput } from "../../../objectives/shared/records/types.js";
 import { registerRouter } from "../context.js";
 import type { ConsoleRuntimeContext } from "../context.js";

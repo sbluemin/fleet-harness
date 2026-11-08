@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleObjectiveObservation } from "../../console-use/shared/control.js";
+import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleObjectiveObservation } from "../../execution/shared/control.js";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 import { messageChannelKnown, readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPreset, type ObjectiveGroupedEvent } from "../shared/records/types.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";

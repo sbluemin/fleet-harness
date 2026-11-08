@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chatOriginLabel, readChatJournalEvent, type AgentChatOrigin } from "../../features/execution/client/agent/chat/chat-events.js";
 import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
 import { attachAgentChatSocket } from "../../features/execution/host/agent/chat-ws.js";
-import { createConsoleControl } from "../../features/console-use/host/console-control.js";
+import { createConsoleControl } from "../../features/execution/host/console-control.js";
 import { resolveAgentCliBinary } from "../../features/execution/host/agent/agent-cli-paths.js";
 import { LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX, resolveLaunchAttachmentNamespaceRoot } from "../../features/execution/host/agent/launch-attachments.js";
 import type { TerminalRuntime, TerminalSocket } from "../../features/execution/host/terminal/index.js";
@@ -102,9 +102,9 @@ describe("agent chat mode routes", () => {
     };
     const owner = { kind: "plugin" as const, pluginId: "objectives" };
     Object.assign(harness.objectiveRecord(sessionId)!, { launchedBy: owner });
-    const turnEnds: import("../../features/console-use/shared/control.js").ConsoleTurnEnd[] = [];
+    const turnEnds: import("../../features/execution/shared/control.js").ConsoleTurnEnd[] = [];
     cleanups.push(harness.consoleControl.subscribeTurnEnds(owner, (event) => turnEnds.push(event)));
-    const otherTurnEnds: import("../../features/console-use/shared/control.js").ConsoleTurnEnd[] = [];
+    const otherTurnEnds: import("../../features/execution/shared/control.js").ConsoleTurnEnd[] = [];
     cleanups.push(harness.consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId: "other" }, (event) => otherTurnEnds.push(event)));
     await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Continue the mission" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "Continue the mission" }) });
@@ -343,7 +343,7 @@ describe("agent chat mode routes", () => {
 
     // SDK 원시 오류 result만 도착해도 실패 구조와 종료 포트가 만들어진다. 모델 텍스트·도구 호출은 주입하지 않는다.
     const apiError = "API Error: 529 The backend is temporarily overloaded. Please retry.";
-    const turnEnds: import("../../features/console-use/shared/control.js").ConsoleTurnEnd[] = [];
+    const turnEnds: import("../../features/execution/shared/control.js").ConsoleTurnEnd[] = [];
     cleanups.push(harness.consoleControl.subscribeTurnEnds(plugin, (event) => turnEnds.push(event)));
     const sendsBefore = harness.sends.length;
     harness.emitToLatest({ type: "result", subtype: "error_during_execution", is_error: true, errors: [apiError], duration_ms: 1 });

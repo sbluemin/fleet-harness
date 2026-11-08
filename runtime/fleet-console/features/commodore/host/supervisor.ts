@@ -6,7 +6,7 @@ import { CLAUDE_AUTO_COMPACT_RESERVE } from "../../execution/host/agent/agent-se
 import { Buffer } from "node:buffer";
 import type { AgentInputBlock, AttachmentHost } from "../../execution/shared/agent.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import { canonicalModelId, isAgentEffort } from "../../ai-gateway/shared/models.js";
 import type { ModelRosterHost } from "../../ai-gateway/host/model-ports.js";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "../../settings/shared/experiments.js";

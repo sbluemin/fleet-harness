@@ -9,7 +9,7 @@ import type { AgentContextBreakdown, AgentEffort, AgentEvent, AgentInputBlock, A
 import { AGENT_RESERVED_TOOL_GROUPS, type ConsoleResidentAgentHost, type ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
 import { stageClaudeHomeOverlay, type ClaudeHomeLocation, type ClaudeHomeOverlay } from "./home-overlay.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import type { AgentToolGroup } from "../../execution/shared/agent.js";
 
 import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage, type CommodoreVoice } from "./prompt.js";

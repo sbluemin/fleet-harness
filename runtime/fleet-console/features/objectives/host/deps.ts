@@ -1,12 +1,12 @@
-import type { ConsoleUseMcpHost } from "../../console-use/shared/tools.js";
+import type { ConsoleUseMcpHost } from "../../execution/shared/tools.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
-import type { ConsoleControlHost } from "../../console-use/shared/control-port.js";
+import type { ConsoleControlHost } from "../../execution/shared/control-port.js";
 import type { ObjectiveRecordsHost } from "./records/ports.js";
 import type { EventPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import type { CommodoreFeature } from "../../commodore/host/index.js";
 import type { ExperimentsHost } from "../../settings/shared/experiment-ports.js";
 

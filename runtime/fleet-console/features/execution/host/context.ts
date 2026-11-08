@@ -20,7 +20,7 @@ export type ConsoleRuntimeHost = { readonly consoleUse: ConsoleUseMcpHost; reado
   readonly computerUseMcp?: { connect(): import("../../computer-use/host/mcp.js").ComputerUseMcpConnection; revokeObjective(objectiveId: string): void; endParticipant(objectiveId: string): void };
   readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeObjective(objectiveId: string): void | Promise<void>; bindTerminalPaste(paste: (objectiveId: string) => boolean): () => void; endAgentSession(objectiveId: string): void };
   /** 패널 안 허용 요청(콘솔 사용·컴퓨터 사용). 답하는 라우트와, 턴이 끝날 때 붙잡힌 호출을 푸는 곳이 쓴다. */
-  readonly useRequests?: Pick<import("../../console-use/host/use-requests.js").UseRequestBroker, "answer" | "settle" | "leave" | "revoke" | "list">;
+  readonly useRequests?: Pick<import("../../computer-use/host/use-requests.js").UseRequestBroker, "answer" | "settle" | "leave" | "revoke" | "list">;
   /** 자식 세션 → 루트. 세 사용 도구가 공유하는 컨텍스트의 계보 규칙이다(`use-context.ts`). */
   readonly useContext?: import("./use-context.js").UseContext;
   readonly objectiveRecords: Pick<ObjectiveRecordsHost, "list" | "get" | "context" | "create" | "createChild" | "patch" | "restoreMany" | "delete" | "deleteChild" | "isTransitioning">;
@@ -62,7 +62,7 @@ export interface ConsoleRuntimeContext {
    */
   readonly spawnAgentProcess: ClaudeProcessSpawner;
   readonly host: ConsoleRuntimeHost;
-  readonly consoleControl?: import("../../console-use/host/console-control.js").ConsoleControl;
+  readonly consoleControl?: import("./console-control.js").ConsoleControl;
   /**
    * 이 세션이 목표의 지휘관인지 조회한다. 사령관 설정은 지휘관에만 적용한다.
    * 호스트가 Objectives의 공개 보드로 신원을 판별하며 구성원·사령관 본인 세션은 제외한다.

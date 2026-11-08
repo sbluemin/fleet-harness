@@ -13,7 +13,7 @@ import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_B
 import type { AgentEvent, AgentInput } from "../features/execution/shared/agent.js";
 import { CONVERSATION_REFERENCE_MARK as MARK } from "../features/execution/shared/conversation/references.js";
 import { resolveRosterCoordinate, type ModelCoordinate } from "../features/ai-gateway/shared/models.js";
-import { defineConsoleTool } from "../features/console-use/shared/actions.js";
+import { defineConsoleTool } from "../features/execution/shared/actions.js";
 import { DEFAULT_EXPERIMENT_SETTINGS, resolveExperimentSettings } from "../features/settings/shared/experiments.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -39,7 +39,7 @@ import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/boar
 import { commodoreCompactAt, MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
 import type { CommodoreAttachmentReader, CommodorePersonMessageReader, CommodoreTurnBindings } from "../features/objectives/shared/commodore-board.js";
-import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../features/execution/shared/tools.js";
 import { BLOCK_MS, createCommodoreBoardWatch, SETTLE_CHECK_MS, SETTLE_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../features/objectives/host/commodore-board.js";
 
 /** 이 파일의 단일 Theater fixture. 제품 저장소는 경로를 노출하지 않는 색인 포트를 받는다. */

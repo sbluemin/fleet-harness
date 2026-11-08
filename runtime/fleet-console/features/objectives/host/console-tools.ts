@@ -1,9 +1,9 @@
 import type { CommodoreAttachmentReader } from "../shared/commodore-board.js";
 import { commodoreSessionToolName } from "../../commodore/shared/tool-names.js";
 export type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../shared/commodore-board.js";
-import { type ConsoleCaller } from "../../console-use/shared/control.js";
-import { type ConsoleUseCallTarget, type ConsoleMcpTool } from "../../console-use/shared/tools.js";
-import { defineConsoleTool, type ConsoleToolFilter } from "../../console-use/shared/actions.js";
+import { type ConsoleCaller } from "../../execution/shared/control.js";
+import { type ConsoleUseCallTarget, type ConsoleMcpTool } from "../../execution/shared/tools.js";
+import { defineConsoleTool, type ConsoleToolFilter } from "../../execution/shared/actions.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import { z } from "zod";
 

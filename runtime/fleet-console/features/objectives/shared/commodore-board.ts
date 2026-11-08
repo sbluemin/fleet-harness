@@ -1,5 +1,5 @@
 import type { AttachmentHost } from "../../execution/shared/agent.js";
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import type { CommodoreScopeItem } from "../../commodore/shared/contracts/types.js";
 export type CommodoreAttachmentReader = (ids: readonly string[]) => ReturnType<AttachmentHost["read"]>;
 

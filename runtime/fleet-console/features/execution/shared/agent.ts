@@ -1,4 +1,4 @@
-import type { ConsoleUseMcpHost, ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleUseMcpHost, ConsoleMcpTool } from "./tools.js";
 
 export type AgentInputBlock =
   | { readonly type: "text"; readonly text: string }

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
-import { inputIssues, type ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { inputIssues, type ConsoleMcpTool } from "../shared/tools.js";
 import { type AdmiralMcpSession, type AdmiralMcpRegistration, type McpServerTools } from "../shared/admiral-mcp.js";
-import { type ConsoleCaller } from "../../console-use/shared/control.js";
+import { type ConsoleCaller } from "../shared/control.js";
 import { z } from "zod";
 
 export interface AdmiralMcpHostOptions {

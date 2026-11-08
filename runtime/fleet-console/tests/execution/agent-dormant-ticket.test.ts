@@ -7,7 +7,7 @@ import path from "node:path";
 import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import { MAX_LAUNCH_PROMPT_CHARS } from "@fleet-console/agent-runtime/fleet";
 import { readObjectiveLaunch, withObjectiveLaunchPreset, type ObjectiveRecordCreateInput, type ObjectiveRecord, type ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
-import { createConsoleControl } from "../../features/console-use/host/console-control.js";
+import { createConsoleControl } from "../../features/execution/host/console-control.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";

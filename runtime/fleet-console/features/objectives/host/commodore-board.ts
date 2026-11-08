@@ -1,5 +1,5 @@
 import type { CommodoreBoardWakeCode, CommodoreBoardWatch, CommodoreTurnBindings, CommodoreWakeSink } from "../shared/commodore-board.js";
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import { groupIdle, holdTargetOf, inboxReasons, livePersonHold, objectiveStatus, stalledObjectives, stallEpisode, type BoardObserver, type InboxReason, type ObjectiveStatus } from "../shared/board-state.js";
 import type { Objective, ObjectiveEvent } from "../shared/types.js";
 

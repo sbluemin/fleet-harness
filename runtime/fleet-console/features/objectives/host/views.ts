@@ -1,4 +1,4 @@
-import type { ConsoleCaller } from "../../console-use/shared/control.js";
+import type { ConsoleCaller } from "../../execution/shared/control.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import type { PromptLanguage } from "./prompts.js";

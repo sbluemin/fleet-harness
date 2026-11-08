@@ -1,5 +1,5 @@
 import type { GatewayCandidatesResponse } from "@fleet-console/ai-gateway";
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 
 /** 사령관·지휘관에게만 싣는 Gateway 서버 이름. 플러그인 등록 경로에서는 예약어다. */
 export const FLEET_AI_GATEWAY_MCP_SERVER = "fleet-ai-gateway";

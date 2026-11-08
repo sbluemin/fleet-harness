@@ -1,6 +1,6 @@
 import { readObjectiveLaunchSource } from "../../../features/objectives/shared/records/launch-source.js";
 import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../features/objectives/shared/records/types.js";
-import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
+import type { ConsoleControlHost } from "../../../features/execution/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
@@ -45,7 +45,7 @@ import { resolveExperimentSettings, type ConsoleExperimentSettings } from "../..
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { COMMANDER_CANDIDATES_INSTRUCTIONS, createGatewayCandidatesTool, FLEET_AI_GATEWAY_MCP_SERVER } from "../../../features/ai-gateway/host/candidates-tool.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
-import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
+import { createConsoleControl } from "../../../features/execution/host/console-control.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
@@ -64,7 +64,7 @@ import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } fro
 import { BROWSER_COMMODORE_PREFIX, spaceKindOf } from "../../../features/browser/shared/spaces.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
-import { createUseRequestBroker, type ComputerUseLedger } from "../../../features/console-use/host/use-requests.js";
+import { createUseRequestBroker, type ComputerUseLedger } from "../../../features/computer-use/host/use-requests.js";
 import { bindComputerUseApprovals } from "../../../features/computer-use/host/approval.js";
 import { createUseContext } from "../../../features/execution/host/use-context.js";
 import { resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";

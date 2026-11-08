@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { defineConsoleTool } from "../../console-use/shared/actions.js";
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { defineConsoleTool } from "../../execution/shared/actions.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 import type { CommodoreMessageInput } from "./messaging.js";
 import { COMMODORE_EFFORTS, MAX_DESCRIPTION, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_TRANSCRIPT_TEXT } from "../shared/contracts/types.js";

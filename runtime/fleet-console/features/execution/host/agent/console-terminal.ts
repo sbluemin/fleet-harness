@@ -1,5 +1,5 @@
 import { promises as fs, statSync } from "node:fs";
-import type { ConsoleObjectiveObservation } from "../../../console-use/shared/control.js";
+import type { ConsoleObjectiveObservation } from "../../shared/control.js";
 import { chatShellTailFromOutput } from "./chat-events.js";
 import { LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX } from "@fleet-console/agent-runtime/fleet";
 
