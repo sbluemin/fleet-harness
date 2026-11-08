@@ -104,6 +104,31 @@ it("does not overwrite an unread layout after a failed load and retries the pend
   ]);
 });
 
+// 브라우저는 Console 에 하나라 도킹한 칸의 열림·닫힘도 대화를 따라간다 — 어느 대화에서든 사람이 열고 닫은 것이 다음 대화(처음 가는 대화 포함)에 이어진다.
+it("carries the docked browser's open or closed state across conversations", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("fetch", vi.fn((_url: string, init?: RequestInit) => Promise.resolve(init?.method === "PUT"
+    ? new Response("{}")
+    : new Response(JSON.stringify({ layouts: { alpha: { layout: stored, updatedAt: 1 } } })))));
+  workbench.setWorkbenchConversation("alpha");
+  workbench.loadWorkbenchLayouts();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(workbench.isWorkbenchBrowserShown()).toBe(true);
+
+  workbench.setWorkbenchConversation("bravo");
+  expect(workbench.isWorkbenchBrowserShown()).toBe(true);
+  workbench.closeWorkbenchBrowser();
+  workbench.setWorkbenchConversation("alpha");
+  expect(workbench.isWorkbenchBrowserShown()).toBe(false);
+  expect(workbenchTiles(workbench.getWorkbenchLayout()).map((tile) => tile.kind)).toEqual(["entry"]);
+  workbench.setWorkbenchConversation("never-visited");
+  expect(workbench.isWorkbenchBrowserShown()).toBe(false);
+
+  workbench.openWorkbenchBrowser();
+  workbench.setWorkbenchConversation("bravo");
+  expect(workbench.isWorkbenchBrowserShown()).toBe(true);
+});
+
 // 퇴역 진입점·표면(#2343 Files·Repository·Shell, #2035 Skills, 관측된 "files")은
 // 저장된 배치에서 걷어낸다 — 남은 칸이 빈 패널 안내로 그려지지 않게 저장 무결성을 지킨다.
 it("drops retired entry and surface tiles from saved layouts", () => {
