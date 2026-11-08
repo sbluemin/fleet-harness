@@ -828,7 +828,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     },
     stop: async () => {},
   };
-  const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: (pluginId) => pluginId === "fleet-todo" });
+  const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-control"), objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: (pluginId) => pluginId === "fleet-todo" });
   lifecycleCleanups.push(() => consoleControl.dispose());
   let experimentSettings: ConsoleExperimentSettings = { ...DEFAULT_EXPERIMENT_SETTINGS };
   const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };

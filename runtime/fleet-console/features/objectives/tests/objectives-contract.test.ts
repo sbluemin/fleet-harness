@@ -2958,7 +2958,6 @@ describe("Objectives contract", () => {
         },
       },
       events: { registerSseChannel: noop, subscribe: noop, publish: () => undefined },
-      consoleUse: { contribute: noop },
       registerMcp: noop,
     } as unknown as ObjectivesFeatureDeps;
     expect(() => createObjectivesFeature(ctx).dispose()).not.toThrow();
