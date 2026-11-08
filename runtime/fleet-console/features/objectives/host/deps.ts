@@ -2,6 +2,7 @@ import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { ConsoleControlHost } from "../../execution/shared/control-port.js";
+import type { ConsoleCaller } from "../../execution/shared/control.js";
 import type { ObjectiveRecordsHost } from "./records/ports.js";
 import type { EventPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
@@ -22,7 +23,14 @@ export interface ObjectivesFeatureDeps {
   readonly server: ServerOriginPort;
   readonly http: HttpPort;
   readonly security: HttpSecurityPort;
-  readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[]) => () => void;
+  /**
+   * MCP 서버 등록. `scope` 를 주면 예약 등록으로 — 그 세션에만 토큰을 내고 실행 때 다시 승인한다.
+   * 없으면 기존처럼 모든 세션에 낸다.
+   */
+  readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[], scope?: {
+    readonly admit: (caller: ConsoleCaller) => boolean;
+    readonly refusal: string;
+  }) => () => void;
   readonly commodoreCommander?: CommodoreFeature["host"]["commander"];
   /** 새 지휘관 생성 시에만 읽고 저장하는 사령관별 정책. */
   readonly commodoreAutoMemoryEnabled?: CommodoreFeature["commanderAutoMemoryEnabled"];

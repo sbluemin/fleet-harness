@@ -76,7 +76,7 @@ const listActions = {
     fleet: { kind: "read", input: z.object(rows) },
     history: { kind: "read", input: z.object(rows) },
     archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (Unix epoch ms). Newest first; follow nextOffset with the same filter.") }) },
-    // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관의 fleet-objectives search 와 같은 핵심·같은 입력이다.
+    // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관·구성원의 objective_search 와 같은 핵심·같은 입력이다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
     add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan."),
       commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates; ignored if the person set a Commander model. Otherwise required."),

@@ -12,13 +12,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDurableJsonStore } from "@fleet-console/infra";
 import { sanitizeDurableConsoleState } from "../../workspace/host/durable-state.js";
 import { createObjectiveStorage } from "../host/storage.js";
-import { createObjectivesFeature, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER, OBJECTIVES_MCP_SERVER } from "../host/index.js";
+import { createObjectivesFeature, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER } from "../host/index.js";
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../host/attachments.js";
 import { inboxReasons } from "../shared/board-state.js";
 import { createCommodoreBoardTools, createObjectiveConsoleTools, MAX_REMARK } from "../host/console-tools.js";
 import { createLaunchService } from "../host/launch.js";
-import { createCommanderMcpTools, createMemberMcpTools, createObjectiveMcpTools, FLEET_COMMANDER_TOOL_NAMES, FLEET_MEMBER_TOOL_NAMES } from "../host/objective-tools.js";
+import { createCommanderMcpTools, createMemberMcpTools, createObjectiveMcpTools, COMMANDER_TOOL_RENAMES, MEMBER_TOOL_RENAMES, FLEET_COMMANDER_TOOL_NAMES, FLEET_MEMBER_TOOL_NAMES } from "../host/objective-tools.js";
 import { createObjectiveRoutes } from "../host/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../host/store.js";
 import { extensionOf, MAX_FOLLOWUPS, type Objective, type ObjectiveEvent } from "../shared/types.js";
@@ -1532,11 +1532,11 @@ describe("Objectives contract", () => {
     expect((await call("complete_mission", { ...completion, results: [{ kind: "pr", url: "https://github.com/example/project/pull/999" }] }, commander)).structuredContent.error).toBe("objective_done");
     expect(store.find(objective.id)).toEqual(completed);
     expect((await call("detach_result", { objectiveId: objective.id, resultId }, commander)).structuredContent.error).toBe("objective_done");
-    // 보드 검색 — 지휘관과 사령관은 같은 핵심으로 그 사령관의 기록(보관 포함)만 찾는다. 구성원·밖의 세션·다른 사령관은 받지 못한다.
+    // 보드 검색 — 지휘관·구성원과 사령관은 같은 핵심으로 그 사령관의 기록(보관 포함)만 찾는다. 밖의 세션·다른 사령관은 받지 못한다.
     await objectiveRecordsHost.archive(other);
     expect((await call("search", { objectiveId: objective.id, query: "PELICAN rollout" }, commander)).structuredContent).toMatchObject({ total: 1, nextCursor: null, hits: [{ objectiveId: other, status: "archived", part: "brief" }] });
     expect((await call("search", { objectiveId: objective.id, query: "shipped", parts: ["mission"], status: "done" }, commander)).structuredContent).toMatchObject({ total: 1, hits: [{ objectiveId: objective.id, part: "mission", snippet: expect.stringContaining("shipped p1"), prs: expect.arrayContaining([{ number: 2, url: "https://github.com/example/project/pull/2" }]) }] });
-    expect((await call("search", { objectiveId: objective.id, query: "pelican" }, member.id)).structuredContent.error).toBe("not_commander");
+    expect((await call("search", { objectiveId: objective.id, query: "pelican" }, member.id)).structuredContent).toMatchObject({ total: 1, hits: [{ objectiveId: other, status: "archived" }] });
     expect((await call("search", { query: "pelican" })).structuredContent.error).toBe("not_participant");
     expect((await call("search", { query: "pelican" }, "not-a-session")).structuredContent.error).toBe("not_participant");
     const commodoreSearch = async (commodoreId: string) => {
@@ -2854,7 +2854,7 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(2);
       expect(await memberView()).toMatchObject({ unreported: { lastMessage: "No way to report.", reason: { code: "no_report_tool" } } });
-      advertised.set(memberId, ["Bash", "mcp__fleet-objectives__message"]);
+      advertised.set(memberId, ["Bash", "mcp__fleet-member__message_commander"]);
       expect(await memberView()).not.toHaveProperty("noReportTool");
       advertised.delete(memberId);
       expect(await memberView()).not.toHaveProperty("noReportTool");
@@ -3239,25 +3239,25 @@ describe("Objectives contract", () => {
     const commander = createCommanderMcpTools(ctx, store, launch);
     const member = createMemberMcpTools(ctx, store, launch);
     const legacy = createObjectiveMcpTools(ctx, store, launch);
-    // 역할 서버 이름 — 세션 주입이 옮겨갈 때까지 기존 별칭과 함께 둔다.
+    // 역할 서버 이름 — 별칭 `fleet-objectives` 는 배선에서 제거됐다.
     expect(FLEET_COMMANDER_MCP_SERVER).toBe("fleet-commander");
     expect(FLEET_MEMBER_MCP_SERVER).toBe("fleet-member");
-    expect(OBJECTIVES_MCP_SERVER).toBe("fleet-objectives");
     // 지휘관은 21개 전부, 구성원은 6개만 받는다. 목록은 원천 상수와 같은 순서로 같다.
     expect(FLEET_COMMANDER_TOOL_NAMES).toHaveLength(21);
     expect(FLEET_MEMBER_TOOL_NAMES).toHaveLength(6);
     expect(commander.map((tool) => tool.name)).toEqual([...FLEET_COMMANDER_TOOL_NAMES]);
     expect(member.map((tool) => tool.name)).toEqual([...FLEET_MEMBER_TOOL_NAMES]);
-    expect(legacy.map((tool) => tool.name)).toEqual(commander.map((tool) => tool.name));
-    // 구성원 6개는 지휘관 21개의 부분집합이고, 같은 보드 코드의 같은 설명을 낸다.
-    const commanderByName = new Map(commander.map((tool) => [tool.name, tool] as const));
-    for (const tool of member) {
-      expect(commanderByName.has(tool.name)).toBe(true);
-      expect(tool.description).toBe(commanderByName.get(tool.name)!.description);
+    // 같은 보드 코드 한 곳을 공유한다 — 옛 이름에 rename 표를 얹으면 역할 서버와 같은 이름·같은 설명이 된다.
+    expect(commander.map((tool) => tool.name)).toEqual(legacy.map((tool) => COMMANDER_TOOL_RENAMES[tool.name] ?? tool.name));
+    expect(member.map((tool) => tool.name)).toEqual(legacy.filter((tool) => tool.name in MEMBER_TOOL_RENAMES).map((tool) => MEMBER_TOOL_RENAMES[tool.name]!));
+    const legacyByName = new Map(legacy.map((tool) => [tool.name, tool] as const));
+    for (const tool of [...commander, ...member]) {
+      const old = [...Object.entries(COMMANDER_TOOL_RENAMES), ...Object.entries(MEMBER_TOOL_RENAMES)].find(([, renamed]) => renamed === tool.name)?.[0] ?? tool.name;
+      expect(tool.description).toBe(legacyByName.get(old)!.description);
     }
-    // 지휘관 전용 15개는 구성원 서버에 실리지 않는다 — 수신 자체가 없어 거절이 생기지 않는다.
+    // 지휘관 전용 15개는 구성원 서버에 실리지 않는다 — 수신 자체가 없어 거절이 생기지 않는다. message 는 역할마다 이름이 다르다.
     for (const tool of commander) {
-      if (([...FLEET_MEMBER_TOOL_NAMES] as readonly string[]).includes(tool.name)) continue;
+      if (tool.name === "member_message" || ([...FLEET_MEMBER_TOOL_NAMES] as readonly string[]).includes(tool.name)) continue;
       expect(member.some((entry) => entry.name === tool.name)).toBe(false);
     }
   });

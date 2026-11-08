@@ -254,7 +254,7 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "launchBy
   readonly failure?: ObjectiveMemberFailure;
   /** 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다. */
   readonly unreported?: ObjectiveMemberUnreported;
-  /** 떠 있는 세션이 init 에서 광고한 도구에 보고 도구(fleet-objectives message)가 없다 — 표시만 하고 발주·기동은 막지 않는다. 목록을 모르면 없다. */
+  /** 떠 있는 세션이 init 에서 광고한 도구에 역할 서버의 보고 도구(message)가 없다 — 표시만 하고 발주·기동은 막지 않는다. 목록을 모르면 없다. */
   readonly noReportTool?: true;
 }
 

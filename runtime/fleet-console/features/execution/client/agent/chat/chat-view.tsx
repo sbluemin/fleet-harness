@@ -43,7 +43,7 @@ import {
   type AgentChatTurnItem,
   chatOriginLabel,
   isPersonQueueEntry,
-  OBJECTIVE_MESSAGE_TOOL,
+  OBJECTIVE_MESSAGE_TOOLS,
   objectiveMessageLedgerDetail,
   rosterSenderLabel,
   type AgentChatQueueEntry,
@@ -3440,7 +3440,7 @@ function formatCount(value: number): string {
 /** 메시지 도구의 `→ commander` 만 화면 언어로 바꾸고, 세션 이름·id 는 줄에서 뺀다. 다른 도구의 좌표는 그대로다. */
 function shownToolDetail(name: string | undefined, detail: string | undefined, language: "en" | "ko"): string {
   if (!detail) return "";
-  const shown = name === OBJECTIVE_MESSAGE_TOOL ? objectiveMessageLedgerDetail(detail, language) : detail;
+  const shown = typeof name === "string" && OBJECTIVE_MESSAGE_TOOLS.has(name) ? objectiveMessageLedgerDetail(detail, language) : detail;
   return shown.trim();
 }
 

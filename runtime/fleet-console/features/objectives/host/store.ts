@@ -571,12 +571,12 @@ function storedFailure(value: StoredMember["failure"]): ObjectiveMemberFailure |
 function storedUnreported(value: StoredMember["unreported"]): ObjectiveMemberUnreported | undefined {
   return value && typeof value === "object" && Number.isFinite(value.at) && (value.reason === null || typeof value.reason === "object") ? value : undefined;
 }
-/** 보고 경로 없음 — 광고 목록을 알고, 그 목록에 보고 도구(fleet-objectives message)가 없을 때만. 목록을 모르면(미기동·init 전) 판정하지 않는다. */
+/** 보고 경로 없음 — 광고 목록을 알고, 그 목록에 역할 서버의 보고 도구(message)가 없을 때만. 목록을 모르면(미기동·init 전) 판정하지 않는다. */
 export function lacksReportTool(tools: readonly string[] | null): boolean {
-  return tools !== null && !tools.includes(REPORT_TOOL);
+  return tools !== null && !tools.some((tool) => REPORT_TOOLS.has(tool));
 }
-/** 구성원이 지휘관에게 보고하는 도구 — MCP 도구 이름. SendMessage는 목표 세션에 광고하지 않는다. */
-export const REPORT_TOOL = "mcp__fleet-objectives__message";
+/** 구성원이 지휘관에게 보고하는 도구 — 역할 서버별 MCP 도구 이름. SendMessage는 목표 세션에 광고하지 않는다. */
+export const REPORT_TOOLS: ReadonlySet<string> = new Set(["mcp__fleet-commander__member_message", "mcp__fleet-member__message_commander"]);
 function storedTurn(value: StoredMember["settledTurn"]): SettledTurn | undefined {
   return value && typeof value === "object" && Number.isFinite(value.revision) && (value.generation === undefined || typeof value.generation === "string") ? value : undefined;
 }

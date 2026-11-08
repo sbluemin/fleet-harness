@@ -27,7 +27,7 @@ const unscopedLabel = (label: string | undefined): string | null => {
 };
 
 /** Console 조립부만 등록하는 예약 서버 이름. 플러그인 경로(`register`)로는 열리지 않는다. */
-const RESERVED_ADMIRAL_MCP_NAMES = new Set(["fleet-ai-gateway"]);
+const RESERVED_ADMIRAL_MCP_NAMES = new Set(["fleet-ai-gateway", "fleet-commander", "fleet-member"]);
 
 /**
  * 예약 서버의 접근 규칙. 세션 라벨로 푼 호출자를 `admit`이 받는 세션에만 토큰을 내고, 실행 때 다시 확인해 거절한다.

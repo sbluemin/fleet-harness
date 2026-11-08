@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Objective, Retrospective } from "../shared/types.js";
 
 /**
- * 보드 검색 — 사령관(`fleet-commodore` objectives search)과 지휘관(`fleet-objectives` search)이 같은 입력과 같은 함수로 부른다.
+ * 보드 검색 — 사령관(`fleet-commodore` objective search)과 지휘관·구성원(`fleet-commander`·`fleet-member` objective_search)이 같은 입력과 같은 함수로 부른다.
  * 원본은 한 사령관의 목표 기록(보관 포함, 정리된 목표 제외)이고, 범위는 호출하는 도구가 정한 사령관 하나다.
  * 단어는 모두(AND) 부분 문자열로 들어 있어야 하며, 목표 하나에 대표 칸 하나를 최신순·결정적으로 돌려준다. 자세한 것은 read 로 읽는다.
  */

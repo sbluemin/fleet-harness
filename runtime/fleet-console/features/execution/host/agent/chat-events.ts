@@ -1648,8 +1648,9 @@ function detailExcerpt(raw: string, lines: number, bytes: number, tail = false, 
   return { kind: "result", text, ...(safe !== normalized ? { masked: true as const } : {}), ...(all.length > selected.length || sliced.length > bytes ? { truncated: true, totalLines: all.length } : {}) };
 }
 
-/** 목표 message 도구. 원장 동사, 그룹 전언, 휴면 이력 필터가 이 이름을 본다. */
+/** 목표 message 도구. 원장 동사, 그룹 전언, 휴면 이력 필터가 이 이름들을 본다. 옛 `fleet-objectives` 이름도 과거 전사 표시를 위해 알아본다. */
 export const OBJECTIVE_MESSAGE_TOOL = "mcp__fleet-objectives__message";
+export const OBJECTIVE_MESSAGE_TOOLS: ReadonlySet<string> = new Set([OBJECTIVE_MESSAGE_TOOL, "mcp__fleet-commander__member_message", "mcp__fleet-member__message_commander"]);
 /** `launch.ts` 의 세션 이름. 원장 한 줄에는 올리지 않는다. */
 const SESSION_NAME_SHAPED = /^objective-[0-9a-f]{6}-(?:cmdr|member-\d+)$/i;
 const ROSTER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1670,8 +1671,12 @@ function objectiveMessageLedgerLine(to: string): string {
  * 힌트 접미(` — …`)는 있어도 된다 — 답장 안내 커밋이 첫 줄을 늘려도 말풍선으로 되살지 않게.
  */
 const OBJECTIVE_RELAY_HEAD = /^\[message from (the Commander|member (.+?) \(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)))(?: — [^\]]*)?\]$/i;
-/** `launch.ts` `channelNotice`. execution 이 objectives 를 import 하지 않으므로 문면을 여기 둔다. */
+/** `launch.ts` `channelNotice`. execution 이 objectives 를 import 하지 않으므로 문면을 여기 둔다. 역할 서버 분리 뒤 문면 4종 + 이관 전 2종(옛 전사 표시용). */
 const OBJECTIVE_CHANNEL_NOTICES = [
+  "이 목표에서 SendMessage와 ListAgents는 없다. fleet-commander의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
+  "이 목표에서 SendMessage와 ListAgents는 없다. fleet-member의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
+  "SendMessage and ListAgents are no longer available in this objective. The fleet-commander message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
+  "SendMessage and ListAgents are no longer available in this objective. The fleet-member message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
   "이 목표에서 SendMessage와 ListAgents는 없다. fleet-objectives의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
   "SendMessage and ListAgents are no longer available in this objective. The fleet-objectives message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
 ];
@@ -1735,7 +1740,7 @@ function toolInputDetail(name: string, input: unknown, options: ChatEventMapOpti
   } else if (name === "SendMessage") {
     // 수신자와 본문은 제공자 세션 신원이 아니다. 둘 다 사용자 텍스트로 취급해 가린다.
     add("message", typeof row.to === "string" ? `→ ${row.to}\n${typeof row.message === "string" ? row.message : ""}` : row.message, 200, TOOL_DETAIL_SIDE_BYTES);
-  } else if (name === OBJECTIVE_MESSAGE_TOOL) {
+  } else if (typeof name === "string" && OBJECTIVE_MESSAGE_TOOLS.has(name)) {
     // 그룹 전언이 이 구간에서 `to` 를 읽는다. 세션 이름도 여기 남기되, 원장 한 줄과 펼친 표시는 클라이언트에서 지운다.
     const to = typeof row.to === "string" ? row.to : "";
     const body = typeof row.text === "string" ? row.text : "";
@@ -1773,7 +1778,7 @@ function toolResultDetail(name: string | undefined, content: unknown, options: C
 export function summarizeToolInput(input: unknown, options: ChatEventMapOptions = {}, name?: string): string {
   if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   const record = input as Record<string, unknown>;
-  if (name === OBJECTIVE_MESSAGE_TOOL && typeof record.to === "string") return objectiveMessageLedgerLine(record.to);
+  if (typeof name === "string" && OBJECTIVE_MESSAGE_TOOLS.has(name) && typeof record.to === "string") return objectiveMessageLedgerLine(record.to);
   for (const key of PATH_KEYS.concat(["to", "command", "pattern", "url", "query", "description", "prompt", "subject"])) {
     const value = record[key];
     if (typeof value === "string" && value.trim().length > 0) {

@@ -9,6 +9,7 @@ import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { createModelCatalog } from "./catalog.js";
+import { FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER } from "./objective-tools.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
 import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type ObjectiveModelSpeed, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
@@ -262,8 +263,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (!ctx.objectiveRecords.patch(sessionId, patch)) throw new ObjectiveStoreError("unknown_objective");
   };
   /**
-   * 알림 문구의 언어를 그 Objective 에 남긴다. 콘솔 사용은 켜지 않는다 — 지휘관과 담당은 `fleet-objectives` 로 일하고
-   * (지휘관은 읽고 쓰고, 담당은 읽기만), Console 이 필요하면 사람이 그 Objective 에서 허용한다.
+   * 알림 문구의 언어를 그 Objective 에 남긴다. 콘솔 사용은 켜지 않는다 — 지휘관은 `fleet-commander` 로,
+   * 구성원은 `fleet-member` 로 일하고(지휘관은 읽고 쓰고, 구성원은 읽고 보고한다), Console 이 필요하면 사람이 그 Objective 에서 허용한다.
    */
   const rememberLanguage = (sessionId: string, language: PromptLanguage) => {
     const node = ctx.objectiveRecords.get(sessionId);
@@ -1194,21 +1195,21 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const reportQuietMs = serviceOptions.reportQuietMs ?? REPORT_QUIET_MS;
   const quietNow = serviceOptions.now ?? (() => Date.now());
   const idleNotified = new Map<string, string>();
-  const channelNotice = (language: PromptLanguage): string => language === "ko"
-    ? "이 목표에서 SendMessage와 ListAgents는 없다. fleet-objectives의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다."
-    : "SendMessage and ListAgents are no longer available in this objective. The fleet-objectives message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.";
+  const channelNotice = (language: PromptLanguage, server: string): string => language === "ko"
+    ? `이 목표에서 SendMessage와 ListAgents는 없다. ${server}의 message 도구가 통로다. 지휘관은 to "commander", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.`
+    : `SendMessage and ListAgents are no longer available in this objective. The ${server} message tool is the channel. Address the Commander with to "commander" and a member with their roster id or role. Session names are not addresses.`;
   /**
    * 모델이 읽는 문면. 화면 말풍선(`display`)은 본문만 남긴다.
    * 첫 줄은 자동 작명이 이 프롬프트를 제목으로 삼지 않게 하는 표식이기도 하다(`auto-name.ts`).
    */
-  const relayModelText = (from: ObjectiveMessageParty, role: string, messageId: string, replyTo: string | undefined, body: string, notice: string | null): string => {
+  const relayModelText = (from: ObjectiveMessageParty, role: string, messageId: string, replyTo: string | undefined, body: string, notice: string | null, server: string): string => {
     const safeRole = role.replace(/[\r\n\]]/g, " ").replace(/\s+/g, " ").trim() || "member";
     const who = from.kind === "commander" ? "the Commander" : `member ${safeRole} (${from.memberId})`;
     // 받는 이가 자기 턴 글로만 답하고 message 를 부르지 않으면 상대 원장에 보고 줄이 없다. 답장 주소를 첫 줄에 적는다.
     // 역할은 겹치거나 safeRole 로 달라지거나 "commander" 일 수 있다. 구성원 답장 주소는 id 만 쓴다.
     const replyAddress = from.kind === "commander" ? "commander" : from.memberId;
     const roleNote = from.kind === "member" ? ` (${safeRole.replace(/"/g, "")})` : "";
-    const head = [`[message from ${who} — reply with the fleet-objectives message tool, to: "${replyAddress}"${roleNote}]`, `messageId: ${messageId}`, ...(replyTo ? [`replyTo: ${replyTo}`] : [])].join("\n");
+    const head = [`[message from ${who} — reply with the ${server} message tool, to: "${replyAddress}"${roleNote}]`, `messageId: ${messageId}`, ...(replyTo ? [`replyTo: ${replyTo}`] : [])].join("\n");
     return notice ? `${head}\n\n${notice}\n\n${body}` : `${head}\n\n${body}`;
   };
   const partyId = (party: ObjectiveMessageParty): string | null => party.kind === "member" ? party.memberId : null;
@@ -1265,7 +1266,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       ? memberFreshTurnNotice(objectiveId, memberRole, ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en")
       : "";
     if (isMemberFresh) ctx.consoleControl?.consumeFreshNotice?.(targetId);
-    const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en"));
+    // 받는 세션의 역할 서버 — 지휘관은 fleet-commander, 구성원은 fleet-member.
+    const roleServer = memberId === null ? FLEET_COMMANDER_MCP_SERVER : FLEET_MEMBER_MCP_SERVER;
+    const text = relayModelText(message.from, speaker.title, message.messageId, message.replyTo, body, told ? null : channelNotice(ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en", roleServer), roleServer);
     try {
       await control().request({
         kind: "send", objectiveId: targetId, text: memberId === null ? withOpenUIFeedback(targetId, text) : `${freshNotice}${text}`, display: body, displayFormat: "markdown",

@@ -555,7 +555,9 @@ describe("console terminal observability", () => {
     try {
       const stopError = await fixture.server.stop().then(() => null, (error: unknown) => error);
       expect.soft(stopError).toBeNull();
-      expect.soft([...runs].sort()).toEqual(["throws"]);
+      // 예약 등록(게이트웨이·역할 서버)마다 release 가 hook 을 한 번씩 돌린다 — 전부 돌고 전부 같은 실패를 남긴다.
+      expect.soft(runs.length).toBeGreaterThanOrEqual(1);
+      expect.soft(new Set(runs)).toEqual(new Set(["throws"]));
       expect.soft(fs.existsSync(fixture.lockFile)).toBe(false);
       expect.soft(warn.mock.calls.filter(([message]) => typeof message === "string" && message.startsWith("[fleet-console] Feature cleanup failed:"))).toHaveLength(1);
     } finally { warn.mockRestore(); fleetAdmiralMock.cleanupHooks.clear(); }

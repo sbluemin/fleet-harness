@@ -1,5 +1,5 @@
 import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot, ObjectiveClusterConversation } from "../../../shared/conversation/types.js";
-import { isPersonQueueEntry, OBJECTIVE_MESSAGE_TOOL, reduceContextLive, reduceContextSnapshot, rosterAddress, type AgentChatContext, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
+import { isPersonQueueEntry, OBJECTIVE_MESSAGE_TOOLS, reduceContextLive, reduceContextSnapshot, rosterAddress, type AgentChatContext, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
 
 const ENTRY_CAP = 600;
 const TEXT_CAP = 60_000;
@@ -93,7 +93,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
     }
     case "tool": {
       // 그룹 전언은 보낸 쪽 원장의 message 도구 줄뿐이다. SendMessage 와 받은 줄은 전언이 아니다.
-      if (event.name !== OBJECTIVE_MESSAGE_TOOL || !event.id) return state;
+      if (typeof event.name !== "string" || !OBJECTIVE_MESSAGE_TOOLS.has(event.name) || !event.id) return state;
       const message = event.toolDetail?.sections.find((section) => section.kind === "message")?.text ?? "";
       const split = message.indexOf("\n");
       const hasRecipient = message.startsWith("→ ");
