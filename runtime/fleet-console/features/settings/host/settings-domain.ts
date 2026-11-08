@@ -229,7 +229,6 @@ export interface ConsoleSettingsData {
    */
   readonly agent?: AgentOptionsData;
   readonly quota?: Record<string, unknown>;
-  readonly scuttlebutt?: Record<string, unknown>;
 }
 
 export interface CreateConsoleSettingsStoreDeps {
@@ -299,11 +298,10 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
   const general = readConsoleGeneralSettings(value.general);
   // 각 문서의 바로 앞 키에서만 승계한다. 현재 최상위 문서가 있으면 항상 우선한다.
   const previous = isRecord(value.plugins) ? value.plugins : {};
-  const document = (key: "execution" | "quota" | "scuttlebutt", oldKey: string = key): Record<string, unknown> | undefined =>
+  const document = (key: "execution" | "quota", oldKey: string = key): Record<string, unknown> | undefined =>
     isRecord(value[key]) ? value[key] : isRecord(previous[oldKey]) ? previous[oldKey] : undefined;
   const execution = document("execution", "terminal");
   const quota = document("quota");
-  const scuttlebutt = document("scuttlebutt");
   const agent = sanitizeAgentOptionsData(value.agent).data;
   const browser = sanitizeConsoleBrowserSettings(value.browser);
   const commodoreOrder = Array.isArray(value.commodoreOrder) ? value.commodoreOrder.filter((id): id is string => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) : [];
@@ -311,7 +309,6 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
     version: SETTINGS_VERSION,
     general: general ?? {},
     ...(quota ? { quota } : {}),
-    ...(scuttlebutt ? { scuttlebutt } : {}),
     ...(execution ? { execution } : {}),
     ...(Object.keys(agent).length > 0 ? { agent } : {}),
     ...(browser ? { browser } : {}),
@@ -941,7 +938,7 @@ interface ExecutionSettingsRouteContext {
 const MAX_EXECUTION_SETTINGS_BYTES = 32 * 1024;
 
 export const SETTINGS_DOCUMENT_API_CATALOG: readonly ApiCatalogEntry[] = [
-  ...["execution", "quota", "scuttlebutt"].flatMap((name): ApiCatalogEntry[] => [
+  ...["execution", "quota"].flatMap((name): ApiCatalogEntry[] => [
     { method: "GET", path: `/api/v1/settings/${name}`, summary: "Read feature settings.", category: "Settings", gate: "loopback", transport: "http" },
     { method: "PUT", path: `/api/v1/settings/${name}`, summary: "Save feature settings.", category: "Settings", gate: "origin-write", transport: "http" },
   ]),
@@ -951,8 +948,7 @@ export function createSettingsDocumentRouter(deps: ExecutionSettingsRouteDeps): 
   return async function handleExecutionSettingsRoute(context: ExecutionSettingsRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
     const key = pathname === "/api/v1/settings/execution" ? "execution"
-      : pathname === "/api/v1/settings/quota" ? "quota"
-      : pathname === "/api/v1/settings/scuttlebutt" ? "scuttlebutt" : null;
+      : pathname === "/api/v1/settings/quota" ? "quota" : null;
     if (key === null) return false;
     if (req.method === "GET") {
       const data = deps.consoleSettingsStore.load();

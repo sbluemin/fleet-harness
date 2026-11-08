@@ -909,11 +909,10 @@ function drawAgentPrism(k: GlanceKit, c: GlancePalette, t: number, reduced: bool
     [L.role0 ?? "", L.role0Sub ?? "", c.warm],
     [L.role1 ?? "", L.role1Sub ?? "", c.flow],
     [L.role2 ?? "", L.role2Sub ?? "", c.result],
-    [L.role3 ?? "", L.role3Sub ?? "", c.ink2],
   ];
   roles.forEach(([n, s, col], i) => {
     const a = atTime(t, 2 + i * 0.15);
-    const x = 40 + i * 106;
+    const x = 40 + i * 150;
     k.orb(x, 264, 5, col, a);
     k.text(n, x + 12, 257, { align: "left", size: 12, weight: 700, a });
     k.text(s, x + 12, 274, { align: "left", size: 11, weight: 500, color: c.ink2, a });

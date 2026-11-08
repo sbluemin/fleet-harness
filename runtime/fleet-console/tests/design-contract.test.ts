@@ -41,7 +41,6 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
   "examples",
 ]);
 const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
-const SCUTTLEBUTT_CSS_PATH = new URL("../features/scuttlebutt/client/styles.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../features/execution/client/agent/index.tsx", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../features/execution/client/agent/agent-cli.css", import.meta.url);
 const TERMINAL_SURFACE_PATH = new URL("../features/execution/client/terminal/shared/terminal-surface.tsx", import.meta.url);
@@ -1329,7 +1328,6 @@ describe("Console core design contract", () => {
   it("pins the popup opacity underlay contract", () => {
     const components = source("styles/components.css");
     const layout = source("styles/layout.css");
-    const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
     // 팝업은 공통 팝업 면(--popover-face) 한 장을 칠한다. 이 채널은 다크 유리 게이트와 투명도 축소
     // 폴백 어느 쪽도 덮어쓰지 않으므로 모든 테마에서 불투명이다 — 상주 크롬·패널만 --glass-underlay로 비친다.
     // 옛 바탕층 이름(--float-underlay)은 아직 옮기지 않은 소비처를 위한 별칭으로만 남는다.
@@ -1365,15 +1363,6 @@ describe("Console core design contract", () => {
     expect(layout).not.toContain(".command-band-menu");
     // Activity Rail의 설정 메뉴는 해체됐다 — 레일에는 포털 팝업 재질이 더는 없다.
     expect(source("styles/rail.css")).not.toContain(".right-rail-menu");
-    // 내장 플러그인 팝업도 같은 면을 칠한다 — 신호 소식은 신호색을 불투명 면에 섞는다.
-    // Quaker aides float over the Map and other busy surfaces, so every speech surface stays on the opaque popover face.
-    for (const selector of [
-      ".scuttlebutt-bird-tag",
-      ".scuttlebutt-bird-say",
-      ".scuttlebutt-answer-bubble",
-      ".scuttlebutt-chat-card",
-    ]) paintsPopoverFace(scuttlebuttCss, selector);
-    expect(scuttlebuttCss).toMatch(/\.scuttlebutt-notice-bubble \{[^}]*background: var\(--scuttlebutt-notice-wash, var\(--popover-face\)\);/);
   });
 
   it("pins one popover size grammar and outline-free keyboard focus", () => {
@@ -2206,31 +2195,6 @@ describe("Console core design contract", () => {
     const components = source("styles/components.css");
     expect(components).toContain("background: var(--qr-field);");
     expect(components).toContain("fill: var(--qr-module);");
-  });
-
-  it("pins immutable Scuttlebutt QK source colors to the base Instrument palette", () => {
-    const theme = source("styles/theme.css");
-    const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
-    const sourceTokens = {
-      "--scuttlebutt-qk-ink-abyss": "oklch(13% 0.014 245)",
-      "--scuttlebutt-qk-ink-deep": "oklch(16.5% 0.016 245)",
-      "--scuttlebutt-qk-ink-veil": "oklch(23.5% 0.02 245)",
-      "--scuttlebutt-qk-ink-rim": "oklch(29% 0.018 245)",
-      "--scuttlebutt-qk-ink-spectral": "oklch(70% 0.012 245)",
-      "--scuttlebutt-qk-ink-pearl": "oklch(94% 0.008 90)",
-      "--scuttlebutt-qk-brass": "oklch(80% 0.085 78)",
-      "--scuttlebutt-qk-brass-deep": "var(--scuttlebutt-qk-brass)",
-      "--scuttlebutt-qk-id-crimson": "oklch(72% 0.065 25)",
-      "--scuttlebutt-qk-id-amber": "oklch(76% 0.062 70)",
-      "--scuttlebutt-qk-id-moss": "oklch(74% 0.06 140)",
-      "--scuttlebutt-qk-id-cerulean": "oklch(73% 0.062 235)",
-      "--scuttlebutt-qk-id-rose": "oklch(73% 0.06 350)",
-    } as const;
-
-    for (const [token, value] of Object.entries(sourceTokens)) {
-      expect(base).toContain(`${token}: ${value};`);
-      expect(theme.match(new RegExp(`${token}:`, "g"))).toHaveLength(1);
-    }
   });
 
   it("keeps real GNB producers aligned with the static CSS gates", () => {

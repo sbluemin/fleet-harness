@@ -4,7 +4,6 @@ import type { ConsoleControlHost } from "../../../features/console-use/shared/co
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
-import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
@@ -25,7 +24,6 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 import { createBrowserDesktopRouter } from "../../../features/browser/host/desktop-routes.js";
 import { createComputerUseRouter } from "../../../features/computer-use/host/routes.js";
-import { createPluginAgentHost } from "../../../features/execution/host/agent/plugin-agent.js";
 import { createRemoteAdminRoutes } from "../../../features/remote-access/host/admin-routes.js";
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
 import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
@@ -2806,31 +2804,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server: consoleFeaturePorts.server, storage: consoleFeaturePorts.storage,
         http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
       });
-      const scuttlebuttAgent = createPluginAgentHost({
-        baseUrl: () => { const origin = consoleFeaturePorts.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
-        consoleUse: consoleUse.forPlugin("scuttlebutt"), computerUseMcp,
-        browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "scuttlebutt" }) },
-        resolveExecutablePath: async () => {
-          const executable = await resolveClaudeExecutable?.();
-          if (!executable) throw new Error("agent_cli_unavailable");
-          return executable;
-        },
-        compactCeiling: () => readGatewayCompactCeiling?.(),
-      });
-      consoleAgentOwners.add("scuttlebutt");
-      featureCleanupCallbacks.add(async () => { consoleAgentOwners.delete("scuttlebutt"); await scuttlebuttAgent.dispose(); });
-      const scuttlebuttFeature = await createScuttlebuttFeature({
-        paths: consoleFeaturePorts.paths,
-        experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
-        http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
-        agent: scuttlebuttAgent,
-      });
-      featureCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
-      for (const feature of [quotaFeature, scuttlebuttFeature]) {
-        for (const route of feature.routes) {
-          routeRegistry.register(route.path, route.handler);
-          executionApiCatalog.push(...route.catalog);
-        }
+      for (const route of quotaFeature.routes) {
+        routeRegistry.register(route.path, route.handler);
+        executionApiCatalog.push(...route.catalog);
       }
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
       // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.

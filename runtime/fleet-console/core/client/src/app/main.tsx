@@ -109,7 +109,7 @@ if (app && hostPicker) {
   await migration;
   // 대화 중심 화면의 본문 렌더러·「구성원」 탭 등록은 훅 밖에서 목표 묶음을 읽는다 — Provider 와 같은 원천을 묶는다.
   bindGroupClusterSource(registry.objectiveRecordClusters);
-  // 부관이 Objective 을 보관·지우면 되돌리기 창을 연다. 감싸기 제스처는 없다.
+  // Console Use 가 Objective 을 보관·지우면 되돌리기 창을 연다. 감싸기 제스처는 없다.
   installConsoleUseGestures({ subscribeConsoleChannel });
   // 보관함의 수와 목록 — 보관된 Objective은 일반 목록에 없으므로 자기 사건으로 따라간다.
   // 첫 읽기는 데스크톱 차선이 열려 있을 때 목록·ready보다 뒤로 밀린다.

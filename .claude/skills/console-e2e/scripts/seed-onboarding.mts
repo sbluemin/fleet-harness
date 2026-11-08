@@ -1,7 +1,6 @@
-// Mark the first-run layers as seen in an owned isolated Console before the first navigation,
-// and optionally lay down the deputy fixtures a scenario needs. (Feature tours and entry hints are removed;
-// the commissioning card, the "Fleet at a glance" first-run popup, and the TaskForce intro card
-// are the layers left.)
+// Mark the first-run layers as seen in an owned isolated Console before the first navigation.
+// (Feature tours and entry hints are removed; the commissioning card, the "Fleet at a glance" first-run
+// popup, and the TaskForce intro card are the layers left.)
 //
 // Keys come from the current source, not a copied list: COMMISSIONING_SEEN_KEY in core's store, plus the
 // first-run keys in features/onboarding/client/seen-store.ts. Run it
@@ -9,11 +8,9 @@
 //
 //   pnpm --dir <worktree>/runtime/fleet-console exec tsx \
 //     <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts \
-//     --console-dir "$E2E_DIR/console" [--keep <key> ...] \
-//     [--deputy <id> ...] [--dry-run]
+//     --console-dir "$E2E_DIR/console" [--keep <key> ...] [--dry-run]
 //
 // --keep leaves a key (or every key with that prefix) unseeded, removing it if already stored, when that layer is under test.
-// --deputy turns on a scuttlebutt deputy and marks the deputy introduction as shown, through the Scuttlebutt settings route.
 // Only loopback writes go to the owned Console named by its lock; no token is read or printed.
 import { readFileSync } from "node:fs";
 import { createRequire, register } from "node:module";
@@ -22,7 +19,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const consoleSrc = join(root, "runtime/fleet-console");
-const featuresDir = join(consoleSrc, "features");
 const load = (path: string) => import(pathToFileURL(path).href);
 
 const args = process.argv.slice(2);
@@ -32,7 +28,6 @@ const option = (name: string): string | undefined => {
 };
 const repeated = (name: string) => args.flatMap((arg, index) => (args[index - 1] === name ? [arg] : []));
 const keep = repeated("--keep");
-const deputies = repeated("--deputy");
 const consoleDir = option("--console-dir");
 if (args.some((arg) => ["--wiki", "--theater", "--commodore"].includes(arg))) throw new Error("Wiki fixtures have been retired.");
 const dryRun = args.some((arg) => arg === "--dry-run");
@@ -55,17 +50,8 @@ const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY a
 const kept = (key: string) => keep.some((entry) => key === entry || (entry.endsWith(".") && key.startsWith(entry)));
 const keys = [...new Set(derived)].filter((key) => !kept(key));
 
-// Deputy ids come from the Scuttlebutt feature's own settings shape, so a renamed or added deputy is refused or accepted as the product does.
-const { getScuttlebuttSettings } = await load(join(featuresDir, "scuttlebutt/client/settings-store.ts"));
-const deputyIds = Object.keys(getScuttlebuttSettings().docked);
-const unknownDeputies = deputies.filter((id) => !deputyIds.includes(id));
-if (unknownDeputies.length > 0) throw new Error(`Unknown deputy: ${unknownDeputies.join(", ")} (known: ${deputyIds.join(", ")}).`);
-
 if (dryRun) {
-  console.log(JSON.stringify({
-    keys, kept: derived.filter(kept),
-    deputies: { requested: deputies, known: deputyIds },
-  }, null, 2));
+  console.log(JSON.stringify({ keys, kept: derived.filter(kept) }, null, 2));
   process.exit(0);
 }
 
@@ -95,19 +81,4 @@ if (missing.length > 0) throw new Error(`Settings did not keep: ${missing.join("
 const lingering = stored.filter(kept);
 if (lingering.length > 0) throw new Error(`Settings still mark kept keys as seen: ${lingering.join(", ")}.`);
 
-// The deputy document is written whole, as the Scuttlebutt settings store writes it; unrelated fields survive.
-let deputy: Record<string, unknown> | null = null;
-if (deputies.length > 0) {
-  const settingsPath = "/api/v1/settings/scuttlebutt";
-  const { value } = await getJson<{ value: Record<string, unknown> | null }>(settingsPath);
-  const patch = Object.fromEntries(deputies.map((id) => [id, true]));
-  await send("PUT", settingsPath, { ...value, ...patch, introduced: true });
-  deputy = (await getJson<{ value: Record<string, unknown> | null }>(settingsPath)).value;
-  const off = [...deputies, "introduced"].filter((field) => deputy?.[field] !== true);
-  if (off.length > 0) throw new Error(`Deputy settings did not keep: ${off.join(", ")}.`);
-}
-
-console.log(JSON.stringify({
-  origin, seeded: keys, kept: derived.filter(kept),
-  deputy: deputy ? Object.fromEntries([...deputies, "introduced"].map((field) => [field, deputy![field]])) : null,
-}, null, 2));
+console.log(JSON.stringify({ origin, seeded: keys, kept: derived.filter(kept) }, null, 2));

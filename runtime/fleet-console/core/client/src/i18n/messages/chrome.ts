@@ -509,7 +509,6 @@ export const chromeEn = {
   "conversation.panel.renameAria": "Rename {title}",
   "conversation.quota.aria": "Usage",
   "conversation.side.newSession": "New session",
-  "conversation.side.pinnedAria": "Pinned",
   "conversation.side.systemAria": "Host, usage and settings",
   "conversation.newSession.title": "New Objective",
   "conversation.newSession.cancel": "Cancel (Esc)",
@@ -655,7 +654,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.launch.attachmentNotSupported": "이 대화는 이미지를 받지 않아요. 텍스트로 물어봐 주세요.",
   "chrome.launch.mentionErrorTargetGone": "그 행선지를 쓸 수 없어요. 다른 곳을 고르거나 지운 뒤 계속해 주세요.",
   "chrome.launch.mentionErrorCapacity": "대화 세션이 모두 답하는 중이에요. 답이 끝나면 다시 보내 주세요.",
-  // 사람(부관)에게는 '에'가 아니라 '에게'다 — Objective은 사물이라 같은 문구를 나눠 쓸 수 없다.
+  // 사람(사령관)에게는 '에'가 아니라 '에게'다 — Objective은 사물이라 같은 문구를 나눠 쓸 수 없다.
   "chrome.launch.errorMentionAttachments": "이 행선지는 이미지를 받지 않아요. 첨부를 지우고 보내 주세요",
   "chrome.launch.mentionErrorBusy": "그 행선지는 아직 답하는 중이에요. 끝난 뒤에 보내 주세요",
   "chrome.launch.mentionErrorResumeUnavailable": "이 목표엔 이어 붙일 세션이 없어요. 패널에서 다시 실행해 주세요",
@@ -1113,7 +1112,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.panel.renameAria": "{title} 이름 바꾸기",
   "conversation.quota.aria": "사용량",
   "conversation.side.newSession": "새 세션",
-  "conversation.side.pinnedAria": "고정",
   "conversation.side.systemAria": "호스트 · 사용량 · 설정",
   "conversation.newSession.title": "새 목표",
   "conversation.newSession.cancel": "취소 (Esc)",

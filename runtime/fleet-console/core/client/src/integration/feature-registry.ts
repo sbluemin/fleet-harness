@@ -24,8 +24,7 @@ import type { SettingsSectionDescriptor } from "../../../../features/settings/sh
 import type { TheaterInboxSectionDescriptor } from "../../../../features/workspace/shared/theater-inbox.js";
 import { quotaClient, installQuotaClient } from "../../../../features/quota/client/index.js";
 import { TasksCommanderList } from "../../../../features/workspace/client/commander-tab/commander-tasks-list.js";
-import { scuttlebuttClient, installScuttlebuttClient } from "../../../../features/scuttlebutt/client/index.js";
-const builtInPlugins = [quotaClient, scuttlebuttClient];
+const builtInPlugins = [quotaClient];
 import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 
 /** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */
@@ -79,8 +78,6 @@ export interface FeatureRegistry {
 
 // 모듈 평가 때 createFeatureRegistry 가 돈다 — 그 안에서 읽는 상수는 이 줄보다 위에 있어야 한다(TDZ).
 const NO_CLUSTERS: readonly ObjectiveCluster[] = [];
-/** 도구모음 Bridge의 끝 자리 — 부관의 글리프. 답 말풍선이 이 글리프를 닻으로 삼아 줄 끝에서 뜬다. */
-export const DEPUTY_COMMAND_BAND_ENTRY_ID = "scuttlebutt:dock";
 const EMPTY_FEATURE_REGISTRY: FeatureRegistry = createFeatureRegistry(builtInPlugins);
 
 const FeatureRegistryContext = createContext<FeatureRegistry>(EMPTY_FEATURE_REGISTRY);
@@ -153,7 +150,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
   }
   return {
     install(deps) {
-      const cleanups = [installConsoleExecution(deps), commodore.install({ chat: deps.chat, rail: deps.rail, api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, composer: deps.composer, conversation: deps.conversation, theaterInbox: deps.theaterInbox, objectiveRecords: deps.objectiveRecords, navigate: deps.navigate, mobileSessions: { List: MobileCommodoreSessions, useAttentionCount: useMobileCommodoreAttentionCount }, mobileActions: { commanders: openMobileCommanderSheet, delete: openCommodoreDeleteSheet, editLook: ({ commodoreId, label, alias }) => openCommodoreLookSheet(commodoreId, label, alias), newSession: (commodoreId) => openMobileNewSession(commodoreId) }, tasksList: { List: TasksCommanderList } }), objectives.install({ api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, objectiveRecords: deps.objectiveRecords, preferences: deps.preferences, runtime: deps.runtime, rail: deps.rail, conversation: deps.conversation, models: deps.models, navigate: deps.navigate, navigation: deps.navigation, composer: deps.composer, surfaces: deps.surfaces, notifications: deps.notifications }), installQuotaClient({ api: deps.api, settings: createSettingsDocumentApi("/api/v1/settings/quota") }), installScuttlebuttClient({ consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, settings: createSettingsDocumentApi("/api/v1/settings/scuttlebutt") })];
+      const cleanups = [installConsoleExecution(deps), commodore.install({ chat: deps.chat, rail: deps.rail, api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, composer: deps.composer, conversation: deps.conversation, theaterInbox: deps.theaterInbox, objectiveRecords: deps.objectiveRecords, navigate: deps.navigate, mobileSessions: { List: MobileCommodoreSessions, useAttentionCount: useMobileCommodoreAttentionCount }, mobileActions: { commanders: openMobileCommanderSheet, delete: openCommodoreDeleteSheet, editLook: ({ commodoreId, label, alias }) => openCommodoreLookSheet(commodoreId, label, alias), newSession: (commodoreId) => openMobileNewSession(commodoreId) }, tasksList: { List: TasksCommanderList } }), objectives.install({ api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, objectiveRecords: deps.objectiveRecords, preferences: deps.preferences, runtime: deps.runtime, rail: deps.rail, conversation: deps.conversation, models: deps.models, navigate: deps.navigate, navigation: deps.navigation, composer: deps.composer, surfaces: deps.surfaces, notifications: deps.notifications }), installQuotaClient({ api: deps.api, settings: createSettingsDocumentApi("/api/v1/settings/quota") })];
       return () => { for (const cleanup of cleanups.reverse()) cleanup(); };
     },
     objectives,
@@ -171,10 +168,10 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),
-    commandBandEntries: deputyLast(providers.flatMap((plugin) => (plugin.commandBandEntries ?? []).map((descriptor) => ({
+    commandBandEntries: providers.flatMap((plugin) => (plugin.commandBandEntries ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
-    })))),
+    }))),
     sidebarFooterEntries: providers.flatMap((plugin) => (plugin.sidebarFooterEntries ?? []).map((descriptor) => ({ ...descriptor, id: `${plugin.id}:${descriptor.id}` }))),
     composerTopEntries: providers.flatMap((plugin) => (plugin.composerTopEntries ?? []).map((descriptor) => ({ ...descriptor, id: `${plugin.id}:${descriptor.id}` }))),
     expandedSurfaces,
@@ -197,14 +194,6 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
     objectiveRecordClusters: combineClusterSources(providers.flatMap((plugin) => (plugin.objectiveRecordClusters ? [{ pluginId: plugin.id ?? "core", source: plugin.objectiveRecordClusters }] : []))),
   };
 }
-/**
- * Bridge 순서: 부관은 늘 끝이고, 나머지(사용 한도 요약 등)는 합성 순서대로 그 앞에 선다. SDK에 순서 필드를
- * 두지 않고 호스트가 한 자리만 고정한다 — 다른 기능을 추가해도 부관 앞이다.
- */
-function deputyLast(entries: readonly CommandBandEntryDescriptor[]): readonly CommandBandEntryDescriptor[] {
-  return [...entries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID), ...entries.filter((entry) => entry.id === DEPUTY_COMMAND_BAND_ENTRY_ID)];
-}
-
 /**
  * 여러 플러그인의 묶음 원천을 하나로. 어느 원천도 참조가 바뀌지 않았으면 합친 배열도 같은 참조를 돌려준다 —
  * 사이드바·대화 화면이 useSyncExternalStore 로 읽으므로 참조가 흔들리면 매 사건마다 다시 그린다.

@@ -669,7 +669,7 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
 }
 
 /**
- * Objective 메뉴의 실험 섹션 — 컴퓨터 사용 스위치만 선다. 콘솔 사용은 부관 전용이라 여기 없다.
+ * Objective 메뉴의 실험 섹션 — 컴퓨터 사용 스위치만 선다. 콘솔 사용은 목표 세션에 열지 않아 여기 없다.
  * 켜져 있는지는 Objective payload가 말한다(서버가 쓴다). 켜고 끄는 것은 재연결 없이 다음 도구 호출부터 듣는다.
  */
 function AgentObjectiveMenu({ context }: { readonly context: ObjectiveMenuContext }) {

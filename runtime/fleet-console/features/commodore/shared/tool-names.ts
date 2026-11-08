@@ -11,7 +11,7 @@ export const COMMODORES_TOOL = "commodores";
 
 /**
  * 저장된 기록에 남은 옛 이름. 화면·집계는 새 이름과 같이 알아본다.
- * Console Use(부관) 기여 도구는 이 이름을 그대로 쓴다.
+ * Console Use 기여 도구는 이 이름을 그대로 쓴다.
  */
 export const LEGACY_BOARD_LIST_TOOL = "console_objectives";
 export const LEGACY_BOARD_DETAIL_TOOL = "console_objectives_detail";

@@ -9,7 +9,7 @@ import { buildMentionGroups, buildPluginMentionCategories, splitNotStartedGroups
 /**
  * 새 세션 컴포저의 '@' 원천 — 데스크톱 화면과 모바일 새 대화 시트가 같은 목록을 읽는다.
  *
- * Objective 행선지는 플러그인이 `messageObjective`과 함께 선언한 타입만, 플러그인 행선지(부관 등)는
+ * Objective 행선지는 플러그인이 `messageObjective`과 함께 선언한 타입만, 플러그인 행선지는
  * `mentionTargets`·`messageMentionTarget`을 함께 선언한 플러그인만 선다. 플러그인 로스터는 설정에서 켜고 끈
  * 결과가 그대로 반영되도록 구독한다 — 마운트 시점에 굳히면 "껐는데 아직 보인다"가 나온다.
  */

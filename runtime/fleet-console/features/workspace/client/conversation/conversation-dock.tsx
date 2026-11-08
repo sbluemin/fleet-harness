@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
 import type { SidebarFooterEntryContext, SidebarFooterEntryDescriptor } from "../../shared/surface-contracts.js";
-import { DEPUTY_COMMAND_BAND_ENTRY_ID, useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -22,8 +22,8 @@ import "./conversation-dock.css";
  */
 function SidebarFooterEntries({ popoverAnchorRef }: SidebarFooterEntryContext) {
   const registry = useFeatureRegistry();
-  // 옛 Band 기여도 버리지 않는다. 부관 머리만 기존 맨 위 자리에 남고, 나머지는 이 호환 경로를 따른다.
-  const sidebarFooterEntries = useMemo<readonly SidebarFooterEntryDescriptor[]>(() => [...registry.sidebarFooterEntries, ...registry.commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID).map((entry) => ({ id: entry.id, render: (_context: SidebarFooterEntryContext) => entry.render() }))], [registry.sidebarFooterEntries, registry.commandBandEntries]);
+  // 옛 Band 기여도 버리지 않고 이 호환 경로로 받는다.
+  const sidebarFooterEntries = useMemo<readonly SidebarFooterEntryDescriptor[]>(() => [...registry.sidebarFooterEntries, ...registry.commandBandEntries.map((entry) => ({ id: entry.id, render: (_context: SidebarFooterEntryContext) => entry.render() }))], [registry.sidebarFooterEntries, registry.commandBandEntries]);
   const fill = sidebarFooterEntries.filter((entry) => entry.layout === "fill");
   const compat = useMemo(() => sidebarFooterEntries.filter((entry) => entry.layout !== "fill"), [sidebarFooterEntries]);
   if (!fill.length) return <SidebarFooterContent entries={compat} popoverAnchorRef={popoverAnchorRef} centered />;

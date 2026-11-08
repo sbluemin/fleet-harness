@@ -178,26 +178,26 @@ describe("fleet-console-use host", () => {
       expect((await third).caller.objectiveId).toBe("op-a");
     } finally { requests.dispose(); await connection.dispose(); await host.dispose(); }
   });
-  it("binds aide execution to the host plugin owner without a session and revokes it on unload", async () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "console-aide-"));
+  it("binds plugin execution to the host plugin owner without a session and revokes it on unload", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "console-plugin-"));
     let granted = true; let available = true; let time = Date.now(); let executions = 0;
-    const deps = { directory, now: () => time, objectiveRecords: () => [], theaters: () => [{ id: "theater-a", name: "Project" }], pluginAvailable: (id: string) => available && id === "scuttlebutt" };
+    const deps = { directory, now: () => time, objectiveRecords: () => [], theaters: () => [{ id: "theater-a", name: "Project" }], pluginAvailable: (id: string) => available && id === "example-plugin" };
     const control = createConsoleControl(deps);
     control.attach({ observe: () => null, execute: async (_input, assertCurrent, settled) => { assertCurrent(); executions++; settled("succeeded"); return { objectiveId: "new-op", delivery: "confirmed" }; } });
     const host = createConsoleUseMcpHost({ ...deps, control });
-    const aide = host.forPlugin("scuttlebutt").connect({ allowControl: true, enabled: () => granted });
-    const readOnly = host.forPlugin("scuttlebutt").connect({});
+    const owned = host.forPlugin("example-plugin").connect({ allowControl: true, enabled: () => granted });
+    const readOnly = host.forPlugin("example-plugin").connect({});
     const unbound = host.connect({ allowControl: true });
     const rpc = async (connection: ConsoleUseMcpConnection, method: string, params: unknown) => {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
-      const token = connection.issueSessionToken({ label: "scuttlebutt", cwd: directory })[0]!;
+      const token = connection.issueSessionToken({ label: "example-plugin", cwd: directory })[0]!;
       const response = await fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token.token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
       return (await response.json()).result;
     };
     const call = async (connection: ConsoleUseMcpConnection, name: string, args: unknown = {}) => JSON.parse((await rpc(connection, "tools/call", { name, arguments: args })).content[0].text);
     try {
-      expect(await call(aide, "console_context")).toMatchObject({ error: "commodore_required" });
-      expect(await call(aide, "console_context", { commodoreId: "c1" })).toMatchObject({ caller: { kind: "plugin", pluginId: "scuttlebutt" }, capabilities: { control: true } });
+      expect(await call(owned, "console_context")).toMatchObject({ error: "commodore_required" });
+      expect(await call(owned, "console_context", { commodoreId: "c1" })).toMatchObject({ caller: { kind: "plugin", pluginId: "example-plugin" }, capabilities: { control: true } });
       const args = { commodoreId: "c1", theaterId: "theater-a", text: "Run the requested check" };
       // 읽기 전용은 action 필터다 — 쓰기만 있는 도구는 싣지 않고, 남은 도구에는 read action 만 광고하며, 서버도 쓰기를 거절한다.
       const listed = (await rpc(readOnly, "tools/list", {})).tools as { name: string; inputSchema: { properties: { action?: { enum: string[] } } } }[];
@@ -205,16 +205,16 @@ describe("fleet-console-use host", () => {
       expect(listed.find((tool) => tool.name === "console_objective_session")!.inputSchema.properties.action!.enum).toEqual(["summary", "transcript", "jobs", "catalog"]);
       expect((await call(readOnly, "console_objective_session", { action: "send", objectiveId: "op-x", text: "hi" })).error).toBe("permission_required");
       expect((await call(unbound, "console_launcher", args)).error).toBe("permission_required");
-      expect((await call(aide, "console_launcher", { ...args, caller: { kind: "objectiveRecord", objectiveId: "forged" } })).error).toBe("invalid_arguments");
-      expect(await call(aide, "console_launcher", args)).toEqual({ action: "launch", objectiveId: "new-op", delivery: "confirmed" });
+      expect((await call(owned, "console_launcher", { ...args, caller: { kind: "objectiveRecord", objectiveId: "forged" } })).error).toBe("invalid_arguments");
+      expect(await call(owned, "console_launcher", args)).toEqual({ action: "launch", objectiveId: "new-op", delivery: "confirmed" });
       expect(executions).toBe(1);
       // 자동화는 Console 에 자리가 없어 도구에서 빠졌다 — 남아 있는 정책은 제어층이 그대로 돌리되 연결이 닫혀도 산다.
-      const policy = control.automation({ kind: "plugin", pluginId: "scuttlebutt" }, { name: "Briefing", commodoreId: "c1", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
-      await aide.dispose();
+      const policy = control.automation({ kind: "plugin", pluginId: "example-plugin" }, { name: "Briefing", commodoreId: "c1", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
+      await owned.dispose();
       time += 300_001; await control.tick();
       expect(control.state().automations[0]).toMatchObject({ id: policy.id, runs: 1 });
-      const nextChat = host.forPlugin("scuttlebutt").connect({ allowControl: true, enabled: () => granted });
-      expect((await call(nextChat, "console_context", { commodoreId: "c1" })).caller).toMatchObject({ kind: "plugin", pluginId: "scuttlebutt" });
+      const nextChat = host.forPlugin("example-plugin").connect({ allowControl: true, enabled: () => granted });
+      expect((await call(nextChat, "console_context", { commodoreId: "c1" })).caller).toMatchObject({ kind: "plugin", pluginId: "example-plugin" });
       granted = false;
       expect((await call(nextChat, "console_launcher", args)).error).toBe("console_read_disabled");
       expect(executions).toBe(1);
@@ -224,7 +224,12 @@ describe("fleet-console-use host", () => {
       expect(control.state().automations[0]).toMatchObject({ status: "paused", runs: 1, lastError: "scope_unavailable" });
       control.dispose();
       const restarted = createConsoleControl(deps);
-      try { expect(restarted.state().automations[0]?.caller).toEqual({ kind: "plugin", pluginId: "scuttlebutt" }); }
+      // A stored policy whose owner is gone stays paused after a restart instead of failing it.
+      try {
+        expect(restarted.state().automations[0]?.caller).toEqual({ kind: "plugin", pluginId: "example-plugin" });
+        time += 300_001; await restarted.tick();
+        expect(restarted.state().automations[0]).toMatchObject({ status: "paused", runs: 1 });
+      }
       finally { restarted.dispose(); }
     } finally { await host.dispose(); control.dispose(); rmSync(directory, { recursive: true, force: true }); }
   });

@@ -49,10 +49,10 @@ import "./new-session.css";
  * 칩 줄 오른쪽은 모델·강도 칸(NewSessionLaunchSlot)을 둔다. 사령관은 화면을 열 때 정해져 고정이고(섹션 「+」·단축키가 싣고 온다),
  * Theater 후보는 그 사령관이 가진 Theater 목록뿐이다 — Console 전체 목록이 아니다. 시작해 Objective 이 되면 그 컴포저는 지금 그대로다 — 이 칩들은 여기에만 선다.
  *
- * 컴포저는 '/'(첫 글자)로 실행 좌표 명령을, '@'로 보낼 곳(기존 Objective·사령관·부관 같은 플러그인 행선지)을 부른다. 목록은 네 컴포저가
+ * 컴포저는 '/'(첫 글자)로 실행 좌표 명령을, '@'로 보낼 곳(기존 Objective·사령관 같은 플러그인 행선지)을 부른다. 목록은 네 컴포저가
  * 같이 쓰는 SDK 덱(퀵 런치바 문법 — 묶음 머리 옆 구분선)이고 캡슐 위에 뜬다(new-session-deck). S3 「캡슐 안 목록」은 이 덱으로
  * 대체됐다. 보낼 곳을 고르면 캡슐 앞에 알약이 서고, 그때 제출은
- * 새 Objective 실행이 아니라 그곳으로의 전달이다 — 부관의 답은 부관 자기 카드에 선다.
+ * 새 Objective 실행이 아니라 그곳으로의 전달이다 — 그 답은 플러그인 자기 표면에 선다.
  *
  * 사령관에게 Theater 가 없거나 새로 더할 때는 Theater 칩의 「Theater 추가…」로 폴더를 고른다(사이드바 폴더 대화상자와 같은 등록 길).
  * 더한 Theater 는 그 사령관의 목록에 들어가고 곧 이번 세션의 Theater 다. 시작 보기의 기억은 '+' 입구의 것(launch-start-surface)을 그대로 잇는다.
@@ -367,7 +367,7 @@ export function NewSessionColumn({ state, target, tools }: {
         setTargetGone(false);
         placeCaret(stripped);
       };
-      // 퀵 런치바 순서 — ObjectiveRecords(Theater 띠) → 시작 전(Theater 띠) → 플러그인 행선지(사령관·부관). 묶음 머리는 행이 있을 때만 선다.
+      // 퀵 런치바 순서 — ObjectiveRecords(Theater 띠) → 시작 전(Theater 띠) → 플러그인 행선지(사령관). 묶음 머리는 행이 있을 때만 선다.
       const objectiveRecordRows = (groups: typeof sources.objectiveRecordGroups, prefix: string) => groups.flatMap((group): NewSessionDeckItem[] => [
         { kind: "band", key: `${prefix}band-${group.theaterId ?? "none"}`, label: group.theaterLabel },
         ...group.entries.map((entry): NewSessionDeckItem => ({
@@ -412,7 +412,7 @@ export function NewSessionColumn({ state, target, tools }: {
   const activeIndex = composerDeckActiveIndex(allRows, allRows.findIndex((row) => row.key === deckActiveKey));
   const activeRow = allRows[activeIndex] ?? null;
   const selectableRows = allRows.filter((row) => row.disabled !== true);
-  // 목록은 떠다니는 위젯(부관)의 회피 영역이다. 화면의 로컬 상태로 여닫히므로 스토어 알림이 없다 — 열고 닫는 순간 직접 알려,
+  // 목록은 떠다니는 위젯의 회피 영역이다. 화면의 로컬 상태로 여닫히므로 스토어 알림이 없다 — 열고 닫는 순간 직접 알려,
   // 위젯이 주기 재측정을 기다리는 동안 막 열린 목록 위에 서 있지 않게 한다. 칠한 뒤에 알려야 새 상자를 잰다.
   useEffect(() => { notifyKeepOutSurfaceChanged(); }, [deckOpen, deckItems.length]);
   // 행이 있는 목록만 Enter/Tab/제출을 가로챈다 — 매치가 없으면 "@3pm"·"/etc/hosts" 같은 문장이므로 Enter는 평소처럼 보낸다.
