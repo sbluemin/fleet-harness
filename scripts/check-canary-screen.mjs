@@ -40,25 +40,36 @@ const findChrome = () => {
   return found;
 };
 
-// Every temporary tree lives under one root, removed on exit and on the signals zsh/sh would otherwise skip.
-const T = mkdtempSync(path.join(os.tmpdir(), "canary-screen-"));
+// Every temporary tree lives under one root. The Console runs through the console-e2e wrapper (references/setup.md#isolate-the-console),
+// which owns HOME/TMPDIR/FLEET_*/CLAUDE_CONFIG_DIR and a fresh PATH under the run directory; nothing of this process's environment reaches it.
+const T = mkdtempSync(path.join(os.tmpdir(), "cs-"));
+const runDir = path.join(T, "run"); // must not exist yet: --fresh refuses a run directory that already holds entries
+const fakeDir = path.join(T, "fake-claude");
+const chromeHome = path.join(T, "chrome-home");
+const slot = path.join(runDir, "console");
+const wrapper = path.join(skillScripts, "isolated-env.mjs");
+const wrapped = (extra, command) => [wrapper, "--run-dir", runDir, ...extra, "--set", `CLAUDE_BIN=${path.join(skillScripts, "fake-claude.mjs")}`, "--set", `FAKE_CLAUDE_DIR=${fakeDir}`, "--", process.execPath, ...command];
+// serve and stop must present the same caller to the wrapper (it records the caller from the environment), so both get this one env.
+const wrapperEnv = { PATH: process.env.PATH };
 const children = [];
+let cleaned = false;
 const cleanup = () => {
+  if (cleaned) return;
+  cleaned = true;
+  // Stop the owned Console the wrapper's way (the pid it recorded); SIGKILL only what is still alive afterwards.
+  if (existsSync(path.join(slot, "console.lock"))) spawnSync(process.execPath, wrapped([], [cli, "stop"]), { env: wrapperEnv, stdio: "ignore", timeout: 30_000 });
   for (const child of children) { try { child.kill("SIGKILL"); } catch { /* already gone */ } }
   try { rmSync(T, { recursive: true, force: true }); } catch { /* best effort */ }
 };
 process.on("exit", cleanup);
 for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) process.on(signal, () => { cleanup(); process.exit(code); });
 
-for (const dir of ["home", "tmp", "root/console", "fake", "claude", "chrome"]) mkdirSync(path.join(T, dir), { recursive: true });
-const slot = path.join(T, "root/console");
-const env = {
-  PATH: process.env.PATH, HOME: path.join(T, "home"), TMPDIR: path.join(T, "tmp"),
-  FLEET_DATA_DIR: path.join(T, "root"), FLEET_CONSOLE_DATA_DIR: slot, CLAUDE_CONFIG_DIR: path.join(T, "claude"),
-  CLAUDE_BIN: path.join(skillScripts, "fake-claude.mjs"), FAKE_CLAUDE_DIR: path.join(T, "fake"), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-};
+for (const dir of [fakeDir, chromeHome, path.join(T, "chrome")]) mkdirSync(dir, { recursive: true });
+// What the seed script and Chrome need, and nothing inherited: absolute executables, owned HOME/TMPDIR, a system-only PATH.
+const plainEnv = { PATH: "/usr/bin:/bin", HOME: chromeHome, TMPDIR: path.join(chromeHome, "tmp") };
+mkdirSync(plainEnv.TMPDIR, { recursive: true });
 
-const serve = spawn(process.execPath, [cli, "serve"], { env, stdio: ["ignore", "pipe", "pipe"] });
+const serve = spawn(process.execPath, wrapped(["--fresh"], [cli, "serve"]), { env: wrapperEnv, stdio: ["ignore", "pipe", "pipe"] });
 children.push(serve);
 let serveOutput = "";
 serve.stdout.on("data", (chunk) => { serveOutput += chunk; });
@@ -74,7 +85,7 @@ async function main() {
   if (!port) throw new Error("Console wrote no console.lock port within 60s");
   const origin = `http://127.0.0.1:${port}`;
 
-  const seeded = spawnSync(process.execPath, [path.join(skillScripts, "seed/seed.mjs"), "--dir", slot, "--profile", "basic", "--root", path.join(T, "theaters")], { env, encoding: "utf8" });
+  const seeded = spawnSync(process.execPath, [path.join(skillScripts, "seed/seed.mjs"), "--dir", slot, "--profile", "basic", "--root", path.join(T, "theaters")], { env: plainEnv, encoding: "utf8" });
   if (seeded.status !== 0) throw new Error(`seed failed: ${seeded.stderr.slice(-800)}`);
   const ids = JSON.parse(seeded.stdout);
   const commodoreId = ids.commodores[0].commodoreId;
@@ -95,8 +106,8 @@ async function main() {
   if (!page.ok) fail(`/console/ answered ${page.status}`);
 
   // Browser half over CDP.
-  // Chrome gets the owned environment too: no inherited HOME/XDG/proxy settings, profile and caches stay under T.
-  const chromeEnv = { PATH: env.PATH, HOME: env.HOME, TMPDIR: env.TMPDIR, XDG_CONFIG_HOME: path.join(T, "home/.config"), XDG_CACHE_HOME: path.join(T, "home/.cache"), XDG_DATA_HOME: path.join(T, "home/.local/share") };
+  // Chrome gets an owned environment too: no inherited HOME/XDG/proxy settings; profile and caches stay under T.
+  const chromeEnv = { ...plainEnv, XDG_CONFIG_HOME: path.join(chromeHome, ".config"), XDG_CACHE_HOME: path.join(chromeHome, ".cache"), XDG_DATA_HOME: path.join(chromeHome, ".local/share") };
   const chrome = spawn(findChrome(), ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--password-store=basic", "--use-mock-keychain", "--disable-background-networking", `--user-data-dir=${path.join(T, "chrome")}`, "--remote-debugging-port=0", "--window-size=1440,900", "about:blank"], { env: chromeEnv, stdio: "ignore" });
   children.push(chrome);
   const portFile = path.join(T, "chrome", "DevToolsActivePort");
