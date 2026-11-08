@@ -20,16 +20,18 @@ export function useCommodoreMongleActivity(commodoreId: string | null | undefine
   return view.run.step ?? null;
 }
 
-export function CommodoreAvatar({ commodoreId, state, size, label, decorative = false, className }: {
+export function CommodoreAvatar({ commodoreId, state, size, label, decorative = false, className, figure }: {
   readonly commodoreId: string;
   readonly state: MongleState;
   readonly size: number;
   readonly label: string;
   readonly decorative?: boolean;
   readonly className?: string;
+  /** 진급 사령관을 견장·날개 윗부분과 날개짓까지 그린다 — 사이드바 목록 행의 큰 얼굴 전용. */
+  readonly figure?: boolean;
 }) {
   const look = useMongleLook(commodoreAvatarKey(commodoreId));
   // 작업 중일 때만 턴의 계열을 연기로 싣는다 — 지휘관 `ObjectiveAvatar`와 같은 조건이다.
   const activity = useCommodoreMongleActivity(state === "running" ? commodoreId : null);
-  return <MongleAvatar base={look.base} tone={look.tone} role="commodore" state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
+  return <MongleAvatar base={look.base} tone={look.tone} role="commodore" state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} figure={figure} />;
 }

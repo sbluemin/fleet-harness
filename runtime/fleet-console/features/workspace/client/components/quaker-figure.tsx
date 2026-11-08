@@ -2,11 +2,17 @@ import type { QuakerMorph } from "../../shared/avatars.js";
 import "./quaker-head.css";
 
 /**
- * 진급 사령관(도리·토리·보리)의 전신 퀘이커 그림 — 피처카드 장면에만 사용된다(0 0 260 300).
+ * 진급 사령관(도리·토리·보리)의 전신 퀘이커 그림(0 0 260 300) — 피처카드 장면에 쓰이고, `bust` 로는 큰 아바타 자리의 상반신 창이 된다.
  *
  * 색은 `quaker-head.css`의 리터럴 oklch 토큰을 공유한다.
  */
 export const QUAKER_FIGURE_VIEW_BOX = "0 0 260 300";
+
+/**
+ * 상반신 창 — 머리·모자와 견장, 양 날개 윗부분까지만 보인다(꼬리·발·몸통 아래는 창 밖). 몽글 아바타의 32×32 칸에 그대로 들어가며,
+ * 큰 자리(우측 프로필, 사령관 목록 행)에서만 쓴다. 날개짓은 전신과 같다.
+ */
+export const QUAKER_BUST_VIEW_BOX = "14 24 232 232";
 
 export function QuakerFigure({
   morph,
@@ -14,30 +20,31 @@ export function QuakerFigure({
   width,
   height,
   className,
+  bust = false,
 }: {
   readonly morph: QuakerMorph;
   readonly size?: number;
   readonly width?: number | string;
   readonly height?: number | string;
   readonly className?: string;
+  /** 몽글 아바타의 32×32 칸 안에 상반신 창으로 선다 — 크기는 칸이 정하고 꼬리·발은 그리지 않는다. */
+  readonly bust?: boolean;
 }) {
   const w = width ?? (size ? size : 260);
   const h = height ?? (size ? Math.round((size * 300) / 260) : 300);
+  const frame = bust
+    ? { className: "mongle-quaker is-bust", x: 0, y: 0, width: 32, height: 32, viewBox: QUAKER_BUST_VIEW_BOX }
+    : { className: ["mongle-quaker", "is-full", className].filter(Boolean).join(" "), width: w, height: h, viewBox: QUAKER_FIGURE_VIEW_BOX };
   return (
-    <svg
-      className={["mongle-quaker", "is-full", className].filter(Boolean).join(" ")}
-      data-morph={morph}
-      width={w}
-      height={h}
-      viewBox={QUAKER_FIGURE_VIEW_BOX}
-      aria-hidden="true"
-    >
+    <svg {...frame} data-morph={morph} aria-hidden="true">
       {/* 꼬리 */}
-      <g>
-        <path d="M130 240 L130 296" stroke="var(--qk-tail)" strokeWidth="15" strokeLinecap="round" />
-        <path d="M116 238 L107 286" stroke="var(--qk-tail)" strokeWidth="13" strokeLinecap="round" />
-        <path d="M144 238 L153 286" stroke="var(--qk-tail)" strokeWidth="13" strokeLinecap="round" />
-      </g>
+      {bust ? null : (
+        <g>
+          <path d="M130 240 L130 296" stroke="var(--qk-tail)" strokeWidth="15" strokeLinecap="round" />
+          <path d="M116 238 L107 286" stroke="var(--qk-tail)" strokeWidth="13" strokeLinecap="round" />
+          <path d="M144 238 L153 286" stroke="var(--qk-tail)" strokeWidth="13" strokeLinecap="round" />
+        </g>
+      )}
 
       {/* 날개 좌 */}
       <g className="mongle-quaker-wing-l">
@@ -64,10 +71,12 @@ export function QuakerFigure({
       </g>
 
       {/* 발 */}
-      <g stroke="var(--qk-feet)" strokeWidth="6" strokeLinecap="round" fill="none">
-        <path d="M112 256 Q108 266 104 275" /><path d="M118 258 Q117 268 115 277" />
-        <path d="M142 258 Q143 268 145 277" /><path d="M148 256 Q152 266 156 275" />
-      </g>
+      {bust ? null : (
+        <g stroke="var(--qk-feet)" strokeWidth="6" strokeLinecap="round" fill="none">
+          <path d="M112 256 Q108 266 104 275" /><path d="M118 258 Q117 268 115 277" />
+          <path d="M142 258 Q143 268 145 277" /><path d="M148 256 Q152 266 156 275" />
+        </g>
+      )}
 
       {/* 견장 */}
       <g transform="translate(88 166) rotate(-14)">

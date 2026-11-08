@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 
 import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleState } from "../../shared/avatars.js";
 import type { IdentityTone } from "../../shared/identity-tones.js";
+import { QuakerFigure } from "./quaker-figure.js";
 import { QuakerHead } from "./quaker-head.js";
 
 /**
@@ -492,11 +493,13 @@ interface MongleAvatarProps {
   /** 감싼 요소가 이미 이 사실을 접근성 이름으로 말하는 자리 — 중복 낭독을 막는다. */
   readonly decorative?: boolean;
   readonly className?: string;
+  /** 진급 사령관을 머리만이 아니라 견장·날개 윗부분과 날개짓까지 그린다 — 우측 프로필·사령관 목록 행 같은 큰 자리 전용. 다른 몽글은 영향 없다. */
+  readonly figure?: boolean;
 }
 
 const CALLING_STATES: ReadonlySet<MongleState> = new Set(["awaiting", "decision", "review"]);
 
-export function MongleAvatar({ base, tone = null, role, state, activity = null, size, label, decorative = false, className }: MongleAvatarProps) {
+export function MongleAvatar({ base, tone = null, role, state, activity = null, size, label, decorative = false, className, figure = false }: MongleAvatarProps) {
   const preset = mongleBase(base);
   const tier = mongleTier(size);
   const tempo = TEMPO[preset.id - 1] ?? 1;
@@ -521,7 +524,7 @@ export function MongleAvatar({ base, tone = null, role, state, activity = null, 
       {staged ? <g className="mongle-avatar-echo"><Body shape={preset.shape} /></g> : null}
       <g className="mongle-avatar-big">
         <g className="mongle-avatar-body">
-          {quaker ? <QuakerHead morph={quaker} /> : (
+          {quaker ? (figure ? <QuakerFigure morph={quaker} bust /> : <QuakerHead morph={quaker} />) : (
             <>
               <Body shape={preset.shape} />
               <Eyes state={state} />

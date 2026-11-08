@@ -152,7 +152,7 @@ export function ObjectiveAvatar({ objectiveRecord, state, size, label, role, dec
   return <MongleAvatar base={look.base} tone={look.tone} role={role ?? objectiveRecordAvatarRole(objectiveRecord)} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
 }
 
-export function KeyedAvatar({ avatarKey, role, state, activityObjectiveId, size, label, decorative, className }: {
+export function KeyedAvatar({ avatarKey, role, state, activityObjectiveId, size, label, decorative, className, figure }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
@@ -162,12 +162,14 @@ export function KeyedAvatar({ avatarKey, role, state, activityObjectiveId, size,
   readonly label: string;
   readonly decorative?: boolean;
   readonly className?: string;
+  /** 진급 사령관을 견장·날개 윗부분과 날개짓까지 그린다 — 큰 자리 전용. */
+  readonly figure?: boolean;
 }) {
   const look = useMongleLook(avatarKey);
   const objectiveActivity = useObjectiveMongleActivity(state === "running" ? activityObjectiveId : null);
   // 사령관은 Objective이 아니라 키에서 UUID를 꺼내 턴의 계열을 읽는다 — `CommodoreAvatar`와 같은 연기다.
   const commodoreActivity = useCommodoreMongleActivity(state === "running" && role === "commodore" ? commodoreIdOfAvatarKey(avatarKey) : null);
-  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={objectiveActivity ?? commodoreActivity} size={size} label={label} decorative={decorative} className={className} />;
+  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={objectiveActivity ?? commodoreActivity} size={size} label={label} decorative={decorative} className={className} figure={figure} />;
 }
 
 function usePickerLabels(): MongleAvatarPickerLabels {
@@ -207,7 +209,7 @@ interface Draft {
  * 아바타를 누르면 편집기가 열리고, 고르는 동안은 미리보기만 바뀐다. 「적용」해야 저장되며, 적용 뒤 한동안 「되돌리기」가 선다.
  * 「다시 뽑기」는 형제와 겹치지 않는 캐릭터를 원래 색으로, 「처음 값으로」는 처음 뽑힌 캐릭터를 원래 색으로 미리보기에 세운다.
  */
-export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size, label, layout = "stack", children }: {
+export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size, label, layout = "stack", figure, children }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
@@ -217,6 +219,8 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   readonly label: string;
   /** stack: 아바타 아래에 떠 있는 판으로 편집기가 뜬다(패널 머리). inline: 아바타 왼쪽 끝에 맞춘 같은 판으로 뜬다(구성원 탭). */
   readonly layout?: "stack" | "inline";
+  /** 진급 사령관을 견장·날개 윗부분과 날개짓까지 그린다 — 패널 머리의 큰 얼굴 전용. */
+  readonly figure?: boolean;
   /** inline 일 때 아바타 오른쪽에 서는 줄 본문. */
   readonly children?: ReactNode;
 }) {
@@ -318,7 +322,7 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
       onClick={toggle}
     >
       {/* 대상이 바뀌면 새 얼굴로 다시 선다 — 이전 대상의 활동 교체 시계(최소 머무름·경계 대기)를 이어받지 않는다. */}
-      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative />
+      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative figure={figure} />
       <span className="avatar-editor-pen" aria-hidden="true">
         <svg viewBox="0 0 16 16"><path d="M3 13l.7-2.8L10.6 3.3l2.1 2.1-6.9 6.9z" fill="currentColor" /></svg>
       </span>
