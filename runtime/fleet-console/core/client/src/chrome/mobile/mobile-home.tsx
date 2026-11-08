@@ -1,7 +1,10 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
-import { commodoreListLoaded, commodoreSectionLabel, selectMobileCommodore, useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
+import { commodoreListLoaded, commodoreSectionLabel, selectMobileCommodore, useCommodoreList, useSidebarOrder } from "../../../../../features/commodore/client/commodore-list.js";
+import { openTaskforce, TaskforceStack } from "../../../../../features/commodore/client/taskforce/taskforce.js";
+import { useTaskforceExperiment, useTaskforces } from "../../../../../features/commodore/client/taskforce/state.js";
+import type { TaskforceSummary } from "../../../../../features/commodore/shared/contracts/taskforce.js";
 import type { ConsoleCommodoreSummary } from "../../../../../features/commodore/shared/contracts/theaters.js";
 import { commodoreSidebarBuckets, useCommodoreSidebarCommands } from "../../../../../features/commodore/client/sidebar-sections.js";
 import { useAvatarClaims, KeyedAvatar } from "../../../../../features/workspace/client/avatars.js";
@@ -30,7 +33,18 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
   const updateReady = useMobileUpdateReady();
   const commodores = useCommodoreList();
   const sections = useCommodoreSidebarCommands();
-  const buckets = commodoreSidebarBuckets(sections.layout, commodores, (commodore) => commodore.commodoreId);
+  const taskforceExperiment = useTaskforceExperiment();
+  const allTaskforces = useTaskforces();
+  const order = useSidebarOrder();
+  // 사령관과 TF는 데스크톱 사이드바처럼 한 목록이다 — 서버가 내린 전체 순서로 섞고, 순위에 없는 행은 뒤에 붙는다. 실험이 꺼져 있으면 TF 행을 그리지 않는다.
+  const faces = useMemo((): readonly HomeFace[] => {
+    const rank = (id: string) => { const index = order.indexOf(id); return index === -1 ? order.length : index; };
+    return [
+      ...commodores.map((commodore): HomeFace => ({ kind: "commodore", id: commodore.commodoreId, commodore })),
+      ...(taskforceExperiment.enabled ? allTaskforces : []).map((taskforce): HomeFace => ({ kind: "taskforce", id: taskforce.id, taskforce })),
+    ].sort((left, right) => rank(left.id) - rank(right.id));
+  }, [commodores, allTaskforces, taskforceExperiment.enabled, order]);
+  const buckets = commodoreSidebarBuckets(sections.layout, faces, (face) => face.id);
   const time = useConversationTime();
   // 사령관 얼굴은 몽글 아바타다 — 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
@@ -65,11 +79,11 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
       </header>
       <div className="mobile-conv-scroll">
         {sections.error ? <p className="mobile-home-section-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
-        {commodores.length === 0 && commodoreListLoaded() && sections.layout.sections.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.home.noCommodore")}</p> : null}
+        {faces.length === 0 && commodoreListLoaded() && sections.layout.sections.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.home.noCommodore")}</p> : null}
         {buckets.map((bucket) => {
-          const rows = bucket.rows.map((commodore) => (
-            <HomeCommodoreRow key={commodore.commodoreId} commodore={commodore} name={commodoreSectionLabel(commodore, fallbackName)} time={time} onOpen={() => open(commodore)} />
-          ));
+          const rows = bucket.rows.map((face) => face.kind === "commodore"
+            ? <HomeCommodoreRow key={face.id} commodore={face.commodore} name={commodoreSectionLabel(face.commodore, fallbackName)} time={time} onOpen={() => open(face.commodore)} />
+            : <HomeTaskforceRow key={face.id} taskforce={face.taskforce} time={time} onOpen={() => openTaskforce(face.id)} />);
           if (bucket.id === undefined) return rows;
           const sectionId = bucket.id;
           const section = sections.layout.sections.find((item) => item.id === sectionId);
@@ -94,6 +108,31 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
         </button>
       </footer>
     </section>
+  );
+}
+
+type HomeFace =
+  | { readonly kind: "commodore"; readonly id: string; readonly commodore: ConsoleCommodoreSummary }
+  | { readonly kind: "taskforce"; readonly id: string; readonly taskforce: TaskforceSummary };
+
+/** TaskForce 한 줄 — 누르면 그 TF의 대화 화면이 홈 위에 선다. 사령관 줄과 같은 모양이다. */
+function HomeTaskforceRow({ taskforce, time, onOpen }: {
+  readonly taskforce: TaskforceSummary;
+  readonly time: (timestamp: number) => string;
+  readonly onOpen: () => void;
+}) {
+  const t = useT();
+  return (
+    <button type="button" data-press="r1" className="mobile-conv-row is-taskforce" data-taskforce-id={taskforce.id} onClick={onOpen}>
+      <span className="mobile-conv-row-av"><TaskforceStack members={taskforce.members} /></span>
+      <span className="mobile-conv-row-copy">
+        <span className="mobile-conv-row-top">
+          <span className="mobile-conv-row-title">{taskforce.name}</span>
+          <span className="mobile-conv-row-aside">{time(taskforce.preview?.at ?? taskforce.createdAt)}</span>
+        </span>
+        <span className="mobile-conv-row-sub">{taskforce.preview?.text.trim() || taskforce.topic || t("mobile.home.noMessage")}</span>
+      </span>
+    </button>
   );
 }
 
