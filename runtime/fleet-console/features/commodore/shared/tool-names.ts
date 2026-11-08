@@ -37,7 +37,7 @@ export function commodoreSessionToolName(name: string): string {
 
 /** 보드 쓰기로 세는 사령관 보드 도구. 연락·생성(`commodores`)은 세지 않는다. 옛 이름도 포함한다. */
 export const BOARD_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
-  BOARD_TOOL, LEGACY_BOARD_LIST_TOOL, LEGACY_BOARD_DETAIL_TOOL,
+  BOARD_TOOL, "objectives", LEGACY_BOARD_LIST_TOOL, LEGACY_BOARD_DETAIL_TOOL,
 ]);
 
 export const COMMODORES_TOOL_NAMES: ReadonlySet<string> = new Set([COMMODORES_TOOL, LEGACY_COMMODORES_TOOL]);
