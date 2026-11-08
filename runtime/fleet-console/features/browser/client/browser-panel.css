@@ -23,8 +23,8 @@
 @media (prefers-reduced-motion: reduce) { .op-browser-rail.is-opening, .op-browser-rail.is-closing { animation: none !important; } }
 .op-browser-rail.is-open:not(.is-pinned) { box-shadow: var(--popover-surface-shadow); }
 .op-browser-rail:focus-visible, .op-browser-rail :focus-visible { box-shadow: var(--focus-face); outline: none; }
-/* 에이전트 세션 — 레일은 위쪽이 틴트로 물든다. 레일 양옆에는 이음매 선을 두지 않아 레일이 화면 영역으로 이어진다. */
-.op-browser-rail.is-driving { background: linear-gradient(180deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--conversation-surface, var(--canvas-abyss))), var(--conversation-surface, var(--canvas-abyss)) 70%); }
+/* 에이전트 세션 — 분리 창의 레일만 위쪽이 틴트로 물든다. 오른쪽 패널(칸)에서는 맨 위 줄 지구본의 채움이 그 신호를 맡는다. 레일 양옆에는 이음매 선을 두지 않아 레일이 화면 영역으로 이어진다. */
+.browser-window-document .op-browser-rail.is-driving { background: linear-gradient(180deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--conversation-surface, var(--canvas-abyss))), var(--conversation-surface, var(--canvas-abyss)) 70%); }
 /* 에이전트가 브라우저를 쓰는 동안 맨 위 줄의 지구본 버튼은 채워진 보라색으로만 말한다 — 바깥으로 퍼지는 링 맥동은 두지 않는다. */
 .fleet-caption-action.is-agent[data-caption-action="browser"]::before { animation: none; opacity: 0; }
 .op-browser-rail__divider { flex: none; height: 1px; margin: 2px 4px; background: var(--hairline); }
@@ -102,9 +102,6 @@
 .op-browser__nav.is-top :is(.op-browser__icon, .workbench-tile-button) { width: 30px; height: 30px; }
 .op-browser__nav.is-top .op-browser__url { min-width: 120px; height: 30px; }
 html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region: no-drag; }
-/* 같은 에이전트 세션이 주소줄 줄에도 이어진다 — 레일 꼭대기의 틴트가 줄의 왼쪽에서 시작해 오른쪽으로 옅어진다. 선은 없다.
-   줄이 서는 자리(앱 맨 위 줄·분리 창·칸 안)에 상관없이 줄 자신이 가진 클래스라, 쓰는 중이 아니거나 줄이 없으면 아무것도 그려지지 않는다. */
-.op-browser__nav.is-driving { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, transparent), transparent 70%); }
 /* 접힌 도구(「⋯」) — 팝오버는 줄 아래 본문 위로 내려온다. */
 .op-browser__fold { position: relative; flex: none; align-self: center; }
 .op-browser__fold .op-browser__menu--row { right: 0; width: auto; }
@@ -291,9 +288,8 @@ html[data-desktop-shell="true"] .browser-window-document #browser-window-caption
 html[data-desktop-shell="true"] .browser-window-document #browser-window-caption :is(button, a, input, select, textarea, [role="tab"], [role="button"], [role="menu"], [role="listbox"], [tabindex]) { -webkit-app-region: no-drag; }
 html[data-desktop-platform="darwin"] .browser-window-document #browser-window-caption { padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-2)); }
 html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
-/* 분리 창에서는 주소줄 줄이 곧 창의 맨 위 줄이다 — 신호등 자리까지 포함한 줄 전체가 틴트를 가진다(줄 안쪽의 것은 거둔다). */
+/* 분리 창에서만 에이전트 세션의 틴트가 주소줄 줄에도 이어진다 — 주소줄 줄이 곧 창의 맨 위 줄이라 신호등 자리까지 포함한 줄 전체가 레일 꼭대기의 틴트에서 시작해 오른쪽으로 옅어진다. */
 #browser-window-caption:has(.op-browser__nav.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--conversation-surface, var(--canvas-abyss))), var(--conversation-surface, var(--canvas-abyss)) 70%); }
-#browser-window-caption .op-browser__nav.is-driving { background: none; }
 #browser-window-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #browser-window-body .op-browser { flex: 1; }
 .op-browser__detached { display: flex; align-items: center; justify-content: center; height: 100%; font: inherit; color: var(--text-secondary); }
