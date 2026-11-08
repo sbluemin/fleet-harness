@@ -18,7 +18,7 @@ export function createConsoleRuntimeContext(deps: {
   readonly routes: RouteRegistry;
   readonly upgrades: UpgradeRegistry;
   readonly catalog: ApiCatalogEntry[];
-  readonly consoleControl?: import("../../../features/console-use/host/console-control.js").ConsoleControl;
+  readonly consoleControl?: import("../../../features/execution/host/console-control.js").ConsoleControl;
   readonly isCommanderSession?: (sessionId: string) => boolean;
 }): ConsoleRuntimeContext {
   const basePath = "/api/v1";

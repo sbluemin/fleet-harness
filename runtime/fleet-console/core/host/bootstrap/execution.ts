@@ -22,7 +22,7 @@ const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
 
 export async function startConsoleExecution(
   ctx: ConsoleRuntimeContext,
-  organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">,
+  organize: import("../../../features/execution/host/agent/routes.js").AgentOrganizeActions,
   quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost,
   commodoreLaunch: {
     readonly commodoreSystemPrompts: CommodoreSystemPromptService;
@@ -118,7 +118,6 @@ export async function startConsoleExecution(
       if (!ctx.host.useContext || ctx.host.useContext.turnGrantEnds(scope.contextId, scope.participantId)) ctx.host.useRequests?.settle(scope.contextId);
       ctx.host.browserMcp?.endAgentSession(objectiveId);
       ctx.host.computerUseMcp?.endParticipant(objectiveId);
-      ctx.host.consoleUse.endObjectiveUse?.(objectiveId);
     },
   });
   return {
@@ -149,7 +148,6 @@ export async function startConsoleExecution(
       await ctx.host.browserMcp?.revokeObjective(objectiveRecord.id);
       ctx.host.computerUseMcp?.revokeObjective(objectiveRecord.id);
       ctx.host.useRequests?.settle(objectiveRecord.id);
-      ctx.host.consoleUse.endObjectiveUse?.(objectiveRecord.id);
     },
     purgeObjective: (objectiveId: string) => {
       agent.purgeObjective(objectiveId);

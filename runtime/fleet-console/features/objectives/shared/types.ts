@@ -9,7 +9,7 @@ export const objectiveRequestSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("taskforce"), taskforceId: taskforceIdSchema, seq: z.number().int().positive().safe().optional() }).strict(),
 ]);
 export type ObjectiveRequestSource = z.output<typeof objectiveRequestSourceSchema>;
-import type { ConsoleCoordinatesFailureCause, ConsoleTurnFailure } from "../../console-use/shared/control.js";
+import type { ConsoleCoordinatesFailureCause, ConsoleTurnFailure } from "../../execution/shared/control.js";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 
 /** 살아 있는 구성원의 직전 실패와 표시 횟수. acknowledge는 inbox만 해소한다. */

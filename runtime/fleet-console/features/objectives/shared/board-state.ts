@@ -1,4 +1,4 @@
-import type { ConsoleObjectiveObservation } from "../../console-use/shared/control.js";
+import type { ConsoleObjectiveObservation } from "../../execution/shared/control.js";
 import type { Objective, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
 import { liftNestedActivity } from "./records/activity.js";
 

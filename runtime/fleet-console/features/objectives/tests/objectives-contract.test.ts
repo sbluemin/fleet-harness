@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
-import type { ConsoleActionInput } from "../../console-use/shared/control.js";
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleActionInput } from "../../execution/shared/control.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import type { ObjectiveGroupedEvent, ObjectiveRecord } from "../shared/records/types.js";
 import type { ObjectivesFeatureDeps } from "../host/deps.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -120,8 +120,8 @@ ts: child.ts};
   const deliveries: ConsoleActionInput[] = [];
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
   const outcomes = new Map<string, "running" | "succeeded" | "completed" | "failed" | "interrupted" | "unknown">();
-  const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("../../console-use/shared/control.js").ConsoleTurnReport }>();
-  const turnEndListeners = new Set<(event: import("../../console-use/shared/control.js").ConsoleTurnEnd) => void>();
+  const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("../../execution/shared/control.js").ConsoleTurnReport }>();
+  const turnEndListeners = new Set<(event: import("../../execution/shared/control.js").ConsoleTurnEnd) => void>();
   // 떠 있는 세션이 init 에서 광고한 도구 — 없으면 호스트가 아직 모른다(null).
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
@@ -144,7 +144,7 @@ ts: child.ts};
   // afterCreate — 생성 뒤 응답을 잃는 장애다.
   // rejectModel — 호스트가 그 모델의 기동·재개를 거절한다(그새 Gateway 노출이 꺼진 모델). 재개는 세션 좌표의 모델을 읽는다.
   // coordinates — 떠 있는 채팅의 자식이 다음 좌표 변경 하나를 거절한다(호스트가 돌려주는 결과 그대로).
-  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null, coordinates: null as import("../../console-use/shared/control.js").ConsoleCoordinatesResult | null, duringSend: null as (() => void) | null };
+  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null, coordinates: null as import("../../execution/shared/control.js").ConsoleCoordinatesResult | null, duringSend: null as (() => void) | null };
   // 사람이 지운 사이드바 그룹 — 호스트의 groups.get 이 더는 돌려주지 않는다.
   const removedGroups = new Set<string>();
   const objectiveRecordsHost = {
@@ -259,7 +259,7 @@ title: input.title});
       // 전사 — 호스트가 소유를 따진 뒤 돌려주는 한 쪽. 어느 세션을 읽었는지만 남긴다.
       transcript: async (objectiveId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${objectiveId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
       observe: observeSession,
-      subscribeTurnEnds: (listener: (event: import("../../console-use/shared/control.js").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
+      subscribeTurnEnds: (listener: (event: import("../../execution/shared/control.js").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
       // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
       sleep: async (objectiveId: string) => {
         if (surfaceOf(objectiveId) === "chat") return { ok: false, error: "chat_sleep_unsupported" };
@@ -2784,7 +2784,7 @@ describe("Objectives contract", () => {
       launch.watchLiveOutcomes();
       // 정상 종료 대표 경우 — 신호도 통지도 없다. 배정 뒤 아직 보고하지 않은 구성원이라도 ① 사람이 입력창에서 연 턴 ② 보고를 관측하지 않는
       // 표면(터미널)의 턴 ③ 외부 대기(백그라운드 셸·모니터·깨움 예약)를 걸고 닫은 턴은 멈춘 턴이 아니다.
-      const turn = (revision: number, outcome: "succeeded" | "completed", report?: Omit<import("../../console-use/shared/control.js").ConsoleTurnReport, "pendingWork"> & { pendingWork?: boolean }) => {
+      const turn = (revision: number, outcome: "succeeded" | "completed", report?: Omit<import("../../execution/shared/control.js").ConsoleTurnReport, "pendingWork"> & { pendingWork?: boolean }) => {
         outcomes.set(memberId, outcome);
         outputDetails.set(memberId, { revision, ...(report ? { report: { pendingWork: false, ...report } } : {}) });
         h.emitTurnEnd(memberId);
@@ -2958,7 +2958,6 @@ describe("Objectives contract", () => {
         },
       },
       events: { registerSseChannel: noop, subscribe: noop, publish: () => undefined },
-      consoleUse: { contribute: noop },
       registerMcp: noop,
     } as unknown as ObjectivesFeatureDeps;
     expect(() => createObjectivesFeature(ctx).dispose()).not.toThrow();

@@ -7,10 +7,6 @@
   /* 플릿 브라우저 스페이스 표식의 중립 잉크 — 어느 스페이스의 탭인지만 말한다. 사령관·Objective 스페이스는 그 아바타의 정체성
      톤(--id-<tone>)을 쓰고, 아바타를 모르는 스페이스(세션)만 이 무채 잉크로 선다. */
   --id-space-ink: oklch(80% 0.01 245);
-  --console-use-badge: oklch(76% 0.11 60);
-  --console-use-badge-ink: oklch(22% 0.025 60);
-  /* 같은 채널을 글자로 쓸 때의 잉크 — 면 위의 배지와 달리 본문 표면 위에서 읽혀야 하므로 텍스트 티어에 선다. */
-  --text-console-use: var(--console-use-badge);
 
   --hairline: oklch(29% 0.018 245);
   --hairline-strong: oklch(37% 0.02 245);
@@ -549,12 +545,9 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  /* 76% 배지 잉크는 밝은 본문 표면 위에서 글자로 읽히지 않는다 — 같은 색상각에서 명도만 내린다. */
-  --text-console-use: oklch(52% 0.125 60);
   /* 다크의 채도 봉투 보정(base)은 라이트에 내려오지 않는다 — 배지 면은 지금 값을 그대로 잇는다. */
   --agent-control-badge: oklch(57% 0.24 285);
   --id-space-ink: oklch(45% 0.012 245);
-  --console-use-badge: oklch(76% 0.15 60);
 
   --ink-abyss: oklch(97% 0 0);
   /* 에이전트 말풍선 면 #f0f0f0. 사이드바는 대화 면에서 --ink-abyss 로 다시 꽂는다. */
@@ -836,7 +829,6 @@
   --control-wash: oklch(95% 0 0 / 7%);
   --control-wash-hover: oklch(95% 0 0 / 4%);
 
-  --console-use-badge: oklch(76% 0.1 60);
   --provider-claude: oklch(76% 0.085 62);
   --provider-typesafe: oklch(73% 0.085 339);
   --provider-antigravity: oklch(73% 0.08 288);
@@ -1012,7 +1004,6 @@
   --text-secondary: var(--m-text-nav);
   --text-tertiary: var(--m-text-muted);
   --text-on-brass: var(--m-on-inverse);
-  --text-console-use: var(--m-running);
   --live-sweep-trough: var(--m-text-faint);
   --live-sweep-crest: var(--m-text);
 
@@ -1232,7 +1223,6 @@
   /* 테마와 무관한 정체성 표지(제공자 글리프·배지)는 극성만 맞춘다 — 다크는 base 값. */
   --agent-control-badge: oklch(57% 0.16 285);
   --id-space-ink: oklch(80% 0.01 245);
-  --console-use-badge: oklch(76% 0.11 60);
   --provider-claude: oklch(76% 0.09 62);
   --provider-typesafe: oklch(73% 0.09 339);
   --provider-codex: oklch(78% 0.035 248);
@@ -1292,7 +1282,6 @@
   /* 라이트는 데스크톱 라이트의 극성 값 — 밝은 바탕에서 글리프가 읽히는 쪽. */
   --agent-control-badge: oklch(57% 0.24 285);
   --id-space-ink: oklch(45% 0.012 245);
-  --console-use-badge: oklch(76% 0.15 60);
   --provider-claude: oklch(54% 0.135 62);
   --provider-typesafe: oklch(52% 0.135 339);
   --provider-codex: oklch(43% 0.035 255);

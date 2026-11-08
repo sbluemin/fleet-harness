@@ -2,7 +2,7 @@ import { nextRoutineAt } from "../shared/routines.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import { z } from "zod";
 
 import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "../shared/contracts/questions.js";

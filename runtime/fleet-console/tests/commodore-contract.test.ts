@@ -13,7 +13,7 @@ import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_B
 import type { AgentEvent, AgentInput } from "../features/execution/shared/agent.js";
 import { CONVERSATION_REFERENCE_MARK as MARK } from "../features/execution/shared/conversation/references.js";
 import { resolveRosterCoordinate, type ModelCoordinate } from "../features/ai-gateway/shared/models.js";
-import { defineConsoleTool } from "../features/console-use/shared/actions.js";
+import { defineConsoleTool } from "../features/execution/shared/actions.js";
 import { DEFAULT_EXPERIMENT_SETTINGS, resolveExperimentSettings } from "../features/settings/shared/experiments.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -40,7 +40,7 @@ import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/boar
 import { commodoreCompactAt, MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
 import type { CommodoreAttachmentReader, CommodorePersonMessageReader, CommodoreTurnBindings } from "../features/objectives/shared/commodore-board.js";
-import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../features/execution/shared/tools.js";
 import { BLOCK_MS, createCommodoreBoardWatch, SETTLE_CHECK_MS, SETTLE_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../features/objectives/host/commodore-board.js";
 
 /** 이 파일의 단일 Theater fixture. 제품 저장소는 경로를 노출하지 않는 색인 포트를 받는다. */
@@ -1875,7 +1875,6 @@ describe("commodore session", () => {
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();
     expect(options.systemPrompt).not.toContain("project skills of the Theaters you had");
-    expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["fleet-commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "memory_search", "issue_list", "taskforce_post", "console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] description changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]\n\nCurrent alias: none\. You have no alias for this turn\.$/);

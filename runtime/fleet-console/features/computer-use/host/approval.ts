@@ -1,7 +1,7 @@
 import { ApprovalError, type ApprovalCore } from "@fleet-console/approval";
 
-import type { ComputerUseLedger, UseHoldOutcome, UseRequestView } from "../../console-use/host/use-requests.js";
-import { USE_REQUEST_HOLD_MS } from "../../console-use/host/use-requests.js";
+import type { ComputerUseLedger, UseHoldOutcome, UseRequestView } from "./use-requests.js";
+import { USE_REQUEST_HOLD_MS } from "./use-requests.js";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 
 /**

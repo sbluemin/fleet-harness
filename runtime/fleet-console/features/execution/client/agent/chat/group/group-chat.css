@@ -381,7 +381,7 @@ button.group-relay-row:active .group-relay-chip { background-image: linear-gradi
   height: 22px;
   border-radius: 50%;
   background: var(--control-wash);
-  color: var(--text-console-use);
+  color: var(--text-secondary);
 }
 .group-relay-glyph.is-lg { width: 30px; height: 30px; }
 

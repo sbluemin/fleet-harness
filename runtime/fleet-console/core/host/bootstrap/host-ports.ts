@@ -1,9 +1,8 @@
 import type { AttachmentHost } from "../../../features/execution/shared/agent.js";
-import type { ConsoleUseMcpHost } from "../../../features/console-use/shared/tools.js";
 import type { AdmiralMcpHost } from "../../../features/execution/shared/admiral-mcp.js";
 import type { McpTransport } from "@fleet-console/infra/http/mcp-transport";
 import type { ExperimentsHost } from "../../../features/settings/shared/experiment-ports.js";
-import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
+import type { ConsoleControlHost } from "../../../features/execution/shared/control-port.js";
 import type { EventPort, CleanupPort, HttpSecurityPort, HttpPort, ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import type { QuotaSettingsHost } from "../../../features/quota/host/storage.js";
@@ -12,7 +11,6 @@ import type { ObjectiveRecordsHost } from "../../../features/objectives/host/rec
 import type { ModelRosterHost } from "../../../features/ai-gateway/host/model-ports.js";
 export interface ConsoleHostPorts {
   readonly attachments?: AttachmentHost;
-  readonly consoleUse: ConsoleUseMcpHost;
   readonly admiralMcp: Pick<AdmiralMcpHost, "connect">;
   readonly mcpTransport?: McpTransport;
   readonly objectiveRecords: ObjectiveRecordsHost;

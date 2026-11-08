@@ -3536,11 +3536,11 @@
 
 /* 플러그인이 대신 보낸 말 — 받은 메시지와 같은 줄 문법으로 원장 왼편에 선다. 사람의 말풍선을
    빌리지 않는 것이 요점이다: 그 모양은 "사람이 말했다"를 뜻하고, 이 말은 플러그인이 보냈다.
-   출처는 Console Use 표식과 같은 잉크로 선다 — 이 줄이 무엇에서 왔는지가 이 줄의 유일한 주장이다. */
+   출처는 보조 글자로 선다 — 이 줄이 무엇에서 왔는지가 이 줄의 유일한 주장이다. */
 .agent-chat-origin { align-items: center; }
 .agent-chat-origin-source,
 .agent-chat-origin-source > .agent-chat-tally-glyph {
-  color: var(--text-console-use);
+  color: var(--text-secondary);
   font-weight: var(--weight-medium);
 }
 .agent-chat-origin-time {

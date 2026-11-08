@@ -491,7 +491,7 @@ describe("AgentChatRegistry", () => {
       { messages: [{ type: "result", subtype: "success", is_error: false }] },
     ]);
     const served = (name: string) => ({ name, url: `http://127.0.0.1:9/${name}`, headers: [] });
-    const launches = [[served("fleet-console-use")], [served("fleet-console-use"), served("fleet-computer-use")]];
+    const launches = [[served("fleet-objectives")], [served("fleet-objectives"), served("fleet-computer-use")]];
     const resolveFleetMcpServers = vi.fn(async () => launches.shift()!);
     const releaseFleetMcpServers = vi.fn();
     const registry = new AgentChatRegistry(factory);
@@ -510,8 +510,8 @@ describe("AgentChatRegistry", () => {
     expect(releaseFleetMcpServers).toHaveBeenCalledTimes(1);
     expect(resolveFleetMcpServers).toHaveBeenCalledTimes(2);
     const servedNames = (call: number) => ((openSession.mock.calls[call]![0] as { servedMcpServers?: { name: string }[] }).servedMcpServers ?? []).map((server) => server.name);
-    expect(servedNames(0)).toEqual(["fleet-console-use"]);
-    expect(servedNames(1)).toEqual(["fleet-console-use", "fleet-computer-use"]);
+    expect(servedNames(0)).toEqual(["fleet-objectives"]);
+    expect(servedNames(1)).toEqual(["fleet-objectives", "fleet-computer-use"]);
     await registry.disposeAll();
   });
 

@@ -14,7 +14,7 @@ import { COALESCE_MS, TF_PERSON_QUIET_MS, createCommodoreSupervisor } from "../f
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
 import type { AgentEvent, AgentInputBlock } from "../features/execution/shared/agent.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
-import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
+import type { ConsoleMcpTool } from "../features/execution/shared/tools.js";
 import type { CommodoreBoardAdapter, CommodoreBoardWakeCode } from "../features/objectives/shared/commodore-board.js";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "../features/settings/shared/experiments.js";
 import type { CommodoreEvent } from "../features/commodore/shared/contracts/types.js";

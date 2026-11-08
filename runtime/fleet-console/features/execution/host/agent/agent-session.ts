@@ -4,7 +4,6 @@ import { CLAUDE_AUTO_COMPACT_RESERVE, claudeAutoCompactTarget, claudeAutoCompact
 import path from "node:path";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
-import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "../../../console-use/shared/tools.js";
 import { z } from "zod";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
 import { FLEET_BROWSER_MCP_SERVER, type BrowserPluginConnection, type BrowserPluginOptions } from "../../../browser/host/mcp.js";
@@ -14,7 +13,6 @@ export { CLAUDE_AUTO_COMPACT_RESERVE };
 
 export interface AgentSessionHostDeps {
   readonly baseUrl: () => string | null;
-  readonly consoleUse: ConsoleUseMcpHost;
   /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)나 실험이 꺼진 동안에는 `tools.computerUse` 요청이 조용히 빠진다. */
   readonly computerUseMcp?: { connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null };
   readonly browserMcp?: { connectPlugin(options: Omit<BrowserPluginOptions, "pluginId">): BrowserPluginConnection };
@@ -68,7 +66,7 @@ export interface InternalSessionOptions extends Omit<AgentSessionOptions, "tools
   readonly autoMemoryEnabled?: boolean;
 }
 /** 호스트가 스스로 싣는 MCP 서버 이름 — 호출자의 도구 묶음·외부 서버는 이 이름을 쓸 수 없다. */
-export const AGENT_RESERVED_TOOL_GROUPS: readonly string[] = [FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER];
+export const AGENT_RESERVED_TOOL_GROUPS: readonly string[] = ["fleet-console-use", FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER];
 /** 호스트가 여는 능력. 기본은 닫혀 있다 — 플러그인 호스트는 셸·작업 폴더 도구를 싣지 않는다. */
 export interface AgentSessionHostPolicy { readonly workspace?: boolean }
 interface SessionResources {
@@ -111,7 +109,6 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
     let cancelled = false;
     let closing: Promise<void> | null = null;
 
-    let consoleConnection: ReturnType<ConsoleUseMcpHost["connect"]> | undefined;
     let computerConnection: ComputerUsePluginConnection | undefined;
     let browserConnection: BrowserPluginConnection | undefined;
     const servers: Record<string, ClaudeGatewayMcpServer> = {};
@@ -257,7 +254,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
         closing = (async () => {
           try { await loop.dispose(); await tail; }
           finally {
-            try { await Promise.all([consoleConnection?.dispose(), computerConnection?.dispose(), browserConnection?.dispose()]); }
+            try { await Promise.all([computerConnection?.dispose(), browserConnection?.dispose()]); }
             finally {
               sessions.delete(session);
               await releaseCwd();
@@ -285,13 +282,6 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
           });
         });
         servers[group.name] = createEmbeddedMcpServer({ name: group.name, tools, ...(group.alwaysLoad ? { alwaysLoad: true } : {}) });
-      }
-      if (options.tools?.consoleUse) {
-        const consoleOptions = options.tools.consoleUse;
-        consoleConnection = deps.consoleUse.connect({ ...consoleOptions, enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted && consoleOptions.enabled?.() !== false });
-        servers[FLEET_CONSOLE_USE_MCP_SERVER] = consoleConnection.embeddedServer as ClaudeGatewayMcpServer;
-        // 요청한 호스트 도구뿐 아니라 플러그인이 기여한 도구도 허용한다 — 실려 있는데 allowlist 에 없으면 dontAsk 가 거절한다.
-        allowed.push(...(consoleConnection.toolNames?.() ?? consoleOptions.tools ?? CONSOLE_USE_TOOLS).map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`));
       }
       if (options.tools?.computerUse && deps.computerUseMcp) {
         const computerOptions = options.tools.computerUse;

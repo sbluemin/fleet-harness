@@ -12,7 +12,7 @@ import { bindComputerUseApprovals } from "../../features/computer-use/host/appro
 import { createApprovalCore } from "@fleet-console/approval";
 import { createApprovalRouter } from "../../core/host/bootstrap/approval-routes.js";
 import { APPROVAL_ANSWER_PATH } from "../../core/host/bootstrap/approval-routes.js";
-import { createUseRequestBroker, type ComputerUseLedger } from "../../features/console-use/host/use-requests.js";
+import { createUseRequestBroker, type ComputerUseLedger } from "../../features/computer-use/host/use-requests.js";
 import { createUseContext } from "../../features/execution/host/use-context.js";
 
 const macOSComputerUsePlatform = createMacOSComputerUsePlatform({ resolveCodex: () => null, childEnv: () => ({}), spawnProcess: () => { throw new Error("unexpected spawn"); } });

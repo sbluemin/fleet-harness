@@ -1,5 +1,5 @@
-import { inputIssues, type ConsoleMcpTool } from "../../console-use/shared/tools.js";
-import { type ConsoleCaller } from "../../console-use/shared/control.js";
+import { inputIssues, type ConsoleMcpTool } from "../../execution/shared/tools.js";
+import { type ConsoleCaller } from "../../execution/shared/control.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import path from "node:path";
 

@@ -52,12 +52,6 @@ export function subscribeObjectiveReveals(listener: () => void): () => void {
   return () => { revealListeners.delete(listener); };
 }
 
-/** Objective의 콘솔 사용 허용 표식 — 서버가 쓰고 브라우저는 읽기만 한다. */
-export function readConsoleUseEnabled(payload: Record<string, unknown> | undefined): boolean {
-  const value = payload?.consoleUse;
-  return !!value && typeof value === "object" && (value as { enabled?: unknown }).enabled === true;
-}
-
 export function readComputerUseEnabled(payload: Record<string, unknown> | undefined): boolean {
   const value = payload?.computerUse;
   return !!value && typeof value === "object" && (value as { enabled?: unknown }).enabled === true;
@@ -79,12 +73,4 @@ export async function answerUseRequest(api: ClientApiCapability, input: { readon
     body: JSON.stringify({ decision: input.decision, capability: input.capability, language: input.language }),
   });
   if (!response.ok) throw new Error(`use_request_${response.status}`);
-}
-
-export async function setConsoleUse(api: ClientApiCapability, objectiveId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
-  await api.fetch(`experiments/sessions/${encodeURIComponent(objectiveId)}/console-use`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled, language }),
-  });
 }

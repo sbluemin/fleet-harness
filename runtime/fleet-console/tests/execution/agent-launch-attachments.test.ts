@@ -207,14 +207,6 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
         getEndpoint: async () => ({ servers: [] }), issueSessionToken: () => [],
         releaseSessionToken: () => {}, cleanup: () => {},
       }) },
-      consoleUse: { connect: () => ({
-        embeddedServer: {},
-        getEndpoint: async () => ({ servers: [] }),
-        issueSessionToken: () => [],
-        releaseSessionToken: () => {},
-        cleanup: () => {},
-        dispose: async () => {},
-      }) },
       objectiveRecords: {
         list: () => objectiveRecords,
         get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null,

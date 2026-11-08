@@ -10561,7 +10561,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 }
 
 /* 저자 잉크 — 사람이 아닌 발화자·답변자·닫은 이. */
-.chat-by-agent { color: var(--console-use-badge); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; }
+.chat-by-agent { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; }
 
 /* ── G Quiet Controls 고대비 경계 ─────────────────────────────────────────
    파일 끝자리에 둔다 — 같은 특정도라 순서가 이기므로, 쉬는 면 규칙보다 앞에 서면
