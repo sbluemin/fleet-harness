@@ -4815,7 +4815,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 [data-effort-level="high"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 70%, var(--text-tertiary)); }
 [data-effort-level="xhigh"] { --effort-tone: var(--brass-ink); }
 [data-effort-level="max"] { --effort-tone: var(--crest-ink); }
-[data-effort-level="ultra"] { --effort-tone: var(--apex-ink); }
 
 .effort-track-shell {
   display: flex;
@@ -4906,8 +4905,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   55%, 100% { transform: translateX(100%); }
 }
 
-/* 게이트 뒤 티어: MAX는 용융 구리(--crest), ULTRACODE는 보라(--apex). 같은 data-apex라도
-   단이 다르면 채널을 갈라, 둘을 한 색으로 읽히지 않게 한다. */
+/* 게이트 뒤 티어: MAX는 용융 구리(--crest). */
 .effort-track[data-apex="true"][data-effort-level="max"] {
   border-color: color-mix(in oklch, var(--crest) 55%, transparent);
   box-shadow:
@@ -4948,71 +4946,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
     transparent 35%,
     color-mix(in oklch, var(--gauge-crest) 45%, oklch(100% 0 0 / 30%)) 50%,
     transparent 65%);
-}
-
-.effort-track[data-apex="true"][data-effort-level="ultra"] {
-  border-color: color-mix(in oklch, var(--apex) 55%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
-    0 0 22px -4px var(--apex-glow);
-}
-
-/* ULTRACODE의 채움은 오로라처럼 유영한다 — 넓은 그라데이션이 3.6s 왕복으로 흐르고 결은 정지. */
-.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill {
-  background:
-    repeating-linear-gradient(
-      115deg,
-      color-mix(in oklch, var(--text-on-brass) var(--gauge-texture), transparent) 0 1.5px,
-      transparent 1.5px 10px),
-    linear-gradient(
-      90deg,
-      var(--gauge-fill) 0%,
-      var(--gauge-apex) 40%,
-      color-mix(in oklch, var(--gauge-apex) 62%, white) 58%,
-      var(--gauge-apex) 76%,
-      /* Intentional: oklch arcs apex→brass through rose (~330) for the aurora tail; oklab would grey it out. */
-      color-mix(in oklch, var(--gauge-apex) 75%, var(--gauge-fill)) 100%);
-  background-size: 100% 100%, 180% 100%;
-  animation: effort-ultra-aurora-drift 3.6s ease-in-out infinite alternate; animation-name: var(--state-motion, effort-ultra-aurora-drift);
-  animation-play-state: var(--gauge-drift);
-}
-
-@keyframes effort-ultra-aurora-drift {
-  from { background-position: 0 0, 0% 0; }
-  to { background-position: 0 0, 100% 0; }
-}
-
-/* 이 티어의 흰 스윕은 별빛으로 대체된다 — 게이트 글리프 ✦가 위상이 다른 두 별로 반짝인다.
-   공용 스윕 규칙(data-at-max ::after)을 이 selector가 특이도로 덮는다. */
-.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::before,
-.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::after {
-  content: "✦";
-  position: absolute;
-  inset: auto;
-  top: 50%;
-  border-radius: 0;
-  background: none;
-  font-size: 7px;
-  line-height: 1;
-  color: color-mix(in oklab, var(--text-primary) 70%, var(--apex));
-  transform: translateY(-50%);
-  animation: effort-ultra-twinkle 2.3s ease-in-out infinite 0.4s; animation-name: var(--state-motion, effort-ultra-twinkle);
-}
-
-.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::after {
-  right: 22%;
-}
-
-.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::before {
-  right: 45%;
-  font-size: 5px;
-  animation-duration: 3.1s;
-  animation-delay: 1.2s;
-}
-
-@keyframes effort-ultra-twinkle {
-  0%, 100% { opacity: 0; transform: translateY(-50%) scale(0.6); }
-  50% { opacity: 0.95; transform: translateY(-50%) scale(1.1); }
 }
 
 /* 게이트 장치는 트랙 우측의 ✦ 토글이다. 닫힘·열림이 한 버튼의 두 상태다(마운트 교체 없음).
@@ -5203,13 +5136,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   }
 }
 
-.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-knob {
-  box-shadow:
-    0 0 0 2.5px var(--apex),
-    var(--apex-halo),
-    var(--gauge-face-lift);
-}
-
 /* 값을 쥐지 않은 손잡이는 속이 비어 있다 — 꽉 찬 손잡이는 어느 자리에 있든 "이 단을 골랐다"로 읽힌다. */
 .effort-track-knob[data-auto="true"] {
   background: var(--surface-pillar);
@@ -5219,7 +5145,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .effort-track-value {
-  /* ULTRACODE 한 줄이 들어가는 칸. 짧은 단은 가운데. */
+  /* 라벨 한 줄이 들어가는 칸. 짧은 단은 가운데. */
   flex: 0 0 auto;
   min-width: 9.5ch;
   color: var(--effort-tone, var(--text-secondary));
@@ -5275,39 +5201,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   88% { filter: drop-shadow(0 0 6px var(--crest-glow)) brightness(1.1); }
 }
 
-/* ULTRACODE — 그라데이션이 글자를 가로질러 흘러 물결처럼 읽힌다. */
-.effort-track-value[data-effort-level="ultra"] {
-  font-weight: var(--weight-medium);
-  background-image: linear-gradient(
-    105deg,
-    var(--apex-ink) 0%,
-    color-mix(in oklch, var(--apex) 55%, white) 16%,
-    var(--apex-ink) 32%,
-    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
-    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
-    var(--apex-ink) 64%,
-    color-mix(in oklch, var(--apex) 55%, white) 80%,
-    var(--apex-ink) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: effort-ultracode-wave 1.9s linear infinite; animation-name: var(--state-motion, effort-ultracode-wave);
-}
-
-/* 되풀이는 이음매가 없어야 한다. 배경 위치 퍼센트는 상자 폭이 아니라 (상자 폭 - 이미지 폭)을
-   기준으로 재므로 한 바퀴의 이동량은 |dP|/100 x (이미지 폭 - 상자 폭)이고, 그것이 타일 한
-   폭의 정수배가 아니면 마지막 프레임이 첫 프레임과 어긋나 물결이 도중에 툭 끊긴다. 옛 값
-   (240%, dP 240)은 이동량 3.36W인데 타일은 2.4W라 한 바퀴마다 0.96W씩 어긋났다. 200%에서
-   dP 200은 2 x (2W - W) = 2W = 정확히 타일 한 폭이다 — 줄무늬 레일이 픽셀로 타일 한 주기를
-   미는 것과 같은 계산이고, 그쪽은 폭이 고정이라 픽셀, 여기는 글자 폭을 따라야 하므로
-   퍼센트다. 2.6s -> 1.9s는 속도 보정이다: 타일이 좁아지면 같은 시간에 지나가는 띠가 줄므로,
-   띠 통과율(약 1.7/s)을 그대로 두려면 주기도 함께 줄여야 한다. */
-@keyframes effort-ultracode-wave {
-  to { background-position: -200% 0; }
-}
-
 /* 파선 밑줄은 트랙의 파선 테두리와 같은 말이다: 이 값은 사다리 위의 단이 아니라 모델에 맡긴 자리다. */
 .effort-track-value[data-auto="true"] {
   text-decoration: underline dashed;
@@ -5348,14 +5241,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
     animation: none;
   }
 
-  .effort-track-value[data-effort-level="ultra"] {
-    animation: none;
-    background-image: none;
-    -webkit-background-clip: unset;
-    background-clip: unset;
-    color: var(--apex-ink);
-  }
-
   /* 게이트 뒤 MAX 라벨은 정적 crest 글로우로 돌아간다 — 게이트 없는 max와 같은 모습. */
   .effort-track-value[data-apex="true"][data-effort-level="max"] {
     animation: none;
@@ -5370,17 +5255,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
     animation: none;
   }
 
-  /* 티어 모션 전부 정지 — 결·오로라·별·헤일로는 정적 상태로 남는다. */
+  /* 티어 모션 전부 정지 — 결·헤일로는 정적 상태로 남는다. */
   .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill::before,
-  .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-knob,
-  .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill {
+  .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-knob {
     animation: none;
-  }
-
-  .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::before,
-  .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::after {
-    animation: none;
-    opacity: 0.6;
   }
 
   .effort-track,

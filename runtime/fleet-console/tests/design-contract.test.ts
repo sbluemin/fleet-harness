@@ -1870,8 +1870,7 @@ describe("Console core design contract", () => {
     // 밀어냈다. 지금은 이 한 줄이 같은 말을 하므로, 라이브 창이 되살아나지 않는 것이 계약이다.
     expect(chatView0).not.toContain("LIVE_STEP_WINDOW");
     // [doctrine] 물결은 "이 줄이 아직 자라고 있다"를 말하므로
-    // 색 채널을 하나도 빌리지 않는 명도 스윕이다 — 같은 기법을 쓰는 ULTRACODE 물결이 apex를
-    // 쓰는 것과 갈리는 지점이 바로 이것이고, 신호를 빌리면 자라는 줄이 상태색을 지게 된다.
+    // 색 채널을 하나도 빌리지 않는 명도 스윕이다 — 신호를 빌리면 자라는 줄이 상태색을 지게 된다.
     const chatLiveTextBlock = chat.match(/^\.agent-chat-live-text \{[^}]*\}/m)?.[0] ?? "";
     expect(chatLiveTextBlock).toContain("background-clip: text;");
     expect(chatLiveTextBlock).toContain("color: transparent;");
@@ -1955,7 +1954,7 @@ describe("Console core design contract", () => {
     const streamedMarkdown = fs.readFileSync(fileURLToPath(new URL("../features/execution/client/agent/streamed-markdown.tsx", import.meta.url)), "utf8");
     expect(streamedMarkdown).toContain('const streamingClass = streaming ? `${className ?? ""} is-streaming`.trim() : className;');
     // 물결 봉인은 모션만 죽이고 줄은 남긴다. `color: transparent`가 남으면 글자가 통째로
-    // 사라지므로 그라데이션과 채움을 함께 되돌려야 한다(ULTRACODE 물결과 같은 함정).
+    // 사라지므로 그라데이션과 채움을 함께 되돌려야 한다.
     const chatLiveSealBlock = chat.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-live-text \{[^}]*\}/)?.[0] ?? "";
     expect(chatLiveSealBlock).toContain("animation: none;");
     expect(chatLiveSealBlock).toContain("background-image: none;");
@@ -2402,9 +2401,7 @@ describe("Effort track interaction grammar", () => {
   it("pins the apex tier channel and its reduced-motion cutoff", () => {
     const components = source("styles/components.css");
     const theme = source("styles/theme.css");
-    const ultraRule = components.match(/\.effort-track\[data-apex="true"\]\[data-effort-level="ultra"\] \{[^}]*\}/)?.[0] ?? "";
     const maxRule = components.match(/\.effort-track\[data-apex="true"\]\[data-effort-level="max"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(ultraRule).toContain("var(--apex)");
     expect(maxRule).toContain("var(--crest)");
 
     const themeBlocks = [theme.slice(0, theme.indexOf(':root[data-theme="'))];
@@ -2418,33 +2415,19 @@ describe("Effort track interaction grammar", () => {
     }
 
     expect(components).toMatch(/\.effort-track-apex-burst \{\s*animation: none;\s*\}/);
-    expect(components).toMatch(/effort-ultracode-wave/);
-    // 물결은 끊기지 않고 되풀이해야 한다. 배경 위치 퍼센트는 (상자 폭 - 이미지 폭)을 기준으로
-    // 재므로 한 바퀴의 이동량 |dP|/100 x (이미지 폭 - 상자 폭)이 타일 한 폭의 정수배여야
-    // 마지막 프레임이 첫 프레임과 같다. 200%/dP 200 = 2W = 타일 한 폭이다. 이 물결을 쓰는
-    // 자리는 둘(강도 트랙 값·Chat 좌표 칩)이고 값이 갈라지면 안 된다.
-    expect(components).toMatch(
-      /@keyframes effort-ultracode-wave \{\s*to \{ background-position: -200% 0; \}\s*\}/,
-    );
-    expect(components).not.toContain("effort-ultracode-wave 2.6s");
-    expect(components.match(/animation: effort-ultracode-wave 1\.9s linear infinite;/g)?.length).toBe(1);
-    expect(components).toMatch(/\.effort-track-value\[data-effort-level="ultra"\] \{\s*animation: none;/);
 
-    // 티어 모션은 전부 티어 채널(crest/apex) 안에서만 놀고, 감속 모션에서 정적 상태로 남는다.
+    // 티어 모션은 전부 티어 채널(crest) 안에서만 놀고, 감속 모션에서 정적 상태로 남는다.
     for (const keyframes of [
       "effort-max-ember-wave",
       "effort-max-ember-flicker",
       "effort-max-molten-drift",
       "effort-max-crest-breathe",
-      "effort-ultra-aurora-drift",
-      "effort-ultra-twinkle",
     ]) {
       expect(components).toContain(`@keyframes ${keyframes}`);
     }
     // 게이트 뒤 MAX 라벨(엠버)은 감속 모션에서 정적 crest 글로우로 돌아간다 —
     // 게이트 없는 max 라벨과 같은 모습이 되는 것이 계약이다.
     expect(components).toMatch(/\.effort-track-value\[data-apex="true"\]\[data-effort-level="max"\] \{\s*animation: none;/);
-    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track\[data-apex="true"\]\[data-effort-level="ultra"\] \.effort-track-fill \{\s*animation: none;/);
   });
 
   it("pins the gauge weight channel so light never inherits the dark lightness order", () => {
@@ -2505,7 +2488,6 @@ describe("Effort track interaction grammar", () => {
     // 무효로 만들어 라이트에서 게이트 티어 손잡이의 링이 통째로 사라진다.
     expect(whites).not.toMatch(/--(?:apex|crest|brass|positive)-halo: none;/);
     expect(components).toMatch(/var\(--crest-halo\),\s*var\(--gauge-face-lift\);/);
-    expect(components).toMatch(/var\(--apex-halo\),\s*var\(--gauge-face-lift\);/);
 
     // 게이트 티어의 결·표류는 팔레트 토큰으로 꺼진다 — components.css는 테마 분기를 갖지 않는다.
     expect(components).not.toContain('data-theme=');
@@ -2515,67 +2497,6 @@ describe("Effort track interaction grammar", () => {
     // 쿼터 막대의 테두리도 같은 채널이다 — 라이트에서는 채움이 옅어져 액자만 남는다.
     const bar = quota.match(/\.quota-meter__bar \{[^}]*\}/)?.[0] ?? "";
     expect(bar).toContain("border: 1px solid var(--gauge-rim);");
-  });
-
-  it("pins the chat composer ultracode grammar — same recognition, apex frame, static border", () => {
-    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
-    const composer = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_COMPOSER_PATH), "utf8");
-
-    // 인식·미러·해제 문법은 공용 부품(execution composer primitives)에서 온다 — 이 조립은
-    // 상태와 표식만 진다. 무장은 초안과 해제 여부에서만 나온다.
-    expect(composer).toContain('} from "../../composer-primitives/ultracode.js";');
-    expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
-    expect(composer).toContain('${ultracodeArmed ? " is-ultracode" : ""}');
-    // 미러는 한 층이고 구간마다 클래스를 싣는다 — `ultracode` 무장과 덱이 완성한 좌표가 같은
-    // textarea 위에 함께 겹치기 때문이다. 층을 둘로 띄우면 스크롤·자동 높이에서 서로 어긋난다.
-    expect(composer).toContain('className: "agent-chat-composer-ultracode-token"');
-    expect(composer).toContain("renderComposerSpans(draft, highlightSpans)");
-    expect(composer).toContain('<p className="agent-chat-composer-ultracode-notice" role="status">');
-
-    // Backspace 해제는 키 반복도, 수식 키가 붙은 삭제(⌥/Ctrl 단어·⌘ 줄)도 먹지 않는다 —
-    // 가로채면 방금 친 단어를 지우려던 키가 아무것도 지우지 않는다.
-    expect(composer).toContain('event.key === "Backspace" && !event.repeat && ultracodeArmed');
-    expect(composer).toContain("&& !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey");
-
-    const block = (selector: string): string => {
-      const start = chat.indexOf(`${selector} {`);
-      expect(start, selector).toBeGreaterThan(-1);
-      return chat.slice(start, chat.indexOf("}", start));
-    };
-
-    // 무장 프레임은 apex 채널 하나로만 말한다 — 신호 토큰(aurora/warn/coral/positive)도, 위치
-    // 채널(brass)도 빌리지 않는다. 도는 conic 링이 아니라 정지한 테두리다
-    // (좌표의 is-ultracode가 이 면에서 이미 내린 결정). apex×중립 혼합은 oklab이다(hue 호 관통 방지).
-    // 완성된 좌표는 위치 채널(brass)이고 무장 표식은 apex다. 둘이 한 줄에 함께 설 수 있으므로
-    // 색이 갈라져 있어야 구분된다 — 좌표가 apex를 빌리면 무장한 것으로 읽힌다.
-    const resolved = block(".agent-chat-composer-resolved-token");
-    expect(resolved).toContain("var(--brass)");
-    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--apex"]) {
-      expect(resolved, signal).not.toContain(signal);
-    }
-
-    const frame = block(".agent-chat-composer-frame.is-ultracode");
-    expect(frame).toMatch(/border-color: color-mix\(in oklab, var\(--apex\)/);
-    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {
-      expect(frame, signal).not.toContain(signal);
-    }
-
-    // 단어 하이라이트는 좌표 ULTRACODE·강도 트랙과 같은 물결을 공유한다 — 같은 능력이면 같은 어휘다.
-    const token = block(".agent-chat-composer-ultracode-token");
-    expect(token).toContain("animation: agent-chat-ultracode-wave 1.9s linear infinite;");
-    expect(token).toContain("background-size: 200% 100%;");
-    // 미러 층이라 자족 폭을 바꾸는 속성은 못 쓴다 — 쓰면 보이는 글자와 캐럿이 어긋난다.
-    for (const metric of ["font-weight", "letter-spacing", "word-spacing", "font-size", "font-stretch", "text-transform"]) {
-      expect(token, metric).not.toContain(`${metric}:`);
-    }
-
-    // 점화는 유한 애니메이션(both)이라 무한 예외에 기대지 않는다 — 상시로 도는 것은 단어 물결뿐이다.
-    expect(chat).toContain("@keyframes agent-chat-composer-ignite");
-
-    // 감속 모션: 점화·물결은 세우되 상태는 남긴다 — 정지한 apex 테두리와 단색 apex 단어.
-    // 두 규칙 모두 봉인 블록에서만 이 형태를 띤다(무장 블록은 테두리·글로우를 더 얹는다).
-    expect(chat).toMatch(/\.agent-chat-composer-frame\.is-ultracode \{\s*animation: none;\s*\}/);
-    expect(chat).toMatch(/\.agent-chat-composer-ultracode-token \{\s*animation: none;\s*background-image: none;\s*color: var\(--apex-ink\);\s*-webkit-text-fill-color: var\(--apex-ink\);/);
   });
 
   it("pins the chat maintenance-lane grammar - a command is not a turn", () => {
@@ -2675,7 +2596,7 @@ describe("Effort track interaction grammar", () => {
     expect(reduced).toContain(".agent-chat-ask-dot");
   });
 
-  it("pins the inline chat session-coordinate grammar — no badge, apex only on ultracode content", () => {
+  it("pins the inline chat session-coordinate grammar — no badge", () => {
     const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
     const view = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const block = (selector: string): string => {
@@ -2699,28 +2620,8 @@ describe("Effort track interaction grammar", () => {
       expect(coordinate, channel).not.toContain(channel);
     }
 
-    // 색을 얻는 것은 강도 한 자리이고, 그 어휘는 런치 트랙의 것이다: MAX는 crest, ULTRACODE는 apex.
+    // 색을 얻는 것은 강도 한 자리이고, 그 어휘는 런치 트랙의 것이다: MAX는 crest.
     expect(block('.agent-chat-coord-effort[data-effort-level="max"]')).toContain("color: var(--crest-ink);");
-    const ultra = block('.agent-chat-coord-effort[data-effort-level="ultra"]');
-    expect(ultra).toContain("var(--apex-ink)");
-    expect(ultra).toContain("animation: agent-chat-ultracode-wave 1.9s linear infinite;");
-    // 라이브 물결과 같은 이음매 계약: 200% 이미지에 dP 200이면 한 바퀴의 이동량이 정확히
-    // 타일 한 폭이라 되풀이 프레임이 첫 프레임과 같다(옛 240%/dP 240은 3.36W 대 2.4W였다).
-    expect(ultra).toContain("background-size: 200% 100%;");
-    expect(chat).toMatch(
-      /@keyframes agent-chat-ultracode-wave \{\s*from \{ background-position: 0 0; \}\s*to \{ background-position: -200% 0; \}/,
-    );
-
-    // ultracode도 바깥 배지를 되살리지 않는다. apex는 별과 강도 글자만 얻고 모델명·행 표면은
-    // 중립으로 남는다.
-    expect(chat).not.toContain(".agent-chat-coord.is-ultracode {");
-    expect(block(".agent-chat-coord.is-ultracode .agent-chat-coord-mark")).toContain("color: var(--apex-ink);");
-
-    // 물결은 모션이므로 감속에서 멈춘다. 그라데이션을 지우면서 채움도 되돌려야 글자가 남는다.
-    const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
-    expect(reduced).toMatch(
-      /\.agent-chat-coord-effort\[data-effort-level="ultra"\] \{[\s\S]*?animation: none;[\s\S]*?-webkit-text-fill-color: var\(--apex-ink\);/,
-    );
 
     // 좌표를 말하는 자리는 이제 이 각인 하나다 — 로그 첫 줄의 태생 기록이 퇴역했으므로
     // 좁은 폭에서도 각인이 물러나지 않는다(물러나면 좌표를 볼 길이 사라진다). 단독·그룹 선택자
@@ -2746,7 +2647,7 @@ describe("Effort track interaction grammar", () => {
     // 누를 수 있게 그리면 거짓 약속이 된다. 컴포저의 좌표는 채팅 중 모델·강도를 바꾸는 문을 겸하며
     // Objectives 모델·강도 줄과 같은 문법을 쓴다: 테두리·그림자로 틀을 두르지 않고, 누를 수 있다는 사실은
     // hover·열림의 brass 바탕(위치 채널)이 말한다.
-    expect(view).toMatch(/<span\s+className=\{`agent-chat-coord\$\{/);
+    expect(view).toContain('className="agent-chat-coord"');
     expect(view).not.toMatch(/className="agent-chat-coord"[\s\S]{0,200}onClick/);
     const control = block(".agent-chat-coord.is-control");
     for (const surface of ["border:", "box-shadow:"]) {
@@ -2785,10 +2686,8 @@ describe("Effort track interaction grammar", () => {
     expect(components).toContain("width: calc(28px + var(--effort-track-gap) * var(--effort-intervals));");
     expect(trackSource).toContain("var(--effort-track-gap)");
 
-    // 스윕의 티어 분화: MAX는 구리빛 스윕, ULTRACODE는 스윕 대신 ✦ 별빛.
     // 스윕은 계속 crest 열을 말하되 무게는 계기 채널이 정한다 — base에서 --gauge-crest는 var(--crest)다.
     expect(components).toMatch(/data-effort-level="max"\] \.effort-track-fill::after \{[^}]*var\(--gauge-crest\)/);
-    expect(components).toMatch(/data-effort-level="ultra"\] \.effort-track-fill::before,[\s\S]{0,120}::after \{[^}]*content: "✦"/);
   });
 
   it("pins the effort tone ramp between the reading floor and brass, with no signal channel borrowed", () => {
@@ -2814,12 +2713,11 @@ describe("Effort track interaction grammar", () => {
       expect(ramp, rung).toContain(`[data-effort-level="${rung}"] { --effort-tone: color-mix(in oklab, var(--brass-ink)`);
     }
 
-    // 일상 단은 brass 한 채널 안에서만 논다 — 게이트 뒤 두 단만 자기 채널로 갈라진다.
+    // 일상 단은 brass 한 채널 안에서만 논다 — 게이트 뒤 MAX는 자기 채널(crest)로 갈라진다.
     for (const signal of ["--aurora", "--warn", "--coral", "--positive"]) {
       expect(ramp, signal).not.toContain(signal);
     }
     expect(ramp).toContain('[data-effort-level="max"] { --effort-tone: var(--crest-ink); }');
-    expect(ramp).toContain('[data-effort-level="ultra"] { --effort-tone: var(--apex-ink); }');
   });
 
   it("pins the shared effort track's pointer preview motion", () => {

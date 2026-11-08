@@ -43,18 +43,10 @@ export const EFFORT_LABELS: Readonly<Record<string, string>> = {
   high: "HIGH",
   xhigh: "XHIGH",
   max: "MAX",
-  ultra: "ULTRACODE",
 };
 
 /** launch 대상의 일상 축. max는 모델이 실제로 내놓을 때만 선다. */
 const LAUNCH_ORDINARY_AXIS = ["low", "medium", "high", "xhigh", "max"] as const;
-
-/**
- * Console launch 전용 sentinel — 카탈로그 사다리(GatewayReasoningEffort)의 단이 아니라 모든
- * 모델의 마지막 칩으로 무조건 서는 Claude Code 하네스 능력이다. launch payload에는
- * 이 문자열이 그대로 실리고, spawn은 launch factory가 `--effort ultracode`로 전달한다.
- */
-export const ULTRACODE_LAUNCH_EFFORT = "ultra";
 
 export function modelRosterGroupId(provider: GatewayProvider): string {
   return `gateway:${provider}`;
@@ -81,9 +73,9 @@ export function buildRosterFallbackGroup(): ObjectiveLaunchVariantGroup {
       label: "Sonnet",
       launch: { model },
       contextWindow: CLAUDE_COMPAT_CONTEXT_WINDOW,
-      effortAxis: [...ordinary, ULTRACODE_LAUNCH_EFFORT],
-      gatedEfforts: ["max", ULTRACODE_LAUNCH_EFFORT],
-      chips: [...ordinary, ULTRACODE_LAUNCH_EFFORT].map((effort) => effortChip(model, effort)),
+      effortAxis: [...ordinary],
+      gatedEfforts: ["max"],
+      chips: [...ordinary].map((effort) => effortChip(model, effort)),
     }],
   };
 }
@@ -130,9 +122,8 @@ function toRosterRow(
     ...(contextWindow ? { contextWindow } : {}),
     ...(model.fastSupported === true && model.fast !== true ? { fastSupported: true } : {}),
   };
+  if (ordinary.length === 0) return base;
   if (target === "agent") {
-    // Agent SDK 세션은 ultra를 받지 않고 게이트도 없다 — 모델이 내놓는 사다리가 곧 전체다.
-    if (ordinary.length === 0) return base;
     return {
       ...base,
       effortAxis: [...ordinary],
@@ -140,17 +131,13 @@ function toRosterRow(
     };
   }
   const hasMax = ordinary.includes("max");
-  // apex는 게이트 뒤 전용이다. max는 모델이 실제로 내놓을 때만 축에 올리고, ultra는 하네스
-  // 능력이라 모델과 무관하게 끝에 선다. 강도를 아예 지원하지 않는 모델은 ULTRACODE 단독 행이다.
-  const effortAxis: readonly string[] = ordinary.length === 0
-    ? [ULTRACODE_LAUNCH_EFFORT]
-    : [...LAUNCH_ORDINARY_AXIS.filter((effort) => effort !== "max" || hasMax), ULTRACODE_LAUNCH_EFFORT];
-  const gatedEfforts: readonly string[] = hasMax ? ["max", ULTRACODE_LAUNCH_EFFORT] : [ULTRACODE_LAUNCH_EFFORT];
+  const effortAxis: readonly string[] = [...LAUNCH_ORDINARY_AXIS.filter((effort) => effort !== "max" || hasMax)];
+  const gatedEfforts: readonly string[] = hasMax ? ["max"] : [];
   return {
     ...base,
     effortAxis,
     gatedEfforts,
-    chips: [...ordinary, ULTRACODE_LAUNCH_EFFORT].map((effort) => effortChip(id, effort)),
+    chips: ordinary.map((effort) => effortChip(id, effort)),
   };
 }
 

@@ -358,8 +358,6 @@ export const terminalEn = {
   "terminal.chat.composerHintQueue": "Enter to send into this turn",
   "terminal.chat.composerHintNewline": "⇧Enter for a new line",
   "terminal.chat.composerHintStop": "Esc to stop",
-  "terminal.chat.composerUltracodeNotice": "Dynamic workflow requested for this turn",
-  "terminal.chat.composerUltracodeHint": "Backspace hides this mark",
   // 능력 덱 — `/`는 세션의 능력, `@`는 행위자. SDK가 준 name/description은 벤더 영문이라
   // 그대로 보여 주고, 여기 있는 것은 우리 크롬의 문구뿐이다.
   "terminal.chat.deckAria": "Session capabilities",
@@ -968,8 +966,6 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.chat.composerHintQueue": "Enter 이 턴에 보내기",
   "terminal.chat.composerHintNewline": "⇧Enter 줄바꿈",
   "terminal.chat.composerHintStop": "Esc 중지",
-  "terminal.chat.composerUltracodeNotice": "이번 턴에 다이나믹 워크플로우를 요청해요",
-  "terminal.chat.composerUltracodeHint": "Backspace로 표식 감추기",
   "terminal.chat.deckAria": "세션 능력",
   "terminal.chat.deckCommands": "명령",
   "terminal.chat.deckSkills": "스킬",

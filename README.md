@@ -62,7 +62,7 @@ The gateway is a local Claude Code endpoint, not an API proxy. Claude Code keeps
 | **xAI** | Grok subscription | Grok 4.7 · Grok Composer 2.5 |
 | **Muse Code** | Muse Code subscription | Muse Spark 1.3 · Muse Spark 1.3 Contributor |
 
-Each model carries its own reasoning ladder. Every row also offers **ULTRACODE**, which launches Claude Code at xhigh effort with standing multi-agent orchestration. With **AI Gateway routing** turned on, subagents and workflow stages are assigned to gateway models, and providers whose usage window is nearly spent are skipped. The usage meters at the top right use the same measure, so you see a window running hot before it stops a run.
+Each model carries its own reasoning ladder. With **AI Gateway routing** turned on, subagents and workflow stages are assigned to gateway models, and providers whose usage window is nearly spent are skipped. The usage meters at the top right use the same measure, so you see a window running hot before it stops a run.
 
 ## Hand off work that takes more than one turn
 

@@ -283,13 +283,6 @@ export interface ClaudeGatewaySdkOptions {
   /** 호출자가 제공한 cwd 관찰 명령. plugin hook이 아닌 flag settings에 등록한다. */
   readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
   /**
-   * 세션 설정 `ultracode`. CLI의 `--effort ultracode`가 켜는 것과 같은 자리 — `xhigh` 강도와
-   * standing dynamic-workflow orchestration. `Options.effort` 단이 아니라 settings 플래그다.
-   *
-   * `true`만 연다. `false`를 실으면 사용자·프로젝트 설정의 켠 값을 flag 소스가 덮어 끈다.
-   */
-  readonly ultracode?: true;
-  /**
    * 세션 설정 `autoMemoryEnabled`. 명시하면 flag 설정과 자식의 disable 환경을 함께 맞춘다.
    * 생략하면 상속된 정책을 유지한다. 끔은 기존 파일을 삭제하거나 이미 읽은 기억을 지우지 않는다.
    */
@@ -603,12 +596,11 @@ export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage
    */
   setModel(model: string): Promise<void>;
   /**
-   * 세션 범위의 강도와 ultracode를 바꾼다(vendor `applyFlagSettings`). `effort: null`은 모델 기본
-   * 강도로, `ultracode: false`는 오케스트레이션을 끄고 현재 강도를 유지한다. 생략한 키는 건드리지 않는다.
+   * 세션 범위의 강도를 바꾼다(vendor `applyFlagSettings`). `effort: null`은 모델 기본
+   * 강도로 돌아간다.
    */
   applySessionSettings(settings: {
     readonly effort?: ClaudeGatewayEffort | null;
-    readonly ultracode?: boolean;
   }): Promise<void>;
   /** 세션을 접고 자식 프로세스를 끝낸다. 살아 있던 백그라운드 작업도 함께 거둬진다. */
   close(): void;

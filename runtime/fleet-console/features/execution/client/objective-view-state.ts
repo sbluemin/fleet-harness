@@ -22,7 +22,6 @@ interface ComposerDraft {
   readonly sending: boolean;
   readonly sentEpoch: number;
   readonly failed: boolean;
-  readonly ultracodeIgnored: boolean;
 }
 
 export interface TerminalViewPosition {
@@ -43,7 +42,7 @@ function createComposerDraft(objectiveId: string) {
     discard: (id) => discardLaunchAttachment(id),
   });
   const quotes = createComposerQuotes();
-  let current: Omit<ComposerDraft, "attachments" | "attachmentNotice" | "quotes"> = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false, ultracodeIgnored: false };
+  let current: Omit<ComposerDraft, "attachments" | "attachmentNotice" | "quotes"> = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false };
   let disposed = false;
   const listeners = new Set<() => void>();
   // useSyncExternalStore는 스냅샷 참조가 같으면 멈춘다. 매 읽기마다 새 객체를 만들면 렌더가 끝나지 않는다.
@@ -68,7 +67,6 @@ function createComposerDraft(objectiveId: string) {
     read,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     setText: (text: string) => update({ text, revision: current.revision + 1, failed: false }),
-    setUltracodeIgnored: (ultracodeIgnored: boolean) => update({ ultracodeIgnored }),
     addFile: (file: File) => { attachments.add([file]); },
     removeAttachment: (key: string) => { attachments.remove(key); },
     send: async (text: string): Promise<boolean> => {
@@ -86,7 +84,7 @@ function createComposerDraft(objectiveId: string) {
         attachments.releaseSent(sentKeys);
         quotes.releaseSent(sentQuotes.map((quote) => quote.key));
         update({
-          ...(current.revision === revision ? { text: "", revision: revision + 1, ultracodeIgnored: false } : {}),
+          ...(current.revision === revision ? { text: "", revision: revision + 1 } : {}),
           sentEpoch: current.sentEpoch + 1,
         });
         return true;
@@ -101,7 +99,7 @@ function createComposerDraft(objectiveId: string) {
       disposed = true;
       attachments.dispose();
       quotes.clear();
-      current = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false, ultracodeIgnored: false };
+      current = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false };
       view = { ...current, attachments: [], attachmentNotice: null, quotes: [] };
       listeners.clear();
     },

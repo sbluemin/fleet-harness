@@ -37,7 +37,6 @@ const EFFORT_LABELS: Readonly<Record<string, string>> = {
   high: "HIGH",
   xhigh: "XHIGH",
   max: "MAX",
-  ultra: "ULTRACODE",
 };
 
 export interface AgentChatSessionCoordinates {
@@ -45,12 +44,10 @@ export interface AgentChatSessionCoordinates {
   readonly model: string | null;
   /** 표시용 강도. 지정되지 않았으면 `null` — 부르는 쪽이 "AUTO"를 말한다. */
   readonly effort: string | null;
-  /** 사다리 단 그대로의 값. CSS가 티어를 이 값으로 가른다(`ultra`만 apex 물결). */
+  /** 사다리 단 그대로의 값. CSS가 티어를 이 값으로 가른다. */
   readonly effortLevel: string;
   /** 원문 좌표 — 툴팁이 축약하지 않은 사실을 보여 준다. */
   readonly title: string | null;
-  /** 이 세션이 ultracode 오케스트레이션으로 도는가. */
-  readonly ultracode: boolean;
   /**
    * 이 세션을 실제로 돌린 공급자. 런치가 payload에 적어 둔 값이 먼저이고, 없으면 모델 id의
    * 게이트웨이 범위에서 읽는다 — 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지
@@ -87,7 +84,6 @@ export function readAgentChatSessionCoordinates(
     effort: effort === null ? null : EFFORT_LABELS[effort] ?? effort.toUpperCase(),
     effortLevel: effort ?? "auto",
     title: model === null && effort === null ? null : [model, effort].filter(Boolean).join(" · "),
-    ultracode: effort === "ultra",
     provider: launchProviderFromModelId(model),
   };
 }

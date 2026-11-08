@@ -722,7 +722,7 @@ export function useCommodoreOnline(): boolean {
 }
 
 /**
- * 사령관·지휘관 좌표의 선택지 — Console의 모델 로스터. 사령관 세션은 `agent`(Agent SDK, ULTRACODE 없음), 사령관이 만드는
+ * 사령관·지휘관 좌표의 선택지 — Console의 모델 로스터. 사령관 세션은 `agent`(Agent SDK), 사령관이 만드는
  * 목표의 지휘관은 `launch`(Agent CLI) 대상이다. Settings › AI Gateway에서 모델을 켜고 끄면(다른 탭·기기 포함) 다시 그린다.
  * 마운트가 로스터 읽기를 시작하고(렌더 밖), 아직이면 null이다.
  */

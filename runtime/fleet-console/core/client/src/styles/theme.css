@@ -650,7 +650,7 @@
          brass 채움에서 도려낸 자리로 읽혀야 한다.
      (3) 색면 — 큰 brass 채움은 --brass-deep(L64/C0.10) 무게로 내려간다. 컴포저 전송 버튼이
          color-mix로 이미 도착해 있던 값(L63.8/C0.103)과 같은 자리다.
-     게이트 티어(ULTRACODE/MAX)는 결(--gauge-texture)을 걷고 표류(--gauge-drift)를 멈춰 워시 한 겹으로
+     게이트 티어(MAX)는 결(--gauge-texture)을 걷고 표류(--gauge-drift)를 멈춰 워시 한 겹으로
      남긴다 — 종이 위에서 흐르는 금속 결은 계기가 아니라 소음이다. */
   --gauge-face: oklch(99% 0 0);
   --gauge-face-lift: 0 1px 3px oklch(30% 0 0 / 26%);

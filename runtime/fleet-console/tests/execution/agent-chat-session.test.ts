@@ -112,8 +112,8 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
     supportedSkills: async () => hooks.catalog?.skills ?? null,
     reloadSkills: async () => hooks.catalog?.skills ?? null,
     setModel: async (model: string): Promise<void> => { await hooks.onControl?.(`model:${model}`); },
-    applySessionSettings: async (settings: { readonly effort?: string | null; readonly ultracode?: boolean }): Promise<void> => {
-      await hooks.onControl?.(`settings:${settings.effort ?? "default"}:${settings.ultracode === true ? "ultracode" : "plain"}`);
+    applySessionSettings: async (settings: { readonly effort?: string | null }): Promise<void> => {
+      await hooks.onControl?.(`settings:${settings.effort ?? "default"}`);
     },
     /**
      * 실물은 턴 경계 **양쪽**에서 답한다(실측). 아직 아무것도 보내지 않았으면 다음 턴의 시작
@@ -168,7 +168,7 @@ function createFakeSdkFactory(turns: FakeTurn[], catalog?: FakeCatalog) {
     };
   });
   const dispose = vi.fn(async () => { occupied = false; });
-  const factory = vi.fn(async (options: { readonly baseUrl: string; readonly models: readonly string[]; readonly ultracode?: true }) => ({
+  const factory = vi.fn(async (options: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
     configDir,
     models: options.models,
     startTurn: async () => { throw new Error("Chat Mode must run on a session, not a single turn."); },
@@ -1217,7 +1217,7 @@ describe("AgentChatRegistry — stopping a turn", () => {
 
     releaseModel();
     await vi.waitFor(() => { expect(wire).toContain("send:second"); });
-    expect(wire).toEqual(["send:first", "model:sonnet[1m]", "settings:medium:plain", "send:second"]);
+    expect(wire).toEqual(["send:first", "model:sonnet[1m]", "settings:medium", "send:second"]);
     expect(applied).toEqual([{ model: "sonnet[1m]", effort: "medium" }]);
     const change = seen.map((entry) => entry.event).find((event) => event.kind === "coordinates");
     expect(change).toMatchObject({ model: "sonnet[1m]", effort: "medium", from: { model: "opus[1m]", effort: "high" } });
