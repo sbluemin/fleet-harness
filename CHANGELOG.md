@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.291.0] - 2026-11-08
+
+### fleet-console
+
+#### Added
+- Optionally open Fleet Browser in a separate Desktop window, then return it to its panel without reopening your tabs.
+- Promoted the Quaker deputies Tori, Bori and Dori to commodores: pick one as a commodore's avatar with its signature color, and its replies take on that character's voice from the next turn.
+
+#### Changed
+- Fleet Browser tabs now sit in a slim vertical strip on the left, in both the side panel and the separate window. It opens when you point at it and can be pinned open.
+- Every commodore and Objective now shares one Fleet Browser with the same tabs and sign-ins, and it stays open, in the side panel or the separate window, when you switch between them.
+
+#### Removed
+- Removed the Quaker deputies (the adjutant flock) from Fleet Console; their characters now live on as promoted commodores.
+- Removed ULTRACODE launch effort, composer recognition and notices, mobile toggle, and runtime orchestration flags across Fleet Console.
+
 ## [1.290.0] - 2026-11-07
 
 ### fleet-console

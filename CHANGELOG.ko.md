@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.291.0] - 2026-11-08
+
+### fleet-console
+
+#### Added
+- 플릿 브라우저를 원할 때 별도 Desktop 창으로 열고, 탭을 다시 열지 않고 기존 패널로 돌려놓을 수 있습니다.
+- 퀘이커 부관단 토리·보리·도리가 사령관으로 진급했습니다. 사령관 아바타로 고르면 시그니처 색이 정해지고, 다음 턴부터 그 캐릭터의 말투로 답합니다.
+
+#### Changed
+- Fleet Browser 탭이 사이드 패널과 별도 창 모두에서 왼쪽의 좁은 세로 막대에 놓이고, 마우스를 올리면 펼쳐지며 고정해 둘 수도 있어요.
+- 모든 사령관과 Objective가 같은 탭과 로그인을 쓰는 Fleet Browser 하나를 함께 쓰고, 사령관이나 Objective를 오가도 오른쪽 패널이든 별도 창이든 열어 둔 그대로 남아요.
+
+#### Removed
+- Fleet Console에서 퀘이커 부관단을 제거했습니다. 캐릭터는 진급 사령관으로 이어집니다.
+- Fleet Console 전반에서 ULTRACODE 런치 강도, 컴포저 단어 인식 및 안내, 모바일 토글, 런타임 오케스트레이션 플래그를 제거했습니다.
+
 ## [1.290.0] - 2026-11-07
 
 ### fleet-console
