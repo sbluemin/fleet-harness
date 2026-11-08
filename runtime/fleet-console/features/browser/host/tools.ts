@@ -59,7 +59,7 @@ const TAB_ID = { type: "string", description: "Target tab ID." };
  * 다른 스페이스는 읽기만 된다(사람이 승인한 P1).
  */
 export const BROWSER_MCP_INSTRUCTIONS = [
-  "Fleet Browser is one Console-global browser shared across all commodores, objectives, and other sessions, divided into spaces like tab groups. Each commodore has its own space; an objective's commander and members share that objective's space. All spaces share cookies and the same login/profile. Tabs in other spaces, including other commodores' spaces, are readable but cannot be changed by you.",
+  "Fleet Browser is shared Console-wide, with spaces like tab groups. All spaces share cookies and login state in one browser profile. Each commodore has its own space; an objective's commander and members share that objective's space.",
   "Your current-tab selection is private; tabs are shared. For tab-targeted calls, omitted tabId uses your current-tab selection: the tab in your space that you last opened, navigated, or chose with tabs_select. Other agents and the person never change it. Closing the selected tab clears it.",
   "Calls do not switch the displayed tab; tabs_select(show:true) reveals a tab.",
   "tabs_context(all:true) lists the other spaces. Other spaces are read-only and require explicit tabId; JavaScript is refused there.",
