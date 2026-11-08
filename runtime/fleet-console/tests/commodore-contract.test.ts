@@ -32,6 +32,7 @@ import { effectiveCommodorePlugins, objectiveSessionPlugins, MAX_PLUGIN_README_B
 import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
+import { commodoreSystemPrompt } from "../features/commodore/host/prompt.js";
 import { createCommodoreTools } from "../features/commodore/host/tools.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { COALESCE_MS, COMMODORE_IDLE_ROTATE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
@@ -3168,4 +3169,27 @@ it("reads pre-removal wake-scope rows with operator and held", () => {
   }
   const current = commodoreTranscriptEntrySchema.safeParse({ seq: 1, at: 2, kind: "wake-scope", woke: [{ id: "o1", codes: ["status"] }] });
   expect(current.success).toBe(true);
+});
+
+it("assembles promoted Commodore character and voice block for Bori, Tori, and Dori", () => {
+  for (const voice of ["bori", "tori", "dori"] as const) {
+    const alias = voice === "bori" ? "보리" : voice === "tori" ? "토리" : "도리";
+    const prompt = commodoreSystemPrompt("theater-1", "ko", { commodoreId: `${voice}-id`, alias, voice });
+    expect(prompt).toContain("# Identity");
+    expect(prompt).toContain(`named "${alias}"`);
+    expect(prompt).toContain("# Character & Voice");
+    expect(prompt).toContain("사람에게는 눈치 빠르고 수다스러운 퀘이커의 경쾌한 반말로 말한다.");
+    expect(prompt).toContain("‘봐봐 봐봐!’, ‘~했지롱~’, ‘~거든!’ 같은 말맛이다.");
+    expect(prompt).toContain("짧은 괄호 몸짓은 가끔, 많아도 답변당 두 번만 쓴다. 예: (날개 파닥파닥).");
+    expect(prompt).not.toContain("warm 해요체");
+    expect(prompt).not.toContain("십시오체");
+    expect(prompt).toContain("- Get to the answer without unnecessary restatement. Match detail to the request and keep facts clear and accurate; no apologies or emoji.");
+  }
+  const plain = commodoreSystemPrompt("theater-1", "ko", { commodoreId: "plain-id", alias: "일반" });
+  expect(plain).not.toContain("# Character & Voice");
+  expect(plain).toContain("like a friendly colleague (in Korean, warm 해요체)");
+
+  const englishPromoted = commodoreSystemPrompt("theater-1", "en", { commodoreId: "bori-id", alias: "Bori", voice: "bori" });
+  expect(englishPromoted).not.toContain("# Character & Voice");
+  expect(englishPromoted).toContain("like a cheerful, quick-witted, and lively colleague");
 });
