@@ -9,10 +9,10 @@ import "./quaker-head.css";
 export const QUAKER_FIGURE_VIEW_BOX = "0 0 260 300";
 
 /**
- * 상반신 창 — 머리·모자와 견장, 양 날개 윗부분까지만 보인다(꼬리·발·몸통 아래는 창 밖). 몽글 아바타의 32×32 칸에 그대로 들어가며,
+ * 상반신 창 — 머리·모자 아래로 몸통 윗부분과 견장·날개 끝만 살짝 보인다(가슴판·꼬리·발은 창 밖). 몽글 아바타의 32×32 칸에 그대로 들어가며,
  * 큰 자리(우측 프로필, 사령관 목록 행)에서만 쓴다. 날개짓은 전신과 같다.
  */
-export const QUAKER_BUST_VIEW_BOX = "14 24 232 232";
+export const QUAKER_BUST_VIEW_BOX = "50 26 160 160";
 
 export function QuakerFigure({
   morph,
