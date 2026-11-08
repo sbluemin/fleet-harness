@@ -14,7 +14,7 @@ import { BROWSER_GLOBAL_ID, commodoreOfSpace, HUMAN_SPACE_ID, spaceKindOf, type 
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
-import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, BrowserNavTailContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import { BrowserSurfaceContent, useBrowserDocument, useBrowserWindow, type BrowserSurfaceState } from "./browser-window.js";
 import "./browser-panel.css";
@@ -1592,7 +1592,6 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
   };
   const hoverInfo = draftPin?.element ?? hover;
   const hoverBox = highlightBox(hoverInfo);
-  const navTail = React.useContext(BrowserNavTailContext);
   // 작업대가 주소줄 줄을 맨 위 줄에 세우라고 하면(`navHost` 가 요소이거나 null) 칸 안에는 그리지 않는다. 맨 위 줄의 영역 폭은 칸 폭이 아니므로
   // 좁아지면 캡처·주석·세션·뷰포트가 「⋯」 하나로 모인다(`navFolded`) — 줄의 실제 폭을 재어 정한다.
   const navHost = React.useContext(BrowserNavHostContext);
@@ -1629,7 +1628,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(nav);
     return () => observer?.disconnect();
-  }, [navTop, navHost, navFolded, hasCapture, navTail !== null]);
+  }, [navTop, navHost, navFolded, hasCapture]);
   const closedDoor = !available ? unavailableText(t, state?.reason ?? null, services.isDesktopShell()) : null;
 
   const navBar = (
@@ -1734,7 +1733,6 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
         </>
       )}
       {detached.available && !host ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t("terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : "terminal.browser.detach")}>↗</button> : null}
-      {!host ? navTail : null}
     </div>
   );
 

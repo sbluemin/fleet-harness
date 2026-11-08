@@ -51,6 +51,15 @@ const dirty = new Set<string>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let tileSeq = 0;
 let version = 0;
+/**
+ * Fleet Browser 의 열림 의도 — 브라우저는 Console 에 하나라 도킹한 브라우저 칸의 열림·닫힘도 대화마다가 아니라 하나다. 어느 대화에서든 사람이
+ * 칸을 열고 닫으면 이 값이 따라가고, 다른 대화에 도착하면 그 대화의 배치가 이 값에 맞춰진다(배치가 이미 맞으면 그대로 — 그 대화가 저장해 둔 칸의 자리·크기를 쓴다).
+ * `null` 은 아직 의도가 없다는 뜻이다 — 처음 읽은 대화의 모양을 그대로 받아들이므로 시작할 때 저장된 배치를 일괄로 닫거나 열지 않는다.
+ * 화면 수명 동안만 기억한다. 재시작 뒤에는 처음 읽은 대화의 저장된 배치가 이어받는다(그 배치가 곧 마지막 의도다).
+ */
+let browserIntent: boolean | null = null;
+/** 도착한 대화의 배치를 의도에 맞추는 동안 — 이 조작은 의도를 바꾸지 않는다. */
+let carryingBrowserIntent = false;
 
 function notify(): void {
   version += 1;
@@ -95,6 +104,7 @@ export function setWorkbenchConversation(key: string | null): void {
   currentKey = next;
   focusedTileId = null;
   pendingClose = null;
+  carryBrowserIntent();
   notify();
 }
 
@@ -141,6 +151,7 @@ export function loadWorkbenchLayouts(): void {
         pendingClose = closeByKey.get(activeKey) ?? null;
         replayingChanges = false;
       }
+      carryBrowserIntent();
       notify();
     }, () => {
       // 다음 조작이나 마운트가 다시 읽는다. 기다리던 의도는 성공할 때까지 남긴다.
@@ -199,8 +210,39 @@ function commit(next: WorkbenchLayout, options: { readonly persist?: boolean } =
   if (isWorkbenchEmpty(next)) map.delete(key);
   else map.set(key, next);
   layouts = map;
+  // 대화에서 브라우저 칸이 생기거나 사라지면 그것이 사람의 뜻이다(열기·닫기·토글·칸의 닫기 단추 모두 여기를 지난다). 도착에 맞추는 조작과 대화가 아닌 화면은 제외.
+  if (!carryingBrowserIntent && key !== NON_CONVERSATION_KEY) {
+    const had = hasBrowserTile(previous);
+    const has = hasBrowserTile(next);
+    if (had !== has) browserIntent = has;
+  }
   if (options.persist !== false) scheduleSave(key);
   notify();
+}
+
+function hasBrowserTile(layout: WorkbenchLayout): boolean {
+  return workbenchTiles(layout).some((tile) => tile.kind === "browser");
+}
+
+/**
+ * 도착한 대화의 배치를 브라우저 의도에 맞춘다. 읽기 전에는 하지 않는다(읽기가 끝나면 한 번 맞춘다). 열 때는 그 대화에 저장된 브라우저 칸이 있으면 그것을 그대로 두고,
+ * 없으면 기본 자리에 세운다. 초점은 도착 때 건드리지 않는다. 닫을 때는 확인을 묻지 않고 칸만 걷는다(저장된 다른 칸·비율은 그대로).
+ */
+function carryBrowserIntent(): void {
+  if (loadState !== "loaded" || currentKey === NON_CONVERSATION_KEY || forgottenKeys.has(currentKey)) return;
+  const layout = getWorkbenchLayout();
+  const present = hasBrowserTile(layout);
+  if (browserIntent === null) { browserIntent = present; return; }
+  if (present === browserIntent) return;
+  const focus = focusedTileId;
+  carryingBrowserIntent = true;
+  try {
+    if (browserIntent) openLoadedWorkbenchTile({ kind: "browser" }, {});
+    else commit(workbenchLayoutKeeping(layout, (tile) => tile.kind !== "browser"));
+  } finally {
+    carryingBrowserIntent = false;
+    focusedTileId = focus;
+  }
 }
 
 // ── 순수 조작 ─────────────────────────────────────────────────────────────
@@ -510,7 +552,9 @@ export function setWorkbenchExpanded(tileId: string | null): void {
   if (tileId !== null) tileId = resolvedTileId(tileId);
   const layout = getWorkbenchLayout();
   if (layout.expandedTileId === tileId) return;
-  if (tileId !== null && findWorkbenchTile(layout, tileId) === null) return;
+  const found = tileId === null ? null : findWorkbenchTile(layout, tileId);
+  // 브라우저 칸은 펼치지 않는다 — 크기는 경계 바로 조절한다.
+  if (tileId !== null && (found === null || found.tile.kind === "browser")) return;
   commit({ ...layout, expandedTileId: tileId });
 }
 
@@ -698,6 +742,8 @@ export function resetWorkbenchForTest(): void {
   pendingChanges.length = 0;
   pendingTileIds.clear();
   replayingChanges = false;
+  browserIntent = null;
+  carryingBrowserIntent = false;
   dirty.clear();
   if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; }
   version += 1;

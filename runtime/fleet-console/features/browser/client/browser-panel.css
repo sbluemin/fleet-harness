@@ -53,9 +53,11 @@
 .op-browser__tab-icon.is-fallback svg { width: 14px; height: 14px; }
 .op-browser__tab-dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--text-tertiary); }
 .op-browser__tab-dot.is-loading { background: var(--aurora); box-shadow: 0 0 6px var(--aurora-glow); animation: op-browser-pulse 1s ease-in-out infinite; animation-name: var(--state-motion, op-browser-pulse); }
-.op-browser__tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.op-browser__tab-close { flex: none; background: transparent; border: 0; color: var(--text-tertiary); font: inherit; line-height: 1; padding: 0 2px; cursor: pointer; border-radius: var(--radius-xs); }
-.op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--ink-rim); outline: none; }
+.op-browser__tab-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 닫기 — Chrome 세로 탭처럼 행의 오른쪽 끝에 붙는 둥근 22px 단추다(제목이 남는 폭을 채우고 말줄임). 순서는 아이콘 · 제목 · [에이전트 표식] · 닫기. 호버·키보드 초점·누름은 글자색이 올라가고 중립 워시가 깔린다(행의 호버·선택 면 위에서도 읽힌다). */
+.op-browser__tab-close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-inline-start: auto; padding: 0; background: transparent; border: 0; color: var(--text-tertiary); font: inherit; font-size: var(--t-md); line-height: 1; cursor: pointer; border-radius: var(--radius-pill); }
+.op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--wash-selected); outline: none; }
+.op-browser__tab-close:active { color: var(--text-primary); background: color-mix(in oklch, var(--text-primary) 14%, transparent); }
 .op-browser__viewport-menu { position: relative; align-self: center; }
 /* ---- 스페이스 — 크롬 탭 그룹 모양: 그룹 색 칩 + 탭들 + 칩부터 마지막 탭까지 이어지는 그룹 색 밑줄. 색은 스페이스를 가리키는 표식일 뿐 상태가 아니다. ----
    그룹의 --browser-space-c 를 칩·밑줄·선택 탭 외곽이 읽는다. 값은 그 스페이스(사령관·Objective)의 아바타 정체성 톤(--id-<tone>)이고
