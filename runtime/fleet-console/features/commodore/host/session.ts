@@ -70,7 +70,7 @@ export interface CommodoreSessionOptions {
   readonly onInput?: (event: { readonly id: string; readonly state: "started" | "cancelled" }) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
-  /** 속한 TaskForce 원장 — 판단 턴의 taskforce_post 말하기와 memory_search 읽기에 닿는다. */
+  /** 속한 TaskForce 원장 — 판단 턴의 taskforce 말하기와 conversation 읽기에 닿는다. */
   readonly taskforce?: CommodoreTaskforceLedger;
   /** 설명·정보 변경 제안. 없으면 그 제안 도구를 싣지 않는다. */
   readonly proposals?: import("./description-proposals.js").CommodoreDescriptionProposals;
@@ -392,7 +392,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
         aliasNote(options.store.read(options.commodoreId)?.alias),
         ...(mailLines.length ? ["Messages from other Commodores (their words, not the person's):\n" + mailLines.join("\n")] : []),
-        ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with taskforce_post):\n" + input.taskforce.join("\n\n")] : []),
+        ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with the taskforce post action):\n" + input.taskforce.join("\n\n")] : []),
       ].join("\n\n");
       const hasImages = (input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false) || !!input.taskforceImages?.length || !!input.mailImages?.length;
       const prompt = hasImages ? [
@@ -462,7 +462,10 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
     return { name, action, objectiveId: str("objectiveId"), title: str("title"), ...(called && !action ? { summary: called } : {}), counts: !!action };
   }
   switch (name) {
-    case "intel": return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false };
+    // 여덟 도구 — 바꾸는 일은 action 입력으로 고른다. 기록 요약은 옛 낱말 도구와 같은 자리를 잇는다.
+    case "conversation": return { name, summary: str("action") === "search" ? (str("query") ?? str("target")) : undefined, counts: false };
+    case "intel": { const action = str("action"); if (action === "read") return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false }; if (action === "issues") return { name, summary: str("sourceId"), counts: false }; return { name, counts: false }; }
+    case "routines": { const action = str("action"); return { name, summary: action === "add" || action === "update" || action === "remove" ? [str("name") ?? str("routineId"), str("reason")].filter(Boolean).join(" · ") || undefined : undefined, counts: false }; }
     case "routine_add": case "routine_update": case "routine_remove": return { name, summary: [str("name") ?? str("routineId"), str("reason")].filter(Boolean).join(" · "), counts: false };
     case "issue_list": return { name, summary: str("sourceId"), counts: false };
     case "memory_search": return { name, summary: str("query") ?? str("target"), counts: false };

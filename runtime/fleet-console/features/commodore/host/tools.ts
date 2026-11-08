@@ -3,25 +3,30 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
+import { defineConsoleTool } from "../../execution/shared/actions.js";
 import { z } from "zod";
 
-import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "../shared/contracts/questions.js";
+import { decisionQuestionSchema, MAX_DECISION_QUESTIONS, ownAnswer } from "../shared/contracts/questions.js";
+import { commodoreSessionToolName } from "../shared/tool-names.js";
 import { refuse, text } from "./tool-results.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
-import { MEMORY_SEARCH_DESCRIPTION, memorySearchInputSchema, searchCommodoreLedger, type MemorySearchTaskforce } from "./memory-search.js";
+import { memorySearchInputSchema, searchCommodoreLedger, type MemorySearchTaskforce } from "./memory-search.js";
 
 export type { MemorySearchTaskforce as CommodoreTaskforceLedger };
 import { TaskforceStoreError } from "./taskforce/errors.js";
-import { MAX_TASKFORCE_POST_TEXT, MAX_TASKFORCE_TEXT, RECOMMENDED_TASKFORCE_POST_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
+import { MAX_TASKFORCE_MEMBERS, MAX_TASKFORCE_POST_TEXT, MAX_TASKFORCE_TEXT, RECOMMENDED_TASKFORCE_POST_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import type { CommodoreDescriptionProposals } from "./description-proposals.js";
 import type { CommodoreIntelProposals } from "./intel-proposals.js";
 import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
-import { MAX_ASK_REASON, MAX_DESCRIPTION, MAX_INTEL_TEXT, routineInputSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
+import { MAX_ASK_REASON, MAX_DESCRIPTION, MAX_INTEL_TEXT, routineScheduleSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
 
 /**
  * 사령관 전용 도구 — `fleet-commodore` 묶음으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
  *
+ * 여덟 도구다: description·intel·memory·conversation·ask·routines·taskforce와
+ * 사령관 연락·생성의 commodores(console-tools). 바꾸는 일은 같은 도구의
+ * action 입력으로 고른다. 되돌리기 어려운 일(memory 지움)은 그 입력에 밝힌다.
  * 설명·정보는 여기서만 읽힌다(시스템 프롬프트·깨움 턴에 싣지 않는다). Theater 는 Agent SDK 내장 도구(Bash·Glob·Grep·Read)로
  * 직접 다루고, 정보 출처의 이슈만 여기서 읽는다.
  */
@@ -52,40 +57,42 @@ export interface CommodoreToolsOptions {
   readonly now?: () => number;
   readonly execute?: CommandExecute;
   /**
-   * 속한 TaskForce 원장 — 판단 턴의 말하기와 memory_search의 읽기에 닿는다.
+   * 속한 TaskForce 원장 — 판단 턴의 말하기와 conversation의 읽기에 닿는다.
    * 없으면 TF 도구를 거절한다(판단 런타임이 없는 호스트).
    */
   readonly taskforce?: MemorySearchTaskforce;
   /**
-   * 설명·정보 변경 제안. 있으면 제안·목록 도구가 붙는다. 승인·거절은 여기 없다 — 사람은 라우트로만 답한다.
-   * 기억은 제안이 아니다. memory_save 가 그대로 쓴다.
+   * 설명·정보 변경 제안. 있으면 제안·목록 도구가 붙는다. 승인·거절은 여기서 없다 — 사람은 라우트로만 답한다.
+   * 기억은 제안이 아니다. memory save 가 그대로 쓴다.
    */
   readonly proposals?: CommodoreDescriptionProposals;
   readonly intelProposals?: CommodoreIntelProposals;
 }
 
+/** 같은 턴에 바로잡을 수 있게 거절 사유를 돌려준다 — TaskforceStoreError의 details가 힌트를 싣는다. */
+const fail = (error: unknown) => {
+  const code = error instanceof Error ? error.message : "commodore_failed";
+  const details = error instanceof TaskforceStoreError ? error.details ?? {} : {};
+  return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed", details);
+};
+
+const parseFail = (parsed: { readonly error: string; readonly issues?: unknown }) =>
+  refuse(parsed.error, { issues: parsed.issues });
+
+const rename = (tool: ConsoleMcpTool): ConsoleMcpTool => {
+  const name = commodoreSessionToolName(tool.name);
+  return name === tool.name ? tool : { ...tool, name };
+};
+
 export function createCommodoreTools(options: CommodoreToolsOptions): readonly ConsoleMcpTool[] {
   const now = options.now ?? Date.now;
   const run = options.execute ?? defaultExecute;
+  const caller = { caller: "commodore" } as const;
   const state = () => {
     const current = options.store.read(options.commodoreId);
     if (!current) throw new Error("theater_unavailable");
     return current;
   };
-  const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, body: (args: z.output<S>, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> | unknown): ConsoleMcpTool => ({
-    name, description, inputSchema: z.toJSONSchema(schema),
-    execute: async (raw, context) => {
-      const parsed = schema.safeParse(raw ?? {});
-      if (!parsed.success) return refuse("invalid_arguments");
-      try { return text(await body(parsed.data, context)); }
-      catch (error) {
-        const code = error instanceof Error ? error.message : "commodore_failed";
-        // 같은 턴에 바로잡을 수 있게 거절 사유를 돌려준다 — TaskforceStoreError의 details가 힌트를 싣는다.
-        const details = error instanceof TaskforceStoreError ? error.details ?? {} : {};
-        return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed", details);
-      }
-    },
-  });
 
   const openCount = () => (state().asks ?? []).filter((ask) => !ask.settled).length;
   /** 질문 한 건 — 선택지는 이름으로, 답은 질문마다 고른 이름·직접 쓴 말·내 의견 표시로. */
@@ -116,163 +123,291 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     updated: stamp(entry.updated), verified: stamp(entry.verified),
     ...(now() - entry.verified > MEMORY_STALE_MS ? { stale: true } : {}),
   });
-  const memoryText = {
-    title: z.string().trim().min(1).max(MAX_MEMORY_TITLE),
-    description: z.string().trim().min(1).max(MAX_MEMORY_DESCRIPTION),
-    why: z.string().trim().min(1).max(MAX_MEMORY_BODY),
-    how: z.string().trim().min(1).max(MAX_MEMORY_BODY),
-    sourceObjectiveIds: z.array(z.string().min(1).max(128)).max(MAX_MEMORY_SOURCES),
-    links: z.array(memoryRefSchema).max(MAX_MEMORY_LINKS),
+  const memoryFields = {
+    title: z.string().trim().min(1).max(MAX_MEMORY_TITLE).describe("Short title."),
+    description: z.string().trim().min(1).max(MAX_MEMORY_DESCRIPTION).describe("One-line summary."),
+    why: z.string().trim().min(1).max(MAX_MEMORY_BODY).describe("Why it matters. Plain text; no secrets."),
+    how: z.string().trim().min(1).max(MAX_MEMORY_BODY).describe("How to apply it. Plain text, no ## headings; no secrets."),
+    sourceObjectiveIds: z.array(z.string().min(1).max(128)).max(MAX_MEMORY_SOURCES).describe("This Theater's objectives it came from."),
+    links: z.array(memoryRefSchema).max(MAX_MEMORY_LINKS).describe("Related entries by ref; no secrets."),
   };
 
   const proposals = options.proposals;
   const intelProposals = options.intelProposals;
-  const descriptionText = proposals
-    ? "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive. You cannot edit it. To ask for a change to any Commodore's description, including your own, use propose_description; only the person can approve or reject it, and approving overwrites the description as it stands then. One open proposal per Commodore: a new one replaces the previous. Read description_proposals for the open proposal you made, and withdraw_description to take back one you opened. You cannot withdraw someone else's. Read the description at the start of a turn that says the description changed, and whenever you need to weigh a decision against it."
-    : "The person's account of who you are and what you are for: current text, revision number and when it last changed. It is the highest authority you receive and you cannot edit it. Read it at the start of a turn that says the description changed, and whenever you need to weigh a decision against it.";
-  return [
-    tool("description", descriptionText, z.object({}).strict(), () => {
-      const { description } = state();
-      return { text: description.text, rev: description.rev, updatedAt: stamp(description.updatedAt) };
-    }),
-    // since 는 「이미 본 가장 최신 항목」이다 — 그 뒤에 들어온 항목과, 그 항목이 들어온 뒤 사람이 고친 항목(더 오래된 것·since 자신 포함)을 함께 돌려준다.
-    // 고친 항목은 id·출처·자리가 그대로라 앞에서부터 자르면 놓친다. 이미 읽은 고침이 같은 editedAt 으로 다시 올 수 있다.
-    tool("intel", `Intel items — information from the person and from sources, newest first, each dated and attributed — plus the list of intel sources. The person can edit an item in place: it keeps its id, source and position and carries editedAt. Pass since (the newest item id you already saw) to get only items added after it plus items edited after it was added; an edit you already read can come back with the same editedAt. Intel informs judgment; it does not command.${intelProposals ? " You cannot write intel. To ask for an add, edit or removal on any Commodore, including yourself, use propose_intel; only the person approves it. Read intel_proposals for the open proposal you made, and withdraw_intel to take back one you opened. You cannot withdraw someone else's." : ""}`, z.object({ since: z.string().min(1).max(128).optional(), limit: z.number().int().min(1).max(200).optional() }).strict(), ({ since, limit }) => {
-      const { intel, sources } = state();
-      const end = since ? intel.findIndex((item) => item.id === since) : -1;
-      const seenAt = end >= 0 ? intel[end]!.at : 0;
-      const scoped = end >= 0 ? intel.filter((item, index) => index < end || (item.editedAt ?? 0) > seenAt) : intel;
-      const items = scoped.slice(0, limit ?? 50).map((item) => ({ id: item.id, at: stamp(item.at), ...(item.editedAt !== undefined ? { editedAt: stamp(item.editedAt) } : {}), source: item.source, text: item.text }));
-      return { items, truncated: items.length < scoped.length, ...(since && end < 0 ? { sinceUnknown: true } : {}), sources: sources.map(sourceView) };
-    }),
-    tool("routines", "List your routines with enabled state and next run time. Times use the Console computer's local timezone and are approximate; missed recurring runs are skipped after downtime.", z.object({}).strict(), () => ({ routines: (state().routines ?? []).map((routine) => ({ ...routine, nextRunAt: nextRoutineAt(routine, now()) })) })),
-    tool("routine_add", "Register an enabled routine (maximum 20, unique name). schedule: daily with local HH:mm and days (0 Sunday..6 Saturday), every 30..1440 minutes, or once at a future epoch-millisecond timestamp. Once routines disappear when run. No fixed wake interval exists; use routines for periodic intel checks.", routineInputSchema, (input) => options.store.routineAdd(options.commodoreId, input)),
-    tool("routine_update", "Update a routine. Enabling a routine paused by the person refuses with routine_paused_by_person; ask_person instead. Never bypass their pause by removing or recreating it.", routineInputSchema.partial().extend({ routineId: z.string().min(1).max(128), enabled: z.boolean().optional() }).strict(), ({ routineId, ...input }) => ({ routines: options.store.routineUpdate(options.commodoreId, routineId, input, "commodore").routines })),
-    tool("routine_remove", "Remove a routine that is no longer needed, stating why.", z.object({ routineId: z.string().min(1).max(128), reason: z.string().trim().min(1).max(200) }).strict(), ({ routineId }) => ({ routines: options.store.routineRemove(options.commodoreId, routineId, "commodore").routines })),
-    // 사람에게 묻기 — 보드 항목이 아닌 물음. 질문 모양과 상한은 지휘관의 결정 요청과 같다(멤버·임무 가리킴만 없다).
-    tool("ask_person", `Ask the person something that is not a waiting board item (those you hand over with hand_to_person). Ask 1-${MAX_DECISION_QUESTIONS} questions. Each question has a header (a chip label of at most ${MAX_DECISION_HEADER_INPUT} characters), the question text, and either no options, when the person should write the answer, or 2-${MAX_DECISION_OPTIONS} distinct options: a concise label and an optional description; set multiSelect to allow more than one choice. The person can always write an answer of their own of up to ${MAX_DECISION_ANSWER_INPUT} characters, alongside a choice or instead of every option, so do not add an "Other" option. Their answer wakes you; read it with asks.`, z.object({
-      questions: z.array(decisionQuestionSchema.omit({ missionId: true, memberId: true })).min(1).max(MAX_DECISION_QUESTIONS),
-      reason: z.string().trim().min(1).max(MAX_ASK_REASON),
-      objectiveId: z.string().min(1).max(128).optional(),
-    }).strict(), ({ questions, reason, objectiveId }) => {
-      const objective = objectiveId ? options.objective?.(objectiveId) ?? null : null;
-      if (objectiveId && !objective) throw new Error("unknown_objective");
-      const { ask, reused } = options.store.askAdd(options.commodoreId, { questions, reason, objective: objective ? { id: objective.id, title: objective.title } : null });
-      return { askId: ask.id, reused, open: openCount() };
-    }),
-    tool("withdraw_ask", "Withdraw a question you asked the person that is still open (it no longer needs their answer).", z.object({ askId: z.string().min(1).max(128) }).strict(), ({ askId }) => {
-      const { withdrawn } = options.store.askWithdraw(options.commodoreId, askId);
-      return { askId, withdrawn, open: openCount() };
-    }),
-    tool("asks", "Your questions to the person: open ones, and answered or withdrawn ones with the person's answers, newest first. Reading an answer marks it read.", z.object({ limit: z.number().int().min(1).max(20).optional() }).strict(), ({ limit }) => {
-      const asks = [...(state().asks ?? [])].reverse().slice(0, limit ?? 20);
-      const answered = asks.filter((ask) => ask.settled?.outcome === "answered" && ask.readAt === undefined).map((ask) => ask.id);
-      if (answered.length) options.store.askRead(options.commodoreId, answered);
-      return { asks: asks.map(askView), open: openCount() };
-    }),
-    // fleet-memory — 사령관만 쓰는 기억. 화면은 사람에게 읽기만 보여 준다. 쓰기마다 인덱스가 다시 만들어지고 다음 깨움에 실린다.
-    tool("memory_view", "Your fleet-memory. Without ref: every entry as ref, title, description, updated and verified, with stale: true when it was last verified over 30 days ago. With ref (branch/topic/slug): the whole entry, including why, how, sources and links. An entry records what was true when written; confirm it before you rely on it.", z.object({ ref: memoryRefSchema.optional() }).strict(), ({ ref }) => {
-      if (ref) {
-        const entry = options.store.memory.read(options.commodoreId, ref);
-        return { ...memoryView(entry), why: entry.why, how: entry.how, sources: entry.sources, links: entry.links, created: stamp(entry.created) };
-      }
-      return { entries: options.store.memory.list(options.commodoreId).map(memoryView) };
-    }),
-    tool("memory_save", "Save one new fact to your fleet-memory. branch: person (the person's preferences, decisions and ways of working), theater (facts about the Theater and its environment), lessons (what objectives taught) or crew (lineups, models and verification). topic groups related entries and is shown as written (letters, digits, spaces, . _ -). slug is the entry's lowercase-hyphen name, unique in its topic. why says why it matters, how says how to apply it. sourceObjectiveIds names this Theater's objectives it came from; links names related entries by ref. why and how are plain text: a line starting with '## ' is refused as memory_heading. An existing ref is refused as memory_exists: update it instead. Secrets anywhere, including the slug and links, are refused as memory_secret.", z.object({ branch: memoryBranchSchema, topic: z.string().min(1).max(40), slug: z.string().min(1).max(64), ...memoryText, sourceObjectiveIds: memoryText.sourceObjectiveIds.optional(), links: memoryText.links.optional() }).strict(), ({ branch, topic, slug, title, description, why, how, sourceObjectiveIds, links }) => {
-      const sources = memorySources(sourceObjectiveIds);
-      const entry = options.store.memory.save(options.commodoreId, { branch, topic, slug, title, description, why, how, ...(sources ? { sources } : {}), ...(links ? { links } : {}) });
-      return memoryView(entry);
-    }),
-    tool("memory_update", "Change an entry of your fleet-memory by ref: the fields you pass replace the old ones, and its updated and verified times become now. Call it with ref alone to record that you checked the entry again and it still holds.", z.object({ ref: memoryRefSchema, title: memoryText.title.optional(), description: memoryText.description.optional(), why: memoryText.why.optional(), how: memoryText.how.optional(), sourceObjectiveIds: memoryText.sourceObjectiveIds.optional(), links: memoryText.links.optional() }).strict(), ({ ref, sourceObjectiveIds, ...fields }) => {
-      const sources = memorySources(sourceObjectiveIds);
-      const { entry, change } = options.store.memory.update(options.commodoreId, ref, { ...fields, ...(sources ? { sources } : {}) });
-      return { ...memoryView(entry), change };
-    }),
-    tool("memory_delete", "Delete an entry of your fleet-memory that turned out wrong or no longer applies, with a one-line reason.", z.object({ ref: memoryRefSchema, reason: z.string().trim().min(1).max(200) }).strict(), ({ ref }) => {
-      options.store.memory.remove(options.commodoreId, ref);
-      return { ref, deleted: true };
-    }),
-    tool("memory_search", MEMORY_SEARCH_DESCRIPTION, memorySearchInputSchema, (args) =>
-      searchCommodoreLedger(options.commodoreId, state().alias ?? null, args, {
-        store: options.store,
-        ...(options.taskforce ? { taskforce: options.taskforce } : {}),
-      })),
-    ...(proposals ? [
-      tool("propose_description", `Propose a new description for a Commodore. You may propose a change for any Commodore, including yourself. You cannot edit a description; only the person approves or rejects, and nothing changes until they approve. Approving overwrites the description as it stands then, even if the person edited it after you proposed. One open proposal per Commodore: a new proposal replaces the previous one. text is at most ${MAX_DESCRIPTION} characters. The same wording as the current description is refused as unchanged. Use withdraw_description to take back a proposal you opened.`, z.object({ targetId: z.string().min(1).max(128), text: z.string().max(MAX_DESCRIPTION) }).strict(), ({ targetId, text }) => {
-        const proposed = proposals.propose(targetId, text);
-        return { id: proposed.id, targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) };
-      }),
-      tool("withdraw_description", "Withdraw a description proposal you opened. Pass its id from description_proposals. You cannot withdraw another Commodore's proposal. The proposal ends and nothing is applied.", z.object({ id: z.string().uuid() }).strict(), ({ id }) => {
-        const withdrawn = proposals.withdraw(id);
-        return { id: withdrawn.id, status: withdrawn.status, ...(withdrawn.reason ? { reason: withdrawn.reason } : {}) };
-      }),
-      tool("description_proposals", "Description changes you currently have open, newest first. Nothing here has changed a description yet. A settled proposal leaves this list; a turn that says one was settled or replaced is how you learn that outcome. Use withdraw_description to take one back.", z.object({}).strict(), () => ({
-        proposals: proposals.list().map((proposed) => {
-          const payload = proposed.payload as { targetId: string; text: string };
-          return { id: proposed.id, targetId: payload.targetId, text: payload.text, status: proposed.status, createdAt: stamp(proposed.createdAt) };
-        }),
-      })),
-    ] : []),
-    ...(intelProposals ? [
-      tool("propose_intel", `Propose an intel change for any Commodore, including yourself. You cannot write intel; only the person approves or rejects, and nothing is stored until they approve. One open intel proposal per Commodore: a new one replaces the previous. kind add: text is trimmed, 1 to ${MAX_INTEL_TEXT} characters, and the item is attributed to you. kind edit: intelId and the new text, which overwrites the item as it stands when the person approves. kind remove: intelId. If the person deletes that item before approving, the proposal ends then and nothing is applied. An add does not need an existing item. Use withdraw_intel to take back a proposal you opened.`, z.object({
-        kind: z.enum(["add", "edit", "remove"]),
-        targetId: z.string().min(1).max(128),
-        intelId: z.string().min(1).max(128).optional(),
-        text: z.string().trim().min(1).max(MAX_INTEL_TEXT).optional(),
-      }).strict(), ({ kind, targetId, intelId, text }) => {
-        if (kind === "add") {
-          if (!text || intelId) throw new Error("invalid_request");
-          const proposed = intelProposals.proposeAdd(targetId, text);
-          return { id: proposed.id, kind, targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) };
-        }
-        if (!intelId || (kind === "edit" && !text) || (kind === "remove" && text)) throw new Error("invalid_request");
-        const proposed = kind === "edit"
-          ? intelProposals.proposeEdit(targetId, intelId, text ?? "")
-          : intelProposals.proposeRemove(targetId, intelId);
-        return { id: proposed.id, kind, targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) };
-      }),
-      tool("withdraw_intel", "Withdraw an intel proposal you opened. Pass its id from intel_proposals. You cannot withdraw another Commodore's proposal. The proposal ends and nothing is applied.", z.object({ id: z.string().uuid() }).strict(), ({ id }) => {
-        const withdrawn = intelProposals.withdraw(id);
-        return { id: withdrawn.id, status: withdrawn.status, ...(withdrawn.reason ? { reason: withdrawn.reason } : {}) };
-      }),
-      tool("intel_proposals", "Intel changes you currently have open, newest first. Nothing here has changed intel yet. A settled proposal leaves this list; a turn that says one was settled, replaced, or ended because its item was deleted is how you learn that outcome. Use withdraw_intel to take one back.", z.object({}).strict(), () => ({
-        proposals: intelProposals.list().map((proposed) => {
-          const payload = proposed.payload as { kind: string; targetId: string; intelId?: string; text?: string };
-          return { id: proposed.id, kind: payload.kind, targetId: payload.targetId, ...(payload.intelId ? { intelId: payload.intelId } : {}), ...(payload.text !== undefined ? { text: payload.text } : {}), status: proposed.status, createdAt: stamp(proposed.createdAt) };
-        }),
-      })),
-    ] : []),
-    tool("issue_list", "List issues of a github-issues intel source (by its source id from intel): number, title, state, labels, updated date and url. Sources of kind url are read with WebFetch instead.", z.object({ sourceId: z.string().min(1).max(128), state: z.enum(["open", "closed", "all"]).optional(), limit: z.number().int().min(1).max(MAX_ISSUES).optional() }).strict(), async ({ sourceId, state: issueState, limit }, context) => {
-      const source = state().sources.find((entry) => entry.id === sourceId);
-      if (!source) throw new Error("unknown_source");
-      if (source.kind !== "github-issues") return { source: sourceView(source), hint: "This source is a URL. Read it with WebFetch." };
-      if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(source.locator)) throw new Error("invalid_source");
-      const args = ["issue", "list", "-R", source.locator, "--state", issueState ?? "open", "--limit", String(limit ?? 30), "--json", "number,title,state,updatedAt,labels,url"];
-      const { stdout } = await run("gh", args, { cwd: options.cwd ?? options.theaterRoot, signal: context.signal }).catch((error: unknown) => { throw new Error(commandFailure(error, "gh_failed")); });
-      const parsed = JSON.parse(stdout) as readonly { number?: number; title?: string; state?: string; updatedAt?: string; labels?: readonly { name?: string }[]; url?: string }[];
-      return { source: sourceView(source), issues: parsed.map((issue) => ({ number: issue.number, title: issue.title, state: issue.state, updatedAt: issue.updatedAt, labels: (issue.labels ?? []).map((label) => label.name).filter((name): name is string => typeof name === "string"), url: issue.url })) };
-    }),
-    // TaskForce — 판단 턴의 말하기는 이 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
-    // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
-    tool("taskforce_post", `Speak in a TaskForce you belong to. You are woken with the utterances you have not read yet; judge every one, and stay silent (call nothing) unless you have something worth saying to the group. Silence leaves no trace. Keep it short (about ${RECOMMENDED_TASKFORCE_POST_TEXT} characters): the conclusion and only what the others must judge; put long reasoning in the objective brief or a document and point to it. Over ${MAX_TASKFORCE_POST_TEXT} characters is rejected. Your words go only to the shared ledger, never to the person's 1:1 log. mentions names fellow members by id when your words are for them; it does not bypass the speaking limit. Use exact TaskForce and member ids from the TaskForce context or tools; never guess or shorten them.`, z.object({
-      taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce"),
-      text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT),
-      mentions: z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).max(32).optional(),
-    }).strict(), ({ taskforceId, text, mentions }) => {
-      const taskforce = options.taskforce;
-      if (!taskforce) throw new Error("taskforce_unavailable");
-      if (text.length > MAX_TASKFORCE_POST_TEXT) throw new TaskforceStoreError("taskforce_post_too_long", undefined, { limit: MAX_TASKFORCE_POST_TEXT, length: text.length, hint: `Shorten to the conclusion and what the others must judge (about ${RECOMMENDED_TASKFORCE_POST_TEXT} characters); move long reasoning to the objective brief or a document and link it.` });
+
+  const memorySpec = defineConsoleTool({
+    name: "console_memory",
+    description: "Your fleet-memory: facts that should outlive the conversation, filed by branch. view reads entries; save, update and delete change them. Confirm an entry before you rely on it.",
+    actions: {
+      view: { kind: "read", callers: ["commodore"], input: z.object({ ref: memoryRefSchema.optional().describe("Entry ref (branch/topic/slug), or omit to list all. stale marks entries unverified for over 30 days.") }) },
+      save: { kind: "write", callers: ["commodore"], input: z.object({ branch: memoryBranchSchema.describe("person: preferences; theater: Theater facts; lessons: what objectives taught; crew: lineups."), topic: z.string().min(1).max(40).describe("Group name, shown as written."), slug: z.string().min(1).max(64).describe("Lowercase-hyphen name, unique in its topic; no secrets."), ...memoryFields, sourceObjectiveIds: memoryFields.sourceObjectiveIds.optional(), links: memoryFields.links.optional() }) },
+      update: { kind: "write", callers: ["commodore"], input: z.object({ ref: memoryRefSchema.describe("Entry ref to change. Alone, records that you rechecked it and it still holds."), title: memoryFields.title.optional(), description: memoryFields.description.optional(), why: memoryFields.why.optional(), how: memoryFields.how.optional(), sourceObjectiveIds: memoryFields.sourceObjectiveIds.optional(), links: memoryFields.links.optional() }) },
+      delete: { kind: "write", callers: ["commodore"], input: z.object({ ref: memoryRefSchema.describe("Entry ref to delete."), reason: z.string().trim().min(1).max(200).describe("Why it no longer applies. Deletion is permanent.") }) },
+    },
+  });
+  const memory: ConsoleMcpTool = rename(memorySpec.plugin({
+    execute: async (raw) => {
+      const parsed = memorySpec.parse(raw, caller);
+      if (!parsed.ok) return parseFail(parsed);
       try {
-        const { entry } = taskforce.append(taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text, ...(mentions ? { mentions } : {}) });
-        return { taskforceId, seq: entry.seq };
-      } catch (error) {
-        // 원래 TF 깨움이 아닌 목표 후속 턴도 같은 도구를 쓴다 — 좌표를 확인하되 현재 권한 검사를 우회하지 않는다.
-        if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Check the exact TaskForce id against the TaskForce context or tools; never guess or shorten it." });
-        if (error instanceof TaskforceStoreError && error.code === "invalid_request") throw new TaskforceStoreError(error.code, undefined, { hint: "mentions must be exact member ids from the TaskForce context or tools." });
-        throw error;
-      }
-    }),
-  ];
+        const call = parsed.call;
+        if (call.action === "view") {
+          if (call.ref) {
+            const entry = options.store.memory.read(options.commodoreId, call.ref);
+            return text({ ...memoryView(entry), why: entry.why, how: entry.how, sources: entry.sources, links: entry.links, created: stamp(entry.created) });
+          }
+          return text({ entries: options.store.memory.list(options.commodoreId).map(memoryView) });
+        }
+        if (call.action === "save") {
+          const { branch, topic, slug, title, description, why, how, sourceObjectiveIds, links } = call;
+          const sources = memorySources(sourceObjectiveIds);
+          const entry = options.store.memory.save(options.commodoreId, { branch, topic, slug, title, description, why, how, ...(sources ? { sources } : {}), ...(links ? { links } : {}) });
+          return text(memoryView(entry));
+        }
+        if (call.action === "update") {
+          const { ref, sourceObjectiveIds, ...fields } = call;
+          const sources = memorySources(sourceObjectiveIds);
+          const { entry, change } = options.store.memory.update(options.commodoreId, ref, { ...fields, ...(sources ? { sources } : {}) });
+          return text({ ...memoryView(entry), change });
+        }
+        options.store.memory.remove(options.commodoreId, call.ref);
+        return text({ ref: call.ref, deleted: true });
+      } catch (error) { return fail(error); }
+    },
+  }, caller));
+
+  const searchShape = memorySearchInputSchema.shape;
+  const conversationSpec = defineConsoleTool({
+    name: "console_conversation",
+    description: "Reread retained conversation: your own record and joined TaskForces. search finds entries; around rereads their surroundings. Reads stored records only.",
+    actions: {
+      search: { kind: "read", callers: ["commodore"], input: z.object({ target: searchShape.target.describe("own, taskforce or all. Default all."), taskforceId: searchShape.taskforceId.describe("One TaskForce id to narrow to."), query: searchShape.query.describe("Literal case-insensitive substring. Omit for recent entries."), since: searchShape.since.describe("Entries at or after this epoch-ms time."), until: searchShape.until.describe("Entries at or before this epoch-ms time."), speaker: searchShape.speaker.describe("person, self, other or system."), limit: searchShape.limit.describe("Max entries, 1-50. Default 20; follow nextCursor."), cursor: searchShape.cursor.describe("Next page token. Never combine with a scan token."), scan: searchShape.scan.describe("Older-ledger token from nextScan. Never combine with a cursor token.") }) },
+      around: { kind: "read", callers: ["commodore"], input: z.object({ anchor: searchShape.anchor.describe("A search result's source and seq."), before: searchShape.before.describe("Entries before the anchor, 0-20. Default 5."), after: searchShape.after.describe("Entries after the anchor, 0-20. Default 5."), query: searchShape.query.describe("Literal case-insensitive substring. Omit for recent entries.") }) },
+    },
+  });
+  const conversation: ConsoleMcpTool = rename(conversationSpec.plugin({
+    execute: async (raw) => {
+      const parsed = conversationSpec.parse(raw, caller);
+      if (!parsed.ok) return parseFail(parsed);
+      try {
+        const call = parsed.call;
+        const entry = call.action === "search"
+          ? searchCommodoreLedger(options.commodoreId, state().alias ?? null,
+            { ...(call.target !== undefined ? { target: call.target } : {}), ...(call.taskforceId !== undefined ? { taskforceId: call.taskforceId } : {}), ...(call.query !== undefined ? { query: call.query } : {}), ...(call.since !== undefined ? { since: call.since } : {}), ...(call.until !== undefined ? { until: call.until } : {}), ...(call.speaker !== undefined ? { speaker: call.speaker } : {}), ...(call.limit !== undefined ? { limit: call.limit } : {}), ...(call.cursor !== undefined ? { cursor: call.cursor } : {}), ...(call.scan !== undefined ? { scan: call.scan } : {}) },
+            { store: options.store, ...(options.taskforce ? { taskforce: options.taskforce } : {}) })
+          : searchCommodoreLedger(options.commodoreId, state().alias ?? null,
+            { anchor: call.anchor, ...(call.before !== undefined ? { before: call.before } : {}), ...(call.after !== undefined ? { after: call.after } : {}), ...(call.query !== undefined ? { query: call.query } : {}) },
+            { store: options.store, ...(options.taskforce ? { taskforce: options.taskforce } : {}) });
+        return text(entry);
+      } catch (error) { return fail(error); }
+    },
+  }, caller));
+
+  const descriptionSpec = defineConsoleTool({
+    name: "console_description",
+    description: proposals
+      ? "The person's account of who you are and what you are for: current text, revision and last change. Highest authority; you cannot edit it. Propose changes for the person to approve."
+      : "The person's account of who you are and what you are for: current text, revision and last change. Highest authority; you cannot edit it.",
+    actions: {
+      read: { kind: "read", callers: ["commodore"], input: z.object({}) },
+      propose: { kind: "write", callers: ["commodore"], input: z.object({ targetId: z.string().min(1).max(128).describe("Any Commodore's id, including your own. One open proposal each: a new one replaces the previous."), text: z.string().max(MAX_DESCRIPTION).describe("New description. Nothing changes until the person approves; approval overwrites current text.") }) },
+      proposals: { kind: "read", callers: ["commodore"], input: z.object({}) },
+      withdraw: { kind: "write", callers: ["commodore"], input: z.object({ id: z.string().uuid().describe("Proposal id from proposals. You cannot withdraw another Commodore's.") }) },
+    },
+  });
+  const description: ConsoleMcpTool = rename(descriptionSpec.plugin({
+    execute: async (raw) => {
+      const parsed = descriptionSpec.parse(raw, caller);
+      if (!parsed.ok) return parseFail(parsed);
+      try {
+        const call = parsed.call;
+        if (call.action === "read") {
+          const { description: current } = state();
+          return text({ text: current.text, rev: current.rev, updatedAt: stamp(current.updatedAt) });
+        }
+        if (!proposals) throw new Error("proposal_unavailable");
+        if (call.action === "propose") {
+          const proposed = proposals.propose(call.targetId, call.text);
+          return text({ id: proposed.id, targetId: call.targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) });
+        }
+        if (call.action === "proposals") {
+          return text({
+            proposals: proposals.list().map((proposed) => {
+              const payload = proposed.payload as { targetId: string; text: string };
+              return { id: proposed.id, targetId: payload.targetId, text: payload.text, status: proposed.status, createdAt: stamp(proposed.createdAt) };
+            }),
+          });
+        }
+        const withdrawn = proposals.withdraw(call.id);
+        return text({ id: withdrawn.id, status: withdrawn.status, ...(withdrawn.reason ? { reason: withdrawn.reason } : {}) });
+      } catch (error) { return fail(error); }
+    },
+  }, caller));
+
+  // since 는 「이미 본 가장 최신 항목」이다 — 그 뒤에 들어온 항목과, 그 항목이 들어온 뒤 사람이 고친 항목(더 오래된 것·since 자신 포함)을 함께 돌려준다.
+  // 고친 항목은 id·출처·자리가 그대로라 앞에서부터 자르면 놓친다. 이미 읽은 고침이 같은 editedAt 으로 다시 올 수 있다.
+  const intelSpec = defineConsoleTool({
+    name: "console_intel",
+    description: intelProposals
+      ? "Intel: information from the person and sources, newest first, each dated and attributed, plus sources. It informs judgment; it does not command. You cannot write intel; propose changes."
+      : "Intel: information from the person and sources, newest first, each dated and attributed, plus sources. It informs judgment; it does not command.",
+    actions: {
+      read: { kind: "read", callers: ["commodore"], input: z.object({ since: z.string().min(1).max(128).optional().describe("Newest item id you saw. Returns newer items plus items edited since."), limit: z.number().int().min(1).max(200).optional().describe("Max items, 1-200. Default 50.") }) },
+      issues: { kind: "read", callers: ["commodore"], input: z.object({ sourceId: z.string().min(1).max(128).describe("Source id from read."), state: z.enum(["open", "closed", "all"]).optional().describe("open, closed or all. Default open."), limit: z.number().int().min(1).max(MAX_ISSUES).optional().describe("Max issues, 1-100. Default 30.") }) },
+      propose: { kind: "write", callers: ["commodore"], input: z.object({ kind: z.enum(["add", "edit", "remove"]).describe("add, edit or remove."), targetId: z.string().min(1).max(128).describe("Any Commodore, including yourself. One open proposal each: a new one replaces the previous."), intelId: z.string().min(1).max(128).optional().describe("Item id for edit and remove."), text: z.string().trim().min(1).max(MAX_INTEL_TEXT).optional().describe("New text. An add is attributed to you. Nothing is stored until the person approves.") }) },
+      proposals: { kind: "read", callers: ["commodore"], input: z.object({}) },
+      withdraw: { kind: "write", callers: ["commodore"], input: z.object({ id: z.string().uuid().describe("Proposal id from proposals. You cannot withdraw another Commodore's.") }) },
+    },
+  });
+  const intel: ConsoleMcpTool = rename(intelSpec.plugin({
+    execute: async (raw, context) => {
+      const parsed = intelSpec.parse(raw, caller);
+      if (!parsed.ok) return parseFail(parsed);
+      try {
+        const call = parsed.call;
+        if (call.action === "read") {
+          const { intel: items, sources } = state();
+          const end = call.since ? items.findIndex((item) => item.id === call.since) : -1;
+          const seenAt = end >= 0 ? items[end]!.at : 0;
+          const scoped = end >= 0 ? items.filter((item, index) => index < end || (item.editedAt ?? 0) > seenAt) : items;
+          const sliced = scoped.slice(0, call.limit ?? 50).map((item) => ({ id: item.id, at: stamp(item.at), ...(item.editedAt !== undefined ? { editedAt: stamp(item.editedAt) } : {}), source: item.source, text: item.text }));
+          return text({ items: sliced, truncated: sliced.length < scoped.length, ...(call.since && end < 0 ? { sinceUnknown: true } : {}), sources: sources.map(sourceView) });
+        }
+        if (call.action === "issues") {
+          const source = state().sources.find((entry) => entry.id === call.sourceId);
+          if (!source) throw new Error("unknown_source");
+          if (source.kind !== "github-issues") return text({ source: sourceView(source), hint: "This source is a URL. Read it with WebFetch." });
+          if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(source.locator)) throw new Error("invalid_source");
+          const args = ["issue", "list", "-R", source.locator, "--state", call.state ?? "open", "--limit", String(call.limit ?? 30), "--json", "number,title,state,updatedAt,labels,url"];
+          const { stdout } = await run("gh", args, { cwd: options.cwd ?? options.theaterRoot, signal: context.signal }).catch((error: unknown) => { throw new Error(commandFailure(error, "gh_failed")); });
+          const listed = JSON.parse(stdout) as readonly { number?: number; title?: string; state?: string; updatedAt?: string; labels?: readonly { name?: string }[]; url?: string }[];
+          return text({ source: sourceView(source), issues: listed.map((issue) => ({ number: issue.number, title: issue.title, state: issue.state, updatedAt: issue.updatedAt, labels: (issue.labels ?? []).map((label) => label.name).filter((name): name is string => typeof name === "string"), url: issue.url })) });
+        }
+        if (!intelProposals) throw new Error("proposal_unavailable");
+        if (call.action === "proposals") {
+          return text({
+            proposals: intelProposals.list().map((proposed) => {
+              const payload = proposed.payload as { kind: string; targetId: string; intelId?: string; text?: string };
+              return { id: proposed.id, kind: payload.kind, targetId: payload.targetId, ...(payload.intelId ? { intelId: payload.intelId } : {}), ...(payload.text !== undefined ? { text: payload.text } : {}), status: proposed.status, createdAt: stamp(proposed.createdAt) };
+            }),
+          });
+        }
+        if (call.action === "withdraw") {
+          const withdrawn = intelProposals.withdraw(call.id);
+          return text({ id: withdrawn.id, status: withdrawn.status, ...(withdrawn.reason ? { reason: withdrawn.reason } : {}) });
+        }
+        if (call.kind === "add") {
+          if (!call.text || call.intelId) throw new Error("invalid_request");
+          const proposed = intelProposals.proposeAdd(call.targetId, call.text);
+          return text({ id: proposed.id, kind: call.kind, targetId: call.targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) });
+        }
+        if (!call.intelId || (call.kind === "edit" && !call.text) || (call.kind === "remove" && call.text)) throw new Error("invalid_request");
+        const proposed = call.kind === "edit"
+          ? intelProposals.proposeEdit(call.targetId, call.intelId, call.text ?? "")
+          : intelProposals.proposeRemove(call.targetId, call.intelId);
+        return text({ id: proposed.id, kind: call.kind, targetId: call.targetId, status: proposed.status, createdAt: stamp(proposed.createdAt) });
+      } catch (error) { return fail(error); }
+    },
+  }, caller));
+
+  // 사람에게 묻기 — 보드 항목이 아닌 물음. 질문 모양과 상한은 지휘관의 결정 요청과 같다(멤버·임무 가리킴만 없다).
+  const askSpec = defineConsoleTool({
+    name: "console_ask",
+    description: "Ask the person what is not a waiting board item. Their answer wakes you; list reads it and marks it read.",
+    actions: {
+      ask: { kind: "write", callers: ["commodore"], input: z.object({ questions: z.array(decisionQuestionSchema.omit({ missionId: true, memberId: true })).min(1).max(MAX_DECISION_QUESTIONS).describe("Questions with header, text and options (or none). The person may always write their own answer."), reason: z.string().trim().min(1).max(MAX_ASK_REASON).describe("Why you ask. Shown with the questions."), objectiveId: z.string().min(1).max(128).optional().describe("This Theater objective the question is about.") }) },
+      withdraw: { kind: "write", callers: ["commodore"], input: z.object({ askId: z.string().min(1).max(128).describe("Open question id to withdraw. It no longer needs their answer.") }) },
+      list: { kind: "read", callers: ["commodore"], input: z.object({ limit: z.number().int().min(1).max(20).optional().describe("Max questions, 1-20. Default 20. Reading marks answers read.") }) },
+    },
+  });
+  const ask: ConsoleMcpTool = rename(askSpec.plugin({
+    execute: async (raw) => {
+      const parsed = askSpec.parse(raw, caller);
+      if (!parsed.ok) return parseFail(parsed);
+      try {
+        const call = parsed.call;
+        if (call.action === "ask") {
+          const objective = call.objectiveId ? options.objective?.(call.objectiveId) ?? null : null;
+          if (call.objectiveId && !objective) throw new Error("unknown_objective");
+          const { ask: created, reused } = options.store.askAdd(options.commodoreId, { questions: call.questions, reason: call.reason, objective: objective ? { id: objective.id, title: objective.title } : null });
+          return text({ askId: created.id, reused, open: openCount() });
+        }
+        if (call.action === "withdraw") {
+          const { withdrawn } = options.store.askWithdraw(options.commodoreId, call.askId);
+          return text({ askId: call.askId, withdrawn, open: openCount() });
+        }
+        const asks = [...(state().asks ?? [])].reverse().slice(0, call.limit ?? 20);
+        const answered = asks.filter((entry) => entry.settled?.outcome === "answered" && entry.readAt === undefined).map((entry) => entry.id);
+        if (answered.length) options.store.askRead(options.commodoreId, answered);
+        return text({ asks: asks.map(askView), open: openCount() });
+      } catch (error) { return fail(error); }
+    },
+  }, caller));
+
+  const routineFields = {
+    name: z.string().trim().min(1).max(60).describe("Unique name (maximum 20 routines)."),
+    task: z.string().trim().min(1).max(1000).describe("What the routine does."),
+    schedule: routineScheduleSchema.describe("Daily local HH:mm with days, every 30-1440 minutes, or once at a future epoch-ms time."),
+  };
+  const routinesSpec = defineConsoleTool({
+    name: "console_routines",
+    description: "Your routines with enabled state and next run time. Times use the Console computer's local timezone and are approximate; missed recurring runs are skipped after downtime.",
+    actions: {
+      list: { kind: "read", callers: ["commodore"], input: z.object({}) },
+      add: { kind: "write", callers: ["commodore"], input: z.object(routineFields) },
+      update: { kind: "write", callers: ["commodore"], input: z.object({ routineId: z.string().min(1).max(128).describe("Routine to update."), name: routineFields.name.optional(), task: routineFields.task.optional(), schedule: routineFields.schedule.optional(), enabled: z.boolean().optional().describe("Enabling a routine the person paused is refused; never bypass it by removing or recreating it.") }) },
+      remove: { kind: "write", callers: ["commodore"], input: z.object({ routineId: z.string().min(1).max(128).describe("Routine to remove."), reason: z.string().trim().min(1).max(200).describe("Why it is no longer needed.") }) },
+    },
+  });
+  const routines: ConsoleMcpTool = rename(routinesSpec.plugin({
+    execute: async (raw) => {
+      const parsed = routinesSpec.parse(raw, caller);
+      if (!parsed.ok) return parseFail(parsed);
+      try {
+        const call = parsed.call;
+        if (call.action === "list") return text({ routines: (state().routines ?? []).map((routine) => ({ ...routine, nextRunAt: nextRoutineAt(routine, now()) })) });
+        if (call.action === "add") return text(options.store.routineAdd(options.commodoreId, { name: call.name, task: call.task, schedule: call.schedule }));
+        if (call.action === "update") {
+          const { routineId, ...input } = call;
+          return text({ routines: options.store.routineUpdate(options.commodoreId, routineId, input, "commodore").routines });
+        }
+        return text({ routines: options.store.routineRemove(options.commodoreId, call.routineId, "commodore").routines });
+      } catch (error) { return fail(error); }
+    },
+  }, caller));
+
+  // TaskForce — 판단 턴의 말하기는 이 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
+  // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
+  const taskforceSpec = defineConsoleTool({
+    name: "console_taskforce",
+    description: "Speak in a TaskForce you belong to. Judge every new utterance; stay silent unless you have something worth saying. Silence leaves no trace.",
+    actions: {
+      post: { kind: "write", callers: ["commodore"], input: z.object({ taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce").describe("Exact TaskForce id from context or tools; never guess."), text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT).describe("Conclusion only, about 800 chars; over 2000 refused. Goes to the shared ledger, never the 1:1 log."), mentions: z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).max(MAX_TASKFORCE_MEMBERS).optional().describe("Fellow member ids this is for; mentions never bypass the speaking limit.") }) },
+    },
+  });
+  const taskforce: ConsoleMcpTool = rename(taskforceSpec.plugin({
+    execute: async (raw) => {
+      const parsed = taskforceSpec.parse(raw, caller);
+      if (!parsed.ok) return parseFail(parsed);
+      const call = parsed.call;
+      try {
+        const ledger = options.taskforce;
+        if (!ledger) throw new Error("taskforce_unavailable");
+        if (call.text.length > MAX_TASKFORCE_POST_TEXT) throw new TaskforceStoreError("taskforce_post_too_long", undefined, { limit: MAX_TASKFORCE_POST_TEXT, length: call.text.length, hint: `Shorten to the conclusion and what the others must judge (about ${RECOMMENDED_TASKFORCE_POST_TEXT} characters); move long reasoning to the objective brief or a document and link it.` });
+        try {
+          const { entry } = ledger.append(call.taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text: call.text, ...(call.mentions ? { mentions: call.mentions } : {}) });
+          return text({ taskforceId: call.taskforceId, seq: entry.seq });
+        } catch (error) {
+          // 원래 TF 깨움이 아닌 목표 후속 턴도 같은 도구를 쓴다 — 좌표를 확인하되 현재 권한 검사를 우회하지 않는다.
+          if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Check the exact TaskForce id against the TaskForce context or tools; never guess or shorten it." });
+          if (error instanceof TaskforceStoreError && error.code === "invalid_request") throw new TaskforceStoreError(error.code, undefined, { hint: "mentions must be exact member ids from the TaskForce context or tools." });
+          throw error;
+        }
+      } catch (error) { return fail(error); }
+    },
+  }, caller));
+
+  return [description, intel, memory, conversation, ask, routines, taskforce];
 }
 
 const sourceView = (source: CommodoreSource) => ({ id: source.id, kind: source.kind, label: source.label, locator: source.locator });
