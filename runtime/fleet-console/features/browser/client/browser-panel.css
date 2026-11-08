@@ -21,7 +21,9 @@
 .op-browser-rail.is-closing:not([data-native-float]) { animation: op-browser-rail-conceal 180ms cubic-bezier(0.4, 0, 1, 1) both; }
 .op-browser-rail.is-opening[data-native-float], .op-browser-rail.is-closing[data-native-float] { animation: none; }
 @media (prefers-reduced-motion: reduce) { .op-browser-rail.is-opening, .op-browser-rail.is-closing { animation: none !important; } }
-.op-browser-rail.is-open:not(.is-pinned) { box-shadow: var(--popover-surface-shadow); }
+/* 호버·키보드로 펼친 레일(고정 아님)은 본문 위에 겹쳐 서므로 깊이만 준다. `--popover-surface-shadow` 는 가장자리를 도는 링(`--popover-ring`)을 품고 있어 좌우(와 위아래)에
+   1px 이음매 선이 그려졌다 — 링 없는 아래쪽 그림자만 쓴다(음수 번짐이라 좌우 가장자리에는 번지지 않는다). 접힘·고정 상태에는 처음부터 그림자가 없다. */
+.op-browser-rail.is-open:not(.is-pinned) { box-shadow: 0 18px 38px -22px oklch(0% 0 0 / 30%); }
 .op-browser-rail:focus-visible, .op-browser-rail :focus-visible { box-shadow: var(--focus-face); outline: none; }
 /* 에이전트 세션 — 분리 창의 레일만 위쪽이 틴트로 물든다. 오른쪽 패널(칸)에서는 맨 위 줄 지구본의 채움이 그 신호를 맡는다. 레일 양옆에는 이음매 선을 두지 않아 레일이 화면 영역으로 이어진다. */
 .browser-window-document .op-browser-rail.is-driving { background: linear-gradient(180deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--conversation-surface, var(--canvas-abyss))), var(--conversation-surface, var(--canvas-abyss)) 70%); }
