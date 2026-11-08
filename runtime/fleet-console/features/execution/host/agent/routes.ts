@@ -547,9 +547,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       // 터미널 표면 — 캡처된 전사 파일(들)을 바이트 오프셋으로 읽는다.
       const session = readAgentSession(node);
-      const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
       const files: string[] = [];
-      if (freshEnabled && session?.previousSessions) {
+      if (session?.previousSessions) {
         for (const prev of session.previousSessions) {
           if (prev.transcriptPath && !files.includes(prev.transcriptPath)) files.push(prev.transcriptPath);
         }
@@ -558,8 +557,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (currentFile && !files.includes(currentFile)) files.push(currentFile);
       if (files.length === 0) return { error: "transcript_unavailable" };
 
-      // 단일 파일이거나 실험 꺼짐인 경우 기존 코드 경로 그대로 단일 파일 처리
-      if (files.length === 1 || !freshEnabled) {
+      // 단일 파일인 경우 기존 코드 경로 그대로 단일 파일 처리
+      if (files.length === 1) {
         const file = files[0]!;
         const offset = cursor ? Number(cursor) : 0;
         if (!Number.isSafeInteger(offset) || offset < 0) return { error: "cursor_expired" };
@@ -788,7 +787,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (input.kind === "resume") {
         if (ctx.consoleControl?.observe(objectiveId)?.lifecycle !== "dormant") throw new ConsoleControlError("not_dormant");
         const isSwitchLive = input.reason === "switch_live";
-        const fresh = !isSwitchLive && ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(objectiveId);
+        const fresh = !isSwitchLive && freshOpenSessions.delete(objectiveId);
         try {
           const result = await resumeObjective(objectiveId, fresh);
           if (!result.ok) {
@@ -858,14 +857,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     advertisedTools: (objectiveId) => chatRegistry.get(objectiveId)?.readAdvertisedTools() ?? null,
     transcript: (objectiveId, input, signal) => actions.transcript!(objectiveId, input.cursor, input.limit, signal, input.tail ? { tail: true } : undefined),
     markNextOpenFresh: (objectiveId) => {
-      if (ctx.host.experiments?.read()?.objectiveFreshSession === true) {
-        freshOpenSessions.add(objectiveId);
-        freshNoticeSessions.add(objectiveId);
-      }
+      freshOpenSessions.add(objectiveId);
+      freshNoticeSessions.add(objectiveId);
     },
-    isNextOpenFresh: (objectiveId) => ctx.host.experiments?.read()?.objectiveFreshSession === true && freshNoticeSessions.has(objectiveId),
-    consumeFreshNotice: (objectiveId) => ctx.host.experiments?.read()?.objectiveFreshSession === true && freshNoticeSessions.delete(objectiveId),
-    disposeChat: async (objectiveId) => { if (ctx.host.experiments?.read()?.objectiveFreshSession === true) await chatRegistry.dispose(objectiveId); },
+    isNextOpenFresh: (objectiveId) => freshNoticeSessions.has(objectiveId),
+    consumeFreshNotice: (objectiveId) => freshNoticeSessions.delete(objectiveId),
+    disposeChat: async (objectiveId) => { await chatRegistry.dispose(objectiveId); },
   });
   if (detachControl) ctx.host.lifecycle.registerCleanup(detachControl);
 
@@ -1813,18 +1810,18 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (!provider) return null;
     observability.clearTerminalSessionProviderSession(sessionId);
     const agent = readAgentSession(node);
-    // 실험이 켜져 있으면 직전 provider는 이력 체인이다. 현재 좌표만 떼고 파일을 지워도,
+    // 직전 provider는 이력 체인이다. 현재 좌표만 떼고 파일을 지워도,
     // previousSessions에 남지 않으면 목표는 그 전사에 다시 닿지 못한다.
-    const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
-    const previousSessions = freshEnabled
-      ? [...(agent?.previousSessions ?? []), {
-          harness: "claude-code" as const,
-          id: provider.id,
-          capturedAt: provider.capturedAt,
-          ...(provider.transcriptPath ? { transcriptPath: provider.transcriptPath } : {}),
-          ...(provider.source ? { source: provider.source } : {}),
-        }]
-      : agent?.previousSessions;
+    const previousSessions = [
+      ...(agent?.previousSessions ?? []),
+      {
+        harness: "claude-code" as const,
+        id: provider.id,
+        capturedAt: provider.capturedAt,
+        ...(provider.transcriptPath ? { transcriptPath: provider.transcriptPath } : {}),
+        ...(provider.source ? { source: provider.source } : {}),
+      },
+    ];
     ctx.host.objectiveRecords.patch(sessionId, {
       ...node,
       session: {
@@ -2255,7 +2252,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const providerSession = readProviderSession(node);
     const existingSession = readAgentSession(node);
     const previousTranscriptPaths: string[] = [];
-    if (ctx.host.experiments?.read()?.objectiveFreshSession === true && existingSession?.previousSessions) {
+    if (existingSession?.previousSessions) {
       for (const prev of existingSession.previousSessions) {
         if (prev.transcriptPath) {
           const resolved = await resolveTranscriptPath(prev.transcriptPath, node.ts.createdAt);
@@ -2410,7 +2407,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 좌표와 Claude의 좌표가 태어날 때 하나가 된다. 이어 붙이는 세션은 그 id를 고를 수
         // 없으므로 트랜스크립트가 말하는 id를 그대로 쓴다.
         resolveClaudeSession: () => {
-          const fresh = ctx.host.experiments?.read()?.objectiveFreshSession === true && freshOpenSessions.delete(node.id);
+          const fresh = freshOpenSessions.delete(node.id);
           if (fresh) freshConsumed = true;
           const existingSession = readAgentSession(node);
           const hadSession = !!providerSession?.id || !!existingSession?.previousSessions?.length;
@@ -2434,7 +2431,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           });
         },
         onClaudeSessionFailed: () => {
-          if (freshConsumed && ctx.host.experiments?.read()?.objectiveFreshSession === true) {
+          if (freshConsumed) {
             freshOpenSessions.add(node.id);
             freshConsumed = false;
           }
@@ -2443,10 +2440,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           const objectiveRecord = ctx.host.objectiveRecords.get(node.id);
           if (objectiveRecord) {
             const existing = readAgentSession(objectiveRecord);
-            const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
             const existingPrevious = existing?.previousSessions;
-            const archivePrevious = freshEnabled && existing?.id && existing.id !== updated.id;
-            const previousSessions = archivePrevious
+            const archivePrevious = existing?.id !== undefined && existing.id !== updated.id;
+            const previousSessions = archivePrevious && existing
               ? [...(existingPrevious ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
               : existingPrevious;
             const updatedSession = mergeCapturedAgentSession(objectiveRecord, updated);
@@ -2638,10 +2634,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const objectiveRecord = ctx.host.objectiveRecords.get(sessionId);
       if (objectiveRecord) {
         const existing = readAgentSession(objectiveRecord);
-        const freshEnabled = ctx.host.experiments?.read()?.objectiveFreshSession === true;
         const existingPrevious = existing?.previousSessions;
-        const archivePrevious = freshEnabled && existing?.id && existing.id !== providerSession.id;
-        const previousSessions = archivePrevious
+        const archivePrevious = existing?.id !== undefined && existing.id !== providerSession.id;
+        const previousSessions = archivePrevious && existing
           ? [...(existingPrevious ?? []), { harness: "claude-code" as const, id: existing.id, ...(existing.transcriptPath ? { transcriptPath: existing.transcriptPath } : {}), ...(existing.source ? { source: existing.source } : {}), capturedAt: existing.capturedAt ?? new Date().toISOString() }]
           : existingPrevious;
         const updatedSession = mergeCapturedAgentSession(objectiveRecord, providerSession);

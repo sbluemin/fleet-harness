@@ -337,7 +337,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
           builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
           browser: { scopeId: `commodore:${options.commodoreId}` },
           custom: [
-            { name: FLEET_COMMODORE_TOOL_GROUP, tools: [...tools.map(observed), ...options.boardTools.map(observed)] },
+            { name: FLEET_COMMODORE_TOOL_GROUP, tools: [...tools.map(observed), ...options.boardTools.map(observed)], alwaysLoad: true },
             ...(options.gatewayTools ? [{ ...options.gatewayTools, tools: options.gatewayTools.tools.map(observed) }] : []),
           ],
         },

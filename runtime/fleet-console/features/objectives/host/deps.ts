@@ -30,6 +30,7 @@ export interface ObjectivesFeatureDeps {
   readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[], scope?: {
     readonly admit: (caller: ConsoleCaller) => boolean;
     readonly refusal: string;
+    readonly alwaysLoad?: boolean;
   }) => () => void;
   readonly commodoreCommander?: CommodoreFeature["host"]["commander"];
   /** 새 지휘관 생성 시에만 읽고 저장하는 사령관별 정책. */

@@ -578,12 +578,11 @@ describe("agent chat mode routes", () => {
     expect(harness.attach).not.toHaveBeenCalled();
   });
 
-  it("keeps the prior provider on the history chain when Start fresh runs with the experiment on", async () => {
+  it("keeps the prior provider on the history chain when Start fresh runs", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
     asLegacyTerminal(harness, sessionId);
-    harness.setExperiments({ objectiveFreshSession: true });
     const transcriptPath = (harness.objectiveRecord(sessionId)?.session as { transcriptPath: string }).transcriptPath;
 
     await harness.post(sessionId, "resume", { fresh: true });
@@ -613,27 +612,23 @@ describe("agent chat mode routes", () => {
     expect(harness.attach).not.toHaveBeenCalled();
   });
 
-  it("objective fresh session experiment branches: false preserves resume, true branches fresh, switchLive stays resume", async () => {
+  it("objective fresh session: unmarked preserves resume, marked branches fresh, switchLive stays resume", async () => {
     const harness = await createHarness({ cliId: "claude" });
     const sessionId = await harness.createSession();
     harness.allowConsoleUse(sessionId);
     harness.attachProviderSession(sessionId);
     await harness.post(sessionId, "chat");
     // 새 목표는 태어날 때 이미 채팅 자식을 연다. 그 뒤 붙은 provider를 첫 턴이 보게 자식을 한 번 접는다.
-    harness.setExperiments({ objectiveFreshSession: true });
     await harness.consoleControl.disposeChat?.(sessionId);
-    harness.setExperiments({ objectiveFreshSession: false });
 
-    // Case 1: fresh session disabled (default) -> resumes existing session
-    harness.markNextOpenFresh(sessionId); // no-op when experiment is false
+    // Case 1: un-marked session -> resumes existing session
     expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(false);
     await harness.post(sessionId, "message", { text: "turn when off" });
     await vi.waitFor(() => expect(harness.sends).toContain("turn when off"));
     const firstRequest = harness.openSessionRequests.at(-1) as { resume?: string; sessionId?: string };
     expect(firstRequest?.resume).toBe("sid-live");
 
-    // Case 2: fresh session enabled -> opens fresh session with new random UUID
-    harness.setExperiments({ objectiveFreshSession: true });
+    // Case 2: fresh session marked -> opens fresh session with new random UUID
     await harness.consoleControl.disposeChat?.(sessionId);
     harness.markNextOpenFresh(sessionId);
     expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
@@ -681,8 +676,7 @@ describe("agent chat mode routes", () => {
     const dispatches = frames.filter((frame) => frame.event.kind === "dispatch");
     expect(dispatches.some((frame) => (frame.event as { text?: string }).text === "first order")).toBe(true);
 
-    // Case 5: experiment turned off preserves existing previousSessions in record
-    harness.setExperiments({ objectiveFreshSession: false });
+    // Case 5: stop preserves existing previousSessions in record
     const recordBefore = harness.getRecord(sessionId);
     expect((recordBefore?.session as { previousSessions?: unknown[] })?.previousSessions).toHaveLength(2);
     await harness.post(sessionId, "chat-stop");

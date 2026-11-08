@@ -86,23 +86,6 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
           />
         </div>
       </div>
-      <div className="global-settings-row experiments-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("settings.objectiveFreshSession.title")}
-            <SettingsHelp title={t("settings.objectiveFreshSession.title")}><p>{t("settings.objectiveFreshSession.help")}</p></SettingsHelp>
-          </p>
-        </div>
-        <div className="experiments-row-controls">
-          <SettingsToggle
-            checked={experiments.objectiveFreshSession}
-            busy={saving}
-            disabled={saving}
-            ariaLabel={t("settings.objectiveFreshSession.title")}
-            onChange={(next) => save({ ...experiments, objectiveFreshSession: next })}
-          />
-        </div>
-      </div>
     </section>
     </>
   );
@@ -171,15 +154,6 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
           disabled={saving || !experiments.commodore}
           ariaLabel={t("settings.taskforce.title")}
           onChange={(next) => saveExperiments({ ...experiments, taskforce: next })}
-        />
-      </SettingsRow>
-      <SettingsRow label={t("settings.objectiveFreshSession.title")} hint={t("settings.objectiveFreshSession.help")} icon={<MobileIcon name="target" />}>
-        <SettingsToggle
-          checked={experiments.objectiveFreshSession}
-          busy={saving}
-          disabled={saving}
-          ariaLabel={t("settings.objectiveFreshSession.title")}
-          onChange={(next) => saveExperiments({ ...experiments, objectiveFreshSession: next })}
         />
       </SettingsRow>
     </SettingsCard>
