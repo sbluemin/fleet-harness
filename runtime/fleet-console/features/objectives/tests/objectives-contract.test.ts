@@ -17,7 +17,7 @@ import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../host/attachments.js";
 import { inboxReasons } from "../shared/board-state.js";
 import { createCommodoreBoardTools, createObjectiveConsoleTools, MAX_REMARK } from "../host/console-tools.js";
-import { createLaunchService } from "../host/launch.js";
+import { createLaunchService, recipientReplyTool } from "../host/launch.js";
 import { createCommanderMcpTools, createMemberMcpTools, createObjectiveMcpTools, COMMANDER_TOOL_RENAMES, MEMBER_TOOL_RENAMES, FLEET_COMMANDER_TOOL_NAMES, FLEET_MEMBER_TOOL_NAMES } from "../host/objective-tools.js";
 import { createObjectiveRoutes } from "../host/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../host/store.js";
@@ -2332,6 +2332,15 @@ describe("Objectives contract", () => {
     activity.set(id, "running");
     expect(await board({ action: "edit", objectiveId: id, title: "Renamed while running" })).toMatchObject({ ok: true, stored: { title: "Renamed while running" } });
     expect(store.find(id)!.title).toBe("Renamed while running");
+    // 바쁠 때 기한이 든 편집은 브리핑을 먼저 쓰지 않고 통째로 거절한다.
+    const noteBefore = store.find(id)!.note;
+    const busyEdit = await commodore.execute({ action: "edit", objectiveId: id, brief: "Changed while running", dueDate: "2026-12-01" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
+    expect(busyEdit.structuredContent).toMatchObject({ error: "objective_busy" });
+    expect(store.find(id)!.note).toBe(noteBefore);
+    // 답장 도구는 받는 역할의 광고명이다. 없는 서버는 바로 실패한다.
+    expect(recipientReplyTool("fleet-commander")).toBe("member_message");
+    expect(recipientReplyTool("fleet-member")).toBe("message_commander");
+    expect(() => recipientReplyTool("fleet-objectives")).toThrow("Objective reply tool missing");
     // 지휘관·구성원은 자기 목표를 외부 행위자로 승인할 수 없다. 요청을 지우거나 기록하지 않는 거절이다.
     for (const objectiveId of [id, memberId]) {
       for (const write of [{ action: "complete" }, { action: "edit_title", title: "Self-chosen" }]) {
@@ -2358,7 +2367,7 @@ describe("Objectives contract", () => {
     const otherQuestion = [{ header: "Backlog", text: "Pause now?", options: [{ label: "Pause" }, { label: "Later" }] }];
     const pending = await call("request_decision", { objectiveId: id, expectedRevision: asked.decisionRequestRevision, questions: otherQuestion }, id);
     expect(pending.isError).toBe(true);
-    expect(pending.structuredContent).toMatchObject({ error: "decision_pending", requestId: asked.requestId, hint: expect.stringContaining("withdraw_decision_request") });
+    expect(pending.structuredContent).toMatchObject({ error: "decision_pending", requestId: asked.requestId, hint: expect.stringContaining("decision_withdraw") });
     expect(store.find(id)!.decisionRequest?.id).toBe(asked.requestId);
     // 결정 요청이 사령관을 기다리면 지휘관이 일하는 중이어도 그 맥락을 읽는다.
     activity.set(id, "running");

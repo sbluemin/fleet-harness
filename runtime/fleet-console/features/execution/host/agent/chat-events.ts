@@ -1671,12 +1671,16 @@ function objectiveMessageLedgerLine(to: string): string {
  * 힌트 접미(` — …`)는 있어도 된다 — 답장 안내 커밋이 첫 줄을 늘려도 말풍선으로 되살지 않게.
  */
 const OBJECTIVE_RELAY_HEAD = /^\[message from (the Commander|member (.+?) \(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)))(?: — [^\]]*)?\]$/i;
-/** `launch.ts` `channelNotice`. execution 이 objectives 를 import 하지 않으므로 문면을 여기 둔다. 역할 서버 분리 뒤 문면 4종 + 이관 전 2종(옛 전사 표시용). */
+/** `launch.ts` `channelNotice`. execution 이 objectives 를 import 하지 않으므로 문면을 여기 둔다. 역할 서버 분리 뒤 문면 4종 + 답장 도구명 확정 4종 + 이관 전 2종(옛 전사 표시용). */
 const OBJECTIVE_CHANNEL_NOTICES = [
   "이 목표에서 SendMessage와 ListAgents는 없다. fleet-commander의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
   "이 목표에서 SendMessage와 ListAgents는 없다. fleet-member의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
   "SendMessage and ListAgents are no longer available in this objective. The fleet-commander message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
   "SendMessage and ListAgents are no longer available in this objective. The fleet-member message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
+  "이 목표에서 SendMessage와 ListAgents는 없다. member_message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
+  "이 목표에서 SendMessage와 ListAgents는 없다. message_commander 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
+  "SendMessage and ListAgents are no longer available in this objective. The member_message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
+  "SendMessage and ListAgents are no longer available in this objective. The message_commander tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
   "이 목표에서 SendMessage와 ListAgents는 없다. fleet-objectives의 message 도구가 통로다. 지휘관은 to \"commander\", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.",
   "SendMessage and ListAgents are no longer available in this objective. The fleet-objectives message tool is the channel. Address the Commander with to \"commander\" and a member with their roster id or role. Session names are not addresses.",
 ];

@@ -9,7 +9,7 @@ import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { createModelCatalog } from "./catalog.js";
-import { FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER } from "./objective-tools.js";
+import { COMMANDER_TOOL_RENAMES, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER, MEMBER_TOOL_RENAMES } from "./objective-tools.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
 import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type ObjectiveModelSpeed, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
@@ -200,7 +200,14 @@ const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.langua
 /** 모델을 고르지 않은 구성원 — 판단기로 대신 고르지 않는다. */
 /** 사령관이 지휘관 모델을 고르지 않았고 사람이 정한 사령관 설정도 없다. */
 export const COMMANDER_MODEL_REQUIRED_HINT = "Choose the Commander model with commanderModel from fleet-ai-gateway candidates.";
-export const MEMBER_MODEL_REQUIRED_HINT = "Set this member's model with set_member_launch, choosing from fleet-ai-gateway candidates.";
+export const MEMBER_MODEL_REQUIRED_HINT = "Set this member's model with member_set_launch, choosing from fleet-ai-gateway candidates.";
+/** 받는 세션의 답장 도구 — 받는 이가 지휘관이면 member_message, 구성원이면 message_commander. 광고명 단일 진실원천에서 찾고, 없으면 바로 실패한다. */
+export function recipientReplyTool(server: string): string {
+  const renames = server === FLEET_COMMANDER_MCP_SERVER ? COMMANDER_TOOL_RENAMES : server === FLEET_MEMBER_MCP_SERVER ? MEMBER_TOOL_RENAMES : null;
+  const name = renames?.["message"];
+  if (!name) throw new Error(`Objective reply tool missing: ${server}`);
+  return name;
+}
 const memberModelRequired = () => new ObjectiveStoreError("member_model_required", undefined, { hint: MEMBER_MODEL_REQUIRED_HINT });
 /** 지휘관 기본값 — Opus · high. 카탈로그가 다르면 깨울 때 호스트가 거절한다. */
 /** 세션 이름 — 다른 세션이 이 세션을 부르는 주소. 담당 이름은 지휘관 이름의 머리를 잇는다. */
@@ -1195,9 +1202,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const reportQuietMs = serviceOptions.reportQuietMs ?? REPORT_QUIET_MS;
   const quietNow = serviceOptions.now ?? (() => Date.now());
   const idleNotified = new Map<string, string>();
-  const channelNotice = (language: PromptLanguage, server: string): string => language === "ko"
-    ? `이 목표에서 SendMessage와 ListAgents는 없다. ${server}의 message 도구가 통로다. 지휘관은 to "commander", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.`
-    : `SendMessage and ListAgents are no longer available in this objective. The ${server} message tool is the channel. Address the Commander with to "commander" and a member with their roster id or role. Session names are not addresses.`;
+  const channelNotice = (language: PromptLanguage, server: string): string => {
+    const reply = recipientReplyTool(server);
+    return language === "ko"
+      ? `이 목표에서 SendMessage와 ListAgents는 없다. ${reply} 도구가 통로다. 지휘관은 to "commander", 구성원은 로스터 id 또는 역할이다. 세션 이름은 주소가 아니다.`
+      : `SendMessage and ListAgents are no longer available in this objective. The ${reply} tool is the channel. Address the Commander with to "commander" and a member with their roster id or role. Session names are not addresses.`;
+  };
   /**
    * 모델이 읽는 문면. 화면 말풍선(`display`)은 본문만 남긴다.
    * 첫 줄은 자동 작명이 이 프롬프트를 제목으로 삼지 않게 하는 표식이기도 하다(`auto-name.ts`).
@@ -1209,7 +1219,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     // 역할은 겹치거나 safeRole 로 달라지거나 "commander" 일 수 있다. 구성원 답장 주소는 id 만 쓴다.
     const replyAddress = from.kind === "commander" ? "commander" : from.memberId;
     const roleNote = from.kind === "member" ? ` (${safeRole.replace(/"/g, "")})` : "";
-    const head = [`[message from ${who} — reply with the ${server} message tool, to: "${replyAddress}"${roleNote}]`, `messageId: ${messageId}`, ...(replyTo ? [`replyTo: ${replyTo}`] : [])].join("\n");
+    const head = [`[message from ${who} — reply with the ${recipientReplyTool(server)} tool, to: "${replyAddress}"${roleNote}]`, `messageId: ${messageId}`, ...(replyTo ? [`replyTo: ${replyTo}`] : [])].join("\n");
     return notice ? `${head}\n\n${notice}\n\n${body}` : `${head}\n\n${body}`;
   };
   const partyId = (party: ObjectiveMessageParty): string | null => party.kind === "member" ? party.memberId : null;

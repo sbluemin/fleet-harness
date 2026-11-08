@@ -2150,7 +2150,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const current = stored.decisionRequest;
         const asked = current?.questions.map(({ id: _question, options, ...question }) => ({ ...question, options: options.map(({ id: _option, ...option }) => option) }));
         if (current && isDeepStrictEqual(asked, questions)) { request = current; reused = true; return stored; }
-        if (current) throw new ObjectiveStoreError("decision_pending", undefined, { requestId: current.id, hint: "Withdraw the current request with withdraw_decision_request first." });
+        if (current) throw new ObjectiveStoreError("decision_pending", undefined, { requestId: current.id, hint: "Withdraw the current request with decision_withdraw first." });
         request = {
           id: randomUUID(), createdAt: now(),
           questions: questions.map((question) => ({ id: randomUUID(), ...question, options: question.options.map((option) => ({ id: randomUUID(), ...option })) })),

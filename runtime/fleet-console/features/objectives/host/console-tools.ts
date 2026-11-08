@@ -632,6 +632,8 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
       if (attachmentIds !== undefined && brief === undefined) {
         return refuse("invalid_arguments", { issues: [{ path: ["attachmentIds"], code: "invalid_type" }], hint: "attachmentIds copies images with a new brief; give brief." });
       }
+      // 기한은 바쁠 때 patch가 거절한다 — 브리핑을 먼저 쓰고 뒤집지 않게 여기서 같은 거절로 막는다.
+      if (dueDate !== undefined && launch.busy(current.id)) return refuse("objective_busy");
       const actions = createObjectiveActions(ctx, store, launch, actor);
       const ref = { objectiveId: current.id, language: language(caller) };
       const patch = { ...(title !== undefined ? { title } : {}), ...(dueDate !== undefined ? { dueDate } : {}) };
