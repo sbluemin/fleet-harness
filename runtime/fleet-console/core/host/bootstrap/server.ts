@@ -781,7 +781,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const commodoreId = owners.length === 1 ? owners[0]! : null;
     const root = commodoreId ? ownership?.theaterPath(commodoreId, theaterId) : null;
     return commodoreId && root ? { commodoreId, theaterId: workspaceHash(root) } : null;
-  }, pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), directory: path.join(durablePaths.dir, "console-control"), objectiveRecords: () => objectiveRecords.list(), resolveObjective: objectiveRecords.get, theaters: (commodoreId) => ownership?.theaterSummaries(commodoreId).map((row) => ({ id: row.theaterId, name: row.label })) ?? [] });
+  }, pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), directory: path.join(durablePaths.dir, "console-use"), objectiveRecords: () => objectiveRecords.list(), resolveObjective: objectiveRecords.get, theaters: (commodoreId) => ownership?.theaterSummaries(commodoreId).map((row) => ({ id: row.theaterId, name: row.label })) ?? [] });
   /**
    * 사용 컨텍스트 — 자식 세션은 루트의 브라우저·허용·기기·화면공유를 함께 쓴다. 세 사용 도구와 턴 종료 훅이 같은 객체를 포트로 받는다.
    * 열린 턴은 Console 제어의 관측(활동 축)으로 읽는다: PTY·Chat 두 어댑터가 같은 축에 쓰는 유일한 자리이고, 입력을 기다리는 턴(awaiting)도
