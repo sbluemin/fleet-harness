@@ -244,7 +244,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       const objective = boundObjective(caller);
       if (!objective) return refuse("not_participant");
       const role = roleIn(objective, caller);
-      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board, seal evidence, and message the Commander with member_message (to: \"commander\"). Only the Commander changes the board." });
+      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board, seal evidence, and message the Commander with message_commander (to: \"commander\"). Only the Commander changes the board." });
       if (!role) return refuse("not_participant");
       return run(args, objective, caller!, context);
     });
@@ -309,7 +309,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     commanderTool("detach_result", "Remove a result and its mission link. The evidenceId becomes unavailable; source file, PR, Artifact, records and completion states are unchanged.",
       z.object({ resultId: ids }).strict(),
       ({ resultId }, objective) => { store.resultRemove(objective.id, resultId); return text({ ok: true }); }),
-    commanderTool("plan", `Replace the open missions nobody has committed to yet; needs missions or criteria, and members alone is refused. Missions that stay (finished, recorded, person-assigned or person-added) are referenced by missionId; restating one is refused as mission_kept. Prerequisites are numbers n over this plan's own missions, or the missionId of a mission that stays; member is a roster id or role, none means the Commander. A lineup changing repository files ends with a base-branch merge via PR, review and checks. members is accepted only while the roster is empty; enlist adds members later. ${MODEL_FACT} criteria replaces all pending proposals, [] withdraws them, omission keeps them; omit missions to submit criteria only. A conditional criterion states its premise and the evidence that stands when it fails. Proposals need the person's approval and block commencement and steering until resolved. A plan on an edited board is refused as board_changed. ${BOARD_REFERENCES}`,
+    commanderTool("plan", `Replace the open missions nobody has committed to yet; needs missions or criteria, and members alone is refused. Missions that stay (finished, recorded, person-assigned or person-added) are referenced by missionId; restating one is refused as mission_kept. Prerequisites are numbers n over this plan's own missions, or the missionId of a mission that stays; member is a roster id or role, none means the Commander. A lineup changing repository files ends with a base-branch merge via PR, review and checks. members is accepted only while the roster is empty; member_enlist adds members later. ${MODEL_FACT} criteria replaces all pending proposals, [] withdraws them, omission keeps them; omit missions to submit criteria only. A conditional criterion states its premise and the evidence that stands when it fails. Proposals need the person's approval and block commencement and steering until resolved. A plan on an edited board is refused as board_changed. ${BOARD_REFERENCES}`,
       planArgs,
       async (args, before, _caller, context) => {
         // 모델 제안을 먼저 확인한다 — 카탈로그를 읽는 동안 보드가 바뀌었을 수 있으니 판정은 다시 읽은 보드로 한다.

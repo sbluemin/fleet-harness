@@ -1938,7 +1938,7 @@ describe("commodore session", () => {
     // 턴 오류는 결말로 돌아오고 기록에 남는다; 폐기는 세션을 닫는다.
     stub.setScript(async () => { throw new Error("rate limit exceeded (429)"); });
     expect(await session.turn({ reasons: ["routine"] })).toMatchObject({ outcome: "error", error: "rate_limited" });
-    expect(stub.sent[1]).toContain("Your fleet-memory index (read an entry with memory view):");
+    expect(stub.sent[1]).toContain("Your fleet-memory index (read entries with memory list):");
     expect(stub.sent[1]).toContain("CDP offline leaves an open EventSource alive.");
     expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "error", error: "rate_limited" });
     // 최종 응답의 OpenUI 진단은 다음 모델 입력에 한 번만 싣고, 공개 기록·미리보기에는 남기지 않는다.

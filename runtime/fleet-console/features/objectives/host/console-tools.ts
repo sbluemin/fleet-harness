@@ -83,7 +83,7 @@ const listActions = {
       commanderEffort: z.string().trim().min(1).max(32).optional().describe("From commanderModel's efforts; omitted uses its default.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
-    merge: { kind: "write", input: z.object({ into: ids.describe("Target receiving brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives; sources stay in the target record."), reason }) },
+    merge: { kind: "write", input: z.object({ into: ids.describe("Target receiving brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
     restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs; completion and records are retained, chats wait for a message.") }) },
     purge: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs only. Irreversible after a 10-second undo grace period; Console restart cancels pending purges.") }) },
 } as const;
@@ -146,15 +146,15 @@ const sessionListInput = z.object({
   groupId: ids.optional(),
   offset: z.number().int().min(0).optional().describe(offsetPages),
   limit: z.number().int().min(1).max(100).optional(),
-  view: z.enum(["today", "due", "all", "inbox", "fleet", "history", "archived"]).optional(),
+  view: z.enum(["today", "due", "all", "inbox", "fleet", "history", "archived"]).optional().describe("Omitted: default list. all adds completed objectives; archived reads the archive."),
   archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (epoch ms); newest first."),
 }).strict();
 const sessionEditInput = z.object({
   objectiveId: ids,
-  title: z.string().trim().min(1).max(MAX_TITLE).optional(),
+  title: z.string().trim().min(1).max(MAX_TITLE).optional().describe("At least one of title, brief or dueDate is required."),
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
-  attachmentIds: attachmentIds.optional(),
+  attachmentIds: attachmentIds.optional().describe("This turn's image IDs; requires brief."),
 }).strict();
 const { list: _retiredList, inbox: _retiredInbox, fleet: _retiredFleet, history: _retiredHistory, archived: _retiredArchived, ...sessionListBase } = listActions;
 const { edit_title: _retiredEditTitle, edit_brief: _retiredEditBrief, edit_due: _retiredEditDue, ...sessionDetailBase } = detailActions;

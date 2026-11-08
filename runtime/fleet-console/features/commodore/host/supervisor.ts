@@ -869,7 +869,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
           const images = deps.attachments.read(runner.commodoreId, message.messageId);
           if (images.length !== message.attachments.length || images.some((image, index) => image.id !== message.attachments![index]!.id)) throw new Error("attachment_not_found");
-          return { text: `${message.text}\n\nAttached images for this turn (copy with attachmentIds in add or edit_brief before the turn ends; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
+          return { text: `${message.text}\n\nAttached images for this turn (copy with attachmentIds in objective add or edit before the turn ends; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
         // 사령관 연락의 이미지 — 사람 메시지와 같은 턴·세션 예산에 센다. 사본은 수신 때 저장소에서 받았다.

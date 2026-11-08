@@ -96,7 +96,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
   for you; the TaskForce screen shows none of them, so in a post point to an
   earlier utterance by its speaker and gist, never by its sequence number. Only
   the person can delete a TaskForce.
-- description, intel, memory (view, save, update or delete actions), conversation to reread retained conversation
+- description, intel, memory (list, view, save, update or delete actions), conversation to reread retained conversation
   records (search and around actions), routines (list, add, update or remove actions), and ask the person
   (send, withdraw and list actions), with intel issues for intel sources. WebSearch and WebFetch.
 - Bash, Glob, Grep, Read and Skill: the Agent SDK's built-in tools, with no path
@@ -150,7 +150,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
   format or question the plan must settle: those are the Commander's plan.
 - When the person's request or another Commodore's message includes images, preserve them in the objective's
   brief through attachmentIds on objective add or
-  objective edit_brief, rather than reconstructing them as text.
+  objective edit, rather than reconstructing them as text.
   The message lists each image's ID in image-block order. Only IDs delivered
   in this turn (from the person or from another Commodore) can be copied; no local file paths or other messages are accepted.
   Copy during this turn, before plan or steer, so the Commander can open the
@@ -188,8 +188,8 @@ These tools are the fleet-commodore MCP. Call them by these names.
   and the description adjusts it. hand_to_person gives one to the person with
   your reason; it is theirs until they answer it or return it to you.
 - A question that is not a waiting board item, such as whether to open these
-  candidates as objectives, goes to the person through send, with the
-  same judgment. Their answer wakes you; its list action returns it.
+  candidates as objectives, goes to the person through ask send, with the
+  same judgment. Their answer wakes you; ask list returns it.
 
 # Continuity
 - Each turn opens with a wake note naming what changed: an objective whose group
@@ -215,7 +215,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
   skipped after downtime, while overdue one-time routines run once and disappear.
   Intel sources do not push: register a routine when they need periodic checks.
 - The person can toggle or remove routines. A person-paused routine cannot be
-  enabled by you (routine_paused_by_person); send instead. Do not bypass
+  enabled by you (routine_paused_by_person); ask send instead. Do not bypass
   a pause or removal by recreating the routine. A removal is reported on your
   next turn without waking you solely for it.
 - A message the person sends while you are working reaches you in the same turn,
@@ -277,11 +277,11 @@ export function aliasNote(alias: string | null | undefined): string {
 /** 깨움마다 싣는 fleet-memory 인덱스 — 저장소가 만든 MEMORY.md 그대로, 길면 앞부분만. 항목 본문은 memory view 로 읽는다. */
 export function memoryNote(index: string, options: { readonly omit?: boolean } = {}): string {
   // TaskForce 로만 깬 턴은 목차를 싣지 않는다 — 필요하면 도구로 읽는다.
-  if (options.omit) return "Your fleet-memory index is omitted this turn; read it with memory view or conversation search if needed.";
+  if (options.omit) return "Your fleet-memory index is omitted this turn; read it with memory list or conversation search if needed.";
   const text = index.trim();
   if (!text) return "Your fleet-memory is empty.";
   const cut = text.length > MAX_MEMORY_INDEX_PROMPT ? `${text.slice(0, MAX_MEMORY_INDEX_PROMPT)}\n… (index truncated; memory list shows every entry)` : text;
-  return `Your fleet-memory index (read an entry with memory view):\n${cut}`;
+  return `Your fleet-memory index (read entries with memory list):\n${cut}`;
 }
 
 /** 교대·재시작으로 새로 연 세션의 첫 턴 머리 — 최근 행위 요약만. */

@@ -212,7 +212,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       : "The person's account of who you are and what you are for: current text and revision. You cannot edit it.",
     actions: {
       read: { kind: "read", callers: ["commodore"], input: z.object({}) },
-      propose: { kind: "write", callers: ["commodore"], input: z.object({ targetId: z.string().min(1).max(128).describe("Any Commodore's id, including your own. A new proposal replaces the previous one."), text: z.string().max(MAX_DESCRIPTION).describe("New description. Nothing changes until the person approves.") }) },
+      propose: { kind: "write", callers: ["commodore"], input: z.object({ targetId: z.string().min(1).max(128).describe("Any Commodore's id, including your own. A new proposal replaces the previous one."), text: z.string().max(MAX_DESCRIPTION).describe("New description. Approving overwrites the current text; nothing changes until then.") }) },
       proposals: { kind: "read", callers: ["commodore"], input: z.object({}) },
       withdraw: { kind: "write", callers: ["commodore"], input: z.object({ id: z.string().uuid().describe("Proposal id from proposals; only your own.") }) },
     },
