@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
-import { commodoreBrowserId, commodoreOfBrowser, COMMODORE_SPACE_ID, SESSION_SPACE_ID } from "../shared/spaces.js";
+import { BROWSER_GLOBAL_ID, commodoreOfSpace, HUMAN_SPACE_ID, sessionSpaceId } from "../shared/spaces.js";
 import { writeImageToClipboard } from "./clipboard.js";
 import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
 
@@ -42,7 +42,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     if (req.method === "GET" && pathname === "/api/v1/browser/sessions/resolve") {
       const query = readUrl(req).searchParams;
       const ownerId = browserMcp.resolveSessionOwner?.(query.get("pluginId") ?? "", query.get("scopeId") ?? "") ?? null;
-      writeJson(res, 200, { ownerId });
+      const homeSpaceId = ownerId ? commodoreOfSpace(ownerId) ? ownerId : sessionSpaceId(ownerId) : null;
+      writeJson(res, 200, { ownerId: ownerId ? BROWSER_GLOBAL_ID : null, homeSpaceId });
       return true;
     }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") {
@@ -132,15 +133,15 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
-    // 예약 id "global" 은 Objective 경로로도 열리지 않는다. 옛 전역 요청이 Session 에 붙지 않게 한다.
-    const requested = requestedId === GLOBAL_BROWSER_OWNER_ID ? null : objectiveRecords.get(requestedId);
-    // Objective(자식 세션 포함)의 경로는 그 사령관의 브라우저로 가고, 스페이스는 루트 Objective 의 것이다.
+    // 전역 id 는 Objective 로 해석하지 않는다. 문맥별 별칭은 HOME 만 정하고 모두 같은 브라우저를 연다.
+    const global = requestedId === GLOBAL_BROWSER_OWNER_ID;
+    const requested = global ? null : objectiveRecords.get(requestedId);
     const rootId = requested ? deps.browserOwnerOf?.(requested.id) ?? requested.id : null;
     const objectiveRecord = rootId ? objectiveRecords.get(rootId) : null;
-    const sessionOwner = !requested && requestedId !== GLOBAL_BROWSER_OWNER_ID && browserMcp.isSessionOwner?.(requestedId) === true;
-    if (!objectiveRecord && !sessionOwner) { writeJson(res, 404, { error: "objectiveRecord_not_found" }); return true; }
-    const objectiveId = objectiveRecord ? commodoreBrowserId(objectiveRecord.commodoreId) : requestedId;
-    const homeSpaceId = objectiveRecord ? objectiveRecord.id : commodoreOfBrowser(requestedId) ? COMMODORE_SPACE_ID : SESSION_SPACE_ID;
+    const sessionOwner = !requested && !global && browserMcp.isSessionOwner?.(requestedId) === true;
+    if (!global && !objectiveRecord && !sessionOwner) { writeJson(res, 404, { error: "objectiveRecord_not_found" }); return true; }
+    const objectiveId = BROWSER_GLOBAL_ID;
+    const homeSpaceId = objectiveRecord ? objectiveRecord.id : global ? HUMAN_SPACE_ID : commodoreOfSpace(requestedId) ? requestedId : sessionSpaceId(requestedId);
     // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.
     if (action !== "state" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
     const fail = (error: unknown) => {

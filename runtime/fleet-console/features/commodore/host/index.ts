@@ -357,6 +357,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const routes = [...commodoreRoutes, ...taskforce.routes];
   return {
     host,
+    /** 전역 브라우저 등 공유 화면이 사령관 스페이스를 구별할 표시 이름. */
+    label: (id: string): string => { const state = store.read(id); return state ? state.alias ?? ownership.theaterSummaries(id)[0]?.label ?? "Commodore" : ""; },
     /** 새 지휘관이 생성 시 고정할 자동 메모리 정책. 사령관 자신의 SDK 설정과는 별개다. */
     commanderAutoMemoryEnabled: (commodoreId: string): boolean => store.read(commodoreId)?.autoMemoryEnabled !== false,
     routes,

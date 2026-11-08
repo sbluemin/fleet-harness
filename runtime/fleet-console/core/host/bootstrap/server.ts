@@ -60,7 +60,7 @@ import { createBrowserMcpHost, SESSION_BROWSER_OWNER_PREFIX } from "../../../fea
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
 import { createBrowserScreenshotStore } from "../../../features/browser/host/screenshot-store.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } from "../../../features/browser/host/service.js";
-import { BROWSER_COMMODORE_PREFIX, spaceKindOf } from "../../../features/browser/shared/spaces.js";
+import { BROWSER_COMMODORE_PREFIX, SESSION_SPACE_PREFIX, commodoreOfSpace, commodoreSpaceId, spaceKindOf } from "../../../features/browser/shared/spaces.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
 import { createUseRequestBroker, type ComputerUseLedger } from "../../../features/computer-use/host/use-requests.js";
@@ -487,8 +487,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     onGroupChanged: (event) => publishPluginEvent(OBJECTIVE_GROUPED_EVENT_CHANNEL, event),
     onGroupRemoved: (event) => publishPluginEvent(OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, event),
-    // 예전 전역 브라우저 id "global" 은 Objective이 될 수 없다 — 남은 상태나 옛 요청이 Session에 붙지 않게.
-    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || id.startsWith(BROWSER_COMMODORE_PREFIX) || archiveStorage.isReserved(id) || archiveStorage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingObjective(id),
+    // 전역 브라우저·스페이스의 예약 id 는 Objective 으로 만들 수 없다.
+    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || id.startsWith(BROWSER_COMMODORE_PREFIX) || id.startsWith(SESSION_SPACE_PREFIX) || archiveStorage.isReserved(id) || archiveStorage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingObjective(id),
     assertRelationMutable: (id) => objectiveRecordArchive.assertMutable(id),
   });
   const folderGrants = createFolderGrantStore();
@@ -881,8 +881,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       read: () => consoleSettingsStore.readSnapshot().browser?.defaultProfile ?? null,
       write: (profile) => { consoleSettingsStore.update((current) => ({ ...current, browser: { ...current.browser, defaultProfile: profile } })); },
     },
-    // Objective 스페이스는 그 Objective 제목으로 읽힌다. 사령관·세션 스페이스는 패널과 에이전트가 기본 낱말을 쓴다.
-    spaceLabel: (_browserId, spaceId) => spaceKindOf(spaceId) === "objective" ? objectiveRecords.get(spaceId)?.title ?? "" : spaceId,
+    // 전역 목록에서도 각 사령관의 스페이스를 이름으로 구별한다. 일반 세션·사람 스페이스는 패널의 기본 낱말을 쓴다.
+    spaceLabel: (_browserId, spaceId) => {
+      const commodoreId = commodoreOfSpace(spaceId);
+      if (commodoreId) { try { return commodore?.label(commodoreId) ?? ""; } catch { return ""; } }
+      return spaceKindOf(spaceId) === "objective" ? objectiveRecords.get(spaceId)?.title ?? "" : "";
+    },
   });
   /**
    * 브라우저 상태는 Objective 스트림을 함께 탄다 — 패널이 자기 스트림을 따로 열면 그 연결이 화면의 연결 예산
@@ -930,7 +934,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const computerObjective = owner && experiments.computerUse ? computerUseMcp.objectiveIdForOwner(owner) : null;
     // 공유 컨텍스트에서는 기기의 주인(computer)이 루트이고, 지금 조작하는 참가자는 따로 싣는다 — 그룹채팅의 조작자 칩·진행 줄이 읽는다.
     const computerActor = owner && computerObjective ? computerUseMcp.actorForOwner(owner) : null;
-    // 브라우저는 사령관마다 하나고 사용 표식은 스페이스 단위다 — 에이전트가 쓰는 중인 Objective 스페이스가 곧 그 Objective 다.
+    // 브라우저는 Console 전체에 하나고 사용 표식은 스페이스 단위다 — Objective 스페이스가 곧 그 Objective 다.
     const browserObjectiveRecords = [...new Set(browserService.drivingSpaces().map((entry) => entry.spaceId))].filter((id) => !!objectiveRecords.get(id));
     return { console: [] as string[], computer: computerObjective, computerActor, browser: browserObjectiveRecords };
   };
@@ -2635,6 +2639,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             // 이미 시작한 보관 전이가 정지 뒤 저장하지 않도록 소유자 차단 후 큐를 비운다.
             await objectiveRecordArchive.settled();
             for (const node of ownerRecords(id).flatMap(archiveSessionNodes)) await execution.stopForArchive(node, false);
+            await browserService.closeSpace(commodoreSpaceId(id));
           },
           detachObjectives: (id) => {
             const previous = objectiveRecords.list(), groups = objectiveRecords.listAllGroups(), tombstones = deletionCoordinator.list();

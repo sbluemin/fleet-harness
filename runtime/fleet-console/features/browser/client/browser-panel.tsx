@@ -1,6 +1,7 @@
 import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { NATIVE_VIEW_COVER_ATTRIBUTE, nativeViewCovered, observeNativeViewCover } from "@fleet-console/ui/native-view";
 import * as React from "react";
+import { createPortal } from "react-dom";
 import type { ObjectiveRenderContext } from "../../execution/shared/client-contract.js";
 import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
 import { CaptionBrowserUseGlyph } from "../../workspace/client/components/caption-actions.js";
@@ -9,12 +10,12 @@ import { getT } from "./i18n.js";
 import { suggestionSkipReason } from "../shared/suggestions.js";
 import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../workspace/shared/avatars.js";
 import { useAvatarToneOf } from "../../workspace/client/avatar-accent.js";
-import { commodoreOfBrowser, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
+import { BROWSER_GLOBAL_ID, commodoreOfSpace, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
-import { dropBrowserOpenRequest, getNativeViewResize, BrowserNavTailContext, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
-import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
+import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, BrowserNavTailContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import { BrowserSurfaceContent, useBrowserDocument, useBrowserWindow, type BrowserSurfaceState } from "./browser-window.js";
 import "./browser-panel.css";
 
@@ -48,7 +49,7 @@ interface TabState { readonly id: string; readonly spaceId: string; readonly url
 interface Viewport { readonly width: number; readonly height: number; readonly scale: number; readonly preset: "responsive" | "mobile" | "tablet"; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 type UnavailableReason = "desktop_required" | "shared";
 interface BrowserState {
-  /** 한 스트림에 모든 사령관 브라우저의 상태가 흐르므로 프레임이 자기 브라우저를 싣는다(`browserId`). `objectiveId` 도 같은 값이다. */
+  /** Console 전역 브라우저의 id(`BROWSER_GLOBAL_ID`) — 스트림 프레임의 `objectiveId` 도 같은 값이다. */
   readonly browserId: string;
   readonly surface?: BrowserSurfaceState | null;
   readonly spaces: readonly BrowserSpaceState[];
@@ -111,45 +112,42 @@ function base64Of(blob: Blob): Promise<string> {
  * 다 차면 이 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다(눌러도 아무 일이 없고, 스트림 하나가 닫혀야 그제야 밀린
  * 요청이 나간다). 원격 콘솔에서는 창을 든 셸의 배관도 같은 예산을 쓰므로 그 여섯이 훨씬 빨리 찬다.
  */
-function useBrowserStream(objectiveId: string, enabled: boolean, subscribeConsoleChannel: BrowserClientServices["subscribeConsoleChannel"]) {
+function useBrowserStream(scopeId: string, enabled: boolean, subscribeConsoleChannel: BrowserClientServices["subscribeConsoleChannel"]) {
   const [state, setState] = React.useState<BrowserState | null>(null);
   const [homeSpaceId, setHomeSpaceId] = React.useState<string | null>(null);
   const [connection, setConnection] = React.useState<Connection>(enabled ? "connecting" : "disabled");
   React.useEffect(() => {
     if (!enabled) { setConnection("disabled"); setState(null); setHomeSpaceId(null); return; }
     let disposed = false;
-    // 내 브라우저의 id. 요청에 쓰는 id(Objective id 또는 `commodore:<id>`)와 다르고, 처음 읽은 상태에서만 알 수 있다.
-    let browserId: string | null = null;
-    // 출발점을 읽는 동안 도착한 프레임. 한 스트림에 모든 사령관 브라우저의 프레임이 흐르므로 내 것인지 아직 모른다 —
-    // 브라우저마다 가장 새 프레임을 쥐었다가, 출발점이 내 browserId 를 알려 주면 그 프레임이 응답보다 새것이므로 그것을 쓴다.
-    const early = new Map<string, BrowserState>();
+    // 출발점을 읽는 동안 도착한 프레임 — 브라우저는 Console 에 하나이므로 모든 프레임이 내 것이다. 응답보다 새것이면 그것을 쓴다.
+    let early: BrowserState | null = null;
+    let started = false;
     setConnection("connecting");
     const receive = (payload: unknown) => {
       const next = payload as BrowserState | null;
-      if (disposed || !next || typeof next.browserId !== "string") return;
-      if (browserId === null) { early.set(next.browserId, next); return; }
-      // 한 스트림에 모든 사령관 브라우저의 상태가 흐른다 — 내 브라우저의 것만 받는다.
-      if (next.browserId !== browserId) return;
+      if (disposed || !next || next.browserId !== BROWSER_GLOBAL_ID) return;
+      if (!started) { early = next; return; }
       setState(next);
       setConnection("open");
     };
     const unsubscribe = subscribeConsoleChannel(BROWSER_STATE_EVENT, receive);
-    void fetch(`${base(objectiveId)}/state`)
+    // 상태는 호출 문맥(scope)의 라우트로 읽는다 — 스트림 프레임에는 없는 이 문맥의 HOME 스페이스를 함께 받는다. 상태 자체는 어느 scope 든 같다.
+    void fetch(`${base(scopeId)}/state`)
       .then(async (response) => {
         if (!response.ok) { if (!disposed) setConnection("closed"); return; }
         const body = await response.json() as BrowserState;
         if (disposed || typeof body.browserId !== "string") return;
-        browserId = body.browserId;
+        started = true;
         setHomeSpaceId(body.homeSpaceId ?? null);
         // 바뀌지 않은 사실은 다시 오지 않으므로, 먼저 도착한 프레임이 있으면 낡은 응답이 그것을 되돌리지 않게 한다.
-        const newer = early.get(browserId);
-        early.clear();
+        const newer = early;
+        early = null;
         setState(newer ?? body);
         setConnection("open");
       })
       .catch(() => { if (!disposed) setConnection("closed"); });
     return () => { disposed = true; unsubscribe(); };
-  }, [objectiveId, enabled, subscribeConsoleChannel]);
+  }, [scopeId, enabled, subscribeConsoleChannel]);
   return { state, connection, homeSpaceId };
 }
 
@@ -275,17 +273,17 @@ const PinGlyph = () => glyph('<path d="M6.2 2.5h3.6l-.5 3.3 2 2v1.1H4.7V7.8l2-2z
 const EraseGlyph = () => glyph('<path d="M2.6 4.4h10.8"/><path d="M6.4 4.4V2.9h3.2v1.5"/><path d="M4 4.4l.6 8a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8"/>');
 
 /** 탭 아이콘 — 파비콘은 서버 프록시로 받고, 없거나 깨지면 지구본. */
-function TabIcon({ objectiveId, tab }: { readonly objectiveId: string; readonly tab: { readonly id: string; readonly favicon: string | null; readonly loading: boolean } }) {
+function TabIcon({ tab }: { readonly tab: { readonly id: string; readonly favicon: string | null; readonly loading: boolean } }) {
   const [broken, setBroken] = React.useState<string | null>(null);
-  if (tab.favicon && broken !== tab.favicon) return <img className="op-browser__tab-icon" src={`${base(objectiveId)}/favicon?tabId=${encodeURIComponent(tab.id)}&v=${encodeURIComponent(tab.favicon)}`} alt="" draggable={false} onError={() => setBroken(tab.favicon)} />;
+  if (tab.favicon && broken !== tab.favicon) return <img className="op-browser__tab-icon" src={`${base(BROWSER_GLOBAL_ID)}/favicon?tabId=${encodeURIComponent(tab.id)}&v=${encodeURIComponent(tab.favicon)}`} alt="" draggable={false} onError={() => setBroken(tab.favicon)} />;
   return <span className="op-browser__tab-icon is-fallback" aria-hidden="true"><GlobeGlyph /></span>;
 }
 
 interface AddressSuggestion { readonly value: string; readonly title: string; readonly historyId?: string }
-function SuggestionIcon({ objectiveId, suggestion }: { readonly objectiveId: string; readonly suggestion: AddressSuggestion }) {
+function SuggestionIcon({ suggestion }: { readonly suggestion: AddressSuggestion }) {
   const [broken, setBroken] = React.useState(false);
   if (!suggestion.historyId) return <span className="op-browser__tab-icon is-fallback" aria-hidden="true">{glyph('<circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/>')}</span>;
-  if (!broken) return <img className="op-browser__tab-icon" src={`${base(objectiveId)}/favicon?historyId=${suggestion.historyId}`} alt="" draggable={false} onError={() => setBroken(true)} />;
+  if (!broken) return <img className="op-browser__tab-icon" src={`${base(BROWSER_GLOBAL_ID)}/favicon?historyId=${suggestion.historyId}`} alt="" draggable={false} onError={() => setBroken(true)} />;
   return <span className="op-browser__tab-icon is-fallback" aria-hidden="true"><GlobeGlyph /></span>;
 }
 
@@ -350,10 +348,9 @@ function unavailableText(t: ReturnType<typeof getT>, reason: UnavailableReason |
  * 스페이스 색 — 그 스페이스의 아바타 정체성 톤이다(사령관 스페이스는 사령관 아바타, Objective 스페이스는 그 Objective 의 아바타).
  * 아바타를 모르는 스페이스(세션·사람)는 CSS 의 무채 잉크가 남는다. 톤 규칙은 대화 강조색과 같은 `avatarToneOf` 하나다.
  */
-function spaceAvatarKey(space: { readonly id: string; readonly kind: BrowserSpaceKind }, browserId: string | null): string | null {
+function spaceAvatarKey(space: { readonly id: string; readonly kind: BrowserSpaceKind }): string | null {
   if (space.kind === "objective") return objectiveRecordAvatarKey(space.id);
-  if (space.kind !== "commodore" || browserId === null) return null;
-  const commodoreId = commodoreOfBrowser(browserId);
+  const commodoreId = space.kind === "commodore" ? commodoreOfSpace(space.id) : null;
   return commodoreId === null ? null : commodoreAvatarKey(commodoreId);
 }
 
@@ -370,19 +367,22 @@ function BackGlyph() {
 
 interface SpaceGroup { readonly space: BrowserSpaceState; readonly tabs: readonly BrowserCaptionTab[]; readonly open: boolean }
 
-/**
- * companion 캡션 = 브라우저 탭 스트립. 「브라우저」 한 단어 대신 지구본 + 탭 + 새 탭, 오른쪽에 뷰포트.
- * 에이전트 세션 중이면 지구본이 agent-control 채움이 되고 「사용 중 · 중단」이 선다. 본문이 올린 스냅샷을 읽는다.
- */
 export interface SessionBrowserTarget { readonly pluginId: string; readonly scopeId: string }
 
-/** Console 실행 중에는 같은 scope가 같은 owner를 가리킨다. 아직 시작하지 않은 세션은 null이다. */
-export async function resolveSessionBrowserTarget(target: SessionBrowserTarget): Promise<string | null> {
+export interface SessionBrowserResolution {
+  /** 브라우저는 하나이므로 시작한 세션이면 늘 전역 id 다. 아직 시작하지 않은 세션은 null 이다. */
+  readonly ownerId: string | null;
+  /** 이 세션의 HOME 스페이스 — 전역 state 의 HOME(사람)이 아니라 이 값이 이 대화의 그룹이다. */
+  readonly homeSpaceId: string | null;
+}
+
+/** Console 실행 중에는 같은 scope가 같은 세션 스페이스를 가리킨다. 아직 시작하지 않은 세션은 둘 다 null이다. */
+export async function resolveSessionBrowserTarget(target: SessionBrowserTarget): Promise<SessionBrowserResolution> {
   const query = new URLSearchParams({ pluginId: target.pluginId, scopeId: target.scopeId });
   const response = await fetch(`/api/v1/browser/sessions/resolve?${query}`);
   if (!response.ok) throw new Error("browser_target_unavailable");
-  const result = await response.json() as { ownerId: string | null };
-  return result.ownerId;
+  const result = await response.json() as { ownerId: string | null; homeSpaceId?: string | null };
+  return { ownerId: result.ownerId, homeSpaceId: result.homeSpaceId ?? null };
 }
 
 export interface SessionBrowserPanelProps {
@@ -393,14 +393,54 @@ export interface SessionBrowserPanelProps {
   readonly services: Pick<BrowserClientServices, "isDesktopShell" | "desktopShellCapabilities" | "themePolarity" | "subscribeConsoleChannel">;
   readonly onAttach?: (files: readonly File[]) => void;
   readonly terminalPaste?: boolean;
+  /** 이 패널의 HOME 스페이스를 호출 문맥이 이미 알면 준다(세션: resolver 의 값). 없으면 서버가 이 scope 로 답한 값을 쓴다. */
+  readonly homeSpaceId?: string | null;
+  /** 터미널 붙여넣기가 향하는 Objective — 분리 창은 지금 보는 문맥의 것을 준다. 없으면 이 패널의 scope. */
+  readonly pasteTargetId?: string;
+  /** 분리 창 안에 그려지는 패널 — Console 전역 호스트가 하나만 세운다. */
+  readonly host?: boolean;
 }
 
-export function SessionBrowserCaption({ ownerId, language }: Pick<SessionBrowserPanelProps, "ownerId" | "language">) {
-  return <BrowserCaption context={{ objectiveId: ownerId, language }} />;
+/** 주소창이 줄어드는 하한 — 이보다 좁아지면 접히는 단추(캡처·주석·세션·뷰포트)가 「⋯」로 모인다. */
+const NAV_URL_MIN_PX = 120;
+/** 줄의 아이콘 단추 폭(CSS `.op-browser__nav.is-top` 의 30px 과 같다) — 새로고침 단추를 못 잴 때의 값. */
+const NAV_ICON_PX = 30;
+
+/**
+ * 좁은 맨 위 줄에서 접힌 주소줄 도구 — 「⋯」 하나가 캡처·주석·세션·뷰포트를 가로 한 줄의 팝오버로 모은다. 안의 단추는 펼쳤을 때와 같은 것이라
+ * 각자의 메뉴(세션·뷰포트)도 그대로 열린다. 바깥을 누르거나 Esc 로 닫는다. 팝오버는 본문 위로 내려오므로 네이티브 뷰 가림 표면으로 알린다.
+ */
+function NavFoldMenu({ objectiveId, label, children }: { readonly objectiveId: string; readonly label: string; readonly children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    publishBrowserCaptionOverlay(objectiveId, "fold", open);
+    return () => publishBrowserCaptionOverlay(objectiveId, "fold", false);
+  }, [objectiveId, open]);
+  React.useEffect(() => {
+    if (!open) return;
+    // 분리 창에서는 이 줄이 다른 문서에 서므로 그 문서의 입력을 듣는다.
+    const doc = rootRef.current?.ownerDocument ?? document;
+    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) setOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    doc.addEventListener("pointerdown", onPointer, true);
+    doc.addEventListener("keydown", onKey);
+    return () => { doc.removeEventListener("pointerdown", onPointer, true); doc.removeEventListener("keydown", onKey); };
+  }, [open]);
+  return (
+    <div className="op-browser__fold" ref={rootRef}>
+      <button type="button" className="op-browser__icon" aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((current) => !current)}>
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
+      </button>
+      {open ? <div className="op-browser__menu op-browser__menu--row" role="menu" aria-label={label} {...COVERS_NATIVE_VIEW}>{children}</div> : null}
+    </div>
+  );
 }
 
 /**
- * 세션·뷰포트 도구 — 주소줄 끝에 선다(주석 버튼 옆). 탭 줄의 폭은 탭들의 것이다. 상태와 손잡이는 본문이 올린 스냅샷에서 읽는다.
+ * 세션·뷰포트 도구 — 이름은 CSS 말풍선(data-tip)이 아니라 네이티브 title 이 말한다. data-tip 말풍선은 단추 아래 DOM 에 그려지는데, 맨 위 줄의 단추 아래는
+ * 네이티브 뷰 자리라 뷰 뒤로 가려져 윗변 한 줄만 「빈 상자」로 남는다(닫힌 메뉴의 잔상으로 보였다).
+ * 주소줄 끝에 선다(주석 버튼 옆). 탭 줄의 폭은 탭들의 것이다. 상태와 손잡이는 본문이 올린 스냅샷에서 읽는다.
  * 메뉴는 본문 영역까지 내려오므로 열려 있는 동안 네이티브 뷰가 물러서도록 알린다.
  */
 function BrowserTools({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
@@ -413,6 +453,24 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
     publishBrowserCaptionOverlay(objectiveId, "tools", viewportMenu || profileMenu);
     return () => publishBrowserCaptionOverlay(objectiveId, "tools", false);
   }, [objectiveId, viewportMenu, profileMenu]);
+  // 메뉴는 바깥을 누르거나 Esc 로 닫는다 — 바깥 누름은 셸이 float 표면 밖(브라우저 쪽)을 누른 것도 같은 길(문서 pointerdown)로 알린다.
+  const profileRef = React.useRef<HTMLDivElement | null>(null);
+  const viewportRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!viewportMenu && !profileMenu) return;
+    const doc = (profileRef.current ?? viewportRef.current)?.ownerDocument ?? document;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target instanceof Node ? event.target : null;
+      if (target !== null && profileRef.current?.contains(target)) return;
+      if (target !== null && viewportRef.current?.contains(target)) return;
+      setProfileMenu(false);
+      setViewportMenu(false);
+    };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setProfileMenu(false); setViewportMenu(false); } };
+    doc.addEventListener("pointerdown", onPointer, true);
+    doc.addEventListener("keydown", onKey);
+    return () => { doc.removeEventListener("pointerdown", onPointer, true); doc.removeEventListener("keydown", onKey); };
+  }, [viewportMenu, profileMenu]);
   const ready = panel !== null && panel.available && !panel.busy;
   const persistent = (panel?.profile ?? null) !== null;
   const defaultProfile = panel?.defaultProfile ?? null;
@@ -423,14 +481,14 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
     <>
       {/* 세션 표식 — 글리프 하나가 지금 어떤 세션인지 말한다. 가져오기도 이 메뉴에 산다: 쿠키가 들어가는 곳이
           바로 이 세션이므로, 캡션에 버튼을 하나 더 두는 것보다 세션을 다루는 자리에 함께 있는 편이 옳다. */}
-      <div className="op-browser__profile">
+      <div className="op-browser__profile" ref={profileRef}>
         <button
           type="button"
           className={`op-browser__icon op-browser__pchip${persistent ? " is-persistent" : ""}`}
           aria-haspopup="menu"
           aria-expanded={profileMenu}
           aria-label={t(persistent ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}
-          data-tip={t(persistent ? "terminal.browser.profile.persistentTip" : "terminal.browser.profile.ephemeralTip")}
+          title={profileMenu ? undefined : t(persistent ? "terminal.browser.profile.persistentTip" : "terminal.browser.profile.ephemeralTip")}
           disabled={!ready}
           onClick={() => setProfileMenu((open) => !open)}
         >
@@ -496,8 +554,8 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
           </div>
         ) : null}
       </div>
-      <div className="op-browser__viewport-menu">
-        <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} data-tip={viewportTip} disabled={!panel || !panel.available} onClick={() => setViewportMenu((open) => !open)}>
+      <div className="op-browser__viewport-menu" ref={viewportRef}>
+        <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} title={viewportMenu ? undefined : viewportTip} disabled={!panel || !panel.available} onClick={() => setViewportMenu((open) => !open)}>
           {presetGlyph(viewport?.preset ?? "responsive")}
         </button>
         {viewportMenu ? (
@@ -512,34 +570,95 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
   );
 }
 
-export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRenderContext, "objectiveId" | "language">; readonly services?: BrowserClientServices }) {
-  const t = getT(context.language ?? "en");
-  const panel = useBrowserPanel(context.objectiveId);
-  const surface = useBrowserDocument(context.objectiveId);
-  const documentFor = surface?.document ?? document;
-  const [moreMenu, setMoreMenu] = React.useState(false);
+/** 호버가 레일을 떠난 뒤 접기까지의 유예 — 레일에서 뷰 위로 겹친 펼침 쪽(자식 창)으로 넘어가는 순간의 빈틈과 가장자리 스침을 흡수한다. */
+const RAIL_LEAVE_MS = 160;
+/** 펼침·접힘 전환 길이 — `browser-panel.css` 의 `op-browser-rail-reveal` 과 같아야 한다. */
+const RAIL_MOTION_MS = 180;
+/** 펼침 표지(`is-opening`)를 붙들어 두는 시간 — 자식 창이 늦게 떠도 전환이 한 번은 재생되도록 전환 길이보다 길게 둔다. */
+const RAIL_OPENING_HOLD_MS = 420;
+
+type RailPhase = "closed" | "opening" | "open" | "closing";
+
+/** 화면 좌표(DIP)의 점이 요소 안에 있는가. 알 수 없는 좌표(0,0 이나 비유한 값)는 안에 있다고 보지 않는다. */
+function screenPointInside(element: HTMLElement | null, screenX: number, screenY: number): boolean {
+  if (element === null || !Number.isFinite(screenX) || !Number.isFinite(screenY) || (screenX === 0 && screenY === 0)) return false;
+  const rect = element.getBoundingClientRect();
+  // 분리 창에서는 레일이 그 창의 문서에 서므로 좌표도 그 창의 것으로 잰다.
+  const window = element.ownerDocument.defaultView;
+  if (window === null) return false;
+  const zoom = window.innerWidth > 0 && window.outerWidth > 0 ? window.outerWidth / window.innerWidth : 1;
+  const originX = window.screenX;
+  const originY = window.screenY + Math.max(0, window.outerHeight - window.innerHeight * zoom);
+  // 가장자리에서 한 칸 안쪽까지만 안으로 센다 — 천천히 레일 밖으로 나가는 진짜 이탈의 첫 위치(가장자리 바로 바깥·위)는 안이 아니다.
+  const inset = 1;
+  return screenX >= originX + rect.left * zoom + inset && screenX <= originX + rect.right * zoom - inset
+    && screenY >= originY + rect.top * zoom + inset && screenY <= originY + rect.bottom * zoom - inset;
+}
+
+/**
+ * 세로 탭 레일 — Chrome 「세로로 탭 표시」 모양의 브라우저 탭 줄. 기본은 아이콘 한 열로 접혀 있고(`BROWSER_RAIL_COLLAPSED_PX`),
+ * 마우스를 올리거나 키보드 초점이 들어오면 탭 제목·닫기까지 펼쳐지며(`BROWSER_RAIL_EXPANDED_PX`), 벗어나면 접힌다. 고정하면 펼친 채로 남는다.
+ *
+ * 자리(`.op-browser-rail-slot`)는 접힘 폭(고정이면 펼침 폭)으로만 레이아웃을 차지한다 — 호버 펼침은 그 자리 위에 겹쳐 그려지므로
+ * 본문 폭이 호버마다 바뀌지 않는다. 겹친 펼침은 네이티브 뷰를 덮으므로 가림 표면(`COVERS_NATIVE_VIEW`)으로 알린다: 셸이 자식 창을 지원하면
+ * 뷰는 라이브로 남고 펼침이 그 위 창에 그려지며, 아니면 뷰가 정지 화면 뒤로 물러선다. 본문이 올린 스냅샷을 읽는다.
+ */
+function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
+  const t = getT(language ?? "en");
+  const panel = useBrowserPanel(objectiveId);
+  const pinned = useBrowserRailPinned();
+  const [hovered, setHovered] = React.useState(false);
+  const [keyboardFocus, setKeyboardFocus] = React.useState(false);
+  const leaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // 사람이 펼친 스페이스들. 이 대화의 스페이스(home)와 지금 화면에 띄운 스페이스는 따로 꼽지 않아도 펼쳐진다.
-  const [expanded, setExpanded] = React.useState<readonly string[]>([]);
-  // 칩 줄이 넘칠 때 띠에 남기는 스페이스 수. 크기나 내용이 바뀌면 전부 놓고 다시 줄여 나간다.
-  const [fitLimit, setFitLimit] = React.useState(Number.MAX_SAFE_INTEGER);
-  const [capWidth, setCapWidth] = React.useState(0);
-  const capRef = React.useRef<HTMLDivElement | null>(null);
-  const stripRef = React.useRef<HTMLDivElement | null>(null);
-  const moreRef = React.useRef<HTMLDivElement | null>(null);
-  const fitKeyRef = React.useRef("");
+  const [openSpaces, setOpenSpaces] = React.useState<readonly string[]>([]);
+
+  const railRef = React.useRef<HTMLDivElement | null>(null);
+  const open = pinned || hovered || keyboardFocus;
+  // 펼침·접힘은 클래스(`is-opening`/`is-closing`)가 CSS 전환을 일으킨다. 접히는 동안에도 폭은 펼친 채로 남아 가림 표면의 자리가
+  // 흔들리지 않고, 끝난 뒤에 한 번에 접힌다 — 자식 창은 자리가 바뀌는 순간마다 다시 그려지므로 폭을 움직이지 않고 잘라 보이게만 한다.
+  const [phase, setPhase] = React.useState<RailPhase>(open ? "open" : "closed");
+  React.useLayoutEffect(() => {
+    if (open) {
+      setPhase((current) => pinned || current === "open" ? "open" : "opening");
+      if (pinned) return undefined;
+      const timer = setTimeout(() => setPhase("open"), RAIL_OPENING_HOLD_MS);
+      return () => clearTimeout(timer);
+    }
+    setPhase((current) => current === "closed" ? "closed" : "closing");
+    const timer = setTimeout(() => setPhase("closed"), RAIL_MOTION_MS);
+    return () => clearTimeout(timer);
+  }, [open, pinned]);
+  const expanded = open || phase === "closing";
+  React.useEffect(() => () => { if (leaveTimer.current !== null) clearTimeout(leaveTimer.current); }, []);
+  // 자식 창이 포인터를 넘겨받으면 Console 창은 실제 leave 를 받는다 — 그 leave 는 닫으라는 뜻이 아니다. 자식 창에서 실제로 벗어난 것은
+  // 자식 창이 전하는 합성 leave 나, Console 쪽에서 레일 밖으로 움직이는 진짜 포인터가 알린다(여기서 닫는다).
+  React.useEffect(() => {
+    if (!hovered) return undefined;
+    const onMove = (event: PointerEvent) => {
+      if (!event.isTrusted || event.pointerType === "touch") return;
+      if (event.target instanceof Node && railRef.current?.contains(event.target)) return;
+      if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
+      leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
+    };
+    const doc = railRef.current?.ownerDocument ?? document;
+    doc.addEventListener("pointermove", onMove, true);
+    return () => doc.removeEventListener("pointermove", onMove, true);
+  }, [hovered]);
 
   const home = panel?.homeSpaceId ?? null;
   const displayed = panel?.displayedSpaceId ?? null;
   // 이름을 가진 것은 그룹뿐이다 — 사람 스페이스(`human`)는 그룹이 아니라 이름이 없다.
   const toneOf = useAvatarToneOf();
   const spaceColor = (space: BrowserSpaceState): React.CSSProperties | undefined => {
-    const key = spaceAvatarKey(space, panel?.browserId ?? null);
+    const key = spaceAvatarKey(space);
     return key === null ? undefined : ({ "--browser-space-c": `var(--id-${toneOf(key)})` } as React.CSSProperties);
   };
-  // 에이전트가 쓰는 중인 스페이스는 칩 툴팁(접근성 설명)으로 말한다 — 별도 점 표식은 없다. 탭 단위는 ✦, 브라우저 전체는 띠의 사용 중 표시가 맡는다.
+  // 에이전트가 쓰는 중인 스페이스는 칩 툴팁(접근성 설명)으로 말한다 — 별도 점 표식은 없다. 탭 단위는 ✦, 브라우저 전체는 레일의 사용 중 표시가 맡는다.
   const drivingTip = (space: BrowserSpaceState) => space.driving ? ` · ${t("terminal.browser.space.driving")}` : "";
-  // 호스트 라벨이 이름이 되는 것은 Objective(제목)뿐이다. 사령관·세션 스페이스의 라벨은 호스트가 id 를 그대로 돌려주므로 읽지 않고 기본 낱말을 쓴다.
-  const spaceName = (space: BrowserSpaceState) => (space.kind === "objective" && space.label) || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
+  // 브라우저는 모든 사령관이 함께 쓰므로 스페이스 이름이 곧 구별이다. 호스트가 Objective 제목과 사령관 이름을 라벨로 싣고,
+  // 세션·사람 스페이스(또는 이름을 모르는 것)는 기본 낱말을 쓴다.
+  const spaceName = (space: BrowserSpaceState) => ((space.kind === "objective" || space.kind === "commodore") && space.label) || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
   // 사람이 직접 연 탭은 그룹 없이 따로 그린다. 그룹은 탭이 있는 스페이스만이다 — 프레임이 싣지 않은 스페이스(탭만 아는 것)는 여기서 채운다.
   const humanTabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId === HUMAN_SPACE_ID);
   const groups: readonly SpaceGroup[] = (() => {
@@ -550,140 +669,141 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
     for (const tab of tabs) if (!byId.has(tab.spaceId)) byId.set(tab.spaceId, blank(tab.spaceId));
     const ordered = [...byId.values()].sort((a, b) => Number(b.id === home) - Number(a.id === home));
     return ordered
-      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 좁은 띠에서 보는 스페이스의 탭이 읽히게. home 칩을 누르면 돌아온다.
-      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || expanded.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
+      // 다른 스페이스를 보는 동안 home 은 칩으로 접는다 — 보는 스페이스의 탭이 먼저 읽히게. home 칩을 누르면 돌아온다.
+      .map((space) => ({ space, tabs: tabs.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || openSpaces.includes(space.id) || (space.id === home && (displayed === null || displayed === home)) }))
       .filter((group) => group.tabs.length > 0 || group.space.driving);
   })();
   // 이 대화의 그룹이 있을 때만 「내 스페이스」가 있다 — 없으면 돌아갈 곳은 사람 탭이다.
   const homeGroup = home !== null && groups.some((group) => group.space.id === home);
-  // 띠에 남길 스페이스: 지금 보는 스페이스, home, 나머지 순 — 화면에 뜬 탭의 스페이스가 숨으면 무엇을 보는지 알 수 없다.
-  // home 은 「내 스페이스로」로 언제나 돌아갈 수 있다. 그려지는 순서는 그대로 두어 칩이 뛰어다니지 않게 한다.
-  const shownCount = Math.min(fitLimit, groups.length);
-  const priority = [...groups].sort((a, b) => Number(b.space.id === home) - Number(a.space.id === home)).sort((a, b) => Number(b.space.id === displayed) - Number(a.space.id === displayed));
-  const shownIds = new Set(priority.slice(0, shownCount).map((group) => group.space.id));
-  const shownGroups = groups.filter((group) => shownIds.has(group.space.id));
-  const hiddenGroups = groups.filter((group) => !shownIds.has(group.space.id));
-  const moreOpen = moreMenu && hiddenGroups.length > 0;
   const away = homeGroup && displayed !== null && displayed !== home;
 
-  const fitKey = `${capWidth}|${humanTabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}|${groups.map((group) => `${group.space.id}:${spaceName(group.space)}:${group.open ? 1 : 0}:${group.tabs.map((tab) => `${tab.id}=${tab.title}`).join(",")}`).join("|")}`;
-  React.useLayoutEffect(() => {
-    if (fitKeyRef.current !== fitKey) {
-      fitKeyRef.current = fitKey;
-      if (fitLimit !== Number.MAX_SAFE_INTEGER) { setFitLimit(Number.MAX_SAFE_INTEGER); return; }
-    }
-    const strip = stripRef.current;
-    if (!strip || shownCount <= 1) return;
-    if (strip.scrollWidth > strip.clientWidth + 1) setFitLimit(shownCount - 1);
-  }, [fitKey, fitLimit, shownCount]);
-  React.useEffect(() => {
-    const cap = capRef.current;
-    if (!cap) return;
-    const observer = new ResizeObserver(() => setCapWidth(Math.round(cap.getBoundingClientRect().width)));
-    observer.observe(cap);
-    return () => observer.disconnect();
-  }, [documentFor]);
-
-  // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
-  React.useEffect(() => {
-    publishBrowserCaptionOverlay(context.objectiveId, "caption", moreOpen);
-    return () => publishBrowserCaptionOverlay(context.objectiveId, "caption", false);
-  }, [context.objectiveId, moreOpen]);
-  // 「+N」 메뉴는 바깥을 누르거나 Esc 로 닫는다. 캡션이 포인터를 삼키므로 문서에서 캡처 단계로 듣는다.
-  React.useEffect(() => {
-    if (!moreOpen) return;
-    const onPointer = (event: PointerEvent) => { if (!moreRef.current?.contains(event.target as Node | null)) setMoreMenu(false); };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setMoreMenu(false); };
-    documentFor.addEventListener("pointerdown", onPointer, true);
-    documentFor.addEventListener("keydown", onKey);
-    return () => { documentFor.removeEventListener("pointerdown", onPointer, true); documentFor.removeEventListener("keydown", onKey); };
-  }, [moreOpen, documentFor]);
-
   /** 스페이스를 펼치고 화면에 띄운다. 이미 보이는 스페이스를 접으면 내 스페이스로 돌아간다. */
-  const pickSpace = (space: BrowserSpaceState, open: boolean) => {
+  const pickSpace = (space: BrowserSpaceState, isOpen: boolean) => {
     if (space.id === home) {
-      setExpanded([]);
+      setOpenSpaces([]);
       if (displayed !== null && displayed !== home) panel?.actions.selectSpace(space.id);
       return;
     }
-    if (open) {
-      setExpanded((current) => current.filter((id) => id !== space.id));
+    if (isOpen) {
+      setOpenSpaces((current) => current.filter((id) => id !== space.id));
       if (displayed === space.id) panel?.actions.selectSpace(homeGroup && home !== null ? home : HUMAN_SPACE_ID);
       return;
     }
-    setExpanded((current) => current.includes(space.id) ? current : [...current, space.id]);
+    setOpenSpaces((current) => current.includes(space.id) ? current : [...current, space.id]);
     panel?.actions.selectSpace(space.id);
   };
-  const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
   const driving = panel?.driving === true;
   const ready = panel !== null && panel.available && !panel.busy;
-  const renderTab = (tab: BrowserCaptionTab, agentTab: boolean) => (
-    <div key={tab.id} role="tab" aria-selected={tab.id === panel?.activeTabId} className={`op-browser__tab${tab.id === panel?.activeTabId ? " is-active" : ""}`} onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }} onClick={() => { if (tab.id !== panel?.activeTabId) panel?.actions.selectTab(tab.id); }} title={agentTab ? `${tab.url} · ${t("terminal.browser.space.agentTab")}` : tab.url}>
-      <TabIcon objectiveId={context.objectiveId} tab={tab} />
-      <span className="op-browser__tab-title">{tab.title || hostOf(tab.url) || t("terminal.browser.newTab")}</span>
-      {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
-      <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
-    </div>
-  );
-  return (
-    <BrowserSurfaceContent ownerId={context.objectiveId} role="caption">
-    <div ref={capRef} className={`op-browser-cap${driving ? " is-driving" : ""}`} onPointerDown={stop} onWheel={stop} {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : {})}>
-      <div ref={stripRef} className="op-browser-cap__tabs">
-        {humanTabs.length > 0 ? <div className="op-browser__space-tabs op-browser__human-tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>{humanTabs.map((tab) => renderTab(tab, false))}</div> : null}
-        {shownGroups.map((group) => {
-          const { space } = group;
-          const name = spaceName(space);
-          const isHome = space.id === home;
-          const count = String(group.tabs.length);
-          return (
-            <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} style={spaceColor(space)} data-space-kind={space.kind}>
-              <button
-                type="button"
-                className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
-                aria-expanded={group.open}
-                title={`${t(isHome ? "terminal.browser.space.chipHome" : "terminal.browser.space.chip", { name, count })}${drivingTip(space)}`}
-                disabled={!panel?.available}
-                onClick={() => pickSpace(space, group.open)}
-              >
-                <span className="op-browser__space-name">{name}</span>
-                {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
-              </button>
-              {group.open && group.tabs.length > 0 ? (
-                <div className="op-browser__space-tabs" role="tablist" aria-label={`${name} — ${t("terminal.browser.tabs")}`}>
-                  {group.tabs.map((tab) => renderTab(tab, space.agentTabIds.includes(tab.id)))}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+
+  const onPointerEnter = (event: React.PointerEvent) => {
+    if (event.pointerType === "touch") return;
+    if (leaveTimer.current !== null) { clearTimeout(leaveTimer.current); leaveTimer.current = null; }
+    setHovered(true);
+  };
+  const onPointerLeave = (event: React.PointerEvent) => {
+    if (event.pointerType === "touch") return;
+    // 레일이 자식 창에 떠 있는 동안 Console 창이 받는 진짜 leave 는 자식 창이 포인터를 넘겨받았다는 뜻일 뿐이다. 이걸 닫음으로 읽으면
+    // 접힌 레일 위에서 가만히 있는 포인터가 접힘→펼침→접힘을 되풀이한다(깜빡임).
+    if (event.nativeEvent.isTrusted && railRef.current?.hasAttribute(NATIVE_FLOAT_ATTRIBUTE)) return;
+    // 자식 창은 뜨고 자리를 옮기는 동안 포인터가 가만히 있어도 들어옴→나감을 잠깐 알린다. 나감이 알린 포인터 위치가 아직 레일 안이면 진짜 이탈이 아니다.
+    if (!event.nativeEvent.isTrusted && screenPointInside(railRef.current, event.nativeEvent.screenX, event.nativeEvent.screenY)) return;
+    if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
+    leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
+  };
+  // 키보드로 들어온 초점만 펼친다 — 탭을 눌러 생긴 초점(포인터)이 포인터를 뗀 뒤에도 펼침을 붙들지 않게.
+  const onFocus = (event: React.FocusEvent) => { if (event.target.matches(":focus-visible")) setKeyboardFocus(true); };
+  const onBlur = (event: React.FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setKeyboardFocus(false); };
+
+  const renderTab = (tab: BrowserCaptionTab, agentTab: boolean) => {
+    const active = tab.id === panel?.activeTabId;
+    const title = tab.title || hostOf(tab.url) || t("terminal.browser.newTab");
+    const select = () => { if (!active) panel?.actions.selectTab(tab.id); };
+    return (
+      <div
+        key={tab.id}
+        role="tab"
+        tabIndex={0}
+        aria-selected={active}
+        aria-label={title}
+        className={`op-browser__tab${active ? " is-active" : ""}`}
+        onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }}
+        onClick={select}
+        onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); select(); } }}
+        title={agentTab ? `${title} — ${tab.url} · ${t("terminal.browser.space.agentTab")}` : `${title} — ${tab.url}`}
+      >
+        <TabIcon tab={tab} />
+        <span className="op-browser__tab-title">{title}</span>
+        {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
+        <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
       </div>
-      {hiddenGroups.length > 0 ? (
-        <div className="op-browser__more" ref={moreRef}>
-          <button type="button" className="op-browser__more-button" aria-haspopup="menu" aria-expanded={moreOpen} aria-label={t("terminal.browser.space.more", { count: String(hiddenGroups.length) })} onClick={() => setMoreMenu((open) => !open)}>
-            +{hiddenGroups.length}
-          </button>
-          {moreOpen ? (
-            <div className="op-browser__menu op-browser__menu--spaces" role="menu" {...COVERS_NATIVE_VIEW} aria-label={t("terminal.browser.space.moreMenu")}>
-              {hiddenGroups.map((group) => (
-                <button key={group.space.id} type="button" role="menuitem" className="op-browser__menu-item op-browser__space-item" title={drivingTip(group.space).slice(3) || undefined} onClick={() => { setMoreMenu(false); pickSpace(group.space, false); }}>
-                  <span className="op-browser__space-name">{spaceName(group.space)}</span>
-                  <span className="op-browser__space-count">{group.tabs.length}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {away && home !== null && !shownIds.has(home) ? (
-        <button type="button" className="op-browser__space-home" title={t("terminal.browser.space.backHomeTip")} onClick={() => { if (home !== null) panel?.actions.selectSpace(home); }}>
-          <BackGlyph />
-          <span>{t("terminal.browser.space.backHome")}</span>
+    );
+  };
+  const pinLabel = t(pinned ? "terminal.browser.rail.unpin" : "terminal.browser.rail.pin");
+  const widths = { "--op-rail-collapsed": `${BROWSER_RAIL_COLLAPSED_PX}px`, "--op-rail-expanded": `${BROWSER_RAIL_EXPANDED_PX}px` } as React.CSSProperties;
+  return (
+    <div className={`op-browser-rail-slot${pinned ? " is-pinned" : ""}`} style={widths}>
+      <div
+        ref={railRef}
+        className={`op-browser-rail${expanded ? " is-open" : ""}${pinned ? " is-pinned" : ""}${driving ? " is-driving" : ""}${!pinned && phase === "opening" ? " is-opening" : ""}${!pinned && phase === "closing" ? " is-closing" : ""}`}
+        {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : { role: "group", "aria-label": t("terminal.browser.tabs") })}
+        // 전환은 자식 창에서도 재생된다 — 표지가 있는 표면만 자식 창의 애니메이션 차단에서 빠진다.
+        {...{ [NATIVE_FLOAT_MOTION_ATTRIBUTE]: "" }}
+        // 고정하지 않은 펼침은 본문 위에 겹쳐 그려진다 — 네이티브 뷰가 가리지 않게 가림 표면으로 알린다. 접히는 전환 동안에도 유지한다.
+        {...(expanded && !pinned ? COVERS_NATIVE_VIEW : {})}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
+        onFocus={onFocus}
+        onBlur={onBlur}
+      >
+        <button type="button" className={`op-browser-rail__row op-browser-rail__pin${pinned ? " is-set" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} onClick={() => setBrowserRailPinned(!pinned)}>
+          <span className="op-browser-rail__glyph" aria-hidden="true"><PinGlyph /></span>
+          <span className="op-browser-rail__label">{pinLabel}</span>
         </button>
-      ) : null}
-      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
-      <span className="op-browser-cap__spacer" />
+        <div className="op-browser-rail__divider" role="separator" />
+        <div className="op-browser-rail__scroll">
+          {humanTabs.length > 0 ? <div className="op-browser__space-tabs op-browser__human-tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>{humanTabs.map((tab) => renderTab(tab, false))}</div> : null}
+          {groups.map((group) => {
+            const { space } = group;
+            const name = spaceName(space);
+            const isHome = space.id === home;
+            const count = String(group.tabs.length);
+            const chipTip = `${t(isHome ? "terminal.browser.space.chipHome" : "terminal.browser.space.chip", { name, count })}${drivingTip(space)}`;
+            return (
+              <div key={space.id} className={`op-browser__space-group${group.open ? " is-open" : ""}`} style={spaceColor(space)} data-space-kind={space.kind}>
+                <button
+                  type="button"
+                  className={`op-browser__space${group.open ? " is-open" : ""}${isHome ? " is-home" : ""}`}
+                  aria-expanded={group.open}
+                  aria-label={chipTip}
+                  title={chipTip}
+                  disabled={!panel?.available}
+                  onClick={() => pickSpace(space, group.open)}
+                >
+                  <span className="op-browser__space-initial" aria-hidden="true">{Array.from(name)[0] ?? ""}</span>
+                  <span className="op-browser__space-name">{name}</span>
+                  {!group.open ? <span className="op-browser__space-count">{count}</span> : null}
+                </button>
+                {group.open && group.tabs.length > 0 ? (
+                  <div className="op-browser__space-tabs" role="tablist" aria-label={`${name} — ${t("terminal.browser.tabs")}`}>
+                    {group.tabs.map((tab) => renderTab(tab, space.agentTabIds.includes(tab.id)))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          {away && home !== null ? (
+            <button type="button" className="op-browser-rail__row op-browser__space-home" aria-label={t("terminal.browser.space.backHome")} title={t("terminal.browser.space.backHomeTip")} onClick={() => panel?.actions.selectSpace(home)}>
+              <span className="op-browser-rail__glyph" aria-hidden="true"><BackGlyph /></span>
+              <span className="op-browser-rail__label">{t("terminal.browser.space.backHome")}</span>
+            </button>
+          ) : null}
+          <button type="button" className="op-browser-rail__row op-browser-rail__new" aria-label={t("terminal.browser.newTab")} title={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>
+            <span className="op-browser-rail__glyph" aria-hidden="true">+</span>
+            <span className="op-browser-rail__label">{t("terminal.browser.newTab")}</span>
+          </button>
+        </div>
+      </div>
     </div>
-    </BrowserSurfaceContent>
   );
 }
 
@@ -693,20 +813,53 @@ export function BrowserPanel({ context, services }: BrowserProps) {
     terminalPaste={!chatMode} onAttach={chatMode ? (files) => services.pushComposerInbox(context.objectiveId, { files }) : undefined} />;
 }
 
-export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bodyLive, services, onAttach, terminalPaste = false }: SessionBrowserPanelProps) {
+export interface BrowserWindowPanelProps extends Pick<SessionBrowserPanelProps, "language" | "theme" | "services" | "onAttach" | "terminalPaste" | "pasteTargetId"> {}
+
+/**
+ * 분리 창 안의 패널 — Console 전역 호스트가 하나만 세운다. 어느 사령관·Objective 를 보고 있든, 대화 칸이 열려 있든 닫혀 있든 상관없이
+ * 창이 있는 동안 서 있어서 창이 화면 이동에 풀리지 않는다. 문맥(HOME)이 없으니 어느 대화의 그룹도 앞세우지 않는다.
+ */
+export function BrowserWindowPanel({ language, theme, services, onAttach, terminalPaste, pasteTargetId }: BrowserWindowPanelProps) {
+  const surface = useBrowserDocument();
+  if (surface === null) return null;
+  return <SessionBrowserPanel key={surface.id} host ownerId={BROWSER_GLOBAL_ID} homeSpaceId={null} language={language} theme={theme} services={services}
+    {...(onAttach ? { onAttach } : {})} {...(terminalPaste !== undefined ? { terminalPaste } : {})} {...(pasteTargetId ? { pasteTargetId } : {})} />;
+}
+
+/**
+ * 주소창에 적던 글 — 패널이 바뀌어도(분리·되돌리기·다른 대화로 이동) 쓰던 글이 사라지지 않게, 적는 패널이 여기 남기고
+ * 다음에 화면을 잡는 패널이 이어받는다. 브라우저가 하나이므로 주소창도 하나다. 보내거나 Esc 로 거두면 비운다.
+ */
+let sharedDraft: string | null = null;
+
+/** 분리 창의 패널이 스냅샷·가림 신호에 쓰는 키 — 어느 문맥의 패널(scope)과도 겹치지 않는다. */
+const WINDOW_PANEL_KEY = "window";
+
+export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLive, services, onAttach, terminalPaste = false, homeSpaceId: homeOverride, pasteTargetId, host = false }: SessionBrowserPanelProps) {
   const { isDesktopShell, themePolarity } = services;
+  // 이 패널의 스냅샷·가림 신호 키 — 분리 창의 패널은 문맥을 따라가지 않고 하나뿐이다.
+  const objectiveId = host ? WINDOW_PANEL_KEY : scopeId;
   const t = getT(language ?? "en");
   // 브라우저 탭·모바일에는 뷰를 그릴 셸이 없다 — 서버에 묻지 않고 닫힌 문만 보인다.
   const desktop = isDesktopShell();
-  const { state, connection, homeSpaceId } = useBrowserStream(objectiveId, desktop, services.subscribeConsoleChannel);
+  const { state, connection, homeSpaceId: streamHome } = useBrowserStream(scopeId, desktop, services.subscribeConsoleChannel);
+  const homeSpaceId = homeOverride !== undefined ? homeOverride : streamHome;
   const available = desktop && state?.available === true;
-  const detached = useBrowserWindow(objectiveId, state?.browserId ?? null, state?.surface ?? null, available, services.desktopShellCapabilities);
-  const documentFor = detached.surface?.document ?? document;
+  const detached = useBrowserWindow(state?.surface ?? null, state !== null, available, services.desktopShellCapabilities);
+  // 분리 창이 있으면 화면과 입력은 그 창의 것이다 — 이 문맥에 붙은 패널은 되돌리기만 보이고, 창 안의 패널(host) 하나만 그린다.
+  const surfaceOpen = useBrowserDocument() !== null;
+  const inactive = detached.blocked || (surfaceOpen && !host) || (host && !surfaceOpen);
+  const documentFor = host ? detached.surface?.document ?? document : document;
   const placementIdentity = React.useRef({ surface: detached.surface?.id ?? null, clientId: detached.clientId });
   placementIdentity.current = { surface: detached.surface?.id ?? null, clientId: detached.clientId };
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
   const urlDirty = React.useRef(false);
+  const keepDraft = React.useRef(false);
+  React.useEffect(() => {
+    if (inactive || sharedDraft === null) return;
+    setUrlDraft(sharedDraft); setEditingUrl(true); urlDirty.current = true; keepDraft.current = true; sharedDraft = null;
+  }, [inactive]);
   // 포커스만으로 현재 URL 을 외부에 보내지 않는다. 사람이 고친 입력만 제안에 쓴다.
   const [suggestQuery, setSuggestQuery] = React.useState<string | null>(null);
   const [searchSuggestions, setSuggestions] = React.useState<readonly string[]>([]);
@@ -733,7 +886,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     suggestionRequest.current = controller;
     const timer = setTimeout(() => {
       const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]);
-      void fetch(`${base(objectiveId)}/history`, {
+      void fetch(`${base(BROWSER_GLOBAL_ID)}/history`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }), signal,
       }).then(async (response) => {
         if (!response.ok) return;
@@ -780,7 +933,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   React.useEffect(() => {
     if (mode !== "annotate" || !activeTab) { setStillFrame(null); return; }
     let disposed = false;
-    void fetch(`${base(objectiveId)}/screenshot`).then(async (response) => {
+    void fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`).then(async (response) => {
       if (!response.ok || disposed) return;
       const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
       if (!disposed) setStillFrame({ tabId: activeTab.id, data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height });
@@ -819,7 +972,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         const key = JSON.stringify(body);
         if (placeRef.current !== key) {
           placeRef.current = key;
-          void post(objectiveId, "place", body).catch(() => undefined);
+          void post(BROWSER_GLOBAL_ID, "place", body).catch(() => undefined);
         }
       }
     });
@@ -830,7 +983,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리(가려지지 않은 부분)를 서버에 알리고, 셸은 서버의 스냅샷을 보고
   // 뷰를 놓는다. 가려질 때(주석·모달·접힘·다른 화면)는 감춘다 — 네이티브 뷰는 언제나 페이지 위에 그려지기 때문이다.
   React.useEffect(() => {
-    if (!available || detached.blocked) return;
+    if (!available || inactive) return;
     const document = documentFor;
     const window = document.defaultView ?? globalThis.window;
     const element = nativeRef.current;
@@ -863,7 +1016,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       const key = JSON.stringify(body);
       if (placeRef.current === key) return;
       placeRef.current = key;
-      void post(objectiveId, "place", body).catch(() => undefined);
+      void post(BROWSER_GLOBAL_ID, "place", body).catch(() => undefined);
     };
 
     const captureBackdrop = (tabId: string, url: string, parkBounds: Record<string, unknown>) => {
@@ -885,7 +1038,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
 
       void (async () => {
         try {
-          const response = await fetch(`${base(objectiveId)}/screenshot`, { signal: controller.signal });
+          const response = await fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`, { signal: controller.signal });
           if (!response.ok) throw new Error("capture_failed");
           const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
 
@@ -931,7 +1084,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       const { id: tabId, url } = tab;
       void (async () => {
         try {
-          const response = await fetch(`${base(objectiveId)}/screenshot`, { signal: controller.signal });
+          const response = await fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`, { signal: controller.signal });
           if (!response.ok) return;
           const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
           const img = new Image();
@@ -1084,12 +1237,12 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         motionStillSince = now;
         measure();
       }
-      if (now - motionStillSince < NATIVE_PLACE_SETTLE_MS) motionFrame = requestAnimationFrame(watchMotion);
+      if (now - motionStillSince < NATIVE_PLACE_SETTLE_MS) motionFrame = window.requestAnimationFrame(watchMotion);
     };
     const noteMotion = () => {
       if (disposed) return;
       motionStillSince = performance.now();
-      if (motionFrame === 0) motionFrame = requestAnimationFrame(watchMotion);
+      if (motionFrame === 0) motionFrame = window.requestAnimationFrame(watchMotion);
     };
     rectKey = readRectKey();
     const observer = new ResizeObserver(() => { measure(); noteMotion(); });
@@ -1113,7 +1266,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         restoreTimer = null;
       }
       observer.disconnect();
-      if (motionFrame !== 0) cancelAnimationFrame(motionFrame);
+      if (motionFrame !== 0) window.cancelAnimationFrame(motionFrame);
       window.removeEventListener("resize", noteMotion);
       window.removeEventListener("resize", measure);
       document.removeEventListener("visibilitychange", measure);
@@ -1123,19 +1276,19 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
   // 주소 제안도 같은 가림 경로에 합친다. 캡션의 단일 발행 상태를 덮어쓰지 않는다.
-  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, documentFor, detached.surface, detached.blocked, detached.clientId, state?.surface?.id, state?.surface?.clientId, state?.surface?.status]);
+  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, documentFor, detached.surface, inactive, detached.clientId, state?.surface?.id, state?.surface?.clientId, state?.surface?.status]);
   // 셸이 표면을 자식 창에 띄울 수 있으면, 이 자리를 덮는 비모달 표면은 뷰를 물리지 않고 그 창에 그려진다.
   // 자리 재기와 따로 붙든다 — 재기 효과는 가림 신호마다 다시 걸리고, 그때마다 자식 창을 내렸다 올리면 깜빡인다.
-  React.useEffect(() => detached.blocked ? undefined : retainNativeFloat(documentFor), [documentFor, detached.blocked]);
+  React.useEffect(() => inactive ? undefined : retainNativeFloat(documentFor), [documentFor, inactive]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => {
     if (placeRef.current) {
       placeRef.current = "";
-      void post(objectiveId, "place", { visible: false, ...placementIdentity.current }).catch(() => undefined);
+      void post(BROWSER_GLOBAL_ID, "place", { visible: false, ...placementIdentity.current }).catch(() => undefined);
     }
   }, [objectiveId]);
 
-  React.useEffect(() => { urlDirty.current = false; }, [activeTab?.id, activeTab?.url]);
+  React.useEffect(() => { if (keepDraft.current) { keepDraft.current = false; return; } urlDirty.current = false; }, [activeTab?.id, activeTab?.url]);
   React.useEffect(() => { if (!editingUrl && !urlDirty.current) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
   // 손잡이가 붙은 안내는 읽고 누를 시간을 더 준다.
   React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), info.action ? 8000 : 4000); return () => clearTimeout(timer); }, [info, setInfo]);
@@ -1149,7 +1302,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     if (!available) return;
     if (schemeNow === polarity) return;
     if (schemeNow !== null && schemeSetBy === "agent") return;
-    void post(objectiveId, "viewport", { colorScheme: polarity });
+    void post(BROWSER_GLOBAL_ID, "viewport", { colorScheme: polarity });
   }, [objectiveId, polarity, available, schemeNow, schemeSetBy]);
 
   const fail = async (response: Response) => {
@@ -1165,13 +1318,14 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const run = async <T,>(action: string, body: Record<string, unknown>): Promise<T | null> => {
     setBusy(true);
     setNotice(null);
-    try { const response = await post(objectiveId, action, body); if (!response.ok) { await fail(response); return null; } return await response.json() as T; }
+    try { const response = await post(BROWSER_GLOBAL_ID, action, body); if (!response.ok) { await fail(response); return null; } return await response.json() as T; }
     catch { setNotice(t("terminal.browser.requestFailed")); return null; }
     finally { setBusy(false); }
   };
 
   const submitUrl = (target = urlDraft) => {
     urlDirty.current = false;
+    sharedDraft = null;
     const value = target.trim();
     dismissSuggestions();
     setEditingUrl(false);
@@ -1201,7 +1355,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const [hover, setHover] = React.useState<ElementInfo | null>(null);
   const inspectPending = React.useRef(false);
   const inspect = async (x: number, y: number): Promise<ElementInfo | null> => {
-    const response = await post(objectiveId, "inspect", { x, y, tabId: activeTab?.id ?? null }).catch(() => null);
+    const response = await post(BROWSER_GLOBAL_ID, "inspect", { x, y, tabId: activeTab?.id ?? null }).catch(() => null);
     if (!response || !response.ok) return null;
     const body = await response.json() as { element: ElementInfo | null };
     return body.element;
@@ -1222,7 +1376,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         return true;
       }
       if (!terminalPaste) return false;
-      const response = await post(objectiveId, "paste", { data: await base64Of(blob) });
+      const response = await post(pasteTargetId ?? scopeId, "paste", { data: await base64Of(blob) });
       if (!response.ok) {
         let code: string | null = null;
         try { code = ((await response.json()) as { error?: string }).error ?? null; } catch { /* 본문 없음 */ }
@@ -1247,7 +1401,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   };
   const attachScreenshot = () => {
     // 뷰에는 이미지가 없다 — 서버가 한 장을 찍어 준다(CSS px 크기의 PNG).
-    void fetch(`${base(objectiveId)}/screenshot`).then(async (response) => {
+    void fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`).then(async (response) => {
       if (!response.ok) { setNotice(t("terminal.browser.requestFailed")); return; }
       const shot = await response.json() as { data: string };
       const bytes = Uint8Array.from(atob(shot.data), (char) => char.charCodeAt(0));
@@ -1377,9 +1531,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
 
   // 캡션(탭 스트립)이 읽는 스냅샷 — 상태와 손잡이를 함께 올린다. 언마운트하면 거둔다.
   React.useEffect(() => {
+    if (inactive) return;
     publishBrowserPanel(objectiveId, {
       tabs: available ? state?.tabs ?? [] : [], activeTabId: available ? state?.activeTabId ?? null : null, driving: state?.driving === true,
-      spaces: available ? state?.spaces ?? [] : [], browserId: state?.browserId ?? null, homeSpaceId, displayedSpaceId: available ? state?.displayedSpaceId ?? null : null,
+      spaces: available ? state?.spaces ?? [] : [], homeSpaceId, displayedSpaceId: available ? state?.displayedSpaceId ?? null : null,
       viewport: state ? { width: state.viewport.width, height: state.viewport.height, preset: state.viewport.preset, setBy: state.viewport.setBy } : null,
       busy,
       available,
@@ -1399,35 +1554,36 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 손잡이는 매 렌더 새로 만들어도 같은 뜻이다; 상태·busy 가 바뀔 때만 올린다.
-  }, [objectiveId, state, busy, available, homeSpaceId]);
+  }, [objectiveId, state, busy, available, homeSpaceId, inactive]);
   React.useEffect(() => () => publishBrowserPanel(objectiveId, null), [objectiveId]);
   // 대화를 열면 그 대화의 그룹을 띄운다 — 다른 대화에서 보던 스페이스가 화면에 남아 있어도 이 대화의 탭으로 돌아온다.
   // 이 대화의 그룹은 탭이 있거나 에이전트가 쓰는 중일 때만 있다: 없으면 건드리지 않는다(빈 그룹을 만들어 띄우지 않는다).
   // 열 때 한 번뿐이다: 그 뒤 사람이 다른 스페이스를 고르면 그대로 둔다.
   const homedRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!available || !state || homeSpaceId === null) return;
+    // 분리 창은 문맥을 따라가지 않는다 — 어느 대화를 보든 창이 보던 스페이스에 그대로 머문다.
+    if (!available || !state || homeSpaceId === null || inactive || host) return;
     const key = `${objectiveId}|${homeSpaceId}`;
     if (homedRef.current === key) return;
     homedRef.current = key;
     if (state.displayedSpaceId !== homeSpaceId && state.spaces.some((space) => space.id === homeSpaceId)) void run("space", { spaceId: homeSpaceId });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- run 은 매 렌더 새로 만들어도 같은 뜻이다.
-  }, [available, state, homeSpaceId, objectiveId]);
+  }, [available, state, homeSpaceId, objectiveId, inactive, host]);
 
   // CLI·채팅에서 고른 주소. 문을 누른 순간 이 패널이 마운트되므로 요청이 먼저 놓여 있고, 엔진이 아직
   // 뜨는 중이면 열 수 있게 될 때까지 기다린다. 링크는 새 탭에서 열고, 빈 탭만 그 자리에서 쓴다 —
   // 사람이 보던 페이지를 링크 하나가 밀어내지 않게.
-  const openRequest = useBrowserOpenRequest(objectiveId);
+  const openRequest = useBrowserOpenRequest();
   React.useEffect(() => {
-    if (!openRequest || !available) return;
-    takeBrowserOpenRequest(objectiveId, openRequest.serial);
+    if (!openRequest || !available || inactive) return;
+    takeBrowserOpenRequest(openRequest.serial);
     // 링크는 사람 탭으로 간다 — 사람이 보는 탭이 에이전트 그룹의 빈 탭이면 그 탭을 쓰지 않고 새 탭을 연다.
     const intoActiveTab = activeTab === null || (activeTab.url === "about:blank" && activeTab.spaceId === HUMAN_SPACE_ID);
     void run(intoActiveTab ? "navigate" : "tabs", intoActiveTab ? { url: openRequest.url } : { action: "create", url: openRequest.url });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 탭 상태는 요청이 도착한 그 순간의 것으로 읽는다; 탭이 바뀔 때마다 다시 열지 않는다.
-  }, [openRequest?.serial, available, objectiveId]);
+  }, [openRequest?.serial, available, inactive]);
   // 패널을 닫으면 아직 못 연 요청도 함께 거둔다 — 다음에 여는 브라우저가 옛 링크로 열리지 않게.
-  React.useEffect(() => () => dropBrowserOpenRequest(objectiveId), [objectiveId]);
+  React.useEffect(() => inactive ? undefined : () => dropBrowserOpenRequest(), [inactive]);
 
   const highlightBox = (element: ElementInfo | null) => {
     const factor = layoutScale();
@@ -1437,239 +1593,298 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const hoverInfo = draftPin?.element ?? hover;
   const hoverBox = highlightBox(hoverInfo);
   const navTail = React.useContext(BrowserNavTailContext);
+  // 작업대가 주소줄 줄을 맨 위 줄에 세우라고 하면(`navHost` 가 요소이거나 null) 칸 안에는 그리지 않는다. 맨 위 줄의 영역 폭은 칸 폭이 아니므로
+  // 좁아지면 캡처·주석·세션·뷰포트가 「⋯」 하나로 모인다(`navFolded`) — 줄의 실제 폭을 재어 정한다.
+  const navHost = React.useContext(BrowserNavHostContext);
+  // 분리 창에서는 주소줄 줄이 그 창의 맨 위 줄(caption)에 선다 — 맨 위 줄에 선 것과 같은 모양이다.
+  const navTop = navHost !== undefined || host;
+  const navRef = React.useRef<HTMLDivElement | null>(null);
+  const [navFolded, setNavFolded] = React.useState(false);
+  const hasCapture = activeTab !== null && activeTab.url !== "about:blank";
+  React.useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!navTop || nav === null) { setNavFolded(false); return; }
+    const measure = () => {
+      const style = getComputedStyle(nav);
+      const avail = nav.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
+      if (avail <= 0) return;
+      const gap = Number.parseFloat(style.columnGap) || 0;
+      const kids = Array.from(nav.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+      // 접히지 않는 줄의 폭 — 주소창은 최소 폭(NAV_URL_MIN_PX)으로 센다.
+      let used = gap * Math.max(0, kids.length - 1);
+      let foldWidth = 0;
+      for (const kid of kids) {
+        const width = kid.classList.contains("op-browser__url") ? NAV_URL_MIN_PX : kid.getBoundingClientRect().width;
+        used += width;
+        if (kid.classList.contains("op-browser__fold")) foldWidth = width;
+      }
+      // 접혀 있으면 펼쳤을 때의 폭을 센다(「⋯」 하나가 단추 n 개로 바뀐다) — 접힘 여부가 판정을 흔들지 않는다.
+      const unit = kids.find((kid) => kid.classList.contains("op-browser__reload"))?.getBoundingClientRect().width ?? NAV_ICON_PX;
+      const count = 3 + (hasCapture ? 1 : 0);
+      const need = navFolded ? used - foldWidth + count * unit + (count - 1) * gap : used;
+      const next = need > avail + 0.5;
+      setNavFolded((current) => current === next ? current : next);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(nav);
+    return () => observer?.disconnect();
+  }, [navTop, navHost, navFolded, hasCapture, navTail !== null]);
   const closedDoor = !available ? unavailableText(t, state?.reason ?? null, services.isDesktopShell()) : null;
 
-  return (
-    <BrowserSurfaceContent ownerId={objectiveId} role="body" blocked={detached.blocked} placeholder={<div className="op-browser__detached"><button type="button" className="op-browser__button" onClick={detached.toggle}>{t("terminal.browser.reattach")}</button></div>}>
-    {detached.blocked ? <div className="op-browser__detached">{t("terminal.browser.detached")}</div> :
-    <div className={`op-browser${state?.driving ? " is-driving" : ""}`}>
-      <div className="op-browser__nav">
-        <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
-        <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
-        <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
-        <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`}
-          onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setEditingUrl(false); dismissSuggestions(); } }}
-          onSubmit={(event) => { event.preventDefault(); if (!composingUrlRef.current) submitUrl(); }}>
-          {!editingUrl && urlDraft ? <span className="op-browser__url-display" aria-hidden="true"><UrlParts url={urlDraft} /></span> : null}
-          <input
-            id={`op-browser-url-${objectiveId}`}
-            className="op-browser__url-input"
-            type="text"
-            inputMode="url"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={t("terminal.browser.urlPlaceholder")}
-            aria-label={t("terminal.browser.pageUrl")}
-            value={urlDraft}
-            disabled={!available}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={suggestionsOpen}
-            aria-controls={suggestionsOpen ? suggestionsId : undefined}
-            aria-activedescendant={suggestionsOpen && selectedSuggestion >= 0 ? `${suggestionsId}-${selectedSuggestion}` : undefined}
-            onFocus={(event) => { setEditingUrl(true); event.currentTarget.select(); }}
-            aria-describedby={suggestionPromptOpen ? `${suggestionsId}-disclosure` : undefined}
-            onChange={(event) => {
-              suggestionRequest.current?.abort();
-              setEditingUrl(true);
-              urlDirty.current = true;
-              setUrlDraft(event.target.value);
-              setSuggestions([]);
-              setHistorySuggestions([]);
-              setSelectedSuggestion(-1);
-              setSuggestQuery(event.target.value);
-            }}
-            onCompositionStart={() => { composingUrlRef.current = true; setComposingUrl(true); dismissSuggestions(); }}
-            onCompositionEnd={(event) => { composingUrlRef.current = false; setComposingUrl(false); setUrlDraft(event.currentTarget.value); setSuggestQuery(event.currentTarget.value); }}
-            onKeyDown={(event) => {
-              if (composingUrlRef.current || event.nativeEvent.isComposing || event.keyCode === 229) {
-                if (event.key === "Enter") event.preventDefault();
-                return;
-              }
-              if (event.key === "Escape") {
-                urlDirty.current = false;
-                event.preventDefault(); dismissSuggestions(); setEditingUrl(false); event.currentTarget.blur();
-              } else if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-                event.preventDefault();
-                setSelectedSuggestion((index) => event.key === "ArrowDown"
-                  ? (index + 1) % suggestions.length
-                  : (index <= 0 ? suggestions.length : index) - 1);
-              } else if (event.key === "Enter" && suggestionsOpen && selectedSuggestion >= 0) {
-                event.preventDefault(); submitUrl(suggestions[selectedSuggestion]?.value);
-              }
-            }}
-          />
-          {suggestionPromptOpen ? (
-            <div className="op-browser__suggestions op-browser__suggestion-prompt" {...COVERS_NATIVE_VIEW}>
-              <span id={`${suggestionsId}-disclosure`}>{t("terminal.browser.suggestions.disclosure")}</span>
-              <div className="op-browser__suggestion-actions">
-                <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(true); }}>{t("terminal.browser.suggestions.enable")}</button>
-                <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(false); }}>{t("terminal.browser.suggestions.dismiss")}</button>
-              </div>
-              {suggestionSettings.failed ? <span role="alert">{t("terminal.browser.suggestions.settingsFailed")}</span> : null}
+  const navBar = (
+    <div ref={navRef} className={`op-browser__nav${navTop ? " is-top" : ""}${state?.driving === true ? " is-driving" : ""}`}>
+      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
+      <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
+      <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
+      <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setEditingUrl(false); dismissSuggestions(); } }}
+        onSubmit={(event) => { event.preventDefault(); if (!composingUrlRef.current) submitUrl(); }}>
+        {!editingUrl && urlDraft ? <span className="op-browser__url-display" aria-hidden="true"><UrlParts url={urlDraft} /></span> : null}
+        <input
+          id={`op-browser-url-${objectiveId}`}
+          className="op-browser__url-input"
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={t("terminal.browser.urlPlaceholder")}
+          aria-label={t("terminal.browser.pageUrl")}
+          value={urlDraft}
+          disabled={!available}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={suggestionsOpen}
+          aria-controls={suggestionsOpen ? suggestionsId : undefined}
+          aria-activedescendant={suggestionsOpen && selectedSuggestion >= 0 ? `${suggestionsId}-${selectedSuggestion}` : undefined}
+          onFocus={(event) => { setEditingUrl(true); event.currentTarget.select(); }}
+          aria-describedby={suggestionPromptOpen ? `${suggestionsId}-disclosure` : undefined}
+          onChange={(event) => {
+            suggestionRequest.current?.abort();
+            setEditingUrl(true);
+            urlDirty.current = true;
+            sharedDraft = event.target.value;
+            setUrlDraft(event.target.value);
+            setSuggestions([]);
+            setHistorySuggestions([]);
+            setSelectedSuggestion(-1);
+            setSuggestQuery(event.target.value);
+          }}
+          onCompositionStart={() => { composingUrlRef.current = true; setComposingUrl(true); dismissSuggestions(); }}
+          onCompositionEnd={(event) => { composingUrlRef.current = false; setComposingUrl(false); setUrlDraft(event.currentTarget.value); setSuggestQuery(event.currentTarget.value); }}
+          onKeyDown={(event) => {
+            if (composingUrlRef.current || event.nativeEvent.isComposing || event.keyCode === 229) {
+              if (event.key === "Enter") event.preventDefault();
+              return;
+            }
+            if (event.key === "Escape") {
+              urlDirty.current = false;
+              sharedDraft = null;
+              event.preventDefault(); dismissSuggestions(); setEditingUrl(false); event.currentTarget.blur();
+            } else if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+              event.preventDefault();
+              setSelectedSuggestion((index) => event.key === "ArrowDown"
+                ? (index + 1) % suggestions.length
+                : (index <= 0 ? suggestions.length : index) - 1);
+            } else if (event.key === "Enter" && suggestionsOpen && selectedSuggestion >= 0) {
+              event.preventDefault(); submitUrl(suggestions[selectedSuggestion]?.value);
+            }
+          }}
+        />
+        {suggestionPromptOpen ? (
+          <div className="op-browser__suggestions op-browser__suggestion-prompt" {...COVERS_NATIVE_VIEW}>
+            <span id={`${suggestionsId}-disclosure`}>{t("terminal.browser.suggestions.disclosure")}</span>
+            <div className="op-browser__suggestion-actions">
+              <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(true); }}>{t("terminal.browser.suggestions.enable")}</button>
+              <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(false); }}>{t("terminal.browser.suggestions.dismiss")}</button>
             </div>
-          ) : null}
-          {suggestionsOpen ? (
-            <div id={suggestionsId} className="op-browser__suggestions" role="listbox" {...COVERS_NATIVE_VIEW} aria-label={t("terminal.browser.suggestions.title")}>
-              {suggestions.map((suggestion, index) => (
-                <button
-                  key={`${suggestion.historyId ?? "search"}:${suggestion.value}`}
-                  id={`${suggestionsId}-${index}`}
-                  type="button"
-                  role="option"
-                  tabIndex={-1}
-                  aria-selected={selectedSuggestion === index}
-                  className="op-browser__suggestion op-browser__suggestion-result"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => { if (!composingUrlRef.current) submitUrl(suggestion.value); }}
-                ><SuggestionIcon objectiveId={objectiveId} suggestion={suggestion} /><span className="op-browser__suggestion-label">{suggestion.title}{suggestion.historyId ? <small>{suggestion.value}</small> : null}</span></button>
-              ))}
-            </div>
-          ) : null}
-          {activeTab && activeTab.url !== "about:blank" ? <a className="op-browser__url-external" href={activeTab.url} target="_blank" rel="noreferrer noopener" data-fleet-link={FLEET_LINK_NATIVE} aria-label={t("terminal.browser.openExternal")} title={t("terminal.browser.openExternal")}><ExternalGlyph /></a> : null}
-        </form>
-        {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
-        <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
-        <BrowserTools objectiveId={objectiveId} language={language} />
-        {detached.available && !detached.surface ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t("terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : "terminal.browser.detach")}>↗</button> : null}
-        {!detached.surface ? navTail : null}
-      </div>
-      <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}${mode === "annotate" ? " is-annotating" : ""}`} ref={viewportRef}>
-        {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (
-          <div className={`op-browser__toast${info.action ? " has-action" : ""}`} role="status">
-            {info.text}
-            {info.action ? <button type="button" className="op-browser__toast-action" onClick={() => { const action = info.action; if (!action) return; setInfo(null); action.run(); }}>{info.action.label}</button> : null}
+            {suggestionSettings.failed ? <span role="alert">{t("terminal.browser.suggestions.settingsFailed")}</span> : null}
           </div>
         ) : null}
-        {importSources ? <ChromeImportDialog t={t} sources={importSources} persistent={Boolean(state?.profile)} onClose={() => setImportSources(null)} onImport={runImport} /> : null}
-        {/* 세션 전환 — 전환은 열린 탭을 닫는 일이므로 무엇이 사라지는지 먼저 말한다. */}
-        {profileSwitch !== undefined ? (
-          <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setProfileSwitch(undefined); }}>
-            <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")} onClick={(event) => event.stopPropagation()}>
-              <div className="op-browser__dialog-head">
-                <div>
-                  <h3>{t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")}</h3>
-                  <p>{t("terminal.browser.profile.switchBody", { count: String(state?.tabs.length ?? 0) })}</p>
-                </div>
-              </div>
-              <div className="op-browser__dialog-item">
-                <span className="op-browser__dialog-glyph" aria-hidden="true">{profileSwitch ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
-                <span>
-                  <strong>{t(profileSwitch ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
-                  <span className="op-browser__help">{t(profileSwitch ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
-                </span>
-              </div>
-              <div className="op-browser__dialog-actions">
-                <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setProfileSwitch(undefined)}>{t("terminal.browser.import.cancel")}</button>
-                <button type="button" className="op-browser__button op-browser__button--primary" disabled={profileBusy} onClick={() => void applyProfile(profileSwitch)}>{t("terminal.browser.profile.switchRun")}</button>
-              </div>
-            </div>
+        {suggestionsOpen ? (
+          <div id={suggestionsId} className="op-browser__suggestions" role="listbox" {...COVERS_NATIVE_VIEW} aria-label={t("terminal.browser.suggestions.title")}>
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={`${suggestion.historyId ?? "search"}:${suggestion.value}`}
+                id={`${suggestionsId}-${index}`}
+                type="button"
+                role="option"
+                tabIndex={-1}
+                aria-selected={selectedSuggestion === index}
+                className="op-browser__suggestion op-browser__suggestion-result"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => { if (!composingUrlRef.current) submitUrl(suggestion.value); }}
+              ><SuggestionIcon suggestion={suggestion} /><span className="op-browser__suggestion-label">{suggestion.title}{suggestion.historyId ? <small>{suggestion.value}</small> : null}</span></button>
+            ))}
           </div>
         ) : null}
-        {/* 비우기 — 이 기계의 프로필 전체를 지운다. 되돌릴 수 없으므로 범위를 먼저 말한다. */}
-        {clearingProfile ? (
-          <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setClearingProfile(false); }}>
-            <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.profile.clearTitle")} onClick={(event) => event.stopPropagation()}>
-              <div className="op-browser__dialog-head">
-                <div><h3>{t("terminal.browser.profile.clearTitle")}</h3><p>{t("terminal.browser.profile.clearBody")}</p></div>
-              </div>
-              <div className="op-browser__dialog-item">
-                <span className="op-browser__dialog-glyph" aria-hidden="true"><ProfileGlyph /></span>
-                <span><strong>{t("terminal.browser.profile.persistent")}</strong><span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span></span>
-              </div>
-              <div className="op-browser__dialog-actions">
-                <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setClearingProfile(false)}>{t("terminal.browser.import.cancel")}</button>
-                <button type="button" className="op-browser__button op-browser__button--danger" disabled={profileBusy} onClick={() => void runClearProfile()}>{t("terminal.browser.profile.clearRun")}</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {mode === "annotate" && shownFrame ? (
-          // 이전 문서에서 찍은 장도 현재 본문 너비·높이 안에 같은 비율로 맞춘다.
-          <>
-          <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `min(${shownFrame.width}px, calc(100cqh * ${shownFrame.width} / ${shownFrame.height}))`, maxWidth: "100%" }}>
-            <img
-              ref={imageRef}
-              className="op-browser__frame"
-              src={`data:${shownFrame.mime};base64,${shownFrame.data}`}
-              alt={activeTab?.title ? `${activeTab.title} — ${t("terminal.browser.pageFrame")}` : t("terminal.browser.pageFrame")}
-              draggable={false}
-              onContextMenu={(event) => event.preventDefault()}
-              onLoad={() => redraw()}
-            />
-            <canvas ref={sketchRef} className={`op-browser__sketch${tool === "comment" ? " is-comment" : ""}`} aria-label={t("terminal.browser.annotate")} onPointerDown={sketchDown} onPointerMove={sketchMove} onPointerUp={sketchUp} onPointerCancel={sketchUp} onPointerLeave={() => { if (!drawing.current && !draftPin) setHover(null); }} />
-            {hoverBox ? <div className="op-browser__highlight" style={hoverBox} aria-hidden="true" /> : null}
-            {hoverBox && hoverInfo ? (
-              <div className="op-browser__hovercard" style={{ left: Math.max(4, hoverBox.left), ...(hoverBox.top > 92 ? { bottom: `calc(100% - ${hoverBox.top - 6}px)` } : { top: hoverBox.top + hoverBox.height + 6 }) }} aria-hidden="true">
-                <span className="op-browser__hovercard-name">{hoverInfo.tag}{hoverInfo.id ? `#${hoverInfo.id}` : hoverInfo.classes[0] ? `.${hoverInfo.classes[0]}` : ""}</span><span className="op-browser__hovercard-value">{hoverInfo.box.width}×{hoverInfo.box.height}</span>
-                {hoverInfo.component ? <><span className="op-browser__hovercard-key">{t("terminal.browser.hover.component")}</span><span className="op-browser__hovercard-value">{hoverInfo.component}</span></> : null}
-                <span className="op-browser__hovercard-key">{t("terminal.browser.hover.color")}</span><span className="op-browser__hovercard-value"><span className="op-browser__hovercard-swatch" style={{ background: hoverInfo.styles.color }} />{hexColor(hoverInfo.styles.color)}</span>
-                <span className="op-browser__hovercard-key">{t("terminal.browser.hover.font")}</span><span className="op-browser__hovercard-value">{hoverInfo.styles["font-size"]} {(hoverInfo.styles["font-family"] ?? "").split(",")[0]?.replace(/["']/g, "")}</span>
-              </div>
-            ) : null}
-            {marks.map((mark, index) => mark.kind === "pin" ? (
-              <span key={index} className="op-browser__pinwrap" style={stagePoint(mark.pin)}>
-                <button type="button" className="op-browser__pin" aria-label={t("terminal.browser.removePin", { n: String(index + 1) })} onClick={() => setMarks((prev) => prev.filter((_, i) => i !== index))}>{index + 1}</button>
-                <span className="op-browser__pin-label" role="tooltip">{mark.pin.text}</span>
-              </span>
-            ) : null)}
-            {draftPin ? (
-              <>
-                <span className="op-browser__pin is-anchor" style={stagePoint(draftPin)} aria-hidden="true">{marks.length + 1}</span>
-                <div className="op-browser__comment" style={commentStyle(draftPin)} role="dialog" aria-label={t("terminal.browser.tool.comment")}>
-                  <input
-                    className="op-browser__comment-input"
-                    autoFocus
-                    value={draftText}
-                    placeholder={t("terminal.browser.commentPlaceholder")}
-                    aria-label={t("terminal.browser.commentPlaceholder")}
-                    onChange={(event) => setDraftText(event.target.value)}
-                    onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); confirmPin(); } else if (event.key === "Escape") { event.preventDefault(); cancelPin(); } }}
-                  />
-                  <button type="button" className="op-browser__comment-ok" aria-label={t("terminal.browser.commentAdd")} title={t("terminal.browser.commentAdd")} disabled={!draftText.trim()} onClick={confirmPin}><MenuCheckGlyph /></button>
-                </div>
-              </>
-            ) : null}
-          </div>
-            <div className="op-browser__sketchbar" role="toolbar" aria-label={t("terminal.browser.annotate")}>
-              {(["comment", "pen", "arrow", "rect"] as const).map((entry) => (
-                <button key={entry} type="button" className="op-browser__icon op-browser__tool" aria-pressed={tool === entry} aria-label={t(`terminal.browser.tool.${entry}`)} title={t(`terminal.browser.tool.${entry}`)} onClick={() => { setTool(entry); cancelPin(); }}>{entry === "comment" ? <CommentGlyph /> : entry === "pen" ? "✎" : entry === "arrow" ? "➚" : "▭"}</button>
-              ))}
-              <span className="op-browser__divider" />
-              {(["red", "blue", "green", "black"] as const).map((entry) => (
-                <button key={entry} ref={(node) => { swatchRefs.current[entry] = node; }} type="button" className={`op-browser__swatch op-browser__swatch--${entry}`} aria-pressed={colorKey === entry} aria-label={t(`terminal.browser.color.${entry}`)} title={t(`terminal.browser.color.${entry}`)} onClick={() => setColorKey(entry)} />
-              ))}
-              <span className="op-browser__divider" />
-              <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.undo")} title={t("terminal.browser.undo")} disabled={marks.length === 0} onClick={() => setMarks((prev) => prev.slice(0, -1))}>↶</button>
-              <button type="button" className="op-browser__button" disabled={marks.length === 0} onClick={() => setMarks([])}>{t("terminal.browser.clear")}</button>
-              <span className="op-browser__divider" />
-              <button type="button" className="op-browser__button op-browser__button--primary" disabled={marks.length === 0 || busy} onClick={() => void attachMarks()}>{t("terminal.browser.attachMarks", { count: String(marks.length) })}</button>
-              <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} title={t("terminal.browser.close")} onClick={() => setMode("none")}>×</button>
-            </div>
-          </>
-        ) : activeTab ? (
-          // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
-          <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: objectiveId }}>
-            {shownBackdrop ? (
-              <img
-                className="op-browser__backdrop"
-                src={`data:${shownBackdrop.mime};base64,${shownBackdrop.data}`}
-                alt=""
-                draggable={false}
-              />
-            ) : null}
-          </div>
-        ) : (
-          <div className="op-browser__empty">
-            <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
-            <p className="op-browser__empty-title">{closedDoor ? closedDoor.title : state?.engine === "failed" ? t("terminal.browser.engineFailed") : connection === "connecting" ? t("terminal.browser.connecting") : t("terminal.browser.emptyTitle")}</p>
-            {closedDoor?.body ? <p className="op-browser__empty-body">{closedDoor.body}</p> : null}
-            {!closedDoor && state?.engine !== "failed" ? <p className="op-browser__empty-body">{t("terminal.browser.emptyBody")}</p> : null}
-            {!closedDoor && state?.engine === "failed" && state.engineError ? <p className="op-browser__empty-body">{state.engineError}</p> : null}
-          </div>
-        )}
-      </div>
-    </div>}
-    </BrowserSurfaceContent>
+        {activeTab && activeTab.url !== "about:blank" ? <a className="op-browser__url-external" href={activeTab.url} target="_blank" rel="noreferrer noopener" data-fleet-link={FLEET_LINK_NATIVE} aria-label={t("terminal.browser.openExternal")} title={t("terminal.browser.openExternal")}><ExternalGlyph /></a> : null}
+      </form>
+      {navFolded ? (
+        <NavFoldMenu objectiveId={objectiveId} label={t("terminal.browser.moreTools")}>
+          {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
+          <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
+          <BrowserTools objectiveId={objectiveId} language={language} />
+        </NavFoldMenu>
+      ) : (
+        <>
+          {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
+          <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
+          <BrowserTools objectiveId={objectiveId} language={language} />
+        </>
+      )}
+      {detached.available && !host ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t("terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : "terminal.browser.detach")}>↗</button> : null}
+      {!host ? navTail : null}
+    </div>
   );
+
+  // 다른 화면이 분리 창을 쥐고 있으면 그 사실만, 이 Console 이 분리했으면 되돌리기만 보인다 — 화면과 입력은 창 안의 패널 하나가 가진다.
+  if (detached.blocked) return <div className="op-browser__detached">{t("terminal.browser.detached")}</div>;
+  if (surfaceOpen && !host) return <div className="op-browser__detached"><button type="button" className="op-browser__button" onClick={detached.toggle}>{t("terminal.browser.reattach")}</button></div>;
+  const content = (
+    <div className={`op-browser${state?.driving ? " is-driving" : ""}`}>
+      {host
+        ? <BrowserSurfaceContent role="caption">{navBar}</BrowserSurfaceContent>
+        : navTop ? (navHost === null || navHost === undefined ? null : createPortal(navBar, navHost)) : navBar}
+      <div className="op-browser__body">
+        {available ? <BrowserTabRail objectiveId={objectiveId} language={language} /> : null}
+        <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}${mode === "annotate" ? " is-annotating" : ""}`} ref={viewportRef}>
+          {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (
+            <div className={`op-browser__toast${info.action ? " has-action" : ""}`} role="status">
+              {info.text}
+              {info.action ? <button type="button" className="op-browser__toast-action" onClick={() => { const action = info.action; if (!action) return; setInfo(null); action.run(); }}>{info.action.label}</button> : null}
+            </div>
+          ) : null}
+          {importSources ? <ChromeImportDialog t={t} sources={importSources} persistent={Boolean(state?.profile)} onClose={() => setImportSources(null)} onImport={runImport} /> : null}
+          {/* 세션 전환 — 전환은 열린 탭을 닫는 일이므로 무엇이 사라지는지 먼저 말한다. */}
+          {profileSwitch !== undefined ? (
+            <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setProfileSwitch(undefined); }}>
+              <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")} onClick={(event) => event.stopPropagation()}>
+                <div className="op-browser__dialog-head">
+                  <div>
+                    <h3>{t(profileSwitch ? "terminal.browser.profile.switchToProfile" : "terminal.browser.profile.switchToEphemeral")}</h3>
+                    <p>{t("terminal.browser.profile.switchBody", { count: String(state?.tabs.length ?? 0) })}</p>
+                  </div>
+                </div>
+                <div className="op-browser__dialog-item">
+                  <span className="op-browser__dialog-glyph" aria-hidden="true">{profileSwitch ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
+                  <span>
+                    <strong>{t(profileSwitch ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
+                    <span className="op-browser__help">{t(profileSwitch ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
+                  </span>
+                </div>
+                <div className="op-browser__dialog-actions">
+                  <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setProfileSwitch(undefined)}>{t("terminal.browser.import.cancel")}</button>
+                  <button type="button" className="op-browser__button op-browser__button--primary" disabled={profileBusy} onClick={() => void applyProfile(profileSwitch)}>{t("terminal.browser.profile.switchRun")}</button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {/* 비우기 — 이 기계의 프로필 전체를 지운다. 되돌릴 수 없으므로 범위를 먼저 말한다. */}
+          {clearingProfile ? (
+            <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setClearingProfile(false); }}>
+              <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.profile.clearTitle")} onClick={(event) => event.stopPropagation()}>
+                <div className="op-browser__dialog-head">
+                  <div><h3>{t("terminal.browser.profile.clearTitle")}</h3><p>{t("terminal.browser.profile.clearBody")}</p></div>
+                </div>
+                <div className="op-browser__dialog-item">
+                  <span className="op-browser__dialog-glyph" aria-hidden="true"><ProfileGlyph /></span>
+                  <span><strong>{t("terminal.browser.profile.persistent")}</strong><span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span></span>
+                </div>
+                <div className="op-browser__dialog-actions">
+                  <button type="button" className="op-browser__button" disabled={profileBusy} onClick={() => setClearingProfile(false)}>{t("terminal.browser.import.cancel")}</button>
+                  <button type="button" className="op-browser__button op-browser__button--danger" disabled={profileBusy} onClick={() => void runClearProfile()}>{t("terminal.browser.profile.clearRun")}</button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {mode === "annotate" && shownFrame ? (
+            // 이전 문서에서 찍은 장도 현재 본문 너비·높이 안에 같은 비율로 맞춘다.
+            <>
+            <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `min(${shownFrame.width}px, calc(100cqh * ${shownFrame.width} / ${shownFrame.height}))`, maxWidth: "100%" }}>
+              <img
+                ref={imageRef}
+                className="op-browser__frame"
+                src={`data:${shownFrame.mime};base64,${shownFrame.data}`}
+                alt={activeTab?.title ? `${activeTab.title} — ${t("terminal.browser.pageFrame")}` : t("terminal.browser.pageFrame")}
+                draggable={false}
+                onContextMenu={(event) => event.preventDefault()}
+                onLoad={() => redraw()}
+              />
+              <canvas ref={sketchRef} className={`op-browser__sketch${tool === "comment" ? " is-comment" : ""}`} aria-label={t("terminal.browser.annotate")} onPointerDown={sketchDown} onPointerMove={sketchMove} onPointerUp={sketchUp} onPointerCancel={sketchUp} onPointerLeave={() => { if (!drawing.current && !draftPin) setHover(null); }} />
+              {hoverBox ? <div className="op-browser__highlight" style={hoverBox} aria-hidden="true" /> : null}
+              {hoverBox && hoverInfo ? (
+                <div className="op-browser__hovercard" style={{ left: Math.max(4, hoverBox.left), ...(hoverBox.top > 92 ? { bottom: `calc(100% - ${hoverBox.top - 6}px)` } : { top: hoverBox.top + hoverBox.height + 6 }) }} aria-hidden="true">
+                  <span className="op-browser__hovercard-name">{hoverInfo.tag}{hoverInfo.id ? `#${hoverInfo.id}` : hoverInfo.classes[0] ? `.${hoverInfo.classes[0]}` : ""}</span><span className="op-browser__hovercard-value">{hoverInfo.box.width}×{hoverInfo.box.height}</span>
+                  {hoverInfo.component ? <><span className="op-browser__hovercard-key">{t("terminal.browser.hover.component")}</span><span className="op-browser__hovercard-value">{hoverInfo.component}</span></> : null}
+                  <span className="op-browser__hovercard-key">{t("terminal.browser.hover.color")}</span><span className="op-browser__hovercard-value"><span className="op-browser__hovercard-swatch" style={{ background: hoverInfo.styles.color }} />{hexColor(hoverInfo.styles.color)}</span>
+                  <span className="op-browser__hovercard-key">{t("terminal.browser.hover.font")}</span><span className="op-browser__hovercard-value">{hoverInfo.styles["font-size"]} {(hoverInfo.styles["font-family"] ?? "").split(",")[0]?.replace(/["']/g, "")}</span>
+                </div>
+              ) : null}
+              {marks.map((mark, index) => mark.kind === "pin" ? (
+                <span key={index} className="op-browser__pinwrap" style={stagePoint(mark.pin)}>
+                  <button type="button" className="op-browser__pin" aria-label={t("terminal.browser.removePin", { n: String(index + 1) })} onClick={() => setMarks((prev) => prev.filter((_, i) => i !== index))}>{index + 1}</button>
+                  <span className="op-browser__pin-label" role="tooltip">{mark.pin.text}</span>
+                </span>
+              ) : null)}
+              {draftPin ? (
+                <>
+                  <span className="op-browser__pin is-anchor" style={stagePoint(draftPin)} aria-hidden="true">{marks.length + 1}</span>
+                  <div className="op-browser__comment" style={commentStyle(draftPin)} role="dialog" aria-label={t("terminal.browser.tool.comment")}>
+                    <input
+                      className="op-browser__comment-input"
+                      autoFocus
+                      value={draftText}
+                      placeholder={t("terminal.browser.commentPlaceholder")}
+                      aria-label={t("terminal.browser.commentPlaceholder")}
+                      onChange={(event) => setDraftText(event.target.value)}
+                      onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); confirmPin(); } else if (event.key === "Escape") { event.preventDefault(); cancelPin(); } }}
+                    />
+                    <button type="button" className="op-browser__comment-ok" aria-label={t("terminal.browser.commentAdd")} title={t("terminal.browser.commentAdd")} disabled={!draftText.trim()} onClick={confirmPin}><MenuCheckGlyph /></button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+              <div className="op-browser__sketchbar" role="toolbar" aria-label={t("terminal.browser.annotate")}>
+                {(["comment", "pen", "arrow", "rect"] as const).map((entry) => (
+                  <button key={entry} type="button" className="op-browser__icon op-browser__tool" aria-pressed={tool === entry} aria-label={t(`terminal.browser.tool.${entry}`)} title={t(`terminal.browser.tool.${entry}`)} onClick={() => { setTool(entry); cancelPin(); }}>{entry === "comment" ? <CommentGlyph /> : entry === "pen" ? "✎" : entry === "arrow" ? "➚" : "▭"}</button>
+                ))}
+                <span className="op-browser__divider" />
+                {(["red", "blue", "green", "black"] as const).map((entry) => (
+                  <button key={entry} ref={(node) => { swatchRefs.current[entry] = node; }} type="button" className={`op-browser__swatch op-browser__swatch--${entry}`} aria-pressed={colorKey === entry} aria-label={t(`terminal.browser.color.${entry}`)} title={t(`terminal.browser.color.${entry}`)} onClick={() => setColorKey(entry)} />
+                ))}
+                <span className="op-browser__divider" />
+                <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.undo")} title={t("terminal.browser.undo")} disabled={marks.length === 0} onClick={() => setMarks((prev) => prev.slice(0, -1))}>↶</button>
+                <button type="button" className="op-browser__button" disabled={marks.length === 0} onClick={() => setMarks([])}>{t("terminal.browser.clear")}</button>
+                <span className="op-browser__divider" />
+                <button type="button" className="op-browser__button op-browser__button--primary" disabled={marks.length === 0 || busy} onClick={() => void attachMarks()}>{t("terminal.browser.attachMarks", { count: String(marks.length) })}</button>
+                <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} title={t("terminal.browser.close")} onClick={() => setMode("none")}>×</button>
+              </div>
+            </>
+          ) : activeTab ? (
+            // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
+            <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: BROWSER_GLOBAL_ID }}>
+              {shownBackdrop ? (
+                <img
+                  className="op-browser__backdrop"
+                  src={`data:${shownBackdrop.mime};base64,${shownBackdrop.data}`}
+                  alt=""
+                  draggable={false}
+                />
+              ) : null}
+            </div>
+          ) : (
+            <div className="op-browser__empty">
+              <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
+              <p className="op-browser__empty-title">{closedDoor ? closedDoor.title : state?.engine === "failed" ? t("terminal.browser.engineFailed") : connection === "connecting" ? t("terminal.browser.connecting") : t("terminal.browser.emptyTitle")}</p>
+              {closedDoor?.body ? <p className="op-browser__empty-body">{closedDoor.body}</p> : null}
+              {!closedDoor && state?.engine !== "failed" ? <p className="op-browser__empty-body">{t("terminal.browser.emptyBody")}</p> : null}
+              {!closedDoor && state?.engine === "failed" && state.engineError ? <p className="op-browser__empty-body">{state.engineError}</p> : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+  return host ? <BrowserSurfaceContent role="body">{content}</BrowserSurfaceContent> : content;
 }

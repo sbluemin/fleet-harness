@@ -2,18 +2,16 @@ import * as React from "react";
 import type { BrowserSpaceState } from "../shared/spaces.js";
 
 /**
- * 패널 ↔ 캡션 공유 — companion 의 캡션과 본문은 호스트가 따로 그리므로, 본문(BrowserPanel)이 자기 상태와
- * 손잡이를 여기 올리고 캡션(BrowserCaption)이 읽는다. 탭 스트립이 캡션 밴드에 살기 위한 다리다.
+ * 패널 ↔ 탭 레일·도구 공유 — 본문(SessionBrowserPanel)이 자기 상태와 손잡이를 여기 올리고, 세로 탭 레일(BrowserTabRail)과
+ * 주소줄 끝의 도구(BrowserTools)가 읽는다.
  */
 
 export interface BrowserCaptionTab { readonly id: string; readonly spaceId: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean }
 export interface BrowserPanelSnapshot {
   readonly tabs: readonly BrowserCaptionTab[];
   readonly activeTabId: string | null;
-  /** 사령관 브라우저의 스페이스들 — 탭이 있거나 에이전트가 쓰는 중인 것만 온다. 캡션이 칩 줄로 그린다. */
+  /** Console 브라우저의 스페이스들(모든 사령관의 것) — 탭이 있거나 에이전트가 쓰는 중인 것만 온다. 레일이 그룹으로 그린다. */
   readonly spaces: readonly BrowserSpaceState[];
-  /** 사령관 브라우저 id(`commodore:<id>`) — 스페이스 색이 사령관 아바타를 찾는 데 쓴다. 모르면 null. */
-  readonly browserId: string | null;
   /** 이 대화의 스페이스. 스트림 프레임에는 없고 처음 읽을 때만 알려지므로 모르면 null. */
   readonly homeSpaceId: string | null;
   /** 사람 화면에 표시된 탭이 속한 스페이스. 탭이 없으면 null. */
@@ -72,38 +70,63 @@ export function useBrowserPanel(objectiveId: string): BrowserPanelSnapshot | nul
  */
 export interface BrowserOpenRequest { readonly url: string; readonly serial: number }
 
-const openRequests = new Map<string, BrowserOpenRequest>();
-const openRequestListeners = new Map<string, Set<() => void>>();
+/** 요청은 브라우저(Console 에 하나)에게 가는 것이라 어느 문맥에서 눌렀든 하나뿐이다 — 이를 집는 것은 지금 화면을 가진 패널(칸 안 또는 분리 창)이다. */
+let openRequest: BrowserOpenRequest | null = null;
+const openRequestListeners = new Set<() => void>();
 let openRequestSerial = 0;
 
-function notifyOpenRequest(objectiveId: string): void {
-  for (const listener of openRequestListeners.get(objectiveId) ?? []) listener();
+function notifyOpenRequest(): void {
+  for (const listener of openRequestListeners) listener();
 }
 
-export function requestBrowserOpen(objectiveId: string, url: string): void {
-  openRequests.set(objectiveId, { url, serial: ++openRequestSerial });
-  notifyOpenRequest(objectiveId);
+export function requestBrowserOpen(url: string): void {
+  openRequest = { url, serial: ++openRequestSerial };
+  notifyOpenRequest();
 }
 
 /** 패널이 요청을 집어 든다. 그사이 더 새 요청이 들어왔으면 그것은 남는다(직렬 번호로 판정). */
-export function takeBrowserOpenRequest(objectiveId: string, serial: number): void {
-  if (openRequests.get(objectiveId)?.serial !== serial) return;
-  openRequests.delete(objectiveId);
-  notifyOpenRequest(objectiveId);
+export function takeBrowserOpenRequest(serial: number): void {
+  if (openRequest?.serial !== serial) return;
+  openRequest = null;
+  notifyOpenRequest();
 }
 
-export function dropBrowserOpenRequest(objectiveId: string): void {
-  if (!openRequests.delete(objectiveId)) return;
-  notifyOpenRequest(objectiveId);
+export function dropBrowserOpenRequest(): void {
+  if (openRequest === null) return;
+  openRequest = null;
+  notifyOpenRequest();
 }
 
-export function useBrowserOpenRequest(objectiveId: string): BrowserOpenRequest | null {
-  const subscribe = React.useCallback((listener: () => void) => {
-    const set = openRequestListeners.get(objectiveId) ?? new Set<() => void>();
-    set.add(listener); openRequestListeners.set(objectiveId, set);
-    return () => { set.delete(listener); if (set.size === 0) openRequestListeners.delete(objectiveId); };
-  }, [objectiveId]);
-  return React.useSyncExternalStore(subscribe, () => openRequests.get(objectiveId) ?? null, () => null);
+const subscribeOpenRequest = (listener: () => void) => { openRequestListeners.add(listener); return () => { openRequestListeners.delete(listener); }; };
+
+export function useBrowserOpenRequest(): BrowserOpenRequest | null {
+  return React.useSyncExternalStore(subscribeOpenRequest, () => openRequest, () => null);
+}
+
+// ---------- 플러그인 대화의 스크린샷 첨부 ----------
+
+/**
+ * 지금 보는 플러그인 대화(사령관 등)의 입력창 손잡이. 이 대화는 활성 Objective 가 아니라서 분리 창이 Objective 로는 첨부 대상을 찾지 못한다 —
+ * 대화 칸(ConversationStage)이 그 대화가 서 있는 동안만 여기에 올리고, 떠나면 거둔다. 분리 창은 활성 Objective 가 없을 때만 이것을 쓴다.
+ */
+let pluginAttach: ((files: readonly File[]) => void) | null = null;
+const pluginAttachListeners = new Set<() => void>();
+
+/** 올린 손잡이를 돌려준다 — 거둘 때는 자기가 올린 것일 때만 비운다(다른 대화가 이미 바꿔 놓았으면 그대로 둔다). */
+export function publishBrowserPluginAttach(attach: (files: readonly File[]) => void): () => void {
+  pluginAttach = attach;
+  for (const listener of pluginAttachListeners) listener();
+  return () => {
+    if (pluginAttach !== attach) return;
+    pluginAttach = null;
+    for (const listener of pluginAttachListeners) listener();
+  };
+}
+
+const subscribePluginAttach = (listener: () => void) => { pluginAttachListeners.add(listener); return () => { pluginAttachListeners.delete(listener); }; };
+
+export function useBrowserPluginAttach(): ((files: readonly File[]) => void) | null {
+  return React.useSyncExternalStore(subscribePluginAttach, () => pluginAttach, () => null);
 }
 
 // ---------- 캡션이 띄운 것 ----------
@@ -143,6 +166,55 @@ export function useBrowserCaptionOverlay(objectiveId: string): boolean {
  * 머리가 있는 칸에서는 그 동작이 머리에 있으므로 비어 있다.
  */
 export const BrowserNavTailContext = React.createContext<React.ReactNode>(null);
+
+/**
+ * 주소줄 줄을 어디에 그릴지 — 작업대가 머리 없는 브라우저 칸을 그릴 때 내려 준다. `undefined`(기본)는 칸 안(본문 맨 위)이고, 요소는 맨 위 줄의
+ * 브라우저 영역에 portal 할 자리, `null` 은 그 자리가 아직 없거나 칸이 숨어 있어 그리지 않는다는 뜻이다. 칸 안과 맨 위 줄에 동시에 서지 않는다.
+ */
+export const BrowserNavHostContext = React.createContext<HTMLElement | null | undefined>(undefined);
+
+// ---------- 맨 위 줄의 주소줄 ----------
+
+/**
+ * 맨 위 줄로 올라간 주소줄 영역이 줄지 않는 최소 폭 — 대화 머리 줄이 한 줄 배분에서 이만큼을 지켜 준다. 구성: 왼쪽 안쪽 여백 8 + 뒤로·앞으로·새로고침·
+ * 「⋯」(접힌 도구)·확대 단추 다섯 개 30px×5 + 주소창 최소 120 + 사이 틈 4px×5 = 298 → 여유 2 로 300. 단추 크기·틈은 browser-panel.css 의
+ * `.op-browser__nav.is-top` 과 짝이다.
+ */
+export const BROWSER_NAV_MIN_PX = 300;
+
+// ---------- 세로 탭 레일의 고정 ----------
+
+/** 세로 탭 레일 폭 — 접힘은 아이콘 한 열, 펼침은 탭 제목과 닫기까지. 값은 CSS 의 `--op-rail-*` 와 짝이다(펼침 폭은 거기서만 읽힌다). */
+export const BROWSER_RAIL_COLLAPSED_PX = 54;
+export const BROWSER_RAIL_EXPANDED_PX = 237;
+
+const RAIL_PINNED_KEY = "fleet.browser.tabRail.pinned";
+const railPinnedListeners = new Set<() => void>();
+let railPinned: boolean | null = null;
+
+function readRailPinned(): boolean {
+  if (railPinned !== null) return railPinned;
+  let stored = false;
+  try { stored = window.localStorage.getItem(RAIL_PINNED_KEY) === "1"; } catch { /* 저장소를 못 읽으면 기본(고정 안 함) */ }
+  railPinned = stored;
+  return stored;
+}
+
+/** 레일을 펼친 채로 두는가 — 이 브라우저 화면(localStorage)의 기억이다. 기본은 고정하지 않는다. 모든 패널이 같은 값을 본다. */
+export function setBrowserRailPinned(next: boolean): void {
+  if (readRailPinned() === next) return;
+  railPinned = next;
+  try { if (next) window.localStorage.setItem(RAIL_PINNED_KEY, "1"); else window.localStorage.removeItem(RAIL_PINNED_KEY); } catch { /* 기억하지 못해도 이 세션 안에서는 지켜진다 */ }
+  for (const listener of railPinnedListeners) listener();
+}
+
+export function useBrowserRailPinned(): boolean {
+  const subscribe = React.useCallback((listener: () => void) => {
+    railPinnedListeners.add(listener);
+    return () => { railPinnedListeners.delete(listener); };
+  }, []);
+  return React.useSyncExternalStore(subscribe, readRailPinned, () => false);
+}
 
 // ---------- 네이티브 뷰를 실은 칸의 끌기 ----------
 

@@ -3,7 +3,7 @@ import { DEFAULT_FONTS } from "../../../../features/settings/shared/fonts.js";
 import { getGlobalSettingsStoreState, subscribe } from "../../../../features/settings/client/global-settings-store.js";
 import type { ClientFeatureDescriptor } from "../../../../features/workspace/shared/feature-surfaces.js";
 
-import { agentAttentionNotification, agentObjectiveKind, agentExecution, agentSettingsSection, generalSettingsSection, installAgentExecution } from "../../../../features/execution/client/agent/index.js";
+import { agentAttentionNotification, agentObjectiveKind, agentExecution, agentSettingsSection, browserServices, generalSettingsSection, installAgentExecution } from "../../../../features/execution/client/agent/index.js";
 import { BrowserSessionHost } from "../../../../features/browser/client/browser-session-host.js";
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";
 import { preloadTerminalFallbackFonts } from "../../../../features/execution/client/terminal/shared/terminal-fallback-fonts.js";
@@ -22,8 +22,8 @@ export const consoleExecution: ClientFeatureDescriptor = {
   ...agentExecution,
   id: null,
   persistentComponents: [
-    // Session 브라우저의 단축키 중계·엔진 가용성·shared 안내. 전역 브라우저 화면은 없다.
-    { id: "browser-session-host", render: (ctx) => <BrowserSessionHost language={ctx.language} /> },
+    // Session 브라우저의 단축키 중계·엔진 가용성·shared 안내, 그리고 분리 창 안의 패널.
+    { id: "browser-session-host", render: (ctx) => <BrowserSessionHost language={ctx.language} theme={ctx.theme ?? "dark"} services={browserServices} /> },
   ],
 
 };

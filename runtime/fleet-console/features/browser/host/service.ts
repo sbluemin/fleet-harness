@@ -7,11 +7,11 @@ import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds, type DesktopBrowserFloat } from "@fleet-console/protocol/desktop";
-import { BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, HUMAN_SPACE_ID, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
+import { BROWSER_GLOBAL_ID, BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, HUMAN_SPACE_ID, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
 
 /**
- * Session Browser — Objective마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
- * Console 서비스. 사람(패널)과 에이전트(MCP)가 같은 탭을 본다.
+ * Fleet Browser — Console 전체의 단일 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
+ * 서비스. 사람(패널)과 에이전트(MCP)가 같은 탭을 보고, 에이전트의 쓰기 범위만 스페이스로 나뉜다.
  *
  * 정책 세 줄:
  * - 브라우저는 Fleet Desktop 앱의 기능이다. 탭은 창을 든 Desktop 안의 실제 Chromium 뷰로 그려지며, Console 은
@@ -51,15 +51,12 @@ export interface BrowserAvailability {
 export type ViewportPreset = "responsive" | "mobile" | "tablet";
 export interface BrowserViewport { readonly width: number; readonly height: number; /** 뷰가 놓인 화면의 배율 — 스크린샷 픽셀을 CSS px 로 되돌릴 때 쓴다. */ readonly scale: number; readonly preset: ViewportPreset; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean; readonly spaceId: string }
-/**
- * 예전에 전역 Fleet 브라우저가 쓰던 소유자 id. 기능은 제거됐지만 이 문자열은 Objective·Session 이
- * 될 수 없다 — 남은 상태나 옛 요청이 다른 Session 에 붙으면 안 된다.
- */
-export const GLOBAL_BROWSER_OWNER_ID = "global" as const;
+/** Console 전역 브라우저 id의 호스트 호환 이름. Objective·세션 id 로는 계속 예약한다. */
+export const GLOBAL_BROWSER_OWNER_ID = BROWSER_GLOBAL_ID;
 
 export interface BrowserObjectiveState {
   readonly owner?: { readonly kind: "objectiveRecord"; readonly objectiveId: string };
-  /** 브라우저 id — 사령관 브라우저(`commodore:<id>`) 또는 세션 브라우저. `browserId` 와 같은 값이다(옛 패널 호환). */
+  /** Console 전역 브라우저 id. `browserId` 와 같은 값이다(옛 패널 호환). */
   readonly objectiveId: string;
   readonly browserId: string;
   readonly surface: ReturnType<DesktopEngine["surfaceState"]>;
@@ -67,9 +64,9 @@ export interface BrowserObjectiveState {
   readonly spaces: readonly BrowserSpaceState[];
   /** 사람 화면에 띄운 스페이스. 그 스페이스에 탭이 없으면 `activeTabId` 는 null 이다. */
   readonly displayedSpaceId: string | null;
-  /** 이 Objective 이 쓰는 영속 프로필. `null` 이면 임시 세션이다 — 닫히면 로그인이 사라진다. */
+  /** 모든 스페이스가 함께 쓰는 영속 프로필. `null` 이면 임시 세션이다 — 닫히면 로그인이 사라진다. */
   readonly profile: string | null;
-  /** 새 Objective 의 브라우저가 처음 열릴 때 쓰는 세션. Console 전체의 설정이라 모든 Objective 의 상태가 같은 값을 싣는다. */
+  /** 전역 브라우저가 처음 열릴 때 쓰는 세션. 현재 열린 브라우저의 프로필과는 별도인 Console 설정이다. */
   readonly defaultProfile: string | null;
   readonly tabs: readonly BrowserTabState[];
   /** 사람 화면에 띄운 탭(표시 탭). 에이전트의 작업 탭과는 따로다. */
@@ -198,10 +195,12 @@ interface Space {
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string> } | null;
 }
 
-/** 브라우저 하나 — 사령관 하나(또는 사령관에 묶이지 않는 세션 하나)의 것. 필드 이름은 옛 Objective 단위에서 왔다. */
+/** Console 전체의 브라우저 하나. 필드 이름은 옛 Objective 단위에서 왔다. */
 interface ObjectiveBrowser {
   readonly objectiveId: string;
   contextId: string;
+  /** 서로 다른 스페이스가 동시에 첫 탭을 열어도 같은 쿠키 파티션을 얻는다. */
+  contextPending: Promise<{ client: CdpClient; contextId: string }> | null;
   /** 리셋 전에 시작한 생성은 새 컨텍스트나 탭을 등록할 수 없다. */
   resetGeneration: number;
   /** 사람이 고른 세션의 정체. 기본은 임시(`null`) — 에이전트가 모는 브라우저라 로그인이 기본으로 남으면 안 된다. */
@@ -301,7 +300,7 @@ export interface BrowserServiceDeps {
   readonly log: (message: string) => void;
   /** 창을 든 Desktop 이 제공하는 네이티브 뷰 엔진 — 유일한 엔진이다. */
   readonly desktop: DesktopEngine;
-  /** 새 Objective 의 기본 세션 — Console 설정 파일의 한 항목. 서비스는 값의 자리를 모르고 이 포트로만 읽고 쓴다. */
+  /** 전역 브라우저의 초기 세션 — Console 설정 파일의 한 항목. 서비스는 값의 자리를 모르고 이 포트로만 읽고 쓴다. */
   readonly defaultProfile: { read(): string | null; write(profile: string | null): void };
   /** 스페이스의 사람이 읽는 이름(Objective 제목, 사령관 이름). 모르면 빈 문자열. */
   readonly spaceLabel?: (browserId: string, spaceId: string) => string;
@@ -464,6 +463,7 @@ export class BrowserService {
       op.currentTabs.clear();
       for (const space of op.spaces.values()) space.lastShownTabId = null;
       op.contextId = "";
+      op.contextPending = null;
       this.emitState(op);
     }
   }
@@ -502,13 +502,13 @@ export class BrowserService {
   private observationSerial = 0;
 
   private objectiveRecord(objectiveId: string): ObjectiveBrowser {
-    // 예약 id 로 Session 을 만들거나 옛 전역 탭을 다른 소유자에 붙이지 않는다.
-    if (objectiveId === GLOBAL_BROWSER_OWNER_ID) throw new BrowserPolicyError("browser_owner_reserved", "That id is reserved and is not a Fleet Browser.");
+    // 호스트 경계에서 호출 문맥을 스페이스로 풀어야 한다. 서비스는 별도 브라우저를 만들지 않는다.
+    if (objectiveId !== BROWSER_GLOBAL_ID) throw new BrowserPolicyError("browser_id_invalid", "Fleet Browser has one Console-global browser id.");
     let op = this.objectiveRecords.get(objectiveId);
     if (!op) {
-      // 새로 열리는 Objective 은 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
+      // 전역 브라우저는 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
       const preferred = this.deps.defaultProfile.read();
-      op = { objectiveId, contextId: "", resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, displayedSpaceId: null, spaces: new Map(), currentTabs: new Map(), participantSpaces: new Map(), pane: null, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), interruptSerial: 0, pointer: null, pendingTabs: 0, pendingSpaces: new Map(), spaceGenerations: new Map() };
+      op = { objectiveId, contextId: "", contextPending: null, resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, displayedSpaceId: null, spaces: new Map(), currentTabs: new Map(), participantSpaces: new Map(), pane: null, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), interruptSerial: 0, pointer: null, pendingTabs: 0, pendingSpaces: new Map(), spaceGenerations: new Map() };
       this.objectiveRecords.set(objectiveId, op);
     }
     return op;
@@ -647,7 +647,14 @@ export class BrowserService {
     if (op.resetGeneration !== generation) throw new BrowserPolicyError("browser_call_interrupted", "The tab creation was interrupted because its browser session was reset. Do not retry automatically.");
   }
 
-  private async context(op: ObjectiveBrowser): Promise<{ client: CdpClient; contextId: string }> {
+  private context(op: ObjectiveBrowser): Promise<{ client: CdpClient; contextId: string }> {
+    if (op.contextPending) return op.contextPending;
+    const pending = this.createContext(op).finally(() => { if (op.contextPending === pending) op.contextPending = null; });
+    op.contextPending = pending;
+    return pending;
+  }
+
+  private async createContext(op: ObjectiveBrowser): Promise<{ client: CdpClient; contextId: string }> {
     const generation = op.resetGeneration;
     const client = await this.engineClient();
     this.assertContextGeneration(op, generation);
@@ -723,7 +730,7 @@ export class BrowserService {
     };
   }
 
-  /** 어느 Objective 의 것이든 상태가 바뀌면 듣는다 — 프레임은 자기 `objectiveId` 를 싣고 간다. */
+  /** 전역 상태가 바뀌면 듣는다 — 프레임의 `objectiveId` 와 `browserId` 는 모두 global 이다. */
   onState(listener: BrowserStateListener): () => void {
     this.stateListeners.add(listener);
     return () => { this.stateListeners.delete(listener); };
@@ -749,7 +756,7 @@ export class BrowserService {
     this.deps.desktop.setShortcuts(shortcuts);
   }
 
-  /** 허용 회수·Objective 종료 — 진행 중 에이전트 호출을 끊고 탭과 컨텍스트를 닫는다. */
+  /** 전역 브라우저 회수 — 진행 중 호출을 끊고 모든 탭과 컨텍스트를 닫는다. Objective 종료는 closeSpace 를 쓴다. */
   async closeObjective(objectiveId: string): Promise<void> {
     const op = this.objectiveRecords.get(objectiveId);
     if (!op) return;
@@ -761,12 +768,13 @@ export class BrowserService {
   }
 
   /**
-   * 이 Objective 의 탭과 브라우저 컨텍스트를 거둔다. 영속 프로필의 **디스크 저장소는 건드리지 않는다** —
-   * 컨텍스트는 이 Objective 의 것이지만 프로필은 모두의 것이다.
+   * 전역 브라우저의 모든 탭과 컨텍스트를 거둔다. 영속 프로필의 **디스크 저장소는 건드리지 않는다** —
+   * 임시·영속 모드 모두 같은 컨텍스트를 쓰지만 디스크 프로필의 수명은 별개다.
    */
   private async resetContext(op: ObjectiveBrowser): Promise<void> {
     // 첫 await 전에 무효화한다 — 빈 contextId여도 진행 중 생성은 더 이상 등록할 수 없다.
     op.resetGeneration += 1;
+    op.contextPending = null;
     this.browsingHistory.forget(op.objectiveId);
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
@@ -780,7 +788,7 @@ export class BrowserService {
     for (const space of op.spaces.values()) space.lastShownTabId = null;
   }
 
-  /** 이 Objective 의 브라우저 컨텍스트를 엔진에서 거둔다. 그 파티션의 뷰가 함께 닫힌다. */
+  /** 전역 브라우저 컨텍스트를 엔진에서 거둔다. 그 파티션의 뷰가 함께 닫힌다. */
   private async disposeContext(op: ObjectiveBrowser): Promise<void> {
     // 임시 이력은 탭 개수가 아니라 쿠키 파티션을 버리는 이 경계에서 함께 사라진다.
     if (op.profile === null) {
@@ -1180,7 +1188,7 @@ export class BrowserService {
   // ---------- 프로필 ----------
 
   /**
-   * 이 Objective 이 쓸 세션을 고른다 — 임시(`null`)이거나 영속 프로필이거나.
+   * 전역 브라우저의 모든 스페이스가 쓸 세션을 고른다 — 임시(`null`)이거나 영속 프로필이거나.
    *
    * 세션은 살아 있는 뷰에 바꿔 끼울 수 없으므로 열린 탭을 닫고 컨텍스트를 새로 만든다. 사람에게는 화면이
    * 비워지는 일이라 패널이 먼저 확인을 받는다. 프로필의 디스크 저장소는 그대로 남는다.
@@ -1198,29 +1206,29 @@ export class BrowserService {
     return this.state(objectiveId);
   }
 
-  /** 새 Objective 의 기본 세션. 모르는 이름이 저장돼 있으면 임시로 읽는다 — 화면이 있지도 않은 프로필을 기본이라 말하지 않게. */
+  /** 전역 브라우저의 초기 세션. 모르는 이름이 저장돼 있으면 임시로 읽는다 — 없는 프로필을 기본이라 말하지 않게. */
   defaultProfile(): string | null {
     const value = this.deps.defaultProfile.read();
     return value === DESKTOP_BROWSER_DEFAULT_PROFILE ? value : null;
   }
 
   /**
-   * 새 Objective 의 기본 세션을 정한다. 이미 열린 Objective 은 그대로다 — 기본은 시작점이지 지금 쓰는 세션이 아니다.
-   * 값은 모든 Objective 의 상태에 실리므로 어느 패널이 바꾸든 나머지 패널의 표식이 함께 옮겨 간다.
+   * 전역 브라우저의 초기 세션을 정한다. 이미 열린 브라우저는 그대로다 — 기본은 시작점이지 지금 쓰는 세션이 아니다.
+   * 다음 Console 실행에서 새 브라우저가 이 값을 읽고, 현재 상태에도 설정값을 함께 싣는다.
    */
   setDefaultProfile(profile: string | null): string | null {
     if (profile !== null && profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
     if (this.defaultProfile() === profile) return profile;
     this.deps.defaultProfile.write(profile);
-    this.deps.log(`new Objectives start with ${profile ?? "an ephemeral session"}`);
+    this.deps.log(`the global browser starts with ${profile ?? "an ephemeral session"}`);
     for (const op of this.objectiveRecords.values()) this.emitState(op);
     return profile;
   }
 
   /**
-   * 영속 프로필의 저장소를 비운다 — 모든 Objective 의 로그인이 함께 풀린다.
+   * 영속 프로필의 저장소를 비운다 — 모든 스페이스의 로그인이 함께 풀린다.
    *
-   * 그 프로필을 쓰는 Objective 의 탭을 먼저 모두 닫는다: Windows 는 열려 있는 파일을 지우지 못하고,
+   * 그 프로필을 쓰는 전역 브라우저의 탭을 먼저 모두 닫는다: Windows 는 열려 있는 파일을 지우지 못하고,
    * 살아 있는 페이지가 방금 지운 쿠키를 다시 써 넣을 수도 있다.
    */
   async clearProfile(profile: string): Promise<void> {

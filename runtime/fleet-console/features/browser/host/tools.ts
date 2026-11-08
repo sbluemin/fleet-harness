@@ -1,6 +1,5 @@
 import type { AgentToolCtx, AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { BrowserPolicyError, type BrowserService } from "./service.js";
-import { spaceKindOf } from "../shared/spaces.js";
 import { actOnBrowser, waitForBrowser, type BrowserCondition, type BrowserTarget } from "./semantic.js";
 import type { BrowserScreenshotStore } from "./screenshot-store.js";
 
@@ -17,7 +16,7 @@ export interface BrowserToolDeps {
  * 폼 입력·콘솔·네트워크·자바스크립트·뷰포트·배치를 한 벌로 묶고, 정책(호출자 Objective 판정, 로컬 전용)은
  * 도구가 아니라 MCP 호스트가 감싼다.
  *
- * 세션 라벨은 MCP 호스트가 Objective id(브라우저의 주인)로 바꿔서 넘긴다.
+ * 세션 라벨은 MCP 호스트가 Console 전역 브라우저 id 로 바꿔서 넘기고, 호출자의 스페이스는 별도로 싣는다.
  */
 
 /**
@@ -60,7 +59,7 @@ const TAB_ID = { type: "string", description: "Target tab ID." };
  * 다른 스페이스는 읽기만 된다(사람이 승인한 P1).
  */
 export const BROWSER_MCP_INSTRUCTIONS = [
-  "Fleet Browser is one browser shared by everyone under your commodore and divided into spaces, like tab groups. The commodore has its own space; an objective's commander and members share that objective's space. Browsers of other commodores are never reachable.",
+  "Fleet Browser is shared Console-wide, with spaces like tab groups. All spaces share cookies and login state in one browser profile. Each commodore has its own space; an objective's commander and members share that objective's space.",
   "Your current-tab selection is private; tabs are shared. For tab-targeted calls, omitted tabId uses your current-tab selection: the tab in your space that you last opened, navigated, or chose with tabs_select. Other agents and the person never change it. Closing the selected tab clears it.",
   "Calls do not switch the displayed tab; tabs_select(show:true) reveals a tab.",
   "tabs_context(all:true) lists the other spaces. Other spaces are read-only and require explicit tabId; JavaScript is refused there.",
@@ -116,7 +115,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     if (deps.screenshotDelivery === "inline") return [{ type: "text", text: geometry }, { type: "image", data: shot.data, mimeType: "image/jpeg" }];
     try {
       // 사본은 부른 쪽의 스페이스 자리에 둔다 — Objective 를 거둘 때 그 Objective 가 찍은 장만 함께 거둔다.
-      const filePath = deps.screenshots.save(caller && spaceKindOf(caller.spaceId) === "objective" ? caller.spaceId : objectiveId, Buffer.from(shot.data, "base64"), "jpg");
+      const filePath = deps.screenshots.save(caller?.spaceId ?? objectiveId, Buffer.from(shot.data, "base64"), "jpg");
       return [{ type: "text", text: `${geometry}\nThe image was written to this machine — the same machine you are running on. Read the image file to see it: ${filePath}` }];
     } catch {
       // 앞선 조작은 이미 일어났다 — 실패로 되돌리면 에이전트가 같은 클릭을 되풀이한다. 이 장만 포기하고

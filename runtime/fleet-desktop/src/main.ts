@@ -69,7 +69,8 @@ const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
 const BROWSER_PARTITION = /^fleet-browser-[A-Za-z0-9._:-]{1,64}$/u;
 /**
- * 영속 브라우저 프로필의 세션. 한 프로필은 앱 안에서 하나뿐이라 Objective 여럿이 같은 로그인을 함께 쓴다.
+ * 영속 브라우저 프로필의 세션. Console 전역 브라우저의 모든 사령관·Objective·일반 세션 스페이스가
+ * 같은 로그인을 함께 쓴다. 임시 모드도 Console 이 보낸 단일 partition 을 공유한다.
  *
  * 콘솔은 **id 만** 보내고 경로는 여기서 만든다 — 임의 경로가 셸로 흘러들 길을 두지 않는다.
  * `fromPartition` 이 아니라 `fromPath` 인 것이 요점이다: 파티션은 앱의 `userData` 아래에 묶이는데,
@@ -86,7 +87,7 @@ function browserProfileSession(profile: string): Session {
   browserProfileSessions.set(profile, created);
   return created;
 }
-/** 쿠키가 들어갈 자리 — 영속 프로필이거나, 그 Objective 의 임시 파티션이거나. 둘 다 아니면 받지 않는다. */
+/** 쿠키가 들어갈 자리 — 전역 브라우저의 영속 프로필 또는 임시 파티션. Console 창의 쿠키 저장소는 받지 않는다. */
 function browserTargetSession(params: Record<string, unknown>): { readonly session: Session; readonly label: string } | null {
   const profile = typeof params.browserProfile === "string" ? params.browserProfile : null;
   if (profile !== null) return DESKTOP_BROWSER_PROFILE_ID.test(profile) ? { session: browserProfileSession(profile), label: `profile ${profile}` } : null;

@@ -7,7 +7,7 @@ import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 import { GLOBAL_BROWSER_OWNER_ID, invalidTargetMessage, type BrowserService } from "./service.js";
 import { BROWSER_MCP_INSTRUCTIONS, createBrowserToolSpecs, type BrowserToolCtx, type BrowserToolDeps } from "./tools.js";
-import { commodoreBrowserId, commodoreOfBrowser, COMMODORE_SPACE_ID, SESSION_SPACE_ID } from "../shared/spaces.js";
+import { BROWSER_GLOBAL_ID, commodoreSpaceId, commodoreOfSpace, sessionSpaceId } from "../shared/spaces.js";
 import { objectiveIdFromSessionLabel } from "../../computer-use/host/mcp.js";
 
 export const FLEET_BROWSER_MCP_SERVER = "fleet-browser";
@@ -25,7 +25,7 @@ export interface BrowserMcpDeps extends BrowserToolDeps {
    */
   readonly useContext?: (objectiveId: string) => { readonly contextId: string; readonly participantId: string } | null;
   readonly language?: () => "en" | "ko" | null;
-  /** 그 사령관이 있는가 — 사령관 브라우저 id(`commodore:<id>`)는 있는 사령관의 것만 연다. */
+  /** 그 사령관이 있는가 — 사령관 scope(`commodore:<id>`)는 있는 사령관의 공간만 연다. */
   readonly commodoreExists?: (commodoreId: string) => boolean;
 }
 
@@ -35,11 +35,11 @@ function scopeOf(deps: BrowserMcpDeps, objectiveId: string): { readonly contextI
 }
 
 /**
- * Objective 세션의 브라우저 자리 — 브라우저는 그 Objective 를 가진 사령관의 것이고, 스페이스는 루트 Objective 의 것이다.
+ * Objective 세션의 브라우저 자리 — 브라우저는 Console 전역이고, 스페이스는 루트 Objective 의 것이다.
  * 지휘관과 구성원(자식 세션)은 같은 스페이스를 쓰고 작업 탭은 각자(participantId) 고른다.
  */
 function placeOf(root: ObjectiveRecord, participantId: string): { readonly browserId: string; readonly spaceId: string; readonly participantId: string } {
-  return { browserId: commodoreBrowserId(root.commodoreId), spaceId: root.id, participantId };
+  return { browserId: BROWSER_GLOBAL_ID, spaceId: root.id, participantId };
 }
 
 type BrowserRefusal = "caller_unresolved" | "desktop_required" | "shared";
@@ -71,7 +71,7 @@ function refuse(reason: BrowserRefusal, objectiveId: string | null, language: "e
 function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
   const id = objectiveIdFromSessionLabel(sessionLabel);
   const fallback = deps.language?.() ?? "en";
-  // 예약 id "global" 은 Objective으로 풀지 않는다 — 옛 전역 요청이 이 Session의 탭에 닿지 않게.
+  // 전역 브라우저 id 와 일반 세션 별칭은 Objective 호출자로 풀지 않는다.
   const objectiveRecord = id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) ? null : deps.resolveObjective?.(id) ?? deps.objectiveRecords().find((op) => op.id === id);
   if (!objectiveRecord) return { denied: refuse("caller_unresolved", null, fallback), place: null };
   // 자식 세션은 루트의 스페이스를 쓴다 — 같은 탭 집합, 작업 탭은 각자.
@@ -123,15 +123,15 @@ export interface BrowserMcpConnection extends AdmiralMcpSession {
  */
 export function createBrowserMcpHost(deps: BrowserMcpDeps) {
   const connections = new Set<BrowserMcpConnection>();
-  // 화면 좌표는 Console 실행 동안 유지하되, 에이전트 연결과 탭은 세션이 끝날 때 회수한다.
+  // 일반 세션의 공간 별칭은 Console 실행 동안 유지하되, 그 연결과 탭은 세션이 끝날 때 회수한다.
   const pluginOwners = new Map<string, string>();
   const pluginConnections = new Map<string, BrowserPluginConnection>();
   const ownerKey = (pluginId: string, scopeId: string) => JSON.stringify([pluginId, scopeId]);
-  /** 사령관 세션의 scope(`commodore:<id>`)는 곧 사령관 브라우저 id 다. 없는 사령관이면 null. */
+  /** 사령관 세션의 scope(`commodore:<id>`)는 곧 그 사령관의 공간 id 다. 없는 사령관이면 null. */
   const commodoreScope = (pluginId: string, scopeId: string): string | null => {
     if (pluginId !== "commodore") return null;
-    const commodoreId = commodoreOfBrowser(scopeId);
-    return commodoreId && deps.commodoreExists?.(commodoreId) !== false ? commodoreBrowserId(commodoreId) : null;
+    const commodoreId = commodoreOfSpace(scopeId);
+    return commodoreId && deps.commodoreExists?.(commodoreId) !== false ? commodoreSpaceId(commodoreId) : null;
   };
   const specs = createBrowserToolSpecs(deps);
   let disposed = false;
@@ -155,7 +155,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
           const { denied, place } = deny(deps, context.sessionLabel);
           if (denied || !place) return Promise.resolve(denied ?? refuse("caller_unresolved", null, "en"));
           const signals = [controller.signal, ...(context.signal ? [context.signal] : [])];
-          // 세션 라벨 자리에 브라우저 id(사령관 브라우저)를 실어 보낸다. 부른 참가자와 그 스페이스는 따로 싣는다.
+          // 세션 라벨 자리에 전역 브라우저 id 를 실어 보낸다. 부른 참가자와 그 스페이스는 따로 싣는다.
           const toolContext: BrowserToolCtx = { ...context, sessionLabel: place.browserId, participantId: place.participantId, spaceId: place.spaceId, signal: AbortSignal.any(signals) };
           return spec.execute(parsed.data, toolContext);
         } });
@@ -184,7 +184,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       connections.add(connection);
       return connection;
     },
-    /** 사령관 대화는 세션이 시작하기 전에도 사령관 브라우저를 가리킨다. 그 밖의 세션은 연결이 있을 때만 주인이 있다. */
+    /** 화면이 HOME 을 찾을 문맥 별칭. 사령관은 세션 시작 전에도 풀리고, 일반 세션은 첫 연결 뒤에 풀린다. */
     resolveSessionOwner(pluginId: string, scopeId: string): string | null {
       const commodore = commodoreScope(pluginId, scopeId);
       if (commodore) return commodore;
@@ -192,7 +192,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
     },
     isSessionOwner(id: string): boolean {
       if (id === GLOBAL_BROWSER_OWNER_ID) return false;
-      const commodoreId = commodoreOfBrowser(id);
+      const commodoreId = commodoreOfSpace(id);
       if (commodoreId) return deps.commodoreExists?.(commodoreId) === true;
       return [...pluginOwners.values()].includes(id);
     },
@@ -200,10 +200,11 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       if (disposed) throw new Error("Browser MCP host is disposed");
       if (!options.pluginId || !options.scopeId || options.scopeId.length > 256) throw new Error("browser_scope_invalid");
       const key = ownerKey(options.pluginId, options.scopeId);
-      // 사령관 세션은 사령관 브라우저의 사령관 스페이스를 쓴다. 그 밖의 세션은 자기만의 브라우저 하나에 한 스페이스로 선다.
+      // 모든 세션이 전역 브라우저를 쓰되 사령관·일반 세션마다 고유한 스페이스로 선다.
       const commodore = commodoreScope(options.pluginId, options.scopeId);
       const owner = commodore ?? pluginOwners.get(key) ?? `${SESSION_BROWSER_OWNER_PREFIX}${randomUUID()}`;
-      const spaceId = commodore ? COMMODORE_SPACE_ID : SESSION_SPACE_ID;
+      if (options.pluginId === "commodore" && !commodore) throw new Error("browser_scope_invalid");
+      const spaceId = commodore ?? sessionSpaceId(owner);
       const participantId = commodore ? `${options.pluginId}-session:${options.scopeId}` : owner;
       if (pluginConnections.has(participantId)) throw new Error("browser_scope_in_use");
       const controller = new AbortController();
@@ -214,8 +215,8 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       const endTurn = () => {
         for (const call of calls) call.abort();
         calls.clear();
-        deps.service.interrupt(owner, participantId);
-        deps.service.endAgentSession(owner, "turn", participantId);
+        deps.service.interrupt(BROWSER_GLOBAL_ID, participantId);
+        deps.service.endAgentSession(BROWSER_GLOBAL_ID, "turn", participantId);
       };
       const tools = createBrowserToolSpecs({ ...deps, screenshotDelivery: "inline" }).map((spec) => {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject;
@@ -228,8 +229,8 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
           const call = new AbortController();
           calls.add(call);
           try {
-            // 호출자가 owner를 지정할 수 없다. 다른 Session·Objective의 탭은 이 연결에 닿지 않는다.
-            const toolContext: BrowserToolCtx = { cwd: "", sessionLabel: owner, participantId, spaceId, signal: AbortSignal.any([controller.signal, call.signal]) };
+            // 호출자는 브라우저나 스페이스를 바꿀 수 없다. 다른 공간의 탭은 도구 경계에서 읽기만 허용한다.
+            const toolContext: BrowserToolCtx = { cwd: "", sessionLabel: BROWSER_GLOBAL_ID, participantId, spaceId, signal: AbortSignal.any([controller.signal, call.signal]) };
             const result = await spec.execute(parsed.data, toolContext);
             if (closed || call.signal.aborted || !options.enabled()) return refuse("caller_unresolved", null, language());
             return result as { content: readonly Readonly<Record<string, unknown>>[]; isError?: boolean };
@@ -245,10 +246,11 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
           closed = true;
           controller.abort();
           endTurn();
-          // 사령관 브라우저는 Console 이 도는 동안 남는다 — 세션이 끝나도 탭은 공유물이라 닫지 않고, 이 세션의 작업 탭 기억만 지운다.
-          if (commodore) { deps.service.forgetParticipant(participantId); pluginConnections.delete(participantId); closing = Promise.resolve(); return closing; }
-          deps.screenshots?.release(owner);
-          closing = deps.service.closeObjective(owner).finally(() => { pluginConnections.delete(participantId); });
+          // 사령관 탭은 세션이 끝나도 남긴다. 일반 세션은 자기 스페이스만 거두고 전역 컨텍스트는 보존한다.
+          deps.service.forgetParticipant(participantId);
+          if (commodore) { pluginConnections.delete(participantId); closing = Promise.resolve(); return closing; }
+          deps.screenshots?.release(spaceId);
+          closing = deps.service.closeSpace(spaceId).finally(() => { pluginConnections.delete(participantId); });
           return closing;
         },
       };
@@ -256,7 +258,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       pluginConnections.set(participantId, connection);
       return connection;
     },
-    /** 한 Objective 를 거둘 때 — 그 Objective 스페이스의 진행 중 호출을 끊고 탭을 닫는다. 같은 사령관의 다른 스페이스는 그대로다. */
+    /** 한 Objective 를 거둘 때 — 그 Objective 스페이스의 진행 중 호출을 끊고 탭을 닫는다. 다른 사령관을 포함한 나머지 스페이스는 그대로다. */
     revokeObjective(objectiveId: string): Promise<void> {
       const closing = deps.service.closeSpace(objectiveId);
       // 스크린샷은 사람이 본 페이지의 사본이다 — 브라우저를 거둘 때 함께 거둔다.
