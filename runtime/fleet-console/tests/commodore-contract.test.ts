@@ -1933,7 +1933,7 @@ describe("commodore session", () => {
     // fleet-memory — 사령관 도구로만 쓰고, 다음 깨움부터 인덱스가 턴에 실린다. 출처는 이 Theater 보드의 목표만 받는다.
     expect((await call("memory", { action: "save", branch: "lessons", topic: "Console E2E", slug: "offline-keeps-sse", title: "Offline keeps SSE", description: "CDP offline leaves an open EventSource alive.", why: "A reconnect repro stayed connected.", how: "Fire onerror on a hooked EventSource.", sourceObjectiveIds: ["elsewhere"] })).structuredContent).toMatchObject({ error: "unknown_objective" });
     expect((await call("memory", { action: "save", branch: "lessons", topic: "Console E2E", slug: "offline-keeps-sse", title: "Offline keeps SSE", description: "CDP offline leaves an open EventSource alive.", why: "A reconnect repro stayed connected.", how: "Fire onerror on a hooked EventSource." })).structuredContent).toMatchObject({ ref: "lessons/Console E2E/offline-keeps-sse" });
-    expect((await call("memory", { action: "view" })).structuredContent).toMatchObject({ entries: [{ ref: "lessons/Console E2E/offline-keeps-sse" }] });
+    expect((await call("memory", { action: "list" })).structuredContent).toMatchObject({ entries: [{ ref: "lessons/Console E2E/offline-keeps-sse" }] });
 
     // 턴 오류는 결말로 돌아오고 기록에 남는다; 폐기는 세션을 닫는다.
     stub.setScript(async () => { throw new Error("rate limit exceeded (429)"); });
@@ -3127,7 +3127,7 @@ describe("commodore supervisor", () => {
       // 끝난 질문은 다른 답으로 덮이지 않고 거둘 수도 없다.
       const commodoreTool = (name: string) => sessions[1]!.options.tools!.custom!.find((group) => group.name === "fleet-commodore")!.tools.find((tool) => tool.name === name)!;
       const useTool = async (name: string, args: Record<string, unknown>) => ((await commodoreTool(name).execute(args, { cwd: theaterRoot })) as { structuredContent: Record<string, unknown> }).structuredContent;
-      const asked = await useTool("ask", { action: "ask", questions: [{ header: "Candidates", text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
+      const asked = await useTool("ask", { action: "send", questions: [{ header: "Candidates", text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "ask", askId: asked.askId, questions: [{ options: ["Open both", "Only the first"] }] });
       const ask = h.store.read("t1")!.asks!.find((entry) => entry.id === asked.askId)!;
       const answer = (optionIndex: number) => h.route("commodore/ask/answer", { commodoreId: "t1", askId: ask.id, answers: [{ questionId: ask.questions[0]!.id, selectedOptionIds: [ask.questions[0]!.options[optionIndex]!.id], text: "" }] });

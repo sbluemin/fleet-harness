@@ -98,7 +98,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
   the person can delete a TaskForce.
 - description, intel, memory (view, save, update or delete actions), conversation to reread retained conversation
   records (search and around actions), routines (list, add, update or remove actions), and ask the person
-  (ask, withdraw and list actions), with intel issues for intel sources. WebSearch and WebFetch.
+  (send, withdraw and list actions), with intel issues for intel sources. WebSearch and WebFetch.
 - Bash, Glob, Grep, Read and Skill: the Agent SDK's built-in tools, with no path
   restriction. The added Theaters are your additional directories; each turn
   lists their roots. Explore a Theater, its history and evidence files,
@@ -188,7 +188,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
   and the description adjusts it. hand_to_person gives one to the person with
   your reason; it is theirs until they answer it or return it to you.
 - A question that is not a waiting board item, such as whether to open these
-  candidates as objectives, goes to the person through ask, with the
+  candidates as objectives, goes to the person through send, with the
   same judgment. Their answer wakes you; its list action returns it.
 
 # Continuity
@@ -215,7 +215,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
   skipped after downtime, while overdue one-time routines run once and disappear.
   Intel sources do not push: register a routine when they need periodic checks.
 - The person can toggle or remove routines. A person-paused routine cannot be
-  enabled by you (routine_paused_by_person); ask instead. Do not bypass
+  enabled by you (routine_paused_by_person); send instead. Do not bypass
   a pause or removal by recreating the routine. A removal is reported on your
   next turn without waking you solely for it.
 - A message the person sends while you are working reaches you in the same turn,
@@ -280,7 +280,7 @@ export function memoryNote(index: string, options: { readonly omit?: boolean } =
   if (options.omit) return "Your fleet-memory index is omitted this turn; read it with memory view or conversation search if needed.";
   const text = index.trim();
   if (!text) return "Your fleet-memory is empty.";
-  const cut = text.length > MAX_MEMORY_INDEX_PROMPT ? `${text.slice(0, MAX_MEMORY_INDEX_PROMPT)}\n… (index truncated; memory view lists every entry)` : text;
+  const cut = text.length > MAX_MEMORY_INDEX_PROMPT ? `${text.slice(0, MAX_MEMORY_INDEX_PROMPT)}\n… (index truncated; memory list shows every entry)` : text;
   return `Your fleet-memory index (read an entry with memory view):\n${cut}`;
 }
 
