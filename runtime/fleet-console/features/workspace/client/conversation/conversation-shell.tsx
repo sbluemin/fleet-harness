@@ -37,7 +37,7 @@ import { pluginRuntimeState } from "../../../execution/client/objective-activity
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { focusBrowserWindow } from "../../../browser/client/browser-window.js";
+import { focusBrowserWindow, useBrowserDocument } from "../../../browser/client/browser-window.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
@@ -828,12 +828,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   );
   useConversationWorkbenchHost(conversationKey, toolEntryIds);
   const layout = useWorkbenchLayout();
-  const [detachedBrowser, setDetachedBrowser] = useState<{ readonly tileId: string; readonly ownerId: string } | null>(null);
-  const onBrowserDetached = useCallback((tileId: string, ownerId: string | null) => {
-    setDetachedBrowser((current) => ownerId === null
-      ? current?.tileId === tileId ? null : current
-      : current?.tileId === tileId && current.ownerId === ownerId ? current : { tileId, ownerId });
-  }, []);
+  // 분리 창은 Console 의 것이라 어느 대화에서든 같다 — 열려 있는 동안 어느 대화의 브라우저 칸도 이 작업대에 서지 않는다.
+  const browserDetached = useBrowserDocument() !== null;
   const focusedTileId = useWorkbenchFocusedTileId();
   const browserOpen = useWorkbenchBrowserShown();
   const viewport = useViewportSize();
@@ -898,12 +894,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     },
     [layout, railBindings, workbenchSuspended],
   );
-  const fullGeometry = useMemo(() => computeWorkbenchGeometry(shownLayout, regionWidth, regionHeight), [shownLayout, regionWidth, regionHeight]);
-  const retainedBrowser = detachedBrowser === null ? null : (() => {
-    const entry = fullGeometry.tiles.find(({ tile }) => tile.kind === "browser" && tile.id === detachedBrowser.tileId);
-    return entry ? { entry, geometry: fullGeometry } : null;
-  })();
-  const inlineLayout = useMemo(() => detachedBrowser === null ? shownLayout : workbenchLayoutKeeping(shownLayout, (tile) => tile.id !== detachedBrowser.tileId), [shownLayout, detachedBrowser]);
+  const inlineLayout = useMemo(() => browserDetached ? workbenchLayoutKeeping(shownLayout, (tile) => tile.kind !== "browser") : shownLayout, [shownLayout, browserDetached]);
   const geometry = useMemo(() => computeWorkbenchGeometry(inlineLayout, regionWidth, regionHeight), [inlineLayout, regionWidth, regionHeight]);
   // 칸들은 자기 대화의 범위만 받는다 — 대화가 바뀌는 렌더에서는 작업대가 아직 앞 대화의 칸을 들고 있으므로(배치는 layout effect
   // 에서 바뀐다), 그 사이에는 앞 대화의 범위를 그대로 준다. 그러지 않으면 떠나는 칸이 새 대화의 칸으로 착각한다.
@@ -961,7 +952,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           tools={tools}
           sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
           browserSplitOpen={browserOpen}
-          detachedBrowserOwnerId={retainedBrowser ? detachedBrowser?.ownerId ?? null : null}
         />
       ) : subject ? (
         <ConversationColumn
@@ -993,8 +983,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       layerRef={workbenchLayerRef}
       insets={insets}
       geometry={geometry}
-      retainedBrowser={retainedBrowser}
-      onBrowserDetached={onBrowserDetached}
       layout={shownLayout}
       focusedTileId={focusedTileId}
       bindings={railBindings}
@@ -1503,7 +1491,7 @@ function CommodoreRailTabs({ descriptor, commodoreId, language, theme }: {
  * 가운데 칸의 플러그인 대화 — 머리 pill 은 호스트가, 본문은 플러그인이 그린다. 대화가 선 동안 플러그인 탭이 오른쪽
  * 패널 앞 묶음에 서고, 패널이 닫혀 있으면 기본 탭을 연다.
  */
-function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools, sessionBrowser, browserSplitOpen, detachedBrowserOwnerId }: {
+function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools, sessionBrowser, browserSplitOpen }: {
   readonly descriptor: ResolvedConversationSurface;
   readonly selection: ConversationSurfaceSelection;
   readonly language: "en" | "ko";
@@ -1513,7 +1501,6 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
   /** 이 대화의 에이전트 세션이 쓰는 Session 브라우저(descriptor.sessionBrowser) — 있으면 pill 바로 옆에 지구본이 선다. */
   readonly sessionBrowser: SurfaceSessionBrowser | null;
-  readonly detachedBrowserOwnerId: string | null;
   /** 오른쪽 분할 칸에 브라우저(Fleet·Session 어느 쪽이든)가 서 있는가 — 지구본이 켜짐으로 말한다. */
   readonly browserSplitOpen: boolean;
 }) {
@@ -1609,7 +1596,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
   // 플릿 브라우저는 Desktop 의 것이다 — 웹 브라우저 Console 에서는 지구본을 세우지 않는다(시안 v2 규칙 g).
-  const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} detachedOwnerId={detachedBrowserOwnerId} />;
+  const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />;
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   const pill = useConversationPillHost(descriptor.pillOwner?.(context) ?? { kind: "surface", id: descriptor.id });
@@ -1692,16 +1679,15 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   // 칸이 여는 브라우저의 주인은 늘 이 대화의 루트다 — 구성원(자식 세션)은 Objective 이 아니라 루트의 브라우저를 함께 쓰므로,
   // 구성원 원장을 보는 중에 지구본을 눌러도 그룹채팅과 같은 탭 집합이 열린다.
   // 칸은 이 대화의 도구 분할에 선다 — 대화 키가 이미 이 루트라 주인을 따로 싣지 않는다.
-  const browserOwnerId = objectiveRecord.parentObjectiveId ?? objectiveRecord.id;
-  const openObjectiveBrowser = useCallback(() => { if (!focusBrowserWindow(browserOwnerId)) openWorkbenchBrowser(); }, [browserOwnerId]);
+  const openObjectiveBrowser = useCallback(() => { if (!focusBrowserWindow()) openWorkbenchBrowser(); }, []);
   const closeBrowserSplit = useCallback(() => { closeWorkbenchBrowser(); }, []);
   // pill 의 지구본: 칸이 비어 있으면 이 대화의 Session 브라우저를 바로 열고, 칸이 서 있으면 걷는다.
   const onCaptionCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
-    if (focusBrowserWindow(browserOwnerId)) return;
+    if (focusBrowserWindow()) return;
     if (!visible) { closeBrowserSplit(); return; }
     openObjectiveBrowser();
-  }, [browserOwnerId, closeBrowserSplit, openObjectiveBrowser]);
+  }, [closeBrowserSplit, openObjectiveBrowser]);
   // 본문(채팅·CLI 링크 카드)의 「Objective 브라우저」 행은 묻지 않고 바로 칸에 연다 — 이미 고른 답이다.
   const onBodyCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
@@ -1844,21 +1830,21 @@ interface SurfaceSessionBrowser {
  * 브라우저 칸을 열고 닫는다(세션이 아직 서지 않았으면 칸이 그 까닭을 말한다). 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채
  * 까닭을 말한다. 웹 브라우저 Console 에서는 서지 않는다(시안 v2 규칙 g).
  */
-function SurfaceBrowserButton({ language, splitOpen, detachedOwnerId }: {
+function SurfaceBrowserButton({ language, splitOpen }: {
   readonly session: SurfaceSessionBrowser;
   readonly language: "en" | "ko";
   readonly splitOpen: boolean;
-  readonly detachedOwnerId: string | null;
 }) {
   const t = getBrowserT(language);
   const engine = useBrowserEngine();
   const engineMissing = engine !== null && !engine.available;
+  const detached = useBrowserDocument() !== null;
   const base = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : t(detachedOwnerId ? "terminal.browser.focus" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
+    : t(detached ? "terminal.browser.focus" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
   return (
     <span className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} onClick={() => { if (detachedOwnerId && focusBrowserWindow(detachedOwnerId)) return; toggleWorkbenchBrowser(); }}>
+      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} onClick={() => { if (focusBrowserWindow()) return; toggleWorkbenchBrowser(); }}>
         <CaptionBrowserUseGlyph />
       </CaptionActionButton>
     </span>

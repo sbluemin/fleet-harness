@@ -279,9 +279,8 @@ html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region
 .op-browser__button--danger { border-color: var(--coral); color: var(--coral-ink); }
 .op-browser__button--danger:hover:not(:disabled) { background: var(--coral-glow); border-color: var(--coral); }
 
-/* 문서별 portal container는 inline에서 새 레이아웃을 만들지 않는다. 분리 문서도 동일 caption/body만 놓는다. */
-.op-browser-caption-slot, .op-browser-caption-content { display: contents; }
-.op-browser-body-slot, .op-browser-body-content { display: contents; }
+/* 분리 창의 portal container는 새 레이아웃을 만들지 않는다. 창은 주소줄 줄(caption)과 본문(body)만 받는다. */
+.op-browser-caption-content, .op-browser-body-content { display: contents; }
 .browser-window-document { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--ink-deep); color: var(--text-primary); }
 #browser-window-caption { flex: none; box-sizing: border-box; min-width: 0; height: 52px; display: flex; align-items: center; padding: var(--space-2); border-bottom: 1px solid var(--hairline); }
 /* main Desktop과 같은 52px native controls 줄이다. 드래그는 빈 자리만, 탭·입력·메뉴는 no-drag다. */

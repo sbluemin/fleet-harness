@@ -428,8 +428,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   // 자식 세션(목표 구성원)은 루트의 브라우저를 함께 쓴다 — 쓰는 중인지도 루트의 것을 읽는다.
   const using = useObjectiveUse(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
   const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
-  const browserOwnerId = context.objectiveRecord.parentObjectiveId ?? context.objectiveId;
-  const detachedBrowser = useBrowserDocument(browserOwnerId);
+  const detachedBrowser = useBrowserDocument();
   // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 Desktop 앱의 것이라 문은 늘 서되,
   // 브라우저 탭·모바일로 연 화면이거나 다른 화면이 붙어 멈춘 동안은 닫힌 채로 서서 말풍선이 그 까닭을 말한다(투어도 그때는 이 문을 짚지 않는다).
   const engine = useBrowserEngine();
@@ -444,7 +443,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
       pressed={browserOpen}
       disabled={engineMissing}
       agent={using.browser}
-      onClick={() => { if (!focusBrowserWindow(browserOwnerId)) toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
+      onClick={() => { if (!focusBrowserWindow()) toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
     >
       <CaptionBrowserUseGlyph />
     </CaptionActionButton>
@@ -1019,4 +1018,4 @@ function AgentGlyph() {
   );
 }
 
-const browserServices = { isDesktopShell, desktopShellCapabilities, themePolarity, pushComposerInbox, subscribeConsoleChannel };
+export const browserServices = { isDesktopShell, desktopShellCapabilities, themePolarity, pushComposerInbox, subscribeConsoleChannel };

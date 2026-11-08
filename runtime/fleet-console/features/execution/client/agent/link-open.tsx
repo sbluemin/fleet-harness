@@ -2,6 +2,7 @@ import type { ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
 
 import { requestBrowserOpen, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { focusBrowserWindow } from "../../../browser/client/browser-window.js";
 import { notifySharedFallback } from "../../../browser/client/browser-shared-fallback.js";
 import {
   LinkOpenCard,
@@ -64,8 +65,8 @@ export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice 
       companion={{
         // 주소를 먼저 놓고 문을 연다 — 패널은 마운트하는 순간 그 요청을 집어 든다.
         open: () => {
-          requestBrowserOpen(target.objectiveId, pending.url);
-          target.openCompanion();
+          requestBrowserOpen(pending.url);
+          if (!focusBrowserWindow()) target.openCompanion();
         },
       }}
     />
@@ -113,8 +114,8 @@ export function openObjectiveLink(
   }
   if (gesture === "click") return false;
   if (gesture === "background" || gesture === "companion") {
-    requestBrowserOpen(target.objectiveId, url);
-    target.openCompanion();
+    requestBrowserOpen(url);
+    if (!focusBrowserWindow()) target.openCompanion();
     return true;
   }
   if (gesture === "external") {

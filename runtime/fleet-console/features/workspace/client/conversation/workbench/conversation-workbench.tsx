@@ -21,7 +21,6 @@ import type { RailToolContext } from "../../../../../core/client/src/chrome/rail
 import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
 import { BrowserNavHostContext, BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
-import { useBrowserDocument } from "../../../../browser/client/browser-window.js";
 import { resolveSessionBrowserTarget, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
 import { announceNativeViewResize, getNativeViewResize, useHoldNativeViewsWhile } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
@@ -72,9 +71,6 @@ export interface ConversationWorkbenchProps {
   readonly layerRef: (element: HTMLDivElement | null) => void;
   readonly insets: { readonly left: number; readonly right: number };
   readonly geometry: WorkbenchGeometry;
-  /** 분리된 칸도 같은 key/부모에 남겨 controller를 유지한다. 배치 공간만 반환한다. */
-  readonly retainedBrowser: { readonly entry: TileGeometry; readonly geometry: WorkbenchGeometry } | null;
-  readonly onBrowserDetached: (tileId: string, ownerId: string | null) => void;
   readonly layout: WorkbenchLayout;
   readonly focusedTileId: string | null;
   readonly bindings: readonly RailEntryBinding[];
@@ -135,7 +131,7 @@ function rectStyle(rect: Rect): CSSProperties {
   return { left: rect.x, top: rect.y, width: rect.w, height: rect.h };
 }
 
-export function ConversationWorkbench({ layerRef, insets, geometry, retainedBrowser, onBrowserDetached, layout, focusedTileId, bindings, toolContext, conversation, state, language, objectiveRecordKinds }: ConversationWorkbenchProps) {
+export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, objectiveRecordKinds }: ConversationWorkbenchProps) {
   const t = useT();
   const elementRef = useRef<HTMLDivElement | null>(null);
   const setRef = useCallback((element: HTMLDivElement | null) => {
@@ -164,7 +160,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, retainedBrow
   // 동작 줄이기 설정에서는 바로 바뀐다. 움직이는 동안은 네이티브 뷰를 정지 화면 뒤로 물린다 — 뷰는 잘라 그릴 수 없다.
   // 새로 섰는지·사라졌는지는 그리는 동안 판정한다. 그래야 첫 그림부터 뷰가 물러나 있고, 떠나는 칸이 같은 key 로 남아 다시 서지 않는다.
   const workbenchKey = getWorkbenchKey();
-  const browserEntry = geometry.tiles.find((entry) => entry.tile.kind === "browser") ?? retainedBrowser?.entry ?? null;
+  const browserEntry = geometry.tiles.find((entry) => entry.tile.kind === "browser") ?? null;
   const settledRef = useRef<BrowserSettled | null>(null);
   const [entering, setEntering] = useState<string | null>(null);
   const [leaving, setLeaving] = useState<BrowserLeaving | null>(null);
@@ -284,7 +280,6 @@ export function ConversationWorkbench({ layerRef, insets, geometry, retainedBrow
           expanded: expandedId === entry.tile.id,
           motion: entry.tile.id === revealId ? "enter" as const : null,
         })),
-        ...(retainedBrowser === null ? [] : [{ entry: retainedBrowser.entry, rect: retainedBrowser.entry.rect, hidden: true, expanded: false, motion: null }]),
         // 떠나는 브라우저 칸 — 같은 key 로 남아 패널이 다시 서지 않고, 접히는 동안만 그려진다.
         ...(ghost === null ? [] : [{ entry: ghost.entry, rect: ghost.rect, hidden: false, expanded: ghost.expanded, motion: "leave" as const }]),
       ].map(({ entry, rect, hidden, expanded, motion }) => {
@@ -298,8 +293,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, retainedBrow
             focused={focusedTileId === entry.tile.id}
             motion={motion}
             pendingClose={pendingClose?.tileId === entry.tile.id ? pendingClose.message : null}
-            geometry={retainedBrowser?.entry.tile.id === entry.tile.id ? retainedBrowser.geometry : geometry}
-            onBrowserDetached={onBrowserDetached}
+            geometry={geometry}
             binding={entry.tile.kind === "entry" ? bindingOf(entry.tile.entryId) : entry.tile.kind === "surface" ? surfaceBinding(entry.tile.surfaceId) : null}
             toolContext={toolContext}
             conversation={conversation}
@@ -491,7 +485,6 @@ interface WorkbenchTileViewProps {
   readonly motion: TileMotion | null;
   /** 이 칸을 닫기 전에 묻는 말 — 사람이 닫기를 눌렀고 표면이 물어야 한다고 답했을 때만. */
   readonly pendingClose: string | null;
-  readonly onBrowserDetached: (tileId: string, ownerId: string | null) => void;
   readonly geometry: WorkbenchGeometry;
   readonly binding: RailEntryBinding | null;
   readonly toolContext: RailToolContext;
@@ -749,15 +742,6 @@ const NO_HIDDEN_COMPANIONS: readonly string[] = [];
 const BROWSER_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_ID];
 function noop(): void {}
 
-/** Document 소유자가 알린 분리 사실만 배치에 반영한다. 패널을 닫거나 다시 세우지 않는다. */
-function useBrowserTileSurface(props: WorkbenchTileViewProps, ownerId: string | null): void {
-  const surface = useBrowserDocument(ownerId ?? "");
-  const tileId = props.entry.tile.id;
-  const notify = props.onBrowserDetached;
-  useLayoutEffect(() => { notify(tileId, surface && ownerId ? ownerId : null); }, [tileId, ownerId, surface, notify]);
-  useEffect(() => () => notify(tileId, null), [tileId, notify]);
-}
-
 /**
  * 그 대화의 Session 브라우저 칸. 웹 브라우저 Console 에는 뷰를 그릴 셸이 없다 — Desktop 에서 열어 둔 칸에는 안내 한 줄만 남는다.
  */
@@ -776,7 +760,6 @@ function BrowserTile(props: WorkbenchTileViewProps) {
 
 function ObjectiveBrowserTile(props: WorkbenchTileViewProps & { readonly objectiveRecord: ObjectiveRecord; readonly title: string }) {
   const { objectiveRecord, state, language, objectiveRecordKinds, hidden, title } = props;
-  useBrowserTileSurface(props, objectiveRecord.id);
   const capabilities = useHostCapabilities();
   const descriptor = findAgentObjectiveKind(objectiveRecordKinds);
   const companion = descriptor?.companions?.find((panel) => panel.id === BROWSER_COMPANION_ID) ?? null;
@@ -837,17 +820,16 @@ function ObjectiveBrowserTile(props: WorkbenchTileViewProps & { readonly objecti
 function SessionBrowserTile(props: WorkbenchTileViewProps & { readonly session: WorkbenchSessionBrowser; readonly title: string }) {
   const { session, language, state, hidden, title } = props;
   const browserT = getBrowserT(language);
-  const [owner, setOwner] = useState<{ readonly key: string; readonly ownerId: string | null; readonly failed: boolean } | null>(null);
+  const [owner, setOwner] = useState<{ readonly key: string; readonly ownerId: string | null; readonly homeSpaceId: string | null; readonly failed: boolean } | null>(null);
   useLayoutEffect(() => {
     let live = true;
     const key = session.subjectKey;
     void resolveSessionBrowserTarget({ pluginId: session.pluginId, scopeId: session.scopeId })
-      .then((ownerId) => ({ ownerId, failed: false }), () => ({ ownerId: null, failed: true }))
+      .then((target) => ({ ...target, failed: false }), () => ({ ownerId: null, homeSpaceId: null, failed: true }))
       .then((result) => { if (live) setOwner({ key, ...result }); });
     return () => { live = false; };
   }, [session.pluginId, session.scopeId, session.subjectKey]);
   const resolved = owner?.key === session.subjectKey ? owner : null;
-  useBrowserTileSurface(props, resolved?.ownerId ?? null);
   if (resolved === null || resolved.ownerId === null) {
     const notice = resolved === null ? "" : browserT(resolved.failed ? "terminal.chooser.noObjective" : "terminal.chooser.sessionNotStarted");
     return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{notice}</div> }} />;
@@ -858,7 +840,7 @@ function SessionBrowserTile(props: WorkbenchTileViewProps & { readonly session: 
       {...props}
       parts={{
         title,
-        body: <SessionBrowserPanel key={ownerId} ownerId={ownerId} language={language} theme={state.activeTheme} bodyLive={!hidden} services={SESSION_BROWSER_SERVICES} {...(session.attach ? { onAttach: session.attach } : {})} />,
+        body: <SessionBrowserPanel key={resolved.homeSpaceId ?? ownerId} ownerId={ownerId} homeSpaceId={resolved.homeSpaceId} language={language} theme={state.activeTheme} bodyLive={!hidden} services={SESSION_BROWSER_SERVICES} {...(session.attach ? { onAttach: session.attach } : {})} />,
       }}
     />
   );

@@ -40,9 +40,6 @@ export function commodoreOfSpace(spaceId: string): string | null {
   return spaceId.startsWith(BROWSER_COMMODORE_PREFIX) ? spaceId.slice(BROWSER_COMMODORE_PREFIX.length) || null : null;
 }
 
-/** 사령관 scope 라우트의 예전 이름. 새 코드는 commodoreOfSpace 를 쓴다. */
-export const commodoreOfBrowser = commodoreOfSpace;
-
 export function sessionSpaceId(sessionOwnerId: string): string {
   return `${SESSION_SPACE_PREFIX}${sessionOwnerId}`;
 }

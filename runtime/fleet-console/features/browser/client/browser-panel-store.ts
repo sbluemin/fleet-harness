@@ -10,10 +10,8 @@ export interface BrowserCaptionTab { readonly id: string; readonly spaceId: stri
 export interface BrowserPanelSnapshot {
   readonly tabs: readonly BrowserCaptionTab[];
   readonly activeTabId: string | null;
-  /** 사령관 브라우저의 스페이스들 — 탭이 있거나 에이전트가 쓰는 중인 것만 온다. 캡션이 칩 줄로 그린다. */
+  /** Console 브라우저의 스페이스들(모든 사령관의 것) — 탭이 있거나 에이전트가 쓰는 중인 것만 온다. 레일이 그룹으로 그린다. */
   readonly spaces: readonly BrowserSpaceState[];
-  /** 사령관 브라우저 id(`commodore:<id>`) — 스페이스 색이 사령관 아바타를 찾는 데 쓴다. 모르면 null. */
-  readonly browserId: string | null;
   /** 이 대화의 스페이스. 스트림 프레임에는 없고 처음 읽을 때만 알려지므로 모르면 null. */
   readonly homeSpaceId: string | null;
   /** 사람 화면에 표시된 탭이 속한 스페이스. 탭이 없으면 null. */
@@ -72,38 +70,37 @@ export function useBrowserPanel(objectiveId: string): BrowserPanelSnapshot | nul
  */
 export interface BrowserOpenRequest { readonly url: string; readonly serial: number }
 
-const openRequests = new Map<string, BrowserOpenRequest>();
-const openRequestListeners = new Map<string, Set<() => void>>();
+/** 요청은 브라우저(Console 에 하나)에게 가는 것이라 어느 문맥에서 눌렀든 하나뿐이다 — 이를 집는 것은 지금 화면을 가진 패널(칸 안 또는 분리 창)이다. */
+let openRequest: BrowserOpenRequest | null = null;
+const openRequestListeners = new Set<() => void>();
 let openRequestSerial = 0;
 
-function notifyOpenRequest(objectiveId: string): void {
-  for (const listener of openRequestListeners.get(objectiveId) ?? []) listener();
+function notifyOpenRequest(): void {
+  for (const listener of openRequestListeners) listener();
 }
 
-export function requestBrowserOpen(objectiveId: string, url: string): void {
-  openRequests.set(objectiveId, { url, serial: ++openRequestSerial });
-  notifyOpenRequest(objectiveId);
+export function requestBrowserOpen(url: string): void {
+  openRequest = { url, serial: ++openRequestSerial };
+  notifyOpenRequest();
 }
 
 /** 패널이 요청을 집어 든다. 그사이 더 새 요청이 들어왔으면 그것은 남는다(직렬 번호로 판정). */
-export function takeBrowserOpenRequest(objectiveId: string, serial: number): void {
-  if (openRequests.get(objectiveId)?.serial !== serial) return;
-  openRequests.delete(objectiveId);
-  notifyOpenRequest(objectiveId);
+export function takeBrowserOpenRequest(serial: number): void {
+  if (openRequest?.serial !== serial) return;
+  openRequest = null;
+  notifyOpenRequest();
 }
 
-export function dropBrowserOpenRequest(objectiveId: string): void {
-  if (!openRequests.delete(objectiveId)) return;
-  notifyOpenRequest(objectiveId);
+export function dropBrowserOpenRequest(): void {
+  if (openRequest === null) return;
+  openRequest = null;
+  notifyOpenRequest();
 }
 
-export function useBrowserOpenRequest(objectiveId: string): BrowserOpenRequest | null {
-  const subscribe = React.useCallback((listener: () => void) => {
-    const set = openRequestListeners.get(objectiveId) ?? new Set<() => void>();
-    set.add(listener); openRequestListeners.set(objectiveId, set);
-    return () => { set.delete(listener); if (set.size === 0) openRequestListeners.delete(objectiveId); };
-  }, [objectiveId]);
-  return React.useSyncExternalStore(subscribe, () => openRequests.get(objectiveId) ?? null, () => null);
+const subscribeOpenRequest = (listener: () => void) => { openRequestListeners.add(listener); return () => { openRequestListeners.delete(listener); }; };
+
+export function useBrowserOpenRequest(): BrowserOpenRequest | null {
+  return React.useSyncExternalStore(subscribeOpenRequest, () => openRequest, () => null);
 }
 
 // ---------- 캡션이 띄운 것 ----------

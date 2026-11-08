@@ -10,7 +10,7 @@ import { getT } from "./i18n.js";
 import { suggestionSkipReason } from "../shared/suggestions.js";
 import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../workspace/shared/avatars.js";
 import { useAvatarToneOf } from "../../workspace/client/avatar-accent.js";
-import { commodoreOfBrowser, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
+import { BROWSER_GLOBAL_ID, commodoreOfSpace, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
@@ -49,7 +49,7 @@ interface TabState { readonly id: string; readonly spaceId: string; readonly url
 interface Viewport { readonly width: number; readonly height: number; readonly scale: number; readonly preset: "responsive" | "mobile" | "tablet"; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 type UnavailableReason = "desktop_required" | "shared";
 interface BrowserState {
-  /** 한 스트림에 모든 사령관 브라우저의 상태가 흐르므로 프레임이 자기 브라우저를 싣는다(`browserId`). `objectiveId` 도 같은 값이다. */
+  /** Console 전역 브라우저의 id(`BROWSER_GLOBAL_ID`) — 스트림 프레임의 `objectiveId` 도 같은 값이다. */
   readonly browserId: string;
   readonly surface?: BrowserSurfaceState | null;
   readonly spaces: readonly BrowserSpaceState[];
@@ -112,45 +112,42 @@ function base64Of(blob: Blob): Promise<string> {
  * 다 차면 이 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다(눌러도 아무 일이 없고, 스트림 하나가 닫혀야 그제야 밀린
  * 요청이 나간다). 원격 콘솔에서는 창을 든 셸의 배관도 같은 예산을 쓰므로 그 여섯이 훨씬 빨리 찬다.
  */
-function useBrowserStream(objectiveId: string, enabled: boolean, subscribeConsoleChannel: BrowserClientServices["subscribeConsoleChannel"]) {
+function useBrowserStream(scopeId: string, enabled: boolean, subscribeConsoleChannel: BrowserClientServices["subscribeConsoleChannel"]) {
   const [state, setState] = React.useState<BrowserState | null>(null);
   const [homeSpaceId, setHomeSpaceId] = React.useState<string | null>(null);
   const [connection, setConnection] = React.useState<Connection>(enabled ? "connecting" : "disabled");
   React.useEffect(() => {
     if (!enabled) { setConnection("disabled"); setState(null); setHomeSpaceId(null); return; }
     let disposed = false;
-    // 내 브라우저의 id. 요청에 쓰는 id(Objective id 또는 `commodore:<id>`)와 다르고, 처음 읽은 상태에서만 알 수 있다.
-    let browserId: string | null = null;
-    // 출발점을 읽는 동안 도착한 프레임. 한 스트림에 모든 사령관 브라우저의 프레임이 흐르므로 내 것인지 아직 모른다 —
-    // 브라우저마다 가장 새 프레임을 쥐었다가, 출발점이 내 browserId 를 알려 주면 그 프레임이 응답보다 새것이므로 그것을 쓴다.
-    const early = new Map<string, BrowserState>();
+    // 출발점을 읽는 동안 도착한 프레임 — 브라우저는 Console 에 하나이므로 모든 프레임이 내 것이다. 응답보다 새것이면 그것을 쓴다.
+    let early: BrowserState | null = null;
+    let started = false;
     setConnection("connecting");
     const receive = (payload: unknown) => {
       const next = payload as BrowserState | null;
-      if (disposed || !next || typeof next.browserId !== "string") return;
-      if (browserId === null) { early.set(next.browserId, next); return; }
-      // 한 스트림에 모든 사령관 브라우저의 상태가 흐른다 — 내 브라우저의 것만 받는다.
-      if (next.browserId !== browserId) return;
+      if (disposed || !next || next.browserId !== BROWSER_GLOBAL_ID) return;
+      if (!started) { early = next; return; }
       setState(next);
       setConnection("open");
     };
     const unsubscribe = subscribeConsoleChannel(BROWSER_STATE_EVENT, receive);
-    void fetch(`${base(objectiveId)}/state`)
+    // 상태는 호출 문맥(scope)의 라우트로 읽는다 — 스트림 프레임에는 없는 이 문맥의 HOME 스페이스를 함께 받는다. 상태 자체는 어느 scope 든 같다.
+    void fetch(`${base(scopeId)}/state`)
       .then(async (response) => {
         if (!response.ok) { if (!disposed) setConnection("closed"); return; }
         const body = await response.json() as BrowserState;
         if (disposed || typeof body.browserId !== "string") return;
-        browserId = body.browserId;
+        started = true;
         setHomeSpaceId(body.homeSpaceId ?? null);
         // 바뀌지 않은 사실은 다시 오지 않으므로, 먼저 도착한 프레임이 있으면 낡은 응답이 그것을 되돌리지 않게 한다.
-        const newer = early.get(browserId);
-        early.clear();
+        const newer = early;
+        early = null;
         setState(newer ?? body);
         setConnection("open");
       })
       .catch(() => { if (!disposed) setConnection("closed"); });
     return () => { disposed = true; unsubscribe(); };
-  }, [objectiveId, enabled, subscribeConsoleChannel]);
+  }, [scopeId, enabled, subscribeConsoleChannel]);
   return { state, connection, homeSpaceId };
 }
 
@@ -276,17 +273,17 @@ const PinGlyph = () => glyph('<path d="M6.2 2.5h3.6l-.5 3.3 2 2v1.1H4.7V7.8l2-2z
 const EraseGlyph = () => glyph('<path d="M2.6 4.4h10.8"/><path d="M6.4 4.4V2.9h3.2v1.5"/><path d="M4 4.4l.6 8a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8"/>');
 
 /** 탭 아이콘 — 파비콘은 서버 프록시로 받고, 없거나 깨지면 지구본. */
-function TabIcon({ objectiveId, tab }: { readonly objectiveId: string; readonly tab: { readonly id: string; readonly favicon: string | null; readonly loading: boolean } }) {
+function TabIcon({ tab }: { readonly tab: { readonly id: string; readonly favicon: string | null; readonly loading: boolean } }) {
   const [broken, setBroken] = React.useState<string | null>(null);
-  if (tab.favicon && broken !== tab.favicon) return <img className="op-browser__tab-icon" src={`${base(objectiveId)}/favicon?tabId=${encodeURIComponent(tab.id)}&v=${encodeURIComponent(tab.favicon)}`} alt="" draggable={false} onError={() => setBroken(tab.favicon)} />;
+  if (tab.favicon && broken !== tab.favicon) return <img className="op-browser__tab-icon" src={`${base(BROWSER_GLOBAL_ID)}/favicon?tabId=${encodeURIComponent(tab.id)}&v=${encodeURIComponent(tab.favicon)}`} alt="" draggable={false} onError={() => setBroken(tab.favicon)} />;
   return <span className="op-browser__tab-icon is-fallback" aria-hidden="true"><GlobeGlyph /></span>;
 }
 
 interface AddressSuggestion { readonly value: string; readonly title: string; readonly historyId?: string }
-function SuggestionIcon({ objectiveId, suggestion }: { readonly objectiveId: string; readonly suggestion: AddressSuggestion }) {
+function SuggestionIcon({ suggestion }: { readonly suggestion: AddressSuggestion }) {
   const [broken, setBroken] = React.useState(false);
   if (!suggestion.historyId) return <span className="op-browser__tab-icon is-fallback" aria-hidden="true">{glyph('<circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/>')}</span>;
-  if (!broken) return <img className="op-browser__tab-icon" src={`${base(objectiveId)}/favicon?historyId=${suggestion.historyId}`} alt="" draggable={false} onError={() => setBroken(true)} />;
+  if (!broken) return <img className="op-browser__tab-icon" src={`${base(BROWSER_GLOBAL_ID)}/favicon?historyId=${suggestion.historyId}`} alt="" draggable={false} onError={() => setBroken(true)} />;
   return <span className="op-browser__tab-icon is-fallback" aria-hidden="true"><GlobeGlyph /></span>;
 }
 
@@ -351,10 +348,9 @@ function unavailableText(t: ReturnType<typeof getT>, reason: UnavailableReason |
  * 스페이스 색 — 그 스페이스의 아바타 정체성 톤이다(사령관 스페이스는 사령관 아바타, Objective 스페이스는 그 Objective 의 아바타).
  * 아바타를 모르는 스페이스(세션·사람)는 CSS 의 무채 잉크가 남는다. 톤 규칙은 대화 강조색과 같은 `avatarToneOf` 하나다.
  */
-function spaceAvatarKey(space: { readonly id: string; readonly kind: BrowserSpaceKind }, browserId: string | null): string | null {
+function spaceAvatarKey(space: { readonly id: string; readonly kind: BrowserSpaceKind }): string | null {
   if (space.kind === "objective") return objectiveRecordAvatarKey(space.id);
-  if (space.kind !== "commodore" || browserId === null) return null;
-  const commodoreId = commodoreOfBrowser(browserId);
+  const commodoreId = space.kind === "commodore" ? commodoreOfSpace(space.id) : null;
   return commodoreId === null ? null : commodoreAvatarKey(commodoreId);
 }
 
@@ -373,13 +369,20 @@ interface SpaceGroup { readonly space: BrowserSpaceState; readonly tabs: readonl
 
 export interface SessionBrowserTarget { readonly pluginId: string; readonly scopeId: string }
 
-/** Console 실행 중에는 같은 scope가 같은 owner를 가리킨다. 아직 시작하지 않은 세션은 null이다. */
-export async function resolveSessionBrowserTarget(target: SessionBrowserTarget): Promise<string | null> {
+export interface SessionBrowserResolution {
+  /** 브라우저는 하나이므로 시작한 세션이면 늘 전역 id 다. 아직 시작하지 않은 세션은 null 이다. */
+  readonly ownerId: string | null;
+  /** 이 세션의 HOME 스페이스 — 전역 state 의 HOME(사람)이 아니라 이 값이 이 대화의 그룹이다. */
+  readonly homeSpaceId: string | null;
+}
+
+/** Console 실행 중에는 같은 scope가 같은 세션 스페이스를 가리킨다. 아직 시작하지 않은 세션은 둘 다 null이다. */
+export async function resolveSessionBrowserTarget(target: SessionBrowserTarget): Promise<SessionBrowserResolution> {
   const query = new URLSearchParams({ pluginId: target.pluginId, scopeId: target.scopeId });
   const response = await fetch(`/api/v1/browser/sessions/resolve?${query}`);
   if (!response.ok) throw new Error("browser_target_unavailable");
-  const result = await response.json() as { ownerId: string | null };
-  return result.ownerId;
+  const result = await response.json() as { ownerId: string | null; homeSpaceId?: string | null };
+  return { ownerId: result.ownerId, homeSpaceId: result.homeSpaceId ?? null };
 }
 
 export interface SessionBrowserPanelProps {
@@ -390,6 +393,12 @@ export interface SessionBrowserPanelProps {
   readonly services: Pick<BrowserClientServices, "isDesktopShell" | "desktopShellCapabilities" | "themePolarity" | "subscribeConsoleChannel">;
   readonly onAttach?: (files: readonly File[]) => void;
   readonly terminalPaste?: boolean;
+  /** 이 패널의 HOME 스페이스를 호출 문맥이 이미 알면 준다(세션: resolver 의 값). 없으면 서버가 이 scope 로 답한 값을 쓴다. */
+  readonly homeSpaceId?: string | null;
+  /** 터미널 붙여넣기가 향하는 Objective — 분리 창은 지금 보는 문맥의 것을 준다. 없으면 이 패널의 scope. */
+  readonly pasteTargetId?: string;
+  /** 분리 창 안에 그려지는 패널 — Console 전역 호스트가 하나만 세운다. */
+  readonly host?: boolean;
 }
 
 /** 주소창이 줄어드는 하한 — 이보다 좁아지면 접히는 단추(캡처·주석·세션·뷰포트)가 「⋯」로 모인다. */
@@ -642,13 +651,14 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
   // 이름을 가진 것은 그룹뿐이다 — 사람 스페이스(`human`)는 그룹이 아니라 이름이 없다.
   const toneOf = useAvatarToneOf();
   const spaceColor = (space: BrowserSpaceState): React.CSSProperties | undefined => {
-    const key = spaceAvatarKey(space, panel?.browserId ?? null);
+    const key = spaceAvatarKey(space);
     return key === null ? undefined : ({ "--browser-space-c": `var(--id-${toneOf(key)})` } as React.CSSProperties);
   };
   // 에이전트가 쓰는 중인 스페이스는 칩 툴팁(접근성 설명)으로 말한다 — 별도 점 표식은 없다. 탭 단위는 ✦, 브라우저 전체는 레일의 사용 중 표시가 맡는다.
   const drivingTip = (space: BrowserSpaceState) => space.driving ? ` · ${t("terminal.browser.space.driving")}` : "";
-  // 호스트 라벨이 이름이 되는 것은 Objective(제목)뿐이다. 사령관·세션 스페이스의 라벨은 호스트가 id 를 그대로 돌려주므로 읽지 않고 기본 낱말을 쓴다.
-  const spaceName = (space: BrowserSpaceState) => (space.kind === "objective" && space.label) || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
+  // 브라우저는 모든 사령관이 함께 쓰므로 스페이스 이름이 곧 구별이다. 호스트가 Objective 제목과 사령관 이름을 라벨로 싣고,
+  // 세션·사람 스페이스(또는 이름을 모르는 것)는 기본 낱말을 쓴다.
+  const spaceName = (space: BrowserSpaceState) => ((space.kind === "objective" || space.kind === "commodore") && space.label) || t(`terminal.browser.space.${space.kind as Exclude<BrowserSpaceKind, "human">}`);
   // 사람이 직접 연 탭은 그룹 없이 따로 그린다. 그룹은 탭이 있는 스페이스만이다 — 프레임이 싣지 않은 스페이스(탭만 아는 것)는 여기서 채운다.
   const humanTabs = (panel?.tabs ?? []).filter((tab) => tab.spaceId === HUMAN_SPACE_ID);
   const groups: readonly SpaceGroup[] = (() => {
@@ -721,7 +731,7 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
         onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); select(); } }}
         title={agentTab ? `${title} — ${tab.url} · ${t("terminal.browser.space.agentTab")}` : `${title} — ${tab.url}`}
       >
-        <TabIcon objectiveId={objectiveId} tab={tab} />
+        <TabIcon tab={tab} />
         <span className="op-browser__tab-title">{title}</span>
         {agentTab ? <span className="op-browser__tab-agent" role="img" aria-label={t("terminal.browser.space.agentTab")}><AgentGlyph /></span> : null}
         <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
@@ -803,20 +813,53 @@ export function BrowserPanel({ context, services }: BrowserProps) {
     terminalPaste={!chatMode} onAttach={chatMode ? (files) => services.pushComposerInbox(context.objectiveId, { files }) : undefined} />;
 }
 
-export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bodyLive, services, onAttach, terminalPaste = false }: SessionBrowserPanelProps) {
+export interface BrowserWindowPanelProps extends Pick<SessionBrowserPanelProps, "language" | "theme" | "services" | "onAttach" | "terminalPaste" | "pasteTargetId"> {}
+
+/**
+ * 분리 창 안의 패널 — Console 전역 호스트가 하나만 세운다. 어느 사령관·Objective 를 보고 있든, 대화 칸이 열려 있든 닫혀 있든 상관없이
+ * 창이 있는 동안 서 있어서 창이 화면 이동에 풀리지 않는다. 문맥(HOME)이 없으니 어느 대화의 그룹도 앞세우지 않는다.
+ */
+export function BrowserWindowPanel({ language, theme, services, onAttach, terminalPaste, pasteTargetId }: BrowserWindowPanelProps) {
+  const surface = useBrowserDocument();
+  if (surface === null) return null;
+  return <SessionBrowserPanel key={surface.id} host ownerId={BROWSER_GLOBAL_ID} homeSpaceId={null} language={language} theme={theme} services={services}
+    {...(onAttach ? { onAttach } : {})} {...(terminalPaste !== undefined ? { terminalPaste } : {})} {...(pasteTargetId ? { pasteTargetId } : {})} />;
+}
+
+/**
+ * 주소창에 적던 글 — 패널이 바뀌어도(분리·되돌리기·다른 대화로 이동) 쓰던 글이 사라지지 않게, 적는 패널이 여기 남기고
+ * 다음에 화면을 잡는 패널이 이어받는다. 브라우저가 하나이므로 주소창도 하나다. 보내거나 Esc 로 거두면 비운다.
+ */
+let sharedDraft: string | null = null;
+
+/** 분리 창의 패널이 스냅샷·가림 신호에 쓰는 키 — 어느 문맥의 패널(scope)과도 겹치지 않는다. */
+const WINDOW_PANEL_KEY = "window";
+
+export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLive, services, onAttach, terminalPaste = false, homeSpaceId: homeOverride, pasteTargetId, host = false }: SessionBrowserPanelProps) {
   const { isDesktopShell, themePolarity } = services;
+  // 이 패널의 스냅샷·가림 신호 키 — 분리 창의 패널은 문맥을 따라가지 않고 하나뿐이다.
+  const objectiveId = host ? WINDOW_PANEL_KEY : scopeId;
   const t = getT(language ?? "en");
   // 브라우저 탭·모바일에는 뷰를 그릴 셸이 없다 — 서버에 묻지 않고 닫힌 문만 보인다.
   const desktop = isDesktopShell();
-  const { state, connection, homeSpaceId } = useBrowserStream(objectiveId, desktop, services.subscribeConsoleChannel);
+  const { state, connection, homeSpaceId: streamHome } = useBrowserStream(scopeId, desktop, services.subscribeConsoleChannel);
+  const homeSpaceId = homeOverride !== undefined ? homeOverride : streamHome;
   const available = desktop && state?.available === true;
-  const detached = useBrowserWindow(objectiveId, state?.browserId ?? null, state?.surface ?? null, available, services.desktopShellCapabilities);
-  const documentFor = detached.surface?.document ?? document;
+  const detached = useBrowserWindow(state?.surface ?? null, state !== null, available, services.desktopShellCapabilities);
+  // 분리 창이 있으면 화면과 입력은 그 창의 것이다 — 이 문맥에 붙은 패널은 되돌리기만 보이고, 창 안의 패널(host) 하나만 그린다.
+  const surfaceOpen = useBrowserDocument() !== null;
+  const inactive = detached.blocked || (surfaceOpen && !host) || (host && !surfaceOpen);
+  const documentFor = host ? detached.surface?.document ?? document : document;
   const placementIdentity = React.useRef({ surface: detached.surface?.id ?? null, clientId: detached.clientId });
   placementIdentity.current = { surface: detached.surface?.id ?? null, clientId: detached.clientId };
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
   const urlDirty = React.useRef(false);
+  const keepDraft = React.useRef(false);
+  React.useEffect(() => {
+    if (inactive || sharedDraft === null) return;
+    setUrlDraft(sharedDraft); setEditingUrl(true); urlDirty.current = true; keepDraft.current = true; sharedDraft = null;
+  }, [inactive]);
   // 포커스만으로 현재 URL 을 외부에 보내지 않는다. 사람이 고친 입력만 제안에 쓴다.
   const [suggestQuery, setSuggestQuery] = React.useState<string | null>(null);
   const [searchSuggestions, setSuggestions] = React.useState<readonly string[]>([]);
@@ -843,7 +886,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     suggestionRequest.current = controller;
     const timer = setTimeout(() => {
       const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]);
-      void fetch(`${base(objectiveId)}/history`, {
+      void fetch(`${base(BROWSER_GLOBAL_ID)}/history`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }), signal,
       }).then(async (response) => {
         if (!response.ok) return;
@@ -890,7 +933,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   React.useEffect(() => {
     if (mode !== "annotate" || !activeTab) { setStillFrame(null); return; }
     let disposed = false;
-    void fetch(`${base(objectiveId)}/screenshot`).then(async (response) => {
+    void fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`).then(async (response) => {
       if (!response.ok || disposed) return;
       const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
       if (!disposed) setStillFrame({ tabId: activeTab.id, data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height });
@@ -929,7 +972,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         const key = JSON.stringify(body);
         if (placeRef.current !== key) {
           placeRef.current = key;
-          void post(objectiveId, "place", body).catch(() => undefined);
+          void post(BROWSER_GLOBAL_ID, "place", body).catch(() => undefined);
         }
       }
     });
@@ -940,7 +983,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리(가려지지 않은 부분)를 서버에 알리고, 셸은 서버의 스냅샷을 보고
   // 뷰를 놓는다. 가려질 때(주석·모달·접힘·다른 화면)는 감춘다 — 네이티브 뷰는 언제나 페이지 위에 그려지기 때문이다.
   React.useEffect(() => {
-    if (!available || detached.blocked) return;
+    if (!available || inactive) return;
     const document = documentFor;
     const window = document.defaultView ?? globalThis.window;
     const element = nativeRef.current;
@@ -973,7 +1016,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       const key = JSON.stringify(body);
       if (placeRef.current === key) return;
       placeRef.current = key;
-      void post(objectiveId, "place", body).catch(() => undefined);
+      void post(BROWSER_GLOBAL_ID, "place", body).catch(() => undefined);
     };
 
     const captureBackdrop = (tabId: string, url: string, parkBounds: Record<string, unknown>) => {
@@ -995,7 +1038,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
 
       void (async () => {
         try {
-          const response = await fetch(`${base(objectiveId)}/screenshot`, { signal: controller.signal });
+          const response = await fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`, { signal: controller.signal });
           if (!response.ok) throw new Error("capture_failed");
           const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
 
@@ -1041,7 +1084,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       const { id: tabId, url } = tab;
       void (async () => {
         try {
-          const response = await fetch(`${base(objectiveId)}/screenshot`, { signal: controller.signal });
+          const response = await fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`, { signal: controller.signal });
           if (!response.ok) return;
           const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
           const img = new Image();
@@ -1233,19 +1276,19 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
   // 주소 제안도 같은 가림 경로에 합친다. 캡션의 단일 발행 상태를 덮어쓰지 않는다.
-  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, documentFor, detached.surface, detached.blocked, detached.clientId, state?.surface?.id, state?.surface?.clientId, state?.surface?.status]);
+  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, documentFor, detached.surface, inactive, detached.clientId, state?.surface?.id, state?.surface?.clientId, state?.surface?.status]);
   // 셸이 표면을 자식 창에 띄울 수 있으면, 이 자리를 덮는 비모달 표면은 뷰를 물리지 않고 그 창에 그려진다.
   // 자리 재기와 따로 붙든다 — 재기 효과는 가림 신호마다 다시 걸리고, 그때마다 자식 창을 내렸다 올리면 깜빡인다.
-  React.useEffect(() => detached.blocked ? undefined : retainNativeFloat(documentFor), [documentFor, detached.blocked]);
+  React.useEffect(() => inactive ? undefined : retainNativeFloat(documentFor), [documentFor, inactive]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => {
     if (placeRef.current) {
       placeRef.current = "";
-      void post(objectiveId, "place", { visible: false, ...placementIdentity.current }).catch(() => undefined);
+      void post(BROWSER_GLOBAL_ID, "place", { visible: false, ...placementIdentity.current }).catch(() => undefined);
     }
   }, [objectiveId]);
 
-  React.useEffect(() => { urlDirty.current = false; }, [activeTab?.id, activeTab?.url]);
+  React.useEffect(() => { if (keepDraft.current) { keepDraft.current = false; return; } urlDirty.current = false; }, [activeTab?.id, activeTab?.url]);
   React.useEffect(() => { if (!editingUrl && !urlDirty.current) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
   // 손잡이가 붙은 안내는 읽고 누를 시간을 더 준다.
   React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), info.action ? 8000 : 4000); return () => clearTimeout(timer); }, [info, setInfo]);
@@ -1259,7 +1302,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     if (!available) return;
     if (schemeNow === polarity) return;
     if (schemeNow !== null && schemeSetBy === "agent") return;
-    void post(objectiveId, "viewport", { colorScheme: polarity });
+    void post(BROWSER_GLOBAL_ID, "viewport", { colorScheme: polarity });
   }, [objectiveId, polarity, available, schemeNow, schemeSetBy]);
 
   const fail = async (response: Response) => {
@@ -1275,13 +1318,14 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const run = async <T,>(action: string, body: Record<string, unknown>): Promise<T | null> => {
     setBusy(true);
     setNotice(null);
-    try { const response = await post(objectiveId, action, body); if (!response.ok) { await fail(response); return null; } return await response.json() as T; }
+    try { const response = await post(BROWSER_GLOBAL_ID, action, body); if (!response.ok) { await fail(response); return null; } return await response.json() as T; }
     catch { setNotice(t("terminal.browser.requestFailed")); return null; }
     finally { setBusy(false); }
   };
 
   const submitUrl = (target = urlDraft) => {
     urlDirty.current = false;
+    sharedDraft = null;
     const value = target.trim();
     dismissSuggestions();
     setEditingUrl(false);
@@ -1311,7 +1355,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const [hover, setHover] = React.useState<ElementInfo | null>(null);
   const inspectPending = React.useRef(false);
   const inspect = async (x: number, y: number): Promise<ElementInfo | null> => {
-    const response = await post(objectiveId, "inspect", { x, y, tabId: activeTab?.id ?? null }).catch(() => null);
+    const response = await post(BROWSER_GLOBAL_ID, "inspect", { x, y, tabId: activeTab?.id ?? null }).catch(() => null);
     if (!response || !response.ok) return null;
     const body = await response.json() as { element: ElementInfo | null };
     return body.element;
@@ -1332,7 +1376,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         return true;
       }
       if (!terminalPaste) return false;
-      const response = await post(objectiveId, "paste", { data: await base64Of(blob) });
+      const response = await post(pasteTargetId ?? scopeId, "paste", { data: await base64Of(blob) });
       if (!response.ok) {
         let code: string | null = null;
         try { code = ((await response.json()) as { error?: string }).error ?? null; } catch { /* 본문 없음 */ }
@@ -1357,7 +1401,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   };
   const attachScreenshot = () => {
     // 뷰에는 이미지가 없다 — 서버가 한 장을 찍어 준다(CSS px 크기의 PNG).
-    void fetch(`${base(objectiveId)}/screenshot`).then(async (response) => {
+    void fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`).then(async (response) => {
       if (!response.ok) { setNotice(t("terminal.browser.requestFailed")); return; }
       const shot = await response.json() as { data: string };
       const bytes = Uint8Array.from(atob(shot.data), (char) => char.charCodeAt(0));
@@ -1487,9 +1531,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
 
   // 캡션(탭 스트립)이 읽는 스냅샷 — 상태와 손잡이를 함께 올린다. 언마운트하면 거둔다.
   React.useEffect(() => {
+    if (inactive) return;
     publishBrowserPanel(objectiveId, {
       tabs: available ? state?.tabs ?? [] : [], activeTabId: available ? state?.activeTabId ?? null : null, driving: state?.driving === true,
-      spaces: available ? state?.spaces ?? [] : [], browserId: state?.browserId ?? null, homeSpaceId, displayedSpaceId: available ? state?.displayedSpaceId ?? null : null,
+      spaces: available ? state?.spaces ?? [] : [], homeSpaceId, displayedSpaceId: available ? state?.displayedSpaceId ?? null : null,
       viewport: state ? { width: state.viewport.width, height: state.viewport.height, preset: state.viewport.preset, setBy: state.viewport.setBy } : null,
       busy,
       available,
@@ -1509,35 +1554,36 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 손잡이는 매 렌더 새로 만들어도 같은 뜻이다; 상태·busy 가 바뀔 때만 올린다.
-  }, [objectiveId, state, busy, available, homeSpaceId]);
+  }, [objectiveId, state, busy, available, homeSpaceId, inactive]);
   React.useEffect(() => () => publishBrowserPanel(objectiveId, null), [objectiveId]);
   // 대화를 열면 그 대화의 그룹을 띄운다 — 다른 대화에서 보던 스페이스가 화면에 남아 있어도 이 대화의 탭으로 돌아온다.
   // 이 대화의 그룹은 탭이 있거나 에이전트가 쓰는 중일 때만 있다: 없으면 건드리지 않는다(빈 그룹을 만들어 띄우지 않는다).
   // 열 때 한 번뿐이다: 그 뒤 사람이 다른 스페이스를 고르면 그대로 둔다.
   const homedRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!available || !state || homeSpaceId === null) return;
+    // 분리 창은 문맥을 따라가지 않는다 — 어느 대화를 보든 창이 보던 스페이스에 그대로 머문다.
+    if (!available || !state || homeSpaceId === null || inactive || host) return;
     const key = `${objectiveId}|${homeSpaceId}`;
     if (homedRef.current === key) return;
     homedRef.current = key;
     if (state.displayedSpaceId !== homeSpaceId && state.spaces.some((space) => space.id === homeSpaceId)) void run("space", { spaceId: homeSpaceId });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- run 은 매 렌더 새로 만들어도 같은 뜻이다.
-  }, [available, state, homeSpaceId, objectiveId]);
+  }, [available, state, homeSpaceId, objectiveId, inactive, host]);
 
   // CLI·채팅에서 고른 주소. 문을 누른 순간 이 패널이 마운트되므로 요청이 먼저 놓여 있고, 엔진이 아직
   // 뜨는 중이면 열 수 있게 될 때까지 기다린다. 링크는 새 탭에서 열고, 빈 탭만 그 자리에서 쓴다 —
   // 사람이 보던 페이지를 링크 하나가 밀어내지 않게.
-  const openRequest = useBrowserOpenRequest(objectiveId);
+  const openRequest = useBrowserOpenRequest();
   React.useEffect(() => {
-    if (!openRequest || !available) return;
-    takeBrowserOpenRequest(objectiveId, openRequest.serial);
+    if (!openRequest || !available || inactive) return;
+    takeBrowserOpenRequest(openRequest.serial);
     // 링크는 사람 탭으로 간다 — 사람이 보는 탭이 에이전트 그룹의 빈 탭이면 그 탭을 쓰지 않고 새 탭을 연다.
     const intoActiveTab = activeTab === null || (activeTab.url === "about:blank" && activeTab.spaceId === HUMAN_SPACE_ID);
     void run(intoActiveTab ? "navigate" : "tabs", intoActiveTab ? { url: openRequest.url } : { action: "create", url: openRequest.url });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 탭 상태는 요청이 도착한 그 순간의 것으로 읽는다; 탭이 바뀔 때마다 다시 열지 않는다.
-  }, [openRequest?.serial, available, objectiveId]);
+  }, [openRequest?.serial, available, inactive]);
   // 패널을 닫으면 아직 못 연 요청도 함께 거둔다 — 다음에 여는 브라우저가 옛 링크로 열리지 않게.
-  React.useEffect(() => () => dropBrowserOpenRequest(objectiveId), [objectiveId]);
+  React.useEffect(() => inactive ? undefined : () => dropBrowserOpenRequest(), [inactive]);
 
   const highlightBox = (element: ElementInfo | null) => {
     const factor = layoutScale();
@@ -1551,7 +1597,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // 좁아지면 캡처·주석·세션·뷰포트가 「⋯」 하나로 모인다(`navFolded`) — 줄의 실제 폭을 재어 정한다.
   const navHost = React.useContext(BrowserNavHostContext);
   // 분리 창에서는 주소줄 줄이 그 창의 맨 위 줄(caption)에 선다 — 맨 위 줄에 선 것과 같은 모양이다.
-  const navTop = navHost !== undefined || detached.surface !== null;
+  const navTop = navHost !== undefined || host;
   const navRef = React.useRef<HTMLDivElement | null>(null);
   const [navFolded, setNavFolded] = React.useState(false);
   const hasCapture = activeTab !== null && activeTab.url !== "about:blank";
@@ -1617,6 +1663,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             suggestionRequest.current?.abort();
             setEditingUrl(true);
             urlDirty.current = true;
+            sharedDraft = event.target.value;
             setUrlDraft(event.target.value);
             setSuggestions([]);
             setHistorySuggestions([]);
@@ -1632,6 +1679,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             }
             if (event.key === "Escape") {
               urlDirty.current = false;
+              sharedDraft = null;
               event.preventDefault(); dismissSuggestions(); setEditingUrl(false); event.currentTarget.blur();
             } else if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
               event.preventDefault();
@@ -1666,7 +1714,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
                 className="op-browser__suggestion op-browser__suggestion-result"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => { if (!composingUrlRef.current) submitUrl(suggestion.value); }}
-              ><SuggestionIcon objectiveId={objectiveId} suggestion={suggestion} /><span className="op-browser__suggestion-label">{suggestion.title}{suggestion.historyId ? <small>{suggestion.value}</small> : null}</span></button>
+              ><SuggestionIcon suggestion={suggestion} /><span className="op-browser__suggestion-label">{suggestion.title}{suggestion.historyId ? <small>{suggestion.value}</small> : null}</span></button>
             ))}
           </div>
         ) : null}
@@ -1685,18 +1733,19 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
           <BrowserTools objectiveId={objectiveId} language={language} />
         </>
       )}
-      {detached.available && !detached.surface ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t("terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : "terminal.browser.detach")}>↗</button> : null}
-      {!detached.surface ? navTail : null}
+      {detached.available && !host ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t("terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : "terminal.browser.detach")}>↗</button> : null}
+      {!host ? navTail : null}
     </div>
   );
 
-  return (
-    <BrowserSurfaceContent ownerId={objectiveId} role="body" blocked={detached.blocked} placeholder={<div className="op-browser__detached"><button type="button" className="op-browser__button" onClick={detached.toggle}>{t("terminal.browser.reattach")}</button></div>}>
-    {detached.blocked ? <div className="op-browser__detached">{t("terminal.browser.detached")}</div> :
+  // 다른 화면이 분리 창을 쥐고 있으면 그 사실만, 이 Console 이 분리했으면 되돌리기만 보인다 — 화면과 입력은 창 안의 패널 하나가 가진다.
+  if (detached.blocked) return <div className="op-browser__detached">{t("terminal.browser.detached")}</div>;
+  if (surfaceOpen && !host) return <div className="op-browser__detached"><button type="button" className="op-browser__button" onClick={detached.toggle}>{t("terminal.browser.reattach")}</button></div>;
+  const content = (
     <div className={`op-browser${state?.driving ? " is-driving" : ""}`}>
-      {navTop && detached.surface === null
-        ? (navHost === null || navHost === undefined ? null : createPortal(navBar, navHost))
-        : <BrowserSurfaceContent ownerId={objectiveId} role="caption">{navBar}</BrowserSurfaceContent>}
+      {host
+        ? <BrowserSurfaceContent role="caption">{navBar}</BrowserSurfaceContent>
+        : navTop ? (navHost === null || navHost === undefined ? null : createPortal(navBar, navHost)) : navBar}
       <div className="op-browser__body">
         {available ? <BrowserTabRail objectiveId={objectiveId} language={language} /> : null}
         <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}${mode === "annotate" ? " is-annotating" : ""}`} ref={viewportRef}>
@@ -1814,7 +1863,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             </>
           ) : activeTab ? (
             // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
-            <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: objectiveId }}>
+            <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: BROWSER_GLOBAL_ID }}>
               {shownBackdrop ? (
                 <img
                   className="op-browser__backdrop"
@@ -1835,7 +1884,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
           )}
         </div>
       </div>
-    </div>}
-    </BrowserSurfaceContent>
+    </div>
   );
+  return host ? <BrowserSurfaceContent role="body">{content}</BrowserSurfaceContent> : content;
 }
