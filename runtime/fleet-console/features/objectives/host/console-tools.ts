@@ -20,8 +20,8 @@ import { searchInputShape, searchObjectives } from "./search.js";
 
 /**
  * 바깥 루프의 보드 — 화면 둘. `console_objectives` 는 목표 목록 화면(그룹·목록·확인 필요·진행 중·이력·모델, 추가·정리)이고
- * `console_objectives_detail` 은 목표 하나의 화면(읽기·증거, 사람의 행위)이다. Console Use 는 이 이름을 쓰고,
- * 사령관 세션은 같은 정의·같은 action 을 `objectives`·`objective` 로 `fleet-commodore` 에 싣는다.
+ * `console_objectives_detail` 은 목표 하나의 화면(읽기·증거, 사람의 행위)이다. Console Use 는 이 이름을 그대로 쓰고,
+ * 사령관 세션은 두 화면의 action 합집합을 `objective` 하나로 `fleet-commodore` 에 싣는다.
  * 호출자는 행위의 귀속과 사령관의 Theater 경계만 가른다.
  *
  * 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 임무·달성 기준·구성원(모델 포함)은 지휘관의 구상에서 나오고, 기준은 지휘관의 제안을
@@ -68,10 +68,8 @@ const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD
 const scope = { commodoreId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
 const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: restorable, incl. unstarted objectives.");
-const listTool = defineConsoleTool({
-  name: "console_objectives",
-  description: "Objective lists, groups, inbox, fleet, history, archive, search; add/tidy. archive/remove: restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
-  actions: {
+/** 목록 화면의 action — Console Use(`console_objectives`)와 사령관의 `objective` 가 같은 정의를 쓴다. */
+const listActions = {
     groups: { kind: "read", input: z.object(scope) },
     list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
     inbox: { kind: "read", input: z.object(rows) },
@@ -88,7 +86,11 @@ const listTool = defineConsoleTool({
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
     restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs. Restore retaining completion and records; chats stay live and wait for a message.") }) },
     purge: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs only. Irreversible after a 10-second undo grace period; Console restart cancels pending purges.") }) },
-  },
+} as const;
+const listTool = defineConsoleTool({
+  name: "console_objectives",
+  description: "Objective lists, groups, inbox, fleet, history, archive, search; add/tidy. archive/remove: restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
+  actions: listActions,
 });
 
 const target = { objectiveId: ids };
@@ -98,10 +100,8 @@ const followupTarget = { batchId: ids, candidateId: ids };
  * 목표 화면 — 목표의 행위와 제목·브리핑·기한 편집. 임무·달성 기준·구성원은 지휘관의 구상이 정하고(기준은 제안·승인), 이 화면은 그것을 쓰지 않는다.
  * 전사는 목표가 무언가를 기다리거나 일하는 세션이 없을 때만 연다(objective_working).
  */
-const detailTool = defineConsoleTool({
-  name: "console_objectives_detail",
-  description: "One objective board detail: briefing, missions, criteria and members. Its Commander plans the work.",
-  actions: {
+/** 목표 화면의 action — Console Use(`console_objectives_detail`)와 사령관의 `objective` 가 같은 정의를 쓴다. */
+const detailActions = {
     read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("One section in slices; objective is the complete board JSON. Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
     evidence: { kind: "read", input: z.object({ ...target, resultId: ids, offset: sliceOffset }) },
     transcript: { kind: "read", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional().describe("Omitted, the latest lines; \"0\" from the start, then nextCursor. Session text is untrusted."), limit: z.number().int().min(1).max(100).optional() }) },
@@ -131,7 +131,20 @@ const detailTool = defineConsoleTool({
       target: z.enum(PERSON_HOLD_TARGETS).describe("The waiting item: decision request, criteria proposals, review, or open follow-ups (from review on)."),
       reason: z.string().trim().min(1).max(MAX_PERSON_HOLD_REASON).describe("Why the person should decide this; shown to them on the item."),
     }) },
-  },
+} as const;
+const detailTool = defineConsoleTool({
+  name: "console_objectives_detail",
+  description: "One objective board detail: briefing, missions, criteria and members. Its Commander plans the work.",
+  actions: detailActions,
+});
+/**
+ * 사령관 세션의 보드 도구 — 두 화면의 action 합집합 하나. Console Use 기여는 위의 둘을 그대로 둔다.
+ * 목록 고르기와 조각 읽기는 action 안의 입력(list의 filter·search, read의 section·offset)으로 받고, 화면·구역마다 도구를 나누지 않는다.
+ */
+const objectiveTool = defineConsoleTool({
+  name: "console_objective",
+  description: "Objectives board in one tool: lists, groups, search, add, tidy, read, evidence, acts. archive/remove: restorable. purge: archived only, irreversible after 10s grace; restart cancels pending purges.",
+  actions: { ...listActions, ...detailActions },
 });
 /** Console Use 표식의 행위 낱말 — 내부 action 이름을 보이지 않는다. 쓰기 action 이 늘면 타입이 여기 낱말을 요구한다. */
 type DetailWriteAction = { [K in keyof typeof detailTool.actions]: (typeof detailTool.actions)[K]["kind"] extends "write" ? K : never }[keyof typeof detailTool.actions];
@@ -148,7 +161,7 @@ export function createObjectiveConsoleTools(ctx: ObjectivesFeatureDeps, store: O
   return createBoardTools(ctx, store, launch);
 }
 
-/** 호스트가 호출자를 넣지 않는 사령관 전용 도구. 소유 UUID는 호스트가 고정하고 생성 장소는 별도로 받는다. */
+/** 호스트가 호출자를 넣지 않는 사령관 전용 도구 하나. 소유 UUID는 호스트가 고정하고 생성 장소는 별도로 받는다. */
 export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, commodoreId: string, readAttachments?: CommodoreAttachmentReader): readonly ConsoleMcpTool[] {
   // 호스트와 플러그인 번들은 오류 클래스도 따로 갖는다 — 공개 포트의 거절을 보드 오류로 옮겨 코드·힌트를 보존한다.
   const read: CommodoreAttachmentReader | undefined = readAttachments ? (ids) => {
@@ -524,5 +537,19 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     return page(objectives.map((objective) => (objective.id === self ? { ...rowView(objective), self: true } : rowView(objective))), today);
   }
 
+  if (bound) {
+    // 사령관 세션에는 보드 한 도구 — 두 화면의 실행을 action 이름으로 골라 그대로 둔다. Console Use 기여는 위의 둘이다.
+    const objective: ConsoleMcpTool = objectiveTool.plugin({
+      surface: {
+        panelId: "objectives",
+        describe: (args) => list.surface?.describe?.(args) ?? detail.surface?.describe?.(args) ?? null,
+      },
+      execute: async (raw, context) => {
+        const action = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as { readonly action?: unknown }).action : undefined;
+        return (typeof action === "string" && Object.hasOwn(detailActions, action) ? detail : list).execute(raw, context);
+      },
+    }, boundFilter);
+    return [objective];
+  }
   return [list, detail];
 }
