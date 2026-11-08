@@ -77,7 +77,10 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   const now = deps.now ?? Date.now;
   const cleanups: (() => void)[] = [];
   let disposed = false;
-  const runner: Runner = { commodoreId, seen: waitingKeys(deps.objectives(commodoreId), deps.observe), statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: !hasOpen(deps.objectives(commodoreId)), selfWrites: new Map(), moves: new Map(), idleSince: new Map(), settled: new Map(), restSince: new Map(), blockedHeard: new Map() };
+  // 자문 키는 기동 때 들은 것으로 심지 않는다. 미응답 질문은 아래 첫 점검에서 id마다 한 번만 깨운다.
+  const seen = waitingKeys(deps.objectives(commodoreId), deps.observe);
+  for (const key of seen) if (key.startsWith("consultation:")) seen.delete(key);
+  const runner: Runner = { commodoreId, seen, statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: !hasOpen(deps.objectives(commodoreId)), selfWrites: new Map(), moves: new Map(), idleSince: new Map(), settled: new Map(), restSince: new Map(), blockedHeard: new Map() };
   // 감시 이전부터 멈춘 보드는 첫 점검(`settle(…, true)`)이 서명을 채우고, 지난 종료가 듣지 못했다고 남긴 목표(`sink.unheard`)가
   // 아니면 기동으로는 깨우지 않는다. 그 뒤 같은 대기가 계속되면 서명·대기 시작이 모두 같아 다시 깨우지 않는다.
   const wake = (_runner: Runner, code: WakeCode, input?: Parameters<CommodoreWakeSink["wake"]>[1]) => sink.wake(code, input);
@@ -257,7 +260,11 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   const settleTimer = setInterval(() => settle(runner, false), SETTLE_CHECK_MS);
   settleTimer.unref?.();
   cleanups.push(() => clearInterval(settleTimer));
-  queueMicrotask(() => settle(runner, true));
+  queueMicrotask(() => {
+    if (disposed || !sink.automatic()) return;
+    waitingChanged(runner, deps.objectives(runner.commodoreId));
+    settle(runner, true);
+  });
 
   /** 이번 턴의 보드 요약 — 깨운 목표의 지금 자리와 지난 턴 뒤 이동, 그리고 깨우지 않은 목표의 이동. 이동 기록은 여기서 비운다. */
   const briefOf = (runner: Runner, ids: readonly string[]): string | null => {
