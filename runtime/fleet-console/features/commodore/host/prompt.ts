@@ -281,7 +281,7 @@ export function memoryNote(index: string, options: { readonly omit?: boolean } =
   const text = index.trim();
   if (!text) return "Your fleet-memory is empty.";
   const cut = text.length > MAX_MEMORY_INDEX_PROMPT ? `${text.slice(0, MAX_MEMORY_INDEX_PROMPT)}\n… (index truncated; memory list shows every entry)` : text;
-  return `Your fleet-memory index (read entries with memory list):\n${cut}`;
+  return `Your fleet-memory index (read an entry with memory view):\n${cut}`;
 }
 
 /** 교대·재시작으로 새로 연 세션의 첫 턴 머리 — 최근 행위 요약만. */
