@@ -2053,11 +2053,10 @@ describe("Objectives contract", () => {
       return found;
     });
     const firstImage = image();
-    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "c1", readAttachments) as [ConsoleMcpTool, ConsoleMcpTool];
-    // 사령관 묶음은 두 화면 — action 이 목록 화면의 것이면 목록 도구, 아니면 목표 화면 도구로 간다.
-    const toolFor = (args: Record<string, unknown>) => (String(args.action) in commodoreList.actionSchema!.actions ? commodoreList : commodore);
+    const [commodore] = createCommodoreBoardTools(ctx, store, launch, "c1", readAttachments) as [ConsoleMcpTool];
+    // 사령관 묶음은 보드 한 도구 — 두 화면의 action 을 그대로 받는다.
     const board = async (args: Record<string, unknown>) => {
-      const result = await toolFor(args).execute(args, { cwd: workspace }) as { isError: boolean; structuredContent: Record<string, unknown> };
+      const result = await commodore.execute(args, { cwd: workspace }) as { isError: boolean; structuredContent: Record<string, unknown> };
       expect(result.isError).toBe(false);
       return result.structuredContent;
     };
@@ -2067,7 +2066,7 @@ describe("Objectives contract", () => {
       return result.structuredContent;
     };
     // 사령관이 candidates 밖의 모델을 고르면, 또는 고르지 않았고 사람의 설정도 없으면 목표를 만들지 않는다 — 보드 기본이나 라우팅으로 넘어가지 않는다.
-    const offAdd = async (args: Record<string, unknown>) => ((await commodoreList.execute({ action: "add", theaterId: "t1", title: "Off model", ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
+    const offAdd = async (args: Record<string, unknown>) => ((await commodore.execute({ action: "add", theaterId: "t1", title: "Off model", ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
     expect(await offAdd({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7" });
     expect(await offAdd({})).toMatchObject({ error: "commander_model_required", hint: expect.stringContaining("candidates") });
     expect(store.list("c1")).toEqual([]);
@@ -2118,7 +2117,7 @@ describe("Objectives contract", () => {
     expect(await attachmentRefusal({ ...edit, attachmentIds: [image(Buffer.from("not an image"))] })).toBe("attachment_unsupported");
     expect(await attachmentRefusal({ ...edit, attachmentIds: [image(Buffer.alloc(10 * 1024 * 1024 + 1))] })).toBe("attachment_too_large");
     expect(await attachmentRefusal({ ...edit, attachmentIds: Array.from({ length: 18 }, () => image()) })).toBe("too_many_attachments");
-    expect(await attachmentRefusal({ ...edit, attachmentIds: [firstImage] }, createCommodoreBoardTools(ctx, store, launch, "t2", readAttachments)[1]!)).toBe("other_theater");
+    expect(await attachmentRefusal({ ...edit, attachmentIds: [firstImage] }, createCommodoreBoardTools(ctx, store, launch, "t2", readAttachments)[0]!)).toBe("other_theater");
     expect(await attachmentRefusal({ ...edit, attachmentIds: [firstImage] }, consoleDetail)).toBe("objectiveRecord_caller_required");
     // 이진들이 쓰인 뒤 레코드 교체가 실패해도 옛 브리핑·첨부·귀속은 그대로이고 새 이진은 남지 않는다.
     const rename = fs.renameSync;
@@ -2129,7 +2128,7 @@ describe("Objectives contract", () => {
     try {
       expect(await attachmentRefusal({ ...edit, attachmentIds: [secondImage, thirdImage] })).toBe("objectives_failed");
       const count = store.list("c1").length;
-      expect(await attachmentRefusal({ action: "add", theaterId: "t1", title: "Must not exist", attachmentIds: [firstImage, secondImage] }, commodoreList)).toBe("objectives_failed");
+      expect(await attachmentRefusal({ action: "add", theaterId: "t1", title: "Must not exist", attachmentIds: [firstImage, secondImage] }, commodore)).toBe("objectives_failed");
       expect(store.list("c1")).toHaveLength(count);
     } finally { failedWrite.mockRestore(); }
     expect(JSON.stringify(store.find(id))).toBe(beforeAttachments);
@@ -2210,7 +2209,7 @@ describe("Objectives contract", () => {
     expect(store.find(personal)).toMatchObject({ archived: true, hasSession: true });
     expect(await board({ action: "restore", objectiveIds: [personal] })).toMatchObject({ restored: [personal] });
     expect(store.find(personal)).toMatchObject({ archived: false, hasSession: true });
-    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[1]!, { action: "read", objectiveId: id })).toBe("other_theater");
+    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[0]!, { action: "read", objectiveId: id })).toBe("other_theater");
     // 사령관은 사람 메시지 없이 완료 목표를 보관한다. 미기동 완료 목표도 삭제하지 않고 완료 기록과 함께 보관한다.
     const completed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Completed before launch", groupId: null });
     await launch.complete(completed.id);
@@ -2425,7 +2424,7 @@ describe("Objectives contract", () => {
       nextId = completed.followupBatches[0]!.items[0]!.objectiveId;
     });
     const restarted = restart();
-    const replay = createCommodoreBoardTools(ctx, restarted.store, restarted.launch, "c1")[1]!;
+    const replay = createCommodoreBoardTools(ctx, restarted.store, restarted.launch, "c1")[0]!;
     expect((await replay.execute(completeSelection, { cwd: workspace }) as { structuredContent: unknown }).structuredContent).toMatchObject({ ok: true });
     expect(restarted.store.find(id)!.followupBatches).toHaveLength(1);
     expect(restarted.store.list("c1").filter((entry) => entry.origin?.candidateId === candidate.id).map((entry) => entry.id)).toEqual([nextId]);
@@ -2464,7 +2463,7 @@ describe("Objectives contract", () => {
       let offset = 0;
       let total = 0;
       do {
-        const result = await commodoreList.execute({ ...args, ...(offset ? { offset } : {}) }, { cwd: workspace }) as { isError: boolean; content: { text: string }[]; structuredContent: Page };
+        const result = await commodore.execute({ ...args, ...(offset ? { offset } : {}) }, { cwd: workspace }) as { isError: boolean; content: { text: string }[]; structuredContent: Page };
         expect(result.isError).toBe(false);
         expect(Buffer.byteLength(result.content[0]!.text, "utf8")).toBeLessThanOrEqual(8_000);
         const page = result.structuredContent;
@@ -2637,7 +2636,7 @@ describe("Objectives contract", () => {
       expect(following.structuredContent.nextOffset).toBeNull();
       expect(Buffer.byteLength(compactInbox.content[0]!.text, "utf8")).toBeLessThanOrEqual(8_000);
       expect.soft(compactInbox.structuredContent.objectives).toContainEqual(expect.objectContaining({ id, rowTruncated: true, failedMembers: 1, reasons: ["member-failed"] }));
-      const detail = createCommodoreBoardTools(ctx, store, launch, "c1")[1]!;
+      const detail = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
       let joined = "";
       let offset = 0;
       do {
