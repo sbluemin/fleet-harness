@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // Act as a fake-claude launch on one of the MCP servers Console gave it (e.g. fleet-objectives, fleet-computer-use).
-// Objective commander and member launches do not receive fleet-console-use.
 // Usage: node fake-claude-mcp.mjs --dir <FAKE_CLAUDE_DIR> --server <name> --tool <tool> [--args '<json>'] [--pid <launch pid>]
 //        node fake-claude-mcp.mjs --dir <FAKE_CLAUDE_DIR> --server <name> --tools [--pid <launch pid>]   (tools/list: descriptions, inputSchema limits)
 //        node fake-claude-mcp.mjs --dir <FAKE_CLAUDE_DIR> --list            (launches with saved MCP configs; no secrets)

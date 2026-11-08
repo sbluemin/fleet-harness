@@ -199,7 +199,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   };
   const agentCliPathStore = createAgentCliPathStore(ctx.dataDir);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
-  // 목표의 지휘관·구성원에게는 fleet-console-use 를 넣지 않는다. Console Use 는 `consoleUse` 를 요청한 연결에만 연다.
   const computerUseMcp = ctx.host.computerUseMcp?.connect();
   if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());
   const browserMcp = ctx.host.browserMcp?.connect();

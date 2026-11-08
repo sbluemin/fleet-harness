@@ -4,8 +4,7 @@
 import tsParser from "@typescript-eslint/parser";
 import reactHooks from "eslint-plugin-react-hooks";
 
-// 검사 범위: 브라우저에서 React 로 렌더되는 TS/TSX 만. 서버·노드 코드에는 훅이 아닌 `use*()` 가 있고(예:
-// console-use 의 useScope), 테스트도 오탐을 내므로 뺀다.
+// 검사 범위: 브라우저에서 React 로 렌더되는 TS/TSX 만. 서버·노드 코드에는 훅이 아닌 `use*()` 가 있고, 테스트도 오탐을 내므로 뺀다.
 const FILES = [
   "runtime/fleet-console/**/client/**/*.{ts,tsx}", // core/client + features/*/client
   "runtime/fleet-console/foundation/**/*.tsx", // foundation 의 브라우저 표면(font-picker/browser.tsx 등)
