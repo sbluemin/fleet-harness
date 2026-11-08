@@ -1,10 +1,23 @@
 import type { ObjectiveRecordsHost } from "../../objectives/host/records/ports.js";
-import type { ConsoleUseActions, SidebarPosition } from "../../console-use/host/console-use.js";
 import type { createObjectiveRecordsStore, ObjectiveRecord } from "../../objectives/host/records/objective-records-domain.js";
 import type { createDeferredDeletionCoordinator } from "./deferred-deletion.js";
+import type { ConsoleCaller } from "../../execution/shared/control.js";
 const OBJECTIVE_CLOSING_EVENT_CHANNEL = "objective:closing";
 const OBJECTIVE_RENAMED_EVENT_CHANNEL = "objective:renamed";
 const CONSOLE_REVEAL_EVENT_CHANNEL = "objective:reveal";
+
+export type SidebarPosition = "first" | "last" | { readonly before: string } | { readonly after: string };
+
+export interface WorkspaceActions {
+  close?(objectiveId: string, by?: ConsoleCaller): Promise<import("../../objectives/shared/records/archive.js").ObjectiveArchiveReceipt | null> | { readonly deletionId: string; readonly undoUntil: string } | null;
+  rename?(objectiveId: string, title: string): boolean;
+  groups?(commodoreId: string, theaterId?: string): readonly { readonly id: string; readonly name: string; readonly color: string; readonly theaterId: string; readonly order: number }[];
+  groupPatch?(input: { readonly commodoreId: string; readonly id: string; readonly name?: string; readonly color?: string; readonly delete?: boolean; readonly position?: SidebarPosition }): { readonly ok: true; readonly name: string; readonly theaterId: string; readonly groupOrder?: readonly string[] } | { readonly ok: false; readonly error: string };
+  using?(): { readonly console: readonly string[]; readonly computer: string | null; readonly browser: readonly string[] };
+  group?(input: { readonly commodoreId: string; readonly mode: "create" | "assign" | "remove"; readonly theaterId: string; readonly name?: string; readonly color?: string; readonly groupId?: string; readonly objectiveIds: readonly string[] }): { readonly group: { readonly id: string; readonly name: string; readonly color: string } | null; readonly members: readonly string[] };
+  reorder?(input: { readonly commodoreId: string; readonly theaterId: string; readonly objectiveIds: readonly string[]; readonly position: SidebarPosition; readonly groupId: string | null }): { readonly objectiveIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };
+  reveal?(objectiveId: string, reason: string, caller?: ConsoleCaller): void;
+}
 
 function insertPosition<T extends { readonly id: string }>(remaining: readonly T[], block: readonly T[], position: SidebarPosition): T[] {
   const anchor = typeof position === "string" ? null : "before" in position ? position.before : position.after;
@@ -19,7 +32,7 @@ interface WorkspaceActionDeps {
   readonly objectiveRecords: ReturnType<typeof createObjectiveRecordsStore>;
   readonly deletionCoordinator: ReturnType<typeof createDeferredDeletionCoordinator>;
   readonly archive?: (id: string) => Promise<import("../../objectives/shared/records/archive.js").ObjectiveArchiveReceipt>;
-  readonly listObjectiveUse: NonNullable<ConsoleUseActions["using"]>;
+  readonly listObjectiveUse: NonNullable<WorkspaceActions["using"]>;
   readonly patchObjective: ObjectiveRecordsHost["patch"];
   readonly publishPluginEvent: (channel: string, payload: unknown) => void;
   readonly persistDurableState: () => void;
@@ -27,7 +40,7 @@ interface WorkspaceActionDeps {
   readonly broadcastGroupChanged: (group: ReturnType<ReturnType<typeof createObjectiveRecordsStore>["createGroup"]>) => void;
   readonly broadcastObjectiveChanged: (node: ObjectiveRecord) => void;
 }
-export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseActions {
+export function createWorkspaceActions(deps: WorkspaceActionDeps): WorkspaceActions {
   const { objectiveRecords, deletionCoordinator, listObjectiveUse, patchObjective, publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged } = deps;
   return {
     using: listObjectiveUse,
@@ -35,7 +48,7 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
       if (deletionCoordinator.hasPendingObjective(objectiveId)) return null;
       if (!deps.archive) throw new Error("capability_unavailable");
       const targetTitle = objectiveRecords.get(objectiveId)?.title ?? objectiveId;
-      const caller = by.kind === "objectiveRecord" ? { ...by, title: objectiveRecords.get(by.objectiveId)?.title ?? by.objectiveId } : by;
+      const caller = by?.kind === "objectiveRecord" ? { ...by, title: objectiveRecords.get(by.objectiveId)?.title ?? by.objectiveId } : by;
       const receipt = await deps.archive(objectiveId);
       publishPluginEvent(OBJECTIVE_CLOSING_EVENT_CHANNEL, { receipt, targetTitle, by: caller });
       return receipt;

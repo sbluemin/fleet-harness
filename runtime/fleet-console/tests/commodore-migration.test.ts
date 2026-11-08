@@ -136,7 +136,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
       events: { registerSseChannel: () => () => undefined, publish: () => undefined },
       http: { readJsonBody: async () => request, writeJson: (_res: unknown, status: number, value: unknown) => { response = { status, value }; } },
       security: { isTerminalAuthorized: () => true },
-      agent: { baseUrl: () => null, consoleUse: { connect: () => { throw new Error("No board must execute"); } }, resolveExecutablePath: async () => { throw new Error("No CLI must execute"); } },
+      agent: { baseUrl: () => null, resolveExecutablePath: async () => { throw new Error("No CLI must execute"); } },
 
     } as unknown as CommodoreFeatureDeps;
     feature = createCommodoreFeature(deps);

@@ -1,4 +1,3 @@
-import type { ConsoleUseMcpHost } from "../../execution/shared/tools.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
@@ -23,7 +22,7 @@ export interface ObjectivesFeatureDeps {
   readonly server: ServerOriginPort;
   readonly http: HttpPort;
   readonly security: HttpSecurityPort;
-  readonly consoleUse: Pick<ConsoleUseMcpHost, "contribute">;
+  readonly consoleUse?: { contribute?(tools: readonly ConsoleMcpTool[]): () => void };
   readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[]) => () => void;
   readonly commodoreCommander?: CommodoreFeature["host"]["commander"];
   /** 새 지휘관 생성 시에만 읽고 저장하는 사령관별 정책. */

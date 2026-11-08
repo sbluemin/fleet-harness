@@ -944,10 +944,6 @@
   color: var(--agent-control-badge);
 }
 
-.side-bar-cluster-row-use.is-console .side-bar-cluster-row-use-glyph {
-  color: var(--text-console-use);
-}
-
 .side-bar-cluster-row-use-glyph > svg {
   width: 12px;
   height: 12px;

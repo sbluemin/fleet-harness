@@ -8,14 +8,13 @@ import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { EventPort } from "@fleet-console/infra/http/host-ports";
 import type { McpTransport } from "@fleet-console/infra/http/mcp-transport";
-import type { ConsoleUseMcpHost } from "../../console-use/shared/tools.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import type { AgentCliPlugin, LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/infra/http/routing";
 
-export type ConsoleRuntimeHost = { readonly consoleUse: ConsoleUseMcpHost; readonly mcpTransport?: McpTransport; readonly events: EventPort; readonly server: ServerOriginPort; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly lifecycle: CleanupPort; readonly experiments?: ExperimentsHost; } & {
+export type ConsoleRuntimeHost = { readonly mcpTransport?: McpTransport; readonly events: EventPort; readonly server: ServerOriginPort; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly lifecycle: CleanupPort; readonly experiments?: ExperimentsHost; } & {
   readonly admiralMcp: Pick<AdmiralMcpHost, "connect">;
   readonly computerUseMcp?: { connect(): import("../../computer-use/host/mcp.js").ComputerUseMcpConnection; revokeObjective(objectiveId: string): void; endParticipant(objectiveId: string): void };
   readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeObjective(objectiveId: string): void | Promise<void>; bindTerminalPaste(paste: (objectiveId: string) => boolean): () => void; endAgentSession(objectiveId: string): void };

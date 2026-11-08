@@ -39,8 +39,6 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
       return true;
     }
     const path = pathname.slice(`${ctx.basePath}/experiments`.length) || "/";
-    const consoleUseMatch = /^\/sessions\/([^/]+)\/console-use$/u.exec(path);
-    if (consoleUseMatch) return handleConsoleUse(req, res, decodeURIComponent(consoleUseMatch[1] ?? ""));
     const computerUseMatch = /^\/sessions\/([^/]+)\/computer-use$/u.exec(path);
     if (computerUseMatch) return handleComputerUse(req, res, decodeURIComponent(computerUseMatch[1] ?? ""));
     const useRequestMatch = /^\/sessions\/([^/]+)\/use-requests\/([^/]+)$/u.exec(path);
@@ -48,35 +46,12 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
     ctx.host.http.writeJson(res, 404, { error: "not_found" });
     return true;
   }, [
-    { method: "POST", path: "/sessions/:sessionId/console-use", summary: "Allow or revoke Console use for an Agent Objective (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/computer-use", summary: "Allow or revoke Computer Use for an Agent Objective (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/sessions/:sessionId/use-requests/:requestId", summary: "Answer an Agent Objective's pending Console use or Computer Use request from its panel: decline, allow for this turn, or keep allowing.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/use-requests/:requestId", summary: "Answer an Agent Objective's pending Computer Use request from its panel: decline, allow for this turn, or keep allowing.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
   /**
-   * Objective 하나에 콘솔 사용을 허용하거나 거둔다. 기록은 payload에 남고 판정은 도구 호출마다
-   * 다시 읽히므로, 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다. 언어를 함께 적는 이유는
-   * 거부 응답이 사용자에게 그대로 옮길 문장을 실어야 하는데 호스트 설정의 `auto`는 호스트가
-   * 풀 수 없기 때문이다 — 켤 때 브라우저가 말해 준 언어를 그대로 보관한다.
-   */
-  async function handleConsoleUse(req: http.IncomingMessage, res: http.ServerResponse, objectiveId: string): Promise<boolean> {
-    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    const body = await ctx.host.http.readJsonBody<{ readonly enabled?: unknown; readonly language?: unknown }>(req);
-    if (!body || typeof body.enabled !== "boolean") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
-    const language = body.language === "ko" ? "ko" : "en";
-    const objectiveRecord = getAgentObjective(ctx, objectiveId);
-    if (!objectiveRecord) { ctx.host.http.writeJson(res, 404, { error: "objectiveRecord_not_found" }); return true; }
-    if (refuseChildSwitch(ctx, res, objectiveRecord)) return true;
-    const payload = { ...(objectiveRecord ?? {}) };
-    if (body.enabled) payload.consoleUse = { enabled: true, language };
-    else { delete payload.consoleUse; ctx.host.useRequests?.revoke(objectiveRecord.id, "console"); }
-    ctx.host.objectiveRecords.patch(objectiveRecord.id, { ...payload });
-    ctx.host.http.writeJson(res, 200, { consoleUse: body.enabled });
-    return true;
-  }
-
-  /**
-   * Objective 하나에 컴퓨터 사용을 허용하거나 거둔다 — 콘솔 사용과 같은 정책이다. 기록은 payload에
+   * Objective 하나에 컴퓨터 사용을 허용하거나 거둔다. 기록은 payload에
    * 남고 판정은 도구 호출마다 다시 읽힌다. 거둘 때는 그 Objective이 잡고 있던 기기도 곧바로 놓는다.
    */
   async function handleComputerUse(req: http.IncomingMessage, res: http.ServerResponse, objectiveId: string): Promise<boolean> {
@@ -108,17 +83,17 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
     const body = await ctx.host.http.readJsonBody<{ readonly decision?: unknown; readonly capability?: unknown; readonly language?: unknown }>(req);
     const decision = body?.decision;
     const capability = body?.capability;
-    if (decision === "turn" || (decision !== "deny" && decision !== "always") || (capability !== "console" && capability !== "computer")) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    if (decision === "turn" || (decision !== "deny" && decision !== "always") || capability !== "computer") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     const objectiveRecord = getAgentObjective(ctx, objectiveId);
     if (!objectiveRecord) { ctx.host.http.writeJson(res, 404, { error: "objectiveRecord_not_found" }); return true; }
     const pending = requests.list().requests.find((request) => request.id === requestId && request.objectiveId === objectiveRecord.id);
     if (!pending) { ctx.host.http.writeJson(res, 404, { error: "request_not_found" }); return true; }
     if (pending.capability !== capability) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
-    if (decision !== "deny" && capability === "computer" && !readExperiments(ctx).computerUse) { ctx.host.http.writeJson(res, 409, { error: "experiment_disabled" }); return true; }
+    if (decision !== "deny" && !readExperiments(ctx).computerUse) { ctx.host.http.writeJson(res, 409, { error: "experiment_disabled" }); return true; }
     if (decision === "always") {
       const language = body?.language === "ko" ? "ko" : "en";
       const payload = { ...(objectiveRecord ?? {}) };
-      payload[capability === "console" ? "consoleUse" : "computerUse"] = { enabled: true, language };
+      payload.computerUse = { enabled: true, language };
       ctx.host.objectiveRecords.patch(objectiveRecord.id, { ...payload });
     }
     const answered = requests.answer(objectiveRecord.id, requestId, decision);

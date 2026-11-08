@@ -1874,7 +1874,6 @@ describe("commodore session", () => {
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();
     expect(options.systemPrompt).not.toContain("project skills of the Theaters you had");
-    expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["fleet-commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "memory_search", "issue_list", "taskforce_post", "console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] description changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]\n\nCurrent alias: none\. You have no alias for this turn\.$/);

@@ -17,7 +17,6 @@ import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCo
 import { openArchiveSheet } from "../integration/objective-archive.js";
 import type { ArchiveOutcome } from "../integration/objective-actions.js";
 import { ApiError, undoObjectiveArchive } from "../../../../features/execution/client/objective-records.js";
-import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
 import { FleetAtAGlanceHost } from "../../../../features/onboarding/client/fleet-at-a-glance.js";
 import { FeatureCardsHost } from "../../../../features/onboarding/client/feature-cards.js";
@@ -106,8 +105,6 @@ function ConnectedApp() {
   const surfaceDescriptors = useExpandedSurfaceDescriptors();
   const globalSettings = useGlobalSettingsStore();
   const [pendingUndos, setPendingUndos] = useState<readonly PendingUndo[]>([]);
-  // 에이전트가 치운 Objective 의 저자 — 되돌리기 배너가 "누가 보관했는지" 를 말한다. 배너가 내려가면 함께 잊는다.
-  const [undoAuthors, setUndoAuthors] = useState<ReadonlyMap<string, { readonly caller: string; readonly title: string }>>(new Map());
   const [undoClock, setUndoClock] = useState(Date.now());
   // 보관·되돌리기가 거절됐을 때의 짧은 안내 — 조용히 삼키지 않는다.
   const [undoNotice, setUndoNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
@@ -370,17 +367,6 @@ function ConnectedApp() {
     else setUndoNotice({ key: "chrome.toast.archiveFailed", nonce: Date.now() });
   }, [enqueueUndo]);
 
-  // Console Use 의 보관 — 사람이 누른 것과 같은 되돌리기 창을 이 화면에도 세운다.
-  useEffect(() => subscribeClosingByAgent((closing: ClosingByAgent) => {
-    const caller = closing.by.kind === "objectiveRecord" ? closing.by.title ?? closing.by.objectiveId : closing.by.pluginId;
-    const entry = closing.kind === "archive"
-      ? archiveUndo(closing.receipt, Date.now() + UNDO_WINDOW_MS)
-      : closing.receipt.kind === "objectiveRecord" ? deletionUndo(closing.receipt) : null;
-    if (!entry) return;
-    setUndoAuthors((current) => new Map(current).set(entry.key, { caller, title: closing.targetTitle }));
-    enqueueUndo(entry);
-  }), [enqueueUndo]);
-
   const undoLastClose = useCallback(() => {
     if (undoInFlightRef.current) return;
     const entry = latestPendingUndo(pendingUndosRef.current, Date.now());
@@ -485,7 +471,6 @@ function ConnectedApp() {
     });
   }, [canUndoLastClose, consoleLocale, navigate, railBindings, registry.providers, resolvePanelShortcut, undoLastClose]);
 
-  const undoAuthor = activeUndo ? undoAuthors.get(activeUndo.key) : undefined;
   const undoTitle = activeUndo === null
     ? ""
     : activeUndo.kind === "deletion"
@@ -493,14 +478,12 @@ function ConnectedApp() {
         ? (activeUndo.deletion.archivedObjectiveCount ?? 0) > 0
           ? t("chrome.toast.theaterForgottenWithArchived", { count: activeUndo.deletion.archivedObjectiveCount ?? 0 })
           : t("chrome.toast.theaterForgotten")
-        : undoAuthor ? t("chrome.toast.objectiveRecordClosedBy", undoAuthor) : t("chrome.toast.objectiveRecordClosed")
-      : undoAuthor
-        ? t("chrome.toast.objectiveRecordArchivedBy", undoAuthor)
-        : activeUndo.receipt.objectiveIds.length > 1
-          ? t("chrome.toast.objectiveRecordsArchived", { count: activeUndo.receipt.objectiveIds.length })
-          : t("chrome.toast.objectiveRecordArchived");
+        : t("chrome.toast.objectiveRecordClosed")
+      : activeUndo.receipt.objectiveIds.length > 1
+        ? t("chrome.toast.objectiveRecordsArchived", { count: activeUndo.receipt.objectiveIds.length })
+        : t("chrome.toast.objectiveRecordArchived");
   // 모바일 배치(S-33): 「「{제목}」을(를) 보관했습니다」 + 오른쪽 글자 버튼(되돌리기 · 보관함) — 데스크톱의 세 줄 토스트를 쓰지 않는다.
-  const mobileUndoText = activeUndo === null ? "" : activeUndo.kind === "archive" && !undoAuthor && activeUndo.receipt.objectiveIds.length <= 1
+  const mobileUndoText = activeUndo === null ? "" : activeUndo.kind === "archive" && activeUndo.receipt.objectiveIds.length <= 1
     ? (() => { const title = recallArchivedTitle(activeUndo.receipt.targetId); return title ? t("mobile.toast.archived", { title }) : undoTitle; })()
     : undoTitle;
   const deletionToast = (

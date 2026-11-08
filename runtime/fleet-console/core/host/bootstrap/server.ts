@@ -46,7 +46,6 @@ import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gate
 import { COMMANDER_CANDIDATES_INSTRUCTIONS, createGatewayCandidatesTool, FLEET_AI_GATEWAY_MCP_SERVER } from "../../../features/ai-gateway/host/candidates-tool.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
 import { createConsoleControl } from "../../../features/execution/host/console-control.js";
-import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
@@ -527,7 +526,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   let stopForArchive: ((objectiveRecord: ObjectiveRecord) => Promise<void>) | null = null;
   let purgeCoreObjective: ((objectiveId: string) => void) | null = null;
-  let resumeArchivedObjective: ConsoleUseActions["resume"];
+  let resumeArchivedObjective: import("../../../features/execution/host/agent/routes.js").AgentExecutionActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   let quotaMigrationReady = false;
   const quotaSettings = createQuotaSettingsStore(durablePaths.dir, () => quotaMigrationReady);
@@ -920,59 +919,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
     commodoreExists: (commodoreId) => !ownership?.isDeleting(commodoreId) && ownership?.entities.dirOf(commodoreId) != null,
   });
-  const consoleUseActivity = new Map<string, number>();
   const CONSOLE_REVEAL_EVENT_CHANNEL = "objective:reveal";
   pluginSseChannels.add(CONSOLE_REVEAL_EVENT_CHANNEL);
-  // 제스처 채널 — 호출자·도구·대상·시각만. 읽은 내용은 싣지 않는다.
-  const CONSOLE_CALL_EVENT_CHANNEL = "console-use:call";
-  pluginSseChannels.add(CONSOLE_CALL_EVENT_CHANNEL);
   // 에이전트가 닫으면 사람 화면에도 되돌리기 배너가 서야 한다 — 저자와 함께.
   const OBJECTIVE_CLOSING_EVENT_CHANNEL = "objective:closing";
   pluginSseChannels.add(OBJECTIVE_CLOSING_EVENT_CHANNEL);
   const listObjectiveUse = () => {
     const experiments = readExperimentSettings(consoleSettingsStore);
-    const consoleObjectiveRecords: string[] = [];
-    for (const [id] of consoleUseActivity) {
-      const objectiveRecord = objectiveRecords.get(id);
-      if (!objectiveRecord) continue;
-      if ((objectiveRecord.consoleUse as { enabled?: boolean } | undefined)?.enabled === true) consoleObjectiveRecords.push(id);
-    }
     const owner = computerUse.activeOwner();
     const computerObjective = owner && experiments.computerUse ? computerUseMcp.objectiveIdForOwner(owner) : null;
     // 공유 컨텍스트에서는 기기의 주인(computer)이 루트이고, 지금 조작하는 참가자는 따로 싣는다 — 그룹채팅의 조작자 칩·진행 줄이 읽는다.
     const computerActor = owner && computerObjective ? computerUseMcp.actorForOwner(owner) : null;
     // 브라우저는 사령관마다 하나고 사용 표식은 스페이스 단위다 — 에이전트가 쓰는 중인 Objective 스페이스가 곧 그 Objective 다.
     const browserObjectiveRecords = [...new Set(browserService.drivingSpaces().map((entry) => entry.spaceId))].filter((id) => !!objectiveRecords.get(id));
-    return { console: consoleObjectiveRecords, computer: computerObjective, computerActor, browser: browserObjectiveRecords };
+    return { console: [] as string[], computer: computerObjective, computerActor, browser: browserObjectiveRecords };
   };
-  /**
-   * Console Use 확장면 중 서버가 소유하는 묶음 — Objective 저장소(이름·그룹), 삭제 유예(닫기), 사용 목록,
-   * 화면 사건(보이기). 재개·뷰·대화는 실행층이 같은 객체에 채운다(`ctx.consoleActions`).
-   */
   const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });
   // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
-  let sleepObjective: ConsoleUseActions["sleep"];
-  const consoleUse = createConsoleUseMcpHost({
-    surface: consoleActions,
-    onCall: (event) => publishPluginEvent(CONSOLE_CALL_EVENT_CHANNEL, event),
-    onObjectiveUse: (objectiveId, active) => {
-      const count = Math.max(0, (consoleUseActivity.get(objectiveId) ?? 0) + (active ? 1 : -1));
-      if (count) consoleUseActivity.set(objectiveId, count);
-      else consoleUseActivity.delete(objectiveId);
-      scheduleObjectiveUseBroadcast();
-    },
-    control: consoleControl,
-    requests: useRequests,
-    transport: mcpHttp.transport,
-    onFailure: recordFailure,
-    theaters: (commodoreId) => ownership?.theaterSummaries(commodoreId).map((row) => ({ id: row.theaterId, name: row.label })) ?? [],
-    objectiveRecords: () => objectiveRecords.list(),
-    resolveObjective: objectiveRecords.get,
-    useContext: useContext.resolve,
-    // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
-    language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
-  });
-  // 플러그인 MCP 도구의 호출자 — Console Use 와 같은 규칙으로 세션 라벨(`<objectiveId>` 또는 `chat:<objectiveId>`)을 Objective 으로 푼다.
+  let sleepObjective: ((objectiveId: string) => Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>) | undefined;
+  // 플러그인 MCP 도구의 호출자 — 세션 라벨(`<objectiveId>` 또는 `chat:<objectiveId>`)을 Objective 으로 푼다.
   const pluginMcp = createAdmiralMcpHost(mcpHttp.transport, {
     onFailure: recordFailure,
     resolveCaller: (label) => {
@@ -1040,7 +1005,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     withDirectoryLock: <T,>(lockDir: string, objectiveRecord: () => T): T => withDirectoryLock({ lockDir }, objectiveRecord),
   };
   const consoleFeaturePorts: ConsoleHostPorts = {
-    consoleUse,
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
       connect: () => pluginMcp.connect(),
@@ -2079,7 +2043,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     executionCleanupCallbacks.clear();
     consoleControl.dispose();
     useRequests.dispose();
-    try { await Promise.all([computerUseMcp.dispose(), browserMcp.dispose(), consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
+    try { await Promise.all([computerUseMcp.dispose(), browserMcp.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     featureCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();
@@ -2642,7 +2606,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       purgeCoreObjective = execution.purgeObjective;
       // 사령관·지휘관만 받는 Gateway 후보 도구 — 사령관은 세션 묶음으로, 지휘관은 예약 HTTP 서버로 받는다.
       const gatewayCandidatesTool = createGatewayCandidatesTool(execution.readGatewayCandidates);
-      consoleUse.activate({ ...consoleActions, ...execution.actions });
       const deletedOwnerKeys = new Map<string, { objectives: Set<string>; avatars: Set<string> }>();
       const ownerRecords = (id: string) => [...new Map([
         ...objectiveRecords.list(), ...archiveStorage.entries().map((entry) => entry.objectiveRecord),
@@ -2765,7 +2728,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         } },
         agent: {
           baseUrl: () => { const origin = consoleFeaturePorts.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
-          consoleUse: consoleUse.forPlugin("commodore"), computerUseMcp,
+          computerUseMcp,
           browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "commodore" }) },
           resolveExecutablePath: async () => {
             const executable = await resolveClaudeExecutable?.();
@@ -2790,7 +2753,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         objectiveRecords: { ...consoleFeaturePorts.objectiveRecords, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
         consoleControl: createFeatureConsoleControl("objectives"),
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
-        consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools) => pluginMcp.register(name, tools),
+        registerMcp: (name, tools) => pluginMcp.register(name, tools),
         commodoreCommander: commodore.host.commander,
         commodoreAutoMemoryEnabled: commodore.commanderAutoMemoryEnabled,
       });

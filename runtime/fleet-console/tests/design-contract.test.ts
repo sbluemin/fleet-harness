@@ -1613,10 +1613,10 @@ describe("Console core design contract", () => {
       const declarations = stripComments(block).match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        // [doctrine] identity-file·quiet·두 배지 면은 다크 3종 보정(채도 봉투·lights-out)이 라이트로
+        // [doctrine] identity-file·quiet·조작 허용 배지 면은 다크 3종 보정(채도 봉투·lights-out)이 라이트로
         // 내려오지 않게 지금의 값을 잇는 자리다 — 사용자 범위가 다크 테마였다(목표 f90ef806).
         // [doctrine] 팝오버 그림자는 종이 위 무채색 깊이로, 역할 표식은 중립 행동 잉크와 독립된 기존 금색으로 분화한다.
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge|popover-(?:face|rim|icon-ink|shadow|surface-shadow)|wash-(?:hover|selected)|role-commodore)[a-z-]*|--glance-person|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|popover-(?:face|rim|icon-ink|shadow|surface-shadow)|wash-(?:hover|selected)|role-commodore)[a-z-]*|--glance-person|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.

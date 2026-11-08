@@ -38,7 +38,6 @@ import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { createMessageRecipientResolver } from "./message-recipient.js";
 import { AgentChatRegistry, createChatSdkFactory, readTranscriptHistory, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
 import { maskChatText, neutralizeChatOriginTag, splitDisplayQuotes, type ChatOrigin } from "./chat-events.js";
-import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveConsoleAiGatewayBaseUrl } from "../../../ai-gateway/host/gateway-url.js";
 import { createTranscriptLinkReader, MAX_LINK_TEXT_CHARS, selectLinksIn } from "./transcript-links.js";
@@ -60,8 +59,24 @@ type ObjectiveRenamedEvent = {
   readonly title: string;
   readonly previousTitle: string;
 };
+export interface AgentOrganizeActions {
+  rename?(objectiveId: string, title: string): boolean;
+  group?(input: { readonly commodoreId: string; readonly mode: "create" | "assign" | "remove"; readonly theaterId: string; readonly name?: string; readonly color?: string; readonly groupId?: string; readonly objectiveIds: readonly string[] }): { readonly group: { readonly id: string; readonly name: string; readonly color: string } | null; readonly members: readonly string[] };
+}
+
+export interface AgentExecutionActions {
+  readonly resume?: (objectiveId: string) => Promise<{ readonly ok: true; readonly status: string } | { readonly ok: false; readonly error: string }>;
+  readonly sleep?: (objectiveId: string) => Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
+  readonly setView?: (objectiveId: string, mode: "chat" | "terminal") => Promise<{ readonly ok: true; readonly mode: "chat" | "terminal"; readonly changed: boolean } | { readonly ok: false; readonly error: string }>;
+  readonly pendingAsks?: (objectiveId: string) => readonly { readonly id: string; readonly form: string; readonly questions: readonly unknown[] }[];
+  readonly answer?: (objectiveId: string, askId: string, input: { readonly answers?: readonly string[]; readonly message?: string }, by?: ConsoleCaller) => { readonly ok: true; readonly outcome: string } | { readonly ok: false; readonly error: string };
+  readonly jobs?: (objectiveId: string) => Promise<{ readonly jobs: readonly Record<string, unknown>[] } | { readonly error: string }>;
+  readonly catalog?: (objectiveId: string) => Promise<{ readonly commands?: readonly unknown[]; readonly skills?: readonly unknown[]; readonly agents?: readonly unknown[]; readonly error?: string }>;
+  readonly transcript?: (objectiveId: string, cursor: string | undefined, limit: number, signal?: AbortSignal, options?: { readonly tail?: boolean }) => Promise<{ readonly source: "chat" | "terminal"; readonly entries: readonly Record<string, unknown>[]; readonly nextCursor: string | null; readonly truncated: boolean } | { readonly error: string }>;
+}
+
 interface AgentRouteDeps {
-  readonly organize?: Pick<ConsoleUseActions, "rename" | "group">;
+  readonly organize?: AgentOrganizeActions;
   readonly agentOptionsService: AgentOptionsService;
   readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
   /** 직접 만드는 새 지휘관의 정책. 기존·재개 세션에는 읽지 않는다. */
@@ -441,7 +456,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
     } catch { /* 깨진 줄은 건너뛴다. */ }
   };
-  const actions: ConsoleUseActions = {
+  const actions: AgentExecutionActions = {
     resume: async (objectiveId) => {
       const result = await resumeObjective(objectiveId, false);
       return result.ok ? { ok: true, status: result.resumed.status } : { ok: false, error: result.error };
