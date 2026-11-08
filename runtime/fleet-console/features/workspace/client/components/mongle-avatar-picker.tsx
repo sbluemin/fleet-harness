@@ -3,7 +3,7 @@ import { IDENTITY_TONES, type IdentityTone } from "../../shared/identity-tones.j
 import { MongleAvatar } from "./mongle-avatar.js";
 
 /**
- * 몽글 아바타 편집기 — 베이스 15종 격자(사령관에게는 아래 「진급 사령관」 3종 줄이 더 선다), 색 8톤, 상태 미리보기, 다시 뽑기·처음 값으로·취소·적용.
+ * 몽글 아바타 편집기 — 베이스 15종 격자(사령관에게는 위에 「진급 사령관」 3종 줄이 더 선다), 색 8톤, 상태 미리보기, 다시 뽑기·처음 값으로·취소·적용.
  *
  * 제어형이다. 고르는 동안의 값과 저장은 호출부가 쥐고, 이 컴포넌트는 그리기와 누름만 알린다. 역할 특징(사령관 별·지휘관 안테나)은
  * 고르는 대상이 아니라 `role` 로 자동으로 얹힌다. 색을 고르면 격자 전체가 그 색으로 다시 칠해진다. 라벨은 호출부의 로케일이다.
@@ -50,7 +50,7 @@ interface MongleAvatarPickerProps {
 
 /**
  * 베이스 15종 격자 — 고른 색으로 격자 전체를 칠한다. 편집기와 사령관 만들기 창이 함께 쓴다.
- * `promotedLabel` 을 주면(사령관만) 격자 아래에 진급 사령관 3종 줄이 서고, 진급 캐릭터는 색 잠금 때문에 늘 시그니처 색으로 그려진다.
+ * `promotedLabel` 을 주면(사령관만) 격자 위에 진급 사령관 3종 줄이 서고, 진급 캐릭터는 색 잠금 때문에 늘 시그니처 색으로 그려진다.
  */
 export function MongleBaseGrid({ role, base, tone, locale, label, promotedLabel, size = 34, onBase }: {
   readonly role: MongleRole;
@@ -72,9 +72,6 @@ export function MongleBaseGrid({ role, base, tone, locale, label, promotedLabel,
   };
   return (
     <>
-      <div className="mongle-picker-bases" role="radiogroup" aria-label={label}>
-        {MONGLE_BASES.map((preset) => cell(preset, tone))}
-      </div>
       {promotedLabel !== undefined ? (
         <div className="mongle-picker-promoted">
           <span className="mongle-picker-promoted-label">{promotedLabel}</span>
@@ -83,6 +80,9 @@ export function MongleBaseGrid({ role, base, tone, locale, label, promotedLabel,
           </div>
         </div>
       ) : null}
+      <div className="mongle-picker-bases" role="radiogroup" aria-label={label}>
+        {MONGLE_BASES.map((preset) => cell(preset, tone))}
+      </div>
     </>
   );
 }

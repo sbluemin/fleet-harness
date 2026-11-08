@@ -1,6 +1,6 @@
 // Mark the first-run layers as seen in an owned isolated Console before the first navigation.
 // (Feature tours and entry hints are removed; the commissioning card, the "Fleet at a glance" first-run
-// popup, and the TaskForce intro card are the layers left.)
+// popup, the TaskForce intro card, and the Quaker promotion card are the layers left.)
 //
 // Keys come from the current source, not a copied list: COMMISSIONING_SEEN_KEY in core's store, plus the
 // first-run keys in features/onboarding/client/seen-store.ts. Run it
@@ -41,12 +41,12 @@ register(`data:text/javascript,${encodeURIComponent(`export async function resol
 (globalThis as { React?: unknown }).React ??= (await load(createRequire(join(consoleSrc, "package.json")).resolve("react"))).default;
 
 const { COMMISSIONING_SEEN_KEY } = await load(join(consoleSrc, "core/client/src/integration/store.ts"));
-const { EFFORT_CONFIRM_TIP_SEEN_KEY, FLEET_AT_A_GLANCE_SEEN_KEY, TASKFORCE_INTRO_SEEN_KEY } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
+const { EFFORT_CONFIRM_TIP_SEEN_KEY, FLEET_AT_A_GLANCE_SEEN_KEY, QUAKER_PROMOTION_SEEN_KEY, TASKFORCE_INTRO_SEEN_KEY } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
 
 // First-run seen keys: the commissioning card, the retired effort-confirm tip, the
-// "Fleet at a glance" first-run popup, and the TaskForce intro card. A new first-run key
+// "Fleet at a glance" first-run popup, the TaskForce intro card, and the Quaker promotion card. A new first-run key
 // needs adding here; --dry-run shows what is covered.
-const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string, FLEET_AT_A_GLANCE_SEEN_KEY as string, TASKFORCE_INTRO_SEEN_KEY as string];
+const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string, FLEET_AT_A_GLANCE_SEEN_KEY as string, TASKFORCE_INTRO_SEEN_KEY as string, QUAKER_PROMOTION_SEEN_KEY as string];
 const kept = (key: string) => keep.some((entry) => key === entry || (entry.endsWith(".") && key.startsWith(entry)));
 const keys = [...new Set(derived)].filter((key) => !kept(key));
 

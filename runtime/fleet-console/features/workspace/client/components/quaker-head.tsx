@@ -2,37 +2,19 @@ import type { QuakerMorph } from "../../shared/avatars.js";
 import "./quaker-head.css";
 
 /**
- * 진급 사령관(토리·보리·도리)의 퀘이커 머리 — 부관단 시절의 퀘이커 그림을 그대로 옮겨 온 것이다. 새 표정이나 상태 연기는 없고
- * 눈 깜빡임만 남는다. 몽글 아바타의 32×32 칸에 머리 창(`QUAKER_HEAD_VIEW_BOX`)을 꽉 차게 넣고, 창 밖(꼬리·다리·가슴 무늬)은 그리지 않는다.
+ * 진급 사령관(토리·보리·도리)의 퀘이커 머리 — 부관단 시절의 퀘이커 그림에서 머리(원)와 모자 그룹만 그대로 옮겨 왔다. 몸·날개·견장·
+ * 가슴은 그리지 않아 실루엣이 둥근 머리와 모자다. 새 표정이나 상태 연기는 없고 눈 깜빡임만 남는다.
+ *
+ * 몽글 아바타의 32×32 칸에서 일반 몽글 몸과 비슷한 여백과 크기로 서도록 창을 머리+모자(x 60–200, y 28–176)보다 넉넉히 잡고,
+ * 머리 아래가 몽글 몸 아랫선과 맞게 둔다. 모자도 잘리지 않는다.
  *
  * 색은 이 컴포넌트의 CSS 가 리터럴로 쥔다(`quaker-head.css`). 테마를 따라 바뀌지 않는다.
  */
-export const QUAKER_HEAD_VIEW_BOX = "56 34 148 148";
+export const QUAKER_HEAD_VIEW_BOX = "33 -4 194 194";
 
 export function QuakerHead({ morph }: { readonly morph: QuakerMorph }) {
   return (
     <svg className="mongle-quaker" data-morph={morph} x="0" y="0" width="32" height="32" viewBox={QUAKER_HEAD_VIEW_BOX} aria-hidden="true">
-      <path className="mongle-quaker-ln" d="M84 156 Q34 146 16 184 Q14 202 36 210 Q66 216 88 196 Z" fill="var(--qk-wing)"/>
-      <path className="mongle-quaker-ln" d="M176 156 Q226 146 244 184 Q246 202 224 210 Q194 216 172 196 Z" fill="var(--qk-wing)"/>
-
-      <ellipse className="mongle-quaker-ln" cx="130" cy="210" rx="62" ry="56" fill="var(--qk-body)"/>
-      <ellipse cx="130" cy="216" rx="43" ry="41" fill="var(--qk-bib)"/>
-
-      <g transform="translate(88 166) rotate(-14)">
-        <rect x="-22" y="-8" width="44" height="16" rx="8" fill="var(--qk-brass)"/>
-        <g stroke="var(--qk-brass-deep)" strokeWidth="3.5" strokeLinecap="round">
-          <path d="M-20 8 L-22 20"/><path d="M-13 9 L-14 21"/><path d="M-6 9 L-6 20"/>
-        </g>
-        <circle cx="13" cy="0" r="3.5" fill="var(--qk-brass-deep)"/>
-      </g>
-      <g transform="translate(172 166) rotate(14) scale(-1 1)">
-        <rect x="-22" y="-8" width="44" height="16" rx="8" fill="var(--qk-brass)"/>
-        <g stroke="var(--qk-brass-deep)" strokeWidth="3.5" strokeLinecap="round">
-          <path d="M-20 8 L-22 20"/><path d="M-13 9 L-14 21"/><path d="M-6 9 L-6 20"/>
-        </g>
-        <circle cx="13" cy="0" r="3.5" fill="var(--qk-brass-deep)"/>
-      </g>
-
       <g>
         <circle className="mongle-quaker-ln" cx="130" cy="112" r="62" fill="var(--qk-body)"/>
         <ellipse cx="130" cy="144" rx="46" ry="30" fill="var(--qk-bib)"/>

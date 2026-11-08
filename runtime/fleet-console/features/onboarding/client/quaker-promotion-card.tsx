@@ -78,10 +78,11 @@ function useOsReducedMotion(): boolean {
 function StarBadge({ className }: { readonly className: string }) {
   return (
     <svg className={className} viewBox="0 0 40 40" aria-hidden="true">
-      <circle cx="20" cy="20" r="16" fill="var(--brass-ink)" stroke="var(--qk-ink-deep)" strokeWidth="2.4" />
+      {/* 몽글 사령관 배지(`mongle-avatar-star`)와 같은 색 출처 — 황동 원판에 어두운 별. */}
+      <circle cx="20" cy="20" r="16" fill="var(--role-commodore)" stroke="var(--surface-panel)" strokeWidth="2.4" />
       <path
         d="M20 10.5 L22.6 16.6 L29 17.1 L24.1 21.3 L25.7 27.6 L20 24.2 L14.3 27.6 L15.9 21.3 L11 17.1 L17.4 16.6 Z"
-        fill="var(--qk-ink-deep)"
+        fill="var(--mongle-face)"
       />
     </svg>
   );
