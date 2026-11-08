@@ -361,7 +361,13 @@ async function boot(): Promise<void> {
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
   const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot());
+  // 임시 원인 계측: 개발 실행의 명시 opt-in에서만 제한된 수명 필드를 기존 로그에 쓴다.
+  const traceBrowserLifetime = !app.isPackaged && process.env.FLEET_BROWSER_LIFETIME_TRACE === "1"
+    ? (fields: Readonly<Record<string, string | number | boolean | null>>) => { try { logger.info(`[browser-lifetime] ${JSON.stringify(fields)}`); } catch { /* 로그 실패는 제품 동작을 바꾸지 않는다. */ } }
+    : undefined;
+  traceBrowserLifetime?.({ reason: "trace-enabled" });
   const browserCompanion: BrowserCompanion = createBrowserCompanion({
+    trace: traceBrowserLifetime,
     main: () => window,
     createWindow: (guest) => {
       // 생성 전 handler가 보안을 지정한 기존 guest를 그대로 입양한다. renderer 옵션을 다시 펼치지 않는다.
@@ -426,6 +432,7 @@ async function boot(): Promise<void> {
     log: (message) => logger.error(message),
   });
   const browserViews = createDesktopBrowserViews({
+    traceSurface: traceBrowserLifetime,
     shell: () => window,
     float: browserFloat,
     companion: browserCompanion,
@@ -724,7 +731,7 @@ async function boot(): Promise<void> {
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external), {
           browserCompanion: (contents, details, origin) => browserCompanion.open(contents, details, origin),
-          revokeBrowserCompanion: () => browserCompanion.dispose(),
+          revokeBrowserCompanion: () => browserCompanion.dispose("policy-origin-revoke"),
           onPermissionDenied: (permission, phase) => logger.info(`window permission ${phase} denied permission=${permission}`),
           confirmRemoteLocalFonts: async (origin) => !createdWindow.isDestroyed()
             && (await dialog.showMessageBox(createdWindow.base, localFontsConsentDialog(origin))).response === 1,
