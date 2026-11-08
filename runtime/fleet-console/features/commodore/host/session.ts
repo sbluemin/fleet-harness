@@ -12,7 +12,7 @@ import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 import type { AgentToolGroup } from "../../execution/shared/agent.js";
 
-import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
+import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage, type CommodoreVoice } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORES_TOOL_NAMES, FLEET_COMMODORE_TOOL_GROUP } from "../shared/tool-names.js";
 import { createCommodoreTools, type CommandExecute, type CommodoreTaskforceLedger } from "./tools.js";
@@ -37,6 +37,8 @@ export interface CommodoreSessionOptions {
   readonly theaterLabel: string;
   /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
   readonly language?: CommodoreLanguage;
+  /** 진급 사령관의 응답 말투 — 세션을 열 때 한 번 읽힌다. 없으면 기본 말투다. */
+  readonly voice?: CommodoreVoice;
   readonly theaterRoot: string;
   readonly agent: ConsoleResidentAgentHost;
   readonly store: CommodoreStore;
@@ -323,7 +325,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
         sessionName: `commodore-${(options.store.read(options.commodoreId)?.alias ?? "commodore").normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
         ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
-        systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias }),
+        systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias, ...(options.voice ? { voice: options.voice } : {}) }),
         // 사령관은 fleet-memory를 쓴다. SDK 자동 메모리는 지휘관 설정과 무관하게 항상 끈다.
         autoMemoryEnabled: false,
         continuation: "conversation",

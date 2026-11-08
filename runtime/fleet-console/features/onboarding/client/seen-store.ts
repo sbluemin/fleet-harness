@@ -26,6 +26,12 @@ export const FLEET_AT_A_GLANCE_SEEN_KEY = "fleet-at-a-glance";
  */
 export const TASKFORCE_INTRO_SEEN_KEY = "taskforce-intro";
 
+/**
+ * 퀘이커 부관단 사령관 진급 카드의 본 기록 키 — 데스크톱 콘솔 시작 시 한 번 뜬다.
+ * 한 번 배포한 키는 바꾸지 않는다. 바꾸면 이미 본 사람에게 같은 안내가 다시 선다.
+ */
+export const QUAKER_PROMOTION_SEEN_KEY = "quaker-promotion";
+
 export function appendSeen(seen: readonly string[], key: string): readonly string[] {
   return seen.includes(key) ? seen : [...seen, key].slice(-SEEN_LIMIT);
 }

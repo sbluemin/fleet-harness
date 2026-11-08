@@ -49,7 +49,7 @@ export interface ClientComposerCapability {
    * or is waiting on its own prompt, is left unaddressed. A mention seed starts a fresh address:
    * leftover unsent draft from a previous close is discarded, not preserved across this open.
    *
-   * `draft` seeds the prompt text instead — used to hand a plugin's text (an aide's answer, a
+   * `draft` seeds the prompt text instead — used to hand a plugin's text (a
    * snippet) to the composer. It replaces any unsent draft; it never submits.
    */
   // 플러그인 행선지(`mentionTarget`)는 draft를 명시하지 않으면 쓰던 초안을 보존한다.

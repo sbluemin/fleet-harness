@@ -282,7 +282,7 @@ function readKeepOutRects(): readonly FloatingWidgetRect[] {
     }
     // 화면을 덮는 커튼은 그 안의 카드가 실제 표면이다 — 자식 중 커튼이 아닌 첫 상자를 쓴다.
     // 스크림이 카드보다 먼저 서는 모달(What's New)에서 첫 자식은 또 하나의 커튼이라 건너뛴다.
-    // 커튼 아닌 자식이 없으면(취역·제어권 인계) 부관이 설 곳이 없으므로 넣지 않는다.
+    // 커튼 아닌 자식이 없으면(취역·제어권 인계) 떠다니는 위젯이 설 곳이 없으므로 넣지 않는다.
     for (const child of Array.from(element.children)) {
       if (!(child instanceof HTMLElement)) continue;
       const cardRect = child.getBoundingClientRect();
@@ -300,7 +300,7 @@ const surfaceListeners = new Set<() => void>();
 
 /**
  * 스토어를 거치지 않고 회피 표면이 열리거나 닫혔다 — 위젯이 주기 재측정(수백 ms)을 기다리지 않고 바로 다시 재게 한다.
- * 기다리면 그사이 부관이 막 열린 목록 위에 그대로 서 있다.
+ * 기다리면 그사이 위젯이 막 열린 목록 위에 그대로 서 있다.
  */
 export function notifyKeepOutSurfaceChanged(): void {
   for (const listener of [...surfaceListeners]) listener();

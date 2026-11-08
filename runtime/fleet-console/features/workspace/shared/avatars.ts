@@ -5,6 +5,7 @@ import { isIdentityTone, type IdentityTone } from "./identity-tones.js";
  *
  * 베이스는 15종이다. 각 베이스는 몸 모양·정체성 톤·얼굴 디테일이 정해진 캐릭터이고, 역할은 베이스 위에 특징 하나로만 갈린다
  * (사령관은 왼쪽 위 brass 별 배지, 지휘관은 머리 위 안테나, 구성원은 베이스만). 상태는 얼굴과 몸짓이 말한다.
+ * 15종 위에 사령관 전용 「진급」 3종(16–18)이 따로 있다 — 퀘이커 그림을 쓰고, 색은 시그니처 하나로 잠겨 있으며, 무작위 배정·다시 뽑기·fallback 에는 나오지 않는다.
  *
  * 저장은 키(`theater:<id>`·`objective:<id>`) → 모습이다. 처음 읽을 때 형제와 겹치지 않는 베이스를 무작위로 뽑아 저장하고,
  * `origin` 은 그때 뽑힌 베이스라 「처음 값으로」가 돌아갈 자리다. 서버·브라우저가 같은 정제기로 읽는다.
@@ -16,13 +17,20 @@ export type MongleShape = (typeof MONGLE_SHAPES)[number];
 export const MONGLE_DETAILS = ["brow", "smile", "freckle", "cat", "lash", "line", "mole", "tooth"] as const;
 export type MongleDetail = (typeof MONGLE_DETAILS)[number];
 
+/** 진급 사령관의 퀘이커 모습. */
+export type QuakerMorph = "tori" | "bori" | "dori";
+
 export interface MongleBase {
-  /** 1부터 15까지. 저장되는 값이라 번호와 캐릭터의 짝은 바꾸지 않는다. */
+  /** 1부터 18까지(16–18 은 진급 사령관). 저장되는 값이라 번호와 캐릭터의 짝은 바꾸지 않는다. */
   readonly id: number;
   readonly name: { readonly ko: string; readonly en: string };
+  /** 진급 사령관은 몽글 몸을 그리지 않는다 — 이 값들은 자리를 채울 뿐이다. */
   readonly shape: MongleShape;
+  /** 진급 사령관에게는 바꿀 수 없는 시그니처 색이다. */
   readonly tone: IdentityTone;
   readonly detail: MongleDetail;
+  /** 있으면 진급 사령관이고 이 퀘이커 그림으로 그린다. */
+  readonly quaker?: QuakerMorph;
 }
 
 export const MONGLE_BASES: readonly MongleBase[] = [
@@ -43,14 +51,40 @@ export const MONGLE_BASES: readonly MongleBase[] = [
   { id: 15, name: { ko: "꽃잎", en: "Petal" }, shape: "kkot", tone: "plum", detail: "mole" },
 ];
 
+/** 사령관 전용 진급 3종 — 시그니처 색(토리 moss · 보리 crimson · 도리 cerulean)은 기존 퀘이커 톤 그대로다. */
+export const PROMOTED_BASES: readonly MongleBase[] = [
+  { id: 16, name: { ko: "토리", en: "Tori" }, shape: "egg", tone: "moss", detail: "smile", quaker: "tori" },
+  { id: 17, name: { ko: "보리", en: "Bori" }, shape: "egg", tone: "crimson", detail: "smile", quaker: "bori" },
+  { id: 18, name: { ko: "도리", en: "Dori" }, shape: "egg", tone: "cerulean", detail: "smile", quaker: "dori" },
+];
+
+const STORABLE_BASES: readonly MongleBase[] = [...MONGLE_BASES, ...PROMOTED_BASES];
+
+/** 무작위 배정·다시 뽑기·fallback 이 쓰는 베이스 수 — 진급 3종은 세지 않는다. */
 export const MONGLE_BASE_COUNT = MONGLE_BASES.length;
 
 export function mongleBase(id: number): MongleBase {
-  return MONGLE_BASES[(isMongleBaseId(id) ? id : 1) - 1]!;
+  return STORABLE_BASES[(isMongleBaseId(id) ? id : 1) - 1]!;
 }
 
+/** 저장할 수 있는 베이스 번호 — 진급 3종을 포함한다. */
 export function isMongleBaseId(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= STORABLE_BASES.length;
+}
+
+/** 무작위로 뽑힐 수 있는 일반 몽글 베이스 번호(1–15). */
+export function isPlainMongleBaseId(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MONGLE_BASE_COUNT;
+}
+
+/** 진급 사령관이 쓰는 응답 말투 — 일반 몽글이면 null. 사령관 응답 스타일과 세션 교체 판단이 이 값을 읽는다. */
+export function mongleVoiceOf(base: number): QuakerMorph | null {
+  return mongleBase(base).quaker ?? null;
+}
+
+/** 진급 사령관 베이스 번호(16–18). */
+export function isPromotedBaseId(value: unknown): value is number {
+  return isMongleBaseId(value) && value > MONGLE_BASE_COUNT;
 }
 
 /** 역할 — 사령관(Theater 운영자), 지휘관(목표의 뿌리와 일반 Objective), 구성원(목표 안의 Objective). */
@@ -140,13 +174,18 @@ export function isAvatarKey(value: unknown): value is string {
   return typeof value === "string" && AVATAR_KEY.test(value);
 }
 
-/** 모르는 값은 null — 손상된 항목은 없는 것으로 읽고, 다음 읽기에서 새로 뽑는다. */
-export function sanitizeMongleLook(value: unknown): MongleLook | null {
+/**
+ * 모르는 값은 null — 손상된 항목은 없는 것으로 읽고, 다음 읽기에서 새로 뽑는다.
+ * 진급 베이스는 사령관 키에서만 받고 색은 늘 null(시그니처)이다. origin 은 처음 뽑힌 일반 몽글이라 진급 번호를 받지 않는다.
+ */
+export function sanitizeMongleLook(value: unknown, key: string): MongleLook | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (!isMongleBaseId(record.base)) return null;
-  const tone = isIdentityTone(record.tone) ? record.tone : null;
-  const origin = isMongleBaseId(record.origin) ? record.origin : record.base;
+  const promoted = isPromotedBaseId(record.base);
+  if (promoted && commodoreIdOfAvatarKey(key) === null) return null;
+  const tone = !promoted && isIdentityTone(record.tone) ? record.tone : null;
+  const origin = isPlainMongleBaseId(record.origin) ? record.origin : promoted ? fallbackMongleBase(key) : record.base;
   return { base: record.base, tone, origin };
 }
 
@@ -157,7 +196,7 @@ export function sanitizeAvatarBook(value: unknown): Record<string, MongleLook> {
   for (const [key, entry] of Object.entries(value)) {
     if (count >= MAX_AVATAR_ENTRIES) break;
     if (!isAvatarKey(key)) continue;
-    const look = sanitizeMongleLook(entry);
+    const look = sanitizeMongleLook(entry, key);
     if (!look) continue;
     book[key] = look;
     count += 1;
@@ -204,7 +243,8 @@ export function sanitizeAvatarWrite(value: unknown): AvatarWrite | null {
     for (const entry of record.entries) {
       if (typeof entry !== "object" || entry === null) return null;
       const { key, base } = entry as Record<string, unknown>;
-      if (!isAvatarKey(key) || !isMongleBaseId(base)) return null;
+      // 처음 배정은 일반 몽글만 — 진급 사령관은 사람이 편집기에서 고를 때만 저장된다.
+      if (!isAvatarKey(key) || !isPlainMongleBaseId(base)) return null;
       entries.push({ key, base });
     }
     return { mode: "claim", entries };
@@ -212,6 +252,11 @@ export function sanitizeAvatarWrite(value: unknown): AvatarWrite | null {
   if (record.mode === "set") {
     if (!isAvatarKey(record.key) || !isMongleBaseId(record.base)) return null;
     if (record.tone !== null && !isIdentityTone(record.tone)) return null;
+    if (isPromotedBaseId(record.base)) {
+      // 진급 사령관은 사령관 키에서만 받고, 색은 시그니처로 잠겨 있어 무엇이 오든 null 로 굳힌다.
+      if (commodoreIdOfAvatarKey(record.key) === null) return null;
+      return { mode: "set", key: record.key, base: record.base, tone: null };
+    }
     return { mode: "set", key: record.key, base: record.base, tone: record.tone as IdentityTone | null };
   }
   return null;
@@ -222,16 +267,20 @@ export function applyAvatarWrite(book: AvatarBook, write: AvatarWrite): Record<s
   if (write.mode === "claim") {
     let next: Record<string, MongleLook> | null = null;
     for (const entry of write.entries) {
-      if (book[entry.key] || next?.[entry.key]) continue;
+      if (book[entry.key] || next?.[entry.key] || !isPlainMongleBaseId(entry.base)) continue;
       if (Object.keys(next ?? book).length >= MAX_AVATAR_ENTRIES) break;
       next ??= { ...book };
       next[entry.key] = { base: entry.base, tone: null, origin: entry.base };
     }
     return next;
   }
+  // 저장 경계의 마지막 방어 — 진급 사령관은 사령관 키에서만 서고 색은 늘 null 이다.
+  const promoted = isPromotedBaseId(write.base);
+  if (promoted && commodoreIdOfAvatarKey(write.key) === null) return null;
+  const tone = promoted ? null : write.tone;
   const current = book[write.key];
-  const origin = current?.origin ?? write.base;
-  if (current && current.base === write.base && current.tone === write.tone) return null;
+  const origin = current?.origin ?? (promoted ? fallbackMongleBase(write.key) : write.base);
+  if (current && current.base === write.base && current.tone === tone) return null;
   if (!current && Object.keys(book).length >= MAX_AVATAR_ENTRIES) return null;
-  return { ...book, [write.key]: { base: write.base, tone: write.tone, origin } };
+  return { ...book, [write.key]: { base: write.base, tone, origin } };
 }

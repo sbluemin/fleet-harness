@@ -53,7 +53,7 @@ export interface FloatingWidgetKeepOutCapability {
   subscribe(listener: () => void): () => void;
 }
 
-/** 호스트 컴포저를 초안과 함께 연다 — 부관의 답을 Objective 지시로 넘기는 손잡이. */
+/** 호스트 컴포저를 초안과 함께 연다 — 플러그인의 답을 Objective 지시로 넘기는 손잡이. */
 export interface FloatingWidgetComposerCapability {
   open(options?: { readonly draft?: string }): void;
 }

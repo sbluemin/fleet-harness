@@ -657,7 +657,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
     execute: async (args, ctx) => {
       // 등록이 해제된 기여는 이미 실린 레지스트리에서도 답하지 않는다 — 플러그인 등록 롤백 뒤 도구가 살아남지 않게.
       if (contributed.get(tool.name)?.tool !== tool) return { ...text({ error: "plugin_tool_unavailable", plugin: pluginId, retryable: false }), isError: true };
-      // 기여 도구도 제스처를 낸다 — 그 플러그인의 레일 패널이 자리다. 플러그인 소유 연결(부관)은 연결이 묶은
+      // 기여 도구도 제스처를 낸다 — 그 플러그인의 레일 패널이 자리다. 플러그인 소유 연결은 연결이 묶은
       // 플러그인이 호출자이고, Objective 연결은 세션 라벨로 푼다 — 핵심 도구의 caller() 와 같은 규칙.
       const label = ctx.sessionLabel ?? "";
       const labelId = label.startsWith("chat:") ? label.slice(5) : label;

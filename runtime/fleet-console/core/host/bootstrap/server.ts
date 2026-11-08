@@ -4,7 +4,6 @@ import type { ConsoleControlHost } from "../../../features/console-use/shared/co
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
-import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
@@ -14,6 +13,7 @@ import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../
 import { createObjectiveArchiveCoordinator } from "../../../features/workspace/host/objective-archive.js";
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
+import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleVoiceOf } from "../../../features/workspace/shared/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import crypto from "node:crypto";
@@ -25,7 +25,6 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 import { createBrowserDesktopRouter } from "../../../features/browser/host/desktop-routes.js";
 import { createComputerUseRouter } from "../../../features/computer-use/host/routes.js";
-import { createPluginAgentHost } from "../../../features/execution/host/agent/plugin-agent.js";
 import { createRemoteAdminRoutes } from "../../../features/remote-access/host/admin-routes.js";
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
 import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
@@ -1552,6 +1551,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return !!owner && writableCommodore(owner);
   };
   const avatarRouter = createAvatarRouter({ store: avatarStore, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson,
+    // 진급 사령관의 응답 말투가 바뀌면 진행 중인 턴은 두고 다음 턴을 새 세션으로 연다 — 일반 몽글끼리 바꿀 때는 말투가 그대로라 교체하지 않는다.
+    afterWrite: ({ key, before, after }) => {
+      const commodoreId = commodoreIdOfAvatarKey(key);
+      if (commodoreId === null || (before ? mongleVoiceOf(before.base) : null) === mongleVoiceOf(after.base)) return;
+      commodore?.replaceSessionNext(commodoreId);
+    },
     canWrite: (key) => key.startsWith("theater:commodore:") ? writableCommodore(key.slice("theater:commodore:".length)) : key.startsWith("objective:") ? writableObjectiveAppearance(key.slice("objective:".length)) : true,
   });
   routeRegistry.register("/api/v1/avatars", avatarRouter);
@@ -2645,6 +2650,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
       commodore = createCommodoreFeature({
         approvals,
+        // 사령관 호스트는 아바타 책을 직접 읽지 않는다 — 사령관 키의 모습에서 말투만 건넨다.
+        voiceOf: (commodoreId) => { const look = avatarStore.load().avatars[commodoreAvatarKey(commodoreId)]; return look ? mongleVoiceOf(look.base) : null; },
         gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayCandidatesTool], alwaysLoad: true },
         ownership,
         folderGrants,
@@ -2806,31 +2813,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server: consoleFeaturePorts.server, storage: consoleFeaturePorts.storage,
         http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
       });
-      const scuttlebuttAgent = createPluginAgentHost({
-        baseUrl: () => { const origin = consoleFeaturePorts.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
-        consoleUse: consoleUse.forPlugin("scuttlebutt"), computerUseMcp,
-        browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "scuttlebutt" }) },
-        resolveExecutablePath: async () => {
-          const executable = await resolveClaudeExecutable?.();
-          if (!executable) throw new Error("agent_cli_unavailable");
-          return executable;
-        },
-        compactCeiling: () => readGatewayCompactCeiling?.(),
-      });
-      consoleAgentOwners.add("scuttlebutt");
-      featureCleanupCallbacks.add(async () => { consoleAgentOwners.delete("scuttlebutt"); await scuttlebuttAgent.dispose(); });
-      const scuttlebuttFeature = await createScuttlebuttFeature({
-        paths: consoleFeaturePorts.paths,
-        experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
-        http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
-        agent: scuttlebuttAgent,
-      });
-      featureCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
-      for (const feature of [quotaFeature, scuttlebuttFeature]) {
-        for (const route of feature.routes) {
-          routeRegistry.register(route.path, route.handler);
-          executionApiCatalog.push(...route.catalog);
-        }
+      for (const route of quotaFeature.routes) {
+        routeRegistry.register(route.path, route.handler);
+        executionApiCatalog.push(...route.catalog);
       }
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
       // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.

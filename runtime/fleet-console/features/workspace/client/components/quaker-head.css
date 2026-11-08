@@ -1,0 +1,115 @@
+/* 진급 사령관(토리·보리·도리)의 퀘이커 머리 색.
+   Doctrine exception — 이 파일의 유채색 oklch 리터럴은 sanctioned 예외다. 부관단 시절의 퀘이커 팔레트를 그대로 지키려고
+   테마 토큰(theme.css)에 올리지 않고, 테마 재조율·오버라이드를 타지 않게 이 컴포넌트가 직접 쥔다. design-contract 의
+   「유채색 리터럴은 theme.css」 게이트가 이 파일만 건너뛴다. 셀렉터는 `.mongle-quaker` 아래로 한정한다. */
+.mongle-quaker {
+  --qk-ink-pearl: oklch(94% 0.008 90);
+  --qk-ink-rim: oklch(29% 0.018 245);
+  --qk-ink-abyss: oklch(13% 0.014 245);
+  --qk-ink-deep: oklch(16.5% 0.016 245);
+  --qk-ink-veil: oklch(23.5% 0.02 245);
+  --qk-brass-ink: oklch(80% 0.085 78);
+  --qk-id-crimson: oklch(72% 0.065 25);
+  --qk-id-amber: oklch(76% 0.062 70);
+  --qk-id-moss: oklch(74% 0.06 140);
+  --qk-id-cerulean: oklch(73% 0.062 235);
+  --qk-id-rose: oklch(73% 0.06 350);
+
+  --qk-tone: var(--qk-id-moss);
+  --qk-body: color-mix(in oklch, var(--qk-tone) 58%, var(--qk-ink-pearl));
+  --qk-wing: color-mix(in oklch, var(--qk-tone) 74%, var(--qk-ink-pearl));
+  --qk-bib: color-mix(in oklch, var(--qk-tone) 12%, var(--qk-ink-pearl));
+  --qk-ring: color-mix(in oklch, var(--qk-tone) 6%, var(--qk-ink-pearl));
+  --qk-eye: var(--qk-ink-abyss);
+  --qk-blush: color-mix(in oklch, var(--qk-id-rose) 52%, var(--qk-ink-pearl));
+  --qk-line: color-mix(in oklch, var(--qk-tone) 88%, var(--qk-ink-rim));
+  --qk-beak: color-mix(in oklch, var(--qk-id-amber) 46%, var(--qk-ink-pearl));
+  --qk-beak-shade: color-mix(in oklch, var(--qk-id-amber) 78%, var(--qk-ink-rim));
+  --qk-cap-top: var(--qk-ink-pearl);
+  --qk-cap-band: var(--qk-ink-veil);
+  --qk-cap-line: var(--qk-ink-abyss);
+  --qk-visor: var(--qk-ink-deep);
+  --qk-brass: var(--qk-brass-ink);
+  --qk-brass-deep: var(--qk-brass-ink);
+  --qk-eye-gloss: var(--qk-ink-pearl);
+  --qk-flight: color-mix(in oklch, var(--qk-tone) 30%, var(--qk-ink-pearl));
+  --qk-tail: color-mix(in oklch, var(--qk-tone) 66%, var(--qk-ink-pearl));
+  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 40%, var(--qk-ink-pearl));
+  --qk-feet: color-mix(in oklch, var(--qk-id-rose) 38%, var(--qk-ink-pearl));
+}
+
+.mongle-quaker[data-morph="dori"] {
+  --qk-tone: var(--qk-id-cerulean);
+}
+
+/* 알비노는 몸통만 반 톤 내려 가슴판과 얼굴 윤곽이 소실되지 않게 한다. */
+.mongle-quaker[data-morph="bori"] {
+  --qk-tone: var(--qk-id-crimson);
+  --qk-body: color-mix(in oklch, var(--qk-tone) 10%, var(--qk-ink-pearl));
+  --qk-wing: color-mix(in oklch, var(--qk-tone) 16%, var(--qk-ink-pearl));
+  --qk-flight: color-mix(in oklch, var(--qk-tone) 6%, var(--qk-ink-pearl));
+  --qk-tail: color-mix(in oklch, var(--qk-tone) 13%, var(--qk-ink-pearl));
+  --qk-bib: var(--qk-ink-pearl);
+  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 24%, var(--qk-ink-pearl));
+  --qk-ring: var(--qk-ink-pearl);
+  --qk-eye: var(--qk-id-crimson);
+  --qk-line: color-mix(in oklch, var(--qk-tone) 34%, var(--qk-ink-rim));
+  --qk-blush: transparent;
+}
+
+.mongle-quaker * {
+  transform-box: fill-box;
+}
+
+.mongle-quaker-ln {
+  stroke: var(--qk-line);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.mongle-quaker-cap-ln {
+  stroke: var(--qk-cap-line);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+/* 움직임은 몽글 아바타와 같은 --state-motion 이 숨은 창·OS 모션 줄이기에서 멈춘다. */
+.mongle-quaker-eyes {
+  transform-origin: 50% 50%;
+  animation: mongle-quaker-blink 5.4s linear infinite;
+  animation-name: var(--state-motion, mongle-quaker-blink);
+}
+
+.mongle-quaker[data-morph="tori"] .mongle-quaker-eyes { animation-delay: -0.4s; }
+.mongle-quaker[data-morph="bori"] .mongle-quaker-eyes { animation-delay: -2.3s; }
+.mongle-quaker[data-morph="dori"] .mongle-quaker-eyes { animation-delay: -3.7s; }
+
+@keyframes mongle-quaker-blink {
+  0%,
+  93%,
+  100% { transform: scaleY(1); }
+  95.5%,
+  97.5% { transform: scaleY(0.1); }
+}
+
+.mongle-quaker.is-full .mongle-quaker-wing-l {
+  transform-origin: 92% 27%;
+  animation: mongle-quaker-flap-l 0.82s ease-in-out infinite alternate;
+  animation-name: var(--state-motion, mongle-quaker-flap-l);
+}
+
+.mongle-quaker.is-full .mongle-quaker-wing-r {
+  transform-origin: 8% 27%;
+  animation: mongle-quaker-flap-r 0.82s ease-in-out infinite alternate;
+  animation-name: var(--state-motion, mongle-quaker-flap-r);
+}
+
+@keyframes mongle-quaker-flap-l {
+  from { transform: rotate(0); }
+  to { transform: rotate(-9deg); }
+}
+
+@keyframes mongle-quaker-flap-r {
+  from { transform: rotate(0); }
+  to { transform: rotate(9deg); }
+}

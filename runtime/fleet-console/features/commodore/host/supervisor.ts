@@ -80,6 +80,8 @@ export interface CommodoreSupervisorDeps {
   /** 이 사령관의 설명·정보 제안 도구. 없으면 그 제안 도구를 싣지 않는다. */
   readonly proposals?: (commodoreId: string) => import("./description-proposals.js").CommodoreDescriptionProposals;
   readonly intelProposals?: (commodoreId: string) => import("./intel-proposals.js").CommodoreIntelProposals;
+  /** 이 사령관의 응답 말투 — 조립이 아바타 책에서 읽어 주입한다. 세션을 열 때 한 번 읽고, 없으면 기본 말투다. */
+  readonly voiceOf?: (commodoreId: string) => import("./prompt.js").CommodoreVoice | null;
 }
 
 /** 한 턴을 여는 실행 좌표. `model`은 Agent SDK wire id다. */
@@ -486,13 +488,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!cwd) throw new Error("commodore_unavailable");
     const coordinates = resolveCoordinates(runner.commodoreId);
     const language = resolveLanguage(runner.commodoreId);
+    const voice = deps.voiceOf?.(runner.commodoreId) ?? null;
     // Agent SDK의 내장 CLI는 Claude 별칭을 자기 버전의 표로 푼다 — 설치된 Claude Code가 띄우는 지휘관과 다른 모델로
     // 서지 않게, 사령관은 설치 CLI가 푸는 정식 id로 연다. 회전 판정은 별칭 좌표로 한다(고정 id는 이 세션의 것이다).
     const model = await deps.models?.pinClaudeVersion?.(coordinates.model).catch(() => coordinates.model) ?? coordinates.model;
     // 문맥이 길어져도 세션을 바꾸지 않는다 — 상한을 넘는 창은 상한 지점에서, 그 이하는 모델 기본 정책으로 같은 세션이 압축해 이어 간다.
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
-      commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), ...(compactAt === null ? {} : { compactAt }), ...(coordinates.speed ? { speed: coordinates.speed } : {}) },
+      commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, ...(voice ? { voice } : {}), theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(runner.commodoreId, theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), ...(compactAt === null ? {} : { compactAt }), ...(coordinates.speed ? { speed: coordinates.speed } : {}) },
       boardTools: boardTools(runner), now,
       ...(deps.gatewayTools ? { gatewayTools: deps.gatewayTools } : {}),
       onOpenUIFeedback: (note) => { runner.openUIFeedback = note ?? undefined; },

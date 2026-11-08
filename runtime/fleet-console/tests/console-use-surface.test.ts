@@ -106,7 +106,7 @@ ts: objectiveRecords[0]!.sessions![0]!.ts} : null), theaters: () => [{ id: "thea
     releaseContribution();
     expect((await call("op-parent", "console_probe", { action: "status", theaterId: "theater-a" })).error).toBe("plugin_tool_unavailable");
     expect(contributedCalls).toBe(1);
-    // 구성원은 스캔의 기본 목록에서 빠지고(부관·Admiral 이 평범한 행으로 보지 않는다) nested 로 물을 때만 부모와 함께 선다.
+    // 구성원은 스캔의 기본 목록에서 빠지고(Admiral 이 평범한 행으로 보지 않는다) nested 로 물을 때만 부모와 함께 선다.
     expect((await call("op-parent", "console_sidebar", { action: "list" })).objectiveRecords.map((row: { id: string }) => row.id)).toEqual(["op-child", "op-human", "op-parent"]);
     expect((await call("op-parent", "console_sidebar", { action: "list", nested: true })).objectiveRecords).toEqual(expect.arrayContaining([expect.objectContaining({ id: "op-member", title: "objective-member-1", parentObjectiveId: "op-parent", activity: "awaiting" })]));
     expect(await call("op-parent", "console_objective_session", { action: "summary", objectiveId: "op-member" })).toMatchObject({ id: "op-member", parentObjectiveId: "op-parent", activity: "awaiting" });

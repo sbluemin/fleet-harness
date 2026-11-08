@@ -68,8 +68,6 @@ interface ObjectiveRecordsSideBarProps {
   readonly widthCap?: number;
   /** 맨 위 줄 오른쪽에 끼우는 단추들(대화 중심 화면의 검색·새로 만들기). */
   readonly topStripTrailing?: ReactNode;
-  /** 맨 위 줄 가운데에 떠 있는 셸의 기여(대화 중심 화면의 출근한 부관 머리). 자리는 기여가 스스로 잰다. */
-  readonly topStripCenter?: ReactNode;
   /** 사이드바 맨 아래에 서는 셸의 기여(호스트 아바타·플러그인 요약 줄). */
   readonly bottomAccessory?: ReactNode;
   readonly objectiveRecords: readonly ObjectiveRecord[];
@@ -161,7 +159,6 @@ export function ObjectiveRecordsSideBar({
   onAddTheater,
   widthCap,
   topStripTrailing,
-  topStripCenter,
   bottomAccessory,
 }: ObjectiveRecordsSideBarProps) {
   const t = useT();
@@ -451,7 +448,6 @@ export function ObjectiveRecordsSideBar({
     >
       <div className="side-bar-top-strip is-compact">
         <span className="side-bar-top-strip-spacer" aria-hidden="true" />
-        {topStripCenter}
         {topStripTrailing}
       </div>
 

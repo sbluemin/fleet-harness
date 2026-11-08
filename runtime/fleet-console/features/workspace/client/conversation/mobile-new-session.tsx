@@ -28,7 +28,7 @@ import { addCommodoreTheaterFromPath } from "../../../commodore/client/theaters-
  * 거절 칸(newSessionRejection)을 쓰고, 그리는 것은 시트(mobile-new-session-sheet)가 맡는다.
  *
  * 앱에 늘 마운트돼 있다 — 시트를 닫아도 쓰던 문장·칩이 이 컴포넌트 상태에 남아 다음 열림에서 이어진다(닫힘은 취소가 아니라 미룸).
- * 보내면 비운다. '@'로 기존 Objective·플러그인 행선지(부관 등)에 보낼 수 있고, 부관의 답은 부관 자기 카드에 선다.
+ * 보내면 비운다. '@'로 기존 Objective·플러그인 행선지에 보낼 수 있고, 그 답은 플러그인 자기 표면에 선다.
  * 시작 보기 선택은 없다 — 폰의 새 대화는 채팅을 선언한 실행 종류면 늘 채팅으로 연다.
  *
  * 데스크톱 새 세션 화면과 같은 규칙으로 사령관 단위다: 사령관은 시트를 열 때 한 번 정해 고정하고(칩 줄 「사령관 › Theater」),
@@ -266,7 +266,7 @@ export function MobileNewSession() {
       }
       setSubmitting(true);
       setMentionErrorKey(null);
-      // 답은 플러그인이 자기 표면(부관 카드)에서 보여 준다.
+      // 답은 플러그인이 자기 표면에서 보여 준다.
       void plugin.messageMentionTarget(row.targetId, text)
         .then(() => { if (epochRef.current === epoch) finishSubmission(); })
         .catch((error: unknown) => {

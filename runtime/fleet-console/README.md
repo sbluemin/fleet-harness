@@ -4,7 +4,7 @@ Standalone loopback web console for observing live output streams and Console-ow
 
 ## What It Does
 
-Fleet Console core owns HTTP, Agent execution, Chat, PTYs, tickets, WebSocket transport, and AI Gateway composition. Product surfaces such as Objectives, Quota, and Scuttlebutt are Console features composed with explicit dependencies; Console loads no plugins.
+Fleet Console core owns HTTP, Agent execution, Chat, PTYs, tickets, WebSocket transport, and AI Gateway composition. Product surfaces such as Objectives and Quota are Console features composed with explicit dependencies; Console loads no plugins.
 
 - Console-owned terminal sessions and observed jobs in a navigable rail.
 - Workspace hub sessions created through an in-console directory browser — no OS-native dialog.

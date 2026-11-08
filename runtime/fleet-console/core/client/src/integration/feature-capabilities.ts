@@ -253,7 +253,7 @@ export function createHostCapabilities(
     },
     consoleState: {
       getTheaters: () => readCommodoreList().flatMap((owner) => owner.theaters.filter((theater) => theater.status === "available").map((theater) => ({ id: theater.theaterId, label: theater.label }))),
-      // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 부관단처럼 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
+      // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
       // 구성원을 거느리는 플러그인(목표)만 nested 로 부모와 함께 읽는다.
       // nested 읽기의 부모 요약은 끌어올리기 전 자기 활동(ownActivity)도 싣는다 — 같은 규칙(resolveObjectiveRuntimeActivity)을 원 런타임에 쓴다.
       // 활동은 표시 어휘가 아니라 원시 값이다(background 를 접지 않는다) — 플러그인 계약이고, 접는 것은 각 표면의 표시 몫이다.

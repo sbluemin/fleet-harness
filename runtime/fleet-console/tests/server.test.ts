@@ -50,16 +50,28 @@ vi.mock("@fleet-console/agent-runtime/fleet", async (importOriginal) => {
   };
 });
 
-vi.mock("../features/scuttlebutt/host/index.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../features/scuttlebutt/host/index.js")>();
-  return { ...actual, createScuttlebuttFeature: async (deps: Parameters<typeof actual.createScuttlebuttFeature>[0]) => {
+// The startup hold point sits just before execution starts, after the lock, migration and listener are up.
+vi.mock("../core/host/bootstrap/execution.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../core/host/bootstrap/execution.js")>();
+  return { ...actual, startConsoleExecution: async (...args: Parameters<typeof actual.startConsoleExecution>) => {
     await fleetAdmiralMock.startupGate?.();
-    const feature = await actual.createScuttlebuttFeature(deps);
-    return { ...feature, dispose: () => {
-      let pending: void | Promise<void>;
-      try { pending = fleetAdmiralMock.cleanupHooks.get("scuttlebutt")?.(); }
-      catch (error) { void feature.dispose(); throw error; }
-      return Promise.resolve(pending).then(() => feature.dispose());
+    return actual.startConsoleExecution(...args);
+  } };
+});
+
+// The reserved MCP registration's release is one of the Console's feature cleanups; the hook runs in its place.
+vi.mock("../features/execution/host/admiral-mcp.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../features/execution/host/admiral-mcp.js")>();
+  return { ...actual, createAdmiralMcpHost: (...args: Parameters<typeof actual.createAdmiralMcpHost>) => {
+    const host = actual.createAdmiralMcpHost(...args);
+    return { ...host, registerReserved: (...reservedArgs: Parameters<typeof host.registerReserved>) => {
+      const release = host.registerReserved(...reservedArgs);
+      return () => {
+        let pending: void | Promise<void>;
+        try { pending = fleetAdmiralMock.cleanupHooks.get("feature")?.(); }
+        catch (error) { release(); throw error; }
+        return Promise.resolve(pending).then(() => release());
+      };
     } };
   } };
 });
@@ -327,7 +339,7 @@ describe("console terminal observability", () => {
     // 바로 앞 위치의 사용자 설정을 먼저 옮기고 옛 트리 전체를 걷는다. 사용자 스킬은 경계 밖이다.
     const retiredData = path.join(consoleDir, "plugins");
     const retiredFile = path.join(retiredData, "skills", "cli", "node_modules", "skills", "package.json");
-    const siblingFile = path.join(consoleDir, "plugins", "scuttlebutt", "workspace", "keep.txt");
+    const siblingFile = path.join(consoleDir, "plugins", "retired-feature", "workspace", "keep.txt");
     const userSkill = path.join(dir, ".claude", "skills", "mine", "SKILL.md");
     for (const file of [retiredFile, siblingFile, userSkill]) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -341,7 +353,7 @@ describe("console terminal observability", () => {
     fs.writeFileSync(cliSource, JSON.stringify(cliPaths));
     fs.writeFileSync(path.join(consoleDir, "settings.json"), JSON.stringify({ version: 1, plugins: {
       quota: { toolbarProviders: ["claude"] }, scuttlebutt: { tori: true, grants: { tori: { consoleUse: true } } }, terminal: { chatReadingWidth: "wide" },
-    } }));
+    }, scuttlebutt: { tori: true, introduced: true } }));
     const winner = createConsoleServer(deps);
     servers.push(winner);
     const starting = winner.start({ dir, lockFile });
@@ -353,8 +365,10 @@ describe("console terminal observability", () => {
       await expect(createQuotaSettingsStore(consoleDir).read()).resolves.toEqual({ claudeConnected: true });
       await expect(createAgentCliPathStore(consoleDir).read()).resolves.toEqual(cliPaths);
       const migratedSettings = JSON.parse(fs.readFileSync(path.join(consoleDir, "settings.json"), "utf8"));
-      expect(migratedSettings).toMatchObject({ quota: { toolbarProviders: ["claude"] }, scuttlebutt: { tori: true, grants: { tori: { consoleUse: true } } }, execution: { chatReadingWidth: "wide" } });
+      expect(migratedSettings).toMatchObject({ quota: { toolbarProviders: ["claude"] }, execution: { chatReadingWidth: "wide" } });
       expect(migratedSettings).not.toHaveProperty("plugins");
+      // The retired deputies' settings, stored under either key, are dropped rather than failing the start.
+      expect(migratedSettings).not.toHaveProperty("scuttlebutt");
       expect(fs.readFileSync(userSkill, "utf8")).toBe("keep");
       const owner = readConsoleLockFile(lockFile)!;
       const lockBefore = fs.readFileSync(lockFile, "utf8");
@@ -487,7 +501,7 @@ describe("console terminal observability", () => {
   it("finishes every overlapping stop request only after the one shutdown has ended", async () => {
     const slowCleanup = (lockFile: string) => {
       const state = { entered: false, finished: false, lockHeldAtEnd: false };
-      fleetAdmiralMock.cleanupHooks.set("scuttlebutt", async () => {
+      fleetAdmiralMock.cleanupHooks.set("feature", async () => {
         state.entered = true;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         state.lockHeldAtEnd = fs.existsSync(lockFile);
@@ -536,7 +550,7 @@ describe("console terminal observability", () => {
   it("runs every feature cleanup and releases the lock when one cleanup throws synchronously", async () => {
     const runs: string[] = [];
     const fixture = await startFixture();
-    fleetAdmiralMock.cleanupHooks.set("scuttlebutt", () => { runs.push("throws"); throw new Error("sync cleanup failure"); });
+    fleetAdmiralMock.cleanupHooks.set("feature", () => { runs.push("throws"); throw new Error("sync cleanup failure"); });
     const warn = vi.spyOn(console, "warn");
     try {
       const stopError = await fixture.server.stop().then(() => null, (error: unknown) => error);

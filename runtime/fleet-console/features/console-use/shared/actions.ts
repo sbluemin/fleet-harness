@@ -26,7 +26,7 @@ export const MAX_FIELD_DESCRIPTION = 120;
 /** read 는 화면을 보기만 하고, write 는 사람의 화면이나 제품 상태를 바꾼다. 읽기 전용 연결에는 read 만 실린다. */
 export type ConsoleToolActionKind = "read" | "write";
 /**
- * 호출자 종류. `objectiveRecord` 은 Objective 세션, `plugin` 은 플러그인 소유 연결(부관 등), `commodore` 는 Objectives 의
+ * 호출자 종류. `objectiveRecord` 은 Objective 세션, `plugin` 은 플러그인 소유 연결, `commodore` 는 Objectives 의
  * 사령관처럼 플러그인이 자기 세션에 직접 싣는 도구 묶음이다.
  */
 export type ConsoleToolCaller = "objectiveRecord" | "plugin" | "commodore";

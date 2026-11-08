@@ -756,22 +756,6 @@
   margin-left: var(--space-1);
 }
 
-/* 대화 배치에는 커맨드 밴드가 없어 부관 머리는 사이드바 맨 위 줄 가운데에만 선다 — 따로 한 줄을 쓰지 않는다. 자리(left)와 머리 크기
-   (--command-band-entry-size 40 → 32 → 28px, SDK 계약)는 ConversationSideBarDeputies 가 줄의 실제 가용 폭으로 정한다. 여기 값은 재기 전 첫 칠이다. */
-.conversation-side-deputies {
-  --command-band-entry-size: 40px;
-  visibility: hidden;
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: max-content;
-}
-.conversation-side-deputies:empty { display: none; }
-
 /* 아래 줄의 메뉴(환경 진단·호스트·도움말)는 위로 열린다. 사이드바는 그 메뉴가 카드 밖으로 나가도록 자르지 않는다 —
    목록은 안쪽 스크롤 칸이 따로 자른다. */
 .console-shell.is-objective-records-view .objective-records-side-bar { overflow: visible; }
@@ -1368,6 +1352,7 @@
 .avatar-editor-trigger[aria-expanded="true"] .avatar-editor-pen { opacity: 1; }
 .avatar-editor-undo {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3);
   color: var(--text-secondary);
@@ -1558,7 +1543,7 @@
 
 /* ── 사이드바 맨 위 줄도 투명 오버레이 — 목록이 그 밑으로 흐르고 신호등 자리·단추만 떠 있다 ─────────────
    목록 위에 단추가 뜨므로 줄 안쪽만 바탕에서 투명으로 옅어지는 짧은 그라디언트를 둔다(가리는 띠가 아니다).
-   출근한 부관 머리도 이 줄 가운데에 함께 뜬다(따로 줄을 쓰지 않는다). 오른쪽 세부 정보 머리는 글자 탭이라 내용이
+   오른쪽 세부 정보 머리는 글자 탭이라 내용이
    그 밑으로 흐르면 읽히지 않는다 — 효과 없이 바탕과 같은 면의 고정 줄로 둔다. */
 .console-shell.is-objective-records-view .side-bar-top-strip {
   position: absolute;
@@ -1605,7 +1590,7 @@
   justify-content: center;
   background: none;
 }
-.console-shell.is-objective-records-view .objective-records-side-bar.is-compact .side-bar-top-strip :is(.side-bar-top-strip-spacer, .conversation-side-deputies) {
+.console-shell.is-objective-records-view .objective-records-side-bar.is-compact .side-bar-top-strip .side-bar-top-strip-spacer {
   display: none;
 }
 .console-shell.is-objective-records-view .objective-records-side-bar.is-compact .conversation-side-actions {

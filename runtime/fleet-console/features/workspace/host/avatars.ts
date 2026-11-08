@@ -40,8 +40,17 @@ export function createAvatarStore(dataDir: string): DurableJsonStore<AvatarStore
   });
 }
 
+/** 편집(`set`)이 저장된 뒤 조립이 듣는 변경 — 이전 모습이 없으면 처음 저장이다. */
+export interface AvatarChange {
+  readonly key: string;
+  readonly before: MongleLook | undefined;
+  readonly after: MongleLook;
+}
+
 export function createAvatarRouter(deps: {
   readonly canWrite?: (key: string) => boolean;
+  /** 저장이 실제로 모습을 바꾼 뒤에 부른다. 실패해도 쓰기는 이미 끝났으므로 응답을 막지 않는다. */
+  readonly afterWrite?: (change: AvatarChange) => void;
   readonly store: DurableJsonStore<AvatarStoreData>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
@@ -72,11 +81,20 @@ export function createAvatarRouter(deps: {
     }
     if (write.mode === "set" && deps.canWrite && !deps.canWrite(write.key)) { deps.writeJson(res, 404, { error: "avatar_owner_unavailable" }); return true; }
     const admitted = write.mode === "claim" && deps.canWrite ? { ...write, entries: write.entries.filter((entry) => deps.canWrite!(entry.key)) } : write;
+    // 저장소가 실제로 바꾼 것만 알린다 — 값이 같아 쓰지 않은 요청은 알리지 않는다.
+    const applied: { wrote?: boolean; before?: MongleLook } = {};
     const saved = deps.store.update((current) => {
       const avatars = applyAvatarWrite(current.avatars, admitted);
-      return avatars ? { version: 1, avatars } : undefined;
+      if (!avatars) return undefined;
+      applied.wrote = true;
+      if (admitted.mode === "set") applied.before = current.avatars[admitted.key];
+      return { version: 1, avatars };
     });
     deps.writeJson(res, 200, { avatars: saved.avatars });
+    if (applied.wrote && admitted.mode === "set") {
+      const after = saved.avatars[admitted.key];
+      if (after) { try { deps.afterWrite?.({ key: admitted.key, before: applied.before, after }); } catch { /* 말투 교체 알림이 실패해도 저장은 이미 끝났다. */ } }
+    }
     return true;
   };
 }

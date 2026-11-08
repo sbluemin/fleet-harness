@@ -10,8 +10,9 @@ import { useViewMode } from "../../../core/client/src/integration/view-mode-stor
 import type { GlobalSettingsState } from "../../../core/client/src/integration/types.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { readCommodoreList } from "../../commodore/client/commodore-list.js";
-import { TASKFORCE_INTRO_SEEN_KEY, rememberSeen } from "./seen-store.js";
+import { QUAKER_PROMOTION_SEEN_KEY, TASKFORCE_INTRO_SEEN_KEY, rememberSeen } from "./seen-store.js";
 import { TaskforceIntroCard, TaskforceIntroLink } from "./taskforce-intro.js";
+import { QuakerPromotionCard, QuakerPromotionLink } from "./quaker-promotion-card.js";
 
 // 새 기능 카드 — 지금까지 나온 카드의 유일한 목록이다. 첫 실행 노출과 도움말 › 새 기능 다시보기가
 // 같은 목록을 같은 순서로 읽는다. 새 카드는 이 목록 끝에 한 항목을 더하면 두 곳 모두에 이어진다.
@@ -43,6 +44,13 @@ export const FEATURE_CARDS: readonly FeatureCard[] = [
     autoShow: (settings) => settings.experiments.taskforce !== true,
     Content: TaskforceIntroCard,
     Link: TaskforceIntroLink,
+  },
+  {
+    seenKey: QUAKER_PROMOTION_SEEN_KEY,
+    // 진급 소식은 모두에게 보여 준다.
+    autoShow: () => true,
+    Content: QuakerPromotionCard,
+    Link: QuakerPromotionLink,
   },
 ];
 

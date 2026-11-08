@@ -36,7 +36,7 @@ import { setMobileDestination, takeMobileConversationDestination } from "../../.
 import { ObjectiveBodyPool, type ObjectiveBodyConfig } from "../../../core/client/src/chrome/mobile/objective-body-pool.js";
 import { getViewModeSnapshot, useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
-import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationRightRail, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarDeputies, ConversationStage } from "./conversation/conversation-shell.js";
+import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationRightRail, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationStage } from "./conversation/conversation-shell.js";
 import { setArenaInsets, type ArenaInsets } from "./conversation/arena-insets.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
 import { setConversationObjectiveRename } from "./conversation/conversation-slots.js";
@@ -369,7 +369,6 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
       clampAlias={aliasEditor.clamp}
       onAddTheater={handleAddTheater}
       topStripTrailing={<ConversationSideBarActions />}
-      topStripCenter={<ConversationSideBarDeputies />}
       bottomAccessory={<ConversationSideBarBottom connection={state.connection} />}
     />
   );

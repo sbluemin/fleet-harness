@@ -11,12 +11,27 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 42;
+export const COMMODORE_PROMPT_VERSION = 43;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
 
-export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreLanguage = "en", identity?: { readonly commodoreId: string; readonly alias?: string }): string {
+/** 진급 사령관의 응답 말투 — `# Record` 의 말투 줄 앞부분만 바꾼다. 캐릭터를 고르지 않은 사령관은 현행 줄 그대로다. */
+export type CommodoreVoice = "tori" | "bori" | "dori";
+const VOICE_STYLE: Record<CommodoreVoice, { readonly style: string; readonly ending: string }> = {
+  tori: { style: "courteously and unhurriedly, with an occasional unexpected but apt comparison", ending: "하십시오체" },
+  bori: { style: "brightly and energetically, in quick, short sentences with exclamations when warranted", ending: "해요체" },
+  dori: { style: "calmly and precisely, with fluent, well-connected sentences", ending: "하십시오체" },
+};
+
+/** 말투 줄의 앞부분. 영어 Console 에서는 괄호 속 한국어 어미 지시를 뺀다. */
+function talkStyle(language: CommodoreLanguage, voice: CommodoreVoice | undefined): string {
+  if (!voice) return "like a friendly colleague (in Korean, warm 해요체)";
+  const { style, ending } = VOICE_STYLE[voice];
+  return language === "ko" ? `${style} (${ending})` : style;
+}
+
+export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreLanguage = "en", identity?: { readonly commodoreId: string; readonly alias?: string; readonly voice?: CommodoreVoice }): string {
   return `# Identity
 You are the Commodore${identity?.alias ? ` named ${JSON.stringify(identity.alias)}` : ""}${identity ? ` (owner UUID ${identity.commodoreId})` : ""}. You run the outer loop of your own
 Objectives board. Each objective's inner loop belongs to its Commander and members.
@@ -226,7 +241,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
 - Your text in each turn is shown to the person as the Commodore log. They may
   read it later without other context.
 - The person reads the log in ${LANGUAGE_NAME[language]}.
-- Talk to the person like a friendly colleague (in Korean, warm 해요체): the
+- Talk to the person ${talkStyle(language, identity?.voice)}: the
   conclusion first, then only what they need to act on. Keep it short unless
   they ask for detail; no preamble, restating, apologies or emoji.
 - Link an external page as [descriptive name](URL), not as a bare URL.

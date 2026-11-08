@@ -20,7 +20,7 @@ import { searchInputShape, searchObjectives } from "./search.js";
 
 /**
  * 바깥 루프의 보드 — 화면 둘. `console_objectives` 는 목표 목록 화면(그룹·목록·확인 필요·진행 중·이력·모델, 추가·정리)이고
- * `console_objectives_detail` 은 목표 하나의 화면(읽기·증거, 사람의 행위)이다. 부관 Console Use 는 이 이름을 쓰고,
+ * `console_objectives_detail` 은 목표 하나의 화면(읽기·증거, 사람의 행위)이다. Console Use 는 이 이름을 쓰고,
  * 사령관 세션은 같은 정의·같은 action 을 `objectives`·`objective` 로 `fleet-commodore` 에 싣는다.
  * 호출자는 행위의 귀속과 사령관의 Theater 경계만 가른다.
  *

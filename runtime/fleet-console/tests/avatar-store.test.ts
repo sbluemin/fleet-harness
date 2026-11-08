@@ -54,6 +54,20 @@ describe("avatar store", () => {
     expect((edited.body as { avatars: Record<string, unknown> }).avatars["objective:o1"]).toEqual({ base: 9, tone: "rose", origin: 7 });
   });
 
+  it("takes the promoted commodores only on a commodore key and locks their signature color", async () => {
+    const { dir, call } = harness();
+    const key = "theater:commodore:c1";
+    await call("PUT", { mode: "claim", entries: [{ key, base: 4 }] });
+    // 진급 캐릭터는 사령관 키에서만 서고, 보낸 색과 상관없이 색은 시그니처(null)로 굳으며 origin 은 처음 뽑힌 몽글이다.
+    const promoted = await call("PUT", { mode: "set", key, base: 16, tone: "rose" });
+    expect((promoted.body as { avatars: Record<string, unknown> }).avatars[key]).toEqual({ base: 16, tone: null, origin: 4 });
+    expect((await call("PUT", { mode: "set", key: "objective:o1", base: 17, tone: null })).status).toBe(400);
+    expect((await call("PUT", { mode: "claim", entries: [{ key: "theater:commodore:c2", base: 18 }] })).status).toBe(400);
+    // 손으로 고친 파일에서 사령관이 아닌 키의 진급 항목은 버려진다.
+    fs.writeFileSync(path.join(dir, "avatars.json"), JSON.stringify({ version: 1, avatars: { [key]: { base: 18, tone: "rose", origin: 17 }, "objective:o1": { base: 16, tone: null, origin: 16 } } }));
+    expect((await call("GET")).body).toEqual({ avatars: { [key]: { base: 18, tone: null, origin: expect.any(Number) } } });
+  });
+
   it("refuses malformed and unauthorized writes and reads a damaged book as empty entries", async () => {
     const { dir, call } = harness();
     expect((await call("PUT", { mode: "set", key: "objective:o1", base: 16, tone: null })).status).toBe(400);

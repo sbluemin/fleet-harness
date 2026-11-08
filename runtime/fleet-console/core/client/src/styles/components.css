@@ -2899,6 +2899,13 @@
   background: var(--mongle-tone);
 }
 .mongle-picker-tone[aria-checked="true"] { border-color: var(--text-primary); }
+/* 사령관에게만 서는 진급 3종 줄 — 격자 아래 한 줄, 고른 진급 캐릭터는 색 점이 잠기고 안내 한 줄이 선다. */
+.mongle-picker-promoted { display: grid; justify-items: center; gap: var(--space-2); }
+.mongle-picker-promoted-label { color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
+.mongle-picker-bases.is-promoted { grid-template-columns: repeat(3, auto); justify-content: center; }
+.mongle-picker-tone:disabled { cursor: default; opacity: var(--control-disabled-opacity); }
+.mongle-picker-tone:disabled:hover { background: none; }
+.mongle-picker-tone-locked { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); text-align: center; }
 .mongle-picker-preview {
   display: flex;
   flex-wrap: wrap;
@@ -10182,7 +10189,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   overflow-wrap: anywhere;
 }
 
-/* 연속값을 고르는 하나의 문법 — 설정의 연속값 행(흐리기·유리 효과·부관 크기)과 AI Gateway 압축
+/* 연속값을 고르는 하나의 문법 — 설정의 연속값 행(흐리기·유리 효과)과 AI Gateway 압축
    시점이 같은 손잡이를 쓴다. 채움 끝 위치는 소비처가 --slider-fill로 싣고, 폭·정렬 같은 배치는 소비처가
    따로 소유한다. 두 벌로 두면 같은 조작이 표면마다 다른 물건으로 보이고, 한쪽만 고쳐지는 날이 온다.
    Doctrine: 손잡이는 추론 강도 트랙(.effort-track-knob)과 같은 계기 면이다 — --gauge-face 20px 원형에
@@ -10312,7 +10319,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 
 /* ── Live line · History band (shared feature components) ───────────────────────────────
    도는 턴의 "지금" 한 줄과, 접힌 이전 대화을 대신 말하는 로그 상단 밴드. 채팅뷰 집계 줄의
-   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 코워크·부관이 같은 줄을 쓴다.
+   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 코워크가 같은 줄을 쓴다.
    링은 진행(신호), 물결은 명도(--live-sweep-*), 잉크는 3티어 텍스트 — 어느 채널도 겹치지 않는다. */
 .fc-live-line {
   display: flex;

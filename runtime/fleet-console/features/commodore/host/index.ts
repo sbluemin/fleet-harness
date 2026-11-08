@@ -74,6 +74,8 @@ export interface CommodoreFeatureDeps {
   readonly approvals?: ApprovalCore;
   /** 사령관 세션에만 싣는 Gateway 도구 묶음(`fleet-ai-gateway`). Console 조립부가 정한다. */
   readonly gatewayTools?: import("../../execution/shared/agent.js").AgentToolGroup;
+  /** 사령관의 응답 말투 — 조립이 아바타 책을 읽어 주입한다. 사령관 호스트는 아바타 책을 직접 읽지 않는다. */
+  readonly voiceOf?: (commodoreId: string) => import("./prompt.js").CommodoreVoice | null;
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -172,6 +174,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     plugins: (ids) => plugins.resolve(effectiveCommodorePlugins(plugins.listGlobal(), ids).effective),
     ...(deps.claudeHome ? { claudeHome: deps.claudeHome } : {}),
     ...(deps.gatewayTools ? { gatewayTools: deps.gatewayTools } : {}),
+    ...(deps.voiceOf ? { voiceOf: deps.voiceOf } : {}),
     emit,
     taskforce: taskforce.store,
     onTaskforceEvent: (event) => emit(event),
@@ -360,6 +363,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     /** TaskForce 저장소 — 판단·깨움 런타임과 TF 화면이 쓰는 TF 원장의 주인이다. */
     taskforce: taskforce.store,
     sync: () => { restored = true; supervisor.sync("restart"); },
+    /** 응답 말투가 바뀌었다 — 진행 중인 턴은 끊지 않고 다음 턴을 새 세션으로 연다(모델 변경과 같은 경로). */
+    replaceSessionNext: (commodoreId: string) => supervisor.replaceSessionNext(commodoreId),
     /** 이 사령관 목표의 지휘관·구성원 세션이 여는 플러그인 경로 — 전역 우선 대체 뒤, 토글 OR 로 거른다. 사령관 세션은 거르지 않는다. */
     pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(objectiveIds(commodoreId)).map((plugin) => plugin.path),
     /** 그 플러그인 MCP 선언의 `${VAR}` 키 — 목표 세션에 실리는 id만. 같은 세션의 자식 환경에 얹는다. */
