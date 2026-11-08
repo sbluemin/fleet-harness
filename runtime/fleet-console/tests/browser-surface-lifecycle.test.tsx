@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { BrowserCaption, SessionBrowserPanel } from "../features/browser/client/browser-panel.js";
+import { focusBrowserWindow } from "../features/browser/client/browser-window.js";
 import { DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_WINDOW_PAGE } from "@fleet-console/protocol/desktop";
 
 let dispose: (() => void) | null = null;
@@ -26,11 +27,13 @@ it("keeps the same Browser controller editable and detachable after the companio
   const subscribers = new Set<(payload: unknown) => void>();
   const publish = () => subscribers.forEach((listener) => listener({ ...state }));
   let opened = 0;
+  let focused = 0;
   const fetcher = vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/surface")) {
       const body = JSON.parse(String(options?.body));
       if (body.action === "open") state.surface = { id: `surface-${++opened}`, browserId: ownerId, clientId: body.clientId, status: "ready" };
+      else if (body.action === "focus") focused += 1;
       else state.surface = null;
       publish();
       return Response.json({ surface: state.surface });
@@ -85,6 +88,13 @@ it("keeps the same Browser controller editable and detachable after the companio
   const first = frames[0]!.contentDocument!;
   expect(address(first).value).toBe("https://example.test/unsent");
   expect(first.querySelector('[role="tab"]')?.textContent).toContain("Kept tab");
+  // main의 배치 공간을 숨겨도 같은 controller가 창을 부르고, 새 lease/inline 복귀를 만들지 않는다.
+  container.style.display = "none";
+  await act(async () => { expect(focusBrowserWindow(ownerId)).toBe(true); });
+  expect(focused).toBe(1);
+  expect(opened).toBe(1);
+  expect(address(first).value).toBe("https://example.test/unsent");
+  container.style.display = "";
   // Chromium의 문서 종료 시 listener 회수를 모델링한다. 복귀한 DOM도 옛 문서 listener를 되살릴 수 없다.
   const ended = endedListeners.filter(({ target }) => "ownerDocument" in target && target.ownerDocument === first);
   await act(async () => { state.surface = { ...state.surface!, status: "closing" }; publish(); });

@@ -24,6 +24,7 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
   let companion: DesktopShellWindow | null = null;
   let consumed = false;
   let closing = false;
+  let focusRequest = 0;
   let deadline: ReturnType<typeof setTimeout> | null = null;
   let disposeOwner: (() => void) | null = null;
 
@@ -35,6 +36,7 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
     owner = null;
     consumed = false;
     closing = false;
+    focusRequest = 0;
     if (deadline) clearTimeout(deadline);
     deadline = null;
     disposeOwner?.();
@@ -62,7 +64,18 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
   };
 
   const apply = (next: DesktopBrowserSurface | null, at: string | null): void => {
-    if (next?.id === intent?.id && at === origin) return;
+    if (next?.id === intent?.id && at === origin) {
+      if (next && intent && next.clientId === intent.clientId && next.browserId === intent.browserId && (next.focusRequest ?? 0) > focusRequest) {
+        focusRequest = next.focusRequest!;
+        const child = companion;
+        if (child && !child.isDestroyed() && !closing) {
+          if (child.isMinimized()) child.restore();
+          child.show();
+          child.focus();
+        }
+      }
+      return;
+    }
     revoke(false);
     if (next && revoked.has(next.id)) return;
     const main = deps.main();
@@ -71,14 +84,15 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
     origin = at;
     owner = main.consoleContents;
     const contents = owner;
-    // 실제 renderer 교체와 origin 전환은 같은 창이어도 새 수명이다. in-page hash 이동은 제외한다.
+    // 항해 시도는 policy에서 취소될 수 있다. 실제 main 문서 commit/reload에서만 새 수명으로 읽는다.
+    // did-navigate는 commit된 cross-document main 항해만 알리므로 SPA/hash 이동은 유지한다.
     const ownsIntent = () => intent === next && owner === contents;
-    const navigating = (_event: unknown, _url: string, inPlace: boolean, isMainFrame: boolean) => { if (ownsIntent() && isMainFrame && !inPlace) revoke(true); };
+    const navigated = () => { if (ownsIntent()) revoke(true); };
     const gone = () => { if (ownsIntent()) revoke(true); };
-    contents.on("did-start-navigation", navigating);
+    contents.on("did-navigate", navigated);
     contents.on("render-process-gone", gone);
     contents.on("destroyed", gone);
-    disposeOwner = () => { contents.removeListener("did-start-navigation", navigating); contents.removeListener("render-process-gone", gone); contents.removeListener("destroyed", gone); };
+    disposeOwner = () => { contents.removeListener("did-navigate", navigated); contents.removeListener("render-process-gone", gone); contents.removeListener("destroyed", gone); };
     armDeadline(next.id, 10_000);
     deps.relay({ id: next.id, status: "ready" });
   };

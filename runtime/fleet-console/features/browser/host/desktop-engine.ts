@@ -68,6 +68,13 @@ export class DesktopEngine implements CdpClient {
     return this.surface;
   }
 
+  /** 새 창을 만들지 않고 현재 controller가 소유한 열린 표면만 다시 부른다. */
+  focusSurface(id: string, clientId: string): void {
+    if (!this.surface || this.surface.id !== id || this.surface.clientId !== clientId || this.surface.status !== "opened") return;
+    this.surface = { ...this.surface, focusRequest: (this.surface.focusRequest ?? 0) + 1 };
+    this.surfaceChanged();
+  }
+
   closeSurface(id: string): void {
     if (this.surface?.id !== id) return;
     const browserId = this.surface.browserId;

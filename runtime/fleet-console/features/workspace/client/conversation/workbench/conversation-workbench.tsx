@@ -21,6 +21,7 @@ import type { RailToolContext } from "../../../../../core/client/src/chrome/rail
 import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
 import { BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
+import { useBrowserDocument } from "../../../../browser/client/browser-window.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
 import { announceNativeViewResize, getNativeViewResize, useHoldNativeViewsWhile } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
@@ -71,6 +72,9 @@ export interface ConversationWorkbenchProps {
   readonly layerRef: (element: HTMLDivElement | null) => void;
   readonly insets: { readonly left: number; readonly right: number };
   readonly geometry: WorkbenchGeometry;
+  /** 분리된 칸도 같은 key/부모에 남겨 controller를 유지한다. 배치 공간만 반환한다. */
+  readonly retainedBrowser: { readonly entry: TileGeometry; readonly geometry: WorkbenchGeometry } | null;
+  readonly onBrowserDetached: (tileId: string, ownerId: string | null) => void;
   readonly layout: WorkbenchLayout;
   readonly focusedTileId: string | null;
   readonly bindings: readonly RailEntryBinding[];
@@ -134,7 +138,7 @@ function rectStyle(rect: Rect): CSSProperties {
   return { left: rect.x, top: rect.y, width: rect.w, height: rect.h };
 }
 
-export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, objectiveRecordKinds }: ConversationWorkbenchProps) {
+export function ConversationWorkbench({ layerRef, insets, geometry, retainedBrowser, onBrowserDetached, layout, focusedTileId, bindings, toolContext, conversation, state, language, objectiveRecordKinds }: ConversationWorkbenchProps) {
   const t = useT();
   const elementRef = useRef<HTMLDivElement | null>(null);
   const setRef = useCallback((element: HTMLDivElement | null) => {
@@ -163,7 +167,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
   // 동작 줄이기 설정에서는 바로 바뀐다. 움직이는 동안은 네이티브 뷰를 정지 화면 뒤로 물린다 — 뷰는 잘라 그릴 수 없다.
   // 새로 섰는지·사라졌는지는 그리는 동안 판정한다. 그래야 첫 그림부터 뷰가 물러나 있고, 떠나는 칸이 같은 key 로 남아 다시 서지 않는다.
   const workbenchKey = getWorkbenchKey();
-  const browserEntry = geometry.tiles.find((entry) => entry.tile.kind === "browser") ?? null;
+  const browserEntry = geometry.tiles.find((entry) => entry.tile.kind === "browser") ?? retainedBrowser?.entry ?? null;
   const settledRef = useRef<BrowserSettled | null>(null);
   const [entering, setEntering] = useState<string | null>(null);
   const [leaving, setLeaving] = useState<BrowserLeaving | null>(null);
@@ -283,6 +287,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
           expanded: expandedId === entry.tile.id,
           motion: entry.tile.id === revealId ? "enter" as const : null,
         })),
+        ...(retainedBrowser === null ? [] : [{ entry: retainedBrowser.entry, rect: retainedBrowser.entry.rect, hidden: true, expanded: false, motion: null }]),
         // 떠나는 브라우저 칸 — 같은 key 로 남아 패널이 다시 서지 않고, 접히는 동안만 그려진다.
         ...(ghost === null ? [] : [{ entry: ghost.entry, rect: ghost.rect, hidden: false, expanded: ghost.expanded, motion: "leave" as const }]),
       ].map(({ entry, rect, hidden, expanded, motion }) => {
@@ -296,7 +301,8 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
             focused={focusedTileId === entry.tile.id}
             motion={motion}
             pendingClose={pendingClose?.tileId === entry.tile.id ? pendingClose.message : null}
-            geometry={geometry}
+            geometry={retainedBrowser?.entry.tile.id === entry.tile.id ? retainedBrowser.geometry : geometry}
+            onBrowserDetached={onBrowserDetached}
             binding={entry.tile.kind === "entry" ? bindingOf(entry.tile.entryId) : entry.tile.kind === "surface" ? surfaceBinding(entry.tile.surfaceId) : null}
             toolContext={toolContext}
             conversation={conversation}
@@ -356,6 +362,31 @@ function WorkbenchGutter({ gutter, geometry, layout, onResizingChange }: {
     return null;
   };
 
+  // 화면에서 숨긴 Browser의 몫은 저장 배치에 남긴다. 보이는 이웃만 id로 대응해 그 비율을 바꾼다.
+  const writeWeights = (values: readonly number[], persist: boolean) => {
+    const current = geometryRef.current;
+    const scaleSubset = (weights: readonly number[], indices: readonly number[]) => {
+      if (indices.length === weights.length && indices.every((index, at) => index === at)) return [...values];
+      const before = indices.reduce((sum, index) => sum + (weights[index] ?? 1), 0);
+      const after = values.reduce((sum, value) => sum + value, 0);
+      return weights.map((weight, index) => { const at = indices.indexOf(index); return at < 0 ? weight : (values[at] ?? 1) * before / Math.max(1, after); });
+    };
+    if (gutter.kind === "columns") {
+      const indices = layout.columns.map((stack, index) => current.tiles.some(({ tile }) => stack.tiles.some((stored) => stored.id === tile.id)) ? index : -1).filter((index) => index >= 0);
+      setWorkbenchWeights({ area: "columns" }, scaleSubset(layout.columnWeights, indices), { persist });
+      return;
+    }
+    const entries = current.tiles.filter((entry) => gutter.kind === "column" ? entry.area === "column" && entry.column === gutter.column : entry.area === "below").sort((a, b) => a.index - b.index);
+    const ids = entries.map(({ tile }) => tile.id);
+    const update = (stack: WorkbenchLayout["below"], column?: number) => {
+      const indices = ids.map((id) => stack.tiles.findIndex((tile) => tile.id === id));
+      if (indices.some((index) => index < 0)) return;
+      setWorkbenchWeights(column === undefined ? { area: "below" } : { area: "column", column }, scaleSubset(stack.weights, indices), { persist });
+    };
+    if (gutter.kind === "column") layout.columns.forEach((stack, column) => update(stack, column));
+    else update(layout.below);
+  };
+
   const apply = (delta: number, base: { readonly sizes: number[]; readonly index: number } | null, startValue: number, persist: boolean) => {
     const current = geometryRef.current;
     if (gutter.kind === "split") {
@@ -378,9 +409,7 @@ function WorkbenchGutter({ gutter, geometry, layout, onResizingChange }: {
     const next = [...sizes];
     next[index] = nextLeft;
     next[index + 1] = pair - nextLeft;
-    if (gutter.kind === "columns") setWorkbenchWeights({ area: "columns" }, next, { persist });
-    else if (gutter.kind === "column") setWorkbenchWeights({ area: "column", column: gutter.column }, next, { persist });
-    else setWorkbenchWeights({ area: "below" }, next, { persist });
+    writeWeights(next, persist);
   };
 
   const startValueOf = () => {
@@ -433,9 +462,7 @@ function WorkbenchGutter({ gutter, geometry, layout, onResizingChange }: {
   const onDoubleClick = () => {
     if (gutter.kind === "split") setWorkbenchSplitRatio(null);
     else if (gutter.kind === "below") setWorkbenchBelowRatio(null);
-    else if (gutter.kind === "columns") setWorkbenchWeights({ area: "columns" }, layout.columns.map(() => 1));
-    else if (gutter.kind === "column") setWorkbenchWeights({ area: "column", column: gutter.column }, (layout.columns[gutter.column]?.tiles ?? []).map(() => 1));
-    else setWorkbenchWeights({ area: "below" }, layout.below.tiles.map(() => 1));
+    else writeWeights(pairSizes()?.sizes.map(() => 1) ?? [], true);
   };
 
   const label = gutter.kind === "split" ? t("conversation.workbench.resizeSplit") : gutter.kind === "below" ? t("conversation.workbench.resizeBelow") : t("conversation.workbench.resizeTiles");
@@ -467,6 +494,7 @@ interface WorkbenchTileViewProps {
   readonly motion: TileMotion | null;
   /** 이 칸을 닫기 전에 묻는 말 — 사람이 닫기를 눌렀고 표면이 물어야 한다고 답했을 때만. */
   readonly pendingClose: string | null;
+  readonly onBrowserDetached: (tileId: string, ownerId: string | null) => void;
   readonly geometry: WorkbenchGeometry;
   readonly binding: RailEntryBinding | null;
   readonly toolContext: RailToolContext;
@@ -635,9 +663,9 @@ function BrowserBandChrome({ frameRef, geometry, motion, hidden, expanded, child
     window.addEventListener("resize", measure);
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
   }, [frameRef, slot, splitX]);
-  if (slot === null || hidden) return null;
+  if (slot === null) return null;
   return createPortal(
-    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}${expanded ? " is-expanded" : ""}`} style={width === null ? undefined : { width }} data-keep-objective-active>
+    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}${expanded ? " is-expanded" : ""}`} style={{ ...(width === null ? {} : { width }), ...(hidden ? { display: "none" } : {}) }} data-keep-objective-active>
       {children}
     </span>,
     slot,
@@ -736,6 +764,15 @@ const NO_HIDDEN_COMPANIONS: readonly string[] = [];
 const BROWSER_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_ID];
 function noop(): void {}
 
+/** Document 소유자가 알린 분리 사실만 배치에 반영한다. 패널을 닫거나 다시 세우지 않는다. */
+function useBrowserTileSurface(props: WorkbenchTileViewProps, ownerId: string | null): void {
+  const surface = useBrowserDocument(ownerId ?? "");
+  const tileId = props.entry.tile.id;
+  const notify = props.onBrowserDetached;
+  useLayoutEffect(() => { notify(tileId, surface && ownerId ? ownerId : null); }, [tileId, ownerId, surface, notify]);
+  useEffect(() => () => notify(tileId, null), [tileId, notify]);
+}
+
 /**
  * 그 대화의 Session 브라우저 칸. 웹 브라우저 Console 에는 뷰를 그릴 셸이 없다 — Desktop 에서 열어 둔 칸에는 안내 한 줄만 남는다.
  */
@@ -754,6 +791,7 @@ function BrowserTile(props: WorkbenchTileViewProps) {
 
 function ObjectiveBrowserTile(props: WorkbenchTileViewProps & { readonly objectiveRecord: ObjectiveRecord; readonly title: string }) {
   const { objectiveRecord, state, language, objectiveRecordKinds, hidden, title } = props;
+  useBrowserTileSurface(props, objectiveRecord.id);
   const capabilities = useHostCapabilities();
   const descriptor = findAgentObjectiveKind(objectiveRecordKinds);
   const companion = descriptor?.companions?.find((panel) => panel.id === BROWSER_COMPANION_ID) ?? null;
@@ -829,6 +867,7 @@ function SessionBrowserTile(props: WorkbenchTileViewProps & { readonly session: 
     return () => { live = false; };
   }, [session.pluginId, session.scopeId, session.subjectKey]);
   const resolved = owner?.key === session.subjectKey ? owner : null;
+  useBrowserTileSurface(props, resolved?.ownerId ?? null);
   if (resolved === null || resolved.ownerId === null) {
     const notice = resolved === null ? "" : browserT(resolved.failed ? "terminal.chooser.noObjective" : "terminal.chooser.sessionNotStarted");
     return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{notice}</div> }} />;

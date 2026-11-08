@@ -51,6 +51,12 @@ describe("desktop native browser engine", () => {
     expect(engine.surfaceState()?.status).toBe("opening");
     engine.relay("local", { surface: { id: lease.id, status: "ready" } });
     engine.relay("local", { surface: { id: lease.id, status: "opened" } });
+    engine.focusSurface("stale", "client-one");
+    engine.focusSurface(lease.id, "client-two");
+    expect(engine.surfaceState()?.focusRequest).toBeUndefined();
+    engine.focusSurface(lease.id, "client-one");
+    engine.focusSurface(lease.id, "client-one");
+    expect(engine.surfaceState()).toMatchObject({ id: lease.id, status: "opened", focusRequest: 2 });
     engine.place("op-1", { bounds: { x: 4, y: 50, width: 900, height: 650 }, visible: true, surface: lease.id, clientId: "client-one" });
     const moved = engine.snapshot().views[0];
     expect(moved).toMatchObject({ id: targetId, partition: context.browserContextId, surface: lease.id, visible: true });

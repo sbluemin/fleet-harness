@@ -56,7 +56,7 @@ describe("secure window policy", () => {
       opener: frame, session: contents.session,
     });
     const base = Object.assign(new EventEmitter(), { destroy: vi.fn(), isVisible: () => true });
-    const child = { base, consoleContents: childContents, isDestroyed: () => false, show: vi.fn() };
+    const child = { base, consoleContents: childContents, isDestroyed: () => false, show: vi.fn(), isMinimized: () => true, restore: vi.fn(), focus: vi.fn() };
     const createWindow = vi.fn(() => child as never);
     const relay = vi.fn();
     const manager = createBrowserCompanion({ main: () => ({ consoleContents: contents, isDestroyed: () => false }) as never, createWindow, relay, changed: vi.fn() });
@@ -118,6 +118,20 @@ describe("secure window policy", () => {
       expect(redirect).toHaveBeenCalledOnce();
       childContents.emit("did-finish-load");
       expect(child.show).toHaveBeenCalledOnce();
+      // 사람이 다시 부를 때 현재 표면 하나만 restore/show/focus한다. 반복 snapshot은 다시 실행하지 않는다.
+      manager.apply({ ...intent, id: "surface-two", focusRequest: 1 }, HOME);
+      manager.apply({ ...intent, id: "surface-two", focusRequest: 1 }, HOME);
+      expect(child.restore).toHaveBeenCalledOnce();
+      expect(child.focus).toHaveBeenCalledOnce();
+      expect(createWindow).toHaveBeenCalledOnce();
+      // owner의 시작 알림만으로 문서 교체를 확정하지 않는다. policy가 막으면 원 문서/child가 남는다.
+      contents.emit("did-start-navigation", {}, "https://other.invalid/", false, true);
+      const blockedOwner = vi.fn();
+      contents.emit("will-navigate", { preventDefault: blockedOwner }, "https://other.invalid/");
+      expect(blockedOwner).toHaveBeenCalledOnce();
+      contents.emit("did-navigate-in-page", {}, `${HOME}/console/#kept`, true);
+      expect(manager.surface("surface-two")).toBe(child);
+      expect(base.destroy).not.toHaveBeenCalled();
       // 열린 창에는 자동 만료가 없다. native 최소화/복원·이동은 close intent가 아니다.
       const openedNotifications = relay.mock.calls.length;
       base.emit("minimize"); base.emit("hide");
@@ -175,7 +189,7 @@ describe("secure window policy", () => {
       expect(replacement.base.destroy).toHaveBeenCalledOnce();
       expect(relay).toHaveBeenLastCalledWith({ id: "surface-reopened", status: "closed" });
       manager.apply({ ...intent, id: "surface-three" }, HOME);
-      contents.emit("did-start-navigation", {}, `${HOME}/console/`, false, true);
+      contents.emit("did-navigate", {}, `${HOME}/console/`, 200, "OK");
       manager.apply({ ...intent, id: "surface-three" }, HOME);
       expect(handler({ ...details(), frameName: "surface-three" }).action).toBe("deny");
       manager.apply({ ...intent, id: "surface-four" }, HOME);

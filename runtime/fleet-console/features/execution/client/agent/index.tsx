@@ -20,6 +20,7 @@ import { desktopShellCapabilities, isDesktopShell } from "../../../../core/clien
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/objective-records-sse.js";
 import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { focusBrowserWindow, useBrowserDocument } from "../../../browser/client/browser-window.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
@@ -427,13 +428,15 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   // 자식 세션(목표 구성원)은 루트의 브라우저를 함께 쓴다 — 쓰는 중인지도 루트의 것을 읽는다.
   const using = useObjectiveUse(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
   const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
+  const browserOwnerId = context.objectiveRecord.parentObjectiveId ?? context.objectiveId;
+  const detachedBrowser = useBrowserDocument(browserOwnerId);
   // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 Desktop 앱의 것이라 문은 늘 서되,
   // 브라우저 탭·모바일로 연 화면이거나 다른 화면이 붙어 멈춘 동안은 닫힌 채로 서서 말풍선이 그 까닭을 말한다(투어도 그때는 이 문을 짚지 않는다).
   const engine = useBrowserEngine();
   const engineMissing = engine !== null && !engine.available;
   const browserLabel = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
+    : detachedBrowser ? t("terminal.browser.focus") : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
   const browser = context.onRequestCompanions === undefined || !offersCompanion(context, BROWSER_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="browser"
@@ -441,7 +444,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
       pressed={browserOpen}
       disabled={engineMissing}
       agent={using.browser}
-      onClick={() => { toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
+      onClick={() => { if (!focusBrowserWindow(browserOwnerId)) toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
     >
       <CaptionBrowserUseGlyph />
     </CaptionActionButton>

@@ -3,7 +3,7 @@ import { createPortal, flushSync } from "react-dom";
 import { DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_WINDOW_PAGE, type DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
 
 export interface BrowserSurfaceState extends DesktopBrowserSurface { readonly status: "opening" | "ready" | "opened" | "closing" }
-interface SurfaceDocument { readonly document: Document; readonly id: string }
+interface SurfaceDocument { readonly document: Document; readonly id: string; readonly focus: () => void }
 const documents = new Map<string, SurfaceDocument>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -13,6 +13,14 @@ function publish(ownerId: string, next: SurfaceDocument | null): void {
 }
 export function useBrowserDocument(ownerId: string): SurfaceDocument | null {
   return React.useSyncExternalStore(subscribe, () => documents.get(ownerId) ?? null, () => null);
+}
+
+/** 현재 controller의 표면만 다시 부른다. 없는 표면을 만들거나 inline 복귀로 토글하지 않는다. */
+export function focusBrowserWindow(ownerId: string): boolean {
+  const surface = documents.get(ownerId);
+  if (!surface) return false;
+  surface.focus();
+  return true;
 }
 
 /** controller는 부모에 남긴다. 문서 수명마다 portal target을 새로 만들어 종료된 문서의 event listener를 재사용하지 않는다. */
@@ -67,7 +75,7 @@ export function useBrowserWindow(ownerId: string, browserId: string | null, leas
   const alive = React.useRef(true);
   const returning = React.useRef(false);
   const endpoint = `/api/v1/browser/objectives/${encodeURIComponent(ownerId)}`;
-  const request = React.useCallback(async (action: "open" | "close", id?: string) => {
+  const request = React.useCallback(async (action: "open" | "close" | "focus", id?: string) => {
     const response = await fetch(`${endpoint}/surface`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id, clientId }) });
     if (!response.ok) throw new Error("browser_surface_failed");
     return await response.json() as { surface: BrowserSurfaceState | null };
@@ -135,7 +143,9 @@ export function useBrowserWindow(ownerId: string, browserId: string | null, leas
         || child.location.href !== `${location.origin}${DESKTOP_BROWSER_WINDOW_PAGE}`) throw new Error("browser_surface_failed");
       current.stop = mirrorStyles(child.document);
       child.document.documentElement.dataset.browserSurface = current.id;
-      flushSync(() => publish(ownerId, { document: child.document, id: current.id }));
+      flushSync(() => publish(ownerId, { document: child.document, id: current.id, focus: () => {
+        if (alive.current && record.current === current) void request("focus", current.id).catch(() => undefined);
+      } }));
       child.focus();
     } catch {
       if (alive.current) setFailed(true);

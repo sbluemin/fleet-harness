@@ -221,8 +221,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user") }); return true;
       }
       if (action === "surface") {
-        if ((body.action !== "open" && body.action !== "close") || typeof body.clientId !== "string" || !/^[A-Za-z0-9-]{1,80}$/u.test(body.clientId)
-          || (body.action === "close" && typeof body.id !== "string")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        if ((body.action !== "open" && body.action !== "close" && body.action !== "focus") || typeof body.clientId !== "string" || !/^[A-Za-z0-9-]{1,80}$/u.test(body.clientId)
+          || (body.action !== "open" && typeof body.id !== "string")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
         browserService.surface(objectiveId, body.action, body.clientId, typeof body.id === "string" ? body.id : undefined);
         writeJson(res, 200, { surface: browserService.state(objectiveId).surface }); return true;
       }

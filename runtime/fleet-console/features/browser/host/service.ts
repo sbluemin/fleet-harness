@@ -682,11 +682,13 @@ export class BrowserService {
     this.deps.desktop.setFloat(float);
   }
 
-  surface(objectiveId: string, action: "open" | "close", clientId: string, id?: string): void {
+  surface(objectiveId: string, action: "open" | "close" | "focus", clientId: string, id?: string): void {
     this.objectiveRecord(objectiveId);
     if (action === "open") { this.deps.desktop.openSurface(objectiveId, clientId); return; }
     const lease = this.deps.desktop.surfaceState();
-    if (lease?.browserId === objectiveId && lease.clientId === clientId && lease.id === id) this.deps.desktop.closeSurface(id);
+    if (lease?.browserId !== objectiveId || lease.clientId !== clientId || lease.id !== id) return;
+    if (action === "focus") this.deps.desktop.focusSurface(id, clientId);
+    else this.deps.desktop.closeSurface(id);
   }
 
   state(objectiveId: string): BrowserObjectiveState {
