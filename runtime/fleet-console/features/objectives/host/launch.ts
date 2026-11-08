@@ -91,7 +91,7 @@ export interface LaunchService {
   resumeObjectiveIntents(): Promise<void>;
   rename(objectiveId: string, title: string): Promise<Objective>;
   regroup(objectiveId: string, groupId: string | null): Promise<Objective>;
-  /** 지휘관의 모델·강도 — 지휘관 Objective 에 쓴다(다음 깨움부터 쓰인다). */
+  /** 지휘관의 모델·강도 — 미기동·휴면·유휴일 때만 고친다. 턴이 도는 동안은 거절한다. */
   setPreset(objectiveId: string, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Promise<Objective>;
   /** 개시 — 구성원을 모은 뒤 지휘관에게 첫 알림을 보낸다. 띄우지 못한 구성원은 failed 로 알리고 개시는 이어 간다. */
   startCommander(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string; readonly failed: readonly { readonly id: string; readonly role: string; readonly error: string }[] }>;
@@ -441,6 +441,38 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (store.pending(objectiveId)) store.launched(objectiveId);
   };
 
+  /** 지금 기동에 쓸 지휘관 모델 — 아직 안 떴으면 pending, 아니면 세션 좌표. */
+  const commanderPresetOf = (objectiveId: string): { readonly model?: string; readonly effort?: string } => {
+    const pendingCommander = store.pending(objectiveId);
+    const node = pendingCommander ? null : referenceNode(objectiveId);
+    const source = pendingCommander ?? (node ? readObjectiveLaunch(node) : store.find(objectiveId)?.commander);
+    if (!source?.model) return {};
+    return { model: source.model, ...(source.effort ? { effort: source.effort } : {}) };
+  };
+  /**
+   * 구상·개시 직전에 지휘관 모델이 아직 후보인지 확인한다. 사람이 사령관 설정에 명시한 모델은 생성 때와 같이
+   * 실행 카탈로그 가용성만 본다. 그 밖의 모델은 candidates 에 없으면 거절하고, 최신 목록을 실어 고르게 한다.
+   * 목록을 읽지 못하면 추측으로 통과시키지 않는다.
+   */
+  const assertCommanderCandidate = async (objectiveId: string): Promise<void> => {
+    const choice = commanderPresetOf(objectiveId);
+    if (!choice.model) return;
+    const current = store.find(objectiveId);
+    const configured = current ? serviceOptions.commodoreCommander?.(current.commodoreId) ?? null : null;
+    if (configured && canonicalModelId(configured.model) === canonicalModelId(choice.model)) {
+      await modelCatalog.checkAvailable({ model: choice.model }, undefined);
+      return;
+    }
+    try {
+      await modelCatalog.checkProposal({ model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }, undefined);
+    } catch (error) {
+      if (error instanceof ObjectiveStoreError && error.code === "model_not_in_gateway_models") {
+        throw new ObjectiveStoreError(error.code, undefined, { ...error.details, hint: "Edit commanderModel from the supplied candidates and commanderEffort if needed; retry." });
+      }
+      throw error;
+    }
+  };
+
   /** 확장을 청한 손과 말 — 그 회차의 개시를 그 손으로 남긴다. 메모리에만 둔다. */
   const extensionStarts = new Map<string, LaunchOptions | undefined>();
   /** 재시작 뒤 잇지 못한 목표 — 사령관이 꺼내 갈 때까지 메모리에만 둔다. */
@@ -484,6 +516,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const working = (sessionId: string): boolean => {
     const observation = ctx.consoleControl?.observe(sessionId);
     return !!observation && observation.lifecycle !== "dormant" && WORKING.has(observation.activity);
+  };
+  /** 지휘관 모델을 고칠 수 있다 — 아직 관측이 없거나 휴면이거나, 채팅이 유휴다. 턴이 도는 동안은 아니다. */
+  const commanderModelMutable = (objectiveId: string, record: { readonly [key: string]: unknown }): boolean => {
+    if (pending.has(objectiveId) || working(objectiveId)) return false;
+    const observation = control().observe(objectiveId);
+    if (!observation || observation.lifecycle === "dormant") return true;
+    if (observation.lifecycle !== "live" || record.chatMode !== true) return false;
+    return observation.activity === "idle";
   };
   const stoppable = (sessionId: string) => { const observation = ctx.consoleControl?.observe(sessionId); return !!observation && observation.lifecycle !== "dormant" && observation.activity !== "idle" && observation.activity !== "ended"; };
   // 완료·완료 해제의 순서만 지킨다. Cluster 구성·정지·복원은 Core가 소유한다.
@@ -957,6 +997,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (current.done) throw new ObjectiveStoreError("objective_done");
     // 따로 청한 구상은 계획만 하라는 뜻이다 — 확장의 자동 개시를 거둔다.
     if (recordAs) extensionStarts.delete(objectiveId);
+    await assertCommanderCandidate(objectiveId);
     await ensureCommander(objectiveId);
     rememberLanguage(objectiveId, language);
     store.recordStage(objectiveId, "planned");
@@ -1657,19 +1698,27 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
       // 보관이 만든 휴면 메타데이터는 세션이 있어도 아직 첫 기동 전이다. 모델을 고를 수 있다.
       if (!node) throw new ObjectiveStoreError("unknown_objective");
-      // 캡처된 세션의 프리셋 금지는 복원 전에 확인한다. 복원으로 기존 제약을 우회하지 않는다.
-      if (readObjectiveLaunch(node).started || pending.has(objectiveId) || (node.chatMode !== true && control().observe(objectiveId)?.lifecycle === "live") || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
+      // 미기동·휴면·유휴만 모델을 고친다. 복원으로 그 제약을 우회하지 않는다.
+      if (!commanderModelMutable(objectiveId, node)) throw new ObjectiveStoreError("objective_busy");
       await accessObjective(objectiveId);
       editableObjective(objectiveId);
       const active = ctx.objectiveRecords.get(objectiveId);
       if (!active) throw new ObjectiveStoreError("unknown_objective");
-      if (readObjectiveLaunch(active).started || (active.chatMode !== true && control().observe(objectiveId)?.lifecycle === "live") || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
-      if (active.chatMode === true) {
-        const session = readObjectiveLaunch(active);
+      if (!commanderModelMutable(objectiveId, active)) throw new ObjectiveStoreError("objective_busy");
+      const session = readObjectiveLaunch(active);
+      const coordinates = { model: preset.model ?? session.model ?? "opus[1m]", effort: preset.effort ?? session.effort ?? null };
+      if (active.chatMode === true && !session.started) {
         const apply = ctx.consoleControl?.setUnstartedPreset;
         if (!apply) throw new ObjectiveStoreError("capability_unavailable");
-        const result = await apply(objectiveId, { model: preset.model ?? session.model ?? "opus[1m]", effort: preset.effort ?? session.effort ?? null });
+        const result = await apply(objectiveId, coordinates);
         if (!result.ok) throw coordinatesError(result);
+      } else if (active.chatMode === true && control().observe(objectiveId)?.lifecycle === "live") {
+        const apply = ctx.consoleControl?.setCoordinates;
+        if (!apply) throw new ObjectiveStoreError("capability_unavailable");
+        const result = await apply(objectiveId, coordinates);
+        if (!result.ok) throw coordinatesError(result);
+        // 유휴가 아니면 예약만 되고 지금 모델은 그대로다 — 성공으로 말하지 않는다.
+        if (result.applied === "scheduled") throw new ObjectiveStoreError("objective_busy");
       } else patchObjective(objectiveId, { ...(withObjectiveLaunchPreset(active, preset)) });
       store.refresh(objectiveId);
       return objective(objectiveId);
@@ -1681,6 +1730,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
       if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
+      await assertCommanderCandidate(objectiveId);
       await ensureCommander(objectiveId);
       // 따로 만든 Objective 도 지휘관이 될 수 있다 — 보드를 읽고 쓰려면 콘솔 사용이 켜져 있어야 한다.
       rememberLanguage(objectiveId, language);

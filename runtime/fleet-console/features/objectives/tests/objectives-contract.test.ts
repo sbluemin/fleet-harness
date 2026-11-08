@@ -62,7 +62,10 @@ const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId
 const SONNET = { mode: "model" as const, model: "sonnet[1m]" };
 /** 지휘관이 구성원 모델을 확인하는 candidates — 루프백 origin 이 있는 harness 와 함께 쓴다. */
 const stubCandidates = () => vi.stubGlobal("fetch", async (url: string) => url.endsWith("/api/v1/ai-gateway/candidates")
-  ? Response.json({ candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] })
+  ? Response.json({ candidates: [
+      { model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" },
+      { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" },
+    ] })
   : new Response("", { status: 404 }));
 
 function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null }) {
@@ -228,7 +231,7 @@ title: input.title});
     ownedTheaterIds: (commodoreId: string) => commodoreId === "c1" ? ["t1"] : [],
     security: { isTerminalAuthorized: () => authorized },
     http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
-    server: { origin: routingOrigin },
+    server: { origin: () => routingOrigin() ?? "http://console.invalid" },
     objectiveRecords: objectiveRecordsHost,
     consoleControl: {
       request: async (input: ConsoleActionInput) => {
@@ -306,6 +309,12 @@ title: input.title});
     paths: { workspaceHash: () => "t1", resolveCommodoreTheaterPath: () => theaterPath, resolveObjectiveOwner: () => "c1", listCommodoreTheaters: () => [{ id: "t1", label: "Project" }], resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
   const launchOptions = { now: () => clock, commodoreAutoMemoryEnabled: options?.commodoreAutoMemoryEnabled, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}), ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}) };
+  vi.stubGlobal("fetch", async (url: string) => String(url).endsWith("/api/v1/ai-gateway/candidates")
+    ? Response.json({ candidates: [
+        { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" },
+        { model: "sonnet[1m]", efforts: ["low", "high"], summary: "Sonnet", pressure: "ok" },
+      ] })
+    : new Response("", { status: 404 }));
   const launch = createLaunchService(ctx, store, launchOptions);
   launchServices.push(launch);
   watchQuiet = () => launch.watchReportQuiet();
@@ -847,11 +856,13 @@ describe("Objectives contract", () => {
       expect.objectContaining({ sessionName: `${head}-member-1`, dormant: undefined, disableSubagents: true, text: undefined }),
       expect.objectContaining({ sessionName: `${head}-member-2`, dormant: undefined, disableSubagents: true, text: undefined }),
     ]);
-    // 첫 세션이 잡힌 뒤에는 유휴 상태여도 모델을 바꾸지 못한다. 지휘관은 채팅으로 떴다.
+    // 첫 세션이 잡힌 뒤에도 유휴면 모델을 고친다. 턴이 도는 동안은 거절한다. 지휘관은 채팅으로 떴다.
     const node = objectiveRecords.get(objective.id)!;
     node.session = { ...(node.session as object), id: "captured-session", capturedAt: "2026-09-25T00:00:00Z", source: "hook" };
+    activity.set(objective.id, "running");
     await expect(launch.setPreset(objective.id, { model: "sonnet" })).rejects.toThrow("objective_busy");
-    expect(store.find(objective.id)!.commander.viewMode).toBe("chat");
+    activity.set(objective.id, "idle");
+    expect((await launch.setPreset(objective.id, { model: "sonnet" })).commander).toMatchObject({ viewMode: "chat", model: "sonnet[1m]" });
     // 위임할 때마다 새 Objective 을 만들지 않는다 — 같은 구성원의 임무는 같은 Objective 이다.
     expect(store.find(objective.id)!.missions.map((mission) => mission.objectiveId)).toEqual([research, build, build]);
     // 임무 진행(blocked/done)은 그대로 두되, 실제 구성원 입력 대기를 별도 신호로 cluster 서술자에 전달한다.
@@ -1349,7 +1360,10 @@ describe("Objectives contract", () => {
     const fetched: string[] = [];
     vi.stubGlobal("fetch", async (url: string) => {
       fetched.push(url);
-      return url.endsWith("/api/v1/ai-gateway/candidates") ? Response.json({ candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] }) : new Response("", { status: 404 });
+      return url.endsWith("/api/v1/ai-gateway/candidates") ? Response.json({ candidates: [
+        { model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" },
+        { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" },
+      ] }) : new Response("", { status: 404 });
     });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
@@ -2018,6 +2032,67 @@ describe("Objectives contract", () => {
     expect(durable.find(targetId)).toBeNull();
     persistence.load();
     expect(createObjectiveStore({ storage: persistence.board, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(into)!.merged).toContainEqual(expect.objectContaining({ sourceId: targetId }));
+  });
+
+  it("refuses plan and commence when the Commander model leaves candidates, and edits it while pending or idle", async () => {
+    let configured: { readonly model: string; readonly effort?: string } | null = null;
+    const { ctx, store, launch, workspace, launches, activity, surfaces, objectiveRecords } = harness(() => "http://console.invalid", { commodoreCommander: () => configured });
+    const catalog = { plugins: [{ id: "terminal", kinds: [{ id: "agent", variants: [{ id: "native", label: "Claude", rows: [
+      { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }, { id: "high", label: "HIGH", launch: { effort: "high" } }] },
+      { id: "opus", label: "Opus", launch: { model: "opus[1m]" }, chips: [{ id: "high", label: "HIGH", launch: { effort: "high" } }] },
+    ] }, { id: "gateway:xai", label: "xAI", rows: [
+      { id: "xai--grok-4.7", label: "Grok", launch: { model: "xai--grok-4.7" } },
+    ] }] }] }] };
+    const candidates = { candidates: [
+      { model: "sonnet[1m]", efforts: ["low", "high"], summary: "Sonnet", pressure: "ok" as const },
+      { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" as const },
+    ] };
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (String(url).endsWith("/api/v1/objectives/records/catalog")) return Response.json(catalog);
+      if (String(url).endsWith("/api/v1/ai-gateway/candidates")) return Response.json(candidates);
+      return new Response("", { status: 404 });
+    });
+    const [commodore] = createCommodoreBoardTools(ctx, store, launch, "c1");
+    const call = async (args: Record<string, unknown>) => commodore!.execute(args, { cwd: workspace }) as Promise<{ structuredContent: Record<string, unknown> }>;
+    const created = await call({ action: "add", theaterId: "t1", title: "Stale", commanderModel: "sonnet[1m]", commanderEffort: "low" });
+    expect(created.structuredContent).toMatchObject({ ok: true });
+    const id = created.structuredContent.objectiveId as string;
+    candidates.candidates = candidates.candidates.filter((entry) => entry.model !== "sonnet[1m]");
+    const refused = await call({ action: "plan", objectiveId: id });
+    expect(refused.structuredContent).toMatchObject({
+      error: "model_not_in_gateway_models",
+      model: "sonnet[1m]",
+      candidates: candidates.candidates,
+      hint: expect.stringContaining("commanderModel"),
+    });
+    expect(launches).toHaveLength(0);
+    expect((await call({ action: "commence", objectiveId: id })).structuredContent.error).toBe("model_not_in_gateway_models");
+    expect((await call({ action: "edit", objectiveId: id, commanderModel: "xai--grok-4.7" })).structuredContent).toMatchObject({ error: "model_not_in_gateway_models", candidates: candidates.candidates });
+    expect(store.pending(id)?.model).toBe("sonnet[1m]");
+    expect((await call({ action: "edit", objectiveId: id, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "opus[1m]", commanderEffort: "high" } });
+    expect(store.pending(id)).toMatchObject({ model: "opus[1m]", effort: "high" });
+    expect((await call({ action: "plan", objectiveId: id })).structuredContent).toMatchObject({ ok: true });
+    expect(launches).toHaveLength(1);
+    const node = objectiveRecords.get(id)!;
+    node.session = { ...(node.session as object), id: "captured-session", capturedAt: "2026-09-25T00:00:00Z", source: "hook" };
+    activity.set(id, "idle");
+    candidates.candidates.push({ model: "sonnet[1m]", efforts: ["low", "high"], summary: "Sonnet", pressure: "ok" });
+    expect((await call({ action: "edit", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "sonnet[1m]", commanderEffort: "high" } });
+    surfaces.set(id, "terminal");
+    activity.set(id, "dormant");
+    expect((await call({ action: "edit", objectiveId: id, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "opus[1m]" } });
+    surfaces.delete(id);
+    activity.set(id, "running");
+    expect((await call({ action: "edit", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "high" })).structuredContent.error).toBe("objective_busy");
+    // 사람이 사령관 설정에 명시한 모델은 후보에서 빠져도 실행 카탈로그에 있으면 구상을 막지 않는다.
+    configured = { model: "opus[1m]", effort: "high" };
+    candidates.candidates = candidates.candidates.filter((entry) => entry.model !== "opus[1m]");
+    const person = await call({ action: "add", theaterId: "t1", title: "Person chose" });
+    expect(person.structuredContent).toMatchObject({ ok: true });
+    expect((await call({ action: "plan", objectiveId: person.structuredContent.objectiveId })).structuredContent).toMatchObject({ ok: true });
+    // 사람이 사령관 설정에 지휘관 모델을 정해 둔 경우 edit의 commanderModel/Effort는 add와 같이 무시되고 notice를 돌려준다.
+    const editPerson = await call({ action: "edit", objectiveId: person.structuredContent.objectiveId, commanderModel: "sonnet[1m]" });
+    expect(editPerson.structuredContent).toMatchObject({ ok: true, notice: expect.stringContaining("ignored") });
   });
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
