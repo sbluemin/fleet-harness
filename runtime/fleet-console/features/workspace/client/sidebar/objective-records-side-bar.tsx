@@ -520,7 +520,8 @@ export function ObjectiveRecordsSideBar({
           const commanderRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theater.id);
           const waitingCount = countAwaitingObjectiveRecords(commanderRecords, objectiveRecordRuntime);
           // 사령관 섹션의 지휘관 목록 펼침 — 펼침 묶음은 사령관을 옮길 때 정해진다. 접힌 섹션은 마운트하지 않는다.
-          const sectionExpanded = expandedCommanders.has(theater.id);
+          // 아바타만 서는 좁은 열에는 목록을 두지 않는다 — 창을 넓히면 저장된 펼침대로 돌아온다.
+          const sectionExpanded = !compact && expandedCommanders.has(theater.id);
           // 가운데 채팅이 가리키는 지휘관 — 왼쪽 목록이 이 선택을 말한다.
           const selectedCommanderId =
             typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === theater.id
