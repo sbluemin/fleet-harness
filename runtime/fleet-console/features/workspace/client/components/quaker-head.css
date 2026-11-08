@@ -92,13 +92,15 @@
   97.5% { transform: scaleY(0.1); }
 }
 
-.mongle-quaker.is-full .mongle-quaker-wing-l {
+.mongle-quaker.is-full .mongle-quaker-wing-l,
+.mongle-quaker.is-bust .mongle-quaker-wing-l {
   transform-origin: 92% 27%;
   animation: mongle-quaker-flap-l 0.82s ease-in-out infinite alternate;
   animation-name: var(--state-motion, mongle-quaker-flap-l);
 }
 
-.mongle-quaker.is-full .mongle-quaker-wing-r {
+.mongle-quaker.is-full .mongle-quaker-wing-r,
+.mongle-quaker.is-bust .mongle-quaker-wing-r {
   transform-origin: 8% 27%;
   animation: mongle-quaker-flap-r 0.82s ease-in-out infinite alternate;
   animation-name: var(--state-motion, mongle-quaker-flap-r);

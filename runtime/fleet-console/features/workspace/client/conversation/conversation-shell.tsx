@@ -568,7 +568,7 @@ function ConversationPanelIdentity() {
         return (
           <div className="conversation-panel-identity">
             {avatar
-              ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
+              ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} figure />
               : null}
             <PanelIdentityName title={keepDescriptor.title(keepContext)} onRename={keepDescriptor.rename?.(keepContext) ?? undefined} subject="surface" />
           </div>
@@ -593,7 +593,7 @@ function ConversationPanelIdentity() {
     return (
       <div className="conversation-panel-identity">
         {faceKey
-          ? <AvatarEditor avatarKey={faceKey} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
+          ? <AvatarEditor avatarKey={faceKey} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} figure />
           : <span className="conversation-panel-identity-mark" aria-hidden="true"><TheaterGlyph size={18} /></span>}
         <PanelIdentityName title={owner?.title ?? theaterLabel} onRename={owner?.rename ?? undefined} subject="surface" />
       </div>
@@ -614,7 +614,7 @@ function ConversationPanelIdentity() {
     return (
       <div className="conversation-panel-identity">
         {avatar
-          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
+          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} figure />
           : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
         <PanelIdentityName title={descriptor.title(context)} onRename={descriptor.rename?.(context) ?? undefined} subject="surface" />
       </div>
