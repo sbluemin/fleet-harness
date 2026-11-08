@@ -102,6 +102,11 @@
 .op-browser__nav.is-top :is(.op-browser__icon, .workbench-tile-button) { width: 30px; height: 30px; }
 .op-browser__nav.is-top .op-browser__url { min-width: 120px; height: 30px; }
 html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region: no-drag; }
+/* 같은 에이전트 세션이 주소줄 줄에도 이어진다 — 레일 꼭대기의 틴트가 줄의 왼쪽에서 시작해 오른쪽으로 옅어지고, 줄 아래 2px 선이 레일의 선과 같은 말을 한다.
+   줄이 서는 자리(앱 맨 위 줄·분리 창·칸 안)에 상관없이 줄 자신이 가진 클래스라, 쓰는 중이 아니거나 줄이 없으면 아무것도 그려지지 않는다. */
+.op-browser__nav.is-driving { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, transparent), transparent 70%); }
+.op-browser__nav.is-driving::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none; background: var(--agent-control-badge); animation: op-browser-pulse 2.4s ease-in-out infinite; animation-name: var(--state-motion, op-browser-pulse); }
+@media (prefers-reduced-motion: reduce) { .op-browser__nav.is-driving::after { animation: none; } }
 /* 접힌 도구(「⋯」) — 팝오버는 줄 아래 본문 위로 내려온다. */
 .op-browser__fold { position: relative; flex: none; align-self: center; }
 .op-browser__fold .op-browser__menu--row { right: 0; width: auto; }
@@ -288,6 +293,12 @@ html[data-desktop-shell="true"] .browser-window-document #browser-window-caption
 html[data-desktop-shell="true"] .browser-window-document #browser-window-caption :is(button, a, input, select, textarea, [role="tab"], [role="button"], [role="menu"], [role="listbox"], [tabindex]) { -webkit-app-region: no-drag; }
 html[data-desktop-platform="darwin"] .browser-window-document #browser-window-caption { padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-2)); }
 html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
+/* 분리 창에서는 주소줄 줄이 곧 창의 맨 위 줄이다 — 신호등 자리까지 포함한 줄 전체가 틴트와 선을 가진다(줄 안쪽의 것은 거둔다). */
+#browser-window-caption:has(.op-browser__nav.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--ink-deep)), var(--ink-deep) 70%); }
+#browser-window-caption:has(.op-browser__nav.is-driving)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none; background: var(--agent-control-badge); animation: op-browser-pulse 2.4s ease-in-out infinite; animation-name: var(--state-motion, op-browser-pulse); }
+#browser-window-caption .op-browser__nav.is-driving { background: none; }
+#browser-window-caption .op-browser__nav.is-driving::after { display: none; }
+@media (prefers-reduced-motion: reduce) { #browser-window-caption:has(.op-browser__nav.is-driving)::after { animation: none; } }
 #browser-window-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #browser-window-body .op-browser { flex: 1; }
 .op-browser__detached { display: flex; align-items: center; justify-content: center; height: 100%; font: inherit; color: var(--text-secondary); }

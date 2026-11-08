@@ -1633,7 +1633,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
   const closedDoor = !available ? unavailableText(t, state?.reason ?? null, services.isDesktopShell()) : null;
 
   const navBar = (
-    <div ref={navRef} className={`op-browser__nav${navTop ? " is-top" : ""}`}>
+    <div ref={navRef} className={`op-browser__nav${navTop ? " is-top" : ""}${state?.driving === true ? " is-driving" : ""}`}>
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
       <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
