@@ -127,6 +127,10 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
         const id = rest[0]!;
         wake(runner, "decision", { objectiveId: id, detail: `"${objectives.find((objective) => objective.id === id)?.title ?? id}"` });
         heard(runner, objectives, id);
+      } else if (head === "consultation") {
+        const id = rest[0]!;
+        wake(runner, "consultation", { objectiveId: id, detail: rest[1] ?? id });
+        heard(runner, objectives, id);
       } else if (immediate(head as WakeCode, objectives.find((objective) => objective.id === rest[0]))) freshCodes.add(head as WakeCode);
     }
     if (freshCodes.size) {
@@ -467,6 +471,7 @@ function waitingKeys(objectives: readonly Objective[], observe?: BoardObserver):
     }
     // 넘김이 끝난 사건 — 끝난 시각까지 키에 실어 같은 대상의 다음 넘김이 끝나도 새 항목이 된다.
     for (const hold of objective.personHolds ?? []) if (hold.settled) keys.add(`${hold.settled.outcome}:${objective.id}:${hold.target}:${hold.settled.at}`);
+    for (const consult of objective.consultations ?? []) if (!consult.reply) keys.add(`consultation:${objective.id}:${consult.id}`);
   }
   return keys;
 }

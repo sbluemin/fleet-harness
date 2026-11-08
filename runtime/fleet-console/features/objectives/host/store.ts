@@ -1,3 +1,4 @@
+import { withDirectoryLock } from "@fleet-console/infra/fs-store";
 import { boardFromDocument, documentFromBoard, documentFromObjective, type ObjectiveDocument } from "./storage-codec.js";
 import type { ObjectiveBoardStorage } from "./storage.js";
 import { missionDispatch } from "../shared/signals.js";
@@ -84,6 +85,9 @@ import {
   type DecisionQuestionInput,
   type DecisionRequest,
   storedDecisionFieldsSchema,
+  storedConsultationsSchema,
+  MAX_CONSULTATION_TEXT,
+  type StoredConsultation,
   storedPersonHoldSchema,
   MAX_PERSON_HOLD_REASON,
   type ObjectivePersonHold,
@@ -368,6 +372,25 @@ export interface ObjectiveStore {
   /** 지휘관의 철회 — 그 요청이 지금 요청일 때만. 요청이 없으면 변화 없이 withdrawn false. */
   decisionWithdraw(objectiveId: string, requestId: string): { readonly objective: Objective; readonly withdrawn: boolean };
   /**
+   * 지휘관의 자문. 질문 본문을 그대로 두고 작성자·시각은 호스트가 적는다. 결정 요청·사람 위임은 건드리지 않는다.
+   */
+  consultAsk(objectiveId: string, input: { readonly question: string; readonly missionId?: string }): { readonly objective: Objective; readonly consultation: StoredConsultation };
+  /** 소유 사령관의 답. 생략은 추가 의견 없음으로 한 번 닫고, 같은 자문의 재답은 거절한다. */
+  consultAnswer(objectiveId: string, input: { readonly consultId: string; readonly answer?: string; readonly by: Extract<ObjectiveActor, { kind: "commodore" }> }): { readonly objective: Objective; readonly consultation: StoredConsultation };
+  /**
+   * pending만 sending으로 바꾼다. 디스크를 다시 읽고 잠근 뒤 한 번만 성공한다. 다른 상태면 false.
+   * 일반 읽기는 sending을 건드리지 않는다.
+   */
+  claimConsultationSend(objectiveId: string, consultId: string): boolean;
+  /** 접수 전에 확실히 거절된 시도만 pending으로 되돌린다. sending이 아니면 그대로 둔다. */
+  releaseConsultationSend(objectiveId: string, consultId: string): void;
+  /** send가 접수되면 submitted. 모델이 읽었다는 뜻이 아니다. sending이 아니면 그대로 둔다. */
+  submitConsultationSend(objectiveId: string, consultId: string): void;
+  /** 전송 결과가 불명이면 uncertain. 자동 재전송하지 않는다. */
+  failConsultationSend(objectiveId: string, consultId: string): void;
+  /** 프로세스 기동 정산 — sending만 uncertain. 그 사이 끝난 시도는 자동 재전송하지 않는다. */
+  settleConsultationSends(objectiveId: string): void;
+  /**
    * 사람의 답을 검증해 전달 중으로 둔다. 그 요청의 답이 이미 결정으로 남았으면 같은 답은 recorded, 다른 답은 거절한다.
    */
   decisionAccept(objectiveId: string, input: DecisionAnswersInput, by?: ObjectiveActor): { readonly recorded: true; readonly objective: Objective } | { readonly recorded: false; readonly objective: Objective; readonly request: DecisionRequest; readonly answers: readonly DecisionAnswer[] };
@@ -527,6 +550,7 @@ function readObjective(dir: string, segment: string, commodoreId: string, suppli
       if (new Set(manifest.map((entry) => entry.evidenceId)).size !== manifest.length || manifest.reduce((sum, entry) => sum + entry.bytes, 0) > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("invalid_stored_evidence");
       if (results.data.some((entry) => entry.kind === "evidence" && !manifest.some((file) => file.evidenceId === entry.evidenceId && file.sha256 === entry.sha256 && file.bytes === entry.bytes && file.mediaType === entry.mediaType))) throw new ObjectiveStoreError("invalid_stored_evidence");
       if (!storedDecisionFieldsSchema.safeParse({ decisionRequest: parsed.decisionRequest, decisionRequestRevision: parsed.decisionRequestRevision, decisionDelivery: parsed.decisionDelivery, decisions: parsed.decisions }).success) throw new ObjectiveStoreError("invalid_stored_decisions");
+      if (parsed.consultations !== undefined && !storedConsultationsSchema.safeParse(parsed.consultations).success) throw new ObjectiveStoreError("invalid_stored_consultations");
       // 후속 본문은 strict 로 검사하지 않는다. 옛 criteria 는 후보를 지우지 않고 키만 버린다. 목표 자신의 criteria 는 남긴다.
       dropLegacyFollowupCriteria(parsed);
       // 넘김은 어긋난 항목만 버린다 — 대상마다 마지막 하나.
@@ -641,6 +665,7 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.handoff) delete out.handoff;
   if (!objective.decisionRequest) delete out.decisionRequest;
   if (!objective.decisionRequestRevision) delete out.decisionRequestRevision;
+  if (!objective.consultations?.length) delete out.consultations;
   if (!objective.decisionDelivery) delete out.decisionDelivery;
   if (!objective.decisions?.length) delete out.decisions;
   if (!objective.personHolds?.length) delete out.personHolds;
@@ -875,6 +900,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: sessionRecord(stored.origin.objectiveId)?.title ?? load(node?.commodoreId ?? pending!.commodoreId).get(stored.origin.objectiveId)?.title ?? null, candidateId: stored.origin.candidateId, userImpact: stored.origin.userImpact, evidence: stored.origin.evidence.map(evidenceView) } : null,
       decisionRequest: stored.decisionRequest ?? null,
       decisionRequestRevision: stored.decisionRequestRevision ?? 0,
+      consultations: (stored.consultations ?? []).map((entry) => ({
+        id: entry.id, question: entry.question, at: entry.at, by: entry.by,
+        ...(entry.missionId ? { missionId: entry.missionId } : {}),
+        ...(entry.reply ? { reply: entry.reply } : {}),
+        ...(entry.delivery ? { delivery: entry.delivery.state } : {}),
+      })),
       decisionDelivery: stored.decisionDelivery ? { requestId: stored.decisionDelivery.requestId, at: stored.decisionDelivery.at, by: stored.decisionDelivery.by ?? "human" } : null,
       decisions: (stored.decisions ?? []).map((decision) => ({ ...decision, by: decision.by ?? "human" })),
       personHolds: (stored.personHolds ?? []).map((hold) => ({ target: hold.target, requestId: hold.requestId ?? null, reason: hold.reason, at: hold.at, by: hold.by, settled: hold.settled ?? null })),
@@ -981,8 +1012,38 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return objective;
   };
 
-  /** 쓰기 한 곳 — 그 목표의 파일 한 건이 성공한 뒤에 캐시를 갈고, 마지막에 방송한다. */
-  const commit = (commodoreId: string, changed: StoredObjective, reordered = false, touch = true, source?: "pr-observation"): Objective | null => {
+  const readFreshObjective = (commodoreId: string, objectiveId: string): StoredObjective | null => {
+    const dir = objectiveDir(commodoreId, objectiveId);
+    const context = options.documentContext?.(commodoreId);
+    const listed = options.storage?.list(commodoreId).find((entry) => entry.id === objectiveId);
+    return readObjective(dir, dirSegment(objectiveId), commodoreId, listed, context);
+  };
+  /** 전달 순위. 일반 보드 쓰기는 이보다 앞선 디스크 상태를 pending으로 되돌리지 않는다. */
+  const deliveryRank = (state: "pending" | "sending" | "submitted" | "uncertain" | undefined): number =>
+    state === "sending" ? 1 : state === "submitted" || state === "uncertain" ? 2 : state === "pending" ? 0 : -1;
+  const preserveConsultationDelivery = (memory: StoredObjective, disk: StoredObjective): StoredObjective => {
+    const diskItems = disk.consultations ?? [];
+    const seen = new Set<string>();
+    const consultations = (memory.consultations ?? []).map((entry) => {
+      seen.add(entry.id);
+      const onDisk = diskItems.find((candidate) => candidate.id === entry.id);
+      if (!onDisk) return entry;
+      // 디스크에 이미 닫힌 답은 일반 쓰기나 오래된 캐시가 바꾸거나 지우지 못한다.
+      const reply = onDisk.reply ?? entry.reply;
+      const delivery = deliveryRank(onDisk.delivery?.state) > deliveryRank(entry.delivery?.state) ? onDisk.delivery : entry.delivery ?? onDisk.delivery;
+      return { ...entry, ...(reply ? { reply } : {}), ...(delivery ? { delivery } : {}) };
+    });
+    for (const entry of diskItems) if (!seen.has(entry.id)) consultations.push(entry);
+    return consultations.length ? { ...memory, consultations } : memory;
+  };
+  /** 자문 전달과 일반 보드 쓰기가 같은 디렉터리 잠금을 쓴다. 죽은 소유자의 stale 복구는 infra 계약이다. */
+  const withObjectiveLock = <T>(commodoreId: string, objectiveId: string, operation: () => T): T => {
+    const dir = objectiveDir(commodoreId, objectiveId);
+    fs.mkdirSync(dir, { recursive: true });
+    return withDirectoryLock({ lockDir: path.join(dir, ".consultation.lock") }, operation);
+  };
+  /** 잠금을 잡은 뒤의 파일 쓰기. 다시 잠그지 않는다. */
+  const writeCommitted = (commodoreId: string, changed: StoredObjective, reordered = false, touch = true, source?: "pr-observation"): Objective | null => {
     const previousMembers = load(commodoreId).get(changed.id)?.members ?? [];
     const nextMembers = changed.members ?? [];
     const joined = nextMembers.flatMap((member, index) => previousMembers.some((old) => old.id === member.id) ? []
@@ -998,6 +1059,35 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const objective = view(commodoreId, changed);
     if (objective) options.emit({ op: "upsert", commodoreId, objectiveId: objective.id, objective }, source);
     return objective;
+  };
+  /** 쓰기 한 곳 — 그 목표의 파일 한 건이 성공한 뒤에 캐시를 갈고, 마지막에 방송한다. */
+  const commit = (commodoreId: string, changed: StoredObjective, reordered = false, touch = true, source?: "pr-observation"): Objective | null =>
+    withObjectiveLock(commodoreId, changed.id, () => {
+      const disk = readFreshObjective(commodoreId, changed.id);
+      return writeCommitted(commodoreId, disk ? preserveConsultationDelivery(changed, disk) : changed, reordered, touch, source);
+    });
+
+  /**
+   * 자문 알림 상태만 바꾼다. 디스크를 잠근 뒤 다시 읽어, 같은 프로세스의 두 flush와 두 저장 인스턴스가
+   * 같은 pending을 두 번 claim하지 않게 한다. 일반 읽기는 이 상태를 정산하지 않는다.
+   */
+  const transitionConsultation = (objectiveId: string, consultId: string, from: "pending" | "sending" | "submitted" | "uncertain", to: "pending" | "sending" | "submitted" | "uncertain"): boolean => {
+    const located = locate(objectiveId);
+    return withObjectiveLock(located.commodoreId, objectiveId, () => {
+      const disk = readFreshObjective(located.commodoreId, objectiveId) ?? load(located.commodoreId).get(objectiveId) ?? null;
+      if (!disk) return false;
+      let changed = false;
+      const consultations = (disk.consultations ?? []).map((entry) => {
+        if (consultId !== "*" && entry.id !== consultId) return entry;
+        if (entry.delivery?.state !== from) return entry;
+        changed = true;
+        return { ...entry, delivery: { state: to, at: now() } };
+      });
+      if (!changed) return false;
+      load(located.commodoreId).set(disk.id, disk);
+      writeCommitted(located.commodoreId, { ...disk, consultations });
+      return true;
+    });
   };
 
   const action = (stored: StoredObjective, by: ObjectiveActor, kind: ObjectiveAction["kind"], details: Pick<ObjectiveAction, "targetId" | "proposal" | "kinds" | "handoff"> = {}): StoredObjective => ({
@@ -2171,6 +2261,60 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         return { ...stored, decisionRequest: undefined, decisionDelivery: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
       });
       return { objective, withdrawn };
+    },
+
+    consultAsk(objectiveId, input) {
+      if (!input.question.trim() || input.question.length > MAX_CONSULTATION_TEXT) throw new ObjectiveStoreError("invalid_consultation");
+      let consultation: StoredConsultation | null = null;
+      const objective = update(objectiveId, (stored) => {
+        if (stored.removed) throw new ObjectiveStoreError("objective_removed");
+        if (input.missionId && !stored.missions.some((mission) => mission.id === input.missionId)) throw new ObjectiveStoreError("unknown_mission");
+        consultation = {
+          id: randomUUID(), question: input.question, at: now(), by: "commander",
+          ...(input.missionId ? { missionId: input.missionId } : {}),
+        };
+        return { ...stored, consultations: [...(stored.consultations ?? []), consultation] };
+      });
+      return { objective, consultation: consultation! };
+    },
+
+    consultAnswer(objectiveId, input) {
+      if (input.answer !== undefined && (!input.answer.trim() || input.answer.length > MAX_CONSULTATION_TEXT)) throw new ObjectiveStoreError("invalid_consultation");
+      const located = locate(objectiveId);
+      let consultation: StoredConsultation | null = null;
+      const objective = withObjectiveLock(located.commodoreId, objectiveId, () => {
+        const disk = readFreshObjective(located.commodoreId, objectiveId) ?? load(located.commodoreId).get(objectiveId);
+        if (!disk) throw new ObjectiveStoreError("unknown_objective");
+        const current = (disk.consultations ?? []).find((entry) => entry.id === input.consultId);
+        if (!current) throw new ObjectiveStoreError("unknown_consultation");
+        if (current.reply) throw new ObjectiveStoreError("consultation_answered");
+        const by = { kind: "commodore" as const, commodoreId: input.by.commodoreId };
+        const reply = input.answer === undefined
+          ? { kind: "no-additional-advice" as const, at: now(), by }
+          : { kind: "advice" as const, text: input.answer, at: now(), by };
+        consultation = { ...current, reply, delivery: { state: "pending" as const, at: now() } };
+        const consultations = (disk.consultations ?? []).map((entry) => entry.id === consultation!.id ? consultation! : entry);
+        load(located.commodoreId).set(disk.id, disk);
+        return writeCommitted(located.commodoreId, { ...disk, consultations });
+      });
+      if (!objective || !consultation) throw new ObjectiveStoreError("unknown_consultation");
+      return { objective, consultation };
+    },
+
+    claimConsultationSend(objectiveId, consultId) {
+      return transitionConsultation(objectiveId, consultId, "pending", "sending");
+    },
+    releaseConsultationSend(objectiveId, consultId) {
+      transitionConsultation(objectiveId, consultId, "sending", "pending");
+    },
+    submitConsultationSend(objectiveId, consultId) {
+      transitionConsultation(objectiveId, consultId, "sending", "submitted");
+    },
+    failConsultationSend(objectiveId, consultId) {
+      transitionConsultation(objectiveId, consultId, "sending", "uncertain");
+    },
+    settleConsultationSends(objectiveId) {
+      transitionConsultation(objectiveId, "*", "sending", "uncertain");
     },
 
     decisionAccept(objectiveId, input, by = "human") {

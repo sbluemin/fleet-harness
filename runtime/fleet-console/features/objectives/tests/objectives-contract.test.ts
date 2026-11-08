@@ -235,7 +235,17 @@ title: input.title});
     objectiveRecords: objectiveRecordsHost,
     consoleControl: {
       request: async (input: ConsoleActionInput) => {
-        if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.(); deliveries.push(input); sent.push({ objectiveId: input.objectiveId!, text: input.text! }); if (activity.get(input.objectiveId!) === "dormant") { woken.push({ objectiveId: input.objectiveId!, ...(launchCoordinates.get(input.objectiveId!) ?? { model: "opus[1m]", effort: null }) }); activity.set(input.objectiveId!, "idle"); } return { objectiveId: input.objectiveId }; }
+        if (input.kind === "send") {
+          const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.();
+          if (input.whenIdle) {
+            const state = activity.get(input.objectiveId!);
+            if (state === "running" || state === "background" || state === "awaiting") throw new Error("session_busy");
+          }
+          if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); }
+          deliveries.push(input); sent.push({ objectiveId: input.objectiveId!, text: input.text! });
+          if (activity.get(input.objectiveId!) === "dormant") { woken.push({ objectiveId: input.objectiveId!, ...(launchCoordinates.get(input.objectiveId!) ?? { model: "opus[1m]", effort: null }) }); activity.set(input.objectiveId!, "idle"); }
+          return { objectiveId: input.objectiveId };
+        }
         // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
         if (input.kind === "interrupt") { if (activity.get(input.objectiveId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.objectiveId!); activity.set(input.objectiveId!, "idle"); return { objectiveId: input.objectiveId }; }
         // resume 은 휴면만 세션째 되살린다.
@@ -3318,7 +3328,185 @@ describe("Objectives contract", () => {
     }
   });
 
-  it("splits role servers from one board implementation: commander 21, member 6", () => {
+  it("records a consultation without touching decisions, holds, or member tools", async () => {
+    const h = harness();
+    const { store, launch, call, ctx, sent, savedObjective } = h;
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Consult", groupId: null, note: "brief", missions: [{ text: "keep the brief" }] });
+    const missionId = store.find(objective.id)!.missions[0]!.id;
+    store.decisionRequest(objective.id, { expectedRevision: 0, questions: [{ header: "Keep", text: "Keep the brief?", options: [{ label: "Yes" }] }] });
+    const before = store.find(objective.id)!;
+    const asked = await call("consult_ask", { question: "What did the person already require?", missionId }, objective.id);
+    expect(asked.isError).toBe(false);
+    const consultId = asked.structuredContent.consultId as string;
+    expect(store.find(objective.id)).toMatchObject({
+      decisionRequestRevision: before.decisionRequestRevision,
+      consultations: [{ id: consultId, question: "What did the person already require?", missionId, by: "commander" }],
+    });
+    expect(store.find(objective.id)!.decisionRequest?.id).toBe(before.decisionRequest!.id);
+    const member = store.memberAdd(objective.id, { role: "reader", launch: SONNET }, "human").members.at(-1)!;
+    expect((await call("consult_ask", { question: "again" }, member.id)).structuredContent.error).toBe("not_participant");
+    expect(createMemberMcpTools(ctx, store, launch).some((tool) => tool.name === "consult_ask")).toBe(false);
+    const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
+    const outsider = createCommodoreBoardTools(ctx, store, launch, "t2")[0]!;
+    const sentBefore = sent.length;
+    const answer = "Existing requirement: keep the brief. Source: the person, 2026-11-08.";
+    const asRecord = async (tool: ConsoleMcpTool, args: Record<string, unknown>) => (await tool.execute(args, { cwd: h.workspace })) as { structuredContent: Record<string, unknown> };
+    expect((await asRecord(board, { action: "consult_answer", objectiveId: objective.id, consultId, answer })).structuredContent).toMatchObject({ ok: true, consultId, reply: "advice" });
+    expect(sent.length).toBe(sentBefore);
+    expect((await asRecord(board, { action: "consult_answer", objectiveId: objective.id, consultId, answer })).structuredContent.error).toBe("consultation_answered");
+    expect((await asRecord(outsider, { action: "consult_answer", objectiveId: objective.id, consultId })).structuredContent.error).toBe("other_theater");
+    const quiet = await call("consult_ask", { question: "Anything else?" }, objective.id);
+    expect((await asRecord(board, { action: "consult_answer", objectiveId: objective.id, consultId: quiet.structuredContent.consultId })).structuredContent).toMatchObject({ reply: "no-additional-advice" });
+    const kept = store.find(objective.id)!;
+    expect(kept.decisionRequest?.id).toBe(before.decisionRequest!.id);
+    expect(kept.personHolds).toEqual(before.personHolds);
+    expect(JSON.stringify(kept.consultations)).not.toContain("noticeId");
+    store.briefEdit(objective.id, "edited brief", [], "human");
+    store.missionRemove(objective.id, missionId);
+    const survived = store.find(objective.id)!;
+    expect(survived.decisionRequest).toBeNull();
+    expect(survived.consultations.map((entry) => entry.id)).toEqual([consultId, quiet.structuredContent.consultId]);
+    expect(survived.consultations[0]).toMatchObject({ missionId, reply: { kind: "advice", text: answer } });
+    expect(survived.consultations[1]?.reply?.kind).toBe("no-additional-advice");
+    const disk = savedObjective(objective.id) as { consultations?: { id: string; delivery?: { state?: string } }[] };
+    expect(disk.consultations?.map((entry) => entry.id)).toEqual([consultId, quiet.structuredContent.consultId]);
+    expect(disk.consultations?.[0]?.delivery?.state).toBe("pending");
+    const restarted = h.restart();
+    expect(restarted.store.find(objective.id)!.consultations.map((entry) => entry.question)).toEqual(["What did the person already require?", "Anything else?"]);
+    const read = await call("read", {}, objective.id);
+    expect(JSON.stringify(read.structuredContent)).toContain(consultId);
+    expect(inboxReasons(restarted.store.find(objective.id)!).includes("decision")).toBe(false);
+  });
+
+  it("sends a consultation notice at most once and does not retry an uncertain attempt", async () => {
+    const h = harness();
+    const { store, launch, call, ctx, sent, activity, add, hostFault } = h;
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Deliver", groupId: null, note: "brief" });
+    add(objective.id, { title: "Deliver" });
+    activity.set(objective.id, "running");
+    const asked = await call("consult_ask", { question: "Which constraint still holds?" }, objective.id);
+    const consultId = asked.structuredContent.consultId as string;
+    const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
+    const before = sent.length;
+    await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId, answer: "The brief still holds. Source: the person." }, { cwd: h.workspace });
+    expect(sent.length).toBe(before);
+    expect(store.find(objective.id)!.consultations[0]?.delivery).toBe("pending");
+    activity.set(objective.id, "idle");
+    await launch.deliverConsultations(objective.id);
+    expect(sent.length).toBe(before + 1);
+    expect(sent.at(-1)?.text).toBe(`Your Commodore replied to consultation ${consultId}. Read the question, reply, and cited sources in objective_read. Decision requests and holds are unchanged.`);
+    expect(h.deliveries.at(-1)?.whenIdle).toBe(true);
+    expect(store.find(objective.id)!.consultations[0]?.delivery).toBe("submitted");
+    await launch.deliverConsultations(objective.id);
+    expect(sent.length).toBe(before + 1);
+    const other = createObjectiveStore({
+      documentContext, commodoreIds: () => ["c1"],
+      dirOf: (id) => id === "c1" ? path.join(h.workspace, "objectives") : null,
+      objectiveRecords: h.objectiveRecordsHost, emit: () => {}, now: () => 9_000,
+    });
+    activity.set(objective.id, "running");
+    const again = await call("consult_ask", { question: "Second?" }, objective.id);
+    const secondId = again.structuredContent.consultId as string;
+    await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: secondId, answer: "Still the brief." }, { cwd: h.workspace });
+    expect(store.find(objective.id)!.consultations.find((entry) => entry.id === secondId)?.delivery).toBe("pending");
+    expect(store.claimConsultationSend(objective.id, secondId)).toBe(true);
+    expect(other.claimConsultationSend(objective.id, secondId)).toBe(false);
+    store.releaseConsultationSend(objective.id, secondId);
+    activity.set(objective.id, "idle");
+    hostFault.sendError = "request_timeout";
+    await launch.deliverConsultations(objective.id);
+    expect(store.find(objective.id)!.consultations.find((entry) => entry.id === secondId)?.delivery).toBe("uncertain");
+    const afterUnknown = sent.length;
+    await launch.deliverConsultations(objective.id);
+    expect(sent.length).toBe(afterUnknown);
+    activity.set(objective.id, "running");
+    const quiet = await call("consult_ask", { question: "Third?" }, objective.id);
+    await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: quiet.structuredContent.consultId }, { cwd: h.workspace });
+    activity.set(objective.id, "idle");
+    expect(store.claimConsultationSend(objective.id, quiet.structuredContent.consultId as string)).toBe(true);
+    const restarted = h.restart();
+    expect(restarted.store.find(objective.id)!.consultations.find((entry) => entry.id === quiet.structuredContent.consultId)?.delivery).toBe("uncertain");
+    const resumed = sent.length;
+    await restarted.launch.deliverConsultations(objective.id);
+    expect(sent.length).toBe(resumed);
+    // 다른 인스턴스의 오래된 보드 쓰기가 claim을 pending으로 되돌리지 않는다.
+    activity.set(objective.id, "running");
+    const fourth = await call("consult_ask", { question: "Fourth?" }, objective.id);
+    const fourthId = fourth.structuredContent.consultId as string;
+    await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: fourthId, answer: "Still the same brief." }, { cwd: h.workspace });
+    const stale = createObjectiveStore({
+      documentContext, commodoreIds: () => ["c1"],
+      dirOf: (id) => id === "c1" ? path.join(h.workspace, "objectives") : null,
+      objectiveRecords: h.objectiveRecordsHost, emit: () => {}, now: () => 11_000,
+    });
+    expect(stale.find(objective.id)!.consultations.find((entry) => entry.id === fourthId)?.delivery).toBe("pending");
+    expect(store.claimConsultationSend(objective.id, fourthId)).toBe(true);
+    stale.patch(objective.id, { note: "stale note" });
+    const afterStale = h.savedObjective(objective.id) as { note?: string; consultations?: { id: string; delivery?: { state?: string } }[] };
+    expect(afterStale.note).toBe("stale note");
+    expect(afterStale.consultations?.find((entry) => entry.id === fourthId)?.delivery?.state).toBe("sending");
+    const once = await call("consult_ask", { question: "Close once?" }, objective.id);
+    const onceId = once.structuredContent.consultId as string;
+    const cached = createObjectiveStore({
+      documentContext, commodoreIds: () => ["c1"],
+      dirOf: (id) => id === "c1" ? path.join(h.workspace, "objectives") : null,
+      objectiveRecords: h.objectiveRecordsHost, emit: () => {}, now: () => 12_000,
+    });
+    expect(cached.find(objective.id)!.consultations.find((entry) => entry.id === onceId)?.reply).toBeUndefined();
+    await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: onceId, answer: "First answer. Source: the person." }, { cwd: h.workspace });
+    expect(() => cached.consultAnswer(objective.id, { consultId: onceId, answer: "Second answer.", by: { kind: "commodore", commodoreId: "c1" } })).toThrow(ObjectiveStoreError);
+    cached.patch(objective.id, { note: "keeps the first answer" });
+    const keptReply = h.savedObjective(objective.id) as { note?: string; consultations?: { id: string; reply?: { text?: string } }[] };
+    expect(keptReply.note).toBe("keeps the first answer");
+    expect(keptReply.consultations?.find((entry) => entry.id === onceId)?.reply?.text).toBe("First answer. Source: the person.");
+    // 죽은 소유자의 잔존 잠금은 infra stale 복구로 걷히고, sending은 uncertain이 된다. 소유자를 모른 채 지우지는 않는다.
+    const lockDir = path.join(h.workspace, "objectives", objective.id, ".consultation.lock");
+    fs.mkdirSync(lockDir, { recursive: true });
+    fs.writeFileSync(path.join(lockDir, "owner.json"), JSON.stringify({ pid: 2_147_483_646, hostname: os.hostname(), startedAt: Date.now() - 60_000 }));
+    const recovered = h.restart();
+    expect(recovered.store.find(objective.id)!.consultations.find((entry) => entry.id === fourthId)?.delivery).toBe("uncertain");
+    activity.set(objective.id, "running");
+    const fifth = await call("consult_ask", { question: "Fifth?" }, objective.id);
+    const fifthId = fifth.structuredContent.consultId as string;
+    await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: fifthId }, { cwd: h.workspace });
+    expect(store.find(objective.id)!.consultations.find((entry) => entry.id === fifthId)?.delivery).toBe("pending");
+    fs.mkdirSync(lockDir, { recursive: true });
+    fs.writeFileSync(path.join(lockDir, "owner.json"), JSON.stringify({ pid: 2_147_483_646, hostname: os.hostname(), startedAt: Date.now() - 60_000 }));
+    activity.set(objective.id, "idle");
+    const beforeFifth = sent.length;
+    await launch.deliverConsultations(objective.id);
+    expect(sent.filter((entry) => entry.text.includes(fifthId)).length).toBe(1);
+    expect(sent.length).toBeGreaterThan(beforeFifth);
+    expect(store.find(objective.id)!.consultations.find((entry) => entry.id === fifthId)?.delivery).toBe("submitted");
+  });
+
+  it("retries a consultation notice from the live-outcome sweep after a certain busy race", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      const { store, launch, call, ctx, sent, activity, add, hostFault } = h;
+      const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Retry", groupId: null, note: "brief" });
+      add(objective.id, { title: "Retry" });
+      activity.set(objective.id, "idle");
+      const asked = await call("consult_ask", { question: "Retry after busy?" }, objective.id);
+      const consultId = asked.structuredContent.consultId as string;
+      hostFault.duringSend = () => { activity.set(objective.id, "running"); };
+      const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
+      const before = sent.length;
+      await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId, answer: "The brief still holds." }, { cwd: h.workspace });
+      expect(sent.length).toBe(before);
+      expect(store.find(objective.id)!.consultations[0]?.delivery).toBe("pending");
+      activity.set(objective.id, "idle");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(sent.length).toBe(before + 1);
+      expect(sent.at(-1)?.text).toContain(consultId);
+      expect(store.find(objective.id)!.consultations[0]?.delivery).toBe("submitted");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("splits role servers from one board implementation: commander 22, member 6", () => {
     const { ctx, store, launch } = harness();
     const commander = createCommanderMcpTools(ctx, store, launch);
     const member = createMemberMcpTools(ctx, store, launch);
@@ -3326,8 +3514,8 @@ describe("Objectives contract", () => {
     // 역할 서버 이름 — 별칭 `fleet-objectives` 는 배선에서 제거됐다.
     expect(FLEET_COMMANDER_MCP_SERVER).toBe("fleet-commander");
     expect(FLEET_MEMBER_MCP_SERVER).toBe("fleet-member");
-    // 지휘관은 21개 전부, 구성원은 6개만 받는다. 목록은 원천 상수와 같은 순서로 같다.
-    expect(FLEET_COMMANDER_TOOL_NAMES).toHaveLength(21);
+    // 지휘관은 22개 전부, 구성원은 6개만 받는다. 목록은 원천 상수와 같은 순서로 같다.
+    expect(FLEET_COMMANDER_TOOL_NAMES).toHaveLength(22);
     expect(FLEET_MEMBER_TOOL_NAMES).toHaveLength(6);
     expect(commander.map((tool) => tool.name)).toEqual([...FLEET_COMMANDER_TOOL_NAMES]);
     expect(member.map((tool) => tool.name)).toEqual([...FLEET_MEMBER_TOOL_NAMES]);
@@ -3339,7 +3527,7 @@ describe("Objectives contract", () => {
       const old = [...Object.entries(COMMANDER_TOOL_RENAMES), ...Object.entries(MEMBER_TOOL_RENAMES)].find(([, renamed]) => renamed === tool.name)?.[0] ?? tool.name;
       expect(tool.description).toBe(legacyByName.get(old)!.description);
     }
-    // 지휘관 전용 15개는 구성원 서버에 실리지 않는다 — 수신 자체가 없어 거절이 생기지 않는다. message 는 역할마다 이름이 다르다.
+    // 지휘관 전용 16개는 구성원 서버에 실리지 않는다 — 수신 자체가 없어 거절이 생기지 않는다. message 는 역할마다 이름이 다르다.
     for (const tool of commander) {
       if (tool.name === "member_message" || ([...FLEET_MEMBER_TOOL_NAMES] as readonly string[]).includes(tool.name)) continue;
       expect(member.some((entry) => entry.name === tool.name)).toBe(false);

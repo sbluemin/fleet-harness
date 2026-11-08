@@ -119,7 +119,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 은 아직 전달하지 않은 새 항목 수다. intel-edited·intel-removed 는 서로 다른 수정·삭제 항목 수다.
  */
-export type WakeCode = "settled" | "routine" | "description" | "description-proposal" | "intel-proposal" | "intel" | "intel-edited" | "intel-removed" | "message" | "mail" | "taskforce" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed";
+export type WakeCode = "settled" | "routine" | "description" | "description-proposal" | "intel-proposal" | "intel" | "intel-edited" | "intel-removed" | "message" | "mail" | "taskforce" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed" | "consultation";
 
 const STATUS_DETAILS = 8;
 
@@ -188,6 +188,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "started": return "autonomous operation started";
     case "retry": return "retry requested by the person";
     case "rotated": return "your session was replaced";
+    case "consultation": return `a consultation is waiting${tail}`;
     case "answered": return `the person answered ${plural("item")} you handed or asked them${tail}`;
     case "returned": return `the person returned ${plural("item")} to you${tail}`;
     default: return code;

@@ -172,6 +172,14 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
     ...(objective.decisionDelivery ? { decisionDelivering: true } : {}),
     // 결정 — 사람이 보낸 답. 질문과 고른 선택지의 이름, 직접 쓴 말, 선택지를 모두 버린 내 의견 표시만 싣는다.
     // 「결정 안 함」으로 닫힌 요청의 결정은 declined 로 싣는다(고른 것·쓴 말 없이).
+    consultations: objective.consultations.map((entry) => ({
+      id: entry.id, question: entry.question, at: new Date(entry.at).toISOString(), by: entry.by,
+      ...(entry.missionId ? { missionId: entry.missionId } : {}),
+      reply: entry.reply ? (entry.reply.kind === "advice"
+        ? { kind: entry.reply.kind, text: entry.reply.text, at: new Date(entry.reply.at).toISOString(), by: entry.reply.by }
+        : { kind: entry.reply.kind, at: new Date(entry.reply.at).toISOString(), by: entry.reply.by }) : null,
+      ...(entry.delivery ? { delivery: entry.delivery } : {}),
+    })),
     ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ question: decision.question.text, by: decision.by ?? "human",
       ...withoutEmpty({
         header: decision.question.header,

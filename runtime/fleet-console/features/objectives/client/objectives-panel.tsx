@@ -724,7 +724,7 @@ function NewMemberAssign({ t, onCreate }: { t: T; onCreate: (role: string) => Pr
   }} /><span>{t("objectives.members.newHint")}</span></div>;
 }
 
-export type DetailSection = "detail:decisions" | "detail:retro" | "detail:followupResults" | "detail:extensions" | "detail:shared";
+export type DetailSection = "detail:decisions" | "detail:consultations" | "detail:retro" | "detail:followupResults" | "detail:extensions" | "detail:shared";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -1626,6 +1626,21 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         </div>
       </div>
   ) : null;
+  const consultationRows = objective.consultations ?? [];
+  const sConsultations = consultationRows.length > 0 ? (
+      <div className="objectives-group">
+        <SectionHead
+          label={`${t("objectives.consultations.title")} ${consultationRows.length}`}
+          controls="objectives-sec-consultations"
+          fold={readOnly}
+          expanded={sectionOpen("detail:consultations")}
+          onToggle={() => onToggleSection("detail:consultations")}
+        />
+        <div id="objectives-sec-consultations" hidden={!sectionOpen("detail:consultations")}>
+          {consultationRows.map((entry) => <p className="objectives-consultation" key={entry.id}><b>{entry.reply ? (entry.reply.kind === "advice" ? t("objectives.consultations.advice") : t("objectives.consultations.none")) : t("objectives.consultations.unanswered")}</b>{entry.delivery ? ` · ${t(`objectives.consultations.delivery.${entry.delivery}`)}` : ""} {entry.question}{entry.reply?.kind === "advice" ? ` — ${entry.reply.text}` : ""}</p>)}
+        </div>
+      </div>
+  ) : null;
   // 결과물 탭 아래 접힌 묶음 — 회고 · 후속 목표 · 이전 회차. 있는 것만 선다.
   const followupCollected = objective.done ? [] : followupOpenList;
   const showFollowupResults = followupBatches.length > 0 || !!followupHistory || followupOpenList.length > 0;
@@ -1681,7 +1696,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   ) : null;
   // 상세 aside > 탭 칸(스크롤). 넘긴 이유와 돌려주기는 구성원 채팅 카드에서 보인다.
   // 탭 칸(.objectives-detail-scroll)이 상세의 스크롤 컨테이너다 — 그래프의 드래그 자동 스크롤·팝업 앵커가 이 칸을 기준으로 삼는다.
-  const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}</>
+  const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}{sConsultations}</>
     : tab === "crew" ? <>{sCrew}{sMissions}</>
     : <>{sResults}{sResultFolds}</>;
   return (

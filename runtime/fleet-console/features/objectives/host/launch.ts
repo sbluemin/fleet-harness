@@ -8,6 +8,7 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { consultationNotice } from "../shared/consultations.js";
 import { createModelCatalog } from "./catalog.js";
 import { COMMANDER_TOOL_RENAMES, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER, MEMBER_TOOL_RENAMES } from "./objective-tools.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
@@ -174,6 +175,8 @@ export interface LaunchService {
   /** 배정된 준비 임무가 무보고로 남아 있으면 지휘관에게 한 번 알린다. 대상이 없으면 타이머를 걸지 않는다. */
   watchReportQuiet(): void;
   /** 보드 판정의 관측 — 호스트 관측에 쉬기 시작한 시각(`restingSince`)을 얹는다. 정체를 세는 쪽(감독자·보드 도구)이 이 하나를 쓴다. */
+  /** 자문 알림 — pending만 보내고, 접수 성공은 submitted다. 모델이 읽었다는 뜻이 아니다. */
+  deliverConsultations(objectiveId: string): Promise<void>;
   observeBoard(sessionId: string): (ConsoleObjectiveObservation & { readonly restingSince?: number }) | null;
   /** 구성원이 일하는 동안 지휘관이 오래 쉬었으면 그 사실을 지휘관에게 한 번 보낸다. 그 정체가 아니거나 못 닿으면 false. */
   notifyCommanderRest(objectiveId: string): Promise<boolean>;
@@ -226,6 +229,11 @@ export interface LaunchServiceOptions {
 }
 
 export function createLaunchService(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, serviceOptions: LaunchServiceOptions = {}): LaunchService {
+  // 기동 정산만 sending을 uncertain으로 남긴다. 그 뒤의 일반 읽기는 진행 중인 시도를 재개하지 않는다.
+  for (const current of store.all()) {
+    try { store.settleConsultationSends(current.id); }
+    catch { /* 소유 폴더가 없어도 기동 정산이 기능 시작을 막지 않는다. */ }
+  }
   const modelCatalog = createModelCatalog(ctx);
   const control = () => {
     const capability = ctx.consoleControl;
@@ -1171,6 +1179,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (syncOutcome(objectiveId, sessionId)) changed.add(objectiveId);
     }
     for (const objectiveId of changed) store.refresh(objectiveId);
+    const pending = new Set<string>();
+    for (const [, objectiveId] of outcomeWatched) {
+      const current = store.find(objectiveId);
+      if (current?.consultations.some((entry) => entry.delivery === "pending")) pending.add(objectiveId);
+    }
+    for (const objectiveId of pending) void deliverConsultations(objectiveId);
   };
   const armOutcomeWatch = () => {
     if (disposed || outcomeWatched.size === 0) return;
@@ -1195,6 +1209,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (syncOutcome(current.id, event.objectiveId, snapshot)) store.refresh(current.id);
       // 사람이 멈췄거나 실패한 턴은 구상이 끝난 것이 아니다 — 확장 개시는 다음 정상 턴이나 기준 결정 때 다시 본다.
       if (event.objectiveId === current.id && event.output.outcome !== "interrupted" && event.output.outcome !== "failed") service.continueExtension(current.id, true);
+      if (event.objectiveId === current.id) void deliverConsultations(current.id);
     }) ?? null;
     if (outcomeTimer) return;
     outcomeTimer = setTimeout(() => {
@@ -1231,6 +1246,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
     }
     for (const objectiveId of changed) store.refresh(objectiveId);
+    for (const current of store.all()) if (current.consultations.some((entry) => entry.delivery === "pending")) void deliverConsultations(current.id);
     armOutcomeWatch();
     armHeldWatch();
   };
@@ -1266,6 +1282,55 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const partyId = (party: ObjectiveMessageParty): string | null => party.kind === "member" ? party.memberId : null;
   const sameParty = (a: ObjectiveMessageParty, b: ObjectiveMessageParty): boolean => a.kind === b.kind && partyId(a) === partyId(b);
   /** 권한·입력 대기 중에는 PTY Enter가 선택지를 확정하므로 넣지 않는다. */
+  const CERTAIN_CONSULTATION_BUSY = new Set(["session_busy", "session_awaiting_input", "objectiveRecord_busy", "objective_busy"]);
+  const consultationChains = new Map<string, Promise<void>>();
+  const runConsultationDelivery = async (objectiveId: string): Promise<void> => {
+    if (disposed || !ctx.consoleControl) return;
+    const current = store.find(objectiveId);
+    if (!current || current.archived || current.removed || current.done || current.stoppedAt !== null) return;
+    const waiting = current.consultations.filter((entry) => entry.reply && entry.delivery === "pending");
+    if (!waiting.length) return;
+    if (attentionBlocks(objectiveId) || ctx.objectiveRecords.isTransitioning?.(objectiveId)) return;
+    let observation = ctx.consoleControl.observe(objectiveId);
+    if (!observation) return;
+    if (observation.lifecycle === "live" && (observation.activity === "running" || observation.activity === "background" || observation.activity === "awaiting")) {
+      touchLive(objectiveId);
+      return;
+    }
+    if (observation.lifecycle === "dormant") {
+      try { await control().request({ kind: "resume", objectiveId }); }
+      catch { return; }
+      observation = ctx.consoleControl.observe(objectiveId);
+      if (!observation || observation.activity === "running" || observation.activity === "background" || observation.activity === "awaiting") return;
+    }
+    for (const consult of waiting) {
+      const fresh = store.find(objectiveId);
+      const row = fresh?.consultations.find((entry) => entry.id === consult.id);
+      if (!fresh || fresh.archived || fresh.removed || fresh.done || fresh.stoppedAt !== null) return;
+      if (!row?.reply || row.delivery !== "pending") continue;
+      if (!store.claimConsultationSend(objectiveId, row.id)) continue;
+      try {
+        const text = consultationNotice(row.reply.kind, row.id);
+        await control().request({ kind: "send", objectiveId, text, display: text, whenIdle: true });
+        store.submitConsultationSend(objectiveId, row.id);
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "";
+        if (CERTAIN_CONSULTATION_BUSY.has(code)) {
+          store.releaseConsultationSend(objectiveId, row.id);
+          touchLive(objectiveId);
+        }
+        else store.failConsultationSend(objectiveId, row.id);
+        return;
+      }
+    }
+  };
+  const deliverConsultations = (objectiveId: string): Promise<void> => {
+    const previous = consultationChains.get(objectiveId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => disposed ? undefined : runConsultationDelivery(objectiveId));
+    const tracked = next.finally(() => { if (consultationChains.get(objectiveId) === tracked) consultationChains.delete(objectiveId); });
+    consultationChains.set(objectiveId, tracked);
+    return tracked;
+  };
   const attentionBlocks = (sessionId: string): boolean => {
     const kind = ctx.consoleControl?.observe(sessionId)?.attention?.kind;
     return kind === "input" || kind === "permission" || kind === "failure";
@@ -2166,6 +2231,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     },
 
     watchLiveOutcomes() { scanLiveOutcomes(); },
+    deliverConsultations,
     watchReportQuiet() { armQuietWatch(); },
     observeBoard,
     async notifyCommanderRest(objectiveId) {
