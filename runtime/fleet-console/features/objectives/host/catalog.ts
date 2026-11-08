@@ -105,7 +105,7 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
     if (!loadout) throw new ObjectiveStoreError("gateway_models_unavailable", undefined, { hint: "fleet-ai-gateway candidates could not be read; retry." });
     const wanted = canonicalModelId(choice.model);
     const row = loadout.candidates.find((entry) => canonicalModelId(entry.model) === wanted);
-    if (!row) throw new ObjectiveStoreError("model_not_in_gateway_models", undefined, { model: choice.model, hint: "Choose a model from fleet-ai-gateway candidates." });
+    if (!row) throw new ObjectiveStoreError("model_not_in_gateway_models", undefined, { model: choice.model, candidates: loadout.candidates, hint: "Choose a model from fleet-ai-gateway candidates." });
     if (choice.effort !== undefined && !row.efforts.includes(choice.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.model, efforts: row.efforts });
     return { model: row.model, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
   }

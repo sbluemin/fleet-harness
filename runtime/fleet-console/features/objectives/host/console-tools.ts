@@ -139,8 +139,9 @@ const detailTool = defineConsoleTool({
 });
 /**
  * 사령관 세션의 목록·편집 — 화면 둘을 나누지 않고 view·edit 입력으로 받는다. Console Use 기여는 위의 둘을 그대로 둔다.
- * list의 view를 생략하면 기본 목록이고, archivedBefore는 archived 보드에서만 받는다. edit은 title·brief·dueDate 중
- * 적어도 하나가 있어야 하고, attachmentIds는 brief와 함께만 받는다. dueDate null은 기한을 지운다.
+ * list의 view를 생략하면 기본 목록이고, archivedBefore는 archived 보드에서만 받는다. edit은 title·brief·dueDate·
+ * commanderModel·commanderEffort 중 적어도 하나가 있어야 하고, attachmentIds는 brief와 함께만 받는다. dueDate null은 기한을 지운다.
+ * 지휘관 모델은 미기동·휴면·유휴일 때만 후보로 확인한 뒤 고친다.
  */
 const sessionListInput = z.object({
   groupId: ids.optional(),
@@ -151,10 +152,12 @@ const sessionListInput = z.object({
 }).strict();
 const sessionEditInput = z.object({
   objectiveId: ids,
-  title: z.string().trim().min(1).max(MAX_TITLE).optional().describe("At least one of title, brief or dueDate is required."),
+  title: z.string().trim().min(1).max(MAX_TITLE).optional().describe("Provide title, brief, dueDate, commanderModel or commanderEffort."),
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
   attachmentIds: attachmentIds.optional().describe("This turn's image IDs; requires brief."),
+  commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Pending, dormant, or idle Commander only."),
+  commanderEffort: z.string().trim().min(1).max(32).optional().describe("From the new or current model's efforts. Omitted keeps current; unsupported effort is refused."),
 }).strict();
 const { list: _retiredList, inbox: _retiredInbox, fleet: _retiredFleet, history: _retiredHistory, archived: _retiredArchived, ...sessionListBase } = listActions;
 const { edit_title: _retiredEditTitle, edit_brief: _retiredEditBrief, edit_due: _retiredEditDue, ...sessionDetailBase } = detailActions;
@@ -612,7 +615,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     return text(read(mapped, commodoreId, caller));
   }
 
-  /** 세션 편집 — 제목·브리핑·기한 중 적어도 하나를 바꾼다. dueDate null은 기한을 지운다. */
+  /** 세션 편집 — 제목·브리핑·기한·지휘관 모델 중 적어도 하나를 바꾼다. dueDate null은 기한을 지운다. */
   async function executeSessionEdit(raw: unknown, context: Parameters<ConsoleMcpTool["execute"]>[1]) {
     const record = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
     const { action: _action, ...rest } = record;
@@ -625,38 +628,66 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
       const actor = actorOf(caller);
       if (!actor) return refuse("objectiveRecord_caller_required");
       if (caller?.kind === "objectiveRecord" && roleIn(current, caller)) return refuse("own_objective", { hint: HINTS.own_objective });
-      const { title, brief, dueDate, attachmentIds } = call;
-      if (title === undefined && brief === undefined && dueDate === undefined) {
-        return refuse("invalid_arguments", { issues: [{ path: [], code: "custom" }], hint: "Give at least one of title, brief or dueDate." });
+      const { title, brief, dueDate, attachmentIds, commanderModel, commanderEffort } = call;
+      if (title === undefined && brief === undefined && dueDate === undefined && commanderModel === undefined && commanderEffort === undefined) {
+        return refuse("invalid_arguments", { issues: [{ path: [], code: "custom" }], hint: "Provide title, brief, dueDate, commanderModel or commanderEffort." });
       }
       if (attachmentIds !== undefined && brief === undefined) {
         return refuse("invalid_arguments", { issues: [{ path: ["attachmentIds"], code: "invalid_type" }], hint: "attachmentIds copies images with a new brief; give brief." });
       }
       // 기한은 바쁠 때 patch가 거절한다 — 브리핑을 먼저 쓰고 뒤집지 않게 여기서 같은 거절로 막는다.
       if (dueDate !== undefined && launch.busy(current.id)) return refuse("objective_busy");
+      const commodoreId = bound?.commodoreId ?? ownerOfCaller(caller);
+      // 사람이 사령관 설정에 지휘관 모델을 정했으면 add와 같이 사령관이 넘긴 모델·effort는 무시하고 알린다.
+      const personChose = caller?.kind === "commodore" && !!(commodoreId && ctx.commodoreCommander?.(commodoreId));
+      const overridden = personChose && (commanderModel !== undefined || commanderEffort !== undefined);
+      // 쓰기 전에 후보로 확인한다. 사람이 설정에 명시한 모델이 아니라, 이 목표에 새로 고른 모델이다.
+      const commanderPreset = !personChose && (commanderModel !== undefined || commanderEffort !== undefined)
+        ? await checkedCommanderEdit(current.id, commanderModel, commanderEffort, context.signal)
+        : undefined;
       const actions = createObjectiveActions(ctx, store, launch, actor);
       const ref = { objectiveId: current.id, language: language(caller) };
       const patch = { ...(title !== undefined ? { title } : {}), ...(dueDate !== undefined ? { dueDate } : {}) };
-      const result = brief !== undefined
-        ? await (async () => {
-          const first = attachmentIds
-            ? await actions.editBrief({ ...ref, brief, attachments: briefAttachments(attachmentIds) })
-            : await actions.patch({ ...ref, patch: { note: brief } });
-          if (Object.keys(patch).length === 0) return first;
-          return actions.patch({ ...ref, patch });
-        })()
-        : await actions.patch({ ...ref, patch });
+      const boardChanged = brief !== undefined || title !== undefined || dueDate !== undefined;
+      // 모델 거절이 제목·브리핑을 먼저 남기지 않게, 좌표를 먼저 고친다.
+      let result = commanderPreset
+        ? await actions.patch({ ...ref, patch: { launch: commanderPreset } })
+        : { objective: current };
+      if (boardChanged) {
+        result = brief !== undefined
+          ? await (async () => {
+            const first = attachmentIds
+              ? await actions.editBrief({ ...ref, brief, attachments: briefAttachments(attachmentIds) })
+              : await actions.patch({ ...ref, patch: { note: brief } });
+            if (Object.keys(patch).length === 0) return first;
+            return actions.patch({ ...ref, patch });
+          })()
+          : await actions.patch({ ...ref, patch });
+      }
       const { objective: updated, ...details } = result;
       const kept = store.find(updated.id);
       const stored = !kept ? undefined : {
         ...(title !== undefined ? { title: kept.title } : {}),
         ...(brief !== undefined ? { brief: storedText(kept.note), ...(attachmentIds ? { attachments: kept.attachments } : {}) } : {}),
         ...(dueDate !== undefined ? { dueDate: kept.dueDate } : {}),
+        ...(commanderPreset ? { commanderModel: kept.commander.model, ...(kept.commander.effort ? { commanderEffort: kept.commander.effort } : {}) } : {}),
       };
-      return text({ ok: true, objectiveId: updated.id, ...details, ...(stored ? { stored } : {}) });
+      return text({ ok: true, objectiveId: updated.id, ...details, ...(overridden ? { notice: "Supplied model/effort ignored; using person's Commander setting." } : {}), ...(stored ? { stored } : {}) });
     } catch (error) {
       if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
       return refuse("objectives_failed");
     }
+  }
+
+  /** 편집이 고른 지휘관 — 지금 모델에 강도를 얹을 수 있고, 후보와 실행 카탈로그로 확인한다. */
+  async function checkedCommanderEdit(objectiveId: string, model: string | undefined, effort: string | undefined, signal: AbortSignal | undefined) {
+    const pendingCommander = store.pending(objectiveId);
+    const commander = store.find(objectiveId)?.commander;
+    const currentModel = pendingCommander?.model ?? commander?.model;
+    const currentEffort = pendingCommander?.effort ?? commander?.effort;
+    if (model === undefined && !currentModel) throw new ObjectiveStoreError("commander_model_required", undefined, { hint: "No current model; provide commanderModel." });
+    const nextEffort = effort ?? currentEffort;
+    const checked = await modelCatalog.checkCommander({ model: model ?? currentModel!, ...(nextEffort ? { effort: nextEffort } : {}) }, signal);
+    return { model: checked.model, ...(checked.effort ? { effort: checked.effort } : {}) };
   }
 }
