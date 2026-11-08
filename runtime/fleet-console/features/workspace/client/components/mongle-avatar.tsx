@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 
 import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleState } from "../../shared/avatars.js";
 import type { IdentityTone } from "../../shared/identity-tones.js";
+import { QuakerHead } from "./quaker-head.js";
 
 /**
  * 몽글 아바타 — 사령관·지휘관·구성원·Objective 을 한 조형으로 그린다.
@@ -474,7 +475,7 @@ function useActivityMotion(running: boolean, target: MongleActivity | null, temp
 }
 
 interface MongleAvatarProps {
-  /** 베이스 번호(1–15). 모르는 값은 1번으로 그린다. */
+  /** 베이스 번호(1–15, 사령관 전용 진급은 16–18). 모르는 값은 1번으로 그린다. */
   readonly base: number;
   /** 바꾼 색. null 이면 베이스의 원래 톤이다. */
   readonly tone?: IdentityTone | null;
@@ -504,7 +505,9 @@ export function MongleAvatar({ base, tone = null, role, state, activity = null, 
   const acting = state === "running" ? motion.activity : null;
   // 작업 중인 아바타는 모든 활동의 손·소품과 분신을 미리 세워 두고, 지금 활동의 것만 클래스로 보인다. 활동이 바뀔 때 요소를
   // 넣고 빼면 앱 곳곳의 :has() 규칙이 그때마다 셸 전체의 스타일을 다시 맞춰, 목록에서 메인 스레드를 크게 잡아먹는다(실측).
-  const staged = state === "running" && tier !== "mini";
+  // 진급 사령관(퀘이커 머리)은 몽글 몸이 아니라 분신·손·소품을 얹지 않는다 — 새 연기를 만들지 않고 몸 전체의 기존 움직임만 탄다.
+  const quaker = preset.quaker;
+  const staged = state === "running" && tier !== "mini" && quaker === undefined;
   const classes = [
     "mongle-avatar", `is-${state}`, `is-${role}`, `is-tone-${tone ?? preset.tone}`, `is-tier-${tier}`,
     acting ? `is-act-${acting}` : null, acting && motion.leaving ? "is-leaving" : null, acting && motion.big ? "is-big" : null,
@@ -518,9 +521,13 @@ export function MongleAvatar({ base, tone = null, role, state, activity = null, 
       {staged ? <g className="mongle-avatar-echo"><Body shape={preset.shape} /></g> : null}
       <g className="mongle-avatar-big">
         <g className="mongle-avatar-body">
-          <Body shape={preset.shape} />
-          <Eyes state={state} />
-          <Detail kind={preset.detail} state={state} />
+          {quaker ? <QuakerHead morph={quaker} /> : (
+            <>
+              <Body shape={preset.shape} />
+              <Eyes state={state} />
+              <Detail kind={preset.detail} state={state} />
+            </>
+          )}
           <Feature role={role} shape={preset.shape} />
           {staged ? PROP_ACTIVITY_LIST.map((activity) => (
             <g key={activity} className={`mongle-avatar-act is-for-${activity}`}><ActProps activity={activity} detail={tier === "full"} /></g>

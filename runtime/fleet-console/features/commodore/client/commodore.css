@@ -676,6 +676,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-create-body .mongle-picker-bases { gap: 12px 22px; width: auto; }
 .commodore-create-body .mongle-picker-base { padding: 6px; border-color: transparent; border-radius: var(--radius-pill); }
 .commodore-create-body .mongle-picker-base[aria-checked="true"] { border-color: var(--hairline-strong); background: color-mix(in oklch, var(--text-primary) 7%, transparent); }
+.commodore-create-body .mongle-picker-bases.is-promoted { gap: 12px 22px; }
 .commodore-create-body .mongle-picker-tones { display: grid; grid-template-columns: repeat(4, auto); justify-content: center; gap: 14px 22px; }
 .commodore-create-body .mongle-picker-tone { padding: 3px; border-width: 1.5px; }
 .commodore-create-body .mongle-picker-tone i { width: 28px; height: 28px; }

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 
 import { useViewportFit } from "@fleet-console/ui/react";
 
-import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
+import { commodoreAvatarKey, commodoreIdOfAvatarKey, isPromotedBaseId, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "./avatar-events.js";
 import { MongleAvatar } from "./components/mongle-avatar.js";
 import type { ObjectiveCluster } from "../../objectives/shared/objective-clusters.js";
@@ -181,6 +181,8 @@ function usePickerLabels(): MongleAvatarPickerLabels {
     apply: t("avatar.editor.apply"),
     toneGroup: t("avatar.editor.toneGroup"),
     baseGroup: t("avatar.editor.baseGroup"),
+    promotedGroup: t("avatar.editor.promotedGroup"),
+    toneLocked: t("avatar.editor.toneLocked"),
     states: {
       running: t("avatar.state.running"),
       awaiting: t("avatar.state.awaiting"),
@@ -342,7 +344,8 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
             labels={labels}
             dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone)}
             busy={busy}
-            onBase={(base) => setDraft({ ...draft, base, dirty: true })}
+            // 진급 캐릭터는 색이 시그니처로 잠긴다 — 고르던 색은 버린다.
+            onBase={(base) => setDraft({ ...draft, base, tone: isPromotedBaseId(base) ? null : draft.tone, dirty: true })}
             onTone={(tone) => setDraft({ ...draft, tone, dirty: true })}
             onPreviewState={(previewState) => setDraft({ ...draft, previewState })}
             onReroll={() => setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, dirty: true })}

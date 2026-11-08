@@ -853,6 +853,8 @@ describe("Console core design contract", () => {
       // markdown/styles.css는 light-dark()의 라이트 쪽 vendored highlight.js 팔레트(github)가 파일 상단
       // doctrine 주석으로 예외 선언된 표면이다. 다크 쪽은 --syntax-* 채널을 쓴다.
       if (file === fileURLToPath(new URL("foundation/markdown/styles.css", CONSOLE_ROOT))) continue;
+      // 진급 사령관 퀘이커 머리는 테마 재조율을 타지 않는 고정 팔레트를 파일 상단 doctrine 주석으로 예외 선언한 표면이다.
+      if (file === fileURLToPath(new URL("features/workspace/client/components/quaker-head.css", CONSOLE_ROOT))) continue;
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskCssCommentsAndStrings(css);
       const report = (index: number, snippet: string) => {

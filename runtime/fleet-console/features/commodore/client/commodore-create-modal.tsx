@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { IdentityTone } from "../../workspace/shared/identity-tones.js";
-import { commodoreAvatarKey, pickMongleBase } from "../../workspace/shared/avatars.js";
+import { commodoreAvatarKey, isPromotedBaseId, pickMongleBase } from "../../workspace/shared/avatars.js";
 import { setMongleLook } from "../../workspace/client/avatar-events.js";
 import { MongleBaseGrid, MonglePreviewStates, MongleToneDots, type MongleAvatarPreviewState } from "../../workspace/client/components/mongle-avatar-picker.js";
 import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
@@ -125,8 +125,8 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
             onChange={(event) => setName(event.target.value)}
             onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }}
           />
-          <MongleBaseGrid role="commodore" base={base} tone={tone} locale={locale} label={t("avatar.editor.baseGroup")} size={sheet ? 46 : 44} onBase={setBase} />
-          <MongleToneDots base={base} tone={tone} label={t("avatar.editor.toneGroup")} names={tones} onTone={setTone} />
+          <MongleBaseGrid role="commodore" base={base} tone={tone} locale={locale} label={t("avatar.editor.baseGroup")} promotedLabel={t("avatar.editor.promotedGroup")} size={sheet ? 46 : 44} onBase={(next) => { setBase(next); if (isPromotedBaseId(next)) setTone(null); }} />
+          <MongleToneDots base={base} tone={tone} label={t("avatar.editor.toneGroup")} names={tones} lockedLabel={t("avatar.editor.toneLocked")} onTone={setTone} />
           {failed ? <p className="commodore-create-failed" role="alert">{t("sidebar.commodore.failed")}</p> : null}
         </div>
         <footer className="commodore-create-foot">

@@ -2899,6 +2899,13 @@
   background: var(--mongle-tone);
 }
 .mongle-picker-tone[aria-checked="true"] { border-color: var(--text-primary); }
+/* 사령관에게만 서는 진급 3종 줄 — 격자 아래 한 줄, 고른 진급 캐릭터는 색 점이 잠기고 안내 한 줄이 선다. */
+.mongle-picker-promoted { display: grid; justify-items: center; gap: var(--space-2); }
+.mongle-picker-promoted-label { color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
+.mongle-picker-bases.is-promoted { grid-template-columns: repeat(3, auto); justify-content: center; }
+.mongle-picker-tone:disabled { cursor: default; opacity: var(--control-disabled-opacity); }
+.mongle-picker-tone:disabled:hover { background: none; }
+.mongle-picker-tone-locked { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); text-align: center; }
 .mongle-picker-preview {
   display: flex;
   flex-wrap: wrap;
