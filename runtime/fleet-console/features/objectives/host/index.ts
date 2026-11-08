@@ -6,7 +6,7 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { createCommodoreBoardWatch } from "./commodore-board.js";
 import { createCommodoreBoardTools } from "./console-tools.js";
 import { createLaunchService } from "./launch.js";
-import { createCommanderMcpTools } from "./objective-tools.js";
+import { createCommanderMcpTools, createMemberMcpTools } from "./objective-tools.js";
 import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./pr-status.js";
 import { createObjectiveRoutes } from "./routes.js";
 import { createObjectiveStore } from "./store.js";
@@ -19,6 +19,8 @@ export type { ObjectivesFeatureDeps } from "./deps.js";
 export const OBJECTIVES_MCP_SERVER = "fleet-objectives";
 /** 지휘관 역할 서버 — `fleet-objectives` 실제 쓰임 21개와 같은 구현을 `fleet-commander` 이름으로 낸다. 기존 이름은 이관 유예로 함께 둔다. */
 export const FLEET_COMMANDER_MCP_SERVER = "fleet-commander";
+/** 구성원 역할 서버 — 같은 보드 코드에서 구성원 6개만 낸다. 기존 이름은 이관 유예로 함께 둔다. */
+export const FLEET_MEMBER_MCP_SERVER = "fleet-member";
 
 /**
  * 목표 — Theater 의 에이전트 Objective 하나하나가 목표다.
@@ -200,12 +202,10 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       },
     };
 
-    // 같은 보드 코드 한 곳을 공유한다 — 두 서버는 같은 도구 목록·같은 실행을 낸다. 기존 `fleet-objectives` 는
-    // 지휘관·구성원 세션 주입이 역할 서버로 옮겨갈 때까지 별칭으로 함께 둔다(배선 임무에서 제거).
-    // 같은 보드 코드 한 곳을 공유한다 — 두 이름은 같은 도구 배열·같은 실행·같은 번호표 메모리를 낸다.
-    // 기존 `fleet-objectives` 는 지휘관·구성원 세션 주입이 역할 서버로 옮겨갈 때까지 별칭으로 함께 둔다(배선 임무에서 제거).
+    // 같은 보드 코드 한 곳을 공유한다 — commander·별칭은 같은 배열을, member는 같은 원천의 6개만 낸다. 별칭은 배선 임무에서 제거.
     const commanderTools = createCommanderMcpTools(deps, store, launch, prStatus);
     registerCleanup(deps.registerMcp(FLEET_COMMANDER_MCP_SERVER, commanderTools));
+    registerCleanup(deps.registerMcp(FLEET_MEMBER_MCP_SERVER, createMemberMcpTools(deps, store, launch, prStatus)));
     registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, commanderTools));
     return { routes, board, dispose, listAll: store.all, isCommanderSession: (sessionId: string) => store.findMember(sessionId) === null && store.find(sessionId) !== null, forgetOwner: store.forgetOwner };
   } catch (error) {

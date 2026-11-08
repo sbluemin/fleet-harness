@@ -69,13 +69,26 @@ export const DECISION_WAIT_MS = 4 * 60_000;
  * `member_message`→`message`, `criterion_mark`→`mark_criterion`, `decision_request`→`request_decision`,
  * `decision_withdraw`→`withdraw_decision_request`, `result_seal`→`seal_evidence_from_path`,
  * `result_update`→`update_result`, `result_detach`→`detach_result`, `evidence_dir`·`hand_off`·`followup` 동일.
- * 지휘관 서버는 이 21개 전부를 싣는다(읽기 5개+지휘관 전용 16개). 권한 계약은 그대로다.
+ * 지휘관 서버는 이 21개 전부를 싣는다. 권한 계약은 그대로다.
  */
 export const FLEET_COMMANDER_TOOL_NAMES = [
   "mine", "read", "search", "evidence_dir", "seal_evidence_from_path",
   "update_result", "detach_result", "plan", "add_mission", "place_mission",
   "request_decision", "withdraw_decision_request", "enlist", "set_member_launch",
   "message", "muster", "discharge", "complete_mission", "followup", "hand_off", "mark_criterion",
+] as const;
+
+/**
+ * `fleet-member` 확정 목록 — 브리프의 구성원 6개와 일치한다(`objective_read`→`read`,
+ * `objective_search`→`search`, `objective_mine`→`mine`, `evidence_dir` 동일,
+ * `result_seal`→`seal_evidence_from_path`, `message_commander`→`message`).
+ * 실행 권한은 그대로다: `search` 는 지휘관 전용 검사를 그대로 두어 구성원 호출은
+ * `not_commander` 로 거절된다(계약 테스트가 고정). 검색 실행을 여는 것은 소유 범위
+ * 변경이므로 사람의 별도 승인이 필요하고, 그때는 이 목록이 아니라 검사 쪽을 바꾼다.
+ * 구성원 서버에는 지휘관 전용 15개가 아예 실리지 않아 수신거절이 생기지 않는다.
+ */
+export const FLEET_MEMBER_TOOL_NAMES = [
+  "mine", "read", "search", "evidence_dir", "seal_evidence_from_path", "message",
 ] as const;
 
 export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
@@ -447,6 +460,15 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
  */
 export function createCommanderMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
   return createObjectiveMcpTools(ctx, store, launch, prStatus, options);
+}
+
+/**
+ * `fleet-member` 서버용 — 같은 보드 코드 한 곳을 공유한다. 구성원 6개만 싣고,
+ * 지휘관 전용 15개는 서버에 두지 않는다(실행 거절이 아니라 수신 자체가 없다). 권한 검사는 그대로다.
+ */
+export function createMemberMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
+  const allowed = new Set<string>(FLEET_MEMBER_TOOL_NAMES);
+  return createObjectiveMcpTools(ctx, store, launch, prStatus, options).filter((tool) => allowed.has(tool.name));
 }
 
 /** 인계 대기가 아닌 이유 — 남은 임무·미충족 기준 번호, 이미 넘겼거나 완료된 목표. */

@@ -169,8 +169,8 @@ export function commanderFreshTurnNotice(objectiveId: string, language: PromptLa
 
 export function memberFreshTurnNotice(objectiveId: string, role: string, language: PromptLanguage): string {
   return language === "ko"
-    ? `[목표 \`${objectiveId}\` 구성원 「${role}」 새 세션]\n새 세션으로 열렸습니다. 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-objectives\` 의 \`mine\` 도구로 본인의 미션과 보드를 확인하고 작업을 이어가세요. 보드가 장기 기억입니다.\n\n`
-    : `[Objective \`${objectiveId}\` member "${role}" fresh session]\nOpened as a fresh session. Past conversation was not loaded into the model context. Check your missions and the board using \`fleet-objectives\` (\`mine\` tool) and continue your work. The board is the long-term memory.\n\n`;
+    ? `[목표 \`${objectiveId}\` 구성원 「${role}」 새 세션]\n새 세션으로 열렸습니다. 이전 대화는 모델 입력에 실리지 않았으므로, \`fleet-member\` 의 \`mine\` 도구로 본인의 미션과 보드를 확인하고 작업을 이어가세요. 보드가 장기 기억입니다.\n\n`
+    : `[Objective \`${objectiveId}\` member "${role}" fresh session]\nOpened as a fresh session. Past conversation was not loaded into the model context. Check your missions and the board using \`fleet-member\` (\`mine\` tool) and continue your work. The board is the long-term memory.\n\n`;
 }
 
 /**
