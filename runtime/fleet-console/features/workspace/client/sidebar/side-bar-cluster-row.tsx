@@ -290,7 +290,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
       : state === "done"
         ? t("sidebar.row.glyph.done")
         : objectiveRecordMarkLabel(state);
-  // 제목 아래에는 상태 문구·진척 게이지·분모를 한 줄로 둔다.
+  // 제목 아래에는 진척 게이지·분모·상태 문구를 한 줄로 둔다.
   // 사람의 차례가 된 까닭은 접근 이름에 남기고, 보이는 줄은 결정 상태와 질문 수를 말한다.
   const decisionNote = row.decisionRequestedAt !== undefined && row.decisionNote ? resolveLocalizedText(row.decisionNote, locale) : "";
   // 맡은 이가 처리 중인 동안(`delegated`)은 그 상태 문구가 미리보기 자리를 차지하고 명도 물결로 흐른다 — 미리보기가 가려지는 것은 알고 고른 비용이다.
@@ -361,7 +361,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
     const text = resolveLocalizedText(note.text, locale);
     if (text) meta.push({ key: `note-${index}`, text, ...(note.tone ? { tone: note.tone } : {}) });
   });
-  // 제목 끝에는 짧은 기한·주의 메모, 둘째 줄에는 상태·게이지·분모가 선다. 나머지 메타는 접근 이름이 보존한다.
+  // 제목 끝에는 짧은 기한·주의 메모, 둘째 줄에는 게이지·분모·상태가 선다. 나머지 메타는 접근 이름이 보존한다.
   // 통합 목록의 줄은 기한이 날짜 자리에 서므로 제목 끝에 다시 적지 않는다.
   const progress = row.progress && row.progress.total > 0 ? row.progress : null;
   const headMeta = meta.flatMap((part) => (
@@ -410,10 +410,6 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
   const hasProgressButton = !!popups && !!progress && !settled;
   const statusLine = settled ? null : (
     <span className="side-bar-cluster-row-line" aria-hidden={hasProgressButton ? undefined : true}>
-      <span className="side-bar-cluster-row-swap" aria-hidden="true">
-        <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
-        <RowToolUse tool={toolUse?.tool ?? null} label={toolUseLabel} />
-      </span>
       {hasProgressButton ? (
         <button
           type="button"
@@ -426,6 +422,10 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
           {popups.unseen ? <i className="side-bar-cluster-row-progress-dot" aria-hidden="true" /> : null}
         </button>
       ) : popups ? null : <ClusterRowProgress progress={progress} />}
+      <span className="side-bar-cluster-row-swap" aria-hidden="true">
+        <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
+        <RowToolUse tool={toolUse?.tool ?? null} label={toolUseLabel} />
+      </span>
     </span>
   );
   const mainButton = (

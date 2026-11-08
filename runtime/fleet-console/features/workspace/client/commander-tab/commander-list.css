@@ -178,7 +178,7 @@
 .commander-tab--card .side-bar-cluster-row-line { flex-wrap: nowrap; white-space: nowrap; }
 .commander-tab--card .side-bar-cluster-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 본문 단추와 별도 상태 줄이 두 행을 공유한다. 상태 줄은 정상 흐름에서 문구·임무 단추를 나란히 두고,
+/* 본문 단추와 별도 상태 줄이 두 행을 공유한다. 상태 줄은 정상 흐름에서 임무 단추·문구를 나란히 두고,
    문구 자리는 뒤의 본문 단추로 누른다. 임무 단추만 독립된 포인터·키보드 대상으로 남는다. */
 .commander-tab--card .workspace-cluster-row-body {
   display: grid;
