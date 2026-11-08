@@ -24,6 +24,9 @@ const argv = process.argv.slice(2);
 const probe = argv.includes("--probe");
 const chromeFlag = argv.indexOf("--chrome") >= 0 ? argv[argv.indexOf("--chrome") + 1] : undefined;
 
+// A hung step must fail the gate, not stall CI: the whole check gets one deadline.
+setTimeout(() => { console.error("FAIL: canary screen check exceeded 150s"); process.exit(1); }, 150_000).unref();
+
 const failures = [];
 const fail = (message) => { failures.push(message); console.error(`FAIL: ${message}`); };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -76,14 +79,25 @@ async function main() {
   const ids = JSON.parse(seeded.stdout);
   const commodoreId = ids.commodores[0].commodoreId;
 
-  // API half: the seeded commodore and its theater are read back, so the server and storage agree.
-  const state = await fetch(`${origin}/api/v1/objectives/state`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ commodoreId, language: "en" }) });
-  if (!state.ok) fail(`objectives/state answered ${state.status}`);
+  // API half: the seeded commodore is read back from the Console, so the server and its storage agree with the seed.
+  const post = async (route, body) => {
+    const res = await fetch(`${origin}${route}`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) { fail(`${route} answered ${res.status}`); return null; }
+    return await res.json();
+  };
+  const listed = await post("/api/v1/commodore/list", {});
+  const row = listed?.commodores?.find((entry) => entry.commodoreId === commodoreId);
+  if (listed && !row) fail(`commodore/list does not contain the seeded commodore ${commodoreId}`);
+  else if (row && row.alias !== "Seed 1") fail(`seeded commodore alias is ${JSON.stringify(row.alias)}, expected "Seed 1"`);
+  const state = await post("/api/v1/objectives/state", { commodoreId, language: "en" });
+  if (state && !Array.isArray(state.objectives)) fail("objectives/state has no objectives array for the seeded commodore");
   const page = await fetch(`${origin}/console/`);
   if (!page.ok) fail(`/console/ answered ${page.status}`);
 
   // Browser half over CDP.
-  const chrome = spawn(findChrome(), ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", `--user-data-dir=${path.join(T, "chrome")}`, "--remote-debugging-port=0", "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
+  // Chrome gets the owned environment too: no inherited HOME/XDG/proxy settings, profile and caches stay under T.
+  const chromeEnv = { PATH: env.PATH, HOME: env.HOME, TMPDIR: env.TMPDIR, XDG_CONFIG_HOME: path.join(T, "home/.config"), XDG_CACHE_HOME: path.join(T, "home/.cache"), XDG_DATA_HOME: path.join(T, "home/.local/share") };
+  const chrome = spawn(findChrome(), ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--password-store=basic", "--use-mock-keychain", "--disable-background-networking", `--user-data-dir=${path.join(T, "chrome")}`, "--remote-debugging-port=0", "--window-size=1440,900", "about:blank"], { env: chromeEnv, stdio: "ignore" });
   children.push(chrome);
   const portFile = path.join(T, "chrome", "DevToolsActivePort");
   for (let i = 0; i < 60 && !existsSync(portFile); i += 1) await sleep(500);
@@ -109,7 +123,12 @@ async function main() {
       if (msg.params.entry.source !== "network" || /status of 5\d\d/.test(text)) problems.push(`log error: ${text}`.slice(0, 300));
     }
   };
-  const send = (method, params = {}) => new Promise((resolve, reject) => { const id = (seq += 1); pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })); });
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = (seq += 1);
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP ${method} timed out`)); }, 20_000);
+    pending.set(id, { resolve: (value) => { clearTimeout(timer); resolve(value); }, reject: (error) => { clearTimeout(timer); reject(error); } });
+    ws.send(JSON.stringify({ id, method, params }));
+  });
   await send("Runtime.enable"); await send("Log.enable"); await send("Page.enable");
   await send("Page.navigate", { url: `${origin}/console/` });
   const evaluate = async (expression) => (await send("Runtime.evaluate", { expression, returnByValue: true })).result.value;
