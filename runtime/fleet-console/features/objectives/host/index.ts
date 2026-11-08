@@ -6,7 +6,7 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { createCommodoreBoardWatch } from "./commodore-board.js";
 import { createCommodoreBoardTools } from "./console-tools.js";
 import { createLaunchService } from "./launch.js";
-import { createObjectiveMcpTools } from "./objective-tools.js";
+import { createCommanderMcpTools, createMemberMcpTools, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER } from "./objective-tools.js";
 import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./pr-status.js";
 import { createObjectiveRoutes } from "./routes.js";
 import { createObjectiveStore } from "./store.js";
@@ -16,15 +16,16 @@ import { OBJECTIVE_CHANNEL, type ObjectiveEvent } from "../shared/types.js";
 import { RESULT_LIMITS } from "../shared/results.js";
 
 export type { ObjectivesFeatureDeps } from "./deps.js";
-export const OBJECTIVES_MCP_SERVER = "fleet-objectives";
+export { FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER } from "./objective-tools.js";
 
 /**
  * 목표 — Theater 의 에이전트 Objective 하나하나가 목표다.
  *
  * 목표와 실행 신분은 사령관의 `objectives/<목표>/objective.json`에 함께 산다.
  * Objective은 실행·화면 호환을 위한 메모리 어댑터다. 목록의 그룹은 Objective 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
- * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로,
- * 사령관 세션은 같은 보드를 `fleet-commodore` 의 `objectives`·`objective` 로 쓴다.
+ * 목표를 수행하는 세션은 역할 서버 하나만 받는다 — 지휘관은 `fleet-commander` 로, 구성원은 `fleet-member` 로.
+ * Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로,
+ * 사령관 세션은 같은 보드를 `fleet-commodore` 의 `objective` 하나로 쓴다.
  */
 const objectiveIdOf = (payload: unknown): string | null => {
   const objectiveId = (payload as { objectiveId?: unknown } | null)?.objectiveId;
@@ -197,7 +198,17 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       },
     };
 
-    registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, createObjectiveMcpTools(deps, store, launch, prStatus)));
+    // 같은 보드 코드 한 곳을 공유한다 — 역할 서버는 자기 세션에만 토큰을 낸다(예약 등록·역할 승인).
+    const commanderTools = createCommanderMcpTools(deps, store, launch, prStatus);
+    const isCommander = (sessionId: string): boolean => store.findMember(sessionId) === null && store.find(sessionId) !== null;
+    registerCleanup(deps.registerMcp(FLEET_COMMANDER_MCP_SERVER, commanderTools, {
+      admit: (caller) => caller.kind === "objectiveRecord" && isCommander(caller.objectiveId),
+      refusal: "not_commander",
+    }));
+    registerCleanup(deps.registerMcp(FLEET_MEMBER_MCP_SERVER, createMemberMcpTools(deps, store, launch, prStatus), {
+      admit: (caller) => caller.kind === "objectiveRecord" && store.findMember(caller.objectiveId) !== null,
+      refusal: "not_member",
+    }));
     return { routes, board, dispose, listAll: store.all, isCommanderSession: (sessionId: string) => store.findMember(sessionId) === null && store.find(sessionId) !== null, forgetOwner: store.forgetOwner };
   } catch (error) {
     dispose();

@@ -1385,7 +1385,7 @@ describe("dormant transcript history", () => {
 
   it("opens a replay turn for a roster delivery without a user bubble", () => {
     const member = "11111111-2222-3333-4444-555555555555";
-    const relay = (id: string) => `[message from member Verifier (${member}) — reply with the fleet-objectives message tool, to: "${member}"]\nmessageId: ${id}\n\nReview this`;
+    const relay = (id: string) => `[message from member Verifier (${member}) — reply with the fleet-member message tool, to: "${member}"]\nmessageId: ${id}\n\nReview this`;
     const lines = [
       { type: "user", timestamp: "2026-11-04T00:00:00.000Z", message: { role: "user", content: relay("m-1") } },
       { type: "assistant", timestamp: "2026-11-04T00:00:05.000Z", message: { role: "assistant", content: [{ type: "text", text: "Done" }] } },

@@ -264,7 +264,7 @@ describe("taskforce runtime", () => {
         expect(sessionOf(alias).sent[0]).toContain(`id: ${taskforceId}, seq 2 (image ×1)`);
       }
       const post = async (alias: string, text: string) => {
-        const result = await sessionOf(alias).tools.get("taskforce_post")!.execute({ taskforceId, text }, { cwd: h.theaterRoot, toolCallId: alias } as never);
+        const result = await sessionOf(alias).tools.get("taskforce")!.execute({ action: "post", taskforceId, text }, { cwd: h.theaterRoot, toolCallId: alias } as never);
         expect(result).not.toMatchObject({ isError: true });
         return h.taskforce.lastEntry(taskforceId)!;
       };
@@ -408,7 +408,7 @@ describe("taskforce runtime", () => {
       await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
       const callSession = (alias: string, args: Record<string, unknown>) =>
-        sessionOf(alias).tools.get("memory_search")!.execute(args, { cwd: h.theaterRoot, toolCallId: alias } as never) as Promise<{ isError: boolean; structuredContent: Record<string, any> }>;
+        sessionOf(alias).tools.get("conversation")!.execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot, toolCallId: alias } as never) as Promise<{ isError: boolean; structuredContent: Record<string, any> }>;
       const direct = (callerId: string) =>
         Object.fromEntries(createCommodoreTools({
           commodoreId: callerId, theaterRoot: h.theaterRoot,
@@ -418,9 +418,9 @@ describe("taskforce runtime", () => {
             theatersOf: () => [], theaterIdsOf: () => [], emit: () => {},
           }),
           taskforce: h.taskforce,
-        }).map((tool) => [tool.name, tool])).memory_search!;
+        }).map((tool) => [tool.name, tool])).conversation!;
       const callDirect = async (callerId: string, args: Record<string, unknown>) =>
-        await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+        await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
 
       // 현재 성원(a)은 전체를 본다 — 세션 도구의 전체 경로.
       const full = (await callSession("Alpha", { target: "taskforce", taskforceId })).structuredContent;
@@ -466,9 +466,9 @@ describe("taskforce runtime", () => {
         read: () => boomState,
         readLedger: () => { throw new Error("boom"); },
       };
-      const boomTool = Object.fromEntries(createCommodoreTools({ commodoreId: b, theaterRoot: h.theaterRoot, store: h.store, taskforce: boom as never }).map((tool) => [tool.name, tool])).memory_search!;
+      const boomTool = Object.fromEntries(createCommodoreTools({ commodoreId: b, theaterRoot: h.theaterRoot, store: h.store, taskforce: boom as never }).map((tool) => [tool.name, tool])).conversation!;
       const boomCall = async (args: Record<string, unknown>) =>
-        await boomTool.execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+        await boomTool.execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
       expect((await boomCall({ target: "taskforce", taskforceId })).structuredContent).toMatchObject({ error: "unknown_taskforce" });
       const boomAll = (await boomCall({ target: "all" })).structuredContent as { partial: boolean; sources: { source: { id: string } }[] };
       expect(boomAll.partial).toBe(true);
@@ -494,9 +494,9 @@ describe("taskforce runtime", () => {
     const taskforceId = state.id;
     h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "안에 있는 말" });
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
     const call = async (callerId: string, args: Record<string, unknown>) =>
-      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
     const tfDir = path.join(h.consoleDataDir, "taskforce", taskforceId);
     const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-tf-outside-"));
     dirs.push(outsideDir);
@@ -538,9 +538,9 @@ describe("taskforce runtime", () => {
     const { state } = h.taskforce.create({ name: "출입 TF", topic: "주제", members: [a, b] });
     const taskforceId = state.id;
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
     const call = async (callerId: string, args: Record<string, unknown>) =>
-      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
     for (let i = 0; i < 18; i += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: `앞 말 ${i}` });
     h.taskforce.removeMember(taskforceId, a);
     for (let i = 0; i < 79; i += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: i === 30 ? "GAP_NEEDLE" : `틈 말 ${i}` });
@@ -567,9 +567,9 @@ describe("taskforce runtime", () => {
     const { state } = h.taskforce.create({ name: "깊은 TF", topic: "주제", members: [a, b] });
     const taskforceId = state.id;
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
     const call = async (callerId: string, args: Record<string, unknown>) =>
-      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
     for (let seq = 2; seq <= 99; seq += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 50 ? "COVERED_NEEDLE" : `앞 말 ${seq}` });
     h.taskforce.removeMember(taskforceId, a);
     for (let seq = 101; seq <= 2999; seq += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: seq === 150 ? "GAP_NEEDLE" : `틈 말 ${seq}` });
@@ -611,9 +611,9 @@ describe("taskforce runtime", () => {
     const { state } = h.taskforce.create({ name: "먼 TF", topic: "주제", members: [a, b] });
     const taskforceId = state.id;
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
     const call = async (callerId: string, args: Record<string, unknown>) =>
-      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
     for (let seq = 2; seq <= 7000; seq += 1) h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: `먼 말 ${seq}` });
     const res = (await call(a, { anchor: { source: taskforceId, seq: 150 }, before: 5, after: 5 })).structuredContent as {
       anchorFound: boolean; partial: boolean;
@@ -635,9 +635,9 @@ describe("taskforce runtime", () => {
     const { state } = h.taskforce.create({ name: "틈 TF", topic: "주제", members: [a, b] });
     const taskforceId = state.id;
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
     const call = async (callerId: string, args: Record<string, unknown>) =>
-      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
     h.taskforce.removeMember(taskforceId, a);
     const outside = h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "WHILE_ABSENT" }).entry;
     h.taskforce.addMembers(taskforceId, [a]);
@@ -662,9 +662,9 @@ describe("taskforce runtime", () => {
     const tf2 = h.taskforce.create({ name: "not-joined", topic: "private-topic", members: [b, outsider] }).state.id;
     h.taskforce.append(tf2, { speaker: { kind: "person" }, text: "OTHER_TF_DIRECTORY_SECRET" });
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
     const call = async (callerId: string, args: Record<string, unknown>) =>
-      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
     // 바꿔치기 전에는 a의 정상 참여 기록이 보인다.
     expect(((await call(a, { target: "taskforce", taskforceId: tf1 })).structuredContent as { results: unknown[] }).results).not.toEqual([]);
     const ownedDir = path.join(h.consoleDataDir, "taskforce", tf1);
@@ -686,8 +686,8 @@ describe("taskforce runtime", () => {
     const taskforceId = state.id;
     h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "early person request" });
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
-    const res = (await direct(a).execute({ anchor: { source: taskforceId, seq: 2 } }, { cwd: h.theaterRoot }) as { structuredContent: {
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
+    const res = (await direct(a).execute({ action: "around", anchor: { source: taskforceId, seq: 2 } }, { cwd: h.theaterRoot }) as { structuredContent: {
       anchorFound: boolean; items: { seq: number; readable: boolean; text?: string }[]; partial: boolean;
       sources: { status: string; participationUncertain?: boolean }[];
     } }).structuredContent;
@@ -706,9 +706,9 @@ describe("taskforce runtime", () => {
     const h = runtimeHarness();
     const { a, b } = h.ids;
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
     const call = async (callerId: string, args: Record<string, unknown>) =>
-      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
     const ids: string[] = [];
     for (let k = 0; k < 32; k += 1) {
       const state = h.taskforce.create({ name: `tf-${k}`, topic: "topic", members: [a, b] }).state;
@@ -752,9 +752,9 @@ describe("taskforce runtime", () => {
     const { state } = h.taskforce.create({ name: "깊은 TF", topic: "주제", members: [a, b] });
     const taskforceId = state.id;
     const direct = (callerId: string) =>
-      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).memory_search!;
+      Object.fromEntries(createCommodoreTools({ commodoreId: callerId, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool])).conversation!;
     const call = async (callerId: string, args: Record<string, unknown>) =>
-      await direct(callerId).execute(args, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
+      await direct(callerId).execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.theaterRoot }) as { isError: boolean; structuredContent: Record<string, any> };
     h.store.transcriptAppend(a, { kind: "text", text: "SHARED_NEEDLE in own" });
     h.store.transcriptAppend(a, { kind: "text", text: "ordinary own" });
     for (let seq = 2; seq <= 2500; seq += 1) {
@@ -819,8 +819,8 @@ describe("taskforce runtime", () => {
       expect(h.tfEvents.some((event) => event.op === "taskforce-judging" && event.judging.length === 2)).toBe(true);
 
       const post = async (alias: string, text: string) => {
-        const tool = sessionOf(alias).tools.get("taskforce_post")!;
-        const result = await tool.execute({ taskforceId, text }, { cwd: h.theaterRoot, toolCallId: `tf-${text.length}` } as never);
+        const tool = sessionOf(alias).tools.get("taskforce")!;
+        const result = await tool.execute({ action: "post", taskforceId, text }, { cwd: h.theaterRoot, toolCallId: `tf-${text.length}` } as never);
         expect(result).not.toMatchObject({ isError: true });
       };
       // Beta는 침묵으로 첫 턴을 끝낸다.
@@ -986,7 +986,7 @@ describe("taskforce runtime board actions", () => {
       const writeResult = await tools.get("objectives")!.execute({ action: "add", title: "온보딩 결제 단계 분리" }, { cwd: h.theaterRoot, toolCallId: "w0" } as never);
       expect(writeResult).not.toMatchObject({ isError: true });
       sessionOf("Alpha").emit({ kind: "tool-end", id: "w0", isError: false });
-      const postResult = await tools.get("taskforce_post")!.execute({ taskforceId, text: "Alpha의 말" }, { cwd: h.theaterRoot, toolCallId: "tf-1" } as never);
+      const postResult = await tools.get("taskforce")!.execute({ action: "post", taskforceId, text: "Alpha의 말" }, { cwd: h.theaterRoot, toolCallId: "tf-1" } as never);
       expect(postResult).not.toMatchObject({ isError: true });
       sessionOf("Alpha").finish();
       await vi.advanceTimersByTimeAsync(10);

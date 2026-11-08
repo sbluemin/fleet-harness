@@ -45,7 +45,7 @@ import {
   readChatCommandLaneName,
   readJobKind,
   isSessionNameShaped,
-  OBJECTIVE_MESSAGE_TOOL,
+  OBJECTIVE_MESSAGE_TOOLS,
   sessionMessageRefusal,
   tagChatOrigin,
   type AgentChatCatalog,
@@ -639,7 +639,7 @@ export async function readTranscriptHistory(
   const keep = (raw: AgentChatStreamEvent, at: number | undefined): void => {
     const event = withReplayRecipient(raw, recipients);
     if (event.kind === "tool") {
-      if ((event.name !== SESSION_MESSAGE_TOOL && event.name !== OBJECTIVE_MESSAGE_TOOL) || event.id === undefined) return;
+      if ((event.name !== SESSION_MESSAGE_TOOL && (typeof event.name !== "string" || !OBJECTIVE_MESSAGE_TOOLS.has(event.name))) || event.id === undefined) return;
       toolNames.set(event.id, event.name);
     } else if (event.kind === "tool-result") {
       if (!toolNames.has(event.id)) return;

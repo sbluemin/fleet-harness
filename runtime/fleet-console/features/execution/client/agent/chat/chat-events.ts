@@ -1650,8 +1650,9 @@ export function agentChatToolLabel(name: string | undefined): string {
   return agentChatMcpCall(name)?.tool ?? name ?? "";
 }
 
-/** 목표 message 도구. 계열은 send — 원장 동사는 「메시지 보냄」이고, 그룹 대화는 이 줄을 전언으로 읽는다. */
+/** 목표 message 도구. 계열은 send — 원장 동사는 「메시지 보냄」이고, 그룹 대화는 이 줄을 전언으로 읽는다. 옛 `fleet-objectives` 이름도 과거 전사 표시를 위해 알아본다. */
 export const OBJECTIVE_MESSAGE_TOOL = "mcp__fleet-objectives__message";
+export const OBJECTIVE_MESSAGE_TOOLS: ReadonlySet<string> = new Set([OBJECTIVE_MESSAGE_TOOL, "mcp__fleet-commander__member_message", "mcp__fleet-member__message_commander"]);
 
 /**
  * 기동 세션 이름(`objective-xxxxxx-cmdr`, `objective-xxxxxx-member-N`).
@@ -1702,7 +1703,7 @@ export function rosterSenderLabel(from: string, language: "en" | "ko"): string {
 export function agentChatToolFamily(name: string | undefined): string {
   // 목표 message 도구는 MCP 접두를 달고 오지만 계열은 메시지 전달이다. 서버 절로 접으면
   // 「메시지 보냄」이 아니라 도구 이름이 선다.
-  if (name === OBJECTIVE_MESSAGE_TOOL) return "send";
+  if (typeof name === "string" && OBJECTIVE_MESSAGE_TOOLS.has(name)) return "send";
   // MCP 도구는 이름이 곧 식별자라 표에 실을 수 없다. 대신 계열을 하나 두고, 집계는 그 안에서
   // 서버별로 갈린다 — 도구마다 절이 서면 서버 하나가 절 다섯 개로 흩어져 줄의 자리를 다 쓴다.
   if (agentChatMcpCall(name) !== undefined) return "mcp";
