@@ -10,45 +10,17 @@ import {
   type AuthCommandIo,
 } from "./login-flow.js";
 
-const AUTH_HELP_TEXT = `AI Gateway provider authentication
-
-Sign in or out from fleet gateway, then Providers.
-TypeSafe takes an API key there.
-
-Codex and xAI use their own subscription credentials.
-Run fleet gateway status to see whether each one was found.
-
-TypeSafe holds no routable model: Console only validates and stores its
-key, and no model is routed to it.
-`;
-
 export async function dispatchAuthCommand(
   argv: readonly string[],
   io: AuthCommandIo,
   deps: AuthCommandDeps,
 ): Promise<number> {
   const command = argv[1];
-  if (!command || command === "--help" || command === "-h") {
-    io.stdout.write(AUTH_HELP_TEXT);
-    return 0;
-  }
   if (command === "login") return runAuthLoginFlow(argv.slice(2), io, deps);
-  if (command === "list") return listAuthProviders(io, deps);
   if (command === "logout") return logoutAuthProvider(argv.slice(2), io, deps);
 
-  io.stderr.write(`Unknown authentication command: ${command}\n`);
-  io.stdout.write(AUTH_HELP_TEXT);
+  io.stderr.write(`Unknown authentication command: ${command ?? ""}\n`);
   return 1;
-}
-
-async function listAuthProviders(io: AuthCommandIo, deps: AuthCommandDeps): Promise<number> {
-  const providerIds = await deps.authService.listProviderIds();
-  if (providerIds.length === 0) {
-    io.stdout.write("No stored authentication providers.\n");
-    return 0;
-  }
-  for (const providerId of providerIds) io.stdout.write(`${providerId}\n`);
-  return 0;
 }
 
 async function logoutAuthProvider(

@@ -1,5 +1,5 @@
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
-import { createDesktopEventStream, parseDesktopSseFrame, type DesktopEventStream } from "./desktop-event-stream.js";
+import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
 
 /**
  * 이 설치 트리는 셸의 강화된 진입-흐름 트랜잭션이 만들었고, 그래서 콘솔이 자기 자신을
@@ -53,10 +53,6 @@ export function createDesktopUpdateSynchronizer(deps: DesktopUpdateSynchronizerD
     ...(deps.setTimeout ? { setTimeout: deps.setTimeout } : {}),
     ...(deps.clearTimeout ? { clearTimeout: deps.clearTimeout } : {}),
   });
-}
-
-export function parseDesktopUpdateEvent(frame: string): DesktopUpdateRequestSnapshot | null {
-  return parseDesktopSseFrame(frame, DESKTOP_UPDATE_EVENT, parseDesktopUpdateRequest);
 }
 
 export function parseDesktopUpdateRequest(value: unknown): DesktopUpdateRequestSnapshot | null {

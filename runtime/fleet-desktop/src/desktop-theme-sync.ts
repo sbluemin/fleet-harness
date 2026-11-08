@@ -1,5 +1,5 @@
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
-import { createDesktopEventStream, parseDesktopSseFrame, type DesktopEventStream } from "./desktop-event-stream.js";
+import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
 import { readEntryPalette, type EntryPalette } from "./entry-page.js";
 
 interface DesktopTitleBarOverlay {
@@ -39,7 +39,7 @@ export interface DesktopThemeSynchronizerDeps {
   readonly clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 
-export const MAX_DESKTOP_THEME_SSE_BUFFER_CHARS = 64 * 1024;
+const MAX_DESKTOP_THEME_SSE_BUFFER_CHARS = 64 * 1024;
 
 export function createDesktopThemeSynchronizer(deps: DesktopThemeSynchronizerDeps): DesktopThemeSynchronizer {
   return createDesktopEventStream<DesktopThemeSnapshot>({
@@ -55,10 +55,6 @@ export function createDesktopThemeSynchronizer(deps: DesktopThemeSynchronizerDep
     ...(deps.setTimeout ? { setTimeout: deps.setTimeout } : {}),
     ...(deps.clearTimeout ? { clearTimeout: deps.clearTimeout } : {}),
   });
-}
-
-export function parseDesktopThemeEvent(frame: string): DesktopThemeSnapshot | null {
-  return parseDesktopSseFrame(frame, DESKTOP_THEME_EVENT, readDesktopThemeSnapshot);
 }
 
 /**

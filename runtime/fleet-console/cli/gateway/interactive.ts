@@ -260,8 +260,3 @@ function summarizeDiagnostics(settings: AiGatewayStoredSettings): string {
   const policy = describeGatewayPolicy(settings);
   return `wire log ${policy["wire-log"]}`;
 }
-
-export function cancelGatewayInteractive(): number {
-  cancel("Cancelled.");
-  return 1;
-}

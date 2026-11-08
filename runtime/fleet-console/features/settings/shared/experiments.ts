@@ -88,17 +88,6 @@ export interface ExperimentModelOption {
   readonly effortLevels?: readonly string[];
 }
 
-/**
- * @deprecated 모델 선택지의 원천은 모델 로스터(Settings › AI Gateway) 하나다. 내장 코드는 이 목록을 읽지 않는다.
- * Fleet 1.215.0에서 제거한다.
- */
-export const CLAUDE_EXPERIMENT_MODEL_OPTIONS: readonly ExperimentModelOption[] = [
-  { id: "fable[1m]", label: "Fable" },
-  { id: "opus[1m]", label: "Opus" },
-  { id: "sonnet[1m]", label: "Sonnet" },
-  { id: "haiku[1m]", label: "Haiku" },
-];
-
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._\-\[\]:]{0,127}$/u;
 
 export function isExperimentModelId(value: unknown): value is string {

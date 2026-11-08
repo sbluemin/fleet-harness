@@ -5,11 +5,11 @@ import { groupModelsByLaunchProvider, isLaunchProviderGlyphId, launchProviderCap
 import type { MobileModelReset } from "./mobile-host.js";
 import { MobileSettingsRowLabelContext, Select, useMobileSettingsHost } from "./mobile-host.js";
 import { SegmentedThumb, useSelect } from "@fleet-console/ui/react";
-import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, type ExperimentModelOption } from "../shared/experiments.js";
+import { type ExperimentModelOption } from "../shared/experiments.js";
 import type { SettingsSectionDescriptor } from "../shared/types.js";
 
 // 실험 설정의 순수 도우미 — 브라우저 번들은 이 진입점만 공유 shim으로 노출되므로 여기서도 낸다.
-export { CLAUDE_EXPERIMENT_MODEL_OPTIONS, DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, EXPERIMENT_AIDES, EXPERIMENT_EFFORTS, experimentAideSelection, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, resolveExperimentSettings } from "../shared/experiments.js";
+export { DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, EXPERIMENT_AIDES, EXPERIMENT_EFFORTS, experimentAideSelection, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, resolveExperimentSettings } from "../shared/experiments.js";
 // 모바일 셸이 설정 화면에 주입하는 능력(선택 팝업) — 특수한 섹션이 직접 열 때 쓴다.
 export { MobileSettingsHostContext, useMobileSettingsHost } from "./mobile-host.js";
 export type { MobileChoiceOption, MobileChoiceSpec, MobileCoordinateChoiceProps, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileModelReset, MobileSettingsHost, MobileSubScreenSpec } from "./mobile-host.js";
