@@ -12,13 +12,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDurableJsonStore } from "@fleet-console/infra";
 import { sanitizeDurableConsoleState } from "../../workspace/host/durable-state.js";
 import { createObjectiveStorage } from "../host/storage.js";
-import { createObjectivesFeature } from "../host/index.js";
+import { createObjectivesFeature, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER, OBJECTIVES_MCP_SERVER } from "../host/index.js";
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../host/attachments.js";
 import { inboxReasons } from "../shared/board-state.js";
 import { createCommodoreBoardTools, createObjectiveConsoleTools, MAX_REMARK } from "../host/console-tools.js";
 import { createLaunchService } from "../host/launch.js";
-import { createObjectiveMcpTools } from "../host/objective-tools.js";
+import { createCommanderMcpTools, createMemberMcpTools, createObjectiveMcpTools, FLEET_COMMANDER_TOOL_NAMES, FLEET_MEMBER_TOOL_NAMES } from "../host/objective-tools.js";
 import { createObjectiveRoutes } from "../host/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../host/store.js";
 import { extensionOf, MAX_FOLLOWUPS, type Objective, type ObjectiveEvent } from "../shared/types.js";
@@ -3232,6 +3232,34 @@ describe("Objectives contract", () => {
       expect(await fileOf("no-such", "note.txt")).toMatchObject({ status: 404, json: { error: "unknown_objective" } });
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("splits role servers from one board implementation: commander 21, member 6", () => {
+    const { ctx, store, launch } = harness();
+    const commander = createCommanderMcpTools(ctx, store, launch);
+    const member = createMemberMcpTools(ctx, store, launch);
+    const legacy = createObjectiveMcpTools(ctx, store, launch);
+    // 역할 서버 이름 — 세션 주입이 옮겨갈 때까지 기존 별칭과 함께 둔다.
+    expect(FLEET_COMMANDER_MCP_SERVER).toBe("fleet-commander");
+    expect(FLEET_MEMBER_MCP_SERVER).toBe("fleet-member");
+    expect(OBJECTIVES_MCP_SERVER).toBe("fleet-objectives");
+    // 지휘관은 21개 전부, 구성원은 6개만 받는다. 목록은 원천 상수와 같은 순서로 같다.
+    expect(FLEET_COMMANDER_TOOL_NAMES).toHaveLength(21);
+    expect(FLEET_MEMBER_TOOL_NAMES).toHaveLength(6);
+    expect(commander.map((tool) => tool.name)).toEqual([...FLEET_COMMANDER_TOOL_NAMES]);
+    expect(member.map((tool) => tool.name)).toEqual([...FLEET_MEMBER_TOOL_NAMES]);
+    expect(legacy.map((tool) => tool.name)).toEqual(commander.map((tool) => tool.name));
+    // 구성원 6개는 지휘관 21개의 부분집합이고, 같은 보드 코드의 같은 설명을 낸다.
+    const commanderByName = new Map(commander.map((tool) => [tool.name, tool] as const));
+    for (const tool of member) {
+      expect(commanderByName.has(tool.name)).toBe(true);
+      expect(tool.description).toBe(commanderByName.get(tool.name)!.description);
+    }
+    // 지휘관 전용 15개는 구성원 서버에 실리지 않는다 — 수신 자체가 없어 거절이 생기지 않는다.
+    for (const tool of commander) {
+      if (([...FLEET_MEMBER_TOOL_NAMES] as readonly string[]).includes(tool.name)) continue;
+      expect(member.some((entry) => entry.name === tool.name)).toBe(false);
     }
   });
 });
