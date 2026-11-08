@@ -582,7 +582,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
     const observer = new ResizeObserver(() => setCapWidth(Math.round(cap.getBoundingClientRect().width)));
     observer.observe(cap);
     return () => observer.disconnect();
-  }, []);
+  }, [documentFor]);
 
   // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
   React.useEffect(() => {

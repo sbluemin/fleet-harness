@@ -118,6 +118,16 @@ describe("secure window policy", () => {
       expect(redirect).toHaveBeenCalledOnce();
       childContents.emit("did-finish-load");
       expect(child.show).toHaveBeenCalledOnce();
+      // 열린 창에는 자동 만료가 없다. native 최소화/복원·이동은 close intent가 아니다.
+      const openedNotifications = relay.mock.calls.length;
+      base.emit("minimize"); base.emit("hide");
+      vi.advanceTimersByTime(5 * 60_000);
+      base.emit("restore"); base.emit("show"); base.emit("move");
+      manager.apply({ ...intent, id: "surface-two" }, HOME);
+      expect(manager.surface("surface-two")).toBe(child);
+      expect(base.destroy).not.toHaveBeenCalled();
+      expect(childContents.close).not.toHaveBeenCalled();
+      expect(relay).toHaveBeenCalledTimes(openedNotifications);
       const reload = vi.fn();
       childContents.emit("will-navigate", { preventDefault: reload }, initialUrl);
       expect(reload).toHaveBeenCalledOnce();

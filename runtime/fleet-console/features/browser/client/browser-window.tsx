@@ -15,15 +15,16 @@ export function useBrowserDocument(ownerId: string): SurfaceDocument | null {
   return React.useSyncExternalStore(subscribe, () => documents.get(ownerId) ?? null, () => null);
 }
 
-/** portal의 target은 평생 같은 DOM 요소다. document 사이에서 요소만 옮겨 React state/File callback을 재생성하지 않는다. */
+/** controller는 부모에 남긴다. 문서 수명마다 portal target을 새로 만들어 종료된 문서의 event listener를 재사용하지 않는다. */
 export function BrowserSurfaceContent({ ownerId, role, children, placeholder, blocked = false }: { readonly ownerId: string; readonly role: "caption" | "body"; readonly children: React.ReactNode; readonly placeholder?: React.ReactNode; readonly blocked?: boolean }) {
   const published = useBrowserDocument(ownerId);
   const surface = blocked ? null : published;
-  const [container] = React.useState(() => {
-    const element = document.createElement("div");
+  const documentFor = surface?.document ?? document;
+  const container = React.useMemo(() => {
+    const element = documentFor.createElement("div");
     element.className = `op-browser-${role}-content`;
     return element;
-  });
+  }, [documentFor, role]);
   const slot = React.useRef<HTMLDivElement>(null);
   React.useLayoutEffect(() => {
     const target = surface?.document.getElementById(`browser-window-${role}`) ?? slot.current;
