@@ -1853,6 +1853,33 @@ describe("Objectives contract", () => {
       expect(events).toHaveLength(beforeDispose);
       expect(vi.getTimerCount()).toBe(0);
     } finally { await service.dispose(); vi.useRealTimers(); }
+    // 같은 프로세스가 이미 관측한 PR을 다른 목표가 가리키면, 그 보드 쓰기의 emit이 관측 공유를 저장까지 끝낸다.
+    add("share-a", { title: "A", cwd: "/isolated/repository" });
+    add("share-b", { title: "B", cwd: "/isolated/repository" });
+    const shareDir = path.join(path.dirname(objectivesDir), "share");
+    const shareErrors: string[] = [];
+    let shareService: ReturnType<typeof createPrStatusService> | undefined;
+    const shareStore = createObjectiveStore({
+      documentContext, dirOf: () => shareDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost,
+      emit: (event, source) => { if (source !== "pr-observation") shareService?.refresh(event.objectiveId); },
+    });
+    const shareUrl = "https://github.com/example/project/pull/11";
+    shareService = createPrStatusService(shareStore, { lookup: async () => ({ state: "open", title: "Shared" }), onError: (code) => shareErrors.push(code) });
+    try {
+      const missionA = shareStore.adopt("share-a", { missions: [{ text: "ship" }] }).missions[0]!.id;
+      shareStore.missionDone("share-a", missionA, ["done"], [{ kind: "pr", url: shareUrl }]);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(shareStore.find("share-a")!.results[0]).toMatchObject({ observation: { state: "open", stale: false, title: "Shared" } });
+      const missionB = shareStore.adopt("share-b", { missions: [{ text: "ship" }] }).missions[0]!.id;
+      const started = performance.now();
+      shareStore.missionDone("share-b", missionB, ["done"], [{ kind: "pr", url: shareUrl }]);
+      // 5000ms 잠금 대기의 탐지선이다. 제품 지연 목표가 아니다.
+      expect(performance.now() - started).toBeLessThan(2_000);
+      expect(shareErrors).toEqual([]);
+      const shared = JSON.parse(fs.readFileSync(path.join(shareDir, "share-b", "objective.json"), "utf8")) as { results?: { observation?: { state?: string; title?: string } }[] };
+      expect(shared.results?.[0]?.observation).toMatchObject({ state: "open", title: "Shared" });
+      expect(shareStore.find("share-b")!.results[0]).toMatchObject({ observation: { state: "open", stale: false, title: "Shared" } });
+    } finally { await shareService?.dispose(); }
   });
 
   it("keeps criteria proposed until the person decides, then awaits hand-off and reaches review only through hand_off", async () => {
@@ -3399,18 +3426,13 @@ describe("Objectives contract", () => {
     expect(store.find(objective.id)!.consultations[0]?.delivery).toBe("submitted");
     await launch.deliverConsultations(objective.id);
     expect(sent.length).toBe(before + 1);
-    const other = createObjectiveStore({
-      documentContext, commodoreIds: () => ["c1"],
-      dirOf: (id) => id === "c1" ? path.join(h.workspace, "objectives") : null,
-      objectiveRecords: h.objectiveRecordsHost, emit: () => {}, now: () => 9_000,
-    });
     activity.set(objective.id, "running");
     const again = await call("consult_ask", { question: "Second?" }, objective.id);
     const secondId = again.structuredContent.consultId as string;
     await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: secondId, answer: "Still the brief." }, { cwd: h.workspace });
     expect(store.find(objective.id)!.consultations.find((entry) => entry.id === secondId)?.delivery).toBe("pending");
     expect(store.claimConsultationSend(objective.id, secondId)).toBe(true);
-    expect(other.claimConsultationSend(objective.id, secondId)).toBe(false);
+    expect(store.claimConsultationSend(objective.id, secondId)).toBe(false);
     store.releaseConsultationSend(objective.id, secondId);
     activity.set(objective.id, "idle");
     hostFault.sendError = "request_timeout";
@@ -3429,49 +3451,34 @@ describe("Objectives contract", () => {
     const resumed = sent.length;
     await restarted.launch.deliverConsultations(objective.id);
     expect(sent.length).toBe(resumed);
-    // 다른 인스턴스의 오래된 보드 쓰기가 claim을 pending으로 되돌리지 않는다.
+    // 같은 store의 일반 쓰기는 claim을 pending으로 되돌리지 않고, 닫힌 답을 바꾸지 않는다.
     activity.set(objective.id, "running");
     const fourth = await call("consult_ask", { question: "Fourth?" }, objective.id);
     const fourthId = fourth.structuredContent.consultId as string;
     await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: fourthId, answer: "Still the same brief." }, { cwd: h.workspace });
-    const stale = createObjectiveStore({
-      documentContext, commodoreIds: () => ["c1"],
-      dirOf: (id) => id === "c1" ? path.join(h.workspace, "objectives") : null,
-      objectiveRecords: h.objectiveRecordsHost, emit: () => {}, now: () => 11_000,
-    });
-    expect(stale.find(objective.id)!.consultations.find((entry) => entry.id === fourthId)?.delivery).toBe("pending");
     expect(store.claimConsultationSend(objective.id, fourthId)).toBe(true);
-    stale.patch(objective.id, { note: "stale note" });
-    const afterStale = h.savedObjective(objective.id) as { note?: string; consultations?: { id: string; delivery?: { state?: string } }[] };
-    expect(afterStale.note).toBe("stale note");
-    expect(afterStale.consultations?.find((entry) => entry.id === fourthId)?.delivery?.state).toBe("sending");
+    expect(store.claimConsultationSend(objective.id, fourthId)).toBe(false);
+    store.patch(objective.id, { note: "same store note" });
+    const afterPatch = h.savedObjective(objective.id) as { note?: string; consultations?: { id: string; delivery?: { state?: string } }[] };
+    expect(afterPatch.note).toBe("same store note");
+    expect(afterPatch.consultations?.find((entry) => entry.id === fourthId)?.delivery?.state).toBe("sending");
     const once = await call("consult_ask", { question: "Close once?" }, objective.id);
     const onceId = once.structuredContent.consultId as string;
-    const cached = createObjectiveStore({
-      documentContext, commodoreIds: () => ["c1"],
-      dirOf: (id) => id === "c1" ? path.join(h.workspace, "objectives") : null,
-      objectiveRecords: h.objectiveRecordsHost, emit: () => {}, now: () => 12_000,
-    });
-    expect(cached.find(objective.id)!.consultations.find((entry) => entry.id === onceId)?.reply).toBeUndefined();
     await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: onceId, answer: "First answer. Source: the person." }, { cwd: h.workspace });
-    expect(() => cached.consultAnswer(objective.id, { consultId: onceId, answer: "Second answer.", by: { kind: "commodore", commodoreId: "c1" } })).toThrow(ObjectiveStoreError);
-    cached.patch(objective.id, { note: "keeps the first answer" });
-    const keptReply = h.savedObjective(objective.id) as { note?: string; consultations?: { id: string; reply?: { text?: string } }[] };
+    expect(() => store.consultAnswer(objective.id, { consultId: onceId, answer: "Second answer.", by: { kind: "commodore", commodoreId: "c1" } })).toThrow(ObjectiveStoreError);
+    store.patch(objective.id, { note: "keeps the first answer" });
+    const keptReply = h.savedObjective(objective.id) as { note?: string; consultations?: { id: string; reply?: { text?: string }; delivery?: { state?: string } }[] };
     expect(keptReply.note).toBe("keeps the first answer");
     expect(keptReply.consultations?.find((entry) => entry.id === onceId)?.reply?.text).toBe("First answer. Source: the person.");
-    // 죽은 소유자의 잔존 잠금은 infra stale 복구로 걷히고, sending은 uncertain이 된다. 소유자를 모른 채 지우지는 않는다.
-    const lockDir = path.join(h.workspace, "objectives", objective.id, ".consultation.lock");
-    fs.mkdirSync(lockDir, { recursive: true });
-    fs.writeFileSync(path.join(lockDir, "owner.json"), JSON.stringify({ pid: 2_147_483_646, hostname: os.hostname(), startedAt: Date.now() - 60_000 }));
+    expect(keptReply.consultations?.find((entry) => entry.id === fourthId)?.delivery?.state).toBe("sending");
     const recovered = h.restart();
     expect(recovered.store.find(objective.id)!.consultations.find((entry) => entry.id === fourthId)?.delivery).toBe("uncertain");
+    expect(recovered.store.find(objective.id)!.consultations.find((entry) => entry.id === onceId)?.reply).toMatchObject({ kind: "advice", text: "First answer. Source: the person." });
     activity.set(objective.id, "running");
     const fifth = await call("consult_ask", { question: "Fifth?" }, objective.id);
     const fifthId = fifth.structuredContent.consultId as string;
     await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: fifthId }, { cwd: h.workspace });
     expect(store.find(objective.id)!.consultations.find((entry) => entry.id === fifthId)?.delivery).toBe("pending");
-    fs.mkdirSync(lockDir, { recursive: true });
-    fs.writeFileSync(path.join(lockDir, "owner.json"), JSON.stringify({ pid: 2_147_483_646, hostname: os.hostname(), startedAt: Date.now() - 60_000 }));
     activity.set(objective.id, "idle");
     const beforeFifth = sent.length;
     await launch.deliverConsultations(objective.id);
