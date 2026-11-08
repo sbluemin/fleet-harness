@@ -1352,6 +1352,7 @@
 .avatar-editor-trigger[aria-expanded="true"] .avatar-editor-pen { opacity: 1; }
 .avatar-editor-undo {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3);
   color: var(--text-secondary);

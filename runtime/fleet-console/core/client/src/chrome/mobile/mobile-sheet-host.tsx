@@ -16,7 +16,7 @@ import { openCommodoreMobile } from "../../../../../features/commodore/client/co
 import { useCommodoreSidebarCommands } from "../../../../../features/commodore/client/sidebar-sections.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { IdentityTone } from "../../../../../features/workspace/shared/identity-tones.js";
-import { commodoreAvatarKey, isPromotedBaseId, pickMongleBase } from "../../../../../features/workspace/shared/avatars.js";
+import { commodoreAvatarKey, isPromotedBaseId, mongleVoiceOf, pickMongleBase } from "../../../../../features/workspace/shared/avatars.js";
 import { setMongleLook, useMongleLook } from "../../../../../features/workspace/client/avatar-events.js";
 import { MongleAvatarPicker, type MongleAvatarPreviewState } from "../../../../../features/workspace/client/components/mongle-avatar-picker.js";
 import { MongleAvatar } from "../../../../../features/workspace/client/components/mongle-avatar.js";
@@ -271,7 +271,8 @@ function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly 
       }
       void refreshCommodoreList();
       closeMobileSheets();
-      showMobileToast(t(saved === null && nameChanged ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved"));
+      // 진급 캐릭터로 응답 말투가 바뀌면 다음 턴부터 새 세션이 답한다는 안내를 함께 낸다.
+      showMobileToast(lookChanged && mongleVoiceOf(look.base) !== mongleVoiceOf(base) ? t("avatar.editor.voiceNextTurn") : t(saved === null && nameChanged ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved"));
     })().catch(() => setSaving(false));
   };
   return (

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 
 import { useViewportFit } from "@fleet-console/ui/react";
 
-import { commodoreAvatarKey, commodoreIdOfAvatarKey, isPromotedBaseId, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
+import { commodoreAvatarKey, commodoreIdOfAvatarKey, isPromotedBaseId, mongleStateOf, mongleVoiceOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "./avatar-events.js";
 import { MongleAvatar } from "./components/mongle-avatar.js";
 import type { ObjectiveCluster } from "../../objectives/shared/objective-clusters.js";
@@ -232,7 +232,7 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   const commodoreActivity = useCommodoreMongleActivity(state === "running" && draft === null && role === "commodore" ? commodoreIdOfAvatarKey(avatarKey) : null);
   const activity = objectiveActivity ?? commodoreActivity;
   const [busy, setBusy] = useState(false);
-  const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null } | null>(null);
+  const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null; readonly voiceChanged: boolean } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const pickerWrapRef = useRef<HTMLDivElement | null>(null);
@@ -293,7 +293,8 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
     setBusy(false);
     if (!ok) return;
     setDraft(null);
-    setUndo(previous);
+    // 사령관의 응답 말투(진급 캐릭터)가 바뀌면 다음 턴부터 새 세션이 답한다 — 서버가 세션을 바꾸고, 여기서는 그것을 알린다.
+    setUndo({ ...previous, voiceChanged: role === "commodore" && mongleVoiceOf(previous.base) !== mongleVoiceOf(draft.base) });
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setUndo(null), 8000);
     triggerRef.current?.focus();
@@ -329,6 +330,7 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
       {undo && !open ? (
         <div className="avatar-editor-undo" role="status">
           <span>{t("avatar.editor.applied")}</span>
+          {undo.voiceChanged ? <span className="avatar-editor-undo-note">{t("avatar.editor.voiceNextTurn")}</span> : null}
           <button type="button" className="avatar-editor-undo-button" onClick={() => { void revert(); }}>{t("avatar.editor.undo")}</button>
         </div>
       ) : null}

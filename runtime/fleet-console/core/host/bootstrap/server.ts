@@ -13,6 +13,7 @@ import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../
 import { createObjectiveArchiveCoordinator } from "../../../features/workspace/host/objective-archive.js";
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
+import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleVoiceOf } from "../../../features/workspace/shared/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import crypto from "node:crypto";
@@ -1550,6 +1551,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return !!owner && writableCommodore(owner);
   };
   const avatarRouter = createAvatarRouter({ store: avatarStore, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson,
+    // 진급 사령관의 응답 말투가 바뀌면 진행 중인 턴은 두고 다음 턴을 새 세션으로 연다 — 일반 몽글끼리 바꿀 때는 말투가 그대로라 교체하지 않는다.
+    afterWrite: ({ key, before, after }) => {
+      const commodoreId = commodoreIdOfAvatarKey(key);
+      if (commodoreId === null || (before ? mongleVoiceOf(before.base) : null) === mongleVoiceOf(after.base)) return;
+      commodore?.replaceSessionNext(commodoreId);
+    },
     canWrite: (key) => key.startsWith("theater:commodore:") ? writableCommodore(key.slice("theater:commodore:".length)) : key.startsWith("objective:") ? writableObjectiveAppearance(key.slice("objective:".length)) : true,
   });
   routeRegistry.register("/api/v1/avatars", avatarRouter);
@@ -2643,6 +2650,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
       commodore = createCommodoreFeature({
         approvals,
+        // 사령관 호스트는 아바타 책을 직접 읽지 않는다 — 사령관 키의 모습에서 말투만 건넨다.
+        voiceOf: (commodoreId) => { const look = avatarStore.load().avatars[commodoreAvatarKey(commodoreId)]; return look ? mongleVoiceOf(look.base) : null; },
         gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayCandidatesTool], alwaysLoad: true },
         ownership,
         folderGrants,

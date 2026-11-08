@@ -77,6 +77,11 @@ export function isPlainMongleBaseId(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MONGLE_BASE_COUNT;
 }
 
+/** 진급 사령관이 쓰는 응답 말투 — 일반 몽글이면 null. 사령관 응답 스타일과 세션 교체 판단이 이 값을 읽는다. */
+export function mongleVoiceOf(base: number): QuakerMorph | null {
+  return mongleBase(base).quaker ?? null;
+}
+
 /** 진급 사령관 베이스 번호(16–18). */
 export function isPromotedBaseId(value: unknown): value is number {
   return isMongleBaseId(value) && value > MONGLE_BASE_COUNT;
