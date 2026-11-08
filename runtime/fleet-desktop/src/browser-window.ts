@@ -117,15 +117,31 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         if (child.consoleContents !== guest) throw new Error("browser_surface_guest_replaced");
         companion = child;
         const wc = child.consoleContents;
-        wc.on("will-navigate", (event) => event.preventDefault());
+        const initialUrl = `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`;
+        let loaded = false;
+        let initialStarted = false;
+        let initialFrameAllowed = false;
+        let initialMainAllowed = false;
+        const initial = (url: string) => companion === child && intent === current && !loaded && url === initialUrl;
+        // window.open의 최초 항해도 renderer 항해다. frame/main 취소 지점은 각각 한 번만 통과시키며,
+        // did-start 알림은 이 토큰들을 소비하지 않는다 — 알림과 throttle의 순서에 기대지 않는다.
+        wc.on("will-frame-navigate", (event) => {
+          if (!event.isMainFrame || initialFrameAllowed || !initial(event.url)) { event.preventDefault(); return; }
+          initialFrameAllowed = true;
+        });
+        wc.on("will-navigate", (event, url) => {
+          if (initialMainAllowed || !initial(url)) { event.preventDefault(); return; }
+          initialMainAllowed = true;
+        });
         wc.on("will-redirect", (event) => event.preventDefault());
         wc.on("will-attach-webview", (event) => event.preventDefault());
         wc.setWindowOpenHandler(() => ({ action: "deny" }));
         wc.on("render-process-gone", () => revoke(true));
         wc.on("destroyed", () => { if (companion === child) revoke(true); });
-        let loaded = false;
-        wc.on("did-start-navigation", (_event, url, _inPlace, isMainFrame) => {
-          if (isMainFrame && (loaded || url !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`)) revoke(true);
+        wc.on("did-start-navigation", (_event, url, inPlace, isMainFrame) => {
+          if (!isMainFrame) return;
+          if (initialStarted || inPlace || !initial(url)) { revoke(true); return; }
+          initialStarted = true;
         });
         wc.once("did-finish-load", () => {
           if (companion !== child || wc.getURL() !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`) { revoke(true); return; }
