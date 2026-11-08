@@ -47,7 +47,7 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
     return true;
   }, [
     { method: "POST", path: "/sessions/:sessionId/computer-use", summary: "Allow or revoke Computer Use for an Agent Objective (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/sessions/:sessionId/use-requests/:requestId", summary: "Answer an Agent Objective's pending Computer Use request from its panel: decline, allow for this turn, or keep allowing.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/use-requests/:requestId", summary: "Answer an Agent Objective's pending Computer Use request from its panel: decline or keep allowing.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
   /**

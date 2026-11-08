@@ -4,7 +4,7 @@ import { OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, OBJECTIVE_GROUPED_EVENT_CHANNEL,
 import type { CommodoreBoardAdapter } from "../shared/commodore-board.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import { createCommodoreBoardWatch } from "./commodore-board.js";
-import { createCommodoreBoardTools, createObjectiveConsoleTools } from "./console-tools.js";
+import { createCommodoreBoardTools } from "./console-tools.js";
 import { createLaunchService } from "./launch.js";
 import { createObjectiveMcpTools } from "./objective-tools.js";
 import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./pr-status.js";
@@ -197,10 +197,6 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       },
     };
 
-    // Console Use 의 보드(`console_objectives`·`console_objectives_detail`)와 목표 수행 세션의 `fleet-objectives`.
-    // 사령관 세션은 같은 정의를 `objectives`·`objective` 로 받아 Console Use 기여에 기대지 않는다.
-    const releaseConsoleTools = deps.consoleUse?.contribute?.(createObjectiveConsoleTools(deps, store, launch));
-    if (releaseConsoleTools) registerCleanup(releaseConsoleTools);
     registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, createObjectiveMcpTools(deps, store, launch, prStatus)));
     return { routes, board, dispose, listAll: store.all, isCommanderSession: (sessionId: string) => store.findMember(sessionId) === null && store.find(sessionId) !== null, forgetOwner: store.forgetOwner };
   } catch (error) {
