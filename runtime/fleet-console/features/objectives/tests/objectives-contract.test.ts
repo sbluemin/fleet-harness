@@ -1258,10 +1258,10 @@ describe("Objectives contract", () => {
       return (await tool.execute(parsed.call, { cwd: workspace }) as { structuredContent: Record<string, unknown> }).structuredContent;
     };
     // 다른 플러그인의 보관 Objective은 목표가 아니므로 나열하지 않는다.
-    const archivedPage = await board({ action: "archived", archivedBefore: 200, limit: 1 });
+    const archivedPage = await board({ action: "list", view: "archived", archivedBefore: 200, limit: 1 });
     expect(archivedPage).toMatchObject({ total: 1, nextOffset: null, objectives: [{ id: started.id, objectiveId: started.id, title: "Started", archivedAt: 100 }] });
-    expect(await board({ action: "archived", limit: 1 })).toMatchObject({ total: 2, nextOffset: 1, objectives: [{ objectiveId: shelved.id, archivedAt: 200 }] });
-    expect(await board({ action: "archived", offset: 1, limit: 1 })).toMatchObject({ nextOffset: null, objectives: [{ objectiveId: started.id, archivedAt: 100 }] });
+    expect(await board({ action: "list", view: "archived", limit: 1 })).toMatchObject({ total: 2, nextOffset: 1, objectives: [{ objectiveId: shelved.id, archivedAt: 200 }] });
+    expect(await board({ action: "list", view: "archived", offset: 1, limit: 1 })).toMatchObject({ nextOffset: null, objectives: [{ objectiveId: started.id, archivedAt: 100 }] });
     expect(await board({ action: "purge", objectiveIds: [started.id, live.id, waiting.id, "missing"] })).toMatchObject({ error: "tidy_refused", refusals: [
       { objectiveId: live.id, reason: "not_archived" }, { objectiveId: waiting.id, reason: "not_archived" }, { objectiveId: "missing", reason: "unknown_objective" },
     ] });
@@ -1370,7 +1370,7 @@ describe("Objectives contract", () => {
     // 구성원마다 모델이 필요하다 — 빠지면 라우팅으로 넘기지 않고 아무도 더하지 않은 채 거절한다. 임무 수행 쓰기와 구성원 기동은 거절된다.
     store.setPlanning(objective.id, true);
     const lineup = { objectiveId: objective.id, missions: [{ title: "p1", text: "p1", member: "build" }, { title: "p2", text: "p2", prerequisites: [{ n: 1 }] }] };
-    expect((await call("plan", { ...lineup, members: [{ role: "build", brief: "implements" }] }, commander)).structuredContent).toMatchObject({ error: "member_model_required", roles: ["build"], hint: expect.stringContaining("candidates") });
+    expect((await call("plan", { ...lineup, members: [{ role: "build", brief: "implements" }] }, commander)).structuredContent).toMatchObject({ error: "invalid_arguments" });
     expect(store.find(objective.id)!.members).toEqual([]);
     const planned = await call("plan", { ...lineup, members: [{ role: "build", brief: "implements", model: "sonnet" }] }, commander);
     expect(planned.isError).toBe(false);
@@ -1381,7 +1381,7 @@ describe("Objectives contract", () => {
     // 명단이 있으면 지휘관은 명단을 다시 쓰지 못한다(빈 명단으로 지우는 것도).
     expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "p3", text: "p3" }], members: [] }, commander)).structuredContent.error).toBe("members_exist");
     // 명단이 선 뒤의 일손은 enlist 로 더한다 — 서브에이전트 호출을 대신하는 자리다.
-    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review" }] }, commander)).structuredContent.error).toBe("member_model_required");
+    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review" }] }, commander)).structuredContent.error).toBe("invalid_arguments");
     expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review", model: "sonnet" }] }, commander)).structuredContent.members).toMatchObject([{ role: "review" }]);
     expect(store.find(objective.id)!.members).toMatchObject([{ role: "build" }, { role: "review", by: "commander" }]);
     store.setPlanning(objective.id, false);
@@ -2087,7 +2087,7 @@ describe("Objectives contract", () => {
     expect(created).not.toHaveProperty("notice");
     candidates.candidates.push({ model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" });
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor, requestSource });
-    expect((await board({ action: "list", filter: "all" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor, requestSource }));
+    expect((await board({ action: "list", view: "all" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor, requestSource }));
     const reloadObjective = () => createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(id);
     expect(reloadObjective()).toMatchObject({ addedBy: actor, requestSource, origin: null, dueDate: "2026-10-31", attachments: [expect.objectContaining({ n: 1, type: "image/png", bytes: PNG.length })] });
     // 같은 호출자가 이어 만든 개인 요청은 직전 TF에 귀속되지 않는다. 기존 파일의 부재도 직접 출처로 추정하지 않는다.
@@ -2102,7 +2102,7 @@ describe("Objectives contract", () => {
     expect(old.find(direct.objectiveId as string)?.requestSource).toBeNull();
     expect(fs.readFileSync(directFile, "utf8")).toBe(legacyBytes);
     const secondImage = image(), thirdImage = image();
-    await board({ action: "edit_brief", objectiveId: id, brief: "With original images", attachmentIds: [secondImage, thirdImage] });
+    await board({ action: "edit", objectiveId: id, brief: "With original images", attachmentIds: [secondImage, thirdImage] });
     const attached = reloadObjective()!.attachments;
     expect(attached.map(({ n }) => n)).toEqual([1, 2, 3]);
     for (const attachment of attached) expect(fs.readFileSync(store.attachmentPath(store.find(id)!, attachment))).toEqual(PNG);
@@ -2135,12 +2135,12 @@ describe("Objectives contract", () => {
     expect(fs.readdirSync(path.join(objectivesDir, id, "attachments"))).toEqual(beforeFiles);
     expect(reloadObjective()!.note).toBe("With original images");
     // 도구로 정한 기한은 보드와 재읽기에 남고, null 편집은 실제 저장값을 비운다.
-    expect(await board({ action: "edit_due", objectiveId: id, dueDate: "2026-11-01" })).toMatchObject({ stored: { dueDate: "2026-11-01" } });
+    expect(await board({ action: "edit", objectiveId: id, dueDate: "2026-11-01" })).toMatchObject({ stored: { dueDate: "2026-11-01" } });
     expect((await board({ action: "list" })).objectives).toContainEqual(expect.objectContaining({ id, dueDate: "2026-11-01" }));
-    const invalidDue = await commodore.execute({ action: "edit_due", objectiveId: id, dueDate: "tomorrow" }, { cwd: workspace }) as { structuredContent: { error: string } };
+    const invalidDue = await commodore.execute({ action: "edit", objectiveId: id, dueDate: "tomorrow" }, { cwd: workspace }) as { structuredContent: { error: string } };
     expect(invalidDue.structuredContent.error).toBe("invalid_arguments");
     expect(reloadObjective()?.dueDate).toBe("2026-11-01");
-    expect(await board({ action: "edit_due", objectiveId: id, dueDate: null })).toMatchObject({ stored: { dueDate: null } });
+    expect(await board({ action: "edit", objectiveId: id, dueDate: null })).toMatchObject({ stored: { dueDate: null } });
     expect(reloadObjective()?.dueDate).toBeNull();
     // 운영 구분 없음 — 사람이 만든 목표도 조회에 그대로 서고, 넘김에 맡기기가 필요 없다.
     const personal = (await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Person's own", groupId: null, note: "brief" })).id;
@@ -2150,7 +2150,7 @@ describe("Objectives contract", () => {
     expect(launches).toHaveLength(0);
     // 사령관이 만든 목표의 지휘관도 채팅 뷰로 준비된다 — 보기 선택은 없다.
     expect(store.find(id)!.commander.viewMode).toBe("chat");
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
     await board({ action: "plan", objectiveId: id });
     expect(launches[0]).toMatchObject({ viewMode: "chat" });
     const commanderBoard = (await command("read", {}, id)).objective as { attachments: { path: string }[] };
@@ -2186,12 +2186,12 @@ describe("Objectives contract", () => {
     expect(createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).storedMember(id, observer.id)).toMatchObject({ by: "human", launchBy: "commander" });
     expect((await route("member/remove", { objectiveId: id, memberId: observer.id })).status).toBe(200);
     const beforeStart = (await board({ action: "read", objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
     expect(beforeStart.criteriaProposals).toHaveLength(2);
     await board({ action: "criteria_approve", objectiveId: id, proposalId: "all" });
     const priorNote = store.find(id)!.note;
-    expect(await board({ action: "edit_brief", objectiveId: id, brief: "b".repeat(700) })).toMatchObject({ stored: { brief: `${"b".repeat(300)}…(700 chars)…${"b".repeat(300)}` } });
-    await board({ action: "edit_brief", objectiveId: id, brief: priorNote });
+    expect(await board({ action: "edit", objectiveId: id, brief: "b".repeat(700) })).toMatchObject({ stored: { brief: `${"b".repeat(300)}…(700 chars)…${"b".repeat(300)}` } });
+    await board({ action: "edit", objectiveId: id, brief: priorNote });
     const workerId = (beforeStart as unknown as { members: readonly { id: string }[] }).members[0]!.id;
     const refusal = async (tool: typeof commodore, args: Record<string, unknown>, objectiveId?: string) => ((await tool.execute(args, { cwd: workspace, ...(objectiveId ? { caller: { kind: "objectiveRecord" as const, objectiveId } } : {}) })) as { structuredContent: Record<string, unknown> }).structuredContent.error;
     // 바깥 손은 목표의 행위와 제목·브리핑만 쓴다 — 임무·기준·구성원 모델은 사령관에게도 Objective 에게도 없고, 보드는 그대로다.
@@ -2225,10 +2225,10 @@ describe("Objectives contract", () => {
     // 지시를 넣은 steer 는 지휘관 턴을 연다 — 그 턴 동안 개시는 예약되지 않고, 언제 다시 부르면 되는지와 지휘관 상태로 거절된다.
     await board({ action: "steer", objectiveId: id, context: "Adjust before commence" });
     activity.set(id, "running");
-    expect((await board({ action: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["planned"]) }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["planned"]) }));
     expect((await commodore.execute({ action: "commence", objectiveId: id }, { cwd: workspace }) as { structuredContent: Record<string, unknown> }).structuredContent).toEqual({ error: "objective_busy", retryWhen: "commander_turn_end", commander: { state: "running" } });
     activity.set(id, "idle");
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
     // 지휘관은 기동 전 보드 읽기에서 고른 설정을 실행값 model/effort로 가장하지 않는다.
     const memberBoard = (await command("read", {}, id)).objective as { members: readonly Record<string, unknown>[] };
     expect(memberBoard.members.map(({ launch, model, effort }) => ({ launch, model, effort }))).toEqual([
@@ -2239,13 +2239,13 @@ describe("Objectives contract", () => {
     // 구상 요청과 개시도 부른 손으로 남는다. 개시한 손은 행위 기록이 접혀도 commencedBy 로 남아 사이드바가 읽는다.
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ commencedBy: actor, actions: expect.arrayContaining([expect.objectContaining({ kind: "plan", by: actor }), expect.objectContaining({ kind: "commence", by: actor })]) });
     outcomes.set(workerId, "failed");
-    expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.arrayContaining([expect.objectContaining({ state: "idle", outcome: "failed" })]) }) }));
+    expect((await board({ action: "list", view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.arrayContaining([expect.objectContaining({ state: "idle", outcome: "failed" })]) }) }));
     const personView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
     expect(personView.objective.members.find((m) => m.id === workerId)).toMatchObject({ outcome: "failed" });
     const personState = (await route("state", { commodoreId: "c1" })).value as { objectives: readonly Objective[] };
     expect(personState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)).toMatchObject({ outcome: "failed" });
     outcomes.delete(workerId);
-    expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.not.arrayContaining([expect.objectContaining({ outcome: "failed" })]) }) }));
+    expect((await board({ action: "list", view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.not.arrayContaining([expect.objectContaining({ outcome: "failed" })]) }) }));
     const recoveredView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
     expect(recoveredView.objective.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
     const recoveredState = (await route("state", { commodoreId: "c1" })).value as { objectives: readonly Objective[] };
@@ -2330,7 +2330,7 @@ describe("Objectives contract", () => {
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
     activity.set(id, "running");
-    expect(await board({ action: "edit_title", objectiveId: id, title: "Renamed while running" })).toMatchObject({ ok: true, stored: { title: "Renamed while running" } });
+    expect(await board({ action: "edit", objectiveId: id, title: "Renamed while running" })).toMatchObject({ ok: true, stored: { title: "Renamed while running" } });
     expect(store.find(id)!.title).toBe("Renamed while running");
     // 지휘관·구성원은 자기 목표를 외부 행위자로 승인할 수 없다. 요청을 지우거나 기록하지 않는 거절이다.
     for (const objectiveId of [id, memberId]) {
@@ -2364,7 +2364,7 @@ describe("Objectives contract", () => {
     activity.set(id, "running");
     expect(await board({ action: "transcript", objectiveId: id })).toMatchObject({ session: { kind: "commander" } });
     activity.set(id, "idle");
-    const inbox = await board({ action: "inbox" });
+    const inbox = await board({ action: "list", view: "inbox" });
     expect((inbox.objectives as readonly { id: string; decisionRequested: boolean }[]).find((row) => row.id === id)?.decisionRequested).toBe(true);
     const request = JSON.parse((await board({ action: "read", objectiveId: id, section: "decisionRequest" })).text as string) as { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] };
     expect(request.id).toBe(asked.requestId);
@@ -2374,10 +2374,10 @@ describe("Objectives contract", () => {
     await board({ action: "hand_to_person", objectiveId: id, target: "decision", reason: "Product direction is the person's call" });
     expect(await refusal(commodore, answerOf({}))).toBe("held_for_person");
     expect(store.find(id)!.decisionRequest?.id).toBe(request.id);
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "person" }), personHolds: [expect.objectContaining({ target: "decision", requestId: request.id })] }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "person" }), personHolds: [expect.objectContaining({ target: "decision", requestId: request.id })] }));
     expect(await refusal(consoleDetail, { action: "hand_to_person", objectiveId: id, target: "decision", reason: "x" }, "outsider")).toBe("permission_required");
     expect((await route("person-hold/return", { objectiveId: id, target: "decision" })).status).toBe(200);
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "commodore" }) }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "commodore" }) }));
     expect(await board(answerOf({}))).toMatchObject({ stored: { answers: [{ text: "Preserve the output" }] } });
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output" }] });
     const evidenceRoot = (await command("evidence_dir", {}, id)).root as string;
@@ -2393,7 +2393,7 @@ describe("Objectives contract", () => {
     const stray = (await command("followup", { add: { title: "Stray", summary: "Out of scope", userImpact: "None yet", fromMission: missionId, brief: "Drop", evidence: [{ kind: "command", text: "check" }] } }, id)).id as string;
     const strayRev = ((await board({ action: "read", objectiveId: id })).objective as { followups: readonly { id: string; rev: number }[] }).followups.find((entry) => entry.id === stray)!.rev;
     // 진행 중의 후보는 모이기만 한다 — 사령관의 inbox 에 서지 않고, 버리기·넘기기도 검토 대기 전에는 거절된다.
-    expect((await board({ action: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["followup"]) }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["followup"]) }));
     expect(await refusal(commodore, { action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev }] })).toBe("not_in_review");
     expect(await refusal(commodore, { action: "hand_to_person", objectiveId: id, target: "followup", reason: "Too early" })).toBe("not_in_review");
     // 사령관의 첨언은 steer 다. message 는 사령관에게 광고되지 않고, 다른 action 에 붙인 context 는 steer 가 받는다고 말한다.
@@ -2403,7 +2403,7 @@ describe("Objectives contract", () => {
     const retrospective = { wentWell: [{ point: "Output preserved", because: "Evidence tool" }], fellShort: [{ point: "Review delayed", ifOnly: "Earlier decision" }] };
     await command("hand_off", { retrospective }, id);
     // 인계로 검토와 함께 모인 후보 전체가 선다 — 판단은 이때 한 번에 한다.
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["review", "followup"], followups: [expect.objectContaining({ title: "Next round" }), expect.objectContaining({ id: stray })] }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["review", "followup"], followups: [expect.objectContaining({ title: "Next round" }), expect.objectContaining({ id: stray })] }));
     expect(await refusal(commodore, { action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev + 1 }] })).toBe("followup_changed");
     await board({ action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev }] });
     expect(store.find(id)!.followups.find((entry) => entry.id === stray)?.state).toBe("discarded");
@@ -2428,14 +2428,14 @@ describe("Objectives contract", () => {
     expect((await replay.execute(completeSelection, { cwd: workspace }) as { structuredContent: unknown }).structuredContent).toMatchObject({ ok: true });
     expect(restarted.store.find(id)!.followupBatches).toHaveLength(1);
     expect(restarted.store.list("c1").filter((entry) => entry.origin?.candidateId === candidate.id).map((entry) => entry.id)).toEqual([nextId]);
-    expect((await board({ action: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ hasRetrospective: true })] }));
+    expect((await board({ action: "list", view: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ hasRetrospective: true })] }));
     expect(JSON.parse((await board({ action: "read", objectiveId: id, section: "handoffs" })).text as string)).toContainEqual(expect.objectContaining({ retrospective }));
     // 사령관이 고른 후속도 기본 운영이다 — 맡기기가 필요 없다.
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"] }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"] }));
     // 사령관이 고른 후속은 터미널 원본의 뷰를 이어받지 않고 채팅 뷰 지휘관으로 시작한다.
     expect(store.find(nextId)!.commander.viewMode).toBe("chat");
     await board({ action: "commence", objectiveId: nextId });
-    expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, commenced: true }));
+    expect((await board({ action: "list", view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, commenced: true }));
     expect(store.find(id)!.done?.by).toEqual(actor);
     expect(store.find(nextId)!.commenced).toBe(true);
     // 목표가 많아져도 도구 결과 안에서 전량을 읽고, 긴 본문은 원본 그대로 이어 읽는다.
@@ -2457,8 +2457,8 @@ describe("Objectives contract", () => {
         questions: [{ header: "Backlog", text: "Continue the backlog?", options: [{ label: "Continue" }, { label: "Pause" }] }] });
     }
     type Page = { total: number; offset: number; nextOffset: number | null; objectives: { id: string; criteriaCount: number }[] };
-    for (const args of [...[undefined, "all", "today", "due"].map((filter) => ({ action: "list", ...(filter ? { filter } : {}) })),
-      ...["inbox", "fleet", "history"].map((action) => ({ action }))]) {
+    for (const args of [...[undefined, "all", "today", "due"].map((view) => ({ action: "list", ...(view ? { view } : {}) })),
+      ...["inbox", "fleet", "history"].map((view) => ({ action: "list", view }))]) {
       const seen: string[] = [];
       let offset = 0;
       let total = 0;

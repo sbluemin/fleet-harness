@@ -31,20 +31,19 @@ const missionRef = { missionId: ids.optional(), n: z.number().int().min(1).optio
 /** 선행 한 칸 — 번호 n 이나 missionId, 그리고 이유. */
 const prerequisiteRef = z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() }).strict();
 const memberReference = z.string().trim().min(1).max(128);
-/** 구성원 한 명의 편성 — 역할·짧은 소개, 그리고 선택적 기동 모델(models 의 행). 모델이 없으면 라우팅이 고른다. */
+/** 구성원 한 명의 편성 — 역할·짧은 소개, 그리고 기동 모델(models 의 행). */
 const rosterMember = z.object({
   role: z.string().trim().min(1).max(40),
   brief: z.string().max(MAX_SHORT_INPUT).optional(),
-  model: z.string().trim().min(1).max(128).optional(),
+  model: z.string().trim().min(1).max(128),
   effort: z.string().trim().min(1).max(32).optional(),
 }).strict();
 const MODEL_FACT = "Each member needs a model (and optional effort) from candidates.";
-const ROSTER_MODEL_HINT = "Give each member a model from fleet-ai-gateway candidates.";
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
 const PLANNING_ONLY = "The objective is in planning: its lineup can change, but missions are not carried out and members are not launched until the person commences.";
 const BOARD_CHANGED = "The person edited the objective after your last read.";
 /** read·mine 설명의 한 줄 — 결정 요청과 결정이 보드에 있다는 사실. */
-const DECISIONS_ON_BOARD = "Console sessions cannot ask the person directly; decisions for the person go through the board, and the person may not be watching your panel text. The board holds the request, its revision, and the recorded answers. A request closed without deciding chose nothing — do not re-ask it as was. Only board submissions count, and they survive reruns.";
+const DECISIONS_ON_BOARD = "Console sessions cannot ask the person directly; decisions for the person go through the board. The board holds the request, its revision, and the recorded answers. A request closed without deciding chose nothing — do not re-ask it as was. Only board submissions count, and they survive reruns.";
 const DECISION_DELIVERING = "The person's answers have been accepted, but delivery and recording are not yet finalized. The current request cannot be replaced or withdrawn.";
 /** 진행 중 세션이 옛 objectiveId 입력을 넣었을 때 — 그 키는 더 받지 않으며, 빼고 다시 부른다. */
 const OBJECTIVE_ID_DROPPED = "objectiveId is no longer accepted. Call again without it.";
@@ -234,13 +233,10 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     },
   });
   const modelCatalog = createModelCatalog(ctx);
-  /** 지휘관의 구성원 편성 — candidates로 확인한 모델·강도를 기동 선택에 저장한다. 목록은 한 번만 읽는다. */
+  /** 지휘관의 구성원 편성 — candidates로 확인한 모델·강도를 기동 선택에 저장한다. 목록은 한 번만 읽는다. 모델은 입력에 필수다. */
   const rosterOf = async (members: readonly z.output<typeof rosterMember>[], signal: AbortSignal | undefined) => {
-    // 모델 없는 구성원은 받지 않는다 — 판단기로 대신 고르지 않는다.
-    const missing = members.filter((member) => member.model === undefined).map((member) => member.role);
-    if (missing.length) throw new ObjectiveStoreError("member_model_required", undefined, { roles: missing, hint: ROSTER_MODEL_HINT });
     const loadout = await modelCatalog.candidates(signal);
-    return Promise.all(members.map(async ({ model, effort, ...member }) => ({ ...member, launch: { mode: "model" as const, ...await modelCatalog.checkProposal({ model: model!, effort }, signal, loadout) } })));
+    return Promise.all(members.map(async ({ model, effort, ...member }) => ({ ...member, launch: { mode: "model" as const, ...await modelCatalog.checkProposal({ model, effort }, signal, loadout) } })));
   };
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Objective 에게는 참여자가 아님을 말한다. */
   const commanderTool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, objective: Objective, caller: ConsoleCaller, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> | unknown) =>
@@ -248,7 +244,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       const objective = boundObjective(caller);
       if (!objective) return refuse("not_participant");
       const role = roleIn(objective, caller);
-      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board, seal evidence, and message the Commander with the message tool (to: \"commander\"). Only the Commander changes the board." });
+      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board, seal evidence, and message the Commander with member_message (to: \"commander\"). Only the Commander changes the board." });
       if (!role) return refuse("not_participant");
       return run(args, objective, caller!, context);
     });
@@ -265,7 +261,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
   });
 
   return [
-    tool("mine", `Your role in this session's objective (commander or member) and the board as that role sees it. Only the Commander changes the board — planning, mustering, completing, marking — through the fleet-commander tools. Members are read-only: they read the board, seal evidence, and report to the Commander with the message tool (to: "commander"). Members never ask the person; a decision they need, or a directive that reads reversed or unreadable, goes to the Commander first. planning: true means the person asked for a lineup, not its execution. A short notice quotes words the person added while you work. At hand-off the Commander collects each member's retrospective and created resources. ${DECISIONS_ON_BOARD}`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in this session's objective (commander or member) and the board as that role sees it. Only the Commander changes the board — planning, mustering, completing, marking — through the fleet-commander tools. Members are read-only: they read the board, seal evidence, and report to the Commander with message_commander. Members never ask the person; a decision they need, or a directive that reads reversed or unreadable, goes to the Commander first. planning: true means the person asked for a lineup, not its execution. A short notice quotes words the person added while you work. At hand-off the Commander collects each member's retrospective and created resources. Decisions for the person go through the board; objective_read states the request rules.`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "objectiveRecord") return refuse("not_participant");
       const assigned = store.findMember(caller.objectiveId);
       if (assigned) {
@@ -291,7 +287,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       if (!objective.commodoreId) return refuse("commodore_required");
       return text(searchObjectives(store.records(objective.commodoreId), input));
     }),
-    tool("evidence_dir", "The objective's shared evidence directory, and the only place seal_evidence_from_path reads from. Its path is returned only through MCP, not to the browser. Theater, scratchpad and Bash temp dirs are not this root.", z.object({}).strict(), (_args, caller) => {
+    tool("evidence_dir", "The objective's shared evidence directory, and the only place result_seal reads from. Its path is returned only through MCP, not to the browser. Theater, scratchpad and Bash temp dirs are not this root.", z.object({}).strict(), (_args, caller) => {
       const objective = participated(caller);
       if (!objective) return refuse("not_participant");
       return text({ root: store.sharedDir(objective.commodoreId, objective.id), note: "Only files under root can be sealed." });
@@ -313,7 +309,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     commanderTool("detach_result", "Remove a result and its mission link. The evidenceId becomes unavailable; source file, PR, Artifact, records and completion states are unchanged.",
       z.object({ resultId: ids }).strict(),
       ({ resultId }, objective) => { store.resultRemove(objective.id, resultId); return text({ ok: true }); }),
-    commanderTool("plan", `Replace the open missions nobody has committed to yet. Missions that stay (finished, recorded, person-assigned or person-added) are referenced by missionId; restating one is refused as mission_kept. Prerequisites are numbers n over this plan's own missions, or the missionId of a mission that stays; member is a roster id or role, none means the Commander. A lineup changing repository files ends with a base-branch merge via PR, review and checks. members is accepted only while the roster is empty; enlist adds members later. ${MODEL_FACT} The person can add, rerun, reopen and rearrange missions at any time. A person's Plan request or Steer opens success-criterion proposals; Steer does not enter planning. criteria replaces all pending proposals, [] withdraws them, omission keeps them; omit missions to submit criteria only. A conditional criterion states its premise and the evidence that stands when it fails. Proposals need the person's approval and block commencement and steering until resolved. A plan on an edited board is refused as board_changed. ${BOARD_REFERENCES}`,
+    commanderTool("plan", `Replace the open missions nobody has committed to yet; needs missions or criteria, and members alone is refused. Missions that stay (finished, recorded, person-assigned or person-added) are referenced by missionId; restating one is refused as mission_kept. Prerequisites are numbers n over this plan's own missions, or the missionId of a mission that stays; member is a roster id or role, none means the Commander. A lineup changing repository files ends with a base-branch merge via PR, review and checks. members is accepted only while the roster is empty; enlist adds members later. ${MODEL_FACT} criteria replaces all pending proposals, [] withdraws them, omission keeps them; omit missions to submit criteria only. A conditional criterion states its premise and the evidence that stands when it fails. Proposals need the person's approval and block commencement and steering until resolved. A plan on an edited board is refused as board_changed. ${BOARD_REFERENCES}`,
       planArgs,
       async (args, before, _caller, context) => {
         // 모델 제안을 먼저 확인한다 — 카탈로그를 읽는 동안 보드가 바뀌었을 수 있으니 판정은 다시 읽은 보드로 한다.
@@ -403,7 +399,6 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     commanderTool("set_member_launch", "Change an existing member's launch by id or role, also while planning. Use a model and optional effort from candidates. The change applies at once when idle, after the running turn when busy, or as saved coordinates without an SDK child. Host refusals keep the previous selection. A member with a person-chosen model — including a same-value confirmation — and legacy members without ownership cannot be changed (member_launch_person_chosen).",
       z.object({ member: memberReference, mode: z.literal("model"), model: rosterMember.shape.model, effort: rosterMember.shape.effort }).strict(),
       async ({ member, model, effort }, before, _caller, context) => {
-        if (model === undefined) return refuse("model_required", { hint: ROSTER_MODEL_HINT });
         const memberId = resolveMember(find(before.id), member);
         const [proposal] = await rosterOf([{ role: "member", model, effort }], context.signal);
         const updated = await launch.memberPatched(before.id, memberId, { launch: proposal!.launch }, "commander");
@@ -457,18 +452,19 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         const record = store.find(objective.id)?.missions.find((entry) => entry.id === target.id)?.records.at(-1);
         return text({ ok: true, missionId: target.id, ...(record ? { stored: { record: record.lines.map(storedText) } } : {}), ...(resultIds.length ? { resultIds } : {}), ...(next ? { next } : {}) });
       }),
-    commanderTool("followup", `Follow-up candidates: out-of-scope findings with evidence, each a user-facing product improvement. Findings with no user impact stay in the final report, not on the board. add takes title, summary, userImpact (what a user experiences differently), fromMission, brief and evidence; file paths are relative to the Theater root, and at least one evidence item is a file with a line or a command. revise or withdraw a candidate while it is open. At most ${MAX_FOLLOWUPS} active per objective. Candidates are judged together at review after hand-off; each picked one becomes a dormant objective and is frozen.`,
-      z.object({ add: z.preprocess(withoutLegacyCriteria, followupBodySchema).optional(), revise: z.preprocess(withoutLegacyCriteria, followupReviseSchema.extend({ id: ids })).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
+    commanderTool("followup", `Follow-up candidates: out-of-scope findings with evidence, each a user-facing product improvement. Findings with no user impact stay in the final report, not on the board. Exactly one of add, revise or withdraw. add's fromMission is the missionId it came from; file paths are relative to the Theater root, and at least one evidence item is a file with a line or a command. Revise or withdraw a candidate while it is open. At most ${MAX_FOLLOWUPS} active per objective. Candidates are judged together at review after hand-off; each picked one becomes a dormant objective and is frozen.`,
+      z.object({ add: z.preprocess(withoutLegacyCriteria, followupBodySchema).optional(), revise: z.preprocess(withoutLegacyCriteria, followupReviseSchema.extend({ id: ids })).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict().check((ctx) => {
+        const value = ctx.value as { add?: unknown; revise?: unknown; withdraw?: unknown };
+        if ([value.add, value.revise, value.withdraw].filter((slot) => slot !== undefined).length !== 1) ctx.issues.push({ code: "custom", input: value, message: "followup_requires_exactly_one", path: [] });
+      }),
       (args, objective) => {
-        const actions = [args.add, args.revise, args.withdraw].filter((value) => value !== undefined);
-        if (actions.length !== 1) return refuse("invalid_arguments", { hint: "Exactly one of add, revise or withdraw." });
         if (args.add) { const candidate = added(objective.followups, store.followupAdd(objective.id, args.add).followups); return text({ ok: true, ...(candidate ? { id: candidate.id } : {}) }); }
         if (args.revise) { const { id, ...patch } = args.revise; store.followupRevise(objective.id, id, patch); return text({ ok: true, id }); }
         store.followupWithdraw(objective.id, args.withdraw!.id);
         return text({ ok: true, id: args.withdraw!.id });
       }),
     // 회고 형식이 어긋나면 invalid_arguments 대신 형식을 말하는 거절로 — 입력 스키마는 모델에게 온전한 모양을 보인다.
-    { ...commanderTool("hand_off", `Hand an objective awaiting hand-off to the person's review with a retrospective: the Commander's synthesis of the members' retrospectives and its own. ${RETROSPECTIVE_FORMAT} because and ifOnly point at instructions, skills, tools or approaches. The retrospective is a record, not work, and a hand-off needs no minimum follow-up count. Unless waived, changed repository files are handed off only after their PR, review, checks and base-branch merge. It needs every mission done and every criterion met; otherwise not_awaiting_handoff names what is open.`,
+    { ...commanderTool("hand_off", `Hand an objective awaiting board review with a retrospective: the Commander's synthesis of the members' retrospectives and its own. because and ifOnly point at instructions, skills, tools or approaches. The retrospective is a record, not work, and a hand-off needs no minimum follow-up count. Unless the brief or the person explicitly waives it, changed repository files are handed off only after their PR, review, checks and base-branch merge. It needs every mission done and every criterion met; otherwise not_awaiting_handoff names what is open.`,
       z.object({ retrospective: z.unknown() }).strict(),
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
@@ -536,10 +532,10 @@ function handoffInventory(objective: Objective): string {
 export function handoffPrompt(objective: Objective): string {
   const members = objective.members.length > 0;
   return [
-    "Every mission is done and every criterion is met: the objective awaits hand-off, and it reaches the person's review only through hand_off.",
+    "Every mission is done and every criterion is met: the objective awaits hand-off, and it reaches board review only through hand_off.",
     `Only follow-up candidates carry beyond this objective; mission records and messages end with it, so a finding that is not a candidate reaches no later objective. ${handoffInventory(objective)} A hand-off with no follow-up candidates is valid.`,
     members
-      ? "The hand-off step: the Commander requests each member's retrospective with the message tool, gathers them, and synthesizes them with its own into the retrospective that hand_off carries. Members also report the worktrees, branches and isolated processes they created for this objective and whether they are still in use. Before hand_off, the Commander removes those it has confirmed as this objective's that no session still uses, except one holding unmerged work the person has not authorized discarding; it records why each kept one stays. One only its creator may remove goes back to that member. Resources of other sessions or objectives, or of uncertain ownership, stay untouched. member_muster prepares chat members and resumes dormant terminal members."
+      ? "The hand-off step: the Commander requests each member's retrospective with member_message, gathers them, and synthesizes them with its own into the retrospective that hand_off carries. Members also report the worktrees, branches and isolated processes they created for this objective and whether they are still in use. Before hand_off, the Commander removes those it has confirmed as this objective's that no session still uses, except one holding unmerged work the person has not authorized discarding; it records why each kept one stays. One only its creator may remove goes back to that member. Resources of other sessions or objectives, or of uncertain ownership, stay untouched. member_muster prepares chat members and resumes dormant terminal members."
       : "The hand-off step: the Commander writes the retrospective that hand_off carries.",
   ].join("\n\n");
 }

@@ -2,7 +2,7 @@ import type { CommodoreAttachmentReader } from "../shared/commodore-board.js";
 import { commodoreSessionToolName } from "../../commodore/shared/tool-names.js";
 export type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../shared/commodore-board.js";
 import { type ConsoleCaller } from "../../execution/shared/control.js";
-import { type ConsoleUseCallTarget, type ConsoleMcpTool } from "../../execution/shared/tools.js";
+import { type ConsoleUseCallTarget, type ConsoleMcpTool, inputIssues } from "../../execution/shared/tools.js";
 import { defineConsoleTool, type ConsoleToolFilter } from "../../execution/shared/actions.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import { z } from "zod";
@@ -32,7 +32,7 @@ import { searchInputShape, searchObjectives } from "./search.js";
 
 
 const ids = z.string().min(1).max(128);
-const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("Commodore: preserve this turn's image IDs in the brief, not as text; copy now, or ask to resend. No paths.");
+const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("This turn's image IDs for the brief. No paths.");
 const MAX_ADD_PER_TURN = 10;
 /** 일하는 세션이 있어도 전사를 읽을 수 있는 대기 사유 — 바깥의 판단을 기다리거나 막힌 목표다. */
 const TRANSCRIPT_REASONS: ReadonlySet<string> = new Set(["decision", "stalled", "member-failed", "review"]);
@@ -44,12 +44,12 @@ const MAX_TIDY_PER_TURN = 20;
 const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON).optional();
 /** 지휘관에게 건네는 말(구상·개시·스티어링·확장의 context, Objective·플러그인의 메시지)의 상한 — 첨언이 업무 지시서로 자라지 않게 한다. */
 export const MAX_REMARK = 600;
-const REMARK = "A remark: what you judged and why. The Commander decides missions, method and evidence.";
-const remark = z.string().trim().min(1).max(MAX_REMARK).describe(REMARK);
-const context = z.string().max(MAX_REMARK).optional().describe(REMARK);
+const remark = z.string().trim().min(1).max(MAX_REMARK).describe("What you judged and why.");
+const context = z.string().max(MAX_REMARK).optional().describe("What you judged and why.");
 const answers = z.array(decisionAnswersSchema.shape.answers.element).min(1).max(MAX_DECISION_QUESTIONS);
+const offsetPages = "Follow nextOffset with the same view until null; slices restart at 0 if the revision changes.";
 /** 조각 읽기의 위치 — 목표 구역(UTF-16 문자, 8000바이트 예산)과 증거(16000자) 모두 nextOffset 을 따라간다. */
-const sliceOffset = z.number().int().min(0).optional().describe("Slice offset: follow nextOffset until null; restart at 0 if revision changes.");
+const sliceOffset = z.number().int().min(0).optional().describe(offsetPages);
 /** 거절의 뜻은 거절 응답에 싣는다 — 도구 설명에 미리 싣지 않는다. */
 const HINTS: Readonly<Record<string, string>> = {
   own_objective: "An Objective cannot act on an objective it commands or belongs to.",
@@ -66,25 +66,25 @@ const HINTS: Readonly<Record<string, string>> = {
 
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
 const scope = { commodoreId: ids.optional() };
-const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
-const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: restorable, incl. unstarted objectives.");
+const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe(offsetPages), limit: z.number().int().min(1).max(100).optional() };
+const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("Objective IDs the action applies to.");
 /** 목록 화면의 action — Console Use(`console_objectives`)와 사령관의 `objective` 가 같은 정의를 쓴다. */
 const listActions = {
     groups: { kind: "read", input: z.object(scope) },
-    list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
+    list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all"]).optional().describe("all adds completed objectives here; archived lists the archive.") }) },
     inbox: { kind: "read", input: z.object(rows) },
     fleet: { kind: "read", input: z.object(rows) },
     history: { kind: "read", input: z.object(rows) },
-    archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (Unix epoch ms). Newest first; follow nextOffset with the same filter.") }) },
-    // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관·구성원의 objective_search 와 같은 핵심·같은 입력이다.
+    archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (epoch ms); newest first.") }) },
+    // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관·구성원의 objective_search 와 같은 핵심·같은 입력. searchInputShape 은 지휘관·구성원 서버와 공유하므로 그대로 둔다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
-    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("Request source per objective: direct (default), or taskforce with exact id and starting seq when known."), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan."),
-      commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates; ignored if the person set a Commander model. Otherwise required."),
-      commanderEffort: z.string().trim().min(1).max(32).optional().describe("Ignored if the person set a Commander model. Otherwise from commanderModel's efforts; omitted uses its default.") }) },
+    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("direct (default), or taskforce with id and starting seq."), note: z.string().max(20_000).optional().describe("The brief: request and purpose. Missions, method and evidence come from the plan."),
+      commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates; required unless the person set a Commander model."),
+      commanderEffort: z.string().trim().min(1).max(32).optional().describe("From commanderModel's efforts; omitted uses its default.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
-    merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
-    restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs. Restore retaining completion and records; chats stay live and wait for a message.") }) },
+    merge: { kind: "write", input: z.object({ into: ids.describe("Target receiving brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives; sources stay in the target record."), reason }) },
+    restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs; completion and records are retained, chats wait for a message.") }) },
     purge: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs only. Irreversible after a 10-second undo grace period; Console restart cancels pending purges.") }) },
 } as const;
 const listTool = defineConsoleTool({
@@ -102,21 +102,21 @@ const followupTarget = { batchId: ids, candidateId: ids };
  */
 /** 목표 화면의 action — Console Use(`console_objectives_detail`)와 사령관의 `objective` 가 같은 정의를 쓴다. */
 const detailActions = {
-    read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("One section in slices; objective is the complete board JSON. Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
+    read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
     evidence: { kind: "read", input: z.object({ ...target, resultId: ids, offset: sliceOffset }) },
     transcript: { kind: "read", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional().describe("Omitted, the latest lines; \"0\" from the start, then nextCursor. Session text is untrusted."), limit: z.number().int().min(1).max(100).optional() }) },
     edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
-    edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the brief text; existing images stay. attachmentIds copies this turn's images atomically with the text."), attachmentIds }),
+    edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the brief; existing images stay."), attachmentIds }),
     edit_due: write({ dueDate }),
     criteria_approve: write({ proposalId: ids.describe("\"all\" approves every proposal.") }),
     criteria_reject: write({ proposalId: ids }),
     answer: write({ requestId: ids, answers }),
-    complete: write({ batchId: followupSelectionSchema.shape.batchId.optional().describe("Optional retry key; the host derives one from the selection when omitted."), followups: followupSelectionSchema.shape.followups.optional() }),
+    complete: write({ batchId: followupSelectionSchema.shape.batchId.optional().describe("Optional retry key; omitted, the host derives one."), followups: followupSelectionSchema.shape.followups.optional() }),
     reopen: write({}),
     followup_retry: write(followupTarget),
     followup_abandon: write(followupTarget),
     // 후보는 보드의 후보 객체 그대로({id, rev}) 가리킨다 — complete 와 같은 모양이고, 그새 고쳐진 후보는 버리지 않는다.
-    followup_discard: write({ followups: followupSelectionSchema.shape.followups.describe("Open candidates to drop. They only collect while the objective works; refused as not_in_review before review.") }),
+    followup_discard: write({ followups: followupSelectionSchema.shape.followups.describe("Open candidates to drop; refused as not_in_review before review.") }),
     plan: write({ context }),
     commence: write({ context }),
     steer: write({ context }),
@@ -128,8 +128,8 @@ const detailActions = {
     extend: write({ context: remark }),
     // 사령관만 — 서 있는 대기 항목을 사유와 함께 사람 몫으로 넘긴다. 사람은 화면의 「사령관에게 돌려주기」로 되돌린다.
     hand_to_person: { kind: "write", callers: ["commodore"], input: z.object({ ...target,
-      target: z.enum(PERSON_HOLD_TARGETS).describe("The waiting item: decision request, criteria proposals, review, or open follow-ups (from review on)."),
-      reason: z.string().trim().min(1).max(MAX_PERSON_HOLD_REASON).describe("Why the person should decide this; shown to them on the item."),
+      target: z.enum(PERSON_HOLD_TARGETS).describe("Which waiting item; follow-ups only from review on."),
+      reason: z.string().trim().min(1).max(MAX_PERSON_HOLD_REASON).describe("Why the person should decide; shown to them."),
     }) },
 } as const;
 const detailTool = defineConsoleTool({
@@ -138,13 +138,40 @@ const detailTool = defineConsoleTool({
   actions: detailActions,
 });
 /**
- * 사령관 세션의 보드 도구 — 두 화면의 action 합집합 하나. Console Use 기여는 위의 둘을 그대로 둔다.
- * 목록 고르기와 조각 읽기는 action 안의 입력(list의 filter·search, read의 section·offset)으로 받고, 화면·구역마다 도구를 나누지 않는다.
+ * 사령관 세션의 목록·편집 — 화면 둘을 나누지 않고 view·edit 입력으로 받는다. Console Use 기여는 위의 둘을 그대로 둔다.
+ * list의 view를 생략하면 기본 목록이고, archivedBefore는 archived 보드에서만 받는다. edit은 title·brief·dueDate 중
+ * 적어도 하나가 있어야 하고, attachmentIds는 brief와 함께만 받는다. dueDate null은 기한을 지운다.
+ */
+const sessionListInput = z.object({
+  groupId: ids.optional(),
+  offset: z.number().int().min(0).optional().describe(offsetPages),
+  limit: z.number().int().min(1).max(100).optional(),
+  view: z.enum(["today", "due", "all", "inbox", "fleet", "history", "archived"]).optional(),
+  archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (epoch ms); newest first."),
+}).strict();
+const sessionEditInput = z.object({
+  objectiveId: ids,
+  title: z.string().trim().min(1).max(MAX_TITLE).optional(),
+  brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
+  dueDate: dueDate.optional(),
+  attachmentIds: attachmentIds.optional(),
+}).strict();
+const { list: _retiredList, inbox: _retiredInbox, fleet: _retiredFleet, history: _retiredHistory, archived: _retiredArchived, ...sessionListBase } = listActions;
+const { edit_title: _retiredEditTitle, edit_brief: _retiredEditBrief, edit_due: _retiredEditDue, ...sessionDetailBase } = detailActions;
+/**
+ * 사령관 세션의 보드 도구 하나 — 목록·편집을 view·edit 입력으로 합친 형태. Console Use 기여는 위의 둘을 그대로 둔다.
+ * 목록 고르기와 조각 읽기는 action 안의 입력으로 받고, 화면·구역마다 도구를 나누지 않는다. 옛 목록·편집 action 이름으로
+ * 불러도 아래 실행이 같은 길로 잇는다(광고에는 새 이름만 싣는다).
  */
 const objectiveTool = defineConsoleTool({
   name: "console_objective",
-  description: "Objectives board in one tool: lists, groups, search, add, tidy, read, evidence, acts. archive/remove: restorable. purge: archived only, irreversible after 10s grace; restart cancels pending purges.",
-  actions: { ...listActions, ...detailActions },
+  description: "The Objectives board: lists and one objective's detail, acts and tidy. archive/remove: restorable. purge: archived only, irreversible after a 10s grace; restart cancels pending purges.",
+  actions: {
+    ...sessionListBase,
+    list: { kind: "read", input: sessionListInput },
+    ...sessionDetailBase,
+    edit: { kind: "write", input: sessionEditInput },
+  },
 });
 /** Console Use 표식의 행위 낱말 — 내부 action 이름을 보이지 않는다. 쓰기 action 이 늘면 타입이 여기 낱말을 요구한다. */
 type DetailWriteAction = { [K in keyof typeof detailTool.actions]: (typeof detailTool.actions)[K]["kind"] extends "write" ? K : never }[keyof typeof detailTool.actions];
@@ -538,18 +565,96 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   }
 
   if (bound) {
-    // 사령관 세션에는 보드 한 도구 — 두 화면의 실행을 action 이름으로 골라 그대로 둔다. Console Use 기여는 위의 둘이다.
+    // 사령관 세션에는 보드 한 도구 — 목록·편집은 view·edit 입력으로 합친 형태로 받고, 나머지는 두 화면의 실행을 action 이름으로 골라 그대로 둔다.
     const objective: ConsoleMcpTool = objectiveTool.plugin({
       surface: {
         panelId: "objectives",
-        describe: (args) => list.surface?.describe?.(args) ?? detail.surface?.describe?.(args) ?? null,
+        describe: (args) => {
+          if (typeof args.action === "string" && args.action === "edit") {
+            const found = typeof args.objectiveId === "string" ? store.find(args.objectiveId) : null;
+            const theaterId = found?.theaterId ?? "";
+            return { theaterId, summary: `목표 편집 「${short(found?.title ?? "")}」`, gesture: "press", view: "objective", ...(found ? { path: found.id } : {}), ...rowAt(found?.id, theaterId) };
+          }
+          return list.surface?.describe?.(args) ?? detail.surface?.describe?.(args) ?? null;
+        },
       },
       execute: async (raw, context) => {
         const action = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as { readonly action?: unknown }).action : undefined;
+        if (action === "list") return executeSessionList(raw, context);
+        if (action === "edit") return executeSessionEdit(raw, context);
         return (typeof action === "string" && Object.hasOwn(detailActions, action) ? detail : list).execute(raw, context);
       },
     }, boundFilter);
     return [objective];
   }
   return [list, detail];
+
+  /** 세션 목록 — view 입력으로 보드를 고른다. archivedBefore는 archived 보드에서만 받는다. */
+  async function executeSessionList(raw: unknown, context: Parameters<ConsoleMcpTool["execute"]>[1]) {
+    const record = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+    const { action: _action, ...rest } = record;
+    const parsed = sessionListInput.safeParse(rest);
+    if (!parsed.success) return refusal({ error: "invalid_arguments", issues: inputIssues(parsed.error.issues) });
+    const call = parsed.data;
+    if (call.archivedBefore !== undefined && call.view !== "archived") {
+      return refuse("invalid_arguments", { issues: [{ path: ["archivedBefore"], code: "invalid_value" }] });
+    }
+    const caller: BoardCaller | undefined = bound ?? context.caller;
+    const commodoreId = bound?.commodoreId ?? ownerOfCaller(caller);
+    if (!commodoreId) return refuse("commodore_required");
+    const { groupId, offset, limit, archivedBefore } = call;
+    const base = { ...(groupId !== undefined ? { groupId } : {}), ...(offset !== undefined ? { offset } : {}), ...(limit !== undefined ? { limit } : {}) };
+    const view = call.view;
+    const mapped = view === undefined ? { action: "list" as const, ...base }
+      : view === "archived" ? { action: "archived" as const, ...base, ...(archivedBefore !== undefined ? { archivedBefore } : {}) }
+      : view === "today" || view === "due" || view === "all" ? { action: "list" as const, ...base, filter: view }
+      : { action: view, ...base };
+    return text(read(mapped, commodoreId, caller));
+  }
+
+  /** 세션 편집 — 제목·브리핑·기한 중 적어도 하나를 바꾼다. dueDate null은 기한을 지운다. */
+  async function executeSessionEdit(raw: unknown, context: Parameters<ConsoleMcpTool["execute"]>[1]) {
+    const record = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+    const { action: _action, ...rest } = record;
+    const parsed = sessionEditInput.safeParse(rest);
+    if (!parsed.success) return refusal({ error: "invalid_arguments", issues: inputIssues(parsed.error.issues) });
+    const call = parsed.data;
+    try {
+      const current = scoped(call.objectiveId);
+      const caller: BoardCaller | undefined = bound ?? context.caller;
+      const actor = actorOf(caller);
+      if (!actor) return refuse("objectiveRecord_caller_required");
+      if (caller?.kind === "objectiveRecord" && roleIn(current, caller)) return refuse("own_objective", { hint: HINTS.own_objective });
+      const { title, brief, dueDate, attachmentIds } = call;
+      if (title === undefined && brief === undefined && dueDate === undefined) {
+        return refuse("invalid_arguments", { issues: [{ path: [], code: "custom" }], hint: "Give at least one of title, brief or dueDate." });
+      }
+      if (attachmentIds !== undefined && brief === undefined) {
+        return refuse("invalid_arguments", { issues: [{ path: ["attachmentIds"], code: "invalid_type" }], hint: "attachmentIds copies images with a new brief; give brief." });
+      }
+      const actions = createObjectiveActions(ctx, store, launch, actor);
+      const ref = { objectiveId: current.id, language: language(caller) };
+      const patch = { ...(title !== undefined ? { title } : {}), ...(dueDate !== undefined ? { dueDate } : {}) };
+      const result = brief !== undefined
+        ? await (async () => {
+          const first = attachmentIds
+            ? await actions.editBrief({ ...ref, brief, attachments: briefAttachments(attachmentIds) })
+            : await actions.patch({ ...ref, patch: { note: brief } });
+          if (Object.keys(patch).length === 0) return first;
+          return actions.patch({ ...ref, patch });
+        })()
+        : await actions.patch({ ...ref, patch });
+      const { objective: updated, ...details } = result;
+      const kept = store.find(updated.id);
+      const stored = !kept ? undefined : {
+        ...(title !== undefined ? { title: kept.title } : {}),
+        ...(brief !== undefined ? { brief: storedText(kept.note), ...(attachmentIds ? { attachments: kept.attachments } : {}) } : {}),
+        ...(dueDate !== undefined ? { dueDate: kept.dueDate } : {}),
+      };
+      return text({ ok: true, objectiveId: updated.id, ...details, ...(stored ? { stored } : {}) });
+    } catch (error) {
+      if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
+      return refuse("objectives_failed");
+    }
+  }
 }

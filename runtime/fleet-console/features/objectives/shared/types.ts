@@ -1202,7 +1202,7 @@ const followupFields = {
   title,
   summary: oneLine(MAX_FOLLOWUP_SUMMARY),
   userImpact: oneLine(MAX_FOLLOWUP_IMPACT),
-  fromMission: ids,
+  fromMission: ids.describe("The mission it came from (missionId)."),
   brief: z.string().trim().min(1).max(MAX_FOLLOWUP_BRIEF),
   evidence: z.array(followupEvidenceSchema).min(1).max(MAX_FOLLOWUP_EVIDENCE),
 };
