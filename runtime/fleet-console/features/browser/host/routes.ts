@@ -128,7 +128,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|float|import|profile|clear-profile|space)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|float|import|profile|clear-profile|space|surface)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -220,20 +220,32 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         const colorScheme = body.colorScheme === "light" || body.colorScheme === "dark" ? body.colorScheme : body.colorScheme === null ? null : undefined;
         writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user") }); return true;
       }
+      if (action === "surface") {
+        if ((body.action !== "open" && body.action !== "close" && body.action !== "focus") || typeof body.clientId !== "string" || !/^[A-Za-z0-9-]{1,80}$/u.test(body.clientId)
+          || (body.action !== "open" && typeof body.id !== "string")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        browserService.surface(objectiveId, body.action, body.clientId, typeof body.id === "string" ? body.id : undefined);
+        writeJson(res, 200, { surface: browserService.state(objectiveId).surface }); return true;
+      }
       if (action === "place") {
         const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
         const x = num(body.x), y = num(body.y), width = num(body.width), height = num(body.height);
-        if (body.visible === false && x === null) { browserService.place(objectiveId, null); writeJson(res, 200, { ok: true }); return true; }
+        if (body.visible === false && x === null) {
+          browserService.hide(objectiveId, typeof body.surface === "string" ? body.surface : null, typeof body.clientId === "string" ? body.clientId : undefined);
+          writeJson(res, 200, { ok: true }); return true;
+        }
         if (x === null || y === null || width === null || height === null || width < 0 || height < 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        browserService.place(objectiveId, { bounds: { x, y, width, height }, visible: body.visible !== false });
+        if (body.surface !== undefined && body.surface !== null && typeof body.surface !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        browserService.place(objectiveId, { bounds: { x, y, width, height }, visible: body.visible !== false,
+          surface: typeof body.surface === "string" ? body.surface : null, clientId: typeof body.clientId === "string" ? body.clientId : undefined });
         writeJson(res, 200, { ok: true }); return true;
       }
       if (action === "float") {
         const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
-        if (body.clear === true) { browserService.float(objectiveId, null); writeJson(res, 200, { ok: true }); return true; }
+        const surface = typeof body.surface === "string" ? body.surface : null;
+        if (body.clear === true) { browserService.float(objectiveId, null, surface); writeJson(res, 200, { ok: true }); return true; }
         const revision = num(body.revision), x = num(body.x), y = num(body.y), width = num(body.width), height = num(body.height);
         if (revision === null || x === null || y === null || width === null || height === null || width < 1 || height < 1 || width > 4096 || height > 4096) { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        browserService.float(objectiveId, { revision, bounds: { x, y, width, height } });
+        browserService.float(objectiveId, { revision, bounds: { x, y, width, height }, surface }, surface);
         writeJson(res, 200, { ok: true }); return true;
       }
       if (action === "inspect") {

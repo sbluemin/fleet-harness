@@ -13,11 +13,11 @@ import type { DesktopShellWindow } from "./shell-window.js";
  * 하나를 만들어 다시 쓰고, 메뉴가 닫히면 감추기만 한다. 웹 팝업이 아니라 셸이 만든 창이며 Console 경로 밖으로 가지 않는다.
  */
 export interface DesktopBrowserFloatDeps {
-  readonly shell: () => DesktopShellWindow | null;
+  readonly shell: (surface?: string | null) => DesktopShellWindow | null;
   /** 메인 창을 부모로 둔 자식 창을 만든다 — 같은 세션(같은 출처 채널)·샌드박스·투명·비활성. */
   readonly createWindow: (shell: DesktopShellWindow) => BrowserWindow;
   /** 콘솔 렌더러의 줌 — 메뉴의 CSS px 를 DIP 로 바꾸고 표면도 같은 배율로 그린다. */
-  readonly zoomFactor: () => number;
+  readonly zoomFactor: (surface?: string | null) => number;
   /**
    * 지금 포인터의 화면 위치(DIP). 비활성 패널은 자리가 바뀌거나 처음 뜬 직후 AppKit 이 포인터 추적을 잃어(들어옴 없이 나감만 알리고 그 뒤로 입력이 끊긴다)
    * 포인터가 안에 있는지를 사건으로 알 수 없다 — 떠 있는 동안 이 위치를 표면에 흘려 표면이 스스로 판정하게 한다.
@@ -104,11 +104,11 @@ export function createDesktopBrowserFloat(deps: DesktopBrowserFloatDeps): Deskto
   };
 
   const place = (): void => {
-    const shell = deps.shell();
-    if (!current || !currentOrigin || !shell || shell.isDestroyed() || shell.isMinimized()) { hide(); return; }
+    const shell = deps.shell(current?.surface);
+    if (!current || !currentOrigin || !shell || shell.isDestroyed() || shell.isMinimized() || !shell.base.isVisible()) { hide(); return; }
     const target = ensure(shell, currentOrigin);
     if (!target || target.isDestroyed()) return;
-    const zoom = deps.zoomFactor();
+    const zoom = deps.zoomFactor(current.surface);
     if (target.webContents.getZoomFactor() !== zoom) target.webContents.setZoomFactor(zoom);
     target.setBounds(floatScreenBounds(current, shell.getContentBounds(), zoom));
     if (!target.isVisible()) target.showInactive();

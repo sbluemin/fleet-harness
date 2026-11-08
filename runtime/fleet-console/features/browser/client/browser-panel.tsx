@@ -15,10 +15,12 @@ import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
 import { dropBrowserOpenRequest, getNativeViewResize, BrowserNavTailContext, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
+import { BrowserSurfaceContent, useBrowserDocument, useBrowserWindow, type BrowserSurfaceState } from "./browser-window.js";
 import "./browser-panel.css";
 
 export interface BrowserClientServices {
   readonly isDesktopShell: () => boolean;
+  readonly desktopShellCapabilities: () => readonly string[];
   readonly themePolarity: (theme: ObjectiveRenderContext["theme"]) => "light" | "dark";
   readonly pushComposerInbox: (objectiveId: string, entry: { readonly files: readonly File[] }) => void;
   readonly subscribeConsoleChannel: (channel: string, listener: (payload: unknown) => void) => () => void;
@@ -48,6 +50,7 @@ type UnavailableReason = "desktop_required" | "shared";
 interface BrowserState {
   /** 한 스트림에 모든 사령관 브라우저의 상태가 흐르므로 프레임이 자기 브라우저를 싣는다(`browserId`). `objectiveId` 도 같은 값이다. */
   readonly browserId: string;
+  readonly surface?: BrowserSurfaceState | null;
   readonly spaces: readonly BrowserSpaceState[];
   /** 표시 탭이 속한 스페이스. 탭이 없으면 null. */
   readonly displayedSpaceId: string | null;
@@ -171,7 +174,18 @@ interface Rect { readonly x: number; readonly y: number; readonly width: number;
  * 대화상자·팝오버)이 있으면 그만큼 물러서야 그것이 보인다. 격자 표본으로 덮개를 찾고, 한 변에서만 덮였으면 그 변을
  * 이분 탐색으로 잘라 낸다. 안쪽이 덮였거나 너무 많이 잘리면 통째로 감춘다(null).
  */
-function visibleRect(host: HTMLElement, rect: DOMRect): Rect | null {
+function visibleRect(host: HTMLElement, rect: DOMRect, geometryOnly = false): Rect | null {
+  const document = host.ownerDocument;
+  if (geometryOnly) {
+    // 유효한 분리 문서가 OS 가림으로 hidden이어도 Console이 정한 콘텐츠 영역은 유지한다.
+    // 숨은 문서의 hit-test 결과 대신 host·문서 viewport 교집합만 쓴다. 모달/resize는 호출자가 이미 막는다.
+    const hostRect = host.getBoundingClientRect();
+    const width = document.documentElement.clientWidth || document.defaultView?.innerWidth || 0;
+    const height = document.documentElement.clientHeight || document.defaultView?.innerHeight || 0;
+    const x = Math.max(0, rect.left, hostRect.left), y = Math.max(0, rect.top, hostRect.top);
+    const right = Math.min(width, rect.right, hostRect.right), bottom = Math.min(height, rect.bottom, hostRect.bottom);
+    return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
+  }
   const inside = (x: number, y: number): boolean => {
     let hit = document.elementFromPoint(x, y);
     // 투명한 클릭 캐처만 건너뛴다. 그 자식인 메뉴 카드는 여전히 네이티브 뷰를 가린다.
@@ -376,7 +390,7 @@ export interface SessionBrowserPanelProps {
   readonly language: ObjectiveRenderContext["language"];
   readonly theme: ObjectiveRenderContext["theme"];
   readonly bodyLive?: boolean;
-  readonly services: Pick<BrowserClientServices, "isDesktopShell" | "themePolarity" | "subscribeConsoleChannel">;
+  readonly services: Pick<BrowserClientServices, "isDesktopShell" | "desktopShellCapabilities" | "themePolarity" | "subscribeConsoleChannel">;
   readonly onAttach?: (files: readonly File[]) => void;
   readonly terminalPaste?: boolean;
 }
@@ -501,6 +515,8 @@ function BrowserTools({ objectiveId, language }: { readonly objectiveId: string;
 export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRenderContext, "objectiveId" | "language">; readonly services?: BrowserClientServices }) {
   const t = getT(context.language ?? "en");
   const panel = useBrowserPanel(context.objectiveId);
+  const surface = useBrowserDocument(context.objectiveId);
+  const documentFor = surface?.document ?? document;
   const [moreMenu, setMoreMenu] = React.useState(false);
   // 사람이 펼친 스페이스들. 이 대화의 스페이스(home)와 지금 화면에 띄운 스페이스는 따로 꼽지 않아도 펼쳐진다.
   const [expanded, setExpanded] = React.useState<readonly string[]>([]);
@@ -566,7 +582,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
     const observer = new ResizeObserver(() => setCapWidth(Math.round(cap.getBoundingClientRect().width)));
     observer.observe(cap);
     return () => observer.disconnect();
-  }, []);
+  }, [documentFor]);
 
   // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
   React.useEffect(() => {
@@ -576,12 +592,12 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
   // 「+N」 메뉴는 바깥을 누르거나 Esc 로 닫는다. 캡션이 포인터를 삼키므로 문서에서 캡처 단계로 듣는다.
   React.useEffect(() => {
     if (!moreOpen) return;
-    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !moreRef.current?.contains(event.target)) setMoreMenu(false); };
+    const onPointer = (event: PointerEvent) => { if (!moreRef.current?.contains(event.target as Node | null)) setMoreMenu(false); };
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setMoreMenu(false); };
-    document.addEventListener("pointerdown", onPointer, true);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onPointer, true); document.removeEventListener("keydown", onKey); };
-  }, [moreOpen]);
+    documentFor.addEventListener("pointerdown", onPointer, true);
+    documentFor.addEventListener("keydown", onKey);
+    return () => { documentFor.removeEventListener("pointerdown", onPointer, true); documentFor.removeEventListener("keydown", onKey); };
+  }, [moreOpen, documentFor]);
 
   /** 스페이스를 펼치고 화면에 띄운다. 이미 보이는 스페이스를 접으면 내 스페이스로 돌아간다. */
   const pickSpace = (space: BrowserSpaceState, open: boolean) => {
@@ -610,6 +626,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
     </div>
   );
   return (
+    <BrowserSurfaceContent ownerId={context.objectiveId} role="caption">
     <div ref={capRef} className={`op-browser-cap${driving ? " is-driving" : ""}`} onPointerDown={stop} onWheel={stop} {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : {})}>
       <div ref={stripRef} className="op-browser-cap__tabs">
         {humanTabs.length > 0 ? <div className="op-browser__space-tabs op-browser__human-tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>{humanTabs.map((tab) => renderTab(tab, false))}</div> : null}
@@ -666,6 +683,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRe
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.newTab")} data-tip={t("terminal.browser.newTab")} disabled={!ready} onClick={() => panel?.actions.createTab()}>+</button>
       <span className="op-browser-cap__spacer" />
     </div>
+    </BrowserSurfaceContent>
   );
 }
 
@@ -682,8 +700,13 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const desktop = isDesktopShell();
   const { state, connection, homeSpaceId } = useBrowserStream(objectiveId, desktop, services.subscribeConsoleChannel);
   const available = desktop && state?.available === true;
+  const detached = useBrowserWindow(objectiveId, state?.browserId ?? null, state?.surface ?? null, available, services.desktopShellCapabilities);
+  const documentFor = detached.surface?.document ?? document;
+  const placementIdentity = React.useRef({ surface: detached.surface?.id ?? null, clientId: detached.clientId });
+  placementIdentity.current = { surface: detached.surface?.id ?? null, clientId: detached.clientId };
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
+  const urlDirty = React.useRef(false);
   // 포커스만으로 현재 URL 을 외부에 보내지 않는다. 사람이 고친 입력만 제안에 쓴다.
   const [suggestQuery, setSuggestQuery] = React.useState<string | null>(null);
   const [searchSuggestions, setSuggestions] = React.useState<readonly string[]>([]);
@@ -792,7 +815,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     if (!backdropFrame) return;
     const frameId = requestAnimationFrame(() => {
       if (wantsHideRef.current && pendingParkBoundsRef.current) {
-        const body = pendingParkBoundsRef.current;
+        const body = { ...pendingParkBoundsRef.current, surface: detached.surface?.id ?? null, clientId: detached.clientId };
         const key = JSON.stringify(body);
         if (placeRef.current !== key) {
           placeRef.current = key;
@@ -801,16 +824,20 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       }
     });
     return () => cancelAnimationFrame(frameId);
-  }, [backdropFrame, objectiveId]);
+  }, [backdropFrame, objectiveId, detached.surface, detached.clientId]);
 
   // ---- 네이티브 뷰의 자리 ----
   // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리(가려지지 않은 부분)를 서버에 알리고, 셸은 서버의 스냅샷을 보고
   // 뷰를 놓는다. 가려질 때(주석·모달·접힘·다른 화면)는 감춘다 — 네이티브 뷰는 언제나 페이지 위에 그려지기 때문이다.
   React.useEffect(() => {
-    if (!available) return;
+    if (!available || detached.blocked) return;
+    const document = documentFor;
+    const window = document.defaultView ?? globalThis.window;
     const element = nativeRef.current;
     const host = viewportRef.current;
     if (!element || !host) return;
+    // 복귀 DOM 측정이 서버의 lease 해제보다 먼저 닿았더라도, 해제 프레임 뒤에는 새 좌표를 다시 발행한다.
+    placeRef.current = "";
 
     let disposed = false;
     let captureTask: { id: number; controller: AbortController; timeout: ReturnType<typeof setTimeout> } | null = null;
@@ -831,7 +858,8 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       captureTask = null;
     };
 
-    const post_ = (body: Record<string, unknown>) => {
+    const post_ = (placement: Record<string, unknown>) => {
+      const body = { ...placement, surface: detached.surface?.id ?? null, clientId: detached.clientId };
       const key = JSON.stringify(body);
       if (placeRef.current === key) return;
       placeRef.current = key;
@@ -945,10 +973,15 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       // 셸이 메뉴를 자식 창에 띄울 수 있으면 비모달 가림 표면(패널 메뉴·주소 제안·승인 팝오버 등)은 뷰 위에 따로 그려진다 —
       // 그때는 모달 대화상자만 뷰를 물린다. 옛 셸에서는 지금처럼 가림 표면이 있으면 물러선다.
       const floats = nativeFloatAvailable();
-      const covered = (floats ? document.querySelector('[aria-modal="true"]') !== null : nativeViewCovered() || captionOverlay || addressOverlayOpen) || held;
-      const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && bodyLive !== false && rect.width >= 1 && rect.height >= 1;
+      const covered = (floats ? document.querySelector('[aria-modal="true"]') !== null : nativeViewCovered(document) || captionOverlay || addressOverlayOpen) || held;
+      // 분리 표면의 OS 최소화/숨김은 Desktop의 surface guard가 소유한다. Chromium 문서 hidden은
+      // 가림/Space에서도 남을 수 있으므로 유효한 열린 lease의 geometry를 중복으로 없애지 않는다.
+      const detachedLive = detached.surface !== null && state?.surface?.id === detached.surface.id
+        && state.surface.clientId === detached.clientId && state.surface.status === "opened";
+      const live = activeTab !== null && mode === "none" && (detachedLive || document.visibilityState === "visible")
+        && (detachedLive || bodyLive !== false) && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
-      const visible = shown ? visibleRect(host, rect) : null;
+      const visible = shown ? visibleRect(host, rect, detachedLive && document.visibilityState !== "visible") : null;
 
       if (visible) {
         wantsHideRef.current = false;
@@ -1067,7 +1100,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     document.addEventListener("visibilitychange", measure);
     const timer = setInterval(() => { measure(); if (readRectKey() !== rectKey) noteMotion(); }, NATIVE_PLACE_POLL_MS);
     // 가림 표면(모달·승인 팝오버처럼 `data-covers-native-view` 를 단 것)이 붙고 떨어지는 순간 곧바로 재는다 — 폴링을 기다리면 그동안 가려진다.
-    const unobserveCover = observeNativeViewCover(measure);
+    const unobserveCover = observeNativeViewCover(measure, document);
 
     return () => {
       disposed = true;
@@ -1090,19 +1123,20 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
   // 주소 제안도 같은 가림 경로에 합친다. 캡션의 단일 발행 상태를 덮어쓰지 않는다.
-  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen]);
+  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, documentFor, detached.surface, detached.blocked, detached.clientId, state?.surface?.id, state?.surface?.clientId, state?.surface?.status]);
   // 셸이 표면을 자식 창에 띄울 수 있으면, 이 자리를 덮는 비모달 표면은 뷰를 물리지 않고 그 창에 그려진다.
   // 자리 재기와 따로 붙든다 — 재기 효과는 가림 신호마다 다시 걸리고, 그때마다 자식 창을 내렸다 올리면 깜빡인다.
-  React.useEffect(() => retainNativeFloat(), []);
+  React.useEffect(() => detached.blocked ? undefined : retainNativeFloat(documentFor), [documentFor, detached.blocked]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => {
     if (placeRef.current) {
       placeRef.current = "";
-      void post(objectiveId, "place", { visible: false }).catch(() => undefined);
+      void post(objectiveId, "place", { visible: false, ...placementIdentity.current }).catch(() => undefined);
     }
   }, [objectiveId]);
 
-  React.useEffect(() => { if (!editingUrl) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
+  React.useEffect(() => { urlDirty.current = false; }, [activeTab?.id, activeTab?.url]);
+  React.useEffect(() => { if (!editingUrl && !urlDirty.current) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
   // 손잡이가 붙은 안내는 읽고 누를 시간을 더 준다.
   React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), info.action ? 8000 : 4000); return () => clearTimeout(timer); }, [info, setInfo]);
 
@@ -1137,6 +1171,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   };
 
   const submitUrl = (target = urlDraft) => {
+    urlDirty.current = false;
     const value = target.trim();
     dismissSuggestions();
     setEditingUrl(false);
@@ -1202,7 +1237,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   /** 찍어 둔 한 장을 PNG 로 — 주석은 그 위에 그린다. 프레임은 CSS px 를 선언하고 픽셀은 배율만큼 크다. */
   const composeFrame = (draw?: (ctx: CanvasRenderingContext2D, factor: number, width: number) => void): Blob | null => {
     const image = imageRef.current; if (!image || !shownFrame) return null;
-    const canvas = document.createElement("canvas");
+    const canvas = documentFor.createElement("canvas");
     canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
     const ctx = canvas.getContext("2d"); if (!ctx) return null;
     ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight);
@@ -1287,10 +1322,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     if (!blob) return;
     if (await deliver("annotation", blob)) setMode("none");
   };
-  /** 페이지 CSS px → 레이아웃 px. 핀과 댓글 말풍선을 이미지 위 같은 자리에 앉힌다. */
-  const stagePoint = (p: { x: number; y: number }) => { const factor = layoutScale(); return factor ? { left: p.x / factor.x, top: p.y / factor.y } : { left: 0, top: 0 }; };
+  /** 원 스냅샷 좌표를 비율로 놓아, 문서 전환·본문 크기 변경에도 같은 지점을 가리킨다. */
+  const stagePoint = (p: { x: number; y: number }) => ({ left: `${shownFrame ? p.x / shownFrame.width * 100 : 0}%`, top: `${shownFrame ? p.y / shownFrame.height * 100 : 0}%` });
   // 말풍선은 핀 아래에 선다 — 좁은 패널에서 오른쪽으로 밀리면 핀을 덮기 때문이다.
-  const commentStyle = (p: { x: number; y: number }) => { const at = stagePoint(p); const width = imageRef.current?.clientWidth ?? 0; return { left: Math.max(8, Math.min(at.left - 14, width - 328)), top: at.top + 18 }; };
+  const commentStyle = (p: { x: number; y: number }) => { const at = stagePoint(p); return { left: `clamp(8px, calc(${at.left} - 14px), max(8px, calc(100% - 328px)))`, top: `calc(${at.top} + 18px)` }; };
 
   const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset }); };
   // ---- Chrome 에서 가져오기 — 창을 든 기계의 Chrome 프로필을 셸이 세고, 고른 프로필의 쿠키를 이 Objective 의 세션에 넣는다 ----
@@ -1405,6 +1440,8 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const closedDoor = !available ? unavailableText(t, state?.reason ?? null, services.isDesktopShell()) : null;
 
   return (
+    <BrowserSurfaceContent ownerId={objectiveId} role="body" blocked={detached.blocked} placeholder={<div className="op-browser__detached"><button type="button" className="op-browser__button" onClick={detached.toggle}>{t("terminal.browser.reattach")}</button></div>}>
+    {detached.blocked ? <div className="op-browser__detached">{t("terminal.browser.detached")}</div> :
     <div className={`op-browser${state?.driving ? " is-driving" : ""}`}>
       <div className="op-browser__nav">
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
@@ -1435,6 +1472,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             onChange={(event) => {
               suggestionRequest.current?.abort();
               setEditingUrl(true);
+              urlDirty.current = true;
               setUrlDraft(event.target.value);
               setSuggestions([]);
               setHistorySuggestions([]);
@@ -1449,6 +1487,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
                 return;
               }
               if (event.key === "Escape") {
+                urlDirty.current = false;
                 event.preventDefault(); dismissSuggestions(); setEditingUrl(false); event.currentTarget.blur();
               } else if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
                 event.preventDefault();
@@ -1492,9 +1531,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
         <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
         <BrowserTools objectiveId={objectiveId} language={language} />
-        {navTail}
+        {detached.available && !detached.surface ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t("terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : "terminal.browser.detach")}>↗</button> : null}
+        {!detached.surface ? navTail : null}
       </div>
-      <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
+      <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}${mode === "annotate" ? " is-annotating" : ""}`} ref={viewportRef}>
         {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (
           <div className={`op-browser__toast${info.action ? " has-action" : ""}`} role="status">
             {info.text}
@@ -1545,8 +1585,9 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
           </div>
         ) : null}
         {mode === "annotate" && shownFrame ? (
-          // 찍은 한 장을 선언한 CSS 크기 그대로 놓는다 — 패널이 그보다 넓으면 가운데에 두고, 좁으면 줄인다.
-          <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `${shownFrame.width}px`, maxWidth: "100%" }}>
+          // 이전 문서에서 찍은 장도 현재 본문 너비·높이 안에 같은 비율로 맞춘다.
+          <>
+          <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `min(${shownFrame.width}px, calc(100cqh * ${shownFrame.width} / ${shownFrame.height}))`, maxWidth: "100%" }}>
             <img
               ref={imageRef}
               className="op-browser__frame"
@@ -1589,6 +1630,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
                 </div>
               </>
             ) : null}
+          </div>
             <div className="op-browser__sketchbar" role="toolbar" aria-label={t("terminal.browser.annotate")}>
               {(["comment", "pen", "arrow", "rect"] as const).map((entry) => (
                 <button key={entry} type="button" className="op-browser__icon op-browser__tool" aria-pressed={tool === entry} aria-label={t(`terminal.browser.tool.${entry}`)} title={t(`terminal.browser.tool.${entry}`)} onClick={() => { setTool(entry); cancelPin(); }}>{entry === "comment" ? <CommentGlyph /> : entry === "pen" ? "✎" : entry === "arrow" ? "➚" : "▭"}</button>
@@ -1604,7 +1646,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
               <button type="button" className="op-browser__button op-browser__button--primary" disabled={marks.length === 0 || busy} onClick={() => void attachMarks()}>{t("terminal.browser.attachMarks", { count: String(marks.length) })}</button>
               <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} title={t("terminal.browser.close")} onClick={() => setMode("none")}>×</button>
             </div>
-          </div>
+          </>
         ) : activeTab ? (
           // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
           <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: objectiveId }}>
@@ -1627,6 +1669,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
           </div>
         )}
       </div>
-    </div>
+    </div>}
+    </BrowserSurfaceContent>
   );
 }

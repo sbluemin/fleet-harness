@@ -10,13 +10,13 @@
 .op-browser-cap__spacer { flex: 1 1 0; min-width: 0; }
 .op-browser-cap > .op-browser__icon { flex: none; }
 /* 에이전트 세션 — 탭 줄 자리(분할 머리, 또는 맨 위 줄로 올라간 탭 줄)의 틴트와 2px 레일. reduced-motion 은 균일 채움으로 단락한다. */
-.workbench-band-chrome:has(> .op-browser-cap.is-driving) { position: relative; border-radius: var(--radius-xs); background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, transparent), transparent 70%); }
-.workbench-band-chrome:has(> .op-browser-cap.is-driving)::after,
-.workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none;
+.workbench-band-chrome:has(.op-browser-cap.is-driving) { position: relative; border-radius: var(--radius-xs); background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, transparent), transparent 70%); }
+.workbench-band-chrome:has(.op-browser-cap.is-driving)::after,
+.workbench-tile-head:has(> .workbench-tile-title .op-browser-cap.is-driving)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none;
   background: linear-gradient(90deg, transparent 0%, var(--agent-control-badge) 30%, var(--agent-control-badge) 70%, transparent 100%); background-size: 55% 100%; background-repeat: no-repeat;
   animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel); }
-.workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
-@media (prefers-reduced-motion: reduce) { :is(.workbench-band-chrome:has(> .op-browser-cap.is-driving), .workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving))::after { animation: none; background: var(--agent-control-badge); } }
+.workbench-tile-head:has(> .workbench-tile-title .op-browser-cap.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
+@media (prefers-reduced-motion: reduce) { :is(.workbench-band-chrome:has(.op-browser-cap.is-driving), .workbench-tile-head:has(> .workbench-tile-title .op-browser-cap.is-driving))::after { animation: none; background: var(--agent-control-badge); } }
 .op-browser__tab { position: relative; display: inline-flex; flex: 0 1 auto; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 56px; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
 .op-browser__tab:hover { background: var(--ink-veil); }
 .op-browser__tab.is-active { background: var(--ink-veil); color: var(--text-primary); border-color: var(--hairline-strong); }
@@ -121,6 +121,9 @@
 .op-browser__viewport.is-responsive { overflow: hidden; }
 .op-browser__stage { position: relative; width: 100%; }
 .op-browser__viewport.is-mobile .op-browser__stage, .op-browser__viewport.is-tablet .op-browser__stage { margin: var(--space-3) auto; box-shadow: 0 0 0 1px var(--hairline-strong); }
+/* 스냅샷은 원 좌표계를 유지한 채 가용 본문에 맞추고, 도구막대는 이미지가 아닌 본문에 고정한다. */
+.op-browser__viewport.is-annotating { container-type: size; overflow: hidden; }
+.op-browser__viewport.is-annotating .op-browser__stage { margin: 0; }
 .op-browser__frame { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; cursor: default; }
 /* 네이티브 뷰의 자리 — Desktop 이 이 사각형 위에 실제 Chromium 뷰를 놓는다. 주차 중에는 마지막 화면(still-frame)을 표시한다. */
 .op-browser__native { position: relative; flex: 1; align-self: stretch; width: 100%; height: 100%; overflow: hidden; }
@@ -256,3 +259,18 @@
 .op-browser__dialog-item.is-target { border: 1px solid var(--positive); background: var(--positive-glow); }
 .op-browser__button--danger { border-color: var(--coral); color: var(--coral-ink); }
 .op-browser__button--danger:hover:not(:disabled) { background: var(--coral-glow); border-color: var(--coral); }
+
+/* 문서별 portal container는 inline에서 새 레이아웃을 만들지 않는다. 분리 문서도 동일 caption/body만 놓는다. */
+.op-browser-caption-slot, .op-browser-caption-content { display: contents; }
+.op-browser-body-slot, .op-browser-body-content { display: contents; }
+.browser-window-document { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--ink-deep); color: var(--text-primary); }
+#browser-window-caption { flex: none; box-sizing: border-box; min-width: 0; height: 52px; display: flex; align-items: center; padding: var(--space-2); border-bottom: 1px solid var(--hairline); }
+/* main Desktop과 같은 52px native controls 줄이다. 드래그는 빈 자리만, 탭·입력·메뉴는 no-drag다. */
+html[data-desktop-shell="true"] .browser-window-document #browser-window-caption { -webkit-app-region: drag; }
+html[data-desktop-shell="true"] .browser-window-document #browser-window-caption :is(button, a, input, select, textarea, [role="tab"], [role="button"], [role="menu"], [role="listbox"], [tabindex]) { -webkit-app-region: no-drag; }
+html[data-desktop-platform="darwin"] .browser-window-document #browser-window-caption { padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-2)); }
+html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
+#browser-window-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#browser-window-body .op-browser { flex: 1; }
+.op-browser__detached { display: flex; align-items: center; justify-content: center; height: 100%; font: inherit; color: var(--text-secondary); }
+.op-browser__detach-failed { color: var(--coral-ink); }

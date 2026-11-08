@@ -101,12 +101,17 @@ describe("desktop native browser views across a Console restart", () => {
       return new Response(null, { status: 404 });
     });
     const created: Array<{ partition: string; closed: boolean; commands: string[] }> = [];
-    const shell = {
-      isDestroyed: () => false,
-      stack: { layoutConsole: () => ({ x: 0, y: 0, width: 1200, height: 800 }), parkBrowser: () => {}, presentBrowser: () => {}, removeBrowser: () => {} },
-    } as unknown as DesktopShellWindow;
+    const mainStack = { layoutConsole: () => ({ x: 0, y: 0, width: 1200, height: 800 }), parkBrowser: vi.fn(), presentBrowser: vi.fn(), removeBrowser: vi.fn() };
+    const shell = { isDestroyed: () => false, stack: mainStack } as unknown as DesktopShellWindow;
+    let minimized = false;
+    let hidden = false;
+    const childStack = { layoutConsole: () => ({ x: 0, y: 0, width: 1000, height: 760 }), parkBrowser: vi.fn(), presentBrowser: vi.fn(), removeBrowser: vi.fn() };
+    const child = { isDestroyed: () => false, isMinimized: () => minimized, base: { isVisible: () => !hidden }, stack: childStack } as unknown as DesktopShellWindow;
+    let childAlive = true;
+    const companion = { apply: vi.fn(), surface: (id?: string | null) => id && childAlive ? child : null, dispose: vi.fn() };
     const views = createDesktopBrowserViews({
       shell: () => shell,
+      companion: companion as never,
       createView: (partition) => fakeView(partition, created),
       zoomFactor: () => 1,
       scaleFactor: () => 2,
@@ -134,7 +139,35 @@ describe("desktop native browser views across a Console restart", () => {
     // 옛 프로세스의 명령 1 이 뷰와 함께 거부돼도 그 답은 같은 id 를 쓰는 새 프로세스의 명령 1 을 풀지 않는다.
     await vi.waitFor(() => expect(relays.flatMap((relay) => relay.results ?? []).some((result) => result.id === 1 && result.error === undefined)).toBe(true));
     expect(relays.flatMap((relay) => relay.results ?? []).filter((result) => result.error !== undefined)).toEqual([]);
+    lifetime = { ...lifetime, generation: 2, surface: { id: "surface-one", browserId: "op-1", clientId: "client-one" },
+      views: [{ ...view("view-new"), visible: true, surface: "surface-one", bounds: { x: 0, y: 80, width: 1000, height: 650 } }] };
+    const update = () => streams.at(-1)!.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`));
+    update();
+    await vi.waitFor(() => expect(childStack.presentBrowser).toHaveBeenCalled());
+    const native = childStack.presentBrowser.mock.calls[0]![0];
+    expect(created).toHaveLength(2);
+    expect(created[1]?.closed).toBe(false);
+    minimized = true;
+    views.refresh();
+    expect(mainStack.parkBrowser).toHaveBeenLastCalledWith(native);
+    expect(childStack.removeBrowser).toHaveBeenLastCalledWith(native);
+    minimized = false;
+    views.refresh();
+    expect(childStack.presentBrowser).toHaveBeenLastCalledWith(native);
+    hidden = true;
+    views.refresh();
+    expect(mainStack.parkBrowser).toHaveBeenLastCalledWith(native);
+    hidden = false;
+    views.refresh();
+    expect(childStack.presentBrowser).toHaveBeenLastCalledWith(native);
+    childAlive = false;
+    lifetime = { ...lifetime, generation: 3, surface: null, views: [{ ...lifetime.views[0]!, surface: null }] };
+    update();
+    await vi.waitFor(() => expect(mainStack.presentBrowser).toHaveBeenLastCalledWith(native));
+    expect(created).toHaveLength(2);
     views.stop();
+    expect(created[1]?.closed).toBe(true);
+    expect(companion.dispose).toHaveBeenCalled();
   });
 
   it("parks a hidden native view on one pixel of the window's bottom-right corner so it cannot take input elsewhere", () => {

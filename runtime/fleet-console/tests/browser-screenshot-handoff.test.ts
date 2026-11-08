@@ -137,6 +137,8 @@ function createStubDesktop(options: StubOptions = {}) {
   const desktop = {
     captureClips,
     currentHost: "local" as string | null,
+    onSurface: () => () => undefined,
+    surfaceState: () => null,
     get connected() { return true; },
     closed: new Promise<void>(() => undefined),
     viewSize: (id: string) => sizes.get(id) ?? null,

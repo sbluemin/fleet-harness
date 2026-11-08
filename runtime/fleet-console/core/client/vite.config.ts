@@ -29,6 +29,7 @@ export default defineConfig({
       input: {
         index: path.resolve(__dirname, "index.html"),
         "browser-float": path.resolve(__dirname, "browser-float.html"),
+        "browser-window": path.resolve(__dirname, "browser-window.html"),
       },
     },
   },

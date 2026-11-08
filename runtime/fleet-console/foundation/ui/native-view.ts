@@ -20,8 +20,9 @@ export function nativeViewCovered(documentFor: Document = document): boolean {
  */
 export function observeNativeViewCover(onChange: () => void, documentFor: Document = document): () => void {
   if (typeof MutationObserver === "undefined") return () => undefined;
+  // 포털로 다른 문서에 옮긴 요소와 그 문서에서 만든 요소는 생성자 realm이 다를 수 있다.
   const relevant = (node: Node): boolean =>
-    node instanceof Element && (node.matches(NATIVE_VIEW_COVER_SELECTOR) || node.querySelector(NATIVE_VIEW_COVER_SELECTOR) !== null);
+    node.nodeType === 1 && ((node as Element).matches(NATIVE_VIEW_COVER_SELECTOR) || (node as Element).querySelector(NATIVE_VIEW_COVER_SELECTOR) !== null);
   const observer = new MutationObserver((records) => {
     for (const record of records) {
       if (record.type === "attributes" || [...record.addedNodes, ...record.removedNodes].some(relevant)) { onChange(); return; }

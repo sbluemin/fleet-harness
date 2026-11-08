@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserBounds, type DesktopBrowserCommand, type DesktopBrowserFloat, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserBounds, type DesktopBrowserCommand, type DesktopBrowserFloat, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserView, type DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
@@ -23,7 +23,9 @@ const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
 interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
-interface Placement { bounds: DesktopBrowserBounds; visible: boolean }
+interface Placement { bounds: DesktopBrowserBounds; visible: boolean; surface?: string | null; clientId?: string }
+
+export interface BrowserSurfaceState extends DesktopBrowserSurface { readonly status: "opening" | "ready" | "opened" | "closing" }
 
 export interface DesktopEngineDeps {
   /** 스냅샷이 바뀌었다 — 호스트 셸에는 전체를, 다른 셸에는 빈 스냅샷을 보낸다. */
@@ -45,6 +47,50 @@ export class DesktopEngine implements CdpClient {
   private shortcuts: readonly string[] | null = null;
   /** 브라우저 자리를 덮는 메뉴의 자리 — 창 하나에 하나뿐이다. */
   private float: DesktopBrowserFloat | null = null;
+  private surface: BrowserSurfaceState | null = null;
+  private readonly surfaceListeners = new Set<() => void>();
+  private surfaceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  surfaceState(): BrowserSurfaceState | null { return this.surface; }
+  onSurface(listener: () => void): () => void { this.surfaceListeners.add(listener); return () => { this.surfaceListeners.delete(listener); }; }
+
+  /** 같은 사령관의 여러 패널에도 분리 창과 원본 controller는 하나다. id는 재분리마다 새 수명이다. */
+  openSurface(browserId: string, clientId: string): BrowserSurfaceState {
+    if (!this.connected) throw new Error("desktop_browser_disconnected");
+    if (this.surface) {
+      if (this.surface.browserId !== browserId || this.surface.clientId !== clientId) throw new Error("browser_surface_busy");
+      return this.surface;
+    }
+    this.surface = { id: `surface-${crypto.randomUUID()}`, browserId, clientId, status: "opening" };
+    // 생성 intent가 소비되지 않은 채 남아 나중의 popup을 허용하지 않는다.
+    this.surfaceTimer = setTimeout(() => { if (this.surface?.status === "opening") this.closeSurface(this.surface.id); }, 10_000);
+    this.surfaceChanged();
+    return this.surface;
+  }
+
+  /** 새 창을 만들지 않고 현재 controller가 소유한 열린 표면만 다시 부른다. */
+  focusSurface(id: string, clientId: string): void {
+    if (!this.surface || this.surface.id !== id || this.surface.clientId !== clientId || this.surface.status !== "opened") return;
+    this.surface = { ...this.surface, focusRequest: (this.surface.focusRequest ?? 0) + 1 };
+    this.surfaceChanged();
+  }
+
+  closeSurface(id: string): void {
+    if (this.surface?.id !== id) return;
+    const browserId = this.surface.browserId;
+    this.surface = null;
+    if (this.surfaceTimer) clearTimeout(this.surfaceTimer);
+    this.surfaceTimer = null;
+    this.float = null;
+    const previous = this.placements.get(browserId);
+    if (previous) this.placements.set(browserId, { bounds: previous.bounds, visible: false });
+    this.surfaceChanged();
+  }
+
+  private surfaceChanged(): void {
+    this.publish();
+    for (const listener of this.surfaceListeners) listener();
+  }
   private nextCommandId = 1;
   private generation = 0;
   /** 이 프로세스의 수명 표 — generation·명령 id 가 0 부터 다시 시작했음을 셸이 알아보게 한다. */
@@ -105,8 +151,9 @@ export class DesktopEngine implements CdpClient {
     const views: DesktopBrowserView[] = [...this.views.values()].map((view) => {
       const placement = this.placements.get(view.objectiveId) ?? null;
       // `visible` 은 Companion presentation. 자리(bounds)는 숨겨도 남겨 셸이 parking 때 마지막 유효 크기를 지키게 한다.
-      const visible = view.active && placement !== null && placement.visible;
-      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url };
+      const surface = this.surface?.browserId === view.objectiveId ? this.surface.id : null;
+      const visible = view.active && placement !== null && placement.visible && (placement.surface ?? null) === surface;
+      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url, surface };
     });
     return {
       generation: this.generation,
@@ -115,13 +162,15 @@ export class DesktopEngine implements CdpClient {
       commands: [...this.pending.values()].map((entry) => entry.command),
       ...(this.shortcuts !== null ? { shortcuts: this.shortcuts } : {}),
       float: this.float,
+      surface: this.surface,
     };
   }
 
   /** 메뉴 자식 창의 자리. 같은 revision·같은 자리면 다시 내보내지 않는다. */
   setFloat(float: DesktopBrowserFloat | null): void {
     const before = this.float;
-    if (before === float || (before && float && before.revision === float.revision
+    if (float?.surface && float.surface !== this.surface?.id) return;
+    if (before === float || (before && float && before.surface === float.surface && before.revision === float.revision
       && before.bounds.x === float.bounds.x && before.bounds.y === float.bounds.y
       && before.bounds.width === float.bounds.width && before.bounds.height === float.bounds.height)) return;
     this.float = float;
@@ -142,6 +191,9 @@ export class DesktopEngine implements CdpClient {
    * 활성 탭만 `visible: true` 로 그려지고, 같은 Objective 의 다른 탭은 그 bounds 크기로 parking 된다.
    */
   place(objectiveId: string, placement: Placement | null): void {
+    if (this.surface?.browserId === objectiveId) {
+      if (placement?.surface !== this.surface.id || placement.clientId !== this.surface.clientId) return;
+    } else if (placement?.surface) return;
     if (placement) this.placements.set(objectiveId, placement);
     else {
       const previous = this.placements.get(objectiveId);
@@ -152,6 +204,13 @@ export class DesktopEngine implements CdpClient {
       }
     }
     this.publish();
+  }
+
+  /** 떠난 패널의 늦은 cleanup은 새 controller/표면의 presentation을 지우지 못한다. */
+  hide(objectiveId: string, surface: string | null, clientId?: string): void {
+    const previous = this.placements.get(objectiveId);
+    if (!previous || (previous.surface ?? null) !== surface || previous.clientId !== clientId) return;
+    this.place(objectiveId, { ...previous, visible: false });
   }
 
   /** 그 브라우저의 어느 탭도 띄우지 않는다 — 사람이 탭이 없는 스페이스를 화면에 띄웠을 때. */
@@ -170,6 +229,19 @@ export class DesktopEngine implements CdpClient {
   relay(owner: string, body: DesktopBrowserRelay): void {
     if (body.hello) this.identities.set(owner, body.hello);
     if (owner !== this.host) return;
+    if (body.surface && body.surface.id === this.surface?.id) {
+      if (body.surface.status === "closed") this.closeSurface(body.surface.id);
+      else if ((body.surface.status === "ready" && this.surface.status === "opening")
+        || (body.surface.status === "opened" && (this.surface.status === "opening" || this.surface.status === "ready"))
+        || (body.surface.status === "closing" && this.surface.status !== "closing")) {
+        this.surface = { ...this.surface, status: body.surface.status };
+        if (this.surfaceTimer) clearTimeout(this.surfaceTimer);
+        // ready는 생성 허가일 뿐이다. 소비되지 않은 창 intent도 만료시킨다.
+        this.surfaceTimer = body.surface.status === "opened" ? null
+          : setTimeout(() => this.closeSurface(body.surface!.id), body.surface.status === "closing" ? 3_000 : 10_000);
+        this.surfaceChanged();
+      }
+    }
     for (const id of body.attached ?? []) {
       const view = this.views.get(id);
       if (!view) continue;
@@ -262,6 +334,8 @@ export class DesktopEngine implements CdpClient {
    * 엔진을 내렸다가 다시 올릴 때 그 스트림은 그대로 열려 있으므로, 여기서 끊긴 것으로 세면 다시는 붙지 못한다.
    */
   async close(): Promise<void> {
+    if (this.surface) this.closeSurface(this.surface.id);
+    this.float = null;
     if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
     for (const view of [...this.views.keys()]) this.dropView(view);
     for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(new CdpError("desktop", -32000, "desktop_browser_disconnected")); }

@@ -1,5 +1,5 @@
 import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
-import type { BaseWindow, BaseWindowConstructorOptions, WebContents, WebContentsView } from "electron";
+import type { BaseWindow, BaseWindowConstructorOptions, HandlerDetails, WebContents, WebContentsView, WindowOpenHandlerResponse } from "electron";
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
@@ -29,6 +29,9 @@ export interface WindowPolicy {
 }
 
 export interface WindowPolicyOptions {
+  /** Console의 현재 한 번짜리 Browser 동반 문서만 처리한다. 나머지 popup 정책은 그대로다. */
+  readonly browserCompanion?: (contents: WebContents, details: HandlerDetails, origin: string) => WindowOpenHandlerResponse | null;
+  readonly revokeBrowserCompanion?: () => void;
   /**
    * 거부한 권한 이름을 단계·이름마다 한 번 알린다. Electron 타입에 없는 권한(local-fonts 등)이
    * 실제로 어떤 문자열로 도착하는지 확인하는 길이다. 이름만 넘기고 요청 내용은 넘기지 않는다.
@@ -108,6 +111,14 @@ export function trafficLightPosition(zoomFactor: number, band: number = CONVERSA
 
 const SECURE_RENDERER_PREFERENCES = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } as const;
 
+/** main과 동반 Console 표면이 같은 native controls/제목막대 정책을 쓴다. */
+export function consoleWindowChrome(options: Pick<SecureWindowOptions, "platform" | "titleBarOverlay" | "chromeBand">): BaseWindowConstructorOptions {
+  return {
+    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1, options.chromeBand) } : {}),
+    ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: options.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
+  };
+}
+
 function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConstructorOptions {
   return {
     show: false,
@@ -117,8 +128,7 @@ function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConst
     minWidth: 900,
     minHeight: 560,
     // 두 플랫폼 모두 첫 기하는 Console 테마 스냅샷이 오면 그 값(chrome.band·titleBarOverlay)으로 바뀐다.
-    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1, options.chromeBand) } : {}),
-    ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: options.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
+    ...consoleWindowChrome(options),
   };
 }
 
@@ -175,7 +185,10 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
     }
     if (!consoleOrigin || (!isAllowedConsoleUrl(url, consoleOrigin) && (!pendingConsoleOrigin || !isAllowedConsoleUrl(url, pendingConsoleOrigin)))) event.preventDefault();
   });
-  contents.setWindowOpenHandler(({ url }) => {
+  contents.setWindowOpenHandler((details) => {
+    const { url } = details;
+    const companion = consoleOrigin ? options.browserCompanion?.(contents, details, consoleOrigin) : null;
+    if (companion) return companion;
     if (consoleOrigin && isHttpUrl(url)) void openExternal(url);
     return { action: "deny" };
   });
@@ -223,7 +236,7 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
   return {
     activateConsoleOrigin(origin: string): void { validateOrigin(origin); consoleOrigin = origin; pendingConsoleOrigin = undefined; },
     currentConsoleOrigin(): string | null { return consoleOrigin ?? null; },
-    stageConsoleOrigin(origin: string): void { validateOrigin(origin); pendingConsoleOrigin = origin; },
+    stageConsoleOrigin(origin: string): void { validateOrigin(origin); if (origin !== consoleOrigin) options.revokeBrowserCompanion?.(); pendingConsoleOrigin = origin; },
     commitConsoleOrigin(): void {
       if (!pendingConsoleOrigin) throw new Error("window_policy_pending_console_origin_required");
       consoleOrigin = pendingConsoleOrigin;
@@ -239,7 +252,7 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
       remoteLocalFontsDecisions.delete(origin);
       // 철회된 origin이 아직 활성이면 창은 어디로도 항해할 수 없는 상태로 남는다. 그대로
       // 두면 다음 will-navigate가 통과하므로 활성 origin에서도 함께 걷어낸다.
-      if (consoleOrigin === origin) consoleOrigin = undefined;
+      if (consoleOrigin === origin) { options.revokeBrowserCompanion?.(); consoleOrigin = undefined; }
       if (pendingConsoleOrigin === origin) pendingConsoleOrigin = undefined;
     },
   };
