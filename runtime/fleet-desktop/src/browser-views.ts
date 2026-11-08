@@ -1,4 +1,4 @@
-import type { Session, WebContentsView } from "electron";
+import type { Session, WebContents, WebContentsView } from "electron";
 import {
   DESKTOP_BROWSER_EVENT,
   DESKTOP_BROWSER_EVENTS_PATH,
@@ -10,10 +10,12 @@ import {
   type DesktopBrowserRelay,
   type DesktopBrowserSnapshot,
   type DesktopBrowserView,
+  type DesktopBrowserSurfaceRelay,
 } from "@fleet-console/protocol/desktop";
 
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import type { DesktopBrowserFloatWindow } from "./browser-float.js";
+import type { BrowserCompanion } from "./browser-window.js";
 import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
 import { defaultParkViewport, parkedNativeBounds, type DesktopShellWindow, type ParkViewport } from "./shell-window.js";
 
@@ -38,9 +40,9 @@ export interface DesktopBrowserViewsDeps {
   /** `profile` 이 있으면 그 영속 프로필의 디스크 세션에, `null` 이면 `partition` 의 메모리 세션에 뷰를 연다. */
   readonly createView: (partition: string, profile: string | null) => WebContentsView;
   /** 콘솔 창 렌더러의 줌 배율 — 패널이 알린 CSS px 를 DIP 로 바꾼다. */
-  readonly zoomFactor: () => number;
+  readonly zoomFactor: (surface?: string | null) => number;
   /** 뷰가 놓인 화면의 배율 — 콘솔이 스크린샷 픽셀을 CSS px 로 되돌릴 때 쓴다. */
-  readonly scaleFactor: () => number;
+  readonly scaleFactor: (parent?: DesktopShellWindow | null) => number;
   readonly product: () => string;
   readonly userAgent: () => string;
   readonly fetch?: typeof fetch;
@@ -58,6 +60,7 @@ export interface DesktopBrowserViewsDeps {
   readonly composeCapture?: (png: Buffer, plan: CapturePlan) => string;
   /** 브라우저 자리를 덮는 Console 메뉴를 띄우는 자식 창. 없으면 스냅샷의 `float` 를 무시한다. */
   readonly float?: DesktopBrowserFloatWindow;
+  readonly companion?: BrowserCompanion;
 }
 
 export interface CaptureRect { x: number; y: number; width: number; height: number }
@@ -170,12 +173,17 @@ export interface DesktopBrowserViews {
   stop(): void;
   /** 창 크기·줌이 바뀌었다 — 놓인 자리를 다시 계산한다. */
   refresh(): void;
+  relaySurface(surface: DesktopBrowserSurfaceRelay): void;
+  /** 전역 Console 단축키는 수동 문서가 아니라 앱 controller 한 곳으로 보낸다. */
+  attachShortcutSource(contents: WebContents): void;
 }
 
 interface LiveView {
   readonly view: WebContentsView;
   readonly spec: DesktopBrowserView;
   attached: boolean;
+  parent: DesktopShellWindow | null;
+  lastScale: number | null;
   /** 마지막 표시 크기 — 주차 중 창에 맞춘 일시적인 축소로 덮어쓰지 않는다. */
   parkViewport: ParkViewport;
   lastBounds: { x: number; y: number; width: number; height: number } | null;
@@ -323,10 +331,11 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const target = origin;
     const token = session;
     if (!target) { outbox = emptyOutbox(); return; }
-    if (outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0) return;
+    if (!outbox.surface && outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0) return;
     const batch = outbox;
     outbox = emptyOutbox();
     const body: DesktopBrowserRelay = {
+      ...(batch.surface ? { surface: batch.surface } : {}),
       ...(batch.attached.length ? { attached: batch.attached } : {}),
       ...(batch.detached.length ? { detached: batch.detached } : {}),
       ...(batch.sizes.length ? { sizes: batch.sizes } : {}),
@@ -368,24 +377,34 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
 
   const dipBounds = (spec: DesktopBrowserView): { x: number; y: number; width: number; height: number } | null => {
     if (!spec.bounds) return null;
-    const zoom = deps.zoomFactor();
+    const zoom = deps.zoomFactor(spec.surface);
     const factor = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
     return { x: Math.round(spec.bounds.x * factor), y: Math.round(spec.bounds.y * factor), width: Math.max(0, Math.round(spec.bounds.width * factor)), height: Math.max(0, Math.round(spec.bounds.height * factor)) };
   };
 
   /** 콘솔 엔진은 attach 직후 viewSize 가 필요하다 — viewId 별 실제 DIP 만 올린다. */
   const reportSize = (viewId: string, bounds: { width: number; height: number }): void => {
-    push({ sizes: [{ viewId, width: bounds.width, height: bounds.height, scale: deps.scaleFactor() }] });
+    const entry = live.get(viewId);
+    const scale = deps.scaleFactor(entry?.parent);
+    if (entry) entry.lastScale = scale;
+    push({ sizes: [{ viewId, width: bounds.width, height: bounds.height, scale }] });
   };
 
   const place = (entry: LiveView): void => {
-    const shell = deps.shell();
+    const child = deps.companion?.surface(entry.spec.surface);
+    // 숨김/최소화만 명시적으로 주차한다. blur를 OS 가림 신호로 추측하지 않는다.
+    const childPresented = child && !child.isMinimized() && child.base.isVisible();
+    const shell = childPresented ? child : deps.shell();
     if (!shell || shell.isDestroyed()) return;
+    if (entry.parent !== shell) {
+      try { entry.parent?.stack.removeBrowser(entry.view); } catch { /* 이전 창이 먼저 끝났다. */ }
+      entry.parent = shell;
+    }
     const contentBounds = shell.stack.layoutConsole();
     const panelBounds = dipBounds(entry.spec);
     const hasPanelSize = panelBounds !== null && panelBounds.width > 0 && panelBounds.height > 0;
     // `visible` 은 사용자에게 보여 줄지(presentation)이지, 네이티브 setVisible 이 아니다.
-    const presented = entry.spec.visible && hasPanelSize;
+    const presented = entry.spec.visible && hasPanelSize && (!entry.spec.surface || Boolean(childPresented));
     // 띄우지 않은 뷰도 패널 자리 크기로 parking 한다 — 한 브라우저의 뷰 자리는 하나다. 자리가 없을 때 만들어져 기본 크기(800×600)로
     // 놓인 뒤 한 번도 띄워지지 않은 에이전트 탭이, 사람 화면이 보고하는 크기와 따로 노는 것을 막는다.
     if (hasPanelSize && panelBounds) entry.parkViewport = { width: panelBounds.width, height: panelBounds.height };
@@ -406,6 +425,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       // x/y-only parking moves must not bump Fleet.viewResized / geometry_version.
       if (viewportChanged) reportSize(entry.spec.id, nextBounds);
     }
+    if (entry.lastScale !== deps.scaleFactor(shell)) reportSize(entry.spec.id, nextBounds);
     // 이 통합에서는 hidden/0×0 대신 visible + z-order parking — macOS CDP 실험에서 더 안정적이었다.
     entry.view.setVisible(true);
     const reclaimConsoleFocus = !presented && entry.view.webContents.isFocused();
@@ -432,6 +452,20 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     });
   };
 
+  const attachShortcutSource = (contents: WebContents): void => {
+    contents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown" || input.isAutoRepeat || !matchesRegisteredShortcut(input, registeredShortcuts)) return;
+      event.preventDefault();
+      const target = deps.shell()?.consoleContents;
+      if (!target || target.isDestroyed() || target === contents) return;
+      target.focus();
+      const keyCode = codeToKeyCode(input.code);
+      const modifiers = beforeInputModifiers(input);
+      target.sendInputEvent({ type: "keyDown", keyCode, modifiers });
+      target.sendInputEvent({ type: "keyUp", keyCode, modifiers });
+    });
+  };
+
   const create = (spec: DesktopBrowserView): void => {
     const shell = deps.shell();
     if (!shell || shell.isDestroyed()) return;
@@ -447,7 +481,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const parkViewport = panelBounds && panelBounds.width > 0 && panelBounds.height > 0
       ? { width: panelBounds.width, height: panelBounds.height }
       : defaultParkViewport(contentBounds);
-    const entry: LiveView = { view, spec, attached: false, parkViewport, lastBounds: null };
+    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null };
     live.set(spec.id, entry);
     const contents = view.webContents;
     markSession(contents.session);
@@ -458,29 +492,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     shell.stack.parkBrowser(view);
     // 페이지가 새 창을 열려 하면 같은 뷰에서 연다 — 이 뷰 밖으로 나가는 창은 없다.
     contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
-    contents.on("before-input-event", (event, input) => {
-      if (input.type !== "keyDown" || input.isAutoRepeat) return;
-      if (!matchesRegisteredShortcut(input, registeredShortcuts)) return;
-      event.preventDefault();
-      const shellWindow = deps.shell();
-      const consoleContents = shellWindow?.consoleView.webContents;
-      if (consoleContents && !consoleContents.isDestroyed()) {
-        const keyCode = codeToKeyCode(input.code);
-        const modifiers = beforeInputModifiers(input);
-        consoleContents.focus();
-        // 눌림 상태 고착 방지를 위해 keyDown 직후 keyUp 도 함께 전송한다.
-        consoleContents.sendInputEvent({
-          type: "keyDown",
-          keyCode,
-          modifiers,
-        });
-        consoleContents.sendInputEvent({
-          type: "keyUp",
-          keyCode,
-          modifiers,
-        });
-      }
-    });
+    attachShortcutSource(contents);
     contents.on("render-process-gone", () => drop(spec.id, true));
     contents.on("destroyed", () => drop(spec.id, true));
     try {
@@ -507,7 +519,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const entry = live.get(id);
     if (!entry) return;
     live.delete(id);
-    const shell = deps.shell();
+    const shell = entry.parent;
     try { if (shell && !shell.isDestroyed()) shell.stack.removeBrowser(entry.view); } catch { /* 창이 먼저 닫혔다. */ }
     try { if (entry.view.webContents.debugger.isAttached()) entry.view.webContents.debugger.detach(); } catch { /* 이미 떨어졌다. */ }
     try { entry.view.webContents.close(); } catch { /* 이미 죽은 렌더러. */ }
@@ -598,6 +610,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (snapshot.shortcuts !== undefined) {
       registeredShortcuts = new Set(snapshot.shortcuts);
     }
+    deps.companion?.apply(snapshot.surface ?? null, origin);
     const wanted = new Set(snapshot.views.map((view) => view.id));
     for (const id of [...live.keys()]) if (!wanted.has(id)) drop(id, false);
     for (const spec of snapshot.views) {
@@ -632,6 +645,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     },
     stop,
     refresh(): void { for (const entry of live.values()) place(entry); deps.float?.refresh(); },
+    relaySurface(surface): void { outbox = { ...outbox, surface }; flush(); },
+    attachShortcutSource,
   };
 
   function stop(): void {
@@ -649,6 +664,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     session += 1;
     for (const task of [...captureTasks]) task.expire();
     for (const id of [...live.keys()]) drop(id, false);
+    deps.companion?.dispose();
+    deps.float?.dispose();
     executed.clear();
     generation = -1;
     epoch = null;

@@ -1,0 +1,148 @@
+import type { BrowserWindowConstructorOptions, HandlerDetails, WebContents, WindowOpenHandlerResponse } from "electron";
+import { DESKTOP_BROWSER_WINDOW_PAGE, type DesktopBrowserSurface, type DesktopBrowserSurfaceRelay } from "@fleet-console/protocol/desktop";
+import type { DesktopShellWindow } from "./shell-window.js";
+
+export interface BrowserWindowDeps {
+  readonly main: () => DesktopShellWindow | null;
+  readonly createWindow: (options: BrowserWindowConstructorOptions) => DesktopShellWindow;
+  readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
+  readonly changed: () => void;
+}
+
+/** 셸은 콘텐츠를 만들지 않는다. Console의 한 번짜리 intent를 받아 수동 문서의 native 자리만 만든다. */
+export function createBrowserCompanion(deps: BrowserWindowDeps) {
+  let intent: DesktopBrowserSurface | null = null;
+  const revoked = new Set<string>();
+  let origin: string | null = null;
+  let owner: WebContents | null = null;
+  let companion: DesktopShellWindow | null = null;
+  let consumed = false;
+  let closing = false;
+  let deadline: ReturnType<typeof setTimeout> | null = null;
+  let disposeOwner: (() => void) | null = null;
+
+  const revoke = (report: boolean): void => {
+    const previous = intent;
+    if (previous) revoked.add(previous.id);
+    intent = null;
+    origin = null;
+    owner = null;
+    consumed = false;
+    closing = false;
+    if (deadline) clearTimeout(deadline);
+    deadline = null;
+    disposeOwner?.();
+    disposeOwner = null;
+    const old = companion;
+    companion = null;
+    // BaseWindow를 없애기 전에 기존 native 뷰를 살아 있는 main 뒤로 옮긴다.
+    deps.changed();
+    if (old && !old.isDestroyed()) old.base.destroy();
+    if (old && !old.consoleContents.isDestroyed()) old.consoleContents.close();
+    if (report && previous) deps.relay({ id: previous.id, status: "closed" });
+  };
+
+  const armDeadline = (id: string, milliseconds: number): void => {
+    if (deadline) clearTimeout(deadline);
+    deadline = setTimeout(() => { if (intent?.id === id) revoke(true); }, milliseconds);
+  };
+
+  const mainFrameOnly = (contents: WebContents, activeOrigin: string): boolean => {
+    try {
+      const frame = contents.mainFrame;
+      return frame.url === contents.getURL() && new URL(frame.url).origin === activeOrigin && frame.url.startsWith(`${activeOrigin}/console/`)
+        && frame.framesInSubtree.length === 1 && frame.framesInSubtree[0] === frame;
+    } catch { return false; }
+  };
+
+  const apply = (next: DesktopBrowserSurface | null, at: string | null): void => {
+    if (next?.id === intent?.id && at === origin) return;
+    revoke(false);
+    if (next && revoked.has(next.id)) return;
+    const main = deps.main();
+    if (!next || !at || !main || main.isDestroyed()) return;
+    intent = next;
+    origin = at;
+    owner = main.consoleContents;
+    const contents = owner;
+    // 실제 renderer 교체와 origin 전환은 같은 창이어도 새 수명이다. in-page hash 이동은 제외한다.
+    const navigating = (_event: unknown, _url: string, inPlace: boolean, isMainFrame: boolean) => { if (isMainFrame && !inPlace) revoke(true); };
+    const gone = () => revoke(true);
+    contents.on("did-start-navigation", navigating);
+    contents.on("render-process-gone", gone);
+    contents.on("destroyed", gone);
+    disposeOwner = () => { contents.removeListener("did-start-navigation", navigating); contents.removeListener("render-process-gone", gone); contents.removeListener("destroyed", gone); };
+    armDeadline(next.id, 10_000);
+    deps.relay({ id: next.id, status: "ready" });
+  };
+
+  const open = (contents: WebContents, details: HandlerDetails, activeOrigin: string): WindowOpenHandlerResponse | null => {
+    // 정확한 특례 경로를 닮은 요청은 외부 브라우저로도 보내지 않는다.
+    let url: URL;
+    try { url = new URL(details.url); } catch { return null; }
+    if (url.pathname !== DESKTOP_BROWSER_WINDOW_PAGE) return null;
+    const deny: WindowOpenHandlerResponse = { action: "deny" };
+    if (!intent || consumed || companion || owner !== contents || origin !== activeOrigin || url.href !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`
+      || url.username || url.password || url.search || url.hash || details.postBody || details.frameName !== intent.id) return deny;
+    // 이 handler의 요청 프레임을 이름/referrer로 추측하지 않는다. 하위 frame이 하나라도 있으면 생성 자체를 거부한다.
+    if (!mainFrameOnly(contents, activeOrigin)) return deny;
+    consumed = true;
+    const current = intent;
+    return {
+      action: "allow", outlivesOpener: false,
+      overrideBrowserWindowOptions: {
+        show: false, width: 1000, height: 760, minWidth: 460, minHeight: 360, title: "Fleet Browser",
+        frame: true, movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true, alwaysOnTop: false,
+        webPreferences: { session: contents.session, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false },
+      },
+      createWindow: (options) => {
+        // allow 이후 renderer가 교체되거나 intent가 철회되었다면 새 native 자원을 만들지 않는다.
+        if (intent !== current || owner !== contents || contents.isDestroyed() || !mainFrameOnly(contents, activeOrigin)) throw new Error("browser_surface_revoked");
+        const child = deps.createWindow(options);
+        companion = child;
+        const wc = child.consoleContents;
+        wc.on("will-navigate", (event) => event.preventDefault());
+        wc.on("will-redirect", (event) => event.preventDefault());
+        wc.on("will-attach-webview", (event) => event.preventDefault());
+        wc.setWindowOpenHandler(() => ({ action: "deny" }));
+        wc.on("render-process-gone", () => revoke(true));
+        wc.on("destroyed", () => { if (companion === child) revoke(true); });
+        let loaded = false;
+        wc.on("did-start-navigation", (_event, url, _inPlace, isMainFrame) => {
+          if (isMainFrame && (loaded || url !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`)) revoke(true);
+        });
+        wc.once("did-finish-load", () => {
+          if (companion !== child || wc.getURL() !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`) { revoke(true); return; }
+          loaded = true;
+          if (deadline) clearTimeout(deadline);
+          deadline = null;
+          deps.relay({ id: current.id, status: "opened" });
+          child.show();
+          deps.changed();
+        });
+        child.base.on("close", (event) => {
+          event.preventDefault();
+          if (closing) return;
+          closing = true;
+          deps.relay({ id: current.id, status: "closing" });
+          armDeadline(current.id, 3_000);
+        });
+        child.base.on("closed", () => { if (companion === child) revoke(true); });
+        child.base.on("resize", () => deps.changed());
+        child.base.on("move", () => deps.changed());
+        child.base.on("minimize", () => deps.changed());
+        child.base.on("restore", () => deps.changed());
+        child.base.on("hide", () => deps.changed());
+        child.base.on("show", () => deps.changed());
+        return wc;
+      },
+    };
+  };
+
+  return {
+    apply, open,
+    surface(id?: string | null): DesktopShellWindow | null { return id && intent?.id === id && companion && !companion.isDestroyed() ? companion : null; },
+    dispose(): void { revoke(false); },
+  };
+}
+export type BrowserCompanion = ReturnType<typeof createBrowserCompanion>;

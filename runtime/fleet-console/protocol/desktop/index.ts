@@ -160,6 +160,8 @@ export interface DesktopBrowserView {
   readonly profile?: string | null;
   /** Companion 에 이 탭을 그릴지. 네이티브 `setVisible` 이 아니다. */
   readonly visible: boolean;
+  /** 동반 문서의 좌표계. 없으면 기존 Console 문서다. 탭의 수명·partition은 바뀌지 않는다. */
+  readonly surface?: string | null;
   /** Companion 패널의 CSS px 자리. `null` 이면 셸이 parking 한다. 실행 크기와 섞지 않는다. */
   readonly bounds: DesktopBrowserBounds | null;
   /** 처음 열 때의 주소. 그 뒤의 항해는 CDP 명령으로 온다. */
@@ -214,6 +216,21 @@ export interface DesktopBrowserSnapshot {
    * `DESKTOP_BROWSER_FLOAT_CAPABILITY` 를 게시한 셸만 해석한다. 옛 Console 은 싣지 않고, 옛 셸은 이를 무시한다.
    */
   readonly float?: DesktopBrowserFloat | null;
+  /** Console이 소유한 단 하나의 분리 표면. 옛 셸에서는 사용하지 않는다. */
+  readonly surface?: DesktopBrowserSurface | null;
+}
+
+export const DESKTOP_BROWSER_DETACH_CAPABILITY = "browser-detach";
+export const DESKTOP_BROWSER_WINDOW_PAGE = "/console/browser-window.html";
+export interface DesktopBrowserSurface {
+  readonly id: string;
+  readonly browserId: string;
+  /** 같은 browser를 보는 패널 중 이 표면을 만든 controller 하나. */
+  readonly clientId: string;
+}
+export interface DesktopBrowserSurfaceRelay {
+  readonly id: string;
+  readonly status: "ready" | "opened" | "closing" | "closed";
 }
 
 /** 셸이 이 신호를 게시해야 Console 이 메뉴를 자식 창으로 띄운다 — 아니면 지금처럼 뷰를 물리고 정지 화면을 깐다. */
@@ -226,10 +243,12 @@ export interface DesktopBrowserFloat {
   /** 메뉴가 바뀔 때마다 오른다 — 표면이 낡은 그림의 클릭을 보내지 않게. */
   readonly revision: number;
   readonly bounds: DesktopBrowserBounds;
+  readonly surface?: string | null;
 }
 
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
 export interface DesktopBrowserRelay {
+  readonly surface?: DesktopBrowserSurfaceRelay;
   /** 셸이 처음 붙을 때 한 번 — 이 셸의 Chromium 이 누구인지. */
   readonly hello?: { readonly product: string; readonly userAgent: string };
   readonly attached?: readonly string[];
@@ -254,7 +273,8 @@ export function isDesktopBrowserBounds(value: unknown): value is DesktopBrowserB
 export function isDesktopBrowserView(value: unknown): value is DesktopBrowserView {
   return isRecord(value) && isSafeId(value.id) && typeof value.objectiveId === "string" && isSafeId(value.partition)
     && (value.profile === undefined || value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
-    && typeof value.visible === "boolean" && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string";
+    && typeof value.visible === "boolean" && (value.surface === undefined || value.surface === null || isSafeId(value.surface))
+    && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string";
 }
 
 export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowserCommand {
@@ -266,15 +286,22 @@ export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowse
     && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand)
     && (value.shortcuts === undefined || (Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string")))
     && (value.epoch === undefined || typeof value.epoch === "string")
-    && (value.float === undefined || value.float === null || isDesktopBrowserFloat(value.float));
+    && (value.float === undefined || value.float === null || isDesktopBrowserFloat(value.float))
+    && (value.surface === undefined || value.surface === null || isDesktopBrowserSurface(value.surface));
+}
+
+export function isDesktopBrowserSurface(value: unknown): value is DesktopBrowserSurface {
+  return isRecord(value) && isSafeId(value.id) && isSafeId(value.browserId) && isSafeId(value.clientId);
 }
 
 export function isDesktopBrowserFloat(value: unknown): value is DesktopBrowserFloat {
-  return isRecord(value) && isFiniteNumber(value.revision) && isDesktopBrowserBounds(value.bounds) && value.bounds.width >= 1 && value.bounds.height >= 1;
+  return isRecord(value) && isFiniteNumber(value.revision) && isDesktopBrowserBounds(value.bounds) && value.bounds.width >= 1 && value.bounds.height >= 1
+    && (value.surface === undefined || value.surface === null || isSafeId(value.surface));
 }
 
 export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRelay {
   if (!isRecord(value)) return false;
+  if (value.surface !== undefined && !(isRecord(value.surface) && isSafeId(value.surface.id) && ["ready", "opened", "closing", "closed"].includes(String(value.surface.status)))) return false;
   if (value.hello !== undefined && !(isRecord(value.hello) && typeof value.hello.product === "string" && typeof value.hello.userAgent === "string")) return false;
   for (const key of ["attached", "detached"] as const) if (value[key] !== undefined && !(Array.isArray(value[key]) && (value[key] as unknown[]).every(isSafeId))) return false;
   if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;

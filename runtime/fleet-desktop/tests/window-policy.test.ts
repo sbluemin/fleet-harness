@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { createBrowserCompanion } from "../src/browser-window.js";
+import { DESKTOP_BROWSER_WINDOW_PAGE } from "@fleet-console/protocol/desktop";
+import type { HandlerDetails, WindowOpenHandlerResponse } from "electron";
 
 import { applyWindowPolicy, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, isAllowedConsoleUrl } from "../src/window-policy.js";
 
@@ -36,6 +40,76 @@ describe("host picker view confinement", () => {
 });
 
 describe("secure window policy", () => {
+  // 기존 popup deny 검사는 Console intent를 소비하는 유일한 예외와 renderer 수명 철회를 통과하지 않는다.
+  it("admits one exact passive companion only from a frame-free current Console and revokes it with its owner", () => {
+    vi.useFakeTimers();
+    const frame = { url: `${HOME}/console/`, framesInSubtree: [] as unknown[] };
+    frame.framesInSubtree = [frame];
+    const contents = Object.assign(new EventEmitter(), {
+      mainFrame: frame, getURL: () => frame.url, isDestroyed: () => false,
+      session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() },
+      setWindowOpenHandler: vi.fn(),
+    });
+    const childContents = Object.assign(new EventEmitter(), { getURL: () => `${HOME}${DESKTOP_BROWSER_WINDOW_PAGE}`, isDestroyed: () => false, close: vi.fn(), setWindowOpenHandler: vi.fn() });
+    const base = Object.assign(new EventEmitter(), { destroy: vi.fn(), isVisible: () => true });
+    const child = { base, consoleContents: childContents, isDestroyed: () => false, show: vi.fn() };
+    const createWindow = vi.fn(() => child as never);
+    const relay = vi.fn();
+    const manager = createBrowserCompanion({ main: () => ({ consoleContents: contents, isDestroyed: () => false }) as never, createWindow, relay, changed: vi.fn() });
+    const external = vi.fn(async () => undefined);
+    const policy = applyWindowPolicy(contents as never, external, {
+      browserCompanion: (owner, details, origin) => manager.open(owner, details, origin), revokeBrowserCompanion: () => manager.dispose(),
+    });
+    policy.activateConsoleOrigin(HOME);
+    const handler = contents.setWindowOpenHandler.mock.calls[0]![0] as (details: HandlerDetails) => WindowOpenHandlerResponse;
+    const intent = { id: "surface-one", browserId: "commodore:one", clientId: "client-one" };
+    const details = (url = `${HOME}${DESKTOP_BROWSER_WINDOW_PAGE}`): HandlerDetails => ({ url, frameName: intent.id, features: "", disposition: "new-window", referrer: { url: frame.url, policy: "default" } });
+    try {
+      expect(handler(details()).action).toBe("deny");
+      manager.apply(intent, HOME);
+      for (const url of [`${HOME}${DESKTOP_BROWSER_WINDOW_PAGE}?x=1`, `${HOME}${DESKTOP_BROWSER_WINDOW_PAGE}#x`, `http://user@127.0.0.1:4310${DESKTOP_BROWSER_WINDOW_PAGE}`, `https://other.invalid${DESKTOP_BROWSER_WINDOW_PAGE}`]) expect(handler(details(url)).action).toBe("deny");
+      expect(external).not.toHaveBeenCalled();
+      frame.framesInSubtree = [frame, {}];
+      expect(handler(details()).action).toBe("deny");
+      frame.framesInSubtree = [frame];
+      const allowed = handler(details());
+      expect(allowed.action).toBe("allow");
+      expect(allowed.overrideBrowserWindowOptions?.webPreferences).toMatchObject({ session: contents.session, sandbox: true, nodeIntegration: false, contextIsolation: true, webSecurity: true });
+      expect(handler(details()).action).toBe("deny");
+      // 허가 뒤 생성 직전의 provenance도 다시 검사한다.
+      frame.framesInSubtree.push({});
+      expect(() => allowed.createWindow!({})).toThrow("browser_surface_revoked");
+      frame.framesInSubtree = [frame];
+      manager.apply(null, HOME);
+      manager.apply({ ...intent, id: "surface-two" }, HOME);
+      const second = handler({ ...details(), frameName: "surface-two" });
+      expect(second.createWindow!({})).toBe(childContents);
+      childContents.emit("did-finish-load");
+      expect(child.show).toHaveBeenCalledOnce();
+      const childPopup = childContents.setWindowOpenHandler.mock.calls[0]![0] as () => { action: string };
+      expect(childPopup()).toEqual({ action: "deny" });
+      const preventDefault = vi.fn();
+      childContents.emit("will-navigate", { preventDefault }, "https://other.invalid/");
+      expect(preventDefault).toHaveBeenCalledOnce();
+      base.emit("close", { preventDefault });
+      expect(relay).toHaveBeenLastCalledWith({ id: "surface-two", status: "closing" });
+      manager.apply(null, HOME);
+      expect(base.destroy).toHaveBeenCalledOnce();
+      expect(childContents.close).toHaveBeenCalledOnce();
+      manager.apply({ ...intent, id: "surface-three" }, HOME);
+      contents.emit("did-start-navigation", {}, `${HOME}/console/`, false, true);
+      manager.apply({ ...intent, id: "surface-three" }, HOME);
+      expect(handler({ ...details(), frameName: "surface-three" }).action).toBe("deny");
+      manager.apply({ ...intent, id: "surface-four" }, HOME);
+      policy.admitRemoteConsoleOrigin("https://other.invalid");
+      policy.stageConsoleOrigin("https://other.invalid");
+      expect(handler({ ...details(), frameName: "surface-four" }).action).toBe("deny");
+      manager.apply({ ...intent, id: "surface-five" }, HOME);
+      vi.advanceTimersByTime(10_001);
+      expect(handler({ ...details(), frameName: "surface-five" }).action).toBe("deny");
+      expect(createWindow).toHaveBeenCalledOnce();
+    } finally { manager.dispose(); vi.useRealTimers(); }
+  });
   it("creates a BaseWindow shell with sandboxed Console view and no Node privilege", () => {
     const baseCtor = vi.fn(function BaseWindow(this: Record<string, unknown>) {
       this.getContentBounds = () => ({ x: 0, y: 0, width: 1200, height: 800 });

@@ -12,7 +12,7 @@ import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../
 import { setActiveObjective, themePolarity } from "../../../../../core/client/src/integration/store.js";
 import { useHostCapabilities } from "../../../../../core/client/src/integration/use-host-capabilities.js";
 import { useExpandedSurfaceDescriptors } from "../../../../../core/client/src/integration/feature-registry.js";
-import { isDesktopShell } from "../../../../../core/client/src/integration/desktop-shell.js";
+import { desktopShellCapabilities, isDesktopShell } from "../../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../../core/client/src/integration/objective-records-sse.js";
 import { MissingSurface, SurfacePanePart, safeExpandedSurfaceTitle, useExpandedSurfaceContext } from "../../../../../core/client/src/chrome/expanded-surface/layer.js";
 import { RailSurface } from "../../../../../core/client/src/chrome/pane/rail-surface.js";
@@ -731,7 +731,7 @@ function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Wo
 }
 
 /** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Objective companion 과 같은 값이다. */
-const SESSION_BROWSER_SERVICES = { isDesktopShell, themePolarity, subscribeConsoleChannel } as const;
+const SESSION_BROWSER_SERVICES = { isDesktopShell, desktopShellCapabilities, themePolarity, subscribeConsoleChannel } as const;
 const NO_HIDDEN_COMPANIONS: readonly string[] = [];
 const BROWSER_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_ID];
 function noop(): void {}

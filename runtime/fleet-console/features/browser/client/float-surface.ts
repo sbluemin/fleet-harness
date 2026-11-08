@@ -15,6 +15,7 @@ const CHANNEL_NAME: typeof DESKTOP_BROWSER_FLOAT_CHANNEL = "fleet-browser-float"
 interface RenderMessage {
   readonly type: "render";
   readonly revision: number;
+  readonly surface?: string | null;
   readonly html: string;
   readonly width: number;
   readonly height: number;
@@ -31,6 +32,8 @@ const SURFACE_STYLE = [
 
 export function startFloatSurface(): void {
   const channel = new BroadcastChannel(CHANNEL_NAME);
+  let surface: string | null = null;
+  const postMessage = (message: Record<string, unknown>) => channel.postMessage({ ...message, surface });
   const host = document.createElement("div");
   document.body.append(host);
   const inline = document.createElement("style");
@@ -44,7 +47,7 @@ export function startFloatSurface(): void {
   const announce = (): void => {
     if (revision < 0 || document.visibilityState !== "visible") return;
     const shown = revision;
-    requestAnimationFrame(() => requestAnimationFrame(() => { if (shown === revision) channel.postMessage({ type: "shown", revision: shown }); }));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (shown === revision) postMessage({ type: "shown", revision: shown }); }));
   };
 
   const applyAttributes = (element: Element, next: Record<string, string>): void => {
@@ -53,6 +56,8 @@ export function startFloatSurface(): void {
   };
 
   const render = (message: RenderMessage): void => {
+    const messageSurface = message.surface ?? null;
+    if (surface !== messageSurface) { surface = messageSurface; revision = -1; }
     applyAttributes(document.documentElement, message.root);
     applyAttributes(document.body, message.body);
     const key = message.styles.links.join("\n");
@@ -73,7 +78,7 @@ export function startFloatSurface(): void {
     if (inline.textContent !== message.styles.inline) inline.textContent = message.styles.inline;
     const current = message.revision;
     void pendingLinks.then(() => {
-      if (current < revision) return;
+      if (current < revision || surface !== messageSurface) return;
       host.innerHTML = message.html;
       for (const element of host.querySelectorAll<HTMLElement>("[data-float-scroll]")) {
         const [left, top] = (element.dataset.floatScroll ?? "0,0").split(",").map(Number);
@@ -89,7 +94,7 @@ export function startFloatSurface(): void {
     const message = event.data as ({ readonly type?: string } & Partial<Omit<RenderMessage, "type">>) | null;
     if (!message || typeof message !== "object") return;
     if (message.type === "render" && typeof message.html === "string" && typeof message.revision === "number") render(message as RenderMessage);
-    else if (message.type === "clear") { host.replaceChildren(); revision = -1; feedPath = null; feedInside = false; }
+    else if (message.type === "clear" && (message.surface ?? null) === surface) { host.replaceChildren(); revision = -1; feedPath = null; feedInside = false; }
   };
 
   const pathOf = (target: EventTarget | null): number | null => {
@@ -103,12 +108,12 @@ export function startFloatSurface(): void {
     event.preventDefault();
     event.stopPropagation();
     const path = pathOf(event.target);
-    if (path !== null && revision >= 0) channel.postMessage({ type: "activate", revision, path });
+    if (path !== null && revision >= 0) postMessage({ type: "activate", revision, path });
   }, true);
   document.addEventListener("wheel", (event) => {
     event.preventDefault();
     const path = pathOf(event.target);
-    if (path !== null && revision >= 0) channel.postMessage({ type: "wheel", revision, path, dx: event.deltaX, dy: event.deltaY });
+    if (path !== null && revision >= 0) postMessage({ type: "wheel", revision, path, dx: event.deltaX, dy: event.deltaY });
   }, { capture: true, passive: false });
   // 셸이 흘려 주는 포인터의 화면 위치(`browser-float.ts`)가 있으면 그것이 이 창 안의 위치를 가르는 기준이다. 비활성 패널은 뜨거나 자리가 바뀐 직후
   // 포인터 추적을 잃어 들어옴 없이 나감만 알리고 그 뒤로 입력이 끊기므로, 사건만 믿으면 포인터가 안에 있는데 접거나 밖으로 나가도 못 알아챈다.
@@ -118,7 +123,7 @@ export function startFloatSurface(): void {
   let feedPath: number | null = null;
   let feedInside = false;
   const postPointer = (kind: "over" | "out", path: number, related: number | null, sx: number, sy: number): void => {
-    if (revision >= 0) channel.postMessage({ type: "pointer", revision, kind, path, related, sx, sy });
+    if (revision >= 0) postMessage({ type: "pointer", revision, kind, path, related, sx, sy });
   };
   window.addEventListener("fleet-float-cursor", (event) => {
     const point = (event as CustomEvent<{ readonly x?: number; readonly y?: number }>).detail;
@@ -136,21 +141,21 @@ export function startFloatSurface(): void {
       if (path !== null) postPointer("over", path, feedPath, x, y);
       feedPath = path;
     }
-    if (inside !== feedInside) { feedInside = inside; channel.postMessage({ type: "hover", inside }); }
+    if (inside !== feedInside) { feedInside = inside; postMessage({ type: "hover", inside }); }
   });
   // 표면 안의 진입·이탈을 번호로 알린다 — 원본의 enter·leave 처리기(호버로 열린 표면의 닫힘 타이머 등)가 같은 순서로 듣는다.
   for (const kind of ["over", "out"] as const) {
     document.addEventListener(kind === "over" ? "pointerover" : "pointerout", (event) => {
       const path = pathOf(event.target);
       if (path === null || revision < 0 || feedFresh()) return;
-      channel.postMessage({ type: "pointer", revision, kind, path, related: pathOf(event.relatedTarget), sx: event.screenX, sy: event.screenY });
+      postMessage({ type: "pointer", revision, kind, path, related: pathOf(event.relatedTarget), sx: event.screenX, sy: event.screenY });
     }, true);
   }
-  document.addEventListener("pointerenter", () => channel.postMessage({ type: "hover", inside: true }), true);
-  document.documentElement.addEventListener("pointerleave", () => channel.postMessage({ type: "hover", inside: false }));
+  document.addEventListener("pointerenter", () => postMessage({ type: "hover", inside: true }), true);
+  document.documentElement.addEventListener("pointerleave", () => postMessage({ type: "hover", inside: false }));
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible") channel.postMessage({ type: "hover", inside: false });
+    if (document.visibilityState !== "visible") postMessage({ type: "hover", inside: false });
     announce();
   });
-  channel.postMessage({ type: "hello" });
+  postMessage({ type: "hello" });
 }

@@ -51,6 +51,30 @@ interface FloatState {
   key: string;
 }
 
+const managers = new Map<Document, { count: number; stop: () => void }>();
+
+/** 문서마다 자신의 DOM과 채널을 사용한다. 제품 상태를 복제하지 않는다. */
+export function retainNativeFloat(documentFor: Document = document): () => void {
+  let manager = managers.get(documentFor);
+  if (!manager) { manager = { count: 0, stop: createFloatManager(documentFor) }; managers.set(documentFor, manager); }
+  manager.count += 1;
+  const current = manager;
+  let released = false;
+  return () => { if (released) return; released = true; current.count -= 1; if (current.count === 0) { current.stop(); managers.delete(documentFor); } };
+}
+
+/** 셸이 자식 창 메뉴를 해석하는가. 렌더 밖에서 읽는다. */
+export function nativeFloatAvailable(): boolean {
+  return isDesktopShell() && typeof BroadcastChannel === "function" && desktopShellCapabilities().includes(DESKTOP_BROWSER_FLOAT_CAPABILITY);
+}
+
+export function insideNativeFloat(element: Element | null): boolean { return element?.closest(`[${NATIVE_FLOAT_ATTRIBUTE}]`) != null; }
+
+function createFloatManager(document: Document): () => void {
+const window = document.defaultView ?? globalThis.window;
+const surface = document.documentElement.dataset.browserSurface ?? null;
+const isElement = (node: Node | null): node is Element => node?.nodeType === 1;
+const isHtml = (node: Element | null): node is HTMLElement => node?.namespaceURI === "http://www.w3.org/1999/xhtml";
 let channel: BroadcastChannel | null = null;
 let retained = 0;
 let stopManager: (() => void) | null = null;
@@ -60,35 +84,14 @@ let surfaceHover = false;
 let trackKey = "";
 const state: FloatState = { target: null, revision: -1, elements: [], nodes: [], key: "" };
 
-/** 셸이 자식 창 메뉴를 해석하는가. 렌더 밖에서 읽는다. */
-export function nativeFloatAvailable(): boolean {
-  return isDesktopShell() && typeof BroadcastChannel === "function" && desktopShellCapabilities().includes(DESKTOP_BROWSER_FLOAT_CAPABILITY);
-}
-
-/** `element` 가 떠 있는(자식 창에 그려지는) 표면 안에 있는가 — 브라우저 가림 판정이 건너뛴다. */
-export function insideNativeFloat(element: Element | null): boolean {
-  return element?.closest(`[${NATIVE_FLOAT_ATTRIBUTE}]`) != null;
-}
-
-/** 네이티브 브라우저 자리가 하나라도 있는 동안 관리자를 붙든다. 마지막 붙듦이 풀리면 자식 창을 내리고 멈춘다. */
-export function retainNativeFloat(): () => void {
-  retained += 1;
-  if (retained === 1) stopManager = startManager();
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    retained -= 1;
-    if (retained === 0) { stopManager?.(); stopManager = null; }
-  };
-}
+const releaseManager = (): void => { retained = 0; stopManager?.(); channel?.close(); channel = null; };
 
 function startManager(): () => void {
   ensureChannel();
-  const inside = (node: Node | null): boolean => node instanceof Element ? node.closest(COVER_SELECTOR) !== null : node?.parentElement?.closest(COVER_SELECTOR) != null;
+  const inside = (node: Node | null): boolean => isElement(node) ? node.closest(COVER_SELECTOR) !== null : node?.parentElement?.closest(COVER_SELECTOR) != null;
   // 가림 표면뿐 아니라 모달이 붙고 떨어질 때도 다시 잰다 — 모달 동안은 아무것도 띄우지 않고, 닫히면 다시 띄운다.
   const watched = `${COVER_SELECTOR}, [aria-modal="true"]`;
-  const relevantNode = (node: Node): boolean => node instanceof Element && (node.matches(watched) || node.querySelector(watched) !== null);
+  const relevantNode = (node: Node): boolean => isElement(node) && (node.matches(watched) || node.querySelector(watched) !== null);
   const observer = new MutationObserver((records) => {
     for (const record of records) {
       if (record.type === "attributes" && record.attributeName === NATIVE_FLOAT_ATTRIBUTE) continue;
@@ -176,7 +179,7 @@ function candidates(): { readonly target: string | null; readonly elements: HTML
     if (element.parentElement?.closest(COVER_SELECTOR)) return false;
     const rect = element.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return false;
-    const style = getComputedStyle(element);
+    const style = window.getComputedStyle(element);
     // 자식 창에 그려지는 동안 원본은 스스로 투명해진다(`native-float.css`) — 그 투명함은 닫힘이 아니다.
     return style.visibility !== "hidden" && (element.getAttribute(NATIVE_FLOAT_ATTRIBUTE) === "shown" || Number(style.opacity) > 0.01);
   });
@@ -215,6 +218,7 @@ function render(): void {
   state.revision = revision;
   ensureChannel().postMessage({
     type: "render",
+    surface,
     revision,
     html,
     width,
@@ -231,7 +235,7 @@ function release(keep: readonly HTMLElement[]): void {
   for (const element of state.elements) if (!keep.includes(element)) element.removeAttribute(NATIVE_FLOAT_ATTRIBUTE);
   if (keep.length > 0) return;
   if (state.target !== null) {
-    channel?.postMessage({ type: "clear" });
+    channel?.postMessage({ type: "clear", surface });
     post(state.target, { clear: true });
   }
   state.target = null;
@@ -244,12 +248,12 @@ function post(target: string, body: Record<string, unknown>): void {
   void fetch(`/api/v1/browser/objectives/${encodeURIComponent(target)}/float`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, surface }),
   }).catch(() => undefined);
 }
 
-function receive(message: SurfaceMessage): void {
-  if (!message || typeof message !== "object") return;
+function receive(message: SurfaceMessage & { readonly surface?: string | null }): void {
+  if (!message || typeof message !== "object" || (message.type !== "hello" && (message.surface ?? null) !== surface)) return;
   if (message.type === "hover") { surfaceHover = message.inside === true; return; }
   if (message.type === "hello") { state.key = ""; schedule(); return; }
   if (state.target === null) return;
@@ -270,8 +274,8 @@ function receive(message: SurfaceMessage): void {
 /** 자식 창 번호의 원본 — 글리프(SVG)를 눌러도 그 둘레의 HTML 요소가 동작을 가진다. 떠 있는 표면 밖이면 없다. */
 function originalAt(path: number): HTMLElement | null {
   let node: Element | null = state.nodes[path] ?? null;
-  while (node && !(node instanceof HTMLElement)) node = node.parentElement;
-  return node instanceof HTMLElement && state.elements.some((element) => element.contains(node)) ? node : null;
+  while (node && !(isHtml(node))) node = node.parentElement;
+  return isHtml(node) && state.elements.some((element) => element.contains(node)) ? node : null;
 }
 
 /**
@@ -324,7 +328,7 @@ function scrollFrom(node: HTMLElement, dx: number, dy: number): void {
 }
 
 function canScroll(element: HTMLElement): boolean {
-  const style = getComputedStyle(element);
+  const style = window.getComputedStyle(element);
   return (/(auto|scroll)/u.test(style.overflowY) && element.scrollHeight > element.clientHeight)
     || (/(auto|scroll)/u.test(style.overflowX) && element.scrollWidth > element.clientWidth);
 }
@@ -347,8 +351,8 @@ function serialize(element: HTMLElement, rect: DOMRect, left: number, top: numbe
     copy.removeAttribute(NATIVE_FLOAT_ATTRIBUTE);
     if (original === active) copy.setAttribute("data-float-focus", "");
     if (original.scrollTop || original.scrollLeft) copy.setAttribute("data-float-scroll", `${original.scrollLeft},${original.scrollTop}`);
-    if (original instanceof HTMLInputElement && copy instanceof HTMLInputElement) copy.setAttribute("value", original.value);
-    if (original instanceof HTMLTextAreaElement && copy instanceof HTMLTextAreaElement) copy.textContent = original.value;
+    if (original.tagName === "INPUT") copy.setAttribute("value", (original as HTMLInputElement).value);
+    if (original.tagName === "TEXTAREA") copy.textContent = (original as HTMLTextAreaElement).value;
   }
   const pin = `position:fixed!important;left:${rect.left - left + FLOAT_PAD}px!important;top:${rect.top - top + FLOAT_PAD}px!important;right:auto!important;bottom:auto!important;margin:0!important;`
     + `width:${rect.width}px!important;height:${rect.height}px!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;`
@@ -378,4 +382,8 @@ function attributesOf(element: Element): Record<string, string> {
   const out: Record<string, string> = {};
   for (const attribute of element.attributes) out[attribute.name] = attribute.value;
   return out;
+}
+retained = 1;
+stopManager = startManager();
+return releaseManager;
 }

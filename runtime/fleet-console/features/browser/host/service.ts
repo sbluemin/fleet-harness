@@ -62,6 +62,7 @@ export interface BrowserObjectiveState {
   /** 브라우저 id — 사령관 브라우저(`commodore:<id>`) 또는 세션 브라우저. `browserId` 와 같은 값이다(옛 패널 호환). */
   readonly objectiveId: string;
   readonly browserId: string;
+  readonly surface: ReturnType<DesktopEngine["surfaceState"]>;
   /** 탭이 있거나 에이전트가 쓰는 중인 스페이스들. 탭의 `spaceId` 가 이 목록을 가리킨다. */
   readonly spaces: readonly BrowserSpaceState[];
   /** 사람 화면에 띄운 스페이스. 그 스페이스에 탭이 없으면 `activeTabId` 는 null 이다. */
@@ -387,7 +388,10 @@ export class BrowserService {
   private lastAvailable: boolean | null = null;
   private readonly availabilityListeners = new Set<(notice: BrowserAvailability) => void>();
 
-  constructor(private readonly deps: BrowserServiceDeps) {}
+  private readonly unsubscribeSurface: () => void;
+  constructor(private readonly deps: BrowserServiceDeps) {
+    this.unsubscribeSurface = deps.desktop.onSurface(() => { for (const op of this.objectiveRecords.values()) this.emitState(op); });
+  }
 
   status(): BrowserServiceStatus {
     const { available, reason } = this.availability();
@@ -482,6 +486,7 @@ export class BrowserService {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    this.unsubscribeSurface();
     for (const op of this.objectiveRecords.values()) {
       for (const call of op.agentCalls) call.abort();
       for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
@@ -659,15 +664,29 @@ export class BrowserService {
   }
 
   /** 패널이 알려 준 자기 자리 — 네이티브 뷰가 놓일 창 좌표. null 이면 감춘다. */
-  place(objectiveId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean } | null): void {
+  place(objectiveId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean; surface?: string | null; clientId?: string } | null): void {
     this.objectiveRecord(objectiveId);
     this.deps.desktop.place(objectiveId, placement);
   }
 
-  /** 브라우저 자리를 덮는 메뉴의 자리 — 셸이 그 자리에 메뉴만 그리는 자식 창을 띄운다. null 이면 감춘다. */
-  float(objectiveId: string, float: DesktopBrowserFloat | null): void {
+  hide(objectiveId: string, surface: string | null, clientId?: string): void {
     this.objectiveRecord(objectiveId);
+    this.deps.desktop.hide(objectiveId, surface, clientId);
+  }
+
+  /** 브라우저 자리를 덮는 메뉴의 자리 — 셸이 그 자리에 메뉴만 그리는 자식 창을 띄운다. null 이면 감춘다. */
+  float(objectiveId: string, float: DesktopBrowserFloat | null, surface: string | null): void {
+    this.objectiveRecord(objectiveId);
+    const lease = this.deps.desktop.surfaceState();
+    if (surface !== (lease?.browserId === objectiveId ? lease.id : null)) return;
     this.deps.desktop.setFloat(float);
+  }
+
+  surface(objectiveId: string, action: "open" | "close", clientId: string, id?: string): void {
+    this.objectiveRecord(objectiveId);
+    if (action === "open") { this.deps.desktop.openSurface(objectiveId, clientId); return; }
+    const lease = this.deps.desktop.surfaceState();
+    if (lease?.browserId === objectiveId && lease.clientId === clientId && lease.id === id) this.deps.desktop.closeSurface(id);
   }
 
   state(objectiveId: string): BrowserObjectiveState {
@@ -685,6 +704,7 @@ export class BrowserService {
       owner: { kind: "objectiveRecord", objectiveId },
       objectiveId,
       browserId: objectiveId,
+      surface: this.deps.desktop.surfaceState(),
       spaces,
       displayedSpaceId: displayed?.id ?? null,
       profile: op.profile,

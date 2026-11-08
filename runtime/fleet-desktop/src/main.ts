@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BaseWindow, BrowserWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
-import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
@@ -50,7 +50,8 @@ import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chro
 import { readChromeHistory } from "./chrome-history.js";
 import { createBrowserHistoryStorage } from "./browser-history-storage.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
-import type { DesktopShellWindow } from "./shell-window.js";
+import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
+import { createBrowserCompanion, type BrowserCompanion } from "./browser-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
@@ -62,7 +63,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY];
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_DETACH_CAPABILITY];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -356,12 +357,29 @@ async function boot(): Promise<void> {
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
   const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot());
+  const browserCompanion: BrowserCompanion = createBrowserCompanion({
+    main: () => window,
+    createWindow: (options) => {
+      // Electron이 전달한 opener 연결은 보존하되 renderer feature로 보안·native 창 옵션을 바꾸지 못한다.
+      const base = new BaseWindow({ show: false, width: 1000, height: 760, minWidth: 460, minHeight: 360, title: "Fleet Browser", frame: true, alwaysOnTop: false, movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true });
+      const consoleView = new WebContentsView({ webPreferences: {
+        ...options.webPreferences, preload: undefined, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false, allowRunningInsecureContent: false,
+        session: window?.consoleContents.session, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
+      } });
+      consoleView.webContents.setZoomFactor(window?.consoleContents.getZoomFactor() ?? 1);
+      browserViews.attachShortcutSource(consoleView.webContents);
+      const child = createDesktopShellWindow(base, consoleView, createDesktopViewStack(base, consoleView));
+      return child;
+    },
+    relay: (surface) => browserViews.relaySurface(surface),
+    changed: () => browserViews.refresh(),
+  });
   /**
    * 브라우저 자리를 덮는 Console 메뉴를 그리는 자식 창. Console 창과 같은 세션이라 두 렌더러가 같은 출처 채널로 메뉴를
    * 주고받는다 — 셸과 렌더러 사이 통로를 새로 열지 않는다. 창 정책(권한 처리기)은 Console 창이 세션에 이미 걸었으므로 다시 걸지 않는다.
    */
   const browserFloat = createDesktopBrowserFloat({
-    shell: () => window,
+    shell: (surface) => surface ? browserCompanion.surface(surface) : window,
     cursor: () => screen.getCursorScreenPoint(),
     createWindow: (shellWindow) => new BrowserWindow({
       parent: shellWindow.base,
@@ -384,12 +402,13 @@ async function boot(): Promise<void> {
         nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
       },
     }),
-    zoomFactor: () => window?.consoleContents.getZoomFactor() ?? 1,
+    zoomFactor: (surface) => (surface ? browserCompanion.surface(surface) : window)?.consoleContents.getZoomFactor() ?? 1,
     log: (message) => logger.error(message),
   });
   const browserViews = createDesktopBrowserViews({
     shell: () => window,
     float: browserFloat,
+    companion: browserCompanion,
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
     // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
     // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Objective 의 메모리 파티션에 뷰를 연다.
@@ -399,8 +418,8 @@ async function boot(): Promise<void> {
         focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
       },
     }),
-    zoomFactor: () => window?.consoleContents.getZoomFactor() ?? 1,
-    scaleFactor: () => { try { return window ? screen.getDisplayMatching(window.getBounds()).scaleFactor : 1; } catch { return 1; } },
+    zoomFactor: (surface) => (surface ? browserCompanion.surface(surface) : window)?.consoleContents.getZoomFactor() ?? 1,
+    scaleFactor: (parent) => { try { const target = parent ?? window; return target ? screen.getDisplayMatching(target.getBounds()).scaleFactor : 1; } catch { return 1; } },
     product: () => `Chrome/${process.versions.chrome}`,
     // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
     userAgent: () => (window?.consoleContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
@@ -684,6 +703,8 @@ async function boot(): Promise<void> {
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external), {
+          browserCompanion: (contents, details, origin) => browserCompanion.open(contents, details, origin),
+          revokeBrowserCompanion: () => browserCompanion.dispose(),
           onPermissionDenied: (permission, phase) => logger.info(`window permission ${phase} denied permission=${permission}`),
           confirmRemoteLocalFonts: async (origin) => !createdWindow.isDestroyed()
             && (await dialog.showMessageBox(createdWindow.base, localFontsConsentDialog(origin))).response === 1,

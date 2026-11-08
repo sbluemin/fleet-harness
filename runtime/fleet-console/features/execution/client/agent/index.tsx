@@ -16,7 +16,7 @@ import * as React from "react";
 import { MenuCheckGlyph, SegmentedThumb } from "@fleet-console/ui/react";
 import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
-import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
+import { desktopShellCapabilities, isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/objective-records-sse.js";
 import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
@@ -1016,4 +1016,4 @@ function AgentGlyph() {
   );
 }
 
-const browserServices = { isDesktopShell, themePolarity, pushComposerInbox, subscribeConsoleChannel };
+const browserServices = { isDesktopShell, desktopShellCapabilities, themePolarity, pushComposerInbox, subscribeConsoleChannel };

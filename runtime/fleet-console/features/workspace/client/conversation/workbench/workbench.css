@@ -88,7 +88,7 @@
   pointer-events: auto;
 }
 
-.workbench-band-chrome > .op-browser-cap { flex: 1; min-width: 0; }
+.workbench-band-chrome .op-browser-cap { flex: 1; min-width: 0; }
 /* 칸의 왼쪽 이음매를 맨 위 줄 높이(탭 줄)까지 잇는다 — 칸의 왼쪽 가장자리는 탭 줄보다 BAND_INSET(8px) 왼쪽이다.
    칸이 펼쳐지면 그 이음매도 없으므로 함께 거둔다. */
 .workbench-band-chrome::before {
@@ -162,9 +162,9 @@
 }
 
 /* 브라우저 칸은 머리가 곧 탭 줄이다 — 캡션이 남은 폭을 채운다. */
-.workbench-tile-title > .op-browser-cap { flex: 1; min-width: 0; }
+.workbench-tile-title .op-browser-cap { flex: 1; min-width: 0; }
 /* 캡션 메뉴는 본문 위로 내려온다 — 제목에서 자르면 메뉴의 z-index와 무관하게 클릭도 잘린다. 탭 줄은 자체적으로 자른다. */
-.workbench-tile-title:has(> .op-browser-cap) { overflow: visible; }
+.workbench-tile-title:has(.op-browser-cap) { overflow: visible; }
 
 .workbench-tile-tools {
   flex: 0 1 auto;
