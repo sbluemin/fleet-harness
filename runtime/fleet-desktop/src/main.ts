@@ -42,7 +42,7 @@ import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js"
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
 import { createConsoleRelaunchController, createDisabledNativeUpdateActions, createNoopConsoleRelaunchController, type NativeUpdateActions } from "./update-controller.js";
 import { createShellUpdateCommandSynchronizer, createShellUpdatePublisher, createShellUpdater, type ShellUpdater } from "./shell-update.js";
-import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from "./title-bar-overlay-refresh.js";
+import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher, type DesktopTitleBarOverlay } from "./title-bar-overlay-refresh.js";
 import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
 import { createDesktopBrowserFloat } from "./browser-float.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
@@ -52,7 +52,7 @@ import { createBrowserHistoryStorage } from "./browser-history-storage.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
 import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
 import { BROWSER_COMPANION_PREFERENCES, createBrowserCompanion, type BrowserCompanion } from "./browser-window.js";
-import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
+import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, consoleWindowChrome, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
 import { createZoomState, zoomFactorForLevel } from "./zoom-state.js";
@@ -236,6 +236,8 @@ async function boot(): Promise<void> {
    */
   const themeMemory = createThemeMemory(path.join(app.getPath("userData"), "desktop-theme.json"));
   const rememberedTheme = themeMemory.load();
+  let companionOverlay: DesktopTitleBarOverlay = rememberedTheme?.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY;
+  let companionOverlayRefresher: TitleBarOverlayRefresher | null = null;
   chromeBand = rememberedTheme?.chrome?.band;
   let entryPalette: EntryPalette | undefined = rememberedTheme?.entry;
   let themeOrigin: string | null = null;
@@ -244,6 +246,8 @@ async function boot(): Promise<void> {
     applyTheme: (snapshot) => {
       // 이 필드를 싣지 않는 Console이면 무엇을 칠할지 모른다 — 창과 종료 인사 모두 기본 판으로 돌아간다.
       entryPalette = snapshot.entry;
+      companionOverlay = snapshot.titleBarOverlay;
+      companionOverlayRefresher?.applyOverlay(companionOverlay);
       if (snapshot.entry && themeOrigin !== null && themeOrigin === localConsoleOrigin) themeMemory.save(snapshot);
       if (!window || window.isDestroyed()) return;
       const canvas = snapshot.entry?.canvas ?? CANVAS_FAR_BACKGROUND_COLOR;
@@ -362,10 +366,29 @@ async function boot(): Promise<void> {
     createWindow: (guest) => {
       // 생성 전 handler가 보안을 지정한 기존 guest를 그대로 입양한다. renderer 옵션을 다시 펼치지 않는다.
       const consoleView = new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
-      const base = new BaseWindow({ show: false, width: 1000, height: 760, minWidth: 460, minHeight: 360, title: "Fleet Browser", frame: true, alwaysOnTop: false, movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true });
+      const base = new BaseWindow({
+        ...consoleWindowChrome({ platform: process.platform, titleBarOverlay: companionOverlay, chromeBand: CONVERSATION_TOP_ROW }),
+        show: false, width: 1000, height: 760, minWidth: 460, minHeight: 360, title: "Fleet Browser", frame: true, alwaysOnTop: false,
+        movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true,
+      });
       consoleView.webContents.setZoomFactor(window?.consoleContents.getZoomFactor() ?? 1);
       browserViews.attachShortcutSource(consoleView.webContents);
       const child = createDesktopShellWindow(base, consoleView, createDesktopViewStack(base, consoleView));
+      const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, {
+        screen, initialOverlay: companionOverlay, getZoomFactor: () => child.consoleContents.getZoomFactor(),
+      }) : null;
+      companionOverlayRefresher = refresher;
+      const refreshChrome = () => {
+        if (child.isDestroyed()) return;
+        if (process.platform === "darwin") child.setWindowButtonPosition(trafficLightPosition(child.consoleContents.getZoomFactor(), CONVERSATION_TOP_ROW));
+        refresher?.refresh();
+      };
+      base.once("closed", () => { refresher?.stop(); if (companionOverlayRefresher === refresher) companionOverlayRefresher = null; });
+      base.on("resize", refreshChrome);
+      base.on("move", refreshChrome);
+      child.consoleContents.on("zoom-changed", refreshChrome);
+      child.consoleContents.once("did-finish-load", refreshChrome);
+      refreshChrome();
       return child;
     },
     relay: (surface) => browserViews.relaySurface(surface),

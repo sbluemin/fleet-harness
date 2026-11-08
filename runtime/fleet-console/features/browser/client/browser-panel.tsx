@@ -174,8 +174,18 @@ interface Rect { readonly x: number; readonly y: number; readonly width: number;
  * 대화상자·팝오버)이 있으면 그만큼 물러서야 그것이 보인다. 격자 표본으로 덮개를 찾고, 한 변에서만 덮였으면 그 변을
  * 이분 탐색으로 잘라 낸다. 안쪽이 덮였거나 너무 많이 잘리면 통째로 감춘다(null).
  */
-function visibleRect(host: HTMLElement, rect: DOMRect): Rect | null {
+function visibleRect(host: HTMLElement, rect: DOMRect, geometryOnly = false): Rect | null {
   const document = host.ownerDocument;
+  if (geometryOnly) {
+    // 유효한 분리 문서가 OS 가림으로 hidden이어도 Console이 정한 콘텐츠 영역은 유지한다.
+    // 숨은 문서의 hit-test 결과 대신 host·문서 viewport 교집합만 쓴다. 모달/resize는 호출자가 이미 막는다.
+    const hostRect = host.getBoundingClientRect();
+    const width = document.documentElement.clientWidth || document.defaultView?.innerWidth || 0;
+    const height = document.documentElement.clientHeight || document.defaultView?.innerHeight || 0;
+    const x = Math.max(0, rect.left, hostRect.left), y = Math.max(0, rect.top, hostRect.top);
+    const right = Math.min(width, rect.right, hostRect.right), bottom = Math.min(height, rect.bottom, hostRect.bottom);
+    return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
+  }
   const inside = (x: number, y: number): boolean => {
     let hit = document.elementFromPoint(x, y);
     // 투명한 클릭 캐처만 건너뛴다. 그 자식인 메뉴 카드는 여전히 네이티브 뷰를 가린다.
@@ -964,9 +974,14 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       // 그때는 모달 대화상자만 뷰를 물린다. 옛 셸에서는 지금처럼 가림 표면이 있으면 물러선다.
       const floats = nativeFloatAvailable();
       const covered = (floats ? document.querySelector('[aria-modal="true"]') !== null : nativeViewCovered(document) || captionOverlay || addressOverlayOpen) || held;
-      const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && (detached.surface !== null || bodyLive !== false) && rect.width >= 1 && rect.height >= 1;
+      // 분리 표면의 OS 최소화/숨김은 Desktop의 surface guard가 소유한다. Chromium 문서 hidden은
+      // 가림/Space에서도 남을 수 있으므로 유효한 열린 lease의 geometry를 중복으로 없애지 않는다.
+      const detachedLive = detached.surface !== null && state?.surface?.id === detached.surface.id
+        && state.surface.clientId === detached.clientId && state.surface.status === "opened";
+      const live = activeTab !== null && mode === "none" && (detachedLive || document.visibilityState === "visible")
+        && (detachedLive || bodyLive !== false) && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
-      const visible = shown ? visibleRect(host, rect) : null;
+      const visible = shown ? visibleRect(host, rect, detachedLive && document.visibilityState !== "visible") : null;
 
       if (visible) {
         wantsHideRef.current = false;
@@ -1108,7 +1123,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
   // 주소 제안도 같은 가림 경로에 합친다. 캡션의 단일 발행 상태를 덮어쓰지 않는다.
-  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, documentFor, detached.surface, detached.blocked, detached.clientId, state?.surface?.id]);
+  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, documentFor, detached.surface, detached.blocked, detached.clientId, state?.surface?.id, state?.surface?.clientId, state?.surface?.status]);
   // 셸이 표면을 자식 창에 띄울 수 있으면, 이 자리를 덮는 비모달 표면은 뷰를 물리지 않고 그 창에 그려진다.
   // 자리 재기와 따로 붙든다 — 재기 효과는 가림 신호마다 다시 걸리고, 그때마다 자식 창을 내렸다 올리면 깜빡인다.
   React.useEffect(() => detached.blocked ? undefined : retainNativeFloat(documentFor), [documentFor, detached.blocked]);

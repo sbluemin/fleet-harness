@@ -111,6 +111,14 @@ export function trafficLightPosition(zoomFactor: number, band: number = CONVERSA
 
 const SECURE_RENDERER_PREFERENCES = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } as const;
 
+/** main과 동반 Console 표면이 같은 native controls/제목막대 정책을 쓴다. */
+export function consoleWindowChrome(options: Pick<SecureWindowOptions, "platform" | "titleBarOverlay" | "chromeBand">): BaseWindowConstructorOptions {
+  return {
+    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1, options.chromeBand) } : {}),
+    ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: options.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
+  };
+}
+
 function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConstructorOptions {
   return {
     show: false,
@@ -120,8 +128,7 @@ function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConst
     minWidth: 900,
     minHeight: 560,
     // 두 플랫폼 모두 첫 기하는 Console 테마 스냅샷이 오면 그 값(chrome.band·titleBarOverlay)으로 바뀐다.
-    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1, options.chromeBand) } : {}),
-    ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: options.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
+    ...consoleWindowChrome(options),
   };
 }
 

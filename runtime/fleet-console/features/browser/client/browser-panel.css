@@ -261,7 +261,12 @@
 .op-browser-caption-slot, .op-browser-caption-content { display: contents; }
 .op-browser-body-slot, .op-browser-body-content { display: contents; }
 .browser-window-document { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--ink-deep); color: var(--text-primary); }
-#browser-window-caption { flex: none; min-width: 0; padding: var(--space-2); border-bottom: 1px solid var(--hairline); }
+#browser-window-caption { flex: none; box-sizing: border-box; min-width: 0; height: 52px; display: flex; align-items: center; padding: var(--space-2); border-bottom: 1px solid var(--hairline); }
+/* main Desktop과 같은 52px native controls 줄이다. 드래그는 빈 자리만, 탭·입력·메뉴는 no-drag다. */
+html[data-desktop-shell="true"] .browser-window-document #browser-window-caption { -webkit-app-region: drag; }
+html[data-desktop-shell="true"] .browser-window-document #browser-window-caption :is(button, a, input, select, textarea, [role="tab"], [role="button"], [role="menu"], [role="listbox"], [tabindex]) { -webkit-app-region: no-drag; }
+html[data-desktop-platform="darwin"] .browser-window-document #browser-window-caption { padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-2)); }
+html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
 #browser-window-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #browser-window-body .op-browser { flex: 1; }
 .op-browser__detached { display: flex; align-items: center; justify-content: center; height: 100%; font: inherit; color: var(--text-secondary); }
