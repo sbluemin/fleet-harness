@@ -292,8 +292,8 @@ export class DesktopEngine implements CdpClient {
       }
       case "Target.disposeBrowserContext": {
         const partition = String(params.browserContextId ?? "");
-        // 파티션은 Objective 마다 다르므로 여기서 떨어지는 뷰도 그 Objective 의 것뿐이다. 프로필을 공유하는
-        // 다른 Objective 의 뷰는 파티션이 달라 살아남고, 디스크의 프로필도 지워지지 않는다.
+        // 전역 브라우저 컨텍스트를 거두면 모든 스페이스의 뷰가 함께 닫힌다.
+        // 스페이스 하나를 닫을 때는 Target.closeTarget 만 쓰며, 디스크의 프로필도 지워지지 않는다.
         for (const view of [...this.views.values()]) if (view.partition === partition) this.dropView(view.id);
         this.contextProfiles.delete(partition);
         this.publish();
@@ -354,7 +354,7 @@ export class DesktopEngine implements CdpClient {
   private async createView(partition: string, url: string): Promise<string> {
     const id = `view-${crypto.randomUUID().slice(0, 8)}`;
     this.views.set(id, { id, objectiveId: "", partition, profile: this.contextProfiles.get(partition) ?? null, url, attached: false, active: false, size: null });
-    // Objective 은 컨텍스트 이름으로 안다 — 서비스가 컨텍스트를 Objective 마다 하나 만들기 때문이다.
+    // 서비스가 전역 브라우저 id 를 bindView 로 붙인다. 모든 스페이스는 같은 컨텍스트를 쓴다.
     const attached = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { this.attachWaiters.delete(id); reject(new CdpError("Target.createTarget", -32000, "desktop_view_attach_timeout")); this.dropView(id); this.publish(); }, ATTACH_TIMEOUT_MS);
       this.attachWaiters.set(id, { resolve, reject, timer });

@@ -146,8 +146,9 @@ export interface DesktopBrowserBounds { readonly x: number; readonly y: number; 
  */
 export interface DesktopBrowserView {
   readonly id: string;
+  /** 브라우저 id(현재 Console 전역 `global`). 필드 이름은 옛 Objective 단위와의 호환을 유지한다. */
   readonly objectiveId: string;
-  /** Electron 세션 파티션 — Objective 마다 다르며 앱 수명 동안만 산다. */
+  /** Electron 세션 파티션 — Console 전역 브라우저의 모든 스페이스가 공유하며 앱 수명 동안만 산다. */
   readonly partition: string;
   /**
    * 영속 브라우저 프로필의 id. `null` 이면 이 뷰는 위 `partition` 의 메모리 세션에 산다.

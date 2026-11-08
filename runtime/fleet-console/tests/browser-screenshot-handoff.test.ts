@@ -20,7 +20,7 @@ import type { DesktopEngine } from "../features/browser/host/desktop-engine.js";
  * BrowserService 가 CDP/셸 스텁 위에서 실제로 거절·동기화하는지.
  */
 
-const OBJECTIVE = "objective-screenshot";
+const OBJECTIVE = "global";
 const CAPTURE = Buffer.alloc(8_000, 0x7f);
 
 function screenshotResult(width = 1404, height = 1177) {
