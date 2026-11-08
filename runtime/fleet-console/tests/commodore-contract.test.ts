@@ -1575,12 +1575,12 @@ describe("commodore fleet-memory", () => {
     expect(h.events.flatMap((event) => (event.op === "memory" ? [event.change] : []))).toEqual(["save", "save", "delete", "verify", "delete"]);
   });
 
-  it("refuses an over-long taskforce_post with a code and hint the model receives", async () => {
+  it("refuses an over-long taskforce post with a code and hint the model receives", async () => {
     const h = harness(() => 1_000_000);
     const appended: unknown[] = [];
     const taskforce = { append(...args: unknown[]) { appended.push(args); throw new Error("must_not_append"); } };
     const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store, taskforce: taskforce as never }).map((tool) => [tool.name, tool]));
-    const result = await tools.taskforce_post!.execute({ taskforceId: "00000000-0000-4000-8000-000000000001", text: "x".repeat(2_001) }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    const result = await tools.taskforce!.execute({ action: "post", taskforceId: "00000000-0000-4000-8000-000000000001", text: "x".repeat(2_001) }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toMatchObject({ error: "taskforce_post_too_long", limit: 2_000, length: 2_001 });
     expect(result.structuredContent.hint).toEqual(expect.any(String));
@@ -1594,7 +1594,7 @@ describe("commodore fleet-memory", () => {
     const h = harness(() => now);
     const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
     const search = async (args: Record<string, unknown>) =>
-      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+      await tools.conversation!.execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
     const tick = () => { now += 1_000; };
 
     h.store.transcriptAppend("t1", { kind: "message", text: "사람이 Decorator 패턴을 물었다" }); tick();
@@ -1655,8 +1655,8 @@ describe("commodore fleet-memory", () => {
     expect((await search({ limit: 2, query: "Decorator", cursor: first.nextCursor })).structuredContent).toMatchObject({ error: "invalid_cursor" });
     // 조합 오류는 거절된다.
     expect((await search({ target: "own", taskforceId: "00000000-0000-4000-8000-000000000001" })).structuredContent).toMatchObject({ error: "invalid_request" });
-    expect((await search({ anchor: { source: "own", seq: 3 }, cursor: first.nextCursor })).structuredContent).toMatchObject({ error: "invalid_request" });
-    expect((await search({ before: 2 })).structuredContent).toMatchObject({ error: "invalid_request" });
+    expect((await search({ anchor: { source: "own", seq: 3 }, cursor: first.nextCursor })).structuredContent).toMatchObject({ error: "invalid_arguments" });
+    expect((await search({ before: 2 })).structuredContent).toMatchObject({ error: "invalid_arguments" });
     // TF 호스트가 없으면 TF 지정 검색은 거절, all은 본인만 보고 표시한다.
     expect((await search({ target: "taskforce", taskforceId: "00000000-0000-4000-8000-000000000001" })).structuredContent).toMatchObject({ error: "taskforce_unavailable" });
     // TF 호스트가 닫혀도(실험 OFF) all은 본인 결과를 살린다.
@@ -1668,7 +1668,7 @@ describe("commodore fleet-memory", () => {
     };
     const gated = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store, taskforce: gate }).map((tool) => [tool.name, tool]));
     const gatedSearch = async (args: Record<string, unknown>) =>
-      await gated.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+      await gated.conversation!.execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
     const kept = (await gatedSearch({ query: "Decorator" })).structuredContent;
     expect(kept.results.map((item: { kind: string }) => item.kind)).toEqual(["text", "message"]);
     expect(kept.partial).toBe(true);
@@ -1711,7 +1711,7 @@ describe("commodore fleet-memory", () => {
     const h = harness();
     const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
     const search = async (args: Record<string, unknown>) =>
-      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+      await tools.conversation!.execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
     h.store.setDescription("t1", "Real description");
     h.store.transcriptAppend("t1", { kind: "text", text: "안에 있는 말" });
     const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-outside-"));
@@ -1751,7 +1751,7 @@ describe("commodore fleet-memory", () => {
     const h = harness();
     const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
     const search = async (args: Record<string, unknown>) =>
-      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+      await tools.conversation!.execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
     for (let i = 0; i < 2001; i += 1) h.store.transcriptAppend("t1", { kind: "text", text: i === 0 ? "OLD_RETAINED_NEEDLE" : "ordinary" });
     const first = (await search({ target: "own", query: "OLD_RETAINED_NEEDLE" })).structuredContent as {
       results: { seq: number }[]; hasMore: boolean; partial: boolean; nextScan?: string;
@@ -1774,7 +1774,7 @@ describe("commodore fleet-memory", () => {
     const h = harness();
     const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store }).map((tool) => [tool.name, tool]));
     const search = async (args: Record<string, unknown>) =>
-      await tools.memory_search!.execute(args, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+      await tools.conversation!.execute({ action: "anchor" in args ? "around" : "search", ...args }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
     for (let i = 0; i < 2100; i += 1) h.store.transcriptAppend("t1", { kind: "text", text: i < 100 ? "OLD_MATCH" : "ordinary" });
     const first = (await search({ target: "own", query: "OLD_MATCH" })).structuredContent as {
       results: unknown[]; hasMore: boolean; partial: boolean; nextScan?: string;
@@ -1875,7 +1875,7 @@ describe("commodore session", () => {
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();
     expect(options.systemPrompt).not.toContain("project skills of the Theaters you had");
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["fleet-commodore", ["description", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "memory_search", "issue_list", "taskforce_post", "console_objectives", "console_objectives_detail"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["fleet-commodore", ["description", "intel", "memory", "conversation", "ask", "routines", "taskforce", "console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] description changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]\n\nCurrent alias: none\. You have no alias for this turn\.$/);
     expect(stub.sent[0]).not.toContain("newest");
@@ -1901,44 +1901,44 @@ describe("commodore session", () => {
     // 사령관 전용 도구 — 지시·정보는 저장소에서.
     const tools = Object.fromEntries(options.tools!.custom![0]!.tools.map((tool) => [tool.name, tool]));
     const call = async (name: string, args: Record<string, unknown>) => await tools[name]!.execute(args, { cwd: theaterRoot }) as { isError: boolean; structuredContent: Record<string, unknown> };
-    expect((await call("description", {})).structuredContent).toMatchObject({ text: "Fix remote first.", rev: 1 });
-    const intel = (await call("intel", {})).structuredContent as { items: { text: string }[]; sources: { kind: string }[] };
+    expect((await call("description", { action: "read" })).structuredContent).toMatchObject({ text: "Fix remote first.", rev: 1 });
+    const intel = (await call("intel", { action: "read" })).structuredContent as { items: { text: string }[]; sources: { kind: string }[] };
     expect(intel.items.map((item) => item.text)).toEqual(["newest", "older"]);
     expect(intel.sources).toEqual([]);
-    expect(((await call("intel", { since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([]);
+    expect(((await call("intel", { action: "read", since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([]);
     // 이미 본 항목이 그 뒤에 고쳐지면 since 로도 보인다 — id 와 자리는 그대로, editedAt 이 붙는다.
     const olderId = h.store.read("t1")!.intel[1]!.id;
     h.store.editIntel("t1", olderId, "older, corrected");
-    expect(((await call("intel", { since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([{ id: olderId, at: expect.any(String), editedAt: expect.any(String), source: "person", text: "older, corrected" }]);
-    const routine = (await call("routine_add", { name: "Check merge", task: "Read the review", schedule: { kind: "every", minutes: 60 } })).structuredContent;
+    expect(((await call("intel", { action: "read", since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([{ id: olderId, at: expect.any(String), editedAt: expect.any(String), source: "person", text: "older, corrected" }]);
+    const routine = (await call("routines", { action: "add", name: "Check merge", task: "Read the review", schedule: { kind: "every", minutes: 60 } })).structuredContent;
     expect(routine).toMatchObject({ enabled: true, name: "Check merge" });
     const routineId = routine.id as string;
     h.setAuthorized(false);
     expect((await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId, enabled: false })).status).toBe(401);
     h.setAuthorized(true);
     expect((await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId, enabled: false })).status).toBe(200);
-    expect((await call("routine_update", { routineId, enabled: true })).structuredContent).toMatchObject({ error: "routine_paused_by_person" });
-    await call("routine_update", { routineId, task: "Read the corrected review" });
+    expect((await call("routines", { action: "update", routineId, enabled: true })).structuredContent).toMatchObject({ error: "routine_paused_by_person" });
+    await call("routines", { action: "update", routineId, task: "Read the corrected review" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => {} }).read("t1")?.routines).toMatchObject([{ enabled: false, pausedBy: "person" }]);
     await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId, enabled: true });
-    expect((await call("routine_update", { routineId, enabled: false })).isError).toBe(false);
-    expect((await call("routine_update", { routineId, enabled: true })).isError).toBe(false);
-    expect((await call("routine_add", { name: "Check merge", task: "Duplicate", schedule: { kind: "every", minutes: 60 } })).structuredContent).toMatchObject({ error: "routine_name_taken" });
-    expect((await call("routines", {})).structuredContent).toMatchObject({ routines: [{ id: routineId, nextRunAt: expect.any(Number) }] });
-    expect((await call("routine_remove", { routineId, reason: "Finished" })).isError).toBe(false);
+    expect((await call("routines", { action: "update", routineId, enabled: false })).isError).toBe(false);
+    expect((await call("routines", { action: "update", routineId, enabled: true })).isError).toBe(false);
+    expect((await call("routines", { action: "add", name: "Check merge", task: "Duplicate", schedule: { kind: "every", minutes: 60 } })).structuredContent).toMatchObject({ error: "routine_name_taken" });
+    expect((await call("routines", { action: "list" })).structuredContent).toMatchObject({ routines: [{ id: routineId, nextRunAt: expect.any(Number) }] });
+    expect((await call("routines", { action: "remove", routineId, reason: "Finished" })).isError).toBe(false);
     expect(h.store.read("t1")?.routines).toEqual([]);
     // 정보 출처 쓰기 경로가 없다 — 읽기는 빈 목록을 돌려준다.
-    expect((await call("intel", {})).structuredContent).toMatchObject({ sources: [] });
+    expect((await call("intel", { action: "read" })).structuredContent).toMatchObject({ sources: [] });
 
     // fleet-memory — 사령관 도구로만 쓰고, 다음 깨움부터 인덱스가 턴에 실린다. 출처는 이 Theater 보드의 목표만 받는다.
-    expect((await call("memory_save", { branch: "lessons", topic: "Console E2E", slug: "offline-keeps-sse", title: "Offline keeps SSE", description: "CDP offline leaves an open EventSource alive.", why: "A reconnect repro stayed connected.", how: "Fire onerror on a hooked EventSource.", sourceObjectiveIds: ["elsewhere"] })).structuredContent).toMatchObject({ error: "unknown_objective" });
-    expect((await call("memory_save", { branch: "lessons", topic: "Console E2E", slug: "offline-keeps-sse", title: "Offline keeps SSE", description: "CDP offline leaves an open EventSource alive.", why: "A reconnect repro stayed connected.", how: "Fire onerror on a hooked EventSource." })).structuredContent).toMatchObject({ ref: "lessons/Console E2E/offline-keeps-sse" });
-    expect((await call("memory_view", {})).structuredContent).toMatchObject({ entries: [{ ref: "lessons/Console E2E/offline-keeps-sse" }] });
+    expect((await call("memory", { action: "save", branch: "lessons", topic: "Console E2E", slug: "offline-keeps-sse", title: "Offline keeps SSE", description: "CDP offline leaves an open EventSource alive.", why: "A reconnect repro stayed connected.", how: "Fire onerror on a hooked EventSource.", sourceObjectiveIds: ["elsewhere"] })).structuredContent).toMatchObject({ error: "unknown_objective" });
+    expect((await call("memory", { action: "save", branch: "lessons", topic: "Console E2E", slug: "offline-keeps-sse", title: "Offline keeps SSE", description: "CDP offline leaves an open EventSource alive.", why: "A reconnect repro stayed connected.", how: "Fire onerror on a hooked EventSource." })).structuredContent).toMatchObject({ ref: "lessons/Console E2E/offline-keeps-sse" });
+    expect((await call("memory", { action: "view" })).structuredContent).toMatchObject({ entries: [{ ref: "lessons/Console E2E/offline-keeps-sse" }] });
 
     // 턴 오류는 결말로 돌아오고 기록에 남는다; 폐기는 세션을 닫는다.
     stub.setScript(async () => { throw new Error("rate limit exceeded (429)"); });
     expect(await session.turn({ reasons: ["routine"] })).toMatchObject({ outcome: "error", error: "rate_limited" });
-    expect(stub.sent[1]).toContain("Your fleet-memory index (read an entry with memory_view):");
+    expect(stub.sent[1]).toContain("Your fleet-memory index (read an entry with memory view):");
     expect(stub.sent[1]).toContain("CDP offline leaves an open EventSource alive.");
     expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "error", error: "rate_limited" });
     // 최종 응답의 OpenUI 진단은 다음 모델 입력에 한 번만 싣고, 공개 기록·미리보기에는 남기지 않는다.
@@ -2403,12 +2403,12 @@ describe("commodore supervisor", () => {
       restored.transcriptAppend("t1", { kind: "message", text: "Archive completed objectives every half hour." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       expect(turn!.hasPersonMessage()).toBe(true);
-      const archiver = await call("routine_add", { name: "Archive done", task: "Archive completed objectives", schedule: { kind: "every", minutes: 30 } });
+      const archiver = await call("routines", { action: "add", name: "Archive done", task: "Archive completed objectives", schedule: { kind: "every", minutes: 30 } });
       expect(archiver).not.toHaveProperty("requestedBy");
       finishTurn!();
       await vi.advanceTimersByTimeAsync(10 * 60_000);
       expect(turn!.hasPersonMessage()).toBe(false);
-      expect(await call("routine_add", { name: "Tidy alone", task: "Archive completed objectives", schedule: { kind: "every", minutes: 30 } })).not.toHaveProperty("requestedBy");
+      expect(await call("routines", { action: "add", name: "Tidy alone", task: "Archive completed objectives", schedule: { kind: "every", minutes: 30 } })).not.toHaveProperty("requestedBy");
       await vi.advanceTimersByTimeAsync(20 * 60_000 + COALESCE_MS + 1);
       expect(sent.at(-1)).toContain("Archive done: Archive completed objectives");
       expect(sent.at(-1)).not.toContain("Tidy alone");
@@ -2421,11 +2421,11 @@ describe("commodore supervisor", () => {
       finishTurn!();
       await vi.advanceTimersByTimeAsync(1);
       // 사람 메시지가 실린 턴의 수정도 출처를 남기지 않는다.
-      await call("routine_update", { routineId: archiver.id, task: "Archive and remove completed objectives" });
+      await call("routines", { action: "update", routineId: archiver.id, task: "Archive and remove completed objectives" });
       expect(restored.read("t1")?.routines?.find((routine) => routine.id === archiver.id)).not.toHaveProperty("requestedBy");
       restored.transcriptAppend("t1", { kind: "message", text: "Yes, keep archiving them." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      await call("routine_update", { routineId: archiver.id });
+      await call("routines", { action: "update", routineId: archiver.id });
       expect(restored.read("t1")?.routines?.find((routine) => routine.id === archiver.id)).not.toHaveProperty("requestedBy");
       holdTurn = false;
       finishTurn!();
@@ -3127,7 +3127,7 @@ describe("commodore supervisor", () => {
       // 끝난 질문은 다른 답으로 덮이지 않고 거둘 수도 없다.
       const commodoreTool = (name: string) => sessions[1]!.options.tools!.custom!.find((group) => group.name === "fleet-commodore")!.tools.find((tool) => tool.name === name)!;
       const useTool = async (name: string, args: Record<string, unknown>) => ((await commodoreTool(name).execute(args, { cwd: theaterRoot })) as { structuredContent: Record<string, unknown> }).structuredContent;
-      const asked = await useTool("ask_person", { questions: [{ header: "Candidates", text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
+      const asked = await useTool("ask", { action: "ask", questions: [{ header: "Candidates", text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "ask", askId: asked.askId, questions: [{ options: ["Open both", "Only the first"] }] });
       const ask = h.store.read("t1")!.asks!.find((entry) => entry.id === asked.askId)!;
       const answer = (optionIndex: number) => h.route("commodore/ask/answer", { commodoreId: "t1", askId: ask.id, answers: [{ questionId: ask.questions[0]!.id, selectedOptionIds: [ask.questions[0]!.options[optionIndex]!.id], text: "" }] });
@@ -3135,10 +3135,10 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["answered:1"]);
       expect(sessions[1]!.sent.at(-1)).toContain('the person answered 1 item you handed or asked them: your question "Open these candidates as objectives?"');
-      expect(await useTool("asks", {})).toMatchObject({ open: 0, asks: [{ askId: ask.id, state: "answered", answers: [{ question: "Open these candidates as objectives?", selected: ["Only the first"] }] }] });
+      expect(await useTool("ask", { action: "list" })).toMatchObject({ open: 0, asks: [{ askId: ask.id, state: "answered", answers: [{ question: "Open these candidates as objectives?", selected: ["Only the first"] }] }] });
       expect((await answer(0)).value).toMatchObject({ error: "ask_already_answered" });
       expect((await answer(1)).value).toMatchObject({ repeated: true });
-      expect(await useTool("withdraw_ask", { askId: ask.id })).toMatchObject({ error: "ask_already_answered" });
+      expect(await useTool("ask", { action: "withdraw", askId: ask.id })).toMatchObject({ error: "ask_already_answered" });
       expect(h.store.read("t1")!.asks!.find((entry) => entry.id === ask.id)!.settled).toMatchObject({ outcome: "answered", answers: [{ selectedOptionIds: [ask.questions[0]!.options[1]!.id] }] });
 
       // Console 종료는 진행 턴을 거두고 읽지 못한 메시지를 보존한다.

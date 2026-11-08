@@ -61,12 +61,11 @@ it("does not apply a description until the person approves, and a new proposal r
   const tools = Object.fromEntries(createCommodoreTools({
     commodoreId: "a", theaterRoot: root, store, proposals: opened.binding.forCommodore("a"),
   }).map((tool) => [tool.name, tool]));
-  expect(tools.propose_description).toBeDefined();
-  expect(tools.withdraw_description).toBeDefined();
-  expect(tools.description_proposals).toBeDefined();
+  expect(tools.description).toBeDefined();
+  expect(Object.keys(tools)).not.toContain("propose_description");
   expect(Object.keys(tools).some((name) => name.includes("answer") || name.includes("approve"))).toBe(false);
 
-  const propose = async (text: string) => ((await tools.propose_description!.execute({ targetId: "b", text }, { cwd: root })) as { structuredContent: { id: string; status: string } }).structuredContent;
+  const propose = async (text: string) => ((await tools.description!.execute({ action: "propose", targetId: "b", text }, { cwd: root })) as { structuredContent: { id: string; status: string } }).structuredContent;
   const first = await propose("Ship the smaller fix.");
   expect(store.read("b")?.description).toMatchObject({ text: "", rev: 0 });
   const second = opened.binding.forCommodore("c").propose("b", "Ship the larger fix.");
@@ -74,7 +73,7 @@ it("does not apply a description until the person approves, and a new proposal r
   expect(opened.binding.forCommodore("a").list()).toEqual([]);
   expect(second.payload).toMatchObject({ replaced: true });
   expect(opened.binding.forCommodore("c").list().map((request) => request.id)).toEqual([second.id]);
-  const refused = await tools.withdraw_description!.execute({ id: second.id }, { cwd: root }) as { isError: boolean; structuredContent: { error?: string } };
+  const refused = await tools.description!.execute({ action: "withdraw", id: second.id }, { cwd: root }) as { isError: boolean; structuredContent: { error?: string } };
   expect(refused.isError).toBe(true);
   expect(refused.structuredContent.error).toBe("not_proposer");
   expect(opened.binding.forCommodore("c").list().map((request) => request.id)).toEqual([second.id]);
@@ -93,7 +92,7 @@ it("does not apply a description until the person approves, and a new proposal r
 
   const own = await propose("A later wording.");
   expect(store.read("b")?.description.text).toBe("Ship the larger fix.");
-  const withdrawn = await tools.withdraw_description!.execute({ id: own.id }, { cwd: root }) as { isError: boolean; structuredContent: { status?: string; reason?: string } };
+  const withdrawn = await tools.description!.execute({ action: "withdraw", id: own.id }, { cwd: root }) as { isError: boolean; structuredContent: { status?: string; reason?: string } };
   expect(withdrawn.isError).toBe(false);
   expect(withdrawn.structuredContent).toMatchObject({ status: "withdrawn", reason: "proposer" });
   expect(store.read("b")?.description.text).toBe("Ship the larger fix.");
