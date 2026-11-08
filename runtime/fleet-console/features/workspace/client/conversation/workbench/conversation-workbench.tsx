@@ -20,7 +20,7 @@ import type { RailEntryBinding } from "../../../../../core/client/src/chrome/pan
 import type { RailToolContext } from "../../../../../core/client/src/chrome/rail/right-rail.js";
 import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
-import { BrowserNavHostContext, BrowserNavTailContext } from "../../../../browser/client/browser-panel-store.js";
+import { BrowserNavHostContext } from "../../../../browser/client/browser-panel-store.js";
 import { resolveSessionBrowserTarget, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
 import { announceNativeViewResize, getNativeViewResize, useHoldNativeViewsWhile } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
@@ -100,14 +100,12 @@ interface BrowserSettled {
   readonly id: string | null;
   readonly entry: TileGeometry | null;
   readonly rect: Rect | null;
-  readonly expanded: boolean;
 }
 
 interface BrowserLeaving {
   readonly key: string;
   readonly entry: TileGeometry;
   readonly rect: Rect;
-  readonly expanded: boolean;
 }
 
 function motionAllowed(): boolean {
@@ -171,7 +169,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
   const ghost: BrowserLeaving | null = browserEntry !== null ? null
     : leaving !== null && leaving.key === workbenchKey ? leaving
       : sameConversation && settled.entry !== null && settled.rect !== null && motionAllowed()
-        ? { key: workbenchKey, entry: settled.entry, rect: settled.rect, expanded: settled.expanded } : null;
+        ? { key: workbenchKey, entry: settled.entry, rect: settled.rect } : null;
 
   // 끌기(경계)와 닫기 확인, 브라우저가 열리고 닫히는 동안 네이티브 브라우저 뷰를 정지 화면 뒤로 물린다 — 뷰는 페이지 위를 덮어 포인터를 가린다.
   // 경계를 끄는 동안은 좌·우 사이드바와 같은 하나의 길로 물러난다. 아래 `holdViews` 는 칸 자신의 닫기 확인과 열림·닫힘 전환만 맡는다.
@@ -201,9 +199,10 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
     return () => window.removeEventListener("keydown", onKey);
   }, [expandedId]);
 
-  const browserRect = browserEntry === null ? null : expandedId === browserEntry.tile.id && geometry.expanded !== null ? geometry.expanded : browserEntry.rect;
+  // 브라우저 칸은 펼치지 않는다 — 크기는 경계 바로 조절한다. 칸의 자리는 늘 분할 안의 자기 자리다.
+  const browserRect = browserEntry === null ? null : browserEntry.rect;
   useLayoutEffect(() => {
-    settledRef.current = { key: workbenchKey, id: browserEntry?.tile.id ?? null, entry: browserEntry, rect: browserRect, expanded: browserEntry !== null && expandedId === browserEntry.tile.id };
+    settledRef.current = { key: workbenchKey, id: browserEntry?.tile.id ?? null, entry: browserEntry, rect: browserRect };
   });
   // 그린 판정을 상태로 붙든다 — 다음 그림부터는 settledRef 가 지금 칸을 가리킨다.
   useLayoutEffect(() => {
@@ -281,7 +280,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
           motion: entry.tile.id === revealId ? "enter" as const : null,
         })),
         // 떠나는 브라우저 칸 — 같은 key 로 남아 패널이 다시 서지 않고, 접히는 동안만 그려진다.
-        ...(ghost === null ? [] : [{ entry: ghost.entry, rect: ghost.rect, hidden: false, expanded: ghost.expanded, motion: "leave" as const }]),
+        ...(ghost === null ? [] : [{ entry: ghost.entry, rect: ghost.rect, hidden: false, expanded: false, motion: "leave" as const }]),
       ].map(({ entry, rect, hidden, expanded, motion }) => {
         return (
           <WorkbenchTileView
@@ -515,10 +514,10 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
   const t = useT();
   const tile = entry.tile;
   // 브라우저는 따로 떠 있는 패널이 아니라 대화와 같은 면이다 — 머리 없이 맨 위 줄 밑에서 작업 영역 끝까지 채운다. 맨 위 줄은 탭 영역이
-  // 아니며, 펼치기는 주소줄 끝(BrowserNavTailContext)에 선다. 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
+  // 아니다. 펼치기는 없다(크기는 경계 바로 조절한다). 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
   // 브라우저 칸이 남아 있을 때)에서는 다른 칸과 같은 틀이다 — 닫기 단추가 그 칸을 닫는 길이다.
   const seamless = tile.kind === "browser" && geometry.mode !== "sheet" && isDesktopShell();
-  const frameRect = seamless ? seamlessRect(entry, rect, geometry, expanded) : rect;
+  const frameRect = seamless ? seamlessRect(entry, rect, geometry) : rect;
   // 머리 없는 브라우저 칸의 주소줄은 맨 위 줄의 브라우저 영역으로 올라간다 — 영역의 왼쪽 끝은 칸의 원래 왼쪽(분할 x)이라 펼쳐도 움직이지 않는다.
   const navSlot = useBrowserNavSlot();
   const [navHost, setNavHost] = useState<HTMLElement | null>(null);
@@ -527,7 +526,8 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
   const navStanding = navHostValue !== undefined && navHostValue !== null;
   useLayoutEffect(() => (navStanding ? retainBrowserNav() : undefined), [navStanding]);
   const expandLabel = expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand");
-  const expandButton = (
+  // 브라우저 칸은 펼치지 않는다 — 시트·웹 화면의 머리에도 펼치기 단추를 두지 않는다.
+  const expandButton = tile.kind === "browser" ? null : (
     <button
       type="button"
       className="workbench-tile-button"
@@ -598,11 +598,8 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
         </div>
       ) : null}
       <div className="workbench-tile-body" ref={parts.bodyRef}>
-        {/* 머리 없는 브라우저 칸의 펼치기는 머리가 없으므로 주소줄 끝(도구모음 옆)에 선다 — 본문이 그 자리를 그린다. 주소줄 줄도 본문이 그리되,
-            자리는 맨 위 줄이다(BrowserNavHostContext). */}
-        {seamless
-          ? <BrowserNavHostContext.Provider value={navHostValue}><BrowserNavTailContext.Provider value={expandButton}>{parts.body}</BrowserNavTailContext.Provider></BrowserNavHostContext.Provider>
-          : parts.body}
+        {/* 머리 없는 브라우저 칸의 주소줄 줄은 본문이 그리되, 자리는 맨 위 줄이다(BrowserNavHostContext). */}
+        {seamless ? <BrowserNavHostContext.Provider value={navHostValue}>{parts.body}</BrowserNavHostContext.Provider> : parts.body}
       </div>
     </section>
   );
@@ -625,8 +622,7 @@ function BrowserBandClose({ tileId, title }: { readonly tileId: string; readonly
 }
 
 /** 머리 없는 브라우저 칸의 자리 — 맨 위 줄 밑에서 시작해 작업 영역 오른쪽 끝까지, 아래에 다른 칸이 없으면 바닥까지 채운다. */
-function seamlessRect(entry: TileGeometry, rect: Rect, geometry: WorkbenchGeometry, expanded: boolean): Rect {
-  if (expanded) return { x: 0, y: 0, w: geometry.width, h: geometry.height };
+function seamlessRect(entry: TileGeometry, rect: Rect, geometry: WorkbenchGeometry): Rect {
   const below = geometry.tiles.some((other) => other.area === entry.area && other.column === entry.column && other.index > entry.index);
   return { x: rect.x, y: 0, w: Math.max(0, geometry.width - rect.x), h: below ? rect.y + rect.h : geometry.height };
 }

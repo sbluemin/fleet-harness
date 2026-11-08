@@ -129,6 +129,12 @@ it("carries the docked browser's open or closed state across conversations", asy
   expect(workbench.isWorkbenchBrowserShown()).toBe(true);
 });
 
+// 브라우저 칸은 펼치지 않는다 — 예전에 저장된 펼침이 브라우저 칸을 가리켜도 펼친 채로 남지 않고, 다른 칸의 펼침은 그대로 읽힌다.
+it("reads a saved expansion of the browser tile as not expanded", () => {
+  expect(sanitizeWorkbenchLayout({ ...stored, expandedTileId: "browser" })?.expandedTileId).toBeNull();
+  expect(sanitizeWorkbenchLayout({ ...stored, expandedTileId: "objectives" })?.expandedTileId).toBe("objectives");
+});
+
 // 퇴역 진입점·표면(#2343 Files·Repository·Shell, #2035 Skills, 관측된 "files")은
 // 저장된 배치에서 걷어낸다 — 남은 칸이 빈 패널 안내로 그려지지 않게 저장 무결성을 지킨다.
 it("drops retired entry and surface tiles from saved layouts", () => {

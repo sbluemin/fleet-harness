@@ -552,7 +552,9 @@ export function setWorkbenchExpanded(tileId: string | null): void {
   if (tileId !== null) tileId = resolvedTileId(tileId);
   const layout = getWorkbenchLayout();
   if (layout.expandedTileId === tileId) return;
-  if (tileId !== null && findWorkbenchTile(layout, tileId) === null) return;
+  const found = tileId === null ? null : findWorkbenchTile(layout, tileId);
+  // 브라우저 칸은 펼치지 않는다 — 크기는 경계 바로 조절한다.
+  if (tileId !== null && (found === null || found.tile.kind === "browser")) return;
   commit({ ...layout, expandedTileId: tileId });
 }
 

@@ -159,14 +159,6 @@ export function useBrowserCaptionOverlay(objectiveId: string): boolean {
   return React.useSyncExternalStore(subscribe, () => (captionOverlays.get(objectiveId)?.size ?? 0) > 0, () => false);
 }
 
-// ---------- 주소줄 끝에 놓이는 칸의 동작 ----------
-
-/**
- * 머리 없는 브라우저 칸을 그리는 작업대가 주소줄 끝에 이어 붙일 동작(펼치기)을 내려 준다 — 도구모음(세션·뷰포트)과 한 묶음으로 선다.
- * 머리가 있는 칸에서는 그 동작이 머리에 있으므로 비어 있다.
- */
-export const BrowserNavTailContext = React.createContext<React.ReactNode>(null);
-
 /**
  * 주소줄 줄을 어디에 그릴지 — 작업대가 머리 없는 브라우저 칸을 그릴 때 내려 준다. `undefined`(기본)는 칸 안(본문 맨 위)이고, 요소는 맨 위 줄의
  * 브라우저 영역에 portal 할 자리, `null` 은 그 자리가 아직 없거나 칸이 숨어 있어 그리지 않는다는 뜻이다. 칸 안과 맨 위 줄에 동시에 서지 않는다.

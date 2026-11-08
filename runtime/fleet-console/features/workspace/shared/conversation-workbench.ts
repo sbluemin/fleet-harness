@@ -184,7 +184,9 @@ export function sanitizeWorkbenchLayout(value: unknown): WorkbenchLayout | null 
     columnWeights.push(sanitizeWeight(rawColumnWeights[index]));
   });
   const below = sanitizeStack(value.below, WORKBENCH_MAX_BELOW, seen);
-  const expanded = typeof value.expandedTileId === "string" && seen.has(value.expandedTileId) ? value.expandedTileId : null;
+  // 브라우저 칸은 펼치지 않는다 — 예전에 저장된 펼침이 브라우저 칸을 가리키면 펼치지 않은 것으로 읽는다.
+  const expandable = [...columns.flatMap((column) => column.tiles), ...below.tiles].find((tile) => tile.id === value.expandedTileId && tile.kind !== "browser");
+  const expanded = expandable?.id ?? null;
   return {
     columns,
     columnWeights,
