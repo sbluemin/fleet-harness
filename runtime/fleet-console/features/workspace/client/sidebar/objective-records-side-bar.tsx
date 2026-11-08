@@ -50,13 +50,10 @@ import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal
 import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { useConversationSurface } from "../conversation/conversation-surface-store.js";
 import { CommodoreCommanderList } from "../commander-tab/commander-list.js";
-import { useCommanderRows } from "../commander-tab/commander-rows.js";
-import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
 import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
-import { commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
+import { useClusterIndex } from "../objective-clusters.js";
 import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded, useCommanderShowSettled } from "./commander-expansion.js";
 import { CommodoreHoverDock } from "./commodore-hover-dock.js";
-import type { SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
@@ -186,8 +183,6 @@ export function ObjectiveRecordsSideBar({
   const orderedTheaterIdsRef = useRef<string[]>([]);
   const contextMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
-  // 좁은 창 얼굴 열의 「지휘관 n」 팝오버 — 같은 카드 목록을 얼굴 열 옆에 띄운다. 저장값을 바꾸지 않는다.
-  const [commanderPopover, setCommanderPopover] = useState<{ readonly commodoreId: string; readonly anchor: DOMRect } | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserCommodoreId, setBrowserCommodoreId] = useState<string | null>(null);
   const [addFailure, setAddFailure] = useState<string | null>(null);
@@ -530,7 +525,7 @@ export function ObjectiveRecordsSideBar({
           const waitingCount = countAwaitingObjectiveRecords(commanderRecords, objectiveRecordRuntime);
           // 사령관 섹션의 지휘관 목록 펼침 — 펼침 묶음은 사령관을 옮길 때 정해진다. 접힌 섹션은 마운트하지 않는다.
           const sectionExpanded = expandedCommanders.has(theater.id);
-          // 가운데 채팅이 가리키는 지휘관 — 왼쪽 목록·좁은 창 팝오버가 같은 선택을 말한다.
+          // 가운데 채팅이 가리키는 지휘관 — 왼쪽 목록이 이 선택을 말한다.
           const selectedCommanderId =
             typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === theater.id
               ? surface.params.objectiveId
@@ -550,8 +545,8 @@ export function ObjectiveRecordsSideBar({
                 theater={theater}
                 active={theater.id === owningCommodoreId}
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
-                // ⋯ 호버 독은 사령관 행에 단다.
-                dock
+                // ⋯ 호버 독은 사령관 행에 달되, 아바타만 서는 좁은 열에는 두지 않는다.
+                dock={!compact}
                 onReselect={() => reselectActiveCommodore(theater.id)}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
@@ -574,13 +569,6 @@ export function ObjectiveRecordsSideBar({
                     selectedId={selectedCommanderId}
                   />
                 </div>
-              ) : null}
-              {compact && theater.id === owningCommodoreId ? (
-                <CompactCommanderCount
-                  commodoreId={theater.id}
-                  selectedId={selectedCommanderId}
-                  onOpen={(anchor) => setCommanderPopover({ commodoreId: theater.id, anchor })}
-                />
               ) : null}
             </li>
           );
@@ -613,19 +601,6 @@ export function ObjectiveRecordsSideBar({
         ) : null}
       </ol>
       </div>
-
-      {compact && commanderPopover !== null ? (
-        <CommanderCompactPopover
-          commodoreId={commanderPopover.commodoreId}
-          selectedId={
-            typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === commanderPopover.commodoreId
-              ? surface.params.objectiveId
-              : objectiveOwner === commanderPopover.commodoreId ? activeObjectiveId : null
-          }
-          anchor={commanderPopover.anchor}
-          onClose={() => setCommanderPopover(null)}
-        />
-      ) : null}
 
       {compact ? <ConsoleSectionSlot compact /> : null}
       {bottomAccessory}
@@ -1007,74 +982,6 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
             </button>
           </>
         ) : null}
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-/**
- * 좁은 창 얼굴 열의 「지휘관 n」 단추 — 활성 사령관 얼굴 아래에 서고, 누르면 같은 카드 목록을 팝오버로 연다.
- * 저장값은 그대로 두고, 고르면 가운데에서 채팅을 연다. 지휘관이 없으면 단추를 두지 않는다.
- */
-function CompactCommanderCount({ commodoreId, selectedId, onOpen }: {
-  readonly commodoreId: string;
-  readonly selectedId: string | null;
-  readonly onOpen: (anchor: DOMRect) => void;
-}) {
-  const t = useT();
-  const { sorted } = useCommanderRows(commodoreId, selectedId);
-  if (sorted.length === 0) return null;
-  return (
-    <button
-      type="button"
-      className="commander-compact-count"
-      aria-haspopup="dialog"
-      aria-label={t("commanderTab.count", { count: sorted.length })}
-      onClick={(event) => onOpen(event.currentTarget.getBoundingClientRect())}
-    >
-      {t("commanderTab.count", { count: sorted.length })}
-    </button>
-  );
-}
-
-function CommanderCompactPopover({ commodoreId, selectedId, anchor, onClose }: {
-  readonly commodoreId: string;
-  readonly selectedId: string | null;
-  readonly anchor: DOMRect;
-  readonly onClose: () => void;
-}) {
-  const t = useT();
-  const showSettled = useCommanderShowSettled();
-  const [position] = useState(() => ({
-    left: Math.max(8, Math.min(anchor.right + 8, window.innerWidth - 296)),
-    top: Math.max(8, Math.min(anchor.top, window.innerHeight - 200)),
-  }));
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-  const select = (item: SideBarRowItem) => {
-    const objectiveId = commanderObjectiveId(item.layout.cluster);
-    if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
-    else item.layout.cluster.open?.();
-    onClose();
-  };
-  return createPortal(
-    <div className="group-context-menu-overlay" data-native-browser-transparent role="presentation" onPointerDown={onClose}>
-      <div
-        className="commander-compact-popover"
-        role="dialog"
-        aria-label={t("commanderTab.aria")}
-        style={{ left: position.left, top: position.top }}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <CommodoreCommanderList sortNameOnly hideSettled={!showSettled} commodoreId={commodoreId} selectedId={selectedId} onSelect={select} />
       </div>
     </div>,
     document.body,
