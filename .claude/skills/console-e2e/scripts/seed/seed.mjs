@@ -4,15 +4,17 @@
  *
  *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives
  *        [--commodores N] [--theaters M] [--objectives K]
- *        [--root <dir for theater folders>]          default: <dir>/../seed-theaters (created)
+ *        [--root <dir for theater folders>]          default: <os tmpdir>/seed-theaters/<slot hash> (outside every repository)
  *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives: the fake agent adds the objectives
  *
  * Prints one JSON object (the ids) on stdout and writes it to <dir>/seed-ids.json; progress goes to stderr.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { PROFILES } from "./fixtures.mjs";
-import { assemble, openConsole, parseArgs, until, writeIds } from "./lib.mjs";
+import { assemble, assertFreshSlot, openConsole, parseArgs, until, writeIds } from "./lib.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 const fail = (message) => { console.error(`seed: ${message}`); process.exit(1); };
@@ -28,9 +30,10 @@ const fakeDir = args.get("fake-claude-dir");
 if (spec.objectives > 0 && typeof fakeDir !== "string") fail("objectives needs --fake-claude-dir (the fake agent creates them through the Commodore tool)");
 
 try {
+  assertFreshSlot(dir); // before the first commodore exists, so a refused run leaves no half-seeded state
   const { api } = openConsole(dir);
   const make = assemble(api);
-  const root = typeof args.get("root") === "string" ? args.get("root") : path.join(path.dirname(path.resolve(dir)), "seed-theaters");
+  const root = typeof args.get("root") === "string" ? args.get("root") : path.join(os.tmpdir(), "seed-theaters", createHash("sha256").update(path.resolve(dir)).digest("hex").slice(0, 12));
   const model = spec.objectives > 0 ? await make.model() : null;
   const ids = { profile: name, commodores: [] };
   for (let c = 1; c <= spec.commodores; c += 1) {

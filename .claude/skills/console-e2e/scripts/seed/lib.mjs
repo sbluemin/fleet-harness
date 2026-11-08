@@ -73,10 +73,15 @@ export async function until(read, timeoutMs, what) {
   }
 }
 
-/** Seeding twice into one slot would mix states; refuse instead of appending. */
-export function writeIds(dir, ids) {
+/** Seeding twice into one slot would mix states; refuse before anything is created. */
+export function assertFreshSlot(dir) {
   const file = path.join(dir, IDS_FILE);
   if (existsSync(file)) throw new Error(`${file} already exists; use a fresh slot (seeding is not additive).`);
+}
+
+export function writeIds(dir, ids) {
+  const file = path.join(dir, IDS_FILE);
+  assertFreshSlot(dir);
   writeFileSync(file, `${JSON.stringify(ids, null, 2)}\n`);
   return file;
 }
