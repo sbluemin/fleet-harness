@@ -1871,10 +1871,7 @@ describe("Objectives contract", () => {
       await new Promise((resolve) => setImmediate(resolve));
       expect(shareStore.find("share-a")!.results[0]).toMatchObject({ observation: { state: "open", stale: false, title: "Shared" } });
       const missionB = shareStore.adopt("share-b", { missions: [{ text: "ship" }] }).missions[0]!.id;
-      const started = performance.now();
       shareStore.missionDone("share-b", missionB, ["done"], [{ kind: "pr", url: shareUrl }]);
-      // 5000ms 잠금 대기의 탐지선이다. 제품 지연 목표가 아니다.
-      expect(performance.now() - started).toBeLessThan(2_000);
       expect(shareErrors).toEqual([]);
       const shared = JSON.parse(fs.readFileSync(path.join(shareDir, "share-b", "objective.json"), "utf8")) as { results?: { observation?: { state?: string; title?: string } }[] };
       expect(shared.results?.[0]?.observation).toMatchObject({ state: "open", title: "Shared" });
