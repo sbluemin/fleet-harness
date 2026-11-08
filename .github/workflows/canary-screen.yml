@@ -1,0 +1,43 @@
+name: Canary Screen
+
+# Default-screen check of the BUILT Console: serve it with the credential-free fake agent, seed the basic profile
+# (.claude/skills/console-e2e/scripts/seed), load the default screen in headless Chrome and fail on a thrown error,
+# console.error, a 5xx answer or an empty screen. Runs after every canary merge, so a broken default screen
+# surfaces as a failed CI run immediately, and on pull requests that touch the Console client/host or this check.
+on:
+  push:
+    branches:
+      - canary
+  pull_request:
+    paths:
+      - 'runtime/fleet-console/**'
+      - 'scripts/check-canary-screen.mjs'
+      - '.claude/skills/console-e2e/scripts/seed/**'
+      - '.claude/skills/console-e2e/scripts/fake-claude.mjs'
+      - '.github/workflows/canary-screen.yml'
+  # A canary push that GitHub never delivered can be re-run by hand on the same ref.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # postinstall builds the workspace: the check serves the built Console (dist/cli.mjs and dist/client).
+      - run: pnpm install --frozen-lockfile
+      # ubuntu-latest ships google-chrome; CHROME_BIN pins it so the check never downloads a browser.
+      - name: Default screen of the built Console
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node scripts/check-canary-screen.mjs
