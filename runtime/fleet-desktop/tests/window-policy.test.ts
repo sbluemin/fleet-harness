@@ -192,6 +192,10 @@ describe("secure window policy", () => {
       contents.emit("did-navigate", {}, `${HOME}/console/`, 200, "OK");
       manager.apply({ ...intent, id: "surface-three" }, HOME);
       expect(handler({ ...details(), frameName: "surface-three" }).action).toBe("deny");
+      // error page의 새 main DOM처럼 did-navigate가 생략되는 문서 교체도 철회한다.
+      manager.apply({ ...intent, id: "surface-error-document" }, HOME);
+      contents.emit("dom-ready");
+      expect(handler({ ...details(), frameName: "surface-error-document" }).action).toBe("deny");
       manager.apply({ ...intent, id: "surface-four" }, HOME);
       policy.admitRemoteConsoleOrigin("https://other.invalid");
       policy.stageConsoleOrigin("https://other.invalid");

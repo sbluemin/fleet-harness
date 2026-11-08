@@ -90,9 +90,11 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
     const navigated = () => { if (ownsIntent()) revoke(true); };
     const gone = () => { if (ownsIntent()) revoke(true); };
     contents.on("did-navigate", navigated);
+    // Electron은 error page commit에 did-navigate를 내지 않는다. 새 main DOM 적재도 실제 문서 교체다.
+    contents.on("dom-ready", navigated);
     contents.on("render-process-gone", gone);
     contents.on("destroyed", gone);
-    disposeOwner = () => { contents.removeListener("did-navigate", navigated); contents.removeListener("render-process-gone", gone); contents.removeListener("destroyed", gone); };
+    disposeOwner = () => { contents.removeListener("did-navigate", navigated); contents.removeListener("dom-ready", navigated); contents.removeListener("render-process-gone", gone); contents.removeListener("destroyed", gone); };
     armDeadline(next.id, 10_000);
     deps.relay({ id: next.id, status: "ready" });
   };
