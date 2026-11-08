@@ -13,8 +13,6 @@ export interface BrowserWindowDeps {
   readonly createWindow: (guest: WebContents) => DesktopShellWindow;
   readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
   readonly changed: () => void;
-  /** 원인 식별용 임시 opt-in 계측. 최종 수리본에서는 제거한다. */
-  readonly trace?: (fields: Readonly<Record<string, string | number | boolean | null>>) => void;
 }
 
 /** 셸은 콘텐츠를 만들지 않는다. Console의 한 번짜리 intent를 받아 수동 문서의 native 자리만 만든다. */
@@ -29,21 +27,7 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
   let deadline: ReturnType<typeof setTimeout> | null = null;
   let disposeOwner: (() => void) | null = null;
 
-  const trace = (reason: string, fields: Readonly<Record<string, string | number | boolean | null>> = {}): void => {
-    if (!deps.trace || (!intent && !companion)) return;
-    try {
-      const read = (value: () => string | number | boolean | null) => { try { return value(); } catch { return null; } };
-      deps.trace({ reason, intentId: intent?.id ?? null, ownerWC: read(() => owner?.id ?? null), childWC: read(() => companion?.consoleContents.id ?? null),
-        windowId: read(() => companion?.base.id ?? null), minimized: read(() => companion && !companion.isDestroyed() ? companion.isMinimized() : null),
-        visible: read(() => companion && !companion.isDestroyed() ? companion.base.isVisible() : null), ...fields });
-    } catch { /* 계측 실패가 제품 수명을 바꾸지 않는다. */ }
-  };
-  const goneDetails = (details?: { readonly reason: string; readonly exitCode: number }) => ({
-    goneReason: ["clean-exit", "abnormal-exit", "killed", "crashed", "oom", "launch-failed", "integrity-failure", "memory-eviction"].includes(details?.reason ?? "other") ? details!.reason : "other",
-    exitCode: typeof details?.exitCode === "number" && Number.isFinite(details.exitCode) ? details.exitCode : null,
-  });
-  const revoke = (report: boolean, reason: string, fields: Readonly<Record<string, string | number | boolean | null>> = {}): void => {
-    trace(reason, { event: "revoke", report, ...fields });
+  const revoke = (report: boolean): void => {
     const previous = intent;
     if (previous) revoked.add(previous.id);
     intent = null;
@@ -66,7 +50,7 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
 
   const armDeadline = (id: string, milliseconds: number): void => {
     if (deadline) clearTimeout(deadline);
-    deadline = setTimeout(() => { if (intent?.id === id) revoke(true, "deadline", { milliseconds }); }, milliseconds);
+    deadline = setTimeout(() => { if (intent?.id === id) revoke(true); }, milliseconds);
   };
 
   const mainFrameOnly = (contents: WebContents, activeOrigin: string): boolean => {
@@ -79,7 +63,7 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
 
   const apply = (next: DesktopBrowserSurface | null, at: string | null): void => {
     if (next?.id === intent?.id && at === origin) return;
-    revoke(false, "intent-apply", { nextIntentId: next?.id ?? null, originChanged: at !== origin });
+    revoke(false);
     if (next && revoked.has(next.id)) return;
     const main = deps.main();
     if (!next || !at || !main || main.isDestroyed()) return;
@@ -89,14 +73,12 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
     const contents = owner;
     // 실제 renderer 교체와 origin 전환은 같은 창이어도 새 수명이다. in-page hash 이동은 제외한다.
     const ownsIntent = () => intent === next && owner === contents;
-    const navigating = (_event: unknown, _url: string, inPlace: boolean, isMainFrame: boolean) => { if (ownsIntent() && isMainFrame && !inPlace) revoke(true, "owner-navigation", { inPlace, isMainFrame }); };
-    const gone = (_event: unknown, details: { reason: string; exitCode: number }) => { if (ownsIntent()) revoke(true, "owner-process-gone", goneDetails(details)); };
-    const destroyed = () => { if (ownsIntent()) revoke(true, "owner-destroyed"); };
+    const navigating = (_event: unknown, _url: string, inPlace: boolean, isMainFrame: boolean) => { if (ownsIntent() && isMainFrame && !inPlace) revoke(true); };
+    const gone = () => { if (ownsIntent()) revoke(true); };
     contents.on("did-start-navigation", navigating);
     contents.on("render-process-gone", gone);
-    contents.on("destroyed", destroyed);
-    disposeOwner = () => { contents.removeListener("did-start-navigation", navigating); contents.removeListener("render-process-gone", gone); contents.removeListener("destroyed", destroyed); };
-    trace("intent-accepted");
+    contents.on("destroyed", gone);
+    disposeOwner = () => { contents.removeListener("did-start-navigation", navigating); contents.removeListener("render-process-gone", gone); contents.removeListener("destroyed", gone); };
     armDeadline(next.id, 10_000);
     deps.relay({ id: next.id, status: "ready" });
   };
@@ -135,7 +117,6 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         const child = deps.createWindow(guest);
         if (child.consoleContents !== guest) throw new Error("browser_surface_guest_replaced");
         companion = child;
-        trace("child-created");
         const wc = child.consoleContents;
         const initialUrl = `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`;
         let loaded = false;
@@ -158,16 +139,16 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         wc.on("will-attach-webview", (event) => event.preventDefault());
         wc.setWindowOpenHandler(() => ({ action: "deny" }));
         // 종료한 guest의 늦은 이벤트는 새로 연 child/intent를 철회하지 못한다.
-        wc.on("render-process-gone", (_event, details) => { if (ownsChild()) revoke(true, "child-process-gone", goneDetails(details)); });
-        wc.on("destroyed", () => { if (ownsChild()) revoke(true, "child-destroyed"); });
+        wc.on("render-process-gone", () => { if (ownsChild()) revoke(true); });
+        wc.on("destroyed", () => { if (ownsChild()) revoke(true); });
         wc.on("did-start-navigation", (_event, url, inPlace, isMainFrame) => {
           if (!ownsChild() || !isMainFrame) return;
-          if (initialStarted || inPlace || !initial(url)) { revoke(true, "child-navigation", { initialStarted, inPlace, isMainFrame }); return; }
+          if (initialStarted || inPlace || !initial(url)) { revoke(true); return; }
           initialStarted = true;
         });
         wc.once("did-finish-load", () => {
           if (!ownsChild()) return;
-          if (wc.getURL() !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`) { revoke(true, "child-load-mismatch"); return; }
+          if (wc.getURL() !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`) { revoke(true); return; }
           loaded = true;
           if (deadline) clearTimeout(deadline);
           deadline = null;
@@ -180,18 +161,16 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
           event.preventDefault();
           if (closing) return;
           closing = true;
-          trace("native-close");
           deps.relay({ id: current.id, status: "closing" });
           armDeadline(current.id, 3_000);
         });
-        child.base.on("closed", () => { if (ownsChild()) revoke(true, "native-closed"); });
-        const refresh = (reason: string) => { if (ownsChild()) trace(reason); deps.changed(); };
-        child.base.on("resize", () => refresh("native-resize"));
-        child.base.on("move", () => refresh("native-move"));
-        child.base.on("minimize", () => refresh("native-minimize"));
-        child.base.on("restore", () => refresh("native-restore"));
-        child.base.on("hide", () => refresh("native-hide"));
-        child.base.on("show", () => refresh("native-show"));
+        child.base.on("closed", () => { if (ownsChild()) revoke(true); });
+        child.base.on("resize", () => deps.changed());
+        child.base.on("move", () => deps.changed());
+        child.base.on("minimize", () => deps.changed());
+        child.base.on("restore", () => deps.changed());
+        child.base.on("hide", () => deps.changed());
+        child.base.on("show", () => deps.changed());
         return wc;
       },
     };
@@ -200,7 +179,7 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
   return {
     apply, open,
     surface(id?: string | null): DesktopShellWindow | null { return id && intent?.id === id && companion && !companion.isDestroyed() ? companion : null; },
-    dispose(reason = "dispose"): void { revoke(false, reason); },
+    dispose(): void { revoke(false); },
   };
 }
 export type BrowserCompanion = ReturnType<typeof createBrowserCompanion>;

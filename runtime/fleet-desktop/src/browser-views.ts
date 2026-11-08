@@ -47,8 +47,6 @@ export interface DesktopBrowserViewsDeps {
   readonly userAgent: () => string;
   readonly fetch?: typeof fetch;
   readonly log?: (message: string) => void;
-  /** 원인 식별용 임시 opt-in. surface relay의 id/status/HTTP 결과만 남긴다. */
-  readonly traceSurface?: (fields: Readonly<Record<string, string | number | boolean | null>>) => void;
   /**
    * 뷰가 아니라 셸에게 묻는 명령(`Fleet.*`) — 이 기계의 Chrome 프로필을 세고 그 쿠키를 세션 파티션에 넣는 일처럼
    * 창을 든 기계에서만 답할 수 있는 것. 없으면 그런 명령은 `desktop_shell_unsupported` 로 거절된다.
@@ -356,20 +354,13 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   };
 
   const send = async (target: string, body: DesktopBrowserRelay): Promise<boolean> => {
-    const trace = (reason: string, httpStatus: number | null = null) => {
-      if (!body.surface || !deps.traceSurface) return;
-      try { deps.traceSurface({ reason, intentId: body.surface.id, status: body.surface.status, httpStatus }); } catch { /* 계측 실패는 전송을 바꾸지 않는다. */ }
-    };
-    trace("relay-send");
     try {
       const response = await fetchFor(`${target}${DESKTOP_BROWSER_RELAY_PATH}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: target }, body: JSON.stringify(body) });
-      trace("relay-result", response.status);
       if (response.ok) return true;
       log(`browser relay rejected status=${response.status}`);
       // 콘솔이 몸을 거절한 것(400)은 다시 보내도 같다 — 버린다. 나머지는 잠시 뒤 다시.
       return response.status === 400;
     } catch (error) {
-      trace("relay-failed");
       log(`browser relay failed: ${error instanceof Error ? error.message : "unknown"}`);
       return false;
     }
@@ -673,7 +664,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     session += 1;
     for (const task of [...captureTasks]) task.expire();
     for (const id of [...live.keys()]) drop(id, false);
-    deps.companion?.dispose("view-lifetime-reset");
+    deps.companion?.dispose();
     deps.float?.dispose();
     executed.clear();
     generation = -1;
