@@ -141,6 +141,39 @@ describe("secure window policy", () => {
       manager.apply(null, HOME);
       expect(base.destroy).toHaveBeenCalledOnce();
       expect(childContents.close).toHaveBeenCalledOnce();
+      // 먼저 열린 guest가 끝난 뒤에도 이미 큐에 든 이벤트는 도착할 수 있다.
+      // 새 창과 아직 load하지 못한 옛 창을 실제 manager 수명으로 교체해 그 경계를 검증한다.
+      const reopen = (id: string) => {
+        const nextContents = Object.assign(new EventEmitter(), {
+          getURL: () => initialUrl, isDestroyed: () => false, close: vi.fn(), setWindowOpenHandler: vi.fn(), opener: frame, session: contents.session,
+        });
+        const nextBase = Object.assign(new EventEmitter(), { destroy: vi.fn(), isVisible: () => true });
+        const next = { base: nextBase, consoleContents: nextContents, isDestroyed: () => false, show: vi.fn() };
+        createWindow.mockImplementationOnce(() => next as never);
+        manager.apply({ ...intent, id }, HOME);
+        handler({ ...details(), frameName: id }).createWindow!({ webContents: nextContents } as never);
+        return next;
+      };
+      const pendingChild = reopen("surface-pending");
+      const replacement = reopen("surface-reopened");
+      replacement.consoleContents.emit("did-start-navigation", {}, initialUrl, false, true);
+      replacement.consoleContents.emit("did-finish-load");
+      const currentNotifications = relay.mock.calls.length;
+      childContents.emit("render-process-gone");
+      childContents.emit("did-start-navigation", {}, initialUrl, false, true);
+      childContents.emit("destroyed");
+      base.emit("close", { preventDefault: vi.fn() }); base.emit("closed");
+      pendingChild.consoleContents.emit("did-finish-load");
+      pendingChild.consoleContents.emit("render-process-gone");
+      expect(manager.surface("surface-reopened")).toBe(replacement);
+      expect(replacement.base.destroy).not.toHaveBeenCalled();
+      expect(replacement.consoleContents.close).not.toHaveBeenCalled();
+      expect(relay).toHaveBeenCalledTimes(currentNotifications);
+      // 같은 입력이 현재 child에서 오면 정리해야 한다 — 오래된 이벤트 방어가 수명 gate를 없애지 않는다.
+      replacement.consoleContents.emit("render-process-gone");
+      expect(manager.surface("surface-reopened")).toBeNull();
+      expect(replacement.base.destroy).toHaveBeenCalledOnce();
+      expect(relay).toHaveBeenLastCalledWith({ id: "surface-reopened", status: "closed" });
       manager.apply({ ...intent, id: "surface-three" }, HOME);
       contents.emit("did-start-navigation", {}, `${HOME}/console/`, false, true);
       manager.apply({ ...intent, id: "surface-three" }, HOME);
@@ -152,7 +185,7 @@ describe("secure window policy", () => {
       manager.apply({ ...intent, id: "surface-five" }, HOME);
       vi.advanceTimersByTime(10_001);
       expect(handler({ ...details(), frameName: "surface-five" }).action).toBe("deny");
-      expect(createWindow).toHaveBeenCalledOnce();
+      expect(createWindow).toHaveBeenCalledTimes(3);
     } finally { manager.dispose(); vi.useRealTimers(); }
   });
   it("creates a BaseWindow shell with sandboxed Console view and no Node privilege", () => {

@@ -72,8 +72,9 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
     owner = main.consoleContents;
     const contents = owner;
     // 실제 renderer 교체와 origin 전환은 같은 창이어도 새 수명이다. in-page hash 이동은 제외한다.
-    const navigating = (_event: unknown, _url: string, inPlace: boolean, isMainFrame: boolean) => { if (isMainFrame && !inPlace) revoke(true); };
-    const gone = () => revoke(true);
+    const ownsIntent = () => intent === next && owner === contents;
+    const navigating = (_event: unknown, _url: string, inPlace: boolean, isMainFrame: boolean) => { if (ownsIntent() && isMainFrame && !inPlace) revoke(true); };
+    const gone = () => { if (ownsIntent()) revoke(true); };
     contents.on("did-start-navigation", navigating);
     contents.on("render-process-gone", gone);
     contents.on("destroyed", gone);
@@ -122,7 +123,8 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         let initialStarted = false;
         let initialFrameAllowed = false;
         let initialMainAllowed = false;
-        const initial = (url: string) => companion === child && intent === current && !loaded && url === initialUrl;
+        const ownsChild = () => companion === child && intent === current;
+        const initial = (url: string) => ownsChild() && !loaded && url === initialUrl;
         // window.open의 최초 항해도 renderer 항해다. frame/main 취소 지점은 각각 한 번만 통과시키며,
         // did-start 알림은 이 토큰들을 소비하지 않는다 — 알림과 throttle의 순서에 기대지 않는다.
         wc.on("will-frame-navigate", (event) => {
@@ -136,15 +138,17 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         wc.on("will-redirect", (event) => event.preventDefault());
         wc.on("will-attach-webview", (event) => event.preventDefault());
         wc.setWindowOpenHandler(() => ({ action: "deny" }));
-        wc.on("render-process-gone", () => revoke(true));
-        wc.on("destroyed", () => { if (companion === child) revoke(true); });
+        // 종료한 guest의 늦은 이벤트는 새로 연 child/intent를 철회하지 못한다.
+        wc.on("render-process-gone", () => { if (ownsChild()) revoke(true); });
+        wc.on("destroyed", () => { if (ownsChild()) revoke(true); });
         wc.on("did-start-navigation", (_event, url, inPlace, isMainFrame) => {
-          if (!isMainFrame) return;
+          if (!ownsChild() || !isMainFrame) return;
           if (initialStarted || inPlace || !initial(url)) { revoke(true); return; }
           initialStarted = true;
         });
         wc.once("did-finish-load", () => {
-          if (companion !== child || wc.getURL() !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`) { revoke(true); return; }
+          if (!ownsChild()) return;
+          if (wc.getURL() !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`) { revoke(true); return; }
           loaded = true;
           if (deadline) clearTimeout(deadline);
           deadline = null;
@@ -153,13 +157,14 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
           deps.changed();
         });
         child.base.on("close", (event) => {
+          if (!ownsChild()) return;
           event.preventDefault();
           if (closing) return;
           closing = true;
           deps.relay({ id: current.id, status: "closing" });
           armDeadline(current.id, 3_000);
         });
-        child.base.on("closed", () => { if (companion === child) revoke(true); });
+        child.base.on("closed", () => { if (ownsChild()) revoke(true); });
         child.base.on("resize", () => deps.changed());
         child.base.on("move", () => deps.changed());
         child.base.on("minimize", () => deps.changed());

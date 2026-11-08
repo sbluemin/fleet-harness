@@ -1322,10 +1322,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     if (!blob) return;
     if (await deliver("annotation", blob)) setMode("none");
   };
-  /** 페이지 CSS px → 레이아웃 px. 핀과 댓글 말풍선을 이미지 위 같은 자리에 앉힌다. */
-  const stagePoint = (p: { x: number; y: number }) => { const factor = layoutScale(); return factor ? { left: p.x / factor.x, top: p.y / factor.y } : { left: 0, top: 0 }; };
+  /** 원 스냅샷 좌표를 비율로 놓아, 문서 전환·본문 크기 변경에도 같은 지점을 가리킨다. */
+  const stagePoint = (p: { x: number; y: number }) => ({ left: `${shownFrame ? p.x / shownFrame.width * 100 : 0}%`, top: `${shownFrame ? p.y / shownFrame.height * 100 : 0}%` });
   // 말풍선은 핀 아래에 선다 — 좁은 패널에서 오른쪽으로 밀리면 핀을 덮기 때문이다.
-  const commentStyle = (p: { x: number; y: number }) => { const at = stagePoint(p); const width = imageRef.current?.clientWidth ?? 0; return { left: Math.max(8, Math.min(at.left - 14, width - 328)), top: at.top + 18 }; };
+  const commentStyle = (p: { x: number; y: number }) => { const at = stagePoint(p); return { left: `clamp(8px, calc(${at.left} - 14px), max(8px, calc(100% - 328px)))`, top: `calc(${at.top} + 18px)` }; };
 
   const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset }); };
   // ---- Chrome 에서 가져오기 — 창을 든 기계의 Chrome 프로필을 셸이 세고, 고른 프로필의 쿠키를 이 Objective 의 세션에 넣는다 ----
@@ -1531,10 +1531,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
         <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
         <BrowserTools objectiveId={objectiveId} language={language} />
-        {detached.available ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t(detached.surface ? "terminal.browser.reattach" : "terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : detached.surface ? "terminal.browser.reattach" : "terminal.browser.detach")}>{detached.surface ? "↙" : "↗"}</button> : null}
+        {detached.available && !detached.surface ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t("terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : "terminal.browser.detach")}>↗</button> : null}
         {!detached.surface ? navTail : null}
       </div>
-      <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}`} ref={viewportRef}>
+      <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}${mode === "annotate" ? " is-annotating" : ""}`} ref={viewportRef}>
         {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? (
           <div className={`op-browser__toast${info.action ? " has-action" : ""}`} role="status">
             {info.text}
@@ -1585,8 +1585,9 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
           </div>
         ) : null}
         {mode === "annotate" && shownFrame ? (
-          // 찍은 한 장을 선언한 CSS 크기 그대로 놓는다 — 패널이 그보다 넓으면 가운데에 두고, 좁으면 줄인다.
-          <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `${shownFrame.width}px`, maxWidth: "100%" }}>
+          // 이전 문서에서 찍은 장도 현재 본문 너비·높이 안에 같은 비율로 맞춘다.
+          <>
+          <div className="op-browser__stage" style={{ aspectRatio: `${shownFrame.width} / ${shownFrame.height}`, width: `min(${shownFrame.width}px, calc(100cqh * ${shownFrame.width} / ${shownFrame.height}))`, maxWidth: "100%" }}>
             <img
               ref={imageRef}
               className="op-browser__frame"
@@ -1629,6 +1630,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
                 </div>
               </>
             ) : null}
+          </div>
             <div className="op-browser__sketchbar" role="toolbar" aria-label={t("terminal.browser.annotate")}>
               {(["comment", "pen", "arrow", "rect"] as const).map((entry) => (
                 <button key={entry} type="button" className="op-browser__icon op-browser__tool" aria-pressed={tool === entry} aria-label={t(`terminal.browser.tool.${entry}`)} title={t(`terminal.browser.tool.${entry}`)} onClick={() => { setTool(entry); cancelPin(); }}>{entry === "comment" ? <CommentGlyph /> : entry === "pen" ? "✎" : entry === "arrow" ? "➚" : "▭"}</button>
@@ -1644,7 +1646,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
               <button type="button" className="op-browser__button op-browser__button--primary" disabled={marks.length === 0 || busy} onClick={() => void attachMarks()}>{t("terminal.browser.attachMarks", { count: String(marks.length) })}</button>
               <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} title={t("terminal.browser.close")} onClick={() => setMode("none")}>×</button>
             </div>
-          </div>
+          </>
         ) : activeTab ? (
           // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
           <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: objectiveId }}>
