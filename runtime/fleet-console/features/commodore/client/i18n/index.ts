@@ -696,7 +696,7 @@ export const commodoreKo: Record<keyof typeof commodoreEn, string> = {
   "commodore.drawer.modelAria": "사령관 모델과 강도",
   "commodore.tabs.sessions": "지휘관 세션",
   "commodore.tabs.log": "기록",
-  "commodore.tabs.routines": "작업",
+  "commodore.tabs.routines": "활동",
   "commodore.tasks.goals": "목표",
   "commodore.tasks.routines": "루틴",
   "commodore.routines.empty": "등록된 루틴이 없어요. 사령관에게 반복하거나 한 번 할 일을 요청해 주세요.",
