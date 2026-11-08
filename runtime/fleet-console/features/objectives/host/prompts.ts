@@ -3,7 +3,7 @@ import { memberFailureReason } from "../shared/signals.js";
 import { MAX_CONTEXT, missionTitle, ownAnswer, type DecisionAnswer, type DecisionRequest, type ObjectiveActor, type ObjectiveEditKind, type Objective, type ObjectiveMember, type ObjectiveMemberFailure, type ObjectiveMemberUnreported } from "../shared/types.js";
 
 /**
- * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `fleet-objectives` 도구 설명과 보드를 읽고
+ * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `fleet-commander` 도구 설명과 보드를 읽고
  * 스스로 흐름을 잡는다. 담당 세션에는 아무 프롬프트도 가지 않는다 — 지휘관이 message 도구로 맥락을 담아 일을 시킨다.
  * 사람이 덧붙인 말이 있으면 그 한 줄 아래 인용으로 붙는다(구상·개시·스티어링 모두 같은 모양). 구상·개시 턴만 말풍선 UI 지침
  * (`OPENUI_GUIDE`)을 인용 앞에 함께 싣는다.
@@ -163,8 +163,8 @@ export function interruptedMemberMissionsNotice(
 export function commanderFreshTurnNotice(objectiveId: string, language: PromptLanguage, memberMissionsNotice = ""): string {
   const extra = memberMissionsNotice ? `\n\n${memberMissionsNotice}\n\n` : " ";
   return language === "ko"
-    ? `[목표 \`${objectiveId}\` 지휘관 새 세션]\n새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았습니다. 구성원 세션도 새로 열리거나 정리되어, 진행 중이던 구성원 턴이나 백그라운드 작업은 끝났을 수 있고 지휘관이 메시지를 보내야만 다시 움직입니다. \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 확인하고, 결과가 보드나 결과물에 없는 열린 미션은 담당 구성원에게 다시 맡기며 진행하세요.${extra}보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.\n\n`
-    : `[Objective \`${objectiveId}\` commander fresh session]\nOpened as a fresh session (role: commander) without past conversation loaded into the model context. Member sessions are also fresh or cleared, so running member turns or background tasks may have ended, and members will only resume once you send them a message. Check the board using \`fleet-objectives\` (\`read\` or \`mine\` tool), and reissue open missions that lack results to their members.${extra}The board is the long-term memory; the Commodore will steer if needed.\n\n`;
+    ? `[목표 \`${objectiveId}\` 지휘관 새 세션]\n새 세션으로 열렸습니다(역할: 지휘관). 이전 대화는 모델 입력에 실리지 않았습니다. 구성원 세션도 새로 열리거나 정리되어, 진행 중이던 구성원 턴이나 백그라운드 작업은 끝났을 수 있고 지휘관이 메시지를 보내야만 다시 움직입니다. \`fleet-commander\` 의 \`read\` 또는 \`mine\` 도구로 보드를 확인하고, 결과가 보드나 결과물에 없는 열린 미션은 담당 구성원에게 다시 맡기며 진행하세요.${extra}보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.\n\n`
+    : `[Objective \`${objectiveId}\` commander fresh session]\nOpened as a fresh session (role: commander) without past conversation loaded into the model context. Member sessions are also fresh or cleared, so running member turns or background tasks may have ended, and members will only resume once you send them a message. Check the board using \`fleet-commander\` (\`read\` or \`mine\` tool), and reissue open missions that lack results to their members.${extra}The board is the long-term memory; the Commodore will steer if needed.\n\n`;
 }
 
 export function memberFreshTurnNotice(objectiveId: string, role: string, language: PromptLanguage): string {
@@ -189,12 +189,12 @@ export function restartTurn(objective: Objective, language: PromptLanguage, opti
   if (options?.fresh) {
     const extra = options.memberMissionsNotice ? `\n\n${options.memberMissionsNotice}\n\n` : " ";
     return language === "ko"
-      ? `목표 \`${objective.id}\`: Console 이 다시 시작돼 진행 중이던 턴이 끊겼을 수 있습니다. 새 세션으로 열렸으며(역할: 지휘관) 이전 대화는 모델 입력에 실리지 않았습니다. 구성원 세션도 새로 열리거나 정리되어, 진행 중이던 구성원 턴이나 백그라운드 작업은 끝났을 수 있고 지휘관이 메시지를 보내야만 다시 움직입니다. \`fleet-objectives\` 의 \`read\` 또는 \`mine\` 도구로 보드를 확인하고, 결과가 보드나 결과물에 없는 열린 미션은 담당 구성원에게 다시 맡기며 진행하세요.${extra}보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.`
-      : `Objective \`${objective.id}\`: Console restarted, so a turn in progress may have been cut off. Opened as a fresh session (role: commander) without past conversation loaded into the model context. Member sessions are also fresh or cleared, so running member turns or background tasks may have ended, and members will only resume once you send them a message. Check the board using \`fleet-objectives\` (\`read\` or \`mine\` tool), and reissue open missions that lack results to their members.${extra}The board is the long-term memory; the Commodore will steer if needed.`;
+      ? `목표 \`${objective.id}\`: Console 이 다시 시작돼 진행 중이던 턴이 끊겼을 수 있습니다. 새 세션으로 열렸으며(역할: 지휘관) 이전 대화는 모델 입력에 실리지 않았습니다. 구성원 세션도 새로 열리거나 정리되어, 진행 중이던 구성원 턴이나 백그라운드 작업은 끝났을 수 있고 지휘관이 메시지를 보내야만 다시 움직입니다. \`fleet-commander\` 의 \`read\` 또는 \`mine\` 도구로 보드를 확인하고, 결과가 보드나 결과물에 없는 열린 미션은 담당 구성원에게 다시 맡기며 진행하세요.${extra}보드가 장기 기억이며 필요하면 사령관이 방향을 조정(steer)합니다.`
+      : `Objective \`${objective.id}\`: Console restarted, so a turn in progress may have been cut off. Opened as a fresh session (role: commander) without past conversation loaded into the model context. Member sessions are also fresh or cleared, so running member turns or background tasks may have ended, and members will only resume once you send them a message. Check the board using \`fleet-commander\` (\`read\` or \`mine\` tool), and reissue open missions that lack results to their members.${extra}The board is the long-term memory; the Commodore will steer if needed.`;
   }
   return language === "ko"
-    ? `목표 \`${objective.id}\`: Console 이 다시 시작돼 진행 중이던 턴이 끊겼을 수 있습니다. \`fleet-objectives\` 로 보드를 다시 읽고 구성원 상태를 확인한 뒤 이어서 진행하세요.`
-    : `Objective \`${objective.id}\`: Console restarted, so a turn in progress may have been cut off. Read the board again with \`fleet-objectives\`, check your members, and continue.`;
+    ? `목표 \`${objective.id}\`: Console 이 다시 시작돼 진행 중이던 턴이 끊겼을 수 있습니다. \`fleet-commander\` 로 보드를 다시 읽고 구성원 상태를 확인한 뒤 이어서 진행하세요.`
+    : `Objective \`${objective.id}\`: Console restarted, so a turn in progress may have been cut off. Read the board again with \`fleet-commander\`, check your members, and continue.`;
 }
 
 /**
@@ -205,8 +205,8 @@ export function startTurn(objective: Objective, language: PromptLanguage, contex
   const word = language === "ko" ? `목표 \`${objective.id}\` 의 임무를 개시하세요.` : `Commence the missions of objective \`${objective.id}\`.`;
   const what = editedWords(objective, language);
   const changed = !what ? "" : language === "ko"
-    ? `\n\n마지막으로 읽은 뒤 ${editActors(objective, language)}이 목표를 바꿨습니다(${what}). 진행하기 전에 \`fleet-objectives\` 로 이 목표를 다시 읽으세요.`
-    : `\n\n${editActors(objective, language)} changed this objective since you last read it (${what}). Read it again with \`fleet-objectives\` before you proceed.`;
+    ? `\n\n마지막으로 읽은 뒤 ${editActors(objective, language)}이 목표를 바꿨습니다(${what}). 진행하기 전에 \`fleet-commander\` 로 이 목표를 다시 읽으세요.`
+    : `\n\n${editActors(objective, language)} changed this objective since you last read it (${what}). Read it again with \`fleet-commander\` before you proceed.`;
   return `${word}${requestedBy(by, language)}${changed}${visualBlocks}${quoted(context)}`;
 }
 

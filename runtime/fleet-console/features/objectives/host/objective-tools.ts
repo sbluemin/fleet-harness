@@ -16,10 +16,10 @@ import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TI
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
- * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Objective 에 실리므로
+ * `fleet-commander` (이관 별칭 `fleet-objectives`) — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Objective 에 실리므로
  * 어느 목표인지는 입력으로 받지 않고 호스트가 넘긴 호출자(`context.caller`)로 고른다. 권한도 그 호출자로 가른다: 읽기는 그 목표의 참여자만, 쓰기는 지휘관만.
  * 구성원은 보드를 읽고 자기 root의 증거만 보존할 수 있다 — 결과물 연결·보드 기록은 지휘관이 한다. 화면 제스처는 없다.
- * 구상 중(「구상」을 누른 뒤 「개시」 전)에는 편성만 쓴다 — 임무 완료·기동은 거절한다.
+ * 구상 중(「구상」을 누른 뒤 「개시」 전)에는 편성만 쓴다 — 임무 완료·기동은 거절한다. 구성원 전용 서버는 같은 원천에서 가른다.
  *
  * 문구 원칙 — 도구 설명·힌트·안내는 메타적으로 가볍게: 도구가 무엇인지와 사실·경계(권한·소유·비용·보드 일관성)만 말하고,
  * 절차·예시·권장 행동은 쓰지 않는다. 흐름은 지휘관 모델이 스스로 추론한다. 예시는 그대로 복제되는 경향이 있다.
@@ -58,6 +58,25 @@ const objectiveQuestion = decisionQuestionSchema.extend({
 
 /** request_decision 이 사람의 답을 기다리는 최대 시간. 그 뒤의 답은 프롬프트로 간다. */
 export const DECISION_WAIT_MS = 4 * 60_000;
+
+/**
+ * `fleet-commander` 확정 목록 — 브리프 22개와 실제 쓰임 21개의 대조 결과다.
+ * 브리프의 `objective_transcript` 는 지휘관 MCP에 구현이 없고(Console Use `console_objectives_detail` transcript 행위와
+ * `objective_working` 보호로 이미 가린다), 나머지 21개는 이름만 다르고 같은 일이다: 브리프 `objective_read`→`read`,
+ * `objective_search`→`search`, `objective_mine`→`mine`, `plan_propose`→`plan`, `mission_add`→`add_mission`,
+ * `mission_place`→`place_mission`, `mission_complete`→`complete_mission`, `member_enlist`→`enlist`,
+ * `member_muster`→`muster`, `member_discharge`→`discharge`, `member_set_launch`→`set_member_launch`,
+ * `member_message`→`message`, `criterion_mark`→`mark_criterion`, `decision_request`→`request_decision`,
+ * `decision_withdraw`→`withdraw_decision_request`, `result_seal`→`seal_evidence_from_path`,
+ * `result_update`→`update_result`, `result_detach`→`detach_result`, `evidence_dir`·`hand_off`·`followup` 동일.
+ * 지휘관 서버는 이 21개 전부를 싣는다(읽기 5개+지휘관 전용 16개). 권한 계약은 그대로다.
+ */
+export const FLEET_COMMANDER_TOOL_NAMES = [
+  "mine", "read", "search", "evidence_dir", "seal_evidence_from_path",
+  "update_result", "detach_result", "plan", "add_mission", "place_mission",
+  "request_decision", "withdraw_decision_request", "enlist", "set_member_launch",
+  "message", "muster", "discharge", "complete_mission", "followup", "hand_off", "mark_criterion",
+] as const;
 
 export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
   const decisionWaitMs = options?.decisionWaitMs ?? DECISION_WAIT_MS;
@@ -195,7 +214,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
   });
 
   return [
-    tool("mine", `Your role in this session's objective (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board — planning, mustering members, completing missions, marking criteria — through the fleet-objectives tools. Members read it, can seal evidence from the objective's evidence directory, and report to the Commander with the message tool (to: "commander"). Members do not ask the person: a decision a member needs goes to the Commander the same way, and so does a directive that reads as reversed in meaning or unreadable, before it is carried out. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. At hand-off the Commander asks members for a retrospective and the resources they created for this objective. ${DECISIONS_ON_BOARD}`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in this session's objective (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board — planning, mustering members, completing missions, marking criteria — through the fleet-commander tools. Members read it, can seal evidence from the objective's evidence directory, and report to the Commander with the message tool (to: "commander"). Members do not ask the person: a decision a member needs goes to the Commander the same way, and so does a directive that reads as reversed in meaning or unreadable, before it is carried out. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. At hand-off the Commander asks members for a retrospective and the resources they created for this objective. ${DECISIONS_ON_BOARD}`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "objectiveRecord") return refuse("not_participant");
       const assigned = store.findMember(caller.objectiveId);
       if (assigned) {
@@ -420,6 +439,14 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         return text({ ok: true, n: args.n, met: args.met, ...(kept ? { stored: { text: storedText(kept.text), ...(kept.met ? { evidence: storedText(kept.met) } : {}) } } : {}), ...(next.awaitingHandoff ? { next: handoffPrompt(next) } : {}) });
       }),
   ];
+}
+
+/**
+ * `fleet-commander` 서버용 — 같은 보드 코드 한 곳을 공유한다. 지휘관은 21개 전부를 받는다.
+ * 구성원 전용 필터는 구성원 서버 임무에서 같은 원천으로 가른다.
+ */
+export function createCommanderMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
+  return createObjectiveMcpTools(ctx, store, launch, prStatus, options);
 }
 
 /** 인계 대기가 아닌 이유 — 남은 임무·미충족 기준 번호, 이미 넘겼거나 완료된 목표. */

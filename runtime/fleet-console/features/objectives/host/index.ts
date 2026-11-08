@@ -6,7 +6,7 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { createCommodoreBoardWatch } from "./commodore-board.js";
 import { createCommodoreBoardTools } from "./console-tools.js";
 import { createLaunchService } from "./launch.js";
-import { createObjectiveMcpTools } from "./objective-tools.js";
+import { createCommanderMcpTools } from "./objective-tools.js";
 import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./pr-status.js";
 import { createObjectiveRoutes } from "./routes.js";
 import { createObjectiveStore } from "./store.js";
@@ -17,13 +17,16 @@ import { RESULT_LIMITS } from "../shared/results.js";
 
 export type { ObjectivesFeatureDeps } from "./deps.js";
 export const OBJECTIVES_MCP_SERVER = "fleet-objectives";
+/** 지휘관 역할 서버 — `fleet-objectives` 실제 쓰임 21개와 같은 구현을 `fleet-commander` 이름으로 낸다. 기존 이름은 이관 유예로 함께 둔다. */
+export const FLEET_COMMANDER_MCP_SERVER = "fleet-commander";
 
 /**
  * 목표 — Theater 의 에이전트 Objective 하나하나가 목표다.
  *
  * 목표와 실행 신분은 사령관의 `objectives/<목표>/objective.json`에 함께 산다.
  * Objective은 실행·화면 호환을 위한 메모리 어댑터다. 목록의 그룹은 Objective 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
- * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로,
+ * 목표를 수행하는 세션은 지휘관은 `fleet-commander` 로(구성원은 `fleet-member` 로, 이관 중에는 `fleet-objectives` 별칭도 함께 둔다),
+ * Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로,
  * 사령관 세션은 같은 보드를 `fleet-commodore` 의 `objectives`·`objective` 로 쓴다.
  */
 const objectiveIdOf = (payload: unknown): string | null => {
@@ -197,7 +200,13 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       },
     };
 
-    registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, createObjectiveMcpTools(deps, store, launch, prStatus)));
+    // 같은 보드 코드 한 곳을 공유한다 — 두 서버는 같은 도구 목록·같은 실행을 낸다. 기존 `fleet-objectives` 는
+    // 지휘관·구성원 세션 주입이 역할 서버로 옮겨갈 때까지 별칭으로 함께 둔다(배선 임무에서 제거).
+    // 같은 보드 코드 한 곳을 공유한다 — 두 이름은 같은 도구 배열·같은 실행·같은 번호표 메모리를 낸다.
+    // 기존 `fleet-objectives` 는 지휘관·구성원 세션 주입이 역할 서버로 옮겨갈 때까지 별칭으로 함께 둔다(배선 임무에서 제거).
+    const commanderTools = createCommanderMcpTools(deps, store, launch, prStatus);
+    registerCleanup(deps.registerMcp(FLEET_COMMANDER_MCP_SERVER, commanderTools));
+    registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, commanderTools));
     return { routes, board, dispose, listAll: store.all, isCommanderSession: (sessionId: string) => store.findMember(sessionId) === null && store.find(sessionId) !== null, forgetOwner: store.forgetOwner };
   } catch (error) {
     dispose();
