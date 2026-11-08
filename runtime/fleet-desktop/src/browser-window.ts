@@ -1,10 +1,16 @@
-import type { BrowserWindowConstructorOptions, HandlerDetails, WebContents, WindowOpenHandlerResponse } from "electron";
+import type { HandlerDetails, WebContents, WebPreferences, WindowOpenHandlerResponse } from "electron";
 import { DESKTOP_BROWSER_WINDOW_PAGE, type DesktopBrowserSurface, type DesktopBrowserSurfaceRelay } from "@fleet-console/protocol/desktop";
 import type { DesktopShellWindow } from "./shell-window.js";
 
+/** 생성 전 override와 기존 guest 입양에 같은 명시적 보안 값만 사용한다. */
+export const BROWSER_COMPANION_PREFERENCES = {
+  sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false,
+  nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false, allowRunningInsecureContent: false,
+} as const satisfies WebPreferences;
+
 export interface BrowserWindowDeps {
   readonly main: () => DesktopShellWindow | null;
-  readonly createWindow: (options: BrowserWindowConstructorOptions) => DesktopShellWindow;
+  readonly createWindow: (guest: WebContents) => DesktopShellWindow;
   readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
   readonly changed: () => void;
 }
@@ -93,12 +99,22 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
       overrideBrowserWindowOptions: {
         show: false, width: 1000, height: 760, minWidth: 460, minHeight: 360, title: "Fleet Browser",
         frame: true, movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true, alwaysOnTop: false,
-        webPreferences: { session: contents.session, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false },
+        webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: contents.session },
       },
       createWindow: (options) => {
         // allow 이후 renderer가 교체되거나 intent가 철회되었다면 새 native 자원을 만들지 않는다.
-        if (intent !== current || owner !== contents || contents.isDestroyed() || !mainFrameOnly(contents, activeOrigin)) throw new Error("browser_surface_revoked");
-        const child = deps.createWindow(options);
+        if (intent !== current || owner !== contents || companion || contents.isDestroyed() || !mainFrameOnly(contents, activeOrigin)) throw new Error("browser_surface_revoked");
+        // Electron 43의 createWindow는 이미 생성한 guest를 options.webContents로 건넨다.
+        // 공개 callback 옵션 타입에는 없는 전달 필드만 좁게 읽는다. 새 WC나 옵션 전체 복제는 opener를 끊는다.
+        const guest = (options as { readonly webContents?: WebContents }).webContents;
+        let valid = false;
+        try {
+          // 보안 값은 위 override가 guest 생성 전에 적용한다. identity 검증은 공개 WC API만 사용한다.
+          valid = Boolean(guest && guest !== contents && !guest.isDestroyed() && guest.opener === contents.mainFrame && guest.session === contents.session);
+        } catch { /* 사라졌거나 예상하지 못한 contents는 입양하지 않는다. */ }
+        if (!valid || !guest) throw new Error("browser_surface_guest_invalid");
+        const child = deps.createWindow(guest);
+        if (child.consoleContents !== guest) throw new Error("browser_surface_guest_replaced");
         companion = child;
         const wc = child.consoleContents;
         wc.on("will-navigate", (event) => event.preventDefault());

@@ -51,7 +51,7 @@ import { readChromeHistory } from "./chrome-history.js";
 import { createBrowserHistoryStorage } from "./browser-history-storage.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
 import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
-import { createBrowserCompanion, type BrowserCompanion } from "./browser-window.js";
+import { BROWSER_COMPANION_PREFERENCES, createBrowserCompanion, type BrowserCompanion } from "./browser-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
@@ -359,13 +359,10 @@ async function boot(): Promise<void> {
   const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot());
   const browserCompanion: BrowserCompanion = createBrowserCompanion({
     main: () => window,
-    createWindow: (options) => {
-      // Electron이 전달한 opener 연결은 보존하되 renderer feature로 보안·native 창 옵션을 바꾸지 못한다.
+    createWindow: (guest) => {
+      // 생성 전 handler가 보안을 지정한 기존 guest를 그대로 입양한다. renderer 옵션을 다시 펼치지 않는다.
+      const consoleView = new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
       const base = new BaseWindow({ show: false, width: 1000, height: 760, minWidth: 460, minHeight: 360, title: "Fleet Browser", frame: true, alwaysOnTop: false, movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true });
-      const consoleView = new WebContentsView({ webPreferences: {
-        ...options.webPreferences, preload: undefined, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false, allowRunningInsecureContent: false,
-        session: window?.consoleContents.session, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
-      } });
       consoleView.webContents.setZoomFactor(window?.consoleContents.getZoomFactor() ?? 1);
       browserViews.attachShortcutSource(consoleView.webContents);
       const child = createDesktopShellWindow(base, consoleView, createDesktopViewStack(base, consoleView));

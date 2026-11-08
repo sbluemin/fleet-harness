@@ -50,7 +50,11 @@ describe("secure window policy", () => {
       session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() },
       setWindowOpenHandler: vi.fn(),
     });
-    const childContents = Object.assign(new EventEmitter(), { getURL: () => `${HOME}${DESKTOP_BROWSER_WINDOW_PAGE}`, isDestroyed: () => false, close: vi.fn(), setWindowOpenHandler: vi.fn() });
+    const securePreferences = { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false, allowRunningInsecureContent: false };
+    const childContents = Object.assign(new EventEmitter(), {
+      getURL: () => `${HOME}${DESKTOP_BROWSER_WINDOW_PAGE}`, isDestroyed: () => false, close: vi.fn(), setWindowOpenHandler: vi.fn(),
+      opener: frame, session: contents.session,
+    });
     const base = Object.assign(new EventEmitter(), { destroy: vi.fn(), isVisible: () => true });
     const child = { base, consoleContents: childContents, isDestroyed: () => false, show: vi.fn() };
     const createWindow = vi.fn(() => child as never);
@@ -74,7 +78,7 @@ describe("secure window policy", () => {
       frame.framesInSubtree = [frame];
       const allowed = handler(details());
       expect(allowed.action).toBe("allow");
-      expect(allowed.overrideBrowserWindowOptions?.webPreferences).toMatchObject({ session: contents.session, sandbox: true, nodeIntegration: false, contextIsolation: true, webSecurity: true });
+      expect(allowed.overrideBrowserWindowOptions?.webPreferences).toMatchObject({ session: contents.session, ...securePreferences });
       expect(handler(details()).action).toBe("deny");
       // 허가 뒤 생성 직전의 provenance도 다시 검사한다.
       frame.framesInSubtree.push({});
@@ -83,7 +87,13 @@ describe("secure window policy", () => {
       manager.apply(null, HOME);
       manager.apply({ ...intent, id: "surface-two" }, HOME);
       const second = handler({ ...details(), frameName: "surface-two" });
-      expect(second.createWindow!({})).toBe(childContents);
+      // createWindow의 guest는 Electron이 미리 보안을 적용한 기존 WC여야 한다. 새/다른 WC를 만들거나 입양하지 않는다.
+      const invalidGuests = [undefined, contents, { ...childContents, opener: {} }, { ...childContents, isDestroyed: () => true },
+        { ...childContents, session: {} }];
+      for (const guest of invalidGuests) expect(() => second.createWindow!({ webContents: guest } as never)).toThrow("browser_surface_guest_invalid");
+      expect(createWindow).not.toHaveBeenCalled();
+      expect(second.createWindow!({ webContents: childContents, webPreferences: { nodeIntegration: true } } as never)).toBe(childContents);
+      expect(createWindow).toHaveBeenCalledExactlyOnceWith(childContents);
       childContents.emit("did-finish-load");
       expect(child.show).toHaveBeenCalledOnce();
       const childPopup = childContents.setWindowOpenHandler.mock.calls[0]![0] as () => { action: string };
