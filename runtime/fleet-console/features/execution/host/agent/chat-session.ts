@@ -92,12 +92,11 @@ export type AgentChatSessionOrigin =
   | { readonly kind: "resume"; readonly transcriptPath: string }
   | { readonly kind: "fresh" };
 
-/** 이 세션이 도는 모델·강도. `launchEffort`는 payload에 실리는 런치 어휘 그대로다(`ultra` 포함). */
+/** 이 세션이 도는 모델·강도. `launchEffort`는 payload에 실리는 런치 어휘 그대로다. */
 interface ChatCoordinates {
   readonly model: string;
   readonly launchEffort: string | null;
   readonly effort?: ClaudeGatewayEffort;
-  readonly ultracode: boolean;
   readonly contextWindow?: number;
 }
 
@@ -132,11 +131,6 @@ export interface AgentChatSessionSeed {
    */
   readonly compactCeiling?: CompactCeiling | null;
   readonly effort?: ClaudeGatewayEffort;
-  /**
-   * 세션 설정 `ultracode`. 새 세션 트랙의 ULTRACODE가 채팅으로 태어날 때 CLI `--effort ultracode`와
-   * 같은 자리로 옮긴다. `effort`와 별개다 — SDK는 강도를 `xhigh`로 받고, 오케스트레이션은 이 플래그가 켠다.
-   */
-  readonly ultracode?: true;
   /** 사람이 그 모델에 고른 속도 — 자식 env의 게이트웨이 요청 헤더로 실린다. 그 모델 요청에만 AI Gateway의 Fast 토글보다 앞선다. */
   readonly modelSpeed?: ModelSpeedChoice;
   /**
@@ -1015,9 +1009,8 @@ class AgentChatSession {
     this.stepReporter = seed.reportStep ? createChatStepReporter(seed.reportStep) : null;
     this.coordinates = {
       model: seed.model,
-      launchEffort: seed.ultracode ? "ultra" : seed.effort ?? null,
+      launchEffort: seed.effort ?? null,
       ...(seed.effort ? { effort: seed.effort } : {}),
-      ultracode: seed.ultracode === true,
       ...(seed.contextWindow === undefined ? {} : { contextWindow: seed.contextWindow }),
     };
     this.reportedCwd = seed.cwd;
@@ -1433,17 +1426,17 @@ class AgentChatSession {
    * 있고, 한 답이 두 모델에 걸치면 그 답을 누가 했는지 말할 수 없다. 예약은 그 턴이 닫히는 경계에서
    * 적용되고, 다음 말은 적용이 끝난 뒤에 자식에게 간다.
    *
-   * `launchEffort`는 런치 어휘다 — `null`은 모델 기본, `ultra`는 xhigh에 ultracode를 얹는다.
+   * `launchEffort`는 런치 어휘다 — `null`은 모델 기본.
    */
   async changeCoordinates(model: string, launchEffort: string | null): Promise<AgentChatCoordinatesResult> {
     const canonical = resolveNativeClaudeModelAlias(model) ?? model;
     let target: ChatCoordinates;
     if (launchEffort === null) {
-      target = this.makeCoordinates(canonical, null, undefined, false);
+      target = this.makeCoordinates(canonical, null, undefined);
     } else {
       const resolved = resolveChatLaunchEffort(launchEffort);
       if (!resolved) return { ok: false, error: "invalid_effort" };
-      target = this.makeCoordinates(canonical, launchEffort, resolved.effort, resolved.ultracode === true);
+      target = this.makeCoordinates(canonical, launchEffort, resolved.effort);
     }
     // 창이 작은 모델로 내려가면 지금 문맥이 새 창을 넘을 수 있다. 그 변경은 다음 턴을 넘치게 하므로
     // 받지 않는다 — 먼저 요약해 문맥을 줄이는 것이 사용자의 길이다.
@@ -1494,7 +1487,7 @@ class AgentChatSession {
     return true;
   }
 
-  private makeCoordinates(model: string, launchEffort: string | null, effort: ClaudeGatewayEffort | undefined, ultracode: boolean): ChatCoordinates {
+  private makeCoordinates(model: string, launchEffort: string | null, effort: ClaudeGatewayEffort | undefined): ChatCoordinates {
     // 같은 모델이면 세션을 열 때 받은 창을 그대로 쓴다 — 바꾸지 않은 축을 다시 조회하면 그 사이
     // 카탈로그가 바뀐 경우 같은 모델의 창이 세션 도중에 흔들린다.
     const contextWindow = model === this.coordinates?.model
@@ -1504,7 +1497,6 @@ class AgentChatSession {
       model,
       launchEffort,
       ...(effort ? { effort } : {}),
-      ultracode,
       ...(contextWindow === undefined ? {} : { contextWindow }),
     };
   }
@@ -1549,8 +1541,8 @@ class AgentChatSession {
       try {
         if (session) {
           if (target.model !== previous.model) await session.setModel(target.model);
-          if (target.effort !== previous.effort || target.ultracode !== previous.ultracode) {
-            await session.applySessionSettings({ effort: target.effort ?? null, ultracode: target.ultracode });
+          if (target.effort !== previous.effort) {
+            await session.applySessionSettings({ effort: target.effort ?? null });
           }
         }
       } catch (error) {
@@ -2541,8 +2533,6 @@ class AgentChatSession {
             // 조립하면 PTY 런치와 갈리고, 그 차이는 화면 어디에도 드러나지 않는다.
             ...claudeSession.sdk.options,
             ...(Object.keys(modelAutoCompactWindows).length > 0 ? { modelAutoCompactWindows } : {}),
-            // 세션을 연 뒤의 변경은 `applySessionSettings`가 진다. 여기는 자식이 태어날 때의 값이다.
-            ...(this.coordinates.ultracode ? { ultracode: true } : {}),
             // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: {

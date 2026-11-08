@@ -98,9 +98,6 @@ export function isGatewayLaunchEffortAllowed(
   model: GatewayModel,
   effort: string,
 ): boolean {
-  // ultra는 카탈로그 사다리 밖의 Console launch sentinel이다 — 하네스 능력(launch factory가
-  // `--effort ultracode`로 전달)이라 사다리와 무관하게 허용한다.
-  if (effort === "ultra") return true;
   if (!(GATEWAY_REASONING_EFFORTS as readonly string[]).includes(effort)) return false;
   return exposableEffortLadder(model).includes(effort as GatewayReasoningEffort);
 }

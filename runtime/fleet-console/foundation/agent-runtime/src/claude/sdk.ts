@@ -365,7 +365,6 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
   }
   if (options.disableBundledSkills === true) settings.disableBundledSkills = true;
   if (options.claudeMdExcludes && options.claudeMdExcludes.length > 0) settings.claudeMdExcludes = [...options.claudeMdExcludes];
-  if (options.ultracode === true) settings.ultracode = true;
   if (options.autoMemoryEnabled !== undefined) settings.autoMemoryEnabled = options.autoMemoryEnabled;
   if (options.modelAutoCompactWindows && Object.keys(options.modelAutoCompactWindows).length > 0) {
     settings.modelSettings = Object.fromEntries(

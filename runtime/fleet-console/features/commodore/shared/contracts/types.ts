@@ -37,7 +37,7 @@ export const MAX_TRANSCRIPT_TEXT = 16_000;
 export const MAX_COMMODORE_REFERENCES = 3;
 
 const ids = z.string().min(1).max(128);
-/** Theater 별 강도는 Agent SDK 세션이 받는 사다리 전체(low…max)다. ULTRACODE는 하네스 능력이라 받지 않는다. */
+/** Theater 별 강도는 Agent SDK 세션이 받는 사다리 전체(low…max)다. */
 export const COMMODORE_EFFORTS = AGENT_EFFORTS;
 const effort = z.enum(COMMODORE_EFFORTS);
 const modelId = z.string().refine(isExperimentModelId, "invalid_model");

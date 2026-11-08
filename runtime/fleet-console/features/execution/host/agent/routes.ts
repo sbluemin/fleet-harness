@@ -1189,9 +1189,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     const nativeAlias = resolveNativeClaudeModelAlias(model);
     if (nativeAlias) {
-      // ultracode는 wire effort가 아니라 하네스 능력이라 네이티브 행도 ultra를 받는다 —
-      // wire로의 번역(max + settings)은 launch factory가 담당한다.
-      if (effort !== undefined && !([...NATIVE_CLAUDE_EFFORTS, "ultra"] as readonly string[]).includes(effort)) {
+      if (effort !== undefined && !(NATIVE_CLAUDE_EFFORTS as readonly string[]).includes(effort)) {
         reply(400, { error: "invalid_effort" });
         return false;
       }
@@ -2392,7 +2390,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           chatRegistry.get(recipientObjectiveId)?.noteReceived({ id: `${node.id}:${toolUseId}`, from, senderObjectiveId: node.id, text });
         },
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },
-        ...(launchEffort?.ultracode ? { ultracode: true } : {}),
         ...(chatModelSpeed ? { modelSpeed: chatModelSpeed } : {}),
         // 터미널 런치와 같은 함수에서 같은 옵션으로 받는다 — 두 표면이 한 세션의 두 얼굴이다.
         // 새로 태어나는 세션은 Objective id를 그대로 Claude 세션 id로 못박아, Objective의

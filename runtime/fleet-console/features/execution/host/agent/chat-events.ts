@@ -362,7 +362,7 @@ export type AgentChatStreamEvent =
   | { readonly kind: "queue"; readonly entries: readonly AgentChatQueueEntry[] }
   /**
    * 채팅 중 모델·강도를 바꿔 자식에 적용했다. 원장의 기록 줄이 되며, `effort`는 런치 어휘다
-   * (`null`은 모델 기본, `ultra`는 ultracode).
+   * (`null`은 모델 기본).
    */
   | {
       readonly kind: "coordinates";
