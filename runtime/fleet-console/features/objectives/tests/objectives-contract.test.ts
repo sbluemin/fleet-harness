@@ -3270,4 +3270,43 @@ describe("Objectives contract", () => {
       expect(member.some((entry) => entry.name === tool.name)).toBe(false);
     }
   });
+
+  it("registers fleet-commander and fleet-member with alwaysLoad: true", () => {
+    const registered: Array<{ name: string; alwaysLoad?: boolean }> = [];
+    const noop = () => () => undefined;
+    const deps = {
+      resolveCreation: () => ({ commodoreId: "c1", cwd: "/tmp" }),
+      paths: {
+        workspaceHash: () => "t1",
+        resolveCommodoreTheaterPath: () => "/tmp",
+        resolveObjectiveOwner: () => "c1",
+        listCommodoreTheaters: () => [],
+        resolveObjectivePath: () => "/tmp",
+        ensureWorkspaceDirectory: () => ({ path: "/tmp", id: "t1" }),
+      },
+      objectiveRecords: {
+        all: () => [],
+        get: () => undefined,
+        describe: () => null,
+        list: () => [],
+      },
+      server: { origin: () => "http://127.0.0.1:0" },
+      http: { writeJson: () => undefined },
+      security: { verifyOrigin: () => true },
+      events: { registerSseChannel: noop, subscribe: noop, publish: () => undefined },
+      registerMcp: (name: string, _tools: unknown, scope?: { alwaysLoad?: boolean }) => {
+        registered.push({ name, alwaysLoad: scope?.alwaysLoad });
+        return () => undefined;
+      },
+    } as unknown as ObjectivesFeatureDeps;
+    const feature = createObjectivesFeature(deps);
+    try {
+      expect(registered).toEqual(expect.arrayContaining([
+        { name: "fleet-commander", alwaysLoad: true },
+        { name: "fleet-member", alwaysLoad: true },
+      ]));
+    } finally {
+      feature.dispose();
+    }
+  });
 });

@@ -284,7 +284,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    */
   const pendingOpenUIFeedback = new Map<string, string>();
   const withCommanderFreshNotice = (sessionId: string, text: string): string => {
-    if (ctx.experiments?.read().objectiveFreshSession !== true || !ctx.consoleControl?.isNextOpenFresh?.(sessionId)) return text;
+    if (!ctx.consoleControl?.isNextOpenFresh?.(sessionId)) return text;
     if (text.startsWith(`목표 \`${sessionId}\`: Console 이 다시 시작돼`) || text.startsWith(`Objective \`${sessionId}\`: Console restarted`) || text.includes(`지휘관 새 세션`) || text.includes(`commander fresh session`)) {
       ctx.consoleControl?.consumeFreshNotice?.(sessionId);
       return text;
@@ -1271,8 +1271,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const told = store.channelTold(objectiveId, targetId) || messageChannelKnown(ctx.objectiveRecords.get(targetId));
     const body = message.text;
     const memberRole = memberId !== null ? store.find(objectiveId)?.members.find((m) => m.id === memberId)?.role ?? "member" : null;
-    const isMemberFresh = memberId !== null && memberRole && ctx.experiments?.read().objectiveFreshSession === true && ctx.consoleControl?.isNextOpenFresh?.(targetId) === true;
-    const freshNotice = isMemberFresh
+    const isMemberFresh = memberId !== null && memberRole !== null && ctx.consoleControl?.isNextOpenFresh?.(targetId) === true;
+    const freshNotice = isMemberFresh && memberRole !== null
       ? memberFreshTurnNotice(objectiveId, memberRole, ctx.objectiveRecords.get(objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en")
       : "";
     if (isMemberFresh) ctx.consoleControl?.consumeFreshNotice?.(targetId);
@@ -1587,7 +1587,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             const latest = objective(current.id);
             if (!resumable(latest)) return;
             await accessObjective(latest.id);
-            const fresh = ctx.experiments?.read().objectiveFreshSession === true && ctx.consoleControl?.isNextOpenFresh?.(latest.id) === true;
+            const fresh = ctx.consoleControl?.isNextOpenFresh?.(latest.id) === true;
             const lang = ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en";
             const memberMissionsNotice = fresh ? interruptedMemberMissionsNotice(latest, (id) => ctx.consoleControl?.isNextOpenFresh?.(id) ?? false, lang) : "";
             await requestSend(latest.id, restartTurn(latest, lang, { fresh, memberMissionsNotice }), "");
@@ -2053,18 +2053,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           return { objectiveId: sessionId, outcome: "failed", reason };
         }
       }));
-      if (ctx.experiments?.read().objectiveFreshSession === true) {
-        for (const sessionId of ids) {
-          try {
-            const observation = ctx.consoleControl?.observe(sessionId);
-            if (observation?.surface === "terminal" && observation.lifecycle === "live") {
-              await ctx.consoleControl?.sleep?.(sessionId, { endPendingWork: true });
-            } else {
-              await ctx.consoleControl?.disposeChat?.(sessionId);
-            }
-          } catch { /* 정리 실패는 무시 */ }
-          ctx.consoleControl?.markNextOpenFresh?.(sessionId);
-        }
+      for (const sessionId of ids) {
+        try {
+          const observation = ctx.consoleControl?.observe(sessionId);
+          if (observation?.surface === "terminal" && observation.lifecycle === "live") {
+            await ctx.consoleControl?.sleep?.(sessionId, { endPendingWork: true });
+          } else {
+            await ctx.consoleControl?.disposeChat?.(sessionId);
+          }
+        } catch { /* 정리 실패는 무시 */ }
+        ctx.consoleControl?.markNextOpenFresh?.(sessionId);
       }
       // 멈춘 사실을 보드에 남긴다 — 재시작 뒤에도 그 뒤로는 보고를 기대하지 않는다(signals.ts expectsReport). 보고 경보는 개시된 목표에만
       // 걸리므로 개시 전 목표에는 남기지 않는다(기록 없는 목표에 레코드를 만들지 않는다).
@@ -2142,7 +2140,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     },
 
     markNextOpenFresh: (sessionId: string) => {
-      if (ctx.experiments?.read().objectiveFreshSession === true) ctx.consoleControl?.markNextOpenFresh?.(sessionId);
+      ctx.consoleControl?.markNextOpenFresh?.(sessionId);
     },
 
     dispose: () => {
