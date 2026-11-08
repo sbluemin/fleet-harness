@@ -896,17 +896,17 @@ export function SessionCoordinate({
   const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
   return (
     // 이름을 지는 역할이 필요하다 — 일반 span의 aria-label은 지원 대상이 아니라 무시될 수 있고,
-    // 그러면 남는 것은 "Opus · ULTRACODE"라는 조각뿐이다. 상태 아이콘이 쓰는 것과 같은 role로
+    // 그러면 남는 것은 "Opus · HIGH"라는 조각뿐이다. 상태 아이콘이 쓰는 것과 같은 role로
     // 이 복합 표식 전체가 한 문장으로 읽히게 한다.
     <span
-      className={`agent-chat-coord${coordinates.ultracode ? " is-ultracode" : ""}`}
+      className="agent-chat-coord"
       role="img"
       aria-label={t("terminal.chat.coordAria", { model, effort })}
       {...(coordinates.title ? { title: coordinates.title } : {})}
     >
       {/* 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지 말하지 못한다 — 공급자 글리프가
           그 축을 진다(런치 메뉴과 같은 표식). 공급자를 읽지 못한 세션은 중립 마름모로
-          돌아가고, ultracode는 그 자리에 자기 별을 세운다. */}
+          돌아간다. */}
       <CoordinateFace coordinates={coordinates} model={model} effort={effort} />
     </span>
   );

@@ -134,7 +134,7 @@ export interface EffortDeck {
 }
 
 /**
- * `/effort` 값 목록. EffortTrack의 apex 게이트를 미러링한다 — 게이트된 단(MAX·ULTRACODE)은
+ * `/effort` 값 목록. EffortTrack의 apex 게이트를 미러링한다 — 게이트된 단(MAX)은
  * 기본 목록에 서지 않고, 덱 맨 아래 문 행(트랙의 ✦ 토글에 상응)을 열거나 그 단의 이름을
  * 앞에서부터 명시적으로 타이핑했을 때만 나타난다. 현재 값이 이미 게이트된 단이면 트랙이
  * 게이트를 열어 두는 것과 같이 전부 보인다. 타이핑 경로를 includes가 아니라 startsWith로

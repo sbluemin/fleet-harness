@@ -703,9 +703,8 @@
 
 /* 좌→우 명도 물결.
    [doctrine] 이 물결은 "이 줄이 아직 자라고 있다"를 말하므로 색 채널을 하나도 빌리지 않는다 — 신호(aurora)도,
-   위치(brass)도, 정체성(--id-*)도 아닌 순수 명도 스윕이다. 기법은 제품에 이미 있는
-   ULTRACODE 물결과 같고(배경 클립 + 배경 위치 이동), 그쪽이 apex를 쓰는 것과 갈리는 지점이
-   바로 이 채널 선택이다. */
+   위치(brass)도, 정체성(--id-*)도 아닌 순수 명도 스윕이다. 기법은 배경 클립 + 배경 위치 이동이며,
+   채널 선택(명도만 쓴다)이 이 물결의 핵심이다. */
 .agent-chat-live-text {
   background-image: linear-gradient(
     100deg,
@@ -1912,12 +1911,6 @@
   background: currentColor;
 }
 
-/* ── `ultracode` 무장 ────────────────────────────────────────────────────
-   초안 안에서 `ultracode`가 인식되면 이 컴포저도 새 세션과 같은 무장을 진다 — 같은 부품
-   (execution composer primitives)이 인식·미러 문법을 소유하고, 표식만 이 조립의 CSS가 싣는다. 채널은 apex다:
-   신호(상태)도 위치(brass)도 아닌 "기본 밖의 선택"이라 좌표의 ultracode 티어와 같은 채널이 맞다.
-   새 세션의 도는 conic 링 대신 여기서는 정지한 apex 테두리 + 글로우를 쓴다.
-   움직이는 것은 단어 물결 하나뿐이다. */
 /* 덱과 미러의 기준면은 상자(field)다 — 한 줄 컴포저에서 입력 래퍼는 동작 버튼만큼 좁으므로 여기에
    걸면 덱이 상자보다 좁게 서고 행이 가로로 넘친다. 미러(highlight)는 입력 위에 겹쳐야 하므로 래퍼가 기준이다. */
 .agent-chat-composer-field { position: relative; }
@@ -2076,98 +2069,15 @@
   caret-color: var(--text-primary);
 }
 
-/* 인식된 단어는 좌표 ULTRACODE 티어·강도 트랙과 같은 apex 물결로 흐른다 — 같은 능력이면 같은
-   어휘다. 미러 층 위에 겹치므로 자족 폭을 바꾸는 속성(굵기·자간)은 쓰지 않는다: 보이는 글자와
-   textarea가 그리는 캐럿·선택이 어긋난다. 신호는 색이 싣는다. */
 /* 덱으로 완성된 좌표 — 이 문면이 실제로 부를 수 있는 것임을 말한다.
    brass는 이 제품에서 위치·초점 채널이고, 완성된 좌표는 "여기가 어디로 간다"는 위치 정보라
    같은 채널에 앉는다. 신호색(aurora/warn/coral)을 쓰면 상태를 말하는 것으로 읽힌다.
-   무장 표식(apex)과 색이 갈라져야 둘이 한 줄에 함께 서도 구분된다. */
+   */
 .agent-chat-composer-resolved-token {
   border-radius: 3px;
   background: color-mix(in oklch, var(--brass) 15%, transparent);
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 26%, transparent);
   color: var(--brass-ink);
-}
-
-.agent-chat-composer-ultracode-token {
-  background-image: linear-gradient(
-    105deg,
-    var(--apex-ink) 0%,
-    color-mix(in oklch, var(--apex) 55%, white) 16%,
-    var(--apex-ink) 32%,
-    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
-    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
-    var(--apex-ink) 64%,
-    color-mix(in oklch, var(--apex) 55%, white) 80%,
-    var(--apex-ink) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: agent-chat-ultracode-wave 1.9s linear infinite; animation-name: var(--state-motion, agent-chat-ultracode-wave);
-}
-
-/* 무장한 프레임 — 정지한 apex 테두리 + 글로우. 켜지는 순간 한 번만 밝아지는 점화는 유한
-   애니메이션이라 모션 규약의 무한 예외에 기대지 않는다(무장 자체는 단어 물결이 상시로 진다).
-   [doctrine] apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 두 hue 사이 짧은 호를 지나므로,
-   라이트(hairline hue 100)에서 apex(295) 혼합이 coral(신호 채널)을 관통한다(좌표와 같은 결정). */
-.agent-chat-composer-frame.is-ultracode {
-  border-color: color-mix(in oklab, var(--apex) 52%, var(--hairline-strong));
-  box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
-    0 0 22px -8px var(--apex-glow);
-  animation: agent-chat-composer-ignite 900ms var(--ease-glide) both;
-}
-
-/* 포커스가 겹치면 apex가 이긴다 — 무장은 사용자가 명시적으로 켠 의사표시이고, brass 포커스보다
-   강한 신호다. 같은 특이도라 소스 순서로 이기도록 focus-within 규칙 뒤에 둔다. */
-.agent-chat-composer-frame.is-ultracode:focus-within {
-  border-color: var(--apex);
-  box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--apex) 40%, transparent),
-    0 0 26px -6px var(--apex-glow);
-}
-
-@keyframes agent-chat-composer-ignite {
-  0% {
-    box-shadow: 0 0 0 1px transparent, 0 0 0 0 transparent;
-  }
-  40% {
-    box-shadow:
-      0 0 0 1px color-mix(in oklch, var(--apex) 38%, transparent),
-      0 0 32px -4px var(--apex-glow);
-  }
-  100% {
-    box-shadow:
-      0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
-      0 0 22px -8px var(--apex-glow);
-  }
-}
-
-/* 고지 줄 — 무장 동안 프레임 위에 상주한다. 좌표·힌트가 앉는 바 슬롯은 전송 실패가 role="alert"로
-   쓰고 있어, 정보 메시지를 그 자리에 얹으면 경고 채널이 흐려진다. 그래서 field 위 자기 줄에 선다.
-   두 표식(프레임 테두리·이 줄)이 무장의 전부이므로, 기억된 초안이 숨은 모드가 되지 않게 무장한
-   동안 항상 서 있는다. */
-.agent-chat-composer-ultracode-notice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-2) var(--space-4) 0;
-  font-size: var(--t-sm);
-  color: color-mix(in oklab, var(--apex) 72%, var(--text-secondary));
-}
-
-.agent-chat-composer-ultracode-glyph {
-  font-size: var(--t-xs);
-  line-height: 1;
-  flex: none;
-}
-
-.agent-chat-composer-ultracode-hint {
-  color: var(--text-tertiary);
 }
 
 /* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며 컴포저가
@@ -2324,7 +2234,7 @@
    직접 놓인다 — 별도 테두리·바탕·radius가 없어 프레임 안에 또 하나의 배지가 생기지 않는다.
    [doctrine] 기본형은 어떤 채널도 타지 않는다. 좌표는 상태(신호)도 위치(brass)도
    정체성(--id-*)도 아니므로 tertiary 잉크만 쓰고, 색을 얻는 것은 강도 한 자리뿐이다:
-   MAX는 crest, ULTRACODE는 apex, 미지정(auto)은 파선 밑줄. 컨트롤이 아니라 사실이므로
+   MAX는 crest, 미지정(auto)은 파선 밑줄. 컨트롤이 아니라 사실이므로
    hover 반응도 두지 않는다. */
 .agent-chat-coord {
   display: inline-flex;
@@ -2371,48 +2281,9 @@
 }
 
 /* MAX는 crest 채널을 색으로만 받는다 — 트랙의 잉걸불 명멸까지 옮기면 타자 치는 면에서
-   상시로 깜빡이는 것이 둘이 된다. 이 면의 상시 모션은 ultracode 하나로 족하다. */
+   상시로 깜빡이는 것이 둘이 된다. 이 면에는 상시 모션을 두지 않는다. */
 .agent-chat-coord-effort[data-effort-level="max"] {
   color: var(--crest-ink);
-}
-
-/* ULTRACODE — 강도 트랙과 같은 apex 물결. 이 세션이 실제로 ultracode 오케스트레이션으로
-   돈다는 사실의 표식이며(시드가 SDK 옵션으로 켠다), 그래서 "요청"이 아니라 상태로 말한다.
-   [doctrine] 무한 애니메이션이지만 진행 신호가 아니라 티어 표식이다 — 강도 트랙의
-   `effort-ultracode-wave`가 이미 같은 자리에서 같은 예외를 진다. 감속 모션에서는 아래
-   봉인 블록이 물결을 세우고 단색 apex + 파선 밑줄로 티어를 남긴다. */
-.agent-chat-coord-effort[data-effort-level="ultra"] {
-  font-weight: var(--weight-medium);
-  background-image: linear-gradient(
-    105deg,
-    var(--apex-ink) 0%,
-    color-mix(in oklch, var(--apex) 55%, white) 16%,
-    var(--apex-ink) 32%,
-    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
-    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
-    var(--apex-ink) 64%,
-    color-mix(in oklch, var(--apex) 55%, white) 80%,
-    var(--apex-ink) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: agent-chat-ultracode-wave 1.9s linear infinite; animation-name: var(--state-motion, agent-chat-ultracode-wave);
-}
-
-/* 라이브 물결과 같은 이음매 계산이다(위 agent-chat-live-sweep 주석). 200%에서 dP 200은
-   이동량 2W = 타일 한 폭이라 되풀이 프레임이 첫 프레임과 같다. 값은 강도 트랙의
-   effort-ultracode-wave와 한 벌로 움직인다 — 같은 물결이 여러 면에 있으므로 갈라지면 안 된다. */
-@keyframes agent-chat-ultracode-wave {
-  from { background-position: 0 0; }
-  to { background-position: -200% 0; }
-}
-
-/* ultracode는 배지 외곽선 대신 별과 강도 글자만 apex를 얻는다. 좌표 전체를 다시 두르면
-   배지를 걷어 낸 뜻이 사라지고, 모델명까지 티어 신호로 오염된다. */
-.agent-chat-coord.is-ultracode .agent-chat-coord-mark {
-  color: var(--apex-ink);
 }
 
 /* 공급자 글리프는 마크와 같은 자리·같은 크기를 쓴다 — 표식이 바뀌어도 줄의 리듬은 그대로다.
@@ -2734,7 +2605,7 @@
   }
 
   /* 라이브 물결 봉인 — 모션만 죽이고 줄은 남긴다. 그라데이션을 지우면서 채움도 함께 되돌려야
-     한다: `color: transparent`가 남으면 글자가 통째로 사라진다(ULTRACODE 물결과 같은 함정). */
+     한다: `color: transparent`가 남으면 글자가 통째로 사라진다(`color: transparent` 함정). */
   .agent-chat-live-text {
     animation: none;
     background-image: none;
@@ -2764,31 +2635,6 @@
   /* 컴포저가 가운데에서 하단으로 내려앉는 이동을 세운다 — 자리는 그대로 바뀌되 한 프레임에 간다. */
   .agent-chat-settle {
     transition: none;
-  }
-
-  /* ULTRACODE 물결 봉인 — 모션만 죽이고 티어는 남긴다. 그라데이션을 지우면서 채움도 함께
-     되돌려야 한다: `color: transparent`가 남으면 글자가 통째로 사라진다. */
-  .agent-chat-coord-effort[data-effort-level="ultra"] {
-    animation: none;
-    background-image: none;
-    color: var(--apex-ink);
-    -webkit-text-fill-color: var(--apex-ink);
-    text-decoration: underline dashed;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 3px;
-  }
-
-  /* 컴포저 무장: 점화는 세우고 정지한 apex 테두리·글로우는 남긴다(상태는 유지). 단어 물결은
-     좌표와 같은 함정을 피해 채움을 되돌린다 — `color: transparent`가 남으면 글자가 사라진다. */
-  .agent-chat-composer-frame.is-ultracode {
-    animation: none;
-  }
-
-  .agent-chat-composer-ultracode-token {
-    animation: none;
-    background-image: none;
-    color: var(--apex-ink);
-    -webkit-text-fill-color: var(--apex-ink);
   }
 }
 

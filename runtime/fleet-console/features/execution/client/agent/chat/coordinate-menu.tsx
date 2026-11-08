@@ -239,7 +239,7 @@ export function SessionCoordinateMenu({
       <button
         ref={triggerRef}
         type="button"
-        className={`agent-chat-coord is-control${coordinates.ultracode ? " is-ultracode" : ""}`}
+        className="agent-chat-coord is-control"
         aria-haspopup={mobile ? "dialog" : "menu"}
         aria-expanded={open}
         aria-label={t("terminal.chat.coordMenuAria", { model, effort })}
@@ -318,7 +318,7 @@ export function SessionCoordinateMenu({
                   {targetRow.chips?.find((chip) => chip.launch.effort === targetEffort)?.label ?? t("terminal.chat.coordAutoEffort")}
                 </span>
               </button>
-              {/* 게이트는 고정 개방 — MAX·ULTRACODE까지 한 축에 펼친다(Objectives 메뉴와 같다). */}
+              {/* 게이트는 고정 개방 — MAX까지 한 축에 펼친다(Objectives 메뉴와 같다). */}
               <div className="agent-chat-coord-pop-track">
                 <EffortTrack
                   row={targetRow}
@@ -417,7 +417,7 @@ export function SessionCoordinateMenu({
   );
 }
 
-/** 좌표 글자 — 공급자 글리프(또는 ultracode 별)·모델·강도. 읽기 전용 표식과 같은 조각이다. */
+/** 좌표 글자 — 공급자 글리프·모델·강도. 읽기 전용 표식과 같은 조각이다. */
 export function CoordinateFace({
   coordinates,
   model,
@@ -429,12 +429,12 @@ export function CoordinateFace({
 }) {
   return (
     <>
-      {coordinates.provider !== null && !coordinates.ultracode ? (
+      {coordinates.provider !== null ? (
         <span className="agent-chat-coord-glyph" aria-hidden="true" data-provider={coordinates.provider}>
           {launchProviderGlyph(coordinates.provider)}
         </span>
       ) : (
-        <span className="agent-chat-coord-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
+        <span className="agent-chat-coord-mark" aria-hidden="true">◇</span>
       )}
       <span className="agent-chat-coord-model">{model}</span>
       <span className="agent-chat-coord-sep" aria-hidden="true">·</span>

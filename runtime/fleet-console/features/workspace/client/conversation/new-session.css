@@ -380,7 +380,7 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
   --conversation-add-ink: var(--conversation-accent-body);
 }
 :root[data-theme="light"] .new-session-launch-slot.is-avatar-accent { --conversation-add-ink: var(--conversation-accent); }
-/* 강도 값 라벨은 아바타색 잉크로 — 다크는 몸색, 라이트는 글자용 잉크. 게이트 뒤 티어(MAX·ULTRACODE)는
+/* 강도 값 라벨은 아바타색 잉크로 — 다크는 몸색, 라이트는 글자용 잉크. 게이트 뒤 티어(MAX)는
    crest·apex 정체성을 유지하므로 제외한다. */
 .new-session-launch-slot.is-avatar-accent .effort-track-value:not([data-effort-level="max"]):not([data-effort-level="ultra"]) {
   color: var(--conversation-add-ink);

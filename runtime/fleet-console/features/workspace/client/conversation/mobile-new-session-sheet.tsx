@@ -25,7 +25,7 @@ import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { resolveObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
 import { ObjectiveNameMark } from "../../../execution/client/components/objective-name-mark.js";
-import { MobileEffortGateRow, MobileEffortTabs, Toggle, useMobileEffortGate } from "../../../execution/client/components/mobile-effort-gate.js";
+import { MobileEffortGateRow, MobileEffortTabs, useMobileEffortGate } from "../../../execution/client/components/mobile-effort-gate.js";
 import "../../../execution/client/components/mobile-launch-sheet.css";
 
 /**
@@ -57,9 +57,6 @@ export interface MobileNewSessionSheetProps {
   readonly effort: string | null;
   readonly onModelRow: (row: ObjectiveLaunchVariantRow) => void;
   readonly onEffort: (effort: string | null) => void;
-  readonly ultracodeArmed: boolean;
-  readonly hasUltracodeWord: boolean;
-  readonly onUltracode: (on: boolean) => void;
   readonly attachments: readonly Attachment[];
   readonly attachmentStore: ComposerAttachments;
   readonly attachmentT: Translate<ComposerMessageKey>;
@@ -226,13 +223,6 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
         <h3 className="mls-glab is-options">{t("chrome.launch.mobile.options")}</h3>
         <div className="mls-grp">
           <MobileEffortGateRow deck={deck} onToggle={toggleGate} />
-          <button type="button" role="switch" aria-checked={props.ultracodeArmed} className="mls-gr is-two" onClick={() => props.onUltracode(!props.ultracodeArmed)}>
-            <span className="mls-gr-tx">
-              {t("chrome.launch.mobile.dynamic")}
-              <small>{props.ultracodeArmed ? t("chrome.launch.ultracodeNotice") : t("chrome.launch.mobile.dynamicOff")}</small>
-            </span>
-            <Toggle on={props.ultracodeArmed} />
-          </button>
         </div>
       </MobileSheet>
     );

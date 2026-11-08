@@ -30,5 +30,4 @@ export type { ComposerQuote, ComposerQuoteAttachResult, ComposerQuoteItem, Compo
 export { ComposerQuoteList, ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "./quote-tray.js";
 export type { ComposerQuoteTrayProps } from "./quote-tray.js";
 export type { ComposerMessageKey } from "./messages.js";
-export { isUltracodeDisarmCaret, nextUltracodeIgnored, readUltracodeTokens, renderUltracodeHighlight, syncComposerHighlight } from "./ultracode.js";
-export type { UltracodeToken } from "./ultracode.js";
+export { syncComposerHighlight } from "./composer-mirror.js";

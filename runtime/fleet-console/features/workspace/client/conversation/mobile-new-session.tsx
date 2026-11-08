@@ -5,7 +5,6 @@ import type { ObjectiveCatalogPlugin, ObjectiveLaunchVariantRow } from "../../..
 import { fetchObjectiveCatalog } from "../../../execution/client/objective-records.js";
 import { composerAttachmentNoticeText, composerT } from "../../../execution/client/composer-primitives/messages.js";
 import { createComposerAttachments } from "../../../execution/client/composer-primitives/attachment-store.js";
-import { nextUltracodeIgnored, readUltracodeTokens } from "../../../execution/client/composer-primitives/ultracode.js";
 import { useComposerAttachmentSnapshot } from "../../../execution/client/composer-primitives/attachment-input.js";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -61,7 +60,6 @@ export function MobileNewSession() {
   const [pluginAddressUnavailable, setPluginAddressUnavailable] = useState(false);
   const [attachmentErrorKey, setAttachmentErrorKey] = useState<string | null>(null);
   const [rejection, setRejection] = useState<{ readonly code: string | null; readonly shortenBy: number | null } | null>(null);
-  const [ultracodeIgnored, setUltracodeIgnored] = useState(false);
   // 시트 회차 — 열림마다 오른다. 대기 중인 멘션 전달 promise가 다음 회차를 닫거나 스테일 에러로 칠하지 못하게 한다.
   const epochRef = useRef(0);
 
@@ -105,12 +103,6 @@ export function MobileNewSession() {
   const mentionDeckOpen = mentionToken !== null;
   // 행이 있는 덱만 제출을 막는다 — 매치가 없으면 "@3pm" 같은 프로즈 토큰이다.
   const deckHasRows = mentionDeckOpen && (mentionEntries.length + pendingMentionEntries.length + pluginMentionRows.length) > 0;
-
-  const ultracodeTokens = useMemo(() => readUltracodeTokens(prompt), [prompt]);
-  const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;
-  useEffect(() => {
-    setUltracodeIgnored((ignored) => nextUltracodeIgnored(prompt, ignored));
-  }, [prompt]);
 
   // 열릴 때마다 카탈로그를 새로 읽는다. 설정에서 모델을 켜고 끈 직후 열어도 목록이 실제와 어긋나지 않는다.
   useEffect(() => {
@@ -377,14 +369,6 @@ export function MobileNewSession() {
         writeNewSessionModelEffort(rowModel, nextEffort);
       }}
       onEffort={(next) => { setEffort(next); writeNewSessionModelEffort(model, next); }}
-      ultracodeArmed={ultracodeArmed}
-      hasUltracodeWord={ultracodeTokens.length > 0}
-      onUltracode={(on) => {
-        // 켜기는 사람이 직접 친 것과 같다 — 문면 끝에 단어를 붙이거나, 이 초안에서 껐던 표식을 되살린다. 끄기는 단어를 남기고 무장만 푼다.
-        if (!on) { setUltracodeIgnored(true); return; }
-        if (ultracodeTokens.length > 0) { setUltracodeIgnored(false); return; }
-        setPrompt(`${prompt}${prompt.length === 0 || /\s$/.test(prompt) ? "" : " "}ultracode`);
-      }}
       attachments={attachments}
       attachmentStore={attachmentStore}
       attachmentT={ct}

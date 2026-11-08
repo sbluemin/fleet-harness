@@ -9,7 +9,7 @@ import { ComposerQuoteTray, composerQuotePlaceholder } from "../../composer-prim
 import { ComposerInput } from "../../composer-primitives/input.js";
 import { composerAttachmentNoticeText, composerT } from "../../composer-primitives/messages.js";
 import { composerDeckKeyDown } from "../../composer-primitives/deck.js";
-import { isUltracodeDisarmCaret, nextUltracodeIgnored, readUltracodeTokens, renderUltracodeHighlight, syncComposerHighlight } from "../../composer-primitives/ultracode.js";
+import { syncComposerHighlight } from "../../composer-primitives/composer-mirror.js";
 import { useComposerAttachmentInput } from "../../composer-primitives/attachment-input.js";
 
 import { CaptionHistoryFoldGlyph, CaptionReadingWidthGlyph } from "../../../../workspace/client/components/caption-actions.js";
@@ -212,7 +212,7 @@ export function AgentChatComposer({
   const widthCollapsed = widthChoices.length < 2;
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const draftState = getComposerDraft(context.objectiveId);
-  const { text: draft, attachments, attachmentNotice, quotes, sending, sentEpoch, failed, ultracodeIgnored } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
+  const { text: draft, attachments, attachmentNotice, quotes, sending, sentEpoch, failed } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
   const setDraft = draftState.setText;
   const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
   /**
@@ -236,53 +236,35 @@ export function AgentChatComposer({
   // 대조해야 하므로 덱 블록보다 앞에 선다.
   const [catalog, setCatalog] = React.useState<AgentChatCatalog | null>(null);
   const [catalogTried, setCatalogTried] = React.useState(false);
-  // `ultracode` 무장 — 새 세션과 같은 부품(execution composer primitives)이 인식·미러 문법을 소유하고,
-  // 상태(해제)와 표식만 이 조립이 진다. 무장은 초안에서 파생하고, 남는 것은 "이 초안에서 껐다"뿐이다.
+  // 미러 층(해석된 좌표 `/이름`·`@이름`)의 동기화 ref.
   const highlightRef = React.useRef<HTMLDivElement | null>(null);
-  const setUltracodeIgnored = draftState.setUltracodeIgnored;
-  const ultracodeTokens = React.useMemo(() => readUltracodeTokens(draft), [draft]);
-  const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;
   /**
-   * 미러 층이 칠할 구간들 — `ultracode` 무장과 **해석된 좌표**(`/이름`·`@이름`)가 한 층을 나눠 쓴다.
-   *
-   * 층을 둘로 두지 않는 이유는 정렬이다: 미러는 textarea 위에 글자 단위로 겹치는 그림이라,
-   * 두 겹을 따로 띄우면 스크롤·자동 높이에서 서로 어긋난다. 한 목록으로 합쳐 한 번만 그린다.
+   * 미러 층이 칠할 구간들 — **해석된 좌표**(`/이름`·`@이름`)를 한 층으로 그린다.
    */
   const highlightSpans = React.useMemo(() => {
     const spans: { start: number; end: number; className: string }[] = [];
-    if (ultracodeArmed) {
-      for (const token of ultracodeTokens) {
-        spans.push({ ...token, className: "agent-chat-composer-ultracode-token" });
-      }
-    }
     for (const range of readResolvedTokenRanges(draft, catalog)) {
       spans.push({ ...range, className: "agent-chat-composer-resolved-token" });
     }
     return spans.sort((a, b) => a.start - b.start);
-  }, [draft, ultracodeArmed, ultracodeTokens, catalog]);
+  }, [draft, catalog]);
 
-  // 해제는 단어가 문면에서 전부 사라질 때 만료한다 — 프로그램 쓰기(전송 후 초기화)도 같은 경로를
-  // 지나야 하므로 입력 핸들러가 아니라 문면 자체에 붙인다.
-  React.useEffect(() => {
-    const next = nextUltracodeIgnored(draft, ultracodeIgnored);
-    if (next !== ultracodeIgnored) setUltracodeIgnored(next);
-  }, [draft, ultracodeIgnored, setUltracodeIgnored]);
-  const syncUltracodeHighlight = React.useCallback(() => {
+  const syncMirrorHighlight = React.useCallback(() => {
     syncComposerHighlight(inputRef.current, highlightRef.current);
   }, []);
   // 문면·자동 높이가 바뀐 프레임에서 바로 맞춘다(그려진 뒤 맞추면 한 프레임 어긋난 채 보인다).
   React.useLayoutEffect(() => {
-    syncUltracodeHighlight();
-  }, [draft, syncUltracodeHighlight, highlightSpans.length]);
+    syncMirrorHighlight();
+  }, [draft, syncMirrorHighlight, highlightSpans.length]);
   // 프레임 폭은 첨부 트레이·패널 리사이즈로도 바뀐다 — textarea 자신을 관찰하는 것이 유일하게
   // 빠짐없는 기준이다.
   React.useEffect(() => {
     const input = inputRef.current;
     if (highlightSpans.length === 0 || !input || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => syncUltracodeHighlight());
+    const observer = new ResizeObserver(() => syncMirrorHighlight());
     observer.observe(input);
     return () => observer.disconnect();
-  }, [syncUltracodeHighlight, highlightSpans.length]);
+  }, [syncMirrorHighlight, highlightSpans.length]);
   // HTTP promise에는 컴포넌트 클로저를 붙이지 않는다. 성공 결말은 지금 살아 있는 입력창만 구독한다.
   const observedSentEpochRef = React.useRef(sentEpoch);
   React.useEffect(() => {
@@ -588,7 +570,7 @@ export function AgentChatComposer({
       </>
       )}
       <div
-        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${ultracodeArmed ? " is-ultracode" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
+        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
         onKeyDown={(event) => {
           // 도는 턴을 끊는 키. 프레임 안에서만 듣는다 — 문서 전역에 걸면 한 화면에 열린 다른
           // 채팅 패널의 턴까지 함께 끊는다. 안내(`Esc 중지`)가 서는 구간과 정확히 같은 구간이다.
@@ -605,14 +587,6 @@ export function AgentChatComposer({
         onDragLeave={attachmentInput.onDragLeave}
         onDrop={attachmentInput.onDrop}
       >
-        {/* 무장 고지 — field 위 자기 줄에 상주한다(바 슬롯은 전송 실패 alert가 쓴다). */}
-        {ultracodeArmed ? (
-          <p className="agent-chat-composer-ultracode-notice" role="status">
-            <span className="agent-chat-composer-ultracode-glyph" aria-hidden="true">✦</span>
-            <span>{t("terminal.chat.composerUltracodeNotice")}</span>
-            <span className="agent-chat-composer-ultracode-hint">{t("terminal.chat.composerUltracodeHint")}</span>
-          </p>
-        ) : null}
         {/* 예약 목록 — field 위 자기 자리에 선다. 바에 두면 좌표·계기와 폭을 다투다 한 줄로
             잘리고, 그 한 줄은 무엇이 밀려 있는지 말하지 못한다. 서버가 보내는 전량을 그대로 그린다. */}
         {queue.length > 0 ? (
@@ -694,18 +668,9 @@ export function AgentChatComposer({
                   setConsoleNotice(null);
                   setClearArmed(false);
                 }}
-                onScroll={syncUltracodeHighlight}
+                onScroll={syncMirrorHighlight}
                 onPaste={attachmentInput.onPaste}
                 onKeyDown={(event) => {
-                  // caret이 인식된 `ultracode` 바로 뒤일 때의 수식 없는 Backspace 한 번은 글자가 아니라
-                  // 무장을 지운다 — 다음 Backspace는 평소대로 지운다. 키 반복·수식 붙은 삭제는 손대지 않는다.
-                  if (event.key === "Backspace" && !event.repeat && ultracodeArmed
-                    && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
-                    && isUltracodeDisarmCaret(draft, event.currentTarget.selectionStart, event.currentTarget.selectionEnd)) {
-                    event.preventDefault();
-                    setUltracodeIgnored(true);
-                    return;
-                  }
                   // 덱 키 문법(SDK, 네 컴포저 공통) — 덱이 열려 있는 동안만 이동·확정 키를 가져간다. 매치가 0이면
                   // Enter를 잡지 않는다(쓴 문장이 그대로 나간다). Esc는 덱만 닫고 전파를 끊는다 — 여기서 멈추지 않으면
                   // 한 번의 Esc가 덱을 닫으면서 프레임의 Esc(도는 턴 중지)까지 올라간다.

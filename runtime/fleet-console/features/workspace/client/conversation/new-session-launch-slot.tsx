@@ -19,7 +19,7 @@ export interface NewSessionLaunchSlotProps {
   readonly onChange: (next: NewSessionLaunchChoice) => void;
   /** 시작하는 중에는 바꿀 수 없다. */
   readonly disabled: boolean;
-  /** 숨은 강도(MAX·ULTRACODE) 게이트의 펼침 — 트랙의 ✦와 `/effort` 목록의 문 행이 이 한 상태를 쓴다. */
+  /** 숨은 강도(MAX) 게이트의 펼침 — 트랙의 ✦와 `/effort` 목록의 문 행이 이 한 상태를 쓴다. */
   readonly apexOpen: boolean;
   readonly onApexOpenChange: (open: boolean) => void;
 }
