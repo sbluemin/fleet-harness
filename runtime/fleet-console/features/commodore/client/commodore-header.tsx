@@ -81,7 +81,7 @@ function CommodoreHeaderMark({ theater, language, theaterInbox, boardPersonDecis
   const asks = openAsks(commodoreId).length;
   const personDecision = asks > 0 || boardPersonDecisionCount > 0;
   const state = commodoreMongleState(view, board.objectives, personDecision);
-  const glyph = <CommodoreAvatar commodoreId={commodoreId} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" />;
+  const glyph = <CommodoreAvatar commodoreId={commodoreId} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" figure />;
   // 숫자 배지 — 사령관 질문과 보드 결정을 합산한다. 답·철회로 걷히면 같은 판정이 함께 0이 되어 사라진다.
   const total = asks + boardPersonDecisionCount;
   const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;

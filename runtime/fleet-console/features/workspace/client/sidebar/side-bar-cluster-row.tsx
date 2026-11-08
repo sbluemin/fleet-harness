@@ -602,7 +602,7 @@ export function ClusterRowAvatar({ item, rowState, label, decorative = false, si
   const size = working.length > 0 ? Math.round(full * 26 / 30) : full;
   // 사령관이 직접 묻는 줄은 그 Theater 사령관의 얼굴로 선다 — 지휘관 묶음이 아니다.
   const commander = row.commodore && !anchor && layout.cluster.commodoreId
-    ? <KeyedAvatar avatarKey={commodoreAvatarKey(layout.cluster.commodoreId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} figure />
+    ? <KeyedAvatar avatarKey={commodoreAvatarKey(layout.cluster.commodoreId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
     : anchor
     ? <ObjectiveAvatar objectiveRecord={anchor.objectiveRecord} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />
     : <KeyedAvatar avatarKey={objectiveRecordAvatarKey(layout.cluster.root ?? layout.cluster.avatarObjectiveId ?? layout.cluster.id)} role="commander" state={commanderState} activityObjectiveId={layout.cluster.root} size={size} label={label} decorative={decorative} />;
