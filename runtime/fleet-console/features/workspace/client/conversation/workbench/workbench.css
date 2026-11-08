@@ -272,7 +272,11 @@
 /* 채팅창/브라우저 경계 바 — 칸의 왼쪽 가장자리(경계 자리 바로 오른쪽)에서 8px 더 왼쪽으로 옮긴다. 끌 수 있는 자리는 원래 8px 에서 왼쪽으로 8px 늘려
    16px 이 되고(끌 수 있는 범위·키보드·aria 는 그대로), 표시 막대는 그 왼쪽 가장자리에서 4px 안쪽에 선다. 시트(대화 위에 뜨는 칸)는 제자리다. */
 .conversation-workbench:not([data-mode="sheet"]) .conversation-workbench-gutter.is-split.is-vertical { box-sizing: content-box; margin-left: -8px; padding-left: 8px; }
-.conversation-workbench:not([data-mode="sheet"]) .conversation-workbench-gutter.is-split.is-vertical::after { left: 4px; }
+.conversation-workbench:not([data-mode="sheet"]) .conversation-workbench-gutter.is-split.is-vertical::after { left: 4px; opacity: 1; }
+/* 오른쪽에 붙은 브라우저와 채팅 사이의 이 막대는 호버 때만이 아니라 늘 보인다 — 쉬는 톤은 `--surface-rim-strong`(다크·라이트 모두 바탕 위에서 읽히는 테마 림)이고,
+   호버는 한 단 진한 `--text-tertiary`, 키보드 초점은 아래 공통 규칙대로 brass 다. 다른 경계(아래·칸 사이)와 시트는 그대로 호버 때만 보인다. */
+.conversation-workbench:not([data-mode="sheet"]) .conversation-workbench-gutter.is-split.is-vertical:hover::after { background: var(--text-tertiary); }
+.conversation-workbench:not([data-mode="sheet"]) .conversation-workbench-gutter.is-split.is-vertical:focus-visible::after { background: var(--brass); }
 .conversation-workbench-gutter:hover::after { opacity: 1; }
 .conversation-workbench-gutter:focus-visible { outline: none; }
 .conversation-workbench-gutter:focus-visible::after { opacity: 1; background: var(--brass); }
