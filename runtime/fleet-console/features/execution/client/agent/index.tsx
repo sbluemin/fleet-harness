@@ -21,7 +21,7 @@ import { subscribeConsoleChannel } from "../../../../core/client/src/integration
 import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { focusBrowserWindow, useBrowserDocument } from "../../../browser/client/browser-window.js";
-import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
+import { BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { disposeObjectiveViewState, installObjectiveViewState } from "../objective-view-state.js";
@@ -102,7 +102,7 @@ export const agentObjectiveKind: ObjectiveKindDescriptor = ({
   canOpenCompanions: () => true,
   companions: [
     // Objective Browser — 실험을 켠 Console에서만 선다. 허용은 패널 안에서 켤 수 있다.
-    { id: BROWSER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.browser"), defaultHidden: true, shortcut: { code: "KeyB", label: "B" }, caption: (context) => <BrowserCaption context={context} services={browserServices} />, render: (context) => <BrowserPanel context={context} services={browserServices} /> },
+    { id: BROWSER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.browser"), defaultHidden: true, shortcut: { code: "KeyB", label: "B" }, render: (context) => <BrowserPanel context={context} services={browserServices} /> },
   ],
 });
 

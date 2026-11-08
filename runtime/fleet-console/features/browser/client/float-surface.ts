@@ -26,7 +26,8 @@ interface RenderMessage {
 
 const SURFACE_STYLE = [
   "html,body{background:transparent!important;margin:0!important;padding:0!important;overflow:hidden!important;width:100%;height:100%}",
-  "*,*::before,*::after{animation:none!important;transition:none!important}",
+  // 정지한 채 그리되, 자기 전환을 표지(`data-float-motion`)한 표면만 재생한다. 그 표면의 펄스 같은 상시 애니메이션은 계속 멈춘다.
+  "*:not([data-float-motion]),*:not([data-float-motion])::before,*:not([data-float-motion])::after,[data-float-motion]::before,[data-float-motion]::after{animation:none!important;transition:none!important}",
   "[data-float-focus]{box-shadow:var(--focus-face)!important}",
 ].join("\n");
 

@@ -3,7 +3,8 @@
    대화에 넘긴다. 맨 위 줄(pill·도구모음·사용량 캡슐, 그리고 Desktop 의 신호등·캡션 버튼)은 분할·펼친 칸·시트 어느 때든 칸이 덮지
    않는다 — 두 플랫폼이 같은 모양이다(conversation.css .conversation-band).
    칸은 대화 바탕보다 한 단 밝은 면 · 1px 테두리 · 둥근 모서리이고, 머리 줄(36px)은 모든 도구가 같은 문법이다(시안 v2 규칙 e).
-   브라우저 칸만 예외다 — 머리 없이 대화와 같은 면으로 서고, 탭 줄은 맨 위 줄의 지구본 앞으로 올라간다(.workbench-band-chrome). */
+   브라우저 칸만 예외다 — 머리 없이 대화와 같은 면으로 서고, 주소줄 줄은 맨 위 줄의 브라우저 영역으로 올라가며(.workbench-band-nav-wrap),
+   탭은 본문 왼쪽의 세로 레일이 가진다. */
 .conversation-workbench {
   position: absolute;
   top: var(--conversation-top-row, 52px);
@@ -58,27 +59,24 @@
   user-select: none;
 }
 
-/* ── 머리 없는 브라우저 칸: 대화와 같은 면, 대화 쪽 1px 이음매 하나 + 맨 위 줄(탭 줄)과의 가로 이음매 ──
-   세로 이음매는 맨 위 줄 높이까지 이어진다(.workbench-band-chrome::before). */
+/* ── 머리 없는 브라우저 칸: 대화와 같은 면, 대화 쪽 1px 이음매 하나 ── */
 .workbench-tile[data-seamless="true"] {
   --workbench-tile-face: var(--workbench-canvas);
   border: 0;
   border-left: 1px solid var(--hairline);
-  border-top: 1px solid var(--hairline);
   border-radius: 0;
 }
 
-.workbench-tile[data-seamless="true"].is-expanded { border-left: 0; border-top: 0; }
+.workbench-tile[data-seamless="true"].is-expanded { border-left: 0; }
 .workbench-tile[data-seamless="true"].is-focused { border-color: var(--hairline); }
 /* 지구본에서 번지고 접히는 동안은 자리 전이를 멈춘다 — 원이 칸을 따라 미끄러지지 않게. */
 .workbench-tile[data-motion] { transition: none; }
 
-/* ── 맨 위 줄의 브라우저 탭 줄 — 지구본 바로 앞, 분할 영역 위의 폭만 쓴다 ── */
+/* ── 맨 위 줄의 브라우저 칸 자리 — 지구본 바로 앞. 탭은 여기 서지 않는다(탭은 브라우저 본문 왼쪽의 세로 레일). 지구본이 닫는 길이 아닐 때의 닫기만 선다. ── */
 .conversation-browser-slot { display: inline-flex; align-items: center; min-width: 0; }
 .conversation-browser-slot:empty { display: none; }
 
 .workbench-band-chrome {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -88,32 +86,22 @@
   pointer-events: auto;
 }
 
-.workbench-band-chrome .op-browser-cap { flex: 1; min-width: 0; }
-/* 칸의 왼쪽 이음매를 맨 위 줄 높이(탭 줄)까지 잇는다 — 칸의 왼쪽 가장자리는 탭 줄보다 BAND_INSET(8px) 왼쪽이다.
-   칸이 펼쳐지면 그 이음매도 없으므로 함께 거둔다. */
-.workbench-band-chrome::before {
-  content: "";
-  position: absolute;
-  left: -8px;
-  top: calc((30px - var(--conversation-top-row, 52px)) / 2);
-  width: 1px;
-  height: var(--conversation-top-row, 52px);
-  background: var(--hairline);
-  pointer-events: none;
-}
-.workbench-band-chrome.is-expanded::before { display: none; }
-.workbench-band-chrome.is-enter { animation: workbench-band-in 340ms var(--ease-spring) both; }
-.workbench-band-chrome.is-leave { animation: workbench-band-out 160ms ease-in both; }
+.workbench-band-chrome.is-enter, .workbench-band-nav-wrap.is-enter { animation: workbench-band-in 200ms ease-out both; }
+.workbench-band-chrome.is-leave, .workbench-band-nav-wrap.is-leave { animation: workbench-band-out 160ms ease-in both; }
 
-/* 탭 줄은 지구본 쪽(오른쪽)에서 왼쪽으로 펼쳐진다. */
+/* 주소줄 줄의 자리(맨 위 줄의 주소줄 영역) — 왼쪽은 브라우저 칸의 왼쪽 끝(--browser-split-x)에서 시작해 대화 칸 위에는 칩과 컨텍스트·알림 단추만 남긴다.
+   칩 묶음이 그 끝을 넘어서면(좁은 칸) 그 오른쪽 끝(--conversation-chip-end, 대화 머리 줄이 잰다)이 한계다. 오른쪽은 지구본 왼쪽(주소줄 자리의 끝)이다.
+   줄 자체는 .op-browser__nav.is-top 이 그린다. 펼쳐도 이 영역은 그대로다. */
+.workbench-band-nav-wrap { position: absolute; top: 0; right: 0; bottom: 0; left: max(var(--conversation-chip-end, 0px), var(--browser-split-x, 0px)); display: flex; align-items: center; pointer-events: none; }
+
 @keyframes workbench-band-in {
-  from { opacity: 0; clip-path: inset(-60px 0 -60px 100%); transform: translateX(16px); }
-  to { opacity: 1; clip-path: inset(-60px -12px -60px -12px); transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes workbench-band-out {
-  from { opacity: 1; clip-path: inset(-60px -12px -60px -12px); }
-  to { opacity: 0; clip-path: inset(-60px 0 -60px 100%); }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* ── 칸 머리 ── */
@@ -160,11 +148,6 @@
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
 }
-
-/* 브라우저 칸은 머리가 곧 탭 줄이다 — 캡션이 남은 폭을 채운다. */
-.workbench-tile-title .op-browser-cap { flex: 1; min-width: 0; }
-/* 캡션 메뉴는 본문 위로 내려온다 — 제목에서 자르면 메뉴의 z-index와 무관하게 클릭도 잘린다. 탭 줄은 자체적으로 자른다. */
-.workbench-tile-title:has(.op-browser-cap) { overflow: visible; }
 
 .workbench-tile-tools {
   flex: 0 1 auto;

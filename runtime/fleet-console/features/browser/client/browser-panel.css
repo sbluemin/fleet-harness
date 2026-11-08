@@ -1,25 +1,51 @@
-/* Objective Browser companion — 캡션 밴드는 호스트가 그리고, 여기서는 탭·탐색·화면·상태줄만 채운다.
+/* Objective Browser companion — 호스트는 머리만 그리고, 여기서는 탭 레일·탐색·화면·상태줄을 채운다.
    색은 채널 규약대로: 에이전트 조작은 --agent-control-badge(배지 채널), 오류는 coral, 라이브는 aurora,
    위치·포커스는 brass. */
 .op-browser { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--ink-deep); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); }
 @keyframes op-browser-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-/* ---- 탭 스트립. 대화 분할 머리가 호스트다. ---- */
-.op-browser-cap { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); height: 100%; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-primary); }
-.op-browser-cap__tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--space-1); overflow: hidden; }
-.op-browser-cap__spacer { flex: 1 1 0; min-width: 0; }
-.op-browser-cap > .op-browser__icon { flex: none; }
-/* 에이전트 세션 — 탭 줄 자리(분할 머리, 또는 맨 위 줄로 올라간 탭 줄)의 틴트와 2px 레일. reduced-motion 은 균일 채움으로 단락한다. */
-.workbench-band-chrome:has(.op-browser-cap.is-driving) { position: relative; border-radius: var(--radius-xs); background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, transparent), transparent 70%); }
-.workbench-band-chrome:has(.op-browser-cap.is-driving)::after,
-.workbench-tile-head:has(> .workbench-tile-title .op-browser-cap.is-driving)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none;
-  background: linear-gradient(90deg, transparent 0%, var(--agent-control-badge) 30%, var(--agent-control-badge) 70%, transparent 100%); background-size: 55% 100%; background-repeat: no-repeat;
-  animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel); }
-.workbench-tile-head:has(> .workbench-tile-title .op-browser-cap.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
-@media (prefers-reduced-motion: reduce) { :is(.workbench-band-chrome:has(.op-browser-cap.is-driving), .workbench-tile-head:has(> .workbench-tile-title .op-browser-cap.is-driving))::after { animation: none; background: var(--agent-control-badge); } }
-.op-browser__tab { position: relative; display: inline-flex; flex: 0 1 auto; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 56px; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
-.op-browser__tab:hover { background: var(--ink-veil); }
-.op-browser__tab.is-active { background: var(--ink-veil); color: var(--text-primary); border-color: var(--hairline-strong); }
+/* ---- 세로 탭 레일 — 브라우저 본문 왼쪽, Chrome 「세로로 탭 표시」 모양. ----
+   자리(.op-browser-rail-slot)는 접힘 폭만 레이아웃을 차지하고(고정이면 펼침 폭), 호버·키보드 초점의 펼침은 그 위에 겹쳐 그려진다 —
+   본문 폭이 호버마다 바뀌지 않는다. 폭은 패널이 인라인으로 준다(`BROWSER_RAIL_*_PX`). 접힘에서는 모든 행의 아이콘이 같은 열에 선다. */
+.op-browser__body { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+.op-browser__body > .op-browser__viewport { min-width: 0; }
+.op-browser-rail-slot { --op-rail-collapsed: 54px; --op-rail-expanded: 237px; position: relative; z-index: 4; flex: none; width: var(--op-rail-collapsed); }
+.op-browser-rail-slot.is-pinned { width: var(--op-rail-expanded); }
+.op-browser-rail { position: absolute; top: 0; bottom: 0; left: 0; width: var(--op-rail-collapsed); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--ink-deep); border-right: 1px solid var(--hairline); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); }
+.op-browser-rail.is-open { width: var(--op-rail-expanded); }
+/* 펼침·접힘 전환 — 폭은 늘 펼친 값에서 시작하고 끝나며, 오른쪽 가장자리만 잘라 움직인다(레이아웃과 가림 표면의 자리가 전환 동안 변하지 않는다).
+   접힘은 전환이 끝난 뒤 한 번에 폭이 줄어든다(`RAIL_MOTION_MS`). 자식 창에 떠 있는 동안에는 원본이 아니라 자식 창의 사본이 재생한다. */
+@keyframes op-browser-rail-reveal { from { clip-path: inset(-24px calc(var(--op-rail-expanded) - var(--op-rail-collapsed)) -24px -24px); } to { clip-path: inset(-24px); } }
+@keyframes op-browser-rail-conceal { from { clip-path: inset(-24px); } to { clip-path: inset(-24px calc(var(--op-rail-expanded) - var(--op-rail-collapsed)) -24px -24px); } }
+.op-browser-rail.is-opening:not([data-native-float]) { animation: op-browser-rail-reveal 180ms cubic-bezier(0.2, 0, 0, 1) both; }
+.op-browser-rail.is-closing:not([data-native-float]) { animation: op-browser-rail-conceal 180ms cubic-bezier(0.4, 0, 1, 1) both; }
+.op-browser-rail.is-opening[data-native-float], .op-browser-rail.is-closing[data-native-float] { animation: none; }
+@media (prefers-reduced-motion: reduce) { .op-browser-rail.is-opening, .op-browser-rail.is-closing { animation: none !important; } }
+.op-browser-rail.is-open:not(.is-pinned) { box-shadow: var(--popover-surface-shadow); }
+.op-browser-rail:focus-visible, .op-browser-rail :focus-visible { box-shadow: var(--focus-face); outline: none; }
+/* 에이전트 세션 — 레일의 틴트와 2px 선. reduced-motion 은 균일 채움으로 단락한다. */
+.op-browser-rail.is-driving { background: linear-gradient(180deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--ink-deep)), var(--ink-deep) 70%); }
+.op-browser-rail.is-driving::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 2px; pointer-events: none; background: var(--agent-control-badge); animation: op-browser-pulse 2.4s ease-in-out infinite; animation-name: var(--state-motion, op-browser-pulse); }
+@media (prefers-reduced-motion: reduce) { .op-browser-rail.is-driving::after { animation: none; } }
+.op-browser-rail__divider { flex: none; height: 1px; margin: 2px 4px; background: var(--hairline); }
+.op-browser-rail__scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-1); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
+.op-browser-rail.is-open .op-browser-rail__scroll { scrollbar-width: thin; }
+/* 단추 행(고정·새 탭·내 스페이스로) — 접힘에서는 아이콘만, 펼침에서는 글자가 따른다. */
+.op-browser-rail__row { flex: none; display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%; height: 34px; padding: 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: start; white-space: nowrap; cursor: pointer; }
+.op-browser-rail__row:hover:not(:disabled), .op-browser__tab:hover { background: var(--ink-veil); color: var(--text-primary); }
+.op-browser-rail__row:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.op-browser-rail__row.is-set { color: var(--brass-ink); }
+.op-browser-rail__new { background: var(--ink-veil); font-size: var(--t-md); }
+.op-browser-rail__new:hover:not(:disabled) { background: var(--ink-rim); }
+.op-browser-rail__glyph { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+.op-browser-rail__glyph svg { width: 14px; height: 14px; }
+.op-browser-rail__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.op-browser-rail:not(.is-open) :is(.op-browser-rail__label, .op-browser__tab-title, .op-browser__tab-close, .op-browser__space-name, .op-browser__space-count) { display: none; }
+.op-browser-rail.is-open .op-browser__space-initial { display: none; }
+/* 탭 — 둥근 모서리 행. 활성 탭은 한 톤 밝다. */
+.op-browser__tab { position: relative; flex: none; display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%; height: 34px; padding: 0 8px 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-sm); line-height: 18px; }
+.op-browser__tab.is-active { background: var(--ink-rim); color: var(--text-primary); }
+.op-browser__space-tabs, .op-browser__human-tabs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .op-browser__tab-icon { flex: none; width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
 .op-browser__tab-icon.is-fallback { display: inline-flex; color: var(--text-tertiary); }
 .op-browser__tab-icon.is-fallback svg { width: 14px; height: 14px; }
@@ -36,40 +62,24 @@
    라이트 테마의 톤은 중간 명도(L≈50–56%)라 밝은 글자(--text-on-identity, 대비 4.5–5.8)다. */
 .op-browser__space-group { --browser-space-c: var(--id-space-ink); --browser-space-ink: var(--ink-deep); --browser-line: 2px; --browser-line-gap: 3px; }
 :root[data-theme="light"] .op-browser__space-group { --browser-space-ink: var(--text-on-identity); }
-/* 좁은 띠에서는 칩과 탭이 그룹 안에서 함께 줄어든다 — 그룹이 내용보다 좁아져 옆 그룹·「+N」 위로 겹쳐 그려지지 않게 넘침을 자른다.
-   그룹은 아래에 밑줄 자리(--browser-line-gap)를 늘 두어(접고 펴도 칩이 움직이지 않게) 그 줄이 칩 왼쪽 끝부터 마지막 탭 오른쪽 끝까지 이어진다. */
-.op-browser__space-group { position: relative; flex: 0 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 2px; box-sizing: border-box; min-height: calc(24px + var(--browser-line-gap)); padding-bottom: var(--browser-line-gap); overflow: hidden; }
-.op-browser__space-group.is-open::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--browser-line); border-radius: var(--radius-pill); background: var(--browser-space-c); pointer-events: none; }
-.op-browser__space-tabs, .op-browser__human-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
-/* 그룹 안의 탭 줄은 위로 정렬하고 넘침을 자르지 않는다 — 선택 탭이 아래 밑줄 자리로 내려와 그 줄을 덮는다(바깥 잘림은 그룹이 맡는다). */
-.op-browser__space-group .op-browser__space-tabs { align-items: flex-start; overflow: visible; }
-.op-browser__space { flex: 0 1 auto; min-width: 44px; display: inline-flex; align-items: center; gap: var(--space-1); max-width: 140px; height: 22px; margin-top: 1px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 92%, var(--ink-deep)); color: var(--browser-space-ink); font: inherit; font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer; }
+/* 그룹 — 그룹 색 칩 아래에 탭들이 서고, 칩 아래부터 마지막 탭까지 그룹 색 세로 선이 왼쪽을 따른다(크롬 탭 그룹의 밑줄을 세로로 눕힌 것). 접힘에서는 칩이 이름의 첫 글자 하나다. */
+.op-browser__space-group { position: relative; flex: none; min-width: 0; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; }
+.op-browser__space-group.is-open::after { content: ""; position: absolute; left: 0; top: 26px; bottom: 0; width: var(--browser-line); border-radius: var(--radius-pill); background: var(--browser-space-c); pointer-events: none; }
+.op-browser__space { display: flex; align-items: center; justify-content: center; gap: var(--space-1); box-sizing: border-box; width: 100%; height: 24px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--browser-space-c) 92%, var(--ink-deep)); color: var(--browser-space-ink); font: inherit; font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer; }
+.op-browser-rail.is-open .op-browser__space { justify-content: flex-start; }
 .op-browser__space.is-open { background: var(--browser-space-c); }
 .op-browser__space:hover:not(:disabled) { background-image: linear-gradient(var(--wash-hover), var(--wash-hover)); }
-.op-browser__space:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .op-browser__space:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.op-browser__space-initial { text-transform: uppercase; }
 .op-browser__space-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.op-browser__space-count { flex: none; color: inherit; opacity: 0.7; font-size: var(--t-2xs); }
-/* 그룹 안의 탭 — 위 모서리만 둥글다. 선택 탭은 그룹 색 외곽선이 위·옆을 두르고 아래는 밑줄과 이어진다(밑줄 자리까지 내려와 그 줄을 덮는다). */
-.op-browser__space-group .op-browser__tab { border-radius: var(--radius-xs) var(--radius-xs) 0 0; }
-.op-browser__space-group .op-browser__tab.is-active { z-index: 1; border-color: var(--browser-space-c); border-bottom-width: 0; padding-bottom: calc(2px + var(--browser-line-gap) + 1px); margin-bottom: calc(-1 * var(--browser-line-gap)); }
-/* 에이전트 작업 표식 — 이 탭이 어느 참가자의 작업 탭이다. 배지 채널(--agent-control-badge)만 쓴다. */
+.op-browser__space-count { flex: none; margin-inline-start: auto; color: inherit; opacity: 0.7; font-size: var(--t-2xs); }
+/* 그룹 안의 활성 탭은 그룹 색 외곽선을 두른다. */
+.op-browser__space-group .op-browser__tab.is-active { box-shadow: inset 0 0 0 1px var(--browser-space-c); }
+/* 에이전트 작업 표식 — 이 탭이 어느 참가자의 작업 탭이다. 배지 채널(--agent-control-badge)만 쓴다. 접힘에서는 아이콘 모서리에 붙는다. */
 .op-browser__tab-agent { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: var(--radius-xs); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
 .op-browser__tab-agent svg { width: 10px; height: 10px; }
-/* 「내 스페이스로」 — 다른 스페이스를 보는 동안만 서는 작은 띠. */
-.op-browser__space-home { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); white-space: nowrap; cursor: pointer; }
-.op-browser__space-home svg { width: 12px; height: 12px; }
-.op-browser__space-home:hover { background: var(--wash-hover); color: var(--text-primary); }
-.op-browser__space-home:focus-visible { box-shadow: var(--focus-face); outline: none; color: var(--text-primary); }
-/* 「+N」 — 넘친 스페이스를 모은 메뉴. 메뉴는 띠 아래로 내려오므로 열려 있는 동안 캡션이 네이티브 뷰를 물러서게 한다. */
-.op-browser__more { position: relative; flex: none; }
-.op-browser__more-button { display: inline-flex; align-items: center; gap: var(--space-1); height: 22px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
-.op-browser__more-button:hover, .op-browser__more-button[aria-expanded="true"] { background: var(--wash-hover); color: var(--text-primary); }
-.op-browser__more-button:focus-visible { box-shadow: var(--focus-face); outline: none; color: var(--text-primary); }
-.op-browser__more .op-browser__menu { left: 0; right: auto; }
-.op-browser__space-item { display: flex; align-items: center; }
-.op-browser__space-item .op-browser__space-name { flex: 1; text-align: start; }
-
+.op-browser-rail:not(.is-open) .op-browser__tab-agent { position: absolute; top: 3px; right: 3px; width: 12px; height: 12px; }
+.op-browser-rail:not(.is-open) .op-browser__tab-agent svg { width: 8px; height: 8px; }
 .op-browser__chip { background: transparent; border: 1px solid var(--hairline); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); padding: 2px var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
 .op-browser__chip.is-set { color: var(--brass-ink); border-color: var(--brass); }
 .op-browser__chip:hover, .op-browser__chip:focus-visible { color: var(--text-primary); border-color: var(--brass); outline: none; }
@@ -77,15 +87,24 @@
 .op-browser__menu--row { flex-direction: row; gap: 2px; min-width: 0; }
 .op-browser__icon.is-set { color: var(--brass-ink); }
 /* 툴팁 — data-tip 을 단 컨트롤 아래에 짧은 한 줄. 포인터를 받지 않고 지연 없이 뜬다. */
-.op-browser [data-tip], .op-browser-cap [data-tip] { position: relative; }
-.op-browser [data-tip]:hover::after, .op-browser [data-tip]:focus-visible::after, .op-browser-cap [data-tip]:hover::after, .op-browser-cap [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 7; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); }
-.op-browser-cap .op-browser__viewport-menu [data-tip]:hover::after, .op-browser-cap > .op-browser__icon[data-tip]:hover::after { left: auto; right: 0; transform: none; }
-.op-browser [data-tip][aria-expanded="true"]::after, .op-browser-cap [data-tip][aria-expanded="true"]::after { display: none; }
+.op-browser [data-tip] { position: relative; }
+.op-browser [data-tip]:hover::after, .op-browser [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 7; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); }
+.op-browser [data-tip][aria-expanded="true"]::after { display: none; }
 .op-browser__menu-item { text-align: start; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--popover-font-size); min-height: var(--popover-row); padding: 6px var(--popover-row-inline); border-radius: var(--popover-row-radius); cursor: pointer; gap: var(--popover-row-gap); line-height: var(--popover-line-height); letter-spacing: 0; }
 .op-browser__menu-item[aria-checked="true"] { color: var(--brass-ink); }
 .op-browser__menu-item:hover, .op-browser__menu-item:focus-visible { background: var(--wash-hover); color: var(--text-primary); outline: none; box-shadow: none; }
 
 .op-browser__nav { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); background: var(--ink-deep); }
+/* 맨 위 줄로 올라간 주소줄 줄(.op-browser__nav.is-top) — 맨 위 줄(52px)의 브라우저 영역에 세로 가운데로 선다. 면·이음매·헤어라인이 없고, 알약과 아이콘
+   단추가 30px 이다. 빈 곳은 창 끌기(drag) 몫이라 줄 자체는 포인터를 받지 않고 컨트롤만 받는다. 이 줄은 .op-browser 밖(맨 위 줄)에 portal 된다. */
+.op-browser__nav.is-top { flex: 1; min-width: 0; box-sizing: border-box; height: 100%; padding: 0 0 0 var(--space-2); border-bottom: 0; background: none; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); pointer-events: none; }
+.op-browser__nav.is-top > * { pointer-events: auto; }
+.op-browser__nav.is-top :is(.op-browser__icon, .workbench-tile-button) { width: 30px; height: 30px; }
+.op-browser__nav.is-top .op-browser__url { min-width: 120px; height: 30px; }
+html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region: no-drag; }
+/* 접힌 도구(「⋯」) — 팝오버는 줄 아래 본문 위로 내려온다. */
+.op-browser__fold { position: relative; flex: none; align-self: center; }
+.op-browser__fold .op-browser__menu--row { right: 0; width: auto; }
 .op-browser__icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-secondary); font: inherit; font-size: var(--t-md); text-decoration: none; cursor: pointer; }
 .op-browser__icon:hover:not(:disabled), .op-browser__icon:focus-visible { color: var(--brass-ink); background: var(--ink-veil); outline: none; }
 .op-browser__icon:disabled { opacity: 0.35; cursor: default; }

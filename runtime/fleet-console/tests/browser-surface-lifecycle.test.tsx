@@ -3,7 +3,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { BrowserCaption, SessionBrowserPanel } from "../features/browser/client/browser-panel.js";
+import { SessionBrowserPanel } from "../features/browser/client/browser-panel.js";
 import { focusBrowserWindow } from "../features/browser/client/browser-window.js";
 import { DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_WINDOW_PAGE } from "@fleet-console/protocol/desktop";
 
@@ -59,7 +59,7 @@ it("keeps the same Browser controller editable and detachable after the companio
     document.body.append(frame); frames.push(frame);
     const child = frame.contentWindow!;
     track(Object.getPrototypeOf(Object.getPrototypeOf(child.document)) as EventTarget);
-    // 새 문서는 실제 앱 없이 caption/body slot만 가진 passive shell이다.
+    // 새 문서는 실제 앱 없이 caption(주소줄 줄)/body(레일과 화면) slot만 가진 passive shell이다.
     child.document.body.innerHTML = '<div id="browser-window-caption"></div><div id="browser-window-body"></div>';
     Object.defineProperty(child.document, "readyState", { value: "complete" });
     return { document: child.document, location: { href: `${location.origin}${DESKTOP_BROWSER_WINDOW_PAGE}` }, closed: false, focus() {} } as unknown as Window;
@@ -72,7 +72,7 @@ it("keeps the same Browser controller editable and detachable after the companio
     subscribeConsoleChannel: (_channel: string, listener: (payload: unknown) => void) => { subscribers.add(listener); return () => { subscribers.delete(listener); }; },
   };
   dispose = () => { act(() => root.unmount()); frames.forEach((frame) => frame.remove()); container.remove(); };
-  await act(async () => { root.render(<><BrowserCaption context={{ objectiveId: ownerId, language: "en" }} /><SessionBrowserPanel ownerId={ownerId} language="en" theme="dark" services={services} onAttach={attach} /></>); });
+  await act(async () => { root.render(<SessionBrowserPanel ownerId={ownerId} language="en" theme="dark" services={services} onAttach={attach} />); });
   const button = (doc: Document, text: string) => [...doc.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.getAttribute("aria-label") === text)!;
   const address = (doc: Document) => doc.querySelector<HTMLInputElement>(".op-browser__url-input")!;
   const edit = async (doc: Document, value: string) => {
