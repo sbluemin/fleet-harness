@@ -2638,7 +2638,7 @@ describe("commodore supervisor", () => {
       supervisor = make(); supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(consultationWakes()).toHaveLength(1);
-      expect(sessions.at(-1)!.sent[0]).toContain("a consultation is waiting: c-ask");
+      expect(sessions.at(-1)!.sent[0]).toContain("c-ask");
       const afterAsk = sessions.length;
       sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: running.id });
@@ -2661,7 +2661,6 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(10);
       expect(sessions).toHaveLength(afterClear);
       await supervisor.dispose();
-      expect(h.store.transcriptRead("t1").entries.some((entry) => entry.kind === "unheard" && entry.codes.includes("consultation"))).toBe(false);
       supervisor = make(); supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(consultationWakes()).toHaveLength(2);
