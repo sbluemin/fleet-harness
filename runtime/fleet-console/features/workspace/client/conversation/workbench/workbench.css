@@ -59,15 +59,13 @@
   user-select: none;
 }
 
-/* ── 머리 없는 브라우저 칸: 대화와 같은 면, 대화 쪽 1px 이음매 하나 ── */
+/* ── 머리 없는 브라우저 칸: 대화와 같은 면 — 이음매 선 없이 대화에서 이어진다(경계는 아래 끌기 바가 맡는다) ── */
 .workbench-tile[data-seamless="true"] {
   --workbench-tile-face: var(--workbench-canvas);
   border: 0;
-  border-left: 1px solid var(--hairline);
   border-radius: 0;
 }
 
-.workbench-tile[data-seamless="true"].is-expanded { border-left: 0; }
 .workbench-tile[data-seamless="true"].is-focused { border-color: var(--hairline); }
 /* 지구본에서 번지고 접히는 동안은 자리 전이를 멈춘다 — 원이 칸을 따라 미끄러지지 않게. */
 .workbench-tile[data-motion] { transition: none; }
@@ -271,6 +269,10 @@
 
 .conversation-workbench-gutter.is-vertical::after { width: 2px; height: 28px; margin: -14px 0 0 -1px; }
 .conversation-workbench-gutter.is-horizontal::after { width: 28px; height: 2px; margin: -1px 0 0 -14px; }
+/* 채팅창/브라우저 경계 바 — 칸의 왼쪽 가장자리(경계 자리 바로 오른쪽)에서 8px 더 왼쪽으로 옮긴다. 끌 수 있는 자리는 원래 8px 에서 왼쪽으로 8px 늘려
+   16px 이 되고(끌 수 있는 범위·키보드·aria 는 그대로), 표시 막대는 그 왼쪽 가장자리에서 4px 안쪽에 선다. 시트(대화 위에 뜨는 칸)는 제자리다. */
+.conversation-workbench:not([data-mode="sheet"]) .conversation-workbench-gutter.is-split.is-vertical { box-sizing: content-box; margin-left: -8px; padding-left: 8px; }
+.conversation-workbench:not([data-mode="sheet"]) .conversation-workbench-gutter.is-split.is-vertical::after { left: 4px; }
 .conversation-workbench-gutter:hover::after { opacity: 1; }
 .conversation-workbench-gutter:focus-visible { outline: none; }
 .conversation-workbench-gutter:focus-visible::after { opacity: 1; background: var(--brass); }
