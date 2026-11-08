@@ -56,6 +56,6 @@ export interface SettingsSectionMobile {
 }
 
 export type { ConsoleExperimentSettings, ComputerUseBackendId, ExperimentAideId, ExperimentAideSelection, ExperimentEffort, ExperimentModelOption } from "./experiments.js";
-export { CLAUDE_EXPERIMENT_MODEL_OPTIONS, DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, EXPERIMENT_AIDES, EXPERIMENT_EFFORTS, experimentAideSelection, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, resolveExperimentSettings } from "./experiments.js";
+export { DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, EXPERIMENT_AIDES, EXPERIMENT_EFFORTS, experimentAideSelection, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, resolveExperimentSettings } from "./experiments.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutBindingsInput, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";

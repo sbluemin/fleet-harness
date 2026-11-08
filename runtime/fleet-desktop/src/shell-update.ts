@@ -1,7 +1,7 @@
 import type { AppUpdater } from "electron-updater";
 
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
-import { createDesktopEventStream, parseDesktopSseFrame, type DesktopEventStream } from "./desktop-event-stream.js";
+import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
 
 /**
  * 셸이 자기 자신을 갈아 끼우는 일.
@@ -168,10 +168,6 @@ export function createShellUpdateCommandSynchronizer(deps: ShellUpdateCommandSyn
     ...(deps.setTimeout ? { setTimeout: deps.setTimeout } : {}),
     ...(deps.clearTimeout ? { clearTimeout: deps.clearTimeout } : {}),
   });
-}
-
-export function parseShellUpdateCommandEvent(frame: string): ShellUpdateCommandSnapshot | null {
-  return parseDesktopSseFrame(frame, SHELL_UPDATE_COMMAND_EVENT, parseShellUpdateCommand);
 }
 
 export function parseShellUpdateCommand(value: unknown): ShellUpdateCommandSnapshot | null {

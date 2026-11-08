@@ -11,11 +11,6 @@ import {
 } from "./styles/tokens.js";
 import { formatFleetCliReleaseLabel, readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
-export interface FleetCliOptions {
-  readonly help: boolean;
-  readonly passthroughArgs: readonly string[];
-}
-
 export function isFleetVersionArg(value: string | undefined): boolean {
   return value === "--version" || value === "-v" || value === "version";
 }
@@ -32,14 +27,6 @@ export interface BuildFleetHelpTextOptions {
 
 /** SETTINGS 항목은 명령이 아니라 경로·환경변수라 이름이 길다 — 그 격자만 따로 넓힌다. */
 const SETTINGS_COLUMN = 28;
-
-export function parseFleetCliOptions(argv: readonly string[]): FleetCliOptions {
-  const help = argv[0] === "--help" || argv[0] === "-h";
-  return {
-    help,
-    passthroughArgs: help ? argv.slice(1) : [...argv],
-  };
-}
 
 export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): string {
   const release = options.release ?? readFleetCliRelease();
