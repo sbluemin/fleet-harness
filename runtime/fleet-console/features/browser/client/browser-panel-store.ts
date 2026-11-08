@@ -103,6 +103,32 @@ export function useBrowserOpenRequest(): BrowserOpenRequest | null {
   return React.useSyncExternalStore(subscribeOpenRequest, () => openRequest, () => null);
 }
 
+// ---------- 플러그인 대화의 스크린샷 첨부 ----------
+
+/**
+ * 지금 보는 플러그인 대화(사령관 등)의 입력창 손잡이. 이 대화는 활성 Objective 가 아니라서 분리 창이 Objective 로는 첨부 대상을 찾지 못한다 —
+ * 대화 칸(ConversationStage)이 그 대화가 서 있는 동안만 여기에 올리고, 떠나면 거둔다. 분리 창은 활성 Objective 가 없을 때만 이것을 쓴다.
+ */
+let pluginAttach: ((files: readonly File[]) => void) | null = null;
+const pluginAttachListeners = new Set<() => void>();
+
+/** 올린 손잡이를 돌려준다 — 거둘 때는 자기가 올린 것일 때만 비운다(다른 대화가 이미 바꿔 놓았으면 그대로 둔다). */
+export function publishBrowserPluginAttach(attach: (files: readonly File[]) => void): () => void {
+  pluginAttach = attach;
+  for (const listener of pluginAttachListeners) listener();
+  return () => {
+    if (pluginAttach !== attach) return;
+    pluginAttach = null;
+    for (const listener of pluginAttachListeners) listener();
+  };
+}
+
+const subscribePluginAttach = (listener: () => void) => { pluginAttachListeners.add(listener); return () => { pluginAttachListeners.delete(listener); }; };
+
+export function useBrowserPluginAttach(): ((files: readonly File[]) => void) | null {
+  return React.useSyncExternalStore(subscribePluginAttach, () => pluginAttach, () => null);
+}
+
 // ---------- 캡션이 띄운 것 ----------
 
 /**

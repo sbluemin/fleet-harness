@@ -38,6 +38,7 @@ import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/cha
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { focusBrowserWindow, useBrowserDocument } from "../../../browser/client/browser-window.js";
+import { publishBrowserPluginAttach } from "../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
@@ -753,6 +754,15 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       sessionScopeId = null;
     }
   }
+  // 이 대화의 입력창 손잡이를 분리 창에도 건넨다 — 이 대화는 활성 Objective 가 아니라 창이 Objective 로는 첨부 대상을 못 찾는다.
+  // 손잡이가 있는 동안 올리는 값은 하나(최신 손잡이를 읽는 고정 함수)라 대화를 바꿔도 깜빡이지 않고, 대화를 떠나면 거둔다.
+  const sessionAttachRef = useRef(sessionAttach);
+  sessionAttachRef.current = sessionAttach;
+  const hasSessionAttach = sessionAttach !== null;
+  useEffect(() => {
+    if (!hasSessionAttach) return undefined;
+    return publishBrowserPluginAttach((files) => { sessionAttachRef.current?.(files); });
+  }, [hasSessionAttach]);
   const sessionPluginId = sessionScopeId === null ? null : surfaceDescriptor?.pluginId ?? null;
   const sessionSubjectKey = sessionPluginId === null || sessionScopeId === null ? null : `${sessionPluginId}:${sessionScopeId}`;
   // 가운데 칸에 선 대화가 곧 활성 Objective 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도

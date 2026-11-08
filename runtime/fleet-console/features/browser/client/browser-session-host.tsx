@@ -7,7 +7,7 @@ import { isDesktopShell } from "../../../core/client/src/integration/desktop-she
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { getState, subscribe } from "../../../core/client/src/integration/store.js";
 import { BrowserWindowPanel, type BrowserClientServices } from "./browser-panel.js";
-import { publishBrowserEngine, type BrowserUnavailableReason } from "./browser-panel-store.js";
+import { publishBrowserEngine, useBrowserPluginAttach, type BrowserUnavailableReason } from "./browser-panel-store.js";
 import { useBrowserShortcutsSync } from "./browser-shortcuts-sync.js";
 import { dismissSharedFallback, useSharedFallbackNotice } from "./browser-shared-fallback.js";
 import { getT } from "./i18n.js";
@@ -44,9 +44,11 @@ export function BrowserSessionHost({ language, theme, services }: {
   const toastHost = typeof document === "undefined" ? null : document.querySelector(".app-toast-host");
   const attach = useActiveAttachTarget();
   const { pushComposerInbox } = services;
+  // 활성 Objective 가 있으면 그 입력창(채팅)·터미널이 대상이고, 없으면(플러그인 대화) 그 대화가 올린 손잡이가 대상이다.
+  const pluginAttach = useBrowserPluginAttach();
   const onAttach = React.useMemo(
-    () => attach?.chat ? (files: readonly File[]) => pushComposerInbox(attach.objectiveId, { files }) : undefined,
-    [attach, pushComposerInbox],
+    () => attach === null ? pluginAttach ?? undefined : attach.chat ? (files: readonly File[]) => pushComposerInbox(attach.objectiveId, { files }) : undefined,
+    [attach, pluginAttach, pushComposerInbox],
   );
   return (
     <>
