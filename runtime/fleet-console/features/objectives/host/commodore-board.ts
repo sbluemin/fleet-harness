@@ -77,7 +77,10 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   const now = deps.now ?? Date.now;
   const cleanups: (() => void)[] = [];
   let disposed = false;
-  const runner: Runner = { commodoreId, seen: waitingKeys(deps.objectives(commodoreId), deps.observe), statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: !hasOpen(deps.objectives(commodoreId)), selfWrites: new Map(), moves: new Map(), idleSince: new Map(), settled: new Map(), restSince: new Map(), blockedHeard: new Map() };
+  // 자문 키는 기동 때 들은 것으로 심지 않는다. 미응답 질문은 아래 첫 점검에서 id마다 한 번만 깨운다.
+  const seen = waitingKeys(deps.objectives(commodoreId), deps.observe);
+  for (const key of seen) if (key.startsWith("consultation:")) seen.delete(key);
+  const runner: Runner = { commodoreId, seen, statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: !hasOpen(deps.objectives(commodoreId)), selfWrites: new Map(), moves: new Map(), idleSince: new Map(), settled: new Map(), restSince: new Map(), blockedHeard: new Map() };
   // 감시 이전부터 멈춘 보드는 첫 점검(`settle(…, true)`)이 서명을 채우고, 지난 종료가 듣지 못했다고 남긴 목표(`sink.unheard`)가
   // 아니면 기동으로는 깨우지 않는다. 그 뒤 같은 대기가 계속되면 서명·대기 시작이 모두 같아 다시 깨우지 않는다.
   const wake = (_runner: Runner, code: WakeCode, input?: Parameters<CommodoreWakeSink["wake"]>[1]) => sink.wake(code, input);
@@ -126,6 +129,10 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
         // 미뤄 둔 대기 항목도 결정 턴의 보드 요약에 실은 뒤 같은 보드의 대기 중 깨움을 막는다.
         const id = rest[0]!;
         wake(runner, "decision", { objectiveId: id, detail: `"${objectives.find((objective) => objective.id === id)?.title ?? id}"` });
+        heard(runner, objectives, id);
+      } else if (head === "consultation") {
+        const id = rest[0]!;
+        wake(runner, "consultation", { objectiveId: id, detail: rest[1] ?? id });
         heard(runner, objectives, id);
       } else if (immediate(head as WakeCode, objectives.find((objective) => objective.id === rest[0]))) freshCodes.add(head as WakeCode);
     }
@@ -253,7 +260,11 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   const settleTimer = setInterval(() => settle(runner, false), SETTLE_CHECK_MS);
   settleTimer.unref?.();
   cleanups.push(() => clearInterval(settleTimer));
-  queueMicrotask(() => settle(runner, true));
+  queueMicrotask(() => {
+    if (disposed || !sink.automatic()) return;
+    waitingChanged(runner, deps.objectives(runner.commodoreId));
+    settle(runner, true);
+  });
 
   /** 이번 턴의 보드 요약 — 깨운 목표의 지금 자리와 지난 턴 뒤 이동, 그리고 깨우지 않은 목표의 이동. 이동 기록은 여기서 비운다. */
   const briefOf = (runner: Runner, ids: readonly string[]): string | null => {
@@ -467,6 +478,7 @@ function waitingKeys(objectives: readonly Objective[], observe?: BoardObserver):
     }
     // 넘김이 끝난 사건 — 끝난 시각까지 키에 실어 같은 대상의 다음 넘김이 끝나도 새 항목이 된다.
     for (const hold of objective.personHolds ?? []) if (hold.settled) keys.add(`${hold.settled.outcome}:${objective.id}:${hold.target}:${hold.settled.at}`);
+    for (const consult of objective.consultations ?? []) if (!consult.reply) keys.add(`consultation:${objective.id}:${consult.id}`);
   }
   return keys;
 }

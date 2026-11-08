@@ -22,6 +22,11 @@ export interface ConsoleActionInput {
   /** send 전용 — 전달 직전에도 live여야 한다. 방송이 휴면 세션을 뜻밖에 깨우지 않게 한다. */
   readonly liveOnly?: boolean;
   /**
+   * send 전용 — enqueue 직전에 실행 중·백그라운드·입력 대기면 넣지 않고 session_busy로 거절한다.
+   * 없는 send는 지금처럼 실행 중 턴에 실릴 수 있다. 사람 발화 id가 아니다.
+   */
+  readonly whenIdle?: boolean;
+  /**
    * 신뢰된 플러그인 send 전용 표시 출처. 사람 입력을 대행했음을 원장에 명시하며 권한은 바꾸지 않는다.
    * `act` 는 그 말이 함께 간 보드 행위(개시·구상·방향 수정)다 — 표시 문면은 그 행위에 덧붙인 말이다.
    * `author: "commodore"` 는 사람이 아니라 사령관이 쓴 말이라는 뜻이다(사령관이 그 행위를 한 경우).

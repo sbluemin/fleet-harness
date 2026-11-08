@@ -13,7 +13,8 @@ import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
 import { COMMANDER_MODEL_REQUIRED_HINT, createLaunchService, MEMBER_MODEL_REQUIRED_HINT, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
+import { CONSULT_ANSWER_DESCRIPTION, CONSULT_ANSWER_OMIT, CONSULT_ANSWER_SOURCE } from "../shared/consultations.js";
+import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, MAX_CONSULTATION_TEXT, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS } from "./console-views.js";
 import { searchInputShape, searchObjectives } from "./search.js";
@@ -131,6 +132,10 @@ const detailActions = {
       target: z.enum(PERSON_HOLD_TARGETS).describe("Which waiting item; follow-ups only from review on."),
       reason: z.string().trim().min(1).max(MAX_PERSON_HOLD_REASON).describe("Why the person should decide; shown to them."),
     }) },
+    consult_answer: { kind: "write", callers: ["commodore"], input: z.object({ ...target,
+      consultId: ids.describe(CONSULT_ANSWER_SOURCE),
+      answer: z.string().min(1).max(MAX_CONSULTATION_TEXT).optional().describe(CONSULT_ANSWER_OMIT),
+    }) },
 } as const;
 const detailTool = defineConsoleTool({
   name: "console_objectives_detail",
@@ -182,7 +187,7 @@ const DETAIL_WRITE_WORDS: Record<Exclude<DetailWriteAction, "edit_due">, string>
   edit_title: "제목 변경", edit_brief: "브리핑 편집", criteria_approve: "기준 승인", criteria_reject: "기준 거절", answer: "결정 응답",
   complete: "완료", reopen: "완료 되돌림", followup_retry: "후속 재시도", followup_abandon: "후속 포기", followup_discard: "후속 버림",
   plan: "구상 요청", commence: "출범", steer: "스티어링", message: "메시지", stop: "중단", compact: "문맥 정리", hand_off: "검토로 인계",
-  extend: "확장", hand_to_person: "사람에게 넘김",
+  extend: "확장", hand_to_person: "사람에게 넘김", consult_answer: "자문 답변",
 };
 type ListCall = Extract<ReturnType<typeof listTool.parse>, { ok: true }>["call"];
 type DetailCall = Extract<ReturnType<typeof detailTool.parse>, { ok: true }>["call"];
@@ -204,7 +209,8 @@ export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: Obj
   } : undefined;
   return createBoardTools(ctx, store, launch, { kind: "commodore", commodoreId }, read).map((tool) => {
     const name = commodoreSessionToolName(tool.name);
-    return name === tool.name ? tool : { ...tool, name };
+    const description = tool.name === "console_objective" ? `${tool.description}\nconsult_answer: ${CONSULT_ANSWER_DESCRIPTION}` : tool.description;
+    return { ...tool, name, description };
   });
 }
 type CommodoreCaller = { readonly kind: "commodore"; readonly commodoreId: string };
@@ -422,6 +428,13 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
               : actions.patch({ ...ref, patch: { note: call.brief } });
             case "edit_due": return actions.patch({ ...ref, patch: { dueDate: call.dueDate } });
             case "hand_to_person": return actions.handToPerson({ ...ref, target: call.target, reason: call.reason });
+            case "consult_answer": {
+              if (caller?.kind !== "commodore") throw new ObjectiveStoreError("permission_required");
+              const answered = store.consultAnswer(current.id, { consultId: call.consultId, ...(call.answer !== undefined ? { answer: call.answer } : {}), by: caller });
+              await launch.deliverConsultations(current.id);
+              const shown = store.find(current.id) ?? answered.objective;
+              return { objective: shown, consultId: answered.consultation.id, reply: shown.consultations.find((entry) => entry.id === answered.consultation.id)?.reply?.kind ?? "unanswered" };
+            }
           }
         })();
         const { objective: updated, ...details } = result;

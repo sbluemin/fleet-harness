@@ -2464,11 +2464,12 @@ describe("commodore supervisor", () => {
       };
       let hasPersonMessage: (() => boolean) | undefined;
       const objectives: Objective[] = [];
+      const boardListeners: ((event: ObjectiveEvent) => void)[] = [];
       let commanderActivity: "running" | "idle" = "idle";
       let lifecycle: "dormant" | "live" = "dormant";
       let revision = 0;
       const resumeFailures: { objectiveId: string; title: string; error: string }[] = [];
-      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => objectives, subscribeObjectives: () => () => undefined, observe: restClock(() => ({ lifecycle, activity: commanderActivity, generation: "g1", output: { revision } })), resumeFailures: { take: () => resumeFailures.splice(0), subscribe: () => () => undefined }, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, managementTools: (_id, turn) => createCommodoreManagementTools({ hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: () => [], create: createCommodore }), emit: () => undefined });
+      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => { const at = boardListeners.indexOf(listener); if (at >= 0) boardListeners.splice(at, 1); }; }, observe: restClock(() => ({ lifecycle, activity: commanderActivity, generation: "g1", output: { revision } })), resumeFailures: { take: () => resumeFailures.splice(0), subscribe: () => () => undefined }, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, managementTools: (_id, turn) => createCommodoreManagementTools({ hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: () => [], create: createCommodore }), emit: () => undefined });
       let supervisor = make();
       h.store.read("t1");
       // 지난 종료가 듣지 못한 빈 보드 알림 — 다음 기동이 다시 깨운다.
@@ -2629,6 +2630,49 @@ describe("commodore supervisor", () => {
       expect(wakes().at(-1)).toMatchObject({ reasons: ["resume-failed:1"] });
       sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(settleWait * 2);
       expect(sessions.at(-1)!.sent).toHaveLength(1);
+      await supervisor.dispose();
+      // 미응답 자문은 진행 게이트가 아니다. 새 감시는 그 질문 id만 한 번 깨우고, 같은 감시의 반복 사건·점검은 깨우지 않는다.
+      const ask = { id: "c-ask", question: "Which constraint still holds?", at: 1, by: "commander" as const };
+      Object.assign(running, { awaitingReview: false, awaitingHandoff: false, planning: false, commenced: true, missions: [{ id: "m1", text: "x", done: true }], consultations: [ask] });
+      const consultationWakes = () => wakes().filter((entry) => entry.kind === "wake" && entry.reasons.some((reason) => reason === "consultation" || reason.startsWith("consultation:")));
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(consultationWakes()).toHaveLength(1);
+      expect(sessions.at(-1)!.sent[0]).toContain("c-ask");
+      const afterAsk = sessions.length;
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: running.id });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(sessions).toHaveLength(afterAsk);
+      expect(consultationWakes()).toHaveLength(1);
+      await supervisor.dispose();
+      // clear는 coalesce 전 질문을 끊고 감시를 새로 세운다. 미응답 질문은 그 감시에서 한 번 돌아온다.
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(10);
+      await supervisor.clear("t1");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(consultationWakes()).toHaveLength(1);
+      expect(sessions.at(-1)!.sent[0]).toContain("c-ask");
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
+      const afterClear = sessions.length;
+      await supervisor.dispose();
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(sessions).toHaveLength(afterClear);
+      await supervisor.dispose();
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(consultationWakes()).toHaveLength(2);
+      expect(sessions.at(-1)!.sent[0]).toContain("c-ask");
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
+      await supervisor.dispose();
+      Object.assign(ask, { reply: { kind: "no-additional-advice", at: 2, by: { kind: "commodore", commodoreId: "t1" } } });
+      const beforeAnswered = sessions.length;
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(beforeAnswered);
+      expect(consultationWakes()).toHaveLength(2);
       await supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });

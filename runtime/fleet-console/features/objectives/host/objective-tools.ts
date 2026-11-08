@@ -12,7 +12,8 @@ import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "../sh
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { searchInputShape, searchObjectives } from "./search.js";
-import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TITLE, missionTitleSchema, MAX_SHORT_INPUT, decisionQuestionSchema, followupBodySchema, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, MAX_OBJECTIVE_MESSAGE_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
+import { CONSULT_ASK_DESCRIPTION } from "../shared/consultations.js";
+import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TITLE, missionTitleSchema, MAX_SHORT_INPUT, decisionQuestionSchema, followupBodySchema, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, MAX_OBJECTIVE_MESSAGE_TEXT, MAX_CONSULTATION_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
@@ -80,6 +81,7 @@ export const COMMANDER_TOOL_RENAMES: Readonly<Record<string, string>> = {
   place_mission: "mission_place",
   request_decision: "decision_request",
   withdraw_decision_request: "decision_withdraw",
+  consult_ask: "consult_ask",
   enlist: "member_enlist",
   set_member_launch: "member_set_launch",
   message: "member_message",
@@ -107,15 +109,14 @@ const renamedTools = (tools: readonly ConsoleMcpTool[], renames: Readonly<Record
   });
 
 /**
- * `fleet-commander` 확정 목록 — 브리프 22개와 실제 쓰임 21개의 대조 결과다.
- * 브리프의 `objective_transcript` 는 지휘관 MCP에 구현이 없고(Console Use `console_objectives_detail` transcript 행위와
- * `objective_working` 보호로 이미 가린다), 나머지 21개는 브리프명으로 싣는다. 옛 이름은 `COMMANDER_TOOL_RENAMES` 에 둔다.
- * 지휘관 서버는 이 21개 전부를 싣는다. 권한 계약은 그대로다.
+ * `fleet-commander` 확정 목록 — 브리프의 `objective_transcript` 는 지휘관 MCP에 구현이 없고,
+ * `consult_ask` 를 포함한 22개를 싣는다. 옛 이름은 `COMMANDER_TOOL_RENAMES` 에 둔다.
+ * 구성원 서버에는 `consult_ask` 를 싣지 않는다.
  */
 export const FLEET_COMMANDER_TOOL_NAMES = [
   "objective_mine", "objective_read", "objective_search", "evidence_dir", "result_seal",
   "result_update", "result_detach", "plan_propose", "mission_add", "mission_place",
-  "decision_request", "decision_withdraw", "member_enlist", "member_set_launch",
+  "decision_request", "decision_withdraw", "consult_ask", "member_enlist", "member_set_launch",
   "member_message", "member_muster", "member_discharge", "mission_complete", "followup", "hand_off", "criterion_mark",
 ] as const;
 
@@ -383,6 +384,18 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         const withdrawn = store.decisionWithdraw(objective.id, requestId);
         return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
       }),
+    tool("consult_ask", CONSULT_ASK_DESCRIPTION,
+      z.object({ question: z.string().min(1).max(MAX_CONSULTATION_TEXT), missionId: ids.optional() }).strict(),
+      (args, caller) => {
+        const objective = boundObjective(caller);
+        if (!objective) return refuse("not_participant");
+        const role = roleIn(objective, caller);
+        if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board, seal evidence, and message the Commander with message_commander (to: \"commander\"). Only the Commander changes the board." });
+        if (!role) return refuse("not_participant");
+        if (!args.question.trim()) return refuse("invalid_consultation");
+        const placed = store.consultAsk(objective.id, { question: args.question, ...(args.missionId ? { missionId: args.missionId } : {}) });
+        return text({ ok: true, consultId: placed.consultation.id });
+      }),
     commanderTool("enlist", `Add members to the roster, each a role and an optional brief. A new member has no session until mustered. ${MODEL_FACT} The person's launch selections are protected; do not enlist a replacement to bypass them — ask via decision_request instead.`,
       z.object({ members: z.array(rosterMember).min(1).max(MAX_MISSIONS) }).strict(),
       async ({ members }, before, _caller, context) => {
@@ -491,7 +504,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
 }
 
 /**
- * `fleet-commander` 서버용 — 같은 보드 코드 한 곳을 공유한다. 지휘관은 21개 전부를 받는다.
+ * `fleet-commander` 서버용 — 같은 보드 코드 한 곳을 공유한다. 지휘관은 22개 전부를 받는다.
  * 구성원 전용 필터는 구성원 서버 임무에서 같은 원천으로 가른다.
  */
 export function createCommanderMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {

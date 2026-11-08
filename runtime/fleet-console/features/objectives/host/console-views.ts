@@ -8,7 +8,7 @@ import { createBoardViews } from "./views.js";
 
 /** 토큰 수의 환산값이 아니라 파일 fallback을 피하기 위한 Console 도구의 직렬화 예산이다. */
 const RESPONSE_BYTES = 8_000;
-export const OBJECTIVE_READ_SECTIONS = ["objective", "brief", "criteria", "missions", "members", "decisionRequest", "decisions", "handoffs", "extensions", "actions", "followups", "criteriaProposals", "followupBatches", "sessions"] as const;
+export const OBJECTIVE_READ_SECTIONS = ["objective", "brief", "criteria", "missions", "members", "decisionRequest", "decisions", "consultations", "handoffs", "extensions", "actions", "followups", "criteriaProposals", "followupBatches", "sessions"] as const;
 export type ObjectiveReadSection = typeof OBJECTIVE_READ_SECTIONS[number];
 type Row = Record<string, unknown> & { readonly id: string; readonly title: string };
 const fits = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8") <= RESPONSE_BYTES;

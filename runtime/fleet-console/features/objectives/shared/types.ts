@@ -260,6 +260,8 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "launchBy
 
 /** 지휘관·구성원 메시지 본문 상한. 사령관 연락과 같은 크기이고, 목표 저장이 그 상한을 소유한다. */
 export const MAX_OBJECTIVE_MESSAGE_TEXT = 16_000;
+/** 자문 질문·답 본문 상한. 개수 제한이나 주제 분류는 두지 않는다. */
+export const MAX_CONSULTATION_TEXT = 4_000;
 
 export type ObjectiveMessageDelivery = "steered" | "next_turn" | "woke" | "held";
 
@@ -523,6 +525,38 @@ export interface Decision {
 }
 
 
+/**
+ * 자문 하나 — 결정 요청과 따로 둔다. 질문 본문이 출처 원문이고, 작성자·시각은 호스트가 적는다.
+ * 답 상태(없음·의견·추가 의견 없음)와 전달 상태(대기·전달됨)는 다른 축이다. 같은 자문에 답을 다시 쓰지 않는다.
+ */
+export interface StoredConsultation {
+  readonly id: string;
+  readonly question: string;
+  readonly at: number;
+  readonly by: "commander";
+  readonly missionId?: string;
+  readonly reply?: StoredConsultationReply;
+  /**
+   * 알림 시도. pending은 아직 시도 전(재개 가능), sending은 전송 직전 claim, submitted는 send가 접수된 것
+   * (모델이 읽거나 채택했다는 뜻이 아니다), uncertain은 결과가 불명해 자동 재전송하지 않는다.
+   */
+  readonly delivery?: { readonly state: "pending" | "sending" | "submitted" | "uncertain"; readonly at?: number };
+}
+/** 화면·보드가 읽는 자문. */
+export type ConsultationDeliveryState = "pending" | "sending" | "submitted" | "uncertain";
+export interface ObjectiveConsultation {
+  readonly id: string;
+  readonly question: string;
+  readonly at: number;
+  readonly by: "commander";
+  readonly missionId?: string;
+  readonly reply?: StoredConsultationReply;
+  readonly delivery?: ConsultationDeliveryState;
+}
+export type StoredConsultationReply =
+  | { readonly kind: "advice"; readonly text: string; readonly at: number; readonly by: Extract<ObjectiveActor, { kind: "commodore" }> }
+  | { readonly kind: "no-additional-advice"; readonly at: number; readonly by: Extract<ObjectiveActor, { kind: "commodore" }> };
+
 /** 지휘관에게 보내는 중인 답 — 전달이 끝나야 결정이 된다. 기동이 끊겨 남으면 전달 결과를 모르는 상태다. `declined` 는 「결정 안 함」 닫기다. */
 export interface DecisionDelivery {
   readonly by?: ObjectiveActor;
@@ -661,6 +695,8 @@ export interface StoredObjective {
   readonly decisionRequest?: DecisionRequest;
   /** 결정 요청이 쓰이거나 정리되거나, 사람이 그 전제를 바꿀 때마다 오른다 — 지휘관의 늦은 요청이 새 보드를 덮지 않게 한다. */
   readonly decisionRequestRevision?: number;
+  /** 자문 기록. 없는 옛 목표는 빈 기록이다. 결정 요청 정리로 지우지 않는다. */
+  readonly consultations?: readonly StoredConsultation[];
   readonly decisionDelivery?: DecisionDelivery;
   readonly decisions?: readonly Decision[];
   /** 사람에게 넘긴 항목 — 대상마다 하나. 옛 판은 모르는 필드라 그대로 둔다. */
@@ -837,6 +873,8 @@ export interface Objective {
   readonly origin: { readonly objectiveId: string; readonly title: string | null; readonly candidateId: string; readonly userImpact: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
   readonly decisionRequest: DecisionRequest | null;
   readonly decisionRequestRevision: number;
+  /** 자문 — 없으면 빈 목록. 답과 전달 상태를 함께 읽되 승인 절차는 아니다. 내부 noticeId는 없다. */
+  readonly consultations: readonly ObjectiveConsultation[];
   /** 답을 보내는 중이거나, 보낸 결과를 확인하지 못한 채 남은 시각. */
   readonly decisionDelivery: { readonly requestId: string; readonly at: number; readonly by?: ObjectiveActor } | null;
   readonly decisions: readonly Decision[];
@@ -1237,6 +1275,21 @@ export const storedDecisionFieldsSchema = z.object({
     question: z.object({ header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict(),
     answer: storedDecisionAnswer.omit({ questionId: true }) }).strict()).optional(),
 });
+
+const storedCommodoreActor = z.object({ kind: z.literal("commodore"), commodoreId: ids, why: z.string().max(MAX_COMMODORE_WHY).optional() }).strict();
+/** 저장된 자문 — 필드가 없으면 빈 기록이다. 모양이 어긋나면 다른 손상과 같이 파일을 비켜 둔다. */
+export const storedConsultationsSchema = z.array(z.object({
+  id: ids,
+  question: z.string().min(1).max(MAX_CONSULTATION_TEXT),
+  at: z.number(),
+  by: z.literal("commander"),
+  missionId: ids.optional(),
+  reply: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("advice"), text: z.string().min(1).max(MAX_CONSULTATION_TEXT), at: z.number(), by: storedCommodoreActor }).strict(),
+    z.object({ kind: z.literal("no-additional-advice"), at: z.number(), by: storedCommodoreActor }).strict(),
+  ]).optional(),
+  delivery: z.object({ state: z.enum(["pending", "sending", "submitted", "uncertain"]), at: z.number().optional() }).strict().optional(),
+}).strict());
 
 export type PatchObjectiveInput = z.output<typeof patchObjectiveSchema>;
 export type MemberPatchInput = z.output<typeof memberPatchSchema>;
