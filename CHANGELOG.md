@@ -5,6 +5,20 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.292.0] - 2026-11-08
+
+### fleet-console
+
+#### Added
+- Commanders can ask their Commodore for asynchronous context or advice without creating a decision request, with questions and replies preserved on the objective board.
+
+#### Changed
+- Resume and restore objectives in fresh sessions by default without carrying over past conversational turns.
+- In the left and right sidebar commander lists, place the mission progress gauge before the status phrase so the gauge start position stays fixed regardless of text length.
+
+#### Fixed
+- TaskForces now appear on the mobile home next to commodores, so you can reopen one after leaving it.
+
 ## [1.291.1] - 2026-11-08
 
 Release v1.291.1
