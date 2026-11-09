@@ -184,7 +184,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "stalled": return `${plural("stalled objective")}${tail}`;
     case "empty": return "the board has no open objective you operate";
     case "restart": return "Console restarted";
-    case "resume-failed": return `${plural("objective")} could not continue on its own (after a Console restart or an extension's criteria were settled)${tail}`;
+    case "resume-failed": return `${plural("objective")} could not continue on its own (after a Console restart)${tail}`;
     case "started": return "autonomous operation started";
     case "retry": return "retry requested by the person";
     case "rotated": return "your session was replaced";

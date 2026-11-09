@@ -75,11 +75,6 @@ export interface LaunchService {
   reopen(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   extend(objectiveId: string, context: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string }>;
   /**
-   * 확장 회차는 이어서 하라는 뜻이다 — 지휘관의 계획이 서고 기준 제안이 모두 정리되면 따로 개시하지 않아도 그 회차를 시작한다.
-   * 기준 결정 뒤와 지휘관 턴이 끝날 때 부른다. 조건이 아직 안 맞으면 아무것도 하지 않는다.
-   */
-  continueExtension(objectiveId: string, idle?: boolean): void;
-  /**
    * Console 이 다시 선 뒤 진행 중이던 목표를 잇는다 — 지휘관에게 보드를 다시 읽고 이어 가라는 턴을 보낸다. 사람이 멈춘 목표, 구상·검토·
    * 결정·기준 대기는 건드리지 않는다. 잇지 못한 목표는 사령관이 알도록 남긴다(`takeResumeFailures`).
    */
@@ -481,8 +476,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
   };
 
-  /** 확장을 청한 손과 말 — 그 회차의 개시를 그 손으로 남긴다. 메모리에만 둔다. */
-  const extensionStarts = new Map<string, LaunchOptions | undefined>();
   /** 재시작 뒤 잇지 못한 목표 — 사령관이 꺼내 갈 때까지 메모리에만 둔다. */
   const resumeFailures = new Map<string, { readonly commodoreId: string; readonly title: string; readonly error: string }>();
   const resumeFailureListeners = new Set<(commodoreId: string) => void>();
@@ -1003,8 +996,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const language = languageOf(options);
     let current = objective(objectiveId);
     if (current.done) throw new ObjectiveStoreError("objective_done");
-    // 따로 청한 구상은 계획만 하라는 뜻이다 — 확장의 자동 개시를 거둔다.
-    if (recordAs) extensionStarts.delete(objectiveId);
     await assertCommanderCandidate(objectiveId);
     await ensureCommander(objectiveId);
     rememberLanguage(objectiveId, language);
@@ -1014,7 +1005,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     current = store.setCriteriaOpen(objectiveId, true);
     const firstWake = neverStarted(objectiveId);
     if (firstWake) current = store.setEdited(objectiveId, null);
-    if (!(await send(objectiveId, planTurn(current, language, options?.actor, !recordAs), humanWords(current.planRequest), true, authoredWords(current.planRequest, "plan", current.planRequestBy ?? options?.actor)))) throw new ObjectiveStoreError("launch_failed");
+    if (!(await send(objectiveId, planTurn(current, language, options?.actor), humanWords(current.planRequest), true, authoredWords(current.planRequest, "plan", current.planRequestBy ?? options?.actor)))) throw new ObjectiveStoreError("launch_failed");
     if (firstWake) announceStarted(objectiveId);
     // 요청이 지휘관에게 닿은 뒤에만 누가 구상을 청했는지 남긴다. 행위자를 받지 않은 호출은 사람의 것이다(옛 관례와 같다).
     if (recordAs) current = store.recordStage(objectiveId, "planned", options?.actor ?? "human");
@@ -1207,8 +1198,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         }
       }
       if (syncOutcome(current.id, event.objectiveId, snapshot)) store.refresh(current.id);
-      // 사람이 멈췄거나 실패한 턴은 구상이 끝난 것이 아니다 — 확장 개시는 다음 정상 턴이나 기준 결정 때 다시 본다.
-      if (event.objectiveId === current.id && event.output.outcome !== "interrupted" && event.output.outcome !== "failed") service.continueExtension(current.id, true);
       if (event.objectiveId === current.id) void deliverConsultations(current.id);
     }) ?? null;
     if (outcomeTimer) return;
@@ -1657,34 +1646,11 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return claim(objectiveId, async () => {
         store.extend(objectiveId, context, intent, options?.actor);
         await applyObjectiveIntent(objectiveId);
-        const planned = await requestPlan(objectiveId, options, false);
-        extensionStarts.set(objectiveId, { ...(options?.actor ? { actor: options.actor } : {}), language: languageOf(options) });
-        return planned;
+        return requestPlan(objectiveId, options, false);
       }, "plan");
     }),
 
-    continueExtension(objectiveId, idle = false) {
-      if (!extensionStarts.has(objectiveId)) return;
-      const current = store.find(objectiveId);
-      if (!current || current.done || !current.extensionActive || !current.planning) { extensionStarts.delete(objectiveId); return; }
-      // 기준 제안·사람에게 물은 결정이 남았거나 할 임무가 없으면 아직이다. 지휘관이 일하는 중이면 그 턴이 끝날 때 다시 본다.
-      if (current.criteriaProposals.length || current.decisionRequest || !current.missions.some((mission) => !mission.done)) return;
-      if (!idle && stoppable(objectiveId)) return;
-      const options = extensionStarts.get(objectiveId);
-      extensionStarts.delete(objectiveId);
-      // 스스로 서지 못한 회차는 재시작 이어가기 실패와 같은 길로 사령관에게 알린다 — 개시된 목표의 구상 중은 inbox 에 서지 않는다.
-      void service.startCommander(objectiveId, options).catch((error: unknown) => resumeFailed(current, error));
-    },
-
     async resumeInProgress() {
-      // 메모리의 확장 자동 개시는 재시작과 함께 사라진다 — 마지막 구상 행위가 확장인 구상 중 회차를 기록에서 되살린다. 되살리기만 하고
-      // 개시하지 않는다: 끊긴 구상이 다 짜였는지 모르므로 다음 기준 결정이나 정상으로 끝난 지휘관 턴이 개시를 판단한다.
-      for (const current of store.all()) {
-        if (disposed || current.done || current.archived || !current.planning || !current.extensionActive || extensionStarts.has(current.id)) continue;
-        const last = (current.actions ?? []).findLast((entry) => entry.kind === "extend" || entry.kind === "plan" || entry.kind === "commence");
-        if (last?.kind !== "extend") continue;
-        extensionStarts.set(current.id, { actor: last.by, language: ctx.objectiveRecords.get(current.id)?.objectiveLanguage === "ko" ? "ko" : "en" });
-      }
       for (const current of store.all()) {
         if (disposed || !resumable(current)) continue;
         try {
@@ -1725,7 +1691,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           await applyObjectiveIntent(current.id);
           if (intent.extensionContext !== undefined) {
             await claim(current.id, () => requestPlan(current.id, { actor: intent.by }, false), "plan");
-            extensionStarts.set(current.id, { ...(intent.by ? { actor: intent.by } : {}), language: ctx.objectiveRecords.get(current.id)?.objectiveLanguage === "ko" ? "ko" : "en" });
           }
         }); }
         catch (error) { console.warn(`[objectives] Objective request remains pending: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
@@ -1790,7 +1755,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }),
 
     startCommander: (objectiveId, options) => claim(objectiveId, async () => {
-      extensionStarts.delete(objectiveId);
       const language = languageOf(options);
       let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");

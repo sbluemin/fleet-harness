@@ -7,7 +7,7 @@ import { defineConsoleTool, type ConsoleToolFilter } from "../../execution/share
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import { z } from "zod";
 
-import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, inboxAwaits, inboxReasons, livePersonHold } from "../shared/board-state.js";
+import { FOLLOWUPS_AT_REVIEW_HINT, criteriaSettleAdvice, followupsJudgeable, inboxAwaits, inboxReasons, livePersonHold } from "../shared/board-state.js";
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, type BriefAttachmentInput } from "./attachments.js";
 import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
@@ -51,6 +51,28 @@ const answers = z.array(decisionAnswersSchema.shape.answers.element).min(1).max(
 const offsetPages = "Follow nextOffset with the same view until null; slices restart at 0 if the revision changes.";
 /** 조각 읽기의 위치 — 목표 구역(UTF-16 문자, 8000바이트 예산)과 증거(16000자) 모두 nextOffset 을 따라간다. */
 const sliceOffset = z.number().int().min(0).optional().describe(offsetPages);
+/**
+ * 기준 승인·거절 응답의 hint — 처리 뒤의 사실과 이어서 부를 재개 action 하나만 말한다. 미래의 전달·깨움을 약속하지 않고, 재개 호출이 필요 없다는 말은
+ * 이 기준 결정에 한정한다(목표에 다른 판단할 일이 없다는 뜻이 아니다).
+ */
+const criteriaSettleHint = (advice: ReturnType<typeof criteriaSettleAdvice>, action: "criteria_approve" | "criteria_reject"): string => {
+  if (advice.next === "commence") return "This planned round awaits commencement. Call commence.";
+  if (advice.next === "steer") return `This criteria ${action === "criteria_reject" ? "rejection" : "decision"} did not wake the idle commander. Call steer to resume it.`;
+  switch (advice.state) {
+    case "rejected-plan": return "The rejection did not approve the remaining lineup. Call plan to ask for another plan, or commence if you judge it ready.";
+    case "proposals": return "Criteria proposals remain. Review them before resuming execution.";
+    case "held": return "A board item is held for the person; it stays theirs until they answer it or return it to you.";
+    case "decision": return "A decision request is open. Handle it before resuming the commander.";
+    case "review": return "The objective awaits review. steer would clear its met marks, so judge the review first.";
+    case "handoff": return "The objective awaits hand-off from the commander; this criteria decision suggests no resume call.";
+    case "stopped": return "The objective is stopped. Resume it as its own decision, not as part of this criteria decision.";
+    case "awaiting": return "The group is blocked on a permission or input prompt; this criteria decision does not clear it.";
+    case "unknown": return "Group activity cannot be observed. Read the board before resuming.";
+    case "planning": return "The current plan is not complete; this criteria decision suggests no resume call.";
+    case "done": return "The objective is done; a criteria decision does not reopen it.";
+    default: return "No additional resume call is needed for this criteria decision.";
+  }
+};
 /** 거절의 뜻은 거절 응답에 싣는다 — 도구 설명에 미리 싣지 않는다. */
 const HINTS: Readonly<Record<string, string>> = {
   own_objective: "An Objective cannot act on an objective it commands or belongs to.",
@@ -445,8 +467,9 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
           : call.action === "edit_due" ? { dueDate: kept.dueDate }
           : undefined;
         const answered = call.action === "answer" ? store.storedAnswers(current.id, call.requestId) : null;
+        const settle = kept && (call.action === "criteria_approve" || call.action === "criteria_reject") ? { action: call.action, advice: criteriaSettleAdvice(kept, (id) => launch.observeBoard(id), call.action === "criteria_reject") } : null;
         const echo = answered ? { answers: answered.map(({ questionId, selectedOptionIds, text: answer }) => ({ questionId, ...(selectedOptionIds.length ? { selectedOptionIds } : {}), ...(answer ? { text: storedText(answer) } : {}) })) } : stored;
-        return text({ ok: true, objectiveId: updated.id, ...details, ...(echo ? { stored: echo } : {}) });
+        return text({ ok: true, objectiveId: updated.id, ...details, ...(echo ? { stored: echo } : {}), ...(settle ? { group: settle.advice.group, next: settle.advice.next, hint: criteriaSettleHint(settle.advice, settle.action) } : {}) });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
         return refuse("objectives_failed");

@@ -15,7 +15,7 @@ import { createObjectiveStorage } from "../host/storage.js";
 import { createObjectivesFeature, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER } from "../host/index.js";
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../host/attachments.js";
-import { inboxReasons } from "../shared/board-state.js";
+import { criteriaSettleAdvice, inboxReasons } from "../shared/board-state.js";
 import { createCommodoreBoardTools, createObjectiveConsoleTools, MAX_REMARK } from "../host/console-tools.js";
 import { createLaunchService, recipientReplyTool } from "../host/launch.js";
 import { createCommanderMcpTools, createMemberMcpTools, createObjectiveMcpTools, COMMANDER_TOOL_RENAMES, MEMBER_TOOL_RENAMES, FLEET_COMMANDER_TOOL_NAMES, FLEET_MEMBER_TOOL_NAMES } from "../host/objective-tools.js";
@@ -534,17 +534,24 @@ describe("Objectives contract", () => {
     expect(h.sent.at(-1)!.text).toContain("> add second scope");
     const second = launch.planApplied(id, { missions: [{ text: "second extension" }], criteria: [{ text: "second criterion" }] });
     expect(second.criteria.every((criterion) => !!criterion.met)).toBe(true);
-    // 그사이 Console 이 다시 서도 확장 자동 개시는 기록에서 되살아난다 — 되살리기만으로는 개시하지 않는다.
-    const restarted = createLaunchService(h.ctx, store);
-    launchServices.push(restarted);
-    await restarted.resumeInProgress();
     expect(store.find(id)!.planning).toBe(true);
     const approvedSecond = store.proposalsApproveAll(id);
     expect(extensionOf(second.extensions, second.missions.find((mission) => mission.text === "second extension")!.id, "mission")).toBe(2);
     expect(extensionOf(approvedSecond.extensions, approvedSecond.criteria.at(-1)!.id, "criterion")).toBe(2);
-    // 확장 회차는 기준이 정리되면 따로 개시하지 않아도 시작된다.
-    restarted.continueExtension(id);
-    await vi.waitFor(() => expect(store.find(id)!.planning).toBe(false));
+    // 확장 회차도 처음 계획처럼 저절로 시작되지 않는다 — 기준이 정리되면 개시 대기로 서고, 쉬는 그룹의 사령관은 응답으로 commence 를 안내받는다.
+    // 옛 착수 기록이 아니라 현재 회차가 개시를 기다리는지로 가른다.
+    const idle = () => ({ activity: "idle" as const, lifecycle: "live" as const });
+    expect(store.find(id)).toMatchObject({ planning: true, extensionActive: true });
+    expect(inboxReasons(store.find(id)!, { observe: idle })).toContain("planned");
+    expect(criteriaSettleAdvice(store.find(id)!, idle)).toMatchObject({ group: "idle", next: "commence" });
+    // 거절은 남은 계획을 승인한 것이 아니다 — 개시를 권하지 않는다.
+    expect(criteriaSettleAdvice(store.find(id)!, idle, true)).toMatchObject({ next: null, state: "rejected-plan" });
+    await launch.startCommander(id);
+    expect(store.find(id)!.planning).toBe(false);
+    // 개시한 목표에서 쉬는 그룹은 steer, 일하는 그룹·허용 대기·관측 불가는 재개를 권하지 않고 상태를 그대로 말한다.
+    expect(criteriaSettleAdvice(store.find(id)!, idle)).toMatchObject({ group: "idle", next: "steer" });
+    for (const [activity, group] of [["running", "working"], ["awaiting", "awaiting"]] as const) expect(criteriaSettleAdvice(store.find(id)!, () => ({ activity, lifecycle: "live" as const }))).toMatchObject({ group, next: null });
+    expect(criteriaSettleAdvice(store.find(id)!, () => null)).toMatchObject({ group: "unknown", next: null });
     store.find(id)!.missions.filter((mission) => !mission.done).forEach((mission) => store.missionDone(id, mission.id, ["second done"]));
     store.find(id)!.criteria.filter((criterion) => !criterion.met).forEach((criterion) => store.criterionMet(id, criterion.id, "second evidence"));
     store.handOff(id, { by: "human" });
