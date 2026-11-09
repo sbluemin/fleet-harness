@@ -67,7 +67,7 @@ Before real pointer input, especially near rails, captions, floating panels, or 
    ```
 
 3. If the center is outside the viewport, the hit is null, or another control/overlay receives it, **do not click or attribute the result to the intended control**. Preserve the target/occluder evidence first. Resolve expected obstruction only through supported UI actions, or scroll the target into view, then refresh the snapshot and repeat the hit-test. Do not remove overlays, force-click, or use DOM `.click()` to bypass them. If testing a visible non-center point, record and hit-test that exact point too; do not silently substitute it for a center-click claim. Unexpected obstruction may be a product defect, not a required workaround.
-4. Send real pointer input at the checked point using the selected driver and inspect the resulting target/event and state. If the driver's click chooses a different coordinate, check that coordinate instead. A passing hit-test is a precondition, not proof of a usable click, focus, or completed transition; synthetic DOM activation remains handler-diagnosis evidence only.
+4. Send real pointer input at the checked point using the selected driver and inspect the resulting target/event and state. If the driver's click chooses a different coordinate, check that coordinate instead. A passing hit-test is a precondition, not proof of a usable click, focus, or completed transition; synthetic DOM activation remains handler-diagnosis evidence only. For an owned Desktop claim needing the system cursor, see [OS mouse input](desktop/os-mouse.md); posting is not reaction evidence.
 
 ## Event contracts: record the sequence before changing code
 
