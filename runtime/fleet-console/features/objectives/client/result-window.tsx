@@ -11,6 +11,7 @@ import { getT } from "./i18n/index.js";
 import { findAnyObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 import { absolute, bytesLabel, EvidenceTextContent, groupSharedFolderEntries, PrRow, resultFileUrl, sharedFolderPreviewable, useNow } from "./result-content.js";
 import { LinkText } from "./link-text.js";
+import { useSharedFolder } from "./shared-folder-count.js";
 import { sharedFileUrl } from "./shared-folder-url.js";
 import { attachmentFileUrl } from "./attachment-file-url.js";
 import "./result-window.css";
@@ -248,6 +249,7 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
       <span className="objectives-rw-objective" title={objective?.title}>{objective?.title}</span></span>
       {narrow ? <span className="objectives-rw-grip" aria-hidden="true" title={objective?.title}>⠿</span> : null}
       {narrow && group ? <MissionSwitcher label={t("objectives.missions.title")} value={group.id} options={groups.map((item) => ({ value: item.id, label: `${label(item)} (${item.results.length})` }))} onChange={chooseGroup} /> : null}
+      {objective && !attachmentMode ? <SourceSwitch objective={objective} opened={opened} sharedMode={sharedMode} t={t} /> : null}
       {!mobile ? <button type="button" className="objectives-rw-reset" aria-label={t("objectives.results.window.reset")} title={t("objectives.results.window.reset")} onClick={() => { const next = defaultRect(); setRect(next); saveRect(next); }}>↺</button> : null}
       <button type="button" className="objectives-rw-close" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={closeWindow}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>
     </header>
@@ -304,6 +306,20 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
     </div>
     {!mobile ? DIRECTIONS.map((direction) => <span key={direction} className={`objectives-result-resize is-${direction}`} aria-hidden="true" onPointerDown={(event) => start(event, direction)} />) : null}
   </div>;
+}
+
+/**
+ * 증거 ↔ 공유 폴더 전환 — 같은 창에서 다른 쪽 목록으로 옮겨 간다. 옮겨 갈 곳이 비었으면 서지 않는다.
+ * 공유 폴더는 보드 방송 없이도 늘어나므로 목록은 창이 읽은 값(보드 객체가 바뀔 때 다시 읽는다)을 따른다.
+ */
+function SourceSwitch({ objective, opened, sharedMode, t }: { readonly objective: Objective; readonly opened: Selection; readonly sharedMode: boolean; readonly t: ReturnType<typeof getT> }) {
+  const { list } = useSharedFolder(objective, !sharedMode);
+  const entries = list?.entries ?? [];
+  const first = groupSharedFolderEntries(entries)[0]?.entries[0];
+  if (sharedMode ? objective.results.length === 0 : !first) return null;
+  const label = t(sharedMode ? "objectives.results.title" : "objectives.shared.title");
+  const toggle = () => updateSelection(sharedMode ? { objectiveId: opened.objectiveId, resultId: null, opener: opened.opener } : { objectiveId: opened.objectiveId, resultId: null, opener: opened.opener, shared: { entries, path: first!.path } });
+  return <button type="button" className="objectives-rw-source" aria-label={label} title={label} onClick={toggle}>{label}</button>;
 }
 
 function MissionSwitcher({ label, value, options, onChange }: { readonly label: string; readonly value: string; readonly options: readonly SelectOption[]; readonly onChange: (id: string) => void }) {

@@ -13,10 +13,10 @@ import { DecisionList } from "./decisions.js";
 import { Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
 import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
-import { SharedFolderRows, useSharedFolder } from "./shared-folder.js";
+import { SharedFolderRows } from "./shared-folder.js";
 import { briefHasContent, objectiveTabHasContent } from "./detail-content.js";
 import { ToolbarTipLayer } from "../../../core/client/src/chrome/toolbar/toolbar-tip.js";
-import { useSharedFileCount } from "./shared-folder-count.js";
+import { useSharedFileCount, useSharedFolder } from "./shared-folder-count.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, setGraphOrientation, useGraphOrientation, type MissionDetailActions, type MissionState } from "./graph.js";
@@ -199,7 +199,19 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
  * 우측 작업 탭의 임무 팝업 — 행의 임무 게이지가 연다. 구성원 로스터(지휘관·구성원·구성원 추가)를 위에, 임무 그래프를 아래에 두는
  * 구성원 탭을 편성 확대본과 같은 오버레이에 담는다. 안의 길이 결과물·목표로 가면 같은 팝업에서 그 내용을 보이고 「임무로」가 되돌린다.
  */
-export function CommanderMissionsDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective }: {
+export function CommanderMissionsDialog(props: CommanderDialogProps) {
+  return <CommanderDetailDialog {...props} home="crew" />;
+}
+
+/**
+ * 우측 작업 탭의 목표 팝업 — 행의 지휘관 아바타가 연다. 목표 탭(브리핑·달성 기준·결정·회고·후속 목표)을 임무 팝업과 같은 오버레이에 담는다.
+ * 안의 길이 임무·결과물로 가면 같은 팝업에서 그 내용을 보이고 「목표로」가 되돌린다.
+ */
+export function CommanderGoalDialog(props: CommanderDialogProps) {
+  return <CommanderDetailDialog {...props} home="goal" />;
+}
+
+type CommanderDialogProps = {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly title: string;
@@ -208,14 +220,16 @@ export function CommanderMissionsDialog({ commodoreId, objectiveId, title, langu
   readonly accent?: CSSProperties;
   readonly onClose: () => void;
   readonly onOpenObjective: (objectiveId: string) => void;
-}) {
+};
+
+function CommanderDetailDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective, home }: CommanderDialogProps & { readonly home: DetailTab }) {
   const t = getT(language);
-  const [tab, setTab] = useState<DetailTab>("crew");
+  const [tab, setTab] = useState<DetailTab>(home);
   // 그래프가 알려 준 폭까지 넓힌다 — 로스터가 읽히는 최소 폭은 지킨다.
   const [fitWidth, setFitWidth] = useState<number | null>(null);
   return createPortal(
     <LineupZoom t={t} title={title} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
-      tools={tab === "crew" ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab("crew")}>{t("objectives.missions.back")}</button>}>
+      tools={tab === home ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab(home)}>{t(home === "goal" ? "objectives.goal.back" : "objectives.missions.back")}</button>}>
       {/* workspace-avatar-panel 이 --conversation-accent* 를 --brass* 행동 강조 토큰에 묶는다 — 변수만 건네면 이 팝업은 중립으로 남는다. */}
       <div className={`commander-missions-dialog is-${tab}${accent ? " workspace-avatar-panel" : ""}`} {...(accent ? { style: accent } : {})}>
         <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setTab} onGraphFitWidth={setFitWidth} onOpenObjective={(id) => { onClose(); onOpenObjective(id); }} />

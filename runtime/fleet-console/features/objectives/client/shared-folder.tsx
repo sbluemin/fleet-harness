@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import type { SharedFolderEntry, SharedFolderList } from "../shared/shared-folder.js";
@@ -6,32 +6,10 @@ import type { Objective } from "../shared/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { absolute, bytesLabel, groupSharedFolderEntries, relative, sharedFolderPreviewable, useNow } from "./result-content.js";
 import { openSharedFolderWindow } from "./result-window.js";
-import { sharedFileUrl, sharedListUrl } from "./shared-folder-url.js";
+import { useSharedFolder } from "./shared-folder-count.js";
+import { sharedFileUrl } from "./shared-folder-url.js";
 
 type T = Translate<ObjectiveMessageKey>;
-type Load = { readonly objectiveId: string; readonly list: SharedFolderList | null; readonly failed: boolean };
-
-/**
- * 공유 폴더 목록 — 펼쳐 있는 동안만 읽고, 그 목표의 보드 객체가 바뀔 때 다시 읽는다. 폴링·새로 고침 단추는 없다.
- * 다시 읽는 동안에는 이전 목록을 그대로 둔다. 다른 목표의 응답은 쓰지 않는다.
- */
-export function useSharedFolder(objective: Objective, open: boolean): { readonly list: SharedFolderList | null; readonly failed: boolean } {
-  const [load, setLoad] = useState<Load | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const controller = new AbortController();
-    const objectiveId = objective.id;
-    fetch(sharedListUrl(objectiveId), { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`http_${response.status}`);
-        return (await response.json()) as SharedFolderList;
-      })
-      .then((list) => setLoad({ objectiveId, list, failed: false }))
-      .catch(() => { if (!controller.signal.aborted) setLoad({ objectiveId, list: null, failed: true }); });
-    return () => controller.abort();
-  }, [open, objective]);
-  return load?.objectiveId === objective.id ? load : { list: null, failed: false };
-}
 
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const folderOf = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
