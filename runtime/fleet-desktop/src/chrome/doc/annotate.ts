@@ -10,7 +10,8 @@ type Stroke = { tool: "pen"; color: string; points: Pt[] } | { tool: "arrow" | "
 interface Pin { x: number; y: number; text: string }
 type Mark = { kind: "stroke"; stroke: Stroke } | { kind: "pin"; pin: Pin };
 type Tool = "comment" | "pen" | "arrow" | "rect";
-const INK = { red: "#d64545", blue: "#2f6fdd", green: "#3f9b5b", black: "#1a1a1a" } as const;
+/** 주석 잉크는 견본(`.swatch-*`)의 계산된 색이다 — Console 과 같은 토큰(`--id-*`)을 같은 길로 읽는다. */
+const INK_KEYS = ["red", "blue", "green", "black"] as const;
 
 function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, scale: number): void {
   ctx.strokeStyle = stroke.color; ctx.fillStyle = stroke.color; ctx.lineWidth = 2.5 * scale; ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -55,7 +56,7 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
   let state = initial;
   const marks: Mark[] = [];
   let tool: Tool = "comment";
-  let colorKey: keyof typeof INK = "red";
+  let colorKey: (typeof INK_KEYS)[number] = "red";
   let drawing: Stroke | null = null;
   let draftPin: { x: number; y: number } | null = null;
   let hover: ElementInfo | null = null;
@@ -84,10 +85,12 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
     button.addEventListener("click", () => { tool = entry; cancelPin(); sync(); });
     toolButtons.set(entry, button); bar.append(button);
   }
+  const swatchColor = (key: string): string => { const swatch = swatches.get(key); return swatch ? getComputedStyle(swatch).backgroundColor : "#2f6fdd"; };
+  const ink = (): string => swatchColor(colorKey);
   const divider = () => h("span", { class: "divider" });
   bar.append(divider());
   const swatches = new Map<string, HTMLButtonElement>();
-  for (const key of Object.keys(INK) as (keyof typeof INK)[]) {
+  for (const key of INK_KEYS) {
     const swatch = h("button", { class: `swatch swatch-${key}`, type: "button", title: t(`color.${key}`), attrs: { "aria-label": t(`color.${key}`), "aria-pressed": String(key === colorKey) } });
     swatch.addEventListener("click", () => { colorKey = key; sync(); });
     swatches.set(key, swatch); bar.append(swatch);
@@ -184,7 +187,7 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
       draftPin = p; sync(); commentInput.focus(); inspect(p);
       return;
     }
-    drawing = tool === "pen" ? { tool: "pen", color: INK[colorKey], points: [p] } : { tool, color: INK[colorKey], a: p, b: p };
+    drawing = tool === "pen" ? { tool: "pen", color: ink(), points: [p] } : { tool, color: ink(), a: p, b: p };
     canvas.setPointerCapture(event.pointerId);
   });
   canvas.addEventListener("pointermove", (event) => {
@@ -214,7 +217,7 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
     const ctx = out.getContext("2d"); if (!ctx) return;
     ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight);
     const factor = image.naturalWidth / shot.width;
-    const pinColor = INK.blue;
+    const pinColor = swatchColor("blue");
     marks.forEach((mark, index) => { if (mark.kind === "stroke") drawStroke(ctx, mark.stroke, factor); else drawPin(ctx, mark.pin, index + 1, factor, pinColor, image.naturalWidth); });
     post("bar", "annotate-done", { png: out.toDataURL("image/png").split(",")[1] ?? "" });
   });

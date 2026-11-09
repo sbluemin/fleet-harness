@@ -14,8 +14,11 @@ export interface DesktopViewStack {
   readonly consoleView: WebContentsView;
   /** Console 이 전체 콘텐츠 영역을 불투명하게 덮도록 bounds 를 맞춘다. */
   layoutConsole(): Rectangle;
-  layoutBrowserPane(chrome: WebContentsView, divider: WebContentsView, consoleWidth: number, bounds: Rectangle): void;
-  removeBrowserPane(chrome: WebContentsView, divider: WebContentsView): void;
+  /**
+   * 브라우저 칸의 크롬 뷰들(레일·주소줄)과 경계 손잡이를 Console 옆에 세우고 Console 폭을 정한다. 뷰의 자리(setBounds)는 호출자가 같은 틱에 정한다.
+   * 겹침 순서는 페이지 < 레일 < 주소줄이고 손잡이는 맨 위다 — 호버 펼침과 메뉴가 페이지를 덮는다.
+   */
+  setBrowserPane(pane: { readonly rail: WebContentsView; readonly bar: WebContentsView; readonly divider: WebContentsView; readonly consoleWidth: number } | null): void;
   /** CDP 는 살아 있지만 Console 뒤에 두고, 창 오른쪽 아래 모서리 한 픽셀에만 걸쳐 입력을 받을 자리를 없앤다(`parkedNativeBounds`). */
   parkBrowser(view: WebContentsView): void;
   /** Console 앞, picker 아래 — 사용자가 보고 만지는 자리. */
@@ -68,12 +71,12 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   let holdRaised = false;
   let picker: WebContentsView | null = null;
   let veil: WebContentsView | null = null;
-  let pane: { chrome: WebContentsView; divider: WebContentsView; consoleWidth: number } | null = null;
+  let pane: { rail: WebContentsView; bar: WebContentsView; divider: WebContentsView; consoleWidth: number } | null = null;
 
   /** 이미 붙은 뷰는 remove 없이 addChildView(index) 로만 재정렬한다 — CDP 스냅샷마다 renderer churn 을 막는다. */
   const relayout = (): void => {
     const root = base.contentView;
-    const ordered: WebContentsView[] = [...(hold && !holdRaised ? [hold] : []), ...parked, consoleView, ...(pane ? [pane.chrome] : []), ...presented, ...(pane ? [pane.divider] : [])];
+    const ordered: WebContentsView[] = [...(hold && !holdRaised ? [hold] : []), ...parked, consoleView, ...presented, ...(pane ? [pane.rail, pane.bar, pane.divider] : [])];
     if (hold && holdRaised) ordered.push(hold);
     if (picker) ordered.push(picker);
     if (veil) ordered.push(veil);
@@ -155,20 +158,13 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   return {
     consoleView,
     layoutConsole,
-    layoutBrowserPane(chrome, divider, consoleWidth, bounds) {
-      const reordered = pane?.chrome !== chrome;
-      pane = { chrome, divider, consoleWidth };
+    setBrowserPane(next) {
+      const previous = pane;
+      pane = next;
       layoutConsole();
-      chrome.setBounds(bounds);
-      divider.setBounds({ x: consoleWidth, y: 0, width: Math.max(1, bounds.x - consoleWidth), height: bounds.height });
-      if (reordered) relayout();
-    },
-    removeBrowserPane(chrome, divider) {
-      if (pane?.chrome !== chrome) return;
-      pane = null;
-      try { base.contentView.removeChildView(chrome); } catch { /* 이미 떨어졌다. */ }
-      try { base.contentView.removeChildView(divider); } catch { /* 이미 떨어졌다. */ }
-      layoutConsole();
+      if (previous && (!next || previous.rail !== next.rail)) {
+        for (const view of [previous.rail, previous.bar, previous.divider]) if (!next || ![next.rail, next.bar, next.divider].includes(view)) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } }
+      }
       relayout();
     },
     parkBrowser,

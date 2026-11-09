@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { desktopThemeSnapshot } from "../core/host/shell/desktop-contract.js";
 import {
   DEFAULT_PANEL_WIDTH,
   MIN_PANEL_WIDTH,
@@ -1569,6 +1570,33 @@ describe("Console core design contract", () => {
     const panelFace = theme.match(/data-mobile-scheme="light"\] \{[\s\S]*?--glass-panel-face: ([^;]+);/)?.[1] ?? "";
     expect(panelFace).not.toBe("");
     expect(panelFace).not.toBe("transparent");
+  });
+
+  it("hands Desktop's browser chrome the theme tokens exactly as theme.css resolves them", () => {
+    // Desktop 이 그리는 플릿 브라우저 크롬은 Console 의 CSS 를 가져오지 않는다. 그 대신 Console 이 보내는 토큰 값이 theme.css 의 대화 중심 화면 값과 같아야 한다.
+    const theme = stripComments(desktopThemeSource());
+    const blockAt = (selector: string): Record<string, string> => {
+      const start = theme.indexOf(selector);
+      expect(start, selector).toBeGreaterThanOrEqual(0);
+      const open = theme.indexOf("{", start);
+      let depth = 0, end = open;
+      for (; end < theme.length; end += 1) { if (theme[end] === "{") depth += 1; else if (theme[end] === "}" && --depth === 0) break; }
+      const out: Record<string, string> = {};
+      for (const match of theme.slice(open + 1, end).matchAll(/^\s+--([a-z0-9-]+):\s*([^;]+);/gm)) out[match[1]!] = match[2]!.trim();
+      return out;
+    };
+    const dark = { ...blockAt(":root {"), ...blockAt(':root[data-theme="dark"]'), ...blockAt(':root[data-view-mode="desktop"]:not([data-theme="light"])'), ...blockAt(":root:not([data-theme=\"light\"]) {") };
+    const light = { ...blockAt(":root {"), ...blockAt(':root[data-theme="light"]') };
+    const resolve = (env: Record<string, string>, name: string): string => {
+      let value = env[name] ?? "";
+      for (let step = 0; step < 8; step += 1) { const alias = /^var\(--([a-z0-9-]+)\)$/.exec(value); if (!alias) break; value = env[alias[1]!] ?? value; }
+      return value;
+    };
+    for (const [id, env] of [["dark", dark], ["light", light]] as const) {
+      const browser = desktopThemeSnapshot(id).entry.browser;
+      expect(browser, id).toBeDefined();
+      for (const [token, value] of Object.entries(browser!)) expect(value, `${id} --${token}`).toBe(resolve(env, token));
+    }
   });
 
   it("keeps the dark base tokens and selector while blocking palette escapes", () => {

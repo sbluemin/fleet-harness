@@ -24,7 +24,15 @@ export interface EntryPalette {
   readonly canvas: string;
   readonly tokens: Readonly<Record<EntryPaletteToken, string>>;
   readonly fonts?: DesktopEntryFonts;
+  /** 브라우저 크롬이 쓰는 Console 토큰의 이 테마 실제 값 — 진입 화면은 쓰지 않는다. 모르는 Console 이면 없다. */
+  readonly browser?: Readonly<Record<string, string>>;
 }
+
+export const BROWSER_PALETTE_TOKENS = [
+  "ink-abyss", "canvas-abyss", "ink-deep", "ink-veil", "ink-rim", "ink-fog", "ink-muted", "ink-spectral", "ink-pearl",
+  "hairline", "hairline-strong", "popover-face", "id-crimson", "id-cerulean", "id-moss",
+  "agent-control-badge", "agent-control-badge-ink", "aurora", "coral", "positive", "text-on-brass",
+] as const;
 
 export const ENTRY_PALETTE_TOKENS = [
   "ink-abyss", "ink-deep", "ink-veil", "ink-rim", "ink-fog", "ink-muted", "ink-spectral", "ink-pearl",
@@ -51,7 +59,20 @@ export function readEntryPalette(value: unknown): EntryPalette | null {
     tokens[token] = color;
   }
   const fonts = readDesktopEntryFonts(value.fonts);
-  return { scheme: value.scheme, canvas: value.canvas, tokens: tokens as Record<EntryPaletteToken, string>, ...(fonts ? { fonts } : {}) };
+  const browser = readBrowserTokens(value.browser);
+  return { scheme: value.scheme, canvas: value.canvas, tokens: tokens as Record<EntryPaletteToken, string>, ...(fonts ? { fonts } : {}), ...(browser ? { browser } : {}) };
+}
+
+/** 크롬 토큰은 모두 있을 때만 받는다 — 절반만 바뀐 판보다 크롬의 기본 판이 낫다. 알 수 없는 토큰은 무시한다. */
+function readBrowserTokens(value: unknown): Record<string, string> | null {
+  if (!isRecord(value)) return null;
+  const tokens: Record<string, string> = {};
+  for (const token of BROWSER_PALETTE_TOKENS) {
+    const color = value[token];
+    if (typeof color !== "string" || !PALETTE_COLOR.test(color)) return null;
+    tokens[token] = color;
+  }
+  return tokens;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
