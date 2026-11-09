@@ -4,7 +4,7 @@
  *
  *   node resize-owned-window.mjs <inspector-port> <owned-pid> <out-dir> <label> --dry-run
  *   node resize-owned-window.mjs <inspector-port> <owned-pid> <out-dir> <label> <width> <height> [<x> <y>]
- *   node resize-owned-window.mjs <inspector-port> <owned-pid> <out-dir> <label> --page /console/browser-window.html <width> <height> [<x> <y>]
+ *   node resize-owned-window.mjs <inspector-port> <owned-pid> <out-dir> <label> --page <abs-path-of-dist/assets/browser-chrome/bar.html> <width> <height> [<x> <y>]
  *
  * Unlike main-inspector.mjs this client CHANGES the Electron main: it calls setContentBounds on the selected
  * owned BaseWindow, so run it only within the person's authorization for that window, size, and position.
@@ -49,7 +49,7 @@ const PAGE_PATH = /^\/(?:[A-Za-z0-9._~-]+\/)*[A-Za-z0-9._~-]+$/;
 
 function pagePath(value) {
   if (typeof value !== 'string' || value.length > 200 || value.includes('..') || !PAGE_PATH.test(value)) {
-    throw new Error('--page: expected one absolute pathname, such as /console/browser-window.html');
+    throw new Error('--page: expected one absolute pathname, such as the absolute path of dist/assets/browser-chrome/bar.html');
   }
   return value;
 }
