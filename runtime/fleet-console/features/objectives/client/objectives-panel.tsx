@@ -230,7 +230,7 @@ function CommanderDetailDialog({ commodoreId, objectiveId, title, language, acce
   // 그래프가 알려 준 폭까지 넓힌다 — 로스터가 읽히는 최소 폭은 지킨다.
   const [fitWidth, setFitWidth] = useState<number | null>(null);
   return createPortal(
-    <LineupZoom t={t} title={title} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
+    <LineupZoom t={t} title={title} category={t(home === "goal" ? "objectives.tabs.goal" : "objectives.missions.title")} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
       tools={tab === home ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab(home)}>{t(home === "goal" ? "objectives.goal.back" : "objectives.missions.back")}</button>}>
       {/* workspace-avatar-panel 이 --conversation-accent* 를 --brass* 행동 강조 토큰에 묶는다 — 변수만 건네면 이 팝업은 중립으로 남는다. */}
       <div className={`commander-missions-dialog is-${tab}${accent ? " workspace-avatar-panel" : ""}`} {...(accent ? { style: accent } : {})}>
@@ -790,7 +790,7 @@ const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="n
 
 /** 편성 확대본 — body 포털의 고정 오버레이. Esc·바깥 누름·닫기 글리프로 닫히고, 열릴 때 카드가 포커스를 받는다.
  * 완료·상태 셈은 제목 줄(닫기 앞)에 선다 — 카드 안에 「임무」 머리를 한 번 더 세우지 않아 그 높이만큼 그래프가 넓어진다. */
-function LineupZoom({ t, title, width, tools, onClose, children }: { readonly t: Translate<ObjectiveMessageKey>; readonly title: string; readonly width?: number | null; readonly tools?: ReactNode; readonly onClose: () => void; readonly children: ReactNode }) {
+function LineupZoom({ t, title, category, width, tools, onClose, children }: { readonly t: Translate<ObjectiveMessageKey>; readonly title: string; /** 머리 제목 — 없으면 「임무」. 목표 팝업이 「목표」로 바꾼다. */ readonly category?: string; readonly width?: number | null; readonly tools?: ReactNode; readonly onClose: () => void; readonly children: ReactNode }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   // 최초 한 번만 카드로 초점을 옮긴다 — 부모가 다시 그려도(항목 사건 갱신) 사용자가 옮겨 둔 초점을 되돌리지 않는다.
   useEffect(() => { cardRef.current?.focus(); }, []);
@@ -820,9 +820,9 @@ function LineupZoom({ t, title, width, tools, onClose, children }: { readonly t:
   }, []);
   return (
     <div className="objectives-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={cardRef} className="objectives-zoom" style={width ? { width: `min(${width}px, 100%)` } : undefined} role="dialog" aria-modal="true" aria-label={`${t("objectives.missions.title")} · ${title}`} tabIndex={-1}>
+      <div ref={cardRef} className="objectives-zoom" style={width ? { width: `min(${width}px, 100%)` } : undefined} role="dialog" aria-modal="true" aria-label={`${category ?? t("objectives.missions.title")} · ${title}`} tabIndex={-1}>
         <div className="objectives-zoom-head">
-          <span className="objectives-zoom-title">{t("objectives.missions.title")}<span className="objectives-zoom-item">{title}</span></span>
+          <span className="objectives-zoom-title">{category ?? t("objectives.missions.title")}<span className="objectives-zoom-item">{title}</span></span>
           {tools ? <span className="objectives-zoom-tools">{tools}</span> : null}
           <button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={onClose}><CloseGlyph /></button>
         </div>
