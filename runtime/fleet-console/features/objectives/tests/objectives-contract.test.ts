@@ -3507,7 +3507,7 @@ describe("Objectives contract", () => {
       expect(sent.at(-1)?.text).toContain(liveId);
       expect(store.find(objective.id)!.consultations.find((entry) => entry.id === liveId)?.delivery).toBe("submitted");
     }
-    // 건넨 뒤 지휘관 턴이 중단돼도 접수된 전달은 submitted 그대로이고 다시 보내지 않는다. 전달 자체가 실패하면 uncertain으로 닫고 재시도하지 않는다.
+    // 한 번 submitted로 닫힌 전달은 지휘관이 쉬는 상태로 바뀐 뒤에도 다시 보내지 않는다. 전달 자체가 실패하면 uncertain으로 닫고 재시도하지 않는다.
     activity.set(objective.id, "idle");
     const afterInterrupt = sent.length;
     await launch.deliverConsultations(objective.id);
