@@ -201,6 +201,8 @@ export function useBrowserWindow(lease: BrowserSurfaceState | null, synced: bool
     failed: state.failed,
     toggle: () => {
       if (!surface) { void detach("window"); return; }
+      // 칸을 게시하지 않는 옛 셸에서는 칸으로 돌려보낼 수 없다 — 분리 창을 닫는 길(restore)로 돌아온다.
+      if (surface.mode === "window" && !readCapabilities().includes(DESKTOP_BROWSER_PANE_CAPABILITY)) { void restore(); return; }
       void request("mode", surface.id, surface.mode === "pane" ? "window" : "pane").catch(() => setController({ failed: true }));
     },
     close: () => { void restore(); },

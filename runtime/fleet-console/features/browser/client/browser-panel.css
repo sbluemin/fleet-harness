@@ -279,9 +279,9 @@ html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region
 html[data-desktop-shell="true"] .browser-window-document #browser-window-caption { -webkit-app-region: drag; }
 html[data-desktop-shell="true"] .browser-window-document #browser-window-caption :is(button, a, input, select, textarea, [role="tab"], [role="button"], [role="menu"], [role="listbox"], [tabindex]) { -webkit-app-region: no-drag; }
 html[data-desktop-platform="darwin"]:not([data-browser-mode="pane"]) .browser-window-document #browser-window-caption { padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-2)); }
-/* Windows 네이티브 컨트롤 띠는 맨 위 52px 를 덮는다 — 아래 이음매는 그 띠 밑(53번째 px)에 놓여야 컨트롤 아래까지 끊기지 않는다. */
-html[data-desktop-platform="win32"]:not([data-browser-mode="pane"]) .browser-window-document #browser-window-caption { height: 53px; }
-html[data-desktop-platform="win32"]:not([data-browser-mode="pane"]) .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
+/* Windows 네이티브 컨트롤 띠는 맨 위 52px 를 덮는다 — 아래 이음매는 그 띠 밑(53번째 px)에 놓여야 컨트롤 아래까지 끊기지 않는다. 칸(pane)은 메인 창의 오른쪽 끝이라 컨트롤이 칸 쪽에 서므로 칸에서도 같은 예약을 둔다(macOS 신호등은 왼쪽이라 칸에서만 뺀다). */
+html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { height: 53px; }
+html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
 /* 분리 창에서만 에이전트 세션의 틴트가 주소줄 줄에도 이어진다 — 주소줄 줄이 곧 창의 맨 위 줄이라 신호등 자리까지 포함한 줄 전체가 레일 꼭대기의 틴트에서 시작해 오른쪽으로 옅어진다. */
 #browser-window-caption:has(.op-browser__nav.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--conversation-surface, var(--canvas-abyss))), var(--conversation-surface, var(--canvas-abyss)) 70%); }
 #browser-window-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
