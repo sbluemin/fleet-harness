@@ -56,4 +56,11 @@ describe("initial window", () => {
     const gone = { ...saved, x: 4000 };
     expect(resolveInitialWindow(gone, [primary], primary)).toEqual({ bounds: { x: 240, y: 103, width: 1440, height: 900 }, maximized: false });
   });
+
+  it("pulls a window that spanned a removed monitor back inside the remaining work area", () => {
+    const spanning = { x: -2000, y: 100, width: 3000, height: 800, maximized: false };
+    expect(resolveInitialWindow(spanning, [primary], primary).bounds).toEqual({ x: 0, y: 100, width: 1920, height: 800 });
+    const low = { x: 1500, y: 900, width: 1000, height: 650, maximized: false };
+    expect(resolveInitialWindow(low, [primary], primary).bounds).toEqual({ x: 920, y: 430, width: 1000, height: 650 });
+  });
 });
