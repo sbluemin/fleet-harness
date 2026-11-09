@@ -2304,7 +2304,8 @@ describe("Objectives contract", () => {
     const beforeStart = (await board({ action: "read", objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
     expect(beforeStart.criteriaProposals).toHaveLength(2);
-    await board({ action: "criteria_approve", objectiveId: id, proposalId: "all" });
+    // 승인 응답은 그룹 활동과 재개 action·이유를 싣는다 — 쉬는 그룹의 처음 계획은 commence 를 안내받는다.
+    expect(await board({ action: "criteria_approve", objectiveId: id, proposalId: "all" })).toMatchObject({ ok: true, group: "idle", next: "commence", hint: expect.stringContaining("Call commence") });
     const priorNote = store.find(id)!.note;
     expect(await board({ action: "edit", objectiveId: id, brief: "b".repeat(700) })).toMatchObject({ stored: { brief: `${"b".repeat(300)}…(700 chars)…${"b".repeat(300)}` } });
     await board({ action: "edit", objectiveId: id, brief: priorNote });
