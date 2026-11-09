@@ -2,7 +2,6 @@ import type { CoreMessageKey } from "../../../../core/client/src/i18n/messages/i
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { DetailTab } from "../../../objectives/client/objectives-panel.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
-import { unseenRecords } from "../../../objectives/shared/types.js";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { objectiveTabHasContent } from "../../../objectives/client/detail-content.js";
 import { useSharedFileCount } from "../../../objectives/client/shared-folder-count.js";
@@ -32,7 +31,7 @@ const TAB_GLYPH: Record<CommanderRowGlyphTab, () => ReactElement> = {
  * 위임(★) 왼쪽의 목표·구성원·라이브러리 글리프 — 우측 작업 탭 카드와 좌측 사이드바의 지휘관 행에 선다(팝오버·폰은 두지 않는다).
  * 누르면 그 탭을 맨 위에 둔 목표·임무·라이브러리 팝업이 열린다.
  * 쉬는 행에서는 숨고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만 셋이 함께 나타난다 — 그 가림은
- * 카드·사이드바 CSS가 맡는다. 결정 요청(목표 쪽)과 안 읽은 기록(구성원 쪽)은 쉬는 행에서 ★ 옆의 작은 점으로 보이고,
+ * 카드·사이드바 CSS가 맡는다. 결정 요청(목표 쪽)은 쉬는 행에서 ★ 옆의 작은 점으로 보이고,
  * 글리프가 나타나면 해당 글리프 위의 점으로 옮겨 간다.
  */
 export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab }: {
@@ -42,11 +41,10 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
   readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
 }) {
   const t = useT();
-  // 행의 점은 팝업 안 탭 점과 같은 원천(보드)이다 — 결정 요청·안 읽은 기록이 행과 팝업에서 어긋나지 않는다.
+  // 행의 점은 팝업 안 탭 점과 같은 원천(보드)이다 — 결정 요청이 행과 팝업에서 어긋나지 않는다.
   const board = useObjectiveBoard(commodoreId);
   const objective = board.loaded ? board.objectives.find((candidate) => candidate.id === objectiveId) ?? null : null;
   const decision = objective !== null && !!objective.decisionRequest && !objective.done;
-  const unseen = objective !== null && objective.missions.some((mission) => unseenRecords(mission) > 0);
   // 공유 폴더 파일 수는 이 행을 가리키거나 초점을 둘 때 읽는다 — 쉬는 행마다 읽지 않는다.
   const groupRef = useRef<HTMLSpanElement | null>(null);
   const [near, setNear] = useState(false);
@@ -63,7 +61,7 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
     <span ref={groupRef} className="commander-row-glyphs" role="group" aria-label={t("commanderTab.rowGlyphs.label")}>
       {GLYPH_TABS.map((tab) => {
         const tabLabel = t(TAB_LABEL_KEY[tab]);
-        const dotLabel = [decision && tab === "goal" ? t("commanderTab.rowGlyph.decision") : null, unseen && tab === "crew" ? t("commanderTab.rowGlyph.unseen") : null].filter((part) => part !== null).join(" · ");
+        const dotLabel = decision && tab === "goal" ? t("commanderTab.rowGlyph.decision") : null;
         const Glyph = TAB_GLYPH[tab];
         // 보여 줄 것이 하나도 없는 탭은 흐리고 열리지 않는다 — 안내 문구는 두지 않는다. 보드를 읽기 전에는 비었다고 단정하지 않는다.
         const empty = objective !== null && !objectiveTabHasContent(objective, tab, sharedFiles);
@@ -80,12 +78,11 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
           >
             <Glyph />
             {decision && tab === "goal" ? <span className="commander-row-glyph-dot is-attention" aria-hidden="true" /> : null}
-            {unseen && tab === "crew" ? <span className="commander-row-glyph-dot is-unseen" aria-hidden="true" /> : null}
           </button>
         );
       })}
     </span>
-    {/* 쉬는 행의 점 — 결정 요청만 둔다. 안 읽은 기록은 임무 게이지 단추의 점이 이미 말한다. */}
+    {/* 쉬는 행의 점 — 결정 요청만 둔다. */}
     {decision ? (
       <span className="commander-row-pips" aria-hidden="true"><i className="is-attention" /></span>
     ) : null}

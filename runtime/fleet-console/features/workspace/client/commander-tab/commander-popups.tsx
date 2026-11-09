@@ -1,11 +1,9 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { openCommanderConversation } from "./commander-navigation.js";
 import { CommanderGoalDialog, CommanderMissionsDialog, type DetailTab } from "../../../objectives/client/objectives-panel.js";
 import { openResultWindow } from "../../../objectives/client/result-window.js";
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
-import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
-import { unseenRecords } from "../../../objectives/shared/types.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { useAvatarAccent } from "../avatar-accent.js";
 import type { RowPopups, SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
@@ -26,18 +24,11 @@ export function useCommanderPopups(commodoreId: string): {
   const objectivesT = getObjectivesT(language);
   const [dialog, setDialog] = useState<PopupState | null>(null);
   const accent: CSSProperties | undefined = useAvatarAccent(commodoreAvatarKey(commodoreId));
-  // 게이지 단추의 안 읽은 기록 점이 읽는 보드 — 목록이 함께 올린다.
-  const board = useObjectiveBoard(commodoreId);
-  const api = objectivesApi();
-  useEffect(() => { if (api !== null) void loadBoard(api, commodoreId); }, [api, commodoreId]);
-  const unseenOf = (objectiveId: string) => board.loaded && (board.objectives.find((candidate) => candidate.id === objectiveId)?.missions.some((mission) => unseenRecords(mission) > 0) ?? false);
   const open = (kind: PopupState["kind"], start: DetailTab, item: SideBarRowItem, objectiveId: string, opener: HTMLElement) => setDialog({ kind, start, objectiveId, title: item.layout.cluster.title, opener });
   const rowPopups = (item: SideBarRowItem, objectiveId: string): RowPopups => ({
     // 아바타는 목표 팝업을 연다 — 지휘관 대화는 행 본문이 연다.
     avatarLabel: `${item.layout.cluster.title} · ${objectivesT("objectives.popover.openGoal")}`,
     progressLabel: (done, total) => objectivesT("objectives.popover.missions", { done, total }),
-    unseen: unseenOf(objectiveId),
-    unseenLabel: objectivesT("objectives.tabs.unseenDot"),
     onAvatar: (opener) => open("goal", "goal", item, objectiveId, opener),
     onProgress: (opener) => open("missions", "crew", item, objectiveId, opener),
   });
