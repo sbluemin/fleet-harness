@@ -48,18 +48,35 @@ export function BrowserSurfaceContent({ role, children }: { readonly role: "capt
   return container ? createPortal(children, container) : null;
 }
 
-/** 수동 문서는 앱을 실행하지 않는다. 부모가 소유한 테마/스타일만 같은 origin에서 이어 준다. */
+/** 부모 Console 창의 상태일 뿐 이 문서의 상태가 아니라서 옮기지 않는 속성 — 창 포커스에 따라 오가는 움직임 단계(`state-motion.ts`). */
+const UNMIRRORED_ROOT_ATTRIBUTES = new Set(["data-browser-surface", "data-browser-mode", "data-state-motion"]);
+
+/**
+ * 수동 문서는 앱을 실행하지 않는다. 부모가 소유한 테마/스타일만 같은 origin에서 이어 준다.
+ * 바뀐 것만 고친다 — 속성을 통째로 지웠다 다시 쓰거나 스타일시트를 지웠다 다시 붙이면 그 사이 한 프레임 동안 스타일이 사라져
+ * 주소줄·탭 레일이 깜빡인다(부모 창의 포커스가 바뀔 때마다 이 동기화가 돈다).
+ */
 function mirrorStyles(target: Document): () => void {
+  const clones = new Map<Element, Element>();
+  const mirrored = (source: Element): boolean => source.tagName !== "LINK" || new URL((source as HTMLLinkElement).href).origin === location.origin;
   const copy = () => {
-    for (const attribute of [...target.documentElement.attributes]) if (attribute.name !== "data-browser-surface" && attribute.name !== "data-browser-mode") target.documentElement.removeAttribute(attribute.name);
-    for (const attribute of document.documentElement.attributes) target.documentElement.setAttribute(attribute.name, attribute.value);
-    target.body.className = `${document.body.className} browser-window-document`;
-    for (const previous of target.head.querySelectorAll("[data-browser-style]")) previous.remove();
-    for (const source of document.head.querySelectorAll("style, link[rel='stylesheet']")) {
-      if (source.tagName === "LINK" && new URL((source as HTMLLinkElement).href).origin !== location.origin) continue;
-      const clone = source.cloneNode(true) as Element;
-      clone.setAttribute("data-browser-style", "");
-      target.head.append(clone);
+    const from = document.documentElement;
+    const to = target.documentElement;
+    for (const attribute of [...to.attributes]) if (!UNMIRRORED_ROOT_ATTRIBUTES.has(attribute.name) && !from.hasAttribute(attribute.name)) to.removeAttribute(attribute.name);
+    for (const attribute of from.attributes) if (!UNMIRRORED_ROOT_ATTRIBUTES.has(attribute.name) && to.getAttribute(attribute.name) !== attribute.value) to.setAttribute(attribute.name, attribute.value);
+    const className = `${document.body.className} browser-window-document`;
+    if (target.body.className !== className) target.body.className = className;
+    const sources = [...document.head.querySelectorAll("style, link[rel='stylesheet']")].filter(mirrored);
+    for (const [source, clone] of clones) if (!sources.includes(source)) { clone.remove(); clones.delete(source); }
+    for (const source of sources) {
+      const clone = clones.get(source);
+      if (clone === undefined) {
+        const created = source.cloneNode(true) as Element;
+        created.setAttribute("data-browser-style", "");
+        clones.set(source, created);
+        target.head.append(created);
+      } else if (source.tagName === "STYLE" && clone.textContent !== source.textContent) clone.textContent = source.textContent;
+      else if (source.tagName === "LINK" && (clone as HTMLLinkElement).href !== (source as HTMLLinkElement).href) (clone as HTMLLinkElement).href = (source as HTMLLinkElement).href;
     }
   };
   copy();
