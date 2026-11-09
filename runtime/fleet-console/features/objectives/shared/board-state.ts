@@ -130,8 +130,8 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
       // 구상을 청해 지휘관이 짜는 중인 목표는 아무도 기다리지 않는다 — 구상이 내려앉으면 planned·criteria 로 다시 선다.
       if (!objective.missions.length) { if (!objective.planning) reasons.push("pending"); }
       else if (!objective.criteriaProposals.length && commanderRests()) reasons.push("planned");
-    // 확장 회차도 같은 길이다 — 이미 개시한 목표의 구상이 기준 제안 없이 내려앉으면 개시 대기로 선다.
-    } else if (objective.planning && objective.extensionActive && !objective.criteriaProposals.length && !objective.decisionRequest
+    // 이미 개시한 목표의 다시 구상한 회차(확장이든 일반 재계획이든)도 같은 길이다 — 구상이 기준 제안 없이 내려앉으면 개시 대기로 선다.
+    } else if (objective.planning && !objective.criteriaProposals.length && !objective.decisionRequest
       && objective.missions.some((mission) => !mission.done) && commanderRests()) reasons.push("planned");
     if (objective.criteriaProposals.length) reasons.push("criteria");
     if (objective.decisionRequest) reasons.push("decision");
@@ -151,16 +151,20 @@ export function groupState(objective: Pick<Objective, "id" | "members">, observe
   if (!commander) return "unknown";
   const own = commander.lifecycle === "dormant" ? "idle" : commander.lifecycle === "live" ? commander.activity : "unknown";
   if (own === "unknown") return "unknown";
-  const members = objective.members.filter((member) => member.sessionName !== null).flatMap((member) => {
+  // 띄운 구성원은 쉬는 것이 확인돼야 쉰다 — 관측할 수 없는 구성원을 전원 휴식으로 치지 않는다. 휴면은 쉬는 것이다.
+  const members: string[] = [];
+  for (const member of objective.members) {
+    if (member.sessionName === null) continue;
     const observation = observe(member.id);
-    return observation?.lifecycle === "live" ? [observation.activity] : [];
-  });
+    if (observation?.lifecycle === "live") members.push(observation.activity);
+    else if (observation?.lifecycle !== "dormant") return "unknown";
+  }
   const lifted = liftNestedActivity(own, members);
   return lifted === "awaiting" ? "awaiting" : lifted === "idle" || lifted === "ended" ? "idle" : "working";
 }
 
 /** 기준 처리 뒤 재개 호출을 권하지 않는 이유 — 응답의 hint 가 이 이유를 한 줄로 말한다. */
-export type CriteriaSettleState = "resume" | "rejected-plan" | "proposals" | "held" | "decision" | "review" | "handoff" | "stopped" | "awaiting" | "unknown" | "working" | "planning" | "done";
+export type CriteriaSettleState = "resume" | "rejected-plan" | "proposals" | "held" | "decision" | "review" | "handoff" | "stopped" | "awaiting" | "unknown" | "working" | "planning" | "done" | "removed";
 /**
  * 기준 승인·거절 직후, 처리 뒤의 보드와 그룹 활동으로 사령관이 이어서 부를 재개 action 하나(steer·commence)나 null. 상태 판정만 맡고 문장은 호출자가 쓴다.
  * 쉬는 지휘관을 깨우는 것은 사령관의 개시나 스티어링뿐이다. 개시는 최초 착수 여부가 아니라 현재 회차가 개시를 기다리는지(`planned`)로 가른다 — 확장 회차도 같다.
@@ -169,7 +173,8 @@ export type CriteriaSettleState = "resume" | "rejected-plan" | "proposals" | "he
 export function criteriaSettleAdvice(objective: Objective, observe: BoardObserver, rejected = false): { readonly group: GroupState; readonly next: "steer" | "commence" | null; readonly state: CriteriaSettleState } {
   const group = groupState(objective, observe);
   const none = (state: CriteriaSettleState) => ({ group, next: null, state });
-  if (objective.done || objective.removed) return none("done");
+  if (objective.removed) return none("removed");
+  if (objective.done) return none("done");
   if (objective.criteriaProposals.length) return none("proposals");
   if ((objective.personHolds ?? []).some((hold) => livePersonHold(objective, hold.target))) return none("held");
   if (objective.decisionRequest) return none("decision");

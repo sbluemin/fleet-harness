@@ -68,8 +68,9 @@ const criteriaSettleHint = (advice: ReturnType<typeof criteriaSettleAdvice>, act
     case "stopped": return "The objective is stopped. Resume it as its own decision, not as part of this criteria decision.";
     case "awaiting": return "The group is blocked on a permission or input prompt; this criteria decision does not clear it.";
     case "unknown": return "Group activity cannot be observed. Read the board before resuming.";
-    case "planning": return "The current plan is not complete; this criteria decision suggests no resume call.";
+    case "planning": return "The current plan has no lineup ready to commence; this criteria decision suggests no resume call.";
     case "done": return "The objective is done; a criteria decision does not reopen it.";
+    case "removed": return "The objective was removed; a criteria decision does not restore it.";
     default: return "No additional resume call is needed for this criteria decision.";
   }
 };

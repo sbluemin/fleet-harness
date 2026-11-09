@@ -568,6 +568,15 @@ describe("Objectives contract", () => {
     expect(store.find(id)!.extensionActive).toBe(false);
     store.missionAdd(id, { text: "ordinary later edit" });
     expect(store.find(id)!.criteria.every((criterion) => !criterion.met)).toBe(true);
+    // 확장이 아닌 일반 재계획도 이미 개시한 목표의 새 회차다 — 구상이 내려앉으면 개시 대기라 commence 를 안내받고, 구성원 관측 불가는 쉬는 것으로 치지 않는다.
+    await launch.requestPlan(id);
+    const replanned = store.find(id)!;
+    expect(replanned).toMatchObject({ planning: true, extensionActive: false });
+    const quiet = () => ({ activity: "idle" as const, lifecycle: "live" as const });
+    expect(criteriaSettleAdvice(replanned, quiet)).toMatchObject({ group: "idle", next: "commence" });
+    const withMember = { ...replanned, members: [{ id: "m1", sessionName: "m1-session" } as (typeof replanned.members)[number]] };
+    expect(criteriaSettleAdvice(withMember, (key) => (key === "m1" ? null : quiet()))).toMatchObject({ group: "unknown", next: null });
+    expect(criteriaSettleAdvice({ ...replanned, removed: { at: 1 } as never }, quiet)).toMatchObject({ next: null, state: "removed" });
     launch.dispose(); h.launch.dispose();
   });
 
