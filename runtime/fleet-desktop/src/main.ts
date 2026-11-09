@@ -55,7 +55,8 @@ import { BROWSER_COMPANION_PREFERENCES, createBrowserCompanion, type BrowserComp
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, consoleWindowChrome, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
-import { createZoomState, zoomFactorForLevel } from "./zoom-state.js";
+import { createDesktopState, zoomFactorForLevel } from "./desktop-state.js";
+import { resolveInitialWindow, trackWindowState } from "./window-state.js";
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
 
@@ -535,7 +536,8 @@ async function boot(): Promise<void> {
   /** 몇 번째 넘겨주기인가. 뒤에 온 넘겨주기가 있으면 앞선 것의 동기화와 되돌리기는 손을 떼야 한다. */
   let handoffGeneration = 0;
   let refreshNativeUpdateActions: (() => void) | null = null;
-  const zoomState = createZoomState(path.join(app.getPath("userData"), "desktop-state.json"));
+  const desktopState = createDesktopState(path.join(app.getPath("userData"), "desktop-state.json"));
+  const zoomState = desktopState.zoom;
   const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
   /**
    * 다른 콘솔로 건너가는 화면은 Console 안에 있다. Desktop이 남기는 것은 인증서 한 겹뿐이라,
@@ -685,14 +687,23 @@ async function boot(): Promise<void> {
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
+        const initialWindow = resolveInitialWindow(
+          desktopState.window.load(),
+          screen.getAllDisplays().map((display) => display.workArea),
+          screen.getPrimaryDisplay().workArea,
+        );
         const createdWindow = createSecureShellWindow(BaseWindow, WebContentsView, {
           iconPath: desktopResources.iconPath,
           platform: process.platform,
+          bounds: initialWindow.bounds,
           ...(entryPalette ? { backgroundColor: entryPalette.canvas } : {}),
           ...(rememberedTheme ? { titleBarOverlay: rememberedTheme.titleBarOverlay } : {}),
           ...(chromeBand !== undefined ? { chromeBand } : {}),
         });
         window = createdWindow;
+        // maximize()는 숨은 창도 먼저 띄우므로 첫 show 뒤에 건다.
+        if (initialWindow.maximized) createdWindow.base.once("show", () => createdWindow.base.maximize());
+        trackWindowState(createdWindow.base, desktopState.window);
         consoleFullscreen = createFullscreenController(createdWindow.base);
         overlayRefresher = process.platform === "win32"
           ? createTitleBarOverlayRefresher(createdWindow.base, {

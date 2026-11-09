@@ -3,6 +3,7 @@ import type { BaseWindow, BaseWindowConstructorOptions, HandlerDetails, WebConte
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
+import { DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from "./window-state.js";
 
 export interface SecureWindowOptions {
   readonly iconPath: string;
@@ -12,6 +13,8 @@ export interface SecureWindowOptions {
   readonly titleBarOverlay?: { readonly color: string; readonly symbolColor: string; readonly height: number };
   /** 지난 실행에 기억해 둔 맨 위 줄 높이(chrome.band). 없으면 대화 중심 화면의 맨 위 줄 52px 이다. */
   readonly chromeBand?: number;
+  /** 첫 창의 자리와 크기(resolveInitialWindow). 없으면 기본 크기로, 자리는 OS가 정한다. */
+  readonly bounds?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 }
 
 export interface WindowPolicy {
@@ -125,8 +128,11 @@ function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConst
     title: DESKTOP_WINDOW_TITLE,
     icon: options.iconPath,
     backgroundColor: options.backgroundColor ?? CANVAS_FAR_BACKGROUND_COLOR,
-    minWidth: 900,
-    minHeight: 560,
+    width: DEFAULT_WINDOW_WIDTH,
+    height: DEFAULT_WINDOW_HEIGHT,
+    ...options.bounds,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     // 두 플랫폼 모두 첫 기하는 Console 테마 스냅샷이 오면 그 값(chrome.band·titleBarOverlay)으로 바뀐다.
     ...consoleWindowChrome(options),
   };

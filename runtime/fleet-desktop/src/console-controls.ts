@@ -1,4 +1,4 @@
-import { clampZoomLevel, type ZoomState } from "./zoom-state.js";
+import { clampZoomLevel, type ZoomState } from "./desktop-state.js";
 
 export interface ConsoleControlsWebContents {
   getZoomLevel(): number;
