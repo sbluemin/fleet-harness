@@ -1,7 +1,8 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { openCommanderConversation } from "./commander-navigation.js";
-import { CommanderGoalDialog, CommanderLibraryDialog, CommanderMissionsDialog, type DetailTab } from "../../../objectives/client/objectives-panel.js";
+import { CommanderGoalDialog, CommanderMissionsDialog, type DetailTab } from "../../../objectives/client/objectives-panel.js";
+import { openResultWindow } from "../../../objectives/client/result-window.js";
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
 import { unseenRecords } from "../../../objectives/shared/types.js";
@@ -9,11 +10,11 @@ import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { useAvatarAccent } from "../avatar-accent.js";
 import type { RowPopups, SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 
-type PopupState = { readonly kind: "goal" | "missions" | "library"; readonly start: DetailTab; readonly objectiveId: string; readonly title: string; readonly opener: HTMLElement };
+type PopupState = { readonly kind: "goal" | "missions"; readonly start: DetailTab; readonly objectiveId: string; readonly title: string; readonly opener: HTMLElement };
 
 /**
  * 지휘관 행의 팝업 — 아바타는 목표 팝업, 임무 게이지는 임무 팝업을 연다. 우측 작업 탭 카드와 좌측 사이드바가 함께 쓴다.
- * `openTab` 은 행 글리프가 같은 팝업을 탭째로 열 때 쓴다(목표·구성원·라이브러리가 각각 목표·임무·라이브러리 팝업). 닫으면 연 단추로 초점이 돌아간다.
+ * `openTab` 은 행 글리프가 팝업을 열 때 쓴다(목표·구성원은 각각 목표·임무 팝업, 결과물은 결과물 창). 닫으면 연 단추로 초점이 돌아간다.
  * 팝업은 body 포털이라 오른쪽·왼쪽 패널의 지휘관 강조색을 물려받지 못한다 — 같은 값을 팝업에 직접 건넨다.
  */
 export function useCommanderPopups(commodoreId: string): {
@@ -40,8 +41,14 @@ export function useCommanderPopups(commodoreId: string): {
     onAvatar: (opener) => open("goal", "goal", item, objectiveId, opener),
     onProgress: (opener) => open("missions", "crew", item, objectiveId, opener),
   });
-  const openTab = (item: SideBarRowItem, objectiveId: string, tab: DetailTab, opener: HTMLElement) => open(tab === "crew" ? "missions" : tab === "results" ? "library" : "goal", tab, item, objectiveId, opener);
-  const PopupDialog = dialog?.kind === "missions" ? CommanderMissionsDialog : dialog?.kind === "library" ? CommanderLibraryDialog : CommanderGoalDialog;
+  const openTab = (item: SideBarRowItem, objectiveId: string, tab: DetailTab, opener: HTMLElement) => {
+    if (tab === "results") {
+      openResultWindow(objectiveId, "", opener);
+      return;
+    }
+    open(tab === "crew" ? "missions" : "goal", tab, item, objectiveId, opener);
+  };
+  const PopupDialog = dialog?.kind === "missions" ? CommanderMissionsDialog : CommanderGoalDialog;
   const dialogs = dialog ? (
     <PopupDialog commodoreId={commodoreId} objectiveId={dialog.objectiveId} title={dialog.title} language={language} start={dialog.start} {...(accent ? { accent } : {})}
       onOpenObjective={(id) => openCommanderConversation(commodoreId, id)}
