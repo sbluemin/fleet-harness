@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ConversationDecision } from "../../execution/shared/conversation/types.js";
+import type { ConversationConsultReply, ConversationDecision } from "../../execution/shared/conversation/types.js";
 export type CommodoreBoardActor = "human" | "commander"
   | { readonly kind: "commodore"; readonly commodoreId: string; readonly why?: string }
   | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string | null };
@@ -28,6 +28,11 @@ export interface CommodoreBoardObjective {
     readonly id: string; readonly at: number; readonly by?: CommodoreBoardActor;
     readonly question: { readonly text: string; readonly options: readonly { readonly id: string; readonly label: string }[] };
     readonly answer: { readonly selectedOptionIds: readonly string[]; readonly text: string };
+  }[];
+  /** 지휘관이 이 사령관에게 구한 자문 — 답(`text` 가 null 이면 「추가 의견 없음」)과 지휘관에게 닿은 상태. */
+  readonly consults?: readonly {
+    readonly id: string; readonly question: string; readonly at: number;
+    readonly reply?: { readonly text: string | null; readonly at: number; readonly delivery?: ConversationConsultReply["delivery"] };
   }[];
 }
 

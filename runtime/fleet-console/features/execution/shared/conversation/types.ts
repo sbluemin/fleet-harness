@@ -119,8 +119,17 @@ export interface ConversationParticipant {
   readonly turn?: string;
 }
 
-/** 덧붙인 말이 함께 간 보드 행위. */
-export type ConversationMessageVia = "start" | "plan" | "steer";
+/** 덧붙인 말이 함께 간 보드 행위. `consult`·`consult-reply` 는 지휘관이 사령관에게 구한 자문과 그 답이다. */
+export type ConversationMessageVia = "start" | "plan" | "steer" | "consult" | "consult-reply";
+
+/**
+ * 자문 답 말풍선의 곁 사실 — 지휘관에게 닿은 상태(`waiting` 은 지휘관이 일을 마치면 전달된다)와 「추가 의견 없음」 답.
+ * 보드의 자문 기록에서 짓는다.
+ */
+export interface ConversationConsultReply {
+  readonly delivery?: "waiting" | "delivered" | "uncertain";
+  readonly noAdvice?: true;
+}
 
 type EntryCoordinate = { readonly id: string; readonly at: number | null };
 export type GroupTimelineEntry = EntryCoordinate & (
@@ -131,7 +140,7 @@ export type GroupTimelineEntry = EntryCoordinate & (
    * `turn` — 그 말을 한 발화자 원장의 턴 좌표. 같은 값이면 한 턴(지시 하나에 대한 응답)이다. 턴 접기가 읽고, 없으면 그 말은 접지 않는다.
    * `references` — 사람이 문면 속 자리에 둔 참조(`./references.ts`). 평문 말풍선만 그 자리에 토큰을 세운다.
    */
-  | { readonly kind: "message"; readonly objectiveId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly ({ readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true; readonly deliveryNote?: string; readonly pending?: true; readonly turn?: string }
+  | { readonly kind: "message"; readonly objectiveId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly ({ readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly consult?: ConversationConsultReply; readonly undelivered?: true; readonly deliveryNote?: string; readonly pending?: true; readonly turn?: string }
   /**
    * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패·미보고 알림 등). 발화자가 아니라 출처이므로 말풍선이 아닌
    * 가운데 줄로 선다. `pluginId` 는 출처 이름·표식을 고르는 열쇠일 뿐 화면에 그대로 쓰지 않는다.
