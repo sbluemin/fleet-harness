@@ -15,9 +15,11 @@ export type {
 
 /**
  * zip 항목에 박는 수정 시각. 렌더가 같으면 바이트도 같아야 한다 — 시계를 싣지 않는다.
- * zip의 DOS 시각은 1980년부터라 그 이전 값은 담기지 않는다.
+ * zip의 DOS 시각은 1980년부터라 그 이전 값은 담기지 않는다. fflate는 `Date`를 현지 시각으로
+ * 읽으므로, UTC 시각으로 적으면 UTC보다 서쪽 시간대에서 1979년이 되어 zip 생성이 실패하고 시간대마다
+ * 바이트도 달라진다. 그래서 현지 시각 생성자로 어느 시간대에서든 1980-01-01 00:00이 되게 한다.
  */
-const ARCHIVE_ENTRY_MTIME = new Date("1980-01-01T00:00:00Z");
+const ARCHIVE_ENTRY_MTIME = new Date(1980, 0, 1, 0, 0, 0);
 const ARCHIVE_FILE_NAME = "fleet.zip";
 
 /**
