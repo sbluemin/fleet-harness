@@ -78,9 +78,14 @@ log({
   flags: args.map((value) => value.split("=")[0]).filter((name) => /^--[a-z][a-z0-9-]*$/.test(name)).slice(0, 80),
 });
 let abortAsk = () => {};
+// Observable queue snapshot for exit logging; wired to the SDK turn queue below (terminal mode stays null).
+const pendingState = { queue: null, isTurnOpen: () => false };
 const exit = (reason) => {
   abortAsk(reason);
-  log({ event: "exit", reason });
+  const queue = pendingState.queue;
+  const queueDepth = queue ? queue.length : 0;
+  const queuedChars = queue ? queue.reduce((total, text) => total + (typeof text === "string" ? text.length : 0), 0) : 0;
+  log({ event: "exit", reason, turnOpen: pendingState.isTurnOpen(), queueDepth, queuedChars });
   process.exit(0);
 };
 process.on("SIGTERM", () => exit("SIGTERM"));
@@ -110,6 +115,14 @@ if (!sdk) {
   let turnAborted = false;
   let stdinEnded = false;
   const queue = [];
+  pendingState.queue = queue;
+  pendingState.isTurnOpen = () => turnOpen;
+  // Dequeue helper: records the consume moment; the following turn-start marks processing.
+  const takeNext = () => {
+    const next = queue.shift();
+    if (next !== undefined) log({ event: "turn-dequeue", sessionId, chars: next.length, queueDepth: queue.length });
+    return next;
+  };
   let pendingAsk = null;
   const takeAsk = () => {
     // A launch may not consume another Objective's request in a shared control directory.
@@ -271,7 +284,7 @@ if (!sdk) {
     out({ type: "result", subtype: "success", is_error: false, duration_ms: 200, duration_api_ms: 100, num_turns: 1, result: reply, stop_reason: "end_turn", session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
     log({ event: "turn-end", model: turnModel, contextTokens: tokens, ...(interrupted ? { interrupted: true } : {}) });
     turnOpen = false;
-    const next = queue.shift();
+    const next = takeNext();
     if (next !== undefined) void runTurn(next);
     else if (stdinEnded) exit("stdin-end");
   };
@@ -346,7 +359,7 @@ if (!sdk) {
     log({ event: "turn-end", model: turnModel, contextTokens: tokens });
     turnOpen = false;
 
-    const next = queue.shift();
+    const next = takeNext();
     if (next !== undefined) void runTurn(next);
     else if (stdinEnded) exit("stdin-end");
   };
@@ -433,8 +446,10 @@ if (!sdk) {
       if (message.type === "user") {
         const content = message.message?.content;
         const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((block) => block?.text ?? "").join("") : "";
-        if (turnOpen) queue.push(text);
-        else void runTurn(text);
+        if (turnOpen) {
+          queue.push(text);
+          log({ event: "turn-queued", sessionId, chars: text.length, queueDepth: queue.length });
+        } else void runTurn(text);
       }
     }
   });
