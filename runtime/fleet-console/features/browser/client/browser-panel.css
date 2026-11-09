@@ -300,8 +300,8 @@ html[data-desktop-platform="win32"]:not([data-browser-mode="pane"]) .browser-win
 .op-browser__detached { display: flex; align-items: center; justify-content: center; height: 100%; font: inherit; color: var(--text-secondary); }
 .op-browser__detach-failed { color: var(--coral-ink); }
 
-/* 칸이 열릴 때 닫기 글리프(지구본 + 끌 수 있다는 × 모서리)가 커졌다가 제 크기로 돌아온다 — Console 쪽 지구본이 커졌다 사라지는 것과 이어진다
-   (conversation.css `conversation-browser-door-out`). 오른쪽 사이드바 머리의 닫기 X(conversation-round)와 같은 둥근 단추다. */
+/* 칸의 닫기 글리프 — 플릿 브라우저(지구본)에 "끌 수 있다"는 × 모서리가 붙은 둥근 단추(오른쪽 사이드바 머리의 닫기 X, conversation-round 와 같은 면).
+   칸이 열릴 때 한 번 커졌다가 제 크기로 돌아온다. */
 .op-browser__pane-close.op-browser__icon { flex: none; width: 30px; height: 30px; border: 0; border-radius: var(--radius-pill); background: var(--surface-round-control); color: var(--text-secondary); }
 :root[data-theme="light"] .op-browser__pane-close.op-browser__icon { border: 1px solid color-mix(in srgb, var(--ink-pearl) 8%, var(--surface-round-control)); }
 .op-browser__pane-close.op-browser__icon:hover:not(:disabled) { background: color-mix(in oklch, var(--text-primary) 10%, var(--surface-round-control)); color: var(--text-primary); }

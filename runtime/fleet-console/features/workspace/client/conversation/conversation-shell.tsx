@@ -38,7 +38,6 @@ import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/cha
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserDocument } from "../../../browser/client/browser-window.js";
-import { releaseBrowserDoorSlot, setBrowserDoorSlot, useBrowserDoorSlot } from "./browser-door-slot.js";
 import { publishBrowserPluginAttach } from "../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
@@ -320,38 +319,8 @@ export function hidesCoreMembersTab(hasMembersStandIn: boolean, keepOwner: strin
   return hasMembersStandIn || keepOwner !== null;
 }
 
-/** 머리가 서 있는 동안 브라우저 문의 자리를 알린다. */
-function useBrowserDoorBinding(): (element: HTMLSpanElement | null) => void {
-  const bound = useRef<HTMLSpanElement | null>(null);
-  return useCallback((element: HTMLSpanElement | null) => {
-    if (element !== null) { bound.current = element; setBrowserDoorSlot(element); return; }
-    if (bound.current !== null) releaseBrowserDoorSlot(bound.current);
-    bound.current = null;
-  }, []);
-}
-
-/**
- * 플릿 브라우저 문 — 머리의 자리(오른쪽 사이드바 닫기 X 왼쪽)가 있으면 거기에 portal 로, 없으면 `inline` 을 대화 머리 도구 묶음에 세운다.
- * 셸이 칸을 열면(문서 모드 pane) 문은 한 번 커졌다 작아지며 사라지고 칸 쪽 글리프가 그 자리를 이어받는다.
- */
-function useBrowserDoor(door: ReactNode): { readonly inline: ReactNode; readonly portal: ReactNode } {
-  const slot = useBrowserDoorSlot();
-  const handedOff = useBrowserDocument()?.mode === "pane";
-  // 칸이 닫혀 문이 돌아올 때만 되돌아옴 애니메이션을 한 번 돈다(처음 서는 때는 조용히).
-  const [returning, setReturning] = useState(false);
-  const wasHandedOff = useRef(false);
-  useEffect(() => {
-    if (wasHandedOff.current && !handedOff) setReturning(true);
-    wasHandedOff.current = handedOff;
-  }, [handedOff]);
-  if (door === null) return { inline: null, portal: null };
-  const wrapped = <span className={`conversation-browser-door${handedOff ? " is-handoff" : ""}${returning && !handedOff ? " is-return" : ""}`} onAnimationEnd={() => setReturning(false)}>{door}</span>;
-  return slot === null ? { inline: wrapped, portal: null } : { inline: null, portal: createPortal(wrapped, slot) };
-}
-
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
   const t = useT();
-  const bindBrowserDoor = useBrowserDoorBinding();
   const sections = usePanelSections();
   // Objective 대화의 패널은 대화에서 곧장 이어 가는 도구(conversationTab, 목표)를 대상의 글자 탭 앞에 같은 글자 단추로 세운다.
   // Theater 를 연 패널(사령관·Theater 설정)에는 서지 않는다. 아직 서지 않은 Objective 을 대신하는 플러그인 대화(시작 전 목표)도
@@ -451,8 +420,6 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       {/* 맨 위 줄 — 원형 단추(닫기)만 선다. Desktop 에서는 이 줄의 빈 자리가 창을 끄는 자리다. */}
       <div className="conversation-panel-toolbar">
         <span className="conversation-panel-toolbar-spacer" aria-hidden="true" />
-        {/* 플릿 브라우저 문(지구본)은 이 줄의 닫기 X 왼쪽에 선다 — 문 자체는 대화 쪽이 portal 로 채운다. */}
-        <span ref={bindBrowserDoor} className="conversation-panel-browser-door" />
         <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) dismissRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
@@ -1566,7 +1533,6 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const hasActions = actions !== null && actions !== false;
   // 플릿 브라우저는 Desktop 의 것이다 — 웹 브라우저 Console 에서는 지구본을 세우지 않는다(시안 v2 규칙 g).
   const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSurfaceOpen} />;
-  const browserDoor = useBrowserDoor(browser);
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   const pill = useConversationPillHost(descriptor.pillOwner?.(context) ?? { kind: "surface", id: descriptor.id });
@@ -1582,8 +1548,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
             <span className="conversation-pill-title">{title}</span>
             {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </ConversationPill>
-        {tools(browserDoor.inline, <span ref={setRailSlot} className="conversation-rail-slot" />)}
-        {browserDoor.portal}
+        {tools(browser, <span ref={setRailSlot} className="conversation-rail-slot" />)}
       </div>
       <ContextRailHost scope={railScope} slot={railSlot}>
         <div className="conversation-body is-surface">
@@ -1723,7 +1688,6 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
       <PluginObjectiveRenderer {...captionRender} render={descriptor.captionToolsLead} />
     </FeatureErrorBoundary>
   );
-  const browserDoor = useBrowserDoor(toolsLead);
   const shelf = descriptor?.captionActions === undefined ? null : (
     <FeatureErrorBoundary fallback={<></>}>
       <PluginObjectiveRenderer {...captionRender} render={descriptor.captionActions} />
@@ -1753,8 +1717,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
         </ConversationPill>
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
-        {tools(browserDoor.inline, <span ref={setRailSlot} className="conversation-rail-slot" />)}
-        {browserDoor.portal}
+        {tools(toolsLead, <span ref={setRailSlot} className="conversation-rail-slot" />)}
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
           노드 줄을 따로 세우지 않는다. */}
