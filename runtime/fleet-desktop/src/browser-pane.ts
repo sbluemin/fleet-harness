@@ -12,15 +12,22 @@ export interface BrowserPane {
 }
 
 /** 경계와 크롬은 셸의 형제 뷰다. 네이티브 페이지까지 같은 main 틱에서 다시 놓는다. */
-export function createBrowserPane(host: DesktopShellWindow, chrome: WebContentsView, divider: WebContentsView, changed: () => void, width: { value: number }): BrowserPane {
+/** 칸이 열릴 때 폭이 0에서 선호 폭까지 자라는 시간 — Console 글리프 이동·칸의 닫기 X 등장(browser-panel.css)과 같은 길이다. */
+export const BROWSER_PANE_OPEN_MS = 200;
+
+export function createBrowserPane(host: DesktopShellWindow, chrome: WebContentsView, divider: WebContentsView, changed: () => void, width: { value: number }, options: { readonly animate?: boolean } = {}): BrowserPane {
   let disposed = false;
+  // 열림 진행도 — 1이면 끝난 상태다. 폭 계산이 이 값을 곱할 뿐이라 끌기·창 리사이즈와 같은 한 틱 경로에서 페이지 뷰까지 따라간다.
+  let opened = options.animate === true ? 0 : 1;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   let drag: { screenX: number; width: number } | null = null;
   let current: Rectangle = { x: 0, y: 0, width: 1, height: 1 };
   const layout = (): void => {
     if (disposed || host.isDestroyed()) return;
     const content = host.base.getContentBounds();
     // Console은 600 DIP를 먼저 지킨다. 창이 좁아질 때 선호 폭을 덮어쓰지 않고 칸부터 줄인다.
-    const paneWidth = Math.min(Math.max(320, width.value), Math.max(1, content.width - 600 - 8));
+    const target = Math.min(Math.max(320, width.value), Math.max(1, content.width - 600 - 8));
+    const paneWidth = opened >= 1 ? target : Math.max(1, Math.round(target * opened));
     const left = Math.max(1, content.width - paneWidth - 8);
     current = { x: left + 8, y: 0, width: paneWidth, height: Math.max(1, content.height) };
     host.stack.layoutBrowserPane(chrome, divider, left, current);
@@ -50,6 +57,19 @@ export function createBrowserPane(host: DesktopShellWindow, chrome: WebContentsV
   host.base.on("blur", cancel);
   void divider.webContents.loadURL(DIVIDER_URL).catch(() => undefined);
   layout();
+  if (opened < 1) {
+    const started = Date.now();
+    const step = (): void => {
+      timer = null;
+      if (disposed) return;
+      const t = Math.min(1, (Date.now() - started) / BROWSER_PANE_OPEN_MS);
+      opened = 1 - (1 - t) ** 3;
+      if (t >= 1) opened = 1;
+      layout();
+      if (opened < 1) timer = setTimeout(step, 8);
+    };
+    timer = setTimeout(step, 8);
+  }
   return {
     host, contents: chrome.webContents, view: chrome,
     bounds: () => current,
@@ -59,6 +79,8 @@ export function createBrowserPane(host: DesktopShellWindow, chrome: WebContentsV
       if (disposed) return;
       disposed = true;
       drag = null;
+      if (timer) clearTimeout(timer);
+      timer = null;
       host.base.removeListener("resize", layout);
       host.base.removeListener("blur", cancel);
       divider.webContents.removeListener("console-message", message);

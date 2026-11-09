@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BaseWindow, BrowserWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
+import { app, BaseWindow, BrowserWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_PANE_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
@@ -58,6 +58,11 @@ import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
 import { createDesktopState, zoomFactorForLevel } from "./desktop-state.js";
 import { resolveInitialWindow, trackWindowState } from "./window-state.js";
+
+/** OS가 동작 줄이기를 켰으면 칸 열림 폭 애니메이션 없이 곧바로 놓는다. */
+function prefersMotion(): boolean {
+  try { return !systemPreferences.getAnimationSettings().prefersReducedMotion; } catch { return true; }
+}
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
 
@@ -374,7 +379,7 @@ async function boot(): Promise<void> {
       chrome.webContents.setZoomFactor(window.consoleContents.getZoomFactor());
       if (!view) browserViews.attachShortcutSource(guest);
       const divider = new WebContentsView({ webPreferences: { ...BROWSER_COMPANION_PREFERENCES, partition: "fleet-browser-divider" } });
-      return createBrowserPane(window, chrome, divider, () => browserViews.refresh(), browserPaneWidth);
+      return createBrowserPane(window, chrome, divider, () => browserViews.refresh(), browserPaneWidth, { animate: prefersMotion() });
     },
     createWindow: (guest, view) => {
       // 생성 전 handler가 보안을 지정한 기존 guest를 그대로 입양한다. renderer 옵션을 다시 펼치지 않는다.
