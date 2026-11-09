@@ -5,6 +5,23 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.294.0] - 2026-11-09
+
+### fleet-console
+
+#### Added
+- Show a Commander's consultations with its Commodore in both the Commander and Commodore chats, including whether the answer has reached the Commander yet.
+
+#### Changed
+- Consolidated the commander row library action into the existing results window and removed the manual mission list toggle.
+
+### fleet-desktop
+
+#### Changed
+- The Fleet Browser now opens as a pane on the right of the main window, drawn entirely by Desktop, and you can drag the divider to resize it. The page follows window and divider resizing immediately, and the address bar, tab rail, menus and annotation editor no longer flicker or show half-painted hover states. The browser can still be detached into its own window.
+- The browser toolbar is now just the address bar, a detach button and a Chrome-style more menu (screenshot, annotate, open in your browser, session and viewport), the tab rail has a minimal Chrome-style new-tab button, and the browser follows the Console theme and zoom as soon as you change them.
+- Open the Desktop window larger by default, and reopen it where you left it, at the same size and maximized state.
+
 ## [1.293.0] - 2026-11-09
 
 ### fleet-console
