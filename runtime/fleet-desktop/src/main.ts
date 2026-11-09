@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BaseWindow, BrowserWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
+import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
@@ -51,7 +51,7 @@ import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chro
 import { readChromeHistory } from "./chrome-history.js";
 import { createBrowserHistoryStorage } from "./browser-history-storage.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
-import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
+import { type DesktopShellWindow } from "./shell-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, consoleWindowChrome, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
