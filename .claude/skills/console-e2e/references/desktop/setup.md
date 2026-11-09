@@ -90,7 +90,7 @@ Refusal: listen on `127.0.0.1:<cdp-port>` with a process this run started, then 
 
 ## Window size
 
-A development Desktop has no size environment variable or saved bounds for the window you will resize. Read that target's content bounds with `--dry-run` and use those; do not assume an opening size. When the claim needs a different layout, resize the owned window; do not emulate a viewport (next section). Renderer CDP cannot resize it: `cdp-input.mjs` refuses `Browser.setWindowBounds`.
+A development Desktop has no size environment variable. The main Console window can restore saved normal window bounds and maximized state from its Desktop userData; this store does not restore secondary windows or fullscreen. Maximization is distinct from macOS native fullscreen; see [Native and package](native-and-package.md#native-and-runtime-workflow) for fullscreen capture limits. Read that target's content bounds with `--dry-run` and use those; do not assume an opening size. When the claim needs a different layout, resize the owned window; do not emulate a viewport (next section). Renderer CDP cannot resize it: `cdp-input.mjs` refuses `Browser.setWindowBounds`.
 
 Resizing is a main-process change, outside the read-only [main inspector observation lane](native-and-package.md#main-inspector-observation-lane), and only the authorization step 4 records allows it. That question names the target window, the content size and position, and the inspector. A `--page` match is not authorization. Attach the inspector with that lane's step 1 launch line and confirm its loopback listener PID is the owned main, then use only this client:
 
