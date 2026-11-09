@@ -10,7 +10,7 @@ const HUMAN = "human";
 export function mountRail(): (state: ChromeUiState) => void {
   const root = h("div", { class: "rail", attrs: { role: "group" } });
   document.body.append(root);
-  const pinButton = h("button", { class: "row pin", type: "button", on: { click: () => post("rail", "pin", { pinned: !last?.pinned }) } });
+  const pinButton = h("button", { class: "row rail-pin", type: "button", on: { click: () => post("rail", "pin", { pinned: !last?.pinned }) } });
   const pinLabel = h("span", { class: "label" });
   pinButton.append(h("span", { class: "glyph" }, glyph(G.pin)), pinLabel);
   const scroll = h("div", { class: "scroll" });

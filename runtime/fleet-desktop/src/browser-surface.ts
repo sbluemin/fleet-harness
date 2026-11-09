@@ -173,8 +173,12 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     };
   };
 
+  let dividerScheme = "";
   const push = (): void => {
     if (!docs) return;
+    // 손잡이 문서는 상태를 받지 않는다 — 색 구성표만 Console 테마에 맞춘다(그 문서의 light-dark() 가 이 값을 읽는다).
+    const scheme = deps.colors()?.scheme ?? "";
+    if (divider && scheme && scheme !== dividerScheme && !divider.webContents.isDestroyed()) { dividerScheme = scheme; void divider.webContents.executeJavaScript(`document.documentElement.style.colorScheme = ${JSON.stringify(scheme)}`).catch(() => undefined); }
     const json = escapeScript(JSON.stringify(state()));
     for (const doc of [docs.bar, docs.rail, docs.stage]) {
       if (!doc.ready || doc.view.webContents.isDestroyed() || doc.lastJson === json) continue;
@@ -256,6 +260,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       else if (action === "end") drag = null;
       else if (action === "key") { paneWidth = limit(current.width + x); update(); }
     });
+    contents.on("did-finish-load", () => { dividerScheme = ""; push(); });
     void contents.loadURL(DIVIDER_URL).catch(() => undefined);
   };
 

@@ -515,7 +515,7 @@ async function boot(): Promise<void> {
   let refreshNativeUpdateActions: (() => void) | null = null;
   const desktopState = createDesktopState(path.join(app.getPath("userData"), "desktop-state.json"));
   const zoomState = desktopState.zoom;
-  const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
+  const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.(), zoomApplied: () => browserViews.refresh() });
   /**
    * 다른 콘솔로 건너가는 화면은 Console 안에 있다. Desktop이 남기는 것은 인증서 한 겹뿐이라,
    * 이 다리는 메뉴에도 트레이에도 나타나지 않는다.
