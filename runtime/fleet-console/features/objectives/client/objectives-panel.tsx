@@ -122,7 +122,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
   /** 내용 안의 길(결정·임무·결과물로 가기)이 탭을 바꿀 때 알린다. */
   readonly onGlyphTab: (tab: DetailTab) => void;
   readonly onGraphFitWidth?: (width: number) => void;
-  /** 우측 사이드바 펼침만 읽기 전용이다 — 임무 팝업은 같은 패널을 편집 가능하게 쓴다. */
+  /** 사이드바 펼침과 팝업의 목표·결과물 탭은 읽기 전용이다 — 팝업의 구성원 탭만 같은 패널을 편집 가능하게 쓴다. */
   readonly readOnly?: boolean;
 }) {
   const t = getT(language);
@@ -232,9 +232,10 @@ function CommanderDetailDialog({ commodoreId, objectiveId, title, language, acce
   return createPortal(
     <LineupZoom t={t} title={title} category={t(home === "goal" ? "objectives.tabs.goal" : "objectives.missions.title")} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
       tools={tab === home ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab(home)}>{t(home === "goal" ? "objectives.goal.back" : "objectives.missions.back")}</button>}>
+      {/* 목표·결과물 탭은 사이드바 세 탭과 같은 읽기 전용이다(편집·첨부·빈 섹션 없음). 임무 조작(구성원 탭)만 팝업이 편집한다. */}
       {/* workspace-avatar-panel 이 --conversation-accent* 를 --brass* 행동 강조 토큰에 묶는다 — 변수만 건네면 이 팝업은 중립으로 남는다. */}
       <div className={`commander-missions-dialog is-${tab}${accent ? " workspace-avatar-panel" : ""}`} {...(accent ? { style: accent } : {})}>
-        <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setTab} onGraphFitWidth={setFitWidth} onOpenObjective={(id) => { onClose(); onOpenObjective(id); }} />
+        <CommanderRowPanel readOnly={tab !== "crew"} commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setTab} onGraphFitWidth={setFitWidth} onOpenObjective={(id) => { onClose(); onOpenObjective(id); }} />
       </div>
     </LineupZoom>,
     document.body,
