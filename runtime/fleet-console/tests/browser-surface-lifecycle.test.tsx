@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { BrowserWindowPanel } from "../features/browser/client/browser-panel.js";
-import { focusBrowserWindow, openBrowserPane } from "../features/browser/client/browser-window.js";
+import { closeBrowserSurface, focusBrowserWindow, openBrowserPane } from "../features/browser/client/browser-window.js";
 import { DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_PANE_CAPABILITY, DESKTOP_BROWSER_WINDOW_PAGE } from "@fleet-console/protocol/desktop";
 
 vi.mock("../core/client/src/integration/desktop-shell.js", () => ({
@@ -117,7 +117,7 @@ it("keeps one Browser document and lease through pane, detached window, native c
   expect(address(first).value).toBe("https://example.test/unsent");
   // pane을 닫으면 문서 수명이 끝난다. 재열기는 새 DOM의 listener를 쓴다.
   const ended = endedListeners.filter(({ target }) => "ownerDocument" in target && target.ownerDocument === first);
-  await act(async () => { button(first, "Close Fleet Browser").click(); });
+  await act(async () => { closeBrowserSurface(); });
   for (const { target, type, listener, options } of ended) target.removeEventListener(type, listener, options);
   frames[0]!.remove();
   await act(async () => { openBrowserPane(); });
@@ -126,7 +126,8 @@ it("keeps one Browser document and lease through pane, detached window, native c
   await edit(second, "https://example.test/after-close");
   expect(address(second).value).toBe("https://example.test/after-close");
   expect(second.querySelector('[role="tab"]')?.textContent).toContain("Kept tab");
-  await act(async () => { button(second, "Attach screenshot").click(); });
+  await act(async () => { button(second, "More tools").click(); });
+  await act(async () => { [...second.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((node) => node.textContent?.includes("Attach screenshot"))!.click(); });
   expect(attach).toHaveBeenCalledOnce();
   expect(attach.mock.calls[0]![0][0]).toBeInstanceOf(File);
 });
