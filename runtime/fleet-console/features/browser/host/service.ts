@@ -1659,7 +1659,7 @@ export class BrowserService {
     // 정한 크기를 먼저 다시 건다 — 그 사이 뷰가 줄었으면 위젯이 뷰 크기로 줄어 표면이 뷰포트보다 작다.
     if (!space.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
     // Companion 미개방이어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다.
-    // cssLayoutViewport.clientWidth 는 스크롤바를 빼므로 native pane 과 다를 수 있다 — 같기를 기다리지 않는다.
+    // layout 은 innerWidth×innerHeight(스크롤바 포함)라 native pane 과 같아야 하지만, 에뮬레이션 중에는 다를 수 있다 — 같기를 기다리지 않는다.
     // 리사이즈와 캡처가 겹치면 같은 탭의 pane·layout 쌍이 두 번 연속 같아야 한다.
     let layout: { width: number; height: number } | null = null;
     let pane: { width: number; height: number; scale: number } | null = null;
@@ -1717,8 +1717,23 @@ export class BrowserService {
     };
   }
 
+  /**
+   * 페이지가 보는 뷰포트 — `window.innerWidth × innerHeight`, 즉 세로 스크롤바를 **포함**한 크기다. 에이전트가 읽는 크기와 스크린샷 크기, 사람이 보는 칸의 크기가 이 한 값으로 맞는다.
+   * `Page.getLayoutMetrics` 의 `cssLayoutViewport` 는 스크롤바를 빼서 스크롤바가 있는 페이지에서 15px 작았고, 스크롤바가 생기고 없어지는 순간마다 값이 오갔다.
+   * 페이지 스크립트가 멎어(대화상자) 값을 못 읽으면 레이아웃 실측으로 물러난다.
+   */
   private async layoutViewport(client: CdpClient, tab: Tab): Promise<{ width: number; height: number } | null> {
+    const fromInner = async (): Promise<{ width: number; height: number } | null> => {
+      const result = await client.send<{ result?: { value?: unknown } }>("Runtime.evaluate", { expression: "[window.innerWidth, window.innerHeight]", returnByValue: true, timeout: 800 }, tab.sessionId);
+      const value = result.result?.value;
+      if (!Array.isArray(value)) return null;
+      const width = Math.round(Number(value[0]) || 0);
+      const height = Math.round(Number(value[1]) || 0);
+      return width >= 1 && height >= 1 ? { width, height } : null;
+    };
     try {
+      const inner = await Promise.race([fromInner().catch(() => null), new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_000))]);
+      if (inner) return inner;
       const metrics = await client.send<{ cssLayoutViewport?: { clientWidth?: number; clientHeight?: number }; cssVisualViewport?: { clientWidth?: number; clientHeight?: number }; layoutViewport?: { clientWidth?: number; clientHeight?: number } }>("Page.getLayoutMetrics", {}, tab.sessionId);
       const box = metrics.cssLayoutViewport ?? metrics.cssVisualViewport ?? metrics.layoutViewport;
       const width = Math.round(Number(box?.clientWidth) || 0);
