@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BaseWindow, BrowserWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
+import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
-import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
@@ -44,14 +44,14 @@ import { createConsoleRelaunchController, createDisabledNativeUpdateActions, cre
 import { createShellUpdateCommandSynchronizer, createShellUpdatePublisher, createShellUpdater, type ShellUpdater } from "./shell-update.js";
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher, type DesktopTitleBarOverlay } from "./title-bar-overlay-refresh.js";
 import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
-import { createDesktopBrowserFloat } from "./browser-float.js";
+import { createBrowserSurface, createMainPageHost } from "./browser-surface.js";
+import { createBrowserActions } from "./browser-actions.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { readChromeHistory } from "./chrome-history.js";
 import { createBrowserHistoryStorage } from "./browser-history-storage.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
-import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
-import { BROWSER_COMPANION_PREFERENCES, createBrowserCompanion, type BrowserCompanion } from "./browser-window.js";
+import { type DesktopShellWindow } from "./shell-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, consoleWindowChrome, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
@@ -64,7 +64,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_DETACH_CAPABILITY];
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -242,12 +242,15 @@ async function boot(): Promise<void> {
   let companionOverlayRefresher: TitleBarOverlayRefresher | null = null;
   chromeBand = rememberedTheme?.chrome?.band;
   let entryPalette: EntryPalette | undefined = rememberedTheme?.entry;
+  /** 브라우저 표면이 서면 채운다 — 테마가 바뀌면 열려 있는 크롬 문서를 새 색으로 다시 칠한다. */
+  let browserRetheme: (() => void) | null = null;
   let themeOrigin: string | null = null;
   const themeSynchronizer = createDesktopThemeSynchronizer({
     fetch: consoleFetch,
     applyTheme: (snapshot) => {
       // 이 필드를 싣지 않는 Console이면 무엇을 칠할지 모른다 — 창과 종료 인사 모두 기본 판으로 돌아간다.
       entryPalette = snapshot.entry;
+      browserRetheme?.();
       companionOverlay = snapshot.titleBarOverlay;
       companionOverlayRefresher?.applyOverlay(companionOverlay);
       if (snapshot.entry && themeOrigin !== null && themeOrigin === localConsoleOrigin) themeMemory.save(snapshot);
@@ -363,76 +366,55 @@ async function boot(): Promise<void> {
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
   const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot());
-  const browserCompanion: BrowserCompanion = createBrowserCompanion({
+  /**
+   * 브라우저 표면(칸·독립 창)과 그 크롬. 크롬 문서는 셸의 정적 자산이고 Console 의 문서·렌더러를 거치지 않는다 — 사람의 동작은 Console 의 기존 REST 로 돌아가고,
+   * 상태는 스냅샷으로 온다. 문서는 sandbox·Node 없음이고 사전 로드 스크립트도 없다 — 주입 프로그램만 main 이 넣는다.
+   */
+  const chromeViewPreferences = { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false, allowRunningInsecureContent: false } as const;
+  let browserOrigin: string | null = null;
+  let chromeProgram: string | null = null;
+  const browserSurface = createBrowserSurface({
     main: () => window,
-    createWindow: (guest) => {
-      // 생성 전 handler가 보안을 지정한 기존 guest를 그대로 입양한다. renderer 옵션을 다시 펼치지 않는다.
-      const consoleView = new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
+    createChromeView: () => new WebContentsView({ webPreferences: { ...chromeViewPreferences, partition: "fleet-browser-chrome" } }),
+    createDividerView: () => new WebContentsView({ webPreferences: { ...chromeViewPreferences, partition: "fleet-browser-divider" } }),
+    createWindow: () => {
       const base = new BaseWindow({
         ...consoleWindowChrome({ platform: process.platform, titleBarOverlay: companionOverlay, chromeBand: CONVERSATION_TOP_ROW }),
         show: false, width: 1000, height: 760, minWidth: 460, minHeight: 360, title: "Fleet Browser", frame: true, alwaysOnTop: false,
         movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true,
+        ...(entryPalette ? { backgroundColor: entryPalette.canvas } : {}),
       });
-      consoleView.webContents.setZoomFactor(window?.consoleContents.getZoomFactor() ?? 1);
-      browserViews.attachShortcutSource(consoleView.webContents);
-      const child = createDesktopShellWindow(base, consoleView, createDesktopViewStack(base, consoleView));
-      const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, {
-        screen, initialOverlay: companionOverlay, getZoomFactor: () => child.consoleContents.getZoomFactor(),
-      }) : null;
+      const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, { screen, initialOverlay: companionOverlay, getZoomFactor: () => 1 }) : null;
       companionOverlayRefresher = refresher;
       const refreshChrome = () => {
-        if (child.isDestroyed()) return;
-        if (process.platform === "darwin") child.setWindowButtonPosition(trafficLightPosition(child.consoleContents.getZoomFactor(), CONVERSATION_TOP_ROW));
+        if (base.isDestroyed()) return;
+        if (process.platform === "darwin") base.setWindowButtonPosition(trafficLightPosition(1, CONVERSATION_TOP_ROW));
         refresher?.refresh();
       };
       base.once("closed", () => { refresher?.stop(); if (companionOverlayRefresher === refresher) companionOverlayRefresher = null; });
-      // 빈 탭에는 네이티브 뷰가 없어 browserViews.refresh()가 이 창의 Console 뷰를 다시 놓지 않는다 — 크기가 바뀌면 여기서 직접 맞춘다.
-      base.on("resize", () => { child.stack.layoutConsole(); });
-      base.on("resize", refreshChrome);
       base.on("move", refreshChrome);
-      child.consoleContents.on("zoom-changed", refreshChrome);
-      child.consoleContents.once("did-finish-load", refreshChrome);
+      base.on("resize", refreshChrome);
       refreshChrome();
-      return child;
+      return base;
     },
+    chromeDir: desktopResources.browserChromeDir,
+    // 패키지된 앱은 한 번 읽어 두고, 개발 실행은 표면을 열 때마다 새로 읽는다(문서 프로그램을 바꾸고 다시 열어 확인할 수 있게).
+    program: () => (isPackaged ? (chromeProgram ??= fs.readFileSync(path.join(desktopResources.browserChromeDir, "chrome.js"), "utf8")) : fs.readFileSync(path.join(desktopResources.browserChromeDir, "chrome.js"), "utf8")),
+    colors: () => entryPalette ? { scheme: entryPalette.scheme, tokens: { ...(entryPalette.browser ?? {}) }, ...(entryPalette.fonts ? { fonts: { ...entryPalette.fonts } } : {}) } : null,
+    lang: entryLanguage,
+    platform: process.platform,
+    zoom: () => window && !window.isDestroyed() ? window.consoleContents.getZoomFactor() : 1,
+    scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
+    act: createBrowserActions({ fetch: consoleFetch, origin: () => browserOrigin, lang: entryLanguage, openExternal: (url) => { void shell.openExternal(url); }, log: (message) => logger.info(message) }),
     relay: (surface) => browserViews.relaySurface(surface),
-    changed: () => browserViews.refresh(),
+    changed: () => browserViews.places(),
+    log: (message) => logger.info(message),
   });
-  /**
-   * 브라우저 자리를 덮는 Console 메뉴를 그리는 자식 창. Console 창과 같은 세션이라 두 렌더러가 같은 출처 채널로 메뉴를
-   * 주고받는다 — 셸과 렌더러 사이 통로를 새로 열지 않는다. 창 정책(권한 처리기)은 Console 창이 세션에 이미 걸었으므로 다시 걸지 않는다.
-   */
-  const browserFloat = createDesktopBrowserFloat({
-    shell: (surface) => surface ? browserCompanion.surface(surface) : window,
-    cursor: () => screen.getCursorScreenPoint(),
-    createWindow: (shellWindow) => new BrowserWindow({
-      parent: shellWindow.base,
-      show: false,
-      frame: false,
-      transparent: true,
-      backgroundColor: "#00000000",
-      hasShadow: false,
-      resizable: false,
-      movable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      focusable: false,
-      acceptFirstMouse: true,
-      ...(process.platform === "darwin" ? { type: "panel" } : {}),
-      webPreferences: {
-        session: shellWindow.consoleContents.session,
-        nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
-      },
-    }),
-    zoomFactor: (surface) => (surface ? browserCompanion.surface(surface) : window)?.consoleContents.getZoomFactor() ?? 1,
-    log: (message) => logger.error(message),
-  });
+  browserRetheme = () => browserSurface.retheme();
   const browserViews = createDesktopBrowserViews({
-    shell: () => window,
-    float: browserFloat,
-    companion: browserCompanion,
+    shell: () => window && !window.isDestroyed() ? createMainPageHost(window, (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } }) : null,
+    consoleContents: () => window && !window.isDestroyed() ? window.consoleContents : null,
+    surface: browserSurface,
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
     // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
     // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Objective 의 메모리 파티션에 뷰를 연다.
@@ -442,8 +424,6 @@ async function boot(): Promise<void> {
         focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
       },
     }),
-    zoomFactor: (surface) => (surface ? browserCompanion.surface(surface) : window)?.consoleContents.getZoomFactor() ?? 1,
-    scaleFactor: (parent) => { try { const target = parent ?? window; return target ? screen.getDisplayMatching(target.getBounds()).scaleFactor : 1; } catch { return 1; } },
     product: () => `Chrome/${process.versions.chrome}`,
     // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
     userAgent: () => (window?.consoleContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
@@ -507,6 +487,7 @@ async function boot(): Promise<void> {
     },
   });
   const synchronizeBrowserViews = async (origin: string): Promise<void> => {
+    browserOrigin = origin;
     try { await browserViews.start(origin); } catch (error) { logger.error(`browser views failed: ${describeError(error)}`); }
   };
   /**
@@ -538,7 +519,7 @@ async function boot(): Promise<void> {
   let refreshNativeUpdateActions: (() => void) | null = null;
   const desktopState = createDesktopState(path.join(app.getPath("userData"), "desktop-state.json"));
   const zoomState = desktopState.zoom;
-  const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
+  const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.(), zoomApplied: () => browserViews.refresh() });
   /**
    * 다른 콘솔로 건너가는 화면은 Console 안에 있다. Desktop이 남기는 것은 인증서 한 겹뿐이라,
    * 이 다리는 메뉴에도 트레이에도 나타나지 않는다.
@@ -737,8 +718,6 @@ async function boot(): Promise<void> {
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external), {
-          browserCompanion: (contents, details, origin) => browserCompanion.open(contents, details, origin),
-          revokeBrowserCompanion: () => browserCompanion.dispose(),
           onPermissionDenied: (permission, phase) => logger.info(`window permission ${phase} denied permission=${permission}`),
           confirmRemoteLocalFonts: async (origin) => !createdWindow.isDestroyed()
             && (await dialog.showMessageBox(createdWindow.base, localFontsConsentDialog(origin))).response === 1,
@@ -770,15 +749,12 @@ async function boot(): Promise<void> {
           refreshNativeChrome();
           browserViews.refresh();
         });
-        // 뷰의 자리는 패널이 CSS px 로 알린다 — 줌·창 크기가 바뀌면 같은 자리를 DIP 로 다시 놓는다.
+        // 칸의 자리와 페이지 자리는 이 셸이 정한다 — 창 크기가 바뀌면 같은 틱에 Console·크롬·페이지를 함께 다시 놓는다.
         createdWindow.base.on("resize", () => {
           const bounds = createdWindow.stack.layoutConsole();
           startupEntry?.setBounds(bounds);
           browserViews.refresh();
         });
-        // 메뉴 자식 창은 화면 좌표에 놓인다 — 창이 움직이거나 접히면 따라가거나 감춘다.
-        createdWindow.base.on("move", () => browserFloat.refresh());
-        createdWindow.base.on("minimize", () => browserFloat.refresh());
         // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 네이티브 크롬의 기하를 재확인한다.
         createdWindow.consoleContents.on("did-finish-load", () => refreshNativeChrome());
         // 스냅·최대화 전환(Win+Shift+화살표 등)은 moved 없이 모니터를 건널 수 있다 — 게이트가

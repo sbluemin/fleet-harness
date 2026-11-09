@@ -14,6 +14,8 @@ export interface ConsoleControlsWindow {
 export interface ConsoleControlsDependencies {
   readonly zoomState: ZoomState;
   readonly refreshNativeActions: () => void;
+  /** Console 줌이 적용된 직후(단축키·메뉴·넘겨주기 모두) — 줌에 묶인 셸 표면이 같은 배율로 다시 놓인다. */
+  readonly zoomApplied?: () => void;
 }
 
 export interface ConsoleControls {
@@ -63,16 +65,18 @@ export function createConsoleControls(dependencies: ConsoleControlsDependencies)
       handoffPending = false;
       handoffComplete = true;
       contents.setZoomLevel(dependencies.zoomState.load());
+      dependencies.zoomApplied?.();
       dependencies.refreshNativeActions();
     },
     zoomChanged(contents, zoomDirection): void {
       // zoom-changed는 상태 통지가 아니라 사용자 요청이다 — Chromium이 줌을 적용해 주지 않으므로 방향대로 직접 적용·저장한다.
       if (!handoffComplete || activeContents() !== contents) return;
       setAndSaveZoom(contents, contents.getZoomLevel() + (zoomDirection === "in" ? 0.5 : -0.5), dependencies.zoomState);
+      dependencies.zoomApplied?.();
     },
-    zoomIn: () => runWhenReady((contents) => setAndSaveZoom(contents, contents.getZoomLevel() + 0.5, dependencies.zoomState)),
-    zoomOut: () => runWhenReady((contents) => setAndSaveZoom(contents, contents.getZoomLevel() - 0.5, dependencies.zoomState)),
-    actualSize: () => runWhenReady((contents) => setAndSaveZoom(contents, 0, dependencies.zoomState)),
+    zoomIn: () => runWhenReady((contents) => { setAndSaveZoom(contents, contents.getZoomLevel() + 0.5, dependencies.zoomState); dependencies.zoomApplied?.(); }),
+    zoomOut: () => runWhenReady((contents) => { setAndSaveZoom(contents, contents.getZoomLevel() - 0.5, dependencies.zoomState); dependencies.zoomApplied?.(); }),
+    actualSize: () => runWhenReady((contents) => { setAndSaveZoom(contents, 0, dependencies.zoomState); dependencies.zoomApplied?.(); }),
     reloadConsole: () => runWhenReady((contents) => contents.reload()),
     consoleReady: () => handoffComplete && activeContents() !== null,
     pendingZoomLevel: () => handoffPending && activeContents() ? dependencies.zoomState.load() : null,

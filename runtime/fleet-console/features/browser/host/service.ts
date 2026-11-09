@@ -6,7 +6,7 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds, type DesktopBrowserFloat } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID, BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, HUMAN_SPACE_ID, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
 
 /**
@@ -32,7 +32,7 @@ const BODY_LIMIT = 64 * 1024;
 const TEXT_LIMIT = 200_000;
 /**
  * `resolution: "device"` 캡처의 상한. 기기 배율은 셸이 알린 화면 배율(pane.scale)을 따르되 이 배율을 넘지 않고,
- * 출력 픽셀 수가 이 한도를 넘으면 그 안에 들도록 배율을 낮춘다(최소 1, 즉 CSS 크기). 시트 정지 화면용이다.
+ * 출력 픽셀 수가 이 한도를 넘으면 그 안에 들도록 배율을 낮춘다(최소 1, 즉 CSS 크기). 주석 이미지용이다.
  * 픽셀 한도는 Desktop 중계 본문 64 MiB 에서 정한다 — 압축되지 않는 RGBA PNG(4B/px)의 base64 가 한도 안에 남아야 한다.
  * 3200² 는 최악 약 52 MiB, 4096² 는 85 MiB 라 중계가 거절하고 캡처가 시간 초과까지 묶인다.
  */
@@ -670,32 +670,15 @@ export class BrowserService {
     return { client, contextId: op.contextId };
   }
 
-  /** 패널이 알려 준 자기 자리 — 네이티브 뷰가 놓일 창 좌표. null 이면 감춘다. */
-  place(objectiveId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean; surface?: string | null; clientId?: string } | null): void {
+  /** 표면(칸·독립 창) 요청. 표면은 셸이 그리고 소유하며, Console 은 열림·모드·닫힘만 기억한다. */
+  surface(objectiveId: string, action: "open" | "close" | "focus" | "mode", id?: string, mode?: "pane" | "window"): void {
     this.objectiveRecord(objectiveId);
-    this.deps.desktop.place(objectiveId, placement);
-  }
-
-  hide(objectiveId: string, surface: string | null, clientId?: string): void {
-    this.objectiveRecord(objectiveId);
-    this.deps.desktop.hide(objectiveId, surface, clientId);
-  }
-
-  /** 브라우저 자리를 덮는 메뉴의 자리 — 셸이 그 자리에 메뉴만 그리는 자식 창을 띄운다. null 이면 감춘다. */
-  float(objectiveId: string, float: DesktopBrowserFloat | null, surface: string | null): void {
-    this.objectiveRecord(objectiveId);
+    if (action === "open") { this.deps.desktop.openSurface(objectiveId, mode ?? "pane"); return; }
     const lease = this.deps.desktop.surfaceState();
-    if (surface !== (lease?.browserId === objectiveId ? lease.id : null)) return;
-    this.deps.desktop.setFloat(float);
-  }
-
-  surface(objectiveId: string, action: "open" | "close" | "focus", clientId: string, id?: string): void {
-    this.objectiveRecord(objectiveId);
-    if (action === "open") { this.deps.desktop.openSurface(objectiveId, clientId); return; }
-    const lease = this.deps.desktop.surfaceState();
-    if (lease?.browserId !== objectiveId || lease.clientId !== clientId || lease.id !== id) return;
-    if (action === "focus") this.deps.desktop.focusSurface(id, clientId);
-    else this.deps.desktop.closeSurface(id);
+    if (lease?.browserId !== objectiveId || lease.id !== id) return;
+    if (action === "focus") this.deps.desktop.focusSurface(id);
+    else if (action === "mode" && mode) this.deps.desktop.setSurfaceMode(id, mode);
+    else if (action === "close") this.deps.desktop.closeSurface(id);
   }
 
   state(objectiveId: string): BrowserObjectiveState {
@@ -730,6 +713,22 @@ export class BrowserService {
     };
   }
 
+  private chromeOf(state: BrowserObjectiveState): DesktopBrowserChrome {
+    return {
+      browserId: state.browserId,
+      spaces: state.spaces.map((space) => ({ id: space.id, kind: space.kind, label: space.label, driving: space.driving, agentTabIds: space.agentTabIds })),
+      displayedSpaceId: state.displayedSpaceId,
+      tabs: state.tabs.map((tab) => ({ id: tab.id, spaceId: tab.spaceId, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.canGoBack, canGoForward: tab.canGoForward })),
+      activeTabId: state.activeTabId,
+      viewport: { preset: state.viewport.preset, width: state.viewport.width, height: state.viewport.height, setBy: state.viewport.setBy },
+      driving: state.driving,
+      profile: state.profile,
+      defaultProfile: state.defaultProfile,
+      available: state.available,
+      reason: state.reason,
+    };
+  }
+
   /** 전역 상태가 바뀌면 듣는다 — 프레임의 `objectiveId` 와 `browserId` 는 모두 global 이다. */
   onState(listener: BrowserStateListener): () => void {
     this.stateListeners.add(listener);
@@ -749,6 +748,8 @@ export class BrowserService {
 
   private emitState(op: ObjectiveBrowser): void {
     const state = this.state(op.objectiveId);
+    // 셸이 표면의 크롬을 그리므로 Console 상태가 바뀔 때마다 투영을 스냅샷에 싣는다. 표면이 없으면 싣지 않는다.
+    if (this.deps.desktop.surfaceState()?.browserId === op.objectiveId) this.deps.desktop.setChrome(this.chromeOf(state));
     for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
   }
 
@@ -1471,7 +1472,7 @@ export class BrowserService {
       if (space.viewportFollowsPane) {
         const probe = (op.activeTabId ? tabs.find((tab) => tab.id === op.activeTabId) : undefined) ?? tabs[0];
         if (probe) {
-          const layout = await this.layoutViewport(this.client, probe);
+          const layout = this.layoutViewport(op, probe);
           if (layout && (layout.width !== space.viewport.width || layout.height !== space.viewport.height)) {
             space.viewport = { ...space.viewport, width: layout.width, height: layout.height };
             if (!op.pane) op.pane = { width: layout.width, height: layout.height, scale: space.viewport.scale };
@@ -1491,7 +1492,8 @@ export class BrowserService {
     const client = await this.engineClient();
     const button = input.button ?? "left";
     const modifiers = modifierBits(input.modifiers ?? { alt: false, ctrl: false, meta: false, shift: false });
-    const base = { x: input.x, y: input.y, modifiers };
+    // 페이지 마우스 이벤트의 clientX/Y 는 정수다 — 보내는 값과 보고하는 값이 같도록 보내기 전에 한 방식으로 반올림한다.
+    const base = { x: Math.round(input.x), y: Math.round(input.y), modifiers };
     if (input.type === "wheel") { await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseWheel", deltaX: input.deltaX ?? 0, deltaY: input.deltaY ?? 0 }, tab.sessionId); return; }
     if (input.type === "move") {
       // 누른 채 움직이면 드래그다 — Chromium 은 mouseMoved 에 실린 button/buttons 로 드래그·선택을 이어간다.
@@ -1520,7 +1522,7 @@ export class BrowserService {
     this.throwIfAborted(options.signal);
     await this.click(objectiveId, x, y, { button, clickCount }, tabId);
     const note = hit?.disabled ? "Hit target reports disabled=true; input was still dispatched." : null;
-    return { dispatched: true, x, y, button, clickCount, ref: null, hit, note };
+    return { dispatched: true, x: Math.round(x), y: Math.round(y), button, clickCount, ref: null, hit, note };
   }
 
   /**
@@ -1558,7 +1560,7 @@ export class BrowserService {
       const y = Number.isFinite(value.y) ? value.y : center.y;
       this.throwIfAborted(signal);
       await this.click(objectiveId, x, y, { button, clickCount }, tabId);
-      return { dispatched: true, x, y, button, clickCount, ref, hit: value.hit, note: null };
+      return { dispatched: true, x: Math.round(x), y: Math.round(y), button, clickCount, ref, hit: value.hit, note: null };
     } catch (error) {
       this.rethrowStaleRef(ref, error);
       throw error;
@@ -1644,7 +1646,7 @@ export class BrowserService {
 
   async geometryVersion(objectiveId: string, tabId?: string | null): Promise<string> {
     const op = this.objectiveRecord(objectiveId), tab = this.tab(op, tabId), client = await this.engineClient();
-    const layout = await this.layoutViewport(client, tab);
+    const layout = this.layoutViewport(op, tab);
     if (!layout) throw new BrowserPolicyError("browser_capture_not_ready", "Page geometry unavailable.");
     return `${tab.id}:${layout.width}x${layout.height}:${this.paneOfTab(tab)?.scale ?? this.spaceOfTab(op, tab).viewport.scale}`;
   }
@@ -1657,8 +1659,7 @@ export class BrowserService {
     const space = this.spaceOfTab(op, tab);
     // 정한 크기를 먼저 다시 건다 — 그 사이 뷰가 줄었으면 위젯이 뷰 크기로 줄어 표면이 뷰포트보다 작다.
     if (!space.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
-    // Companion 미개방이어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다.
-    // cssLayoutViewport.clientWidth 는 스크롤바를 빼므로 native pane 과 다를 수 있다 — 같기를 기다리지 않는다.
+    // 표면이 닫혀 있어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다. layout 은 Desktop 이 아는 뷰 크기(에뮬레이션 중이면 정한 크기)이고 페이지 스크립트는 읽지 않는다.
     // 리사이즈와 캡처가 겹치면 같은 탭의 pane·layout 쌍이 두 번 연속 같아야 한다.
     let layout: { width: number; height: number } | null = null;
     let pane: { width: number; height: number; scale: number } | null = null;
@@ -1667,7 +1668,7 @@ export class BrowserService {
     for (let attempt = 0; attempt < 20; attempt++) {
       this.throwIfAborted(options.signal);
       pane = this.paneOfTab(tab);
-      layout = await this.layoutViewport(client, tab);
+      layout = this.layoutViewport(op, tab);
       const geometry = JSON.stringify([pane, layout]);
       if (pane && pane.width >= 1 && pane.height >= 1 && layout && geometry === previous) { ready = true; space.viewport = { ...space.viewport, scale: pane.scale }; break; }
       previous = geometry;
@@ -1697,7 +1698,7 @@ export class BrowserService {
       throw error;
     }
     const pixels = capturePixels(result.data);
-    const after = await this.layoutViewport(client, tab);
+    const after = this.layoutViewport(op, tab);
     const paneAfter = this.paneOfTab(tab);
     if (!after || after.width !== layout.width || after.height !== layout.height || !paneAfter || paneAfter.width !== pane.width || paneAfter.height !== pane.height || paneAfter.scale !== pane.scale) {
       throw new BrowserPolicyError("browser_capture_changed", "Viewport changed during capture; capture again before coordinate input.");
@@ -1716,17 +1717,16 @@ export class BrowserService {
     };
   }
 
-  private async layoutViewport(client: CdpClient, tab: Tab): Promise<{ width: number; height: number } | null> {
-    try {
-      const metrics = await client.send<{ cssLayoutViewport?: { clientWidth?: number; clientHeight?: number }; cssVisualViewport?: { clientWidth?: number; clientHeight?: number }; layoutViewport?: { clientWidth?: number; clientHeight?: number } }>("Page.getLayoutMetrics", {}, tab.sessionId);
-      const box = metrics.cssLayoutViewport ?? metrics.cssVisualViewport ?? metrics.layoutViewport;
-      const width = Math.round(Number(box?.clientWidth) || 0);
-      const height = Math.round(Number(box?.clientHeight) || 0);
-      if (width < 1 || height < 1) return null;
-      return { width, height };
-    } catch {
-      return null;
-    }
+  /**
+   * 페이지의 뷰포트 크기 — 스크린샷·`tabs_context`·좌표가 모두 이 한 값을 쓴다. 원천은 페이지가 아니라 Desktop 이 아는 실제 뷰 크기(스크롤바를 포함한
+   * `innerWidth×innerHeight` 와 같다)이고, 에이전트가 크기를 정했으면(에뮬레이션) 그 크기다. 페이지 스크립트나 레이아웃 메트릭을 읽지 않으므로 페이지가 값을
+   * 덮어쓰거나 대화상자가 떠 있어도 두 경로로 갈라지지 않는다.
+   */
+  private layoutViewport(op: ObjectiveBrowser, tab: Tab): { width: number; height: number } | null {
+    const space = this.spaceOfTab(op, tab);
+    if (!space.viewportFollowsPane) return { width: space.viewport.width, height: space.viewport.height };
+    const pane = this.paneOfTab(tab);
+    return pane ? { width: pane.width, height: pane.height } : null;
   }
 
   async evaluate<T = unknown>(objectiveId: string, expression: string, tabId?: string | null): Promise<{ value: T | undefined; error: string | null }> {

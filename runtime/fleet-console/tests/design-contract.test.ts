@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { desktopThemeSnapshot } from "../core/host/shell/desktop-contract.js";
 import {
   DEFAULT_PANEL_WIDTH,
   MIN_PANEL_WIDTH,
@@ -1569,6 +1570,66 @@ describe("Console core design contract", () => {
     const panelFace = theme.match(/data-mobile-scheme="light"\] \{[\s\S]*?--glass-panel-face: ([^;]+);/)?.[1] ?? "";
     expect(panelFace).not.toBe("");
     expect(panelFace).not.toBe("transparent");
+  });
+
+  it("hands Desktop's browser chrome the theme tokens exactly as theme.css resolves them", () => {
+    // Desktop 이 그리는 플릿 브라우저 크롬은 Console 의 CSS 를 가져오지 않는다. 그 대신 Console 이 보내는 토큰 값이 theme.css 의 대화 중심 화면 값과 같아야 한다.
+    const theme = stripComments(desktopThemeSource());
+    const blockAt = (selector: string): Record<string, string> => {
+      const start = theme.indexOf(selector);
+      expect(start, selector).toBeGreaterThanOrEqual(0);
+      const open = theme.indexOf("{", start);
+      let depth = 0, end = open;
+      for (; end < theme.length; end += 1) { if (theme[end] === "{") depth += 1; else if (theme[end] === "}" && --depth === 0) break; }
+      const out: Record<string, string> = {};
+      for (const match of theme.slice(open + 1, end).matchAll(/^\s+--([a-z0-9-]+):\s*([^;]+);/gm)) out[match[1]!] = match[2]!.trim();
+      return out;
+    };
+    const dark = { ...blockAt(":root {"), ...blockAt(':root[data-theme="dark"]'), ...blockAt(':root[data-view-mode="desktop"]:not([data-theme="light"])'), ...blockAt(":root:not([data-theme=\"light\"]) {") };
+    const light = { ...blockAt(":root {"), ...blockAt(':root[data-theme="light"]') };
+    const resolve = (env: Record<string, string>, name: string): string => {
+      let value = env[name] ?? "";
+      for (let step = 0; step < 8; step += 1) { const alias = /^var\(--([a-z0-9-]+)\)$/.exec(value); if (!alias) break; value = env[alias[1]!] ?? value; }
+      return value;
+    };
+    for (const [id, env] of [["dark", dark], ["light", light]] as const) {
+      const browser = desktopThemeSnapshot(id).entry.browser;
+      expect(browser, id).toBeDefined();
+      for (const [token, value] of Object.entries(browser!)) expect(value, `${id} --${token}`).toBe(resolve(env, token));
+    }
+  });
+
+  it("keeps the Desktop browser chrome's mirrored token block identical to theme.css", () => {
+    // 크롬 문서는 Console CSS 를 가져오지 않는다. 치수·파생 토큰은 chrome.css 의 생성 블록이 같은 이름으로 옮겨 오고, 이 대조가 손으로 어긋나는 것을 막는다.
+    const theme = stripComments(desktopThemeSource());
+    const declared = (text: string): Record<string, string> => {
+      const out: Record<string, string> = {};
+      for (const match of text.matchAll(/^\s+--([a-z0-9-]+):\s*([^;]+);/gm)) out[match[1]!] = match[2]!.trim();
+      return out;
+    };
+    const themeBlock = (selector: string): Record<string, string> => {
+      const start = theme.indexOf(selector);
+      expect(start, selector).toBeGreaterThanOrEqual(0);
+      const open = theme.indexOf("{", start);
+      let depth = 0, end = open;
+      for (; end < theme.length; end += 1) { if (theme[end] === "{") depth += 1; else if (theme[end] === "}" && --depth === 0) break; }
+      return declared(theme.slice(open + 1, end));
+    };
+    const dark = { ...themeBlock(":root {"), ...themeBlock(':root[data-theme="dark"]'), ...themeBlock(':root[data-view-mode="desktop"]:not([data-theme="light"])'), ...themeBlock(":root:not([data-theme=\"light\"]) {") };
+    const light = { ...themeBlock(":root {"), ...themeBlock(':root[data-theme="light"]') };
+    const css = fs.readFileSync(new URL("../../fleet-desktop/assets/browser-chrome/chrome.css", import.meta.url), "utf8");
+    const begin = css.indexOf("/* ==== Console 테마 토큰");
+    const finish = css.indexOf("/* ==== /Console 테마 토큰 ====");
+    expect(begin).toBeGreaterThanOrEqual(0);
+    const block = css.slice(begin, finish);
+    const lightAt = block.indexOf(':root[data-scheme="light"]');
+    const mirroredDark = declared(block.slice(0, lightAt));
+    const mirroredLight = declared(block.slice(lightAt));
+    expect(Object.keys(mirroredDark).length).toBeGreaterThan(40);
+    for (const [token, value] of Object.entries(mirroredDark)) expect(value, `dark --${token}`).toBe(dark[token]);
+    for (const [token, value] of Object.entries(mirroredLight)) expect(value, `light --${token}`).toBe(light[token]);
+    // 라이트에서 값이 다른 토큰은 빠짐없이 라이트 구역에 있어야 한다.
+    for (const token of Object.keys(mirroredDark)) if (light[token] !== undefined && light[token] !== dark[token]) expect(mirroredLight[token], `light override --${token}`).toBe(light[token]);
   });
 
   it("keeps the dark base tokens and selector while blocking palette escapes", () => {

@@ -1,0 +1,416 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import type { BaseWindow, Rectangle, WebContents, WebContentsView } from "electron";
+import type { DesktopBrowserChrome, DesktopBrowserSurface, DesktopBrowserSurfaceRelay } from "@fleet-console/protocol/desktop";
+
+import type { BrowserSurfaceHost, PageHost } from "./browser-views.js";
+import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeOverlay, type ChromeRole, type ChromeUiState } from "./chrome/contract.js";
+import type { DesktopShellWindow } from "./shell-window.js";
+
+/** 상단 줄(주소줄)의 높이 — Console 대화 화면의 맨 위 줄(52px)과 같다. 레일·페이지는 그 아래에서 시작한다. */
+export const BROWSER_STRIP_PX = 52;
+export const BROWSER_RAIL_COLLAPSED_PX = 54;
+export const BROWSER_RAIL_EXPANDED_PX = 237;
+/** 알림이 떠 있는 동안 주소줄 뷰가 아래로 더 가지는 높이. */
+const TOAST_BAND_PX = 52;
+const DIVIDER_PX = 8;
+const MIN_PANE_PX = 320;
+/** 칸을 줄이더라도 Console 이 지키는 폭. */
+const MIN_CONSOLE_PX = 600;
+const MAC_TRAFFIC_LIGHTS_PX = 76;
+const WINDOWS_CAPTION_PX = 138;
+const WINDOW_FALLBACK_MS = 3_000;
+const TOAST_MS = 4_000;
+const TOAST_ACTION_MS = 8_000;
+
+/** 문서가 동작을 요청하는 경로의 반대쪽 — 동작 처리기가 표면을 고칠 때 쓰는 손잡이. */
+export interface SurfaceControl {
+  ui(): Readonly<SurfaceUi>;
+  patch(change: Partial<SurfaceUi>): void;
+  /** 알림 한 줄 — 오류(notice)면 빨강, 정보(info)면 동사가 붙을 수 있다. 일정 시간 뒤 거둔다. */
+  notify(text: string | null, kind?: "info" | "error", action?: string): void;
+  chrome(): DesktopBrowserChrome | null;
+  surface(): DesktopBrowserSurface | null;
+  /** 주소줄 문서에 직접 호출을 보낸다(주석 요소 조회 답). */
+  evaluate(role: ChromeRole, code: string): void;
+}
+
+export interface SurfaceUi {
+  pinned: boolean;
+  expanded: boolean;
+  overlay: ChromeOverlay | null;
+  busy: boolean;
+  notice: string | null;
+  info: { text: string; action?: string } | null;
+  suggest: ChromeUiState["suggest"];
+  suggestions: ChromeUiState["suggestions"];
+  draft: string | null;
+}
+
+export interface BrowserSurfaceDeps {
+  readonly main: () => DesktopShellWindow | null;
+  readonly createChromeView: () => WebContentsView;
+  readonly createDividerView: () => WebContentsView;
+  /** 독립 창 — 장식(신호등 위치·Windows 캡션 띠)까지 마친 BaseWindow. 닫으면 칸으로 돌아간다. */
+  readonly createWindow: () => BaseWindow;
+  readonly chromeDir: string;
+  /** 크롬 문서에 주입하는 프로그램 본문. */
+  readonly program: () => string;
+  readonly colors: () => ChromeColors | null;
+  readonly lang: "ko" | "en";
+  readonly platform: string;
+  readonly scaleFactor: (base: BaseWindow) => number;
+  /** Console 창의 확대·축소 배율. 크롬 문서는 이 배율로 그려지고 줄·레일·알림 띠의 DIP 크기도 같은 배율을 따른다(Console 맨 위 줄이 확대되는 것처럼). */
+  readonly zoom: () => number;
+  /** 문서가 보낸 동작 하나를 처리한다. */
+  readonly act: (control: SurfaceControl, role: ChromeRole, action: ChromeAction) => void;
+  readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
+  /** 페이지 자리가 바뀌었다 — browser-views 가 뷰를 같은 틱에 다시 놓는다. */
+  readonly changed: () => void;
+  readonly log: (message: string) => void;
+}
+
+interface ChromeDoc { readonly role: ChromeRole; readonly view: WebContentsView; ready: boolean; lastJson: string }
+
+const escapeScript = (value: string): string => value.replace(/[<>&\u2028\u2029]/g, (character) => ({ "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" })[character] ?? character);
+
+/** 메인 창을 페이지 뷰의 집으로 보이는 어댑터 — Console 뒤에 주차하고, 표면이 칸이면 Console 앞(레일 아래)에 세운다. */
+export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base: BaseWindow) => number): PageHost {
+  return {
+    isDestroyed: () => shell.isDestroyed(),
+    contentBounds: () => shell.stack.layoutConsole(),
+    park: (view) => shell.stack.parkBrowser(view),
+    present: (view) => shell.stack.presentBrowser(view),
+    remove: (view) => shell.stack.removeBrowser(view),
+    scale: () => scaleFactor(shell.base),
+    reclaimFocus: () => shell.consoleContents.focus(),
+  };
+}
+
+/**
+ * 브라우저 표면 — 칸(메인 창 오른쪽)과 독립 창을 같은 구조로 소유한다: 상단 줄 뷰·세로 레일 뷰·페이지 뷰. 레이아웃·오버레이 크기·페이지 자리는
+ * 전부 여기서 같은 main 틱에 정한다. Console 은 상태와 정책만 보내고(스냅샷), 이 표면은 사람의 동작을 REST 로 돌려보낸다.
+ */
+export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void } {
+  let surface: DesktopBrowserSurface | null = null;
+  let chrome: DesktopBrowserChrome | null = null;
+  let chromeJson = "";
+  let docs: { bar: ChromeDoc; rail: ChromeDoc; stage: ChromeDoc } | null = null;
+  let divider: WebContentsView | null = null;
+  let windowBase: BaseWindow | null = null;
+  let windowStack: ReturnType<typeof createWindowStack> | null = null;
+  let host: PageHost | null = null;
+  let hostKind: "pane" | "window" | null = null;
+  let page: Rectangle = { x: 0, y: 0, width: 0, height: 0 };
+  let paneWidth = 560;
+  let ui: SurfaceUi = { pinned: false, expanded: false, overlay: null, busy: false, notice: null, info: null, suggest: null, suggestions: [], draft: null };
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let focusSeen = 0;
+  let closing: ReturnType<typeof setTimeout> | null = null;
+  let drag: { screenX: number; width: number } | null = null;
+  let appliedZoom = 1;
+  /** 표면이 닫혀도 남는다 — 닫힌 동안 만들어지는 뷰가 마지막 페이지 크기를 따르게. */
+  let lastPageSize: { width: number; height: number } | null = null;
+
+  const surfaceRect = (): Rectangle | null => {
+    if (hostKind === "pane") {
+      const main = deps.main();
+      if (!main || main.isDestroyed()) return null;
+      const content = main.getContentBounds();
+      // Console 은 600 DIP 를 먼저 지킨다. 창이 좁아질 때 선호 폭을 덮어쓰지 않고 칸부터 줄인다.
+      const width = Math.min(Math.max(MIN_PANE_PX, paneWidth), Math.max(1, content.width - MIN_CONSOLE_PX - DIVIDER_PX));
+      const left = Math.max(1, content.width - width - DIVIDER_PX);
+      return { x: left + DIVIDER_PX, y: 0, width, height: Math.max(1, content.height) };
+    }
+    if (hostKind === "window" && windowBase && !windowBase.isDestroyed()) {
+      const content = windowBase.getContentBounds();
+      return { x: 0, y: 0, width: Math.max(1, content.width), height: Math.max(1, content.height) };
+    }
+    return null;
+  };
+
+  const zoom = (): number => { const z = deps.zoom(); return Number.isFinite(z) && z >= 0.25 && z <= 5 ? z : 1; };
+  /** CSS px(크롬 문서의 치수)를 DIP 로. */
+  const dip = (cssPx: number): number => Math.round(cssPx * zoom());
+  const stripPx = (): number => dip(BROWSER_STRIP_PX);
+  const railWidth = (): number => dip(ui.pinned || ui.expanded ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
+  const layoutRailWidth = (): number => dip(ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
+  const barHeight = (rect: Rectangle): number => (ui.overlay !== null ? rect.height : ui.notice || ui.info ? Math.min(rect.height, stripPx() + dip(TOAST_BAND_PX)) : Math.min(rect.height, stripPx()));
+
+  /** 모든 뷰의 자리를 같은 틱에 정한다. 상태 문서에 알리는 것은 이 뒤다 — 뷰 크기와 문서 레이아웃이 어긋난 프레임이 없게. */
+  const layout = (): void => {
+    if (!docs) return;
+    const rect = surfaceRect();
+    if (!rect) return;
+    const z = zoom();
+    if (z !== appliedZoom) { appliedZoom = z; for (const doc of [docs.bar, docs.rail, docs.stage]) if (!doc.view.webContents.isDestroyed()) doc.view.webContents.setZoomFactor(z); }
+    const strip = Math.min(stripPx(), rect.height);
+    const side = layoutRailWidth();
+    page = { x: rect.x + Math.min(side, rect.width), y: rect.y + strip, width: Math.max(0, rect.width - side), height: Math.max(0, rect.height - strip) };
+    if (page.width > 0 && page.height > 0) lastPageSize = { width: page.width, height: page.height };
+    docs.bar.view.setBounds({ x: rect.x, y: rect.y, width: rect.width, height: barHeight(rect) });
+    docs.rail.view.setBounds({ x: rect.x, y: rect.y + strip, width: Math.min(railWidth(), rect.width), height: Math.max(1, rect.height - strip) });
+    docs.stage.view.setBounds({ x: page.x, y: page.y, width: Math.max(1, page.width), height: Math.max(1, page.height) });
+    if (hostKind === "pane") {
+      const main = deps.main();
+      if (main && !main.isDestroyed() && divider) {
+        const left = rect.x - DIVIDER_PX;
+        main.stack.setBrowserPane({ stage: docs.stage.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left });
+        divider.setBounds({ x: left, y: 0, width: DIVIDER_PX, height: rect.height });
+      }
+    }
+    deps.changed();
+  };
+
+  const state = (): ChromeUiState => {
+    const rect = surfaceRect();
+    const z = zoom();
+    const leading = hostKind === "window" && deps.platform === "darwin" ? MAC_TRAFFIC_LIGHTS_PX / z : 0;
+    const trailing = deps.platform === "win32" ? WINDOWS_CAPTION_PX / z : 0;
+    return {
+      lang: deps.lang, platform: deps.platform, mode: surface?.mode ?? "pane", colors: deps.colors(), chrome, pinned: ui.pinned, expanded: ui.expanded,
+      leading, trailing,
+      page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), rect.height) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
+      zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
+      suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
+    };
+  };
+
+  let dividerScheme = "";
+  const push = (): void => {
+    if (!docs) return;
+    // 손잡이 문서는 상태를 받지 않는다 — 색 구성표만 Console 테마에 맞춘다(그 문서의 light-dark() 가 이 값을 읽는다).
+    const scheme = deps.colors()?.scheme ?? "";
+    if (divider && scheme && scheme !== dividerScheme && !divider.webContents.isDestroyed()) { dividerScheme = scheme; void divider.webContents.executeJavaScript(`document.documentElement.style.colorScheme = ${JSON.stringify(scheme)}`).catch(() => undefined); }
+    const json = escapeScript(JSON.stringify(state()));
+    for (const doc of [docs.bar, docs.rail, docs.stage]) {
+      if (!doc.ready || doc.view.webContents.isDestroyed() || doc.lastJson === json) continue;
+      doc.lastJson = json;
+      void doc.view.webContents.executeJavaScript(`window.__fleetChrome && window.__fleetChrome.apply(${json})`).catch(() => undefined);
+    }
+  };
+
+  const update = (): void => { layout(); push(); };
+
+  const control: SurfaceControl = {
+    ui: () => ui,
+    patch(change) { ui = { ...ui, ...change }; update(); },
+    notify(text, kind = "info", action) {
+      if (toastTimer !== null) { clearTimeout(toastTimer); toastTimer = null; }
+      if (!text) { ui = { ...ui, notice: null, info: null }; update(); return; }
+      ui = kind === "error" ? { ...ui, notice: text, info: null } : { ...ui, notice: null, info: { text, ...(action ? { action } : {}) } };
+      update();
+      toastTimer = setTimeout(() => { toastTimer = null; ui = { ...ui, notice: null, info: null }; update(); }, action ? TOAST_ACTION_MS : TOAST_MS);
+    },
+    chrome: () => chrome,
+    surface: () => surface,
+    evaluate(role, code) {
+      const doc = docs?.[role];
+      if (doc && doc.ready && !doc.view.webContents.isDestroyed()) void doc.view.webContents.executeJavaScript(code).catch(() => undefined);
+    },
+  };
+
+  const isTrusted = (doc: ChromeDoc, details: { frame: { url: string } | null }): boolean => {
+    const contents = doc.view.webContents;
+    return details.frame !== null && details.frame === contents.mainFrame && details.frame.url === pathToFileURL(path.join(deps.chromeDir, `${doc.role}.html`)).href;
+  };
+
+  const makeDoc = (role: ChromeRole): ChromeDoc => {
+    const view = deps.createChromeView();
+    const contents: WebContents = view.webContents;
+    const doc: ChromeDoc = { role, view, ready: false, lastJson: "" };
+    contents.setWindowOpenHandler(() => ({ action: "deny" }));
+    contents.on("will-navigate", (event) => event.preventDefault());
+    contents.on("will-attach-webview", (event) => event.preventDefault());
+    contents.on("console-message", (details: { message: string; frame: { url: string } | null }) => {
+      if (docs?.[role] !== doc || !isTrusted(doc, details)) return;
+      const message = readChromeMessage(details.message);
+      if (!message || message.role !== role) return;
+      if (message.action.action === "ready") { doc.ready = true; doc.lastJson = ""; push(); return; }
+      deps.act(control, role, message.action);
+    });
+    contents.on("dom-ready", () => { doc.ready = false; void contents.executeJavaScript(deps.program()).catch((error: unknown) => deps.log(`browser chrome program failed: ${error instanceof Error ? error.message : "unknown"}`)); });
+    contents.on("render-process-gone", () => { doc.ready = false; void contents.reload(); });
+    view.setBackgroundColor("#00000000");
+    contents.setZoomFactor(zoom());
+    appliedZoom = zoom();
+    void contents.loadFile(path.join(deps.chromeDir, `${role}.html`)).catch(() => undefined);
+    return doc;
+  };
+
+  const attachPaneDivider = (): void => {
+    if (!divider) return;
+    const view = divider;
+    const contents = view.webContents;
+    contents.setWindowOpenHandler(() => ({ action: "deny" }));
+    contents.on("will-navigate", (event) => event.preventDefault());
+    contents.on("will-attach-webview", (event) => event.preventDefault());
+    contents.on("console-message", (details: { message: string; frame: { url: string } | null }) => {
+      // 이 수동 문서의 고정 frame만 읽는다. Console/페이지 로그는 이 listener에 연결되지 않는다.
+      if (divider !== view || details.frame !== contents.mainFrame || details.frame.url !== DIVIDER_URL) return;
+      let value: unknown;
+      try { value = JSON.parse(details.message); } catch { return; }
+      if (!Array.isArray(value) || value[0] !== "fleet-pane" || value.length !== 3) return;
+      const [, action, x] = value;
+      if (typeof x !== "number" || !Number.isFinite(x)) return;
+      const main = deps.main();
+      if (!main || main.isDestroyed()) return;
+      const current = surfaceRect();
+      if (!current) return;
+      const limit = (width: number): number => Math.max(MIN_PANE_PX, Math.min(main.getContentBounds().width - MIN_CONSOLE_PX - DIVIDER_PX, width));
+      if (action === "start") drag = { screenX: x, width: current.width };
+      else if (action === "move" && drag) { paneWidth = limit(drag.width + drag.screenX - x); update(); }
+      else if (action === "end") drag = null;
+      else if (action === "key") { paneWidth = limit(current.width + x); update(); }
+    });
+    contents.on("did-finish-load", () => { dividerScheme = ""; push(); });
+    void contents.loadURL(DIVIDER_URL).catch(() => undefined);
+  };
+
+  const detachFromHost = (): void => {
+    if (!docs) return;
+    if (hostKind === "pane") { const main = deps.main(); if (main && !main.isDestroyed()) main.stack.setBrowserPane(null); }
+    if (hostKind === "window") { windowStack?.clear(); }
+    host = null; hostKind = null;
+  };
+
+  const destroyWindow = (): void => {
+    const base = windowBase;
+    windowBase = null; windowStack = null;
+    if (closing !== null) { clearTimeout(closing); closing = null; }
+    if (base && !base.isDestroyed()) { base.removeAllListeners("close"); base.destroy(); }
+  };
+
+  const makeWindow = (): void => {
+    const base = deps.createWindow();
+    windowBase = base;
+    windowStack = createWindowStack(base);
+    const own = (): boolean => windowBase === base;
+    base.on("resize", () => { if (own()) update(); });
+    base.on("move", () => { if (own()) deps.changed(); });
+    base.on("minimize", () => { if (own()) deps.changed(); });
+    base.on("restore", () => { if (own()) deps.changed(); });
+    // 창 닫기는 칸으로 돌아가라는 뜻이다. 모드는 Console 이 쥐고 있으므로 요청하고, 돌아오지 않으면 표면을 놓는다.
+    base.on("close", (event) => {
+      if (!own()) return;
+      event.preventDefault();
+      if (closing !== null) return;
+      const current = surface;
+      if (current) deps.act(control, "bar", { action: "toggle-mode" });
+      closing = setTimeout(() => { closing = null; if (own() && surface?.id === current?.id && surface?.mode === "window" && current) { deps.relay({ id: current.id, status: "closed" }); } }, WINDOW_FALLBACK_MS);
+    });
+    base.on("closed", () => { if (windowBase === base) { windowBase = null; windowStack = null; if (docs && surface?.mode === "window") deps.relay({ id: surface.id, status: "closed" }); } });
+  };
+
+  /** 표면의 모드(칸/창)에 맞는 집에 크롬 뷰를 세운다. 같은 두 뷰를 옮길 뿐 문서를 다시 만들지 않는다. */
+  const ensureHost = (next: DesktopBrowserSurface): void => {
+    if (!docs) return;
+    if (hostKind === next.mode) return;
+    detachFromHost();
+    if (next.mode === "pane") {
+      const main = deps.main();
+      if (!main || main.isDestroyed()) return;
+      if (!divider) { divider = deps.createDividerView(); attachPaneDivider(); }
+      hostKind = "pane";
+      host = createMainPageHost(main, deps.scaleFactor);
+      destroyWindow();
+    } else {
+      if (!windowBase || windowBase.isDestroyed()) makeWindow();
+      hostKind = "window";
+      windowStack!.set(docs.stage.view, docs.rail.view, docs.bar.view);
+      host = windowStack!.host(() => deps.scaleFactor(windowBase!), () => { if (docs && !docs.bar.view.webContents.isDestroyed()) docs.bar.view.webContents.focus(); });
+      if (windowBase && !windowBase.isDestroyed()) { windowBase.show(); }
+    }
+    update();
+  };
+
+  /** 표면을 거둔다 — 뷰·창·타이머를 놓고 다음 `apply` 가 처음부터 다시 세울 수 있게 비운다. */
+  const closeSurface = (): void => {
+    if (!surface && !docs) return;
+    if (toastTimer !== null) { clearTimeout(toastTimer); toastTimer = null; }
+    const old = docs;
+    detachFromHost();
+    destroyWindow();
+    const oldDivider = divider;
+    docs = null; divider = null; surface = null; chrome = null; chromeJson = ""; focusSeen = 0; drag = null;
+    for (const view of [old?.bar.view, old?.rail.view, old?.stage.view, oldDivider]) { if (view && !view.webContents.isDestroyed()) { try { view.webContents.close(); } catch { /* 이미 닫혔다. */ } } }
+    ui = { ...ui, expanded: false, overlay: null, busy: false, notice: null, info: null, suggestions: [], draft: null };
+    page = { x: 0, y: 0, width: 0, height: 0 };
+    deps.changed();
+  };
+
+  return {
+    apply(next, nextChrome, _origin) {
+      if (!next) { closeSurface(); return; }
+      const first = surface?.id !== next.id;
+      if (first && docs) closeSurface();
+      surface = next;
+      if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage") }; }
+      const json = JSON.stringify(nextChrome);
+      const chromeChanged = json !== chromeJson;
+      chrome = nextChrome; chromeJson = json;
+      ensureHost(next);
+      if (hostKind === null) return;
+      if (next.mode === "window" && (next.focusRequest ?? 0) > focusSeen && windowBase && !windowBase.isDestroyed()) {
+        focusSeen = next.focusRequest ?? 0;
+        if (windowBase.isMinimized()) windowBase.restore();
+        windowBase.show(); windowBase.focus();
+      } else if ((next.focusRequest ?? 0) > focusSeen) { focusSeen = next.focusRequest ?? 0; docs.bar.view.webContents.focus(); }
+      if (chromeChanged) push();
+      else layout();
+    },
+    target() {
+      return host && !host.isDestroyed() && page.width > 0 ? { host, page: { ...page } } : null;
+    },
+    refresh() { if (docs) update(); },
+    lastPage: () => (lastPageSize ? { ...lastPageSize } : null),
+    dispose: closeSurface,
+    relay: (value) => deps.relay(value),
+    // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.
+    retheme() { if (docs) push(); },
+  };
+}
+
+/** 독립 창의 뷰 쌓기 — 표시 중인 페이지 뷰 < 레일 < 주소줄. 이 창에는 Console 도 주차된 뷰도 없다. */
+function createWindowStack(base: BaseWindow) {
+  const presented = new Set<WebContentsView>();
+  let stage: WebContentsView | null = null;
+  let rail: WebContentsView | null = null;
+  let bar: WebContentsView | null = null;
+  const relayout = (): void => {
+    const ordered = [...(stage ? [stage] : []), ...presented, ...(rail ? [rail] : []), ...(bar ? [bar] : [])];
+    for (let index = 0; index < ordered.length; index += 1) base.contentView.addChildView(ordered[index]!, index);
+  };
+  const remove = (view: WebContentsView): void => { presented.delete(view); try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } };
+  return {
+    set(nextStage: WebContentsView, nextRail: WebContentsView, nextBar: WebContentsView): void { stage = nextStage; rail = nextRail; bar = nextBar; relayout(); },
+    clear(): void { for (const view of [stage, rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } stage = null; rail = null; bar = null; },
+    host(scale: () => number, focus: () => void): PageHost {
+      return {
+        isDestroyed: () => base.isDestroyed(),
+        contentBounds: () => { const { width, height } = base.getContentBounds(); return { x: 0, y: 0, width: Math.max(1, width), height: Math.max(1, height) }; },
+        park: remove,
+        present: (view) => { if (presented.has(view)) return; presented.add(view); relayout(); },
+        remove,
+        scale,
+        reclaimFocus: focus,
+      };
+    },
+  };
+}
+
+// 셸의 수동 문서는 Node·주입 스크립트·IPC 없이 pointer capture와 진단 이벤트만 쓴다.
+const DIVIDER_HTML = `<!doctype html><meta charset="utf-8"><meta name="color-scheme" content="light dark"><style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;user-select:none;cursor:col-resize;background:light-dark(#e4e4e5,#202023)}
+body{box-sizing:border-box;border-left:1px solid light-dark(#c8c8ca,#39393e);border-right:1px solid light-dark(#c8c8ca,#39393e);box-shadow:inset 2px 0 4px #0002;touch-action:none}
+body:hover,body:focus-visible{background:light-dark(#d2d2d5,#35353b);outline:none}
+</style><body role="separator" aria-label="Resize browser pane" aria-orientation="vertical" tabindex="0"><script>
+const send=(action,x)=>console.log(JSON.stringify(['fleet-pane',action,x]));
+let pointer=null;
+addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();document.body.setPointerCapture(e.pointerId);pointer=e.pointerId;send('start',e.screenX)});
+addEventListener('pointermove',e=>{if(pointer===e.pointerId)send('move',e.screenX)});
+const end=e=>{if(pointer!==e.pointerId)return;pointer=null;send('end',e.screenX)};
+addEventListener('pointerup',end);addEventListener('pointercancel',end);addEventListener('lostpointercapture',end);
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();send('key',(e.key==='ArrowLeft'?1:-1)*(e.shiftKey?64:16))}});
+</script>`;
+const DIVIDER_URL = `data:text/html;charset=utf-8,${encodeURIComponent(DIVIDER_HTML)}`;

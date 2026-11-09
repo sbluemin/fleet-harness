@@ -7,12 +7,13 @@ import { readChromeHistory } from "../src/chrome-history.js";
 import { createBrowserHistoryStorage } from "../src/browser-history-storage.js";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, type DesktopBrowserRelay, type DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 import type { WebContentsView } from "electron";
-import { parkedNativeBounds } from "../src/shell-window.js";
+import { createDesktopShellWindow, createDesktopViewStack, parkedNativeBounds } from "../src/shell-window.js";
+import { createBrowserSurface } from "../src/browser-surface.js";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createDesktopBrowserViews } from "../src/browser-views.js";
-import type { DesktopShellWindow } from "../src/shell-window.js";
+import { createDesktopBrowserViews, type PageHost } from "../src/browser-views.js";
 
 describe("browser profile history storage boundary", () => {
   it("reads only a Chrome snapshot, contains durable writes, and clears history with its icons", () => {
@@ -49,7 +50,7 @@ describe("browser profile history storage boundary", () => {
 const REMOTE = "https://100.84.12.7:6768";
 
 function view(id: string): DesktopBrowserSnapshot["views"][number] {
-  return { id, objectiveId: "op-1", partition: "fleet-browser-1", profile: null, visible: false, bounds: null, url: "about:blank" };
+  return { id, objectiveId: "op-1", partition: "fleet-browser-1", profile: null, visible: false, url: "about:blank" };
 }
 
 /** 셸이 만든 네이티브 뷰 — 이 계약이 보는 것은 만들어졌는지, 닫혔는지, 어떤 CDP 명령을 받았는지뿐이다. */
@@ -74,7 +75,7 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
     isFocused: () => false,
     close: () => { record.closed = true; rejectPending(new Error("target closed")); },
   });
-  return { webContents: contents, setBorderRadius: () => {}, setBounds: () => {}, setVisible: () => {} } as unknown as WebContentsView;
+  return { webContents: contents, setBorderRadius: () => {}, setBounds: vi.fn(), setVisible: () => {} } as unknown as WebContentsView;
 }
 
 /**
@@ -83,6 +84,80 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
  * 부착을 기다리다 시간 초과로 실패한다(Desktop 을 다시 켜야만 풀리던 증상).
  */
 describe("desktop native browser views across a Console restart", () => {
+  // Console 왕복 없이 셸이 Console·크롬·페이지를 같은 조작에서 놓는 대표 수명 계약이다.
+  it("owns surface geometry through resize, divider drag, rail expansion, mode change, and disposal", () => {
+    let content = { x: 40, y: 30, width: 1400, height: 900 };
+    const base = Object.assign(new EventEmitter(), { getContentBounds: () => content, isDestroyed: () => false,
+      contentView: { addChildView: vi.fn(), removeChildView: vi.fn() } });
+    const makeView = () => {
+      const mainFrame = { url: "" };
+      const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false, close: vi.fn(), focus: vi.fn(), reload: vi.fn(), setZoomFactor: vi.fn(),
+        setWindowOpenHandler: vi.fn(), loadURL: vi.fn(async (url: string) => { mainFrame.url = url; }),
+        loadFile: vi.fn(async (file: string) => { mainFrame.url = pathToFileURL(file).href; }), executeJavaScript: vi.fn(async () => undefined) });
+      return { webContents, setBounds: vi.fn(), setBackgroundColor: vi.fn() };
+    };
+    const consoleView = makeView();
+    const stack = createDesktopViewStack(base as never, consoleView as never);
+    const shell = createDesktopShellWindow(base as never, consoleView as never, stack);
+    const views: ReturnType<typeof makeView>[] = [];
+    const changed = vi.fn();
+    const actions: string[] = [];
+    let zoomFactor = 1;
+    const surface = createBrowserSurface({
+      main: () => shell,
+      createChromeView: () => { const created = makeView(); views.push(created); return created as never; },
+      createDividerView: () => { const created = makeView(); views.push(created); return created as never; },
+      createWindow: () => { throw new Error("window mode is not part of this contract"); },
+      chromeDir: "/assets/browser-chrome", program: () => "", colors: () => null, lang: "en", platform: "linux", scaleFactor: () => 1, zoom: () => zoomFactor,
+      act: (control, role, action) => {
+        actions.push(`${role}:${action.action}`);
+        if (action.action === "expand") control.patch({ expanded: action.expanded });
+        if (action.action === "pin") control.patch({ pinned: action.pinned });
+      },
+      relay: vi.fn(), changed, log: vi.fn(),
+    });
+    surface.apply({ id: "surface-1", browserId: "global", mode: "pane" }, null, "http://127.0.0.1:1");
+    const [bar, rail, , divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
+    const send = (doc: ReturnType<typeof makeView>, message: unknown[], frame = doc.webContents.mainFrame) => doc.webContents.emit("console-message", { frame, message: JSON.stringify(message) });
+    // 첫 배치: 선호 폭 560 — Console | 손잡이 | (주소줄·레일·페이지) 가 한 번에 정해진다.
+    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
+    expect(divider.setBounds).toHaveBeenLastCalledWith({ x: 832, y: 0, width: 8, height: 900 });
+    expect(bar.setBounds).toHaveBeenLastCalledWith({ x: 840, y: 0, width: 560, height: 52 });
+    expect(rail.setBounds).toHaveBeenLastCalledWith({ x: 840, y: 52, width: 54, height: 848 });
+    expect(surface.target()?.page).toEqual({ x: 894, y: 52, width: 506, height: 848 });
+    const dividerSend = (action: string, x: number, frame = divider.webContents.mainFrame) => divider.webContents.emit("console-message", { frame, message: JSON.stringify(["fleet-pane", action, x]) });
+    dividerSend("start", 850); dividerSend("move", 750);
+    expect(surface.target()?.page).toEqual({ x: 794, y: 52, width: 606, height: 848 });
+    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 732, height: 900 });
+    // 다른 frame 메시지는 폭을 못 바꾸고, 끝난 끌기는 더 움직이지 않는다.
+    dividerSend("move", 400, { url: divider.webContents.mainFrame.url });
+    dividerSend("end", 750); dividerSend("move", 400);
+    expect(surface.target()?.page.width).toBe(606);
+    // 호버로 펼친 레일은 페이지를 덮고(레일 뷰만 커짐), 고정하면 페이지가 밀린다 — 모두 같은 틱의 setBounds 다.
+    const foreignFrame = { url: pathToFileURL("/assets/browser-chrome/rail.html").href };
+    send(rail, ["fleet-chrome", "rail", "expand", { expanded: true }], foreignFrame);
+    expect(actions).toEqual([]);
+    send(rail, ["fleet-chrome", "rail", "expand", { expanded: true }]);
+    expect(actions).toEqual(["rail:expand"]);
+    expect(rail.setBounds).toHaveBeenLastCalledWith({ x: 740, y: 52, width: 237, height: 848 });
+    expect(surface.target()?.page).toEqual({ x: 794, y: 52, width: 606, height: 848 });
+    send(rail, ["fleet-chrome", "rail", "pin", { pinned: true }]);
+    expect(surface.target()?.page).toEqual({ x: 977, y: 52, width: 423, height: 848 });
+    // 창이 좁아지면 Console 은 600 을 먼저 지키고 칸이 줄어든다 — 선호 폭(660)은 덮어쓰지 않는다.
+    content = { ...content, width: 1100, height: 700 }; base.emit("resize");
+    surface.refresh();
+    expect(surface.target()?.page).toEqual({ x: 845, y: 52, width: 255, height: 648 });
+    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 600, height: 700 });
+    // Console 을 확대하면 주소줄·레일 치수도 같은 배율로 따라가고 크롬 문서의 줌도 함께 바뀐다.
+    zoomFactor = 1.25; surface.refresh();
+    expect(bar.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ height: 65 }));
+    expect(bar.webContents.setZoomFactor).toHaveBeenLastCalledWith(1.25);
+    expect(surface.target()?.page.y).toBe(65);
+    surface.dispose();
+    expect(divider.webContents.close).toHaveBeenCalledOnce();
+    expect(surface.target()).toBeNull();
+    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1100, height: 700 });
+  });
   it("rebuilds views and runs commands from a restarted Console on the same origin", async () => {
     let lifetime: DesktopBrowserSnapshot = {
       generation: 58, epoch: "before", views: [view("view-old")],
@@ -101,20 +176,15 @@ describe("desktop native browser views across a Console restart", () => {
       return new Response(null, { status: 404 });
     });
     const created: Array<{ partition: string; closed: boolean; commands: string[] }> = [];
-    const mainStack = { layoutConsole: () => ({ x: 0, y: 0, width: 1200, height: 800 }), parkBrowser: vi.fn(), presentBrowser: vi.fn(), removeBrowser: vi.fn() };
-    const shell = { isDestroyed: () => false, stack: mainStack } as unknown as DesktopShellWindow;
-    let minimized = false;
-    let hidden = false;
-    const childStack = { layoutConsole: () => ({ x: 0, y: 0, width: 1000, height: 760 }), parkBrowser: vi.fn(), presentBrowser: vi.fn(), removeBrowser: vi.fn() };
-    const child = { isDestroyed: () => false, isMinimized: () => minimized, base: { isVisible: () => !hidden }, stack: childStack } as unknown as DesktopShellWindow;
-    let childAlive = true;
-    const companion = { apply: vi.fn(), surface: (id?: string | null) => id && childAlive ? child : null, dispose: vi.fn() };
+    const mainHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1200, height: 800 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
+    const childHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1000, height: 760 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
+    let target: { host: PageHost; page: { x: number; y: number; width: number; height: number } } | null = null;
+    const surface = { apply: vi.fn(), target: () => target, lastPage: () => null, refresh: vi.fn(), dispose: vi.fn() };
     const views = createDesktopBrowserViews({
-      shell: () => shell,
-      companion: companion as never,
+      shell: () => mainHost,
+      consoleContents: () => null,
+      surface,
       createView: (partition) => fakeView(partition, created),
-      zoomFactor: () => 1,
-      scaleFactor: () => 2,
       product: () => "Chrome/150.0",
       userAgent: () => "Mozilla/5.0 Chrome/150.0",
       fetch: fetch as typeof globalThis.fetch,
@@ -139,35 +209,28 @@ describe("desktop native browser views across a Console restart", () => {
     // 옛 프로세스의 명령 1 이 뷰와 함께 거부돼도 그 답은 같은 id 를 쓰는 새 프로세스의 명령 1 을 풀지 않는다.
     await vi.waitFor(() => expect(relays.flatMap((relay) => relay.results ?? []).some((result) => result.id === 1 && result.error === undefined)).toBe(true));
     expect(relays.flatMap((relay) => relay.results ?? []).filter((result) => result.error !== undefined)).toEqual([]);
-    lifetime = { ...lifetime, generation: 2, surface: { id: "surface-one", browserId: "op-1", clientId: "client-one" },
-      views: [{ ...view("view-new"), visible: true, surface: "surface-one", bounds: { x: 0, y: 80, width: 1000, height: 650 } }] };
+    // 표면이 열리면(독립 창) 표시 탭의 페이지가 그 창의 페이지 자리에 서고, 자리가 바뀌면 같은 틱에 따라온다.
+    lifetime = { ...lifetime, generation: 2, surface: { id: "surface-one", browserId: "op-1", mode: "window" }, views: [{ ...view("view-new"), visible: true }] };
+    target = { host: childHost, page: { x: 54, y: 52, width: 946, height: 708 } };
     const update = () => streams.at(-1)!.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`));
     update();
-    await vi.waitFor(() => expect(childStack.presentBrowser).toHaveBeenCalled());
-    const native = childStack.presentBrowser.mock.calls[0]![0];
+    await vi.waitFor(() => expect(childHost.present).toHaveBeenCalled());
+    const native = childHost.present.mock.calls[0]![0];
+    expect(native.setBounds).toHaveBeenLastCalledWith({ x: 54, y: 52, width: 946, height: 708 });
+    target = { host: childHost, page: { x: 54, y: 52, width: 1146, height: 848 } };
+    views.places();
+    expect(native.setBounds).toHaveBeenLastCalledWith({ x: 54, y: 52, width: 1146, height: 848 });
     expect(created).toHaveLength(2);
     expect(created[1]?.closed).toBe(false);
-    minimized = true;
-    views.refresh();
-    expect(mainStack.parkBrowser).toHaveBeenLastCalledWith(native);
-    expect(childStack.removeBrowser).toHaveBeenLastCalledWith(native);
-    minimized = false;
-    views.refresh();
-    expect(childStack.presentBrowser).toHaveBeenLastCalledWith(native);
-    hidden = true;
-    views.refresh();
-    expect(mainStack.parkBrowser).toHaveBeenLastCalledWith(native);
-    hidden = false;
-    views.refresh();
-    expect(childStack.presentBrowser).toHaveBeenLastCalledWith(native);
-    childAlive = false;
-    lifetime = { ...lifetime, generation: 3, surface: null, views: [{ ...lifetime.views[0]!, surface: null }] };
-    update();
-    await vi.waitFor(() => expect(mainStack.presentBrowser).toHaveBeenLastCalledWith(native));
-    expect(created).toHaveLength(2);
+    // 표면이 사라지면(창을 접거나 닫음) 뷰는 닫히지 않고 메인 창 뒤에 주차된다.
+    target = null;
+    views.places();
+    expect(childHost.remove).toHaveBeenLastCalledWith(native);
+    expect(mainHost.park).toHaveBeenLastCalledWith(native);
+    expect(created[1]?.closed).toBe(false);
     views.stop();
     expect(created[1]?.closed).toBe(true);
-    expect(companion.dispose).toHaveBeenCalled();
+    expect(surface.dispose).toHaveBeenCalled();
   });
 
   it("parks a hidden native view on one pixel of the window's bottom-right corner so it cannot take input elsewhere", () => {

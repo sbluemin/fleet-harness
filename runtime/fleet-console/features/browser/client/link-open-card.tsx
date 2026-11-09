@@ -3,7 +3,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { openInDefaultOsBrowser } from "@fleet-console/link/core";
 
-import { useBrowserEngine } from "./browser-panel-store.js";
+import { useBrowserEngine } from "./browser-engine.js";
 import { getLinkOpenT } from "./link-open-i18n.js";
 import "./link-open-card.css";
 

@@ -6,13 +6,20 @@ import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { getState, subscribe } from "../../../core/client/src/integration/store.js";
-import { BrowserWindowPanel, type BrowserClientServices } from "./browser-panel.js";
-import { publishBrowserEngine, useBrowserPluginAttach, type BrowserUnavailableReason } from "./browser-panel-store.js";
+import { publishBrowserEngine, useBrowserPluginAttach, type BrowserUnavailableReason } from "./browser-engine.js";
 import { useBrowserShortcutsSync } from "./browser-shortcuts-sync.js";
 import { dismissSharedFallback, useSharedFallbackNotice } from "./browser-shared-fallback.js";
 import { getT } from "./i18n.js";
 
-/** 지금 보는 대화(활성 Objective) — 분리 창의 스크린샷 첨부가 향하는 곳. 대화 칸이 없어도 창은 이 값으로 첨부한다. */
+export interface BrowserClientServices {
+  readonly pushComposerInbox: (objectiveId: string, entry: { readonly files: readonly File[] }) => void;
+}
+
+/** Desktop 이 그린 크롬이 만든 이미지(스크린샷·주석 결과)가 서버를 거쳐 오는 채널 — Console 이 크롬에서 받는 유일한 것. */
+const BROWSER_ATTACH_EVENT = "browser:attach";
+interface AttachPayload { readonly kind: "screenshot" | "annotation"; readonly mime: "image/png"; readonly data: string }
+
+/** 지금 보는 대화(활성 Objective) — 첨부가 향하는 곳. */
 function useActiveAttachTarget(): { readonly objectiveId: string; readonly chat: boolean } | null {
   const key = React.useSyncExternalStore(subscribe, () => {
     const state = getState();
@@ -26,15 +33,20 @@ function useActiveAttachTarget(): { readonly objectiveId: string; readonly chat:
   }, [key]);
 }
 
+function pngFile(payload: AttachPayload): File {
+  const bytes = Uint8Array.from(atob(payload.data), (char) => char.charCodeAt(0));
+  return new File([bytes], `browser-${payload.kind}-${Date.now()}.png`, { type: "image/png" });
+}
+
 /**
- * Session 브라우저가 쓰는 Console 전역 호스트.
- * 네이티브 뷰가 포커스를 가져도 단축키가 따라가게 하고, 패널이 닫혀 있어도 엔진 가용성을 지구본에 알리며,
- * shared 중 내 브라우저로 연 링크를 한 번 안내한다. 분리 창이 열려 있으면 그 안의 패널을 여기서 세운다 — 창은 보고 있는 대화가
- * 아니라 Console 의 것이므로 대화를 오가도 풀리지 않는다.
+ * Session 브라우저가 쓰는 Console 전역 호스트. 표면과 크롬은 Desktop 이 그리므로 여기에는 그릴 것이 없다.
+ * - 네이티브 뷰가 포커스를 가져도 단축키가 따라가게 한다.
+ * - 엔진 가용성을 지구본에 알린다.
+ * - Desktop 이 넘긴 이미지를 지금 보는 대화의 입력창으로 올린다: 채팅이면 컴포저 칩, 터미널이면 서버가 CLI 기계의 클립보드에 올려 붙여넣는다.
+ * - shared 중 내 브라우저로 연 링크를 한 번 안내한다.
  */
-export function BrowserSessionHost({ language, theme, services }: {
+export function BrowserSessionHost({ language, services }: {
   readonly language: ConsoleLocale | undefined;
-  readonly theme: React.ComponentProps<typeof BrowserWindowPanel>["theme"];
   readonly services: BrowserClientServices;
 }) {
   useBrowserShortcutsSync(isDesktopShell());
@@ -43,27 +55,42 @@ export function BrowserSessionHost({ language, theme, services }: {
   const fallbackNotice = useSharedFallbackNotice();
   const toastHost = typeof document === "undefined" ? null : document.querySelector(".app-toast-host");
   const attach = useActiveAttachTarget();
-  const { pushComposerInbox } = services;
-  // 활성 Objective 가 있으면 그 입력창(채팅)·터미널이 대상이고, 없으면(플러그인 대화) 그 대화가 올린 손잡이가 대상이다.
   const pluginAttach = useBrowserPluginAttach();
-  const onAttach = React.useMemo(
-    () => attach === null ? pluginAttach ?? undefined : attach.chat ? (files: readonly File[]) => pushComposerInbox(attach.objectiveId, { files }) : undefined,
-    [attach, pluginAttach, pushComposerInbox],
-  );
+  const { pushComposerInbox } = services;
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const deliver = React.useRef<(payload: AttachPayload) => void>(() => undefined);
+  deliver.current = (payload) => {
+    // 컴포저에 칩이 서는 것이 곧 결과다 — 안내 문구를 따로 띄우지 않는다.
+    if (attach?.chat) { pushComposerInbox(attach.objectiveId, { files: [pngFile(payload)] }); return; }
+    if (attach === null && pluginAttach) { pluginAttach([pngFile(payload)]); return; }
+    if (attach === null) { setNotice(t("terminal.browser.requestFailed")); return; }
+    // 터미널 Objective: 서버가 이 기계의 클립보드에 올린 뒤 Ctrl+V 를 눌러 준다 — CLI 는 자기가 도는 기계의 클립보드를 읽는다.
+    void fetch(`/api/v1/browser/objectives/${encodeURIComponent(attach.objectiveId)}/paste`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: payload.data }) })
+      .then(async (response) => {
+        // 터미널에 이미지가 붙는 것이 곧 결과다 — 성공 안내는 없고 실패만 말한다.
+        if (response.ok) return;
+        let code: string | null = null;
+        try { code = ((await response.json()) as { error?: string }).error ?? null; } catch { /* 본문 없음 */ }
+        setNotice(code === "terminal_not_running" ? t("terminal.browser.terminalNotRunning") : code === "clipboard_failed" ? t("terminal.browser.clipboardFailed") : t("terminal.browser.requestFailed"));
+      })
+      .catch(() => setNotice(t("terminal.browser.requestFailed")));
+  };
+  React.useEffect(() => {
+    if (!isDesktopShell()) return;
+    return subscribeConsoleChannel(BROWSER_ATTACH_EVENT, (payload) => {
+      const body = payload as Partial<AttachPayload> | null;
+      if (!body || (body.kind !== "screenshot" && body.kind !== "annotation") || body.mime !== "image/png" || typeof body.data !== "string") return;
+      deliver.current(body as AttachPayload);
+    });
+  }, []);
+  React.useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 4000); return () => clearTimeout(timer); }, [notice]);
   return (
     <>
-      <BrowserWindowPanel
-        language={language}
-        theme={theme}
-        services={services}
-        {...(onAttach ? { onAttach } : {})}
-        terminalPaste={attach !== null && !attach.chat}
-        {...(attach ? { pasteTargetId: attach.objectiveId } : {})}
-      />
       {fallbackNotice && toastHost ? createPortal(
         <Toast open tone="info" title={t("terminal.browser.sharedFallback")} onDismiss={() => dismissSharedFallback()} />,
         toastHost,
       ) : null}
+      {notice && toastHost ? createPortal(<Toast open tone="info" title={notice} onDismiss={() => setNotice(null)} />, toastHost) : null}
     </>
   );
 }

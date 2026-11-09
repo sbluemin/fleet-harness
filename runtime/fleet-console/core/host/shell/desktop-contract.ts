@@ -276,7 +276,18 @@ export interface DesktopEntryPalette {
   readonly canvas: string;
   readonly tokens: Readonly<Record<DesktopEntryToken, string>>;
   readonly fonts?: DesktopEntryFonts;
+  /**
+   * 플릿 브라우저 크롬(주소줄·레일·메뉴·주석)이 그리는 Console 토큰의 이 테마(대화 중심 화면 기준) 실제 값. 같은 이름의 `theme.css` 토큰이 원천이고,
+   * `design-contract.test.ts` 가 값 하나하나를 그 선언과 대조한다. 이 필드를 모르는 Desktop은 무시하고, 이 필드가 없는 Console을 만난 Desktop은
+   * 크롬의 기본 판(다크)을 쓴다.
+   */
+  readonly browser?: Readonly<Record<DesktopBrowserToken, string>>;
 }
+
+export type DesktopBrowserToken =
+  | "ink-abyss" | "canvas-abyss" | "ink-deep" | "ink-veil" | "ink-rim" | "ink-fog" | "ink-muted" | "ink-spectral" | "ink-pearl"
+  | "hairline" | "hairline-strong" | "popover-face" | "id-crimson" | "id-cerulean" | "id-moss"
+  | "agent-control-badge" | "agent-control-badge-ink" | "aurora" | "coral" | "positive" | "text-on-brass";
 
 export type DesktopEntryToken =
   | "ink-abyss" | "ink-deep" | "ink-veil" | "ink-rim" | "ink-fog" | "ink-muted" | "ink-spectral" | "ink-pearl"
@@ -327,6 +338,14 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
       aurora: "oklch(77% 0.085 200)", positive: "oklch(76% 0.11 160)", coral: "oklch(68% 0.13 25)",
       hairline: "oklch(29% 0.018 245)", "hairline-strong": "oklch(37% 0.02 245)",
     },
+    browser: {
+      "ink-abyss": "oklch(15% 0 0)", "canvas-abyss": "oklch(18.2% 0 0)", "ink-deep": "oklch(17.8% 0 0)", "ink-veil": "oklch(34.9% 0 0)",
+      "ink-rim": "oklch(45% 0 0)", "ink-fog": "oklch(58% 0 0)", "ink-muted": "oklch(72.8% 0 0)", "ink-spectral": "oklch(80% 0 0)", "ink-pearl": "oklch(97% 0 0)",
+      hairline: "oklch(28.5% 0 0)", "hairline-strong": "oklch(37% 0 0)", "popover-face": "oklch(23.9% 0 0)",
+      "id-crimson": "oklch(72% 0.052 25)", "id-cerulean": "oklch(73% 0.05 235)", "id-moss": "oklch(74% 0.048 140)",
+      "agent-control-badge": "oklch(57% 0.16 285)", "agent-control-badge-ink": "oklch(100% 0 0)", aurora: "oklch(79% 0.08 205)", coral: "oklch(69% 0.12 25)",
+      positive: "oklch(77% 0.095 158)", "text-on-brass": "oklch(15% 0 0)",
+    },
   },
   light: {
     scheme: "light",
@@ -338,6 +357,14 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
       aurora: "oklch(50% 0.1 210)", positive: "oklch(50% 0.12 160)", coral: "oklch(52% 0.16 25)",
       hairline: "oklch(86% 0 0)", "hairline-strong": "oklch(76% 0 0)",
     },
+    browser: {
+      "ink-abyss": "oklch(97% 0 0)", "canvas-abyss": "oklch(99.1% 0 0)", "ink-deep": "oklch(95.5% 0 0)", "ink-veil": "oklch(90.5% 0 0)",
+      "ink-rim": "oklch(80% 0 0)", "ink-fog": "oklch(60% 0 0)", "ink-muted": "oklch(55% 0 0)", "ink-spectral": "oklch(50.7% 0 0)", "ink-pearl": "oklch(22.6% 0 0)",
+      hairline: "oklch(86% 0 0)", "hairline-strong": "oklch(76% 0 0)", "popover-face": "oklch(100% 0 0)",
+      "id-crimson": "oklch(54% 0.1 25)", "id-cerulean": "oklch(52% 0.09 235)", "id-moss": "oklch(53% 0.09 140)",
+      "agent-control-badge": "oklch(57% 0.24 285)", "agent-control-badge-ink": "oklch(100% 0 0)", aurora: "oklch(50% 0.1 210)", coral: "oklch(52% 0.16 25)",
+      positive: "oklch(50% 0.12 160)", "text-on-brass": "oklch(99.5% 0 0)",
+    },
   },
 };
 
@@ -345,7 +372,7 @@ export function desktopThemeSnapshot(theme: ConsoleThemeId, fonts: ConsoleFontSe
   const entry = DESKTOP_ENTRY_PALETTES[theme];
   const overlay = DESKTOP_CONVERSATION_OVERLAYS[theme];
   const chrome: DesktopChromeGeometry = { band: CONVERSATION_TOP_ROW };
-  return { theme, titleBarOverlay: { ...overlay }, chrome, entry: { ...entry, tokens: { ...entry.tokens }, fonts: { ui: { family: fontFamilyForAxis(fonts, "ui"), size: fonts.ui.size }, content: { family: fontFamilyForAxis(fonts, "content"), size: fonts.content.size }, code: { family: fontFamilyForAxis(fonts, "code"), size: fonts.code.size } } } };
+  return { theme, titleBarOverlay: { ...overlay }, chrome, entry: { ...entry, tokens: { ...entry.tokens }, ...(entry.browser ? { browser: { ...entry.browser } } : {}), fonts: { ui: { family: fontFamilyForAxis(fonts, "ui"), size: fonts.ui.size }, content: { family: fontFamilyForAxis(fonts, "content"), size: fonts.content.size }, code: { family: fontFamilyForAxis(fonts, "code"), size: fonts.code.size } } } };
 }
 
 interface DesktopThemeRouteDeps {

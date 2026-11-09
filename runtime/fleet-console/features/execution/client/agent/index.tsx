@@ -16,12 +16,10 @@ import * as React from "react";
 import { MenuCheckGlyph, SegmentedThumb } from "@fleet-console/ui/react";
 import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
-import { desktopShellCapabilities, isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { subscribeConsoleChannel } from "../../../../core/client/src/integration/objective-records-sse.js";
-import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
-import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { focusBrowserWindow, useBrowserDocument } from "../../../browser/client/browser-window.js";
-import { BrowserPanel } from "../../../browser/client/browser-panel.js";
+import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
+import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus } from "../../../../core/client/src/integration/store.js";
+import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
+import { toggleBrowserPane, useBrowserSurface } from "../../../browser/client/browser-surface.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { disposeObjectiveViewState, installObjectiveViewState } from "../objective-view-state.js";
@@ -101,8 +99,8 @@ export const agentObjectiveKind: ObjectiveKindDescriptor = ({
   previewBottomChrome: () => AGENT_PREVIEW_CHROME_ROWS * getTerminalPrefsSnapshot().font.size,
   canOpenCompanions: () => true,
   companions: [
-    // Objective Browser — 실험을 켠 Console에서만 선다. 허용은 패널 안에서 켤 수 있다.
-    { id: BROWSER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.browser"), defaultHidden: true, shortcut: { code: "KeyB", label: "B" }, render: (context) => <BrowserPanel context={context} services={browserServices} /> },
+    // 플릿 브라우저 — 표면(칸·독립 창)과 그 안의 화면은 Desktop 셸이 그린다. 이 선언은 캡션의 지구본 문과 Alt+B 만 맡고 Console 에는 그릴 것이 없다.
+    { id: BROWSER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.browser"), defaultHidden: true, shortcut: { code: "KeyB", label: "B" }, render: () => null },
   ],
 });
 
@@ -428,14 +426,14 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   // 자식 세션(목표 구성원)은 루트의 브라우저를 함께 쓴다 — 쓰는 중인지도 루트의 것을 읽는다.
   const using = useObjectiveUse(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
   const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
-  const detachedBrowser = useBrowserDocument();
+  const detachedBrowser = useBrowserSurface();
   // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 Desktop 앱의 것이라 문은 늘 서되,
   // 브라우저 탭·모바일로 연 화면이거나 다른 화면이 붙어 멈춘 동안은 닫힌 채로 서서 말풍선이 그 까닭을 말한다(투어도 그때는 이 문을 짚지 않는다).
   const engine = useBrowserEngine();
   const engineMissing = engine !== null && !engine.available;
   const browserLabel = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : detachedBrowser ? t("terminal.browser.focus") : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
+    : detachedBrowser?.mode === "window" ? t("terminal.browser.focus") : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
   const browser = context.onRequestCompanions === undefined || !offersCompanion(context, BROWSER_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="browser"
@@ -443,7 +441,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
       pressed={browserOpen}
       disabled={engineMissing}
       agent={using.browser}
-      onClick={() => { if (!focusBrowserWindow()) toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
+      onClick={toggleBrowserPane}
     >
       <CaptionBrowserUseGlyph />
     </CaptionActionButton>
@@ -1018,4 +1016,4 @@ function AgentGlyph() {
   );
 }
 
-export const browserServices = { isDesktopShell, desktopShellCapabilities, themePolarity, pushComposerInbox, subscribeConsoleChannel };
+export const browserServices = { pushComposerInbox };

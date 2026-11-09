@@ -24,13 +24,5 @@ export default defineConfig({
   build: {
     outDir: "../../dist/client",
     emptyOutDir: true,
-    // Fleet Desktop 이 브라우저 자리를 덮는 메뉴를 그리는 자식 창 표면은 앱과 따로 연다.
-    rollupOptions: {
-      input: {
-        index: path.resolve(__dirname, "index.html"),
-        "browser-float": path.resolve(__dirname, "browser-float.html"),
-        "browser-window": path.resolve(__dirname, "browser-window.html"),
-      },
-    },
   },
 });

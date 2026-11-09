@@ -1,38 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
-import { createPortal } from "react-dom";
 
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
-import type { ObjectiveKindDescriptor } from "../../../../execution/shared/client-contract.js";
-import { findAgentObjectiveKind } from "../../../../execution/shared/objective-kind.js";
 
 import type { WorkbenchLayout, WorkbenchTile } from "../../../shared/conversation-workbench.js";
 import { useT } from "../../../../../core/client/src/i18n/index.js";
-import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../../core/client/src/integration/types.js";
-import { setActiveObjective, themePolarity } from "../../../../../core/client/src/integration/store.js";
+import type { ConsoleState } from "../../../../../core/client/src/integration/types.js";
 import { useHostCapabilities } from "../../../../../core/client/src/integration/use-host-capabilities.js";
 import { useExpandedSurfaceDescriptors } from "../../../../../core/client/src/integration/feature-registry.js";
-import { desktopShellCapabilities, isDesktopShell } from "../../../../../core/client/src/integration/desktop-shell.js";
-import { subscribeConsoleChannel } from "../../../../../core/client/src/integration/objective-records-sse.js";
 import { MissingSurface, SurfacePanePart, safeExpandedSurfaceTitle, useExpandedSurfaceContext } from "../../../../../core/client/src/chrome/expanded-surface/layer.js";
 import { RailSurface } from "../../../../../core/client/src/chrome/pane/rail-surface.js";
 import type { RailEntryBinding } from "../../../../../core/client/src/chrome/pane/pane-registry.js";
 import type { RailToolContext } from "../../../../../core/client/src/chrome/rail/right-rail.js";
-import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
-import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
-import { BrowserNavHostContext } from "../../../../browser/client/browser-panel-store.js";
-import { resolveSessionBrowserTarget, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
-import { announceNativeViewResize, getNativeViewResize, useHoldNativeViewsWhile } from "../../../../browser/client/browser-panel-store.js";
-import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
-import { PluginObjectiveRenderer } from "../../objective-renderer.js";
 import { type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
-import { retainBrowserNav, useBrowserBandGlobe, useBrowserBandSlot, useBrowserNavSlot } from "./browser-band-slot.js";
 import {
   bindWorkbenchCloseGuard,
   cancelWorkbenchClose,
   closeWorkbenchTile,
   focusWorkbenchTile,
-  getWorkbenchKey,
   persistWorkbench,
   replaceWorkbenchTileParams,
   setWorkbenchBelowRatio,
@@ -47,25 +32,10 @@ import "./workbench.css";
  * 대화 칸 안의 도구 분할 — 대화 오른쪽 한 열에 도구 칸이 연 순서대로 쌓인다. 칸을 옮기는 길은 없다(폭 경계와 펼치기만 있다).
  *
  * 레이어 하나가 작업 영역(왼쪽 사이드바와 오른쪽 사이드바 사이)을 덮고, 칸은 모두 이 레이어 위에 절대 배치된다. 펼쳐도 칸은 같은
- * 부모·같은 key 에 남으므로 Shell·브라우저·파일 트리가 다시 서지 않는다. 오른쪽 사이드바는 이 레이어 밖이다.
+ * 부모·같은 key 에 남으므로 도구 본문이 다시 서지 않는다. 오른쪽 사이드바는 이 레이어 밖이다.
  *
- * 칸 머리 한 문법: [아이콘·제목] · 펼치기 · 닫기. 브라우저는 예외다 — 열의 맨 위에서 머리 없이 대화와 같은 면으로 서고, 탭 줄과
- * 펼치기는 맨 위 줄의 지구본 바로 앞으로 올라간다. 지구본을 누르면 그 자리에서 번져 열리고, 닫으면 그 자리로 접혀 들어간다.
+ * 칸 머리 한 문법: [아이콘·제목] · 펼치기 · 닫기. Fleet Browser는 이 작업대 밖 Desktop 셸이 배치한다.
  */
-
-/** 대화의 Session 브라우저(사령관 같은 플러그인 대화) — 호스트 등록 플러그인 id 와 그 대화가 돌려준 세션 scope. */
-export interface WorkbenchSessionBrowser {
-  readonly pluginId: string;
-  readonly scopeId: string;
-  readonly subjectKey: string;
-  readonly attach: ((files: readonly File[]) => void) | null;
-}
-
-/** 칸이 그 대화에서 파생하는 것 — 지금은 브라우저 주인만. 작업 위치(파일 루트·Shell cwd 등)는 2단계에서 여기로 더해진다. */
-export type WorkbenchConversation =
-  | { readonly kind: "objectiveRecord"; readonly objectiveRecord: ObjectiveRecord }
-  | { readonly kind: "surface"; readonly sessionBrowser: WorkbenchSessionBrowser | null }
-  | { readonly kind: "none" };
 
 export interface ConversationWorkbenchProps {
   readonly layerRef: (element: HTMLDivElement | null) => void;
@@ -75,61 +45,18 @@ export interface ConversationWorkbenchProps {
   readonly focusedTileId: string | null;
   readonly bindings: readonly RailEntryBinding[];
   readonly toolContext: RailToolContext;
-  readonly conversation: WorkbenchConversation;
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
-  readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
 }
 
 const KEY_STEP = 16;
 const KEY_STEP_LARGE = 64;
 
-/** 브라우저가 지구본에서 번져 열리고 접혀 닫히는 시간과 곡선 — 대화 칸이 비키는 스프링(--ease-spring)과 같은 곡선이다. */
-const BROWSER_OPEN_MS = 340;
-const BROWSER_CLOSE_MS = 240;
-const BROWSER_OPEN_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
-const BROWSER_CLOSE_EASE = "cubic-bezier(0.3, 0, 0.15, 1)";
-/** 닫을 때 네이티브 뷰 대신 깔 정지 화면을 기다리는 한도 — 패널의 캡처 예산(800ms)을 조금 넘긴다. */
-const BROWSER_FRAME_WAIT_MS = 900;
-/** 정지 화면이 깔린 뒤 셸이 뷰를 실제로 물리기까지 두는 여유. */
-const BROWSER_PARK_SETTLE_MS = 60;
-type TileMotion = "enter" | "leave";
-
-interface BrowserSettled {
-  readonly key: string;
-  readonly id: string | null;
-  readonly entry: TileGeometry | null;
-  readonly rect: Rect | null;
-}
-
-interface BrowserLeaving {
-  readonly key: string;
-  readonly entry: TileGeometry;
-  readonly rect: Rect;
-}
-
-function motionAllowed(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches !== true;
-}
-
-/** 지구본 가운데를 중심으로 칸을 덮는 원 — 열 때는 지구본 크기에서 칸 전체로, 닫을 때는 그 반대로. */
-function glyphClip(element: HTMLElement, direction: "open" | "close"): Keyframe[] {
-  const box = element.getBoundingClientRect();
-  const glyph = document.querySelector<HTMLElement>('.conversation-pill-tools [data-caption-action="browser"]')?.getBoundingClientRect() ?? null;
-  const cx = glyph === null ? box.width - 24 : glyph.left + glyph.width / 2 - box.left;
-  const cy = glyph === null ? -24 : glyph.top + glyph.height / 2 - box.top;
-  const start = glyph === null ? 12 : glyph.width / 2;
-  const far = Math.ceil(Math.max(...[[0, 0], [box.width, 0], [0, box.height], [box.width, box.height]].map(([x, y]) => Math.hypot(x! - cx, y! - cy)))) + 2;
-  const small = { clipPath: `circle(${start}px at ${cx}px ${cy}px)` };
-  const large = { clipPath: `circle(${far}px at ${cx}px ${cy}px)` };
-  return direction === "open" ? [small, large] : [large, small];
-}
-
 function rectStyle(rect: Rect): CSSProperties {
   return { left: rect.x, top: rect.y, width: rect.w, height: rect.h };
 }
 
-export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, objectiveRecordKinds }: ConversationWorkbenchProps) {
+export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, state, language }: ConversationWorkbenchProps) {
   const t = useT();
   const elementRef = useRef<HTMLDivElement | null>(null);
   const setRef = useCallback((element: HTMLDivElement | null) => {
@@ -153,37 +80,6 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
     }
   }), [descriptors, language]);
 
-  // ── 브라우저가 지구본에서 열리고 닫힌다 ──
-  // 같은 대화에서 브라우저 칸이 새로 서면 번져 열리고, 사라지면 그 칸을 잠시 붙들어 접혀 닫히게 한다. 대화를 바꾸거나 처음 그릴 때,
-  // 동작 줄이기 설정에서는 바로 바뀐다. 움직이는 동안은 네이티브 뷰를 정지 화면 뒤로 물린다 — 뷰는 잘라 그릴 수 없다.
-  // 새로 섰는지·사라졌는지는 그리는 동안 판정한다. 그래야 첫 그림부터 뷰가 물러나 있고, 떠나는 칸이 같은 key 로 남아 다시 서지 않는다.
-  const workbenchKey = getWorkbenchKey();
-  const browserEntry = geometry.tiles.find((entry) => entry.tile.kind === "browser") ?? null;
-  const settledRef = useRef<BrowserSettled | null>(null);
-  const [entering, setEntering] = useState<string | null>(null);
-  const [leaving, setLeaving] = useState<BrowserLeaving | null>(null);
-  const settled = settledRef.current;
-  const sameConversation = settled !== null && settled.key === workbenchKey;
-  const revealId = browserEntry === null ? null
-    : entering === browserEntry.tile.id || (sameConversation && settled.id !== browserEntry.tile.id && motionAllowed()) ? browserEntry.tile.id : null;
-  const ghost: BrowserLeaving | null = browserEntry !== null ? null
-    : leaving !== null && leaving.key === workbenchKey ? leaving
-      : sameConversation && settled.entry !== null && settled.rect !== null && motionAllowed()
-        ? { key: workbenchKey, entry: settled.entry, rect: settled.rect } : null;
-
-  // 끌기(경계)와 닫기 확인, 브라우저가 열리고 닫히는 동안 네이티브 브라우저 뷰를 정지 화면 뒤로 물린다 — 뷰는 페이지 위를 덮어 포인터를 가린다.
-  // 경계를 끄는 동안은 좌·우 사이드바와 같은 하나의 길로 물러난다. 아래 `holdViews` 는 칸 자신의 닫기 확인과 열림·닫힘 전환만 맡는다.
-  useHoldNativeViewsWhile(resizing);
-  const holdViews = pendingClose !== null || revealId !== null || ghost !== null;
-  useEffect(() => {
-    const element = elementRef.current;
-    if (!holdViews || element === null) return;
-    announceNativeViewResize({ container: element, held: true });
-    return () => {
-      if (getNativeViewResize()?.container === element) announceNativeViewResize(null);
-    };
-  }, [holdViews]);
-
   // 펼친 칸은 Esc 로 접는다 — 입력 중인 자리(입력창·편집기·터미널)의 Esc 는 그 자리의 몫이다.
   const expandedId = geometry.expanded === null ? null : layout.expandedTileId;
   useEffect(() => {
@@ -199,59 +95,6 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
     return () => window.removeEventListener("keydown", onKey);
   }, [expandedId]);
 
-  // 브라우저 칸은 펼치지 않는다 — 크기는 경계 바로 조절한다. 칸의 자리는 늘 분할 안의 자기 자리다.
-  const browserRect = browserEntry === null ? null : browserEntry.rect;
-  useLayoutEffect(() => {
-    settledRef.current = { key: workbenchKey, id: browserEntry?.tile.id ?? null, entry: browserEntry, rect: browserRect };
-  });
-  // 그린 판정을 상태로 붙든다 — 다음 그림부터는 settledRef 가 지금 칸을 가리킨다.
-  useLayoutEffect(() => {
-    if (ghost !== null && ghost !== leaving) setLeaving(ghost);
-    else if (ghost === null && leaving !== null) setLeaving(null);
-  }, [ghost, leaving]);
-
-  useLayoutEffect(() => {
-    if (revealId === null) return;
-    setEntering(revealId);
-    const element = elementRef.current?.querySelector<HTMLElement>(`[data-tile-id="${CSS.escape(revealId)}"]`) ?? null;
-    if (element === null) { setEntering(null); return; }
-    let live = true;
-    const animation = element.animate(glyphClip(element, "open"), { duration: BROWSER_OPEN_MS, easing: BROWSER_OPEN_EASE });
-    void animation.finished.then(() => { if (live) setEntering(null); }, () => undefined);
-    return () => { live = false; animation.cancel(); };
-  }, [revealId]);
-
-  // 닫힘 — 네이티브 뷰가 정지 화면으로 물러난 뒤(또는 띄운 뷰가 없으면 곧바로) 지구본으로 접는다.
-  const leavingId = leaving?.entry.tile.id ?? null;
-  useEffect(() => {
-    if (leavingId === null) return;
-    const element = elementRef.current?.querySelector<HTMLElement>(`[data-tile-id="${CSS.escape(leavingId)}"]`) ?? null;
-    if (element === null) { setLeaving(null); return; }
-    let live = true;
-    let frame = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let animation: Animation | null = null;
-    const began = performance.now();
-    const collapse = () => {
-      if (!live) return;
-      animation = element.animate(glyphClip(element, "close"), { duration: BROWSER_CLOSE_MS, easing: BROWSER_CLOSE_EASE, fill: "forwards" });
-      void animation.finished.then(() => { if (live) setLeaving(null); }, () => undefined);
-    };
-    const wait = () => {
-      if (!live) return;
-      const native = element.querySelector(".op-browser__native");
-      if (native === null) { collapse(); return; }
-      if (native.querySelector(".op-browser__backdrop") !== null) { timer = setTimeout(collapse, BROWSER_PARK_SETTLE_MS); return; }
-      if (performance.now() - began > BROWSER_FRAME_WAIT_MS) { collapse(); return; }
-      frame = requestAnimationFrame(wait);
-    };
-    frame = requestAnimationFrame(wait);
-    return () => { live = false; cancelAnimationFrame(frame); if (timer !== null) clearTimeout(timer); animation?.cancel(); };
-  }, [leavingId]);
-
-  const geometryRef = useRef(geometry);
-  geometryRef.current = geometry;
-
   const bindingOf = useCallback((entryId: string) => bindings.find((binding) => binding.entry.id === entryId) ?? null, [bindings]);
   const surfaceBinding = useCallback((surfaceId: string) => bindings.find((binding) => binding.entry.surfaceId === surfaceId) ?? null, [bindings]);
 
@@ -262,7 +105,6 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
       ref={setRef}
       className={`conversation-workbench${resizing ? " is-resizing" : ""}${expandedId !== null ? " has-expanded" : ""}`}
       data-mode={geometry.mode}
-      data-resizing={holdViews && pendingClose === null ? "true" : undefined}
       style={{ left: insets.left, right: insets.right }}
       role={tileCount > 0 ? "region" : undefined}
       aria-label={tileCount > 0 ? t("conversation.workbench.aria") : undefined}
@@ -271,17 +113,10 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
       {expandedId === null ? geometry.gutters.map((gutter) => (
         <WorkbenchGutter key={gutterKey(gutter)} gutter={gutter} geometry={geometry} layout={layout} onResizingChange={setResizing} />
       )) : null}
-      {[
-        ...geometry.tiles.map((entry) => ({
-          entry,
-          rect: expandedId === entry.tile.id && geometry.expanded !== null ? geometry.expanded : entry.rect,
-          hidden: expandedId !== null && entry.tile.id !== expandedId,
-          expanded: expandedId === entry.tile.id,
-          motion: entry.tile.id === revealId ? "enter" as const : null,
-        })),
-        // 떠나는 브라우저 칸 — 같은 key 로 남아 패널이 다시 서지 않고, 접히는 동안만 그려진다.
-        ...(ghost === null ? [] : [{ entry: ghost.entry, rect: ghost.rect, hidden: false, expanded: false, motion: "leave" as const }]),
-      ].map(({ entry, rect, hidden, expanded, motion }) => {
+      {geometry.tiles.map((entry) => {
+        const rect = expandedId === entry.tile.id && geometry.expanded !== null ? geometry.expanded : entry.rect;
+        const hidden = expandedId !== null && entry.tile.id !== expandedId;
+        const expanded = expandedId === entry.tile.id;
         return (
           <WorkbenchTileView
             key={entry.tile.id}
@@ -290,15 +125,12 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
             hidden={hidden}
             expanded={expanded}
             focused={focusedTileId === entry.tile.id}
-            motion={motion}
             pendingClose={pendingClose?.tileId === entry.tile.id ? pendingClose.message : null}
             geometry={geometry}
             binding={entry.tile.kind === "entry" ? bindingOf(entry.tile.entryId) : entry.tile.kind === "surface" ? surfaceBinding(entry.tile.surfaceId) : null}
             toolContext={toolContext}
-            conversation={conversation}
             state={state}
             language={language}
-            objectiveRecordKinds={objectiveRecordKinds}
           />
         );
       })}
@@ -352,7 +184,7 @@ function WorkbenchGutter({ gutter, geometry, layout, onResizingChange }: {
     return null;
   };
 
-  // 화면에서 숨긴 Browser의 몫은 저장 배치에 남긴다. 보이는 이웃만 id로 대응해 그 비율을 바꾼다.
+  // 숨긴 도구의 몫은 저장 배치에 남기고 보이는 이웃만 id로 대응한다.
   const writeWeights = (values: readonly number[], persist: boolean) => {
     const current = geometryRef.current;
     const scaleSubset = (weights: readonly number[], indices: readonly number[]) => {
@@ -480,17 +312,13 @@ interface WorkbenchTileViewProps {
   readonly hidden: boolean;
   readonly expanded: boolean;
   readonly focused: boolean;
-  /** 브라우저 칸이 지구본에서 번져 열리는 중(enter)이거나 접혀 닫히는 중(leave). */
-  readonly motion: TileMotion | null;
   /** 이 칸을 닫기 전에 묻는 말 — 사람이 닫기를 눌렀고 표면이 물어야 한다고 답했을 때만. */
   readonly pendingClose: string | null;
   readonly geometry: WorkbenchGeometry;
   readonly binding: RailEntryBinding | null;
   readonly toolContext: RailToolContext;
-  readonly conversation: WorkbenchConversation;
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
-  readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
 }
 
 /** 칸 하나 — 출처별 본문을 고르고, 머리·자리는 공통 틀(TileFrame)이 진다. */
@@ -498,8 +326,7 @@ function WorkbenchTileView(props: WorkbenchTileViewProps) {
   const { entry } = props;
   const tile = entry.tile;
   if (tile.kind === "entry") return <EntryTile {...props} tile={tile} />;
-  if (tile.kind === "surface") return <SurfaceTile {...props} tile={tile} />;
-  return <BrowserTile {...props} />;
+  return <SurfaceTile {...props} tile={tile} />;
 }
 
 interface FrameParts {
@@ -510,24 +337,11 @@ interface FrameParts {
   readonly bodyRef?: (element: HTMLDivElement | null) => void;
 }
 
-function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClose, geometry, parts }: WorkbenchTileViewProps & { readonly parts: FrameParts }) {
+function TileFrame({ entry, rect, hidden, expanded, focused, pendingClose, geometry, parts }: WorkbenchTileViewProps & { readonly parts: FrameParts }) {
   const t = useT();
   const tile = entry.tile;
-  // 브라우저는 따로 떠 있는 패널이 아니라 대화와 같은 면이다 — 머리 없이 맨 위 줄 밑에서 작업 영역 끝까지 채운다. 맨 위 줄은 탭 영역이
-  // 아니다. 펼치기는 없다(크기는 경계 바로 조절한다). 대화 위에 뜨는 시트(좁은 창)와, 지구본이 서지 않는 브라우저 탭·모바일 화면(저장된 배치로
-  // 브라우저 칸이 남아 있을 때)에서는 다른 칸과 같은 틀이다 — 닫기 단추가 그 칸을 닫는 길이다.
-  const seamless = tile.kind === "browser" && geometry.mode !== "sheet" && isDesktopShell();
-  const frameRect = seamless ? seamlessRect(entry, rect, geometry) : rect;
-  // 머리 없는 브라우저 칸의 주소줄은 맨 위 줄의 브라우저 영역으로 올라간다 — 영역의 왼쪽 끝은 칸의 원래 왼쪽(분할 x)이라 펼쳐도 움직이지 않는다.
-  const navSlot = useBrowserNavSlot();
-  const [navHost, setNavHost] = useState<HTMLElement | null>(null);
-  const navHostValue = !seamless ? undefined : hidden || navSlot === null ? null : navHost;
-  // 주소줄이 맨 위 줄에 서 있는 동안 대화 머리 줄에 알린다 — 한 줄 배분에서 주소줄 최소 폭을 지켜 준다.
-  const navStanding = navHostValue !== undefined && navHostValue !== null;
-  useLayoutEffect(() => (navStanding ? retainBrowserNav() : undefined), [navStanding]);
   const expandLabel = expanded ? t("conversation.workbench.collapse") : t("conversation.workbench.expand");
-  // 브라우저 칸은 펼치지 않는다 — 시트·웹 화면의 머리에도 펼치기 단추를 두지 않는다.
-  const expandButton = tile.kind === "browser" ? null : (
+  const expandButton = (
     <button
       type="button"
       className="workbench-tile-button"
@@ -545,31 +359,18 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
   return (
     <section
       className={`workbench-tile${focused ? " is-focused" : ""}${expanded ? " is-expanded" : ""}${hidden ? " is-hidden" : ""}`}
-      style={rectStyle(frameRect)}
+      style={rectStyle(rect)}
       data-tile-id={tile.id}
       data-tile-kind={tile.kind}
       data-tile-area={entry.area}
-      data-seamless={seamless ? "true" : undefined}
-      data-motion={motion ?? undefined}
       data-keep-objective-active
       aria-label={parts.title}
       aria-hidden={hidden ? true : undefined}
-      inert={hidden || motion === "leave" || undefined}
+      inert={hidden || undefined}
       // 본문을 만질 때만 이 칸이 포커스를 얻는다 — 머리(펼치기·닫기)의 초점이 본문을 깨우면 터미널 같은 본문이 초점을 가져간다.
       onPointerDownCapture={(event) => { if (!isInHead(event.target)) focusWorkbenchTile(tile.id); }}
       onFocusCapture={(event) => { if (!isInHead(event.target)) focusWorkbenchTile(tile.id); }}
     >
-      {seamless ? (
-        <>
-          <BrowserBandChrome motion={motion} hidden={hidden}>
-            <BrowserBandClose tileId={tile.id} title={parts.title} />
-          </BrowserBandChrome>
-          {navSlot !== null && !hidden ? createPortal(
-            <span className={`workbench-band-nav-wrap${motion === null ? "" : ` is-${motion}`}`} ref={setNavHost} style={{ "--browser-split-x": `${entry.rect.x}px` } as CSSProperties} data-keep-objective-active />,
-            navSlot,
-          ) : null}
-        </>
-      ) : (
         <header className="workbench-tile-head">
           <span className="workbench-tile-title">
             {parts.icon ? <span className="workbench-tile-icon" aria-hidden="true">{parts.icon}</span> : null}
@@ -589,7 +390,6 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
             </button>
           </span>
         </header>
-      )}
       {pendingClose !== null ? (
         <div className="workbench-tile-confirm" role="alertdialog" aria-label={pendingClose}>
           <span>{pendingClose}</span>
@@ -598,51 +398,9 @@ function TileFrame({ entry, rect, hidden, expanded, focused, motion, pendingClos
         </div>
       ) : null}
       <div className="workbench-tile-body" ref={parts.bodyRef}>
-        {/* 머리 없는 브라우저 칸의 주소줄 줄은 본문이 그리되, 자리는 맨 위 줄이다(BrowserNavHostContext). */}
-        {seamless ? <BrowserNavHostContext.Provider value={navHostValue}>{parts.body}</BrowserNavHostContext.Provider> : parts.body}
+        {parts.body}
       </div>
     </section>
-  );
-}
-
-/**
- * 지구본이 닫는 길이 아닐 때만 서는 닫기 — 이 대화가 지구본을 세우지 않거나(작업대는 사령관 단위로 공유되므로 다른 대화에서 연 칸이
- * 남는다), 다른 화면이 붙어 브라우저가 멈춰 지구본이 꺼지면, 열려 있던 칸을 닫을 다른 길이 없다.
- */
-function BrowserBandClose({ tileId, title }: { readonly tileId: string; readonly title: string }) {
-  const t = useT();
-  const globe = useBrowserBandGlobe();
-  if (globe) return null;
-  const label = t("conversation.workbench.close", { title });
-  return (
-    <button type="button" className="workbench-tile-button" aria-label={label} title={label} onClick={() => closeWorkbenchTile(tileId)}>
-      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-    </button>
-  );
-}
-
-/** 머리 없는 브라우저 칸의 자리 — 맨 위 줄 밑에서 시작해 작업 영역 오른쪽 끝까지, 아래에 다른 칸이 없으면 바닥까지 채운다. */
-function seamlessRect(entry: TileGeometry, rect: Rect, geometry: WorkbenchGeometry): Rect {
-  const below = geometry.tiles.some((other) => other.area === entry.area && other.column === entry.column && other.index > entry.index);
-  return { x: rect.x, y: 0, w: Math.max(0, geometry.width - rect.x), h: below ? rect.y + rect.h : geometry.height };
-}
-
-/**
- * 맨 위 줄의 브라우저 칸 자리 — 지구본 바로 앞 자리(browser-band-slot)로 portal 된다. 탭은 이 줄에 서지 않는다(탭은 브라우저 본문 왼쪽의
- * 세로 레일이 가진다). 여기 서는 것은 지구본이 닫는 길이 아닐 때의 닫기뿐이다. 펼친 동안에도 분할 영역 위에 남아 대화 pill 을 덮지 않는다.
- */
-function BrowserBandChrome({ motion, hidden, children }: {
-  readonly motion: TileMotion | null;
-  readonly hidden: boolean;
-  readonly children: ReactNode;
-}) {
-  const slot = useBrowserBandSlot();
-  if (slot === null) return null;
-  return createPortal(
-    <span className={`workbench-band-chrome${motion === null ? "" : ` is-${motion}`}`} style={hidden ? { display: "none" } : undefined} data-keep-objective-active>
-      {children}
-    </span>,
-    slot,
   );
 }
 
@@ -730,114 +488,4 @@ function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Wo
   );
   const tools = descriptor?.tools ? <FeatureErrorBoundary fallback={null}><SurfacePanePart render={descriptor.tools} context={context} /></FeatureErrorBoundary> : null;
   return <TileFrame {...props} parts={{ title, icon: entryIcon(binding), tools, body }} />;
-}
-
-/** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Objective companion 과 같은 값이다. */
-const SESSION_BROWSER_SERVICES = { isDesktopShell, desktopShellCapabilities, themePolarity, subscribeConsoleChannel } as const;
-const NO_HIDDEN_COMPANIONS: readonly string[] = [];
-const BROWSER_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_ID];
-function noop(): void {}
-
-/**
- * 그 대화의 Session 브라우저 칸. 웹 브라우저 Console 에는 뷰를 그릴 셸이 없다 — Desktop 에서 열어 둔 칸에는 안내 한 줄만 남는다.
- */
-function BrowserTile(props: WorkbenchTileViewProps) {
-  const t = useT();
-  const browserT = getBrowserT(props.language);
-  const title = t("conversation.workbench.browser");
-  if (!isDesktopShell()) {
-    return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{t("conversation.workbench.desktopOnly")}</div> }} />;
-  }
-  const { conversation } = props;
-  if (conversation.kind === "objectiveRecord") return <ObjectiveBrowserTile {...props} objectiveRecord={conversation.objectiveRecord} title={title} />;
-  if (conversation.kind === "surface" && conversation.sessionBrowser !== null) return <SessionBrowserTile {...props} session={conversation.sessionBrowser} title={title} />;
-  return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{browserT("terminal.chooser.noObjective")}</div> }} />;
-}
-
-function ObjectiveBrowserTile(props: WorkbenchTileViewProps & { readonly objectiveRecord: ObjectiveRecord; readonly title: string }) {
-  const { objectiveRecord, state, language, objectiveRecordKinds, hidden, title } = props;
-  const capabilities = useHostCapabilities();
-  const descriptor = findAgentObjectiveKind(objectiveRecordKinds);
-  const companion = descriptor?.companions?.find((panel) => panel.id === BROWSER_COMPANION_ID) ?? null;
-  const runtimeState = pluginRuntimeState(state.objectiveRecordRuntime, state.objectiveRecordRuntimeHydration, objectiveRecord.id);
-  const [geometry, setGeometry] = useState<ObjectiveGeometry>({ x: 0, y: 0, width: 480, height: 640, zIndex: 0 });
-  const observerRef = useRef<ResizeObserver | null>(null);
-  const bodyRef = useCallback((element: HTMLDivElement | null) => {
-    observerRef.current?.disconnect();
-    observerRef.current = null;
-    if (element === null) return;
-    const update = () => setGeometry((current) => {
-      const width = Math.max(1, element.clientWidth);
-      const height = Math.max(1, element.clientHeight);
-      return current.width === width && current.height === height ? current : { ...current, width, height };
-    });
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    observerRef.current = new ResizeObserver(update);
-    observerRef.current.observe(element);
-  }, []);
-  useEffect(() => () => observerRef.current?.disconnect(), []);
-  const activate = useCallback(() => setActiveObjective(objectiveRecord.id), [objectiveRecord.id]);
-  const tileId = props.entry.tile.id;
-  const onCompanion = useCallback((companionPanelId: string, visible: boolean) => {
-    if (companionPanelId === BROWSER_COMPANION_ID && !visible) closeWorkbenchTile(tileId);
-  }, [tileId]);
-  if (companion === null) {
-    return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{getBrowserT(language)("terminal.chooser.noObjective")}</div> }} />;
-  }
-  const shared = {
-    active: state.activeObjectiveId === objectiveRecord.id,
-    capabilities,
-    geometry,
-    objectiveRecord,
-    theme: state.activeTheme,
-    language,
-    viewportZoom: 1,
-    runtimeState,
-    onActivate: activate,
-    onClose: () => closeWorkbenchTile(tileId),
-    onGeometryChange: setGeometry,
-    onRequestCompanions: noop,
-    companionsOpen: true,
-    hiddenCompanionPanelIds: NO_HIDDEN_COMPANIONS,
-    onSetCompanionPanelVisible: onCompanion,
-    companionPanelIds: BROWSER_COMPANION_PANEL_IDS,
-    // 다른 칸이 펼쳐져 이 칸이 숨은 동안은 네이티브 뷰도 물린다 — 숨은 칸의 뷰가 펼친 칸 위를 덮지 않게.
-    bodyLive: !hidden,
-  } as const;
-  const body = (
-    <FeatureErrorBoundary fallback={null}>
-      <PluginObjectiveRenderer {...shared} render={companion.render} />
-    </FeatureErrorBoundary>
-  );
-  return <TileFrame {...props} parts={{ title, body, bodyRef }} />;
-}
-
-function SessionBrowserTile(props: WorkbenchTileViewProps & { readonly session: WorkbenchSessionBrowser; readonly title: string }) {
-  const { session, language, state, hidden, title } = props;
-  const browserT = getBrowserT(language);
-  const [owner, setOwner] = useState<{ readonly key: string; readonly ownerId: string | null; readonly homeSpaceId: string | null; readonly failed: boolean } | null>(null);
-  useLayoutEffect(() => {
-    let live = true;
-    const key = session.subjectKey;
-    void resolveSessionBrowserTarget({ pluginId: session.pluginId, scopeId: session.scopeId })
-      .then((target) => ({ ...target, failed: false }), () => ({ ownerId: null, homeSpaceId: null, failed: true }))
-      .then((result) => { if (live) setOwner({ key, ...result }); });
-    return () => { live = false; };
-  }, [session.pluginId, session.scopeId, session.subjectKey]);
-  const resolved = owner?.key === session.subjectKey ? owner : null;
-  if (resolved === null || resolved.ownerId === null) {
-    const notice = resolved === null ? "" : browserT(resolved.failed ? "terminal.chooser.noObjective" : "terminal.chooser.sessionNotStarted");
-    return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{notice}</div> }} />;
-  }
-  const ownerId = resolved.ownerId;
-  return (
-    <TileFrame
-      {...props}
-      parts={{
-        title,
-        body: <SessionBrowserPanel key={resolved.homeSpaceId ?? ownerId} ownerId={ownerId} homeSpaceId={resolved.homeSpaceId} language={language} theme={state.activeTheme} bodyLive={!hidden} services={SESSION_BROWSER_SERVICES} {...(session.attach ? { onAttach: session.attach } : {})} />,
-      }}
-    />
-  );
 }

@@ -36,9 +36,9 @@ import { useAvatarAccent } from "../avatar-accent.js";
 import { pluginRuntimeState } from "../../../execution/client/objective-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
-import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { focusBrowserWindow, useBrowserDocument } from "../../../browser/client/browser-window.js";
-import { publishBrowserPluginAttach } from "../../../browser/client/browser-panel-store.js";
+import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
+import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserSurface } from "../../../browser/client/browser-surface.js";
+import { publishBrowserPluginAttach } from "../../../browser/client/browser-engine.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
@@ -61,14 +61,12 @@ import { TaskforceCreateMenu } from "../../../commodore/client/taskforce/create-
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
-import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
-import { releaseBrowserBandSlot, releaseBrowserNavSlot, setBrowserBandGlobe, setBrowserBandSlot, setBrowserNavSlot, useBrowserNavActive, useBrowserNavSlot } from "./workbench/browser-band-slot.js";
-import { BROWSER_NAV_MIN_PX } from "../../../browser/client/browser-panel-store.js";
+import { ConversationWorkbench } from "./workbench/conversation-workbench.js";
 import type { WorkbenchTile } from "../../shared/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
-import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout, workbenchLayoutKeeping } from "./workbench/workbench-store.js";
+import { getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, useWorkbenchFocusedTileId, useWorkbenchLayout, workbenchLayoutKeeping } from "./workbench/workbench-store.js";
 import { ContextRailHost } from "./context-rail/rail.js";
 import type { ContextRailScope } from "../../shared/context-rail.js";
 import { setSideBarConversationCompact, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
@@ -673,7 +671,6 @@ const PILL_TITLE_CAP = 620;
 /** 칩과 그 오른쪽 도구 묶음 사이의 틈 — conversation.css `.conversation-pill-tools-chip` 의 left(--space-2)와 같다. */
 const TOOLS_CHIP_GAP = 8;
 /** 칩 묶음 오른쪽 끝과 맨 위 줄 주소줄 왼쪽 끝 사이의 틈 — `--space-3`(12px). */
-const NAV_CHIP_GAP = 12;
 
 interface OverflowTab {
   readonly label: string;
@@ -838,10 +835,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   );
   useConversationWorkbenchHost(conversationKey, toolEntryIds);
   const layout = useWorkbenchLayout();
-  // 분리 창은 Console 의 것이라 어느 대화에서든 같다 — 열려 있는 동안 어느 대화의 브라우저 칸도 이 작업대에 서지 않는다.
-  const browserDetached = useBrowserDocument() !== null;
   const focusedTileId = useWorkbenchFocusedTileId();
-  const browserOpen = useWorkbenchBrowserShown();
+  const browserOpen = useBrowserSurface() !== null;
   const viewport = useViewportSize();
   const [regionSize, setRegionSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
   const regionObserverRef = useRef<ResizeObserver | null>(null);
@@ -862,18 +857,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   useEffect(() => () => regionObserverRef.current?.disconnect(), []);
   const regionWidth = regionSize?.width ?? Math.max(0, viewport.width - insets.left - insets.right);
   const regionHeight = regionSize?.height ?? viewport.height;
-  const workbenchConversation = useMemo<WorkbenchConversation>(() => {
-    if (surfaceDescriptor) {
-      return {
-        kind: "surface",
-        sessionBrowser: sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null
-          ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey, attach: sessionAttach }
-          : null,
-      };
-    }
-    return stageSubject ? { kind: "objectiveRecord", objectiveRecord: stageSubject } : { kind: "none" };
-  }, [sessionAttach, sessionPluginId, sessionScopeId, sessionSubjectKey, stageSubject, surfaceDescriptor]);
-
   // 도구 캡슐은 지금 대화가 고른 Theater만 쓴다. 사령관의 등록 Theater가 둘 이상인데 목표가 하나를 저장하지 않았으면
   // 전역 현재 Theater나 단일 소유 조회로 아무 Theater에나 묶지 않는다.
   const theaterLabelOf = (id: string | null) => (id === null ? "" : theaterLabelFromOwner(toolCommodoreId, id, ""));
@@ -891,41 +874,29 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     () => ({ ...toolContext, theaterId: scopeTheaterId, commodoreId: scopeCommodoreId, conversation: conversationKey !== null && workLocation !== null ? { key: conversationKey, location: workLocation } : undefined }),
     [conversationKey, toolContext, scopeCommodoreId, workLocation, scopeTheaterId],
   );
-  // 대화의 작업 위치를 모르면(예: 등록 Theater 가 둘 이상인데 고른 것이 없음) Theater 에 묶인 칸을 세우지 않는다. 브라우저 칸은
-  // 이 대화의 세션을 따르므로 작업 위치 없이도 선다. Theater 없이 연다고 선언한 엔트리도 남긴다. 판정은 여기 하나다 — 칸을
+  // 대화의 작업 위치를 모르면 Theater 에 묶인 칸을 세우지 않는다. Theater 없이 여는 엔트리는 남긴다. 판정은 여기 하나다 — 칸을
   // 숨기는 것과 대화 칸이 오른쪽·아래로 비키는 것이 같은 배치의 geometry 에서 함께 나온다. 저장된 배치는 건드리지 않으므로 작업
   // 위치가 다시 서면 그대로 돌아온다.
   const workbenchSuspended = (conversationKey !== null || standInId !== null) && workLocation === null;
   const shownLayout = useMemo(
     () => {
       if (!workbenchSuspended) return layout;
-      return workbenchLayoutKeeping(layout, (tile) => tile.kind === "browser"
-        || (tile.kind === "entry" && railBindings.some(({ entry }) => entry.id === tile.entryId && (entry.scope === "fleet" || entry.opensWithoutTheater === true))));
+      return workbenchLayoutKeeping(layout, (tile) => tile.kind === "entry" && railBindings.some(({ entry }) => entry.id === tile.entryId && (entry.scope === "fleet" || entry.opensWithoutTheater === true)));
     },
     [layout, railBindings, workbenchSuspended],
   );
-  const inlineLayout = useMemo(() => browserDetached ? workbenchLayoutKeeping(shownLayout, (tile) => tile.kind !== "browser") : shownLayout, [shownLayout, browserDetached]);
-  const geometry = useMemo(() => computeWorkbenchGeometry(inlineLayout, regionWidth, regionHeight), [inlineLayout, regionWidth, regionHeight]);
+  const geometry = useMemo(() => computeWorkbenchGeometry(shownLayout, regionWidth, regionHeight), [shownLayout, regionWidth, regionHeight]);
   // 칸들은 자기 대화의 범위만 받는다 — 대화가 바뀌는 렌더에서는 작업대가 아직 앞 대화의 칸을 들고 있으므로(배치는 layout effect
   // 에서 바뀐다), 그 사이에는 앞 대화의 범위를 그대로 준다. 그러지 않으면 떠나는 칸이 새 대화의 칸으로 착각한다.
   const workbenchKey = useSyncExternalStore(subscribeWorkbench, getWorkbenchKey, getWorkbenchKey);
   const workbenchScopeRef = useRef(scopedToolContext);
   if (workbenchKey === (conversationKey ?? "console")) workbenchScopeRef.current = scopedToolContext;
   const workbenchToolContext = workbenchScopeRef.current;
-  const workbenchConversationRef = useRef(workbenchConversation);
-  if (workbenchKey === (conversationKey ?? "console")) workbenchConversationRef.current = workbenchConversation;
 
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구모음은 같다. 지구본은 칩 옆 도구와 따로 맨 위 줄 오른쪽 끝에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
   useConversationSidebarCompact(stageElement, viewport, insets.right);
-  // 맨 위 줄의 주소줄 자리 — 열린 브라우저 칸이 자기 주소줄을 여기로 올린다(browser-band-slot.ts). 이 자리는 대화를 바꿔도 남는다.
-  const navSlotRef = useRef<HTMLSpanElement | null>(null);
-  const bindNavSlot = useCallback((element: HTMLSpanElement | null) => {
-    if (element !== null) { navSlotRef.current = element; setBrowserNavSlot(element); return; }
-    if (navSlotRef.current !== null) releaseBrowserNavSlot(navSlotRef.current);
-    navSlotRef.current = null;
-  }, []);
   const tools = (lead: ReactNode = null, trail: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} trail={trail} band={band} />;
 
   return (
@@ -961,7 +932,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           onToggleDetails={toggleDetails}
           tools={tools}
           sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
-          browserSplitOpen={browserOpen}
+          browserSurfaceOpen={browserOpen}
         />
       ) : subject ? (
         <ConversationColumn
@@ -972,7 +943,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           objectiveRecordKinds={objectiveRecordKinds}
           onToggleDetails={toggleDetails}
           onClose={onClose}
-          browserSplitOpen={browserOpen}
+          browserSurfaceOpen={browserOpen}
           tools={tools}
         />
       ) : (
@@ -997,16 +968,10 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       focusedTileId={focusedTileId}
       bindings={railBindings}
       toolContext={workbenchToolContext}
-      conversation={workbenchConversationRef.current}
       state={state}
       language={language}
-      objectiveRecordKinds={objectiveRecordKinds}
     />
-    {/* 주소줄 자리 — 칩 묶음 오른쪽 끝에서 지구본 왼쪽까지(칸 폭이 아니라 맨 위 줄의 남는 폭 전부). 도구 분할 레이어 뒤의 DOM 이라 주소줄의
-        no-drag 가 앞선 drag 상자(맨 위 줄·pill 줄)에 덮이지 않는다. */}
-    <div className="conversation-nav-band" style={{ left: insets.left, right: insets.right }}>
-      <span className="conversation-band-nav" ref={bindNavSlot} />
-    </div>
+
     </>
   );
 }
@@ -1096,26 +1061,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
   const leadRef = useRef<HTMLSpanElement | null>(null);
   const itemsRef = useRef<HTMLSpanElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
-  // 지구본 바로 앞의 빈 자리 — 열린 브라우저 칸의 닫기 단추가 여기로 올라온다(browser-band-slot.ts).
-  const browserSlotRef = useRef<HTMLSpanElement | null>(null);
-  const bindBrowserSlot = useCallback((element: HTMLSpanElement | null) => {
-    if (element !== null) { browserSlotRef.current = element; setBrowserBandSlot(element); return; }
-    if (browserSlotRef.current !== null) releaseBrowserBandSlot(browserSlotRef.current);
-    browserSlotRef.current = null;
-  }, []);
-  // 눌러서 브라우저를 닫을 수 있는 지구본이 있는지 칸에 알린다 — 지구본은 대화 종류가 세우고, 브라우저를 못 쓰면 꺼진다.
-  useLayoutEffect(() => {
-    const end = endRef.current;
-    if (end === null) return;
-    const check = () => setBrowserBandGlobe(end.querySelector('[data-caption-action="browser"]:not(:disabled)') !== null);
-    check();
-    const observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(check);
-    observer?.observe(end, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
-    return () => { observer?.disconnect(); setBrowserBandGlobe(false); };
-  }, [band]);
-  // 주소줄이 맨 위 줄에 서 있는지, 그 자리 — 한 줄 배분(칩 묶음 │ 주소줄 │ 지구본)에 주소줄 몫을 세고 주소줄의 왼쪽 끝을 알린다.
-  const navActive = useBrowserNavActive();
-  const navSlot = useBrowserNavSlot();
   const [hidden, setHidden] = useState<readonly HiddenTool[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1136,7 +1081,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
     const releaseRow = () => {
       observedRow?.style.removeProperty("--conversation-quota-space");
       observedRow?.style.removeProperty("--conversation-tools-space");
-      observedRow?.style.removeProperty("--conversation-nav-space");
       observedRow?.removeAttribute("data-clip");
       observedRow?.removeAttribute("data-left-relax");
       const pill = observedRow?.querySelector<HTMLElement>(":scope > .conversation-pill");
@@ -1204,15 +1148,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       const reserve = () => {
         const leadWidth = leadRef.current?.getBoundingClientRect().width ?? 0;
         row.style.setProperty("--conversation-quota-space", leadWidth > 0 ? `calc(${Math.ceil(leadWidth) + 12}px + var(--space-3) + var(--conversation-caption-reserve))` : "0px");
-        row.style.setProperty("--conversation-nav-space", navActive ? `${BROWSER_NAV_MIN_PX + 8}px` : "0px");
         row.style.setProperty("--conversation-tools-space", `${Math.ceil(tools.getBoundingClientRect().width + TOOLS_CHIP_GAP)}px`);
-      };
-      // 맨 위 줄의 주소줄 자리에 알린다 — 주소줄의 왼쪽 끝(칩 묶음 오른쪽 끝 + space-3)과 그 오른쪽 끝을 정하는 오른쪽 끝 묶음의 폭.
-      const placeNav = () => {
-        const overlay = navSlot?.parentElement ?? null;
-        if (overlay === null) return;
-        overlay.style.setProperty("--conversation-chip-end", `${Math.round(tools.getBoundingClientRect().right - overlay.getBoundingClientRect().left + NAV_CHIP_GAP)}px`);
-        overlay.style.setProperty("--conversation-end-width", `${Math.ceil(end.getBoundingClientRect().width)}px`);
       };
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico")];
       for (const item of items) item.removeAttribute("data-overflow");
@@ -1295,7 +1231,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
           if (!fits(row, pill, title, true)) row.dataset.clip = "true";
         }
       }
-      placeNav();
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
     };
     measure();
@@ -1304,12 +1239,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
     const fonts = typeof document !== "undefined" ? document.fonts : undefined;
     fonts?.addEventListener?.("loadingdone", schedule);
     return () => { resize?.disconnect(); mutation?.disconnect(); releaseRow(); fonts?.removeEventListener?.("loadingdone", schedule); if (frame !== 0) cancelAnimationFrame(frame); };
-  }, [band, navActive, navSlot]);
-  // 맨 위 줄의 주소줄 자리에 심은 값은 이 도구모음이 사라지면(대화 교체) 거둔다.
-  useLayoutEffect(() => {
-    const overlay = navSlot?.parentElement ?? null;
-    return () => { overlay?.style.removeProperty("--conversation-chip-end"); overlay?.style.removeProperty("--conversation-end-width"); };
-  }, [navSlot]);
+  }, [band]);
   useEffect(() => {
     if (!menuOpen) return;
     const close = (event: PointerEvent | KeyboardEvent) => {
@@ -1379,7 +1309,6 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
     </span>
     {createPortal(
       <span className="conversation-pill-tools conversation-pill-tools-end" ref={endRef}>
-        <span className="conversation-browser-slot" ref={bindBrowserSlot} />
         {showLead ? <span className="conversation-pill-tools-lead" ref={leadRef}>{lead}</span> : null}
         <ToolbarTipLayer rootRef={endRef} />
       </span>, band)}
@@ -1498,7 +1427,7 @@ function CommodoreRailTabs({ descriptor, commodoreId, language, theme }: {
  * 가운데 칸의 플러그인 대화 — 머리 pill 은 호스트가, 본문은 플러그인이 그린다. 대화가 선 동안 플러그인 탭이 오른쪽
  * 패널 앞 묶음에 서고, 패널이 닫혀 있으면 기본 탭을 연다.
  */
-function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools, sessionBrowser, browserSplitOpen }: {
+function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools, sessionBrowser, browserSurfaceOpen }: {
   readonly descriptor: ResolvedConversationSurface;
   readonly selection: ConversationSurfaceSelection;
   readonly language: "en" | "ko";
@@ -1509,7 +1438,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   /** 이 대화의 에이전트 세션이 쓰는 Session 브라우저(descriptor.sessionBrowser) — 있으면 pill 바로 옆에 지구본이 선다. */
   readonly sessionBrowser: SurfaceSessionBrowser | null;
   /** 오른쪽 분할 칸에 브라우저(Fleet·Session 어느 쪽이든)가 서 있는가 — 지구본이 켜짐으로 말한다. */
-  readonly browserSplitOpen: boolean;
+  readonly browserSurfaceOpen: boolean;
 }) {
   const t = useT();
   useConversationSurfaceHead(descriptor);
@@ -1603,7 +1532,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
   // 플릿 브라우저는 Desktop 의 것이다 — 웹 브라우저 Console 에서는 지구본을 세우지 않는다(시안 v2 규칙 g).
-  const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />;
+  const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSurfaceOpen} />;
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   const pill = useConversationPillHost(descriptor.pillOwner?.(context) ?? { kind: "surface", id: descriptor.id });
@@ -1630,7 +1559,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   );
 }
 
-function ConversationColumn({ state, objectiveRecord, language, objectiveRecordKinds, onToggleDetails, onClose, browserSplitOpen, tools }: {
+function ConversationColumn({ state, objectiveRecord, language, objectiveRecordKinds, onToggleDetails, onClose, browserSurfaceOpen, tools }: {
   readonly state: ConsoleState;
   readonly objectiveRecord: ObjectiveRecord;
   readonly language: "en" | "ko";
@@ -1638,7 +1567,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   readonly onToggleDetails: () => void;
   readonly onClose: (objectiveId: string) => void;
   /** 오른쪽 분할 칸에 브라우저(Fleet·Objective 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
-  readonly browserSplitOpen: boolean;
+  readonly browserSurfaceOpen: boolean;
   /** 머리 줄 도구모음. 지구본(lead)을 넘기면 맨 위 줄 오른쪽 끝에 서고, trail 은 칩 옆 묶음의 「⋯」 뒤에 선다. */
   readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
 }) {
@@ -1681,27 +1610,26 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
 
   const activate = useCallback(() => setActiveObjective(objectiveRecord.id), [objectiveRecord.id]);
 
-  // ── 브라우저 — 이 대화의 Objective 브라우저는 오른쪽 분할 칸에 선다 ──
+  // ── 브라우저 — 메인 창 오른쪽 셸 칸 또는 독립 창에 선다 ──
   const offersBrowser = descriptor?.companions?.some((panel) => panel.id === BROWSER_COMPANION_ID) === true;
   // 칸이 여는 브라우저의 주인은 늘 이 대화의 루트다 — 구성원(자식 세션)은 Objective 이 아니라 루트의 브라우저를 함께 쓰므로,
   // 구성원 원장을 보는 중에 지구본을 눌러도 그룹채팅과 같은 탭 집합이 열린다.
-  // 칸은 이 대화의 도구 분할에 선다 — 대화 키가 이미 이 루트라 주인을 따로 싣지 않는다.
-  const openObjectiveBrowser = useCallback(() => { if (!focusBrowserWindow()) openWorkbenchBrowser(); }, []);
-  const closeBrowserSplit = useCallback(() => { closeWorkbenchBrowser(); }, []);
+  // 브라우저 표면은 Console 전역 수명이므로 대화를 바꿔도 유지한다.
+  const openObjectiveBrowser = useCallback(() => { openBrowserPane(); }, []);
+  const closeBrowser = useCallback(() => { closeBrowserSurface(); }, []);
   // pill 의 지구본: 칸이 비어 있으면 이 대화의 Session 브라우저를 바로 열고, 칸이 서 있으면 걷는다.
   const onCaptionCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
-    if (focusBrowserWindow()) return;
-    if (!visible) { closeBrowserSplit(); return; }
+    if (!visible) { closeBrowser(); return; }
     openObjectiveBrowser();
-  }, [closeBrowserSplit, openObjectiveBrowser]);
+  }, [closeBrowser, openObjectiveBrowser]);
   // 본문(채팅·CLI 링크 카드)의 「Objective 브라우저」 행은 묻지 않고 바로 칸에 연다 — 이미 고른 답이다.
   const onBodyCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
     if (visible) openObjectiveBrowser();
-    else closeBrowserSplit();
-  }, [closeBrowserSplit, openObjectiveBrowser]);
-  const hiddenCompanions = browserSplitOpen ? NO_HIDDEN_COMPANIONS : CONVERSATION_COMPANION_PANEL_IDS;
+    else closeBrowser();
+  }, [closeBrowser, openObjectiveBrowser]);
+  const hiddenCompanions = browserSurfaceOpen ? NO_HIDDEN_COMPANIONS : CONVERSATION_COMPANION_PANEL_IDS;
 
   const config: ObjectiveBodyConfig = {
     active: state.activeObjectiveId === objectiveRecord.id,
@@ -1719,7 +1647,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
     // companion 은 브라우저만 — 오른쪽 분할 칸에 선다. 다른 companion 은 이 화면에서 열지 않는다(onBodyCompanion 이 거른다).
     ...(offersBrowser ? {
       onRequestCompanions: noop,
-      companionsOpen: browserSplitOpen,
+      companionsOpen: browserSurfaceOpen,
       hiddenCompanionPanelIds: hiddenCompanions,
       onSetCompanionPanelVisible: onBodyCompanion,
     } : {}),
@@ -1743,7 +1671,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
     onClose: config.onClose,
     onGeometryChange: setGeometry,
     onRequestCompanions: noop,
-    companionsOpen: browserSplitOpen,
+    companionsOpen: browserSurfaceOpen,
     hiddenCompanionPanelIds: hiddenCompanions,
     onSetCompanionPanelVisible: onCaptionCompanion,
     companionPanelIds: CONVERSATION_COMPANION_PANEL_IDS,
@@ -1808,7 +1736,7 @@ const CONVERSATION_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_I
 
 function noop(): void {}
 
-// ── 도구 분할의 브라우저 ─────────────────────────────────────────────────────
+// ── Desktop 셸의 브라우저 ─────────────────────────────────────────────────────
 
 function useViewportSize(): { readonly width: number; readonly height: number } {
   const read = () => (typeof window === "undefined" ? { width: 1440, height: 900 } : { width: window.innerWidth, height: window.innerHeight });
@@ -1833,8 +1761,8 @@ interface SurfaceSessionBrowser {
 }
 
 /**
- * 플러그인 대화(사령관)의 브라우저 지구본 — Objective 대화의 지구본과 같은 글리프·크기·말풍선이다. 누르면 이 대화의 도구 분할에
- * 브라우저 칸을 열고 닫는다(세션이 아직 서지 않았으면 칸이 그 까닭을 말한다). 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채
+ * 플러그인 대화(사령관)의 브라우저 지구본 — Objective 대화의 지구본과 같은 글리프·크기·말풍선이다. 누르면 Desktop 셸의 브라우저 칸을
+ * 열고 닫는다. 독립 창이 열려 있으면 그 창으로 이동한다. 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채
  * 까닭을 말한다. 웹 브라우저 Console 에서는 서지 않는다(시안 v2 규칙 g).
  */
 function SurfaceBrowserButton({ language, splitOpen }: {
@@ -1845,13 +1773,13 @@ function SurfaceBrowserButton({ language, splitOpen }: {
   const t = getBrowserT(language);
   const engine = useBrowserEngine();
   const engineMissing = engine !== null && !engine.available;
-  const detached = useBrowserDocument() !== null;
+  const detached = useBrowserSurface()?.mode === "window";
   const base = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : t(detached ? "terminal.browser.focus" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
   return (
     <span className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} onClick={() => { if (focusBrowserWindow()) return; toggleWorkbenchBrowser(); }}>
+      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} onClick={toggleBrowserPane}>
         <CaptionBrowserUseGlyph />
       </CaptionActionButton>
     </span>

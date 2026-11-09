@@ -379,13 +379,13 @@ describe("objectiveRecord browser service contracts", () => {
       expect(shown.width).toBe(800);
       expect(shown.height).toBe(600);
 
-      // overflow: cssLayoutViewport.clientWidth 가 native pane 보다 좁다(스크롤바). 캡처는 layout clip 으로 성공해야 한다.
+      // 스크롤바: 뷰포트와 캡처 크기는 페이지가 읽는 값이 아니라 Desktop 이 아는 뷰 크기(스크롤바 포함)다 — 레이아웃 메트릭이 더 좁게 보고해도 따르지 않는다.
       const firstTarget = (service as unknown as { objectiveRecords: Map<string, { tabs: Map<string, { targetId: string }> }> }).objectiveRecords.get(OBJECTIVE)!.tabs.get(first.id)!.targetId;
       desktop.setPaneSize({ width: 640, height: 800, scale: 1 }, firstTarget);
       desktop.setLayout({ width: 625, height: 800 }, firstTarget);
       const overflow = await service.screenshot(OBJECTIVE, { tabId: first.id, format: "jpeg" });
-      expect(overflow.layout).toEqual({ width: 625, height: 800 });
-      expect(overflow.width).toBe(625);
+      expect(overflow.layout).toEqual({ width: 640, height: 800 });
+      expect(overflow.width).toBe(640);
       expect(overflow.height).toBe(800);
 
       // 고DPI: 에이전트 캡처는 출력 1px = CSS 1px 계약을 지키고, 시트의 device 요청만 화면 배율로 찍는다 — 보고 크기는 둘 다 CSS px.

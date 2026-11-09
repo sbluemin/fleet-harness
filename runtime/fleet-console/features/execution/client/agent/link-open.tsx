@@ -1,8 +1,8 @@
 import type { ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
 
-import { requestBrowserOpen, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { focusBrowserWindow } from "../../../browser/client/browser-window.js";
+import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
+import { openBrowserLink } from "../../../browser/client/browser-surface.js";
 import { notifySharedFallback } from "../../../browser/client/browser-shared-fallback.js";
 import {
   LinkOpenCard,
@@ -63,11 +63,8 @@ export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice 
       at={pending.at}
       onClose={close}
       companion={{
-        // 주소를 먼저 놓고 문을 연다 — 패널은 마운트하는 순간 그 요청을 집어 든다.
-        open: () => {
-          requestBrowserOpen(pending.url);
-          if (!focusBrowserWindow()) target.openCompanion();
-        },
+        // 표면(칸·독립 창)은 Desktop 이 그린다 — 열고 주소를 보낸다.
+        open: () => { void openBrowserLink(pending.url); },
       }}
     />
   );
@@ -114,8 +111,7 @@ export function openObjectiveLink(
   }
   if (gesture === "click") return false;
   if (gesture === "background" || gesture === "companion") {
-    requestBrowserOpen(url);
-    if (!focusBrowserWindow()) target.openCompanion();
+    void openBrowserLink(url);
     return true;
   }
   if (gesture === "external") {

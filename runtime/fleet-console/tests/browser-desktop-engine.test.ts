@@ -29,47 +29,40 @@ describe("desktop native browser engine", () => {
     engine.relay("local", { attached: [pendingView!.id], sizes: [{ viewId: pendingView!.id, width: 1440, height: 900, scale: 2 }] });
     const { targetId } = await creating;
     expect(targetId).toBe(pendingView!.id);
-    // Companion 이 없어도 생성 직후 sizes 가 그 뷰의 실행 크기이고, 0×0 창으로 말하지 않는다.
+    // 생성 직후 sizes 가 그 뷰의 실행 크기이고, 0×0 창으로 말하지 않는다.
     expect(engine.viewSize(targetId)).toEqual({ width: 1440, height: 900, scale: 2 });
     await expect(engine.send("Browser.getWindowForTarget", { targetId })).resolves.toMatchObject({ bounds: { width: 1440, height: 900 } });
     engine.bindView(targetId, "op-1");
     const { sessionId } = await engine.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
     expect(sessionId).toBe(targetId);
 
-    // 활성 탭이 자리를 받으면 보이고, 세션 명령은 스냅샷에 실려 나가 relay 로 답을 받는다.
+    // 표면이 없으면 표시 탭도 보이지 않는다. 자리와 크기는 셸이 정하므로 Console 은 bounds 를 싣지 않는다.
     await engine.send("Target.activateTarget", { targetId });
-    engine.place("op-1", { bounds: { x: 10, y: 20, width: 300, height: 200 }, visible: true });
-    expect(published.at(-1)?.views[0]).toMatchObject({ visible: true, bounds: { x: 10, y: 20, width: 300, height: 200 } });
-    // Companion 을 닫아도 placement 크기(실행 뷰포트)는 남고 presentation 만 내린다.
-    engine.place("op-1", null);
-    expect(published.at(-1)?.views[0]).toMatchObject({ visible: false, bounds: { x: 10, y: 20, width: 300, height: 200 } });
-    engine.place("op-1", { bounds: { x: 10, y: 20, width: 300, height: 200 }, visible: true });
-    // 분리는 기존 탭/partition의 presentation lease 하나만 만든다. 다른 패널·옛 intent가 자리를 덮지 못한다.
-    const lease = engine.openSurface("op-1", "client-one");
-    expect(() => engine.openSurface("op-1", "client-two")).toThrow("browser_surface_busy");
-    engine.relay("remote-guest", { surface: { id: lease.id, status: "closing" } });
-    expect(engine.surfaceState()?.status).toBe("opening");
-    engine.relay("local", { surface: { id: lease.id, status: "ready" } });
-    engine.relay("local", { surface: { id: lease.id, status: "opened" } });
-    engine.focusSurface("stale", "client-one");
-    engine.focusSurface(lease.id, "client-two");
-    expect(engine.surfaceState()?.focusRequest).toBeUndefined();
-    engine.focusSurface(lease.id, "client-one");
-    engine.focusSurface(lease.id, "client-one");
-    expect(engine.surfaceState()).toMatchObject({ id: lease.id, status: "opened", focusRequest: 2 });
-    engine.place("op-1", { bounds: { x: 4, y: 50, width: 900, height: 650 }, visible: true, surface: lease.id, clientId: "client-one" });
-    const moved = engine.snapshot().views[0];
-    expect(moved).toMatchObject({ id: targetId, partition: context.browserContextId, surface: lease.id, visible: true });
-    engine.place("op-1", null);
-    engine.place("op-1", { bounds: { x: 0, y: 0, width: 1, height: 1 }, visible: true, surface: lease.id, clientId: "other" });
-    engine.hide("op-1", lease.id, "stale-client");
-    expect(engine.snapshot().views[0]).toMatchObject({ visible: true, bounds: moved?.bounds });
-    engine.closeSurface("stale");
+    expect(published.at(-1)?.views[0]).toMatchObject({ visible: false });
+    expect(published.at(-1)?.views[0]).not.toHaveProperty("bounds");
+    // 표면은 한 번에 하나의 브라우저만 갖는다. 열기는 멱등이고 다른 브라우저는 막힌다.
+    const lease = engine.openSurface("op-1", "pane");
+    expect(engine.openSurface("op-1", "window")).toBe(lease);
+    expect(() => engine.openSurface("op-2", "pane")).toThrow("browser_surface_busy");
+    expect(published.at(-1)?.views[0]).toMatchObject({ id: targetId, partition: context.browserContextId, visible: true });
+    expect(published.at(-1)?.surface).toMatchObject({ id: lease.id, browserId: "op-1", mode: "pane" });
+    engine.setChrome({ browserId: "op-1", spaces: [], displayedSpaceId: null, tabs: [], activeTabId: null, viewport: { preset: "responsive", width: 1, height: 1, setBy: null }, driving: false, profile: null, defaultProfile: null, available: true, reason: null });
+    expect(published.at(-1)?.chrome?.browserId).toBe("op-1");
+    // 모드·포커스는 현재 표면에만 닿는다. 낡은 id 는 무시된다.
+    engine.setSurfaceMode("stale", "window");
+    expect(engine.surfaceState()?.mode).toBe("pane");
+    engine.setSurfaceMode(lease.id, "window");
+    engine.focusSurface("stale");
+    engine.focusSurface(lease.id);
+    engine.focusSurface(lease.id);
+    expect(engine.surfaceState()).toMatchObject({ id: lease.id, mode: "window", focusRequest: 2 });
+    // 셸이 표면을 닫았다고 알리면 호스트의 relay 만 받는다. 표면이 닫히면 뷰도 내려가고 크롬은 스냅샷에서 빠진다.
+    engine.relay("remote-guest", { surface: { id: lease.id, status: "closed" } });
     expect(engine.surfaceState()?.id).toBe(lease.id);
-    engine.closeSurface(lease.id);
-    engine.place("op-1", { bounds: { x: 0, y: 0, width: 1, height: 1 }, visible: true, surface: lease.id, clientId: "client-one" });
-    expect(engine.snapshot().views[0]).toMatchObject({ id: targetId, visible: false, surface: null });
-    engine.place("op-1", { bounds: { x: 10, y: 20, width: 300, height: 200 }, visible: true });
+    engine.relay("local", { surface: { id: lease.id, status: "closed" } });
+    expect(engine.surfaceState()).toBeNull();
+    expect(published.at(-1)?.views[0]).toMatchObject({ visible: false });
+    expect(published.at(-1)?.chrome).toBeNull();
     const evaluating = engine.send<{ result: { value: number } }>("Runtime.evaluate", { expression: "1+1", browserContextId: "stripped" }, sessionId);
     const command = published.at(-1)?.commands[0];
     expect(command).toMatchObject({ viewId: targetId, method: "Runtime.evaluate", params: { expression: "1+1" } });
@@ -112,7 +105,7 @@ describe("desktop native browser engine", () => {
     await recreating;
     let handedOff = false;
     void engine.closed.then(() => { handedOff = true; });
-    engine.openSurface("op-1", "client-one");
+    engine.openSurface("op-1", "pane");
     expect(engine.setHost("remote-guest")).toBe(true);
     await Promise.resolve();
     expect(handedOff).toBe(true);
