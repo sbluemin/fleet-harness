@@ -134,20 +134,12 @@ export const DESKTOP_BROWSER_EVENT = "desktop:browser";
 /** 네이티브 뷰가 현재 Console의 Objective 스트림을 열 때만 셸이 붙이는 뷰 id. 인증·Desktop 권한 표식이 아니다. */
 export const DESKTOP_BROWSER_VIEW_HEADER = "x-fleet-browser-view";
 
-export interface DesktopBrowserBounds { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
-/** 표면 안 크롬/가림의 여백(CSS px). 창·칸의 자리와 크기는 셸만 계산한다. */
-export interface DesktopBrowserInsets { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number }
-export function isDesktopBrowserInsets(value: unknown): value is DesktopBrowserInsets {
-  return isRecord(value) && [value.top, value.right, value.bottom, value.left].every((n) => isFiniteNumber(n) && n >= 0 && n <= 8192);
-}
-
 /**
  * 셸이 띄워야 하는 뷰 하나.
  *
- * `visible` 은 **사용자 presentation** 뿐이다 — Companion 패널에 이 탭을 그릴지. 셸은 macOS CDP 를 위해
- * 네이티브 뷰를 숨기거나 0×0 으로 두지 않고, 보이지 않을 때는 Console 뒤에 parking 한 뒤 실제 DIP 를
- * `sizes` 로 올린다. `bounds` 는 Companion 자리(placement)이지 실행 뷰포트가 아니다. Companion 이 닫혀
- * `bounds` 가 없어도 뷰는 살아 있고, 실행 크기는 그 뷰의 `sizes` relay 가 말한다.
+ * `visible` 은 **사용자 presentation** 뿐이다 — 브라우저 표면에 이 탭을 그릴지(표시 탭이고 표면이 열려 있을 때). 자리와 크기는 셸만
+ * 정한다(표면의 페이지 영역). 셸은 macOS CDP 를 위해 네이티브 뷰를 숨기거나 0×0 으로 두지 않고, 보이지 않을 때는 Console 뒤에 parking 한 뒤
+ * 실제 DIP 를 `sizes` 로 올린다. 표면이 닫혀도 뷰는 살아 있고, 실행 크기는 그 뷰의 `sizes` relay 가 말한다.
  */
 export interface DesktopBrowserView {
   readonly id: string;
@@ -164,16 +156,8 @@ export interface DesktopBrowserView {
    * 그러지 않으면 스냅샷 하나가 통째로 거부되어 새 Desktop 이 옛 Console 에서 탭을 열지 못한다.
    */
   readonly profile?: string | null;
-  /** Companion 에 이 탭을 그릴지. 네이티브 `setVisible` 이 아니다. */
+  /** 표면에 이 탭을 그릴지. 네이티브 `setVisible` 이 아니다. */
   readonly visible: boolean;
-  /** 동반 문서의 좌표계. 없으면 기존 Console 문서다. 탭의 수명·partition은 바뀌지 않는다. */
-  readonly surface?: string | null;
-  /** Companion 패널의 CSS px 자리. `null` 이면 셸이 parking 한다. 실행 크기와 섞지 않는다. */
-  readonly bounds: DesktopBrowserBounds | null;
-  /** browser-pane 셸이 표면 사각형에서 빼는 크롬 여백. bounds의 폭·높이를 쓰지 않는다. */
-  readonly insets?: DesktopBrowserInsets;
-  /** 메뉴가 페이지 가장자리를 덮을 때만 더 빼는 여백. */
-  readonly cut?: DesktopBrowserInsets;
   /** 처음 열 때의 주소. 그 뒤의 항해는 CDP 명령으로 온다. */
   readonly url: string;
 }
@@ -220,45 +204,70 @@ export interface DesktopBrowserSnapshot {
    * 선택 필드이므로 옛 Console 은 싣지 않고, 옛 셸은 이를 무시한다.
    */
   readonly epoch?: string;
-  /**
-   * 브라우저 자리를 덮는 Console 메뉴의 자리(Console 뷰 CSS px). 셸은 이 자리에 메뉴만 그리는 작은 투명 자식 창을 띄워,
-   * 네이티브 뷰를 물리지 않고 라이브로 둔 채 그 위에 메뉴를 보인다. `null`·없음이면 자식 창을 감춘다.
-   * `DESKTOP_BROWSER_FLOAT_CAPABILITY` 를 게시한 셸만 해석한다. 옛 Console 은 싣지 않고, 옛 셸은 이를 무시한다.
-   */
-  readonly float?: DesktopBrowserFloat | null;
-  /** Console이 소유한 단 하나의 분리 표면. 옛 셸에서는 사용하지 않는다. */
+  /** Console 이 소유한 단 하나의 브라우저 표면(칸 또는 독립 창). 없으면 표면이 닫혀 있다. */
   readonly surface?: DesktopBrowserSurface | null;
+  /** 셸이 크롬(주소줄·세로 탭 표시줄·추가 메뉴)에 그릴 브라우저 상태. 표면이 열려 있는 동안 상태가 바뀔 때마다 실린다. */
+  readonly chrome?: DesktopBrowserChrome | null;
 }
 
-export const DESKTOP_BROWSER_DETACH_CAPABILITY = "browser-detach";
-export const DESKTOP_BROWSER_PANE_CAPABILITY = "browser-pane";
-export const DESKTOP_BROWSER_WINDOW_PAGE = "/console/browser-window.html";
+/**
+ * 셸이 브라우저 표면(칸·독립 창)과 그 크롬을 자기가 그린다는 능력. 이 능력이 없는 셸에서는 플릿 브라우저가 열리지 않는다 —
+ * Console 이 크롬을 그리던 길은 남아 있지 않다. 이 능력을 모르는 Console 은 표면을 만들지 않으므로 셸의 브라우저도 열리지 않는다.
+ */
+export const DESKTOP_BROWSER_SURFACE_CAPABILITY = "browser-surface";
 export interface DesktopBrowserSurface {
   readonly id: string;
   readonly browserId: string;
-  /** 같은 browser를 보는 패널 중 이 표면을 만든 controller 하나. */
-  readonly clientId: string;
-  /** 없으면 기존 분리 창이다. browser-pane 능력을 게시한 셸만 칸 모드를 받는다. */
-  readonly mode?: "pane" | "window";
-  /** 사람이 기존 분리 창을 다시 부를 때만 증가한다. 옛 셸은 이 선택 필드를 무시한다. */
+  /** 칸은 메인 창 오른쪽, 창은 따로 뜬 독립 창이다. */
+  readonly mode: "pane" | "window";
+  /** 사람이 기존 분리 창을 다시 부를 때만 증가한다. */
   readonly focusRequest?: number;
 }
 export interface DesktopBrowserSurfaceRelay {
   readonly id: string;
-  readonly status: "ready" | "opened" | "closing" | "closed";
+  readonly status: "opened" | "closed";
 }
 
-/** 셸이 이 신호를 게시하면 Console이 메뉴를 자식 창으로 띄운다. 없으면 가림을 잘라 내거나 뷰를 주차한다. */
-export const DESKTOP_BROWSER_FLOAT_CAPABILITY = "browser-float";
-/** 자식 창이 여는 Console 소유 표면. `/console/` 아래 정적 문서이며 질의·조각 없이 연다. */
-export const DESKTOP_BROWSER_FLOAT_PAGE = "/console/browser-float.html";
-/** 같은 출처·같은 세션의 두 렌더러(Console 창 ↔ 자식 창)가 메뉴 그림과 고른 항목을 주고받는 채널 이름. */
-export const DESKTOP_BROWSER_FLOAT_CHANNEL = "fleet-browser-float";
-export interface DesktopBrowserFloat {
-  /** 메뉴가 바뀔 때마다 오른다 — 표면이 낡은 그림의 클릭을 보내지 않게. */
-  readonly revision: number;
-  readonly bounds: DesktopBrowserBounds;
-  readonly surface?: string | null;
+export type DesktopBrowserSpaceKind = "commodore" | "objective" | "session" | "human";
+export interface DesktopBrowserChromeTab {
+  readonly id: string;
+  readonly spaceId: string;
+  readonly url: string;
+  readonly title: string;
+  /** `data:` 아이콘 URL 이거나 없음. 크롬은 이 값을 이미지 소스로만 쓴다. */
+  readonly favicon: string | null;
+  readonly loading: boolean;
+  readonly canGoBack: boolean;
+  readonly canGoForward: boolean;
+}
+export interface DesktopBrowserChromeSpace {
+  readonly id: string;
+  readonly kind: DesktopBrowserSpaceKind;
+  /** 사람이 읽는 이름 — Objective 제목, 사령관 이름. 모르면 빈 문자열이고 크롬이 기본 낱말을 쓴다. */
+  readonly label: string;
+  /** 이 스페이스의 에이전트가 지금 브라우저를 쓰는 중인가. */
+  readonly driving: boolean;
+  /** 에이전트의 작업 탭인 이 스페이스의 탭들. */
+  readonly agentTabIds: readonly string[];
+}
+export type DesktopBrowserViewportPreset = "responsive" | "mobile" | "tablet";
+/** Console 이 소유한 브라우저 상태의 크롬용 투영. 셸은 이것을 그리기만 하고 바꾸는 일은 Console 의 REST 로 요청한다. */
+export interface DesktopBrowserChrome {
+  readonly browserId: string;
+  readonly spaces: readonly DesktopBrowserChromeSpace[];
+  readonly displayedSpaceId: string | null;
+  readonly tabs: readonly DesktopBrowserChromeTab[];
+  readonly activeTabId: string | null;
+  readonly viewport: { readonly preset: DesktopBrowserViewportPreset; readonly width: number; readonly height: number; readonly setBy: "user" | "agent" | null };
+  /** 에이전트가 브라우저를 조작 중인가. */
+  readonly driving: boolean;
+  /** 이 브라우저가 쓰는 영속 프로필 id. `null` 이면 임시 세션이다. */
+  readonly profile: string | null;
+  /** 새 세션이 시작하는 프로필. */
+  readonly defaultProfile: string | null;
+  readonly available: boolean;
+  /** 사용할 수 없는 까닭 — 공유 중이거나(shared) 이 Console 이 Desktop 을 쓰지 못할 때(desktop_required). */
+  readonly reason: "desktop_required" | "shared" | null;
 }
 
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
@@ -281,16 +290,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const isSafeId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/u.test(value);
 
-export function isDesktopBrowserBounds(value: unknown): value is DesktopBrowserBounds {
-  return isRecord(value) && isFiniteNumber(value.x) && isFiniteNumber(value.y) && isFiniteNumber(value.width) && isFiniteNumber(value.height) && value.width >= 0 && value.height >= 0;
-}
-
 export function isDesktopBrowserView(value: unknown): value is DesktopBrowserView {
   return isRecord(value) && isSafeId(value.id) && typeof value.objectiveId === "string" && isSafeId(value.partition)
     && (value.profile === undefined || value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
-    && typeof value.visible === "boolean" && (value.surface === undefined || value.surface === null || isSafeId(value.surface))
-    && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string"
-    && (value.insets === undefined || isDesktopBrowserInsets(value.insets)) && (value.cut === undefined || isDesktopBrowserInsets(value.cut));
+    && typeof value.visible === "boolean" && typeof value.url === "string";
 }
 
 export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowserCommand {
@@ -302,24 +305,36 @@ export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowse
     && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand)
     && (value.shortcuts === undefined || (Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string")))
     && (value.epoch === undefined || typeof value.epoch === "string")
-    && (value.float === undefined || value.float === null || isDesktopBrowserFloat(value.float))
-    && (value.surface === undefined || value.surface === null || isDesktopBrowserSurface(value.surface));
+    && (value.surface === undefined || value.surface === null || isDesktopBrowserSurface(value.surface))
+    && (value.chrome === undefined || value.chrome === null || isDesktopBrowserChrome(value.chrome));
 }
 
 export function isDesktopBrowserSurface(value: unknown): value is DesktopBrowserSurface {
-  return isRecord(value) && isSafeId(value.id) && isSafeId(value.browserId) && isSafeId(value.clientId)
-    && (value.mode === undefined || value.mode === "pane" || value.mode === "window")
+  return isRecord(value) && isSafeId(value.id) && isSafeId(value.browserId) && (value.mode === "pane" || value.mode === "window")
     && (value.focusRequest === undefined || (Number.isSafeInteger(value.focusRequest) && Number(value.focusRequest) >= 0));
 }
 
-export function isDesktopBrowserFloat(value: unknown): value is DesktopBrowserFloat {
-  return isRecord(value) && isFiniteNumber(value.revision) && isDesktopBrowserBounds(value.bounds) && value.bounds.width >= 1 && value.bounds.height >= 1
-    && (value.surface === undefined || value.surface === null || isSafeId(value.surface));
+const isShortText = (value: unknown, max = 4096): value is string => typeof value === "string" && value.length <= max;
+const isFaviconUrl = (value: unknown): value is string | null => value === null || (typeof value === "string" && value.length <= 65536 && /^(?:data:image\/[a-z0-9.+-]+[;,]|https?:)/iu.test(value));
+
+export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserChrome {
+  if (!isRecord(value) || !isSafeId(value.browserId) || !Array.isArray(value.spaces) || !Array.isArray(value.tabs) || value.tabs.length > 64 || value.spaces.length > 64) return false;
+  const viewport = value.viewport;
+  return value.spaces.every((space) => isRecord(space) && isSafeId(space.id) && ["commodore", "objective", "session", "human"].includes(String(space.kind)) && isShortText(space.label, 512)
+      && typeof space.driving === "boolean" && Array.isArray(space.agentTabIds) && space.agentTabIds.every(isSafeId))
+    && value.tabs.every((tab) => isRecord(tab) && isSafeId(tab.id) && isSafeId(tab.spaceId) && isShortText(tab.url, 4096) && isShortText(tab.title, 1024) && isFaviconUrl(tab.favicon)
+      && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean")
+    && (value.displayedSpaceId === null || isSafeId(value.displayedSpaceId)) && (value.activeTabId === null || isSafeId(value.activeTabId))
+    && isRecord(viewport) && ["responsive", "mobile", "tablet"].includes(String(viewport.preset)) && isFiniteNumber(viewport.width) && isFiniteNumber(viewport.height)
+    && (viewport.setBy === null || viewport.setBy === "user" || viewport.setBy === "agent")
+    && typeof value.driving === "boolean" && (value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
+    && (value.defaultProfile === null || (typeof value.defaultProfile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.defaultProfile)))
+    && typeof value.available === "boolean" && (value.reason === null || value.reason === "desktop_required" || value.reason === "shared");
 }
 
 export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRelay {
   if (!isRecord(value)) return false;
-  if (value.surface !== undefined && !(isRecord(value.surface) && isSafeId(value.surface.id) && ["ready", "opened", "closing", "closed"].includes(String(value.surface.status)))) return false;
+  if (value.surface !== undefined && !(isRecord(value.surface) && isSafeId(value.surface.id) && ["opened", "closed"].includes(String(value.surface.status)))) return false;
   if (value.hello !== undefined && !(isRecord(value.hello) && typeof value.hello.product === "string" && typeof value.hello.userAgent === "string")) return false;
   for (const key of ["attached", "detached"] as const) if (value[key] !== undefined && !(Array.isArray(value[key]) && (value[key] as unknown[]).every(isSafeId))) return false;
   if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;

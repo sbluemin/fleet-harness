@@ -6,7 +6,7 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds, type DesktopBrowserInsets, type DesktopBrowserFloat } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID, BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, HUMAN_SPACE_ID, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
 
 /**
@@ -670,32 +670,14 @@ export class BrowserService {
     return { client, contextId: op.contextId };
   }
 
-  /** 패널이 알려 준 자기 자리 — 네이티브 뷰가 놓일 창 좌표. null 이면 감춘다. */
-  place(objectiveId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean; surface?: string | null; clientId?: string; insets?: DesktopBrowserInsets; cut?: DesktopBrowserInsets } | null): void {
+  /** 표면(칸·독립 창) 요청. 표면은 셸이 그리고 소유하며, Console 은 열림·모드·닫힘만 기억한다. */
+  surface(objectiveId: string, action: "open" | "close" | "focus" | "mode", id?: string, mode?: "pane" | "window"): void {
     this.objectiveRecord(objectiveId);
-    this.deps.desktop.place(objectiveId, placement);
-  }
-
-  hide(objectiveId: string, surface: string | null, clientId?: string): void {
-    this.objectiveRecord(objectiveId);
-    this.deps.desktop.hide(objectiveId, surface, clientId);
-  }
-
-  /** 브라우저 자리를 덮는 메뉴의 자리 — 셸이 그 자리에 메뉴만 그리는 자식 창을 띄운다. null 이면 감춘다. */
-  float(objectiveId: string, float: DesktopBrowserFloat | null, surface: string | null): void {
-    this.objectiveRecord(objectiveId);
+    if (action === "open") { this.deps.desktop.openSurface(objectiveId, mode ?? "pane"); return; }
     const lease = this.deps.desktop.surfaceState();
-    if (surface !== (lease?.browserId === objectiveId ? lease.id : null)) return;
-    this.deps.desktop.setFloat(float);
-  }
-
-  surface(objectiveId: string, action: "open" | "close" | "focus" | "mode", clientId: string, id?: string, mode?: "pane" | "window"): void {
-    this.objectiveRecord(objectiveId);
-    if (action === "open") { this.deps.desktop.openSurface(objectiveId, clientId, mode); return; }
-    const lease = this.deps.desktop.surfaceState();
-    if (lease?.browserId !== objectiveId || lease.clientId !== clientId || lease.id !== id) return;
-    if (action === "focus") this.deps.desktop.focusSurface(id, clientId);
-    else if (action === "mode" && mode) this.deps.desktop.setSurfaceMode(id, clientId, mode);
+    if (lease?.browserId !== objectiveId || lease.id !== id) return;
+    if (action === "focus") this.deps.desktop.focusSurface(id);
+    else if (action === "mode" && mode) this.deps.desktop.setSurfaceMode(id, mode);
     else if (action === "close") this.deps.desktop.closeSurface(id);
   }
 
@@ -731,6 +713,22 @@ export class BrowserService {
     };
   }
 
+  private chromeOf(state: BrowserObjectiveState): DesktopBrowserChrome {
+    return {
+      browserId: state.browserId,
+      spaces: state.spaces.map((space) => ({ id: space.id, kind: space.kind, label: space.label, driving: space.driving, agentTabIds: space.agentTabIds })),
+      displayedSpaceId: state.displayedSpaceId,
+      tabs: state.tabs.map((tab) => ({ id: tab.id, spaceId: tab.spaceId, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.canGoBack, canGoForward: tab.canGoForward })),
+      activeTabId: state.activeTabId,
+      viewport: { preset: state.viewport.preset, width: state.viewport.width, height: state.viewport.height, setBy: state.viewport.setBy },
+      driving: state.driving,
+      profile: state.profile,
+      defaultProfile: state.defaultProfile,
+      available: state.available,
+      reason: state.reason,
+    };
+  }
+
   /** 전역 상태가 바뀌면 듣는다 — 프레임의 `objectiveId` 와 `browserId` 는 모두 global 이다. */
   onState(listener: BrowserStateListener): () => void {
     this.stateListeners.add(listener);
@@ -750,6 +748,8 @@ export class BrowserService {
 
   private emitState(op: ObjectiveBrowser): void {
     const state = this.state(op.objectiveId);
+    // 셸이 표면의 크롬을 그리므로 Console 상태가 바뀔 때마다 투영을 스냅샷에 싣는다. 표면이 없으면 싣지 않는다.
+    if (this.deps.desktop.surfaceState()?.browserId === op.objectiveId) this.deps.desktop.setChrome(this.chromeOf(state));
     for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
   }
 
