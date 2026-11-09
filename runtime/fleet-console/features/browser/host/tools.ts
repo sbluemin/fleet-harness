@@ -218,7 +218,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
           ? await service.clickRef(objectiveId, String(args.ref), { button, clickCount, signal }, tabId)
           : await service.clickAt(objectiveId, xy(args.coordinate).x, xy(args.coordinate).y, { button, clickCount, signal }, tabId);
         const hit = dispatched.hit ? ` hit=${dispatched.hit.selector || dispatched.hit.tag}${dispatched.hit.disabled ? " disabled=true" : ""}${dispatched.hit.text ? ` text=${JSON.stringify(dispatched.hit.text)}` : ""}` : " hit=(none)";
-        dispatchSummary = `${args.action}: input dispatched at [${Math.round(dispatched.x)}, ${Math.round(dispatched.y)}]${dispatched.ref ? ` ref=${dispatched.ref}` : ""}${hit}.${dispatched.note ? ` ${dispatched.note}` : ""} This reports pointer dispatch only — confirm with the screenshot or page state; do not assume the control activated.`;
+        dispatchSummary = `${args.action}: input dispatched at [${dispatched.x}, ${dispatched.y}]${dispatched.ref ? ` ref=${dispatched.ref}` : ""}${hit}.${dispatched.note ? ` ${dispatched.note}` : ""} This reports pointer dispatch only — confirm with the screenshot or page state; do not assume the control activated.`;
         break;
       }
       case "hover": { const { x, y } = xy(args.coordinate); await service.mouse(objectiveId, { type: "move", x, y }, tabId); break; }

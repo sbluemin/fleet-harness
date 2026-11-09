@@ -1492,7 +1492,8 @@ export class BrowserService {
     const client = await this.engineClient();
     const button = input.button ?? "left";
     const modifiers = modifierBits(input.modifiers ?? { alt: false, ctrl: false, meta: false, shift: false });
-    const base = { x: input.x, y: input.y, modifiers };
+    // 페이지 마우스 이벤트의 clientX/Y 는 정수다 — 보내는 값과 보고하는 값이 같도록 보내기 전에 한 방식으로 반올림한다.
+    const base = { x: Math.round(input.x), y: Math.round(input.y), modifiers };
     if (input.type === "wheel") { await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseWheel", deltaX: input.deltaX ?? 0, deltaY: input.deltaY ?? 0 }, tab.sessionId); return; }
     if (input.type === "move") {
       // 누른 채 움직이면 드래그다 — Chromium 은 mouseMoved 에 실린 button/buttons 로 드래그·선택을 이어간다.
@@ -1521,7 +1522,7 @@ export class BrowserService {
     this.throwIfAborted(options.signal);
     await this.click(objectiveId, x, y, { button, clickCount }, tabId);
     const note = hit?.disabled ? "Hit target reports disabled=true; input was still dispatched." : null;
-    return { dispatched: true, x, y, button, clickCount, ref: null, hit, note };
+    return { dispatched: true, x: Math.round(x), y: Math.round(y), button, clickCount, ref: null, hit, note };
   }
 
   /**
@@ -1559,7 +1560,7 @@ export class BrowserService {
       const y = Number.isFinite(value.y) ? value.y : center.y;
       this.throwIfAborted(signal);
       await this.click(objectiveId, x, y, { button, clickCount }, tabId);
-      return { dispatched: true, x, y, button, clickCount, ref, hit: value.hit, note: null };
+      return { dispatched: true, x: Math.round(x), y: Math.round(y), button, clickCount, ref, hit: value.hit, note: null };
     } catch (error) {
       this.rethrowStaleRef(ref, error);
       throw error;
