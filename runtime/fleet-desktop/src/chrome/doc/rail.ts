@@ -17,8 +17,8 @@ export function mountRail(): (state: ChromeUiState) => void {
   const humanBox = h("div", { class: "tabs human", attrs: { role: "tablist" } });
   const groupsBox = h("div", { class: "groups" });
   const newButton = h("button", { class: "row new", type: "button", on: { click: () => post("rail", "new-tab") } });
-  const newLabel = h("span", { class: "label" });
-  newButton.append(h("span", { class: "glyph", text: "+" }), newLabel);
+  // Chrome 의 새 탭 단추처럼 글자 없이 가운데 「+」 하나 — 「새 탭」은 접근성 이름(aria-label·title)으로 남는다.
+  newButton.append(h("span", { class: "glyph", text: "+" }));
   scroll.append(humanBox, groupsBox, newButton);
   root.append(pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), scroll);
 
@@ -109,7 +109,7 @@ export function mountRail(): (state: ChromeUiState) => void {
     pinButton.title = pinText; pinButton.setAttribute("aria-label", pinText); pinButton.setAttribute("aria-pressed", String(state.pinned));
     pinButton.classList.toggle("set", state.pinned);
     pinLabel.textContent = pinText;
-    newLabel.textContent = t("newTab"); newButton.title = t("newTab"); newButton.setAttribute("aria-label", t("newTab"));
+    newButton.title = t("newTab"); newButton.setAttribute("aria-label", t("newTab"));
     if (!chrome) { humanBox.hidden = true; clear(groupsBox); groupCache.clear(); return; }
     const ready = chrome.available;
     newButton.disabled = !ready || state.busy;

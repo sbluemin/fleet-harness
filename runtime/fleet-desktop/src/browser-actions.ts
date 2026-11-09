@@ -201,14 +201,17 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
         return;
       }
       case "annotate": {
-        const tabId = control.chrome()?.activeTabId ?? null;
-        if (!tabId) return;
-        control.patch({ overlay: null });
+        // 주석은 라이브 페이지 위에서 한다 — 시작할 때 찍어 두지 않는다. 이미지는 첨부를 누른 그 순간 한 장 찍는다(annotate-capture).
+        if (!control.chrome()?.activeTabId) return;
+        control.patch({ overlay: { kind: "annotate" } });
+        return;
+      }
+      case "annotate-capture": {
         void (async () => {
           control.patch({ busy: true });
           const shot = await screenshot();
           control.patch({ busy: false });
-          if (shot) control.patch({ overlay: { kind: "annotate", shot: { data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height, tabId } } });
+          control.evaluate("bar", `window.__fleetChrome && window.__fleetChrome.captured(${action.seq}, ${shot ? JSON.stringify({ data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height }).replace(/</g, "\\u003c") : "null"})`);
         })();
         return;
       }

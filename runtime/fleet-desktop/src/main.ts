@@ -242,12 +242,15 @@ async function boot(): Promise<void> {
   let companionOverlayRefresher: TitleBarOverlayRefresher | null = null;
   chromeBand = rememberedTheme?.chrome?.band;
   let entryPalette: EntryPalette | undefined = rememberedTheme?.entry;
+  /** 브라우저 표면이 서면 채운다 — 테마가 바뀌면 열려 있는 크롬 문서를 새 색으로 다시 칠한다. */
+  let browserRetheme: (() => void) | null = null;
   let themeOrigin: string | null = null;
   const themeSynchronizer = createDesktopThemeSynchronizer({
     fetch: consoleFetch,
     applyTheme: (snapshot) => {
       // 이 필드를 싣지 않는 Console이면 무엇을 칠할지 모른다 — 창과 종료 인사 모두 기본 판으로 돌아간다.
       entryPalette = snapshot.entry;
+      browserRetheme?.();
       companionOverlay = snapshot.titleBarOverlay;
       companionOverlayRefresher?.applyOverlay(companionOverlay);
       if (snapshot.entry && themeOrigin !== null && themeOrigin === localConsoleOrigin) themeMemory.save(snapshot);
@@ -407,6 +410,7 @@ async function boot(): Promise<void> {
     changed: () => browserViews.places(),
     log: (message) => logger.info(message),
   });
+  browserRetheme = () => browserSurface.retheme();
   const browserViews = createDesktopBrowserViews({
     shell: () => window && !window.isDestroyed() ? createMainPageHost(window, (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } }) : null,
     consoleContents: () => window && !window.isDestroyed() ? window.consoleContents : null,

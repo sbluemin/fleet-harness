@@ -91,7 +91,7 @@ export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base
  * 브라우저 표면 — 칸(메인 창 오른쪽)과 독립 창을 같은 구조로 소유한다: 상단 줄 뷰·세로 레일 뷰·페이지 뷰. 레이아웃·오버레이 크기·페이지 자리는
  * 전부 여기서 같은 main 틱에 정한다. Console 은 상태와 정책만 보내고(스냅샷), 이 표면은 사람의 동작을 REST 로 돌려보낸다.
  */
-export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void } {
+export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void } {
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
   let chromeJson = "";
@@ -168,7 +168,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       lang: deps.lang, platform: deps.platform, mode: surface?.mode ?? "pane", colors: deps.colors(), chrome, pinned: ui.pinned, expanded: ui.expanded,
       leading, trailing,
       page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), rect.height) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
-      busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
+      zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
     };
   };
@@ -362,6 +362,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     refresh() { if (docs) update(); },
     dispose: closeSurface,
     relay: (value) => deps.relay(value),
+    // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.
+    retheme() { if (docs) push(); },
   };
 }
 

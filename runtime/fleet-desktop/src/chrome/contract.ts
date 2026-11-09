@@ -20,7 +20,7 @@ export type ChromeOverlay =
   | { readonly kind: "import"; readonly sources: ChromeImportSources }
   | { readonly kind: "switch"; readonly profile: string | null }
   | { readonly kind: "clear" }
-  | { readonly kind: "annotate"; readonly shot: { readonly data: string; readonly mime: "image/png" | "image/jpeg"; readonly width: number; readonly height: number; readonly tabId: string } };
+  | { readonly kind: "annotate" };
 
 export interface ChromeColors { readonly scheme: "dark" | "light"; readonly tokens: Readonly<Record<string, string>>; readonly fonts?: Readonly<Record<string, { readonly family: string; readonly size: number }>> }
 
@@ -40,6 +40,8 @@ export interface ChromeUiState {
   readonly trailing: number;
   /** 표면 안에서 페이지가 놓인 자리(표면 왼쪽 위 기준 DIP). 대화상자·주석이 이 자리를 덮는다. */
   readonly page: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  /** Console 창 배율 — 크롬 문서의 CSS px 하나는 페이지 CSS px `zoom` 개와 같다(주석 좌표 변환). */
+  readonly zoom: number;
   readonly busy: boolean;
   readonly notice: string | null;
   readonly info: { readonly text: string; readonly action?: string } | null;
@@ -70,6 +72,7 @@ export type ChromeAction =
   | { readonly action: "attach-screenshot" }
   | { readonly action: "annotate" }
   | { readonly action: "annotate-inspect"; readonly x: number; readonly y: number; readonly seq: number }
+  | { readonly action: "annotate-capture"; readonly seq: number }
   | { readonly action: "annotate-done"; readonly png: string | null }
   | { readonly action: "viewport"; readonly preset: "responsive" | "mobile" | "tablet" }
   | { readonly action: "profile"; readonly profile: string | null }
@@ -109,6 +112,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "suggest-settings": return make(typeof body.enabled === "boolean" ? { action: "suggest-settings", enabled: body.enabled } : null);
     case "overlay": return make(body.kind === null || body.kind === "menu" || body.kind === "suggestions" ? { action: "overlay", kind: body.kind } : null);
     case "annotate-inspect": return make(typeof body.x === "number" && typeof body.y === "number" && Number.isFinite(body.x) && Number.isFinite(body.y) && typeof body.seq === "number" ? { action: "annotate-inspect", x: body.x, y: body.y, seq: body.seq } : null);
+    case "annotate-capture": return make(typeof body.seq === "number" ? { action: "annotate-capture", seq: body.seq } : null);
     case "annotate-done": return make(body.png === null || (typeof body.png === "string" && body.png.length <= 3_500_000) ? { action: "annotate-done", png: body.png as string | null } : null);
     case "viewport": return make(body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? { action: "viewport", preset: body.preset } : null);
     case "profile": case "profile-confirm": case "default-profile": return make(PROFILES.has(body.profile) ? { action: name, profile: body.profile as string | null } : null);

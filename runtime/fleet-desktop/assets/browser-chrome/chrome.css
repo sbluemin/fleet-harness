@@ -251,8 +251,8 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 .comment-ok:disabled { opacity: 0.4; cursor: default; }
 .comment-ok:focus-visible { box-shadow: var(--focus-face); }
 .comment-ok svg { width: 14px; height: 14px; }
-.sketchbar { position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 2px; padding: var(--space-1) var(--space-2); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); white-space: nowrap; max-width: calc(100% - 24px); overflow-x: auto; }
-.sketchbar .divider { width: 1px; height: 16px; background: var(--hairline); margin: 0 var(--space-1); flex: none; }
+.sketchbar { position: absolute; left: 0; right: 0; margin-inline: auto; bottom: var(--space-3); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-1) var(--space-3); width: fit-content; max-width: calc(100% - 24px); padding: var(--space-1) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); white-space: nowrap; }
+.sketch-group { display: flex; align-items: center; gap: 2px; }
 .tool[aria-pressed="true"] { color: var(--brass-ink); background: var(--brass-glow); }
 .swatch { width: 16px; height: 16px; flex: none; border-radius: var(--radius-pill); border: 2px solid transparent; cursor: pointer; padding: 0; }
 .swatch[aria-pressed="true"] { border-color: var(--text-primary); }
@@ -272,7 +272,8 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .row:hover:not(:disabled), .tab:hover { background: var(--ink-veil); color: var(--text-primary); }
 .row:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .row.set { color: var(--brass-ink); }
-.row.new { background: var(--ink-veil); font-size: var(--t-base); }
+.row.new { justify-content: center; padding: 0; background: var(--ink-veil); }
+.row.new .glyph { width: auto; height: auto; font-size: 20px; font-weight: 300; }
 .row.new:hover:not(:disabled) { background: var(--ink-rim); }
 .row:focus-visible, .tab:focus-visible, .space:focus-visible, .tab-close:focus-visible { box-shadow: var(--focus-face); }
 .glyph { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }

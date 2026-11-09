@@ -7,7 +7,7 @@ const SUGGEST_DELAY_MS = 200;
 const PERSISTENT = "default";
 
 /** 주소줄 문서. 메뉴·주소 제안·대화상자·주석은 이 문서가 같은 몸으로 그린다 — 오버레이가 열리면 main 이 이 뷰를 표면 높이로 키운다. */
-export function mountBar(): { render(state: ChromeUiState): void; inspected(seq: number, element: unknown): void } {
+export function mountBar(): { render(state: ChromeUiState): void; inspected(seq: number, element: unknown): void; captured(seq: number, shot: unknown): void } {
   const strip = h("div", { class: "strip" });
   const overlay = h("div", { class: "overlay", hidden: true as unknown as boolean });
   document.body.append(strip, overlay);
@@ -306,6 +306,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
 
   return {
     render,
-    inspected(seq, element): void { annotator?.inspected(seq, element); },
+    inspected(seq: number, element: unknown): void { annotator?.inspected(seq, element); },
+    captured(seq: number, shot: unknown): void { annotator?.captured(seq, shot); },
   };
 }
