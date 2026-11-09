@@ -114,7 +114,7 @@ export function consultationEvents(objective: Objective, commodore: Conversation
   });
 }
 
-/** 보드의 알림 전달 상태를 사람이 읽는 세 상태로 — 보내는 중은 아직 닿지 않았다. */
+/** 보드의 알림 전달 상태를 사람이 읽는 세 상태로 — 보내는 중은 아직 닿지 않았다. 작업 중인 지휘관에게도 바로 가므로 대기는 입력·권한 대기 같은 때뿐이다. */
 export function consultDelivery(state: ConsultationDeliveryState): NonNullable<ConversationConsultReply["delivery"]> {
   return state === "submitted" ? "delivered" : state === "uncertain" ? "uncertain" : "waiting";
 }
