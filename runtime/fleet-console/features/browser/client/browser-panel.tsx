@@ -12,7 +12,7 @@ import { commodoreAvatarKey, objectiveRecordAvatarKey } from "../../workspace/sh
 import { useAvatarToneOf } from "../../workspace/client/avatar-accent.js";
 import { BROWSER_GLOBAL_ID, commodoreOfSpace, HUMAN_SPACE_ID, spaceKindOf, type BrowserSpaceKind, type BrowserSpaceState } from "../shared/spaces.js";
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
-import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
+import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, glyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
 import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_CLIP_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
@@ -253,9 +253,6 @@ function CommentGlyph() {
   );
 }
 
-const glyph = (paths: string) => (
-  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: paths }} />
-);
 /* 모던 아웃라인 글리프 한 벌 — 뷰포트 프리셋·파비콘 대체. 굵기와 모서리는 카메라·말풍선과 같다. */
 const MonitorGlyph = () => glyph('<rect x="1.5" y="2.5" width="13" height="8.5" rx="1.5"/><path d="M5.5 14h5M8 11v3"/>');
 const PhoneGlyph = () => glyph('<rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><path d="M7 12.2h2"/>');

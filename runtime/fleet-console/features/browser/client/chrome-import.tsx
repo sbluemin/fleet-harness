@@ -18,9 +18,19 @@ export interface ChromeImportSources {
   readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[];
 }
 
-const glyph = (paths: string) => (
-  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: paths }} />
-);
+/**
+ * 같은 글리프는 같은 요소 하나를 쓴다 — 렌더마다 새 `{ __html }` 를 만들면 React 가 매번 innerHTML 을 다시 써서 주소줄·탭 레일의 모든 아이콘이
+ * 다시 파싱·그려지고(창 포커스가 오갈 때마다 깜빡임), 같은 요소면 React 는 그 가지를 건드리지 않는다.
+ */
+const glyphs = new Map<string, React.ReactElement>();
+export const glyph = (paths: string): React.ReactElement => {
+  let element = glyphs.get(paths);
+  if (element === undefined) {
+    element = <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: paths }} />;
+    glyphs.set(paths, element);
+  }
+  return element;
+};
 export const ImportGlyph = () => glyph('<path d="M8 2v8M4.8 6.8 8 10l3.2-3.2"/><path d="M2.5 10.5V12A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5v-1.5"/>');
 /* 세션의 정체 — 남는 것은 방패, 사라지는 것은 가림. 두 글리프의 대비가 표식 한 칸에서 읽혀야 한다. */
 export const ProfileGlyph = () => glyph('<path d="M8 1.8 13 3.6v4.1c0 3-2 5.2-5 6.5-3-1.3-5-3.5-5-6.5V3.6z"/>');
