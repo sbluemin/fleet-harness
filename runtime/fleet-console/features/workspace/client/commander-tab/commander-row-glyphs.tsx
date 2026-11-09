@@ -29,19 +29,22 @@ const TAB_GLYPH: Record<CommanderRowGlyphTab, () => ReactElement> = {
 };
 
 /**
- * 위임(★) 왼쪽의 목표·구성원·라이브러리 글리프 — 우측 작업 탭 카드의 행에만 선다(좌측·팝오버·폰은 두지 않는다).
+ * 위임(★) 왼쪽의 목표·구성원·라이브러리 글리프 — 우측 작업 탭 카드와 좌측 사이드바의 지휘관 행에 선다(팝오버·폰은 두지 않는다).
+ * 우측은 행 아래로 펼치고, 좌측(popup)은 같은 내용을 팝업으로 연다.
  * 쉬는 행에서는 숨고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만 셋이 함께 나타난다 — 그 가림은
- * 카드 CSS가 맡는다. 결정 요청(목표 쪽)과 안 읽은 기록(구성원 쪽)은 쉬는 행에서 ★ 옆의 작은 점으로 보이고,
+ * 카드·사이드바 CSS가 맡는다. 결정 요청(목표 쪽)과 안 읽은 기록(구성원 쪽)은 쉬는 행에서 ★ 옆의 작은 점으로 보이고,
  * 글리프가 나타나면 해당 글리프 위의 점으로 옮겨 간다.
  */
-export function CommanderRowGlyphs({ commodoreId, objectiveId, title, expandedTab, panelId, onGlyphTab }: {
+export function CommanderRowGlyphs({ commodoreId, objectiveId, title, expandedTab, panelId, popup = false, onGlyphTab }: {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly title: string;
   readonly expandedTab: CommanderRowGlyphTab | null;
   /** 펼친 패널의 id — 글리프의 `aria-controls`가 가리킨다. */
   readonly panelId: string;
-  readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab) => void;
+  /** 글리프가 행 아래 펼침이 아니라 팝업을 연다(좌측 사이드바) — 펼침 상태·패널 연결을 말하지 않는다. */
+  readonly popup?: boolean;
+  readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
 }) {
   const t = useT();
   // 행의 점은 펼침 패널의 탭 점과 같은 원천(보드)이다 — 결정 요청·안 읽은 기록이 행과 패널에서 어긋나지 않는다.
@@ -75,12 +78,11 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, expandedTa
             key={tab}
             type="button"
             className="commander-row-glyph"
-            aria-expanded={expanded}
-            aria-controls={panelId}
+            {...(popup ? { "aria-haspopup": "dialog" as const } : { "aria-expanded": expanded, "aria-controls": panelId })}
             disabled={empty}
-            aria-label={`${t(expanded ? "commanderTab.rowGlyph.collapse" : "commanderTab.rowGlyph.expand", { tab: tabLabel, title })}${dotLabel ? ` · ${dotLabel}` : ""}`}
+            aria-label={`${t(popup ? "commanderTab.rowGlyph.open" : expanded ? "commanderTab.rowGlyph.collapse" : "commanderTab.rowGlyph.expand", { tab: tabLabel, title })}${dotLabel ? ` · ${dotLabel}` : ""}`}
             title={tabLabel}
-            onClick={() => onGlyphTab(objectiveId, tab)}
+            onClick={(event) => onGlyphTab(objectiveId, tab, event.currentTarget)}
           >
             <Glyph />
             {decision && tab === "goal" ? <span className="commander-row-glyph-dot is-attention" aria-hidden="true" /> : null}

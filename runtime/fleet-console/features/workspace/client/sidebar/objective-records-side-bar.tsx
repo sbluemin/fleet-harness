@@ -49,7 +49,7 @@ import { useLongPress } from "../long-press.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { useConversationSurface } from "../conversation/conversation-surface-store.js";
-import { CommodoreCommanderList } from "../commander-tab/commander-list.js";
+import { SidebarCommanderList } from "../commander-tab/commander-sidebar-list.js";
 import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
 import { useClusterIndex } from "../objective-clusters.js";
 import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded, useCommanderShowSettled } from "./commander-expansion.js";
@@ -558,9 +558,7 @@ export function ObjectiveRecordsSideBar({
               />
               {sectionExpanded ? (
                 <div className="side-bar-commander-list" data-keep-objective-active="">
-                  <CommodoreCommanderList
-                    sortNameOnly
-                    showBar={false}
+                  <SidebarCommanderList
                     hideSettled={!showSettled}
                     commodoreId={theater.id}
                     selectedId={selectedCommanderId}

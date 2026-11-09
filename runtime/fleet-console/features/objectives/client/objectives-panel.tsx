@@ -220,11 +220,13 @@ type CommanderDialogProps = {
   readonly accent?: CSSProperties;
   readonly onClose: () => void;
   readonly onOpenObjective: (objectiveId: string) => void;
+  /** 처음 보일 탭 — 없으면 팝업의 본래 탭이다. 좌측 사이드바 글리프가 결과물 탭으로 바로 연다. */
+  readonly start?: DetailTab;
 };
 
-function CommanderDetailDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective, home }: CommanderDialogProps & { readonly home: DetailTab }) {
+function CommanderDetailDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective, start, home }: CommanderDialogProps & { readonly home: DetailTab }) {
   const t = getT(language);
-  const [tab, setTab] = useState<DetailTab>(home);
+  const [tab, setTab] = useState<DetailTab>(start ?? home);
   // 그래프가 알려 준 폭까지 넓힌다 — 로스터가 읽히는 최소 폭은 지킨다.
   const [fitWidth, setFitWidth] = useState<number | null>(null);
   return createPortal(
