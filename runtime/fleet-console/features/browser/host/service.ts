@@ -1658,8 +1658,7 @@ export class BrowserService {
     const space = this.spaceOfTab(op, tab);
     // 정한 크기를 먼저 다시 건다 — 그 사이 뷰가 줄었으면 위젯이 뷰 크기로 줄어 표면이 뷰포트보다 작다.
     if (!space.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
-    // Companion 미개방이어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다.
-    // layout 은 Desktop 이 아는 뷰 크기(에뮬레이션 중이면 정한 크기)다 — 페이지 스크립트를 읽지 않는다. 리사이즈와 겹치면 pane·layout 쌍이 두 번 연속 같아야 한다.
+    // 표면이 닫혀 있어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다. layout 은 Desktop 이 아는 뷰 크기(에뮬레이션 중이면 정한 크기)이고 페이지 스크립트는 읽지 않는다.
     // 리사이즈와 캡처가 겹치면 같은 탭의 pane·layout 쌍이 두 번 연속 같아야 한다.
     let layout: { width: number; height: number } | null = null;
     let pane: { width: number; height: number; scale: number } | null = null;
