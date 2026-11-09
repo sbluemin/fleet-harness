@@ -121,15 +121,18 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
   if (objective.removed) return [];
   const reasons: InboxReason[] = [];
   if (!objective.done) {
+    // 관측 없는 보드 서명도 구상 전과 개시 대기를 구별한다. 관측이 있으면 진행 중인 구상을 개시 대기로 부르지 않는다.
+    const commanderRests = () => {
+      const commander = options.observe?.(objective.id);
+      return !options.observe || commander?.lifecycle === "dormant" || commander?.activity === "idle" || commander?.activity === "ended";
+    };
     if (!objective.commenced) {
       // 구상을 청해 지휘관이 짜는 중인 목표는 아무도 기다리지 않는다 — 구상이 내려앉으면 planned·criteria 로 다시 선다.
       if (!objective.missions.length) { if (!objective.planning) reasons.push("pending"); }
-      else if (!objective.criteriaProposals.length) {
-        const commander = options.observe?.(objective.id);
-        // 관측 없는 보드 서명도 구상 전과 개시 대기를 구별한다. 관측이 있으면 진행 중인 구상을 개시 대기로 부르지 않는다.
-        if (!options.observe || commander?.lifecycle === "dormant" || commander?.activity === "idle" || commander?.activity === "ended") reasons.push("planned");
-      }
-    }
+      else if (!objective.criteriaProposals.length && commanderRests()) reasons.push("planned");
+    // 이미 개시한 목표의 다시 구상한 회차(확장이든 일반 재계획이든)도 같은 길이다 — 구상이 기준 제안 없이 내려앉으면 개시 대기로 선다.
+    } else if (objective.planning && !objective.criteriaProposals.length && !objective.decisionRequest
+      && objective.missions.some((mission) => !mission.done) && commanderRests()) reasons.push("planned");
     if (objective.criteriaProposals.length) reasons.push("criteria");
     if (objective.decisionRequest) reasons.push("decision");
     if (objective.awaitingReview) reasons.push("review");
@@ -139,6 +142,48 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
   if (followupsJudgeable(objective) && objective.followups.some((candidate) => candidate.state === "open")) reasons.push("followup");
   if (objective.followupBatches.some((batch) => batch.items.some((item) => item.state === "failed" || item.state === "confirming"))) reasons.push("followup-failed");
   return reasons;
+}
+
+/** 그룹의 지금 활동 — 지휘관과 띄운 구성원 전체. `idle` 은 모두 쉼, `awaiting` 은 허용·입력 대기, `unknown` 은 지휘관을 관측할 수 없음(쉬는 것으로 추측하지 않는다). */
+export type GroupState = "idle" | "working" | "awaiting" | "unknown";
+export function groupState(objective: Pick<Objective, "id" | "members">, observe: BoardObserver): GroupState {
+  const commander = observe(objective.id);
+  if (!commander) return "unknown";
+  const own = commander.lifecycle === "dormant" ? "idle" : commander.lifecycle === "live" ? commander.activity : "unknown";
+  if (own === "unknown") return "unknown";
+  // 띄운 구성원은 쉬는 것이 확인돼야 쉰다 — 관측할 수 없는 구성원을 전원 휴식으로 치지 않는다. 휴면은 쉬는 것이다.
+  const members: string[] = [];
+  for (const member of objective.members) {
+    if (member.sessionName === null) continue;
+    const observation = observe(member.id);
+    if (observation?.lifecycle === "live") members.push(observation.activity);
+    else if (observation?.lifecycle !== "dormant") return "unknown";
+  }
+  const lifted = liftNestedActivity(own, members);
+  return lifted === "awaiting" ? "awaiting" : lifted === "idle" || lifted === "ended" ? "idle" : "working";
+}
+
+/** 기준 처리 뒤 재개 호출을 권하지 않는 이유 — 응답의 hint 가 이 이유를 한 줄로 말한다. */
+export type CriteriaSettleState = "resume" | "rejected-plan" | "proposals" | "held" | "decision" | "review" | "handoff" | "stopped" | "awaiting" | "unknown" | "working" | "planning" | "done" | "removed";
+/**
+ * 기준 승인·거절 직후, 처리 뒤의 보드와 그룹 활동으로 사령관이 이어서 부를 재개 action 하나(steer·commence)나 null. 상태 판정만 맡고 문장은 호출자가 쓴다.
+ * 쉬는 지휘관을 깨우는 것은 사령관의 개시나 스티어링뿐이다. 개시는 최초 착수 여부가 아니라 현재 회차가 개시를 기다리는지(`planned`)로 가른다 — 확장 회차도 같다.
+ * 거절은 남은 계획을 승인한 것이 아니므로 구상 중 거절은 개시를 권하지 않는다. 사람에게 넘긴 항목·결정·검토·인계 대기·중단은 재개를 권하지 않는다.
+ */
+export function criteriaSettleAdvice(objective: Objective, observe: BoardObserver, rejected = false): { readonly group: GroupState; readonly next: "steer" | "commence" | null; readonly state: CriteriaSettleState } {
+  const group = groupState(objective, observe);
+  const none = (state: CriteriaSettleState) => ({ group, next: null, state });
+  if (objective.removed) return none("removed");
+  if (objective.done) return none("done");
+  if (objective.criteriaProposals.length) return none("proposals");
+  if ((objective.personHolds ?? []).some((hold) => livePersonHold(objective, hold.target))) return none("held");
+  if (objective.decisionRequest) return none("decision");
+  if (objective.awaitingReview) return none("review");
+  if (objective.stoppedAt) return none("stopped");
+  if (group === "unknown" || group === "awaiting" || group === "working") return none(group);
+  if (inboxReasons(objective, { observe }).includes("planned")) return rejected ? none("rejected-plan") : { group, next: "commence", state: "resume" };
+  if (objective.awaitingHandoff) return none("handoff");
+  return objective.commenced && !objective.planning ? { group, next: "steer", state: "resume" } : none("planning");
 }
 
 /** 후속 후보를 판단할 때인가 — 검토 대기이거나 완료 뒤. 진행 중의 후보는 모이기만 한다. */
