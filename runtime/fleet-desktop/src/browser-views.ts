@@ -379,6 +379,11 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!spec.bounds) return null;
     const zoom = deps.zoomFactor(spec.surface);
     const factor = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+    const pane = deps.companion?.paneBounds?.(spec.surface);
+    if (pane) {
+      const left = Math.round(spec.bounds.x * factor), top = Math.round(spec.bounds.y * factor);
+      return { x: pane.x + left, y: pane.y + top, width: Math.max(1, pane.width - left), height: Math.max(1, pane.height - top) };
+    }
     return { x: Math.round(spec.bounds.x * factor), y: Math.round(spec.bounds.y * factor), width: Math.max(0, Math.round(spec.bounds.width * factor)), height: Math.max(0, Math.round(spec.bounds.height * factor)) };
   };
 

@@ -14,6 +14,8 @@ export interface DesktopViewStack {
   readonly consoleView: WebContentsView;
   /** Console 이 전체 콘텐츠 영역을 불투명하게 덮도록 bounds 를 맞춘다. */
   layoutConsole(): Rectangle;
+  layoutBrowserPane(chrome: WebContentsView, divider: WebContentsView, consoleWidth: number, bounds: Rectangle): void;
+  removeBrowserPane(chrome: WebContentsView, divider: WebContentsView): void;
   /** CDP 는 살아 있지만 Console 뒤에 두고, 창 오른쪽 아래 모서리 한 픽셀에만 걸쳐 입력을 받을 자리를 없앤다(`parkedNativeBounds`). */
   parkBrowser(view: WebContentsView): void;
   /** Console 앞, picker 아래 — 사용자가 보고 만지는 자리. */
@@ -66,11 +68,12 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   let holdRaised = false;
   let picker: WebContentsView | null = null;
   let veil: WebContentsView | null = null;
+  let pane: { chrome: WebContentsView; divider: WebContentsView; consoleWidth: number } | null = null;
 
   /** 이미 붙은 뷰는 remove 없이 addChildView(index) 로만 재정렬한다 — CDP 스냅샷마다 renderer churn 을 막는다. */
   const relayout = (): void => {
     const root = base.contentView;
-    const ordered: WebContentsView[] = [...(hold && !holdRaised ? [hold] : []), ...parked, consoleView, ...presented];
+    const ordered: WebContentsView[] = [...(hold && !holdRaised ? [hold] : []), ...parked, consoleView, ...(pane ? [pane.chrome] : []), ...presented, ...(pane ? [pane.divider] : [])];
     if (hold && holdRaised) ordered.push(hold);
     if (picker) ordered.push(picker);
     if (veil) ordered.push(veil);
@@ -80,7 +83,7 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   const layoutConsole = (): Rectangle => {
     const { width, height } = base.getContentBounds();
     const bounds = { x: 0, y: 0, width: Math.max(1, width), height: Math.max(1, height) };
-    consoleView.setBounds(bounds);
+    consoleView.setBounds({ ...bounds, width: pane ? Math.min(bounds.width, pane.consoleWidth) : bounds.width });
     return bounds;
   };
 
@@ -152,6 +155,22 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   return {
     consoleView,
     layoutConsole,
+    layoutBrowserPane(chrome, divider, consoleWidth, bounds) {
+      const reordered = pane?.chrome !== chrome;
+      pane = { chrome, divider, consoleWidth };
+      layoutConsole();
+      chrome.setBounds(bounds);
+      divider.setBounds({ x: consoleWidth, y: 0, width: Math.max(1, bounds.x - consoleWidth), height: bounds.height });
+      if (reordered) relayout();
+    },
+    removeBrowserPane(chrome, divider) {
+      if (pane?.chrome !== chrome) return;
+      pane = null;
+      try { base.contentView.removeChildView(chrome); } catch { /* 이미 떨어졌다. */ }
+      try { base.contentView.removeChildView(divider); } catch { /* 이미 떨어졌다. */ }
+      layoutConsole();
+      relayout();
+    },
     parkBrowser,
     presentBrowser,
     removeBrowser,

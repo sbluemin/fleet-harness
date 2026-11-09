@@ -7,7 +7,8 @@ import { readChromeHistory } from "../src/chrome-history.js";
 import { createBrowserHistoryStorage } from "../src/browser-history-storage.js";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, type DesktopBrowserRelay, type DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 import type { WebContentsView } from "electron";
-import { parkedNativeBounds } from "../src/shell-window.js";
+import { createDesktopShellWindow, createDesktopViewStack, parkedNativeBounds } from "../src/shell-window.js";
+import { createBrowserPane, type BrowserPane } from "../src/browser-pane.js";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -83,6 +84,46 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
  * 부착을 기다리다 시간 초과로 실패한다(Desktop 을 다시 켜야만 풀리던 증상).
  */
 describe("desktop native browser views across a Console restart", () => {
+  // Console 왕복 없이 셸이 Console·크롬·페이지를 같은 조작에서 놓는 대표 수명 계약이다.
+  it("owns pane geometry through resize, captured screen coordinates, cancellation, and disposal", () => {
+    let content = { x: 40, y: 30, width: 1400, height: 900 };
+    const base = Object.assign(new EventEmitter(), { getContentBounds: () => content, isDestroyed: () => false,
+      contentView: { addChildView: vi.fn(), removeChildView: vi.fn() } });
+    const makeView = () => {
+      const mainFrame = { url: "" };
+      const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false, close: vi.fn(),
+        setWindowOpenHandler: vi.fn(), loadURL: vi.fn(async (url: string) => { mainFrame.url = url; }) });
+      return { webContents, setBounds: vi.fn() };
+    };
+    const consoleView = makeView(), chrome = makeView(), divider = makeView();
+    const stack = createDesktopViewStack(base as never, consoleView as never);
+    const shell = createDesktopShellWindow(base as never, consoleView as never, stack);
+    const width = { value: 560 };
+    let pane: BrowserPane | null = null;
+    const page = { setBounds: vi.fn() };
+    pane = createBrowserPane(shell, chrome as never, divider as never, () => {
+      const bounds = pane?.bounds();
+      if (bounds) page.setBounds({ ...bounds, y: 80, height: bounds.height - 80 });
+    }, width);
+    const send = (action: string, x: number, frame = divider.webContents.mainFrame) => divider.webContents.emit("console-message", { frame, message: JSON.stringify(["fleet-pane", action, x]) });
+    send("start", 850); send("move", 750);
+    expect(width.value).toBe(660);
+    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 732, height: 900 });
+    expect(chrome.setBounds).toHaveBeenLastCalledWith({ x: 740, y: 0, width: 660, height: 900 });
+    expect(page.setBounds).toHaveBeenLastCalledWith({ x: 740, y: 80, width: 660, height: 820 });
+    // 손잡이 뷰가 움직였어도 screenX 차이만 반영한다. 다른 frame 메시지는 폭을 못 바꾼다.
+    send("move", 650); expect(width.value).toBe(760);
+    send("move", 400, { url: divider.webContents.mainFrame.url }); expect(width.value).toBe(760);
+    send("end", 650); send("move", 400); expect(width.value).toBe(760);
+    content = { ...content, width: 1100, height: 700 }; base.emit("resize");
+    expect(pane.bounds()).toEqual({ x: 608, y: 0, width: 492, height: 700 });
+    expect(page.setBounds).toHaveBeenLastCalledWith({ x: 608, y: 80, width: 492, height: 620 });
+    expect(width.value).toBe(760);
+    pane.dispose(); send("start", 600); send("move", 400);
+    expect(width.value).toBe(760);
+    expect(divider.webContents.close).toHaveBeenCalledOnce();
+    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1100, height: 700 });
+  });
   it("rebuilds views and runs commands from a restarted Console on the same origin", async () => {
     let lifetime: DesktopBrowserSnapshot = {
       generation: 58, epoch: "before", views: [view("view-old")],

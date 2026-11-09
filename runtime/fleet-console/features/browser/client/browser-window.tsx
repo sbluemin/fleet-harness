@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createPortal, flushSync } from "react-dom";
-import { DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_WINDOW_PAGE, type DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_PANE_CAPABILITY, DESKTOP_BROWSER_WINDOW_PAGE, type DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/spaces.js";
 
 /**
@@ -86,8 +86,8 @@ const subscribeController = (listener: () => void) => { controllerListeners.add(
 let record: { id: string; child: Window | null; stop: (() => void) | null } | null = null;
 let returning = false;
 
-async function request(action: "open" | "close" | "focus", id?: string): Promise<{ surface: BrowserSurfaceState | null }> {
-  const response = await fetch(`${endpoint}/surface`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id, clientId }) });
+async function request(action: "open" | "close" | "focus", id?: string, mode?: "pane" | "window"): Promise<{ surface: BrowserSurfaceState | null }> {
+  const response = await fetch(`${endpoint}/surface`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id, clientId, mode }) });
   if (!response.ok) throw new Error("browser_surface_failed");
   return await response.json() as { surface: BrowserSurfaceState | null };
 }
@@ -105,11 +105,11 @@ async function restore(): Promise<void> {
   setController({ pending: false });
 }
 
-async function detach(): Promise<void> {
+async function detach(mode: "pane" | "window" = "window"): Promise<void> {
   if (controller.pending || record) { record?.child?.focus(); return; }
   setController({ pending: true, failed: false });
   try {
-    const opened = await request("open");
+    const opened = await request("open", undefined, mode);
     if (!opened.surface || opened.surface.clientId !== clientId) throw new Error("browser_surface_busy");
     const active = { id: opened.surface.id, child: null as Window | null, stop: null as (() => void) | null };
     record = active;
@@ -167,6 +167,6 @@ export function useBrowserWindow(lease: BrowserSurfaceState | null, synced: bool
     available: readCapabilities().includes(DESKTOP_BROWSER_DETACH_CAPABILITY),
     disabled: state.pending || !available || (lease !== null && lease.clientId !== clientId),
     failed: state.failed,
-    toggle: () => { if (surface) void restore(); else void detach(); },
+    toggle: () => { if (surface) void restore(); else void detach(readCapabilities().includes(DESKTOP_BROWSER_PANE_CAPABILITY) ? "pane" : "window"); },
   };
 }

@@ -55,13 +55,13 @@ export class DesktopEngine implements CdpClient {
   onSurface(listener: () => void): () => void { this.surfaceListeners.add(listener); return () => { this.surfaceListeners.delete(listener); }; }
 
   /** 같은 사령관의 여러 패널에도 분리 창과 원본 controller는 하나다. id는 재분리마다 새 수명이다. */
-  openSurface(browserId: string, clientId: string): BrowserSurfaceState {
+  openSurface(browserId: string, clientId: string, mode?: "pane" | "window"): BrowserSurfaceState {
     if (!this.connected) throw new Error("desktop_browser_disconnected");
     if (this.surface) {
       if (this.surface.browserId !== browserId || this.surface.clientId !== clientId) throw new Error("browser_surface_busy");
       return this.surface;
     }
-    this.surface = { id: `surface-${crypto.randomUUID()}`, browserId, clientId, status: "opening" };
+    this.surface = { id: `surface-${crypto.randomUUID()}`, browserId, clientId, ...(mode ? { mode } : {}), status: "opening" };
     // 생성 intent가 소비되지 않은 채 남아 나중의 popup을 허용하지 않는다.
     this.surfaceTimer = setTimeout(() => { if (this.surface?.status === "opening") this.closeSurface(this.surface.id); }, 10_000);
     this.surfaceChanged();

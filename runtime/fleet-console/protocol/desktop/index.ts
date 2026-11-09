@@ -222,12 +222,15 @@ export interface DesktopBrowserSnapshot {
 }
 
 export const DESKTOP_BROWSER_DETACH_CAPABILITY = "browser-detach";
+export const DESKTOP_BROWSER_PANE_CAPABILITY = "browser-pane";
 export const DESKTOP_BROWSER_WINDOW_PAGE = "/console/browser-window.html";
 export interface DesktopBrowserSurface {
   readonly id: string;
   readonly browserId: string;
   /** 같은 browser를 보는 패널 중 이 표면을 만든 controller 하나. */
   readonly clientId: string;
+  /** 없으면 기존 분리 창이다. browser-pane 능력을 게시한 셸만 칸 모드를 받는다. */
+  readonly mode?: "pane" | "window";
   /** 사람이 기존 분리 창을 다시 부를 때만 증가한다. 옛 셸은 이 선택 필드를 무시한다. */
   readonly focusRequest?: number;
 }
@@ -295,6 +298,7 @@ export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowse
 
 export function isDesktopBrowserSurface(value: unknown): value is DesktopBrowserSurface {
   return isRecord(value) && isSafeId(value.id) && isSafeId(value.browserId) && isSafeId(value.clientId)
+    && (value.mode === undefined || value.mode === "pane" || value.mode === "window")
     && (value.focusRequest === undefined || (Number.isSafeInteger(value.focusRequest) && Number(value.focusRequest) >= 0));
 }
 

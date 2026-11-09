@@ -689,9 +689,9 @@ export class BrowserService {
     this.deps.desktop.setFloat(float);
   }
 
-  surface(objectiveId: string, action: "open" | "close" | "focus", clientId: string, id?: string): void {
+  surface(objectiveId: string, action: "open" | "close" | "focus", clientId: string, id?: string, mode?: "pane" | "window"): void {
     this.objectiveRecord(objectiveId);
-    if (action === "open") { this.deps.desktop.openSurface(objectiveId, clientId); return; }
+    if (action === "open") { this.deps.desktop.openSurface(objectiveId, clientId, mode); return; }
     const lease = this.deps.desktop.surfaceState();
     if (lease?.browserId !== objectiveId || lease.clientId !== clientId || lease.id !== id) return;
     if (action === "focus") this.deps.desktop.focusSurface(id, clientId);

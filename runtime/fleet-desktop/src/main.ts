@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BaseWindow, BrowserWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
-import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_PANE_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
@@ -52,6 +52,7 @@ import { createBrowserHistoryStorage } from "./browser-history-storage.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
 import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
 import { BROWSER_COMPANION_PREFERENCES, createBrowserCompanion, type BrowserCompanion } from "./browser-window.js";
+import { createBrowserPane } from "./browser-pane.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, consoleWindowChrome, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
@@ -64,7 +65,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_DETACH_CAPABILITY];
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, DESKTOP_BROWSER_FLOAT_CAPABILITY, DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_PANE_CAPABILITY];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -363,8 +364,18 @@ async function boot(): Promise<void> {
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
   const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot());
+  // 선호 폭은 앱 수명 안에서만 보관한다. 창 geometry 저장과는 별도 값이다.
+  const browserPaneWidth = { value: 560 };
   const browserCompanion: BrowserCompanion = createBrowserCompanion({
     main: () => window,
+    createPane: (guest) => {
+      if (!window || window.isDestroyed()) throw new Error("browser_surface_revoked");
+      const chrome = new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
+      chrome.webContents.setZoomFactor(window.consoleContents.getZoomFactor());
+      browserViews.attachShortcutSource(guest);
+      const divider = new WebContentsView({ webPreferences: { ...BROWSER_COMPANION_PREFERENCES, partition: "fleet-browser-divider" } });
+      return createBrowserPane(window, chrome, divider, () => browserViews.refresh(), browserPaneWidth);
+    },
     createWindow: (guest) => {
       // 생성 전 handler가 보안을 지정한 기존 guest를 그대로 입양한다. renderer 옵션을 다시 펼치지 않는다.
       const consoleView = new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
@@ -426,7 +437,7 @@ async function boot(): Promise<void> {
         nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
       },
     }),
-    zoomFactor: (surface) => (surface ? browserCompanion.surface(surface) : window)?.consoleContents.getZoomFactor() ?? 1,
+    zoomFactor: (surface) => (surface ? browserCompanion.contents(surface) : window?.consoleContents)?.getZoomFactor() ?? 1,
     log: (message) => logger.error(message),
   });
   const browserViews = createDesktopBrowserViews({
@@ -442,7 +453,7 @@ async function boot(): Promise<void> {
         focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
       },
     }),
-    zoomFactor: (surface) => (surface ? browserCompanion.surface(surface) : window)?.consoleContents.getZoomFactor() ?? 1,
+    zoomFactor: (surface) => (surface ? browserCompanion.contents(surface) : window?.consoleContents)?.getZoomFactor() ?? 1,
     scaleFactor: (parent) => { try { const target = parent ?? window; return target ? screen.getDisplayMatching(target.getBounds()).scaleFactor : 1; } catch { return 1; } },
     product: () => `Chrome/${process.versions.chrome}`,
     // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
