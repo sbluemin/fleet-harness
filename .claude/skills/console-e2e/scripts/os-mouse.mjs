@@ -71,10 +71,10 @@ const WINDOW_SOURCE = `function run(argv) {
     var right = left + Number(bounds.Width);
     var bottom = top + Number(bounds.Height);
     if (x >= left && y >= top && x < right && y < bottom) {
-      return JSON.stringify({ pid: Number(item.kCGWindowOwnerPID) });
+      return JSON.stringify({ pid: Number(item.kCGWindowOwnerPID), wid: Number(item.kCGWindowNumber) });
     }
   }
-  return JSON.stringify({ pid: null });
+  return JSON.stringify({ pid: null, wid: null });
 }`;
 
 function emit(payload) {
@@ -237,7 +237,7 @@ function click(argv) {
       i += 1;
       continue;
     }
-    if (['--binary', '--pid', '--origin', '--max-clicks'].includes(flag)) {
+    if (['--binary', '--pid', '--origin', '--max-clicks', '--window-id'].includes(flag)) {
       if (opts[flag] !== undefined) throw new Error(`repeated argument: ${flag}`);
       const value = argv[i + 1];
       if (!value || value.startsWith('--')) throw new Error(`${flag} needs a value`);
@@ -254,6 +254,8 @@ function click(argv) {
   if (!Number.isSafeInteger(maxClicks)) throw new Error('--max-clicks must be a positive integer');
   const pid = /^[1-9]\d*$/.test(opts['--pid']) ? Number(opts['--pid']) : NaN;
   if (!Number.isSafeInteger(pid)) throw new Error('--pid must be a positive integer');
+  const wid = opts['--window-id'] ? (/^[1-9]\d*$/.test(opts['--window-id']) ? Number(opts['--window-id']) : NaN) : null;
+  if (opts['--window-id'] && !Number.isSafeInteger(wid)) throw new Error('--window-id must be a positive integer');
   const origin = parsePair(opts['--origin'], '--origin');
   const binary = assertAllowedOutput(opts['--binary']);
   const base = {
@@ -261,7 +263,7 @@ function click(argv) {
     cursorMoved: false, points: [],
   };
   const stop = (code, reason, done) => {
-    emit({ ...base, posted: false, postedCount: done.length, cursorMoved: done.length > 0, points: done, reason });
+    emit({ ...base, posted: done.length > 0, postedCount: done.length, cursorMoved: done.length > 0, points: done, reason });
     return code;
   };
   if (!opts.allowActivate) return stop(2, 'activation not allowed by this invocation', []);
@@ -291,7 +293,7 @@ function click(argv) {
     try { owner = runOsascript(WINDOW_SOURCE, point.map(String)); } catch (error) {
       return stop(posted.length ? 2 : 1, `window probe failed: ${String(error.message || error).slice(0, 200)}`, posted);
     }
-    if (owner.pid !== pid) return stop(2, 'point is not on the owned window', posted);
+    if (owner.pid !== pid || (wid !== null && owner.wid !== wid)) return stop(2, 'point is not on the target window', posted);
     const child = spawnSync(binary, point.map(String), {
       encoding: 'utf8', timeout: 5_000, stdio: ['ignore', 'pipe', 'pipe'],
     });

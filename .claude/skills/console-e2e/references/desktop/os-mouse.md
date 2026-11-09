@@ -7,10 +7,10 @@ Read this only when a Desktop claim needs a real OS mouse click — the system c
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/os-mouse.mjs compile --out <abs-binary>
 node <worktree>/.claude/skills/console-e2e/scripts/os-mouse.mjs check --json
-node <worktree>/.claude/skills/console-e2e/scripts/os-mouse.mjs click --binary <abs-binary> --pid <owned-main-pid> --origin <cg-x>,<cg-y> --dip <x>,<y> [--dip <x>,<y> ...] --max-clicks <n> --allow-activate
+node <worktree>/.claude/skills/console-e2e/scripts/os-mouse.mjs click --binary <abs-binary> --pid <owned-main-pid> [--window-id <wid>] --origin <cg-x>,<cg-y> --dip <x>,<y> [--dip <x>,<y> ...] --max-clicks <n> --allow-activate
 ```
 
-`--out` and `--binary` are absolute paths outside every worktree of this repository and outside `~/.fleet`. `compile` writes `<binary>.stamp` (the Swift source hash) and does not run the binary. `click` refuses a stamp mismatch and does not compile. `--origin` is `occlusion.target.bounds` from the occlusion probe (`desktop-preflight.mjs <worktree> --occlusion`; see [Setup](setup.md)). `--dip` is the page point from [Pointer target preflight](../verification.md#pointer-target-preflight), in CSS pixels. The helper adds them. Do not post when `--desktop-zoom` is not `"1"` or the occlusion result is locked, occluded, or off-screen. macOS only; any other OS stays unverified.
+`--out` and `--binary` are absolute paths outside every worktree of this repository and outside `~/.fleet`. `compile` writes `<binary>.stamp` (the Swift source hash) and does not run the binary. `click` refuses a stamp mismatch and does not compile. `--origin` and optional `--window-id` come from the occlusion probe (`desktop-preflight.mjs <worktree> --occlusion`: `target.bounds` and `target.wid`; see [Setup](setup.md)). `--dip` is the page point from [Pointer target preflight](../verification.md#pointer-target-preflight), in CSS pixels. The helper adds them. Do not post when `--desktop-zoom` is not `"1"` or the occlusion result is locked, occluded, or off-screen. macOS only; any other OS stays unverified.
 
 ## What each command means
 
