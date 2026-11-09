@@ -237,10 +237,8 @@ title: input.title});
       request: async (input: ConsoleActionInput) => {
         if (input.kind === "send") {
           const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.();
-          if (input.whenIdle) {
-            const state = activity.get(input.objectiveId!);
-            if (state === "running" || state === "background" || state === "awaiting") throw new Error("session_busy");
-          }
+          // 호스트 PTY 전달처럼, 보낸 순간 입력·권한 대기면 선택지를 확정하지 않도록 거절한다.
+          if (activity.get(input.objectiveId!) === "awaiting") throw new Error("session_awaiting_input");
           if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); }
           deliveries.push(input); sent.push({ objectiveId: input.objectiveId!, text: input.text! });
           if (activity.get(input.objectiveId!) === "dormant") { woken.push({ objectiveId: input.objectiveId!, ...(launchCoordinates.get(input.objectiveId!) ?? { model: "opus[1m]", effort: null }) }); activity.set(input.objectiveId!, "idle"); }
@@ -3424,7 +3422,7 @@ describe("Objectives contract", () => {
     const { store, launch, call, ctx, sent, activity, add, hostFault } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Deliver", groupId: null, note: "brief" });
     add(objective.id, { title: "Deliver" });
-    activity.set(objective.id, "running");
+    activity.set(objective.id, "awaiting");
     const asked = await call("consult_ask", { question: "Which constraint still holds?" }, objective.id);
     const consultId = asked.structuredContent.consultId as string;
     const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
@@ -3436,11 +3434,10 @@ describe("Objectives contract", () => {
     await launch.deliverConsultations(objective.id);
     expect(sent.length).toBe(before + 1);
     expect(sent.at(-1)?.text).toBe(`Your Commodore replied to consultation ${consultId}. Read the question, reply, and cited sources in objective_read. Decision requests and holds are unchanged.`);
-    expect(h.deliveries.at(-1)?.whenIdle).toBe(true);
     expect(store.find(objective.id)!.consultations[0]?.delivery).toBe("submitted");
     await launch.deliverConsultations(objective.id);
     expect(sent.length).toBe(before + 1);
-    activity.set(objective.id, "running");
+    activity.set(objective.id, "awaiting");
     const again = await call("consult_ask", { question: "Second?" }, objective.id);
     const secondId = again.structuredContent.consultId as string;
     await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: secondId, answer: "Still the brief." }, { cwd: h.workspace });
@@ -3455,7 +3452,7 @@ describe("Objectives contract", () => {
     const afterUnknown = sent.length;
     await launch.deliverConsultations(objective.id);
     expect(sent.length).toBe(afterUnknown);
-    activity.set(objective.id, "running");
+    activity.set(objective.id, "awaiting");
     const quiet = await call("consult_ask", { question: "Third?" }, objective.id);
     await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: quiet.structuredContent.consultId }, { cwd: h.workspace });
     activity.set(objective.id, "idle");
@@ -3466,7 +3463,7 @@ describe("Objectives contract", () => {
     await restarted.launch.deliverConsultations(objective.id);
     expect(sent.length).toBe(resumed);
     // 같은 store의 일반 쓰기는 claim을 pending으로 되돌리지 않고, 닫힌 답을 바꾸지 않는다.
-    activity.set(objective.id, "running");
+    activity.set(objective.id, "awaiting");
     const fourth = await call("consult_ask", { question: "Fourth?" }, objective.id);
     const fourthId = fourth.structuredContent.consultId as string;
     await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: fourthId, answer: "Still the same brief." }, { cwd: h.workspace });
@@ -3488,7 +3485,7 @@ describe("Objectives contract", () => {
     const recovered = h.restart();
     expect(recovered.store.find(objective.id)!.consultations.find((entry) => entry.id === fourthId)?.delivery).toBe("uncertain");
     expect(recovered.store.find(objective.id)!.consultations.find((entry) => entry.id === onceId)?.reply).toMatchObject({ kind: "advice", text: "First answer. Source: the person." });
-    activity.set(objective.id, "running");
+    activity.set(objective.id, "awaiting");
     const fifth = await call("consult_ask", { question: "Fifth?" }, objective.id);
     const fifthId = fifth.structuredContent.consultId as string;
     await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: fifthId }, { cwd: h.workspace });
@@ -3499,6 +3496,30 @@ describe("Objectives contract", () => {
     expect(sent.filter((entry) => entry.text.includes(fifthId)).length).toBe(1);
     expect(sent.length).toBeGreaterThan(beforeFifth);
     expect(store.find(objective.id)!.consultations.find((entry) => entry.id === fifthId)?.delivery).toBe("submitted");
+    // 작업 중인 지휘관에게도 답이 턴 끝을 기다리지 않고 바로 들어간다.
+    for (const working of ["running", "background"] as const) {
+      activity.set(objective.id, working);
+      const live = await call("consult_ask", { question: `While ${working}?` }, objective.id);
+      const liveId = live.structuredContent.consultId as string;
+      const liveBefore = sent.length;
+      await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: liveId, answer: "Keep going." }, { cwd: h.workspace });
+      expect(sent.length).toBe(liveBefore + 1);
+      expect(sent.at(-1)?.text).toContain(liveId);
+      expect(store.find(objective.id)!.consultations.find((entry) => entry.id === liveId)?.delivery).toBe("submitted");
+    }
+    // 건넨 뒤 지휘관 턴이 중단돼도 접수된 전달은 submitted 그대로이고 다시 보내지 않는다. 전달 자체가 실패하면 uncertain으로 닫고 재시도하지 않는다.
+    activity.set(objective.id, "idle");
+    const afterInterrupt = sent.length;
+    await launch.deliverConsultations(objective.id);
+    expect(sent.length).toBe(afterInterrupt);
+    activity.set(objective.id, "running");
+    const failing = await call("consult_ask", { question: "Fails while running?" }, objective.id);
+    const failingId = failing.structuredContent.consultId as string;
+    hostFault.sendError = "chat_unavailable";
+    await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId: failingId, answer: "Keep going." }, { cwd: h.workspace });
+    expect(store.find(objective.id)!.consultations.find((entry) => entry.id === failingId)?.delivery).toBe("uncertain");
+    await launch.deliverConsultations(objective.id);
+    expect(sent.filter((entry) => entry.text.includes(failingId)).length).toBe(0);
   });
 
   it("retries a consultation notice from the live-outcome sweep after a certain busy race", async () => {
@@ -3511,7 +3532,7 @@ describe("Objectives contract", () => {
       activity.set(objective.id, "idle");
       const asked = await call("consult_ask", { question: "Retry after busy?" }, objective.id);
       const consultId = asked.structuredContent.consultId as string;
-      hostFault.duringSend = () => { activity.set(objective.id, "running"); };
+      hostFault.duringSend = () => { activity.set(objective.id, "awaiting"); };
       const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
       const before = sent.length;
       await board.execute({ action: "consult_answer", objectiveId: objective.id, consultId, answer: "The brief still holds." }, { cwd: h.workspace });
