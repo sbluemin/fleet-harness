@@ -90,7 +90,7 @@ export function createBrowserPane(host: DesktopShellWindow, chrome: WebContentsV
   };
 }
 
-// 셸의 수동 문서는 Node·preload·IPC 없이 pointer capture와 진단 이벤트만 쓴다.
+// 셸의 수동 문서는 Node·주입 스크립트·IPC 없이 pointer capture와 진단 이벤트만 쓴다.
 const DIVIDER_HTML = `<!doctype html><meta charset="utf-8"><meta name="color-scheme" content="light dark"><style>
 html,body{margin:0;width:100%;height:100%;overflow:hidden;user-select:none;cursor:col-resize;background:light-dark(#e4e4e5,#202023)}
 body{box-sizing:border-box;border-left:1px solid light-dark(#c8c8ca,#39393e);border-right:1px solid light-dark(#c8c8ca,#39393e);box-shadow:inset 2px 0 4px #0002;touch-action:none}
