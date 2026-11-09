@@ -91,7 +91,7 @@ describe("desktop native browser views across a Console restart", () => {
       contentView: { addChildView: vi.fn(), removeChildView: vi.fn() } });
     const makeView = () => {
       const mainFrame = { url: "" };
-      const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false, close: vi.fn(), focus: vi.fn(), reload: vi.fn(),
+      const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false, close: vi.fn(), focus: vi.fn(), reload: vi.fn(), setZoomFactor: vi.fn(),
         setWindowOpenHandler: vi.fn(), loadURL: vi.fn(async (url: string) => { mainFrame.url = url; }),
         loadFile: vi.fn(async (file: string) => { mainFrame.url = pathToFileURL(file).href; }), executeJavaScript: vi.fn(async () => undefined) });
       return { webContents, setBounds: vi.fn(), setBackgroundColor: vi.fn() };
@@ -102,12 +102,13 @@ describe("desktop native browser views across a Console restart", () => {
     const views: ReturnType<typeof makeView>[] = [];
     const changed = vi.fn();
     const actions: string[] = [];
+    let zoomFactor = 1;
     const surface = createBrowserSurface({
       main: () => shell,
       createChromeView: () => { const created = makeView(); views.push(created); return created as never; },
       createDividerView: () => { const created = makeView(); views.push(created); return created as never; },
       createWindow: () => { throw new Error("window mode is not part of this contract"); },
-      chromeDir: "/assets/browser-chrome", program: () => "", colors: () => null, lang: "en", platform: "linux", scaleFactor: () => 1,
+      chromeDir: "/assets/browser-chrome", program: () => "", colors: () => null, lang: "en", platform: "linux", scaleFactor: () => 1, zoom: () => zoomFactor,
       act: (control, role, action) => {
         actions.push(`${role}:${action.action}`);
         if (action.action === "expand") control.patch({ expanded: action.expanded });
@@ -147,6 +148,11 @@ describe("desktop native browser views across a Console restart", () => {
     surface.refresh();
     expect(surface.target()?.page).toEqual({ x: 845, y: 52, width: 255, height: 648 });
     expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 600, height: 700 });
+    // Console 을 확대하면 주소줄·레일 치수도 같은 배율로 따라가고 크롬 문서의 줌도 함께 바뀐다.
+    zoomFactor = 1.25; surface.refresh();
+    expect(bar.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ height: 65 }));
+    expect(bar.webContents.setZoomFactor).toHaveBeenLastCalledWith(1.25);
+    expect(surface.target()?.page.y).toBe(65);
     surface.dispose();
     expect(divider.webContents.close).toHaveBeenCalledOnce();
     expect(surface.target()).toBeNull();

@@ -12,7 +12,8 @@ export function mountStage(): (state: ChromeUiState) => void {
     const t = tr(state);
     clear(root);
     const chrome = state.chrome;
-    if (!chrome) return;
+    // 표시 탭이 있으면 페이지 뷰가 이 자리를 채운다 — 에뮬레이션으로 뷰보다 작게 그려질 때 빈 상태 문구가 비치지 않게 비운다.
+    if (!chrome || (chrome.available && chrome.activeTabId !== null)) return;
     // 방금 열려 탭이 아직 없는 동안과 못 여는 까닭을 같은 자리에서 말한다.
     const unavailable = !chrome.available;
     const title = unavailable ? t(chrome.reason === "shared" ? "unavailable.shared" : "unavailable.desktop_required") : t("emptyTitle");

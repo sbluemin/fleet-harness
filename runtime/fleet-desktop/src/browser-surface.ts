@@ -60,6 +60,8 @@ export interface BrowserSurfaceDeps {
   readonly lang: "ko" | "en";
   readonly platform: string;
   readonly scaleFactor: (base: BaseWindow) => number;
+  /** Console 창의 확대·축소 배율. 크롬 문서는 이 배율로 그려지고 줄·레일·알림 띠의 DIP 크기도 같은 배율을 따른다(Console 맨 위 줄이 확대되는 것처럼). */
+  readonly zoom: () => number;
   /** 문서가 보낸 동작 하나를 처리한다. */
   readonly act: (control: SurfaceControl, role: ChromeRole, action: ChromeAction) => void;
   readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
@@ -106,6 +108,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let focusSeen = 0;
   let closing: ReturnType<typeof setTimeout> | null = null;
   let drag: { screenX: number; width: number } | null = null;
+  let appliedZoom = 1;
 
   const surfaceRect = (): Rectangle | null => {
     if (hostKind === "pane") {
@@ -124,16 +127,22 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     return null;
   };
 
-  const railWidth = (): number => (ui.pinned || ui.expanded ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
-  const layoutRailWidth = (): number => (ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
-  const barHeight = (rect: Rectangle): number => (ui.overlay !== null ? rect.height : ui.notice || ui.info ? Math.min(rect.height, BROWSER_STRIP_PX + TOAST_BAND_PX) : BROWSER_STRIP_PX);
+  const zoom = (): number => { const z = deps.zoom(); return Number.isFinite(z) && z >= 0.25 && z <= 5 ? z : 1; };
+  /** CSS px(크롬 문서의 치수)를 DIP 로. */
+  const dip = (cssPx: number): number => Math.round(cssPx * zoom());
+  const stripPx = (): number => dip(BROWSER_STRIP_PX);
+  const railWidth = (): number => dip(ui.pinned || ui.expanded ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
+  const layoutRailWidth = (): number => dip(ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
+  const barHeight = (rect: Rectangle): number => (ui.overlay !== null ? rect.height : ui.notice || ui.info ? Math.min(rect.height, stripPx() + dip(TOAST_BAND_PX)) : Math.min(rect.height, stripPx()));
 
   /** 모든 뷰의 자리를 같은 틱에 정한다. 상태 문서에 알리는 것은 이 뒤다 — 뷰 크기와 문서 레이아웃이 어긋난 프레임이 없게. */
   const layout = (): void => {
     if (!docs) return;
     const rect = surfaceRect();
     if (!rect) return;
-    const strip = Math.min(BROWSER_STRIP_PX, rect.height);
+    const z = zoom();
+    if (z !== appliedZoom) { appliedZoom = z; for (const doc of [docs.bar, docs.rail, docs.stage]) if (!doc.view.webContents.isDestroyed()) doc.view.webContents.setZoomFactor(z); }
+    const strip = Math.min(stripPx(), rect.height);
     const side = layoutRailWidth();
     page = { x: rect.x + Math.min(side, rect.width), y: rect.y + strip, width: Math.max(0, rect.width - side), height: Math.max(0, rect.height - strip) };
     docs.bar.view.setBounds({ x: rect.x, y: rect.y, width: rect.width, height: barHeight(rect) });
@@ -152,12 +161,13 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
 
   const state = (): ChromeUiState => {
     const rect = surfaceRect();
-    const leading = hostKind === "window" && deps.platform === "darwin" ? MAC_TRAFFIC_LIGHTS_PX : 0;
-    const trailing = deps.platform === "win32" ? WINDOWS_CAPTION_PX : 0;
+    const z = zoom();
+    const leading = hostKind === "window" && deps.platform === "darwin" ? MAC_TRAFFIC_LIGHTS_PX / z : 0;
+    const trailing = deps.platform === "win32" ? WINDOWS_CAPTION_PX / z : 0;
     return {
       lang: deps.lang, platform: deps.platform, mode: surface?.mode ?? "pane", colors: deps.colors(), chrome, pinned: ui.pinned, expanded: ui.expanded,
       leading, trailing,
-      page: rect ? { x: layoutRailWidth(), y: Math.min(BROWSER_STRIP_PX, rect.height), width: Math.max(0, rect.width - layoutRailWidth()), height: Math.max(0, rect.height - BROWSER_STRIP_PX) } : { x: 0, y: 0, width: 0, height: 0 },
+      page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), rect.height) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
       busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
     };
@@ -215,6 +225,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     contents.on("dom-ready", () => { doc.ready = false; void contents.executeJavaScript(deps.program()).catch((error: unknown) => deps.log(`browser chrome program failed: ${error instanceof Error ? error.message : "unknown"}`)); });
     contents.on("render-process-gone", () => { doc.ready = false; void contents.reload(); });
     view.setBackgroundColor("#00000000");
+    contents.setZoomFactor(zoom());
+    appliedZoom = zoom();
     void contents.loadFile(path.join(deps.chromeDir, `${role}.html`)).catch(() => undefined);
     return doc;
   };
@@ -342,7 +354,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     target() {
       return host && !host.isDestroyed() && page.width > 0 ? { host, page: { ...page } } : null;
     },
-    refresh() { if (docs) layout(); },
+    refresh() { if (docs) update(); },
     dispose: closeSurface,
     relay: (value) => deps.relay(value),
   };

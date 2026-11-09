@@ -400,6 +400,7 @@ async function boot(): Promise<void> {
     colors: () => entryPalette ? { scheme: entryPalette.scheme, tokens: { ...(entryPalette.browser ?? {}) }, ...(entryPalette.fonts ? { fonts: { ...entryPalette.fonts } } : {}) } : null,
     lang: entryLanguage,
     platform: process.platform,
+    zoom: () => window && !window.isDestroyed() ? window.consoleContents.getZoomFactor() : 1,
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
     act: createBrowserActions({ fetch: consoleFetch, origin: () => browserOrigin, lang: entryLanguage, openExternal: (url) => { void shell.openExternal(url); }, log: (message) => logger.info(message) }),
     relay: (surface) => browserViews.relaySurface(surface),

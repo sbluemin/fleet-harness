@@ -17,8 +17,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const reload = h("button", { class: "icon reload", type: "button", on: { click: () => post("bar", "navigate", { url: "reload" }) } }, glyph(G.reload));
   const display = h("span", { class: "url-display", attrs: { "aria-hidden": "true" } });
   const input = h("input", { class: "url-input", type: "text", autocomplete: "off", spellcheck: false, attrs: { inputmode: "url", role: "combobox", "aria-autocomplete": "list" } });
-  const external = h("button", { class: "url-external", type: "button", on: { click: () => post("bar", "open-external") } }, glyph(G.external));
-  const form = h("form", { class: "url" }, display, input, external);
+  const form = h("form", { class: "url" }, display, input);
   const detach = h("button", { class: "icon detach", type: "button", on: { mousedown: (event) => event.preventDefault(), click: () => post("bar", "toggle-mode") } }, "↗");
   const more = h("button", { class: "icon more-button", type: "button", attrs: { "aria-haspopup": "menu" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "menu" ? null : "menu" }) } }, moreGlyph());
   const leading = h("span", { class: "pad" });
@@ -93,6 +92,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const menu = h("div", { class: "menu", role: "menu", attrs: { "aria-label": t("moreTools") } });
     if (hasCapture) menu.append(item(t, G.camera, t("attachScreenshot"), () => post("bar", "attach-screenshot"), { disabled: !state.captureAvailable || state.busy }));
     menu.append(item(t, G.comment, t("annotate"), () => post("bar", "annotate"), { disabled: !state.captureAvailable || tab === null }));
+    if (tab && /^https?:\/\//iu.test(tab.url)) menu.append(item(t, G.external, t("openExternal"), () => post("bar", "open-external")));
     menu.append(h("div", { class: "menu-sep", role: "separator" }), h("div", { class: "menu-label", text: t("menu.session") }));
     for (const value of [null, PERSISTENT] as const) {
       const row = h("div", { class: "menu-item", role: "menuitemradio", tabindex: ready ? 0 : -1, title: t(value ? "profile.persistentTip" : "profile.ephemeralTip"), attrs: { "aria-checked": String((chrome?.profile ?? null) === value), "aria-disabled": String(!ready) } });
@@ -299,9 +299,6 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         if (rest) display.append(h("span", { class: "url-rest", text: rest }));
       } catch { display.append(h("span", { class: "url-host", text: hostOf(input.value) })); }
     }
-    external.hidden = !(tab && tab.url !== "about:blank");
-    external.title = external.ariaLabel = t("openExternal");
-    form.classList.toggle("has-external", !external.hidden);
     // 새 탭을 열면 주소줄로 초점을 옮긴다(예전 「새 탭」 동작).
     if (previous && previous.chrome && chrome && chrome.tabs.length > previous.chrome.tabs.length && tab?.url === "about:blank" && !editing) { input.focus(); }
     renderOverlay(state);

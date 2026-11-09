@@ -60,13 +60,15 @@ export function BrowserSessionHost({ language, services }: {
   const [notice, setNotice] = React.useState<string | null>(null);
   const deliver = React.useRef<(payload: AttachPayload) => void>(() => undefined);
   deliver.current = (payload) => {
-    if (attach?.chat) { pushComposerInbox(attach.objectiveId, { files: [pngFile(payload)] }); setNotice(t("terminal.browser.deliveredChat")); return; }
-    if (attach === null && pluginAttach) { pluginAttach([pngFile(payload)]); setNotice(t("terminal.browser.deliveredChat")); return; }
+    // 컴포저에 칩이 서는 것이 곧 결과다 — 안내 문구를 따로 띄우지 않는다.
+    if (attach?.chat) { pushComposerInbox(attach.objectiveId, { files: [pngFile(payload)] }); return; }
+    if (attach === null && pluginAttach) { pluginAttach([pngFile(payload)]); return; }
     if (attach === null) { setNotice(t("terminal.browser.requestFailed")); return; }
     // 터미널 Objective: 서버가 이 기계의 클립보드에 올린 뒤 Ctrl+V 를 눌러 준다 — CLI 는 자기가 도는 기계의 클립보드를 읽는다.
     void fetch(`/api/v1/browser/objectives/${encodeURIComponent(attach.objectiveId)}/paste`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: payload.data }) })
       .then(async (response) => {
-        if (response.ok) { setNotice(t("terminal.browser.deliveredTerminal")); return; }
+        // 터미널에 이미지가 붙는 것이 곧 결과다 — 성공 안내는 없고 실패만 말한다.
+        if (response.ok) return;
         let code: string | null = null;
         try { code = ((await response.json()) as { error?: string }).error ?? null; } catch { /* 본문 없음 */ }
         setNotice(code === "terminal_not_running" ? t("terminal.browser.terminalNotRunning") : code === "clipboard_failed" ? t("terminal.browser.clipboardFailed") : t("terminal.browser.requestFailed"));

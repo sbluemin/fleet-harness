@@ -64,9 +64,11 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
   let waiting = false;
   let lastMove = 0;
 
+  // 페이지는 아래에서 계속 그려진다 — 화면에는 투명 캔버스·핀·툴바만 얹고, 시작할 때 찍어 둔 한 장은 보이지 않게 쥐었다가 첨부할 때 마크를 합성한다.
   const root = h("div", { class: "annotate" });
   const stage = h("div", { class: "stage" });
-  const image = h("img", { class: "frame", src: `data:${shot.mime};base64,${shot.data}`, alt: t("pageFrame"), draggable: false });
+  const image = new Image();
+  image.src = `data:${shot.mime};base64,${shot.data}`;
   const canvas = h("canvas", { class: "sketch is-comment", attrs: { "aria-label": t("annotate") } });
   const highlight = h("div", { class: "highlight", hidden: true as unknown as boolean });
   const hovercard = h("div", { class: "hovercard", hidden: true as unknown as boolean });
@@ -76,7 +78,7 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
   const commentOk = h("button", { class: "comment-ok", type: "button", attrs: { "aria-label": t("commentAdd") }, title: t("commentAdd") }, glyph(G.check));
   comment.append(commentInput, commentOk);
   const anchor = h("span", { class: "pin is-anchor", hidden: true as unknown as boolean });
-  stage.append(image, canvas, highlight, hovercard, pins, anchor, comment);
+  stage.append(canvas, highlight, hovercard, pins, anchor, comment);
 
   const bar = h("div", { class: "sketchbar", role: "toolbar", attrs: { "aria-label": t("annotate") } });
   const toolButtons = new Map<Tool, HTMLButtonElement>();
@@ -107,26 +109,22 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
   const place = (): void => {
     const page = state.page;
     root.style.left = `${page.x}px`; root.style.top = `${page.y}px`; root.style.width = `${page.width}px`; root.style.height = `${page.height}px`;
-    stage.style.aspectRatio = `${shot.width} / ${shot.height}`;
-    stage.style.width = `min(${shot.width}px, ${page.height * shot.width / shot.height}px, 100%)`;
   };
-  const scale = (): number => (image.clientWidth > 0 ? shot.width / image.clientWidth : 1);
-  /** 화면 px → 페이지 CSS px. */
+  /** 페이지 CSS px 하나는 이 문서의 CSS px 하나다(페이지 뷰가 표면에 1:1 로 놓인다). */
   const point = (event: { clientX: number; clientY: number }): Pt | null => {
-    const rect = image.getBoundingClientRect();
+    const rect = stage.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
-    return { x: (event.clientX - rect.left) * (shot.width / rect.width), y: (event.clientY - rect.top) * (shot.height / rect.height) };
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
-  const stagePoint = (p: Pt): { left: string; top: string } => ({ left: `${p.x / shot.width * 100}%`, top: `${p.y / shot.height * 100}%` });
+  const stagePoint = (p: Pt): { left: string; top: string } => ({ left: `${p.x}px`, top: `${p.y}px` });
 
   const redraw = (): void => {
-    const width = image.clientWidth, height = image.clientHeight;
+    const width = Math.round(stage.clientWidth), height = Math.round(stage.clientHeight);
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
     const ctx = canvas.getContext("2d"); if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
-    const factor = width / shot.width;
-    for (const mark of marks) if (mark.kind === "stroke") drawStroke(ctx, mark.stroke, factor);
-    if (drawing) drawStroke(ctx, drawing, factor);
+    for (const mark of marks) if (mark.kind === "stroke") drawStroke(ctx, mark.stroke, 1);
+    if (drawing) drawStroke(ctx, drawing, 1);
   };
   const renderPins = (): void => {
     clear(pins);
@@ -153,10 +151,9 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
       comment.style.left = `clamp(8px, calc(${at.left} - 14px), max(8px, calc(100% - 328px)))`; comment.style.top = `calc(${at.top} + 18px)`;
     }
     const info = hover;
-    const factor = scale();
     highlight.hidden = !info; hovercard.hidden = !info;
     if (info) {
-      const box = { left: info.box.x / factor, top: info.box.y / factor, width: info.box.width / factor, height: info.box.height / factor };
+      const box = { left: info.box.x, top: info.box.y, width: info.box.width, height: info.box.height };
       Object.assign(highlight.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
       clear(hovercard);
       const name = `${info.tag}${info.id ? `#${info.id}` : info.classes[0] ? `.${info.classes[0]}` : ""}`;
@@ -212,6 +209,7 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
   close.addEventListener("click", () => post("bar", "annotate-done", { png: null }));
   attach.addEventListener("click", () => {
     if (marks.length === 0) return;
+    if (!image.complete || image.naturalWidth === 0) return;
     const out = document.createElement("canvas");
     out.width = image.naturalWidth; out.height = image.naturalHeight;
     const ctx = out.getContext("2d"); if (!ctx) return;
@@ -221,9 +219,8 @@ export function mountAnnotate(host: HTMLElement, initial: ChromeUiState, t: T): 
     marks.forEach((mark, index) => { if (mark.kind === "stroke") drawStroke(ctx, mark.stroke, factor); else drawPin(ctx, mark.pin, index + 1, factor, pinColor, image.naturalWidth); });
     post("bar", "annotate-done", { png: out.toDataURL("image/png").split(",")[1] ?? "" });
   });
-  image.addEventListener("load", () => { redraw(); sync(); });
   const resize = new ResizeObserver(() => { redraw(); sync(); });
-  resize.observe(image);
+  resize.observe(stage);
 
   place(); sync(); redraw(); renderPins();
   void t;
