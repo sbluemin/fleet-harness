@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Fleet — a quiet console for a fleet of coding agents</title>
-<meta name="description" content="Fleet runs Claude Code on every frontier model as live sessions owned by your own machine, and lets you supervise them from a browser, the desktop app, or your phone." />
+<title>Fleet — run a fleet of coding agents from one quiet console</title>
+<meta name="description" content="Fleet hands your work to Commodores, whose Commanders and members carry it out on every frontier model through Claude Code, while you stay in charge from the desktop or your phone." />
 <meta name="theme-color" content="#0b0e13" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="Fleet — a quiet console for a fleet of coding agents" />
-<meta property="og:description" content="Run Claude Code on every frontier model, keep each session alive on your own machine, and supervise the whole fleet from any screen." />
+<meta property="og:title" content="Fleet — run a fleet of coding agents from one quiet console" />
+<meta property="og:description" content="Commodores run the work, objectives finish on their own, TaskForces decide together, and every frontier model runs behind Claude Code." />
 <meta property="og:image" content="https://sbluemin.github.io/fleet-harness/assets/og.jpg" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0e13'/%3E%3Cpath d='M8 21 L16 9 L24 21 Z' fill='none' stroke='%23cfb27a' stroke-width='2' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='18' r='2' fill='%238ccfc5'/%3E%3C/svg%3E" />
@@ -23,7 +23,6 @@
 :root {
   color-scheme: dark;
   --ink: #0b0e13;
-  --ink-2: #0e1218;
   --hull: #131821;
   --line: rgba(233, 230, 223, .08);
   --line-2: rgba(233, 230, 223, .15);
@@ -58,23 +57,15 @@ img { display: block; max-width: 100%; height: auto; }
 a { color: inherit; text-decoration: none; }
 p { margin: 0; }
 h1, h2, h3 { margin: 0; color: var(--text); font-weight: 500; }
-ul, ol { margin: 0; padding: 0; list-style: none; }
 ::selection { background: var(--brass-soft); color: var(--text); }
 :focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 6px; }
+code { font: 500 .9em var(--mono); color: var(--text); }
 
 /* Language: every bilingual element carries lang, and only the active one is rendered. */
 [data-lang="en"] [lang="ko"], [data-lang="ko"] [lang="en"] { display: none !important; }
 
 .shell { width: 100%; max-width: calc(var(--shell) + var(--gutter) * 2); margin: 0 auto; padding: 0 var(--gutter); }
 @media (max-width: 520px) { :root { --gutter: 16px; } }
-
-.kbd, kbd {
-  font: 500 11.5px/1 var(--mono); color: var(--text-2);
-  display: inline-flex; align-items: center; justify-content: center; min-width: 22px;
-  padding: 4px 6px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 6px;
-  background: rgba(255,255,255,.02);
-}
-code { font: 500 .9em var(--mono); color: var(--text); }
 
 /* ─── Top bar ─── */
 .top {
@@ -87,9 +78,6 @@ code { font: 500 .9em var(--mono); color: var(--text); }
 .top .shell { display: flex; align-items: center; gap: 28px; height: 60px; }
 .mark { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font-weight: 600; letter-spacing: -0.01em; }
 .mark svg { width: 20px; height: 20px; }
-.nav { display: flex; gap: 24px; margin-left: 8px; }
-.nav a { font-size: 14px; color: var(--muted); transition: color .2s var(--ease); }
-.nav a:hover { color: var(--text); }
 .top-end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .lang {
   font: 500 12px/1 var(--mono); color: var(--muted); background: none; cursor: pointer;
@@ -104,7 +92,6 @@ code { font: 500 .9em var(--mono); color: var(--text); }
 }
 .gh:hover { background: #fff; }
 .gh svg { width: 15px; height: 15px; }
-@media (max-width: 820px) { .nav { display: none; } }
 
 /* ─── Hero ─── */
 .hero { position: relative; padding: 88px 0 0; }
@@ -114,27 +101,24 @@ code { font: 500 .9em var(--mono); color: var(--text); }
     radial-gradient(640px 320px at 78% 30%, rgba(140, 207, 197, .07), transparent 70%),
     radial-gradient(760px 380px at 18% 10%, rgba(207, 178, 122, .06), transparent 70%);
 }
-.hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 56px; align-items: center; }
-@media (max-width: 960px) { .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 44px; } }
-
+.hero-copy { max-width: 760px; }
 .eyebrow {
   display: inline-flex; align-items: center; gap: 10px;
   font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
 }
 .eyebrow i { width: 6px; height: 6px; border-radius: 50%; background: var(--sea); box-shadow: 0 0 0 3px var(--sea-soft); }
-
 .display {
   margin-top: 22px;
-  font-size: clamp(42px, 6.4vw, 78px); line-height: 1.02; letter-spacing: -0.045em; font-weight: 500;
+  font-size: clamp(40px, 6vw, 72px); line-height: 1.04; letter-spacing: -0.045em; font-weight: 500;
   color: var(--text); text-wrap: balance;
 }
 .display em, .h2 em { font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--brass); letter-spacing: -0.02em; }
-[data-lang="ko"] .display { font-size: clamp(36px, 5.2vw, 64px); letter-spacing: -0.04em; line-height: 1.14; font-weight: 600; }
+[data-lang="ko"] .display { font-size: clamp(34px, 5vw, 60px); letter-spacing: -0.04em; line-height: 1.16; font-weight: 600; }
 [data-lang="ko"] .display em, [data-lang="ko"] .h2 em { font-family: inherit; font-style: normal; font-weight: inherit; letter-spacing: inherit; }
-.lede { margin-top: 24px; max-width: 34em; font-size: 17.5px; color: var(--text-2); text-wrap: pretty; }
+.lede { margin-top: 24px; max-width: 36em; font-size: 17.5px; color: var(--text-2); text-wrap: pretty; }
 
 .install {
-  margin-top: 34px; max-width: 520px;
+  margin-top: 34px; max-width: 560px;
   border: 1px solid var(--line-2); border-radius: 14px; background: rgba(255,255,255,.015);
   font: 400 14px/1 var(--mono); color: var(--text);
 }
@@ -163,154 +147,48 @@ code { font: 500 .9em var(--mono); color: var(--text); }
 .btn .arr { transition: transform .2s var(--ease); }
 .btn:hover .arr { transform: translateX(3px); }
 
-/* The watch list: the product's status view, in miniature. */
-.watch {
-  border: 1px solid var(--line-2); border-radius: 18px; overflow: hidden;
-  background: linear-gradient(180deg, rgba(19,24,33,.92), rgba(14,18,24,.92));
-  box-shadow: 0 30px 80px -40px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.04);
-}
-.watch-head {
-  display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line);
-  font: 500 11.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
-}
-.watch-head .th { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; background: var(--brass-soft); color: var(--brass); font-size: 10px; letter-spacing: 0; }
-.watch-head .n { margin-left: auto; color: var(--text-2); letter-spacing: .02em; text-transform: none; }
-.watch-list { position: relative; padding: 8px; }
-.op {
-  display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 12px; align-items: center;
-  padding: 12px 12px; border-radius: 12px; will-change: transform;
-}
-.op + .op { margin-top: 2px; }
-.op .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); justify-self: center; transition: background .5s var(--ease), box-shadow .5s var(--ease); }
-.op .t { min-width: 0; }
-.op .t b { display: block; font-weight: 500; font-size: 14.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.op .t small { display: block; margin-top: 2px; font: 400 12px/1.4 var(--mono); color: var(--muted); }
-.op .s { font: 500 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); transition: color .5s var(--ease); }
-.op[data-s="work"] .dot { background: var(--sea); box-shadow: 0 0 0 4px var(--sea-soft); animation: breathe 2.2s ease-in-out infinite; }
-.op[data-s="work"] .s { color: var(--sea); }
-.op[data-s="wait"] { background: rgba(207,178,122,.06); }
-.op[data-s="wait"] .dot { background: var(--brass); box-shadow: 0 0 0 4px var(--brass-soft); }
-.op[data-s="wait"] .s { color: var(--brass); }
-@keyframes breathe { 50% { box-shadow: 0 0 0 7px rgba(140,207,197,.04); } }
-.watch-foot { padding: 12px 18px 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
-
 /* ─── Figures ─── */
 .frame {
   position: relative; border-radius: 16px; overflow: hidden;
   border: 1px solid var(--line-2); background: var(--hull);
   box-shadow: 0 40px 120px -50px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.4);
 }
+figure { margin: 0; }
 .hero-shot { margin-top: 72px; position: relative; }
 .hero-shot::before {
   content: ""; position: absolute; left: 8%; right: 8%; top: -1px; height: 1px; z-index: 2;
   background: linear-gradient(90deg, transparent, rgba(207,178,122,.55), transparent);
 }
-.hero-shot::after {
-  content: ""; position: absolute; inset: -40px 10% auto; height: 120px; z-index: -1;
-  background: radial-gradient(closest-side, rgba(207,178,122,.12), transparent);
-}
 figcaption { margin-top: 14px; font-size: 13px; color: var(--muted); max-width: 62em; }
 
-/* ─── Glossary ─── */
-.terms { margin-top: 96px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.term { padding: 30px 28px 32px 0; }
-.term + .term { padding-left: 28px; border-left: 1px solid var(--line); }
-.term dt { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--brass); }
-.term dd { margin: 12px 0 0; font-size: 15px; color: var(--text-2); }
-.term dd b { color: var(--text); font-weight: 500; }
-@media (max-width: 760px) {
-  .terms { grid-template-columns: 1fr; }
-  .term, .term + .term { padding: 24px 0; border-left: 0; }
-  .term + .term { border-top: 1px solid var(--line); }
-}
-
-/* ─── Sections ─── */
-.sec { padding: 132px 0 0; scroll-margin-top: 40px; }
-.sec-head { max-width: 680px; }
+/* ─── Features ─── */
+.sec { padding: 120px 0 0; scroll-margin-top: 40px; }
 .kicker { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.h2 { margin-top: 16px; font-size: clamp(30px, 3.8vw, 46px); line-height: 1.08; letter-spacing: -0.035em; text-wrap: balance; }
-[data-lang="ko"] .h2 { line-height: 1.22; letter-spacing: -0.03em; font-weight: 600; }
-.sec-head p { margin-top: 18px; font-size: 16.5px; text-wrap: pretty; }
+.kicker b { color: var(--brass); font-weight: 500; margin-right: 10px; }
+.h2 { margin-top: 16px; font-size: clamp(28px, 3.6vw, 42px); line-height: 1.1; letter-spacing: -0.035em; text-wrap: balance; }
+[data-lang="ko"] .h2 { line-height: 1.24; letter-spacing: -0.03em; font-weight: 600; }
+.feature p.body { margin-top: 18px; font-size: 16.5px; max-width: 38em; text-wrap: pretty; }
+.feature .shot { margin-top: 44px; }
 
-.split { margin-top: 52px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: start; }
-@media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); gap: 40px; } }
+.pair { margin-top: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.card { padding: 30px 28px 32px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,.02), transparent); }
+.card .h2 { font-size: clamp(24px, 2.6vw, 30px); }
+.card p.body { margin-top: 14px; font-size: 15.5px; }
+@media (max-width: 860px) { .pair { grid-template-columns: minmax(0, 1fr); } }
 
-/* Providers */
-.providers { border-top: 1px solid var(--line); }
-.prov { display: grid; grid-template-columns: 158px minmax(0, 1fr); gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--line); }
-.prov h3 { font-size: 15px; font-weight: 600; }
-.prov .how { display: block; margin-top: 4px; font: 400 12px/1.4 var(--mono); color: var(--muted); }
-.prov p { font-size: 14.5px; color: var(--text-2); }
-@media (max-width: 520px) { .prov { grid-template-columns: 1fr; gap: 6px; } }
-.menu-fig { position: sticky; top: 100px; }
-.menu-fig .frame { max-width: 360px; margin: 0 auto; border-radius: 14px; }
-.menu-fig figcaption { text-align: center; margin-left: auto; margin-right: auto; max-width: 30em; }
-.notes { margin-top: 36px; display: grid; gap: 22px; }
-.note h3 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-.note h3 .tag { font: 500 10.5px/1 var(--mono); letter-spacing: .06em; color: var(--brass); border: 1px solid rgba(207,178,122,.35); border-radius: 5px; padding: 4px 6px; }
-.note p { margin-top: 6px; font-size: 14.5px; }
-.fine { margin-top: 24px; font-size: 13.5px; color: var(--muted); }
-
-/* Objective steps: a real sequence, so it is numbered. */
-.steps { margin-top: 44px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; counter-reset: step; border-top: 1px solid var(--line); }
-.step { position: relative; padding: 26px 24px 0 0; counter-increment: step; }
-.step::before { content: counter(step, decimal-leading-zero); font: 500 12px/1 var(--mono); color: var(--brass); }
-.step::after { content: ""; position: absolute; top: -1px; left: 0; width: 28px; height: 1px; background: var(--brass); }
-.step h3 { margin-top: 14px; font-size: 17px; }
-.step p { margin-top: 8px; font-size: 14.5px; }
-@media (max-width: 900px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 28px; } }
-@media (max-width: 520px) { .steps { grid-template-columns: 1fr; } }
-.wide-shot { margin-top: 52px; }
-
-/* Shortcuts */
-.quick { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px 26px; font-size: 14px; color: var(--muted); }
-.quick span { display: inline-flex; align-items: center; gap: 8px; }
-
-/* Tools */
-.tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; border-top: 1px solid var(--line); }
-.tool { padding: 16px 0; border-bottom: 1px solid var(--line); }
-.tool h3 { font-size: 15px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
-.tool p { margin-top: 4px; font-size: 14px; }
-@media (max-width: 560px) { .tools { grid-template-columns: 1fr; } }
-.companions { margin-top: 30px; display: grid; gap: 18px; }
-.companion { padding: 20px 22px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.012); }
-.companion h3 { font-size: 15.5px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.companion h3 .only { font: 500 10.5px/1 var(--mono); letter-spacing: .05em; color: var(--muted); border: 1px solid var(--line-2); border-radius: 5px; padding: 4px 6px; }
-.companion p { margin-top: 6px; font-size: 14.5px; }
-
-/* Anywhere */
-.three { margin-top: 52px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line); }
-.three > div { padding: 28px 28px 0 0; }
-.three > div + div { padding-left: 28px; border-left: 1px solid var(--line); }
-.three h3 { font-size: 18px; display: flex; align-items: center; gap: 10px; }
-.three h3 .tag { font: 500 10.5px/1 var(--mono); letter-spacing: .06em; color: var(--muted); border: 1px solid var(--line-2); border-radius: 5px; padding: 4px 6px; }
-.three p { margin-top: 10px; font-size: 14.5px; }
-.three ul { margin-top: 14px; display: grid; gap: 8px; }
-.three li { font-size: 14px; padding-left: 16px; position: relative; }
-.three li::before { content: ""; position: absolute; left: 0; top: .72em; width: 6px; height: 1px; background: var(--brass); }
-.three a { color: var(--text); border-bottom: 1px solid var(--line-2); }
-.three a:hover { border-color: var(--brass); }
-@media (max-width: 900px) {
-  .three { grid-template-columns: 1fr; }
-  .three > div, .three > div + div { padding: 26px 0; border-left: 0; }
-  .three > div + div { border-top: 1px solid var(--line); }
-}
-
-/* Principles */
-.principles { margin-top: 44px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.principle { padding: 24px; border-radius: 16px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(255,255,255,.02), transparent); }
-.principle h3 { font-size: 16px; }
-.principle p { margin-top: 8px; font-size: 14.5px; }
-@media (max-width: 860px) { .principles { grid-template-columns: 1fr; } }
+.anywhere { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); gap: 56px; align-items: center; }
+.anywhere .frame { border-radius: 28px; max-width: 320px; margin: 0 auto; }
+@media (max-width: 860px) { .anywhere { grid-template-columns: minmax(0, 1fr); gap: 40px; } }
+.facts { margin-top: 24px; display: grid; gap: 10px; padding: 0; list-style: none; }
+.facts li { font-size: 15px; padding-left: 18px; position: relative; }
+.facts li::before { content: ""; position: absolute; left: 0; top: .78em; width: 8px; height: 1px; background: var(--brass); }
 
 /* Closer */
-.closer { margin-top: 150px; padding: 76px 0 84px; border-top: 1px solid var(--line); text-align: center; position: relative; }
+.closer { margin-top: 140px; padding: 76px 0 84px; border-top: 1px solid var(--line); text-align: center; position: relative; }
 .closer::before { content: ""; position: absolute; left: 50%; top: -1px; width: 220px; height: 1px; transform: translateX(-50%); background: linear-gradient(90deg, transparent, var(--brass), transparent); }
 .closer .h2 { margin: 0 auto; max-width: 22em; }
-.closer p.sub { margin: 18px auto 0; max-width: 36em; }
 .closer .install { margin: 34px auto 0; text-align: left; }
-.closer .cta { justify-content: center; }
-.links { margin-top: 44px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 26px; font-size: 14px; }
+.links { margin-top: 40px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 26px; font-size: 14px; }
 .links a { color: var(--muted); transition: color .2s; }
 .links a:hover { color: var(--text); }
 footer { border-top: 1px solid var(--line); }
@@ -323,7 +201,6 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .rv { opacity: 1; transform: none; transition: none; }
-  .op[data-s="work"] .dot { animation: none; }
 }
 </style>
 </head>
@@ -335,14 +212,6 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
       <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 23 L16 6 L27 23 Z" fill="none" stroke="#cfb27a" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="18.5" r="2.4" fill="#8ccfc5"/></svg>
       Fleet
     </a>
-    <nav class="nav" aria-label="Sections">
-      <a href="#models"><span lang="en">Models</span><span lang="ko">모델</span></a>
-      <a href="#objectives"><span lang="en">Objectives</span><span lang="ko">목표</span></a>
-      <a href="#commodore"><span lang="en">Commodore</span><span lang="ko">사령관</span></a>
-      <a href="#conversation"><span lang="en">Conversation</span><span lang="ko">대화</span></a>
-      <a href="#tools"><span lang="en">Tools</span><span lang="ko">도구</span></a>
-      <a href="#anywhere"><span lang="en">Anywhere</span><span lang="ko">어디서든</span></a>
-    </nav>
     <div class="top-end">
       <button class="lang" type="button" id="lang-toggle"><span lang="en">한국어</span><span lang="ko">English</span></button>
       <a class="gh" href="https://github.com/sbluemin/fleet-harness">
@@ -357,306 +226,137 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
   <!-- Hero -->
   <section class="hero">
     <div class="shell">
-      <div class="hero-grid">
-        <div class="rv">
-          <span class="eyebrow"><i aria-hidden="true"></i><span lang="en">Fleet Console · local-first · MIT</span><span lang="ko">Fleet Console · 로컬 우선 · MIT</span></span>
-          <h1 class="display">
-            <span lang="en">A <em>quiet</em> console for a fleet of coding agents.</span>
-            <span lang="ko">여러 코딩 에이전트를,<br/>하나의 <em>조용한</em> 콘솔에서.</span>
-          </h1>
-          <p class="lede" lang="en">Run Claude Code on every frontier model, keep each session alive on your own machine, and supervise the whole fleet from a browser, the desktop app, or your phone.</p>
-          <p class="lede" lang="ko">Claude Code를 어떤 프런티어 모델로든 실행하고, 세션은 내 머신 위에 살려 둔 채 브라우저·데스크톱 앱·폰 어디서든 함대 전체를 지휘하세요.</p>
+      <div class="hero-copy rv">
+        <span class="eyebrow"><i aria-hidden="true"></i><span lang="en">Fleet Console · local-first · MIT</span><span lang="ko">Fleet Console · 로컬 우선 · MIT</span></span>
+        <h1 class="display">
+          <span lang="en">Run a fleet of coding agents from <em>one quiet console.</em></span>
+          <span lang="ko">여러 코딩 에이전트를,<br/>하나의 <em>조용한</em> 콘솔에서.</span>
+        </h1>
+        <p class="lede" lang="en">Hand work to Commodores, let their Commanders and members carry it out on every frontier model, and stay in charge from the desktop or your phone.</p>
+        <p class="lede" lang="ko">일은 사령관에게 맡기고, 지휘관과 구성원이 어떤 프런티어 모델로든 해내게 하고, 데스크톱이든 폰이든 지휘는 내 손에 두세요.</p>
 
-          <div class="install" role="group" aria-label="Install">
-            <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz</code><button class="copy" type="button" data-copy="npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
-            <div class="install-row"><span class="p" aria-hidden="true">$</span><code>fleet console</code><button class="copy" type="button" data-copy="fleet console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
-          </div>
-          <p class="req" lang="en">Needs Node.js 20.19+ and Claude Code, installed and signed in.</p>
-          <p class="req" lang="ko">Node.js 20.19 이상, 그리고 설치와 로그인을 마친 Claude Code가 필요합니다.</p>
-          <p class="req" lang="en">Running <code>fleet</code> on its own opens Claude Code in your terminal, routed through the same AI Gateway.</p>
-          <p class="req" lang="ko">인자 없이 <code>fleet</code>만 실행하면 같은 AI Gateway를 거치는 Claude Code가 터미널에서 바로 열립니다.</p>
-          <p class="req" lang="en">Update from the Console or with <code>fleet update</code>. <code>npm update -g</code> rolls Fleet back to the old version left on npm.</p>
-          <p class="req" lang="ko">업데이트는 Console 화면이나 <code>fleet update</code>로 하세요. <code>npm update -g</code>는 npm에 남은 옛 버전으로 되돌립니다.</p>
-
-          <div class="cta">
-            <a class="btn btn-solid" href="https://github.com/sbluemin/fleet-harness"><span lang="en">View on GitHub</span><span lang="ko">GitHub에서 보기</span> <span class="arr" aria-hidden="true">→</span></a>
-            <a class="btn btn-line" href="https://github.com/sbluemin/fleet-harness/releases/latest"><span lang="en">Get the desktop app</span><span lang="ko">데스크톱 앱 받기</span></a>
-          </div>
+        <div class="install" role="group" aria-label="Install">
+          <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz</code><button class="copy" type="button" data-copy="npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
+          <div class="install-row"><span class="p" aria-hidden="true">$</span><code>fleet console</code><button class="copy" type="button" data-copy="fleet console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
         </div>
+        <p class="req" lang="en">Needs Node.js 20.19+ and Claude Code, installed and signed in. Update from the Console or with <code>fleet update</code>.</p>
+        <p class="req" lang="ko">Node.js 20.19 이상, 그리고 설치와 로그인을 마친 Claude Code가 필요합니다. 업데이트는 Console 화면이나 <code>fleet update</code>로 하세요.</p>
 
-        <!-- Signature: the status view, in miniature -->
-        <div class="watch rv" aria-label="Example status view" role="img">
-          <div class="watch-head"><span class="th">FH</span>fleet-harness<span class="n" id="watch-count">5 conversations</span></div>
-          <div class="watch-list" id="watch">
-            <div class="op" data-id="a" data-s="wait"><span class="dot"></span><span class="t"><b>AI Gateway request path</b><small>Claude Fable · chat</small></span><span class="s"></span></div>
-            <div class="op" data-id="b" data-s="work"><span class="dot"></span><span class="t"><b>Release notes</b><small>Codex GPT-6.1 Sol · chat</small></span><span class="s"></span></div>
-            <div class="op" data-id="c" data-s="work"><span class="dot"></span><span class="t"><b>Docs audit</b><small>Claude Opus · 2 members</small></span><span class="s"></span></div>
-            <div class="op" data-id="d" data-s="idle"><span class="dot"></span><span class="t"><b>Lint sweep</b><small>Grok 4.7 · terminal</small></span><span class="s"></span></div>
-            <div class="op" data-id="e" data-s="idle"><span class="dot"></span><span class="t"><b>Repository tour</b><small>Claude Opus · chat</small></span><span class="s"></span></div>
-          </div>
-          <div class="watch-foot"><span class="kbd">Alt</span><span class="kbd">S</span><span lang="en">Sort the sidebar by status: waiting first.</span><span lang="ko">사이드바를 상태별로 묶습니다. 기다리는 세션이 맨 위에.</span></div>
+        <div class="cta">
+          <a class="btn btn-solid" href="https://github.com/sbluemin/fleet-harness"><span lang="en">View on GitHub</span><span lang="ko">GitHub에서 보기</span> <span class="arr" aria-hidden="true">→</span></a>
+          <a class="btn btn-line" href="https://github.com/sbluemin/fleet-harness/releases/latest"><span lang="en">Get the desktop app</span><span lang="ko">데스크톱 앱 받기</span></a>
         </div>
       </div>
 
-      <figure class="hero-shot rv" style="margin-left:0;margin-right:0">
+      <figure class="hero-shot rv">
         <div class="frame">
-          <img src="assets/console-conversation.webp" width="2400" height="1500"
-               alt="Fleet Console in its three-column layout: four conversations in the sidebar, a Repository tour chat in the middle, and the Files tool in the details column"
-               data-alt-ko="세 열 배치의 Fleet Console. 사이드바에 대화 네 개, 가운데에 Repository tour 대화, 오른쪽 세부 열에 파일 도구" />
+          <img src="assets/commodore.webp" width="2000" height="1250"
+               alt="Fleet Console Desktop: the Commodore Atlas opens an objective from a one-line request, approves its criteria and commences it"
+               data-alt-ko="Fleet Console 데스크톱: 사령관 Atlas가 한 줄 요청으로 목표를 열고 달성 기준을 승인한 뒤 개시한다" />
         </div>
         <figcaption>
-          <span lang="en">One Theater, four conversations on different models. The Repository tour is open in the middle, with Files beside it. Captured from a demo session on a copy of this repository.</span>
-          <span lang="ko">Theater 하나, 모델이 다른 대화 넷. 가운데에는 저장소 안내 대화가, 그 옆에는 파일 도구가 열려 있습니다. 이 저장소의 사본에서 시연용 세션으로 캡처했습니다.</span>
+          <span lang="en">Captured from an isolated demo Console with sample data.</span>
+          <span lang="ko">예시 데이터를 넣은 격리된 데모 Console에서 찍었습니다.</span>
         </figcaption>
       </figure>
-
-      <dl class="terms rv">
-        <div class="term">
-          <dt>Theater</dt>
-          <dd lang="en"><b>A project folder on one commodore's own list.</b> Each commodore adds and removes its own Theaters, and there is no Console-wide list; the same folder can be on several commodores' lists. A new session runs in a Theater from its commodore's list.</dd>
-          <dd lang="ko"><b>사령관마다 따로 갖는 목록 속 프로젝트 폴더.</b> 사령관이 자기 Theater를 직접 더하고 빼며, 콘솔 전체에 공통된 목록은 없습니다. 같은 폴더가 여러 사령관의 목록에 있을 수도 있습니다. 새 세션은 그 사령관 목록에 있는 Theater에서 실행됩니다.</dd>
-        </div>
-        <div class="term">
-          <dt><span lang="en">Conversation</span><span lang="ko">대화</span></dt>
-          <dd lang="en"><b>A Claude Code session the server owns.</b> Close the tab, reload, or switch devices, and it keeps running. It reads as chat and reopens as a full terminal.</dd>
-          <dd lang="ko"><b>서버가 소유하는 Claude Code 세션.</b> 탭을 닫든 기기를 바꾸든 계속 돕니다. 기본은 채팅으로 보이고, 전체 터미널로 다시 열 수도 있습니다.</dd>
-        </div>
-        <div class="term">
-          <dt>Objective</dt>
-          <dd lang="en"><b>Work you hand off whole.</b> The Commander leading the conversation plans it, works it with member sessions, and hands it back for review.</dd>
-          <dd lang="ko"><b>통째로 맡기는 일.</b> 대화를 이끄는 지휘관이 계획하고 구성원과 함께 수행한 뒤, 검토받으러 돌려줍니다.</dd>
-        </div>
-      </dl>
     </div>
   </section>
 
-  <!-- Models -->
+  <!-- 1. Commodore -->
+  <section class="sec feature" id="commodore">
+    <div class="shell rv">
+      <span class="kicker"><b>01</b><span lang="en">Commodore</span><span lang="ko">사령관</span></span>
+      <h2 class="h2"><span lang="en">Commodores <em>run the work.</em></span><span lang="ko">일은 <em>사령관이 굴립니다.</em></span></h2>
+      <p class="body" lang="en">A Commodore is a standing coordinator you create, with its own project folders (Theaters), memory and routines. Tell it what you need; it opens objectives, reviews their plans, approves criteria, commences them, and brings you only the decisions it should not make.</p>
+      <p class="body" lang="ko">사령관은 내가 만드는 상설 조정자로, 자기 프로젝트 폴더(Theater)와 기억, 루틴을 가집니다. 필요한 일을 말하면 목표를 열고, 계획을 검토하고, 달성 기준을 승인하고, 개시합니다. 사령관이 정하면 안 되는 결정만 나에게 가져옵니다.</p>
+    </div>
+  </section>
+
+  <!-- 2. Objectives -->
+  <section class="sec feature" id="objectives">
+    <div class="shell rv">
+      <span class="kicker"><b>02</b><span lang="en">Objectives</span><span lang="ko">목표</span></span>
+      <h2 class="h2"><span lang="en">Objectives finish <em>without babysitting.</em></span><span lang="ko">목표는 지켜보지 않아도 <em>끝까지 갑니다.</em></span></h2>
+      <p class="body" lang="en">Each objective has a Commander that lays out missions, proposes success criteria and delegates to members, each on its own model and effort. Work moves from plan to approval to commencement, and comes back with a retrospective.</p>
+      <p class="body" lang="ko">목표마다 지휘관이 미션을 짜고 달성 기준을 제안하며, 구성원에게 일을 나눠 줍니다. 구성원은 저마다 모델과 강도가 다릅니다. 일은 계획에서 승인과 개시를 거쳐, 회고와 함께 돌아옵니다.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="assets/objective.webp" width="2000" height="1250" loading="lazy"
+               alt="An objective's missions: the Commander on Opus, an implementer on Sonnet and a reviewer on Fable, with four missions in a line and the first one done"
+               data-alt-ko="목표의 미션: Opus 지휘관, Sonnet 구현 담당, Fable 리뷰 담당과 한 줄로 이어진 미션 넷. 첫 미션은 끝났다" />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 3. TaskForce -->
+  <section class="sec feature" id="taskforce">
+    <div class="shell rv">
+      <span class="kicker"><b>03</b><span lang="en">TaskForce</span><span lang="ko">태스크포스</span></span>
+      <h2 class="h2"><span lang="en">Commodores <em>decide together.</em></span><span lang="ko">사령관들이 <em>함께 정합니다.</em></span></h2>
+      <p class="body" lang="en">Put several Commodores in one room. Each answers from its own Theaters, you steer, and the conclusion becomes objectives right there.</p>
+      <p class="body" lang="ko">여러 사령관을 한 방에 모으면, 저마다 자기 Theater를 바탕으로 의견을 내고 나는 방향을 잡습니다. 결론은 그 자리에서 목표가 됩니다.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="assets/taskforce.webp" width="2000" height="1250" loading="lazy"
+               alt="A TaskForce named Release 0.5: Atlas, Vega and Orion each weigh in, the person agrees, and Vega opens a docs objective from the discussion"
+               data-alt-ko="Release 0.5 태스크포스: Atlas, Vega, Orion이 차례로 의견을 내고, 사람이 동의하자 Vega가 토론에서 문서 목표를 연다" />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 4–5. Models and browser -->
   <section class="sec" id="models">
-    <div class="shell">
-      <div class="sec-head rv">
-        <span class="kicker">AI Gateway</span>
-        <h2 class="h2"><span lang="en">Every frontier model, <em>behind one model menu.</em></span><span lang="ko">모델 메뉴 하나 뒤의 <em>모든 프런티어 모델.</em></span></h2>
-        <p lang="en">The gateway is a local Claude Code endpoint, not an API proxy. Claude Code keeps its native agent loop and tools. Other vendors' credentials stay inside the Console and never enter the agent process, and Fleet reuses the sign-in you already have in each vendor's own CLI.</p>
-        <p lang="ko">게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트입니다. Claude Code는 원래의 에이전트 루프와 도구를 그대로 쓰고, 다른 공급자의 자격증명은 콘솔 안에만 머물 뿐 에이전트 프로세스에는 들어가지 않습니다. 로그인은 각 공급자 CLI에 이미 해 둔 것을 그대로 씁니다.</p>
+    <div class="shell pair rv">
+      <div class="card">
+        <span class="kicker"><b>04</b>AI Gateway</span>
+        <h2 class="h2"><span lang="en">Every frontier model, <em>behind Claude Code.</em></span><span lang="ko">어떤 프런티어 모델이든 <em>Claude Code 그대로.</em></span></h2>
+        <p class="body" lang="en">Claude Code's own agent loop runs on Codex, Gemini (Antigravity), Grok (xAI) and Muse Code models with the subscriptions you already have. Their credentials stay in the Console. Commodores and Commanders pick from the models you turned on, ordered by remaining quota.</p>
+        <p class="body" lang="ko">Claude Code 고유의 에이전트 루프를 Codex, Gemini(Antigravity), Grok(xAI), Muse Code 모델로 돌립니다. 이미 가진 구독을 그대로 쓰고, 자격 증명은 Console 안에 머뭅니다. 사령관과 지휘관은 내가 켜 둔 모델 가운데 남은 쿼터가 많은 순으로 고릅니다.</p>
       </div>
-
-      <div class="split">
-        <div class="rv">
-          <div class="providers">
-            <div class="prov"><h3>Claude<span class="how"><span lang="en">Claude Code sign-in</span><span lang="ko">Claude Code 로그인</span></span></h3><p lang="en">Fable, Opus, Sonnet, and Haiku, at whatever version your installed Claude Code ships.</p><p lang="ko">Fable·Opus·Sonnet·Haiku. 버전은 설치된 Claude Code를 그대로 따릅니다.</p></div>
-            <div class="prov"><h3>Codex<span class="how"><span lang="en">ChatGPT subscription</span><span lang="ko">ChatGPT 구독</span></span></h3><p lang="en">GPT-6.1 Sol · GPT-6 Astra · GPT-6 Luna · GPT-6.1 Terra. Each model has one identity, a 500,000-token context window, and an optional priority speed setting.</p><p lang="ko">GPT-6.1 Sol · GPT-6 Astra · GPT-6 Luna · GPT-6.1 Terra. 모델마다 단일 식별자와 500,000토큰 컨텍스트 창을 쓰며, 우선 처리 속도를 선택할 수 있습니다.</p></div>
-            <div class="prov"><h3>Antigravity<span class="how"><span lang="en">Google subscription</span><span lang="ko">Google 구독</span></span></h3><p>Gemini 3.8 Flash · Gemini 4 Argon</p></div>
-            <div class="prov"><h3>xAI<span class="how"><span lang="en">Grok subscription</span><span lang="ko">Grok 구독</span></span></h3><p>Grok 4.7 · Grok Composer 2.5</p></div>
-            <div class="prov"><h3>Muse Code<span class="how"><span lang="en">Muse Code subscription</span><span lang="ko">Muse Code 구독</span></span></h3><p>Muse Spark 1.3 · Muse Spark 1.3 Contributor</p></div>
-          </div>
-          <div class="notes">
-            <div class="note">
-              <h3><span lang="en">Reasoning ladder</span><span lang="ko">추론 강도 사다리</span></h3>
-              <p lang="en">Each model carries its own reasoning ladder, from low through max where supported.</p>
-              <p lang="ko">모델마다 지원하는 추론 강도 단계(low부터 max까지)를 선택할 수 있습니다.</p>
-            </div>
-            <div class="note">
-              <h3><span lang="en">Routing and usage limits</span><span lang="ko">라우팅과 사용 한도</span></h3>
-              <p lang="en">With AI Gateway routing on, subagents and workflow stages are assigned to gateway models, and providers whose usage window is nearly spent are skipped. The usage meters at the top right use the same measure, so you see a window running hot before it stops a run.</p>
-              <p lang="ko">AI Gateway routing을 켜면 서브에이전트와 워크플로 단계마다 게이트웨이 모델이 배정되고, 한도를 거의 다 쓴 공급자는 건너뜁니다. 오른쪽 위의 사용량 미터도 같은 기준으로 판단하므로, 실행이 멈추기 전에 한도가 빠르게 차는 것을 알아챌 수 있습니다.</p>
-            </div>
-          </div>
-        </div>
-        <figure class="menu-fig rv" style="margin:0">
-          <div class="frame">
-            <img src="assets/console-launch-menu.webp" width="538" height="849" loading="lazy"
-                 alt="The new session screen with its model menu open: Claude's Fable, Opus and Sonnet, then Codex GPT-6.1-Sol and xAI Grok-4.7"
-                 data-alt-ko="모델 메뉴가 열린 새 세션 화면: Claude의 Fable, Opus, Sonnet 아래로 Codex GPT-6.1-Sol, xAI Grok-4.7" />
-          </div>
-          <figcaption>
-            <span lang="en">Open it from the model chip on the new session screen (the <b>+</b> at the top of the sidebar) or <span class="kbd">⌘</span><span class="kbd">J</span>. Claude's models come first, then every gateway model you've enabled under Settings → AI Gateway. The same list appears in Claude Code's <code>/model</code> picker.</span>
-            <span lang="ko">새 세션 화면(사이드바 맨 위의 <b>+</b>)의 모델 칩이나 <span class="kbd">⌘</span><span class="kbd">J</span>로 엽니다. Claude의 모델이 먼저 오고, Settings → AI Gateway에서 켠 게이트웨이 모델이 뒤따릅니다. Claude Code의 <code>/model</code> 선택기에도 같은 목록이 나옵니다.</span>
-          </figcaption>
-        </figure>
+      <div class="card">
+        <span class="kicker"><b>05</b><span lang="en">Fleet Browser</span><span lang="ko">플릿 브라우저</span></span>
+        <h2 class="h2"><span lang="en">A browser you <em>share with agents.</em></span><span lang="ko">에이전트와 <em>함께 쓰는 브라우저.</em></span></h2>
+        <p class="body" lang="en">In the desktop app, Fleet Browser opens beside the conversation or in its own window. Agents work in their own spaces on the same tabs and sign-ins, and you can annotate a page to hand it to them.</p>
+        <p class="body" lang="ko">데스크톱 앱에서 플릿 브라우저는 대화 옆이나 별도 창에 열립니다. 에이전트는 같은 탭과 로그인을 쓰되 자기 공간에서 일하고, 나는 페이지에 주석을 달아 에이전트에게 넘길 수 있습니다.</p>
       </div>
     </div>
   </section>
 
-  <!-- Objectives -->
-  <section class="sec" id="objectives">
-    <div class="shell">
-      <div class="sec-head rv">
-        <span class="kicker"><span lang="en">Objectives</span><span lang="ko">목표</span></span>
-        <h2 class="h2"><span lang="en">Hand off work that takes <em>more than one turn.</em></span><span lang="ko">한 턴으로 끝나지 않는 일은 <em>목표로.</em></span></h2>
-        <p lang="en">Every conversation is led by a Commander. You can simply talk to it, or turn the request into an objective: work you hand off whole. The Commander and its members share one group conversation, where you can @mention a member, stop the work, or answer the decisions they ask you to make.</p>
-        <p lang="ko">모든 대화는 지휘관이 이끕니다. 그냥 말을 걸어도 되고, 요청을 통째로 맡기는 일인 목표로 바꿀 수도 있습니다. 지휘관과 구성원은 그룹 대화 하나를 함께 쓰며, 여기서 구성원을 @로 부르거나 일을 멈추거나 그들이 묻는 결정에 답합니다.</p>
+  <!-- 6. Anywhere -->
+  <section class="sec feature" id="anywhere">
+    <div class="shell anywhere rv">
+      <div>
+        <span class="kicker"><b>06</b><span lang="en">Any screen</span><span lang="ko">어느 화면에서나</span></span>
+        <h2 class="h2"><span lang="en">Sessions live on your machine, <em>not in the tab.</em></span><span lang="ko">세션은 탭이 아니라 <em>내 머신에 삽니다.</em></span></h2>
+        <p class="body" lang="en">Close the page, restart the browser, or switch devices; the work keeps running.</p>
+        <p class="body" lang="ko">페이지를 닫든, 브라우저를 다시 열든, 기기를 바꾸든 일은 계속됩니다.</p>
+        <ul class="facts">
+          <li lang="en">Desktop app for macOS and Windows.</li>
+          <li lang="ko">macOS·Windows 데스크톱 앱.</li>
+          <li lang="en">Remote access pairs a phone or another computer with one-use links that expire in 15 minutes.</li>
+          <li lang="ko">원격 접속은 15분 뒤 만료되는 일회용 링크로 폰이나 다른 컴퓨터를 페어링합니다.</li>
+          <li lang="en">Android and iOS apps in tester distribution.</li>
+          <li lang="ko">Android·iOS 앱은 테스터 배포 중입니다.</li>
+          <li lang="en">Loopback only until you turn on remote access; everything stays under <code>~/.fleet</code>.</li>
+          <li lang="ko">원격 접속을 켜기 전까지는 루프백에서만 듣고, 모든 것이 <code>~/.fleet</code> 아래에 남습니다.</li>
+        </ul>
       </div>
-      <ol class="steps rv">
-        <li class="step"><h3><span lang="en">Plan</span><span lang="ko">계획</span></h3><p lang="en">Write what you want and press Plan. The Commander lays out missions, prerequisites, and member sessions, and proposes success criteria. Nothing runs yet.</p><p lang="ko">원하는 일을 적고 구상을 누릅니다. 지휘관이 미션과 선행 조건, 구성원 세션을 짜고 달성 기준을 제안합니다. 아직 아무것도 실행되지 않습니다.</p></li>
-        <li class="step"><h3><span lang="en">Approve</span><span lang="ko">승인</span></h3><p lang="en">Approve, reject, or annotate each proposed criterion, and add your own.</p><p lang="ko">제안된 기준을 하나씩 승인하거나 거절하거나 주석을 달고, 내 기준을 더할 수도 있습니다.</p></li>
-        <li class="step"><h3><span lang="en">Commence</span><span lang="ko">개시</span></h3><p lang="en">The Commander works the missions itself or passes them to members, each with its own role, model, and effort.</p><p lang="ko">지휘관이 미션을 직접 수행하거나 구성원에게 넘깁니다. 구성원은 저마다 역할과 모델, 강도가 다릅니다.</p></li>
-        <li class="step"><h3><span lang="en">Hand-off</span><span lang="ko">인계</span></h3><p lang="en">The objective comes back with a retrospective. Review and complete it; follow-up candidates can become new objectives.</p><p lang="ko">목표가 회고와 함께 돌아옵니다. 검토해서 완료하고, 후속 후보는 새 목표로 이어 갈 수 있습니다.</p></li>
-      </ol>
-      <p class="fine rv" lang="en">An objective's brief, criteria, members, mission graph, and results sit in the details column beside its conversation. You can also answer decisions, commence, and complete objectives from your phone.</p>
-      <p class="fine rv" lang="ko">목표의 브리프와 기준, 구성원, 미션 그래프, 결과는 대화 옆 세부 열에 있습니다. 결정에 답하고 개시하고 완료하는 일은 폰에서도 할 수 있습니다.</p>
-      <figure class="wide-shot rv" style="margin-left:0;margin-right:0">
+      <figure>
         <div class="frame">
-          <img src="assets/console-objectives.webp" width="2400" height="1500" loading="lazy"
-               alt="An objective in planning: the Commander's reply and two members joining in the group conversation, with the brief and two proposed success criteria awaiting approval in the details column"
-               data-alt-ko="계획 중인 목표: 그룹 대화에 지휘관의 답과 합류한 구성원 둘, 오른쪽 세부 열에 브리프와 승인을 기다리는 달성 기준 제안 둘" />
+          <img src="assets/mobile.webp" width="780" height="1688" loading="lazy"
+               alt="Fleet on a phone: the Commodore Atlas reporting that it approved the criteria and commenced the objective"
+               data-alt-ko="폰의 Fleet: 사령관 Atlas가 달성 기준을 승인하고 목표를 개시했다고 알린다" />
         </div>
-        <figcaption>
-          <span lang="en">An objective in planning. The docs-auditor and fix-writer members have joined the group conversation, and Commence stays locked until you approve or reject the two proposed criteria in the details column. Toggle Objectives with <span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">Y</span>.</span>
-          <span lang="ko">계획 중인 목표. docs-auditor와 fix-writer 구성원이 그룹 대화에 합류했고, 세부 열에 제안된 기준 둘을 승인하거나 거절할 때까지 개시는 잠겨 있습니다. 목표는 <span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">Y</span>로 여닫습니다.</span>
-        </figcaption>
       </figure>
-    </div>
-  </section>
-
-  <!-- Commodore -->
-  <section class="sec" id="commodore">
-    <div class="shell">
-      <div class="sec-head rv">
-        <span class="kicker"><span lang="en">Commodore</span><span lang="ko">사령관</span></span>
-        <h2 class="h2"><span lang="en">Let a Commodore <em>run your objectives.</em></span><span lang="ko">목표는 <em>사령관에게.</em></span></h2>
-        <p lang="en">A Commodore is a coordinator you create. It keeps its own list of Theaters and can run its objectives across them on its own. Events wake the Commodore automatically. Ask it to register <b>Routines</b> for scheduled work.</p>
-        <p lang="ko">사령관은 내가 만드는 조정자입니다. 자기 Theater 목록을 따로 갖고, 그 Theater들에서 자기 목표를 스스로 굴립니다. 사건이 사령관을 자동으로 깨웁니다. 정해진 일정의 일은 <b>루틴</b>으로 등록해 달라고 요청하세요.</p>
-      </div>
-      <div class="principles rv">
-        <div class="principle"><h3><span lang="en">Runs the objectives</span><span lang="ko">목표를 굴립니다</span></h3><p lang="en">It creates objectives from a title and brief, leaves the plan to each Commander, commences and reviews them, and answers Commanders' questions.</p><p lang="ko">제목과 브리프로 목표를 만들고, 계획은 각 지휘관에게 맡기고, 목표를 개시하고 검토하며, 지휘관의 질문에 답합니다.</p></div>
-        <div class="principle"><h3><span lang="en">Your decisions stay yours</span><span lang="ko">내 결정은 나에게</span></h3><p lang="en">Decisions it should not make wait for you under Your decisions, and it can ask you directly.</p><p lang="ko">사령관이 정하지 말아야 할 결정은 내 결정 아래에서 나를 기다리고, 사령관이 나에게 직접 묻기도 합니다.</p></div>
-        <div class="principle"><h3><span lang="en">Its own Theaters</span><span lang="ko">자기 Theater 목록</span></h3><p lang="en">Choose <b>Theaters…</b> from a Commodore's menu in the sidebar to open its Log, Tasks, Info, and Settings. Info holds the Commodore's description, intel, and memory. Settings starts with that Commodore's own Theaters: <b>Add Theater</b> and <b>Remove</b> change only its list.</p><p lang="ko">사이드바에서 사령관 메뉴의 <b>Theater…</b>를 고르면 그 사령관의 기록·작업·정보·설정이 열립니다. 정보에는 그 사령관의 설명·정보·기억이 있습니다. 설정 맨 위에는 그 사령관의 Theater가 있고, <b>Theater 추가</b>와 <b>제거</b>는 그 사령관의 목록만 바꿉니다.</p></div>
-      </div>
-      <p class="fine rv" lang="en">You can hand a single objective to the Commodore from its sidebar row, and you can message a Commodore from a new session with <code>@</code>.</p>
-      <p class="fine rv" lang="ko">목표 하나만 사이드바 행에서 사령관에게 넘길 수 있고, 새 세션에서 <code>@</code>로 사령관에게 말을 걸 수 있습니다.</p>
-    </div>
-  </section>
-
-  <!-- Conversation -->
-  <section class="sec" id="conversation">
-    <div class="shell">
-      <div class="sec-head rv">
-        <span class="kicker"><span lang="en">Conversation</span><span lang="ko">대화</span></span>
-        <h2 class="h2"><span lang="en">One conversation <em>at a time.</em></span><span lang="ko">한 번에 <em>대화 하나.</em></span></h2>
-        <p lang="en">The desktop screen is a conversation. The sidebar groups conversations by commodore, the middle holds the one you're in, and the details column on the right shows that conversation's objective or the tool you opened. <span class="kbd">Alt</span><span class="kbd">←</span> and <span class="kbd">Alt</span><span class="kbd">→</span> step through the conversations in the sidebar.</p>
-        <p lang="ko">데스크톱 화면은 대화입니다. 사이드바에 사령관마다 대화가 묶여 늘어서고, 가운데는 지금 보고 있는 대화이며, 오른쪽 세부 열은 그 대화의 목표나 내가 연 도구를 보여 줍니다. <span class="kbd">Alt</span><span class="kbd">←</span>와 <span class="kbd">Alt</span><span class="kbd">→</span>로 사이드바의 대화를 차례로 오갑니다.</p>
-        <p lang="en">A session that has ended, for example after the Console restarts, comes back with Resume. Every session has an avatar that acts out what it is doing, and you can pick another character or color for it.</p>
-        <p lang="ko">Console이 다시 시작된 뒤처럼 끝난 세션은 재개로 되살립니다. 세션마다 하는 일을 몸짓으로 보여 주는 아바타가 있고, 캐릭터와 색을 바꿀 수 있습니다.</p>
-      </div>
-      <div class="quick rv">
-        <span><span class="kbd">⌘</span><span class="kbd">K</span><span lang="en">Go to any conversation or file</span><span lang="ko">대화·파일로 이동</span></span>
-        <span><span class="kbd">⌘</span><span class="kbd">P</span><span lang="en">Command palette</span><span lang="ko">명령 팔레트</span></span>
-        <span><span class="kbd">⌘</span><span class="kbd">J</span><span lang="en">New session</span><span lang="ko">새 세션</span></span>
-        <span><span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">Y</span><span lang="en">Toggle Objectives</span><span lang="ko">목표 여닫기</span></span>
-        <span><span class="kbd">Alt</span><span class="kbd">S</span><span lang="en">Sort the sidebar by status</span><span lang="ko">사이드바를 상태별로 묶기</span></span>
-        <span><span class="kbd">⌘</span><span class="kbd">Z</span><span lang="en">Reopen a closed panel</span><span lang="ko">닫은 패널 되살리기</span></span>
-      </div>
-      <p class="fine rv" lang="en">Every shortcut can be rebound. On Windows and Linux, ⌘ is Ctrl.</p>
-      <p class="fine rv" lang="ko">모든 단축키는 다시 지정할 수 있습니다. Windows와 Linux에서는 ⌘ 대신 Ctrl입니다.</p>
-    </div>
-  </section>
-
-  <!-- Tools -->
-  <section class="sec" id="tools">
-    <div class="shell">
-      <div class="sec-head rv">
-        <span class="kicker"><span lang="en">Tools</span><span lang="ko">도구</span></span>
-        <h2 class="h2"><span lang="en">The project, <em>beside the conversation.</em></span><span lang="ko">대화 옆에 <em>펼쳐지는 프로젝트.</em></span></h2>
-        <p lang="en">A tool bar above every conversation opens tools in the context of that conversation's commodore.</p>
-        <p lang="ko">대화마다 위에 놓인 도구 막대가 그 대화를 가진 사령관의 맥락에서 도구를 엽니다.</p>
-      </div>
-      <figure class="wide-shot rv" style="margin-left:0;margin-right:0">
-        <div class="frame">
-          <img src="assets/console-repository.webp" width="2400" height="1500" loading="lazy"
-               alt="The Repository tool: worktrees, branches, remotes, tags and stashes beside a commit graph of this repository"
-               data-alt-ko="저장소 도구: 이 저장소의 커밋 그래프 옆에 워크트리·브랜치·원격·태그·스태시" />
-        </div>
-        <figcaption><span lang="en">Repository, opened from the tool bar or with <span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">E</span>; <b>Conversation</b> takes you back. This is this repository's own history.</span><span lang="ko">도구 막대나 <span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">E</span>로 연 저장소 도구. <b>대화</b>를 누르면 대화로 돌아갑니다. 이 저장소의 실제 히스토리입니다.</span></figcaption>
-      </figure>
-      <div class="split">
-        <div class="tools rv">
-          <div class="tool"><h3><span lang="en">Repository</span><span lang="ko">저장소</span></h3><p lang="en">History, changes, compare, worktrees, branches, tags, stashes.</p><p lang="ko">히스토리, 변경 사항, 비교, 워크트리, 브랜치, 태그, 스태시.</p></div>
-          <div class="tool"><h3><span lang="en">Files</span><span lang="ko">파일</span></h3><p lang="en">A tree with quick peek, pinned folders, and git tints.</p><p lang="ko">빠른 미리보기, 고정 폴더, git 상태 색을 갖춘 트리.</p></div>
-          <div class="tool"><h3>Shell <span class="kbd">Ctrl</span><span class="kbd">`</span></h3><p lang="en">One terminal for the whole Console, a keystroke away.</p><p lang="ko">콘솔 전체가 함께 쓰는 터미널 하나, 키 한 번이면 열립니다.</p></div>
-          <div class="tool"><h3><span lang="en">Usage meters</span><span lang="ko">사용량 미터</span></h3><p lang="en">Provider quotas stay in view at the top right; click them for the details.</p><p lang="ko">공급자 한도는 오른쪽 위에 늘 보이고, 누르면 자세히 볼 수 있습니다.</p></div>
-        </div>
-        <div class="rv">
-          <div class="companions">
-            <div class="companion"><h3><span lang="en">Fleet Browser</span><span lang="ko">플릿 브라우저</span> <span class="kbd">Alt</span><span class="kbd">B</span> <span class="only"><span lang="en">DESKTOP</span><span lang="ko">데스크톱</span></span></h3><p lang="en">A browser the agent drives on the same tabs you see. Annotate a page for it.</p><p lang="ko">내가 보는 탭을 에이전트가 그대로 조작하는 브라우저. 페이지에 주석을 달아 넘길 수 있습니다.</p></div>
-            <div class="companion"><h3>Computer Use</h3><p lang="en">Computer Use, for Mac apps, is granted per objective and approved in its panel.</p><p lang="ko">Computer Use는 Mac 앱까지이며, 목표마다 허용하고 그 패널에서 승인합니다.</p></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Anywhere -->
-  <section class="sec" id="anywhere">
-    <div class="shell">
-      <div class="sec-head rv">
-        <span class="kicker"><span lang="en">Anywhere</span><span lang="ko">어디서든</span></span>
-        <h2 class="h2"><span lang="en">When the server owns the session, <em>the screen is a choice.</em></span><span lang="ko">서버가 세션을 소유하면, <em>화면은 고르는 것이 됩니다.</em></span></h2>
-      </div>
-      <div class="three rv">
-        <div>
-          <h3><span lang="en">Desktop</span><span lang="ko">데스크톱</span></h3>
-          <p lang="en">A thin native shell for macOS, Windows, and Linux. It manages its own Console runtime, updates itself on macOS and Windows, and hosts the Fleet Browser.</p>
-          <p lang="ko">macOS·Windows·Linux용 얇은 네이티브 셸. 콘솔 런타임을 스스로 관리하고, macOS와 Windows에서는 스스로 업데이트하며, 플릿 브라우저를 품습니다.</p>
-          <ul><li><a href="https://github.com/sbluemin/fleet-harness/releases/latest"><span lang="en">Latest release</span><span lang="ko">최신 릴리스</span></a></li></ul>
-        </div>
-        <div>
-          <h3><span lang="en">Remote access</span><span lang="ko">원격 접속</span></h3>
-          <p lang="en">Off until you set it up on the Remote access page in Settings. Once on, the Console opens only to devices you pair.</p>
-          <p lang="ko">설정의 원격 접속 페이지에서 직접 설정하기 전까지 꺼져 있고, 켜더라도 페어링한 기기에만 열립니다.</p>
-          <ul lang="en">
-            <li>Access links work once and expire after 15 minutes.</li>
-            <li>Every link is pinned to the Console's certificate.</li>
-            <li>One device controls at a time; the others watch behind a clear curtain.</li>
-            <li>Monitoring-only links let a screen watch without typing.</li>
-            <li>Public reach is a separate opt-in.</li>
-          </ul>
-          <ul lang="ko">
-            <li>접속 링크는 한 번만 쓸 수 있고 15분이 지나면 만료됩니다.</li>
-            <li>모든 링크는 콘솔의 인증서에 고정됩니다.</li>
-            <li>한 번에 한 기기만 조작하고, 나머지는 분명히 표시된 커튼 뒤에서 지켜봅니다.</li>
-            <li>입력 없이 지켜보기만 하는 모니터링 전용 링크도 만들 수 있습니다.</li>
-            <li>공인 인터넷 접속은 따로 한 번 더 켭니다.</li>
-          </ul>
-        </div>
-        <div>
-          <h3><span lang="en">Mobile</span><span lang="ko">모바일</span> <span class="tag"><span lang="en">TESTERS</span><span lang="ko">테스터</span></span></h3>
-          <p lang="en">The conversations you left on your desk are on your phone too: pick a Commodore at the top, and its conversations are listed under it. Open an objective's board from its conversation to approve criteria, answer decisions, and commence or complete work. Android and iOS apps are in tester distribution.</p>
-          <p lang="ko">책상에 두고 온 대화가 폰에도 그대로 있고, 맨 위에서 사령관을 고르면 그 사령관의 대화가 그 아래에 늘어섭니다. 대화에서 목표 보드를 열어 기준을 승인하고 결정에 답하고 일을 개시하거나 완료합니다. Android와 iOS 앱은 테스터 배포 중입니다.</p>
-          <ul><li><a href="https://github.com/sbluemin/fleet-harness/tree/canary/runtime/fleet-mobile"><span lang="en">Source in runtime/fleet-mobile</span><span lang="ko">소스: runtime/fleet-mobile</span></a></li></ul>
-        </div>
-      </div>
-      <figure class="wide-shot rv" style="margin-left:0;margin-right:0">
-        <div class="frame">
-          <img src="assets/mobile.webp" width="1560" height="1120" loading="lazy"
-               alt="Fleet on a phone: the conversation list under its Commodore, a chat, and an objective with criteria awaiting approval"
-               data-alt-ko="폰의 Fleet: 사령관이 맨 위에 있는 대화 목록, 채팅, 달성 기준 승인을 기다리는 목표" />
-        </div>
-        <figcaption><span lang="en">On the phone: a Commodore's conversations listed under it, a chat, and an objective's board with two proposed criteria to approve.</span><span lang="ko">폰에서: 사령관 아래 늘어선 그 사령관의 대화, 채팅, 그리고 승인할 기준 제안 둘이 있는 목표 보드.</span></figcaption>
-      </figure>
-    </div>
-  </section>
-
-  <!-- Local -->
-  <section class="sec" id="local">
-    <div class="shell">
-      <div class="sec-head rv">
-        <span class="kicker"><span lang="en">Local by default</span><span lang="ko">기본은 로컬</span></span>
-        <h2 class="h2"><span lang="en">Everything runs <em>on your machine.</em></span><span lang="ko">모든 것이 <em>내 머신에서.</em></span></h2>
-      </div>
-      <div class="principles rv">
-        <div class="principle"><h3><span lang="en">Loopback first</span><span lang="ko">루프백이 먼저</span></h3><p lang="en">The server binds to loopback. Nothing is reachable from other machines until you turn on remote access.</p><p lang="ko">서버는 루프백에만 바인딩됩니다. 원격 접속을 켜기 전에는 다른 기기에서 닿지 않습니다.</p></div>
-        <div class="principle"><h3><span lang="en">Credentials stay put</span><span lang="ko">자격증명은 제자리에</span></h3><p lang="en">Provider credentials stay in the Console. The browser only ever receives one-use terminal tickets.</p><p lang="ko">공급자 자격증명은 콘솔 안에 머뭅니다. 브라우저가 받는 것은 한 번 쓰고 버리는 터미널 티켓뿐입니다.</p></div>
-        <div class="principle"><h3><span lang="en">Your data, your disk</span><span lang="ko">내 데이터는 내 디스크에</span></h3><p lang="en">Sessions, settings, and history live on your machine under <code>~/.fleet</code>. Pick a dark or light theme, your own fonts and shortcuts; English and Korean switch without a reload.</p><p lang="ko">세션과 설정, 기록은 내 머신의 <code>~/.fleet</code> 아래에 저장됩니다. 다크·라이트 테마와 글꼴, 단축키를 고르고, 한국어와 영어는 새로고침 없이 바로 전환됩니다.</p></div>
-      </div>
     </div>
   </section>
 
   <!-- Closer -->
   <section class="closer" id="start">
     <div class="shell">
-      <h2 class="h2 rv"><span lang="en">Start the console. <em>Open your first conversation.</em></span><span lang="ko">콘솔을 켜고, <em>첫 대화를 시작하세요.</em></span></h2>
-      <p class="sub rv" lang="en"><code>fleet console</code> prints a local address. Open a new session with <span class="kbd">⌘</span><span class="kbd">J</span>, pick a Theater from the commodore's list or add a project folder to that list with <b>Add Theater…</b>, and send your first message.</p>
-      <p class="sub rv" lang="ko"><code>fleet console</code>이 로컬 주소를 출력합니다. <span class="kbd">⌘</span><span class="kbd">J</span>로 새 세션을 열고, 사령관 목록에서 Theater를 고르거나 <b>Theater 추가…</b>로 프로젝트 폴더를 그 목록에 더한 뒤 첫 메시지를 보내세요.</p>
+      <h2 class="h2 rv"><span lang="en">Start the console. <em>Give a Commodore its first job.</em></span><span lang="ko">콘솔을 켜고, <em>사령관에게 첫 일을 맡기세요.</em></span></h2>
       <div class="install rv" role="group" aria-label="Install">
         <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz</code><button class="copy" type="button" data-copy="npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
         <div class="install-row"><span class="p" aria-hidden="true">$</span><code>fleet console</code><button class="copy" type="button" data-copy="fleet console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
@@ -664,12 +364,10 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
       <div class="links rv">
         <a href="https://github.com/sbluemin/fleet-harness#readme" lang="en">README</a>
         <a href="https://github.com/sbluemin/fleet-harness/blob/canary/README.ko.md" lang="ko">README</a>
-        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/fleet-development-reference.md">Development reference</a>
-        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/console-agent-sdk.md">Console Agent SDK</a>
-        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/admiral-workflow-reference.md">Admiral Workflow Reference</a>
-        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/runtime/fleet-desktop/README.md"><span lang="en">Desktop guide</span><span lang="ko">Desktop 가이드</span></a>
+        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/runtime/fleet-desktop/README.md"><span lang="en">Desktop guide</span><span lang="ko">데스크톱 가이드</span></a>
+        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/fleet-development-reference.md"><span lang="en">Development reference</span><span lang="ko">개발 참고서</span></a>
         <a href="https://github.com/sbluemin/fleet-harness/blob/canary/CHANGELOG.md" lang="en">Changelog</a>
-        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/CHANGELOG.ko.md" lang="ko">변경 이력</a>
+        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/CHANGELOG.ko.md" lang="ko">변경 기록</a>
         <a href="https://github.com/sbluemin/fleet-harness/releases/latest"><span lang="en">Releases</span><span lang="ko">릴리스</span></a>
       </div>
     </div>
@@ -679,8 +377,8 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
 <footer>
   <div class="shell">
     <span>fleet-harness · MIT</span>
-    <span lang="en">One console · every model · any screen</span>
-    <span lang="ko">하나의 콘솔 · 모든 모델 · 어떤 화면이든</span>
+    <span lang="en">Commodores · objectives · every model · any screen</span>
+    <span lang="ko">사령관 · 목표 · 모든 모델 · 어떤 화면이든</span>
   </div>
 </footer>
 
@@ -695,12 +393,8 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
   var lang = asked === "ko" || asked === "en" ? asked
     : ((navigator.language || "").toLowerCase().indexOf("ko") === 0 ? "ko" : "en");
   var TITLES = {
-    en: "Fleet — a quiet console for a fleet of coding agents",
+    en: "Fleet — run a fleet of coding agents from one quiet console",
     ko: "Fleet — 여러 코딩 에이전트를, 하나의 조용한 콘솔에서"
-  };
-  var COUNT = {
-    en: function (n) { return n + " conversations"; },
-    ko: function (n) { return "대화 " + n + "개"; }
   };
   function apply(next) {
     lang = next;
@@ -711,7 +405,6 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
       if (!img.dataset.altEn) img.dataset.altEn = img.alt;
       img.alt = lang === "ko" ? img.dataset.altKo : img.dataset.altEn;
     });
-    renderStates();
   }
   document.getElementById("lang-toggle").addEventListener("click", function () {
     var next = lang === "ko" ? "en" : "ko";
@@ -750,51 +443,7 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
     rv.forEach(function (el) { io.observe(el); });
   }
 
-  // The watch list: states drift the way a real fleet does, and the list keeps waiting sessions on top.
-  var LABEL = {
-    en: { work: "Working", wait: "Waiting", idle: "Idle" },
-    ko: { work: "작업 중", wait: "대기", idle: "유휴" }
-  };
-  var ORDER = { wait: 0, work: 1, idle: 2 };
-  var list = document.getElementById("watch");
-  var rows = Array.prototype.slice.call(list.children);
-  function renderStates() {
-    rows.forEach(function (r) { r.querySelector(".s").textContent = LABEL[lang][r.dataset.s]; });
-    document.getElementById("watch-count").textContent = COUNT[lang](rows.length);
-  }
-  function sortRows() {
-    var first = new Map(rows.map(function (r) { return [r, r.getBoundingClientRect().top]; }));
-    rows.slice().sort(function (a, b) { return ORDER[a.dataset.s] - ORDER[b.dataset.s]; })
-      .forEach(function (r) { list.appendChild(r); });
-    if (reduce) return;
-    rows.forEach(function (r) {
-      var dy = first.get(r) - r.getBoundingClientRect().top;
-      if (!dy) return;
-      r.animate([{ transform: "translateY(" + dy + "px)" }, { transform: "none" }], { duration: 700, easing: "cubic-bezier(.22,1,.36,1)" });
-    });
-  }
-  // A short, believable script: a turn finishes, you answer, someone else asks.
-  var script = [
-    ["b", "wait"], ["a", "work"], ["d", "work"], ["c", "wait"], ["b", "idle"],
-    ["a", "wait"], ["d", "idle"], ["c", "work"], ["e", "work"], ["a", "work"],
-    ["e", "wait"], ["b", "work"], ["e", "idle"], ["c", "wait"], ["b", "wait"], ["c", "work"]
-  ];
-  var step = 0;
-  function tick() {
-    var move = script[step++ % script.length];
-    var row = list.querySelector('[data-id="' + move[0] + '"]');
-    row.dataset.s = move[1];
-    renderStates();
-    sortRows();
-  }
   apply(lang);
-  if (!reduce) {
-    var timer = null;
-    var run = function () { if (!timer) timer = setInterval(tick, 2600); };
-    var stop = function () { clearInterval(timer); timer = null; };
-    document.addEventListener("visibilitychange", function () { document.hidden ? stop() : run(); });
-    run();
-  }
 })();
 </script>
 </body>
