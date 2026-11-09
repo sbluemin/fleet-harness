@@ -256,9 +256,6 @@ export interface RowPopups {
   readonly onProgress: (opener: HTMLElement) => void;
   readonly avatarLabel: string;
   readonly progressLabel: (done: number, total: number) => string;
-  /** 안 읽은 임무 기록 — 임무 게이지 단추에 점으로 선다(임무 팝업에서 읽는다). 지난 행 글리프의 점을 대신한다. */
-  readonly unseen: boolean;
-  readonly unseenLabel: string;
 }
 
 /**
@@ -412,12 +409,11 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
         <button
           type="button"
           className="side-bar-cluster-row-progress"
-          aria-label={`${popups.progressLabel(progress.done, progress.total)}${popups.unseen ? ` · ${popups.unseenLabel}` : ""}`}
+          aria-label={popups.progressLabel(progress.done, progress.total)}
           aria-haspopup="dialog"
           onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onProgress(event.currentTarget); }}
         >
           <ClusterRowProgress progress={progress} />
-          {popups.unseen ? <i className="side-bar-cluster-row-progress-dot" aria-hidden="true" /> : null}
         </button>
       ) : popups ? null : <ClusterRowProgress progress={progress} />}
       <span className="side-bar-cluster-row-swap" aria-hidden="true">
