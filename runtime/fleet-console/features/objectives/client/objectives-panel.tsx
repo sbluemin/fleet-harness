@@ -211,6 +211,14 @@ export function CommanderGoalDialog(props: CommanderDialogProps) {
   return <CommanderDetailDialog {...props} home="goal" />;
 }
 
+/**
+ * 우측 작업 탭의 라이브러리 팝업 — 행의 라이브러리 글리프가 연다. 결과물 탭(증거·공유 폴더)을 같은 오버레이에 담는다.
+ * 안의 길이 임무로 가면 같은 팝업에서 그 내용을 보이고 「라이브러리로」가 되돌린다.
+ */
+export function CommanderLibraryDialog(props: CommanderDialogProps) {
+  return <CommanderDetailDialog {...props} home="results" />;
+}
+
 type CommanderDialogProps = {
   readonly commodoreId: string;
   readonly objectiveId: string;
@@ -229,9 +237,12 @@ function CommanderDetailDialog({ commodoreId, objectiveId, title, language, acce
   const [tab, setTab] = useState<DetailTab>(start ?? home);
   // 그래프가 알려 준 폭까지 넓힌다 — 로스터가 읽히는 최소 폭은 지킨다.
   const [fitWidth, setFitWidth] = useState<number | null>(null);
+  // 머리 제목은 지금 보이는 탭의 이름이다 — 목표·임무·라이브러리 세 팝업이 같은 계약이고, 팝업 안에서 탭을 옮겨도 제목이 따라간다.
+  const category = t(tab === "goal" ? "objectives.tabs.goal" : tab === "crew" ? "objectives.missions.title" : "objectives.tabs.results");
+  const back = home === "goal" ? "objectives.goal.back" : home === "crew" ? "objectives.missions.back" : "objectives.library.back";
   return createPortal(
-    <LineupZoom t={t} title={title} category={t(home === "goal" ? "objectives.tabs.goal" : "objectives.missions.title")} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
-      tools={tab === home ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab(home)}>{t(home === "goal" ? "objectives.goal.back" : "objectives.missions.back")}</button>}>
+    <LineupZoom t={t} title={title} category={category} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
+      tools={tab === home ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab(home)}>{t(back)}</button>}>
       {/* 목표·결과물 탭은 사이드바 세 탭과 같은 읽기 전용이다(편집·첨부·빈 섹션 없음). 임무 조작(구성원 탭)만 팝업이 편집한다. */}
       {/* workspace-avatar-panel 이 --conversation-accent* 를 --brass* 행동 강조 토큰에 묶는다 — 변수만 건네면 이 팝업은 중립으로 남는다. */}
       <div className={`commander-missions-dialog is-${tab}${accent ? " workspace-avatar-panel" : ""}`} {...(accent ? { style: accent } : {})}>

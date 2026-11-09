@@ -248,8 +248,6 @@ interface SideBarClusterRowProps {
    * 글리프는 스스로 초점 자리를 가지므로, 있으면 aside를 장식으로 숨기지 않는다.
    */
   readonly rowGlyphs?: ReactNode | undefined;
-  /** 펼친 행 — 쉬는 행과 같은 자리에 글리프를 보이게 하는 갈고리다(`is-open`). */
-  readonly expanded?: boolean | undefined;
 }
 
 export interface RowPopups {
@@ -303,7 +301,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, settled = false, popups, rowGlyphs, expanded = false }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, settled = false, popups, rowGlyphs }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -464,7 +462,6 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
         "side-bar-cluster-row--conversation",
         settled ? "side-bar-cluster-row--settled" : "",
         settled && state === "done" ? "is-done" : "",
-        expanded ? "is-open" : "",
       ].filter(Boolean).join(" ")}
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}

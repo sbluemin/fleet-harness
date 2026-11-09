@@ -20,43 +20,15 @@ import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { toggleFold, useCommanderFolds, type CommanderFold } from "./commander-folds.js";
 import { useCommanderRows } from "./commander-rows.js";
-import { CommanderRowGlyphs, TAB_LABEL_KEY, type CommanderRowGlyphTab } from "./commander-row-glyphs.js";
-import { objectiveRecordAvatarKey } from "../../shared/avatars.js";
-import { useAvatarAccent } from "../avatar-accent.js";
+import { CommanderRowGlyphs, type CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
 /**
- * 지휘관 행의 글리프(목표·구성원·라이브러리) — 우측 작업 탭 카드는 행 아래에 한 번에 한 행을 펼치고(펼친 행은 호출자가 정한다),
- * 좌측 사이드바(`popup`)는 같은 내용을 팝업으로 연다. 팝오버·폰은 두지 않는다.
+ * 지휘관 행의 글리프(목표·구성원·라이브러리)가 팝업을 열 때 부르는 처리기 — 우측 작업 탭과 좌측 사이드바가 같은 팝업을 쓴다.
+ * `item`·`opener` 는 팝업을 여는 쪽이 제목과 초점 복귀에 쓴다. 팝오버·폰은 글리프를 두지 않는다.
  */
-export interface CommanderListExpansion {
-  readonly expanded: { readonly objectiveId: string; readonly tab: CommanderRowGlyphTab } | null;
-  /** `item`·`opener` 는 팝업을 여는 쪽이 제목과 초점 복귀에 쓴다. */
-  readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab, item: SideBarRowItem, opener: HTMLElement) => void;
-  readonly renderPanel: (item: SideBarRowItem, tab: CommanderRowGlyphTab) => ReactNode;
-  /** 글리프가 행 아래 펼침 대신 팝업을 연다 — 이때 `expanded` 는 늘 null 이고 패널은 그리지 않는다. */
-  readonly popup?: boolean;
-}
-
-/** 펼친 행 아래 패널 — 그 지휘관의 accent를 다시 씌운다. 카드 밖(사령관 머리·탭)은 사령관 색 그대로다. */
-function ExpandedCommanderPanel({ item, tab, panelId, renderPanel }: {
-  readonly item: SideBarRowItem;
-  readonly tab: CommanderRowGlyphTab;
-  readonly panelId: string;
-  readonly renderPanel: (item: SideBarRowItem, tab: CommanderRowGlyphTab) => ReactNode;
-}) {
-  const t = useT();
-  const objectiveId = commanderObjectiveId(item.layout.cluster);
-  // 시작 전(기록 없음) 지휘관도 행 아바타와 같은 열쇠를 쓴다 — avatarObjectiveId에서 온 id다.
-  const accent = useAvatarAccent(objectiveId === null ? null : objectiveRecordAvatarKey(objectiveId));
-  if (objectiveId === null) return null;
-  return (
-    <li id={panelId} className="commander-row-panel workspace-avatar-panel" data-keep-objective-active="" role="region" aria-label={t("commanderTab.rowGlyph.panel", { tab: t(TAB_LABEL_KEY[tab]), title: item.layout.cluster.title })} style={accent}>
-      {renderPanel(item, tab)}
-    </li>
-  );
-}
+export type CommanderGlyphOpen = (objectiveId: string, tab: CommanderRowGlyphTab, item: SideBarRowItem, opener: HTMLElement) => void;
 
 /** 접힌 settled 머리의 접근 이름 — 0인 상태는 빼고 시작 전·완료를 나눠 읽는다. */
 function settledToggleLabel(t: ReturnType<typeof useT>, collapsed: boolean, fresh: number, done: number): string {
@@ -89,7 +61,7 @@ function SettledCounts({ fresh, done }: { readonly fresh: number; readonly done:
   );
 }
 
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, showBar = true, hideSettled = false, heading, popups, expansion }: {
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, showBar = true, hideSettled = false, heading, popups, onGlyphTab }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
@@ -107,8 +79,8 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly heading?: ReactNode;
   /** 작업 탭 카드의 행 단추(아바타 대화 열기·임무 게이지 팝업) — 목표 행에만 건넨다. 없으면 지금 행 그대로다. */
   readonly popups?: ((item: SideBarRowItem, objectiveId: string) => RowPopups) | undefined;
-  /** 작업 탭 카드의 행 글리프 펼침 — 없으면 행 글리프도 서지 않는다. */
-  readonly expansion?: CommanderListExpansion | undefined;
+  /** 행 글리프가 여는 팝업 — 없으면 행 글리프도 서지 않는다. */
+  readonly onGlyphTab?: CommanderGlyphOpen | undefined;
 }) {
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
@@ -120,20 +92,14 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   const renderItems = (rows: readonly SideBarRowItem[], settled: boolean) => rows.map((item) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
     const selected = objectiveId !== null && selectedId === objectiveId;
-    const openTab = expansion !== undefined && objectiveId !== null && expansion.expanded?.objectiveId === objectiveId ? expansion.expanded.tab : null;
-    const panelId = `${groupsId}-${item.layout.cluster.id}-panel`;
     return <Fragment key={item.layout.cluster.id}>
       <SideBarClusterRow item={item} selected={selected} settled={settled}
         popups={popups !== undefined && objectiveId !== null ? popups(item, objectiveId) : undefined}
-        expanded={openTab !== null}
-        rowGlyphs={expansion !== undefined && objectiveId !== null ? (
-          <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={objectiveId} title={item.layout.cluster.title} expandedTab={openTab} panelId={panelId} popup={expansion.popup === true} onGlyphTab={(id, tab, opener) => expansion.onGlyphTab(id, tab, item, opener)} />
+        rowGlyphs={onGlyphTab !== undefined && objectiveId !== null ? (
+          <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={objectiveId} title={item.layout.cluster.title} onGlyphTab={(id, tab, opener) => onGlyphTab(id, tab, item, opener)} />
         ) : undefined}
         onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
         onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />
-      {openTab !== null && expansion !== undefined ? (
-        <ExpandedCommanderPanel item={item} tab={openTab} panelId={panelId} renderPanel={expansion.renderPanel} />
-      ) : null}
     </Fragment>;
   });
   // 우측 작업 탭 카드만 시작 전·완료를 카드 밖 구역으로 나눈다. 줄 순서는 통합 목록(기한·최근 완료)을 유지하고, 접힘은 fresh/done 키다.

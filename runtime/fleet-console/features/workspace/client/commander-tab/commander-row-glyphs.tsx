@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { objectiveTabHasContent } from "../../../objectives/client/detail-content.js";
 import { useSharedFileCount } from "../../../objectives/client/shared-folder-count.js";
 
-/** 우측 작업 탭 카드의 행 글리프가 여는 펼침 — 목표·구성원·라이브러리. 상세 탭과 같은 집합이다. */
+/** 행 글리프가 여는 팝업의 탭 — 목표·구성원·라이브러리. 상세 탭과 같은 집합이다. */
 export type CommanderRowGlyphTab = DetailTab;
 
 const GLYPH_TABS: readonly CommanderRowGlyphTab[] = ["goal", "crew", "results"];
@@ -30,29 +30,24 @@ const TAB_GLYPH: Record<CommanderRowGlyphTab, () => ReactElement> = {
 
 /**
  * 위임(★) 왼쪽의 목표·구성원·라이브러리 글리프 — 우측 작업 탭 카드와 좌측 사이드바의 지휘관 행에 선다(팝오버·폰은 두지 않는다).
- * 우측은 행 아래로 펼치고, 좌측(popup)은 같은 내용을 팝업으로 연다.
+ * 누르면 그 탭을 맨 위에 둔 목표·임무·라이브러리 팝업이 열린다.
  * 쉬는 행에서는 숨고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만 셋이 함께 나타난다 — 그 가림은
  * 카드·사이드바 CSS가 맡는다. 결정 요청(목표 쪽)과 안 읽은 기록(구성원 쪽)은 쉬는 행에서 ★ 옆의 작은 점으로 보이고,
  * 글리프가 나타나면 해당 글리프 위의 점으로 옮겨 간다.
  */
-export function CommanderRowGlyphs({ commodoreId, objectiveId, title, expandedTab, panelId, popup = false, onGlyphTab }: {
+export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab }: {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly title: string;
-  readonly expandedTab: CommanderRowGlyphTab | null;
-  /** 펼친 패널의 id — 글리프의 `aria-controls`가 가리킨다. */
-  readonly panelId: string;
-  /** 글리프가 행 아래 펼침이 아니라 팝업을 연다(좌측 사이드바) — 펼침 상태·패널 연결을 말하지 않는다. */
-  readonly popup?: boolean;
   readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
 }) {
   const t = useT();
-  // 행의 점은 펼침 패널의 탭 점과 같은 원천(보드)이다 — 결정 요청·안 읽은 기록이 행과 패널에서 어긋나지 않는다.
+  // 행의 점은 팝업 안 탭 점과 같은 원천(보드)이다 — 결정 요청·안 읽은 기록이 행과 팝업에서 어긋나지 않는다.
   const board = useObjectiveBoard(commodoreId);
   const objective = board.loaded ? board.objectives.find((candidate) => candidate.id === objectiveId) ?? null : null;
   const decision = objective !== null && !!objective.decisionRequest && !objective.done;
   const unseen = objective !== null && objective.missions.some((mission) => unseenRecords(mission) > 0);
-  // 공유 폴더 파일 수는 이 행을 가리키거나 초점을 둘 때(또는 펼친 행에서) 읽는다 — 쉬는 행마다 읽지 않는다.
+  // 공유 폴더 파일 수는 이 행을 가리키거나 초점을 둘 때 읽는다 — 쉬는 행마다 읽지 않는다.
   const groupRef = useRef<HTMLSpanElement | null>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
@@ -63,11 +58,10 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, expandedTa
     row.addEventListener("focusin", on); row.addEventListener("focusout", off);
     return () => { row.removeEventListener("pointerenter", on); row.removeEventListener("pointerleave", off); row.removeEventListener("focusin", on); row.removeEventListener("focusout", off); };
   }, []);
-  const sharedFiles = useSharedFileCount(objective, near || expandedTab !== null);
+  const sharedFiles = useSharedFileCount(objective, near);
   return <>
     <span ref={groupRef} className="commander-row-glyphs" role="group" aria-label={t("commanderTab.rowGlyphs.label")}>
       {GLYPH_TABS.map((tab) => {
-        const expanded = expandedTab === tab;
         const tabLabel = t(TAB_LABEL_KEY[tab]);
         const dotLabel = [decision && tab === "goal" ? t("commanderTab.rowGlyph.decision") : null, unseen && tab === "crew" ? t("commanderTab.rowGlyph.unseen") : null].filter((part) => part !== null).join(" · ");
         const Glyph = TAB_GLYPH[tab];
@@ -78,9 +72,9 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, expandedTa
             key={tab}
             type="button"
             className="commander-row-glyph"
-            {...(popup ? { "aria-haspopup": "dialog" as const } : { "aria-expanded": expanded, "aria-controls": panelId })}
+            aria-haspopup="dialog"
             disabled={empty}
-            aria-label={`${t(popup ? "commanderTab.rowGlyph.open" : expanded ? "commanderTab.rowGlyph.collapse" : "commanderTab.rowGlyph.expand", { tab: tabLabel, title })}${dotLabel ? ` · ${dotLabel}` : ""}`}
+            aria-label={`${t("commanderTab.rowGlyph.open", { tab: tabLabel, title })}${dotLabel ? ` · ${dotLabel}` : ""}`}
             title={tabLabel}
             onClick={(event) => onGlyphTab(objectiveId, tab, event.currentTarget)}
           >
