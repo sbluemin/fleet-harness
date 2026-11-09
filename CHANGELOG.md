@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.293.0] - 2026-11-09
+
+### fleet-console
+
+#### Changed
+- In the commander list, clicking the commander avatar now opens a goal popup, and hovering reveals goal, crew, and library actions on both sidebars.
+- Moved retrospect and follow-up candidates to the bottom of the goal tab, keeping the results tab focused on evidence and the shared folder with quick switching.
+
+#### Fixed
+- Fleet Browser's vertical tab strip buttons (tabs, pin, and new tab) can be clicked again while a web page is open.
+
 ## [1.292.0] - 2026-11-08
 
 ### fleet-console
