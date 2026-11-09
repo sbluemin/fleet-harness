@@ -76,6 +76,14 @@ export function nativeFloatAvailable(): boolean {
 
 export function insideNativeFloat(element: Element | null): boolean { return element?.closest(`[${NATIVE_FLOAT_ATTRIBUTE}]`) != null; }
 
+/**
+ * 이 요소는 자식 창이 맡아 그리는(또는 곧 그릴) 덮개인가 — 이미 떠 있는 표면(`data-native-float`)이거나, 자식 창을 쓸 수 있는 셸에서 가림 표면 표지를 단 요소.
+ * 후자를 덮개로 세면 메뉴가 열리는 첫 프레임(자식 창이 표지를 달기 전)에 페이지가 잘리거나 통째로 물러섰다 돌아와 화면이 깜빡인다.
+ */
+export function handledByNativeFloat(element: Element | null): boolean {
+  return insideNativeFloat(element) || (element?.closest(COVER_SELECTOR) != null && nativeFloatAvailable());
+}
+
 function createFloatManager(document: Document): () => void {
 const window = document.defaultView ?? globalThis.window;
 const surface = document.documentElement.dataset.browserSurface ?? null;
@@ -219,7 +227,8 @@ function render(): void {
   const flush = (union: number, edge: number | undefined): boolean => edge !== undefined && clipped.some(Boolean) && Math.abs(union - edge) < 0.5;
   const clip = next.clip;
   const padLeft = flush(Math.min(...area.map((box) => box.left)), clip?.left) ? 0 : FLOAT_PAD;
-  const padTop = flush(Math.min(...area.map((box) => box.top)), clip?.top) ? 0 : FLOAT_PAD;
+  // 위쪽에는 여백을 두지 않는다 — 메뉴는 그것을 연 단추(주소줄 줄) 바로 아래에 서므로, 위 여백의 투명한 띠가 단추를 덮어 누름을 가로챘다.
+  const padTop = 0;
   const padRight = flush(Math.max(...area.map((box) => box.right)), clip?.right) ? 0 : FLOAT_PAD;
   const padBottom = flush(Math.max(...area.map((box) => box.bottom)), clip?.bottom) ? 0 : FLOAT_PAD;
   const nodes: Element[] = [];

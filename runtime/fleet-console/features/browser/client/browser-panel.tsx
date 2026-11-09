@@ -15,7 +15,7 @@ import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-sett
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, glyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
 import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
-import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_CLIP_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
+import { handledByNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_CLIP_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import { BrowserSurfaceContent, useBrowserDocument, useBrowserWindow, type BrowserSurfaceState } from "./browser-window.js";
 import "./browser-panel.css";
 
@@ -87,6 +87,12 @@ const BROWSER_PROFILE = "default";
 
 /** 브라우저 자리로 펼쳐지는 패널 메뉴·주소 제안 — 뷰 뒤로 가려지지 않게 가림 표면으로 알린다(`native-view`). */
 const COVERS_NATIVE_VIEW = { [NATIVE_VIEW_COVER_ATTRIBUTE]: "" } as const;
+
+/**
+ * 사건 대상이 DOM 노드인가 — `instanceof Node` 를 쓰지 않는다. 이 패널은 Console 창의 React 이지만 칸·분리 창의 문서에 그려지므로 그 문서의
+ * 사건 대상은 이 창의 `Node` 가 아닌 다른 영역(realm)의 객체라 `instanceof` 가 늘 거짓이다(레일이 가만히 있는 포인터에 접히고, 메뉴 단추 누름이 바깥 누름으로 읽혔다).
+ */
+const isNode = (value: unknown): value is Node => typeof value === "object" && value !== null && typeof (value as { nodeType?: unknown }).nodeType === "number";
 
 const base = (objectiveId: string) => `/api/v1/browser/objectives/${encodeURIComponent(objectiveId)}`;
 
@@ -181,8 +187,8 @@ function visibleRect(host: HTMLElement, rect: DOMRect, geometryOnly = false): Re
     let hit = document.elementFromPoint(x, y);
     // 투명한 클릭 캐처만 건너뛴다. 그 자식인 메뉴 카드는 여전히 네이티브 뷰를 가린다.
     // 자식 창에 떠 있는 메뉴는 뷰 위에 따로 그려지므로 덮개가 아니다 — 그 아래를 본다.
-    if (hit?.hasAttribute("data-native-browser-transparent") || insideNativeFloat(hit)) {
-      hit = document.elementsFromPoint(x, y).find((element) => !element.hasAttribute("data-native-browser-transparent") && !insideNativeFloat(element)) ?? null;
+    if (hit?.hasAttribute("data-native-browser-transparent") || handledByNativeFloat(hit)) {
+      hit = document.elementsFromPoint(x, y).find((element) => !element.hasAttribute("data-native-browser-transparent") && !handledByNativeFloat(element)) ?? null;
     }
     return hit !== null && host.contains(hit);
   };
@@ -426,7 +432,7 @@ function BrowserMoreMenu({ objectiveId, language, capture, annotate }: {
   React.useEffect(() => {
     if (!open) return;
     const doc = rootRef.current?.ownerDocument ?? document;
-    const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) setOpen(false); };
+    const onPointer = (event: PointerEvent) => { if (!isNode(event.target) || !rootRef.current?.contains(event.target)) setOpen(false); };
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     doc.addEventListener("pointerdown", onPointer, true);
     doc.addEventListener("keydown", onKey);
@@ -600,7 +606,7 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
     if (!hovered) return undefined;
     const onMove = (event: PointerEvent) => {
       if (!event.isTrusted || event.pointerType === "touch") return;
-      if (event.target instanceof Node && railRef.current?.contains(event.target)) return;
+      if (isNode(event.target) && railRef.current?.contains(event.target)) return;
       if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
       leaveTimer.current = setTimeout(() => { leaveTimer.current = null; setHovered(false); }, RAIL_LEAVE_MS);
     };
@@ -675,7 +681,7 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
   };
   // 키보드로 들어온 초점만 펼친다 — 탭을 눌러 생긴 초점(포인터)이 포인터를 뗀 뒤에도 펼침을 붙들지 않게.
   const onFocus = (event: React.FocusEvent) => { if (event.target.matches(":focus-visible")) setKeyboardFocus(true); };
-  const onBlur = (event: React.FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setKeyboardFocus(false); };
+  const onBlur = (event: React.FocusEvent) => { if (!isNode(event.relatedTarget) || !event.currentTarget.contains(event.relatedTarget)) setKeyboardFocus(false); };
 
   const renderTab = (tab: BrowserCaptionTab, agentTab: boolean) => {
     const active = tab.id === panel?.activeTabId;
@@ -909,6 +915,17 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
 
   // 칸/창의 사각형은 Desktop이 소유한다. 여기서는 크롬 여백과 가림 상태만 바뀔 때 알린다.
   const presentationQueue = React.useRef(Promise.resolve());
+  const presentationKey = React.useRef("");
+  // 페이지를 거두는 것은 이 칸/창이 정말 끝날 때(언마운트·표면 교체)뿐이다. 측정 효과의 의존값(메뉴·대화상자 열림 등)이 바뀔 때마다 거두면
+  // 그때마다 페이지가 한 프레임 사라졌다 돌아와 화면이 깜빡인다.
+  React.useEffect(() => {
+    if (!available || inactive || !detached.surface) return;
+    const identity = { surface: detached.surface.id, clientId: detached.clientId };
+    return () => {
+      presentationKey.current = "";
+      presentationQueue.current = presentationQueue.current.then(async () => { await post(BROWSER_GLOBAL_ID, "place", { visible: false, ...identity }); }).catch(() => undefined);
+    };
+  }, [available, inactive, detached.surface?.id, detached.clientId]);
   React.useEffect(() => {
     if (!available || inactive || !detached.surface) return;
     const document = documentFor;
@@ -918,11 +935,10 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
     if (!element || !hostElement) return;
     const identity = { surface: detached.surface.id, clientId: detached.clientId };
     const shellLayout = services.desktopShellCapabilities().includes(DESKTOP_BROWSER_PANE_CAPABILITY);
-    let key = "";
     const send = (action: string, body: Record<string, unknown>) => {
       const next = JSON.stringify(body);
-      if (key === next) return;
-      key = next;
+      if (presentationKey.current === next) return;
+      presentationKey.current = next;
       presentationQueue.current = presentationQueue.current.then(async () => { await post(BROWSER_GLOBAL_ID, action, body); }).catch(() => undefined);
     };
     const updatePresentation = () => {
@@ -957,7 +973,6 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
       observer.disconnect();
       unobserveCover();
       document.removeEventListener("visibilitychange", updatePresentation);
-      send("place", { visible: false, ...identity });
     };
   }, [available, inactive, activeTab?.id, mode, documentFor, nativeEl, detached.surface?.id, detached.clientId, state?.surface?.status,
     importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, services]);

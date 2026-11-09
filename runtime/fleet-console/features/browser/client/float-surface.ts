@@ -40,7 +40,43 @@ export function startFloatSurface(): void {
   const inline = document.createElement("style");
   const fixed = document.createElement("style");
   fixed.textContent = SURFACE_STYLE;
-  document.head.append(inline, fixed);
+  // 비활성 창은 포인터 추적을 잃어 CSS `:hover` 가 서지 않는다 — 셸이 흘려 주는 포인터 위치로 표면이 스스로 가린 요소(와 그 조상)에
+  // `data-float-hover` 를 달고, 스타일시트의 모든 `:hover` 규칙을 그 표지로도 걸어 둔다. 그래야 메뉴 항목이 올려도 반응이 없는 일이 없다.
+  const hoverStyle = document.createElement("style");
+  document.head.append(inline, fixed, hoverStyle);
+  const hoverCss = (rules: CSSRuleList): string => {
+    let css = "";
+    for (const rule of rules) {
+      if (rule instanceof CSSStyleRule) {
+        if (rule.selectorText.includes(":hover")) css += `${rule.selectorText.replaceAll(":hover", "[data-float-hover]")}{${rule.style.cssText}}\n`;
+      } else if (rule instanceof CSSMediaRule || rule instanceof CSSSupportsRule) {
+        const inner = hoverCss(rule.cssRules);
+        if (inner) css += `@${rule instanceof CSSMediaRule ? "media" : "supports"} ${rule.conditionText}{\n${inner}}\n`;
+      } else if (rule instanceof CSSLayerBlockRule) {
+        const inner = hoverCss(rule.cssRules);
+        if (inner) css += `@layer ${rule.name}{\n${inner}}\n`;
+      }
+    }
+    return css;
+  };
+  const mirrorHover = (): void => {
+    let css = "";
+    for (const sheet of document.styleSheets) {
+      if (sheet.ownerNode === hoverStyle) continue;
+      try { css += hoverCss(sheet.cssRules); } catch { /* 다른 출처 시트는 읽을 수 없다 */ }
+    }
+    if (hoverStyle.textContent !== css) hoverStyle.textContent = css;
+  };
+  let hoverChain: Element[] = [];
+  let hoverPoint: { readonly x: number; readonly y: number } | null = null;
+  const markHover = (target: Element | null): void => {
+    for (const element of hoverChain) element.removeAttribute("data-float-hover");
+    hoverChain = [];
+    for (let element = target; element && element !== document.documentElement; element = element.parentElement) {
+      element.setAttribute("data-float-hover", "");
+      hoverChain.push(element);
+    }
+  };
   let linksKey = "";
   let revision = -1;
   let pendingLinks: Promise<unknown> = Promise.resolve();
@@ -81,6 +117,8 @@ export function startFloatSurface(): void {
     void pendingLinks.then(() => {
       if (current < revision || surface !== messageSurface) return;
       host.innerHTML = message.html;
+      mirrorHover();
+      markHover(hoverPoint === null ? null : document.elementFromPoint(hoverPoint.x, hoverPoint.y));
       for (const element of host.querySelectorAll<HTMLElement>("[data-float-scroll]")) {
         const [left, top] = (element.dataset.floatScroll ?? "0,0").split(",").map(Number);
         element.scrollLeft = left ?? 0;
@@ -95,7 +133,7 @@ export function startFloatSurface(): void {
     const message = event.data as ({ readonly type?: string } & Partial<Omit<RenderMessage, "type">>) | null;
     if (!message || typeof message !== "object") return;
     if (message.type === "render" && typeof message.html === "string" && typeof message.revision === "number") render(message as RenderMessage);
-    else if (message.type === "clear" && (message.surface ?? null) === surface) { host.replaceChildren(); revision = -1; feedPath = null; feedInside = false; }
+    else if (message.type === "clear" && (message.surface ?? null) === surface) { host.replaceChildren(); markHover(null); hoverPoint = null; revision = -1; feedPath = null; feedInside = false; }
   };
 
   const pathOf = (target: EventTarget | null): number | null => {
@@ -136,7 +174,10 @@ export function startFloatSurface(): void {
     const cx = (x - window.screenX) / zoom;
     const cy = (y - window.screenY) / zoom;
     const inside = cx >= 0 && cy >= 0 && cx < window.innerWidth && cy < window.innerHeight;
-    const path = inside ? pathOf(document.elementFromPoint(cx, cy)) : null;
+    const under = inside ? document.elementFromPoint(cx, cy) : null;
+    hoverPoint = inside ? { x: cx, y: cy } : null;
+    markHover(under);
+    const path = inside ? pathOf(under) : null;
     if (path !== feedPath) {
       if (feedPath !== null) postPointer("out", feedPath, path, x, y);
       if (path !== null) postPointer("over", path, feedPath, x, y);
@@ -152,8 +193,9 @@ export function startFloatSurface(): void {
       postMessage({ type: "pointer", revision, kind, path, related: pathOf(event.relatedTarget), sx: event.screenX, sy: event.screenY });
     }, true);
   }
+  document.addEventListener("pointermove", (event) => { if (!feedFresh()) { hoverPoint = { x: event.clientX, y: event.clientY }; markHover(event.target instanceof Element ? event.target : null); } }, true);
   document.addEventListener("pointerenter", () => postMessage({ type: "hover", inside: true }), true);
-  document.documentElement.addEventListener("pointerleave", () => postMessage({ type: "hover", inside: false }));
+  document.documentElement.addEventListener("pointerleave", () => { if (!feedFresh()) { hoverPoint = null; markHover(null); } postMessage({ type: "hover", inside: false }); });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") postMessage({ type: "hover", inside: false });
     announce();
