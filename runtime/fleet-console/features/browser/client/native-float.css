@@ -1,3 +1,0 @@
-/* 자식 창 표면이 같은 모양을 보이고 있는 동안 원본은 자리만 지킨다 — 두 겹으로 그려 그림자가 짙어지지 않게. */
-[data-native-float="shown"]:not([data-native-float-clip]) { opacity: 0 !important; }
-/* 조각 표지가 달린 표면은 원본이 그대로 보인다 — 자식 창은 네이티브 자리와 겹치는 조각만 그 위에 덧그린다. */

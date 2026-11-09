@@ -22,8 +22,8 @@ export const consoleExecution: ClientFeatureDescriptor = {
   ...agentExecution,
   id: null,
   persistentComponents: [
-    // Session 브라우저의 단축키 중계·엔진 가용성·shared 안내, 그리고 분리 창 안의 패널.
-    { id: "browser-session-host", render: (ctx) => <BrowserSessionHost language={ctx.language} theme={ctx.theme ?? "dark"} services={browserServices} /> },
+    // Session 브라우저의 단축키 중계·엔진 가용성·shared 안내, 그리고 Desktop 이 넘긴 이미지의 입력창 전달.
+    { id: "browser-session-host", render: (ctx) => <BrowserSessionHost language={ctx.language} services={browserServices} /> },
   ],
 
 };

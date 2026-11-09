@@ -3,7 +3,7 @@ import type { OpenUIOpenPort } from "@fleet-console/markdown/openui";
 import { openInDefaultOsBrowser } from "@fleet-console/link/core";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { LinkOpenCard, type LinkOpenAt } from "../../../browser/client/link-open-card.js";
-import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
 
 /** Objective의 링크 선택기를 그대로 건넨다. 모델 출력·DOM 속성은 이 권한을 만들지 않는다. */
 export const OpenUIHttpsContext = React.createContext<((url: string, at: LinkOpenAt) => boolean) | null>(null);

@@ -3,7 +3,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
 import * as React from "react";
 
-import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
 import { notifySharedFallback } from "../../../browser/client/browser-shared-fallback.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { createChatLinkInterceptor, openObjectiveLink, useLinkOpenChoice, type LinkOpenAt } from "./link-open.js";

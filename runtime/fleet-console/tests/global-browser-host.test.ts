@@ -87,6 +87,29 @@ describe("session browser host contract", () => {
       expect(JSON.stringify(logs)).not.toContain("private");
     } finally { upstream.mockRestore(); }
   });
+  it("hands a Desktop-drawn chrome image to the Console screen only from the exact origin and only when a view can receive it", async () => {
+    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    const service = new BrowserService({ enabled: () => true, availability: () => ({ available: true, reason: null, host: "local" }), desktop: engine, log: () => {}, defaultProfile: { read: () => null, write: () => {} } });
+    let body: Record<string, unknown> = { kind: "annotation", mime: "image/png", data: "aWNvbg==" };
+    let exactOrigin = true;
+    let receiver = true;
+    const delivered: unknown[] = [];
+    let status = 0;
+    const router = createBrowserRouter({
+      browserService: service, browserMcp: { pasteIntoTerminal: () => false }, objectiveRecords: { get: () => null },
+      publishAttach: (attach) => { if (receiver) delivered.push(attach); return receiver; },
+      isWriteAdmitted: () => true, isExactConsoleOrigin: () => exactOrigin,
+      readJsonBody: async <T>() => body as T,
+      writeJson: (_res, code) => { status = code; },
+      readUrl: () => new URL("http://localhost"), withSecurityHeaders: (headers) => headers,
+    });
+    const request = () => router({ req: { method: "POST" } as IncomingMessage, res: { setHeader: () => {} } as unknown as ServerResponse, pathname: "/api/v1/browser/attach" });
+    exactOrigin = false; await request(); expect(status).toBe(403);
+    exactOrigin = true; body = { kind: "annotation", mime: "image/png", data: "not base64!" }; await request(); expect(status).toBe(400);
+    body = { kind: "annotation", mime: "image/png", data: "aWNvbg==" }; receiver = false; await request(); expect(status).toBe(409);
+    receiver = true; await request(); expect(status).toBe(200);
+    expect(delivered).toEqual([{ kind: "annotation", mime: "image/png", data: "aWNvbg==" }]);
+  });
   it("includes shortcuts (including empty list) and generalizes viewOwner without fake objectives", async () => {
     const published: DesktopBrowserSnapshot[] = [];
     const engine = new DesktopEngine({ publish: (s) => published.push(s), log: () => {} });

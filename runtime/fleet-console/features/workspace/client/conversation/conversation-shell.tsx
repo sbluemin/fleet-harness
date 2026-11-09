@@ -36,9 +36,9 @@ import { useAvatarAccent } from "../avatar-accent.js";
 import { pluginRuntimeState } from "../../../execution/client/objective-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
-import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserDocument } from "../../../browser/client/browser-window.js";
-import { publishBrowserPluginAttach } from "../../../browser/client/browser-panel-store.js";
+import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
+import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserSurface } from "../../../browser/client/browser-surface.js";
+import { publishBrowserPluginAttach } from "../../../browser/client/browser-engine.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
@@ -836,7 +836,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   useConversationWorkbenchHost(conversationKey, toolEntryIds);
   const layout = useWorkbenchLayout();
   const focusedTileId = useWorkbenchFocusedTileId();
-  const browserOpen = useBrowserDocument() !== null;
+  const browserOpen = useBrowserSurface() !== null;
   const viewport = useViewportSize();
   const [regionSize, setRegionSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
   const regionObserverRef = useRef<ResizeObserver | null>(null);
@@ -1773,7 +1773,7 @@ function SurfaceBrowserButton({ language, splitOpen }: {
   const t = getBrowserT(language);
   const engine = useBrowserEngine();
   const engineMissing = engine !== null && !engine.available;
-  const detached = useBrowserDocument()?.mode === "window";
+  const detached = useBrowserSurface()?.mode === "window";
   const base = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : t(detached ? "terminal.browser.focus" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");

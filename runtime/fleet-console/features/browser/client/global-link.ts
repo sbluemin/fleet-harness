@@ -5,7 +5,7 @@ import {
 } from "@fleet-console/link/core";
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
-import { getBrowserEngineSnapshot } from "./browser-panel-store.js";
+import { getBrowserEngineSnapshot } from "./browser-engine.js";
 import { notifySharedFallback } from "./browser-shared-fallback.js";
 
 /**

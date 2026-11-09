@@ -78,8 +78,8 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
     const attach = async (kind: "screenshot" | "annotation", data: string): Promise<boolean> => {
       try {
         const response = await call("/api/v1/browser/attach", { body: { kind, mime: "image/png", data } });
-        if (!response.ok) { control.notify(await failureText(response), "error"); return false; }
-        control.notify(t("deliveredChat"));
+        // 받을 곳은 Console 이 지금 보여 주는 대화다(Desktop 은 모른다) — 결과 안내는 그 화면의 한 줄이 맡고, 여기서는 전달이 안 됐을 때만 한 줄을 띄운다.
+        if (!response.ok) { control.notify(response.status === 409 ? t("requestFailed") : await failureText(response), "error"); return false; }
         return true;
       } catch { control.notify(t("requestFailed"), "error"); return false; }
     };

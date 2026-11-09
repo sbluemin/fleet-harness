@@ -1575,6 +1575,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       write: (settings) => { consoleSettingsStore.update((current) => ({ ...current, browser: { ...current.browser, suggestionsEnabled: settings.enabled, suggestionsPrompted: settings.prompted } })); },
     },
     logSuggestion: (event) => { process.stdout.write(`[fleet-browser] ${JSON.stringify(event)}\n`); },
+    publishAttach: (attach) => {
+      const data = encodeSseData("browser:attach", attach);
+      let delivered = false;
+      for (const subscriber of objectiveRecordSseSubscribers) if (subscriber.client === "desktop") { writeObjectiveSse(subscriber, data); delivered = true; }
+      return delivered;
+    },
     isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders,
   }));
   routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasSession("remote", "full") || access.hasSession("remote", "monitoring"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
