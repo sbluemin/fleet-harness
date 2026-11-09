@@ -5,7 +5,7 @@
  */
 import type { DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
 
-export type ChromeRole = "bar" | "rail";
+export type ChromeRole = "bar" | "rail" | "stage";
 export const CHROME_CHANNEL = "fleet-chrome";
 
 export interface ChromeSuggestion { readonly value: string; readonly title: string; readonly favicon: string | null; readonly history: boolean }
@@ -93,7 +93,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
   if (text.length > 4_000_000) return null;
   let value: unknown;
   try { value = JSON.parse(text); } catch { return null; }
-  if (!Array.isArray(value) || value.length !== 4 || value[0] !== CHROME_CHANNEL || (value[1] !== "bar" && value[1] !== "rail")) return null;
+  if (!Array.isArray(value) || value.length !== 4 || value[0] !== CHROME_CHANNEL || (value[1] !== "bar" && value[1] !== "rail" && value[1] !== "stage")) return null;
   const name = value[2];
   const body = (typeof value[3] === "object" && value[3] !== null ? value[3] : {}) as Record<string, unknown>;
   const role = value[1] as ChromeRole;

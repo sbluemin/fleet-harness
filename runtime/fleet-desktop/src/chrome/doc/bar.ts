@@ -295,7 +295,8 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       try {
         const parsed = new URL(input.value);
         const rest = `${parsed.pathname === "/" && !parsed.search && !parsed.hash ? "" : parsed.pathname}${parsed.search}${parsed.hash}`;
-        display.append(h("span", { class: "url-host", text: parsed.host }), rest ? h("span", { class: "url-rest", text: rest }) : null);
+        display.append(h("span", { class: "url-host", text: parsed.host }));
+        if (rest) display.append(h("span", { class: "url-rest", text: rest }));
       } catch { display.append(h("span", { class: "url-host", text: hostOf(input.value) })); }
     }
     external.hidden = !(tab && tab.url !== "about:blank");

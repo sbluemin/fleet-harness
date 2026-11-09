@@ -395,8 +395,9 @@ async function boot(): Promise<void> {
       return base;
     },
     chromeDir: desktopResources.browserChromeDir,
-    program: () => (chromeProgram ??= fs.readFileSync(path.join(desktopResources.browserChromeDir, "chrome.js"), "utf8")),
-    colors: () => entryPalette ? { scheme: entryPalette.scheme, tokens: { ...entryPalette.tokens, ...(entryPalette.browser ?? {}) }, ...(entryPalette.fonts ? { fonts: { ...entryPalette.fonts } } : {}) } : null,
+    // 패키지된 앱은 한 번 읽어 두고, 개발 실행은 표면을 열 때마다 새로 읽는다(문서 프로그램을 바꾸고 다시 열어 확인할 수 있게).
+    program: () => (isPackaged ? (chromeProgram ??= fs.readFileSync(path.join(desktopResources.browserChromeDir, "chrome.js"), "utf8")) : fs.readFileSync(path.join(desktopResources.browserChromeDir, "chrome.js"), "utf8")),
+    colors: () => entryPalette ? { scheme: entryPalette.scheme, tokens: { ...(entryPalette.browser ?? {}) }, ...(entryPalette.fonts ? { fonts: { ...entryPalette.fonts } } : {}) } : null,
     lang: entryLanguage,
     platform: process.platform,
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },

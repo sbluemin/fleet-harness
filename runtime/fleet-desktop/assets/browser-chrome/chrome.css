@@ -27,7 +27,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 :focus-visible { outline: none; }
 button { font: inherit; color: inherit; }
 svg { display: block; }
-html[data-role="rail"] body, html[data-role="bar"] .strip { background: var(--surface); }
+html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"] .strip { background: var(--surface); }
 
 /* ---- 주소줄 ---- */
 .strip { position: relative; z-index: 2; display: flex; align-items: center; gap: 4px; height: var(--strip); padding: 0 8px; -webkit-app-region: drag; }
@@ -214,3 +214,10 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .space-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .space-count { flex: none; margin-inline-start: auto; opacity: 0.7; font-size: 11px; }
 .space-group .tab.active { box-shadow: inset 0 0 0 1px var(--space-c); }
+
+/* ---- 스테이지: 표시할 페이지가 없을 때 페이지 자리를 채우는 빈 상태·사용 불가 안내 ---- */
+.empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; color: var(--text-secondary); }
+.empty-glyph { display: inline-flex; width: 28px; height: 28px; color: var(--text-tertiary); }
+.empty-glyph svg { width: 28px; height: 28px; }
+.empty-title { margin: 0; color: var(--text-primary); font-size: 15px; font-weight: 500; }
+.empty-body { margin: 0; max-width: 40ch; color: var(--text-secondary); }

@@ -93,7 +93,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
   let chromeJson = "";
-  let docs: { bar: ChromeDoc; rail: ChromeDoc } | null = null;
+  let docs: { bar: ChromeDoc; rail: ChromeDoc; stage: ChromeDoc } | null = null;
   let divider: WebContentsView | null = null;
   let windowBase: BaseWindow | null = null;
   let windowStack: ReturnType<typeof createWindowStack> | null = null;
@@ -138,11 +138,12 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     page = { x: rect.x + Math.min(side, rect.width), y: rect.y + strip, width: Math.max(0, rect.width - side), height: Math.max(0, rect.height - strip) };
     docs.bar.view.setBounds({ x: rect.x, y: rect.y, width: rect.width, height: barHeight(rect) });
     docs.rail.view.setBounds({ x: rect.x, y: rect.y + strip, width: Math.min(railWidth(), rect.width), height: Math.max(1, rect.height - strip) });
+    docs.stage.view.setBounds({ x: page.x, y: page.y, width: Math.max(1, page.width), height: Math.max(1, page.height) });
     if (hostKind === "pane") {
       const main = deps.main();
       if (main && !main.isDestroyed() && divider) {
         const left = rect.x - DIVIDER_PX;
-        main.stack.setBrowserPane({ rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left });
+        main.stack.setBrowserPane({ stage: docs.stage.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left });
         divider.setBounds({ x: left, y: 0, width: DIVIDER_PX, height: rect.height });
       }
     }
@@ -165,7 +166,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   const push = (): void => {
     if (!docs) return;
     const json = escapeScript(JSON.stringify(state()));
-    for (const doc of [docs.bar, docs.rail]) {
+    for (const doc of [docs.bar, docs.rail, docs.stage]) {
       if (!doc.ready || doc.view.webContents.isDestroyed() || doc.lastJson === json) continue;
       doc.lastJson = json;
       void doc.view.webContents.executeJavaScript(`window.__fleetChrome && window.__fleetChrome.apply(${json})`).catch(() => undefined);
@@ -296,7 +297,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     } else {
       if (!windowBase || windowBase.isDestroyed()) makeWindow();
       hostKind = "window";
-      windowStack!.set(docs.rail.view, docs.bar.view);
+      windowStack!.set(docs.stage.view, docs.rail.view, docs.bar.view);
       host = windowStack!.host(() => deps.scaleFactor(windowBase!), () => { if (docs && !docs.bar.view.webContents.isDestroyed()) docs.bar.view.webContents.focus(); });
       if (windowBase && !windowBase.isDestroyed()) { windowBase.show(); }
     }
@@ -312,7 +313,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     destroyWindow();
     const oldDivider = divider;
     docs = null; divider = null; surface = null; chrome = null; chromeJson = ""; focusSeen = 0; drag = null;
-    for (const view of [old?.bar.view, old?.rail.view, oldDivider]) { if (view && !view.webContents.isDestroyed()) { try { view.webContents.close(); } catch { /* 이미 닫혔다. */ } } }
+    for (const view of [old?.bar.view, old?.rail.view, old?.stage.view, oldDivider]) { if (view && !view.webContents.isDestroyed()) { try { view.webContents.close(); } catch { /* 이미 닫혔다. */ } } }
     ui = { ...ui, expanded: false, overlay: null, busy: false, notice: null, info: null, suggestions: [], draft: null };
     page = { x: 0, y: 0, width: 0, height: 0 };
     deps.changed();
@@ -324,7 +325,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       const first = surface?.id !== next.id;
       if (first && docs) closeSurface();
       surface = next;
-      if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail") }; }
+      if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage") }; }
       const json = JSON.stringify(nextChrome);
       const chromeChanged = json !== chromeJson;
       chrome = nextChrome; chromeJson = json;
@@ -350,16 +351,17 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
 /** 독립 창의 뷰 쌓기 — 표시 중인 페이지 뷰 < 레일 < 주소줄. 이 창에는 Console 도 주차된 뷰도 없다. */
 function createWindowStack(base: BaseWindow) {
   const presented = new Set<WebContentsView>();
+  let stage: WebContentsView | null = null;
   let rail: WebContentsView | null = null;
   let bar: WebContentsView | null = null;
   const relayout = (): void => {
-    const ordered = [...presented, ...(rail ? [rail] : []), ...(bar ? [bar] : [])];
+    const ordered = [...(stage ? [stage] : []), ...presented, ...(rail ? [rail] : []), ...(bar ? [bar] : [])];
     for (let index = 0; index < ordered.length; index += 1) base.contentView.addChildView(ordered[index]!, index);
   };
   const remove = (view: WebContentsView): void => { presented.delete(view); try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } };
   return {
-    set(nextRail: WebContentsView, nextBar: WebContentsView): void { rail = nextRail; bar = nextBar; relayout(); },
-    clear(): void { for (const view of [rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } rail = null; bar = null; },
+    set(nextStage: WebContentsView, nextRail: WebContentsView, nextBar: WebContentsView): void { stage = nextStage; rail = nextRail; bar = nextBar; relayout(); },
+    clear(): void { for (const view of [stage, rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } stage = null; rail = null; bar = null; },
     host(scale: () => number, focus: () => void): PageHost {
       return {
         isDestroyed: () => base.isDestroyed(),

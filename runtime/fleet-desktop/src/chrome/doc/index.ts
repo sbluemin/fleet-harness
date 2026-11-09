@@ -1,6 +1,7 @@
 import type { ChromeRole, ChromeUiState } from "../contract.js";
 import { mountBar } from "./bar.js";
 import { mountRail } from "./rail.js";
+import { mountStage } from "./stage.js";
 import { post } from "./shared.js";
 
 /**
@@ -18,4 +19,8 @@ if (role === "bar") {
   const render = mountRail();
   window.__fleetChrome = { apply: render, inspected: () => undefined };
   post("rail", "ready");
+} else if (role === "stage") {
+  const render = mountStage();
+  window.__fleetChrome = { apply: render, inspected: () => undefined };
+  post("stage", "ready");
 }

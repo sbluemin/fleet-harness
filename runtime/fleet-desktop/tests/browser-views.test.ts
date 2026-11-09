@@ -116,7 +116,7 @@ describe("desktop native browser views across a Console restart", () => {
       relay: vi.fn(), changed, log: vi.fn(),
     });
     surface.apply({ id: "surface-1", browserId: "global", mode: "pane" }, null, "http://127.0.0.1:1");
-    const [bar, rail, divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
+    const [bar, rail, , divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
     const send = (doc: ReturnType<typeof makeView>, message: unknown[], frame = doc.webContents.mainFrame) => doc.webContents.emit("console-message", { frame, message: JSON.stringify(message) });
     // 첫 배치: 선호 폭 560 — Console | 손잡이 | (주소줄·레일·페이지) 가 한 번에 정해진다.
     expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
