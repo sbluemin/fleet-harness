@@ -109,6 +109,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let closing: ReturnType<typeof setTimeout> | null = null;
   let drag: { screenX: number; width: number } | null = null;
   let appliedZoom = 1;
+  /** 표면이 닫혀도 남는다 — 닫힌 동안 만들어지는 뷰가 마지막 페이지 크기를 따르게. */
+  let lastPageSize: { width: number; height: number } | null = null;
 
   const surfaceRect = (): Rectangle | null => {
     if (hostKind === "pane") {
@@ -145,6 +147,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const strip = Math.min(stripPx(), rect.height);
     const side = layoutRailWidth();
     page = { x: rect.x + Math.min(side, rect.width), y: rect.y + strip, width: Math.max(0, rect.width - side), height: Math.max(0, rect.height - strip) };
+    if (page.width > 0 && page.height > 0) lastPageSize = { width: page.width, height: page.height };
     docs.bar.view.setBounds({ x: rect.x, y: rect.y, width: rect.width, height: barHeight(rect) });
     docs.rail.view.setBounds({ x: rect.x, y: rect.y + strip, width: Math.min(railWidth(), rect.width), height: Math.max(1, rect.height - strip) });
     docs.stage.view.setBounds({ x: page.x, y: page.y, width: Math.max(1, page.width), height: Math.max(1, page.height) });
@@ -360,6 +363,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       return host && !host.isDestroyed() && page.width > 0 ? { host, page: { ...page } } : null;
     },
     refresh() { if (docs) update(); },
+    lastPage: () => (lastPageSize ? { ...lastPageSize } : null),
     dispose: closeSurface,
     relay: (value) => deps.relay(value),
     // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.

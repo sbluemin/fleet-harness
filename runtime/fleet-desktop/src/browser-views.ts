@@ -55,6 +55,8 @@ export interface BrowserSurfaceHost {
   apply(surface: DesktopBrowserSurface | null, chrome: DesktopBrowserChrome | null, origin: string | null): void;
   /** 표시 탭의 페이지가 서야 할 창과 자리(그 창의 콘텐츠 좌표, DIP). 표면이 없으면 null. */
   target(): { readonly host: PageHost; readonly page: Rectangle } | null;
+  /** 표면이 마지막으로 가졌던 페이지 크기 — 표면이 닫힌 동안 새로 만든 뷰도 한 브라우저의 한 크기를 따르게 한다. 한 번도 열리지 않았으면 null. */
+  lastPage(): { readonly width: number; readonly height: number } | null;
   refresh(): void;
   dispose(): void;
 }
@@ -488,9 +490,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     view.setBorderRadius(1);
     const contentBounds = shell.contentBounds();
     const target = deps.surface.target();
-    const parkViewport = target && target.page.width > 0 && target.page.height > 0
-      ? { width: target.page.width, height: target.page.height }
-      : defaultParkViewport(contentBounds);
+    const known = target && target.page.width > 0 && target.page.height > 0 ? target.page : deps.surface.lastPage();
+    const parkViewport = known ? { width: known.width, height: known.height } : defaultParkViewport(contentBounds);
     const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null };
     live.set(spec.id, entry);
     const contents = view.webContents;

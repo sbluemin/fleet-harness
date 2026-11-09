@@ -213,11 +213,11 @@ export interface ParkViewport {
   readonly height: number;
 }
 
-/** 아직 한 번도 그려지지 않은 뷰 — 창 전체가 아니라 대표적인 nonzero viewport. */
+/** 아직 한 번도 그려지지 않고 알려진 페이지 크기도 없는 뷰 — Console 의 기본 뷰포트(1280×800)와 같은 크기를 창 안으로 줄인 nonzero viewport. */
 export function defaultParkViewport(content: Rectangle): ParkViewport {
   return {
-    width: Math.max(1, Math.min(800, Math.max(1, content.width))),
-    height: Math.max(1, Math.min(600, Math.max(1, content.height))),
+    width: Math.max(1, Math.min(1280, Math.max(1, content.width))),
+    height: Math.max(1, Math.min(800, Math.max(1, content.height))),
   };
 }
 

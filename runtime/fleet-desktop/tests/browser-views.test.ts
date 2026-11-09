@@ -179,7 +179,7 @@ describe("desktop native browser views across a Console restart", () => {
     const mainHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1200, height: 800 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
     const childHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1000, height: 760 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
     let target: { host: PageHost; page: { x: number; y: number; width: number; height: number } } | null = null;
-    const surface = { apply: vi.fn(), target: () => target, refresh: vi.fn(), dispose: vi.fn() };
+    const surface = { apply: vi.fn(), target: () => target, lastPage: () => null, refresh: vi.fn(), dispose: vi.fn() };
     const views = createDesktopBrowserViews({
       shell: () => mainHost,
       consoleContents: () => null,
