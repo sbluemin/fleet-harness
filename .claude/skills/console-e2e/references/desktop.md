@@ -12,6 +12,7 @@ Record the target worktree, OS/architecture, source SHA, Electron version, and t
 | Entry-to-Console handoff, sandbox, navigation, reload | [Shell/CDP](desktop/shell-cdp.md) |
 | Menus, dialogs, tray, native Browser view visibility, quit/relaunch, sidecar/lock, package/signing | Relevant lane in [Native and package](desktop/native-and-package.md) |
 | Windows ARM64, unavailable wrapper, platform-specific claim | [Platform automation](desktop/platform-automation.md) |
+| Real OS mouse click on the owned Desktop | [OS mouse](desktop/os-mouse.md) |
 
 ## Evidence order
 

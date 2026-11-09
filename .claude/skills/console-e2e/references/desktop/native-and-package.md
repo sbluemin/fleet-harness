@@ -16,7 +16,7 @@ For runtime ownership, record the lock PID/port and whether Desktop ownership me
 
 ## Main inspector observation lane
 
-Without Screen Recording, this lane observes whether a native Browser view moved behind Console and what Console itself shows. Report it as **view-composition observation**, never as **OS-composited pixel** evidence. It cannot verify the compositor's actual output, occlusion by other apps, focus, pointer hit testing, or the look of native dialogs.
+Without Screen Recording, this lane observes whether a native Browser view moved behind Console and what Console itself shows. Report it as **view-composition observation**, never as **OS-composited pixel** evidence. It cannot verify the compositor's actual output, occlusion by other apps, focus, pointer hit testing, or the look of native dialogs. Pointer hit testing that needs the system cursor is [OS mouse input](os-mouse.md), not this lane.
 
 1. Follow [Setup](setup.md) as written: preflight, then the launch authorization [Preflight and ownership](setup.md#preflight-and-ownership) records, then the isolated environment. Extend only the last line of its launch command as below. Never relaunch beyond the authorized count to attach the inspector.
 
