@@ -193,6 +193,8 @@ export interface DesktopBrowserViews {
   stop(): void;
   /** 창 크기가 바뀌었다 — 표면과 놓인 자리를 다시 계산한다. */
   refresh(): void;
+  /** 표면이 페이지 자리를 바꿨다 — 놓인 뷰만 다시 놓는다(표면은 건드리지 않는다). */
+  places(): void;
   relaySurface(surface: DesktopBrowserSurfaceRelay): void;
   /** 전역 Console 단축키는 수동 문서가 아니라 앱 controller 한 곳으로 보낸다. */
   attachShortcutSource(contents: WebContents): void;
@@ -652,6 +654,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     },
     stop,
     refresh(): void { deps.surface.refresh(); for (const entry of live.values()) place(entry); },
+    places(): void { for (const entry of live.values()) place(entry); },
     relaySurface(surface): void { outbox = { ...outbox, surface }; flush(); },
     attachShortcutSource,
   };

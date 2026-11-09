@@ -162,10 +162,12 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
       const previous = pane;
       pane = next;
       layoutConsole();
-      if (previous && (!next || previous.rail !== next.rail)) {
+      const same = previous !== null && next !== null && previous.rail === next.rail && previous.bar === next.bar && previous.divider === next.divider;
+      if (previous && !same) {
         for (const view of [previous.rail, previous.bar, previous.divider]) if (!next || ![next.rail, next.bar, next.divider].includes(view)) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } }
       }
-      relayout();
+      // 같은 뷰들의 폭만 바뀌는 끌기·창 크기 조절 틱에서는 z-order 를 다시 쓰지 않는다.
+      if (!same) relayout();
     },
     parkBrowser,
     presentBrowser,
