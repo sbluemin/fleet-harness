@@ -14,7 +14,7 @@ import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import { ChatReferenceContext, ChatReferenceText } from "../chat-reference.js";
 import { useCodeBlockCopy } from "../code-block-copy.js";
 import { getT } from "../../i18n/index.js";
-import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
+import type { ConversationMessageVia, ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import type { AgentConversationEntry, AgentConversationProps } from "../../../../shared/chat-renderer.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
@@ -438,8 +438,12 @@ function findSpeaker(snapshot: ConversationLogSnapshot, objectiveId: string): Co
   return snapshot.participants.find((participant) => participant.speaker.objectiveId === objectiveId)?.speaker ?? null;
 }
 
-function sameSpeaker(entry: AgentConversationEntry | undefined, speaker: ConversationSpeaker): boolean {
-  return entry?.kind === "message" && speakerKey(entry.speaker) === speakerKey(speaker);
+/**
+ * 앞 말과 한 묶음인가 — 같은 발화자이고 같은 보드 행위(`via`)에 덧붙인 말일 때만 잇는다. 행위가 다른 말(스티어링 뒤의 자문 답 등)은
+ * 머리의 「→ 받는 이 · 행위」 줄이 그 말이 무엇인지 말하므로 새 묶음을 연다.
+ */
+function sameSpeaker(entry: AgentConversationEntry | undefined, speaker: ConversationSpeaker, via?: ConversationMessageVia): boolean {
+  return entry?.kind === "message" && speakerKey(entry.speaker) === speakerKey(speaker) && entry.via === via;
 }
 
 /** 말풍선이 서는 말인가 — 문면이 없는 말은 흐르는 중일 때만 「쓰는 중」으로 선다(`MessageBubble` 과 같은 규칙). */
@@ -470,7 +474,7 @@ function bubbleRunTails(entries: readonly (AgentConversationEntry | null)[], bre
     const entry = entries[index];
     if (entry?.kind !== "message" || entry.speaker.kind === "human") { if (tail) tails.add(tail); tail = null; continue; }
     const previous = entries[index - 1] ?? undefined;
-    if (!sameSpeaker(previous, entry.speaker) || breaks.has(entry.id)) { if (tail) tails.add(tail); tail = null; }
+    if (!sameSpeaker(previous, entry.speaker, entry.via) || breaks.has(entry.id)) { if (tail) tails.add(tail); tail = null; }
     if (bubbleShown(entry)) tail = entry.id;
   }
   if (tail) tails.add(tail);
@@ -732,7 +736,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly onOpenUISend?: GroupConversationProps["onOpenUISend"];
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker, entry.via) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
     case "delegation": return <RelayLine entry={entry} language={language} onOpen={onOpenRelay} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -751,7 +755,9 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   }
   if (after.entry.kind !== "message") return true;
   const speaker = after.entry.speaker;
-  if (sameSpeaker(before.previous, speaker) !== sameSpeaker(after.previous, speaker)) return false;
+  const via = after.entry.via;
+  if (before.entry.kind === "message" && before.entry.via !== via) return false;
+  if (sameSpeaker(before.previous, speaker, via) !== sameSpeaker(after.previous, speaker, via)) return false;
   // 최신 표식만 참여자 활동을 읽는다. 다른 참여자의 델타 때문에 지난 말까지 다시 그리지 않는다.
   const activity = (participants: readonly ConversationParticipant[]) => participants.find((participant) => speakerKey(participant.speaker) === speakerKey(speaker))?.activity;
   return !after.live || activity(before.participants) === activity(after.participants);
