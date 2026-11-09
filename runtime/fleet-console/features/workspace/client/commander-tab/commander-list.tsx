@@ -27,13 +27,16 @@ import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
 /**
- * 우측 작업 탭 카드의 행 아래 펼침 — 한 번에 한 행, 그 행의 글리프(목표·구성원·라이브러리)가 고른 내용.
- * 다른 목록(좌측·팝오버·폰)은 두지 않는다. 펼친 행은 호출자가 정한다(작업 탭은 활성 목표의 행).
+ * 지휘관 행의 글리프(목표·구성원·라이브러리) — 우측 작업 탭 카드는 행 아래에 한 번에 한 행을 펼치고(펼친 행은 호출자가 정한다),
+ * 좌측 사이드바(`popup`)는 같은 내용을 팝업으로 연다. 팝오버·폰은 두지 않는다.
  */
 export interface CommanderListExpansion {
   readonly expanded: { readonly objectiveId: string; readonly tab: CommanderRowGlyphTab } | null;
-  readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab) => void;
+  /** `item`·`opener` 는 팝업을 여는 쪽이 제목과 초점 복귀에 쓴다. */
+  readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab, item: SideBarRowItem, opener: HTMLElement) => void;
   readonly renderPanel: (item: SideBarRowItem, tab: CommanderRowGlyphTab) => ReactNode;
+  /** 글리프가 행 아래 펼침 대신 팝업을 연다 — 이때 `expanded` 는 늘 null 이고 패널은 그리지 않는다. */
+  readonly popup?: boolean;
 }
 
 /** 펼친 행 아래 패널 — 그 지휘관의 accent를 다시 씌운다. 카드 밖(사령관 머리·탭)은 사령관 색 그대로다. */
@@ -124,7 +127,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         popups={popups !== undefined && objectiveId !== null ? popups(item, objectiveId) : undefined}
         expanded={openTab !== null}
         rowGlyphs={expansion !== undefined && objectiveId !== null ? (
-          <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={objectiveId} title={item.layout.cluster.title} expandedTab={openTab} panelId={panelId} onGlyphTab={expansion.onGlyphTab} />
+          <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={objectiveId} title={item.layout.cluster.title} expandedTab={openTab} panelId={panelId} popup={expansion.popup === true} onGlyphTab={(id, tab, opener) => expansion.onGlyphTab(id, tab, item, opener)} />
         ) : undefined}
         onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
         onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />

@@ -10,6 +10,7 @@
 .objectives-rw-heading { flex: none; font-weight: var(--weight-bold); }
 .objectives-rw-objective { flex: 1; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objectives-rw-head button { display: grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; }
+.objectives-rw-head button.objectives-rw-source { width: auto; padding: 0 8px; font-size: var(--t-sm); white-space: nowrap; }
 .objectives-rw-head button:hover { background: var(--control-rest-hover); color: var(--text-primary); }
 .objectives-result-window :is(button, select, a):focus-visible { box-shadow: var(--focus-face); }
 .objectives-rw-switch { flex: 1; min-width: 0; max-width: 100%; }

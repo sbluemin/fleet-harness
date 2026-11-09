@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import type { CommodoreTasksListProps } from "../../../commodore/client/deps.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
@@ -6,18 +6,13 @@ import { commanderObjectiveId } from "../objective-clusters.js";
 import { CommodoreCommanderList } from "./commander-list.js";
 import { openCommanderConversation } from "./commander-navigation.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
-import { CommanderMissionsDialog, CommanderRowPanel } from "../../../objectives/client/objectives-panel.js";
-import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
-import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
-import { unseenRecords } from "../../../objectives/shared/types.js";
+import { CommanderRowPanel } from "../../../objectives/client/objectives-panel.js";
+import { useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
 import { objectiveTabHasContent } from "../../../objectives/client/detail-content.js";
 import { useSharedFileCount } from "../../../objectives/client/shared-folder-count.js";
-import { commodoreAvatarKey } from "../../shared/avatars.js";
-import { useAvatarAccent } from "../avatar-accent.js";
+import { useCommanderPopups } from "./commander-popups.js";
 import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import type { CommanderRowGlyphTab } from "./commander-row-glyphs.js";
-
-type Missions = { readonly objectiveId: string; readonly title: string; readonly opener: HTMLElement };
 
 // 행 글리프가 펼친 행과 탭 — 펼침은 글리프를 누른 행에 서며 가운데 대화(활성 목표)와 무관하다. 화면 메모리로만 둔다.
 type Expanded = { readonly objectiveId: string; readonly tab: CommanderRowGlyphTab };
@@ -34,19 +29,16 @@ const readExpandedRow = () => expandedRow;
 /**
  * 작업 탭 「목표」 섹션이 쓰는 목록 — 조립(호스트)이 commodore feature에 넘기는 렌더러다.
  * commodore feature가 workspace 목록을 직접 가져오면 순환이 생기므로, 이 모듈 한 곳에서만 잇는다.
- * 행이나 아바타를 누르면 지휘관 대화가 바로 열리고, 임무 게이지를 누르면 임무 팝업(구성원 로스터 + 임무 그래프)이 뜬다.
+ * 행을 누르면 지휘관 대화가 바로 열리고, 아바타를 누르면 목표 팝업(브리핑·달성 기준·결정·회고·후속 목표)이, 임무 게이지를 누르면 임무 팝업(구성원 로스터 + 임무 그래프)이 뜬다.
  * 행의 글리프(목표·구성원·라이브러리)를 누르면 그 내용만 그 행 아래에 펼친다(아코디언) — 가운데 대화는 그대로 두고 열지 않는다.
  * 펼침 상태는 화면 메모리로만 둔다.
  */
 export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect }: CommodoreTasksListProps) {
   const state = useConsoleState();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
-  const objectivesT = getObjectivesT(language);
-  const [missions, setMissions] = useState<Missions | null>(null);
-  // 임무 팝업은 body 포털이라 오른쪽 패널의 지휘관 강조색을 물려받지 못한다 — 같은 값을 팝업에 직접 건넨다.
-  const accent = useAvatarAccent(commodoreAvatarKey(commodoreId));
+  const { rowPopups, dialogs } = useCommanderPopups(commodoreId);
   const expandedState = useSyncExternalStore(subscribeExpandedRow, readExpandedRow, readExpandedRow);
-  // 게이지 단추의 안 읽은 기록 점이 읽는 보드 — 목록이 함께 올린다.
+  // 펼친 행의 목표를 읽는 보드(팝업 훅이 같은 보드를 올린다).
   const board = useObjectiveBoard(commodoreId);
   const expandedObjective = expandedState === null || !board.loaded ? null : board.objectives.find((candidate) => candidate.id === expandedState.objectiveId) ?? null;
   const sharedFiles = useSharedFileCount(expandedObjective, true);
@@ -57,9 +49,6 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
     const current = expandedRow;
     setExpandedRow(current !== null && current.objectiveId === objectiveId && current.tab === next ? null : { objectiveId, tab: next });
   };
-  const api = objectivesApi();
-  useEffect(() => { if (api !== null) void loadBoard(api, commodoreId); }, [api, commodoreId]);
-  const unseenOf = (objectiveId: string) => board.loaded && (board.objectives.find((candidate) => candidate.id === objectiveId)?.missions.some((mission) => unseenRecords(mission) > 0) ?? false);
 
   const openConversation = (item: SideBarRowItem) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
@@ -90,15 +79,7 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
       card
       heading={heading}
       onSelect={handleSelect}
-      popups={(item, objectiveId) => ({
-        // 아바타도 행 본문과 같이 지휘관 대화를 연다 — 팝업 문구는 대화 열기로 읽힌다.
-        avatarLabel: `${item.layout.cluster.title} · ${objectivesT("objectives.popover.openChat")}`,
-        progressLabel: (done, total) => objectivesT("objectives.popover.missions", { done, total }),
-        unseen: unseenOf(objectiveId),
-        unseenLabel: objectivesT("objectives.tabs.unseenDot"),
-        onAvatar: () => handleSelect(item),
-        onProgress: (opener) => { setMissions({ objectiveId, title: item.layout.cluster.title, opener }); },
-      })}
+      popups={rowPopups}
       expansion={{
         expanded,
         onGlyphTab: handleGlyphTab,
@@ -110,10 +91,6 @@ export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect 
         },
       }}
     />
-    {missions ? (
-      <CommanderMissionsDialog commodoreId={commodoreId} objectiveId={missions.objectiveId} title={missions.title} language={language} {...(accent ? { accent } : {})}
-        onOpenObjective={(id) => openCommanderConversation(commodoreId, id)}
-        onClose={() => { const opener = missions.opener; setMissions(null); if (opener.isConnected) opener.focus(); }} />
-    ) : null}
+    {dialogs}
   </>;
 }

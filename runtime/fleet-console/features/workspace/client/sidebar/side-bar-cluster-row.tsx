@@ -253,8 +253,8 @@ interface SideBarClusterRowProps {
 }
 
 export interface RowPopups {
-  /** 아바타 단추를 누르면 지휘관 대화가 열린다 — 행 본문 선택과 같다. */
-  readonly onAvatar: () => void;
+  /** 아바타 단추를 누르면 목표 팝업이 열린다 — 행 본문 선택(지휘관 대화)과 다르다. */
+  readonly onAvatar: (opener: HTMLElement) => void;
   readonly onProgress: (opener: HTMLElement) => void;
   readonly avatarLabel: string;
   readonly progressLabel: (done: number, total: number) => string;
@@ -486,7 +486,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
           type="button"
           className="side-bar-cluster-row-glyph is-actionable"
           aria-label={popups.avatarLabel}
-          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onAvatar(); }}
+          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onAvatar(event.currentTarget); }}
         >
           <ClusterRowAvatar item={item} rowState={state} label={label} decorative />
         </button>

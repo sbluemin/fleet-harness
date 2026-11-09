@@ -13,10 +13,10 @@ import { DecisionList } from "./decisions.js";
 import { Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
 import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
-import { SharedFolderRows, useSharedFolder } from "./shared-folder.js";
+import { SharedFolderRows } from "./shared-folder.js";
 import { briefHasContent, objectiveTabHasContent } from "./detail-content.js";
 import { ToolbarTipLayer } from "../../../core/client/src/chrome/toolbar/toolbar-tip.js";
-import { useSharedFileCount } from "./shared-folder-count.js";
+import { useSharedFileCount, useSharedFolder } from "./shared-folder-count.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, setGraphOrientation, useGraphOrientation, type MissionDetailActions, type MissionState } from "./graph.js";
@@ -199,7 +199,19 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
  * 우측 작업 탭의 임무 팝업 — 행의 임무 게이지가 연다. 구성원 로스터(지휘관·구성원·구성원 추가)를 위에, 임무 그래프를 아래에 두는
  * 구성원 탭을 편성 확대본과 같은 오버레이에 담는다. 안의 길이 결과물·목표로 가면 같은 팝업에서 그 내용을 보이고 「임무로」가 되돌린다.
  */
-export function CommanderMissionsDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective }: {
+export function CommanderMissionsDialog(props: CommanderDialogProps) {
+  return <CommanderDetailDialog {...props} home="crew" />;
+}
+
+/**
+ * 우측 작업 탭의 목표 팝업 — 행의 지휘관 아바타가 연다. 목표 탭(브리핑·달성 기준·결정·회고·후속 목표)을 임무 팝업과 같은 오버레이에 담는다.
+ * 안의 길이 임무·결과물로 가면 같은 팝업에서 그 내용을 보이고 「목표로」가 되돌린다.
+ */
+export function CommanderGoalDialog(props: CommanderDialogProps) {
+  return <CommanderDetailDialog {...props} home="goal" />;
+}
+
+type CommanderDialogProps = {
   readonly commodoreId: string;
   readonly objectiveId: string;
   readonly title: string;
@@ -208,14 +220,18 @@ export function CommanderMissionsDialog({ commodoreId, objectiveId, title, langu
   readonly accent?: CSSProperties;
   readonly onClose: () => void;
   readonly onOpenObjective: (objectiveId: string) => void;
-}) {
+  /** 처음 보일 탭 — 없으면 팝업의 본래 탭이다. 좌측 사이드바 글리프가 결과물 탭으로 바로 연다. */
+  readonly start?: DetailTab;
+};
+
+function CommanderDetailDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective, start, home }: CommanderDialogProps & { readonly home: DetailTab }) {
   const t = getT(language);
-  const [tab, setTab] = useState<DetailTab>("crew");
+  const [tab, setTab] = useState<DetailTab>(start ?? home);
   // 그래프가 알려 준 폭까지 넓힌다 — 로스터가 읽히는 최소 폭은 지킨다.
   const [fitWidth, setFitWidth] = useState<number | null>(null);
   return createPortal(
     <LineupZoom t={t} title={title} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
-      tools={tab === "crew" ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab("crew")}>{t("objectives.missions.back")}</button>}>
+      tools={tab === home ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab(home)}>{t(home === "goal" ? "objectives.goal.back" : "objectives.missions.back")}</button>}>
       {/* workspace-avatar-panel 이 --conversation-accent* 를 --brass* 행동 강조 토큰에 묶는다 — 변수만 건네면 이 팝업은 중립으로 남는다. */}
       <div className={`commander-missions-dialog is-${tab}${accent ? " workspace-avatar-panel" : ""}`} {...(accent ? { style: accent } : {})}>
         <CommanderRowPanel commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setTab} onGraphFitWidth={setFitWidth} onOpenObjective={(id) => { onClose(); onOpenObjective(id); }} />
@@ -1407,7 +1423,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     onTabRef.current("crew");
     setMissionReveal({ id: highlightMission, at: Date.now() });
   }, [highlightMission]);
-  // 후속 후보 — 고르기·폐기는 하단 띠가 맡는다. 상세는 결과물 탭의 접힌 묶음에서 진행 중에 모인 후보를 읽기만 하고, 완료 뒤에는 결과를 보인다.
+  // 후속 후보 — 고르기·폐기는 하단 띠가 맡는다. 상세는 목표 탭 하단의 접힌 섹션에서 진행 중에 모인 후보를 읽기만 하고, 완료 뒤에는 결과를 보인다.
   const followupOpenList = openFollowups(objective);
   const [followupOpenId, setFollowupOpenId] = useState<string | null>(null);
   const followupBatches = readBatches(objective);
@@ -1641,64 +1657,67 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         </div>
       </div>
   ) : null;
-  // 결과물 탭 아래 접힌 묶음 — 회고 · 후속 목표 · 이전 회차. 있는 것만 선다.
+  // 목표 탭 하단 — 회고 · 후속 목표 · 이전 회차. 각각 독립된 섹션이고 있는 것만 선다.
   const followupCollected = objective.done ? [] : followupOpenList;
   const showFollowupResults = followupBatches.length > 0 || !!followupHistory || followupOpenList.length > 0;
-  const sResultFolds = objective.handoff || showFollowupResults || objective.extensions.length ? (
-      <div className="objectives-group objectives-result-folds">
-        {/* 회고 — 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
-        {objective.handoff ? <>
-          <SectionHead label={t("objectives.retro.title")} controls="objectives-sec-retro" named={readOnly} expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
-          <div id="objectives-sec-retro" hidden={!sectionOpen("detail:retro")}>
-            <Retrospective
+  // 회고 — 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용.
+  const sRetro = objective.handoff ? (
+      <div className="objectives-group">
+        <SectionHead label={t("objectives.retro.title")} controls="objectives-sec-retro" named={readOnly} expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
+        <div id="objectives-sec-retro" hidden={!sectionOpen("detail:retro")}>
+          <Retrospective
+            t={t}
+            by={objective.handoff.by}
+            good={objective.handoff.retrospective?.wentWell.map((pair) => ({ text: pair.point, aside: pair.because })) ?? []}
+            regret={objective.handoff.retrospective?.fellShort.map((pair) => ({ text: pair.point, aside: pair.ifOnly })) ?? []}
+          />
+        </div>
+      </div>
+  ) : null;
+  // 후속 목표 — 진행 중에 모인 후보(읽기만), 완료 때 고른 후보의 배치 요약과 줄 상태, 남긴 후보.
+  const sFollowups = showFollowupResults ? (
+      <div className="objectives-group">
+        <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" named={readOnly} expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
+        <div id="objectives-sec-followup-results" hidden={!sectionOpen("detail:followupResults")}>
+          {followupCollected.length ? <div className="objectives-followup-collected">
+            <p className="objectives-followup-caption">{t("objectives.followup.collected", { n: followupCollected.length })}</p>
+            <FollowupCandidateList
+              candidates={followupCollected}
+              selectable={false}
+              selection={EMPTY_IDS}
               t={t}
-              by={objective.handoff.by}
-              good={objective.handoff.retrospective?.wentWell.map((pair) => ({ text: pair.point, aside: pair.because })) ?? []}
-              regret={objective.handoff.retrospective?.fellShort.map((pair) => ({ text: pair.point, aside: pair.ifOnly })) ?? []}
+              idPrefix={`detail-${objective.id}`}
+              openId={followupOpenId}
+              onOpenChange={setFollowupOpenId}
+              onToggleCheck={() => {}}
             />
-          </div>
-        </> : null}
-        {/* 후속 목표 — 진행 중에 모인 후보(읽기만), 완료 때 고른 후보의 배치 요약과 줄 상태, 남긴 후보. */}
-        {showFollowupResults ? <>
-          <SectionHead label={followupCollected.length ? `${t("objectives.followup.results")} ${followupCollected.length}` : t("objectives.followup.results")} controls="objectives-sec-followup-results" named={readOnly} expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
-          <div id="objectives-sec-followup-results" hidden={!sectionOpen("detail:followupResults")}>
-            {followupCollected.length ? <div className="objectives-followup-collected">
-              <p className="objectives-followup-caption">{t("objectives.followup.collected", { n: followupCollected.length })}</p>
-              <FollowupCandidateList
-                candidates={followupCollected}
-                selectable={false}
-                selection={EMPTY_IDS}
-                t={t}
-                idPrefix={`detail-${objective.id}`}
-                openId={followupOpenId}
-                onOpenChange={setFollowupOpenId}
-                onToggleCheck={() => {}}
-              />
-            </div> : null}
-            <FollowupBatchResults
-              batches={followupBatches}
-              leftover={objective.done ? followupOpenList : []}
-              historyTotal={followupHistory}
-              language={language}
-              t={t}
-              onRetry={(batchId, candidateId) => void call("/followup/retry", { objectiveId: objective.id, batchId, candidateId })}
-              onOpenObjective={onOpenObjective}
-            />
-          </div>
-        </> : null}
-        {objective.extensions.length ? <>
-          <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" named={readOnly} expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
-          <div id="objectives-sec-extensions" hidden={!sectionOpen("detail:extensions")}>
-            <ExtensionHistory objective={objective} t={t} language={language} />
-          </div>
-        </> : null}
+          </div> : null}
+          <FollowupBatchResults
+            batches={followupBatches}
+            leftover={objective.done ? followupOpenList : []}
+            historyTotal={followupHistory}
+            language={language}
+            t={t}
+            onRetry={(batchId, candidateId) => void call("/followup/retry", { objectiveId: objective.id, batchId, candidateId })}
+            onOpenObjective={onOpenObjective}
+          />
+        </div>
+      </div>
+  ) : null;
+  // 이전 회차 — 확장 라운드가 있을 때만. 목표가 자란 내력이라 목표 탭 맨 아래에 둔다.
+  const sExtensions = objective.extensions.length ? (
+      <div className="objectives-group">
+        <SectionHead label={`${t("objectives.extend.previous")} ${objective.extensions.length}`} controls="objectives-sec-extensions" named={readOnly} expanded={sectionOpen("detail:extensions")} onToggle={() => onToggleSection("detail:extensions")} />
+        <div id="objectives-sec-extensions" hidden={!sectionOpen("detail:extensions")}>
+          <ExtensionHistory objective={objective} t={t} language={language} />
+        </div>
       </div>
   ) : null;
   // 상세 aside > 탭 칸(스크롤). 넘긴 이유와 돌려주기는 구성원 채팅 카드에서 보인다.
   // 탭 칸(.objectives-detail-scroll)이 상세의 스크롤 컨테이너다 — 그래프의 드래그 자동 스크롤·팝업 앵커가 이 칸을 기준으로 삼는다.
-  const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}{sConsultations}</>
+  const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}{sConsultations}{sRetro}{sFollowups}{sExtensions}</>
     : tab === "crew" ? <>{sCrew}{sMissions}</>
-    : <>{sResults}{sResultFolds}</>;
+    : <>{sResults}</>;
   return (
     <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}`} aria-label={objective.title}>
       <div className="objectives-detail-scroll">

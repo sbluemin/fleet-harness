@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { SharedFolderList } from "../shared/shared-folder.js";
 import type { Objective } from "../shared/types.js";
@@ -51,4 +51,28 @@ export function useSharedFileCount(objective: Objective | null, armed: boolean):
   latest.current = objective;
   useEffect(() => { if (armed && latest.current !== null) load(latest.current, true); }, [armed]);
   return objective === null ? null : cache.get(objective.id)?.count ?? null;
+}
+
+type Load = { readonly objectiveId: string; readonly list: SharedFolderList | null; readonly failed: boolean };
+
+/**
+ * 공유 폴더 목록 — 펼쳐 있는 동안만 읽고, 그 목표의 보드 객체가 바뀔 때 다시 읽는다. 폴링·새로 고침 단추는 없다.
+ * 다시 읽는 동안에는 이전 목록을 그대로 둔다. 다른 목표의 응답은 쓰지 않는다.
+ */
+export function useSharedFolder(objective: Objective, open: boolean): { readonly list: SharedFolderList | null; readonly failed: boolean } {
+  const [load, setLoad] = useState<Load | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    const objectiveId = objective.id;
+    fetch(sharedListUrl(objectiveId), { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`http_${response.status}`);
+        return (await response.json()) as SharedFolderList;
+      })
+      .then((list) => setLoad({ objectiveId, list, failed: false }))
+      .catch(() => { if (!controller.signal.aborted) setLoad({ objectiveId, list: null, failed: true }); });
+    return () => controller.abort();
+  }, [open, objective]);
+  return load?.objectiveId === objective.id ? load : { list: null, failed: false };
 }
