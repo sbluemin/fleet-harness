@@ -915,7 +915,8 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
   const [profileBusy, setProfileBusy] = React.useState(false);
   const [importSources, setImportSources] = React.useState<ChromeImportSources | null>(null);
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
-  const nativeRef = React.useRef<HTMLDivElement | null>(null);
+  // 칸↔독립 창 전환에서 이 패널의 DOM 이 새 portal 컨테이너로 다시 서므로, 요소가 바뀌면 관측도 새 요소로 다시 건다(ref 만으로는 알 수 없다).
+  const [nativeEl, setNativeEl] = React.useState<HTMLDivElement | null>(null);
   const imageRef = React.useRef<HTMLImageElement | null>(null);
   const lastMove = React.useRef(0);
   const activeTab = available ? state?.tabs.find((tab) => tab.id === state.activeTabId) ?? null : null;
@@ -942,7 +943,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
     if (!available || inactive || !detached.surface) return;
     const document = documentFor;
     const window = document.defaultView ?? globalThis.window;
-    const element = nativeRef.current;
+    const element = nativeEl;
     const hostElement = viewportRef.current;
     if (!element || !hostElement) return;
     const identity = { surface: detached.surface.id, clientId: detached.clientId };
@@ -988,7 +989,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
       document.removeEventListener("visibilitychange", updatePresentation);
       send("place", { visible: false, ...identity });
     };
-  }, [available, inactive, activeTab?.id, mode, documentFor, detached.surface?.id, detached.clientId, state?.surface?.status,
+  }, [available, inactive, activeTab?.id, mode, documentFor, nativeEl, detached.surface?.id, detached.clientId, state?.surface?.status,
     importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, services]);
   React.useEffect(() => inactive ? undefined : retainNativeFloat(documentFor), [documentFor, inactive]);
 
@@ -1337,7 +1338,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
 
   const navBar = (
     <div ref={navRef} className={`op-browser__nav${navTop ? " is-top" : ""}${state?.driving === true ? " is-driving" : ""}`}>
-      {host && detached.surface?.mode === "pane" ? <button type="button" className="op-browser__icon op-browser__pane-close" onClick={detached.close} aria-label={t("terminal.browser.exit")} title={t("terminal.browser.exit")}>×</button> : null}
+      {host && detached.surface?.mode === "pane" ? <button type="button" className="op-browser__icon op-browser__pane-close" onClick={detached.close} aria-label={t("terminal.browser.exit")} title={t("terminal.browser.exit")}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button> : null}
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
       <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
@@ -1564,7 +1565,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
             </>
           ) : activeTab ? (
             // 네이티브 페이지는 셸이 놓는다. 크롬/가림 여백을 읽는 Console 소유 표지만 남긴다.
-            <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: BROWSER_GLOBAL_ID }} />
+            <div className="op-browser__native" ref={setNativeEl} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: BROWSER_GLOBAL_ID }} />
           ) : (
             <div className="op-browser__empty">
               <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>
