@@ -148,9 +148,8 @@ html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region
 .op-browser__viewport.is-annotating { container-type: size; overflow: hidden; }
 .op-browser__viewport.is-annotating .op-browser__stage { margin: 0; }
 .op-browser__frame { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; cursor: default; }
-/* 네이티브 뷰의 자리 — Desktop 이 이 사각형 위에 실제 Chromium 뷰를 놓는다. 주차 중에는 마지막 화면(still-frame)을 표시한다. */
+/* Desktop이 표면 사각형에서 크롬 여백을 뺀 자리에 실제 페이지를 놓는다. */
 .op-browser__native { position: relative; flex: 1; align-self: stretch; width: 100%; height: 100%; overflow: hidden; }
-.op-browser__backdrop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; user-select: none; -webkit-user-drag: none; }
 
 .op-browser__empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-6); text-align: center; color: var(--text-secondary); }
 .op-browser--empty .op-browser__empty { height: 100%; }
@@ -290,10 +289,10 @@ html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region
 /* main Desktop과 같은 52px native controls 줄이다. 드래그는 빈 자리만, 탭·입력·메뉴는 no-drag다. */
 html[data-desktop-shell="true"] .browser-window-document #browser-window-caption { -webkit-app-region: drag; }
 html[data-desktop-shell="true"] .browser-window-document #browser-window-caption :is(button, a, input, select, textarea, [role="tab"], [role="button"], [role="menu"], [role="listbox"], [tabindex]) { -webkit-app-region: no-drag; }
-html[data-desktop-platform="darwin"] .browser-window-document #browser-window-caption { padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-2)); }
+html[data-desktop-platform="darwin"]:not([data-browser-mode="pane"]) .browser-window-document #browser-window-caption { padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-2)); }
 /* Windows 네이티브 컨트롤 띠는 맨 위 52px 를 덮는다 — 아래 이음매는 그 띠 밑(53번째 px)에 놓여야 컨트롤 아래까지 끊기지 않는다. */
-html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { height: 53px; }
-html[data-desktop-platform="win32"] .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
+html[data-desktop-platform="win32"]:not([data-browser-mode="pane"]) .browser-window-document #browser-window-caption { height: 53px; }
+html[data-desktop-platform="win32"]:not([data-browser-mode="pane"]) .browser-window-document #browser-window-caption { padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1))); }
 /* 분리 창에서만 에이전트 세션의 틴트가 주소줄 줄에도 이어진다 — 주소줄 줄이 곧 창의 맨 위 줄이라 신호등 자리까지 포함한 줄 전체가 레일 꼭대기의 틴트에서 시작해 오른쪽으로 옅어진다. */
 #browser-window-caption:has(.op-browser__nav.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--conversation-surface, var(--canvas-abyss))), var(--conversation-surface, var(--canvas-abyss)) 70%); }
 #browser-window-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }

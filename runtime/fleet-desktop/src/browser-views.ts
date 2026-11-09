@@ -376,10 +376,19 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   };
 
   const dipBounds = (spec: DesktopBrowserView): { x: number; y: number; width: number; height: number } | null => {
-    if (!spec.bounds) return null;
     const zoom = deps.zoomFactor(spec.surface);
     const factor = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
     const pane = deps.companion?.paneBounds?.(spec.surface);
+    if (spec.insets) {
+      const parent = deps.companion?.surface(spec.surface);
+      if (!parent) return null;
+      const content = parent.getContentBounds();
+      const box = pane ?? { x: 0, y: 0, width: content.width, height: content.height };
+      const edge = (side: "top" | "right" | "bottom" | "left") => Math.round((spec.insets![side] + (spec.cut?.[side] ?? 0)) * factor);
+      const left = edge("left"), top = edge("top");
+      return { x: box.x + left, y: box.y + top, width: Math.max(0, box.width - left - edge("right")), height: Math.max(0, box.height - top - edge("bottom")) };
+    }
+    if (!spec.bounds) return null;
     if (pane) {
       const left = Math.round(spec.bounds.x * factor), top = Math.round(spec.bounds.y * factor);
       return { x: pane.x + left, y: pane.y + top, width: Math.max(1, pane.width - left), height: Math.max(1, pane.height - top) };

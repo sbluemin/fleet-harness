@@ -1,7 +1,7 @@
+import { DESKTOP_BROWSER_PANE_CAPABILITY } from "@fleet-console/protocol/desktop";
 import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { NATIVE_VIEW_COVER_ATTRIBUTE, nativeViewCovered, observeNativeViewCover } from "@fleet-console/ui/native-view";
 import * as React from "react";
-import { createPortal } from "react-dom";
 import type { ObjectiveRenderContext } from "../../execution/shared/client-contract.js";
 import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
 import { CaptionBrowserUseGlyph } from "../../workspace/client/components/caption-actions.js";
@@ -14,7 +14,7 @@ import { BROWSER_GLOBAL_ID, commodoreOfSpace, HUMAN_SPACE_ID, spaceKindOf, type 
 import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
-import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_CLIP_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import { BrowserSurfaceContent, useBrowserDocument, useBrowserWindow, type BrowserSurfaceState } from "./browser-window.js";
 import "./browser-panel.css";
@@ -151,13 +151,6 @@ function useBrowserStream(scopeId: string, enabled: boolean, subscribeConsoleCha
   return { state, connection, homeSpaceId };
 }
 
-/** 네이티브 뷰 자리를 다시 재는 간격 — 패널 드래그·리사이즈는 이벤트로도 오지만 캔버스 이동·덮개의 등장은 오지 않는다. */
-const NATIVE_PLACE_POLL_MS = 200;
-/** 칸의 자리가 움직이는 동안(무엇이 움직였든) 매 프레임 다시 알리고, 이만큼 멈춰 있으면 움직임이 끝난 것으로 본다. */
-const NATIVE_PLACE_SETTLE_MS = 160;
-/** 칸 끌기 예고 동안 미리 찍는 정지 화면 — 이 간격으로 새로 찍고, 이보다 오래된 장은 끌기에 쓰지 않는다. */
-const RESIZE_FRAME_REFRESH_MS = 1000;
-const RESIZE_FRAME_MAX_AGE_MS = 1500;
 /** 가림을 재는 표본 격자와 경계 탐색 횟수. 6×4 로 덮개를 찾고, 그 변의 경계는 이분으로 1px 까지 좁힌다. */
 const OCCLUSION_COLUMNS = 6;
 const OCCLUSION_ROWS = 4;
@@ -601,7 +594,7 @@ function screenPointInside(element: HTMLElement | null, screenX: number, screenY
  *
  * 자리(`.op-browser-rail-slot`)는 접힘 폭(고정이면 펼침 폭)으로만 레이아웃을 차지한다 — 호버 펼침은 그 자리 위에 겹쳐 그려지므로
  * 본문 폭이 호버마다 바뀌지 않는다. 겹친 펼침은 네이티브 뷰를 덮으므로 가림 표면(`COVERS_NATIVE_VIEW`)으로 알린다: 셸이 자식 창을 지원하면
- * 뷰는 라이브로 남고 펼침이 그 위 창에 그려지며, 아니면 뷰가 정지 화면 뒤로 물러선다. 본문이 올린 스냅샷을 읽는다.
+ * 뷰는 라이브로 남고 펼침이 그 위 창에 그려지며, 아니면 가림 여백만큼 물러선다. 본문이 올린 스냅샷을 읽는다.
  */
 function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
   const t = getT(language ?? "en");
@@ -837,7 +830,7 @@ let sharedDraft: string | null = null;
 /** 분리 창의 패널이 스냅샷·가림 신호에 쓰는 키 — 어느 문맥의 패널(scope)과도 겹치지 않는다. */
 const WINDOW_PANEL_KEY = "window";
 
-export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLive, services, onAttach, terminalPaste = false, homeSpaceId: homeOverride, pasteTargetId, host = false }: SessionBrowserPanelProps) {
+export function SessionBrowserPanel({ ownerId: scopeId, language, theme, services, onAttach, terminalPaste = false, homeSpaceId: homeOverride, pasteTargetId, host = false }: SessionBrowserPanelProps) {
   const { isDesktopShell, themePolarity } = services;
   // 이 패널의 스냅샷·가림 신호 키 — 분리 창의 패널은 문맥을 따라가지 않고 하나뿐이다.
   const objectiveId = host ? WINDOW_PANEL_KEY : scopeId;
@@ -852,8 +845,6 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
   const surfaceOpen = useBrowserDocument() !== null;
   const inactive = detached.blocked || (surfaceOpen && !host) || (host && !surfaceOpen);
   const documentFor = host ? detached.surface?.document ?? document : document;
-  const placementIdentity = React.useRef({ surface: detached.surface?.id ?? null, clientId: detached.clientId });
-  placementIdentity.current = { surface: detached.surface?.id ?? null, clientId: detached.clientId };
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
   const urlDirty = React.useRef(false);
@@ -945,350 +936,62 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
   const shownFrame = stillFrame && activeTab && stillFrame.tabId === activeTab.id ? stillFrame : null;
   React.useEffect(() => { if (mode === "annotate" && !activeTab) setMode("none"); }, [mode, activeTab]);
 
-  // 메뉴·팝업·대화상자로 뷰가 가려질 때(parking) 보여 줄 마지막 웹 화면 스냅샷.
-  // 주석 모드의 stillFrame 과 분리해 입력·검사 이벤트 오염을 막는다.
-  const [backdropFrame, setBackdropFrame] = React.useState<Frame | null>(null);
-  const backdropFrameRef = React.useRef<Frame | null>(null);
-  backdropFrameRef.current = backdropFrame;
-  const shownBackdrop = backdropFrame && activeTab && backdropFrame.tabId === activeTab.id ? backdropFrame : null;
-
-  const pendingParkBoundsRef = React.useRef<Record<string, unknown> | null>(null);
-  const wantsHideRef = React.useRef(false);
-  const activeTabRef = React.useRef(activeTab);
-  activeTabRef.current = activeTab;
-
+  // 칸/창의 사각형은 Desktop이 소유한다. 여기서는 크롬 여백과 가림 상태만 바뀔 때 알린다.
+  const presentationQueue = React.useRef(Promise.resolve());
   React.useEffect(() => {
-    setBackdropFrame(null);
-    backdropFrameRef.current = null;
-    pendingParkBoundsRef.current = null;
-  }, [activeTab?.id, activeTab?.url, mode]);
-
-  const placeRef = React.useRef<string>("");
-
-  // backdropFrame 이 커밋되어 DOM 에 그려진 뒤, 브라우저가 화면을 합성/페인트한 다음 네이티브 뷰를 주차(hide)한다.
-  React.useEffect(() => {
-    if (!backdropFrame) return;
-    const frameId = requestAnimationFrame(() => {
-      if (wantsHideRef.current && pendingParkBoundsRef.current) {
-        const body = { ...pendingParkBoundsRef.current, surface: detached.surface?.id ?? null, clientId: detached.clientId };
-        const key = JSON.stringify(body);
-        if (placeRef.current !== key) {
-          placeRef.current = key;
-          void post(BROWSER_GLOBAL_ID, "place", body).catch(() => undefined);
-        }
-      }
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [backdropFrame, objectiveId, detached.surface, detached.clientId]);
-
-  // ---- 네이티브 뷰의 자리 ----
-  // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리(가려지지 않은 부분)를 서버에 알리고, 셸은 서버의 스냅샷을 보고
-  // 뷰를 놓는다. 가려질 때(주석·모달·접힘·다른 화면)는 감춘다 — 네이티브 뷰는 언제나 페이지 위에 그려지기 때문이다.
-  React.useEffect(() => {
-    if (!available || inactive) return;
+    if (!available || inactive || !detached.surface) return;
     const document = documentFor;
     const window = document.defaultView ?? globalThis.window;
     const element = nativeRef.current;
-    const host = viewportRef.current;
-    if (!element || !host) return;
-    // 복귀 DOM 측정이 서버의 lease 해제보다 먼저 닿았더라도, 해제 프레임 뒤에는 새 좌표를 다시 발행한다.
-    placeRef.current = "";
-
-    let disposed = false;
-    let captureTask: { id: number; controller: AbortController; timeout: ReturnType<typeof setTimeout> } | null = null;
-    let captureTaskId = 0;
-    let captureFailed = false;
-    let restoreTimer: ReturnType<typeof setTimeout> | null = null;
-    let heldParkBounds: Record<string, unknown> | null = null;
-    // 칸 끌기 예고(손잡이 가리킴·포커스) 동안 보이는 뷰를 미리 찍어 둔 장 — 끌기가 시작되면 캡처를 기다리지 않고 이 장으로 물러난다.
-    let resizeFrame: { readonly frame: Frame; readonly url: string; readonly at: number } | null = null;
-    let resizePrefetch: AbortController | null = null;
-    let resizeRefresh: ReturnType<typeof setInterval> | null = null;
-    let resizeMine = false;
-
-    const abortActiveCapture = () => {
-      if (!captureTask) return;
-      clearTimeout(captureTask.timeout);
-      captureTask.controller.abort();
-      captureTask = null;
+    const hostElement = viewportRef.current;
+    if (!element || !hostElement) return;
+    const identity = { surface: detached.surface.id, clientId: detached.clientId };
+    const shellLayout = services.desktopShellCapabilities().includes(DESKTOP_BROWSER_PANE_CAPABILITY);
+    let key = "";
+    const send = (action: string, body: Record<string, unknown>) => {
+      const next = JSON.stringify(body);
+      if (key === next) return;
+      key = next;
+      presentationQueue.current = presentationQueue.current.then(async () => { await post(BROWSER_GLOBAL_ID, action, body); }).catch(() => undefined);
     };
-
-    const post_ = (placement: Record<string, unknown>) => {
-      const body = { ...placement, surface: detached.surface?.id ?? null, clientId: detached.clientId };
-      const key = JSON.stringify(body);
-      if (placeRef.current === key) return;
-      placeRef.current = key;
-      void post(BROWSER_GLOBAL_ID, "place", body).catch(() => undefined);
-    };
-
-    const captureBackdrop = (tabId: string, url: string, parkBounds: Record<string, unknown>) => {
-      abortActiveCapture();
-      const currentTaskId = ++captureTaskId;
-      const controller = new AbortController();
-
-      // 전체 캡처 예산(fetch + JSON 파싱 + img.decode): 800ms
-      // 타임아웃 발생 시 즉시 abort 하고 안전한 주차 폴백을 수행한다.
-      const timeout = setTimeout(() => {
-        if (disposed || captureTask?.id !== currentTaskId) return;
-        captureTask = null;
-        captureFailed = true;
-        controller.abort();
-        if (wantsHideRef.current) post_(parkBounds);
-      }, 800);
-
-      captureTask = { id: currentTaskId, controller, timeout };
-
-      void (async () => {
-        try {
-          const response = await fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`, { signal: controller.signal });
-          if (!response.ok) throw new Error("capture_failed");
-          const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
-
-          // URL / Tab provenance guard:
-          if (disposed || controller.signal.aborted || captureTask?.id !== currentTaskId || activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) {
-            return;
-          }
-
-          const img = new Image();
-          img.src = `data:${shot.mimeType};base64,${shot.data}`;
-          // decode 실패 시 throw 되어 catch 의 안전한 주차 폴백으로 이동
-          await img.decode();
-
-          if (disposed || controller.signal.aborted || captureTask?.id !== currentTaskId || activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) {
-            return;
-          }
-          if (!wantsHideRef.current) return;
-
-          const frame: Frame = { tabId, data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height };
-          backdropFrameRef.current = frame;
-          pendingParkBoundsRef.current = parkBounds;
-          setBackdropFrame(frame);
-        } catch {
-          if (disposed || captureTask?.id !== currentTaskId) return;
-          captureFailed = true;
-          if (wantsHideRef.current) post_(parkBounds);
-        } finally {
-          if (captureTask?.id === currentTaskId) {
-            clearTimeout(captureTask.timeout);
-            captureTask = null;
-          }
-        }
-      })();
-    };
-
-    const prefetchResizeFrame = () => {
-      const tab = activeTabRef.current;
-      // 보이는 뷰만 찍는다 — 이미 물러나 있으면 이 장은 필요 없다.
-      if (disposed || resizePrefetch !== null || tab === null || wantsHideRef.current) return;
-      const controller = new AbortController();
-      resizePrefetch = controller;
-      const timeout = setTimeout(() => controller.abort(), 800);
-      const { id: tabId, url } = tab;
-      void (async () => {
-        try {
-          const response = await fetch(`${base(BROWSER_GLOBAL_ID)}/screenshot`, { signal: controller.signal });
-          if (!response.ok) return;
-          const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
-          const img = new Image();
-          img.src = `data:${shot.mimeType};base64,${shot.data}`;
-          await img.decode();
-          if (disposed || controller.signal.aborted || activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) return;
-          resizeFrame = { frame: { tabId, data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height }, url, at: Date.now() };
-        } catch {
-          // 미리 찍지 못하면 끌기는 기존 경로(누른 뒤 캡처)로 물러난다.
-        } finally {
-          clearTimeout(timeout);
-          if (resizePrefetch === controller) resizePrefetch = null;
-          // 찍는 사이 끌기가 시작됐으면 이제 그 장으로 물러난다.
-          if (!disposed && wantsHideRef.current) measure();
-        }
-      })();
-    };
-
-    const onResizeIntent = () => {
-      const intent = getNativeViewResize();
-      const mine = intent !== null && intent.container.contains(element);
-      if (resizeRefresh !== null) { clearInterval(resizeRefresh); resizeRefresh = null; }
-      if (mine && !intent.held) {
-        prefetchResizeFrame();
-        resizeRefresh = setInterval(prefetchResizeFrame, RESIZE_FRAME_REFRESH_MS);
-      }
-      // 누르는 그 순간(칸의 data-resizing 이 칠해지기 전) 곧바로 다시 재어 물러나고, 놓으면 그 자리에서 다시 놓는다.
-      const relevant = mine || resizeMine;
-      resizeMine = mine;
-      if (relevant) measure();
-    };
-
-    const measure = () => {
+    const updatePresentation = () => {
       const rect = element.getBoundingClientRect();
-      // 이 패널을 실은 칸의 폭을 사람이 끄는 동안(조상의 data-resizing)도 가려진 것과 같다 — 뷰를 정지 화면 뒤로 물려
-      // 끄는 포인터를 뷰가 가져가지 않게 하고, 놓은 뒤 정착한 자리에 한 번 다시 놓는다.
-      const intent = getNativeViewResize();
-      const held = (intent !== null && intent.held && intent.container.contains(element)) || element.closest('[data-resizing="true"]') !== null;
-      // 셸이 메뉴를 자식 창에 띄울 수 있으면 비모달 가림 표면(패널 메뉴·주소 제안·승인 팝오버 등)은 뷰 위에 따로 그려진다 —
-      // 그때는 모달 대화상자만 뷰를 물린다. 옛 셸에서는 지금처럼 가림 표면이 있으면 물러선다.
       const floats = nativeFloatAvailable();
-      const covered = (floats ? document.querySelector('[aria-modal="true"]') !== null : nativeViewCovered(document) || captionOverlay || addressOverlayOpen) || held;
-      // 분리 표면의 OS 최소화/숨김은 Desktop의 surface guard가 소유한다. Chromium 문서 hidden은
-      // 가림/Space에서도 남을 수 있으므로 유효한 열린 lease의 geometry를 중복으로 없애지 않는다.
-      const detachedLive = detached.surface !== null && state?.surface?.id === detached.surface.id
-        && state.surface.clientId === detached.clientId && state.surface.status === "opened";
-      const live = activeTab !== null && mode === "none" && (detachedLive || document.visibilityState === "visible")
-        && (detachedLive || bodyLive !== false) && rect.width >= 1 && rect.height >= 1;
-      const shown = live && !covered;
-      const visible = shown ? visibleRect(host, rect, detachedLive && document.visibilityState !== "visible") : null;
-
-      if (visible) {
-        wantsHideRef.current = false;
-        heldParkBounds = null;
-        captureFailed = false;
-        pendingParkBoundsRef.current = null;
-        abortActiveCapture();
-
-        // 실제 backdrop 이 표시 중일 때만 150ms 복원 전환 버퍼를 둔다 (해제 시점 분리).
-        if (backdropFrameRef.current !== null && !restoreTimer) {
-          restoreTimer = setTimeout(() => {
-            restoreTimer = null;
-            backdropFrameRef.current = null;
-            setBackdropFrame(null);
-          }, 150);
-        }
-
-        post_({ x: Math.round(visible.x), y: Math.round(visible.y), width: Math.round(visible.width), height: Math.round(visible.height), visible: true });
+      const covered = floats ? document.querySelector('[aria-modal="true"]') !== null : nativeViewCovered(document) || captionOverlay || addressOverlayOpen;
+      const leaseLive = state?.surface?.id === identity.surface && state.surface.status === "opened";
+      const live = activeTab !== null && mode === "none" && leaseLive && rect.width >= 1 && rect.height >= 1;
+      const visible = live && !covered ? visibleRect(hostElement, rect, document.visibilityState !== "visible") : null;
+      if (!shellLayout) {
+        // 옛 셸 지원 종료 시 제거: browser-pane 미게시 셸의 독립 창만 legacy place를 쓴다.
+        send("place", { ...identity, x: Math.round(visible?.x ?? rect.left), y: Math.round(visible?.y ?? rect.top),
+          width: Math.round(visible?.width ?? rect.width), height: Math.round(visible?.height ?? rect.height), visible: visible !== null });
         return;
       }
-
-      if (restoreTimer) {
-        clearTimeout(restoreTimer);
-        restoreTimer = null;
-      }
-
-      // 끄는 동안 물러난 뷰는 처음 물러난 자리에 그대로 둔다 — 매 프레임 바뀌는 폭을 서버·셸로 보내 숨은 페이지를 거듭 리사이즈하지 않게.
-      if (!held) heldParkBounds = null;
-      const parkBounds = (held ? heldParkBounds : null)
-        ?? { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false };
-      if (held) heldParkBounds = parkBounds;
-
-      if (!live || !activeTab) {
-        wantsHideRef.current = false;
-        abortActiveCapture();
-        if (backdropFrameRef.current !== null) {
-          backdropFrameRef.current = null;
-          setBackdropFrame(null);
-        }
-        post_(parkBounds);
-        return;
-      }
-
-      wantsHideRef.current = true;
-      pendingParkBoundsRef.current = parkBounds;
-
-      // 1. 이미 현재 탭의 스냅샷이 준비되어 있으면 주차 유지
-      if (backdropFrameRef.current && backdropFrameRef.current.tabId === activeTab.id) {
-        post_(parkBounds);
-        return;
-      }
-
-      // 1'. 칸 끌기 — 예고 동안 미리 찍어 둔 장이 있으면 캡처를 기다리지 않고 그 장을 깔고 물러난다(깔린 뒤 한 프레임에 주차).
-      //     미리 찍는 중이면 그 장을 기다린다 — 처음부터 찍는 것보다 짧다.
-      if (held) {
-        if (resizeFrame !== null && resizeFrame.frame.tabId === activeTab.id && resizeFrame.url === activeTab.url && Date.now() - resizeFrame.at <= RESIZE_FRAME_MAX_AGE_MS) {
-          abortActiveCapture();
-          backdropFrameRef.current = resizeFrame.frame;
-          setBackdropFrame(resizeFrame.frame);
-          return;
-        }
-        if (resizePrefetch !== null) return;
-      }
-
-      // 2. 캡처/디코드가 실패했던 세션이면 재시도하지 않고 안전하게 주차 폴백
-      if (captureFailed) {
-        post_(parkBounds);
-        return;
-      }
-
-      // 3. 이미 캡처가 진행 중이면 완료를 기다린다 (hide 지연 유지)
-      if (captureTask !== null) {
-        return;
-      }
-
-      // 4. 스냅샷 캡처 및 디코드 완료 전까지 네이티브 뷰를 숨기지 않고 캡처 시작
-      captureBackdrop(activeTab.id, activeTab.url, parkBounds);
+      const round = (value: number) => Math.max(0, Math.round(value));
+      const width = document.documentElement.clientWidth || window.innerWidth;
+      const height = document.documentElement.clientHeight || window.innerHeight;
+      const insets = { top: round(rect.top), left: round(rect.left), right: round(width - rect.right), bottom: round(height - rect.bottom) };
+      const cut = visible ? { top: round(visible.y - rect.top), left: round(visible.x - rect.left),
+        right: round(rect.right - visible.x - visible.width), bottom: round(rect.bottom - visible.y - visible.height) }
+        : { top: 0, left: 0, right: 0, bottom: 0 };
+      send("present", { ...identity, visible: visible !== null, insets, cut });
     };
-
-    measure();
-    const unsubscribeResizeIntent = subscribeNativeViewResize(onResizeIntent);
-    onResizeIntent();
-    // 칸의 자리가 바뀌는 길은 하나다 — 어떤 레이아웃(좌·우 사이드바, 채팅창/브라우저 경계, 창 크기)이 움직였든 칸의 자리(x·y·폭·높이)가 달라지면
-    // 같은 길로 다시 알린다. 칸 자신의 크기는 그대로인 채 자리만 옮겨 가는 변화는 칸을 보는 것만으로는 알 수 없어, 조상들의 크기 변화로 알아채고
-    // 움직임이 이어지는 동안은 매 프레임 자리를 확인한다(폴링만으로는 한참 늦는다).
-    let rectKey = "";
-    let motionFrame = 0;
-    let motionStillSince = 0;
-    const readRectKey = () => {
-      const rect = element.getBoundingClientRect();
-      return `${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)},${Math.round(rect.height)}`;
-    };
-    const watchMotion = () => {
-      motionFrame = 0;
-      if (disposed) return;
-      const key = readRectKey();
-      const now = performance.now();
-      if (key !== rectKey) {
-        rectKey = key;
-        motionStillSince = now;
-        measure();
-      }
-      if (now - motionStillSince < NATIVE_PLACE_SETTLE_MS) motionFrame = window.requestAnimationFrame(watchMotion);
-    };
-    const noteMotion = () => {
-      if (disposed) return;
-      motionStillSince = performance.now();
-      if (motionFrame === 0) motionFrame = window.requestAnimationFrame(watchMotion);
-    };
-    rectKey = readRectKey();
-    const observer = new ResizeObserver(() => { measure(); noteMotion(); });
+    updatePresentation();
+    const observer = new ResizeObserver(updatePresentation);
     observer.observe(element);
-    for (let ancestor = element.parentElement; ancestor !== null; ancestor = ancestor.parentElement) observer.observe(ancestor);
-    window.addEventListener("resize", noteMotion);
-    window.addEventListener("resize", measure);
-    document.addEventListener("visibilitychange", measure);
-    const timer = setInterval(() => { measure(); if (readRectKey() !== rectKey) noteMotion(); }, NATIVE_PLACE_POLL_MS);
-    // 가림 표면(모달·승인 팝오버처럼 `data-covers-native-view` 를 단 것)이 붙고 떨어지는 순간 곧바로 재는다 — 폴링을 기다리면 그동안 가려진다.
-    const unobserveCover = observeNativeViewCover(measure, document);
-
+    const unobserveCover = observeNativeViewCover(updatePresentation, document);
+    // OS 가림은 Desktop의 책임이다. 실제 visibility 변경은 메뉴 hit-test만 다시 판정한다.
+    document.addEventListener("visibilitychange", updatePresentation);
     return () => {
-      disposed = true;
-      abortActiveCapture();
-      unsubscribeResizeIntent();
-      resizePrefetch?.abort();
-      if (resizeRefresh !== null) clearInterval(resizeRefresh);
-      if (restoreTimer) {
-        clearTimeout(restoreTimer);
-        restoreTimer = null;
-      }
       observer.disconnect();
-      if (motionFrame !== 0) window.cancelAnimationFrame(motionFrame);
-      window.removeEventListener("resize", noteMotion);
-      window.removeEventListener("resize", measure);
-      document.removeEventListener("visibilitychange", measure);
-      clearInterval(timer);
       unobserveCover();
+      document.removeEventListener("visibilitychange", updatePresentation);
+      send("place", { visible: false, ...identity });
     };
-  // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
-  // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
-  // 주소 제안도 같은 가림 경로에 합친다. 캡션의 단일 발행 상태를 덮어쓰지 않는다.
-  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, documentFor, detached.surface, inactive, detached.clientId, state?.surface?.id, state?.surface?.clientId, state?.surface?.status]);
-  // 셸이 표면을 자식 창에 띄울 수 있으면, 이 자리를 덮는 비모달 표면은 뷰를 물리지 않고 그 창에 그려진다.
-  // 자리 재기와 따로 붙든다 — 재기 효과는 가림 신호마다 다시 걸리고, 그때마다 자식 창을 내렸다 올리면 깜빡인다.
+  }, [available, inactive, activeTab?.id, mode, documentFor, detached.surface?.id, detached.clientId, state?.surface?.status,
+    importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen, services]);
   React.useEffect(() => inactive ? undefined : retainNativeFloat(documentFor), [documentFor, inactive]);
-  // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
-  React.useEffect(() => () => {
-    if (placeRef.current) {
-      placeRef.current = "";
-      void post(BROWSER_GLOBAL_ID, "place", { visible: false, ...placementIdentity.current }).catch(() => undefined);
-    }
-  }, [objectiveId]);
+
 
   React.useEffect(() => { if (keepDraft.current) { keepDraft.current = false; return; } urlDirty.current = false; }, [activeTab?.id, activeTab?.url]);
   React.useEffect(() => { if (!editingUrl && !urlDirty.current) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
@@ -1594,11 +1297,10 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
   };
   const hoverInfo = draftPin?.element ?? hover;
   const hoverBox = highlightBox(hoverInfo);
-  // 작업대가 주소줄 줄을 맨 위 줄에 세우라고 하면(`navHost` 가 요소이거나 null) 칸 안에는 그리지 않는다. 맨 위 줄의 영역 폭은 칸 폭이 아니므로
-  // 좁아지면 캡처·주석·세션·뷰포트가 「⋯」 하나로 모인다(`navFolded`) — 줄의 실제 폭을 재어 정한다.
-  const navHost = React.useContext(BrowserNavHostContext);
+  // 주소줄의 실제 가용 폭이 좁아지면 부속 도구만 「⋯」로 모은다.
+
   // 분리 창에서는 주소줄 줄이 그 창의 맨 위 줄(caption)에 선다 — 맨 위 줄에 선 것과 같은 모양이다.
-  const navTop = navHost !== undefined || host;
+  const navTop = host;
   const navRef = React.useRef<HTMLDivElement | null>(null);
   const [navFolded, setNavFolded] = React.useState(false);
   const hasCapture = activeTab !== null && activeTab.url !== "about:blank";
@@ -1630,11 +1332,12 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(nav);
     return () => observer?.disconnect();
-  }, [navTop, navHost, navFolded, hasCapture]);
+  }, [navTop, navFolded, hasCapture]);
   const closedDoor = !available ? unavailableText(t, state?.reason ?? null, services.isDesktopShell()) : null;
 
   const navBar = (
     <div ref={navRef} className={`op-browser__nav${navTop ? " is-top" : ""}${state?.driving === true ? " is-driving" : ""}`}>
+      {host && detached.surface?.mode === "pane" ? <button type="button" className="op-browser__icon op-browser__pane-close" onClick={detached.close} aria-label={t("terminal.browser.exit")} title={t("terminal.browser.exit")}>×</button> : null}
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
       <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
@@ -1734,7 +1437,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
           <BrowserTools objectiveId={objectiveId} language={language} />
         </>
       )}
-      {detached.available && !host ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t("terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : "terminal.browser.detach")}>↗</button> : null}
+      {detached.available ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t(detached.surface?.mode === "window" ? "terminal.browser.reattach" : "terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : detached.surface?.mode === "window" ? "terminal.browser.reattach" : "terminal.browser.detach")}>{detached.surface?.mode === "window" ? "↙" : "↗"}</button> : null}
     </div>
   );
 
@@ -1743,9 +1446,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
   if (surfaceOpen && !host) return <div className="op-browser__detached"><button type="button" className="op-browser__button" onClick={detached.toggle}>{t("terminal.browser.reattach")}</button></div>;
   const content = (
     <div className={`op-browser${state?.driving ? " is-driving" : ""}`}>
-      {host
-        ? <BrowserSurfaceContent role="caption">{navBar}</BrowserSurfaceContent>
-        : navTop ? (navHost === null || navHost === undefined ? null : createPortal(navBar, navHost)) : navBar}
+      {host ? <BrowserSurfaceContent role="caption">{navBar}</BrowserSurfaceContent> : navBar}
       <div className="op-browser__body">
         {available ? <BrowserTabRail objectiveId={objectiveId} language={language} /> : null}
         <div className={`op-browser__viewport is-${state?.viewport.preset ?? "responsive"}${mode === "annotate" ? " is-annotating" : ""}`} ref={viewportRef}>
@@ -1862,17 +1563,8 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, bodyLiv
               </div>
             </>
           ) : activeTab ? (
-            // 네이티브 뷰가 이 자리 위에 그려진다 — 주차(parking) 중에는 마지막 화면(still-frame)을 배경으로 둔다.
-            <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: BROWSER_GLOBAL_ID }}>
-              {shownBackdrop ? (
-                <img
-                  className="op-browser__backdrop"
-                  src={`data:${shownBackdrop.mime};base64,${shownBackdrop.data}`}
-                  alt=""
-                  draggable={false}
-                />
-              ) : null}
-            </div>
+            // 네이티브 페이지는 셸이 놓는다. 크롬/가림 여백을 읽는 Console 소유 표지만 남긴다.
+            <div className="op-browser__native" ref={nativeRef} aria-hidden="true" {...{ [NATIVE_FLOAT_TARGET_ATTRIBUTE]: BROWSER_GLOBAL_ID }} />
           ) : (
             <div className="op-browser__empty">
               <span className="op-browser__empty-glyph" aria-hidden="true"><CaptionBrowserUseGlyph /></span>

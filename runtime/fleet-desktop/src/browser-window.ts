@@ -1,4 +1,4 @@
-import type { HandlerDetails, WebContents, WebPreferences, WindowOpenHandlerResponse } from "electron";
+import type { HandlerDetails, WebContents, WebContentsView, WebPreferences, WindowOpenHandlerResponse } from "electron";
 import { DESKTOP_BROWSER_WINDOW_PAGE, type DesktopBrowserSurface, type DesktopBrowserSurfaceRelay } from "@fleet-console/protocol/desktop";
 import type { DesktopShellWindow } from "./shell-window.js";
 import type { BrowserPane } from "./browser-pane.js";
@@ -11,13 +11,13 @@ export const BROWSER_COMPANION_PREFERENCES = {
 
 export interface BrowserWindowDeps {
   readonly main: () => DesktopShellWindow | null;
-  readonly createWindow: (guest: WebContents) => DesktopShellWindow;
-  readonly createPane?: (guest: WebContents) => BrowserPane;
+  readonly createWindow: (guest: WebContents, view?: WebContentsView) => DesktopShellWindow;
+  readonly createPane?: (guest: WebContents, view?: WebContentsView) => BrowserPane;
   readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
   readonly changed: () => void;
 }
 
-/** 셸은 콘텐츠를 만들지 않는다. Console의 한 번짜리 intent를 받아 수동 문서의 native 자리만 만든다. */
+/** Console의 single-use intent가 연 문서는 하나다. 칸↔창 전환은 그 뷰의 부모만 바꾼다. */
 export function createBrowserCompanion(deps: BrowserWindowDeps) {
   let intent: DesktopBrowserSurface | null = null;
   const revoked = new Set<string>();
@@ -32,6 +32,20 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
   let deadline: ReturnType<typeof setTimeout> | null = null;
   let disposeOwner: (() => void) | null = null;
 
+  const clearHost = (): WebContentsView | undefined => {
+    const old = companion;
+    const chrome = pane?.view ?? old?.consoleView;
+    companion = null;
+    const previousPane = pane;
+    pane = null;
+    previousPane?.dispose();
+    if (old && chrome && !old.isDestroyed()) old.base.contentView.removeChildView(chrome);
+    // BaseWindow를 없애기 전에 페이지를 main 뒤로 옮긴다. 문서는 닫지 않는다.
+    deps.changed();
+    if (old && !old.isDestroyed()) old.base.destroy();
+    return chrome;
+  };
+
   const revoke = (report: boolean): void => {
     const previous = intent;
     if (previous) revoked.add(previous.id);
@@ -45,15 +59,9 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
     deadline = null;
     disposeOwner?.();
     disposeOwner = null;
-    const old = companion;
     const oldContents = guestContents;
-    companion = null;
     guestContents = null;
-    pane?.dispose();
-    pane = null;
-    // BaseWindow를 없애기 전에 기존 native 뷰를 살아 있는 main 뒤로 옮긴다.
-    deps.changed();
-    if (old && !old.isDestroyed()) old.base.destroy();
+    clearHost();
     if (oldContents && !oldContents.isDestroyed()) oldContents.close();
     if (report && previous) deps.relay({ id: previous.id, status: "closed" });
   };
@@ -71,9 +79,52 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
     } catch { return false; }
   };
 
+  const installHost = (guest: WebContents, current: DesktopBrowserSurface, view?: WebContentsView): void => {
+    const child = current.mode === "pane" ? null : view ? deps.createWindow(guest, view) : deps.createWindow(guest);
+    const createdPane = current.mode === "pane" ? (view ? deps.createPane!(guest, view) : deps.createPane!(guest)) : null;
+    if ((child?.consoleContents ?? createdPane?.contents) !== guest) throw new Error("browser_surface_guest_replaced");
+    companion = child;
+    pane = createdPane;
+    closing = false;
+    if (!child) return;
+    // 끝난 창의 늦은 close/resize는 같은 문서를 옮긴 새 칸을 철회하지 않는다.
+    const ownsHost = () => companion === child && guestContents === guest && intent?.id === current.id;
+    child.base.on("close", (event) => {
+      if (!ownsHost()) return;
+      event.preventDefault();
+      if (closing) return;
+      closing = true;
+      deps.relay({ id: current.id, status: "closing" });
+      armDeadline(current.id, 3_000);
+    });
+    child.base.on("closed", () => { if (ownsHost()) revoke(true); });
+    const changed = () => { if (ownsHost()) deps.changed(); };
+    child.base.on("resize", changed);
+    child.base.on("move", changed);
+    child.base.on("minimize", changed);
+    child.base.on("restore", changed);
+    child.base.on("hide", changed);
+    child.base.on("show", changed);
+  };
+
   const apply = (next: DesktopBrowserSurface | null, at: string | null): void => {
-    if (next?.id === intent?.id && at === origin) {
-      if (next && intent && next.clientId === intent.clientId && next.browserId === intent.browserId && (next.focusRequest ?? 0) > focusRequest) {
+    if (next && intent?.id === next.id && at === origin) {
+      if (next.clientId !== intent.clientId || next.browserId !== intent.browserId) return;
+      const previousMode = intent.mode ?? "window";
+      intent = next;
+      if (guestContents && previousMode !== (next.mode ?? "window")) {
+        if (next.mode === "pane" && !deps.createPane) { revoke(true); return; }
+        const guest = guestContents;
+        const chrome = clearHost();
+        try { installHost(guest, next, chrome); } catch { revoke(true); return; }
+        if (deadline) clearTimeout(deadline);
+        deadline = null;
+        companion?.show();
+        pane?.show();
+        deps.relay({ id: next.id, status: "opened" });
+        deps.changed();
+      }
+      if ((next.focusRequest ?? 0) > focusRequest) {
         focusRequest = next.focusRequest!;
         pane?.focus();
         const child = companion;
@@ -85,6 +136,7 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
       }
       return;
     }
+    if (!next && !intent) return;
     revoke(false);
     if (next && revoked.has(next.id)) return;
     const main = deps.main();
@@ -93,13 +145,12 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
     origin = at;
     owner = main.consoleContents;
     const contents = owner;
-    // 항해 시도는 policy에서 취소될 수 있다. 실제 main 문서 commit/reload에서만 새 수명으로 읽는다.
-    // did-navigate는 commit된 cross-document main 항해만 알리므로 SPA/hash 이동은 유지한다.
-    const ownsIntent = () => intent === next && owner === contents;
+    // policy가 취소한 항해 시도는 새 수명이 아니다. 실제 문서 commit/reload에서만 철회한다.
+    const ownsIntent = () => intent?.id === next.id && owner === contents;
     const navigated = () => { if (ownsIntent()) revoke(true); };
     const gone = () => { if (ownsIntent()) revoke(true); };
     contents.on("did-navigate", navigated);
-    // Electron은 error page commit에 did-navigate를 내지 않는다. 새 main DOM 적재도 실제 문서 교체다.
+    // error page commit은 did-navigate 대신 새 main DOM의 적재로 잡는다.
     contents.on("dom-ready", navigated);
     contents.on("render-process-gone", gone);
     contents.on("destroyed", gone);
@@ -109,14 +160,13 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
   };
 
   const open = (contents: WebContents, details: HandlerDetails, activeOrigin: string): WindowOpenHandlerResponse | null => {
-    // 정확한 특례 경로를 닮은 요청은 외부 브라우저로도 보내지 않는다.
     let url: URL;
     try { url = new URL(details.url); } catch { return null; }
     if (url.pathname !== DESKTOP_BROWSER_WINDOW_PAGE) return null;
     const deny: WindowOpenHandlerResponse = { action: "deny" };
     if (!intent || consumed || guestContents || owner !== contents || origin !== activeOrigin || url.href !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`
       || url.username || url.password || url.search || url.hash || details.postBody || details.frameName !== intent.id) return deny;
-    // 이 handler의 요청 프레임을 이름/referrer로 추측하지 않는다. 하위 frame이 하나라도 있으면 생성 자체를 거부한다.
+    // 요청 frame을 이름/referrer로 추측하지 않는다. 하위 frame이 하나라도 있으면 생성 자체를 거부한다.
     if (!mainFrameOnly(contents, activeOrigin)) return deny;
     consumed = true;
     const current = intent;
@@ -128,22 +178,13 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: contents.session },
       },
       createWindow: (options) => {
-        // allow 이후 renderer가 교체되거나 intent가 철회되었다면 새 native 자원을 만들지 않는다.
         if (intent !== current || owner !== contents || guestContents || contents.isDestroyed() || !mainFrameOnly(contents, activeOrigin)) throw new Error("browser_surface_revoked");
-        // Electron 43의 createWindow는 이미 생성한 guest를 options.webContents로 건넨다.
-        // 공개 callback 옵션 타입에는 없는 전달 필드만 좁게 읽는다. 새 WC나 옵션 전체 복제는 opener를 끊는다.
+        // Electron 43은 기존 guest를 options.webContents로 건넨다. 옵션 복제나 새 WC 생성은 opener를 끊는다.
         const guest = (options as { readonly webContents?: WebContents }).webContents;
         let valid = false;
-        try {
-          // 보안 값은 위 override가 guest 생성 전에 적용한다. identity 검증은 공개 WC API만 사용한다.
-          valid = Boolean(guest && guest !== contents && !guest.isDestroyed() && guest.opener === contents.mainFrame && guest.session === contents.session);
-        } catch { /* 사라졌거나 예상하지 못한 contents는 입양하지 않는다. */ }
+        try { valid = Boolean(guest && guest !== contents && !guest.isDestroyed() && guest.opener === contents.mainFrame && guest.session === contents.session); } catch { /* 사라진 contents는 입양하지 않는다. */ }
         if (!valid || !guest) throw new Error("browser_surface_guest_invalid");
-        const child = current.mode === "pane" ? null : deps.createWindow(guest);
-        const createdPane = current.mode === "pane" ? deps.createPane!(guest) : null;
-        if ((child?.consoleContents ?? createdPane?.contents) !== guest) throw new Error("browser_surface_guest_replaced");
-        companion = child;
-        pane = createdPane;
+        installHost(guest, current);
         guestContents = guest;
         const wc = guest;
         const initialUrl = `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`;
@@ -151,10 +192,9 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         let initialStarted = false;
         let initialFrameAllowed = false;
         let initialMainAllowed = false;
-        const ownsChild = () => guestContents === wc && intent === current;
+        const ownsChild = () => guestContents === wc && intent?.id === current.id;
         const initial = (url: string) => ownsChild() && !loaded && url === initialUrl;
-        // window.open의 최초 항해도 renderer 항해다. frame/main 취소 지점은 각각 한 번만 통과시키며,
-        // did-start 알림은 이 토큰들을 소비하지 않는다 — 알림과 throttle의 순서에 기대지 않는다.
+        // 최초 항해의 frame/main 취소 지점만 한 번씩 통과시킨다. did-start는 이 토큰들을 소비하지 않는다.
         wc.on("will-frame-navigate", (event) => {
           if (!event.isMainFrame || initialFrameAllowed || !initial(event.url)) { event.preventDefault(); return; }
           initialFrameAllowed = true;
@@ -166,7 +206,6 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         wc.on("will-redirect", (event) => event.preventDefault());
         wc.on("will-attach-webview", (event) => event.preventDefault());
         wc.setWindowOpenHandler(() => ({ action: "deny" }));
-        // 종료한 guest의 늦은 이벤트는 새로 연 child/intent를 철회하지 못한다.
         wc.on("render-process-gone", () => { if (ownsChild()) revoke(true); });
         wc.on("destroyed", () => { if (ownsChild()) revoke(true); });
         wc.on("did-start-navigation", (_event, url, inPlace, isMainFrame) => {
@@ -176,30 +215,15 @@ export function createBrowserCompanion(deps: BrowserWindowDeps) {
         });
         wc.once("did-finish-load", () => {
           if (!ownsChild()) return;
-          if (wc.getURL() !== `${activeOrigin}${DESKTOP_BROWSER_WINDOW_PAGE}`) { revoke(true); return; }
+          if (wc.getURL() !== initialUrl) { revoke(true); return; }
           loaded = true;
           if (deadline) clearTimeout(deadline);
           deadline = null;
           deps.relay({ id: current.id, status: "opened" });
-          child?.show();
-          createdPane?.show();
+          companion?.show();
+          pane?.show();
           deps.changed();
         });
-        child?.base.on("close", (event) => {
-          if (!ownsChild()) return;
-          event.preventDefault();
-          if (closing) return;
-          closing = true;
-          deps.relay({ id: current.id, status: "closing" });
-          armDeadline(current.id, 3_000);
-        });
-        child?.base.on("closed", () => { if (ownsChild()) revoke(true); });
-        child?.base.on("resize", () => deps.changed());
-        child?.base.on("move", () => deps.changed());
-        child?.base.on("minimize", () => deps.changed());
-        child?.base.on("restore", () => deps.changed());
-        child?.base.on("hide", () => deps.changed());
-        child?.base.on("show", () => deps.changed());
         return wc;
       },
     };

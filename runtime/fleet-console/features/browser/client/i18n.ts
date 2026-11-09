@@ -4,7 +4,7 @@ import { createTranslator } from "@fleet-console/i18n/translate";
 export const browserEn = {
   "terminal.browser.title": "Fleet Browser",
   "terminal.browser.detach": "Open in a separate window",
-  "terminal.browser.reattach": "Return to the panel",
+  "terminal.browser.reattach": "Return to the main window",
   "terminal.browser.detached": "This browser is open in a separate window",
   "terminal.browser.detachFailed": "Couldn't open the browser window. Try again.",
   "terminal.browser.open": "Open Fleet Browser",
@@ -131,7 +131,7 @@ export const browserEn = {
 export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.title": "플릿 브라우저",
   "terminal.browser.detach": "별도 창으로 열기",
-  "terminal.browser.reattach": "패널로 돌아오기",
+  "terminal.browser.reattach": "메인 창으로 돌아오기",
   "terminal.browser.detached": "이 브라우저는 별도 창에 열려 있습니다",
   "terminal.browser.detachFailed": "브라우저 창을 열지 못했습니다. 다시 시도해 주세요.",
   "terminal.browser.open": "플릿 브라우저 열기",

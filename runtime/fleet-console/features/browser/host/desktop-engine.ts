@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserBounds, type DesktopBrowserCommand, type DesktopBrowserFloat, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserView, type DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserBounds, type DesktopBrowserInsets, type DesktopBrowserCommand, type DesktopBrowserFloat, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserView, type DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
@@ -23,7 +23,7 @@ const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
 interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
-interface Placement { bounds: DesktopBrowserBounds; visible: boolean; surface?: string | null; clientId?: string }
+interface Placement { bounds: DesktopBrowserBounds; visible: boolean; surface?: string | null; clientId?: string; insets?: DesktopBrowserInsets; cut?: DesktopBrowserInsets }
 
 export interface BrowserSurfaceState extends DesktopBrowserSurface { readonly status: "opening" | "ready" | "opened" | "closing" }
 
@@ -72,6 +72,16 @@ export class DesktopEngine implements CdpClient {
   focusSurface(id: string, clientId: string): void {
     if (!this.surface || this.surface.id !== id || this.surface.clientId !== clientId || this.surface.status !== "opened") return;
     this.surface = { ...this.surface, focusRequest: (this.surface.focusRequest ?? 0) + 1 };
+    this.surfaceChanged();
+  }
+
+  setSurfaceMode(id: string, clientId: string, mode: "pane" | "window"): void {
+    if (!this.surface || this.surface.id !== id || this.surface.clientId !== clientId
+      || (this.surface.status !== "opened" && this.surface.status !== "closing")) return;
+    if (this.surfaceTimer) clearTimeout(this.surfaceTimer);
+    this.surfaceTimer = null;
+    this.surface = { ...this.surface, mode, status: "opened" };
+    this.float = null;
     this.surfaceChanged();
   }
 
@@ -153,7 +163,7 @@ export class DesktopEngine implements CdpClient {
       // `visible` 은 Companion presentation. 자리(bounds)는 숨겨도 남겨 셸이 parking 때 마지막 유효 크기를 지키게 한다.
       const surface = this.surface?.browserId === view.objectiveId ? this.surface.id : null;
       const visible = view.active && placement !== null && placement.visible && (placement.surface ?? null) === surface;
-      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url, surface };
+      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url, surface, ...(placement?.insets ? { insets: placement.insets } : {}), ...(placement?.cut ? { cut: placement.cut } : {}) };
     });
     return {
       generation: this.generation,

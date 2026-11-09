@@ -4,6 +4,7 @@ import type { DesktopShellWindow } from "./shell-window.js";
 export interface BrowserPane {
   readonly host: DesktopShellWindow;
   readonly contents: WebContents;
+  readonly view: WebContentsView;
   bounds(): Rectangle;
   show(): void;
   focus(): void;
@@ -50,7 +51,7 @@ export function createBrowserPane(host: DesktopShellWindow, chrome: WebContentsV
   void divider.webContents.loadURL(DIVIDER_URL).catch(() => undefined);
   layout();
   return {
-    host, contents: chrome.webContents,
+    host, contents: chrome.webContents, view: chrome,
     bounds: () => current,
     show: layout,
     focus: () => { if (!disposed && !chrome.webContents.isDestroyed()) chrome.webContents.focus(); },

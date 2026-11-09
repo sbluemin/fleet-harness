@@ -75,7 +75,7 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
     isFocused: () => false,
     close: () => { record.closed = true; rejectPending(new Error("target closed")); },
   });
-  return { webContents: contents, setBorderRadius: () => {}, setBounds: () => {}, setVisible: () => {} } as unknown as WebContentsView;
+  return { webContents: contents, setBorderRadius: () => {}, setBounds: vi.fn(), setVisible: () => {} } as unknown as WebContentsView;
 }
 
 /**
@@ -147,7 +147,8 @@ describe("desktop native browser views across a Console restart", () => {
     let minimized = false;
     let hidden = false;
     const childStack = { layoutConsole: () => ({ x: 0, y: 0, width: 1000, height: 760 }), parkBrowser: vi.fn(), presentBrowser: vi.fn(), removeBrowser: vi.fn() };
-    const child = { isDestroyed: () => false, isMinimized: () => minimized, base: { isVisible: () => !hidden }, stack: childStack } as unknown as DesktopShellWindow;
+    let childContent = { x: 0, y: 0, width: 1000, height: 760 };
+    const child = { getContentBounds: () => childContent, isDestroyed: () => false, isMinimized: () => minimized, base: { isVisible: () => !hidden }, stack: childStack } as unknown as DesktopShellWindow;
     let childAlive = true;
     const companion = { apply: vi.fn(), surface: (id?: string | null) => id && childAlive ? child : null, dispose: vi.fn() };
     const views = createDesktopBrowserViews({
@@ -181,11 +182,15 @@ describe("desktop native browser views across a Console restart", () => {
     await vi.waitFor(() => expect(relays.flatMap((relay) => relay.results ?? []).some((result) => result.id === 1 && result.error === undefined)).toBe(true));
     expect(relays.flatMap((relay) => relay.results ?? []).filter((result) => result.error !== undefined)).toEqual([]);
     lifetime = { ...lifetime, generation: 2, surface: { id: "surface-one", browserId: "op-1", clientId: "client-one" },
-      views: [{ ...view("view-new"), visible: true, surface: "surface-one", bounds: { x: 0, y: 80, width: 1000, height: 650 } }] };
+      views: [{ ...view("view-new"), visible: true, surface: "surface-one", bounds: null, insets: { top: 80, left: 0, right: 0, bottom: 30 } }] };
     const update = () => streams.at(-1)!.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`));
     update();
     await vi.waitFor(() => expect(childStack.presentBrowser).toHaveBeenCalled());
     const native = childStack.presentBrowser.mock.calls[0]![0];
+    expect(native.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 80, width: 1000, height: 650 });
+    childContent = { ...childContent, width: 1200, height: 900 };
+    views.refresh();
+    expect(native.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 80, width: 1200, height: 790 });
     expect(created).toHaveLength(2);
     expect(created[1]?.closed).toBe(false);
     minimized = true;

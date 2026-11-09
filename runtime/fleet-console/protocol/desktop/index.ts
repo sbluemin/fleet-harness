@@ -135,6 +135,11 @@ export const DESKTOP_BROWSER_EVENT = "desktop:browser";
 export const DESKTOP_BROWSER_VIEW_HEADER = "x-fleet-browser-view";
 
 export interface DesktopBrowserBounds { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+/** 표면 안 크롬/가림의 여백(CSS px). 창·칸의 자리와 크기는 셸만 계산한다. */
+export interface DesktopBrowserInsets { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number }
+export function isDesktopBrowserInsets(value: unknown): value is DesktopBrowserInsets {
+  return isRecord(value) && [value.top, value.right, value.bottom, value.left].every((n) => isFiniteNumber(n) && n >= 0 && n <= 8192);
+}
 
 /**
  * 셸이 띄워야 하는 뷰 하나.
@@ -165,6 +170,10 @@ export interface DesktopBrowserView {
   readonly surface?: string | null;
   /** Companion 패널의 CSS px 자리. `null` 이면 셸이 parking 한다. 실행 크기와 섞지 않는다. */
   readonly bounds: DesktopBrowserBounds | null;
+  /** browser-pane 셸이 표면 사각형에서 빼는 크롬 여백. bounds의 폭·높이를 쓰지 않는다. */
+  readonly insets?: DesktopBrowserInsets;
+  /** 메뉴가 페이지 가장자리를 덮을 때만 더 빼는 여백. */
+  readonly cut?: DesktopBrowserInsets;
   /** 처음 열 때의 주소. 그 뒤의 항해는 CDP 명령으로 온다. */
   readonly url: string;
 }
@@ -239,7 +248,7 @@ export interface DesktopBrowserSurfaceRelay {
   readonly status: "ready" | "opened" | "closing" | "closed";
 }
 
-/** 셸이 이 신호를 게시해야 Console 이 메뉴를 자식 창으로 띄운다 — 아니면 지금처럼 뷰를 물리고 정지 화면을 깐다. */
+/** 셸이 이 신호를 게시하면 Console이 메뉴를 자식 창으로 띄운다. 없으면 가림을 잘라 내거나 뷰를 주차한다. */
 export const DESKTOP_BROWSER_FLOAT_CAPABILITY = "browser-float";
 /** 자식 창이 여는 Console 소유 표면. `/console/` 아래 정적 문서이며 질의·조각 없이 연다. */
 export const DESKTOP_BROWSER_FLOAT_PAGE = "/console/browser-float.html";
@@ -280,7 +289,8 @@ export function isDesktopBrowserView(value: unknown): value is DesktopBrowserVie
   return isRecord(value) && isSafeId(value.id) && typeof value.objectiveId === "string" && isSafeId(value.partition)
     && (value.profile === undefined || value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
     && typeof value.visible === "boolean" && (value.surface === undefined || value.surface === null || isSafeId(value.surface))
-    && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string";
+    && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string"
+    && (value.insets === undefined || isDesktopBrowserInsets(value.insets)) && (value.cut === undefined || isDesktopBrowserInsets(value.cut));
 }
 
 export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowserCommand {

@@ -368,24 +368,24 @@ async function boot(): Promise<void> {
   const browserPaneWidth = { value: 560 };
   const browserCompanion: BrowserCompanion = createBrowserCompanion({
     main: () => window,
-    createPane: (guest) => {
+    createPane: (guest, view) => {
       if (!window || window.isDestroyed()) throw new Error("browser_surface_revoked");
-      const chrome = new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
+      const chrome = view ?? new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
       chrome.webContents.setZoomFactor(window.consoleContents.getZoomFactor());
-      browserViews.attachShortcutSource(guest);
+      if (!view) browserViews.attachShortcutSource(guest);
       const divider = new WebContentsView({ webPreferences: { ...BROWSER_COMPANION_PREFERENCES, partition: "fleet-browser-divider" } });
       return createBrowserPane(window, chrome, divider, () => browserViews.refresh(), browserPaneWidth);
     },
-    createWindow: (guest) => {
+    createWindow: (guest, view) => {
       // 생성 전 handler가 보안을 지정한 기존 guest를 그대로 입양한다. renderer 옵션을 다시 펼치지 않는다.
-      const consoleView = new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
+      const consoleView = view ?? new WebContentsView({ webContents: guest, webPreferences: { ...BROWSER_COMPANION_PREFERENCES, session: guest.session } });
       const base = new BaseWindow({
         ...consoleWindowChrome({ platform: process.platform, titleBarOverlay: companionOverlay, chromeBand: CONVERSATION_TOP_ROW }),
         show: false, width: 1000, height: 760, minWidth: 460, minHeight: 360, title: "Fleet Browser", frame: true, alwaysOnTop: false,
         movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true,
       });
       consoleView.webContents.setZoomFactor(window?.consoleContents.getZoomFactor() ?? 1);
-      browserViews.attachShortcutSource(consoleView.webContents);
+      if (!view) browserViews.attachShortcutSource(consoleView.webContents);
       const child = createDesktopShellWindow(base, consoleView, createDesktopViewStack(base, consoleView));
       const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, {
         screen, initialOverlay: companionOverlay, getZoomFactor: () => child.consoleContents.getZoomFactor(),
@@ -416,6 +416,7 @@ async function boot(): Promise<void> {
   const browserFloat = createDesktopBrowserFloat({
     shell: (surface) => surface ? browserCompanion.surface(surface) : window,
     cursor: () => screen.getCursorScreenPoint(),
+    offset: (surface) => browserCompanion.paneBounds(surface),
     createWindow: (shellWindow) => new BrowserWindow({
       parent: shellWindow.base,
       show: false,

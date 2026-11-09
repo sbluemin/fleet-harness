@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createPortal, flushSync } from "react-dom";
 import { DESKTOP_BROWSER_DETACH_CAPABILITY, DESKTOP_BROWSER_PANE_CAPABILITY, DESKTOP_BROWSER_WINDOW_PAGE, type DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
+import { desktopShellCapabilities } from "../../../core/client/src/integration/desktop-shell.js";
 import { BROWSER_GLOBAL_ID } from "../shared/spaces.js";
 
 /**
@@ -10,7 +11,7 @@ import { BROWSER_GLOBAL_ID } from "../shared/spaces.js";
  */
 
 export interface BrowserSurfaceState extends DesktopBrowserSurface { readonly status: "opening" | "ready" | "opened" | "closing" }
-interface SurfaceDocument { readonly document: Document; readonly id: string; readonly focus: () => void }
+interface SurfaceDocument { readonly document: Document; readonly id: string; readonly mode: "pane" | "window"; readonly focus: () => void }
 
 let current: SurfaceDocument | null = null;
 const listeners = new Set<() => void>();
@@ -50,7 +51,7 @@ export function BrowserSurfaceContent({ role, children }: { readonly role: "capt
 /** 수동 문서는 앱을 실행하지 않는다. 부모가 소유한 테마/스타일만 같은 origin에서 이어 준다. */
 function mirrorStyles(target: Document): () => void {
   const copy = () => {
-    for (const attribute of [...target.documentElement.attributes]) if (attribute.name !== "data-browser-surface") target.documentElement.removeAttribute(attribute.name);
+    for (const attribute of [...target.documentElement.attributes]) if (attribute.name !== "data-browser-surface" && attribute.name !== "data-browser-mode") target.documentElement.removeAttribute(attribute.name);
     for (const attribute of document.documentElement.attributes) target.documentElement.setAttribute(attribute.name, attribute.value);
     target.body.className = `${document.body.className} browser-window-document`;
     for (const previous of target.head.querySelectorAll("[data-browser-style]")) previous.remove();
@@ -86,7 +87,7 @@ const subscribeController = (listener: () => void) => { controllerListeners.add(
 let record: { id: string; child: Window | null; stop: (() => void) | null } | null = null;
 let returning = false;
 
-async function request(action: "open" | "close" | "focus", id?: string, mode?: "pane" | "window"): Promise<{ surface: BrowserSurfaceState | null }> {
+async function request(action: "open" | "close" | "focus" | "mode", id?: string, mode?: "pane" | "window"): Promise<{ surface: BrowserSurfaceState | null }> {
   const response = await fetch(`${endpoint}/surface`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id, clientId, mode }) });
   if (!response.ok) throw new Error("browser_surface_failed");
   return await response.json() as { surface: BrowserSurfaceState | null };
@@ -136,7 +137,8 @@ async function detach(mode: "pane" | "window" = "window"): Promise<void> {
       || child.location.href !== `${location.origin}${DESKTOP_BROWSER_WINDOW_PAGE}`) throw new Error("browser_surface_failed");
     active.stop = mirrorStyles(child.document);
     child.document.documentElement.dataset.browserSurface = active.id;
-    flushSync(() => publish({ document: child.document, id: active.id, focus: () => {
+    child.document.documentElement.dataset.browserMode = mode;
+    flushSync(() => publish({ document: child.document, id: active.id, mode, focus: () => {
       if (record === active) void request("focus", active.id).catch(() => undefined);
     } }));
     child.focus();
@@ -156,10 +158,23 @@ export function useBrowserWindow(lease: BrowserSurfaceState | null, synced: bool
   React.useEffect(() => {
     const active = record;
     if (!synced || !active) return;
-    if (!available || lease?.id !== active.id || lease.clientId !== clientId || lease.status === "closing") {
+    if (!available || lease?.id !== active.id || lease.clientId !== clientId) {
       queueMicrotask(() => { if (record === active) void restore(); });
+      return;
     }
-  }, [synced, available, lease]);
+    if (lease.status === "closing") {
+      queueMicrotask(() => {
+        if (record !== active) return;
+        if (readCapabilities().includes(DESKTOP_BROWSER_PANE_CAPABILITY)) void request("mode", active.id, "pane").catch(() => restore());
+        else void restore();
+      });
+    }
+    const mode = lease.mode ?? "window";
+    if (current?.id === active.id && current.mode !== mode) {
+      current.document.documentElement.dataset.browserMode = mode;
+      publish({ ...current, mode });
+    }
+  }, [synced, available, lease, readCapabilities]);
 
   return {
     clientId, surface: record?.id === surface?.id ? surface : null,
@@ -167,6 +182,22 @@ export function useBrowserWindow(lease: BrowserSurfaceState | null, synced: bool
     available: readCapabilities().includes(DESKTOP_BROWSER_DETACH_CAPABILITY),
     disabled: state.pending || !available || (lease !== null && lease.clientId !== clientId),
     failed: state.failed,
-    toggle: () => { if (surface) void restore(); else void detach(readCapabilities().includes(DESKTOP_BROWSER_PANE_CAPABILITY) ? "pane" : "window"); },
+    toggle: () => {
+      if (!surface) { void detach("window"); return; }
+      void request("mode", surface.id, surface.mode === "pane" ? "window" : "pane").catch(() => setController({ failed: true }));
+    },
+    close: () => { void restore(); },
   };
+}
+
+/** 지구본/링크는 기본 셸 칸을 연다. 옛 셸 지원 종료 시 window fallback을 걷는다. */
+export function openBrowserPane(): void {
+  if (focusBrowserWindow()) return;
+  const capabilities = desktopShellCapabilities();
+  void detach(capabilities.includes(DESKTOP_BROWSER_PANE_CAPABILITY) ? "pane" : "window");
+}
+export function closeBrowserSurface(): void { void restore(); }
+export function toggleBrowserPane(): void {
+  if (current?.mode === "window") { current.focus(); return; }
+  if (current) void restore(); else openBrowserPane();
 }

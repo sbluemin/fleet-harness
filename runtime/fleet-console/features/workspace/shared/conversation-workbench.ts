@@ -5,9 +5,8 @@
  * (최대 2칸), 대화와 분할 영역의 폭 비율, 아래 줄의 높이 비율, 펼친 칸. 오른쪽 사이드바(세부 정보)의 열림은 여기 없다 — 그것은
  * 지금처럼 Console 전체에 하나다.
  *
- * 칸이 담는 것은 세 가지다: 레일 엔트리가 세우는 페인 묶음(`entry`), 확대 표면 서술자 하나(`surface`
- * — params 를 함께 든다), 그 대화의 Session 브라우저(`browser`). 무엇을 어디서 여는지(작업 위치 컨텍스트)는 이 모델의 몫이 아니라
- * 그리는 쪽이 소유 사령관에서 파생한다. 브라우저 자원만 지금 대화의 세션을 따른다.
+ * 칸에는 레일 엔트리(`entry`)와 확대 표면(`surface`)만 담는다. 작업 위치는 그리는 쪽이 소유 사령관에서 파생한다.
+ * 퇴역한 브라우저 칸은 다른 알 수 없는 출처와 같이 저장 정제에서 빠진다. 브라우저의 자리는 Desktop 셸이 소유한다.
  *
  * 저장 경계: 서버는 이 모양을 검증해 그대로 둔다. 절대 경로처럼 보이는 params 값은 저장하지 않는다(브라우저 DTO 에 원시 경로를 싣지
  * 않는 Console 계약). 런타임에 바뀌는 인스턴스·탭 상태는 저장하지 않는다.
@@ -29,8 +28,7 @@ const ID_PATTERN = /^[A-Za-z0-9_.:#@-]+$/;
 
 export type WorkbenchTileSource =
   | { readonly kind: "entry"; readonly entryId: string }
-  | { readonly kind: "surface"; readonly surfaceId: string; readonly params: Readonly<Record<string, string>> }
-  | { readonly kind: "browser" };
+  | { readonly kind: "surface"; readonly surfaceId: string; readonly params: Readonly<Record<string, string>> };
 
 export type WorkbenchTile = WorkbenchTileSource & { readonly id: string };
 
@@ -141,7 +139,6 @@ function sanitizeTile(value: unknown, seen: Set<string>): WorkbenchTile | null {
   let tile: WorkbenchTile | null = null;
   if (value.kind === "entry" && validId(value.entryId) && !RETIRED_WORKBENCH_ENTRY_IDS.has(value.entryId)) tile = { id, kind: "entry", entryId: value.entryId };
   else if (value.kind === "surface" && validId(value.surfaceId) && !RETIRED_WORKBENCH_SURFACE_IDS.has(value.surfaceId)) tile = { id, kind: "surface", surfaceId: value.surfaceId, params: sanitizeWorkbenchParams(value.params) };
-  else if (value.kind === "browser") tile = { id, kind: "browser" };
   if (tile !== null) seen.add(id);
   return tile;
 }
@@ -184,8 +181,7 @@ export function sanitizeWorkbenchLayout(value: unknown): WorkbenchLayout | null 
     columnWeights.push(sanitizeWeight(rawColumnWeights[index]));
   });
   const below = sanitizeStack(value.below, WORKBENCH_MAX_BELOW, seen);
-  // 브라우저 칸은 펼치지 않는다 — 예전에 저장된 펼침이 브라우저 칸을 가리키면 펼치지 않은 것으로 읽는다.
-  const expandable = [...columns.flatMap((column) => column.tiles), ...below.tiles].find((tile) => tile.id === value.expandedTileId && tile.kind !== "browser");
+  const expandable = [...columns.flatMap((column) => column.tiles), ...below.tiles].find((tile) => tile.id === value.expandedTileId);
   const expanded = expandable?.id ?? null;
   return {
     columns,

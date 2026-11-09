@@ -159,21 +159,6 @@ export function useBrowserCaptionOverlay(objectiveId: string): boolean {
   return React.useSyncExternalStore(subscribe, () => (captionOverlays.get(objectiveId)?.size ?? 0) > 0, () => false);
 }
 
-/**
- * 주소줄 줄을 어디에 그릴지 — 작업대가 머리 없는 브라우저 칸을 그릴 때 내려 준다. `undefined`(기본)는 칸 안(본문 맨 위)이고, 요소는 맨 위 줄의
- * 브라우저 영역에 portal 할 자리, `null` 은 그 자리가 아직 없거나 칸이 숨어 있어 그리지 않는다는 뜻이다. 칸 안과 맨 위 줄에 동시에 서지 않는다.
- */
-export const BrowserNavHostContext = React.createContext<HTMLElement | null | undefined>(undefined);
-
-// ---------- 맨 위 줄의 주소줄 ----------
-
-/**
- * 맨 위 줄로 올라간 주소줄 영역이 줄지 않는 최소 폭 — 대화 머리 줄이 한 줄 배분에서 이만큼을 지켜 준다. 구성: 왼쪽 안쪽 여백 8 + 뒤로·앞으로·새로고침·
- * 「⋯」(접힌 도구)·확대 단추 다섯 개 30px×5 + 주소창 최소 120 + 사이 틈 4px×5 = 298 → 여유 2 로 300. 단추 크기·틈은 browser-panel.css 의
- * `.op-browser__nav.is-top` 과 짝이다.
- */
-export const BROWSER_NAV_MIN_PX = 300;
-
 // ---------- 세로 탭 레일의 고정 ----------
 
 /** 세로 탭 레일 폭 — 접힘은 아이콘 한 열, 펼침은 탭 제목과 닫기까지. 값은 CSS 의 `--op-rail-*` 와 짝이다(펼침 폭은 거기서만 읽힌다). */
@@ -206,50 +191,6 @@ export function useBrowserRailPinned(): boolean {
     return () => { railPinnedListeners.delete(listener); };
   }, []);
   return React.useSyncExternalStore(subscribe, readRailPinned, () => false);
-}
-
-// ---------- 네이티브 뷰를 실은 칸의 끌기 ----------
-
-/**
- * 네이티브 뷰를 실은 칸(container)의 경계를 사람이 끌려 한다(held=false: 손잡이를 가리킨다) 또는 끌고 있다(held=true).
- * 네이티브 뷰는 페이지 위에 그려져 끄는 포인터를 가져가므로, 칸 안의 브라우저는 끄는 동안 정지 화면을 깔고 뷰를 물린다. 정지 화면을
- * 누른 뒤에 찍으면 그 왕복(수백 ms) 동안 뷰가 Console 위에 남거나 빈 면이 보이므로, 예고(held=false) 동안 보이는 뷰를 미리 찍어
- * 두고 끌기가 시작되면 기다리지 않고 그 장으로 물러난다. 끄는 동안의 표식은 칸의 `data-resizing` 이 DOM 으로도 말한다 — 이 신호는
- * 그보다 앞서(누르는 그 순간, 렌더 전에) 닿는 길이다.
- */
-export type NativeViewResize = { readonly container: Element; readonly held: boolean } | null;
-
-let nativeViewResize: NativeViewResize = null;
-const nativeViewResizeListeners = new Set<() => void>();
-
-export function announceNativeViewResize(next: NativeViewResize): void {
-  if (next === nativeViewResize || (next !== null && nativeViewResize !== null && next.container === nativeViewResize.container && next.held === nativeViewResize.held)) return;
-  nativeViewResize = next;
-  for (const listener of nativeViewResizeListeners) listener();
-}
-
-/** 끄는 동안 모든 네이티브 뷰를 정지 화면 뒤로 물린다. 돌려주는 함수가 놓는다. */
-function holdNativeViewsForResize(): () => void {
-  const container = document.documentElement;
-  announceNativeViewResize({ container, held: true });
-  return () => { if (nativeViewResize?.container === container) announceNativeViewResize(null); };
-}
-
-/**
- * 사람이 레이아웃 경계를 끄는 모든 조작(좌·우 사이드바의 폭, 채팅창/브라우저 사이의 경계)이 쓰는 하나의 길. 끄는 동안 켜 두면 네이티브 뷰가
- * 정지 화면 뒤로 물러나 포인터를 가져가지 않고 칸을 따라가다 어긋나지도 않으며, 놓으면 정착한 자리에 한 번 다시 놓인다. 끌기마다 따로 처리하지 않는다.
- */
-export function useHoldNativeViewsWhile(active: boolean): void {
-  React.useEffect(() => (active ? holdNativeViewsForResize() : undefined), [active]);
-}
-
-export function getNativeViewResize(): NativeViewResize {
-  return nativeViewResize;
-}
-
-export function subscribeNativeViewResize(listener: () => void): () => void {
-  nativeViewResizeListeners.add(listener);
-  return () => { nativeViewResizeListeners.delete(listener); };
 }
 
 // ---------- 브라우저를 열 수 있는가 ----------

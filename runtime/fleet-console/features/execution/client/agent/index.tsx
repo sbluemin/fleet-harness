@@ -20,7 +20,7 @@ import { desktopShellCapabilities, isDesktopShell } from "../../../../core/clien
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/objective-records-sse.js";
 import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { focusBrowserWindow, useBrowserDocument } from "../../../browser/client/browser-window.js";
+import { toggleBrowserPane, useBrowserDocument } from "../../../browser/client/browser-window.js";
 import { BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
@@ -435,7 +435,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   const engineMissing = engine !== null && !engine.available;
   const browserLabel = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : detachedBrowser ? t("terminal.browser.focus") : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
+    : detachedBrowser?.mode === "window" ? t("terminal.browser.focus") : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
   const browser = context.onRequestCompanions === undefined || !offersCompanion(context, BROWSER_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="browser"
@@ -443,7 +443,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
       pressed={browserOpen}
       disabled={engineMissing}
       agent={using.browser}
-      onClick={() => { if (!focusBrowserWindow()) toggleCompanionPanel(context, BROWSER_COMPANION_ID); }}
+      onClick={toggleBrowserPane}
     >
       <CaptionBrowserUseGlyph />
     </CaptionActionButton>

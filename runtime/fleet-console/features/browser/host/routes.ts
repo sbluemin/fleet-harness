@@ -3,6 +3,7 @@ import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
 import { BROWSER_GLOBAL_ID, commodoreOfSpace, HUMAN_SPACE_ID, sessionSpaceId } from "../shared/spaces.js";
 import { writeImageToClipboard } from "./clipboard.js";
+import { isDesktopBrowserInsets } from "@fleet-console/protocol/desktop";
 import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
 
 export interface BrowserSetShortcutsInput {
@@ -129,7 +130,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|float|import|profile|clear-profile|space|surface)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|place|present|float|import|profile|clear-profile|space|surface)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -222,10 +223,17 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user") }); return true;
       }
       if (action === "surface") {
-        if ((body.action !== "open" && body.action !== "close" && body.action !== "focus") || typeof body.clientId !== "string" || !/^[A-Za-z0-9-]{1,80}$/u.test(body.clientId)
-          || (body.action !== "open" && typeof body.id !== "string") || (body.mode !== undefined && body.mode !== "pane" && body.mode !== "window")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        if ((body.action !== "open" && body.action !== "close" && body.action !== "focus" && body.action !== "mode") || typeof body.clientId !== "string" || !/^[A-Za-z0-9-]{1,80}$/u.test(body.clientId)
+          || (body.action !== "open" && typeof body.id !== "string") || (body.mode !== undefined && body.mode !== "pane" && body.mode !== "window") || (body.action === "mode" && body.mode === undefined)) { writeJson(res, 400, { error: "invalid_request" }); return true; }
         browserService.surface(objectiveId, body.action, body.clientId, typeof body.id === "string" ? body.id : undefined, body.mode as "pane" | "window" | undefined);
         writeJson(res, 200, { surface: browserService.state(objectiveId).surface }); return true;
+      }
+      if (action === "present") {
+        if (typeof body.surface !== "string" || typeof body.clientId !== "string" || typeof body.visible !== "boolean"
+          || !isDesktopBrowserInsets(body.insets) || !isDesktopBrowserInsets(body.cut)) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        browserService.place(objectiveId, { bounds: { x: 0, y: 0, width: 0, height: 0 }, surface: body.surface, clientId: body.clientId,
+          visible: body.visible, insets: body.insets, cut: body.cut });
+        writeJson(res, 200, { ok: true }); return true;
       }
       if (action === "place") {
         const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;

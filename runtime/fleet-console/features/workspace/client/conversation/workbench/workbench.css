@@ -3,16 +3,13 @@
    대화에 넘긴다. 맨 위 줄(pill·도구모음·사용량 캡슐, 그리고 Desktop 의 신호등·캡션 버튼)은 분할·펼친 칸·시트 어느 때든 칸이 덮지
    않는다 — 두 플랫폼이 같은 모양이다(conversation.css .conversation-band).
    칸은 대화 바탕보다 한 단 밝은 면 · 1px 테두리 · 둥근 모서리이고, 머리 줄(36px)은 모든 도구가 같은 문법이다(시안 v2 규칙 e).
-   브라우저 칸만 예외다 — 머리 없이 대화와 같은 면으로 서고, 주소줄 줄은 맨 위 줄의 브라우저 영역으로 올라가며(.workbench-band-nav-wrap),
-   탭은 본문 왼쪽의 세로 레일이 가진다. */
+   Fleet Browser는 이 작업대 밖 Desktop 셸이 소유한다. */
 .conversation-workbench {
   position: absolute;
   top: var(--conversation-top-row, 52px);
   bottom: 0;
   z-index: 1;
   pointer-events: none;
-  /* 대화의 바탕 — 칸 면으로 덮어쓰기 전에 붙들어 둔다. 머리 없는 브라우저 칸이 이 면을 쓴다. */
-  --workbench-canvas: var(--conversation-surface);
   /* 칸 안 본문(오른쪽 사이드바에서 옮겨 온 페인)은 열 바탕을 읽는다 — 칸 면으로 다시 준다. */
   --workbench-tile-face: var(--surface-panel);
 }
@@ -57,49 +54,6 @@
 .conversation-workbench.is-resizing .workbench-tile {
   transition: none;
   user-select: none;
-}
-
-/* ── 머리 없는 브라우저 칸: 대화와 같은 면 — 이음매 선 없이 대화에서 이어진다(경계는 아래 끌기 바가 맡는다) ── */
-.workbench-tile[data-seamless="true"] {
-  --workbench-tile-face: var(--workbench-canvas);
-  border: 0;
-  border-radius: 0;
-}
-
-.workbench-tile[data-seamless="true"].is-focused { border-color: var(--hairline); }
-/* 지구본에서 번지고 접히는 동안은 자리 전이를 멈춘다 — 원이 칸을 따라 미끄러지지 않게. */
-.workbench-tile[data-motion] { transition: none; }
-
-/* ── 맨 위 줄의 브라우저 칸 자리 — 지구본 바로 앞. 탭은 여기 서지 않는다(탭은 브라우저 본문 왼쪽의 세로 레일). 지구본이 닫는 길이 아닐 때의 닫기만 선다. ── */
-.conversation-browser-slot { display: inline-flex; align-items: center; min-width: 0; }
-.conversation-browser-slot:empty { display: none; }
-
-.workbench-band-chrome {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-  height: 30px;
-  margin-right: var(--space-2);
-  pointer-events: auto;
-}
-
-.workbench-band-chrome.is-enter, .workbench-band-nav-wrap.is-enter { animation: workbench-band-in 200ms ease-out both; }
-.workbench-band-chrome.is-leave, .workbench-band-nav-wrap.is-leave { animation: workbench-band-out 160ms ease-in both; }
-
-/* 주소줄 줄의 자리(맨 위 줄의 주소줄 영역) — 왼쪽은 브라우저 칸의 왼쪽 끝(--browser-split-x)에서 시작해 대화 칸 위에는 칩과 컨텍스트·알림 단추만 남긴다.
-   칩 묶음이 그 끝을 넘어서면(좁은 칸) 그 오른쪽 끝(--conversation-chip-end, 대화 머리 줄이 잰다)이 한계다. 오른쪽은 지구본 왼쪽(주소줄 자리의 끝)이다.
-   줄 자체는 .op-browser__nav.is-top 이 그린다. 펼쳐도 이 영역은 그대로다. */
-.workbench-band-nav-wrap { position: absolute; top: 0; right: 0; bottom: 0; left: max(var(--conversation-chip-end, 0px), var(--browser-split-x, 0px)); display: flex; align-items: center; pointer-events: none; }
-
-@keyframes workbench-band-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes workbench-band-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
 }
 
 /* ── 칸 머리 ── */
@@ -301,6 +255,4 @@ html[data-desktop-shell="true"] .conversation-workbench-gutter {
 
 @media (prefers-reduced-motion: reduce) {
   .workbench-tile { transition: none; }
-  .workbench-band-chrome.is-enter,
-  .workbench-band-chrome.is-leave { animation: none; }
 }

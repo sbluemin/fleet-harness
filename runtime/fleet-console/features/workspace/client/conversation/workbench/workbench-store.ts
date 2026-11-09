@@ -21,7 +21,7 @@ import {
  * 사령관별 도구 작업대 — 목표·구성원 화면은 소유 사령관과 같은 도구 키로 배치를 읽는다.
  *
  * 배치는 도구 키마다 하나이고 서버에 저장된다(`/api/v1/conversation-workbench`). 처음 붙을 때 한 번 읽고, 바뀐 키의 배치만
- * 잠시 모아 쓴다. 칸이 무엇을 그리는지(파일 트리·Shell·브라우저)는 이 스토어가 모른다 — 칸의 출처(entry·surface·browser)와 자리만 안다.
+ * 잠시 모아 쓴다. 칸이 무엇을 그리는지는 이 스토어가 모른다 — 칸의 출처(entry·surface)와 자리만 안다.
  *
  * 포커스(어느 칸을 마지막에 만졌는가)는 저장하지 않는 화면 상태다.
  */
@@ -51,16 +51,6 @@ const dirty = new Set<string>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let tileSeq = 0;
 let version = 0;
-/**
- * Fleet Browser 의 열림 의도 — 브라우저는 Console 에 하나라 도킹한 브라우저 칸의 열림·닫힘도 대화마다가 아니라 하나다. 어느 대화에서든 사람이
- * 칸을 열고 닫으면 이 값이 따라가고, 다른 대화에 도착하면 그 대화의 배치가 이 값에 맞춰진다(배치가 이미 맞으면 그대로 — 그 대화가 저장해 둔 칸의 자리·크기를 쓴다).
- * `null` 은 아직 의도가 없다는 뜻이다 — 처음 읽은 대화의 모양을 그대로 받아들이므로 시작할 때 저장된 배치를 일괄로 닫거나 열지 않는다.
- * 화면 수명 동안만 기억한다. 재시작 뒤에는 처음 읽은 대화의 저장된 배치가 이어받는다(그 배치가 곧 마지막 의도다).
- */
-let browserIntent: boolean | null = null;
-/** 도착한 대화의 배치를 의도에 맞추는 동안 — 이 조작은 의도를 바꾸지 않는다. */
-let carryingBrowserIntent = false;
-
 function notify(): void {
   version += 1;
   if (replayingChanges) return;
@@ -104,7 +94,6 @@ export function setWorkbenchConversation(key: string | null): void {
   currentKey = next;
   focusedTileId = null;
   pendingClose = null;
-  carryBrowserIntent();
   notify();
 }
 
@@ -151,8 +140,7 @@ export function loadWorkbenchLayouts(): void {
         pendingClose = closeByKey.get(activeKey) ?? null;
         replayingChanges = false;
       }
-      carryBrowserIntent();
-      notify();
+          notify();
     }, () => {
       // 다음 조작이나 마운트가 다시 읽는다. 기다리던 의도는 성공할 때까지 남긴다.
       loadState = "idle";
@@ -210,39 +198,8 @@ function commit(next: WorkbenchLayout, options: { readonly persist?: boolean } =
   if (isWorkbenchEmpty(next)) map.delete(key);
   else map.set(key, next);
   layouts = map;
-  // 대화에서 브라우저 칸이 생기거나 사라지면 그것이 사람의 뜻이다(열기·닫기·토글·칸의 닫기 단추 모두 여기를 지난다). 도착에 맞추는 조작과 대화가 아닌 화면은 제외.
-  if (!carryingBrowserIntent && key !== NON_CONVERSATION_KEY) {
-    const had = hasBrowserTile(previous);
-    const has = hasBrowserTile(next);
-    if (had !== has) browserIntent = has;
-  }
   if (options.persist !== false) scheduleSave(key);
   notify();
-}
-
-function hasBrowserTile(layout: WorkbenchLayout): boolean {
-  return workbenchTiles(layout).some((tile) => tile.kind === "browser");
-}
-
-/**
- * 도착한 대화의 배치를 브라우저 의도에 맞춘다. 읽기 전에는 하지 않는다(읽기가 끝나면 한 번 맞춘다). 열 때는 그 대화에 저장된 브라우저 칸이 있으면 그것을 그대로 두고,
- * 없으면 기본 자리에 세운다. 초점은 도착 때 건드리지 않는다. 닫을 때는 확인을 묻지 않고 칸만 걷는다(저장된 다른 칸·비율은 그대로).
- */
-function carryBrowserIntent(): void {
-  if (loadState !== "loaded" || currentKey === NON_CONVERSATION_KEY || forgottenKeys.has(currentKey)) return;
-  const layout = getWorkbenchLayout();
-  const present = hasBrowserTile(layout);
-  if (browserIntent === null) { browserIntent = present; return; }
-  if (present === browserIntent) return;
-  const focus = focusedTileId;
-  carryingBrowserIntent = true;
-  try {
-    if (browserIntent) openLoadedWorkbenchTile({ kind: "browser" }, {});
-    else commit(workbenchLayoutKeeping(layout, (tile) => tile.kind !== "browser"));
-  } finally {
-    carryingBrowserIntent = false;
-    focusedTileId = focus;
-  }
 }
 
 // ── 순수 조작 ─────────────────────────────────────────────────────────────
@@ -323,7 +280,7 @@ function sameSource(tile: WorkbenchTile, source: WorkbenchTileSource): boolean {
   if (tile.kind !== source.kind) return false;
   if (tile.kind === "entry" && source.kind === "entry") return tile.entryId === source.entryId;
   if (tile.kind === "surface" && source.kind === "surface") return tile.surfaceId === source.surfaceId;
-  return tile.kind === "browser";
+  return false;
 }
 
 function nextTileId(): string {
@@ -361,8 +318,7 @@ function dropEmptyColumns(draft: MutableLayout): void {
 }
 
 /**
- * 작업대는 대화 오른쪽 한 열이다 — 칸을 옮기는 길은 없다. 브라우저는 그 열 맨 위에 서고(탭 줄이 맨 위 줄의 지구본 옆으로 올라간다),
- * 다른 칸은 연 순서대로 아래에 쌓인다. 열이 차 있으면 false.
+ * 작업대는 대화 오른쪽 한 열이다. 칸은 연 순서대로 쌓이며 열이 차 있으면 false다.
  */
 function insertIntoColumn(draft: MutableLayout, tile: WorkbenchTile): boolean {
   if (draft.columns.length === 0) {
@@ -372,7 +328,7 @@ function insertIntoColumn(draft: MutableLayout, tile: WorkbenchTile): boolean {
   }
   const column = draft.columns[0]!;
   if (column.tiles.length >= WORKBENCH_MAX_TILES_PER_COLUMN) return false;
-  const at = tile.kind === "browser" ? 0 : column.tiles.length;
+  const at = column.tiles.length;
   column.tiles.splice(at, 0, tile);
   column.weights.splice(at, 0, averageWeight(column.weights));
   return true;
@@ -380,14 +336,11 @@ function insertIntoColumn(draft: MutableLayout, tile: WorkbenchTile): boolean {
 
 /**
  * 저장된 배치를 한 열 모양으로 읽는다 — 이동 기능이 있던 때의 여러 열·대화 아래 줄은 열 순서, 그다음 아래 줄 순서로 한 열에 모으고
- * 브라우저를 맨 위로 올린다. 칸마다 가중치는 따라간다. 한 열에 들지 못한 칸은 닫힌 채로 읽는다. 이미 그 모양이면 같은 배치를 돌려준다.
+ * 합친다. 칸마다 가중치는 따라간다. 한 열에 들지 못한 칸은 닫힌 채로 읽는다. 이미 그 모양이면 같은 배치를 돌려준다.
  */
 function singleColumnLayout(layout: WorkbenchLayout): WorkbenchLayout {
-  const first = layout.columns[0];
-  const browserAt = first?.tiles.findIndex((tile) => tile.kind === "browser") ?? -1;
-  if (layout.columns.length <= 1 && layout.below.tiles.length === 0 && browserAt <= 0) return layout;
+  if (layout.columns.length <= 1 && layout.below.tiles.length === 0) return layout;
   const entries = [...layout.columns, layout.below].flatMap((stack) => stack.tiles.map((tile, index) => ({ tile, weight: stack.weights[index] ?? 1 })));
-  entries.sort((a, b) => Number(b.tile.kind === "browser") - Number(a.tile.kind === "browser"));
   const kept = entries.slice(0, WORKBENCH_MAX_TILES_PER_COLUMN);
   if (kept.length === 0) return EMPTY_WORKBENCH_LAYOUT;
   const ids = new Set(kept.map(({ tile }) => tile.id));
@@ -438,7 +391,7 @@ function openLoadedWorkbenchTile(source: WorkbenchTileSource, options: OpenTileO
   const id = reservedId ?? nextTileId();
   const tile: WorkbenchTile = source.kind === "surface"
     ? { id, kind: "surface", surfaceId: source.surfaceId, params: sanitizeWorkbenchParams(source.params) }
-    : source.kind === "entry" ? { id, kind: "entry", entryId: source.entryId } : { id, kind: "browser" };
+    : { id, kind: "entry", entryId: source.entryId };
   if (!insertIntoColumn(draft, tile)) return null;
   draft.expandedTileId = null;
   focusedTileId = id;
@@ -553,8 +506,7 @@ export function setWorkbenchExpanded(tileId: string | null): void {
   const layout = getWorkbenchLayout();
   if (layout.expandedTileId === tileId) return;
   const found = tileId === null ? null : findWorkbenchTile(layout, tileId);
-  // 브라우저 칸은 펼치지 않는다 — 크기는 경계 바로 조절한다.
-  if (tileId !== null && (found === null || found.tile.kind === "browser")) return;
+  if (tileId !== null && found === null) return;
   commit({ ...layout, expandedTileId: tileId });
 }
 
@@ -646,14 +598,6 @@ export function isWorkbenchSurfaceShown(surfaceId: string): boolean {
   return isWorkbenchShown((tile) => tile.kind === "surface" && tile.surfaceId === surfaceId);
 }
 
-export function isWorkbenchBrowserShown(): boolean {
-  return isWorkbenchShown((tile) => tile.kind === "browser");
-}
-
-export function useWorkbenchBrowserShown(): boolean {
-  return useSyncExternalStore(subscribeWorkbench, isWorkbenchBrowserShown, () => false);
-}
-
 export function openWorkbenchEntry(entryId: string): void {
   openWorkbenchTile({ kind: "entry", entryId });
 }
@@ -667,21 +611,6 @@ export function toggleWorkbenchEntry(entryId: string): void {
   if (deferUntilLoaded(() => toggleWorkbenchEntry(entryId))) return;
   if (isWorkbenchEntryShown(entryId)) closeWorkbenchEntry(entryId);
   else openWorkbenchEntry(entryId);
-}
-
-export function openWorkbenchBrowser(): void {
-  openWorkbenchTile({ kind: "browser" });
-}
-
-export function closeWorkbenchBrowser(): void {
-  closeWhere((tile) => tile.kind === "browser");
-}
-
-/** 보이는 브라우저 칸은 닫고, 없거나 다른 칸에 가려 있으면 연다. 가려진 칸은 다시 열기 경로가 펼침을 접고 초점을 준다. */
-export function toggleWorkbenchBrowser(): void {
-  if (deferUntilLoaded(toggleWorkbenchBrowser)) return;
-  if (isWorkbenchBrowserShown()) closeWorkbenchBrowser();
-  else openWorkbenchBrowser();
 }
 
 // ── 확대 표면 호스트 ──────────────────────────────────────────────────────
@@ -742,8 +671,6 @@ export function resetWorkbenchForTest(): void {
   pendingChanges.length = 0;
   pendingTileIds.clear();
   replayingChanges = false;
-  browserIntent = null;
-  carryingBrowserIntent = false;
   dirty.clear();
   if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; }
   version += 1;

@@ -18,6 +18,7 @@ export interface DesktopBrowserFloatDeps {
   readonly createWindow: (shell: DesktopShellWindow) => BrowserWindow;
   /** 콘솔 렌더러의 줌 — 메뉴의 CSS px 를 DIP 로 바꾸고 표면도 같은 배율로 그린다. */
   readonly zoomFactor: (surface?: string | null) => number;
+  readonly offset?: (surface?: string | null) => { readonly x: number; readonly y: number } | null;
   /**
    * 지금 포인터의 화면 위치(DIP). 비활성 패널은 자리가 바뀌거나 처음 뜬 직후 AppKit 이 포인터 추적을 잃어(들어옴 없이 나감만 알리고 그 뒤로 입력이 끊긴다)
    * 포인터가 안에 있는지를 사건으로 알 수 없다 — 떠 있는 동안 이 위치를 표면에 흘려 표면이 스스로 판정하게 한다.
@@ -110,7 +111,9 @@ export function createDesktopBrowserFloat(deps: DesktopBrowserFloatDeps): Deskto
     if (!target || target.isDestroyed()) return;
     const zoom = deps.zoomFactor(current.surface);
     if (target.webContents.getZoomFactor() !== zoom) target.webContents.setZoomFactor(zoom);
-    target.setBounds(floatScreenBounds(current, shell.getContentBounds(), zoom));
+    const content = shell.getContentBounds();
+    const offset = deps.offset?.(current.surface);
+    target.setBounds(floatScreenBounds(current, { ...content, x: content.x + (offset?.x ?? 0), y: content.y + (offset?.y ?? 0) }, zoom));
     if (!target.isVisible()) target.showInactive();
     startCursorFeed();
   };

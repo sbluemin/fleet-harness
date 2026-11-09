@@ -6,7 +6,7 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds, type DesktopBrowserFloat } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds, type DesktopBrowserInsets, type DesktopBrowserFloat } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID, BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, HUMAN_SPACE_ID, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
 
 /**
@@ -32,7 +32,7 @@ const BODY_LIMIT = 64 * 1024;
 const TEXT_LIMIT = 200_000;
 /**
  * `resolution: "device"` 캡처의 상한. 기기 배율은 셸이 알린 화면 배율(pane.scale)을 따르되 이 배율을 넘지 않고,
- * 출력 픽셀 수가 이 한도를 넘으면 그 안에 들도록 배율을 낮춘다(최소 1, 즉 CSS 크기). 시트 정지 화면용이다.
+ * 출력 픽셀 수가 이 한도를 넘으면 그 안에 들도록 배율을 낮춘다(최소 1, 즉 CSS 크기). 주석 이미지용이다.
  * 픽셀 한도는 Desktop 중계 본문 64 MiB 에서 정한다 — 압축되지 않는 RGBA PNG(4B/px)의 base64 가 한도 안에 남아야 한다.
  * 3200² 는 최악 약 52 MiB, 4096² 는 85 MiB 라 중계가 거절하고 캡처가 시간 초과까지 묶인다.
  */
@@ -671,7 +671,7 @@ export class BrowserService {
   }
 
   /** 패널이 알려 준 자기 자리 — 네이티브 뷰가 놓일 창 좌표. null 이면 감춘다. */
-  place(objectiveId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean; surface?: string | null; clientId?: string } | null): void {
+  place(objectiveId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean; surface?: string | null; clientId?: string; insets?: DesktopBrowserInsets; cut?: DesktopBrowserInsets } | null): void {
     this.objectiveRecord(objectiveId);
     this.deps.desktop.place(objectiveId, placement);
   }
@@ -689,13 +689,14 @@ export class BrowserService {
     this.deps.desktop.setFloat(float);
   }
 
-  surface(objectiveId: string, action: "open" | "close" | "focus", clientId: string, id?: string, mode?: "pane" | "window"): void {
+  surface(objectiveId: string, action: "open" | "close" | "focus" | "mode", clientId: string, id?: string, mode?: "pane" | "window"): void {
     this.objectiveRecord(objectiveId);
     if (action === "open") { this.deps.desktop.openSurface(objectiveId, clientId, mode); return; }
     const lease = this.deps.desktop.surfaceState();
     if (lease?.browserId !== objectiveId || lease.clientId !== clientId || lease.id !== id) return;
     if (action === "focus") this.deps.desktop.focusSurface(id, clientId);
-    else this.deps.desktop.closeSurface(id);
+    else if (action === "mode" && mode) this.deps.desktop.setSurfaceMode(id, clientId, mode);
+    else if (action === "close") this.deps.desktop.closeSurface(id);
   }
 
   state(objectiveId: string): BrowserObjectiveState {
