@@ -30,6 +30,11 @@ const FLOAT_BLUR_GRACE_MS = 180;
 export const NATIVE_FLOAT_ATTRIBUTE = "data-native-float";
 /** 자식 창에서도 자기 CSS 전환·애니메이션을 재생하는 표면에 다는 표지 — 달지 않은 표면은 자식 창에서 정지한 채 그려진다(`float-surface.ts`). */
 export const NATIVE_FLOAT_MOTION_ATTRIBUTE = "data-float-motion";
+/**
+ * 자식 창에는 네이티브 자리와 겹치는 부분만 그리고, 겹치지 않는 부분(Console 위의 원본)은 그대로 보이게 두는 표면의 표지.
+ * 겹치지 않는 부분의 누름은 투명 비활성 자식 창을 거치지 않고 Console 의 원본 요소가 직접 받는다 — 세로 탭 레일의 아이콘 열이 이쪽이다.
+ */
+export const NATIVE_FLOAT_CLIP_ATTRIBUTE = "data-native-float-clip";
 /** 브라우저 네이티브 자리를 가진 요소에 다는 표지 — 값은 그 브라우저의 키(`/api/v1/browser/objectives/:id`). */
 export const NATIVE_FLOAT_TARGET_ATTRIBUTE = "data-native-float-target";
 
@@ -173,9 +178,9 @@ function coverRectsKey(): string {
 const overlaps = (a: DOMRect, b: DOMRect): boolean => a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
 
 /** 지금 떠야 하는 표면들 — 비모달이고, 보이고, 다른 표면 안에 들어 있지 않고, 네이티브 자리와 겹치는 것. */
-function candidates(): { readonly target: string | null; readonly elements: HTMLElement[] } {
+function candidates(): { readonly target: string | null; readonly elements: HTMLElement[]; readonly clip: DOMRect | null } {
   // 모달이 열리면 그 아래의 떠 있는 표면도 막과 함께 물러난다 — 따로 선 자식 창은 막 위에 남아 버린다.
-  if (document.querySelector('[aria-modal="true"]')) return { target: null, elements: [] };
+  if (document.querySelector('[aria-modal="true"]')) return { target: null, elements: [], clip: null };
   const covers = [...document.querySelectorAll<HTMLElement>(COVER_SELECTOR)].filter((element) => {
     if (element.getAttribute("aria-modal") === "true" || element.closest('[aria-modal="true"]')) return false;
     if (element.parentElement?.closest(COVER_SELECTOR)) return false;
@@ -185,31 +190,44 @@ function candidates(): { readonly target: string | null; readonly elements: HTML
     // 자식 창에 그려지는 동안 원본은 스스로 투명해진다(`native-float.css`) — 그 투명함은 닫힘이 아니다.
     return style.visibility !== "hidden" && (element.getAttribute(NATIVE_FLOAT_ATTRIBUTE) === "shown" || Number(style.opacity) > 0.01);
   });
-  if (covers.length === 0) return { target: null, elements: [] };
+  if (covers.length === 0) return { target: null, elements: [], clip: null };
   for (const host of document.querySelectorAll<HTMLElement>(`[${NATIVE_FLOAT_TARGET_ATTRIBUTE}]`)) {
     const native = host.getBoundingClientRect();
     if (native.width < 1 || native.height < 1) continue;
     const over = covers.filter((element) => overlaps(element.getBoundingClientRect(), native));
-    if (over.length > 0) return { target: host.getAttribute(NATIVE_FLOAT_TARGET_ATTRIBUTE), elements: over };
+    // 조각 표지를 단 표면은 자식 창에 네이티브 자리 안의 조각만 싣는다(`render`) — 다른 표면은 통째로 뜬다.
+    if (over.length > 0) return { target: host.getAttribute(NATIVE_FLOAT_TARGET_ATTRIBUTE), elements: over, clip: native };
   }
-  return { target: null, elements: [] };
+  return { target: null, elements: [], clip: null };
 }
 
 function render(): void {
-  const next = nativeFloatAvailable() ? candidates() : { target: null, elements: [] };
+  const next = nativeFloatAvailable() ? candidates() : { target: null, elements: [], clip: null };
   if (next.target === null || next.elements.length === 0) { release([]); return; }
   if (state.target !== null && state.target !== next.target) post(state.target, { clear: true });
   release(next.elements);
   const rects = next.elements.map((element) => element.getBoundingClientRect());
-  const left = Math.floor(Math.min(...rects.map((rect) => rect.left)));
-  const top = Math.floor(Math.min(...rects.map((rect) => rect.top)));
-  const right = Math.ceil(Math.max(...rects.map((rect) => rect.right)));
-  const bottom = Math.ceil(Math.max(...rects.map((rect) => rect.bottom)));
+  // 자식 창이 덮는 자리 — 조각 표지를 단 표면은 네이티브 자리와 겹치는 조각만 센다. 나머지(Console 위)는 원본이 그대로 눌린다.
+  const clipped = next.elements.map((element) => next.clip !== null && element.hasAttribute(NATIVE_FLOAT_CLIP_ATTRIBUTE));
+  const area = rects.map((rect, index) => clipped[index]
+    ? { left: Math.max(rect.left, next.clip!.left), top: Math.max(rect.top, next.clip!.top), right: Math.min(rect.right, next.clip!.right), bottom: Math.min(rect.bottom, next.clip!.bottom) }
+    : { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+  const left = Math.floor(Math.min(...area.map((box) => box.left)));
+  const top = Math.floor(Math.min(...area.map((box) => box.top)));
+  const right = Math.ceil(Math.max(...area.map((box) => box.right)));
+  const bottom = Math.ceil(Math.max(...area.map((box) => box.bottom)));
+  // 자른 변에는 여백을 두지 않는다 — 여백의 투명한 띠가 그 아래 Console 요소의 누름을 가로채지 않게. 다른 표면이 그 변을 넘으면 여백을 둔다.
+  const flush = (union: number, edge: number | undefined): boolean => edge !== undefined && clipped.some(Boolean) && Math.abs(union - edge) < 0.5;
+  const clip = next.clip;
+  const padLeft = flush(Math.min(...area.map((box) => box.left)), clip?.left) ? 0 : FLOAT_PAD;
+  const padTop = flush(Math.min(...area.map((box) => box.top)), clip?.top) ? 0 : FLOAT_PAD;
+  const padRight = flush(Math.max(...area.map((box) => box.right)), clip?.right) ? 0 : FLOAT_PAD;
+  const padBottom = flush(Math.max(...area.map((box) => box.bottom)), clip?.bottom) ? 0 : FLOAT_PAD;
   const nodes: Element[] = [];
-  const html = next.elements.map((element, index) => serialize(element, rects[index]!, left, top, nodes)).join("");
-  const width = right - left + FLOAT_PAD * 2;
-  const height = bottom - top + FLOAT_PAD * 2;
-  const key = `${next.target}|${left},${top},${width},${height}|${html}`;
+  const html = next.elements.map((element, index) => serialize(element, rects[index]!, left - padLeft, top - padTop, nodes)).join("");
+  const width = right - left + padLeft + padRight;
+  const height = bottom - top + padTop + padBottom;
+  const key = `${next.target}|${left - padLeft},${top - padTop},${width},${height}|${html}`;
   for (const element of next.elements) if (!element.hasAttribute(NATIVE_FLOAT_ATTRIBUTE)) element.setAttribute(NATIVE_FLOAT_ATTRIBUTE, "pending");
   state.target = next.target;
   state.elements = next.elements;
@@ -229,7 +247,7 @@ function render(): void {
     root: attributesOf(document.documentElement),
     body: attributesOf(document.body),
   });
-  post(next.target, { revision, x: left - FLOAT_PAD, y: top - FLOAT_PAD, width, height });
+  post(next.target, { revision, x: left - padLeft, y: top - padTop, width, height });
 }
 
 /** `keep` 밖의 표면에서 표지를 떼고, 아무것도 남지 않으면 자식 창을 내린다. */
@@ -340,6 +358,7 @@ function canScroll(element: HTMLElement): boolean {
  * 표면 자신은 자식 창 안의 같은 상대 자리에 고정한다. 각 요소에 번호를 달아 자식 창이 누른 것을 원본에서 찾게 한다.
  */
 function serialize(element: HTMLElement, rect: DOMRect, left: number, top: number, nodes: Element[]): string {
+  // `left`·`top` 은 자식 창 문서의 원점(여백까지 뺀 자리)이다.
   const clone = element.cloneNode(true) as HTMLElement;
   const originals = [element, ...element.querySelectorAll("*")];
   const copies = [clone, ...clone.querySelectorAll("*")];
@@ -356,7 +375,7 @@ function serialize(element: HTMLElement, rect: DOMRect, left: number, top: numbe
     if (original.tagName === "INPUT") copy.setAttribute("value", (original as HTMLInputElement).value);
     if (original.tagName === "TEXTAREA") copy.textContent = (original as HTMLTextAreaElement).value;
   }
-  const pin = `position:fixed!important;left:${rect.left - left + FLOAT_PAD}px!important;top:${rect.top - top + FLOAT_PAD}px!important;right:auto!important;bottom:auto!important;margin:0!important;`
+  const pin = `position:fixed!important;left:${rect.left - left}px!important;top:${rect.top - top}px!important;right:auto!important;bottom:auto!important;margin:0!important;`
     + `width:${rect.width}px!important;height:${rect.height}px!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;`
     + `transform:none!important;translate:none!important;inset-inline:auto;${element.hasAttribute(NATIVE_FLOAT_MOTION_ATTRIBUTE) ? "" : "animation:none!important;"}opacity:1!important;visibility:visible!important;`;
   clone.setAttribute("style", `${clone.getAttribute("style") ?? ""};${pin}`);

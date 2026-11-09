@@ -15,7 +15,7 @@ import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-sett
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import type { BrowserCaptionTab } from "./browser-panel-store.js";
 import { BROWSER_RAIL_COLLAPSED_PX, BROWSER_RAIL_EXPANDED_PX, dropBrowserOpenRequest, getNativeViewResize, BrowserNavHostContext, setBrowserRailPinned, useBrowserRailPinned, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
-import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
+import { insideNativeFloat, nativeFloatAvailable, NATIVE_FLOAT_ATTRIBUTE, NATIVE_FLOAT_CLIP_ATTRIBUTE, NATIVE_FLOAT_MOTION_ATTRIBUTE, NATIVE_FLOAT_TARGET_ATTRIBUTE, retainNativeFloat } from "./native-float.js";
 import { BrowserSurfaceContent, useBrowserDocument, useBrowserWindow, type BrowserSurfaceState } from "./browser-window.js";
 import "./browser-panel.css";
 
@@ -748,6 +748,8 @@ function BrowserTabRail({ objectiveId, language }: { readonly objectiveId: strin
         {...(driving ? { role: "status", "aria-label": t("terminal.browser.driving") } : { role: "group", "aria-label": t("terminal.browser.tabs") })}
         // 전환은 자식 창에서도 재생된다 — 표지가 있는 표면만 자식 창의 애니메이션 차단에서 빠진다.
         {...{ [NATIVE_FLOAT_MOTION_ATTRIBUTE]: "" }}
+        // 아이콘 열은 네이티브 자리 밖 Console 위에 있다 — 그 열의 누름은 자식 창을 거치지 않고 원본이 받고, 자식 창은 뷰 위로 펼쳐진 조각만 그린다.
+        {...{ [NATIVE_FLOAT_CLIP_ATTRIBUTE]: "" }}
         // 고정하지 않은 펼침은 본문 위에 겹쳐 그려진다 — 네이티브 뷰가 가리지 않게 가림 표면으로 알린다. 접히는 전환 동안에도 유지한다.
         {...(expanded && !pinned ? COVERS_NATIVE_VIEW : {})}
         onPointerEnter={onPointerEnter}
