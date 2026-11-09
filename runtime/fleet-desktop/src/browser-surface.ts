@@ -229,11 +229,10 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       if (message.action.action === "ready") { doc.ready = true; doc.lastJson = ""; push(); return; }
       deps.act(control, role, message.action);
     });
-    contents.on("dom-ready", () => { doc.ready = false; void contents.executeJavaScript(deps.program()).catch((error: unknown) => deps.log(`browser chrome program failed: ${error instanceof Error ? error.message : "unknown"}`)); });
+    // 문서를 적재하면 배율이 1로 돌아간다 — 적재 전에 건 배율은 남지 않으므로, 문서가 준비될 때마다 현재 배율을 다시 건다.
+    contents.on("dom-ready", () => { doc.ready = false; appliedZoom = zoom(); contents.setZoomFactor(appliedZoom); void contents.executeJavaScript(deps.program()).catch((error: unknown) => deps.log(`browser chrome program failed: ${error instanceof Error ? error.message : "unknown"}`)); });
     contents.on("render-process-gone", () => { doc.ready = false; void contents.reload(); });
     view.setBackgroundColor("#00000000");
-    contents.setZoomFactor(zoom());
-    appliedZoom = zoom();
     void contents.loadFile(path.join(deps.chromeDir, `${role}.html`)).catch(() => undefined);
     return doc;
   };
