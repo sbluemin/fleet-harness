@@ -1101,28 +1101,51 @@
 
 .conversation-panel-toolbar-spacer { flex: 1; }
 
-/* 플릿 브라우저 문 — 오른쪽 세부 정보 머리의 닫기 X 바로 왼쪽. 문이 없을 때(칸이 열린 동안)는 폭이 없다. */
+/* 플릿 브라우저 문 — 오른쪽 세부 정보 머리의 닫기 X 바로 왼쪽. 같은 줄의 X(.conversation-round)와 같은 둥근 단추다. */
 .conversation-panel-browser-door { display: inline-flex; align-items: center; flex: none; }
-
-/* 셸이 칸을 열면 지구본은 칸 쪽으로 미끄러져 사라지고 칸의 닫기 X 가 이어서 선다(browser-panel.css `op-browser-pane-close-in`).
-   길이는 Desktop 의 BROWSER_PANE_OPEN_MS(200ms)와 같다. 접히며 머리 줄에 빈 틈을 남기지 않는다. */
-.conversation-browser-door {
-  display: inline-flex;
-  align-items: center;
-  max-width: 48px;
-  transition: opacity 200ms ease, transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1), max-width 200ms ease, visibility 0s;
+.conversation-panel-browser-door .fleet-caption-action {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-round-control);
+  box-shadow: none;
+  color: var(--text-secondary);
 }
+:root[data-theme="light"] .conversation-panel-browser-door .fleet-caption-action { border: 1px solid color-mix(in srgb, var(--ink-pearl) 8%, var(--surface-round-control)); }
+.conversation-panel-browser-door .fleet-caption-action svg { width: 15px; height: 15px; }
+.conversation-panel-browser-door .fleet-caption-action:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--text-primary) 10%, var(--surface-round-control));
+  color: var(--text-primary);
+}
+.conversation-panel-browser-door .fleet-caption-action:focus-visible { background: var(--surface-round-control); box-shadow: var(--focus-face); outline: none; }
+
+/* 누르면 지구본이 한 번 커졌다가 작아지며 사라지고(칸이 열리는 동안), 칸이 닫히면 작은 데서 커졌다 제 크기로 돌아온다.
+   칸 쪽 글리프의 등장(browser-panel.css `op-browser-pane-glyph-in`)과 같은 길이 — Desktop 의 BROWSER_PANE_OPEN_MS(200ms)보다 조금 길다. */
+.conversation-browser-door { display: inline-flex; align-items: center; max-width: 48px; }
 .conversation-browser-door.is-handoff {
   max-width: 0;
-  overflow: hidden;
   opacity: 0;
-  transform: translateX(18px) scale(0.85);
   pointer-events: none;
-  visibility: hidden;
-  transition: opacity 200ms ease, transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1), max-width 200ms ease, visibility 0s linear 200ms;
+  animation: conversation-browser-door-out 220ms cubic-bezier(0.3, 0.1, 0.3, 1) both;
+  transition: max-width 120ms ease 120ms;
+}
+.conversation-browser-door.is-return { animation: conversation-browser-door-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes conversation-browser-door-out {
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(1.28); opacity: 1; }
+  100% { transform: scale(0); opacity: 0; }
+}
+@keyframes conversation-browser-door-in {
+  0% { transform: scale(0.4); opacity: 0; }
+  55% { transform: scale(1.22); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .conversation-browser-door, .conversation-browser-door.is-handoff { transition: none; }
+  .conversation-browser-door.is-handoff, .conversation-browser-door.is-return { animation: none; transition: none; }
 }
 
 /* 이름 아래 한 줄 — 대상의 글자 탭 줄(구성원, 사령관의 기록·루틴·정보·설정). 이름처럼 가운데 정렬이다(Grok 세부 정보는

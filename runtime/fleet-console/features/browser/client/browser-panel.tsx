@@ -260,6 +260,20 @@ const glyph = (paths: string) => (
 const MonitorGlyph = () => glyph('<rect x="1.5" y="2.5" width="13" height="8.5" rx="1.5"/><path d="M5.5 14h5M8 11v3"/>');
 const PhoneGlyph = () => glyph('<rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><path d="M7 12.2h2"/>');
 const TabletGlyph = () => glyph('<rect x="2.5" y="1.5" width="11" height="13" rx="1.5"/><path d="M7 12.4h2"/>');
+/** 칸의 닫기 글리프 — 플릿 브라우저(지구본)이되 "끌 수 있다"는 모서리 ×가 붙는다. */
+function PaneCloseGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true" className="op-browser__pane-glyph">
+      <g fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+        <circle cx="7.3" cy="7.3" r="5" />
+        <path d="M2.3 7.3h10M7.3 2.3c1.8 1.8 1.8 8.2 0 10M7.3 2.3c-1.8 1.8-1.8 8.2 0 10" />
+        <circle className="op-browser__pane-glyph-badge" cx="12.2" cy="12.2" r="3.2" />
+        <path d="M11.1 11.1l2.2 2.2M13.3 11.1l-2.2 2.2" />
+      </g>
+    </svg>
+  );
+}
+
 const ReloadGlyph = () => glyph('<path d="M13 8A5 5 0 1 1 8 3"/><path d="M8 1v3M6.5 2.5 8 4l1.5-1.5"/>');
 /** 「새 Objective의 기본으로」 — 행 끝에 올렸을 때만 서는 핀. */
 const PinGlyph = () => glyph('<path d="M6.2 2.5h3.6l-.5 3.3 2 2v1.1H4.7V7.8l2-2z"/><path d="M8 8.9v4.5"/>');
@@ -1338,7 +1352,7 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
 
   const navBar = (
     <div ref={navRef} className={`op-browser__nav${navTop ? " is-top" : ""}${state?.driving === true ? " is-driving" : ""}`}>
-      {host && detached.surface?.mode === "pane" ? <button type="button" className="op-browser__icon op-browser__pane-close" onClick={detached.close} aria-label={t("terminal.browser.exit")} title={t("terminal.browser.exit")}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button> : null}
+      {host && detached.surface?.mode === "pane" ? <button type="button" className="op-browser__icon op-browser__pane-close" onClick={detached.close} aria-label={t("terminal.browser.exit")} title={t("terminal.browser.exit")}><PaneCloseGlyph /></button> : null}
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
       <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>

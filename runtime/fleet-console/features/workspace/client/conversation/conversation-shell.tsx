@@ -332,13 +332,20 @@ function useBrowserDoorBinding(): (element: HTMLSpanElement | null) => void {
 
 /**
  * 플릿 브라우저 문 — 머리의 자리(오른쪽 사이드바 닫기 X 왼쪽)가 있으면 거기에 portal 로, 없으면 `inline` 을 대화 머리 도구 묶음에 세운다.
- * 셸이 칸을 열면(문서 모드 pane) 문은 칸 쪽 닫기 X 에 자리를 넘기고 접힌다 — 칸 폭이 열리는 같은 길이로.
+ * 셸이 칸을 열면(문서 모드 pane) 문은 한 번 커졌다 작아지며 사라지고 칸 쪽 글리프가 그 자리를 이어받는다.
  */
 function useBrowserDoor(door: ReactNode): { readonly inline: ReactNode; readonly portal: ReactNode } {
   const slot = useBrowserDoorSlot();
   const handedOff = useBrowserDocument()?.mode === "pane";
+  // 칸이 닫혀 문이 돌아올 때만 되돌아옴 애니메이션을 한 번 돈다(처음 서는 때는 조용히).
+  const [returning, setReturning] = useState(false);
+  const wasHandedOff = useRef(false);
+  useEffect(() => {
+    if (wasHandedOff.current && !handedOff) setReturning(true);
+    wasHandedOff.current = handedOff;
+  }, [handedOff]);
   if (door === null) return { inline: null, portal: null };
-  const wrapped = <span className={`conversation-browser-door${handedOff ? " is-handoff" : ""}`}>{door}</span>;
+  const wrapped = <span className={`conversation-browser-door${handedOff ? " is-handoff" : ""}${returning && !handedOff ? " is-return" : ""}`} onAnimationEnd={() => setReturning(false)}>{door}</span>;
   return slot === null ? { inline: wrapped, portal: null } : { inline: null, portal: createPortal(wrapped, slot) };
 }
 

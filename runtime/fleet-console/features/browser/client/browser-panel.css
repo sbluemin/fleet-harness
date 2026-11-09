@@ -300,10 +300,13 @@ html[data-desktop-platform="win32"]:not([data-browser-mode="pane"]) .browser-win
 .op-browser__detached { display: flex; align-items: center; justify-content: center; height: 100%; font: inherit; color: var(--text-secondary); }
 .op-browser__detach-failed { color: var(--coral-ink); }
 
-/* 칸이 열릴 때 Console 쪽 지구본이 이쪽으로 넘어온 것처럼 닫기 X 가 이어서 선다 — 길이는 Desktop 의 BROWSER_PANE_OPEN_MS 와 같다.
-   오른쪽 사이드바 머리의 닫기 X(conversation-round)와 같은 둥근 단추라 "그 글리프가 건너온" 것으로 읽힌다. */
-.op-browser__pane-close.op-browser__icon { flex: none; width: 32px; height: 32px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill); background: var(--surface-glass); }
-.op-browser__pane-close.op-browser__icon:hover:not(:disabled), .op-browser__pane-close.op-browser__icon:focus-visible { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); color: var(--text-primary); background: var(--surface-glass); }
-.op-browser__pane-close { animation: op-browser-pane-close-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-@keyframes op-browser-pane-close-in { from { opacity: 0; transform: translateX(-14px) scale(0.85); } to { opacity: 1; transform: none; } }
+/* 칸이 열릴 때 닫기 글리프(지구본 + 끌 수 있다는 × 모서리)가 커졌다가 제 크기로 돌아온다 — Console 쪽 지구본이 커졌다 사라지는 것과 이어진다
+   (conversation.css `conversation-browser-door-out`). 오른쪽 사이드바 머리의 닫기 X(conversation-round)와 같은 둥근 단추다. */
+.op-browser__pane-close.op-browser__icon { flex: none; width: 30px; height: 30px; border: 0; border-radius: var(--radius-pill); background: var(--surface-round-control); color: var(--text-secondary); }
+:root[data-theme="light"] .op-browser__pane-close.op-browser__icon { border: 1px solid color-mix(in srgb, var(--ink-pearl) 8%, var(--surface-round-control)); }
+.op-browser__pane-close.op-browser__icon:hover:not(:disabled) { background: color-mix(in oklch, var(--text-primary) 10%, var(--surface-round-control)); color: var(--text-primary); }
+.op-browser__pane-close.op-browser__icon:focus-visible { background: var(--surface-round-control); box-shadow: var(--focus-face); outline: none; }
+.op-browser__pane-glyph-badge { fill: var(--conversation-surface, var(--canvas-abyss)); }
+.op-browser__pane-close { animation: op-browser-pane-glyph-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) 80ms both; }
+@keyframes op-browser-pane-glyph-in { 0% { opacity: 0; transform: scale(0.4); } 55% { opacity: 1; transform: scale(1.22); } 100% { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .op-browser__pane-close { animation: none; } }
