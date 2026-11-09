@@ -1,0 +1,5 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": { "lib": ["ES2022", "DOM", "DOM.Iterable"], "types": ["node"], "module": "ESNext", "moduleResolution": "Bundler", "composite": false, "incremental": false },
+  "include": ["./**/*.ts", "../contract.ts", "../messages.ts"]
+}
