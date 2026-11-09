@@ -123,7 +123,7 @@ export interface ConversationParticipant {
 export type ConversationMessageVia = "start" | "plan" | "steer" | "consult" | "consult-reply";
 
 /**
- * 자문 답 말풍선의 곁 사실 — 지휘관에게 닿은 상태(`waiting` 은 지휘관이 일을 마치면 전달된다)와 「추가 의견 없음」 답.
+ * 자문 답 말풍선의 곁 사실 — 지휘관에게 닿은 상태(`waiting` 은 지휘관이 입력·권한 대기 중이거나 실패 상태라 받을 수 있게 되면 전달된다)와 「추가 의견 없음」 답.
  * 보드의 자문 기록에서 짓는다.
  */
 export interface ConversationConsultReply {

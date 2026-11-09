@@ -1270,8 +1270,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
   const partyId = (party: ObjectiveMessageParty): string | null => party.kind === "member" ? party.memberId : null;
   const sameParty = (a: ObjectiveMessageParty, b: ObjectiveMessageParty): boolean => a.kind === b.kind && partyId(a) === partyId(b);
-  /** 권한·입력 대기 중에는 PTY Enter가 선택지를 확정하므로 넣지 않는다. */
-  const CERTAIN_CONSULTATION_BUSY = new Set(["session_busy", "session_awaiting_input", "objectiveRecord_busy", "objective_busy"]);
+  /** 권한·입력 대기 중에는 PTY Enter가 선택지를 확정하므로 넣지 않는다. 작업 중 턴에는 넣는다. */
+  const CERTAIN_CONSULTATION_BUSY = new Set(["session_awaiting_input", "objectiveRecord_busy", "objective_busy"]);
   const consultationChains = new Map<string, Promise<void>>();
   const runConsultationDelivery = async (objectiveId: string): Promise<void> => {
     if (disposed || !ctx.consoleControl) return;
@@ -1282,7 +1282,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (attentionBlocks(objectiveId) || ctx.objectiveRecords.isTransitioning?.(objectiveId)) return;
     let observation = ctx.consoleControl.observe(objectiveId);
     if (!observation) return;
-    if (observation.lifecycle === "live" && (observation.activity === "running" || observation.activity === "background" || observation.activity === "awaiting")) {
+    // 작업 중(running/background)인 지휘관에게도 steer처럼 바로 싣는다. 끼어들면 안 되는 입력·권한 대기만 보류한다.
+    if (observation.lifecycle === "live" && observation.activity === "awaiting") {
       touchLive(objectiveId);
       return;
     }
@@ -1290,7 +1291,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       try { await control().request({ kind: "resume", objectiveId }); }
       catch { return; }
       observation = ctx.consoleControl.observe(objectiveId);
-      if (!observation || observation.activity === "running" || observation.activity === "background" || observation.activity === "awaiting") return;
+      if (!observation || observation.activity === "awaiting") return;
     }
     for (const consult of waiting) {
       const fresh = store.find(objectiveId);
@@ -1300,7 +1301,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!store.claimConsultationSend(objectiveId, row.id)) continue;
       try {
         const text = consultationNotice(row.reply.kind, row.id);
-        await control().request({ kind: "send", objectiveId, text, display: text, whenIdle: true });
+        await control().request({ kind: "send", objectiveId, text, display: text });
         store.submitConsultationSend(objectiveId, row.id);
       } catch (error) {
         const code = error instanceof Error ? error.message : "";

@@ -1248,10 +1248,7 @@ class AgentChatSession {
     return value;
   }
 
-  send(text: string, presentation: ChatDispatchPresentation = {}, onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin, options?: { readonly whenIdle?: boolean }): void {
-    if (options?.whenIdle && (this.turnOpen || this.settlingStoppedTurn)) {
-      throw Object.assign(new Error("session_busy"), { code: "session_busy" });
-    }
+  send(text: string, presentation: ChatDispatchPresentation = {}, onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin): void {
     if (this.disposed) { onSettled?.("unknown"); return; }
     const id = `q${++this.queueSeq}`;
     // 턴이 도는 동안 보낸 말은 그 턴이 집어간다 — Claude Code CLI와 같은 자리다. 앞 턴이 닫히기를

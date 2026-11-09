@@ -826,7 +826,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ? { kind: "objectiveRecord" as const, objectiveId: input.rosterSpeaker.objectiveId, title: input.rosterSpeaker.title, roster: true as const }
         : chatOrigin(caller);
       const authored = origin?.kind === "plugin" && input.humanInput ? { ...origin, humanInput: input.humanInput } : origin;
-      await deliverMessage(objectiveId, input.text!, input.attachmentIds ?? [], reply, assertDeliveryCurrent, settled, authored, input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined, input.whenIdle === true);
+      await deliverMessage(objectiveId, input.text!, input.attachmentIds ?? [], reply, assertDeliveryCurrent, settled, authored, input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
       return { objectiveId, delivery: "queued" };
     },
@@ -1579,14 +1579,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return deliverMessage(sessionId, text, attachmentIds, (status, value) => ctx.host.http.writeJson(res, status, value));
   }
 
-  /** whenIdle send만 쓴다. enqueue 직전에 실행 중이면 넣지 않는다. 일반 send는 이 함수를 부르지 않는다. */
-  const consultationBusy = (sessionId: string): boolean => {
-    const observation = ctx.consoleControl?.observe(sessionId);
-    const attention = observation?.attention?.kind;
-    return observation?.activity === "running" || observation?.activity === "background" || observation?.activity === "awaiting"
-      || attention === "input" || attention === "permission" || attention === "failure";
-  };
-  async function deliverMessage(sessionId: string, text: string, attachmentIds: readonly string[], reply: (status: number, value: unknown) => void, assertCurrent: () => void = () => {}, onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin, presentation?: { readonly display?: string; readonly format?: "markdown" | "text" }, whenIdle = false): Promise<boolean> {
+  async function deliverMessage(sessionId: string, text: string, attachmentIds: readonly string[], reply: (status: number, value: unknown) => void, assertCurrent: () => void = () => {}, onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin, presentation?: { readonly display?: string; readonly format?: "markdown" | "text" }): Promise<boolean> {
     if (ctx.host.objectiveRecords.isTransitioning?.(sessionId)) { reply(409, { error: "objectiveRecord_busy" }); return true; }
     // PTY로 나가는 텍스트에서 제어 바이트·괄호붙임 종료 마커를 벗겨낸다 — rename 주입과 같은 방어선.
     const sanitized = sanitizePtyMessageText(text);
@@ -1693,29 +1686,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 자식에게는 첨부 경로가 붙은 프롬프트를, 화면에는 사람이 쓴 문면을 준다 — 예약 칩이
         // 호스트 절대 경로를 브라우저로 실어 나르지 않게 하는 경계가 이 인자 둘이다.
         assertCurrent();
-        if (whenIdle && consultationBusy(sessionId)) {
-          settleAttachments(false);
-          reply(409, { error: "session_busy" });
-          return true;
-        }
         // 다른 표면이 붙인 인용은 문면 끝 줄로 와 있다 — 자식은 그 줄을 그대로 읽고, 말풍선은 줄을 떼어 인용 칩으로 세운다.
         const shown = splitDisplayQuotes(presentation?.display ?? text.trim());
-        try {
-          chat.send(
-            composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string,
-            { display: shown.text, ...(presentation?.format ? { format: presentation.format } : {}), attachments: [...attachmentIds.map((id) => ({ id })), ...shown.attachments] },
-            onSettled,
-            by,
-            whenIdle ? { whenIdle: true } : undefined,
-          );
-        } catch (error) {
-          if (error instanceof Error && error.message === "session_busy") {
-            settleAttachments(false);
-            reply(409, { error: "session_busy" });
-            return true;
-          }
-          throw error;
-        }
+        chat.send(
+          composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string,
+          { display: shown.text, ...(presentation?.format ? { format: presentation.format } : {}), attachments: [...attachmentIds.map((id) => ({ id })), ...shown.attachments] },
+          onSettled,
+          by,
+        );
       } catch (error) {
         settleAttachments(false);
         if (error instanceof ConsoleControlError) throw error;
@@ -1770,12 +1748,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         return true;
       }
       assertCurrent();
-      if (whenIdle && consultationBusy(sessionId)) {
-        if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
-        settleAttachments(false);
-        reply(409, { error: "session_busy" });
-        return true;
-      }
       deliver();
       settleAttachments(true);
       reply(200, { delivered: true });
