@@ -211,14 +211,6 @@ export function CommanderGoalDialog(props: CommanderDialogProps) {
   return <CommanderDetailDialog {...props} home="goal" />;
 }
 
-/**
- * 우측 작업 탭의 라이브러리 팝업 — 행의 라이브러리 글리프가 연다. 결과물 탭(증거·공유 폴더)을 같은 오버레이에 담는다.
- * 안의 길이 임무로 가면 같은 팝업에서 그 내용을 보이고 「라이브러리로」가 되돌린다.
- */
-export function CommanderLibraryDialog(props: CommanderDialogProps) {
-  return <CommanderDetailDialog {...props} home="results" />;
-}
-
 type CommanderDialogProps = {
   readonly commodoreId: string;
   readonly objectiveId: string;
@@ -228,18 +220,18 @@ type CommanderDialogProps = {
   readonly accent?: CSSProperties;
   readonly onClose: () => void;
   readonly onOpenObjective: (objectiveId: string) => void;
-  /** 처음 보일 탭 — 없으면 팝업의 본래 탭이다. 좌측 사이드바 글리프가 결과물 탭으로 바로 연다. */
+  /** 처음 보일 탭 — 없으면 팝업의 본래 탭이다. */
   readonly start?: DetailTab;
 };
 
-function CommanderDetailDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective, start, home }: CommanderDialogProps & { readonly home: DetailTab }) {
+function CommanderDetailDialog({ commodoreId, objectiveId, title, language, accent, onClose, onOpenObjective, start, home }: CommanderDialogProps & { readonly home: "goal" | "crew" }) {
   const t = getT(language);
   const [tab, setTab] = useState<DetailTab>(start ?? home);
   // 그래프가 알려 준 폭까지 넓힌다 — 로스터가 읽히는 최소 폭은 지킨다.
   const [fitWidth, setFitWidth] = useState<number | null>(null);
-  // 머리 제목은 지금 보이는 탭의 이름이다 — 목표·임무·라이브러리 세 팝업이 같은 계약이고, 팝업 안에서 탭을 옮겨도 제목이 따라간다.
+  // 머리 제목은 지금 보이는 탭의 이름이다 — 목표·임무 두 팝업이 같은 계약이고, 팝업 안에서 탭을 옮겨도 제목이 따라간다.
   const category = t(tab === "goal" ? "objectives.tabs.goal" : tab === "crew" ? "objectives.missions.title" : "objectives.tabs.results");
-  const back = home === "goal" ? "objectives.goal.back" : home === "crew" ? "objectives.missions.back" : "objectives.library.back";
+  const back = home === "goal" ? "objectives.goal.back" : "objectives.missions.back";
   return createPortal(
     <LineupZoom t={t} title={title} category={category} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
       tools={tab === home ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab(home)}>{t(back)}</button>}>

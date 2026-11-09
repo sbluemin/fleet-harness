@@ -59,10 +59,10 @@ type Load = { readonly objectiveId: string; readonly list: SharedFolderList | nu
  * 공유 폴더 목록 — 펼쳐 있는 동안만 읽고, 그 목표의 보드 객체가 바뀔 때 다시 읽는다. 폴링·새로 고침 단추는 없다.
  * 다시 읽는 동안에는 이전 목록을 그대로 둔다. 다른 목표의 응답은 쓰지 않는다.
  */
-export function useSharedFolder(objective: Objective, open: boolean): { readonly list: SharedFolderList | null; readonly failed: boolean } {
+export function useSharedFolder(objective: Objective | null, open: boolean): { readonly list: SharedFolderList | null; readonly failed: boolean } {
   const [load, setLoad] = useState<Load | null>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open || !objective) return;
     const controller = new AbortController();
     const objectiveId = objective.id;
     fetch(sharedListUrl(objectiveId), { signal: controller.signal })
@@ -74,5 +74,5 @@ export function useSharedFolder(objective: Objective, open: boolean): { readonly
       .catch(() => { if (!controller.signal.aborted) setLoad({ objectiveId, list: null, failed: true }); });
     return () => controller.abort();
   }, [open, objective]);
-  return load?.objectiveId === objective.id ? load : { list: null, failed: false };
+  return objective && load?.objectiveId === objective.id ? load : { list: null, failed: false };
 }
