@@ -58,7 +58,6 @@
 .op-browser__tab-close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-inline-start: auto; padding: 0; background: transparent; border: 0; color: var(--text-tertiary); font: inherit; font-size: var(--t-md); line-height: 1; cursor: pointer; border-radius: var(--radius-pill); }
 .op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--wash-selected); outline: none; }
 .op-browser__tab-close:active { color: var(--text-primary); background: color-mix(in oklch, var(--text-primary) 14%, transparent); }
-.op-browser__viewport-menu { position: relative; align-self: center; }
 /* ---- 스페이스 — 크롬 탭 그룹 모양: 그룹 색 칩 + 탭들 + 칩부터 마지막 탭까지 이어지는 그룹 색 밑줄. 색은 스페이스를 가리키는 표식일 뿐 상태가 아니다. ----
    그룹의 --browser-space-c 를 칩·밑줄·선택 탭 외곽이 읽는다. 값은 그 스페이스(사령관·Objective)의 아바타 정체성 톤(--id-<tone>)이고
    패널이 인라인으로 준다 — 아바타를 모르는 스페이스는 이 무채 잉크다. 에이전트 표식은 배지 채널.
@@ -88,7 +87,6 @@
 .op-browser__chip.is-set { color: var(--brass-ink); border-color: var(--brass); }
 .op-browser__chip:hover, .op-browser__chip:focus-visible { color: var(--text-primary); border-color: var(--brass); outline: none; }
 .op-browser__menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 3; min-width: var(--popover-min-width); display: flex; flex-direction: column; background: var(--popover-face); border: 0; border-radius: var(--popover-radius); padding: var(--popover-pad); box-shadow: var(--popover-surface-shadow); width: var(--popover-width); gap: var(--popover-list-gap); --focus-face: inset 0 0 0 100vmax var(--wash-hover); max-width: calc(100vw - 16px); }
-.op-browser__menu--row { flex-direction: row; gap: 2px; min-width: 0; }
 .op-browser__icon.is-set { color: var(--brass-ink); }
 /* 툴팁 — data-tip 을 단 컨트롤 아래에 짧은 한 줄. 포인터를 받지 않고 지연 없이 뜬다. */
 .op-browser [data-tip] { position: relative; }
@@ -106,9 +104,6 @@
 .op-browser__nav.is-top :is(.op-browser__icon, .workbench-tile-button) { width: 30px; height: 30px; }
 .op-browser__nav.is-top .op-browser__url { min-width: 120px; height: 30px; }
 html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region: no-drag; }
-/* 접힌 도구(「⋯」) — 팝오버는 줄 아래 본문 위로 내려온다. */
-.op-browser__fold { position: relative; flex: none; align-self: center; }
-.op-browser__fold .op-browser__menu--row { right: 0; width: auto; }
 .op-browser__icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-secondary); font: inherit; font-size: var(--t-md); text-decoration: none; cursor: pointer; }
 .op-browser__icon:hover:not(:disabled), .op-browser__icon:focus-visible { color: var(--brass-ink); background: var(--ink-veil); outline: none; }
 .op-browser__icon:disabled { opacity: 0.35; cursor: default; }
@@ -249,13 +244,7 @@ html[data-desktop-shell="true"] .op-browser__nav.is-top > * { -webkit-app-region
 
 
 /* ---- 세션 표식 — 임시인가 내 프로필인가. 캡션에 상주하는 이 Objective 의 정체다 ---- */
-/* 글리프 하나로 말한다: 상자도 테두리도 두지 않아 옆의 화면 크기 글리프와 같은 결로 패널에 붙는다.
-   brass 는 위치·초점 채널이므로 쓰지 않는다 — 영속은 "남는다"는 **상태**라 signal 의 positive 를 든다. */
-.op-browser__profile { position: relative; flex: none; align-self: center; }
-.op-browser__pchip.is-persistent { color: var(--positive-ink); }
-.op-browser__pchip.is-persistent:hover:not(:disabled) { color: var(--positive-ink); background: color-mix(in oklch, var(--positive) 12%, transparent); }
-/* 세션 메뉴 — 항목마다 앞에 자기 글리프가 서고, 설명은 한 줄을 넘지 않는다. */
-.op-browser__profile .op-browser__menu { right: 0; min-width: var(--popover-min-width); }
+/* 더보기 메뉴 — 항목마다 앞에 자기 글리프가 서고, 설명은 한 줄을 넘지 않는다. */
 .op-browser__menu-item { display: flex; align-items: flex-start; gap: var(--popover-row-gap); }
 .op-browser__menu-glyph { flex: none; display: inline-flex; margin-top: 1px; color: var(--popover-icon-ink); }
 .op-browser__menu-glyph svg { width: var(--popover-icon); height: var(--popover-icon); }
@@ -299,3 +288,16 @@ html[data-desktop-platform="win32"]:not([data-browser-mode="pane"]) .browser-win
 #browser-window-body .op-browser { flex: 1; }
 .op-browser__detached { display: flex; align-items: center; justify-content: center; height: 100%; font: inherit; color: var(--text-secondary); }
 .op-browser__detach-failed { color: var(--coral-ink); }
+
+/* ---- 주소줄 오른쪽 더보기(⋮) — 점 셋이 메뉴가 열리면 ×로 돌아 바뀐다. 열린 동안 단추는 둥근 눌림 면이 된다. ---- */
+.op-browser__more { position: relative; flex: none; align-self: center; }
+.op-browser__more-button { border-radius: var(--radius-pill); }
+.op-browser__more-button.is-open { background: var(--ink-rim); color: var(--text-primary); }
+.op-browser__more-glyph { overflow: visible; }
+.op-browser__more-glyph :is(.op-browser__more-dots, .op-browser__more-x) { transform-box: fill-box; transform-origin: center; transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease; }
+.op-browser__more-x { opacity: 0; transform: rotate(-90deg) scale(0.6); }
+.op-browser__more-button.is-open .op-browser__more-dots { opacity: 0; transform: rotate(90deg) scale(0.6); }
+.op-browser__more-button.is-open .op-browser__more-x { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .op-browser__more-glyph :is(.op-browser__more-dots, .op-browser__more-x) { transition: none; } }
+.op-browser__more-menu { min-width: 248px; max-width: 320px; max-height: calc(100vh - 72px); overflow-y: auto; }
+.op-browser__menu-label { padding: 6px var(--popover-row-inline) 2px; color: var(--text-tertiary); font-size: var(--t-2xs); letter-spacing: 0.02em; }

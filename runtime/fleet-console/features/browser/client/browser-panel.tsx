@@ -394,25 +394,40 @@ export interface SessionBrowserPanelProps {
   readonly host?: boolean;
 }
 
-/** 주소창이 줄어드는 하한 — 이보다 좁아지면 접히는 단추(캡처·주석·세션·뷰포트)가 「⋯」로 모인다. */
-const NAV_URL_MIN_PX = 120;
-/** 줄의 아이콘 단추 폭(CSS `.op-browser__nav.is-top` 의 30px 과 같다) — 새로고침 단추를 못 잴 때의 값. */
-const NAV_ICON_PX = 30;
+/** 더보기 글리프 — 점 셋이 열리면 ×로 돌아 바뀐다(Chrome 의 맞춤설정 단추처럼). 움직임은 CSS 가 맡고 동작 줄이기에서는 곧바로 바뀐다. */
+function MoreGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false" className="op-browser__more-glyph">
+      <g className="op-browser__more-dots" fill="currentColor"><circle cx="8" cy="3.5" r="1.3" /><circle cx="8" cy="8" r="1.3" /><circle cx="8" cy="12.5" r="1.3" /></g>
+      <path className="op-browser__more-x" d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 /**
- * 좁은 맨 위 줄에서 접힌 주소줄 도구 — 「⋯」 하나가 캡처·주석·세션·뷰포트를 가로 한 줄의 팝오버로 모은다. 안의 단추는 펼쳤을 때와 같은 것이라
- * 각자의 메뉴(세션·뷰포트)도 그대로 열린다. 바깥을 누르거나 Esc 로 닫는다. 팝오버는 본문 위로 내려오므로 네이티브 뷰 가림 표면으로 알린다.
+ * 주소줄 오른쪽의 더보기 — 스크린샷 첨부·주석·세션(임시/내 프로필, 가져오기, 지우기)·뷰포트가 한 메뉴에 선다. 줄에는 이 단추와 창 단추만 남는다.
+ * 세션 표식·뷰포트 선택은 예전 단추의 상태를 그대로 메뉴 행의 선택 표시로 옮겼다. 메뉴는 본문 영역까지 내려오므로 열려 있는 동안
+ * 네이티브 뷰가 물러서도록(가림 표면) 알린다. 상태와 손잡이는 본문이 올린 스냅샷에서 읽는다.
  */
-function NavFoldMenu({ objectiveId, label, children }: { readonly objectiveId: string; readonly label: string; readonly children: React.ReactNode }) {
+function BrowserMoreMenu({ objectiveId, language, capture, annotate }: {
+  readonly objectiveId: string;
+  readonly language: SessionBrowserPanelProps["language"];
+  /** 스크린샷 첨부 — 열린 페이지가 있을 때만 행이 선다. */
+  readonly capture: { readonly visible: boolean; readonly disabled: boolean; readonly onAttach: () => void };
+  readonly annotate: { readonly active: boolean; readonly disabled: boolean; readonly onToggle: () => void };
+}) {
+  const t = getT(language ?? "en");
+  const panel = useBrowserPanel(objectiveId);
+  const importUnavailable = chromeImportUnavailable();
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
-    publishBrowserCaptionOverlay(objectiveId, "fold", open);
-    return () => publishBrowserCaptionOverlay(objectiveId, "fold", false);
+    publishBrowserCaptionOverlay(objectiveId, "tools", open);
+    return () => publishBrowserCaptionOverlay(objectiveId, "tools", false);
   }, [objectiveId, open]);
+  // 바깥을 누르거나 Esc 로 닫는다 — 바깥 누름은 셸이 float 표면 밖(브라우저 쪽)을 누른 것도 같은 길(문서 pointerdown)로 알린다.
   React.useEffect(() => {
     if (!open) return;
-    // 분리 창에서는 이 줄이 다른 문서에 서므로 그 문서의 입력을 듣는다.
     const doc = rootRef.current?.ownerDocument ?? document;
     const onPointer = (event: PointerEvent) => { if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) setOpen(false); };
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
@@ -420,146 +435,104 @@ function NavFoldMenu({ objectiveId, label, children }: { readonly objectiveId: s
     doc.addEventListener("keydown", onKey);
     return () => { doc.removeEventListener("pointerdown", onPointer, true); doc.removeEventListener("keydown", onKey); };
   }, [open]);
-  return (
-    <div className="op-browser__fold" ref={rootRef}>
-      <button type="button" className="op-browser__icon" aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((current) => !current)}>
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
-      </button>
-      {open ? <div className="op-browser__menu op-browser__menu--row" role="menu" aria-label={label} {...COVERS_NATIVE_VIEW}>{children}</div> : null}
-    </div>
-  );
-}
-
-/**
- * 세션·뷰포트 도구 — 이름은 CSS 말풍선(data-tip)이 아니라 네이티브 title 이 말한다. data-tip 말풍선은 단추 아래 DOM 에 그려지는데, 맨 위 줄의 단추 아래는
- * 네이티브 뷰 자리라 뷰 뒤로 가려져 윗변 한 줄만 「빈 상자」로 남는다(닫힌 메뉴의 잔상으로 보였다).
- * 주소줄 끝에 선다(주석 버튼 옆). 탭 줄의 폭은 탭들의 것이다. 상태와 손잡이는 본문이 올린 스냅샷에서 읽는다.
- * 메뉴는 본문 영역까지 내려오므로 열려 있는 동안 네이티브 뷰가 물러서도록 알린다.
- */
-function BrowserTools({ objectiveId, language }: { readonly objectiveId: string; readonly language: SessionBrowserPanelProps["language"] }) {
-  const t = getT(language ?? "en");
-  const panel = useBrowserPanel(objectiveId);
-  const importUnavailable = chromeImportUnavailable();
-  const [viewportMenu, setViewportMenu] = React.useState(false);
-  const [profileMenu, setProfileMenu] = React.useState(false);
-  React.useEffect(() => {
-    publishBrowserCaptionOverlay(objectiveId, "tools", viewportMenu || profileMenu);
-    return () => publishBrowserCaptionOverlay(objectiveId, "tools", false);
-  }, [objectiveId, viewportMenu, profileMenu]);
-  // 메뉴는 바깥을 누르거나 Esc 로 닫는다 — 바깥 누름은 셸이 float 표면 밖(브라우저 쪽)을 누른 것도 같은 길(문서 pointerdown)로 알린다.
-  const profileRef = React.useRef<HTMLDivElement | null>(null);
-  const viewportRef = React.useRef<HTMLDivElement | null>(null);
-  React.useEffect(() => {
-    if (!viewportMenu && !profileMenu) return;
-    const doc = (profileRef.current ?? viewportRef.current)?.ownerDocument ?? document;
-    const onPointer = (event: PointerEvent) => {
-      const target = event.target instanceof Node ? event.target : null;
-      if (target !== null && profileRef.current?.contains(target)) return;
-      if (target !== null && viewportRef.current?.contains(target)) return;
-      setProfileMenu(false);
-      setViewportMenu(false);
-    };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setProfileMenu(false); setViewportMenu(false); } };
-    doc.addEventListener("pointerdown", onPointer, true);
-    doc.addEventListener("keydown", onKey);
-    return () => { doc.removeEventListener("pointerdown", onPointer, true); doc.removeEventListener("keydown", onKey); };
-  }, [viewportMenu, profileMenu]);
   const ready = panel !== null && panel.available && !panel.busy;
-  const persistent = (panel?.profile ?? null) !== null;
   const defaultProfile = panel?.defaultProfile ?? null;
   const viewport = panel?.viewport ?? null;
-  const viewportTip = viewport ? `${viewport.width}×${viewport.height} · ${t(`terminal.browser.preset.${viewport.preset}`)}${viewport.setBy === "agent" ? ` · ${t("terminal.browser.setByAgent")}` : ""}` : t("terminal.browser.viewport");
   const presetGlyph = (preset: "responsive" | "mobile" | "tablet") => preset === "mobile" ? <PhoneGlyph /> : preset === "tablet" ? <TabletGlyph /> : <MonitorGlyph />;
+  const run = (action: () => void) => () => { setOpen(false); action(); };
+  const item = (key: string, glyph: React.ReactNode, label: string, onClick: () => void, options: { readonly disabled?: boolean; readonly checked?: boolean; readonly title?: string; readonly help?: string } = {}) => (
+    <button
+      key={key}
+      type="button"
+      role={options.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+      {...(options.checked === undefined ? {} : { "aria-checked": options.checked })}
+      className="op-browser__menu-item"
+      disabled={options.disabled === true}
+      title={options.title}
+      onClick={onClick}
+    >
+      <span className="op-browser__menu-glyph" aria-hidden="true">{glyph}</span>
+      <span className="op-browser__menu-body"><strong>{label}</strong>{options.help ? <span className="op-browser__help">{options.help}</span> : null}</span>
+    </button>
+  );
   return (
-    <>
-      {/* 세션 표식 — 글리프 하나가 지금 어떤 세션인지 말한다. 가져오기도 이 메뉴에 산다: 쿠키가 들어가는 곳이
-          바로 이 세션이므로, 캡션에 버튼을 하나 더 두는 것보다 세션을 다루는 자리에 함께 있는 편이 옳다. */}
-      <div className="op-browser__profile" ref={profileRef}>
-        <button
-          type="button"
-          className={`op-browser__icon op-browser__pchip${persistent ? " is-persistent" : ""}`}
-          aria-haspopup="menu"
-          aria-expanded={profileMenu}
-          aria-label={t(persistent ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}
-          title={profileMenu ? undefined : t(persistent ? "terminal.browser.profile.persistentTip" : "terminal.browser.profile.ephemeralTip")}
-          disabled={!ready}
-          onClick={() => setProfileMenu((open) => !open)}
-        >
-          {persistent ? <ProfileGlyph /> : <EphemeralGlyph />}
-        </button>
-        {profileMenu ? (
-          <div className="op-browser__menu" role="menu" {...COVERS_NATIVE_VIEW}>
-            {/* 세션 행은 button 이 아니다 — 행 끝의 핀이 자기 버튼을 가져야 하고, button 안의 button 은 HTML 이 허용하지 않는다.
-                기본인 행은 끝에 「기본」 한 낱말을 늘 보이고, 다른 행은 올렸을 때만 핀을 내민다. 핀은 기본만 옮기고
-                이 Objective 의 세션은 건드리지 않는다 — 그래서 메뉴도 닫지 않는다. 표식이 옮겨 가는 것이 곧 답이다. */}
-            {([null, BROWSER_PROFILE] as const).map((value) => (
-              <div
-                key={value ?? "ephemeral"}
-                role="menuitemradio"
-                tabIndex={0}
-                aria-checked={(panel?.profile ?? null) === value}
-                className="op-browser__menu-item"
-                onClick={() => { setProfileMenu(false); panel?.actions.chooseProfile(value); }}
-                onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setProfileMenu(false); panel?.actions.chooseProfile(value); } }}
-              >
-                <span className="op-browser__menu-glyph" aria-hidden="true">{value ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
-                <span className="op-browser__menu-body">
-                  <strong>{t(value ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
-                  <span className="op-browser__help">{t(value ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
-                </span>
-                <span className="op-browser__menu-tail">
-                  {defaultProfile === value
-                    ? <span className="op-browser__menu-default">{t("terminal.browser.profile.default")}</span>
-                    : (
-                      <button
-                        type="button"
-                        className="op-browser__menu-pin"
-                        aria-label={t("terminal.browser.profile.makeDefault")}
-                        data-tip={t("terminal.browser.profile.makeDefault")}
-                        onClick={(event) => { event.stopPropagation(); panel?.actions.setDefaultProfile(value); }}
-                        onKeyDown={(event) => event.stopPropagation()}
-                      >
-                        <PinGlyph />
-                      </button>
-                    )}
-                </span>
-              </div>
-            ))}
-            <div className="op-browser__menu-sep" role="separator" />
-            <button
-              type="button"
-              role="menuitem"
+    <div className="op-browser__more" ref={rootRef}>
+      <button
+        type="button"
+        className={`op-browser__icon op-browser__more-button${open ? " is-open" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t("terminal.browser.moreTools")}
+        title={open ? undefined : t("terminal.browser.moreTools")}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <MoreGlyph />
+      </button>
+      {open ? (
+        <div className="op-browser__menu op-browser__more-menu" role="menu" aria-label={t("terminal.browser.moreTools")} {...COVERS_NATIVE_VIEW}>
+          {capture.visible ? item("capture", <CameraGlyph />, t("terminal.browser.attachScreenshot"), run(capture.onAttach), { disabled: capture.disabled }) : null}
+          {item("annotate", <CommentGlyph />, t(annotate.active ? "terminal.browser.exitAnnotate" : "terminal.browser.annotate"), run(annotate.onToggle), { disabled: annotate.disabled, checked: annotate.active })}
+          <div className="op-browser__menu-sep" role="separator" />
+          <div className="op-browser__menu-label" role="presentation">{t("terminal.browser.menu.session")}</div>
+          {/* 세션 행은 button 이 아니다 — 행 끝의 핀이 자기 버튼을 가져야 하고, button 안의 button 은 HTML 이 허용하지 않는다.
+              기본인 행은 끝에 「기본」 한 낱말을 늘 보이고, 다른 행은 올렸을 때만 핀을 내민다. 핀은 기본만 옮기고
+              이 Objective 의 세션은 건드리지 않는다 — 그래서 메뉴도 닫지 않는다. 표식이 옮겨 가는 것이 곧 답이다. */}
+          {([null, BROWSER_PROFILE] as const).map((value) => (
+            <div
+              key={value ?? "ephemeral"}
+              role="menuitemradio"
+              tabIndex={ready ? 0 : -1}
+              aria-checked={(panel?.profile ?? null) === value}
+              aria-disabled={!ready}
               className="op-browser__menu-item"
-              disabled={importUnavailable}
-              title={importUnavailable ? t("terminal.browser.import.windowsPending") : undefined}
-              onClick={() => { setProfileMenu(false); panel?.actions.openImport(); }}
+              title={t(value ? "terminal.browser.profile.persistentTip" : "terminal.browser.profile.ephemeralTip")}
+              onClick={() => { if (!ready) return; setOpen(false); panel?.actions.chooseProfile(value); }}
+              onKeyDown={(event) => { if (ready && event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setOpen(false); panel?.actions.chooseProfile(value); } }}
             >
-              <span className="op-browser__menu-glyph" aria-hidden="true"><ImportGlyph /></span>
-              <span className="op-browser__menu-body"><strong>{t("terminal.browser.import.title")}</strong></span>
-            </button>
-            <button type="button" role="menuitem" className="op-browser__menu-item" onClick={() => { setProfileMenu(false); panel?.actions.openClearProfile(); }}>
-              <span className="op-browser__menu-glyph" aria-hidden="true"><EraseGlyph /></span>
+              <span className="op-browser__menu-glyph" aria-hidden="true">{value ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
               <span className="op-browser__menu-body">
-                <strong>{t("terminal.browser.profile.clearItem")}</strong>
-                <span className="op-browser__help">{t("terminal.browser.profile.clearScope")}</span>
+                <strong>{t(value ? "terminal.browser.profile.persistent" : "terminal.browser.profile.ephemeral")}</strong>
+                <span className="op-browser__help">{t(value ? "terminal.browser.profile.persistentHelp" : "terminal.browser.profile.ephemeralHelp")}</span>
               </span>
+              <span className="op-browser__menu-tail">
+                {defaultProfile === value
+                  ? <span className="op-browser__menu-default">{t("terminal.browser.profile.default")}</span>
+                  : (
+                    <button
+                      type="button"
+                      className="op-browser__menu-pin"
+                      aria-label={t("terminal.browser.profile.makeDefault")}
+                      data-tip={t("terminal.browser.profile.makeDefault")}
+                      onClick={(event) => { event.stopPropagation(); panel?.actions.setDefaultProfile(value); }}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <PinGlyph />
+                    </button>
+                  )}
+              </span>
+            </div>
+          ))}
+          {item("import", <ImportGlyph />, t("terminal.browser.import.title"), run(() => panel?.actions.openImport()), { disabled: importUnavailable || !ready, title: importUnavailable ? t("terminal.browser.import.windowsPending") : undefined })}
+          {item("clear", <EraseGlyph />, t("terminal.browser.profile.clearItem"), run(() => panel?.actions.openClearProfile()), { disabled: !ready, help: t("terminal.browser.profile.clearScope") })}
+          <div className="op-browser__menu-sep" role="separator" />
+          <div className="op-browser__menu-label" role="presentation">{t("terminal.browser.viewport")}</div>
+          {(["responsive", "mobile", "tablet"] as const).map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              role="menuitemradio"
+              aria-checked={viewport?.preset === preset}
+              className="op-browser__menu-item"
+              disabled={!ready}
+              onClick={run(() => panel?.actions.setViewport(preset))}
+            >
+              <span className="op-browser__menu-glyph" aria-hidden="true">{presetGlyph(preset)}</span>
+              <span className="op-browser__menu-body"><strong>{t(`terminal.browser.preset.${preset}`)}</strong></span>
             </button>
-          </div>
-        ) : null}
-      </div>
-      <div className="op-browser__viewport-menu" ref={viewportRef}>
-        <button type="button" className={`op-browser__icon op-browser__tool${viewport && viewport.preset !== "responsive" ? " is-set" : ""}`} aria-haspopup="menu" aria-expanded={viewportMenu} aria-label={viewportTip} title={viewportMenu ? undefined : viewportTip} disabled={!panel || !panel.available} onClick={() => setViewportMenu((open) => !open)}>
-          {presetGlyph(viewport?.preset ?? "responsive")}
-        </button>
-        {viewportMenu ? (
-          <div className="op-browser__menu op-browser__menu--row" role="menu" {...COVERS_NATIVE_VIEW}>
-            {(["responsive", "mobile", "tablet"] as const).map((preset) => (
-              <button key={preset} type="button" role="menuitemradio" aria-checked={viewport?.preset === preset} className="op-browser__icon op-browser__tool" aria-pressed={viewport?.preset === preset} aria-label={t(`terminal.browser.preset.${preset}`)} data-tip={t(`terminal.browser.preset.${preset}`)} onClick={() => { setViewportMenu(false); panel?.actions.setViewport(preset); }}>{presetGlyph(preset)}</button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1298,46 +1271,13 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
   };
   const hoverInfo = draftPin?.element ?? hover;
   const hoverBox = highlightBox(hoverInfo);
-  // 주소줄의 실제 가용 폭이 좁아지면 부속 도구만 「⋯」로 모은다.
-
   // 분리 창에서는 주소줄 줄이 그 창의 맨 위 줄(caption)에 선다 — 맨 위 줄에 선 것과 같은 모양이다.
   const navTop = host;
-  const navRef = React.useRef<HTMLDivElement | null>(null);
-  const [navFolded, setNavFolded] = React.useState(false);
   const hasCapture = activeTab !== null && activeTab.url !== "about:blank";
-  React.useLayoutEffect(() => {
-    const nav = navRef.current;
-    if (!navTop || nav === null) { setNavFolded(false); return; }
-    const measure = () => {
-      const style = getComputedStyle(nav);
-      const avail = nav.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
-      if (avail <= 0) return;
-      const gap = Number.parseFloat(style.columnGap) || 0;
-      const kids = Array.from(nav.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
-      // 접히지 않는 줄의 폭 — 주소창은 최소 폭(NAV_URL_MIN_PX)으로 센다.
-      let used = gap * Math.max(0, kids.length - 1);
-      let foldWidth = 0;
-      for (const kid of kids) {
-        const width = kid.classList.contains("op-browser__url") ? NAV_URL_MIN_PX : kid.getBoundingClientRect().width;
-        used += width;
-        if (kid.classList.contains("op-browser__fold")) foldWidth = width;
-      }
-      // 접혀 있으면 펼쳤을 때의 폭을 센다(「⋯」 하나가 단추 n 개로 바뀐다) — 접힘 여부가 판정을 흔들지 않는다.
-      const unit = kids.find((kid) => kid.classList.contains("op-browser__reload"))?.getBoundingClientRect().width ?? NAV_ICON_PX;
-      const count = 3 + (hasCapture ? 1 : 0);
-      const need = navFolded ? used - foldWidth + count * unit + (count - 1) * gap : used;
-      const next = need > avail + 0.5;
-      setNavFolded((current) => current === next ? current : next);
-    };
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(nav);
-    return () => observer?.disconnect();
-  }, [navTop, navFolded, hasCapture]);
   const closedDoor = !available ? unavailableText(t, state?.reason ?? null, services.isDesktopShell()) : null;
 
   const navBar = (
-    <div ref={navRef} className={`op-browser__nav${navTop ? " is-top" : ""}${state?.driving === true ? " is-driving" : ""}`}>
+    <div className={`op-browser__nav${navTop ? " is-top" : ""}${state?.driving === true ? " is-driving" : ""}`}>
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
       <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
       <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
@@ -1424,20 +1364,13 @@ export function SessionBrowserPanel({ ownerId: scopeId, language, theme, service
         ) : null}
         {activeTab && activeTab.url !== "about:blank" ? <a className="op-browser__url-external" href={activeTab.url} target="_blank" rel="noreferrer noopener" data-fleet-link={FLEET_LINK_NATIVE} aria-label={t("terminal.browser.openExternal")} title={t("terminal.browser.openExternal")}><ExternalGlyph /></a> : null}
       </form>
-      {navFolded ? (
-        <NavFoldMenu objectiveId={objectiveId} label={t("terminal.browser.moreTools")}>
-          {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
-          <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
-          <BrowserTools objectiveId={objectiveId} language={language} />
-        </NavFoldMenu>
-      ) : (
-        <>
-          {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}
-          <button type="button" className="op-browser__icon op-browser__tool" aria-pressed={mode === "annotate"} aria-label={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} title={mode === "annotate" ? t("terminal.browser.exitAnnotate") : t("terminal.browser.annotate")} disabled={!captureReady} onClick={() => toggleMode("annotate")}><CommentGlyph /></button>
-          <BrowserTools objectiveId={objectiveId} language={language} />
-        </>
-      )}
       {detached.available ? <button type="button" className={`op-browser__icon${detached.failed ? " op-browser__detach-failed" : ""}`} disabled={detached.disabled} onMouseDown={(event) => event.preventDefault()} onClick={detached.toggle} aria-label={t(detached.surface?.mode === "window" ? "terminal.browser.reattach" : "terminal.browser.detach")} title={t(detached.failed ? "terminal.browser.detachFailed" : detached.surface?.mode === "window" ? "terminal.browser.reattach" : "terminal.browser.detach")}>{detached.surface?.mode === "window" ? "↙" : "↗"}</button> : null}
+      <BrowserMoreMenu
+        objectiveId={objectiveId}
+        language={language}
+        capture={{ visible: hasCapture, disabled: busy || !captureReady, onAttach: attachScreenshot }}
+        annotate={{ active: mode === "annotate", disabled: !captureReady, onToggle: () => toggleMode("annotate") }}
+      />
     </div>
   );
 
