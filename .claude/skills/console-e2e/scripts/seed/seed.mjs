@@ -46,9 +46,9 @@ try {
     }
     for (let o = 1; o <= spec.objectives; o += 1) {
       const title = `Seed objective ${c}.${o}`;
-      // The Commodore's `objectives` tool is the only creator: queue one in-process call for the fake agent's next turn, then wake it.
+      // The Commodore's `objective` tool is the only creator: queue one in-process call for the fake agent's next turn, then wake it.
       mkdirSync(fakeDir, { recursive: true });
-      writeFileSync(path.join(fakeDir, "sdk-calls"), JSON.stringify({ calls: [{ server: "fleet-commodore", tool: "objectives", args: { action: "add", title, commanderModel: model, theaterId: entry.theaters[0].theaterId } }] }));
+      writeFileSync(path.join(fakeDir, "sdk-calls"), JSON.stringify({ calls: [{ server: "fleet-commodore", tool: "objective", args: { action: "add", title, commanderModel: model, theaterId: entry.theaters[0].theaterId } }] }));
       await api("POST", "/api/v1/commodore/message", { commodoreId, text: `Create ${title}` });
       const found = await until(async () => (await make.objectives(commodoreId)).find((item) => item.title === title), 60_000, `objective "${title}"`);
       for (const member of spec.members ?? []) await make.member(found.id, member);
