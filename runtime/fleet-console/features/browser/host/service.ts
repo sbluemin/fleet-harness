@@ -1472,7 +1472,7 @@ export class BrowserService {
       if (space.viewportFollowsPane) {
         const probe = (op.activeTabId ? tabs.find((tab) => tab.id === op.activeTabId) : undefined) ?? tabs[0];
         if (probe) {
-          const layout = await this.layoutViewport(this.client, probe);
+          const layout = this.layoutViewport(op, probe);
           if (layout && (layout.width !== space.viewport.width || layout.height !== space.viewport.height)) {
             space.viewport = { ...space.viewport, width: layout.width, height: layout.height };
             if (!op.pane) op.pane = { width: layout.width, height: layout.height, scale: space.viewport.scale };
@@ -1645,7 +1645,7 @@ export class BrowserService {
 
   async geometryVersion(objectiveId: string, tabId?: string | null): Promise<string> {
     const op = this.objectiveRecord(objectiveId), tab = this.tab(op, tabId), client = await this.engineClient();
-    const layout = await this.layoutViewport(client, tab);
+    const layout = this.layoutViewport(op, tab);
     if (!layout) throw new BrowserPolicyError("browser_capture_not_ready", "Page geometry unavailable.");
     return `${tab.id}:${layout.width}x${layout.height}:${this.paneOfTab(tab)?.scale ?? this.spaceOfTab(op, tab).viewport.scale}`;
   }
@@ -1659,7 +1659,7 @@ export class BrowserService {
     // 정한 크기를 먼저 다시 건다 — 그 사이 뷰가 줄었으면 위젯이 뷰 크기로 줄어 표면이 뷰포트보다 작다.
     if (!space.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
     // Companion 미개방이어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다.
-    // layout 은 innerWidth×innerHeight(스크롤바 포함)라 native pane 과 같아야 하지만, 에뮬레이션 중에는 다를 수 있다 — 같기를 기다리지 않는다.
+    // layout 은 Desktop 이 아는 뷰 크기(에뮬레이션 중이면 정한 크기)다 — 페이지 스크립트를 읽지 않는다. 리사이즈와 겹치면 pane·layout 쌍이 두 번 연속 같아야 한다.
     // 리사이즈와 캡처가 겹치면 같은 탭의 pane·layout 쌍이 두 번 연속 같아야 한다.
     let layout: { width: number; height: number } | null = null;
     let pane: { width: number; height: number; scale: number } | null = null;
@@ -1668,7 +1668,7 @@ export class BrowserService {
     for (let attempt = 0; attempt < 20; attempt++) {
       this.throwIfAborted(options.signal);
       pane = this.paneOfTab(tab);
-      layout = await this.layoutViewport(client, tab);
+      layout = this.layoutViewport(op, tab);
       const geometry = JSON.stringify([pane, layout]);
       if (pane && pane.width >= 1 && pane.height >= 1 && layout && geometry === previous) { ready = true; space.viewport = { ...space.viewport, scale: pane.scale }; break; }
       previous = geometry;
@@ -1698,7 +1698,7 @@ export class BrowserService {
       throw error;
     }
     const pixels = capturePixels(result.data);
-    const after = await this.layoutViewport(client, tab);
+    const after = this.layoutViewport(op, tab);
     const paneAfter = this.paneOfTab(tab);
     if (!after || after.width !== layout.width || after.height !== layout.height || !paneAfter || paneAfter.width !== pane.width || paneAfter.height !== pane.height || paneAfter.scale !== pane.scale) {
       throw new BrowserPolicyError("browser_capture_changed", "Viewport changed during capture; capture again before coordinate input.");
@@ -1718,31 +1718,15 @@ export class BrowserService {
   }
 
   /**
-   * 페이지가 보는 뷰포트 — `window.innerWidth × innerHeight`, 즉 세로 스크롤바를 **포함**한 크기다. 에이전트가 읽는 크기와 스크린샷 크기, 사람이 보는 칸의 크기가 이 한 값으로 맞는다.
-   * `Page.getLayoutMetrics` 의 `cssLayoutViewport` 는 스크롤바를 빼서 스크롤바가 있는 페이지에서 15px 작았고, 스크롤바가 생기고 없어지는 순간마다 값이 오갔다.
-   * 페이지 스크립트가 멎어(대화상자) 값을 못 읽으면 레이아웃 실측으로 물러난다.
+   * 페이지의 뷰포트 크기 — 스크린샷·`tabs_context`·좌표가 모두 이 한 값을 쓴다. 원천은 페이지가 아니라 Desktop 이 아는 실제 뷰 크기(스크롤바를 포함한
+   * `innerWidth×innerHeight` 와 같다)이고, 에이전트가 크기를 정했으면(에뮬레이션) 그 크기다. 페이지 스크립트나 레이아웃 메트릭을 읽지 않으므로 페이지가 값을
+   * 덮어쓰거나 대화상자가 떠 있어도 두 경로로 갈라지지 않는다.
    */
-  private async layoutViewport(client: CdpClient, tab: Tab): Promise<{ width: number; height: number } | null> {
-    const fromInner = async (): Promise<{ width: number; height: number } | null> => {
-      const result = await client.send<{ result?: { value?: unknown } }>("Runtime.evaluate", { expression: "[window.innerWidth, window.innerHeight]", returnByValue: true, timeout: 800 }, tab.sessionId);
-      const value = result.result?.value;
-      if (!Array.isArray(value)) return null;
-      const width = Math.round(Number(value[0]) || 0);
-      const height = Math.round(Number(value[1]) || 0);
-      return width >= 1 && height >= 1 ? { width, height } : null;
-    };
-    try {
-      const inner = await Promise.race([fromInner().catch(() => null), new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_000))]);
-      if (inner) return inner;
-      const metrics = await client.send<{ cssLayoutViewport?: { clientWidth?: number; clientHeight?: number }; cssVisualViewport?: { clientWidth?: number; clientHeight?: number }; layoutViewport?: { clientWidth?: number; clientHeight?: number } }>("Page.getLayoutMetrics", {}, tab.sessionId);
-      const box = metrics.cssLayoutViewport ?? metrics.cssVisualViewport ?? metrics.layoutViewport;
-      const width = Math.round(Number(box?.clientWidth) || 0);
-      const height = Math.round(Number(box?.clientHeight) || 0);
-      if (width < 1 || height < 1) return null;
-      return { width, height };
-    } catch {
-      return null;
-    }
+  private layoutViewport(op: ObjectiveBrowser, tab: Tab): { width: number; height: number } | null {
+    const space = this.spaceOfTab(op, tab);
+    if (!space.viewportFollowsPane) return { width: space.viewport.width, height: space.viewport.height };
+    const pane = this.paneOfTab(tab);
+    return pane ? { width: pane.width, height: pane.height } : null;
   }
 
   async evaluate<T = unknown>(objectiveId: string, expression: string, tabId?: string | null): Promise<{ value: T | undefined; error: string | null }> {
