@@ -186,6 +186,11 @@
   background: color-mix(in oklab, var(--conversation-accent-body, var(--hairline-strong)) 15%, transparent);
   border: 1.5px solid color-mix(in oklab, var(--conversation-accent-body, var(--hairline-strong)) 80%, transparent);
 }
+/* 자문 말풍선 — 지휘관이 사령관에게 구한 자문은 지휘관 색 윤곽으로 보통 말과 가른다. 답이 지휘관에게 닿은 상태는 말풍선 아래 낱말이다. */
+.group-chat-bubble.is-agent.is-consult { border: 1.5px solid color-mix(in oklch, var(--apex) 70%, transparent); }
+.group-chat-consult-note { padding-inline: var(--space-1); font-size: var(--t-xs); color: var(--text-tertiary); }
+.group-chat-consult-note.is-waiting, .group-chat-consult-note.is-uncertain { color: var(--warn-ink); }
+.group-chat-consult-note.is-delivered { color: var(--positive-ink); }
 
 .group-chat-agent {
   display: grid;

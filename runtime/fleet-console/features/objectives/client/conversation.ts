@@ -1,9 +1,9 @@
 import { objectiveOpenUIPort } from "./openui-ports.js";
-import type { ConversationDecision, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
+import type { ConversationConsultReply, ConversationDecision, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import { livePersonHold } from "../shared/board-state.js";
-import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
+import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
 import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { openObjectiveFromCluster, patchOwnerView, returnPersonHold, revealObjective } from "./objectives-state.js";
@@ -68,6 +68,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     answered.set(decision.requestId, entry ? { ...entry, answers: [...entry.answers, answer] } : { kind: "decision-answer", id: `decision:${objective.id}:${decision.requestId}`, at: decision.at, answers: [answer] });
   }
   events.push(...answered.values());
+  events.push(...consultationEvents(objective, speaker));
   const truncated = (objective.memberHistory?.length ?? 0) >= MAX_OBJECTIVE_ACTIONS || Object.values(objective.actionCounts ?? {}).reduce((sum, count) => sum + count, 0) > (objective.actions?.length ?? 0);
   // 사령관 행위 줄 → 그 시각의 사령관 기록(읽기 전용). 줄 id 로 시각을 찾는다 — 모르는 줄이면 아무 일도 없다.
   const openBoardAction = openRecord ? (entryId: string) => {
@@ -97,6 +98,25 @@ export function objectiveDecision(objective: Objective, open?: () => void, actio
     } } : {}),
     route: localized((t) => t(handedHold ? "objectives.decision.routeHanded" : "objectives.decision.route")),
   } : null;
+}
+
+/**
+ * 지휘관 자문 — 질문은 지휘관이 사령관에게 한 말, 답은 사령관이 지휘관에게 한 말로 각자의 시각에 선다. 답 아래에는 지휘관에게
+ * 닿은 상태가 선다(지휘관이 일하는 동안 답은 기다린다). 사령관 대화도 같은 기록을 같은 낱말로 세운다.
+ */
+export function consultationEvents(objective: Objective, commodore: ConversationSpeaker): GroupTimelineEntry[] {
+  const commander: ConversationSpeaker = { kind: "commander", name: "commander", objectiveId: objective.id };
+  return objective.consultations.flatMap((consult): GroupTimelineEntry[] => {
+    const ask: GroupTimelineEntry = { kind: "message", id: `consult:${objective.id}:${consult.id}:ask`, at: consult.at, objectiveId: objective.id, speaker: commander, recipient: commodore, text: consult.question, streaming: false, via: "consult" };
+    if (!consult.reply) return [ask];
+    const facts: ConversationConsultReply = { ...(consult.delivery ? { delivery: consultDelivery(consult.delivery) } : {}), ...(consult.reply.kind === "no-additional-advice" ? { noAdvice: true as const } : {}) };
+    return [ask, { kind: "message", id: `consult:${objective.id}:${consult.id}:reply`, at: consult.reply.at, objectiveId: objective.id, speaker: commodore, recipient: commander, text: consult.reply.kind === "advice" ? consult.reply.text : "", streaming: false, via: "consult-reply", consult: facts }];
+  });
+}
+
+/** 보드의 알림 전달 상태를 사람이 읽는 세 상태로 — 보내는 중은 아직 닿지 않았다. */
+export function consultDelivery(state: ConsultationDeliveryState): NonNullable<ConversationConsultReply["delivery"]> {
+  return state === "submitted" ? "delivered" : state === "uncertain" ? "uncertain" : "waiting";
 }
 
 const CRITERIA_VERDICTS: ReadonlySet<ObjectiveActionKind> = new Set(["criteria-approved", "criteria-rejected"]);

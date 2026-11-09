@@ -8,7 +8,7 @@ import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from ".
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { goToObjective } from "./fresh-conversation.js";
-import { objectiveDecision } from "./conversation.js";
+import { consultDelivery, objectiveDecision } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
 import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
 
@@ -134,7 +134,9 @@ function project(objective: Objective): CommodoreBoardObjective {
   const hit = projected.get(objective); if (hit) return hit;
   const { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, missions, addedBy, actions, decisions } = objective;
   const handedDecision = decisionInCommodoreConversation(objective) ? objectiveDecision(objective, undefined, objectiveConversationActions(objective)) : null;
-  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, handedDecision, missions, addedBy, actions, decisions, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
+  const consults = objective.consultations.map(({ id: consultId, question, at, reply, delivery }) => ({ id: consultId, question, at,
+    ...(reply ? { reply: { text: reply.kind === "advice" ? reply.text : null, at: reply.at, ...(delivery ? { delivery: consultDelivery(delivery) } : {}) } } : {}) }));
+  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, handedDecision, missions, addedBy, actions, decisions, consults, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
   projected.set(objective, view); return view;
 }
 const lists = new WeakMap<readonly Objective[], readonly CommodoreBoardObjective[]>();

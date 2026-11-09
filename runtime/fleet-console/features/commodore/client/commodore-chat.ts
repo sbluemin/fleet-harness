@@ -222,6 +222,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       case "tool": {
         if (!entry.action) break;
+        // 해낸 자문 답은 그 답의 말풍선(보드의 자문 기록)이 말한다 — 같은 행위를 가운데 줄로 겹쳐 세우지 않는다.
+        if (entry.action === "consult_answer" && entry.ok !== false) break;
         const target = createdCommodoreTarget(entry) ?? objectiveTarget(t, index, entry.objectiveId, entry.title);
         out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: target.id ?? "",
           action: actionWord(t, entry.action), target,
@@ -267,7 +269,39 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
     }
   }
-  return commodoreConversationLiveEntries(t, entries, live, out, name, theaterId);
+  return commodoreConversationLiveEntries(t, entries, live, withConsultations(t, out, commodore, objectives, finished), name, theaterId);
+}
+
+/**
+ * 지휘관이 이 사령관에게 구한 자문 — 질문은 그 목표 지휘관의 말, 답은 사령관 자신의 말로 각자의 시각 자리에 끼운다.
+ * 기록 줄이 아니라 보드의 자문 기록이 원천이다(깨움 줄은 대화에 서지 않는다). 지휘관 대화와 같은 말풍선 문법이다.
+ */
+function withConsultations(t: T, out: readonly AgentConversationEntry[], commodore: ConversationSpeaker, live: readonly Objective[], finished: readonly Objective[] | null): readonly AgentConversationEntry[] {
+  const seen = new Set<string>();
+  const consults: AgentConversationEntry[] = [];
+  for (const objective of [...live, ...(finished ?? [])]) {
+    if (seen.has(objective.id)) continue;
+    seen.add(objective.id);
+    const commander: ConversationSpeaker = { kind: "commander", name: t("commodore.consult.commander", { title: objective.title }), objectiveId: objective.id };
+    for (const consult of objective.consults ?? []) {
+      consults.push({ kind: "message", id: `consult:${objective.id}:${consult.id}:ask`, at: consult.at, objectiveId: objective.id, speaker: commander, recipient: commodore, text: consult.question, streaming: false, via: "consult" });
+      if (!consult.reply) continue;
+      const { text, at, delivery } = consult.reply;
+      consults.push({ kind: "message", id: `consult:${objective.id}:${consult.id}:reply`, at, objectiveId: objective.id, speaker: commodore, recipient: commander, text: text ?? "", streaming: false, via: "consult-reply",
+        consult: { ...(delivery ? { delivery } : {}), ...(text === null ? { noAdvice: true as const } : {}) } });
+    }
+  }
+  if (consults.length === 0) return out;
+  // 기록 순서는 그대로 두고, 자문 말풍선만 시각이 처음으로 그보다 늦은 줄 앞에 끼운다.
+  consults.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  const merged: AgentConversationEntry[] = [];
+  let next = 0;
+  for (const entry of out) {
+    while (next < consults.length && entry.at !== null && (consults[next]!.at ?? 0) < entry.at) merged.push(consults[next++]!);
+    merged.push(entry);
+  }
+  merged.push(...consults.slice(next));
+  return merged;
 }
 
 /** 확정 투영은 그대로 두고 흐르는 말 하나만 붙인다 — 델타마다 지난 말풍선 객체를 다시 만들지 않는다. */
