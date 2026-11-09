@@ -128,7 +128,16 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 .strip { position: relative; z-index: 2; border-bottom: 1px solid var(--hairline); display: flex; align-items: center; gap: var(--space-1); height: var(--strip); padding: 0 var(--space-2); -webkit-app-region: drag; }
 .strip > * { -webkit-app-region: no-drag; }
 .strip > .pad { flex: none; height: 100%; -webkit-app-region: drag; }
-.strip.driving { background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--surface)), var(--surface) 70%); }
+/* AI 사용 중 — 주소줄과 레일이 같은 토큰·같은 상태(chrome.driving)로 칠한다. 칠하는 층(::before)만 따로 두어 켜짐·꺼짐은 부드럽게 번지고, 켜진 동안은 잔잔히 흐른다. */
+.strip::before, .rail::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 500ms ease; --agent-glow: color-mix(in oklab, var(--agent-control-badge) 48%, transparent); }
+:root[data-scheme="light"] .strip::before, :root[data-scheme="light"] .rail::before { --agent-glow: color-mix(in oklab, var(--agent-control-badge) 40%, transparent); }
+.strip::before { background: linear-gradient(90deg, var(--agent-glow) 0%, transparent 38%, var(--agent-glow) 72%, transparent 100%); background-size: 200% 100%; }
+.rail::before { background: linear-gradient(180deg, var(--agent-glow) 0%, transparent 38%, var(--agent-glow) 72%, transparent 100%); background-size: 100% 200%; }
+.strip.driving::before, .rail.driving::before { opacity: 1; animation: agent-sweep-x 6s ease-in-out infinite alternate; }
+.rail.driving::before { animation-name: agent-sweep-y; }
+@keyframes agent-sweep-x { from { background-position: 0% 0; } to { background-position: 100% 0; } }
+@keyframes agent-sweep-y { from { background-position: 0 0%; } to { background-position: 0 100%; } }
+@media (prefers-reduced-motion: reduce) { .strip.driving::before, .rail.driving::before { animation: none; } .strip::before, .rail::before { transition: none; } }
 .icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-secondary); font-size: var(--t-md); text-decoration: none; cursor: pointer; }
 .icon:hover:not(:disabled), .icon:focus-visible { color: var(--brass-ink); background: var(--ink-veil); outline: none; }
 .icon:disabled { opacity: 0.35; cursor: default; }
@@ -261,10 +270,9 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 
 /* ---- 세로 탭 레일 ---- */
 html[data-role="rail"] body { width: var(--rail-expanded); }
-.rail { position: absolute; top: 0; bottom: 0; left: 0; border-right: 1px solid var(--hairline); width: var(--rail-collapsed); display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--surface); color: var(--text-secondary); font-size: var(--t-xs); }
+.rail { isolation: isolate; position: absolute; top: 0; bottom: 0; left: 0; border-right: 1px solid var(--hairline); width: var(--rail-collapsed); display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--surface); color: var(--text-secondary); font-size: var(--t-xs); }
 .rail.open { width: var(--rail-expanded); }
 .rail.open:not(.pinned) { box-shadow: 0 18px 38px -22px oklch(0% 0 0 / 30%); }
-.rail.driving { background: linear-gradient(180deg, color-mix(in oklab, var(--agent-control-badge) 20%, var(--surface)), var(--surface) 70%); }
 .divider { flex: none; height: 1px; margin: 2px var(--space-1); background: var(--hairline); }
 .scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-1); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .rail.open .scroll { scrollbar-width: thin; }
