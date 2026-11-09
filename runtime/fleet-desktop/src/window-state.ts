@@ -29,12 +29,15 @@ export function resolveInitialWindow(saved: WindowState | null, workAreas: reado
       .filter(({ overlap }) => overlap.width >= MIN_VISIBLE_WIDTH && overlap.height >= MIN_VISIBLE_HEIGHT)
       .sort((a, b) => b.overlap.width * b.overlap.height - a.overlap.width * a.overlap.height)[0];
     if (host) {
+      const width = Math.max(MIN_WINDOW_WIDTH, Math.min(Math.round(saved.width), host.area.width));
+      const height = Math.max(MIN_WINDOW_HEIGHT, Math.min(Math.round(saved.height), host.area.height));
+      // 크기를 줄인 뒤에는 자리도 그 작업 영역 안으로 다시 맞춘다 — 빠진 모니터 쪽으로 걸쳐 있던 창이 화면 밖에 뜨지 않게 한다.
       return {
         bounds: {
-          x: Math.round(saved.x),
-          y: Math.round(saved.y),
-          width: Math.max(MIN_WINDOW_WIDTH, Math.min(Math.round(saved.width), host.area.width)),
-          height: Math.max(MIN_WINDOW_HEIGHT, Math.min(Math.round(saved.height), host.area.height)),
+          x: fitWithin(Math.round(saved.x), width, host.area.x, host.area.width),
+          y: fitWithin(Math.round(saved.y), height, host.area.y, host.area.height),
+          width,
+          height,
         },
         maximized: saved.maximized,
       };
@@ -51,6 +54,11 @@ export function resolveInitialWindow(saved: WindowState | null, workAreas: reado
     },
     maximized: false,
   };
+}
+
+/** `size`만큼의 구간이 [start, start+extent] 안에 들도록 `position`을 밀어 넣는다. 구간이 더 크면 시작점에 붙인다. */
+function fitWithin(position: number, size: number, start: number, extent: number): number {
+  return Math.max(start, Math.min(position, start + extent - size));
 }
 
 function intersection(a: Rect, b: Rect): { width: number; height: number } {
