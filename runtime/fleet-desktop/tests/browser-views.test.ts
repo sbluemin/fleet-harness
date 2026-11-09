@@ -207,7 +207,8 @@ describe("desktop native browser views across a Console restart", () => {
     views.refresh();
     expect(childStack.presentBrowser).toHaveBeenLastCalledWith(native);
     childAlive = false;
-    lifetime = { ...lifetime, generation: 3, surface: null, views: [{ ...lifetime.views[0]!, surface: null }] };
+    // 창이 사라진 뒤 Console 이 돌려준 (옛 셸식) 메인 창 자리 — insets 는 표면이 있을 때만 뜻이 있다.
+    lifetime = { ...lifetime, generation: 3, surface: null, views: [{ ...lifetime.views[0]!, surface: null, insets: undefined, bounds: { x: 0, y: 80, width: 1200, height: 720 } }] };
     update();
     await vi.waitFor(() => expect(mainStack.presentBrowser).toHaveBeenLastCalledWith(native));
     expect(created).toHaveLength(2);
