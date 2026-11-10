@@ -58,6 +58,8 @@ export interface AiGatewaySettingsStore {
    * 이어서 정규화가 계열당 창이 가장 큰 변형 하나만 남기고, 강도에 low·medium·high를 합친다. 반환값은 1·2·4판의
    * 목록 변경만 알린다.
    *
+   * 5판(high 선택): 읽기 정규화가 구 명시 목록에 합친 high를 표식과 함께 영속한다. 이후 끈 high는 되살리지 않는다.
+   *
    * 어느 경우든 표식을 남기므로 다시 불러도, 그 뒤 사용자가 Claude를 꺼도 되돌리지 않는다(멱등).
    * 승계(legacyDirs)를 먼저 마친 뒤 판단한다. 목록을 바꿨으면 true.
    */
@@ -163,7 +165,8 @@ export function createAiGatewaySettingsStore(
       ...(current.compactCeiling !== undefined ? { compactCeiling: current.compactCeiling } : {}),
       ...(current.xaiEndpoint !== undefined ? { xaiEndpoint: current.xaiEndpoint } : {}),
       // 이행 표식은 사용자의 저장과 무관하게 남아야 한다 — 지우면 다음 기동이 끈 Claude를 되살린다.
-      ...(current.rosterSeedVersion !== undefined ? { rosterSeedVersion: current.rosterSeedVersion } : {}),
+      // 읽은 구 설정은 high를 이미 이월했다. 새 입력에서 명시해 뺀 high는 구판 이행이 되살리지 않는다.
+      rosterSeedVersion: Math.max(current.rosterSeedVersion ?? 0, ROSTER_SEED_VERSION),
       // 선별을 저장하는 것은 그 자체로 선택이다. 모델이 없으면 빈 배열로 남겨 기본 로스터 이행과 구별한다.
       models: [],
       ...(value ?? {}),
@@ -204,7 +207,7 @@ export function createAiGatewaySettingsStore(
           const rows = models as readonly LegacyRosterModel[];
           const kept = rows
             .filter((entry) => entry.hostOnly !== true)
-            .map(({ id, efforts }) => ({ id, ...(efforts ? { efforts } : {}) }));
+            .map(({ hostOnly: _removed, ...entry }) => entry);
           if (kept.length !== rows.length) seeded = true;
           else if (rosterRulesChange(kept)) seeded = true;
           models = kept;

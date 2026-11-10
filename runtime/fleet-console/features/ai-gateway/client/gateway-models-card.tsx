@@ -1,4 +1,4 @@
-import { aiGatewayModelFamilyKey, canonicalEffortSelection, defaultEffortSelection, isProviderCatalogVisible } from "@fleet-console/ai-gateway/model-family";
+import { AI_GATEWAY_OPT_IN_EFFORTS as OPT_IN, aiGatewayModelFamilyKey, canonicalEffortSelection, defaultEffortSelection, isProviderCatalogVisible } from "@fleet-console/ai-gateway/model-family";
 import { SegmentedThumb } from "@fleet-console/ui/react";
 import * as React from "react";
 
@@ -29,8 +29,6 @@ const PROVIDER_LABEL = {
   xai: "terminal.settings.aiGatewayProviderXai",
   "muse-code": "terminal.settings.aiGatewayProviderMuseCode",
 } as const;
-
-const OPT_IN = ["xhigh", "max"] as const;
 
 interface ModelFamily {
   readonly key: string;

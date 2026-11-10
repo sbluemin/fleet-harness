@@ -57,8 +57,9 @@ export const DEFAULT_ROSTER_SEED_MODEL_IDS: readonly string[] = ["claude--fable-
  *   영속한다. 같은 가족의 두 좌표는 한 행으로 합친다({@link normalizeAiGatewaySettings}). 끈 Claude·빈 로스터는 되살리지 않는다.
  * - 4: 켠 목록이 곧 위임 후보가 된다. `hostOnly: true` 항목은 켠 목록에서 빼고, 한 계열의 변형은 컨텍스트 창이 가장 큰
  *   것 하나만 남기며(같으면 저장 순서상 먼저), 강도는 low·medium·high를 합치고 켜 둔 xhigh·max만 유지한다.
+ * - 5: high를 선택 항목으로 옮긴다. 구 저장값은 명시 목록에서도 high를 켠 채 읽고, 표식을 영속한 뒤에는 사용자가 끈 high를 유지한다.
  */
-export const ROSTER_SEED_VERSION = 4;
+export const ROSTER_SEED_VERSION = 5;
 
 /**
  * 카탈로그 모델의 컨텍스트 창. Claude 가족 항목은 모두 카탈로그에 1M 창이 있다 — 창 없는 Claude 항목이 생기면 Claude Code의
@@ -203,7 +204,8 @@ function mergeStoredModels(entries: readonly LegacyStoredModel[], keepHostOnly: 
 }
 
 /**
- * 저장 모델을 카탈로그에 접고, 4판부터는 계열당 하나·low–high 합집합으로 정규화한다.
+ * 저장 모델을 카탈로그에 접고, 4판부터는 계열당 하나·기본 강도 합집합으로 정규화한다.
+ * 5판 이전의 명시 목록에도 high를 합친다. 부재·빈 배열은 기존처럼 전체 사다리다.
  * 4판 이전에는 `hostOnly`를 보존한다 — 시드가 그 표식을 보고 항목을 빼기 전에 정규화가 지우면 안 된다.
  */
 function canonicalizeStoredModels(entries: readonly LegacyStoredModel[], rosterSeedVersion: number): AiGatewayStoredModel[] {
@@ -215,7 +217,10 @@ function canonicalizeStoredModels(entries: readonly LegacyStoredModel[], rosterS
       ? entry.efforts.filter((level): level is string => typeof level === "string" && level.length > 0)
       : [];
     // 카탈로그에 대조해 지금 고를 수 있는 단계만 남긴다. 빈 배열은 부재(사다리 전체)로 접는다.
-    const exposed = efforts.length > 0 ? narrowEffortLadder(model, efforts) : undefined;
+    const narrowed = efforts.length > 0 ? narrowEffortLadder(model, efforts) : undefined;
+    const exposed = narrowed && rosterSeedVersion < 5
+      ? narrowEffortLadder(model, [...narrowed, "high"])
+      : narrowed;
     return [{
       id: storedModelId(model, entry.id),
       ...(model.fastSupported && entry.fast === true ? { fast: true } : {}),
@@ -396,7 +401,7 @@ export function parseAiGatewayUpdate(value: unknown):
       });
     }
   }
-  const mergedModels = canonicalizeStoredModels(models, 4);
+  const mergedModels = canonicalizeStoredModels(models, ROSTER_SEED_VERSION);
 
   // 레거시 defaultModel 키는 허용하되 무시한다 — 저장하지도, extra key로 거부하지도 않는다.
 
