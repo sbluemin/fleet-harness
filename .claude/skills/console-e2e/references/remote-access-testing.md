@@ -6,7 +6,7 @@ Read the base workflow first. This file covers only what it does not describe.
 
 ## The shape of a run
 
-One isolated Console plays the host. A short Node script plays every remote device. The browser watches the host's screen.
+One isolated Console plays the host. A short Node script plays every remote device. The browser watches the host's screen. That shape is the pairing checks below, not registration of a second owned Console ([Register the link on a second owned Console](#register-the-link-on-a-second-owned-console)).
 
 ```
 node script  --https-->  remote listener (LAN addr : remote port)  <- the "other device"
@@ -57,6 +57,20 @@ const envelope = JSON.parse(Buffer.from(code, "base64url").toString("utf8"));
 ```
 
 Use `access=monitoring` for a read-only guest. Never print the lock token or the grant.
+
+## Register the link on a second owned Console
+
+The shape above is pairing: one Console, Node as the guest. Registration is two owned Consoles. The Desktop canonical slot (`--canonical-console-dir`) only lists a local neighbor; it is not how a remote host is stored.
+
+After `issue-access-link.mjs` writes `<remote-e2e-dir>/link.txt`:
+
+```bash
+node <worktree>/.claude/skills/console-e2e/scripts/add-remote-host.mjs <remote-e2e-dir> http://127.0.0.1:<home port>
+```
+
+The second argument is that owned home's loopback origin, from its lock port only. Stdout `{status,id,label,origin,error}` is the helper. A 2xx is not the sidebar row and not a certificate result — read those in the app. Do not print `link.txt`. No `rejectUnauthorized`: the product checks the certificate when it stores the link. The helper refuses a non-absolute path, anything under the user `~/.fleet`, and a home origin that is not loopback `http` or that is the user Console.
+
+A link stored on a `serve` process keeps its one-time credential in that process. Replacing the process (Desktop then serving the same data dir) drops it (`remote_host_not_paired`). Issue and register again against the origin that is actually up. A toggle is not that case.
 
 ## Speak to the remote listener
 
@@ -124,7 +138,7 @@ Dismiss the curtain with "Keep watching" to reach the standing bar; dismiss agai
 ## Restarting and rotating
 
 - Toggling remote access off and on **keeps** pairings. Sessions and unused links die with the listener; the devices come back with the same cookie.
-- `POST /api/v1/remote-identity/rotations` unpairs everyone by design — the fingerprint those devices trusted is gone, so a pairing that could never connect again would be a lie in the list. Expect `devices: []` afterwards and a new fingerprint on the wire. Read `/api/v1/access-links` again afterwards instead of assuming the remote origin or port survived.
+- `POST /api/v1/remote-identity/rotations` unpairs everyone by design — the fingerprint those devices trusted is gone, so a pairing that could never connect again would be a lie in the list. Expect `devices: []` afterwards and a new fingerprint on the wire. Read `/api/v1/access-links` again afterwards instead of assuming the remote origin or port survived. To make an owned remote Console's stored fingerprint stale, run `rotate-remote-identity.mjs <remote-e2e-dir>` ([Register the link on a second owned Console](#register-the-link-on-a-second-owned-console)); its `rotate` status is the helper, not the untrusted-row or recovery check.
 
 **A toggle is not a restart, and the difference is the whole bug class.** The console port is dynamic by default, so a real process restart hands the loopback listener a new port while a toggle freezes it. Anything keyed to the port — the origin a peer console saved, the `fleet_console_pairing_<port>` cookie name — passes a toggle and fails a restart. Stop the process and start it again on the same `FLEET_CONSOLE_DATA_DIR`:
 
