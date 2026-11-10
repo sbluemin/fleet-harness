@@ -6,7 +6,7 @@ Read the base workflow first. This file covers only what it does not describe.
 
 ## The shape of a run
 
-One isolated Console plays the host. A short Node script plays every remote device. The browser watches the host's screen.
+One isolated Console plays the host. A short Node script plays every remote device. The browser watches the host's screen. That shape is the pairing checks below, not registration of a second owned Console ([Register the link on a second owned Console](#register-the-link-on-a-second-owned-console)).
 
 ```
 node script  --https-->  remote listener (LAN addr : remote port)  <- the "other device"
@@ -57,6 +57,20 @@ const envelope = JSON.parse(Buffer.from(code, "base64url").toString("utf8"));
 ```
 
 Use `access=monitoring` for a read-only guest. Never print the lock token or the grant.
+
+## Register the link on a second owned Console
+
+The shape above is pairing: one Console, Node as the guest. Registration is two owned Consoles. The Desktop canonical slot (`--canonical-console-dir`) only lists a local neighbor; it is not how a remote host is stored.
+
+After `issue-access-link.mjs` writes `<remote-e2e-dir>/link.txt`:
+
+```bash
+node <worktree>/.claude/skills/console-e2e/scripts/add-remote-host.mjs <remote-e2e-dir> http://127.0.0.1:<home port>
+```
+
+The second argument is that owned home's loopback origin, from its lock port only. Stdout `{status,id,label,origin,error}` is the helper. A 2xx is not the on-screen host and not a certificate result — read those on the Settings > Remote access card (browser) or the sidebar console section (Desktop). Do not print `link.txt`. No `rejectUnauthorized`: the product checks the certificate when it stores the link. The helper refuses a non-absolute path, anything under the user `~/.fleet`, and a home origin that is not loopback `http` or that is the user Console.
+
+A link stored on a `serve` process keeps its one-time credential in that process. Replacing the process (Desktop then serving the same data dir) drops it (`remote_host_not_paired`). Issue and register again against the origin that is actually up. A toggle is not that case.
 
 ## Speak to the remote listener
 
@@ -124,7 +138,7 @@ Dismiss the curtain with "Keep watching" to reach the standing bar; dismiss agai
 ## Restarting and rotating
 
 - Toggling remote access off and on **keeps** pairings. Sessions and unused links die with the listener; the devices come back with the same cookie.
-- `POST /api/v1/remote-identity/rotations` unpairs everyone by design — the fingerprint those devices trusted is gone, so a pairing that could never connect again would be a lie in the list. Expect `devices: []` afterwards and a new fingerprint on the wire. Read `/api/v1/access-links` again afterwards instead of assuming the remote origin or port survived.
+- `POST /api/v1/remote-identity/rotations` unpairs everyone by design — the fingerprint those devices trusted is gone, so a pairing that could never connect again would be a lie in the list. Expect `devices: []` afterwards and a new fingerprint on the wire. Read `/api/v1/access-links` again afterwards instead of assuming the remote origin or port survived. To make an owned remote Console's stored fingerprint stale, run `rotate-remote-identity.mjs <remote-e2e-dir>` ([Register the link on a second owned Console](#register-the-link-on-a-second-owned-console)); its `rotate` status is the helper, not the certificate or recovery result on the Settings > Remote access card (browser) or the sidebar console section (Desktop).
 
 **A toggle is not a restart, and the difference is the whole bug class.** The console port is dynamic by default, so a real process restart hands the loopback listener a new port while a toggle freezes it. Anything keyed to the port — the origin a peer console saved, the `fleet_console_pairing_<port>` cookie name — passes a toggle and fails a restart. Stop the process and start it again on the same `FLEET_CONSOLE_DATA_DIR`:
 
@@ -229,7 +243,7 @@ After that check, stop the home `serve` with `cli.mjs stop` through the same wra
 
 Launch Desktop once, under its own authorization, as in [Desktop setup](desktop/setup.md#preflight-and-ownership). `FLEET_CONSOLE_DATA_DIR` for that launch is the **home** run's `console` directory, not `$SLOT`. The shell's `homeOrigin` is that home.
 
-In the window, the sidebar lists one section per console (`.side-console`, header name in `.side-console-name b`). Find the section whose header reads `127.0.0.1:<neighbor port>` and press one of its commodore rows (`.side-console-row`), or its "Switch to this console" / "이 콘솔로 전환" button when it lists none. Matching the port is the check. A section for any other port, including the user's Console, is not the neighbor.
+In the window, the sidebar lists the current console's commodores at the top with no header, then one row per other console (`.side-console`, name in `.side-console-name b`). Find the row whose name reads `127.0.0.1:<neighbor port>` and press one of its commodore rows (`.side-console-row`), or its "Switch to this console" / "이 콘솔로 전환" button when it lists none. Matching the port is the check. A row for any other port, including the user's Console, is not the neighbor.
 
 Do not assign `location` to the neighbor. The section press is the navigation the bridge takes. When the window has switched, read:
 
@@ -238,13 +252,14 @@ Do not assign `location` to the neighbor. The section press is the navigation th
   origin: location.origin,
   home: (await (await fetch("/api/v1/desktop/shell")).json()).homeOrigin,
   dot: document.querySelector(".conversation-dock-status")?.getAttribute("data-connection") ?? null,
-  here: document.querySelector(".side-console-head.is-active .side-console-name b")?.textContent ?? null,
+  activeHead: document.querySelector(".side-console-head.is-active .side-console-name b")?.textContent ?? null,
+  homeRow: document.querySelector(".side-console-home") !== null,
 })
 ```
 
-Away on Desktop is `origin` equal to `http://127.0.0.1:<neighbor port>` while `home` is the home origin. `dot` is `"live"`, and `here` shows that section's label, which for a discovered local neighbor is its address.
+Away on Desktop is `origin` equal to `http://127.0.0.1:<neighbor port>` while `home` is the home origin. `dot` is `"live"`. The console you are on has no header, so `activeHead` is null, and `homeRow` is true because the home console is one of the rows below, marked `.side-console-home`.
 
-Return through the home section marked `.side-console-home`, using a commodore row or "Switch to this console" when no rows are listed. Confirm `origin === home` and `dot === null`; `here` is the home console's label.
+Return through that home row, using a commodore row or "Switch to this console" when no rows are listed. Confirm `origin === home` and `dot === null`. `activeHead` stays null when more than one console is listed, and a `.side-console-name b` then reads the neighbor address.
 
 Stop the neighbor with the same wrapper flags. That `stop` runs only when `$SLOT/console.lock`'s pid equals `<run-dir>/canonical-console.pid`, which the wrapper writes when this run's `serve` starts. No record, a different pid, or the main checkout (`mainCheckoutOf`, the same test as [the Desktop preflight](desktop/setup.md#read-only-preflight)) is refused before the command starts. Then:
 

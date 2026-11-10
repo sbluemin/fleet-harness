@@ -9,7 +9,8 @@ import { MongleAvatar } from "../components/mongle-avatar.js";
  * 지금 떠 있지 않은 콘솔 하나 — 머리글과 그 콘솔의 사령관을 흐리게 나열한다.
  *
  * 여기 서는 것은 셸이 건넨 명부뿐이다(이름·모습·상태 한 낱말). 미리보기와 목표는 그 콘솔로 넘어간 뒤 그 콘솔이 그린다.
- * 사령관을 누르면 그 콘솔로 전환하면서 누른 행의 높이를 함께 보낸다 — 도착한 화면이 같은 높이에 그 행을 둔다.
+ * 사령관을 누르면 그 콘솔로 전환하면서 누른 행의 높이를 함께 보낸다. 도착한 목록은 맨 위에서 시작하므로,
+ * 그 높이에 맞추지 못하고 고른 사령관이 열려 보이면 된다.
  */
 export function ConsoleRosterSection({ entry, sections, list, compact }: {
   readonly entry: ConsoleSectionEntry; readonly sections: ConsoleSections; readonly list: () => HTMLElement | null; readonly compact: boolean;
@@ -25,6 +26,10 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
     sections.command(commodore ? { switch: entry.id, commodore: commodore.id, anchorY } : { switch: entry.id });
   };
   const enter = <button type="button" className="side-console-enter" aria-disabled={blocked} onClick={(event) => open(null, event.currentTarget)}>{t("chrome.consoles.switchHere")}</button>;
+  // 인증서가 바뀐 콘솔은 지금의 추가 창만 연다. 단추만으로는 저장된 지문이 바뀌지 않는다.
+  const reviewCertificate = entry.status === "untrusted"
+    ? <button type="button" className="side-console-cert" onClick={() => sections.command({ add: true })}>{t("chrome.consoles.reviewCertificate")}</button>
+    : null;
   // 명부가 없는 까닭마다 한 줄로 말하고, 갈 수 있으면 콘솔만 전환하는 길을 남긴다.
   const note = entry.status === "untrusted" ? t("chrome.consoles.rosterUntrusted")
     : !sections.rosterCapable || roster === null ? null
@@ -33,7 +38,7 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
     : roster.status === "ok" && roster.commodores.length === 0 ? t("chrome.consoles.rosterEmpty") : null;
   const rows = entry.status === "untrusted" ? [] : roster?.commodores ?? [];
   return <li className={`side-console${blocked ? " is-blocked" : ""}`} data-console-id={entry.id} data-status={entry.status ?? undefined}>
-    <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} compact={compact} />
+    <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} compact={compact} appearance="row" />
     {folded ? null : <ol className="side-console-roster" aria-label={entry.label}>
       {rows.map((commodore) => {
         const look = commodore.look ?? { base: fallbackMongleBase(commodoreAvatarKey(commodore.id)), tone: null };
@@ -52,7 +57,7 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
       })}
       {roster && roster.more > 0 && rows.length > 0 ? <li className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(roster.more) })}</li> : null}
       {/* 말할 것도 갈 길도 없으면 빈 상자를 두지 않는다 — 꺼져 있는 콘솔은 머리글이 이미 말한다. */}
-      {note || (rows.length === 0 && !blocked) ? <li className="side-console-note">{note ? <p>{note}</p> : null}{blocked ? null : enter}</li> : null}
+      {note || (rows.length === 0 && !blocked) ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}{blocked ? null : enter}</li> : null}
     </ol>}
   </li>;
 }

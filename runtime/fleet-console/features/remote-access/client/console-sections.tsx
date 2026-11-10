@@ -1,5 +1,5 @@
 import { ChevronGlyph } from "@fleet-console/ui/react";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_EVENT, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl,
   isConsoleRosterState, isConsoleSectionState,
@@ -36,6 +36,11 @@ export interface ConsoleSections {
   readonly sectioned: boolean;
   readonly entries: readonly ConsoleSectionEntry[];
   readonly active: ConsoleSectionEntry | null;
+  /**
+   * 지금 콘솔에 머리글을 세우는가. 콘솔이 하나뿐일 때, 그리고 여럿이어도 지금 콘솔이 꺼져 있거나 시작·종료 중일 때다 —
+   * 이 Desktop이 따로 관리하는 콘솔이 등록돼 있으면 콘솔은 늘 여럿이고, 그 사실과 시작 단추가 설 자리는 머리글뿐이다.
+   */
+  readonly ownHead: boolean;
   /** 셸이 명부를 건네는가. 옛 셸이면 머리글만 선다. */
   readonly rosterCapable: boolean;
   readonly roster: (id: string) => ConsoleRosterEntry | null;
@@ -48,7 +53,8 @@ export interface ConsoleSections {
 }
 
 /** 셸이 건넨 최소 상태만 쓴다. 다른 콘솔의 서버에는 이 문서가 직접 묻지 않는다. */
-export function useConsoleSections(): ConsoleSections {
+export function useConsoleSections(options?: { readonly refresh?: boolean }): ConsoleSections {
+  const refresh = options?.refresh !== false;
   const shell = useDesktopHomeOrigin();
   const { consoleName } = useConsoleState();
   const desktop = isDesktopShell();
@@ -60,7 +66,8 @@ export function useConsoleSections(): ConsoleSections {
   const [arrivalDone, setArrivalDone] = useState<string | null>(null);
   const command = useCallback((value: ConsoleSectionCommand) => { location.assign(consoleSectionCommandUrl(location.origin, value)); }, []);
   useEffect(() => {
-    if (!capable) return;
+    // 목록을 그리는 쪽이 상태를 묻는다. 같은 상태를 읽기만 하는 곳(만들기 메뉴)은 주기를 겹치지 않는다.
+    if (!refresh || !capable) return;
     // 이름·저장 목록이 바뀌어도 표시는 셸이 다시 준 상태만 쓴다.
     const reload = () => command({ request: "state" });
     const unsubscribe = subscribeRemoteHostsChanged(reload);
@@ -69,7 +76,7 @@ export function useConsoleSections(): ConsoleSections {
     const timer = rosterCapable ? setInterval(() => { if (document.visibilityState === "visible") reload(); }, ROSTER_REFRESH_MS) : undefined;
     reload();
     return () => { unsubscribe(); window.removeEventListener("focus", reload); clearInterval(timer); };
-  }, [capable, rosterCapable, consoleName, command]);
+  }, [refresh, capable, rosterCapable, consoleName, command]);
   const entries = capable ? state?.entries ?? [] : [];
   const byId = useMemo(() => new Map((rosters?.rosters ?? []).map((entry) => [entry.id, entry])), [rosters]);
   const shellFolds = useMemo(() => new Set(rosters?.folded ?? []), [rosters]);
@@ -86,14 +93,35 @@ export function useConsoleSections(): ConsoleSections {
     setLocalFolds((current) => ({ ...current, [id]: folded }));
     if (rosterCapable) command({ fold: { id, folded } });
   }, [rosterCapable, command]);
+  const active = entries.find((entry) => entry.active) ?? null;
   return {
     capable, rosterCapable, entries, command, arrived, fold, arrival,
+    ownHead: active !== null && (entries.length === 1 || consoleLifecycleKey(active) !== null),
     // 콘솔이 하나뿐이어도 관리 대상이 꺼져 있거나 시작·종료 중이면 머리글을 세운다 — 그 사실과 시작 단추가 설 자리가 머리글뿐이다.
     sectioned: capable && (entries.length > 1 || entries.some((entry) => consoleLifecycleKey(entry) !== null)),
-    active: entries.find((entry) => entry.active) ?? null,
+    active,
     roster: (id) => byId.get(id) ?? null,
     folded: (id) => localFolds[id] ?? shellFolds.has(id),
   };
+}
+
+/**
+ * 붙어 있는 머리글의 제자리(sticky가 끌어내린 만큼 위)를 스크롤 내용 좌표로 잰다.
+ * 붙어 있지 않으면 null — 제자리에 보이는 머리글을 접을 때는 스크롤을 건드리지 않는다.
+ */
+function stuckHeadScrollTop(head: HTMLElement, list: HTMLElement): number | null {
+  const place = () => head.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+  const before = list.scrollTop;
+  const visual = place();
+  const previous = head.style.position;
+  head.style.position = "relative";
+  let natural = visual;
+  try { natural = place(); } finally {
+    head.style.position = previous;
+    if (list.scrollTop !== before) list.scrollTop = before;
+  }
+  if (natural + 1 >= visual) return null;
+  return Math.max(0, natural);
 }
 
 /** 전환을 막는 상태 — 지금의 전환 메뉴와 같은 규칙이다. */
@@ -101,12 +129,20 @@ export function consoleSwitchBlocked(entry: ConsoleSectionEntry): boolean {
   return entry.active || entry.status === "unreachable" || entry.status === "untrusted" || entry.status === "stopping";
 }
 
+/** 관리 카드가 열리는 콘솔. 원격 경로와 닿지 않는 콘솔은 빠진다 — 이 Desktop이 따로 관리하는 콘솔은 꺼져 있어도 남는다. 좁은 열인지는 부르는 쪽이 본다. */
+export function consoleSectionManageable(entry: ConsoleSectionEntry): boolean {
+  return entry.management !== undefined && entry.path !== "remote" && (entry.managed !== undefined || entry.status !== "unreachable");
+}
+
 /**
  * 콘솔 하나의 머리글. 누르면 그 섹션이 접힌다. 원격 콘솔은 이름을 바꾸거나 뺄 수 있다.
+ * 다른 콘솔은 캡슐 대신 목록의 한 행(appearance "row")으로 선다. 지금 콘솔은 콘솔이 하나뿐이고 머리글이 필요할 때만 캡슐이다.
  * 좁은 열에는 글리프만 남고 접힘도 쓰지 않으므로, 거기서는 누르면 그 콘솔로 전환한다 — 사령관 행이 없는 콘솔로 가는 길이 이것뿐이다.
  */
-export function ConsoleSectionHead({ entry, folded, count, sections, compact = false }: {
+export function ConsoleSectionHead({ entry, folded, count, sections, compact = false, appearance = "plate" }: {
   readonly entry: ConsoleSectionEntry; readonly folded: boolean; readonly count: number | null; readonly sections: ConsoleSections; readonly compact?: boolean;
+  /** plate는 콘솔이 하나뿐일 때의 캡슐. row는 다른 콘솔이 목록의 한 행으로 서는 모습. */
+  readonly appearance?: "plate" | "row";
 }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
@@ -116,15 +152,39 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const status = lifecycle ? t(lifecycle) : entry.status === "unreachable" ? t("chrome.hosts.unreachable") : entry.status === "untrusted" ? t("chrome.hosts.untrusted")
     : entry.status === "stopping" ? t("chrome.hosts.stopping") : entry.status === "slow" ? t("chrome.hosts.slow") : null;
   // 관리 화면은 집 Console이 그린다. 이 Desktop이 관계를 실어 보낸 이 컴퓨터의 콘솔에만, 그 콘솔이 답하는 동안에만 문을 둔다.
-  // 집이 답하지 않으면 그 화면을 그릴 문서가 없다. 꺼져 있는 관리 대상은 집이 답하는 한 관리할 수 있다.
+  // 관리 카드는 집 Console이 그린다. 집이 답하지 않으면 그릴 문서가 없다.
   const homeDown = sections.entries.some((item) => item.home && item.status === "unreachable");
-  const manageable = !compact && entry.management !== undefined && entry.path !== "remote" && !homeDown;
+  const manageable = !compact && consoleSectionManageable(entry) && !homeDown;
   const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
   const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
-  const press = compact ? () => { if (switchable) sections.command({ switch: entry.id }); } : () => sections.fold(entry.id, !folded);
+  // 접힌 뒤에는 상자가 머리글뿐이라 붙지 못한다. 붙어 있던 머리글은 접히기 전에 재 둔 제자리로 스크롤을 맞춰 목록 위에 남긴다.
+  const pinScroll = useRef<{ readonly list: HTMLElement; readonly top: number } | null>(null);
+  useLayoutEffect(() => {
+    const pin = pinScroll.current;
+    if (!pin) return;
+    pinScroll.current = null;
+    pin.list.scrollTop = pin.top;
+  });
+  const press = (event: { currentTarget: HTMLButtonElement }) => {
+    if (compact) { if (switchable) sections.command({ switch: entry.id }); return; }
+    const folding = !folded;
+    pinScroll.current = null;
+    if (folding) {
+      const list = event.currentTarget.closest<HTMLElement>(".objective-records-side-bar-chips");
+      const head = event.currentTarget.closest<HTMLElement>(".side-console-head");
+      const top = list && head ? stuckHeadScrollTop(head, list) : null;
+      if (list && top !== null) pinScroll.current = { list, top };
+    }
+    sections.fold(entry.id, folding);
+  };
+  const row = appearance === "row";
+  const glyph = row
+    ? <span className="side-console-glyph"><ConsoleGlyph remote={entry.kind === "remote"} /></span>
+    : <ConsoleGlyph remote={entry.kind === "remote"} />;
   if (editing) {
-    return <div className="side-console-head is-editing" data-status={entry.status ?? undefined}>
+    return <div className={`side-console-head is-editing${row ? " is-row" : ""}`} data-status={entry.status ?? undefined}>
+      <div className="side-console-plate">
       <form className="side-console-form" onSubmit={(event) => { event.preventDefault(); const next = name.trim(); if (!next) return; sections.command({ rename: { id: entry.id, label: next } }); setEditing(false); }}>
         <input autoFocus aria-label={t("settings.remote.hosts.rename")} value={name} maxLength={120} onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); setEditing(false); } }} />
@@ -132,15 +192,17 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
           {/* 빼기 전의 확인은 셸이 자기 대화상자로 묻는다 — 여기서 한 번 더 묻지 않는다. */}
           {!entry.active ? <button type="button" className="is-danger" onClick={() => { sections.command({ forget: entry.id }); setEditing(false); }}>{t("settings.remote.hosts.forget")}</button> : null}</div>
       </form>
+      </div>
     </div>;
   }
-  return <div className={`side-console-head${entry.active ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
+  return <div className={`side-console-head${row ? " is-row" : ""}${entry.active && !row ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
+    <div className="side-console-plate">
     <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
-      <ConsoleGlyph remote={entry.kind === "remote"} />
+      {glyph}
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
       {entry.path === "wsl" ? <span className="side-console-tag">{t("chrome.consoles.wslTag")}</span> : null}
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}
-      {entry.active ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
+      {entry.active && !row ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
       {status ? <span className="side-console-status">{status}</span> : null}
       {folded && count !== null && count > 0 ? <span className="side-console-count">{count}</span> : null}
       <ChevronGlyph direction="down" className="side-console-chevron" />
@@ -155,16 +217,6 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       onClick={() => { setName(entry.label); setEditing(true); }}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m3 11-.5 2.5L5 13l7-7-2-2-7 7Zm6-6 2 2" /></svg>
     </button> : null}
+    </div>
   </div>;
-}
-
-/** 목록 끝의 콘솔 추가 — 지금의 추가 창을 그대로 연다. */
-export function ConsoleAddRow({ sections }: { readonly sections: ConsoleSections }) {
-  const t = useT();
-  return <li className="side-console-add-item">
-    <button type="button" className="side-console-add" title={t("chrome.hosts.add")} onClick={() => sections.command({ add: true })}>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>
-      <span>{t("chrome.hosts.add")}</span>
-    </button>
-  </li>;
 }

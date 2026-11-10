@@ -1,5 +1,5 @@
 import { FolderIcon, PencilIcon, PlusIcon, TaskforceIcon, TrashIcon } from "./sidebar-menu-icons.js";
-import { ConsoleAddRow, ConsoleSectionHead, useConsoleSections } from "../../../remote-access/client/console-sections.js";
+import { ConsoleSectionHead, useConsoleSections, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
 
 /**
  * 사이드바 머리 한 줄 — 사령관 section 이 `TheaterInfo` 모양으로 선다. `id` 와 `commodore.id` 는 그 사령관 UUID 이고,
@@ -152,6 +152,29 @@ interface TheaterActionsMenuProps {
   readonly onClose: () => void;
 }
 
+/**
+ * 지금 떠 있는 콘솔의 목록.
+ * 콘솔이 하나뿐이면 예전과 같다 — 꺼져 있거나 시작·종료 중일 때만 캡슐 머리글이 서고, 아니면 목록을 그대로 돌려준다.
+ * 콘솔이 둘 이상이면 머리글 없이 목록만 맨 위에 둔다. 그때의 상자는 호버 독을 가둬, 아래 붙은 콘솔 행 위로 올라오지 않게 한다.
+ */
+function ActiveConsoleSection({ entry, folded, count, sections, compact, children }: {
+  readonly entry: ConsoleSections["active"];
+  readonly folded: boolean;
+  readonly count: number;
+  readonly sections: ConsoleSections;
+  readonly compact: boolean;
+  readonly children: ReactNode;
+}) {
+  if (!entry) return <>{children}</>;
+  if (sections.ownHead) {
+    return <li className="side-console is-active" data-console-id={entry.id}>
+      <ConsoleSectionHead entry={entry} folded={folded} count={count} sections={sections} compact={compact} />
+      {folded ? null : <ol className="side-console-own" aria-label={entry.label}>{children}</ol>}
+    </li>;
+  }
+  return <li className="side-console-own"><ol>{children}</ol></li>;
+}
+
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
@@ -229,9 +252,11 @@ export function ObjectiveRecordsSideBar({
       const list = listRef.current;
       const row = known && list ? list.querySelector<HTMLElement>(`.side-bar-theater-section[data-theater-id="${CSS.escape(arrival.commodore)}"]`) : null;
       if (!list || !row) return;
-      if (arrival.anchorY !== null) list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - arrival.anchorY;
-      // 이 콘솔의 행은 명부 행보다 높다 — 목록 끝에서 눌렀다면 아래가 잘리지 않을 만큼만 올린다.
+      // 도착한 목록은 맨 위에서 시작한다. 누르기 전의 높이(anchorY)에 맞추면 그 위의 사령관이 스크롤 밖으로 밀리므로, 고른 행이 보이게만 한다.
       (row.querySelector<HTMLElement>(".side-bar-theater-header") ?? row).scrollIntoView({ block: "nearest" });
+      // 머리만 맞추면 섹션 아래 여백이 목록 끝보다 몇 px 남는다. 큰 목록을 끌어올리지는 않는다.
+      const overflow = row.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
+      if (overflow > 0 && overflow <= 8) list.scrollTop += overflow;
     };
     const attempt = () => {
       if (!known || isCommodoreConversationOpen(arrival.commodore) || performance.now() > deadline) { place(); consoleArrived.current(); return; }
@@ -470,18 +495,12 @@ export function ObjectiveRecordsSideBar({
     onFinishAliasEdit: finishAliasEdit,
   });
 
-  // 콘솔이 둘 이상이면 목록을 콘솔 섹션으로 나눈다. 순서는 셸이 준 그대로이고, 지금 콘솔의 머리글 아래에는 이 문서의
-  // 자기 목록이, 다른 콘솔의 머리글 아래에는 셸이 건넨 명부가 선다. 콘솔이 하나뿐이면 머리글 없이 지금과 같다.
-  const activeConsoleIndex = consoles.entries.findIndex((entry) => entry.active);
-  const ownConsoleFolded = consoles.sectioned && !compact && consoles.active !== null && consoles.folded(consoles.active.id);
+  // 콘솔이 둘 이상이면 지금 콘솔의 목록이 맨 위이고, 다른 콘솔은 셸이 준 순서(활성만 뺀 순서)로 그 아래에 선다.
+  // 지금 콘솔은 머리글이 없으므로 접지 않는다. 콘솔이 하나뿐이면 꺼짐·시작 중일 때만 예전 머리글이 서고, 그때만 접힌다.
+  const soleConsole = consoles.sectioned && consoles.ownHead;
+  const ownConsoleFolded = soleConsole && !compact && consoles.active !== null && consoles.folded(consoles.active.id);
   const rosterSection = (entry: (typeof consoles.entries)[number]) => <ConsoleRosterSection key={entry.id} entry={entry} sections={consoles} list={() => listRef.current} compact={compact} />;
-  const consoleLead = consoles.sectioned && consoles.active ? <>
-    {consoles.entries.slice(0, activeConsoleIndex).map(rosterSection)}
-    <li className="side-console is-active" data-console-id={consoles.active.id}>
-      <ConsoleSectionHead entry={consoles.active} folded={ownConsoleFolded} count={faces.length} sections={consoles} compact={compact} />
-    </li>
-  </> : null;
-  const consoleTail = consoles.sectioned ? consoles.entries.slice(activeConsoleIndex + 1).map(rosterSection) : null;
+  const otherConsoles = consoles.sectioned ? consoles.entries.filter((entry) => !entry.active).map(rosterSection) : null;
 
   return (
     <aside
@@ -503,7 +522,7 @@ export function ObjectiveRecordsSideBar({
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
-        {consoleLead}
+        <ActiveConsoleSection entry={consoles.sectioned ? consoles.active : null} folded={ownConsoleFolded} count={faces.length} sections={consoles} compact={compact}>
         {ownConsoleFolded ? null : <>
         {sidebarBuckets.map((bucket) => {
           const rows = bucket.rows.map((face) => {
@@ -642,8 +661,8 @@ export function ObjectiveRecordsSideBar({
           </li>
         ) : null}
         </>}
-        {consoleTail}
-        {consoles.capable && !compact ? <ConsoleAddRow sections={consoles} /> : null}
+        </ActiveConsoleSection>
+        {otherConsoles}
       </ol>
       </div>
 

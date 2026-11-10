@@ -5,6 +5,46 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.295.0] - 2026-11-10
+
+### fleet-console
+
+#### Added
+- Agents can answer a page's alert or confirm dialog in the Fleet Browser, and browser tools report an open dialog right away instead of waiting.
+- When a commodore itself is using the Fleet Browser, its row in the sidebar and the browser button in its conversation now show it, the same way they do for an objective's commander.
+- Stop a Commodore's running turn from the message box. The conversation and its history stay, and the Commodore picks up again with your next message.
+
+#### Changed
+- An objective no longer keeps a Commander model before it is planned or started. The model is chosen at that moment, including for an objective that already had one stored. On a not-started objective with no members, the Members mark in the sidebar row is dimmed like the Evidence mark.
+- In Fleet Desktop, the sidebar lists the commodores of the console you are on at the top, and each console you have added as a row beneath them with that console's commodores nested under the row, replacing the remote console button. Commodores of the consoles you are not on appear dimmed; press one to switch to that console and open its conversation. Add a console, or manage or rename the console you are on, from the + menu at the top of the sidebar. A console lists its commodores once it runs this version or later, and viewing the list never takes control of that console. If its certificate has changed, Check the certificate opens the same window as adding a console, and that console's row stays at the top of the list while you scroll.
+- Choose whether delegation can use high effort for each AI Gateway model, just like xhigh and max. High starts enabled for new models and stays enabled for existing selections after updating.
+- Edit objective briefings, success criteria, and member details in the objective and mission popups. Objective conversations keep the Commodore in the right sidebar instead of opening a separate objective board.
+
+#### Fixed
+- In the light theme, text in conversations is easier to read: the note beside the recipient in your own messages ("Commencing", "Asking for a plan"), your message bubbles, faint labels such as times and hints, and code highlighting no longer fade into their background. Faint labels elsewhere in the light theme are darker too.
+- The vertical-layout switch in the mission popup now responds wherever you click it.
+
+#### Removed
+- The Library window is gone. Opening evidence from a commander row, a mission, or objective details now goes straight to the evidence viewer, including shared files.
+- The view mode choice is gone from the sidebar menu and from the mobile settings. Console now always picks the mobile or desktop layout from the device and window width, and a previously saved choice no longer applies.
+
+### fleet-desktop
+
+#### Added
+- While an agent is working in a Fleet Browser tab, your clicks and keys no longer reach that page, and a pill at the bottom lets you take over, hand control back, or stop the agent. The agent is told when you take over, waits until you return control, and can ask you for a step such as signing in; a space waiting on you is marked in the space grid.
+- Right-click the Fleet Browser tab strip to open a new tab, show the tabs horizontally above the address bar, collapse them, or turn off auto-expand. The layout you choose is kept the next time you open the app.
+- See when the Console that Fleet Desktop manages has stopped, and start it again from its section in the sidebar. A new management view shows who manages each Console on this computer and lets you restart the one Desktop manages.
+
+#### Changed
+- Page alert and confirm dialogs in the Fleet Browser now open inside the browser instead of as a separate system window, so you or an agent can answer them there.
+- The page itself now shows that an agent is working in it, with an animation and the agent's moving cursor, instead of tinting the address bar and tab strip. None of it appears in the screenshots the agent takes.
+- Fleet Browser now gives each commodore one space shared with its objectives, and a spaces button next to the tools menu opens a grid where you switch between those spaces and your own default space. Update both Fleet Desktop and Console: the browser stays closed while only one of them is updated.
+- A commodore's space holds up to 16 tabs, and the browser up to 32 across all spaces.
+- The Fleet Browser's vertical tab strip now expands and collapses smoothly when you point at it.
+
+#### Fixed
+- On Windows, opening the Fleet Browser pane no longer leaves an empty gap that pushed the top-row close and browser buttons to the left, and the line under the browser's address bar now continues beneath the window buttons.
+
 ## [1.294.0] - 2026-11-09
 
 ### fleet-console
