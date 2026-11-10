@@ -5,10 +5,10 @@
  */
 
 /** 위임에 켜면 늘 포함하는 강도. */
-export const AI_GATEWAY_BASE_EFFORTS = ["low", "medium", "high"] as const;
+export const AI_GATEWAY_BASE_EFFORTS = ["low", "medium"] as const;
 
 /** 켠 모델에서만 고르는 강도. */
-export const AI_GATEWAY_OPT_IN_EFFORTS = ["xhigh", "max"] as const;
+export const AI_GATEWAY_OPT_IN_EFFORTS = ["high", "xhigh", "max"] as const;
 
 /**
  * 메뉴·실행·위임 후보가 같이 쓰는 로그인 술어.
@@ -27,7 +27,7 @@ export function aiGatewayModelFamilyKey(id: string): string {
 }
 
 /**
- * 저장 강도 = 사다리 ∩ ({low, medium, high} ∪ 켠 xhigh·max).
+ * 저장 강도 = 사다리 ∩ ({low, medium} ∪ 켠 high·xhigh·max).
  * 사다리 전체와 같으면 `undefined`(키 부재). `selected` 부재는 사다리 전체로 읽는다.
  * 빈 배열은 옵트인이 없는 기본값이다 — 부재와 같지 않다.
  */
@@ -46,5 +46,5 @@ export function canonicalEffortSelection(
 
 /** 새로 켠 모델. low–high만 포함하고, 그 셋이 사다리 전체면 키를 남기지 않는다. */
 export function defaultEffortSelection(ladder: readonly string[]): readonly string[] | undefined {
-  return canonicalEffortSelection(ladder, []);
+  return canonicalEffortSelection(ladder, ["high"]);
 }

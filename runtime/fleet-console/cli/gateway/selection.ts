@@ -1,5 +1,6 @@
 import {
   buildAiGatewayCatalog,
+  defaultEffortSelection,
   GATEWAY_PROVIDER_NAMES,
   type AiGatewayCatalogModel,
   type AiGatewayStoredModel,
@@ -56,7 +57,8 @@ export function toStoredModels(
   for (const id of selectedIds) {
     if (seen.has(id)) continue;
     seen.add(id);
-    models.push(carried.get(id) ?? { id });
+    const efforts = defaultEffortSelection(effortLadderFor(id));
+    models.push(carried.get(id) ?? { id, ...(efforts ? { efforts } : {}) });
   }
   return models;
 }

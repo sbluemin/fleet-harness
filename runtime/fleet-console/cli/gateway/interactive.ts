@@ -9,6 +9,8 @@ import {
   select,
 } from "@clack/prompts";
 import {
+  AI_GATEWAY_OPT_IN_EFFORTS,
+  canonicalEffortSelection,
   DEFAULT_XAI_ENDPOINT_PREFERENCE,
   GATEWAY_PROVIDERS,
   GATEWAY_PROVIDER_NAMES,
@@ -115,7 +117,7 @@ async function editModels(deps: GatewayInteractiveDeps): Promise<void> {
   if (models.length > 0) await adjustModelDetail(deps);
 }
 
-/** 위임에 줄 강도. low·medium·high는 저장 정규화가 다시 넣고, xhigh·max만 끌 수 있다. */
+/** 위임에 줄 강도. low·medium은 늘 포함하고, high·xhigh·max는 모델마다 고른다. */
 async function adjustModelDetail(deps: GatewayInteractiveDeps): Promise<void> {
   for (;;) {
     const models = collectGatewayModels(deps.store.read());
@@ -135,17 +137,18 @@ async function adjustModelDetail(deps: GatewayInteractiveDeps): Promise<void> {
     if (isCancel(target) || target === "") return;
 
     const ladder = effortLadderFor(target);
-    if (ladder.length === 0) continue;
+    const optional = AI_GATEWAY_OPT_IN_EFFORTS.filter((level) => ladder.includes(level));
+    if (optional.length === 0) continue;
     const stored = deps.store.read().models ?? [];
     const current = stored.find((entry) => entry.id === target)?.efforts;
     const efforts = await multiselect<string>({
-      message: "Which effort levels can delegation use? low, medium, and high stay on.",
-      options: ladder.map((level) => ({ value: level, label: level })),
-      initialValues: [...(current ?? ladder)],
+      message: "Which optional effort levels can delegation use? low and medium stay on; high starts on.",
+      options: optional.map((level) => ({ value: level, label: level })),
+      initialValues: optional.filter((level) => (current ?? ladder).includes(level)),
       required: false,
     });
     if (isCancel(efforts)) continue;
-    const narrowed = efforts.length === ladder.length ? [] : efforts;
+    const narrowed = canonicalEffortSelection(ladder, efforts) ?? [];
     deps.store.write({ models: withModelEfforts(stored, target, narrowed) });
     log.success(narrowed.length === 0 ? "Effort: the whole ladder." : `Effort: ${narrowed.join("·")}.`);
   }
