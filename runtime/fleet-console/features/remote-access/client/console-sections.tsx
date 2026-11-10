@@ -123,6 +123,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const press = compact ? () => { if (switchable) sections.command({ switch: entry.id }); } : () => sections.fold(entry.id, !folded);
   if (editing) {
     return <div className="side-console-head is-editing" data-status={entry.status ?? undefined}>
+      <div className="side-console-plate">
       <form className="side-console-form" onSubmit={(event) => { event.preventDefault(); const next = name.trim(); if (!next) return; sections.command({ rename: { id: entry.id, label: next } }); setEditing(false); }}>
         <input autoFocus aria-label={t("settings.remote.hosts.rename")} value={name} maxLength={120} onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); setEditing(false); } }} />
@@ -130,9 +131,11 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
           {/* 빼기 전의 확인은 셸이 자기 대화상자로 묻는다 — 여기서 한 번 더 묻지 않는다. */}
           {!entry.active ? <button type="button" className="is-danger" onClick={() => { sections.command({ forget: entry.id }); setEditing(false); }}>{t("settings.remote.hosts.forget")}</button> : null}</div>
       </form>
+      </div>
     </div>;
   }
   return <div className={`side-console-head${entry.active ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
+    <div className="side-console-plate">
     <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
       <ConsoleGlyph remote={entry.kind === "remote"} />
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
@@ -151,6 +154,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       onClick={() => { setName(entry.label); setEditing(true); }}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m3 11-.5 2.5L5 13l7-7-2-2-7 7Zm6-6 2 2" /></svg>
     </button> : null}
+    </div>
   </div>;
 }
 

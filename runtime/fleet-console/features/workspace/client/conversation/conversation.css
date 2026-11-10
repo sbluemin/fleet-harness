@@ -116,7 +116,7 @@
 
 .console-body.is-conversation .objective-records-side-bar.is-compact .objective-records-side-bar-chips {
   padding-top: 16px;
-  gap: calc(12px / var(--compact-layout-zoom));
+  --side-chips-gap: calc(12px / var(--compact-layout-zoom));
 }
 
 .console-body.is-conversation .objective-records-side-bar.is-compact .side-bar-theater-section {
