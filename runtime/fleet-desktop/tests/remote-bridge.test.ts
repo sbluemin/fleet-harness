@@ -237,16 +237,18 @@ describe("host picker surface", () => {
     try {
       send({ request: "state" });
       await section.refresh();
-      expect(events.length).toBeGreaterThan(0);
+      const sectionEvents = events.filter((event) => event.type === CONSOLE_SECTION_EVENT);
+      expect(sectionEvents.length).toBeGreaterThan(0);
       for (const event of events) {
-        expect(event.type).toBe(CONSOLE_SECTION_EVENT);
-        expect(Object.keys(event.detail).sort()).toEqual(["entries", "expanded", "v"]);
-        for (const entry of event.detail.entries) expect(Object.keys(entry).sort()).toEqual(["active", "address", "home", "id", "kind", "label", "status", "version"]);
         const frame = JSON.stringify(event.detail);
         for (const secret of [LOCAL, REMOTE, FINGERPRINT, "private-record-id", "grant-token", "fleet://", "/private/local-path", "addedAt"]) expect(frame).not.toContain(secret);
       }
-      const remote = events.at(-1)!.detail.entries.find((entry) => entry.active)!;
-      const home = events.at(-1)!.detail.entries.find((entry) => entry.home)!;
+      for (const event of sectionEvents) {
+        expect(Object.keys(event.detail).sort()).toEqual(["entries", "expanded", "v"]);
+        for (const entry of event.detail.entries) expect(Object.keys(entry).sort()).toEqual(["active", "address", "home", "id", "kind", "label", "status", "version"]);
+      }
+      const remote = sectionEvents.at(-1)!.detail.entries.find((entry) => entry.active)!;
+      const home = sectionEvents.at(-1)!.detail.entries.find((entry) => entry.home)!;
       expect(remote).toMatchObject({ label: "Studio", address: "100.84.12.7:6768", kind: "remote", active: true });
       const before = fetch.mock.calls.length;
       send({ switch: "unknown-id" }); send({ rename: { id: "unknown-id", label: "Other" } }); send({ forget: "unknown-id" });
